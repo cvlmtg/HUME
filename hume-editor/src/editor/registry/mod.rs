@@ -522,6 +522,7 @@ mod tests {
             jump: false,
             visual_move: false,
             extendable: false,
+            stamps_last_command: true,
         };
         reg.register(cmd);
 
@@ -618,6 +619,7 @@ mod tests {
             jump: false,
             visual_move: false,
             extendable: false,
+            stamps_last_command: true,
         });
 
         let mut names = reg.steel_backed_names();

@@ -508,7 +508,7 @@ fn editor_with_steel(initial_state: &str, source: &str) -> Editor {
 /// "foo" is deleted, buffer is " bar\n". Press `w` to select "bar", then `.`
 /// — `.` must replay `del-sel` on the current selection ("bar"), leaving " \n".
 ///
-/// Fail oracle 1: if `is_repeatable()` returned `false` for `SteelBacked`,
+/// Fail oracle 1: if `meta().repeatable` returned `false` for `SteelBacked`,
 /// `last_repeatable_action` would be `None` (no prior recording) — `.` would
 /// be a no-op and "bar" would survive.
 ///
@@ -550,7 +550,7 @@ fn steel_dot_repeatable_round_trip() {
 /// A plain `define-command!` (non-repeatable) must not overwrite
 /// `last_repeatable_action` set by a prior native edit.
 ///
-/// Fail oracle: if `is_repeatable()` returned `true` for `SteelBacked`,
+/// Fail oracle: if `meta().repeatable` returned `true` for `SteelBacked`,
 /// running the Steel command would stamp `last_repeatable_action` with its
 /// name; the subsequent `.` would replay the Steel command instead of the
 /// native delete.
@@ -584,10 +584,10 @@ fn steel_command_is_not_repeatable() {
 /// A plain `define-command!` (non-repeatable) must NOT overwrite
 /// `last_repeatable_action` set by a prior native edit.
 ///
-/// Fail oracle: remove the `is_repeatable()` guard in execute.rs and the
-/// non-repeatable Steel command would overwrite `last_repeatable_action` with
-/// `None` (no recording) — the subsequent `.` would repeat nothing, the name
-/// assertion would differ.
+/// Fail oracle: change `meta().repeatable` to `true` for all `SteelBacked`
+/// commands in `editor/mod.rs` `dispatch()` and the non-repeatable Steel command
+/// would overwrite `last_repeatable_action` — the subsequent `.` would replay
+/// the Steel command, the name assertion would differ.
 #[test]
 fn non_repeatable_steel_does_not_hijack_dot() {
     let mut ed = editor_with_steel(
@@ -627,8 +627,8 @@ fn non_repeatable_steel_does_not_hijack_dot() {
 /// `last_repeatable_action` on its FIRST dispatch, after the Lazy→SteelBacked
 /// activation happens mid-dispatch.
 ///
-/// The re-query in execute.rs reads `is_repeatable()` from the now-SteelBacked
-/// entry (not the pre-dispatch Lazy stub, which carries no repeatable flag).
+/// The re-query in `editor/mod.rs` `dispatch()` reads `meta().repeatable` on the
+/// now-SteelBacked entry (not the pre-dispatch Lazy stub, which is never repeatable).
 ///
 /// Fail oracle: if the re-query used the pre-dispatch `Lazy` variant,
 /// `last_repeatable_action` would be `None` on first dispatch — `.` is then

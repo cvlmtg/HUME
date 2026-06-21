@@ -97,6 +97,7 @@ impl CommandRegistry {
             jump: bool,
             visual_move: bool,
             extendable: bool,
+            stamps_last_command: bool,
         }
         impl EditorCmdBuilder {
             fn repeatable(mut self) -> Self {
@@ -119,6 +120,13 @@ impl CommandRegistry {
                 self.category = CmdCategory::Paste { family };
                 self
             }
+            /// Mark this command as transparent to `last_command` (smart-p).
+            /// Only `exit-insert` needs this — it closes the insert session a kill
+            /// (`c`) opened, so stamping it would clobber the `"change"` marker.
+            fn transparent_to_last_command(mut self) -> Self {
+                self.stamps_last_command = false;
+                self
+            }
             fn reg(self, r: &mut CommandRegistry) {
                 r.register(MappableCommand::EditorCmd {
                     name: Cow::Borrowed(self.name),
@@ -129,13 +137,14 @@ impl CommandRegistry {
                     jump: self.jump,
                     visual_move: self.visual_move,
                     extendable: self.extendable,
+                    stamps_last_command: self.stamps_last_command,
                 });
             }
         }
         // Construct a builder for an EditorCmd. All handlers share one shape:
         // fn(&mut EditorState, &mut EngineView, usize, MotionMode) -> Result<(), CommandError>.
         let ecmd = |name: &'static str, doc: &'static str, fun: EditorCmdFn| {
-            EditorCmdBuilder { name, doc, fun, category: CmdCategory::EditorAction, repeatable: false, jump: false, visual_move: false, extendable: false }
+            EditorCmdBuilder { name, doc, fun, category: CmdCategory::EditorAction, repeatable: false, jump: false, visual_move: false, extendable: false, stamps_last_command: true }
         };
 
         // ── Character motions ─────────────────────────────────────────────────
@@ -552,6 +561,7 @@ impl CommandRegistry {
             "Return to normal mode from insert mode.",
             cmd_exit_insert,
         )
+        .transparent_to_last_command()
         .reg(self);
 
         // ── Editor commands — edit composites ─────────────────────────────────

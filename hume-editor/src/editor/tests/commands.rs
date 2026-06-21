@@ -1198,12 +1198,13 @@ fn smart_p_dp_reads_ring() {
 ///
 /// Regression: `exit-insert` (Esc) ran through the dispatch pipeline and
 /// overwrote `last_command = "exit-insert"` ∉ `SMART_P_LAST_CMDS`, so
-/// smart-`p` fell through to the clipboard. Fix: `step_stamp_last_command`
-/// skips stamping when the command name is `"exit-insert"`.
+/// smart-`p` fell through to the clipboard. Fix: `exit-insert` is registered
+/// with `.transparent_to_last_command()`, setting `stamps_last_command = false`
+/// on its `CmdMeta`.
 ///
-/// Fail oracle: remove the `name != EXIT_INSERT_CMD` guard in
-/// `commands/mod.rs` → `last_command` becomes "exit-insert" → `p` pastes
-/// "CLIP" → `contains('a')` fails.
+/// Fail oracle: remove `.transparent_to_last_command()` from `exit-insert`'s
+/// registration in `registry/defaults.rs` → `last_command` becomes "exit-insert"
+/// → `p` pastes "CLIP" → `contains('a')` fails.
 #[test]
 fn smart_p_after_change_reads_ring() {
     use crate::ops::register::CLIPBOARD_REGISTER;
@@ -1222,10 +1223,12 @@ fn smart_p_after_change_reads_ring() {
 
 /// `exit-insert` must never overwrite `last_command`, regardless of what it held.
 ///
-/// Directly pins the sole exception in `step_stamp_last_command`: a command
-/// named `"exit-insert"` is skipped.
+/// Directly pins the sole exception in the stamp mechanism: `exit-insert` is
+/// registered with `stamps_last_command = false` (via `.transparent_to_last_command()`
+/// in `registry/defaults.rs`), so `step_stamp_last_command` skips it.
 ///
-/// Fail oracle: remove the `name != EXIT_INSERT_CMD` guard → marker becomes
+/// Fail oracle: remove `.transparent_to_last_command()` from `exit-insert`'s
+/// registration → `stamps_last_command` becomes `true` → marker becomes
 /// `Some("exit-insert")`.
 #[test]
 fn exit_insert_does_not_stamp() {
@@ -1248,8 +1251,9 @@ fn exit_insert_does_not_stamp() {
 /// kills inside Insert — write their name. A future `Ctrl-w`-style command
 /// (Steel body doing `call! delete`) therefore correctly informs smart-`p`.
 ///
-/// Fail oracle: add `if pre_mode != Mode::Insert` back to `step_stamp_last_command` →
-/// `last_command` stays `Some("insert-at-selection-start")` and the assertion fails.
+/// Fail oracle: add a `stamps_last_command = false` check gated on Insert mode to
+/// `step_stamp_last_command` → `last_command` stays `Some("insert-before")` and
+/// the assertion fails.
 #[test]
 fn delete_in_insert_mode_stamps_marker() {
     let mut ed = editor_from("-[a]>b\n");
@@ -1344,7 +1348,7 @@ fn smart_p_consecutive_paste_stays_in_ring() {
         .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
     ed.feed_key(key('d')); // delete 'X' → ring = ["X"]
     ed.feed_key(key('p')); // first paste → from ring, last_command = "paste-after"
-    // last_command = "paste-after" ∈ PASTE_FAMILY_CMDS → is_append = true → appends from last_paste.
+    // last_command = "paste-after", category = CmdCategory::Paste → is_append = true → appends from last_paste.
     ed.feed_key(key('p')); // second paste → still from ring
     // Buffer should contain "X" twice (pasted) and NOT "CLIP".
     let buf = ed.doc().text().to_string();
@@ -1653,7 +1657,7 @@ fn paste_before_cycle_stays_above_linewise() {
 /// `p [ p` duplicates the currently-cycled entry — never does a fresh clipboard paste.
 ///
 /// After `[` swaps the paste to the ring head, `last_command = "paste-ring-older"`
-/// is in `PASTE_FAMILY_CMDS`, so the next `p` must append (not replace).
+/// has category `CmdCategory::Paste`, so the next `p` must append (not replace).
 #[test]
 fn paste_after_cycle_appends_cycled_entry() {
     use crate::ops::register::CLIPBOARD_REGISTER;

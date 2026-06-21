@@ -516,8 +516,8 @@ impl Editor {
         // BEFORE
         commands::step_paste_commit(&mut self.state, &meta.category);
         // Pre-stamp last_command — inner dispatches via `call!` override it.
-        commands::step_stamp_last_command(&mut self.state, meta.name.clone());
-        let char_arg = commands::step_capture_pending_char(&self.state);
+        commands::step_stamp_last_command(&mut self.state, meta.name.clone(), meta.stamps_last_command);
+        let char_arg = self.state.pending_char;
         // Always snapshot the recipe before the body — inner dispatches via `call!`
         // overwrite selection_recipe during the body, so the snapshot must be taken
         // before they run (the native path uses step_snapshot_recipe, which gates on
@@ -525,15 +525,13 @@ impl Editor {
         let pre_recipe = std::mem::take(&mut self.state.selection_recipe);
 
         // BODY — consumes `cmd`.
-        if !self.run_steel_command(cmd, &ctx, char_arg) {
+        if !self.run_steel_command(cmd, meta.name.as_ref(), &ctx, char_arg) {
             self.state.selection_recipe.clear();
             return;
         }
 
         // AFTER — re-query to get the resolved command's repeatable flag.
-        // A Lazy stub becomes SteelBacked after activation; a SteelBacked entry
-        // is unchanged. We only need the repeatable flag — no need to clone the
-        // whole command or fabricate a fallback.
+        // A Lazy stub becomes SteelBacked after activation; re-query reflects that.
         if self.state.registry.get_mappable(meta.name.as_ref())
             .is_some_and(|c| c.meta().repeatable)
         {
@@ -549,8 +547,7 @@ impl Editor {
     ///
     /// Returns `false` if the command aborted (lazy activation failure, scripting
     /// error, or `scripting` is `None`). On error, the caller skips AFTER stages.
-    fn run_steel_command(&mut self, cmd: MappableCommand, ctx: &CmdCtx, char_arg: Option<char>) -> bool {
-        let name = cmd.meta().name;
+    fn run_steel_command(&mut self, cmd: MappableCommand, name: &str, ctx: &CmdCtx, char_arg: Option<char>) -> bool {
         let count = ctx.count;
         let extend = ctx.extend;
 
@@ -558,7 +555,7 @@ impl Editor {
         // `inline_output` from the resolved SteelBacked entry before dispatch.
         if let MappableCommand::Lazy { plugin, .. } = &cmd {
             let plugin = plugin.clone();
-            if !self.activate_lazy_plugin(&plugin, name.as_ref()) {
+            if !self.activate_lazy_plugin(&plugin, name) {
                 self.report(Severity::Warning, format!("unknown command: {name}"));
                 return false;
             }
@@ -575,7 +572,7 @@ impl Editor {
         // Re-query: a Lazy stub is now SteelBacked after activation above;
         // a SteelBacked entry is unchanged.
         let (inline_output, cmd_arity, cmd_is_variadic) =
-            match self.state.registry.get_mappable(name.as_ref()) {
+            match self.state.registry.get_mappable(name) {
                 Some(MappableCommand::SteelBacked {
                     inline_output, arity, is_variadic, ..
                 }) => (*inline_output, *arity, *is_variadic),
@@ -621,7 +618,7 @@ impl Editor {
                 self.report(Severity::Error, format!("inline-output enter failed: {e}"));
                 return false;
             }
-            hume_platform::terminal::print_running_banner(&name);
+            hume_platform::terminal::print_running_banner(name);
         }
 
         let result = {
@@ -630,7 +627,7 @@ impl Editor {
                 view: &mut self.view,
             };
             scripting.call_steel_cmd(
-                name.as_ref(),
+                name,
                 char_arg,
                 effective_args,
                 focused_pane_id,
@@ -712,11 +709,12 @@ impl Editor {
         match &edit_cmd {
             MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
                 let ctx = CmdCtx { count, extend: false, steel_args: vec![] };
+                let cmd_name = action.command.clone();
                 // A Steel command can succeed when first run yet fail on dot-repeat:
                 // the buffer state differs (no match at the new cursor, a guard that
                 // now throws), so replay must handle failure even though the original
                 // run didn't.
-                if !self.run_steel_command(edit_cmd, &ctx, action.char_arg) {
+                if !self.run_steel_command(edit_cmd, cmd_name.as_ref(), &ctx, action.char_arg) {
                     // Close the group opened above so it can't leak. commit drops
                     // an empty group (clean noop) and records a partial one (a
                     // failure mid-edit stays undoable).

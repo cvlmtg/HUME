@@ -25,7 +25,8 @@ Cursor/text assertions passed.  Nine bookkeeping regressions shipped.
    assert only the primary effect.
 
 2. **Single-funnel lint** — all execution of native-command `fun` fields must
-   go through `dispatch_native` in `commands/mod.rs`.  The lint
+   go through `run_native_body` in `commands/mod.rs` (wrapped by
+   `run_dispatch_pipeline` for bookkeeping).  The lint
    `single_native_dispatch_funnel` in `lints.rs` enforces this: any second
    `match cmd` that binds a native variant's `fun` outside that file fails the
    build.

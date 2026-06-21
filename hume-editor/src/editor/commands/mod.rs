@@ -162,11 +162,6 @@ pub(super) fn step_capture_pre_jump(
     })
 }
 
-/// Snapshot pending_char before body (commands consume via .take()).
-pub(super) fn step_capture_pending_char(state: &EditorState) -> Option<char> {
-    state.pending_char
-}
-
 /// Snapshot selection recipe before body for dot-repeat recording.
 ///
 /// The snapshot captures the selection extent the user built before the edit,
@@ -185,18 +180,16 @@ pub(super) fn step_snapshot_recipe(
 
 // ── AFTER (native steps) ────────────────────────────────────────────────────
 
-/// The one command that must stay transparent to smart-p: it closes an insert
-/// session that a kill (`c`) may have opened, so stamping it would clobber the
-/// `"change"` marker and break `c <text> Esc p` → ring.
-const EXIT_INSERT_CMD: &str = "exit-insert";
-
-/// Stamp last_command after the body. Skip only for `exit-insert` — every
-/// other command stamps, including kills dispatched inside Insert mode.
+/// Stamp `last_command` after the body when `stamps` is `true`.
+///
+/// `stamps` comes from `CmdMeta.stamps_last_command`, which is `false` only for
+/// `exit-insert` — it closes an insert session a kill (`c`) may have opened, so
+/// stamping it would clobber the `"change"` marker and break `c <text> Esc p` → ring.
 ///
 /// Called **after** body for native (smart-p reads old value during body),
 /// **before** body for Steel (outer name pre-stamped; inner `call!` overrides).
-pub(super) fn step_stamp_last_command(state: &mut EditorState, name: Cow<'static, str>) {
-    if name.as_ref() != EXIT_INSERT_CMD {
+pub(super) fn step_stamp_last_command(state: &mut EditorState, name: Cow<'static, str>, stamps: bool) {
+    if stamps {
         state.last_command = Some(name);
     }
 }
@@ -242,7 +235,7 @@ pub(super) fn step_stamp_repeatable(
 
 /// Update the selection recipe buffer after a command dispatch.
 ///
-/// Accumulation rule (matching the behavior at `replay_dot`):
+/// Accumulation rule:
 ///   sel-builder + extend              → append step
 ///   sel-builder + move + non-collapsed → reset + push
 ///   sel-builder + move + collapsed     → clear
@@ -303,20 +296,19 @@ pub(super) fn run_dispatch_pipeline(
          step_stamp_repeatable and step_update_recipe would both fire",
         meta.name,
     );
-    let is_jump = meta.is_jump;
 
     // BEFORE
     step_paste_commit(state, &meta.category);
     let pre_jump = step_capture_pre_jump(state, view, &meta);
-    let char_arg = step_capture_pending_char(state);
+    let char_arg = state.pending_char;
     let pre_recipe = step_snapshot_recipe(state, meta.repeatable);
 
     // BODY — cmd moved in; bools captured above so no clone needed.
     run_native_body(state, view, cmd, ctx.count, ctx.extend);
 
     // AFTER
-    step_stamp_last_command(state, meta.name.clone());
-    step_record_jump(state, view, pre_jump, is_jump);
+    step_stamp_last_command(state, meta.name.clone(), meta.stamps_last_command);
+    step_record_jump(state, view, pre_jump, meta.is_jump);
     step_stamp_repeatable(state, &meta, ctx.count, char_arg, pre_recipe);
     step_update_recipe(state, view, &meta, &ctx, char_arg);
 }

@@ -16,14 +16,14 @@ pub(crate) enum CmdCategory {
     Motion,
     /// Selection builder. Tracks the selection recipe.
     Selection,
-    /// Buffer-modifying edit. Snapshots dot-repeat (if repeatable).
-    Edit { repeatable: bool },
+    /// Buffer-modifying edit. Snapshots dot-repeat when `CmdMeta.repeatable` is true.
+    Edit,
     /// Paste-family command (p, P, [, ]).
     Paste { family: PasteFamily },
     /// Editor action (undo, redo, mode changes, …). Clears selection recipe.
     EditorAction,
-    /// Steel-backed or Lazy command.
-    Lazy { repeatable: bool },
+    /// Steel-backed or Lazy command. Dot-repeat opt-in via `CmdMeta.repeatable`.
+    Lazy,
 }
 
 /// Distinguishes normal paste from ring-cycle commands.
@@ -66,6 +66,14 @@ pub(crate) struct CmdMeta {
     pub is_visual_move: bool,
     /// Whether `.` should replay this command.
     pub repeatable: bool,
+    /// Whether dispatching this command overwrites `last_command`.
+    ///
+    /// `false` for `exit-insert` only — it closes an insert session that a kill
+    /// (`c`) may have opened, so stamping it would clobber the `"change"` marker
+    /// and break `c <text> Esc p` → ring. Set at registration via
+    /// `.transparent_to_last_command()` on the `EditorCmdBuilder`. All other
+    /// commands are `true`.
+    pub stamps_last_command: bool,
 }
 
 /// Function pointer for an [`EditorCmd`] handler.
@@ -171,6 +179,9 @@ pub(crate) enum MappableCommand {
         /// Motion and Selection are always extendable (implicit). Edit is never
         /// extendable (implicit). Only EditorCmd needs an explicit flag.
         extendable: bool,
+        /// Whether dispatching this command overwrites `last_command` for smart-p.
+        /// `false` only for `exit-insert`; all other commands are `true`.
+        stamps_last_command: bool,
     },
     /// A command implemented as a Steel (Scheme) lambda.
     ///
@@ -251,6 +262,7 @@ impl MappableCommand {
                 is_jump: *jump,
                 is_visual_move: false,
                 repeatable: false,
+                stamps_last_command: true,
             },
             Self::Selection { name, jump, .. } => CmdMeta {
                 name: name.clone(),
@@ -258,34 +270,39 @@ impl MappableCommand {
                 is_jump: *jump,
                 is_visual_move: false,
                 repeatable: false,
+                stamps_last_command: true,
             },
             Self::Edit { name, repeatable, .. } => CmdMeta {
                 name: name.clone(),
-                category: CmdCategory::Edit { repeatable: *repeatable },
+                category: CmdCategory::Edit,
                 is_jump: false,
                 is_visual_move: false,
                 repeatable: *repeatable,
+                stamps_last_command: true,
             },
-            Self::EditorCmd { name, category, repeatable, jump, visual_move, .. } => CmdMeta {
+            Self::EditorCmd { name, category, repeatable, jump, visual_move, stamps_last_command, .. } => CmdMeta {
                 name: name.clone(),
                 category: *category,
                 is_jump: *jump,
                 is_visual_move: *visual_move,
                 repeatable: *repeatable,
+                stamps_last_command: *stamps_last_command,
             },
             Self::SteelBacked { name, repeatable, .. } => CmdMeta {
                 name: name.clone(),
-                category: CmdCategory::Lazy { repeatable: *repeatable },
+                category: CmdCategory::Lazy,
                 is_jump: false,
                 is_visual_move: false,
                 repeatable: *repeatable,
+                stamps_last_command: true,
             },
             Self::Lazy { name, .. } => CmdMeta {
                 name: name.clone(),
-                category: CmdCategory::Lazy { repeatable: false },
+                category: CmdCategory::Lazy,
                 is_jump: false,
                 is_visual_move: false,
                 repeatable: false,
+                stamps_last_command: true,
             },
         }
     }
@@ -325,6 +342,7 @@ impl MappableCommand {
             Self::EditorCmd { extendable, .. } => *extendable,
         }
     }
+
 }
 
 // ── TypedCommand ──────────────────────────────────────────────────────────────
