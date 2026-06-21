@@ -99,7 +99,7 @@ pub fn cmd_yank(
     );
     match state.take_register_prefix() {
         None => {
-            state.write_clipboard(&yanked);
+            state.write_register(CLIPBOARD_REGISTER, yanked.clone());
             state.kill_ring.push(yanked);
         }
         // "ky: push to ring only (no clipboard).

@@ -130,6 +130,12 @@ impl Register {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct RegisterSet {
     registers: HashMap<char, Register>,
+    /// Snapshot of the blob last written to the OS clipboard.
+    /// Compared on read to detect external modifications: when the clipboard
+    /// content matches this blob the in-memory `'c'` register is in sync and
+    /// its structured `Vec<String>` (preserving multi-selection boundaries) is
+    /// preferred over the flattened single-string OS clipboard representation.
+    clipboard_blob: Option<String>,
 }
 
 impl RegisterSet {
@@ -167,6 +173,14 @@ impl RegisterSet {
             return;
         }
         self.registers.insert(name, Register::new(content));
+    }
+
+    pub(crate) fn clipboard_blob(&self) -> Option<&str> {
+        self.clipboard_blob.as_deref()
+    }
+
+    pub(crate) fn set_clipboard_blob(&mut self, blob: String) {
+        self.clipboard_blob = Some(blob);
     }
 }
 

@@ -53,15 +53,6 @@ impl EditorState {
         }
     }
 
-    /// Write `values` to the system clipboard only (no kill-ring push).
-    pub(super) fn write_clipboard(&mut self, values: &[String]) {
-        if let Some(w) =
-            register_ops::write_clipboard(&mut self.registers, &mut self.clipboard, values)
-        {
-            self.report(Severity::Warning, w);
-        }
-    }
-
     /// Commit the open paste session on every pane/buffer pair that has one.
     ///
     /// Records exactly one history revision for the entire paste + all cycles.

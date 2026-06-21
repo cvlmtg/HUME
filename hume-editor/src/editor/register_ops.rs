@@ -30,7 +30,21 @@ pub(crate) fn read_register_text<'a>(
 ) -> (Option<Cow<'a, [String]>>, Option<String>) {
     if name == CLIPBOARD_REGISTER {
         match clipboard.read() {
-            Ok(text) => (Some(Cow::Owned(vec![text])), None),
+            Ok(text) => {
+                // When the OS clipboard matches what we last wrote, the in-memory
+                // 'c' register is in sync — prefer its structured Vec<String>,
+                // which preserves multi-selection boundaries.  When they differ,
+                // the clipboard was externally modified; use its content directly.
+                if registers.clipboard_blob() == Some(&text) {
+                    if let Some(mem) = registers
+                        .read(CLIPBOARD_REGISTER)
+                        .and_then(|r| r.as_text())
+                    {
+                        return (Some(Cow::Borrowed(mem)), None);
+                    }
+                }
+                (Some(Cow::Owned(vec![text])), None)
+            }
             Err(e) => {
                 let warning = clipboard_warn(&e);
                 let fallback = registers
@@ -63,6 +77,7 @@ pub(crate) fn write_register(
         let blob = values.join("\n");
         let warning = clipboard.write(&blob).err().map(|e| clipboard_warn(&e));
         registers.write_text(CLIPBOARD_REGISTER, values);
+        registers.set_clipboard_blob(blob);
         warning
     } else {
         registers.write_text(name, values);
@@ -70,20 +85,7 @@ pub(crate) fn write_register(
     }
 }
 
-/// Write `values` to the system clipboard only (no kill-ring push).
-///
-/// Returns `Some(warning)` if the clipboard write failed; the in-memory `'c'`
-/// mirror is always updated.
-pub(crate) fn write_clipboard(
-    registers: &mut RegisterSet,
-    clipboard: &mut SystemClipboard,
-    values: &[String],
-) -> Option<String> {
-    let blob = values.join("\n");
-    let warning = clipboard.write(&blob).err().map(|e| clipboard_warn(&e));
-    registers.write_text(CLIPBOARD_REGISTER, values.to_vec());
-    warning
-}
+
 
 fn clipboard_warn(err: &str) -> String {
     format!("system clipboard unavailable ({err}), using in-memory 'c'")
