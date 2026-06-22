@@ -71,11 +71,18 @@ pub(crate) fn write_register(
     values: Vec<String>,
 ) -> Option<String> {
     if name == CLIPBOARD_REGISTER {
-        let blob = if values.iter().all(|v| is_linewise(v)) {
-            values.concat()
-        } else {
-            values.join("\n")
-        };
+        // Build the OS clipboard blob per-element: insert a '\n' separator
+        // only when the previous value does not already end in one (linewise).
+        // This matches how paste consumes each value independently and correctly
+        // handles mixed selections (e.g. ["line\n", "word"] → "line\nword",
+        // not "line\n\nword" which the old all-or-nothing join produced).
+        let mut blob = String::new();
+        for (i, v) in values.iter().enumerate() {
+            if i > 0 && !is_linewise(&values[i - 1]) {
+                blob.push('\n');
+            }
+            blob.push_str(v);
+        }
         let warning = clipboard.write(&blob).err().map(|e| clipboard_warn(&e));
         registers.write_text(CLIPBOARD_REGISTER, values);
         registers.set_clipboard_blob(blob);
@@ -197,8 +204,11 @@ mod tests {
         // the 3-element Vec, not a flat 1-element blob.
         // Uses the real write_register→blob-stash→read_register_text→blob-compare
         // path; no hand-seeding of clipboard_blob.
+        // new_mock(): write() must succeed (Ok) so no warning is emitted and
+        // read() returns the stored blob — new_unavailable() would make write()
+        // return Err and read() fall through to the register fallback instead.
         let mut regs = RegisterSet::new();
-        let mut cb = SystemClipboard::new_unavailable();
+        let mut cb = SystemClipboard::new_mock();
         write_cb(&mut regs, &mut cb, vec!["a".into(), "b".into(), "c".into()]);
 
         let (values, warn) = read_register_text(&regs, &mut cb, CLIPBOARD_REGISTER);
@@ -210,5 +220,28 @@ mod tests {
             "round-trip must return 3 structured values"
         );
         assert_eq!(&values[..], &["a", "b", "c"]);
+    }
+
+    #[test]
+    fn write_register_mixed_linewise_then_charwise_no_double_newline() {
+        // Linewise first, charwise second: the separator must NOT be added
+        // because the linewise value already ends in '\n'. Expected blob is
+        // hand-computed: "foo\n" + "bar" = "foo\nbar" (not "foo\n\nbar").
+        let mut regs = RegisterSet::new();
+        let mut cb = SystemClipboard::new_unavailable();
+        write_cb(&mut regs, &mut cb, vec!["foo\n".into(), "bar".into()]);
+        assert_eq!(regs.clipboard_blob(), Some("foo\nbar"));
+    }
+
+    #[test]
+    fn write_register_mixed_charwise_then_linewise_inserts_one_newline() {
+        // Charwise first, linewise second: separator IS added because the
+        // charwise value does not end in '\n'. Expected blob is hand-computed:
+        // "bar" + '\n' + "foo\n" = "bar\nfoo\n" (not "bar\nfoo\n" via join either,
+        // but the distinction matters for the linewise→charwise order above).
+        let mut regs = RegisterSet::new();
+        let mut cb = SystemClipboard::new_unavailable();
+        write_cb(&mut regs, &mut cb, vec!["bar".into(), "foo\n".into()]);
+        assert_eq!(regs.clipboard_blob(), Some("bar\nfoo\n"));
     }
 }

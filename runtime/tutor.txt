@@ -579,7 +579,7 @@ Ctrl+w / Ctrl+f / Ctrl+t do nothing — use Extend mode instead.
   ;      collapse the selection to a single-character selection at HEAD
   ,      keep only the PRIMARY selection (discard all others)
   Ctrl+; collapse the selection to a single-character selection at ANCHOR
-  Ctrl+, remove the PRIMARY selection, keeping all others
+  Ctrl+, remove the PRIMARY selection (the next becomes primary)
 
 Note: `Ctrl+;` and `Ctrl+,` require the kitty keyboard protocol.
 

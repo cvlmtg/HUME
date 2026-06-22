@@ -580,13 +580,9 @@ impl Editor {
         }
         // Non-repeatable outer: leave inner dispatch's repeatable action intact.
         self.state.selection_recipe.clear();
-        // NOTE: the native pipeline also runs step_record_jump (with a
-        // step_capture_pre_jump in its BEFORE phase) and step_clear_extend here.
-        // Both are omitted for the OUTER Steel command: its meta hardcodes
-        // is_jump = clears_extend = false with no registration API to set them.
-        // An INNER native command called via (call! …) still clears Extend /
-        // records jumps — it routes through run_command_sync → run_dispatch_pipeline
-        // with its own meta, so those steps fire for the inner command.
+        // Outer Steel commands skip step_record_jump and step_clear_extend: their meta
+        // hardcodes is_jump = clears_extend = false. An inner native (call! …) still
+        // fires both — it routes through run_dispatch_pipeline with its own meta.
     }
 
     /// Run the body of a Steel-backed or Lazy command.
