@@ -544,7 +544,7 @@ impl Editor {
         let name = cmd.name().clone();
 
         // BEFORE
-        commands::step_paste_commit(&mut self.state, &meta.category);
+        commands::step_paste_commit(&mut self.state, meta.defers_paste_commit);
         // Pre-stamp last_command — inner dispatches via `call!` override it.
         commands::step_stamp_last_command(&mut self.state, name.clone(), meta.stamps_last_command);
         let char_arg = self.state.pending_char;

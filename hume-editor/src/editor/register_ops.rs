@@ -35,11 +35,10 @@ pub(crate) fn read_register_text<'a>(
                 // 'c' register is in sync — prefer its structured Vec<String>,
                 // which preserves multi-selection boundaries.  When they differ,
                 // the clipboard was externally modified; use its content directly.
-                if registers.clipboard_blob() == Some(&text) {
-                    if let Some(mem) = registers.read(CLIPBOARD_REGISTER).and_then(|r| r.as_text())
-                    {
-                        return (Some(Cow::Borrowed(mem)), None);
-                    }
+                if registers.clipboard_blob() == Some(&text)
+                    && let Some(mem) = registers.read(CLIPBOARD_REGISTER).and_then(|r| r.as_text())
+                {
+                    return (Some(Cow::Borrowed(mem)), None);
                 }
                 (Some(Cow::Owned(vec![text])), None)
             }

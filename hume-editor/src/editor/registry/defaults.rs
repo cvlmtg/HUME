@@ -25,9 +25,7 @@ use crate::ops::text_object::{
     cmd_inner_paren, cmd_inner_single_quote, cmd_inner_word,
 };
 
-use super::{
-    CmdCategory, CommandRegistry, EditorCmdFn, MappableCommand, PasteFamily, TypedCommand,
-};
+use super::{CommandRegistry, EditorCmdFn, MappableCommand, TypedCommand};
 
 impl CommandRegistry {
     pub(super) fn register_defaults(&mut self) {
@@ -105,7 +103,8 @@ impl CommandRegistry {
             name: &'static str,
             doc: &'static str,
             fun: EditorCmdFn,
-            category: CmdCategory,
+            is_paste: bool,
+            defers_paste_commit: bool,
             repeatable: bool,
             jump: bool,
             visual_move: bool,
@@ -130,8 +129,17 @@ impl CommandRegistry {
                 self.extendable = true;
                 self
             }
-            fn paste(mut self, family: PasteFamily) -> Self {
-                self.category = CmdCategory::Paste { family };
+            /// Mark as a normal paste command (p / P). Suppresses paste-session
+            /// commit so the session stays open across a single paste invocation.
+            fn paste(mut self) -> Self {
+                self.is_paste = true;
+                self
+            }
+            /// Mark as a ring-cycle command ([ / ]). Suppresses paste-session
+            /// commit so ring cycles fold into one undo step with the original paste.
+            fn paste_cycle(mut self) -> Self {
+                self.is_paste = true;
+                self.defers_paste_commit = true;
                 self
             }
             /// Mark this command as transparent to `last_command` (smart-p).
@@ -153,7 +161,8 @@ impl CommandRegistry {
                     name: Cow::Borrowed(self.name),
                     doc: Cow::Borrowed(self.doc),
                     fun: self.fun,
-                    category: self.category,
+                    is_paste: self.is_paste,
+                    defers_paste_commit: self.defers_paste_commit,
                     repeatable: self.repeatable,
                     jump: self.jump,
                     visual_move: self.visual_move,
@@ -169,7 +178,8 @@ impl CommandRegistry {
             name,
             doc,
             fun,
-            category: CmdCategory::EditorAction,
+            is_paste: false,
+            defers_paste_commit: false,
             repeatable: false,
             jump: false,
             visual_move: false,
@@ -635,7 +645,7 @@ impl CommandRegistry {
             "Paste register contents after the selection.",
             cmd_paste_after,
         )
-        .paste(PasteFamily::Normal)
+        .paste()
         .repeatable()
         .clears_extend()
         .reg(self);
@@ -644,7 +654,7 @@ impl CommandRegistry {
             "Paste register contents before the selection.",
             cmd_paste_before,
         )
-        .paste(PasteFamily::Normal)
+        .paste()
         .repeatable()
         .clears_extend()
         .reg(self);
@@ -653,7 +663,7 @@ impl CommandRegistry {
             "Cycle kill ring one step older and re-paste.",
             cmd_paste_ring_older,
         )
-        .paste(PasteFamily::RingCycle)
+        .paste_cycle()
         .repeatable()
         .clears_extend()
         .reg(self);
@@ -662,7 +672,7 @@ impl CommandRegistry {
             "Cycle kill ring one step newer and re-paste.",
             cmd_paste_ring_newer,
         )
-        .paste(PasteFamily::RingCycle)
+        .paste_cycle()
         .repeatable()
         .clears_extend()
         .reg(self);

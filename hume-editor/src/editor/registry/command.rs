@@ -9,53 +9,52 @@ use hume_engine::pipeline::EngineView;
 
 // ── Command metadata for dispatch bookkeeping ────────────────────────────────
 
-/// Semantic category of a command — drives which bookkeeping stages run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CmdCategory {
-    /// Cursor movement. Tracks the selection recipe.
-    Motion,
-    /// Selection builder. Tracks the selection recipe.
-    Selection,
-    /// Buffer-modifying edit. Snapshots dot-repeat when `CmdMeta.repeatable` is true.
-    Edit,
-    /// Paste-family command (p, P, [, ]).
-    Paste { family: PasteFamily },
-    /// Editor action (undo, redo, mode changes, …). Clears selection recipe.
-    EditorAction,
-    /// Steel-backed or Lazy command. Dot-repeat opt-in via `CmdMeta.repeatable`.
-    Lazy,
-}
-
-/// Distinguishes normal paste from ring-cycle commands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PasteFamily {
-    /// p / P — commit paste session before next command.
-    Normal,
-    /// [ / ] — must NOT commit paste session (cycles fold into one undo step).
-    RingCycle,
-}
-
-impl CmdCategory {
-    /// Whether this command type should update the selection recipe.
-    pub(crate) fn tracks_selection(&self) -> bool {
-        matches!(self, CmdCategory::Motion | CmdCategory::Selection)
-    }
-}
-
 /// Declarative metadata extracted from a MappableCommand variant.
 ///
 /// Drives the dispatch pipeline — the pipeline reads this instead of matching
 /// on variant type or checking string sets.
 ///
-/// `Copy` and name-free on purpose: the variant→property mapping lives here and
-/// nowhere else, so `meta()` must be cheap enough that no caller is ever tempted
-/// to re-`match` the variant for a single bit (which would fork the SSOT). The
-/// command name is owned data — it is read separately via [`MappableCommand::name`]
-/// and cloned once per dispatch by the pipeline, not carried in here.
+/// Each field is one independent behavioral aspect read by exactly one dispatch
+/// stage. This is a flat set of orthogonal flags; there is no category enum.
+/// Adding a new behavior = add one field here + one `step_*` function that reads
+/// it — no existing fields or call sites are affected.
+///
+/// `Copy` and name-free on purpose: the variant→property mapping lives in
+/// `MappableCommand::meta()` and nowhere else, so `meta()` must be cheap enough
+/// that no caller is ever tempted to re-`match` the variant for a single bit
+/// (which would fork the SSOT). The command name is owned data — it is read
+/// separately via [`MappableCommand::name`] and cloned once per dispatch by the
+/// pipeline, not carried in here.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct CmdMeta {
-    /// Semantic category — drives bookkeeping stages.
-    pub category: CmdCategory,
+    /// Whether this command updates the selection recipe after it runs.
+    ///
+    /// `true` for Motion and Selection variants. The recipe accumulates the
+    /// sequence of selection-building steps so dot-repeat can re-establish the
+    /// selection before replaying an edit. All other commands clear the recipe.
+    pub tracks_selection: bool,
+    /// Whether this command is a cursor motion (as opposed to a selection
+    /// builder, edit, or editor action).
+    ///
+    /// Feeds `step_capture_pre_jump`: motions, jump-flagged commands, and
+    /// visual-line commands all snapshot their pre-body cursor position so the
+    /// jump list can record a threshold-exceeding move. Selection commands are
+    /// excluded — staging a text-object is not deliberate navigation.
+    pub is_motion: bool,
+    /// Whether this command is a paste-family command (p, P, [, ]).
+    ///
+    /// `step_paste_commit` commits the current paste session before every
+    /// non-paste command so `p` + edit gives two undo steps. Paste commands are
+    /// excluded from that commit so the session stays open across a single paste.
+    /// Read by `commands/edit.rs` to detect a paste-after pattern (p → p appends
+    /// from `last_paste` instead of the clipboard).
+    pub is_paste: bool,
+    /// Whether this command defers the paste-session commit.
+    ///
+    /// `true` only for ring-cycle commands (`[` / `]`). Ring cycles must NOT
+    /// commit the paste session — they fold into one undo step with the original
+    /// paste. Always implies `is_paste`.
+    pub defers_paste_commit: bool,
     /// Whether this command always records a jump-list entry before executing,
     /// regardless of how far the cursor moves (goto / search / page-scroll /
     /// `select-all`).
@@ -78,12 +77,10 @@ pub(crate) struct CmdMeta {
     pub is_visual_move: bool,
     /// Whether `.` should replay this command.
     ///
-    /// A flat axis, deliberately not folded into `category`: repeatability is
-    /// orthogonal to category — `paste-after` is `Paste` + repeatable,
-    /// `surround-add` is `EditorAction` + repeatable, `delete` is `Edit` +
-    /// repeatable. Encoding it inside the category enum would smear the same
-    /// bool across nearly every variant (less normalized, not more) and force
-    /// every consumer to match the category just to read one bit.
+    /// Orthogonal to all other aspects: `paste-after` is paste + repeatable,
+    /// `surround-add` is an editor action + repeatable, `delete` is an edit +
+    /// repeatable. One bit here covers every combination without requiring an
+    /// enum variant per combination.
     pub repeatable: bool,
     /// Whether dispatching this command overwrites `last_command`.
     ///
@@ -199,9 +196,13 @@ pub(crate) enum MappableCommand {
         #[allow(dead_code)]
         doc: Cow<'static, str>,
         fun: EditorCmdFn,
-        /// Semantic category used by the dispatch pipeline instead of
-        /// string-matching on the command name.
-        category: CmdCategory,
+        /// Whether this command is a paste-family command (p, P, [, ]).
+        /// See [`CmdMeta::is_paste`] for the full rationale.
+        is_paste: bool,
+        /// Whether this command defers the paste-session commit.
+        /// `true` only for ring-cycle commands (`[` / `]`). Always implies `is_paste`.
+        /// See [`CmdMeta::defers_paste_commit`] for the full rationale.
+        defers_paste_commit: bool,
         /// Whether `.` should replay this command.
         repeatable: bool,
         /// Whether this command always records a jump list entry before executing.
@@ -303,7 +304,10 @@ impl MappableCommand {
     pub(crate) fn meta(&self) -> CmdMeta {
         match self {
             Self::Motion { jump, reaching, .. } => CmdMeta {
-                category: CmdCategory::Motion,
+                tracks_selection: true,
+                is_motion: true,
+                is_paste: false,
+                defers_paste_commit: false,
                 is_jump: *jump,
                 is_visual_move: false,
                 reaching: *reaching,
@@ -312,7 +316,10 @@ impl MappableCommand {
                 clears_extend: false,
             },
             Self::Selection { jump, .. } => CmdMeta {
-                category: CmdCategory::Selection,
+                tracks_selection: true,
+                is_motion: false,
+                is_paste: false,
+                defers_paste_commit: false,
                 is_jump: *jump,
                 is_visual_move: false,
                 reaching: false,
@@ -321,7 +328,10 @@ impl MappableCommand {
                 clears_extend: false,
             },
             Self::Edit { repeatable, .. } => CmdMeta {
-                category: CmdCategory::Edit,
+                tracks_selection: false,
+                is_motion: false,
+                is_paste: false,
+                defers_paste_commit: false,
                 is_jump: false,
                 is_visual_move: false,
                 reaching: false,
@@ -330,7 +340,8 @@ impl MappableCommand {
                 clears_extend: false,
             },
             Self::EditorCmd {
-                category,
+                is_paste,
+                defers_paste_commit,
                 repeatable,
                 jump,
                 visual_move,
@@ -338,7 +349,10 @@ impl MappableCommand {
                 clears_extend,
                 ..
             } => CmdMeta {
-                category: *category,
+                tracks_selection: false,
+                is_motion: false,
+                is_paste: *is_paste,
+                defers_paste_commit: *defers_paste_commit,
                 is_jump: *jump,
                 is_visual_move: *visual_move,
                 reaching: false,
@@ -347,7 +361,10 @@ impl MappableCommand {
                 clears_extend: *clears_extend,
             },
             Self::SteelBacked { repeatable, .. } => CmdMeta {
-                category: CmdCategory::Lazy,
+                tracks_selection: false,
+                is_motion: false,
+                is_paste: false,
+                defers_paste_commit: false,
                 is_jump: false,
                 is_visual_move: false,
                 reaching: false,
@@ -356,7 +373,10 @@ impl MappableCommand {
                 clears_extend: false,
             },
             Self::Lazy { .. } => CmdMeta {
-                category: CmdCategory::Lazy,
+                tracks_selection: false,
+                is_motion: false,
+                is_paste: false,
+                defers_paste_commit: false,
                 is_jump: false,
                 is_visual_move: false,
                 reaching: false,

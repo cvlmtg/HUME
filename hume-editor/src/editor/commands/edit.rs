@@ -11,13 +11,11 @@ use hume_editing::selection::Selection;
 use super::super::{EditorState, Severity, doc_ops, register_ops};
 use super::{begin_insert_session, focused_buffer_id};
 use crate::editor::error::CommandError;
-use crate::editor::registry::CmdCategory;
-
 /// Commands that keep Smart-p in "ring" mode: bare `p`/`P` reads the ring
 /// head when `last_command` is one of these; otherwise reads the clipboard.
 ///
-/// Separate from paste-family membership (which is tracked by `CmdCategory::Paste`
-/// at registration). Kill→ring is a distinct concept: only `c`/`d` trigger it.
+/// Separate from paste-family membership (tracked by `CmdMeta::is_paste`).
+/// Kill→ring is a distinct concept: only `c`/`d` trigger it.
 const SMART_P_LAST_CMDS: &[&str] = &["change", "delete"];
 
 // ── Edit composites ───────────────────────────────────────────────────────────
@@ -124,10 +122,10 @@ fn do_paste(state: &mut EditorState, view: &mut EngineView, before: bool) {
     // An explicit register prefix (`"Xp`) overrides the append path — the user
     // is asking for a specific register, not a repeat of the last paste.
     // Append when the previous command was any paste-family command (p, P, [, ]).
-    // Membership is read from the registry category — no parallel string list.
+    // Membership is read from `CmdMeta::is_paste` — no parallel string list.
     let is_append = last_cmd
         .and_then(|c| state.registry.get_mappable(c))
-        .is_some_and(|cmd| matches!(cmd.meta().category, CmdCategory::Paste { .. }))
+        .is_some_and(|cmd| cmd.meta().is_paste)
         && state.register_prefix.is_none();
 
     let focused = state.focused_pane_id;

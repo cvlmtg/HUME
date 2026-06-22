@@ -37,9 +37,7 @@ use std::collections::HashMap;
 mod command;
 mod defaults;
 
-pub(crate) use command::{
-    CmdCategory, CmdMeta, EditorCmdFn, MappableCommand, PasteFamily, TypedCommand,
-};
+pub(crate) use command::{CmdMeta, EditorCmdFn, MappableCommand, TypedCommand};
 
 // ── CommandRegistry ───────────────────────────────────────────────────────────
 
@@ -521,7 +519,8 @@ mod tests {
             name: Cow::Owned("steel-test-cmd".to_string()),
             doc: Cow::Borrowed("A dummy Steel command for testing."),
             fun: dummy_fn,
-            category: CmdCategory::EditorAction,
+            is_paste: false,
+            defers_paste_commit: false,
             repeatable: false,
             jump: false,
             visual_move: false,
@@ -619,7 +618,8 @@ mod tests {
             name: Cow::Owned("%hume-cmd-decoy".to_string()),
             doc: Cow::Borrowed("doc"),
             fun: noop,
-            category: CmdCategory::EditorAction,
+            is_paste: false,
+            defers_paste_commit: false,
             repeatable: false,
             jump: false,
             visual_move: false,

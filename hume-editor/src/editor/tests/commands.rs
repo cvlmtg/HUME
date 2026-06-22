@@ -1451,7 +1451,7 @@ fn smart_p_consecutive_paste_stays_in_ring() {
         .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
     ed.feed_key(key('d')); // delete 'X' → ring = ["X"]
     ed.feed_key(key('p')); // first paste → from ring, last_command = "paste-after"
-    // last_command = "paste-after", category = CmdCategory::Paste → is_append = true → appends from last_paste.
+    // last_command = "paste-after", is_paste = true → is_append = true → appends from last_paste.
     ed.feed_key(key('p')); // second paste → still from ring
     // Buffer should contain "X" twice (pasted) and NOT "CLIP".
     let buf = ed.doc().text().to_string();
@@ -1814,7 +1814,7 @@ fn paste_before_cycle_stays_above_linewise() {
 /// `p [ p` duplicates the currently-cycled entry — never does a fresh clipboard paste.
 ///
 /// After `[` swaps the paste to the ring head, `last_command = "paste-ring-older"`
-/// has category `CmdCategory::Paste`, so the next `p` must append (not replace).
+/// has `is_paste = true`, so the next `p` must append (not replace).
 #[test]
 fn paste_after_cycle_appends_cycled_entry() {
     use crate::ops::register::CLIPBOARD_REGISTER;

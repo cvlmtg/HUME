@@ -26,7 +26,7 @@ use super::CmdCtx;
 use super::buffer::Buffer;
 use super::doc_ops;
 use super::jump_list::JumpEntry;
-use super::registry::{CmdCategory, CmdMeta, PasteFamily};
+use super::registry::CmdMeta;
 use super::search_state::SearchPattern;
 use super::{EditorState, InsertSession, Mode, RegisterPrefix, RepeatableAction, SelectionStep};
 use super::{Severity, register_ops};
@@ -146,14 +146,9 @@ pub(super) fn run_native_body(
 
 // ── Shared steps (used by both native and Steel dispatch paths) ──────────────
 
-/// Commit paste session unless the command is a ring-cycle paste.
-pub(super) fn step_paste_commit(state: &mut EditorState, category: &CmdCategory) {
-    if !matches!(
-        category,
-        CmdCategory::Paste {
-            family: PasteFamily::RingCycle
-        }
-    ) {
+/// Commit paste session unless the command defers it (ring-cycle pastes).
+pub(super) fn step_paste_commit(state: &mut EditorState, defers: bool) {
+    if !defers {
         state.commit_paste_session();
     }
 }
@@ -172,8 +167,7 @@ pub(super) fn step_capture_pre_jump(
     view: &EngineView,
     meta: &CmdMeta,
 ) -> Option<(Selection, usize, BufferId)> {
-    let is_motion = matches!(meta.category, CmdCategory::Motion);
-    (meta.is_jump || meta.is_visual_move || is_motion).then(|| {
+    (meta.is_jump || meta.is_visual_move || meta.is_motion).then(|| {
         let bid = focused_buffer_id(state, view);
         let primary = current_selections(state, view).primary();
         let line = doc(state, view).text().char_to_line(primary.head());
@@ -286,7 +280,7 @@ pub(super) fn step_update_recipe(
     ctx: &CmdCtx,
     char_arg: Option<char>,
 ) {
-    if meta.category.tracks_selection() {
+    if meta.tracks_selection {
         let sels = current_selections(state, view);
         if ctx.extend {
             state.selection_recipe.push(SelectionStep {
@@ -345,13 +339,18 @@ pub(super) fn run_dispatch_pipeline(
     // a new variant broke the invariant that step_stamp_repeatable and
     // step_update_recipe rely on for their unconditional sequencing.
     debug_assert!(
-        !(meta.repeatable && meta.category.tracks_selection()),
+        !(meta.repeatable && meta.tracks_selection),
         "command '{name}' is both repeatable and selection-tracking — \
          step_stamp_repeatable and step_update_recipe would both fire",
     );
+    // Ring-cycle defer only makes sense on a paste command.
+    debug_assert!(
+        !meta.defers_paste_commit || meta.is_paste,
+        "command '{name}' defers paste commit but is not a paste command",
+    );
 
     // BEFORE
-    step_paste_commit(state, &meta.category);
+    step_paste_commit(state, meta.defers_paste_commit);
     let pre_jump = step_capture_pre_jump(state, view, &meta);
     let char_arg = state.pending_char;
     let pre_recipe = step_snapshot_recipe(state, meta.repeatable);
