@@ -521,11 +521,13 @@ impl Editor {
 
         // Steel path — composed from shared step functions.
         let meta = cmd.meta();
+        // Clone the name once, before the body consumes `cmd`.
+        let name = cmd.name().clone();
 
         // BEFORE
         commands::step_paste_commit(&mut self.state, &meta.category);
         // Pre-stamp last_command — inner dispatches via `call!` override it.
-        commands::step_stamp_last_command(&mut self.state, meta.name.clone(), meta.stamps_last_command);
+        commands::step_stamp_last_command(&mut self.state, name.clone(), meta.stamps_last_command);
         let char_arg = self.state.pending_char;
         // Always snapshot the recipe before the body — inner dispatches via `call!`
         // overwrite selection_recipe during the body, so the snapshot must be taken
@@ -534,19 +536,19 @@ impl Editor {
         let pre_recipe = std::mem::take(&mut self.state.selection_recipe);
 
         // BODY — consumes `cmd`.
-        if !self.run_steel_command(cmd, meta.name.as_ref(), &ctx, char_arg) {
+        if !self.run_steel_command(cmd, name.as_ref(), &ctx, char_arg) {
             self.state.selection_recipe.clear();
             return;
         }
 
         // AFTER — re-query to get the resolved command's repeatable flag.
         // A Lazy stub becomes SteelBacked after activation; re-query reflects that.
-        if self.state.registry.get_mappable(meta.name.as_ref())
+        if self.state.registry.get_mappable(name.as_ref())
             .is_some_and(|c| c.meta().repeatable)
         {
             // Outer-name-wins: stamp the outer command so `.` replays it, not
             // any inner native command the body dispatched via `call!`.
-            commands::step_stamp_repeatable(&mut self.state, &meta, ctx.count, char_arg, Some(pre_recipe));
+            commands::step_stamp_repeatable(&mut self.state, &name, ctx.count, char_arg, Some(pre_recipe));
         }
         // Non-repeatable outer: leave inner dispatch's repeatable action intact.
         self.state.selection_recipe.clear();

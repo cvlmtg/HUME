@@ -215,16 +215,19 @@ pub(super) fn step_record_jump(
 
 /// Record last_repeatable_action for dot-repeat from the pre-body
 /// selection recipe snapshot.
+// `&Cow` not `&str`: `.clone()` must preserve Borrowed (built-ins) or Owned
+// (Steel) without an unconditional heap alloc.
+#[allow(clippy::ptr_arg)]
 pub(super) fn step_stamp_repeatable(
     state: &mut EditorState,
-    meta: &CmdMeta,
+    name: &Cow<'static, str>,
     count: usize,
     char_arg: Option<char>,
     pre_recipe: Option<Vec<SelectionStep>>,
 ) {
     if let Some(recipe) = pre_recipe {
         state.last_repeatable_action = Some(RepeatableAction {
-            command: meta.name.clone(),
+            command: name.clone(),
             count,
             char_arg,
             insert_keys: Vec::new(),
@@ -246,10 +249,14 @@ pub(super) fn step_stamp_repeatable(
 /// causing dot-repeat to act on the wrong word. Extend steps of reaching
 /// motions (`Ctrl+w`) are still recorded — extending grows an existing
 /// selection by a relative amount and is safe to replay.
+// `&Cow` not `&str`: `.clone()` must preserve Borrowed (built-ins) or Owned
+// (Steel) without an unconditional heap alloc.
+#[allow(clippy::ptr_arg)]
 pub(super) fn step_update_recipe(
     state: &mut EditorState,
     view: &EngineView,
     meta: &CmdMeta,
+    name: &Cow<'static, str>,
     ctx: &CmdCtx,
     char_arg: Option<char>,
 ) {
@@ -257,7 +264,7 @@ pub(super) fn step_update_recipe(
         let sels = current_selections(state, view);
         if ctx.extend {
             state.selection_recipe.push(SelectionStep {
-                command: meta.name.clone(),
+                command: name.clone(),
                 count: ctx.count,
                 char_arg,
                 extend: true,
@@ -265,7 +272,7 @@ pub(super) fn step_update_recipe(
         } else if !sels.primary().is_collapsed() && !meta.reaching {
             state.selection_recipe.clear();
             state.selection_recipe.push(SelectionStep {
-                command: meta.name.clone(),
+                command: name.clone(),
                 count: ctx.count,
                 char_arg,
                 extend: false,
@@ -292,15 +299,17 @@ pub(super) fn run_dispatch_pipeline(
     ctx: CmdCtx,
 ) {
     let meta = cmd.meta();
+    // Clone the name once, before the body consumes `cmd`. A `&'static str` name
+    // (every built-in) clones with no allocation; the AFTER steps reuse this.
+    let name = cmd.name().clone();
     // A command cannot be both repeatable (an edit that modifies the buffer)
     // and a selection-builder (a pure cursor movement). If this ever fires,
     // a new variant broke the invariant that step_stamp_repeatable and
     // step_update_recipe rely on for their unconditional sequencing.
     debug_assert!(
         !(meta.repeatable && meta.category.tracks_selection()),
-        "command '{}' is both repeatable and selection-tracking — \
+        "command '{name}' is both repeatable and selection-tracking — \
          step_stamp_repeatable and step_update_recipe would both fire",
-        meta.name,
     );
 
     // BEFORE
@@ -309,14 +318,14 @@ pub(super) fn run_dispatch_pipeline(
     let char_arg = state.pending_char;
     let pre_recipe = step_snapshot_recipe(state, meta.repeatable);
 
-    // BODY — cmd moved in; bools captured above so no clone needed.
+    // BODY — cmd moved in; meta + name captured above so no further clone needed.
     run_native_body(state, view, cmd, ctx.count, ctx.extend);
 
     // AFTER
-    step_stamp_last_command(state, meta.name.clone(), meta.stamps_last_command);
+    step_stamp_last_command(state, name.clone(), meta.stamps_last_command);
     step_record_jump(state, view, pre_jump, meta.is_jump);
-    step_stamp_repeatable(state, &meta, ctx.count, char_arg, pre_recipe);
-    step_update_recipe(state, view, &meta, &ctx, char_arg);
+    step_stamp_repeatable(state, &name, ctx.count, char_arg, pre_recipe);
+    step_update_recipe(state, view, &meta, &name, &ctx, char_arg);
 }
 
 // ── Free helpers for EditorCmd handlers ──────────────────────────────────────

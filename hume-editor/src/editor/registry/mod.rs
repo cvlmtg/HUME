@@ -247,28 +247,28 @@ mod tests {
         let cmd = reg
             .get_mappable("move-right")
             .expect("move-right should be registered");
-        assert_eq!(cmd.name(), "move-right");
+        assert_eq!(cmd.name().as_ref(), "move-right");
         assert!(matches!(cmd, MappableCommand::Motion { .. }));
 
         // Selection
         let cmd = reg
             .get_mappable("collapse-selection")
             .expect("collapse-selection should be registered");
-        assert_eq!(cmd.name(), "collapse-selection");
+        assert_eq!(cmd.name().as_ref(), "collapse-selection");
         assert!(matches!(cmd, MappableCommand::Selection { .. }));
 
         // Edit
         let cmd = reg
             .get_mappable("delete-selection")
             .expect("delete-selection should be registered");
-        assert_eq!(cmd.name(), "delete-selection");
+        assert_eq!(cmd.name().as_ref(), "delete-selection");
         assert!(matches!(cmd, MappableCommand::Edit { .. }));
 
         // EditorCmd
         let cmd = reg
             .get_mappable("force-quit")
             .expect("force-quit should be registered");
-        assert_eq!(cmd.name(), "force-quit");
+        assert_eq!(cmd.name().as_ref(), "force-quit");
         assert!(matches!(cmd, MappableCommand::EditorCmd { .. }));
 
         let cmd = reg
@@ -529,7 +529,7 @@ mod tests {
         assert_eq!(reg.len(), before + 1);
         assert!(reg.get_mappable("steel-test-cmd").is_some());
         assert_eq!(
-            reg.get_mappable("steel-test-cmd").unwrap().name(),
+            reg.get_mappable("steel-test-cmd").unwrap().name().as_ref(),
             "steel-test-cmd"
         );
     }

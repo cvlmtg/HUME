@@ -2493,22 +2493,46 @@ fn load_plugin_runtime_guard_fires() {
 fn plum_grammars_scm_balanced() {
     let src = include_str!("../../runtime/plugins/core/plum/grammars.scm");
 
-    // Count structural parens (outside string literals) by walking chars
+    // Count structural parens only. Parens inside string literals, `;` line
+    // comments, `#| |#` block comments, and `#\(` char literals are not
+    // structural and must be skipped, or the oracle is not independent of the
+    // file's prose (a comment with an unbalanced paren would mask or fake an
+    // imbalance in the actual code).
     let mut opens = 0usize;
     let mut closes = 0usize;
-    let mut in_string = false;
     let mut chars = src.chars().peekable();
     while let Some(c) = chars.next() {
-        if in_string {
-            if c == '\\' {
-                chars.next();
-            } else if c == '"' {
-                in_string = false;
-            }
-            continue;
-        }
         match c {
-            '"' => in_string = true,
+            '"' => {
+                // String literal — consume to the closing quote, honoring `\` escapes.
+                while let Some(s) = chars.next() {
+                    match s {
+                        '\\' => {
+                            chars.next();
+                        }
+                        '"' => break,
+                        _ => {}
+                    }
+                }
+            }
+            ';' => {
+                // Line comment — consume to end of line.
+                while chars.next_if(|&s| s != '\n').is_some() {}
+            }
+            '#' if chars.peek() == Some(&'\\') => {
+                // Char literal `#\x` (e.g. `#\(`) — skip the `\` and the char.
+                chars.next();
+                chars.next();
+            }
+            '#' if chars.peek() == Some(&'|') => {
+                // Block comment `#| ... |#` — consume to the closing `|#`.
+                chars.next();
+                while let Some(s) = chars.next() {
+                    if s == '|' && chars.next_if(|&t| t == '#').is_some() {
+                        break;
+                    }
+                }
+            }
             '(' => opens += 1,
             ')' => closes += 1,
             _ => {}

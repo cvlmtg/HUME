@@ -46,10 +46,14 @@ impl CmdCategory {
 ///
 /// Drives the dispatch pipeline — the pipeline reads this instead of matching
 /// on variant type or checking string sets.
-#[derive(Debug, Clone)]
+///
+/// `Copy` and name-free on purpose: the variant→property mapping lives here and
+/// nowhere else, so `meta()` must be cheap enough that no caller is ever tempted
+/// to re-`match` the variant for a single bit (which would fork the SSOT). The
+/// command name is owned data — it is read separately via [`MappableCommand::name`]
+/// and cloned once per dispatch by the pipeline, not carried in here.
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct CmdMeta {
-    /// Command name (for `last_command` stamping, dot-repeat recording).
-    pub name: Cow<'static, str>,
     /// Semantic category — drives bookkeeping stages.
     pub category: CmdCategory,
     /// Whether this command always records a jump-list entry before executing,
@@ -248,15 +252,21 @@ pub(crate) enum MappableCommand {
 }
 
 impl MappableCommand {
-    #[cfg(test)]
-    pub(crate) fn name(&self) -> &str {
+    /// The command's registered name.
+    ///
+    /// Returns the stored `Cow` (not `&str`) so the dispatch pipeline can clone
+    /// it preserving `Cow::Borrowed` — a `&'static str` name (every built-in)
+    /// clones with no heap allocation; only `Cow::Owned` Steel names allocate.
+    /// Pure field extraction — distinct from [`MappableCommand::meta`], which is
+    /// the single source of truth for derived bookkeeping properties.
+    pub(crate) fn name(&self) -> &Cow<'static, str> {
         match self {
             Self::Motion { name, .. }
             | Self::Selection { name, .. }
             | Self::Edit { name, .. }
             | Self::EditorCmd { name, .. }
             | Self::SteelBacked { name, .. }
-            | Self::Lazy { name, .. } => name.as_ref(),
+            | Self::Lazy { name, .. } => name,
         }
     }
 
@@ -280,8 +290,7 @@ impl MappableCommand {
     /// string sets to decide what bookkeeping to run.
     pub(crate) fn meta(&self) -> CmdMeta {
         match self {
-            Self::Motion { name, jump, reaching, .. } => CmdMeta {
-                name: name.clone(),
+            Self::Motion { jump, reaching, .. } => CmdMeta {
                 category: CmdCategory::Motion,
                 is_jump: *jump,
                 is_visual_move: false,
@@ -289,8 +298,7 @@ impl MappableCommand {
                 repeatable: false,
                 stamps_last_command: true,
             },
-            Self::Selection { name, jump, .. } => CmdMeta {
-                name: name.clone(),
+            Self::Selection { jump, .. } => CmdMeta {
                 category: CmdCategory::Selection,
                 is_jump: *jump,
                 is_visual_move: false,
@@ -298,8 +306,7 @@ impl MappableCommand {
                 repeatable: false,
                 stamps_last_command: true,
             },
-            Self::Edit { name, repeatable, .. } => CmdMeta {
-                name: name.clone(),
+            Self::Edit { repeatable, .. } => CmdMeta {
                 category: CmdCategory::Edit,
                 is_jump: false,
                 is_visual_move: false,
@@ -307,8 +314,7 @@ impl MappableCommand {
                 repeatable: *repeatable,
                 stamps_last_command: true,
             },
-            Self::EditorCmd { name, category, repeatable, jump, visual_move, stamps_last_command, .. } => CmdMeta {
-                name: name.clone(),
+            Self::EditorCmd { category, repeatable, jump, visual_move, stamps_last_command, .. } => CmdMeta {
                 category: *category,
                 is_jump: *jump,
                 is_visual_move: *visual_move,
@@ -316,8 +322,7 @@ impl MappableCommand {
                 repeatable: *repeatable,
                 stamps_last_command: *stamps_last_command,
             },
-            Self::SteelBacked { name, repeatable, .. } => CmdMeta {
-                name: name.clone(),
+            Self::SteelBacked { repeatable, .. } => CmdMeta {
                 category: CmdCategory::Lazy,
                 is_jump: false,
                 is_visual_move: false,
@@ -325,8 +330,7 @@ impl MappableCommand {
                 repeatable: *repeatable,
                 stamps_last_command: true,
             },
-            Self::Lazy { name, .. } => CmdMeta {
-                name: name.clone(),
+            Self::Lazy { .. } => CmdMeta {
                 category: CmdCategory::Lazy,
                 is_jump: false,
                 is_visual_move: false,
