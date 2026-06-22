@@ -108,7 +108,9 @@ for dir in "${dirs[@]}"; do
     else
         printf "%-28s  %5s  %7s  %s\n" "$name" "$score" "$kakoune_score" "FAIL"
         if [[ -n "$challenge_id" ]]; then
-            git diff --no-index --color "$out_file" "$tmp" || true
+            echo ""
+            git diff --no-index --color "$out_file" "$tmp" \
+              | grep -v -E $'^(\033\\[1m|\033\\[36m@@)' || true
         fi
         fail=$((fail + 1))
     fi
