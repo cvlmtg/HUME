@@ -37,6 +37,16 @@ impl CommandRegistry {
                     doc: Cow::Borrowed($doc),
                     fun: $fun,
                     jump: true,
+                    reaching: false,
+                })
+            };
+            ($name:literal, $doc:literal, $fun:expr, reaching) => {
+                self.register(MappableCommand::Motion {
+                    name: Cow::Borrowed($name),
+                    doc: Cow::Borrowed($doc),
+                    fun: $fun,
+                    jump: false,
+                    reaching: true,
                 })
             };
             ($name:literal, $doc:literal, $fun:expr) => {
@@ -45,6 +55,7 @@ impl CommandRegistry {
                     doc: Cow::Borrowed($doc),
                     fun: $fun,
                     jump: false,
+                    reaching: false,
                 })
             };
         }
@@ -207,25 +218,32 @@ impl CommandRegistry {
         );
 
         // ── Word motions ──────────────────────────────────────────────────────
+        // All four are reaching: Move mode anchors the selection on a word
+        // reached by navigating away from the cursor. Not safe to replay
+        // positionally — dot-repeat would advance past the intended word.
         motion!(
             "select-next-word",
             "Select the next word.",
-            cmd_select_next_word
+            cmd_select_next_word,
+            reaching
         );
         motion!(
             "select-next-WORD",
             "Select the next WORD (whitespace-delimited).",
-            cmd_select_next_WORD
+            cmd_select_next_WORD,
+            reaching
         );
         motion!(
             "select-prev-word",
             "Select the previous word.",
-            cmd_select_prev_word
+            cmd_select_prev_word,
+            reaching
         );
         motion!(
             "select-prev-WORD",
             "Select the previous WORD (whitespace-delimited).",
-            cmd_select_prev_WORD
+            cmd_select_prev_WORD,
+            reaching
         );
 
         // ── Paragraph motions ─────────────────────────────────────────────────

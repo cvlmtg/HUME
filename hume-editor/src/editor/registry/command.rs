@@ -60,6 +60,14 @@ pub(crate) struct CmdMeta {
     /// parallel `JUMP_COMMANDS` list, and the dispatch pipeline reads this rather
     /// than matching on the command variant.
     pub is_jump: bool,
+    /// Whether this motion's Move-mode result is a reaching selection (i.e. it
+    /// navigates away from the cursor to anchor on a new region). `true` for the
+    /// word motions (`select-next-word` / `-prev-word` / WORD variants). `false`
+    /// for everything else.
+    ///
+    /// `step_update_recipe` uses this to suppress the establish step for reaching
+    /// Move results — replaying such a step would advance past the intended word.
+    pub reaching: bool,
     /// Whether this command is a visual-line motion (`move-down`/`move-up`).
     /// The preferred display column is preserved across consecutive visual-line
     /// moves and cleared for any other command.
@@ -114,6 +122,15 @@ pub(crate) enum MappableCommand {
         /// Whether this motion always records a jump list entry before executing,
         /// regardless of how far the cursor moves. Used for goto commands.
         jump: bool,
+        /// Whether this motion's Move-mode result anchors the selection on a
+        /// region reached by navigating *away* from the cursor (`select-next-word`
+        /// et al.). Reaching motions in Move mode do NOT push an establish step
+        /// onto the selection recipe — replaying such a step would advance past
+        /// the word under the cursor, causing dot-repeat to act on the wrong region.
+        ///
+        /// Extend-mode reaching steps (e.g. `Ctrl+w`) are still recorded; an
+        /// extend grows an existing selection by a relative amount and is safe.
+        reaching: bool,
     },
     /// Selection or text-object operation (no count).
     ///
@@ -256,11 +273,12 @@ impl MappableCommand {
     /// string sets to decide what bookkeeping to run.
     pub(crate) fn meta(&self) -> CmdMeta {
         match self {
-            Self::Motion { name, jump, .. } => CmdMeta {
+            Self::Motion { name, jump, reaching, .. } => CmdMeta {
                 name: name.clone(),
                 category: CmdCategory::Motion,
                 is_jump: *jump,
                 is_visual_move: false,
+                reaching: *reaching,
                 repeatable: false,
                 stamps_last_command: true,
             },
@@ -269,6 +287,7 @@ impl MappableCommand {
                 category: CmdCategory::Selection,
                 is_jump: *jump,
                 is_visual_move: false,
+                reaching: false,
                 repeatable: false,
                 stamps_last_command: true,
             },
@@ -277,6 +296,7 @@ impl MappableCommand {
                 category: CmdCategory::Edit,
                 is_jump: false,
                 is_visual_move: false,
+                reaching: false,
                 repeatable: *repeatable,
                 stamps_last_command: true,
             },
@@ -285,6 +305,7 @@ impl MappableCommand {
                 category: *category,
                 is_jump: *jump,
                 is_visual_move: *visual_move,
+                reaching: false,
                 repeatable: *repeatable,
                 stamps_last_command: *stamps_last_command,
             },
@@ -293,6 +314,7 @@ impl MappableCommand {
                 category: CmdCategory::Lazy,
                 is_jump: false,
                 is_visual_move: false,
+                reaching: false,
                 repeatable: *repeatable,
                 stamps_last_command: true,
             },
@@ -301,6 +323,7 @@ impl MappableCommand {
                 category: CmdCategory::Lazy,
                 is_jump: false,
                 is_visual_move: false,
+                reaching: false,
                 repeatable: false,
                 stamps_last_command: true,
             },

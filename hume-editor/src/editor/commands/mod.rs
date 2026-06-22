@@ -236,10 +236,16 @@ pub(super) fn step_stamp_repeatable(
 /// Update the selection recipe buffer after a command dispatch.
 ///
 /// Accumulation rule:
-///   sel-builder + extend              → append step
-///   sel-builder + move + non-collapsed → reset + push
-///   sel-builder + move + collapsed     → clear
-///   everything else                     → clear
+///   sel-builder + extend                           → append step
+///   sel-builder + move + non-collapsed + in-place  → reset + push establish
+///   sel-builder + move + reaching (or collapsed)   → clear
+///   everything else                                 → clear
+///
+/// Reaching motions (`select-next-word` / `-prev-word` / WORD variants) are
+/// not recorded in Move mode: replaying such a step advances past the cursor,
+/// causing dot-repeat to act on the wrong word. Extend steps of reaching
+/// motions (`Ctrl+w`) are still recorded — extending grows an existing
+/// selection by a relative amount and is safe to replay.
 pub(super) fn step_update_recipe(
     state: &mut EditorState,
     view: &EngineView,
@@ -256,7 +262,7 @@ pub(super) fn step_update_recipe(
                 char_arg,
                 extend: true,
             });
-        } else if !sels.primary().is_collapsed() {
+        } else if !sels.primary().is_collapsed() && !meta.reaching {
             state.selection_recipe.clear();
             state.selection_recipe.push(SelectionStep {
                 command: meta.name.clone(),

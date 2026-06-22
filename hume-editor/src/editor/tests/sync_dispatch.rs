@@ -1368,7 +1368,9 @@ fn steel_repeatable_insert_preserves_prior_selection_recipe() {
         crossterm::event::KeyCode::F(2),
         crossterm::event::KeyModifiers::NONE,
     );
-    // "w" from 'f' in "foo bar\n" selects "bar".
+    // `x` (select-line) on "foo bar\n" selects the whole line — an in-place
+    // selection that pushes a recipe step. (Reaching motions like `w` no longer
+    // push establish steps, so `x` is used here as the recipe-building command.)
     let mut ed = editor_from("-[f]>oo bar\n");
     setup_steel_f2(
         &mut ed,
@@ -1378,15 +1380,15 @@ fn steel_repeatable_insert_preserves_prior_selection_recipe() {
         "steel-ins",
     );
 
-    // `w` establishes a real selection → recipe non-empty.
-    ed.feed_key(key('w'));
-    assert_eq!(ed.state.selection_recipe.len(), 1, "pre-condition: w must push a recipe step");
+    // `x` establishes a real selection → recipe non-empty.
+    ed.feed_key(key('x'));
+    assert_eq!(ed.state.selection_recipe.len(), 1, "pre-condition: x must push a recipe step");
 
-    // F2 → steel-ins → insert 'X' before "bar".
+    // F2 → steel-ins → insert 'X' before the line selection.
     ed.feed_key(f2);
     ed.feed_key(key('X'));
     ed.feed_key(key_esc());
-    assert_eq!(ed.doc().text().to_string(), "foo Xbar\n");
+    assert_eq!(ed.doc().text().to_string(), "Xfoo bar\n");
 
     // White-box: the pre-body snapshot must survive the inner insert-before dispatch.
     let action = ed.state.last_repeatable_action.as_ref()
@@ -1395,7 +1397,7 @@ fn steel_repeatable_insert_preserves_prior_selection_recipe() {
         action.selection_recipe.len(), 1,
         "selection_recipe must not be clobbered by inner (call! \"insert-before\")"
     );
-    assert!(!action.selection_recipe[0].extend, "w step must be a Move (establish)");
+    assert!(!action.selection_recipe[0].extend, "x step must be a Move (establish)");
 }
 
 /// After `.` replays a Steel insert action, a single `u` must undo the entire

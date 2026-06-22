@@ -472,6 +472,49 @@ fn dot_restamps_last_command() {
     );
 }
 
+/// `w d` (reaching select then delete) must record an empty selection recipe.
+/// A bare `.` then deletes the *current* selection, NOT the next word.
+///
+/// This is the dot-repeat drift bug: before the fix, `w` pushed an establish
+/// step, so `.` re-ran `select-next-word` from the new cursor position and
+/// advanced past the intended word, deleting the one after it instead.
+///
+/// Independent oracle: buffer "a foo bar baz\n". `w` selects "foo", `d` deletes
+/// it → "a  bar baz\n". Then `w` selects "bar". `.` must delete "bar" (current
+/// selection), leaving "a   baz\n". The buggy version would re-run
+/// `select-next-word` from "bar", select "baz", and delete that instead.
+///
+/// Fail oracle: remove the `&& !meta.reaching` guard from `step_update_recipe`
+/// → reaching `w` pushes an establish step → recipe is non-empty → `.` selects
+/// the NEXT word ("baz") → buffer would contain "bar" but not "baz".
+#[test]
+fn dot_repeat_reaching_select_acts_on_current_selection() {
+    let mut ed = editor_from("-[a]>  foo bar baz\n");
+
+    ed.feed_key(key('w')); // select "foo" (reaching, Move mode)
+    ed.feed_key(key('d')); // delete "foo" → "a   bar baz\n"
+
+    // Recipe must be empty — reaching `w` must not create an establish step.
+    assert_eq!(
+        ed.state.last_repeatable_action.as_ref().unwrap().selection_recipe.len(),
+        0,
+        "reaching select-next-word must not push an establish step"
+    );
+
+    ed.feed_key(key('w')); // select "bar" (cursor now on 'b')
+    ed.feed_key(key('.')); // replay: empty recipe → delete current selection ("bar")
+
+    let text = ed.doc().text().to_string();
+    assert!(
+        !text.contains("bar"),
+        "`.` must delete 'bar' (current selection), not advance past it — got: {text:?}"
+    );
+    assert!(
+        text.contains("baz"),
+        "`.` must not advance past 'bar' and delete 'baz' — got: {text:?}"
+    );
+}
+
 // ── Steel command dot-repeat tests ────────────────────────────────────────────
 
 /// Build an editor with Steel scripting and a command defined by `source`.

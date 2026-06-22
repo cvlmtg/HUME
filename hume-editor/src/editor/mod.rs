@@ -108,9 +108,14 @@ pub(super) struct InsertSession {
 /// Recorded by `step_update_recipe` as Motion/Selection commands run, so that
 /// `replay_dot` can replay them before the edit, rebuilding the
 /// extent the edit originally acted on.
+///
+/// Only in-place selections (e.g. `select-line`) appear as establish steps;
+/// reaching selections (`select-next-word` / `-prev-word` / WORD variants) are
+/// not recorded in Move mode — replaying one would advance past the cursor and
+/// act on the wrong region. Extend steps of any selection are always recorded.
 #[derive(Debug, Clone)]
 pub(super) struct SelectionStep {
-    /// Command name (e.g. `"select-line"`, `"select-next-word"`, `"find-char"`).
+    /// Command name (e.g. `"select-line"`, `"find-char"`).
     pub command: Cow<'static, str>,
     /// Count prefix originally used.
     pub count: usize,
@@ -143,9 +148,13 @@ pub(super) struct RepeatableAction {
     pub insert_keys: Vec<KeyEvent>,
     /// Selection-building recipe to replay BEFORE the edit.
     ///
-    /// Invariant: `[]` (edit acted on pre-existing selection, backward-compatible)
-    /// or `[one Move-mode establish, then zero+ Extend appends]`. Rebuilt from
-    /// `EditorState::selection_recipe` each time a repeatable command is recorded.
+    /// Invariant: `[]` (edit acted on pre-existing selection or after a reaching
+    /// selection — `.` deletes the current selection as-is) or `[one in-place
+    /// Move-mode establish, then zero+ Extend appends]`. Reaching selections
+    /// (`select-next-word` / `-prev-word` / WORD variants) are excluded from
+    /// establish steps because replaying them advances past the cursor. Rebuilt
+    /// from `EditorState::selection_recipe` each time a repeatable command is
+    /// recorded.
     pub selection_recipe: Vec<SelectionStep>,
 }
 
