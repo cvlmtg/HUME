@@ -73,6 +73,13 @@ pub(crate) struct CmdMeta {
     /// moves and cleared for any other command.
     pub is_visual_move: bool,
     /// Whether `.` should replay this command.
+    ///
+    /// A flat axis, deliberately not folded into `category`: repeatability is
+    /// orthogonal to category — `paste-after` is `Paste` + repeatable,
+    /// `surround-add` is `EditorAction` + repeatable, `delete` is `Edit` +
+    /// repeatable. Encoding it inside the category enum would smear the same
+    /// bool across nearly every variant (less normalized, not more) and force
+    /// every consumer to match the category just to read one bit.
     pub repeatable: bool,
     /// Whether dispatching this command overwrites `last_command`.
     ///
