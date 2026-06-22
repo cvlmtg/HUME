@@ -22,10 +22,6 @@ pub(crate) struct MockHost {
     pub(crate) keymap: hume::Keymap,
     /// Grammar names attached via `(register-grammar! …)`.
     pub(crate) grammars: std::collections::HashSet<String>,
-    #[allow(dead_code)]
-    pub(crate) focused_buffer_id: BufferId,
-    #[allow(dead_code)]
-    pub(crate) focused_pane_id: PaneId,
     /// Commands registered via `(define-command! …)` during evals.
     pub(crate) registered_cmds: Vec<hume_scripting::SteelCmdDef>,
     /// Names treated as native by `command_is_native`.  Empty by default
@@ -42,8 +38,6 @@ impl MockHost {
             settings: hume::settings::EditorSettings::default(),
             keymap: hume::Keymap::default(),
             grammars: std::collections::HashSet::new(),
-            focused_buffer_id: BufferId::default(),
-            focused_pane_id: PaneId::default(),
             registered_cmds: Vec::new(),
             native_names: std::collections::HashSet::new(),
             dispatched_native: Vec::new(),

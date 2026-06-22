@@ -48,7 +48,6 @@ pub(crate) enum Assoc {
     /// Stay before inserted text ("sticky left").
     /// Use this for anchors and positions that should remain pinned to the
     /// character that was at this offset before the edit.
-    #[allow(dead_code)]
     Before,
     /// Move past inserted text ("sticky right").
     /// Use this for cursors that should advance past text inserted at their
