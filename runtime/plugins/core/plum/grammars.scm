@@ -170,7 +170,7 @@
             (with-handler
               (lambda (err)
                 (log! 'error (string-append "PLUM: update failed: " (to-string err))))
-              (plum/install-grammar name)))))
+              (plum/install-grammar name))))))
   #:inline-output #t)
 
 (define-command! "plum-ensure-grammars"

@@ -2485,3 +2485,38 @@ fn load_plugin_runtime_guard_fires() {
         "error must mention top-level restriction; got: {err}"
     );
 }
+
+/// Test that core:plum grammars.scm has balanced parentheses.
+/// This plugin is loaded via `(load-plugin "core:plum")` in init.scm.
+/// An earlier imbalance caused "Parse: Unexpected EOF" on startup.
+#[test]
+fn plum_grammars_scm_balanced() {
+    let src = include_str!("../../runtime/plugins/core/plum/grammars.scm");
+
+    // Count structural parens (outside string literals) by walking chars
+    let mut opens = 0usize;
+    let mut closes = 0usize;
+    let mut in_string = false;
+    let mut chars = src.chars().peekable();
+    while let Some(c) = chars.next() {
+        if in_string {
+            if c == '\\' {
+                chars.next();
+            } else if c == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match c {
+            '"' => in_string = true,
+            '(' => opens += 1,
+            ')' => closes += 1,
+            _ => {}
+        }
+    }
+
+    assert_eq!(
+        opens, closes,
+        "grammars.scm: {opens} opens vs {closes} closes — unbalanced parens",
+    );
+}
