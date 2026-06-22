@@ -82,6 +82,13 @@ pub fn init(mouse_enabled: bool, mouse_select: bool) -> io::Result<(Term, bool)>
     let mut out = stdout();
 
     let kitty_enabled = crate::probe_kitty_support().unwrap_or(false);
+
+    // Enter alternate screen before pushing kitty flags.  Some terminals
+    // (WezTerm, kitty) maintain a per-screen keyboard stack; the push must
+    // land on the alternate screen's stack so that key reads (which consult
+    // the active screen) pick up the enhanced encoding.
+    execute!(out, EnterAlternateScreen)?;
+
     if kitty_enabled {
         // REPORT_ALTERNATE_KEYS is required so that Ctrl+shifted-chars
         // (e.g. Ctrl+}) arrive with the correct keycode instead of the base
@@ -103,8 +110,6 @@ pub fn init(mouse_enabled: bool, mouse_select: bool) -> io::Result<(Term, bool)>
         // handles drag-select natively.
         enable_mouse(&mut out, mouse_select)?;
     }
-
-    execute!(out, EnterAlternateScreen)?;
     let term = Terminal::new(CrosstermBackend::new(BufWriter::with_capacity(
         64 * 1024,
         out,
@@ -141,12 +146,10 @@ pub fn restore() -> io::Result<()> {
     // usable even if LeaveAlternateScreen fails.
     try_op(disable_raw_mode());
     try_op(execute!(stdout(), LeaveAlternateScreen));
-    // Second pop after leaving the alternate screen. Some terminals scope
-    // the keyboard-mode stack per screen buffer: the pop above runs while
-    // we're still on the alt screen, but our push in `init()` ran on the
-    // main screen before `EnterAlternateScreen`. If the stack is per-buffer,
-    // only this pop actually clears the push. On terminals with a global
-    // stack the second pop hits an empty stack and is a no-op.
+    // Second pop after leaving the alternate screen. Since `init()` now
+    // pushes onto the alt screen's stack, the first pop (above) clears it.
+    // This extra pop handles terminals with a global keyboard stack — it is
+    // a harmless no-op on per-screen-buffer terminals (WezTerm, kitty).
     try_op(execute!(stdout(), PopKeyboardEnhancementFlags));
 
     match first_err {
