@@ -1138,10 +1138,12 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
 /// cannot detect a stage added to one pipeline and forgotten in the other.
 /// Pinning the full cluster here means any such omission causes a divergence.
 ///
-/// Fail oracle (dot-repeat): delete `step_stamp_repeatable` at `mod.rs:544–549`
-///   → `steel.last_repeatable` is `None` while native is `Some` → assertion fails.
-/// Fail oracle (paste-session): delete `step_paste_commit` at `mod.rs:526`
-///   → a pre-armed session survives on the Steel path → `paste_session_open` diverges.
+/// Fail oracle (dot-repeat): delete the `step_stamp_repeatable` call in the Steel
+///   AFTER block of `Editor::dispatch` → `steel.last_repeatable` is `None` while
+///   native is `Some` → assertion fails.
+/// Fail oracle (paste-session): delete the `step_paste_commit` call in the Steel
+///   BEFORE block of `Editor::dispatch` → a pre-armed session survives on the Steel
+///   path → `paste_session_open` diverges.
 #[test]
 fn parity_steel_branch_cluster_vs_native() {
     // ── Case 1: repeatable edit — pins dot-repeat and last_command stages ─────
@@ -1188,9 +1190,9 @@ fn parity_steel_branch_cluster_vs_native() {
     // not the inner "delete" from `call!`. Outer-name-wins preserves the correct
     // semantic so `.` replays the outer Steel command, not the primitive it wrapped.
     //
-    // Fail oracle: delete the `step_stamp_repeatable` block at `mod.rs:544–549` →
-    //   the inner `call! "delete"` dispatch stamps "delete" as the name instead →
-    //   `s_name == "delete"` ≠ "steel-del" → assertion fails.
+    // Fail oracle: delete the `step_stamp_repeatable` call in the Steel AFTER block
+    //   of `Editor::dispatch` → the inner `call! "delete"` dispatch stamps "delete"
+    //   as the name instead → `s_name == "delete"` ≠ "steel-del" → assertion fails.
     let (s_name, s_count, s_char) =
         snap_steel.last_repeatable.as_ref().expect("Steel branch must record dot-repeat");
     assert_eq!(s_name, "steel-del", "Steel AFTER must record outer name in last_repeatable");
@@ -1203,8 +1205,8 @@ fn parity_steel_branch_cluster_vs_native() {
     // Steel BEFORE stage before any non-ring-cycle command runs. Ring-cycle
     // commands (`[`/`]`) are exempt; a plain Steel command is not.
     //
-    // Fail oracle: delete `step_paste_commit` at `mod.rs:526` → the paste
-    //   session remains open after the Steel command → assertion fails.
+    // Fail oracle: delete the `step_paste_commit` call in the Steel BEFORE block
+    //   of `Editor::dispatch` → the paste session remains open → assertion fails.
     let mut ed2 = editor_from("-[a]>bc\n");
     // Seed the kill ring so `p` has something to paste.
     ed2.state.kill_ring.push(vec!["X".to_string()]);
@@ -1237,8 +1239,9 @@ fn parity_steel_branch_cluster_vs_native() {
     ed2.scripting = Some(host2);
     ed2.execute_keymap_command("pure-noop".into(), 1, false, vec![]);
 
-    // Fail oracle: comment out `step_paste_commit` at `mod.rs:526` → the pure-noop
-    //   Steel command runs without committing → paste_group stays Some → assertion fails.
+    // Fail oracle: delete the `step_paste_commit` call in the Steel BEFORE block
+    //   of `Editor::dispatch` → pure-noop runs without committing → paste_group
+    //   stays Some → assertion fails.
     assert!(
         ed2.state.panes.state[pane_id][buf_id].paste_group.is_none(),
         "step_paste_commit must close the paste session on the Steel path"

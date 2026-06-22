@@ -61,7 +61,6 @@ impl Editor {
         if let Some(pending) = self.state.pending_repeat.take() {
             self.replay_dot(pending.count);
         }
-
     }
 }
 

@@ -241,8 +241,8 @@ pub fn cmd_collapse_and_exit_extend(
 /// The handler only enqueues a `PendingRepeat` marker; the actual replay
 /// (edit-group bracketing, re-dispatch, insert-key replay) runs in
 /// `replay_dot` at the tail of `handle_key`, where `&mut Editor` is available
-/// for `execute_keymap_command` and `handle_insert`. This satisfies the D7
-/// invariant: no EditorCmd handler takes `&mut Editor`.
+/// for `run_native_body`/`run_steel_command` and `handle_insert`. This satisfies
+/// the D7 invariant: no EditorCmd handler takes `&mut Editor`.
 pub fn cmd_repeat(
     state: &mut EditorState,
     _view: &mut EngineView,

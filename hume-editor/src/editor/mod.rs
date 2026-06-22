@@ -165,7 +165,8 @@ pub(super) struct RepeatableAction {
 ///
 /// Splitting enqueue (pure State handler) from drain (`&mut Editor` plumbing)
 /// lets `cmd_repeat` satisfy the D7 invariant while still reaching
-/// `execute_keymap_command` and `handle_insert` for the actual replay.
+/// `replay_dot` (which uses `run_native_body`/`run_steel_command` and
+/// `handle_insert`) for the actual replay.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct PendingRepeat {
     /// Effective replay count — explicit-count override already applied.

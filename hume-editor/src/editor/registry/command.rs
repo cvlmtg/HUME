@@ -376,7 +376,6 @@ impl MappableCommand {
             Self::EditorCmd { extendable, .. } => *extendable,
         }
     }
-
 }
 
 // ── TypedCommand ──────────────────────────────────────────────────────────────
