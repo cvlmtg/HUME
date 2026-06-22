@@ -569,8 +569,8 @@ fn call_steel_cmd_watchdog_aborts_runaway() {
             &cmd_name,
             None,
             vec![],
-            mock.focused_pane_id,
-            mock.focused_buffer_id,
+            PaneId::default(),
+            BufferId::default(),
             &mut mock,
         )
         .unwrap_err();
@@ -614,8 +614,8 @@ fn call_steel_cmd_interrupt_leaves_settings_unchanged() {
             &cmd_name,
             None,
             vec![],
-            mock.focused_pane_id,
-            mock.focused_buffer_id,
+            PaneId::default(),
+            BufferId::default(),
             &mut mock,
         )
         .unwrap_err();
@@ -649,8 +649,8 @@ fn call_steel_cmd_set_option_from_body_returns_steel_error() {
             "try-set",
             None,
             vec![],
-            mock.focused_pane_id,
-            mock.focused_buffer_id,
+            PaneId::default(),
+            BufferId::default(),
             &mut mock,
         )
         .unwrap_err();
@@ -690,8 +690,8 @@ fn call_bang_passes_args_to_command() {
         "echo-arg",
         None,
         vec![SteelVal::StringV("hello".into())],
-        mock.focused_pane_id,
-        mock.focused_buffer_id,
+        PaneId::default(),
+        BufferId::default(),
         &mut mock,
     )
     .expect("call should succeed");
@@ -727,8 +727,8 @@ fn call_bang_forwards_multiple_args_to_lambda() {
             SteelVal::StringV("y".into()),
             SteelVal::StringV("z".into()),
         ],
-        mock.focused_pane_id,
-        mock.focused_buffer_id,
+        PaneId::default(),
+        BufferId::default(),
         &mut mock,
     )
     .expect("call should succeed");
@@ -765,8 +765,8 @@ fn call_bang_arity_mismatch_surfaces_steel_error() {
             "needs-two",
             None,
             vec![SteelVal::StringV("only-one".into())],
-            mock.focused_pane_id,
-            mock.focused_buffer_id,
+            PaneId::default(),
+            BufferId::default(),
             &mut mock,
         )
         .unwrap_err();
@@ -884,8 +884,8 @@ fn register_hook_fires_on_mode_change() {
     h.fire_hook(
         HookId::OnModeChange,
         &[old_val, new_val],
-        mock.focused_pane_id,
-        mock.focused_buffer_id,
+        PaneId::default(),
+        BufferId::default(),
         &mut mock,
     )
     .unwrap();
@@ -972,8 +972,8 @@ fn register_hook_errors_in_command_mode() {
             "bad-cmd",
             None,
             vec![],
-            mock.focused_pane_id,
-            mock.focused_buffer_id,
+            PaneId::default(),
+            BufferId::default(),
             &mut mock,
         )
         .unwrap_err();
@@ -1014,8 +1014,8 @@ fn fire_hook_globals_cleared_between_fires() {
     h.fire_hook(
         HookId::OnModeChange,
         &[old_val.clone(), new_val],
-        mock.focused_pane_id,
-        mock.focused_buffer_id,
+        PaneId::default(),
+        BufferId::default(),
         &mut mock,
     )
     .unwrap();
@@ -1031,8 +1031,8 @@ fn fire_hook_globals_cleared_between_fires() {
     h.fire_hook(
         HookId::OnModeChange,
         &[old_val, new_val2],
-        mock.focused_pane_id,
-        mock.focused_buffer_id,
+        PaneId::default(),
+        BufferId::default(),
         &mut mock,
     )
     .unwrap();
@@ -1067,8 +1067,8 @@ fn set_register_prefix_passed_to_dispatch() {
         "paste-ring",
         None,
         vec![],
-        mock.focused_pane_id,
-        mock.focused_buffer_id,
+        PaneId::default(),
+        BufferId::default(),
         &mut mock,
     )
     .unwrap();
@@ -1106,8 +1106,8 @@ fn set_register_prefix_sticky_across_multiple_calls() {
         "multi",
         None,
         vec![],
-        mock.focused_pane_id,
-        mock.focused_buffer_id,
+        PaneId::default(),
+        BufferId::default(),
         &mut mock,
     )
     .unwrap();
@@ -1145,8 +1145,8 @@ fn set_register_prefix_change_mid_body() {
         "switch",
         None,
         vec![],
-        mock.focused_pane_id,
-        mock.focused_buffer_id,
+        PaneId::default(),
+        BufferId::default(),
         &mut mock,
     )
     .unwrap();
@@ -1178,8 +1178,8 @@ fn set_register_prefix_invalid_name_errors() {
             "bad-reg",
             None,
             vec![],
-            mock.focused_pane_id,
-            mock.focused_buffer_id,
+            PaneId::default(),
+            BufferId::default(),
             &mut mock,
         )
         .unwrap_err();
@@ -1204,8 +1204,8 @@ fn set_register_prefix_multichar_name_errors() {
             "bad-multi",
             None,
             vec![],
-            mock.focused_pane_id,
-            mock.focused_buffer_id,
+            PaneId::default(),
+            BufferId::default(),
             &mut mock,
         )
         .unwrap_err();
@@ -1288,8 +1288,8 @@ fn language_builtins_error_on_stale_buffer_id() {
             "q-lang",
             None,
             vec![],
-            mock.focused_pane_id,
-            mock.focused_buffer_id,
+            PaneId::default(),
+            BufferId::default(),
             &mut mock,
         )
         .unwrap_err();
@@ -1303,8 +1303,8 @@ fn language_builtins_error_on_stale_buffer_id() {
             "set-lang",
             None,
             vec![],
-            mock.focused_pane_id,
-            mock.focused_buffer_id,
+            PaneId::default(),
+            BufferId::default(),
             &mut mock,
         )
         .unwrap_err();
@@ -2612,8 +2612,8 @@ fn arity1_list_command_rejects_false_arg() {
             "needs-list",
             None,
             vec![SteelVal::BoolV(false)],
-            mock.focused_pane_id,
-            mock.focused_buffer_id,
+            PaneId::default(),
+            BufferId::default(),
             &mut mock,
         )
         .unwrap_err();
@@ -2649,8 +2649,8 @@ fn arity1_list_command_accepts_list_arg() {
         "needs-list",
         None,
         vec![list_val],
-        mock.focused_pane_id,
-        mock.focused_buffer_id,
+        PaneId::default(),
+        BufferId::default(),
         &mut mock,
     );
     assert!(
@@ -2682,8 +2682,8 @@ fn load_plugin_runtime_guard_fires() {
             "try-load",
             None,
             vec![],
-            mock.focused_pane_id,
-            mock.focused_buffer_id,
+            PaneId::default(),
+            BufferId::default(),
             &mut mock,
         )
         .unwrap_err();

@@ -48,6 +48,7 @@ pub(crate) enum Assoc {
     /// Stay before inserted text ("sticky left").
     /// Use this for anchors and positions that should remain pinned to the
     /// character that was at this offset before the edit.
+    #[cfg(test)]
     Before,
     /// Move past inserted text ("sticky right").
     /// Use this for cursors that should advance past text inserted at their
@@ -299,6 +300,7 @@ impl ChangeSet {
                     // which side the position lands on.
                     if pos == old {
                         return match assoc {
+                            #[cfg(test)]
                             Assoc::Before => new,
                             Assoc::After => new + len,
                         };
