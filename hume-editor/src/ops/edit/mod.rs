@@ -4,6 +4,8 @@ use hume_editing::lines::line_end_exclusive;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
 
+use crate::ops::register;
+
 // ── Edit scaffolding ──────────────────────────────────────────────────────────
 //
 // Every editing operation follows the same structural pattern:
@@ -234,7 +236,7 @@ fn paste_impl(
         };
 
         if sel.is_collapsed() {
-            if text.ends_with('\n') {
+            if register::is_linewise(text) {
                 // Linewise cursor paste: insert as whole new line(s).
                 // insert advances new_pos() by the char count of the inserted text,
                 // so new_pos() - text.chars().count() is the first inserted char.
@@ -265,7 +267,7 @@ fn paste_impl(
                     new_sels.push(Selection::new(b.new_pos() - count, b.new_pos() - 1));
                 }
             }
-        } else if text.ends_with('\n') {
+        } else if register::is_linewise(text) {
             // Linewise over a non-collapsed selection: replace the selected fragment
             // with the pasted line(s). Unselected text before/after on the same line
             // is retained and pushed onto its own line by the pasted '\n'.

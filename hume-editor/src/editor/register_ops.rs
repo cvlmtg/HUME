@@ -11,7 +11,7 @@
 use std::borrow::Cow;
 
 use crate::editor::clipboard::SystemClipboard;
-use crate::ops::register::{CLIPBOARD_REGISTER, RegisterSet};
+use crate::ops::register::{is_linewise, CLIPBOARD_REGISTER, RegisterSet};
 
 /// Read text from an explicitly named register.
 ///
@@ -74,7 +74,11 @@ pub(crate) fn write_register(
     values: Vec<String>,
 ) -> Option<String> {
     if name == CLIPBOARD_REGISTER {
-        let blob = values.join("\n");
+        let blob = if values.iter().all(|v| is_linewise(v)) {
+            values.concat()
+        } else {
+            values.join("\n")
+        };
         let warning = clipboard.write(&blob).err().map(|e| clipboard_warn(&e));
         registers.write_text(CLIPBOARD_REGISTER, values);
         registers.set_clipboard_blob(blob);
