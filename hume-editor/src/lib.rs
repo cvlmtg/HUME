@@ -42,6 +42,11 @@ pub fn run_keys(
         .map_err(|e| format!("invalid key stream: {e}"))?;
 
     let mut editor = editor::Editor::open(Some(input))?;
+    // Headless mode: no terminal to negotiate kitty protocol, so assume
+    // full capability. Ctrl+letter keys (e.g. `<c-w>`) are no-ops without
+    // this since the dispatcher strips the Ctrl modifier only when
+    // kitty_enabled is true (see handle_normal).
+    editor.kitty_enabled = true;
     // The pane viewport defaults to 80×24 (from Pane::new) and is never
     // updated without a terminal, so scores are reproducible.
 
