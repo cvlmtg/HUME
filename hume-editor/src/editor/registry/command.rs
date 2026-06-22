@@ -43,11 +43,9 @@ pub(crate) struct CmdMeta {
     pub is_motion: bool,
     /// Whether this command is a paste-family command (p, P, [, ]).
     ///
-    /// `step_paste_commit` commits the current paste session before every
-    /// non-paste command so `p` + edit gives two undo steps. Paste commands are
-    /// excluded from that commit so the session stays open across a single paste.
     /// Read by `commands/edit.rs` to detect a paste-after pattern (p → p appends
-    /// from `last_paste` instead of the clipboard).
+    /// from `last_paste` instead of the clipboard). Does not affect the
+    /// paste-session commit — that is driven solely by `defers_paste_commit`.
     pub is_paste: bool,
     /// Whether this command defers the paste-session commit.
     ///

@@ -129,8 +129,8 @@ impl CommandRegistry {
                 self.extendable = true;
                 self
             }
-            /// Mark as a normal paste command (p / P). Suppresses paste-session
-            /// commit so the session stays open across a single paste invocation.
+            /// Mark as a normal paste command (p / P) for paste-after detection.
+            /// Does not suppress the paste-session commit — use `paste_cycle` for that.
             fn paste(mut self) -> Self {
                 self.is_paste = true;
                 self

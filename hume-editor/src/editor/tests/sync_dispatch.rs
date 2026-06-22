@@ -1311,6 +1311,61 @@ fn steel_arity_1_lambda_receives_count_only() {
     );
 }
 
+/// **Extend-exit via inner native dispatch**: a Steel command that calls native
+/// `(delete)` while Extend mode is active must exit Extend, even though
+/// `SteelBacked.clears_extend` is always `false`.
+///
+/// The mechanism: `(call! "delete")` routes through `run_command_sync` →
+/// `run_dispatch_pipeline`, which runs `delete`'s own `step_clear_extend` with
+/// `clears_extend=true`.  Mode is still `Extend` when the inner pipeline fires,
+/// so it flips to Normal.  The outer Steel dispatch branch deliberately omits
+/// `step_clear_extend` — the inner command's meta drives the transition.
+///
+/// Fail oracle: replace `(call! "delete")` with `(+ 1 0)` (no-op body) →
+/// mode stays `Extend` → the mode assertion fails, proving the test is not vacuous.
+#[test]
+fn steel_call_delete_in_extend_exits_extend_mode() {
+    let mut ed = editor_from("-[hell]>o\n");
+
+    let names: Vec<String> = ed
+        .state
+        .registry
+        .native_mappable_names()
+        .map(str::to_owned)
+        .collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut host = ScriptingHost::new();
+    host.register_command_names(&name_refs);
+
+    let mut init_host = EditorHostImpl {
+        state: &mut ed.state,
+        view: &mut ed.view,
+    };
+    host.eval_source_returning_defs(
+        r#"(define-command! "wrap-delete" "" (lambda () (call! "delete")))"#.to_owned(),
+        Default::default(),
+        &mut init_host,
+    )
+    .expect("define-command! must succeed");
+
+    ed.scripting = Some(host);
+    ed.state.mode = Mode::Extend;
+
+    ed.execute_keymap_command("wrap-delete".into(), 1, false, vec![]);
+
+    assert_eq!(
+        ed.state.mode,
+        Mode::Normal,
+        "Steel wrapping (call! \"delete\") must exit Extend via inner command's clears_extend"
+    );
+    // Also confirm the delete actually ran — the selection "hell" must be gone.
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "o\n",
+        "inner (delete) must have removed the selected text"
+    );
+}
+
 // ── Dual-path parity tests ────────────────────────────────────────────────────
 //
 // The original regression: `run_command_sync` executed native commands naked —
