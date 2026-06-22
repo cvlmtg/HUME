@@ -712,6 +712,48 @@ fn ctrl_semicolon_collapses_to_anchor_and_resets_extend() {
     assert_eq!(state(&ed), "-[h]>ello\n");
 }
 
+// ── Extend mode exits after selection-consuming edits ────────────────────────
+//
+// Mirrors Vim visual-mode: any operator on a visual selection returns to Normal.
+// Yank is the deliberate exception — it is non-destructive and preserves the
+// selection (Helix-like).
+
+#[test]
+fn extend_exits_after_delete() {
+    let mut ed = editor_from("-[hell]>o\n");
+    ed.state.mode = Mode::Extend;
+    ed.handle_key(key('d'));
+    assert_eq!(ed.state.mode, Mode::Normal, "delete exits Extend");
+}
+
+#[test]
+fn extend_exits_after_replace() {
+    let mut ed = editor_from("-[hell]>o\n");
+    ed.state.mode = Mode::Extend;
+    ed.handle_key(key('r'));
+    ed.handle_key(key('x')); // replacement char completes replace
+    assert_eq!(ed.state.mode, Mode::Normal, "replace exits Extend");
+}
+
+#[test]
+fn extend_exits_after_paste() {
+    // Pre-populate a register so paste does real work.
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('y')); // yank "h" into ring
+    ed.state.mode = Mode::Extend;
+    ed.handle_key(key('p')); // paste-after
+    assert_eq!(ed.state.mode, Mode::Normal, "paste exits Extend");
+}
+
+#[test]
+fn extend_preserved_after_yank() {
+    // Yank must NOT exit Extend — it is non-destructive and the selection stays live.
+    let mut ed = editor_from("-[hell]>o\n");
+    ed.state.mode = Mode::Extend;
+    ed.handle_key(key('y'));
+    assert_eq!(ed.state.mode, Mode::Extend, "yank preserves Extend");
+}
+
 // ── `o`/`O` undo grouping ─────────────────────────────────────────────────────
 
 /// `o` must group the structural newline insertion and the subsequent insert

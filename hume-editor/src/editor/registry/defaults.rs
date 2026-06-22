@@ -111,6 +111,7 @@ impl CommandRegistry {
             visual_move: bool,
             extendable: bool,
             stamps_last_command: bool,
+            clears_extend: bool,
         }
         impl EditorCmdBuilder {
             fn repeatable(mut self) -> Self {
@@ -140,6 +141,13 @@ impl CommandRegistry {
                 self.stamps_last_command = false;
                 self
             }
+            /// Mark this as a selection-consuming edit that exits sticky Extend mode.
+            /// Use for buffer-modifying acts: delete, paste, replace, surround-add.
+            /// Do NOT use for yank, change, undo, redo, or mode-entry commands.
+            fn clears_extend(mut self) -> Self {
+                self.clears_extend = true;
+                self
+            }
             fn reg(self, r: &mut CommandRegistry) {
                 r.register(MappableCommand::EditorCmd {
                     name: Cow::Borrowed(self.name),
@@ -151,6 +159,7 @@ impl CommandRegistry {
                     visual_move: self.visual_move,
                     extendable: self.extendable,
                     stamps_last_command: self.stamps_last_command,
+                    clears_extend: self.clears_extend,
                 });
             }
         }
@@ -166,6 +175,7 @@ impl CommandRegistry {
             visual_move: false,
             extendable: false,
             stamps_last_command: true,
+            clears_extend: false,
         };
 
         // ── Character motions ─────────────────────────────────────────────────
@@ -505,6 +515,7 @@ impl CommandRegistry {
             cmd_surround_add,
         )
         .repeatable()
+        .clears_extend()
         .reg(self);
 
         // ── Edit commands ─────────────────────────────────────────────────────
@@ -604,6 +615,7 @@ impl CommandRegistry {
             cmd_delete,
         )
         .repeatable()
+        .clears_extend()
         .reg(self);
         ecmd(
             "change",
@@ -625,6 +637,7 @@ impl CommandRegistry {
         )
         .paste(PasteFamily::Normal)
         .repeatable()
+        .clears_extend()
         .reg(self);
         ecmd(
             "paste-before",
@@ -633,6 +646,7 @@ impl CommandRegistry {
         )
         .paste(PasteFamily::Normal)
         .repeatable()
+        .clears_extend()
         .reg(self);
         ecmd(
             "paste-ring-older",
@@ -641,6 +655,7 @@ impl CommandRegistry {
         )
         .paste(PasteFamily::RingCycle)
         .repeatable()
+        .clears_extend()
         .reg(self);
         ecmd(
             "paste-ring-newer",
@@ -649,6 +664,7 @@ impl CommandRegistry {
         )
         .paste(PasteFamily::RingCycle)
         .repeatable()
+        .clears_extend()
         .reg(self);
         ecmd("undo", "Undo the last change.", cmd_undo).reg(self);
         ecmd("redo", "Redo the last undone change.", cmd_redo).reg(self);
@@ -724,6 +740,7 @@ impl CommandRegistry {
             cmd_replace,
         )
         .repeatable()
+        .clears_extend()
         .reg(self);
 
         // ── Editor commands — page scroll ─────────────────────────────────────

@@ -93,6 +93,15 @@ pub(crate) struct CmdMeta {
     /// `.transparent_to_last_command()` on the `EditorCmdBuilder`. All other
     /// commands are `true`.
     pub stamps_last_command: bool,
+    /// Whether this command exits sticky Extend mode after it runs.
+    ///
+    /// `true` for buffer-modifying selection acts: `delete`, `paste-*`, `replace`,
+    /// `surround-add`. `false` for `yank` (non-destructive; preserves the
+    /// selection), `change` (already enters Insert, which is its own mode exit),
+    /// `undo`/`redo` (history navigation, not selection acts), motions, and
+    /// selection commands. Mirrors Vim visual-mode: any operator on a visual
+    /// selection returns to normal. Read by the dispatch pipeline's AFTER step.
+    pub clears_extend: bool,
 }
 
 /// Function pointer for an [`EditorCmd`] handler.
@@ -210,6 +219,9 @@ pub(crate) enum MappableCommand {
         /// Whether dispatching this command overwrites `last_command` for smart-p.
         /// `false` only for `exit-insert`; all other commands are `true`.
         stamps_last_command: bool,
+        /// Whether this command exits sticky Extend mode after it runs.
+        /// See [`CmdMeta::clears_extend`] for the full rationale.
+        clears_extend: bool,
     },
     /// A command implemented as a Steel (Scheme) lambda.
     ///
@@ -297,6 +309,7 @@ impl MappableCommand {
                 reaching: *reaching,
                 repeatable: false,
                 stamps_last_command: true,
+                clears_extend: false,
             },
             Self::Selection { jump, .. } => CmdMeta {
                 category: CmdCategory::Selection,
@@ -305,6 +318,7 @@ impl MappableCommand {
                 reaching: false,
                 repeatable: false,
                 stamps_last_command: true,
+                clears_extend: false,
             },
             Self::Edit { repeatable, .. } => CmdMeta {
                 category: CmdCategory::Edit,
@@ -313,6 +327,7 @@ impl MappableCommand {
                 reaching: false,
                 repeatable: *repeatable,
                 stamps_last_command: true,
+                clears_extend: false,
             },
             Self::EditorCmd {
                 category,
@@ -320,6 +335,7 @@ impl MappableCommand {
                 jump,
                 visual_move,
                 stamps_last_command,
+                clears_extend,
                 ..
             } => CmdMeta {
                 category: *category,
@@ -328,6 +344,7 @@ impl MappableCommand {
                 reaching: false,
                 repeatable: *repeatable,
                 stamps_last_command: *stamps_last_command,
+                clears_extend: *clears_extend,
             },
             Self::SteelBacked { repeatable, .. } => CmdMeta {
                 category: CmdCategory::Lazy,
@@ -336,6 +353,7 @@ impl MappableCommand {
                 reaching: false,
                 repeatable: *repeatable,
                 stamps_last_command: true,
+                clears_extend: false,
             },
             Self::Lazy { .. } => CmdMeta {
                 category: CmdCategory::Lazy,
@@ -344,6 +362,7 @@ impl MappableCommand {
                 reaching: false,
                 repeatable: false,
                 stamps_last_command: true,
+                clears_extend: false,
             },
         }
     }

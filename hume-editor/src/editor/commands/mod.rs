@@ -311,6 +311,18 @@ pub(super) fn step_update_recipe(
     }
 }
 
+/// Exit sticky Extend mode after a selection-consuming edit.
+///
+/// Mirrors the "done selecting" signal of `;` (collapse) and Vim's visual-mode
+/// operator exit. No-op unless the editor is currently in Extend — a `change`
+/// command (which already entered Insert) will not be affected because
+/// `state.mode()` is `Insert` by the time the AFTER block runs.
+pub(super) fn step_clear_extend(state: &mut EditorState, clears_extend: bool) {
+    if clears_extend && state.mode() == Mode::Extend {
+        state.set_mode(Mode::Normal);
+    }
+}
+
 // ── Native dispatch pipeline (composed from step functions) ────────────────
 
 /// Execute a native command through the full dispatch pipeline.
@@ -352,6 +364,7 @@ pub(super) fn run_dispatch_pipeline(
     step_record_jump(state, view, pre_jump, meta.is_jump);
     step_stamp_repeatable(state, &name, ctx.count, char_arg, pre_recipe);
     step_update_recipe(state, view, &meta, &name, &ctx, char_arg);
+    step_clear_extend(state, meta.clears_extend);
 }
 
 // ── Free helpers for EditorCmd handlers ──────────────────────────────────────

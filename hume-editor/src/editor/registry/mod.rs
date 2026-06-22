@@ -527,6 +527,7 @@ mod tests {
             visual_move: false,
             extendable: false,
             stamps_last_command: true,
+            clears_extend: false,
         };
         reg.register(cmd);
 
@@ -624,6 +625,7 @@ mod tests {
             visual_move: false,
             extendable: false,
             stamps_last_command: true,
+            clears_extend: false,
         });
 
         let mut names = reg.steel_backed_names();
@@ -663,5 +665,43 @@ mod tests {
         assert!(reg.get_mappable("lazy-cmd").is_none());
         // Built-in commands are untouched.
         assert!(reg.get_mappable("move-left").is_some());
+    }
+
+    #[test]
+    fn clears_extend_flag_matches_expected_commands() {
+        let reg = CommandRegistry::with_defaults();
+
+        // Selection-consuming edits: must be true.
+        for name in &[
+            "delete",
+            "paste-after",
+            "paste-before",
+            "paste-ring-older",
+            "paste-ring-newer",
+            "replace",
+            "surround-add",
+        ] {
+            let meta = reg
+                .get_mappable(name)
+                .unwrap_or_else(|| panic!("command '{name}' not found"))
+                .meta();
+            assert!(
+                meta.clears_extend,
+                "'{name}' should have clears_extend = true"
+            );
+        }
+
+        // Intentionally excluded: yank (non-destructive), change (enters Insert),
+        // undo/redo (history navigation), flip-selections (selection builder).
+        for name in &["yank", "change", "undo", "redo", "flip-selections"] {
+            let meta = reg
+                .get_mappable(name)
+                .unwrap_or_else(|| panic!("command '{name}' not found"))
+                .meta();
+            assert!(
+                !meta.clears_extend,
+                "'{name}' should have clears_extend = false"
+            );
+        }
     }
 }
