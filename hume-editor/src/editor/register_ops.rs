@@ -11,7 +11,7 @@
 use std::borrow::Cow;
 
 use crate::editor::clipboard::SystemClipboard;
-use crate::ops::register::{is_linewise, CLIPBOARD_REGISTER, RegisterSet};
+use crate::ops::register::{CLIPBOARD_REGISTER, RegisterSet, is_linewise};
 
 /// Read text from an explicitly named register.
 ///
@@ -36,9 +36,7 @@ pub(crate) fn read_register_text<'a>(
                 // which preserves multi-selection boundaries.  When they differ,
                 // the clipboard was externally modified; use its content directly.
                 if registers.clipboard_blob() == Some(&text) {
-                    if let Some(mem) = registers
-                        .read(CLIPBOARD_REGISTER)
-                        .and_then(|r| r.as_text())
+                    if let Some(mem) = registers.read(CLIPBOARD_REGISTER).and_then(|r| r.as_text())
                     {
                         return (Some(Cow::Borrowed(mem)), None);
                     }
@@ -89,8 +87,6 @@ pub(crate) fn write_register(
     }
 }
 
-
-
 fn clipboard_warn(err: &str) -> String {
     format!("system clipboard unavailable ({err}), using in-memory 'c'")
 }
@@ -99,11 +95,14 @@ fn clipboard_warn(err: &str) -> String {
 mod tests {
     use super::read_register_text;
     use crate::editor::clipboard::SystemClipboard;
-    use crate::ops::register::{RegisterSet, CLIPBOARD_REGISTER};
+    use crate::ops::register::{CLIPBOARD_REGISTER, RegisterSet};
 
     fn seeded_registers(values: &[&str]) -> RegisterSet {
         let mut regs = RegisterSet::new();
-        regs.write_text(CLIPBOARD_REGISTER, values.iter().map(|s| s.to_string()).collect());
+        regs.write_text(
+            CLIPBOARD_REGISTER,
+            values.iter().map(|s| s.to_string()).collect(),
+        );
         regs
     }
 
@@ -160,5 +159,57 @@ mod tests {
         let values = values.unwrap();
         assert_eq!(values.len(), 1);
         assert_eq!(values[0], "xyz");
+    }
+
+    // ── write_register blob computation ──────────────────────────────────────
+
+    fn write_cb<'a>(
+        regs: &'a mut RegisterSet,
+        cb: &mut SystemClipboard,
+        values: Vec<String>,
+    ) -> &'a RegisterSet {
+        super::write_register(regs, cb, CLIPBOARD_REGISTER, values);
+        regs
+    }
+
+    #[test]
+    fn write_register_linewise_concats_without_extra_newline() {
+        // Two linewise values (each ends with '\n'): blob must be their concat,
+        // NOT join("\n") which inserts a spurious blank line between them.
+        // Expected value is hand-computed — independent of the impl's concat/join.
+        let mut regs = RegisterSet::new();
+        let mut cb = SystemClipboard::new_unavailable();
+        write_cb(&mut regs, &mut cb, vec!["foo\n".into(), "bar\n".into()]);
+        assert_eq!(regs.clipboard_blob(), Some("foo\nbar\n"));
+    }
+
+    #[test]
+    fn write_register_charwise_joins_with_newline() {
+        // Charwise values (no trailing '\n'): blob is join("\n").
+        let mut regs = RegisterSet::new();
+        let mut cb = SystemClipboard::new_unavailable();
+        write_cb(&mut regs, &mut cb, vec!["a".into(), "b".into(), "c".into()]);
+        assert_eq!(regs.clipboard_blob(), Some("a\nb\nc"));
+    }
+
+    #[test]
+    fn write_register_read_round_trip_preserves_structure() {
+        // End-to-end: write 3 charwise values, then read back — must return
+        // the 3-element Vec, not a flat 1-element blob.
+        // Uses the real write_register→blob-stash→read_register_text→blob-compare
+        // path; no hand-seeding of clipboard_blob.
+        let mut regs = RegisterSet::new();
+        let mut cb = SystemClipboard::new_unavailable();
+        write_cb(&mut regs, &mut cb, vec!["a".into(), "b".into(), "c".into()]);
+
+        let (values, warn) = read_register_text(&regs, &mut cb, CLIPBOARD_REGISTER);
+        assert!(warn.is_none());
+        let values = values.unwrap();
+        assert_eq!(
+            values.len(),
+            3,
+            "round-trip must return 3 structured values"
+        );
+        assert_eq!(&values[..], &["a", "b", "c"]);
     }
 }

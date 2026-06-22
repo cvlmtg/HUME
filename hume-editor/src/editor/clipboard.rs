@@ -54,7 +54,10 @@ impl SystemClipboard {
     /// NSPasteboard (which throws uncatchable ObjC exceptions in test threads).
     #[cfg(test)]
     pub(crate) fn new_unavailable() -> Self {
-        Self { handle: None, mock_content: None }
+        Self {
+            handle: None,
+            mock_content: None,
+        }
     }
 
     /// Drop the clipboard handle, forcing all subsequent real read/write calls
