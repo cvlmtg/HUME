@@ -218,10 +218,14 @@ impl Editor {
 /// Captures the entire funnel-owned side-effect cluster in one shot so a test
 /// can assert all bookkeeping in one `assert_eq!` without missing a field.
 ///
-/// Scope: the four effects that `run_dispatch_pipeline` is exclusively responsible
-/// for.  Register routing (caller-armed) and handle_key-tail
-/// concerns (replay_dot, hooks, search-cache) are intentionally excluded —
-/// the former is seeding-dependent, the latter has dedicated tests.
+/// Scope: the five effects that `run_dispatch_pipeline` is exclusively responsible
+/// for. Register routing (caller-armed) and handle_key-tail concerns
+/// (replay_dot, hooks, search-cache) are intentionally excluded — the former is
+/// seeding-dependent, the latter has dedicated tests.
+///
+/// Deliberate exclusion — `selection_recipe`: the Steel dispatch branch clears it
+/// unconditionally (inner `call!` dispatches overwrite it, outer Steel AFTER always
+/// resets), so it legitimately diverges across paths and cannot be a parity field.
 #[derive(Debug, PartialEq)]
 pub(super) struct BookkeepingSnapshot {
     /// `ed.state.last_command` — name stamped by `step_stamp_last_command` for smart-p.
@@ -234,6 +238,8 @@ pub(super) struct BookkeepingSnapshot {
     pub jump_len: usize,
     /// Whether any (pane, buffer) pair has an open paste session (`paste_group.is_some()`).
     pub paste_session_open: bool,
+    /// `ed.state.mode` — set by `step_clear_extend` for selection-consuming edits.
+    pub mode: Mode,
 }
 
 /// Capture the current bookkeeping state of an editor.
@@ -258,6 +264,7 @@ pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
             .iter()
             .flat_map(|(_, inner)| inner.iter())
             .any(|(_, pbs)| pbs.paste_group.is_some()),
+        mode: ed.state.mode,
     }
 }
 

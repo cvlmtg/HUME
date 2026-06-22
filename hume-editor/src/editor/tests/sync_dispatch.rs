@@ -1630,6 +1630,58 @@ fn parity_steel_branch_cluster_vs_native() {
     );
 }
 
+/// **Parity: Extend-exit via inner native dispatch** — `delete` from Extend mode
+/// dispatched via keypress vs via a Steel `(call! "delete")` wrapper must both
+/// land in `Mode::Normal`. This is the mode-exit parity test that gives the
+/// `BookkeepingSnapshot.mode` field its teeth.
+///
+/// Inner mechanism: `(call! "delete")` routes through `run_command_sync` →
+/// `run_dispatch_pipeline`, which runs `step_clear_extend` with `delete`'s
+/// `clears_extend=true`. Mode is `Extend` when the inner pipeline fires, so both
+/// paths exit to Normal.
+///
+/// Fail oracle: change the Steel body to `(+ 1 0)` (no inner delete) →
+/// Steel path's `mode` stays `Extend` ≠ `Normal` → `assert_eq!(snap_key, snap_steel)` fails.
+#[test]
+fn parity_extend_exit_keypress_vs_steel() {
+    // Path A — keypress.
+    let mut ed_key = editor_from("-[f]>oo\n");
+    ed_key.state.mode = Mode::Extend;
+    ed_key.execute_keymap_command("delete".into(), 1, false, vec![]);
+    let snap_key = snapshot_bookkeeping(&ed_key);
+
+    // Path B — Steel (call! "delete").
+    let mut ed_steel = editor_from("-[f]>oo\n");
+    ed_steel.state.mode = Mode::Extend;
+    let names: Vec<String> = ed_steel
+        .state
+        .registry
+        .native_mappable_names()
+        .map(str::to_owned)
+        .collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut host = ScriptingHost::new();
+    host.register_command_names(&name_refs);
+    let mut init_host = EditorHostImpl {
+        state: &mut ed_steel.state,
+        view: &mut ed_steel.view,
+    };
+    host.eval_source_returning_defs(
+        r#"(define-command! "steel-delete" "" (lambda () (call! "delete")))"#.to_owned(),
+        Default::default(),
+        &mut init_host,
+    )
+    .expect("define-command! must succeed");
+    ed_steel.scripting = Some(host);
+    ed_steel.execute_keymap_command("steel-delete".into(), 1, false, vec![]);
+    let snap_steel = snapshot_bookkeeping(&ed_steel);
+
+    assert_eq!(
+        snap_key, snap_steel,
+        "keypress vs Steel dispatch of 'delete' from Extend must produce identical bookkeeping (including mode)"
+    );
+}
+
 // ── In-Steel plugin dispatch (core goal) ─────────────────────────────────────
 //
 // Plugin commands are applied directly on the Steel call stack via (apply proc args).
