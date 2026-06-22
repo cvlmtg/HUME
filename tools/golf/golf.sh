@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # golf.sh — Run HUME against vimgolf-style editing challenges.
 #
-# Usage: ./golf.sh [CHALLENGES_DIR]
+# Usage: ./golf.sh
 #
-# For each challenge directory under CHALLENGES_DIR (default: ./challenges)
-# the script:
+# For each challenge directory under tools/golf/challenges the script:
 #   1. Copies the challenge `in` file to a temp file.
 #   2. Runs `hume --keys "$(cat cmd)" --output <tmp> <tmp>`.
 #   3. Compares the result byte-for-byte against `out`.
@@ -20,7 +19,7 @@ if ! command -v curl &>/dev/null; then
     exit 1
 fi
 
-CHALLENGES_DIR="${1:-$(dirname "$0")/challenges}"
+CHALLENGES_DIR="$(dirname "$0")/challenges"
 
 # Build the hume binary unconditionally.
 PROJECT_ROOT="$(realpath "$(dirname "$0")/../..")"
