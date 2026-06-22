@@ -1125,6 +1125,126 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
     );
 }
 
+/// **Parity: Steel-branch bookkeeping cluster** — a `#:repeatable` SteelBacked
+/// command dispatched through `Editor::dispatch`'s Steel branch must run the
+/// SAME funnel stages as the native `run_dispatch_pipeline`.
+///
+/// The existing parity tests above compare *native-via-keypress* vs
+/// *native-via-inner-`(call!)`* — both go through `run_dispatch_pipeline`.
+/// This test exercises the **Steel branch's own AFTER stages** (the hand-composed
+/// sequence in `mod.rs:dispatch`), which the other tests leave untouched.
+///
+/// The `single_native_dispatch_funnel` lint only guards the body funnel; it
+/// cannot detect a stage added to one pipeline and forgotten in the other.
+/// Pinning the full cluster here means any such omission causes a divergence.
+///
+/// Fail oracle (dot-repeat): delete `step_stamp_repeatable` at `mod.rs:544–549`
+///   → `steel.last_repeatable` is `None` while native is `Some` → assertion fails.
+/// Fail oracle (paste-session): delete `step_paste_commit` at `mod.rs:526`
+///   → a pre-armed session survives on the Steel path → `paste_session_open` diverges.
+#[test]
+fn parity_steel_branch_cluster_vs_native() {
+    // ── Case 1: repeatable edit — pins dot-repeat and last_command stages ─────
+    // Path A — native repeatable edit.
+    let mut ed_native = editor_from("-[f]>oo\n");
+    ed_native.execute_keymap_command("delete".into(), 1, false, vec![]);
+    let snap_native = snapshot_bookkeeping(&ed_native);
+
+    // Path B — a `#:repeatable` Steel command whose body calls `delete`.
+    // Goes through the Steel branch of `Editor::dispatch` (outer), which
+    // must run `step_stamp_repeatable` in AFTER just as the native path does.
+    let mut ed_steel = editor_from("-[f]>oo\n");
+    let names: Vec<String> =
+        ed_steel.state.registry.native_mappable_names().map(str::to_owned).collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut host = ScriptingHost::new();
+    host.register_command_names(&name_refs);
+    let mut init_host = EditorHostImpl { state: &mut ed_steel.state, view: &mut ed_steel.view };
+    host.eval_source_returning_defs(
+        r#"(define-command! "steel-del" "" (lambda () (call! "delete")) #:repeatable #t)"#
+            .to_owned(),
+        Default::default(),
+        &mut init_host,
+    ).expect("define-command! must succeed");
+    ed_steel.scripting = Some(host);
+    ed_steel.execute_keymap_command("steel-del".into(), 1, false, vec![]);
+    let snap_steel = snapshot_bookkeeping(&ed_steel);
+
+    // jump_len and paste_session_open must match exactly.
+    assert_eq!(snap_native.jump_len, snap_steel.jump_len, "jump-list stage parity");
+    assert_eq!(
+        snap_native.paste_session_open, snap_steel.paste_session_open,
+        "paste-session stage parity"
+    );
+    // The Steel pre-stamp puts "steel-del" into last_command before the body,
+    // then the inner `(call! "delete")` running through `run_dispatch_pipeline`
+    // overwrites with "delete" (inner wins — intentional for smart-p routing).
+    // Verify the inner name landed (and last_command is non-None on both paths).
+    assert_eq!(
+        snap_native.last_command.as_deref(), snap_steel.last_command.as_deref(),
+        "last_command must be identical on both paths (inner 'delete' wins on both)"
+    );
+    // Steel AFTER records `last_repeatable` for the OUTER command name ("steel-del"),
+    // not the inner "delete" from `call!`. Outer-name-wins preserves the correct
+    // semantic so `.` replays the outer Steel command, not the primitive it wrapped.
+    //
+    // Fail oracle: delete the `step_stamp_repeatable` block at `mod.rs:544–549` →
+    //   the inner `call! "delete"` dispatch stamps "delete" as the name instead →
+    //   `s_name == "delete"` ≠ "steel-del" → assertion fails.
+    let (s_name, s_count, s_char) =
+        snap_steel.last_repeatable.as_ref().expect("Steel branch must record dot-repeat");
+    assert_eq!(s_name, "steel-del", "Steel AFTER must record outer name in last_repeatable");
+    let (_, n_count, n_char) =
+        snap_native.last_repeatable.expect("native must record dot-repeat");
+    assert_eq!((n_count, n_char), (*s_count, *s_char), "dot-repeat payload (count, char_arg) parity");
+
+    // ── Case 2: non-repeatable Steel command with an open paste session ────────
+    // A paste session (`p`) must be committed by `step_paste_commit` in the
+    // Steel BEFORE stage before any non-ring-cycle command runs. Ring-cycle
+    // commands (`[`/`]`) are exempt; a plain Steel command is not.
+    //
+    // Fail oracle: delete `step_paste_commit` at `mod.rs:526` → the paste
+    //   session remains open after the Steel command → assertion fails.
+    let mut ed2 = editor_from("-[a]>bc\n");
+    // Seed the kill ring so `p` has something to paste.
+    ed2.state.kill_ring.push(vec!["X".to_string()]);
+    // Set last_command to a kill (smart-p routes `p` to the ring when the prior
+    // command was change/delete/yank; "change" is in SMART_P_LAST_CMDS).
+    ed2.state.last_command = Some("change".into());
+    ed2.feed_key(key('p')); // paste-after → resolves ring head, opens paste session
+    let pane_id = ed2.state.focused_pane_id;
+    let buf_id = ed2.focused_buffer_id();
+    assert!(
+        ed2.state.panes.state[pane_id][buf_id].paste_group.is_some(),
+        "pre-condition: paste-after must have opened a paste session"
+    );
+
+    let names2: Vec<String> =
+        ed2.state.registry.native_mappable_names().map(str::to_owned).collect();
+    let name_refs2: Vec<&str> = names2.iter().map(String::as_str).collect();
+    let mut host2 = ScriptingHost::new();
+    host2.register_command_names(&name_refs2);
+    let mut init_host2 = EditorHostImpl { state: &mut ed2.state, view: &mut ed2.view };
+    // The Steel command must NOT call any native command internally — any inner
+    // `(call! …)` would route through `run_dispatch_pipeline` which also calls
+    // `step_paste_commit`, masking a missing outer commit. A pure Steel no-op
+    // (body returns a value without dispatching) isolates the outer BEFORE stage.
+    host2.eval_source_returning_defs(
+        r#"(define-command! "pure-noop" "" (lambda () (+ 1 0)))"#.to_owned(),
+        Default::default(),
+        &mut init_host2,
+    ).expect("define-command! must succeed");
+    ed2.scripting = Some(host2);
+    ed2.execute_keymap_command("pure-noop".into(), 1, false, vec![]);
+
+    // Fail oracle: comment out `step_paste_commit` at `mod.rs:526` → the pure-noop
+    //   Steel command runs without committing → paste_group stays Some → assertion fails.
+    assert!(
+        ed2.state.panes.state[pane_id][buf_id].paste_group.is_none(),
+        "step_paste_commit must close the paste session on the Steel path"
+    );
+}
+
 // ── In-Steel plugin dispatch (core goal) ─────────────────────────────────────
 //
 // Plugin commands are applied directly on the Steel call stack via (apply proc args).
