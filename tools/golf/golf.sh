@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # golf.sh — Run HUME against vimgolf-style editing challenges.
 #
-# Usage: ./golf.sh
+# Usage: ./golf.sh [challenge-id]
 #
 # For each challenge directory under tools/golf/challenges the script:
 #   1. Copies the challenge `in` file to a temp file.
@@ -21,11 +21,18 @@ fi
 
 CHALLENGES_DIR="$(dirname "$0")/challenges"
 
+challenge_id="${1:-}"
+
 # Build the hume binary unconditionally.
 PROJECT_ROOT="$(realpath "$(dirname "$0")/../..")"
 echo "golf: building hume-editor ..."
 cargo build --package hume-editor --manifest-path "$PROJECT_ROOT/Cargo.toml"
 HUME="$PROJECT_ROOT/target/debug/hume"
+
+if [[ -n "$challenge_id" && ! -d "$CHALLENGES_DIR/$challenge_id" ]]; then
+    echo "golf: unknown challenge '$challenge_id'" >&2
+    exit 1
+fi
 
 # Count keystrokes: each bare char = 1; each <...> token = 1.
 # Pure-bash implementation — no `expr`, safe with special characters.
@@ -59,7 +66,13 @@ fail=0
 printf "%-28s  %5s  %7s  %s\n" "CHALLENGE" "HUME" "KAKOUNE" "RESULT"
 printf "%s\n" "----------------------------------------------------------------------"
 
-for dir in "$CHALLENGES_DIR"/*/; do
+if [[ -n "$challenge_id" ]]; then
+    dirs=("$CHALLENGES_DIR/$challenge_id")
+else
+    dirs=("$CHALLENGES_DIR"/*/)
+fi
+
+for dir in "${dirs[@]}"; do
     [[ -d "$dir" ]] || continue
     name="$(basename "$dir")"
     in_file="$dir/in"
@@ -94,6 +107,9 @@ for dir in "$CHALLENGES_DIR"/*/; do
         pass=$((pass + 1))
     else
         printf "%-28s  %5s  %7s  %s\n" "$name" "$score" "$kakoune_score" "FAIL"
+        if [[ -n "$challenge_id" ]]; then
+            git diff --no-index --color "$out_file" "$tmp" || true
+        fi
         fail=$((fail + 1))
     fi
     rm -f "$tmp"
