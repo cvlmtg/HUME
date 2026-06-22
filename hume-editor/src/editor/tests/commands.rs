@@ -683,7 +683,7 @@ fn o_in_normal_mode_still_opens_line_below() {
 
 /// `;` must (a) collapse every selection to its head and (b) clear the
 /// `extend` flag. The extend side-effect only exists in the mapping — a pure
-/// `cmd_collapse_selection` test cannot see it.
+/// `cmd_collapse_selection_to_head` test cannot see it.
 #[test]
 fn semicolon_collapses_selection_and_resets_extend() {
     let mut ed = editor_from("-[hell]>o\n");
@@ -694,6 +694,22 @@ fn semicolon_collapses_selection_and_resets_extend() {
     assert_eq!(ed.state.mode, Mode::Normal, "extend cleared by ';'");
     // head of the original selection was 'l' (last char of "hell").
     assert_eq!(state(&ed), "hel-[l]>o\n");
+}
+
+// ── `Ctrl+;` collapses selection to anchor AND clears extend mode ─────────────
+
+/// `Ctrl+;` must (a) collapse every selection to its anchor and (b) clear the
+/// `extend` flag — the exact mirror of `;` with `head` replaced by `anchor`.
+#[test]
+fn ctrl_semicolon_collapses_to_anchor_and_resets_extend() {
+    let mut ed = editor_from("-[hell]>o\n");
+    ed.state.mode = Mode::Extend;
+
+    ed.handle_key(key_ctrl(';'));
+
+    assert_eq!(ed.state.mode, Mode::Normal, "extend cleared by 'Ctrl+;'");
+    // anchor of the original selection was 'h' (offset 0).
+    assert_eq!(state(&ed), "-[h]>ello\n");
 }
 
 // ── `o`/`O` undo grouping ─────────────────────────────────────────────────────

@@ -18,12 +18,29 @@ use hume_editing::text::Text;
 /// character (the cursor position). Uses `map` (which always merges) because
 /// two overlapping selections with different heads might collapse to the same
 /// position and need to be merged.
-pub(crate) fn cmd_collapse_selection(
+pub(crate) fn cmd_collapse_selection_to_head(
     buf: &Text,
     sels: SelectionSet,
     _mode: MotionMode,
 ) -> SelectionSet {
     let new_sels = sels.map(|s| Selection::collapsed(s.head()));
+    new_sels.debug_assert_valid(buf);
+    new_sels
+}
+
+/// Collapse every selection to a cursor at its `anchor`.
+///
+/// Mirror of [`cmd_collapse_selection_to_head`] — the cursor lands on the stationary
+/// end instead of the moving end. For a forward word selection this puts the
+/// cursor on the first character of the word; for a backward selection it
+/// lands on the right end. Uses `map` (which always merges) for the same
+/// deduplication reason as the head variant.
+pub(crate) fn cmd_collapse_selection_to_anchor(
+    buf: &Text,
+    sels: SelectionSet,
+    _mode: MotionMode,
+) -> SelectionSet {
+    let new_sels = sels.map(|s| Selection::collapsed(s.anchor()));
     new_sels.debug_assert_valid(buf);
     new_sels
 }
@@ -117,14 +134,14 @@ mod tests {
     use crate::testing::parse_state;
     use pretty_assertions::assert_eq;
 
-    // ── cmd_collapse_selection ─────────────────────────────────────────────
+    // ── cmd_collapse_selection_to_head ─────────────────────────────────────────────
 
     #[test]
     fn collapse_cursor_is_noop() {
         // A cursor (anchor == head) collapsing to itself — no change.
         assert_state!(
             "-[h]>ello\n",
-            |(buf, sels)| cmd_collapse_selection(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_collapse_selection_to_head(&buf, sels, MotionMode::Move),
             "-[h]>ello\n"
         );
     }
@@ -133,7 +150,7 @@ mod tests {
     fn collapse_forward_selection() {
         assert_state!(
             "-[hell]>o\n",
-            |(buf, sels)| cmd_collapse_selection(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_collapse_selection_to_head(&buf, sels, MotionMode::Move),
             // head was at 'l' (offset 3)
             "hel-[l]>o\n"
         );
@@ -144,7 +161,7 @@ mod tests {
         // Backward: anchor=3, head=0, selects "hell" (4 chars). Collapses to cursor at head=0.
         assert_state!(
             "<[hell]-o\n",
-            |(buf, sels)| cmd_collapse_selection(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_collapse_selection_to_head(&buf, sels, MotionMode::Move),
             "-[h]>ello\n"
         );
     }
@@ -154,7 +171,7 @@ mod tests {
         // Two cursors at different positions stay separate after collapse —
         // they only merge if their heads land on the exact same position.
         let (buf, sels) = parse_state("-[h]>el-[l]>o\n");
-        let result = cmd_collapse_selection(&buf, sels, MotionMode::Move);
+        let result = cmd_collapse_selection_to_head(&buf, sels, MotionMode::Move);
         assert_eq!(result.len(), 2); // still 2 — they don't converge
     }
 
@@ -300,13 +317,62 @@ mod tests {
         assert_eq!(sels.primary().head(), 3); // wraps to last
     }
 
+    // ── cmd_collapse_selection_to_anchor ──────────────────────────────────
+
+    #[test]
+    fn collapse_to_anchor_cursor_is_noop() {
+        // anchor == head → collapsing to anchor is the same as collapsing to head.
+        assert_state!(
+            "-[h]>ello\n",
+            |(buf, sels)| cmd_collapse_selection_to_anchor(&buf, sels, MotionMode::Move),
+            "-[h]>ello\n"
+        );
+    }
+
+    #[test]
+    fn collapse_to_anchor_forward_selection() {
+        // Forward: anchor=0 (h), head=3 (l). Collapse to anchor → cursor at h.
+        assert_state!(
+            "-[hell]>o\n",
+            |(buf, sels)| cmd_collapse_selection_to_anchor(&buf, sels, MotionMode::Move),
+            "-[h]>ello\n"
+        );
+    }
+
+    #[test]
+    fn collapse_to_anchor_backward_selection() {
+        // Backward: anchor=3 (l), head=0 (h). Collapse to anchor → cursor at l.
+        assert_state!(
+            "<[hell]-o\n",
+            |(buf, sels)| cmd_collapse_selection_to_anchor(&buf, sels, MotionMode::Move),
+            "hel-[l]>o\n"
+        );
+    }
+
+    #[test]
+    fn collapse_to_anchor_merges_coincident_anchors() {
+        // Two selections with different heads but the same anchor collapse to
+        // the same cursor and must be merged.
+        let buf = hume_editing::text::Text::from("hello\n");
+        let sels = hume_editing::selection::SelectionSet::from_vec(
+            vec![
+                hume_editing::selection::Selection::new(0, 2), // anchor=0
+                hume_editing::selection::Selection::new(0, 4), // anchor=0
+            ],
+            0,
+        );
+        let result = cmd_collapse_selection_to_anchor(&buf, sels, MotionMode::Move);
+        assert_eq!(result.len(), 1); // merged — both collapsed to cursor at 0
+        assert_eq!(result.primary().head(), 0);
+    }
+
     // ── additional collapse edge cases ─────────────────────────────────────
 
     #[test]
     fn collapse_empty_buffer() {
         assert_state!(
             "-[\n]>",
-            |(buf, sels)| cmd_collapse_selection(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_collapse_selection_to_head(&buf, sels, MotionMode::Move),
             "-[\n]>"
         );
     }
@@ -323,7 +389,7 @@ mod tests {
             ],
             0,
         );
-        let result = cmd_collapse_selection(&buf, sels, MotionMode::Move);
+        let result = cmd_collapse_selection_to_head(&buf, sels, MotionMode::Move);
         assert_eq!(result.len(), 1); // merged — both collapsed to cursor at 3
         assert_eq!(result.primary().head(), 3);
     }

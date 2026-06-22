@@ -275,6 +275,10 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
 
     // ── Selection manipulation ────────────────────────────────────────────────
     t.bind_leaf(key!(';'), cmd!("collapse-and-exit-extend"));
+    // Ctrl+; mirrors `;` but collapses to the anchor (the word's first char for
+    // forward selections). Only transmitted under the kitty keyboard protocol —
+    // harmless on legacy terminals, which never send it.
+    t.bind_leaf(key!(Ctrl + ';'), cmd!("collapse-to-anchor-and-exit-extend"));
     t.bind_leaf(key!(','), cmd!("keep-primary-selection"));
     // Ctrl+, removes primary; only transmitted with kitty keyboard protocol but
     // binding it here is harmless — legacy terminals never send it.

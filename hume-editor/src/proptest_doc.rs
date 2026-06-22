@@ -24,7 +24,7 @@ mod tests {
         cmd_select_prev_word,
     };
     use crate::ops::selection_cmd::{
-        cmd_collapse_selection, cmd_cycle_primary_backward, cmd_cycle_primary_forward,
+        cmd_collapse_selection_to_head, cmd_cycle_primary_backward, cmd_cycle_primary_forward,
         cmd_flip_selections, cmd_keep_primary_selection,
     };
     use crate::ops::text_object::{cmd_around_word, cmd_inner_line, cmd_inner_word};
@@ -327,7 +327,7 @@ mod tests {
             PureOp::AroundWord => cmd_around_word(buf, sels, mode),
             PureOp::InnerLine => cmd_inner_line(buf, sels, mode),
             // Selection-manipulation commands don't use mode; pass it anyway for API uniformity.
-            PureOp::CollapseSelection => cmd_collapse_selection(buf, sels, mode),
+            PureOp::CollapseSelection => cmd_collapse_selection_to_head(buf, sels, mode),
             PureOp::FlipSelections => cmd_flip_selections(buf, sels, mode),
             PureOp::KeepPrimarySelection => cmd_keep_primary_selection(buf, sels, mode),
             PureOp::CyclePrimaryForward => cmd_cycle_primary_forward(buf, sels, mode),

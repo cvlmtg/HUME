@@ -1,5 +1,6 @@
 use hume_editing::grapheme::next_grapheme_boundary;
-use hume_editing::selection::Selection;
+use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::text::Text;
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
@@ -9,7 +10,7 @@ use crate::ops::motion::{
     cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_newline, cmd_goto_line_start,
     cmd_move_left, cmd_move_right,
 };
-use crate::ops::selection_cmd::cmd_collapse_selection;
+use crate::ops::selection_cmd::{cmd_collapse_selection_to_head, cmd_collapse_selection_to_anchor};
 
 use super::super::{EditorState, MiniBuffer, Mode, PendingRepeat, doc_ops};
 use super::{begin_insert_session, end_insert_session, focused_buffer_id};
@@ -262,26 +263,51 @@ pub fn cmd_toggle_extend(
     Ok(())
 }
 
-/// Collapse each selection to its cursor AND exit extend mode.
+// Shared body for the two collapse-and-exit-extend handlers. Sets Normal mode
+// (clearing Extend) then applies `collapse` to every selection on the focused
+// buffer. Extracted to avoid duplicating the focused-pane + apply_doc_motion
+// boilerplate.
+fn do_collapse_and_exit_extend(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    collapse: impl Fn(&Text, SelectionSet) -> SelectionSet,
+) {
+    state.set_mode(EditorMode::Normal);
+    let focused = state.focused_pane_id;
+    let buf = focused_buffer_id(state, view);
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, collapse);
+}
+
+/// Collapse each selection to its cursor (head) and exit extend mode.
 ///
 /// Collapsing is a "done selecting" signal, so extend mode is always cleared.
-pub fn cmd_collapse_and_exit_extend(
+pub fn cmd_collapse_to_head_and_exit_extend(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    // Mode is SSOT for extend state; setting Normal implicitly clears Extend.
-    state.set_mode(EditorMode::Normal);
-    let focused = state.focused_pane_id;
-    let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(
-        &state.buffers,
-        &mut state.panes.state,
-        focused,
-        buf,
-        |b, s| cmd_collapse_selection(b, s, MotionMode::Move),
-    );
+    do_collapse_and_exit_extend(state, view, |b, s| {
+        cmd_collapse_selection_to_head(b, s, MotionMode::Move)
+    });
+    Ok(())
+}
+
+/// Collapse each selection to its anchor and exit extend mode.
+///
+/// Mirror of [`cmd_collapse_to_head_and_exit_extend`] — the cursor lands on the
+/// stationary (anchor) end. For a forward word selection this puts the cursor
+/// on the first character of the word. Only reachable via the kitty keyboard
+/// protocol (`Ctrl+;`); harmless no-op on legacy terminals.
+pub fn cmd_collapse_to_anchor_and_exit_extend(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    _count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    do_collapse_and_exit_extend(state, view, |b, s| {
+        cmd_collapse_selection_to_anchor(b, s, MotionMode::Move)
+    });
     Ok(())
 }
 

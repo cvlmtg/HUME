@@ -184,6 +184,7 @@ To force a specific source, use the register prefix `"`:
 | Key | Command |
 |-----|---------|
 | `;` | Collapse selections to cursor, exit extend mode |
+| `Ctrl+;` | Collapse selections to anchor, exit extend mode (kitty only) |
 | `,` | Keep only the primary selection |
 | `Ctrl+,` | Remove primary selection, promote next (kitty only) |
 | `S` | Split multi-line selections — one selection per line |
