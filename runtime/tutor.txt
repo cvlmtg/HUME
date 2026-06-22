@@ -576,15 +576,19 @@ Ctrl+w / Ctrl+f / Ctrl+t do nothing — use Extend mode instead.
 
 7.5  COLLAPSING AND PRUNING SELECTIONS
 
-  ;   collapse the selection to a single-character selection at HEAD
-  ,   keep only the PRIMARY selection (discard all others)
+  ;      collapse the selection to a single-character selection at HEAD
+  ,      keep only the PRIMARY selection (discard all others)
+  Ctrl+; collapse the selection to a single-character selection at ANCHOR
+  Ctrl+, remove the PRIMARY selection, keeping all others
+
+Note: `Ctrl+;` and `Ctrl+,` require the kitty keyboard protocol.
 
 After a multi-cursor operation (e.g. `%` then `s`), you may have
 many cursors. Use `,` to get back to just one.
 
-  >> Press `%` then `s` and type "TARGET" and press Enter to put a
-     cursor on each occurrence, then press `,` to keep only the
-     primary (first) one:
+  >> Select the line below with `x` then `s` and type "TARGET" and press
+     `Enter` to put a cursor on each occurrence, then press `,` to keep
+     only the primary (first) one:
 
   TARGET one and TARGET two and TARGET three.
 
@@ -628,6 +632,7 @@ several lines, then make the same edit on all of them at once.
   %           select all                s       split by pattern
   x / X       select line down / up     e       extend mode toggle
   ;           collapse to head          ,       keep primary only
+  Ctrl+;      collapse to anchor        Ctrl+,  remove primary
   ( / )       cycle primary             C       copy on next line
   _           trim whitespace           S       split on newlines
   Ctrl+w / Ctrl+f<c> / Ctrl+t<c>   one-shot extend (kitty only)
