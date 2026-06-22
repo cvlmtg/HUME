@@ -45,7 +45,8 @@ fn select_all_matches_no_search_is_noop() {
 fn select_all_matches_uses_search_register_fallback() {
     use crate::ops::register::SEARCH_REGISTER;
     let mut ed = editor_from("-[ab cd ab]>\n");
-    ed.state.registers
+    ed.state
+        .registers
         .write_text(SEARCH_REGISTER, vec!["ab".to_string()]);
     // No live regex — forces register fallback.
     assert!(ed.search_pattern().is_none());
@@ -123,8 +124,9 @@ fn star_escapes_metacharacters() {
     // Select "foo.bar" first via `v$` equivalent — use the whole line.
     // Easier: just set up a selection covering "foo.bar".
     let buf = hume_editing::text::Text::from("foo.bar\n");
-    let sels =
-        hume_editing::selection::SelectionSet::single(hume_editing::selection::Selection::new(0, 6));
+    let sels = hume_editing::selection::SelectionSet::single(
+        hume_editing::selection::Selection::new(0, 6),
+    );
     *ed.doc_mut() = crate::editor::buffer::Buffer::new(buf, sels.clone());
     ed.set_current_selections(sels);
 
@@ -140,7 +142,11 @@ fn star_whole_word_skips_substring_matches() {
     let mut ed = editor_from("-[a]>s last\n");
     ed.handle_key(key('*'));
 
-    assert_eq!(reg(&ed, 's'), vec![r"\bas\b"], "register should be whole-word pattern");
+    assert_eq!(
+        reg(&ed, 's'),
+        vec![r"\bas\b"],
+        "register should be whole-word pattern"
+    );
 
     // The pattern must match standalone "as" (position 0) but NOT the "as"
     // inside "last" (positions 4-5). Expected matches: exactly one, at char 0.

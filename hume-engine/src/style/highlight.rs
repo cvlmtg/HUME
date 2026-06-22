@@ -1,8 +1,8 @@
+use super::StyleScratch;
 use crate::builtins::tree_sitter_hl::TreeSitterHighlighter;
 use crate::providers::{HighlightSource, HighlightTier, SourceContext};
 use crate::theme::Theme;
 use crate::types::{ResolvedStyle, ScopeId};
-use super::StyleScratch;
 
 // ── Interval cursor ────────────────────────────────────────────────────────────
 

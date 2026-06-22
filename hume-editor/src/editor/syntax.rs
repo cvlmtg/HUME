@@ -65,7 +65,12 @@ pub(crate) struct BufferSyntax {
 
 impl BufferSyntax {
     pub(crate) fn new(lang: Arc<LanguageConfig>) -> Self {
-        Self { lang, parsed_gen: 0, tree_gen: 0, pending_edits: Vec::new() }
+        Self {
+            lang,
+            parsed_gen: 0,
+            tree_gen: 0,
+            pending_edits: Vec::new(),
+        }
     }
 }
 
@@ -97,7 +102,11 @@ pub(crate) enum RegisterError {
     QueryBuild(tree_sitter::QueryError),
     /// Grammar ABI version is outside the range the bundled tree-sitter
     /// library supports.  Recompile the grammar with a compatible generator.
-    AbiIncompatible { name: String, abi: usize, supported: std::ops::RangeInclusive<usize> },
+    AbiIncompatible {
+        name: String,
+        abi: usize,
+        supported: std::ops::RangeInclusive<usize>,
+    },
 }
 
 impl std::fmt::Display for RegisterError {
@@ -107,8 +116,14 @@ impl std::fmt::Display for RegisterError {
             Self::GrammarLoad(e) => write!(f, "grammar load failed: {e:?}"),
             Self::HighlightsRead(e) => write!(f, "highlights.scm read failed: {e}"),
             Self::QueryBuild(e) => write!(f, "highlight query compilation failed: {e}"),
-            Self::AbiIncompatible { name, abi, supported } =>
-                write!(f, "grammar '{name}' ABI {abi} not in supported range {supported:?}"),
+            Self::AbiIncompatible {
+                name,
+                abi,
+                supported,
+            } => write!(
+                f,
+                "grammar '{name}' ABI {abi} not in supported range {supported:?}"
+            ),
         }
     }
 }
@@ -183,7 +198,8 @@ impl LanguageRegistry {
             self.by_ext.insert(ext.clone(), Arc::clone(&config));
         }
         for shebang in &config.shebangs {
-            self.shebang_to_name.insert(shebang.clone(), name.to_owned());
+            self.shebang_to_name
+                .insert(shebang.clone(), name.to_owned());
         }
         config
     }
@@ -194,8 +210,7 @@ impl LanguageRegistry {
     /// compiled set is preserved.
     pub(crate) fn rebuild_glob_set(&mut self) -> Result<(), RegisterError> {
         let (compiled, names) =
-            Self::build_globs(&self.by_name, &self.lang_order)
-                .map_err(RegisterError::GlobBuild)?;
+            Self::build_globs(&self.by_name, &self.lang_order).map_err(RegisterError::GlobBuild)?;
         self.compiled_globs = compiled;
         self.glob_lang_names = names;
         Ok(())
@@ -239,13 +254,16 @@ impl LanguageRegistry {
         for shebang in &config.shebangs {
             self.shebang_to_name.remove(shebang.as_str());
         }
-        let new_order: Vec<String> =
-            self.lang_order.iter().filter(|n| n.as_str() != name).cloned().collect();
-        let (compiled, names) = Self::build_globs(&self.by_name, &new_order)
-            .unwrap_or_else(|e| {
-                eprintln!("LanguageRegistry::remove: glob rebuild failed: {e}");
-                (GlobSet::empty(), Vec::new())
-            });
+        let new_order: Vec<String> = self
+            .lang_order
+            .iter()
+            .filter(|n| n.as_str() != name)
+            .cloned()
+            .collect();
+        let (compiled, names) = Self::build_globs(&self.by_name, &new_order).unwrap_or_else(|e| {
+            eprintln!("LanguageRegistry::remove: glob rebuild failed: {e}");
+            (GlobSet::empty(), Vec::new())
+        });
         self.lang_order = new_order;
         self.compiled_globs = compiled;
         self.glob_lang_names = names;
@@ -271,7 +289,8 @@ impl LanguageRegistry {
         let grammar =
             LoadedGrammar::open(grammar_path, symbol).map_err(RegisterError::GrammarLoad)?;
         let abi = grammar.language().abi_version();
-        let supported = tree_sitter::MIN_COMPATIBLE_LANGUAGE_VERSION..=tree_sitter::LANGUAGE_VERSION;
+        let supported =
+            tree_sitter::MIN_COMPATIBLE_LANGUAGE_VERSION..=tree_sitter::LANGUAGE_VERSION;
         if !supported.contains(&abi) {
             return Err(RegisterError::AbiIncompatible {
                 name: name.to_owned(),
@@ -296,7 +315,8 @@ impl LanguageRegistry {
             shebangs: existing.map_or_else(Vec::new, |c| c.shebangs.clone()),
             grammar: Some(GrammarBundle { grammar, query }),
         });
-        self.by_name.insert(name.to_owned(), Arc::clone(&new_config));
+        self.by_name
+            .insert(name.to_owned(), Arc::clone(&new_config));
         for ext in &new_config.extensions {
             self.by_ext.insert(ext.clone(), Arc::clone(&new_config));
         }
@@ -340,8 +360,10 @@ pub(crate) fn detect_language(
     registry: &LanguageRegistry,
 ) -> Option<String> {
     if let Some(path) = path {
-        let file_name =
-            path.file_name().and_then(|n| n.to_str()).map(std::path::Path::new);
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(std::path::Path::new);
         if let Some(name_path) = file_name {
             let matches = registry.compiled_globs().matches(name_path);
             if let Some(&last_idx) = matches.last()
@@ -378,10 +400,14 @@ fn detect_shebang(line: &str, registry: &LanguageRegistry) -> Option<String> {
     {
         tokens.find(|t| !t.starts_with('-'))?
     } else {
-        std::path::Path::new(interpreter_path).file_name()?.to_str()?
+        std::path::Path::new(interpreter_path)
+            .file_name()?
+            .to_str()?
     };
 
-    registry.by_shebang(interpreter).map(|lang| lang.name.clone())
+    registry
+        .by_shebang(interpreter)
+        .map(|lang| lang.name.clone())
 }
 
 // ── Editor glue ───────────────────────────────────────────────────────────────
@@ -429,7 +455,11 @@ impl Editor {
             let buf = self.state.buffers.get(bid);
             let path = buf.path().map(|p| p.to_path_buf());
             let first_line = buf.first_line();
-            detect_language(path.as_deref(), first_line.as_deref(), &self.state.languages)
+            detect_language(
+                path.as_deref(),
+                first_line.as_deref(),
+                &self.state.languages,
+            )
         };
         self.set_buffer_language(bid, detected);
     }
@@ -445,7 +475,12 @@ impl Editor {
         let mut grammar_sweeps: Vec<String> = Vec::new();
         for reg in regs {
             match reg {
-                PendingLanguageReg::Identity { name, extensions, globs, shebangs } => {
+                PendingLanguageReg::Identity {
+                    name,
+                    extensions,
+                    globs,
+                    shebangs,
+                } => {
                     let exts: Vec<&str> = extensions.iter().map(String::as_str).collect();
                     let shebangs_ref: Vec<&str> = shebangs.iter().map(String::as_str).collect();
                     let mut valid_globs: Vec<&str> = Vec::with_capacity(globs.len());
@@ -458,10 +493,20 @@ impl Editor {
                             ),
                         }
                     }
-                    self.state.languages.register_identity_no_rebuild(&name, &exts, &valid_globs, &shebangs_ref);
+                    self.state.languages.register_identity_no_rebuild(
+                        &name,
+                        &exts,
+                        &valid_globs,
+                        &shebangs_ref,
+                    );
                     any_identity = true;
                 }
-                PendingLanguageReg::Grammar { name, grammar_path, symbol, highlights_path } => {
+                PendingLanguageReg::Grammar {
+                    name,
+                    grammar_path,
+                    symbol,
+                    highlights_path,
+                } => {
                     match self.state.languages.attach_grammar(
                         &name,
                         &grammar_path,
@@ -491,10 +536,7 @@ impl Editor {
     }
 
     /// Drain `host.pending_language_regs` and apply them.
-    pub(super) fn flush_pending_language_regs(
-        &mut self,
-        host: &mut hume_scripting::ScriptingHost,
-    ) {
+    pub(super) fn flush_pending_language_regs(&mut self, host: &mut hume_scripting::ScriptingHost) {
         let regs = host.take_pending_language_regs();
         self.apply_pending_language_regs(regs);
     }
@@ -526,7 +568,10 @@ mod tests {
         reg.register_identity("toml", &["toml"], &[], &[]).unwrap();
         let config = reg.by_name("toml").expect("identity should be registered");
         assert_eq!(config.name, "toml");
-        assert!(reg.by_extension("toml").is_some(), "extension lookup must work after identity reg");
+        assert!(
+            reg.by_extension("toml").is_some(),
+            "extension lookup must work after identity reg"
+        );
         // Flip: unknown ext should not match.
         assert!(reg.by_extension("yaml").is_none());
     }
@@ -534,18 +579,24 @@ mod tests {
     #[test]
     fn register_identity_with_globs_lookup() {
         let mut reg = LanguageRegistry::new();
-        reg.register_identity("makefile", &[], &["Makefile", "GNUmakefile"], &[]).unwrap();
+        reg.register_identity("makefile", &[], &["Makefile", "GNUmakefile"], &[])
+            .unwrap();
         let matches = reg.compiled_globs().matches(Path::new("Makefile"));
         assert!(!matches.is_empty(), "Makefile should match registered glob");
         assert_eq!(reg.glob_lang_name(matches[0]), Some("makefile"));
         // Flip: non-matching path must produce empty match.
-        assert!(reg.compiled_globs().matches(Path::new("Cargo.toml")).is_empty());
+        assert!(
+            reg.compiled_globs()
+                .matches(Path::new("Cargo.toml"))
+                .is_empty()
+        );
     }
 
     #[test]
     fn remove_clears_glob_and_shebang_entries() {
         let mut reg = LanguageRegistry::new();
-        reg.register_identity("python", &["py"], &["*.py"], &["python"]).unwrap();
+        reg.register_identity("python", &["py"], &["*.py"], &["python"])
+            .unwrap();
         assert!(reg.by_extension("py").is_some());
         assert!(reg.by_shebang("python").is_some());
         assert!(!reg.compiled_globs().matches(Path::new("foo.py")).is_empty());
@@ -572,7 +623,8 @@ mod tests {
     #[test]
     fn detect_language_by_glob() {
         let mut reg = LanguageRegistry::new();
-        reg.register_identity("makefile", &[], &["Makefile", "GNUmakefile"], &[]).unwrap();
+        reg.register_identity("makefile", &[], &["Makefile", "GNUmakefile"], &[])
+            .unwrap();
         let name = detect_language(Some(Path::new("/project/Makefile")), None, &reg);
         assert_eq!(name.as_deref(), Some("makefile"));
         let no_match = detect_language(Some(Path::new("/project/other")), None, &reg);
@@ -582,8 +634,10 @@ mod tests {
     #[test]
     fn detect_language_glob_beats_extension() {
         let mut reg = LanguageRegistry::new();
-        reg.register_identity("typescript", &["ts"], &[], &[]).unwrap();
-        reg.register_identity("tsconfig", &[], &["tsconfig.json", "*.config.json"], &[]).unwrap();
+        reg.register_identity("typescript", &["ts"], &[], &[])
+            .unwrap();
+        reg.register_identity("tsconfig", &[], &["tsconfig.json", "*.config.json"], &[])
+            .unwrap();
         reg.register_identity("json", &["json"], &[], &[]).unwrap();
         let name = detect_language(Some(Path::new("tsconfig.json")), None, &reg);
         assert_eq!(name.as_deref(), Some("tsconfig"));
@@ -595,16 +649,20 @@ mod tests {
     #[test]
     fn detect_language_glob_tiebreak_last_registered_wins() {
         let mut reg = LanguageRegistry::new();
-        reg.register_identity("generic-json", &[], &["*.json"], &[]).unwrap();
-        reg.register_identity("strict-json", &[], &["*.json"], &[]).unwrap();
+        reg.register_identity("generic-json", &[], &["*.json"], &[])
+            .unwrap();
+        reg.register_identity("strict-json", &[], &["*.json"], &[])
+            .unwrap();
         assert_eq!(
             detect_language(Some(Path::new("config.json")), None, &reg).as_deref(),
             Some("strict-json"),
         );
 
         let mut reg2 = LanguageRegistry::new();
-        reg2.register_identity("strict-json", &[], &["*.json"], &[]).unwrap();
-        reg2.register_identity("generic-json", &[], &["*.json"], &[]).unwrap();
+        reg2.register_identity("strict-json", &[], &["*.json"], &[])
+            .unwrap();
+        reg2.register_identity("generic-json", &[], &["*.json"], &[])
+            .unwrap();
         assert_eq!(
             detect_language(Some(Path::new("config.json")), None, &reg2).as_deref(),
             Some("generic-json"),
@@ -614,7 +672,8 @@ mod tests {
     #[test]
     fn detect_language_by_shebang() {
         let mut reg = LanguageRegistry::new();
-        reg.register_identity("python", &["py"], &[], &["python3", "python"]).unwrap();
+        reg.register_identity("python", &["py"], &[], &["python3", "python"])
+            .unwrap();
         let name = detect_language(
             Some(Path::new("script")),
             Some("#!/usr/bin/env python3"),
@@ -629,7 +688,8 @@ mod tests {
     #[test]
     fn detect_language_shebang_direct_path() {
         let mut reg = LanguageRegistry::new();
-        reg.register_identity("bash", &["sh"], &[], &["bash"]).unwrap();
+        reg.register_identity("bash", &["sh"], &[], &["bash"])
+            .unwrap();
         // Extension wins over shebang.
         let name = detect_language(Some(Path::new("run.sh")), Some("#!/bin/bash"), &reg);
         assert_eq!(name.as_deref(), Some("bash"));

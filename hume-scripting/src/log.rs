@@ -29,8 +29,8 @@ pub(crate) fn log_msg(
     };
     let sev = match sev_str.as_str() {
         "trace" => LogLevel::Trace,
-        "info"  => LogLevel::Info,
-        "warn"  => LogLevel::Warning,
+        "info" => LogLevel::Info,
+        "warn" => LogLevel::Warning,
         "error" => LogLevel::Error,
         other => steel::stop!(Generic =>
             "log!: unknown severity '{}', expected 'trace, 'info, 'warn, or 'error", other),
@@ -51,7 +51,12 @@ mod tests {
     fn log_msg_valid_severity() {
         let mut h = crate::test_support::SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        log_msg(&mut ctx, SteelVal::SymbolV("info".into()), "hello".to_string()).unwrap();
+        log_msg(
+            &mut ctx,
+            SteelVal::SymbolV("info".into()),
+            "hello".to_string(),
+        )
+        .unwrap();
         drop(ctx);
         assert_eq!(h.pending_messages.len(), 1);
         assert_eq!(h.pending_messages[0].1, "hello");

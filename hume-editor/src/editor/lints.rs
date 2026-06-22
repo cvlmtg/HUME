@@ -284,18 +284,24 @@ mod tests {
                     saw_cfg_test = false;
                 }
 
-                let opens  = line.chars().filter(|&c| c == '{').count() as i64;
+                let opens = line.chars().filter(|&c| c == '{').count() as i64;
                 let closes = line.chars().filter(|&c| c == '}').count() as i64;
                 brace_depth += opens - closes;
                 if in_test_block && brace_depth <= test_entry_depth {
                     in_test_block = false;
                 }
 
-                if in_test_block { continue; }
+                if in_test_block {
+                    continue;
+                }
 
-                if trimmed.starts_with("//") { continue; }
+                if trimmed.starts_with("//") {
+                    continue;
+                }
 
-                if line.contains("// single-funnel-exempt:") { continue; }
+                if line.contains("// single-funnel-exempt:") {
+                    continue;
+                }
 
                 let code = match line.find("//") {
                     Some(idx) => &line[..idx],
@@ -326,4 +332,3 @@ mod tests {
         );
     }
 }
-

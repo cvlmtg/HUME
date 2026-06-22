@@ -1,10 +1,10 @@
+use crate::ops::MotionMode;
+use crate::ops::motion::{find_char_backward, find_char_forward};
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
 use hume_engine::pipeline::EngineView;
-use crate::ops::MotionMode;
-use crate::ops::motion::{find_char_backward, find_char_forward};
 
-use super::super::{doc_ops, FindChar, EditorState};
+use super::super::{EditorState, FindChar, doc_ops};
 use crate::editor::error::CommandError;
 use crate::ops::motion::FindKind;
 
@@ -23,9 +23,13 @@ fn find_char(
     if let Some(ch) = state.pending_char.take() {
         let focused = state.focused_pane_id;
         let buf = focused_buffer_id(state, view);
-        doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
-            find_fn(b, s, mode, count, ch, kind)
-        });
+        doc_ops::apply_doc_motion(
+            &state.buffers,
+            &mut state.panes.state,
+            focused,
+            buf,
+            |b, s| find_fn(b, s, mode, count, ch, kind),
+        );
         state.last_find = Some(FindChar { ch, kind });
     }
 }
@@ -36,7 +40,14 @@ pub fn cmd_find_forward(
     count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    find_char(state, view, count, mode, FindKind::Inclusive, find_char_forward);
+    find_char(
+        state,
+        view,
+        count,
+        mode,
+        FindKind::Inclusive,
+        find_char_forward,
+    );
     Ok(())
 }
 pub fn cmd_find_backward(
@@ -45,7 +56,14 @@ pub fn cmd_find_backward(
     count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    find_char(state, view, count, mode, FindKind::Inclusive, find_char_backward);
+    find_char(
+        state,
+        view,
+        count,
+        mode,
+        FindKind::Inclusive,
+        find_char_backward,
+    );
     Ok(())
 }
 pub fn cmd_till_forward(
@@ -54,7 +72,14 @@ pub fn cmd_till_forward(
     count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    find_char(state, view, count, mode, FindKind::Exclusive, find_char_forward);
+    find_char(
+        state,
+        view,
+        count,
+        mode,
+        FindKind::Exclusive,
+        find_char_forward,
+    );
     Ok(())
 }
 pub fn cmd_till_backward(
@@ -63,7 +88,14 @@ pub fn cmd_till_backward(
     count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    find_char(state, view, count, mode, FindKind::Exclusive, find_char_backward);
+    find_char(
+        state,
+        view,
+        count,
+        mode,
+        FindKind::Exclusive,
+        find_char_backward,
+    );
     Ok(())
 }
 
@@ -79,9 +111,13 @@ fn repeat_find(
     if let Some(FindChar { ch, kind }) = state.last_find {
         let focused = state.focused_pane_id;
         let buf = focused_buffer_id(state, view);
-        doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
-            find_fn(b, s, mode, count, ch, kind)
-        });
+        doc_ops::apply_doc_motion(
+            &state.buffers,
+            &mut state.panes.state,
+            focused,
+            buf,
+            |b, s| find_fn(b, s, mode, count, ch, kind),
+        );
     }
 }
 

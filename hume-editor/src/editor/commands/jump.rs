@@ -1,12 +1,12 @@
-use hume_engine::pipeline::EngineView;
 use crate::ops::MotionMode;
+use hume_engine::pipeline::EngineView;
 
 use super::super::{EditorState, Severity};
-use crate::editor::error::CommandError;
 use super::{
-    alternate_buffer, current_jump_entry, focused_buffer_id,
-    set_current_selections, switch_to_buffer_without_jump,
+    alternate_buffer, current_jump_entry, focused_buffer_id, set_current_selections,
+    switch_to_buffer_without_jump,
 };
+use crate::editor::error::CommandError;
 
 // ── Misc ──────────────────────────────────────────────────────────────────────
 

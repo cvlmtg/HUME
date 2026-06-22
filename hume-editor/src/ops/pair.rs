@@ -4,8 +4,8 @@
 //! `a"`, etc.) and [`super::surround`] (to find the delimiter pair that wraps
 //! the cursor before replacing or deleting it).
 
-use hume_editing::text::Text;
 use hume_editing::lines::line_end_exclusive;
+use hume_editing::text::Text;
 
 // ---------------------------------------------------------------------------
 // Bracket pairs

@@ -19,12 +19,12 @@
 use hume_engine::pipeline::{BufferId, PaneId};
 use slotmap::SecondaryMap;
 
-use hume_editing::changeset::ChangeSet;
 use super::search_state::SearchCursor;
-use hume_editing::selection::SelectionSet;
-use hume_editing::text::Text;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer_store::BufferStore;
+use hume_editing::changeset::ChangeSet;
+use hume_editing::selection::SelectionSet;
+use hume_editing::text::Text;
 
 // ── EditGroup ────────────────────────────────────────────────────────────────
 

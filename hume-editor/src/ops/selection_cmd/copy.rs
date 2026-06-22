@@ -1,7 +1,7 @@
+use crate::ops::MotionMode;
+use hume_editing::lines::{line_content_end, line_end_exclusive, snap_to_grapheme_boundary};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
-use hume_editing::lines::{line_content_end, line_end_exclusive, snap_to_grapheme_boundary};
-use crate::ops::MotionMode;
 
 // ── Vertical copy ─────────────────────────────────────────────────────────────
 

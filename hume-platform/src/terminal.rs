@@ -19,8 +19,8 @@ use crossterm::{
     },
     execute,
     terminal::{
-        BeginSynchronizedUpdate, EndSynchronizedUpdate, EnterAlternateScreen,
-        LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+        BeginSynchronizedUpdate, EndSynchronizedUpdate, EnterAlternateScreen, LeaveAlternateScreen,
+        disable_raw_mode, enable_raw_mode,
     },
 };
 use ratatui::{Terminal, backend::CrosstermBackend};
@@ -105,7 +105,10 @@ pub fn init(mouse_enabled: bool, mouse_select: bool) -> io::Result<(Term, bool)>
     }
 
     execute!(out, EnterAlternateScreen)?;
-    let term = Terminal::new(CrosstermBackend::new(BufWriter::with_capacity(64 * 1024, out)))?;
+    let term = Terminal::new(CrosstermBackend::new(BufWriter::with_capacity(
+        64 * 1024,
+        out,
+    )))?;
     Ok((term, kitty_enabled))
 }
 
@@ -186,7 +189,9 @@ impl Default for TerminalGuard {
 
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
-        if self.armed && let Err(e) = restore() {
+        if self.armed
+            && let Err(e) = restore()
+        {
             eprintln!("hume: terminal restore failed: {e}");
         }
     }

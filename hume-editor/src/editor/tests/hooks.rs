@@ -10,9 +10,9 @@ use super::*;
 /// the cursor advances only if the hook fired.
 #[test]
 fn exit_insert_via_esc_fires_on_mode_change() {
+    use crate::testing::MockHost;
     use crossterm::event::Event;
     use hume_scripting::ScriptingHost;
-    use crate::testing::MockHost;
 
     // Two-char buffer; cursor starts at col 0.
     let mut ed = editor_from("-[a]>b\n");
@@ -51,9 +51,9 @@ fn exit_insert_via_esc_fires_on_mode_change() {
 /// it has been removed, so the hook fires exactly once.
 #[test]
 fn mouse_click_in_insert_fires_on_mode_change() {
+    use crate::testing::MockHost;
     use crossterm::event::Event;
     use hume_scripting::ScriptingHost;
-    use crate::testing::MockHost;
 
     let mut ed = editor_from("-[a]>b\n");
     ed.view.panes[ed.state.focused_pane_id].viewport =
@@ -104,10 +104,10 @@ fn mouse_click_in_insert_fires_on_mode_change() {
 /// silently defer. This test catches the missing-drain regression.
 #[test]
 fn startup_hooks_require_explicit_drain() {
+    use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
     use hume_scripting::SteelBufferId;
     use hume_scripting::hooks::HookId;
-    use crate::testing::MockHost;
 
     let mut ed = editor_from("-[a]>b\n");
 
@@ -152,10 +152,10 @@ fn startup_hooks_require_explicit_drain() {
 /// `fire_hook_silent` must dispatch commands called by `(call! …)` inside hook bodies.
 #[test]
 fn hook_call_is_dispatched() {
+    use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
     use hume_scripting::SteelBufferId;
     use hume_scripting::hooks::HookId;
-    use crate::testing::MockHost;
 
     // Build a two-character buffer so move-right has room; cursor at col 0.
     let mut ed = editor_from("-[a]>b\n");

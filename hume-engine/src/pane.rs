@@ -92,9 +92,15 @@ impl FromStr for WrapMode {
             return Ok(WrapMode::None);
         }
         // Bare keyword with no colon → sentinel width 0 (terminal width).
-        if lower == "soft"   { return Ok(WrapMode::Soft   { width: 0 }); }
-        if lower == "word"   { return Ok(WrapMode::Word   { width: 0 }); }
-        if lower == "indent" { return Ok(WrapMode::Indent { width: 0 }); }
+        if lower == "soft" {
+            return Ok(WrapMode::Soft { width: 0 });
+        }
+        if lower == "word" {
+            return Ok(WrapMode::Word { width: 0 });
+        }
+        if lower == "indent" {
+            return Ok(WrapMode::Indent { width: 0 });
+        }
         let (kind, rest) = lower.split_once(':').ok_or_else(|| {
             format!("invalid wrap-mode '{s}': expected none, soft[:N], word[:N], or indent[:N]")
         })?;
@@ -102,8 +108,8 @@ impl FromStr for WrapMode {
             format!("invalid wrap-mode width in '{s}': expected a column count, got '{rest}'")
         })?;
         match kind {
-            "soft"   => Ok(WrapMode::Soft   { width }),
-            "word"   => Ok(WrapMode::Word   { width }),
+            "soft" => Ok(WrapMode::Soft { width }),
+            "word" => Ok(WrapMode::Word { width }),
             "indent" => Ok(WrapMode::Indent { width }),
             _ => Err(format!(
                 "invalid wrap-mode kind '{kind}' in '{s}': expected soft, word, or indent"
@@ -122,9 +128,7 @@ impl WrapMode {
     pub fn wrap_width(&self) -> Option<u16> {
         match self {
             WrapMode::None => None,
-            WrapMode::Soft { width }
-            | WrapMode::Word { width }
-            | WrapMode::Indent { width } => {
+            WrapMode::Soft { width } | WrapMode::Word { width } | WrapMode::Indent { width } => {
                 assert!(
                     *width != 0,
                     "wrap_width() received unresolved sentinel (width: 0) — \
@@ -141,9 +145,15 @@ impl WrapMode {
     /// Call this once at the editor→engine boundary, passing `pane_width − gutter_width`.
     pub fn resolve(self, content_width: u16) -> WrapMode {
         match self {
-            WrapMode::Soft   { width: 0 } => WrapMode::Soft   { width: content_width },
-            WrapMode::Word   { width: 0 } => WrapMode::Word   { width: content_width },
-            WrapMode::Indent { width: 0 } => WrapMode::Indent { width: content_width },
+            WrapMode::Soft { width: 0 } => WrapMode::Soft {
+                width: content_width,
+            },
+            WrapMode::Word { width: 0 } => WrapMode::Word {
+                width: content_width,
+            },
+            WrapMode::Indent { width: 0 } => WrapMode::Indent {
+                width: content_width,
+            },
             other => other,
         }
     }
@@ -346,15 +356,27 @@ mod tests {
     #[test]
     fn wrap_mode_from_str_bare_keywords() {
         // Bare keyword (no colon) → sentinel width 0 (terminal width).
-        assert_eq!("soft".parse::<WrapMode>().unwrap(),   WrapMode::Soft   { width: 0 });
-        assert_eq!("word".parse::<WrapMode>().unwrap(),   WrapMode::Word   { width: 0 });
-        assert_eq!("indent".parse::<WrapMode>().unwrap(), WrapMode::Indent { width: 0 });
+        assert_eq!(
+            "soft".parse::<WrapMode>().unwrap(),
+            WrapMode::Soft { width: 0 }
+        );
+        assert_eq!(
+            "word".parse::<WrapMode>().unwrap(),
+            WrapMode::Word { width: 0 }
+        );
+        assert_eq!(
+            "indent".parse::<WrapMode>().unwrap(),
+            WrapMode::Indent { width: 0 }
+        );
     }
 
     #[test]
     fn wrap_mode_from_str_colon_zero_is_sentinel() {
         // `:0` is the same sentinel as bare keyword.
-        assert_eq!("soft:0".parse::<WrapMode>().unwrap(), WrapMode::Soft { width: 0 });
+        assert_eq!(
+            "soft:0".parse::<WrapMode>().unwrap(),
+            WrapMode::Soft { width: 0 }
+        );
     }
 
     #[test]
@@ -422,32 +444,44 @@ mod tests {
     #[test]
     fn wrap_mode_wrap_width() {
         assert_eq!(WrapMode::None.wrap_width(), None);
-        assert_eq!(WrapMode::Soft   { width: 80 }.wrap_width(), Some(80));
-        assert_eq!(WrapMode::Word   { width: 40 }.wrap_width(), Some(40));
+        assert_eq!(WrapMode::Soft { width: 80 }.wrap_width(), Some(80));
+        assert_eq!(WrapMode::Word { width: 40 }.wrap_width(), Some(40));
         assert_eq!(WrapMode::Indent { width: 60 }.wrap_width(), Some(60));
     }
 
     #[test]
     fn wrap_mode_resolve() {
         // Sentinel → concrete.
-        assert_eq!(WrapMode::Soft   { width: 0 }.resolve(80), WrapMode::Soft   { width: 80 });
-        assert_eq!(WrapMode::Word   { width: 0 }.resolve(80), WrapMode::Word   { width: 80 });
-        assert_eq!(WrapMode::Indent { width: 0 }.resolve(80), WrapMode::Indent { width: 80 });
+        assert_eq!(
+            WrapMode::Soft { width: 0 }.resolve(80),
+            WrapMode::Soft { width: 80 }
+        );
+        assert_eq!(
+            WrapMode::Word { width: 0 }.resolve(80),
+            WrapMode::Word { width: 80 }
+        );
+        assert_eq!(
+            WrapMode::Indent { width: 0 }.resolve(80),
+            WrapMode::Indent { width: 80 }
+        );
         // Concrete and None pass through unchanged.
-        assert_eq!(WrapMode::Soft   { width: 40 }.resolve(80), WrapMode::Soft   { width: 40 });
+        assert_eq!(
+            WrapMode::Soft { width: 40 }.resolve(80),
+            WrapMode::Soft { width: 40 }
+        );
         assert_eq!(WrapMode::None.resolve(80), WrapMode::None);
     }
 
     #[test]
     fn wrap_mode_is_wrapping() {
         assert!(!WrapMode::None.is_wrapping());
-        assert!(WrapMode::Soft   { width: 80 }.is_wrapping());
-        assert!(WrapMode::Word   { width: 80 }.is_wrapping());
+        assert!(WrapMode::Soft { width: 80 }.is_wrapping());
+        assert!(WrapMode::Word { width: 80 }.is_wrapping());
         assert!(WrapMode::Indent { width: 80 }.is_wrapping());
         // Sentinel (width: 0 = terminal width) must still report is_wrapping()
         // = true; it must not be conflated with WrapMode::None.
         assert!(WrapMode::Indent { width: 0 }.is_wrapping());
-        assert!(WrapMode::Soft   { width: 0 }.is_wrapping());
+        assert!(WrapMode::Soft { width: 0 }.is_wrapping());
     }
 
     #[test]

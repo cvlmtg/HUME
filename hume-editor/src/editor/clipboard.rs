@@ -17,7 +17,10 @@ impl SystemClipboard {
 
     pub(crate) fn read(&mut self) -> Result<String, String> {
         match self.handle.as_mut() {
-            Some(cb) => cb.get_text().map(|t| t.replace("\r\n", "\n")).map_err(|e| e.to_string()),
+            Some(cb) => cb
+                .get_text()
+                .map(|t| t.replace("\r\n", "\n"))
+                .map_err(|e| e.to_string()),
             None => Err(arboard::Error::ClipboardNotSupported.to_string()),
         }
     }

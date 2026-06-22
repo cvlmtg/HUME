@@ -1,6 +1,6 @@
-use hume_engine::pipeline::BufferId;
 use hume_editing::selection::Selection;
 use hume_editing::text::Text;
+use hume_engine::pipeline::BufferId;
 
 use super::*;
 use pretty_assertions::assert_eq;
@@ -26,7 +26,8 @@ fn write_preserves_permissions() {
     ed.handle_key(key_enter());
 
     assert!(
-        ed.state.status_msg
+        ed.state
+            .status_msg
             .as_deref()
             .unwrap_or("")
             .starts_with("Written")
@@ -68,7 +69,8 @@ fn write_follows_symlink() {
     ed.handle_key(key_enter());
 
     assert!(
-        ed.state.status_msg
+        ed.state
+            .status_msg
             .as_deref()
             .unwrap_or("")
             .starts_with("Written")
@@ -232,7 +234,8 @@ fn edit_deleted_file_with_open_buffer_switches_and_warns() {
         ":e <deleted-path> must switch to the open buffer"
     );
     assert!(
-        ed.state.status_msg
+        ed.state
+            .status_msg
             .as_deref()
             .is_some_and(|m| m.contains("no longer exists")),
         "must warn that the file is gone, got: {:?}",
@@ -331,7 +334,11 @@ fn open_extra_files_deduplicates() {
     // Pass the same path twice — must still result in exactly one buffer.
     ed.open_extra_files(&[canonical.clone(), canonical]);
 
-    assert_eq!(ed.state.buffers.len(), 1, "duplicate paths must not open new buffers");
+    assert_eq!(
+        ed.state.buffers.len(),
+        1,
+        "duplicate paths must not open new buffers"
+    );
 }
 
 // ── :wa (write all) ────────────────────────────────────────────────────────────
@@ -404,7 +411,10 @@ fn wa_skips_clean_buffers() {
     ed.execute_typed("wa", None).unwrap();
 
     let msg = ed.state.status_msg.as_deref().unwrap_or("");
-    assert!(msg.starts_with("Written 2"), "expected 2 files written, got: {msg}");
+    assert!(
+        msg.starts_with("Written 2"),
+        "expected 2 files written, got: {msg}"
+    );
     assert_eq!(std::fs::read_to_string(&_tmp1).unwrap(), "hello\n");
     assert_eq!(std::fs::read_to_string(&*tmp2_path).unwrap(), "xtwo\n");
     assert_eq!(std::fs::read_to_string(&*tmp3_path).unwrap(), "xthree\n");
@@ -447,7 +457,10 @@ fn wa_is_noop_if_nothing_dirty() {
 
     ed.execute_typed("wa", None).unwrap();
     let msg = ed.state.status_msg.as_deref().unwrap_or("");
-    assert!(!msg.starts_with("Written"), "no-op must not report written, got: {msg}");
+    assert!(
+        !msg.starts_with("Written"),
+        "no-op must not report written, got: {msg}"
+    );
 }
 
 #[test]
@@ -513,11 +526,20 @@ fn wa_skips_read_only_dirty_buffer() {
     ed.execute_typed("wa", None).unwrap();
 
     // bid1 must be saved; bid2 must remain dirty (was skipped, not aborted).
-    assert!(!ed.state.buffers.get(bid1).is_dirty(), "writable buffer must be saved");
-    assert!(ed.state.buffers.get(bid2).is_dirty(), "read-only buffer must remain dirty");
+    assert!(
+        !ed.state.buffers.get(bid1).is_dirty(),
+        "writable buffer must be saved"
+    );
+    assert!(
+        ed.state.buffers.get(bid2).is_dirty(),
+        "read-only buffer must remain dirty"
+    );
     // File on disk: bid2 content unchanged.
-    assert_eq!(std::fs::read_to_string(&*tmp2_path).unwrap(), "two\n",
-        "read-only buffer file must not be touched");
+    assert_eq!(
+        std::fs::read_to_string(&*tmp2_path).unwrap(),
+        "two\n",
+        "read-only buffer file must not be touched"
+    );
     drop((tmp1_path, tmp2_path));
 }
 
@@ -533,7 +555,11 @@ fn open_extra_files_nonexistent_logs_warning() {
 
     ed.open_extra_files(&[nonexistent]);
 
-    assert_eq!(ed.state.buffers.len(), 1, "failed open must not add a buffer");
+    assert_eq!(
+        ed.state.buffers.len(),
+        1,
+        "failed open must not add a buffer"
+    );
     assert!(
         ed.state.message_log.entries().any(|e| {
             e.severity == crate::editor::message_log::Severity::Warning

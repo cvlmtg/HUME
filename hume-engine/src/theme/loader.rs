@@ -12,8 +12,8 @@ use std::path::PathBuf;
 
 use ratatui::style::Color;
 
-use crate::theme::error::ThemeError;
 use crate::theme::Theme;
+use crate::theme::error::ThemeError;
 use crate::types::{Modifiers, ResolvedStyle, UnderlineStyle};
 
 const MAX_DEPTH: usize = 8;
@@ -305,10 +305,7 @@ fn parse_underline(key: &str, s: &str) -> Result<UnderlineStyle, ThemeError> {
 /// then canonicalizes the path for cycle detection. Canonicalize failure after a
 /// successful read uses the unresolved path as the cycle key — safe because a
 /// deleted-after-read file cannot form a cycle.
-fn find_theme_file(
-    name: &str,
-    search_paths: &[PathBuf],
-) -> Result<(PathBuf, String), ThemeError> {
+fn find_theme_file(name: &str, search_paths: &[PathBuf]) -> Result<(PathBuf, String), ThemeError> {
     // Reject names with path separators or suspicious segments.
     if name.contains('/') || name.contains('\\') || name == "." || name == ".." {
         return Err(ThemeError::NotFound {
@@ -322,8 +319,7 @@ fn find_theme_file(
             Ok(source) => {
                 // Canonicalize after read — residual race only affects cycle-key
                 // accuracy, not file content. Not a security prefix check.
-                let canonical =
-                    hume_platform::fs::canonicalize(&candidate).unwrap_or(candidate);
+                let canonical = hume_platform::fs::canonicalize(&candidate).unwrap_or(candidate);
                 return Ok((canonical, source));
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
@@ -331,7 +327,7 @@ fn find_theme_file(
                 return Err(ThemeError::Io {
                     name: name.to_owned(),
                     error: e,
-                })
+                });
             }
         }
     }
@@ -507,7 +503,9 @@ blue = "#0000ff"
         write_theme(dir.path(), "a", r#"inherits = "b""#);
         write_theme(dir.path(), "b", r#"inherits = "a""#);
 
-        let err = load_theme("a", &paths(dir.path())).err().expect("expected an Err result");
+        let err = load_theme("a", &paths(dir.path()))
+            .err()
+            .expect("expected an Err result");
         assert!(
             matches!(err, ThemeError::Cycle { .. }),
             "expected Cycle error, got: {err}"
@@ -529,7 +527,9 @@ blue = "#0000ff"
             write_theme(dir.path(), &format!("t{i}"), &content);
         }
 
-        let err = load_theme("t0", &paths(dir.path())).err().expect("expected an Err result");
+        let err = load_theme("t0", &paths(dir.path()))
+            .err()
+            .expect("expected an Err result");
         assert!(
             matches!(err, ThemeError::MaxDepth { .. }),
             "expected MaxDepth error, got: {err}"
@@ -541,7 +541,9 @@ blue = "#0000ff"
     #[test]
     fn not_found_returns_error() {
         let dir = TempDir::new().unwrap();
-        let err = load_theme("nonexistent", &paths(dir.path())).err().expect("expected an Err result");
+        let err = load_theme("nonexistent", &paths(dir.path()))
+            .err()
+            .expect("expected an Err result");
         assert!(matches!(err, ThemeError::NotFound { .. }));
     }
 
@@ -557,7 +559,9 @@ blue = "#0000ff"
 "keyword" = "nonexistent_color"
 "#,
         );
-        let err = load_theme("bad", &paths(dir.path())).err().expect("expected an Err result");
+        let err = load_theme("bad", &paths(dir.path()))
+            .err()
+            .expect("expected an Err result");
         assert!(
             matches!(err, ThemeError::BadColor { .. }),
             "expected BadColor, got: {err}"
@@ -590,7 +594,9 @@ blue = "#0000ff"
 "keyword" = { fg = "#ff0000", modifiers = ["wiggly"] }
 "##,
         );
-        let err = load_theme("bad_mod", &paths(dir.path())).err().expect("expected an Err result");
+        let err = load_theme("bad_mod", &paths(dir.path()))
+            .err()
+            .expect("expected an Err result");
         assert!(
             matches!(err, ThemeError::BadModifier { .. }),
             "expected BadModifier, got: {err}"
@@ -652,7 +658,9 @@ blue = "#0000ff"
     #[test]
     fn path_traversal_is_rejected() {
         let dir = TempDir::new().unwrap();
-        let err = load_theme("../etc/passwd", &paths(dir.path())).err().expect("expected an Err result");
+        let err = load_theme("../etc/passwd", &paths(dir.path()))
+            .err()
+            .expect("expected an Err result");
         assert!(matches!(err, ThemeError::NotFound { .. }));
     }
 
@@ -684,7 +692,9 @@ dark_gray = "#808080"
     fn parse_theme_rejects_inherits() {
         let toml = r#"inherits = "base""#;
         // With empty search_paths, `load_recursive("base", &[], …)` must fail NotFound.
-        let err = super::parse_theme(toml).err().expect("expected Err for inherits in embedded theme");
+        let err = super::parse_theme(toml)
+            .err()
+            .expect("expected Err for inherits in embedded theme");
         assert!(
             matches!(err, ThemeError::NotFound { .. }),
             "expected NotFound, got: {err}"

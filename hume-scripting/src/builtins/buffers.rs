@@ -63,7 +63,10 @@ pub(crate) fn panes(ctx: &mut SteelCtx) -> SteelResult {
 pub(crate) fn buffer_path(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "buffer-path");
     let id = downcast_buffer_id(&bid).ok_or_else(|| {
-        SteelErr::new(ErrorKind::TypeMismatch, "buffer-path: expected buffer-id".into())
+        SteelErr::new(
+            ErrorKind::TypeMismatch,
+            "buffer-path: expected buffer-id".into(),
+        )
     })?;
     if !ctx.host.buffer_exists(id) {
         steel::stop!(Generic => "buffer-path: invalid buffer id {id:?}");
@@ -82,7 +85,10 @@ pub(crate) fn buffer_path(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
 pub(crate) fn buffer_name(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "buffer-name");
     let id = downcast_buffer_id(&bid).ok_or_else(|| {
-        SteelErr::new(ErrorKind::TypeMismatch, "buffer-name: expected buffer-id".into())
+        SteelErr::new(
+            ErrorKind::TypeMismatch,
+            "buffer-name: expected buffer-id".into(),
+        )
     })?;
     ctx.host
         .buffer_display_name(id)
@@ -100,7 +106,10 @@ pub(crate) fn buffer_name(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
 pub(crate) fn buffer_dirty(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "buffer-dirty?");
     let id = downcast_buffer_id(&bid).ok_or_else(|| {
-        SteelErr::new(ErrorKind::TypeMismatch, "buffer-dirty?: expected buffer-id".into())
+        SteelErr::new(
+            ErrorKind::TypeMismatch,
+            "buffer-dirty?: expected buffer-id".into(),
+        )
     })?;
     let dirty = ctx.host.buffer_is_dirty(id).ok_or_else(|| {
         SteelErr::new(
@@ -137,14 +146,18 @@ pub(crate) fn open_buffer(ctx: &mut SteelCtx, path: String) -> SteelResult {
 pub(crate) fn close_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "close-buffer!");
     let id = downcast_buffer_id(&bid).ok_or_else(|| {
-        SteelErr::new(ErrorKind::TypeMismatch, "close-buffer!: expected buffer-id".into())
+        SteelErr::new(
+            ErrorKind::TypeMismatch,
+            "close-buffer!: expected buffer-id".into(),
+        )
     })?;
     if !ctx.host.buffer_exists(id) {
         steel::stop!(Generic => "close-buffer!: invalid buffer id {id:?}");
     }
-    let new_live = ctx.host.close_buffer(id).map_err(|e| {
-        SteelErr::new(ErrorKind::Generic, e)
-    })?;
+    let new_live = ctx
+        .host
+        .close_buffer(id)
+        .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
     ctx.live_focused_buffer_id = new_live;
     Ok(SteelVal::Void)
 }
@@ -157,15 +170,18 @@ pub(crate) fn close_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
 pub(crate) fn switch_to_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "switch-to-buffer!");
     let target = downcast_buffer_id(&bid).ok_or_else(|| {
-        SteelErr::new(ErrorKind::TypeMismatch, "switch-to-buffer!: expected buffer-id".into())
+        SteelErr::new(
+            ErrorKind::TypeMismatch,
+            "switch-to-buffer!: expected buffer-id".into(),
+        )
     })?;
     if !ctx.host.buffer_exists(target) {
         steel::stop!(Generic => "switch-to-buffer!: invalid buffer id {target:?}");
     }
     let current = ctx.live_focused_buffer_id;
-    ctx.host.switch_to_buffer(current, target).map_err(|e| {
-        SteelErr::new(ErrorKind::Generic, e)
-    })?;
+    ctx.host
+        .switch_to_buffer(current, target)
+        .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
     ctx.live_focused_buffer_id = target;
     Ok(SteelVal::Void)
 }
@@ -191,7 +207,10 @@ fn effective_language(
 pub(crate) fn buffer_language(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "buffer-language");
     let id = downcast_buffer_id(&bid).ok_or_else(|| {
-        SteelErr::new(ErrorKind::TypeMismatch, "buffer-language: expected buffer-id".into())
+        SteelErr::new(
+            ErrorKind::TypeMismatch,
+            "buffer-language: expected buffer-id".into(),
+        )
     })?;
     if !ctx.host.buffer_exists(id) {
         steel::stop!(Generic => "buffer-language: invalid buffer id {id:?}");
@@ -240,12 +259,17 @@ pub(crate) fn set_buffer_language_steel(
 ) -> SteelResult {
     require_cmd_ctx!(ctx, "set-buffer-language!");
     let id = downcast_buffer_id(&bid).ok_or_else(|| {
-        SteelErr::new(ErrorKind::TypeMismatch, "set-buffer-language!: expected buffer-id".into())
+        SteelErr::new(
+            ErrorKind::TypeMismatch,
+            "set-buffer-language!: expected buffer-id".into(),
+        )
     })?;
     let new_lang = match &lang {
         SteelVal::StringV(s) => Some(s.to_string()),
         SteelVal::BoolV(false) => None,
-        _ => steel::stop!(TypeMismatch => "set-buffer-language!: expected string or #f, got {:?}", lang),
+        _ => {
+            steel::stop!(TypeMismatch => "set-buffer-language!: expected string or #f, got {:?}", lang)
+        }
     };
     if !ctx.host.buffer_exists(id) {
         steel::stop!(Generic => "set-buffer-language!: invalid buffer id {id:?}");
@@ -261,13 +285,15 @@ pub(crate) fn set_buffer_language_steel(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use steel::rvals::IntoSteelVal;
-    use crate::test_support::SteelCtxTestHarness;
     use crate::builtins::ids::SteelBufferId;
+    use crate::test_support::SteelCtxTestHarness;
     use hume_engine::pipeline::BufferId;
+    use steel::rvals::IntoSteelVal;
 
     fn default_bid() -> SteelVal {
-        SteelBufferId(BufferId::default()).into_steelval().expect("SteelBufferId IntoSteelVal")
+        SteelBufferId(BufferId::default())
+            .into_steelval()
+            .expect("SteelBufferId IntoSteelVal")
     }
 
     // ── require_cmd_ctx! guard (init mode rejection) ─────────────────────────
@@ -283,7 +309,10 @@ mod tests {
         let result = current_buffer(&mut ctx);
         assert!(result.is_err(), "current-buffer must error in init mode");
         let msg = result.unwrap_err().to_string();
-        assert!(msg.contains("init"), "error must mention 'init'; got: {msg}");
+        assert!(
+            msg.contains("init"),
+            "error must mention 'init'; got: {msg}"
+        );
     }
 
     /// `current-pane` is blocked in init mode.
@@ -340,7 +369,10 @@ mod tests {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx_init();
         let result = set_buffer_language_steel(&mut ctx, default_bid(), SteelVal::BoolV(false));
-        assert!(result.is_err(), "set-buffer-language! must error in init mode");
+        assert!(
+            result.is_err(),
+            "set-buffer-language! must error in init mode"
+        );
     }
 
     /// `current-line-number` is blocked in init mode.
@@ -371,7 +403,12 @@ mod tests {
         let mut ctx = h.ctx();
         let result = buffer_path(&mut ctx, SteelVal::StringV("not-an-id".into()));
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("expected buffer-id"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("expected buffer-id")
+        );
     }
 
     /// `buffer-name` rejects a non-BufferId argument.
@@ -405,7 +442,12 @@ mod tests {
         // NullHost.buffer_exists always returns false.
         let result = buffer_path(&mut ctx, default_bid());
         assert!(result.is_err(), "non-existent buffer id must error");
-        assert!(result.unwrap_err().to_string().contains("invalid buffer id"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("invalid buffer id")
+        );
     }
 
     // ── Command-mode success paths (NullHost read methods return None/empty) ──
@@ -418,7 +460,10 @@ mod tests {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
         let result = current_buffer(&mut ctx);
-        assert!(result.is_ok(), "current-buffer must succeed in command mode");
+        assert!(
+            result.is_ok(),
+            "current-buffer must succeed in command mode"
+        );
         // Must return a Custom value (SteelBufferId is opaque).
         assert!(
             matches!(result.unwrap(), SteelVal::Custom(_)),

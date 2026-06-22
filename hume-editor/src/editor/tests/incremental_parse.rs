@@ -10,9 +10,9 @@ use super::*;
 
 use hume_engine::grammar::LoadedGrammar;
 
+use crate::editor::buffer::Buffer;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
-use crate::editor::buffer::Buffer;
 
 /// Create an editor with `source` as buffer text and a JSON grammar attached.
 /// Runs `reparse_stale_buffers()` once to complete the initial (full) parse.
@@ -31,8 +31,15 @@ fn json_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
     let buf = Buffer::new(Text::from(source), SelectionSet::default());
     let mut ed = Editor::for_testing(buf);
     let bid = ed.focused_buffer_id();
-    ed.state.languages
-        .attach_grammar("json", &parser_path, "tree_sitter_json", &hl_path, &mut ed.view.registry)
+    ed.state
+        .languages
+        .attach_grammar(
+            "json",
+            &parser_path,
+            "tree_sitter_json",
+            &hl_path,
+            &mut ed.view.registry,
+        )
         .expect("attach json grammar");
     ed.set_buffer_language(bid, Some("json".to_owned()));
     ed.reparse_stale_buffers(); // drains the initial parse (posted by setup_buffer_syntax)
@@ -56,8 +63,14 @@ fn first_parse_full_reparse_no_pending() {
     let (ed, bid) = json_editor("{\"x\": 1}\n");
     let buf = ed.state.buffers.get(bid);
     let syn = buf.syntax.as_ref().unwrap();
-    assert_eq!(syn.parsed_gen, buf.text_gen, "initial parse must be up-to-date");
-    assert!(syn.pending_edits.is_empty(), "no pending edits after first parse");
+    assert_eq!(
+        syn.parsed_gen, buf.text_gen,
+        "initial parse must be up-to-date"
+    );
+    assert!(
+        syn.pending_edits.is_empty(),
+        "no pending edits after first parse"
+    );
     assert!(ed.view.buffers[bid].tree.is_some(), "tree installed");
 }
 
@@ -74,7 +87,10 @@ fn edit_records_pending_edits() {
     let buf = ed.state.buffers.get(bid);
     assert!(buf.text_gen > gen_before, "edit must bump text_gen");
     let syn = buf.syntax.as_ref().unwrap();
-    assert!(!syn.pending_edits.is_empty(), "edit must record pending edits");
+    assert!(
+        !syn.pending_edits.is_empty(),
+        "edit must record pending edits"
+    );
 }
 
 #[test]
@@ -92,8 +108,14 @@ fn reparse_after_edit_drains_pending() {
 
     let buf = ed.state.buffers.get(bid);
     let syn = buf.syntax.as_ref().unwrap();
-    assert!(syn.pending_edits.is_empty(), "pending edits must be drained after install");
-    assert_eq!(syn.parsed_gen, gen_after_edit, "parsed_gen matches text_gen after edit");
+    assert!(
+        syn.pending_edits.is_empty(),
+        "pending edits must be drained after install"
+    );
+    assert_eq!(
+        syn.parsed_gen, gen_after_edit,
+        "parsed_gen matches text_gen after edit"
+    );
     assert!(ed.view.buffers[bid].tree.is_some());
 }
 
@@ -115,15 +137,29 @@ fn two_edits_batched_chain_resolves() {
     assert!(gen_2 > gen_1, "two edits must produce two text_gen bumps");
 
     // Both edits must be in pending_edits.
-    let pending_count = ed.state.buffers.get(bid).syntax.as_ref().unwrap().pending_edits.len();
-    assert!(pending_count >= 2, "both edits must be represented in pending_edits");
+    let pending_count = ed
+        .state
+        .buffers
+        .get(bid)
+        .syntax
+        .as_ref()
+        .unwrap()
+        .pending_edits
+        .len();
+    assert!(
+        pending_count >= 2,
+        "both edits must be represented in pending_edits"
+    );
 
     // Post + install the incremental reparse covering both edits.
     reparse_edit(&mut ed);
 
     let buf = ed.state.buffers.get(bid);
     let syn = buf.syntax.as_ref().unwrap();
-    assert!(syn.pending_edits.is_empty(), "all pending edits drained after install");
+    assert!(
+        syn.pending_edits.is_empty(),
+        "all pending edits drained after install"
+    );
     assert_eq!(syn.parsed_gen, gen_2);
 }
 
@@ -141,16 +177,20 @@ fn incremental_tree_matches_full_reparse() {
     reparse_edit(&mut ed);
 
     let incremental_sexp = ed.view.buffers[bid]
-        .tree.as_ref().unwrap()
-        .root_node().to_sexp();
+        .tree
+        .as_ref()
+        .unwrap()
+        .root_node()
+        .to_sexp();
 
     // Full reparse of the same source bytes that the incremental parse used.
     let source = ed.state.buffers.get(bid).text().to_bytes();
     let parser_path = grammar_parser_path("json");
-    let grammar = LoadedGrammar::open(&parser_path, "tree_sitter_json")
-        .expect("load json grammar");
+    let grammar = LoadedGrammar::open(&parser_path, "tree_sitter_json").expect("load json grammar");
     let mut parser = tree_sitter::Parser::new();
-    parser.set_language(grammar.language()).expect("set language");
+    parser
+        .set_language(grammar.language())
+        .expect("set language");
     let full_tree = parser.parse(&source, None).expect("full parse succeeded");
 
     assert_eq!(
@@ -192,24 +232,33 @@ fn bake_aligns_committed_tree_before_precise_install() {
     ed.reparse_stale_buffers();
 
     let syn = ed.state.buffers.get(bid).syntax.as_ref().unwrap();
-    assert_eq!(syn.tree_gen, text_gen_after, "tree_gen must equal text_gen after bake");
+    assert_eq!(
+        syn.tree_gen, text_gen_after,
+        "tree_gen must equal text_gen after bake"
+    );
     assert!(
         syn.parsed_gen < text_gen_after,
         "parsed_gen must not yet equal text_gen — precise parse queued, not installed",
     );
-    assert!(syn.pending_edits.is_empty(), "pending_edits must be cleared by the bake");
+    assert!(
+        syn.pending_edits.is_empty(),
+        "pending_edits must be cleared by the bake"
+    );
 
     // Committed tree must be coordinate-aligned: root end_byte == new text length.
     // Pre-fix: root end_byte == old_byte_len (stale coords → highlight column shift).
     let root_end = ed.view.buffers[bid]
-        .tree.as_ref().unwrap()
-        .root_node().end_byte();
+        .tree
+        .as_ref()
+        .unwrap()
+        .root_node()
+        .end_byte();
     assert_eq!(
         root_end, new_byte_len,
         "baked tree root end_byte must equal new text byte count; \
-         pre-fix this would equal {} (stale)", old_byte_len,
+         pre-fix this would equal {} (stale)",
+        old_byte_len,
     );
-
 }
 
 /// Two edits without an intervening drain: the bake must handle a chain of
@@ -229,20 +278,43 @@ fn bake_handles_multi_edit_chain_in_one_shot() {
     let text_gen_after = ed.state.buffers.get(bid).text_gen;
     let new_byte_len = ed.state.buffers.get(bid).text().len_bytes();
 
-    let pending_count = ed.state.buffers.get(bid).syntax.as_ref().unwrap().pending_edits.len();
-    assert!(pending_count >= 2, "two edits must produce ≥2 pending entries");
+    let pending_count = ed
+        .state
+        .buffers
+        .get(bid)
+        .syntax
+        .as_ref()
+        .unwrap()
+        .pending_edits
+        .len();
+    assert!(
+        pending_count >= 2,
+        "two edits must produce ≥2 pending entries"
+    );
 
     // One call bakes all pending edits at once.
     ed.reparse_stale_buffers();
 
     let syn = ed.state.buffers.get(bid).syntax.as_ref().unwrap();
-    assert_eq!(syn.tree_gen, text_gen_after, "tree_gen must jump to text_gen after bake");
-    assert!(syn.pending_edits.is_empty(), "all pending edits cleared by bake");
+    assert_eq!(
+        syn.tree_gen, text_gen_after,
+        "tree_gen must jump to text_gen after bake"
+    );
+    assert!(
+        syn.pending_edits.is_empty(),
+        "all pending edits cleared by bake"
+    );
 
     let root_end = ed.view.buffers[bid]
-        .tree.as_ref().unwrap()
-        .root_node().end_byte();
-    assert_eq!(root_end, new_byte_len, "multi-edit baked tree must span new byte length");
+        .tree
+        .as_ref()
+        .unwrap()
+        .root_node()
+        .end_byte();
+    assert_eq!(
+        root_end, new_byte_len,
+        "multi-edit baked tree must span new byte length"
+    );
 }
 
 #[test]
@@ -254,7 +326,14 @@ fn grammar_swap_clears_pending_and_full_reparses() {
     ed.feed_key(key(' '));
     ed.feed_key(key_esc());
     assert!(
-        !ed.state.buffers.get(bid).syntax.as_ref().unwrap().pending_edits.is_empty(),
+        !ed.state
+            .buffers
+            .get(bid)
+            .syntax
+            .as_ref()
+            .unwrap()
+            .pending_edits
+            .is_empty(),
         "pending edits must exist before grammar swap",
     );
 
@@ -264,16 +343,29 @@ fn grammar_swap_clears_pending_and_full_reparses() {
     let parser_path = grammar_parser_path("json");
     let hl_path = grammar_query_path("json");
     ed.set_buffer_language(bid, None);
-    ed.state.languages
-        .attach_grammar("json", &parser_path, "tree_sitter_json", &hl_path, &mut ed.view.registry)
+    ed.state
+        .languages
+        .attach_grammar(
+            "json",
+            &parser_path,
+            "tree_sitter_json",
+            &hl_path,
+            &mut ed.view.registry,
+        )
         .expect("re-attach");
     ed.set_buffer_language(bid, Some("json".to_owned()));
 
     // After re-attach, pending_edits must be empty (fresh BufferSyntax).
     let syn = ed.state.buffers.get(bid).syntax.as_ref().unwrap();
-    assert!(syn.pending_edits.is_empty(), "grammar swap must clear pending edits");
+    assert!(
+        syn.pending_edits.is_empty(),
+        "grammar swap must clear pending edits"
+    );
 
     // Full reparse succeeds (setup_buffer_syntax already posted it).
     ed.reparse_stale_buffers();
-    assert!(ed.view.buffers[bid].tree.is_some(), "tree must be present after re-attach");
+    assert!(
+        ed.view.buffers[bid].tree.is_some(),
+        "tree must be present after re-attach"
+    );
 }

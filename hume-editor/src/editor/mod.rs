@@ -5,18 +5,17 @@ use std::sync::{Arc, RwLock};
 
 use crossterm::event::{Event, KeyEvent};
 
+#[cfg(test)]
+use hume_engine::pane::Pane;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 #[cfg(test)]
 use hume_engine::pipeline::{LayoutTree, SharedBuffer};
-#[cfg(test)]
-use hume_engine::pane::Pane;
 #[cfg(test)]
 use search_state::SearchPattern;
 #[cfg(test)]
 use slotmap::SecondaryMap;
 
 use self::registry::{CommandRegistry, MappableCommand};
-use hume_editing::selection::SelectionSet;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer_store::BufferStore;
 use crate::editor::pane_state::PaneView;
@@ -25,6 +24,7 @@ use crate::editor::pane_state::{PaneBufferState, PaneTransient};
 use crate::ops::motion::FindKind;
 use crate::ops::register::{KillRing, RegisterSet};
 use crate::settings::EditorSettings;
+use hume_editing::selection::SelectionSet;
 
 use self::keymap::{Keymap, WaitCharPending};
 
@@ -48,16 +48,16 @@ pub mod keymap;
 mod lints;
 mod mappings;
 mod message_log;
-pub(crate) mod minibuf_history;
 mod minibuf;
+pub(crate) mod minibuf_history;
 mod mouse;
 pub(crate) mod ops;
 pub(crate) mod pane_state;
 pub(crate) mod register_ops;
 mod registry;
+pub(super) mod scroll;
 pub(crate) mod search_ops;
 pub(crate) mod search_state;
-pub(super) mod scroll;
 pub(crate) mod syntax;
 mod syntax_glue;
 mod visual_move;
@@ -346,9 +346,14 @@ impl EditorState {
             return;
         }
         self.mode = new;
-        let old_val = mode_name(old).into_steelval().expect("mode str into_steelval");
-        let new_val = mode_name(new).into_steelval().expect("mode str into_steelval");
-        self.pending_hooks.push((HookId::OnModeChange, vec![old_val, new_val]));
+        let old_val = mode_name(old)
+            .into_steelval()
+            .expect("mode str into_steelval");
+        let new_val = mode_name(new)
+            .into_steelval()
+            .expect("mode str into_steelval");
+        self.pending_hooks
+            .push((HookId::OnModeChange, vec![old_val, new_val]));
     }
 
     // ── Status messages ───────────────────────────────────────────────────────
@@ -385,12 +390,12 @@ impl EditorState {
 
 fn mode_name(m: Mode) -> &'static str {
     match m {
-        Mode::Normal  => "normal",
-        Mode::Insert  => "insert",
-        Mode::Extend  => "extend",
+        Mode::Normal => "normal",
+        Mode::Insert => "insert",
+        Mode::Extend => "extend",
         Mode::Command => "command",
-        Mode::Search  => "search",
-        Mode::Select  => "select",
+        Mode::Search => "search",
+        Mode::Select => "select",
     }
 }
 
@@ -485,14 +490,24 @@ impl Editor {
     fn begin_edit_group_current(&mut self) {
         let pane_id = self.state.focused_pane_id;
         let buf_id = self.focused_buffer_id();
-        doc_ops::begin_edit_group(&self.state.buffers, &mut self.state.panes.state, pane_id, buf_id);
+        doc_ops::begin_edit_group(
+            &self.state.buffers,
+            &mut self.state.panes.state,
+            pane_id,
+            buf_id,
+        );
     }
 
     /// Commit and close the open edit group on the focused (pane, buffer) pair.
     fn commit_edit_group_current(&mut self) {
         let pane_id = self.state.focused_pane_id;
         let buf_id = self.focused_buffer_id();
-        doc_ops::commit_edit_group(&mut self.state.buffers, &mut self.state.panes.state, pane_id, buf_id);
+        doc_ops::commit_edit_group(
+            &mut self.state.buffers,
+            &mut self.state.panes.state,
+            pane_id,
+            buf_id,
+        );
     }
 
     // ── Mode transitions ──────────────────────────────────────────────────────
@@ -513,7 +528,10 @@ impl Editor {
     /// Dot-repeat replay bypasses this entirely — it calls
     /// [`commands::run_native_body`] directly.
     pub(crate) fn dispatch(&mut self, cmd: MappableCommand, ctx: CmdCtx) {
-        let is_steel = matches!(&cmd, MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. });
+        let is_steel = matches!(
+            &cmd,
+            MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. }
+        );
         if !is_steel {
             // Native path — delegate to the standalone pipeline.
             commands::run_dispatch_pipeline(&mut self.state, &mut self.view, cmd, ctx);
@@ -544,12 +562,21 @@ impl Editor {
 
         // AFTER — re-query to get the resolved command's repeatable flag.
         // A Lazy stub becomes SteelBacked after activation; re-query reflects that.
-        if self.state.registry.get_mappable(name.as_ref())
+        if self
+            .state
+            .registry
+            .get_mappable(name.as_ref())
             .is_some_and(|c| c.meta().repeatable)
         {
             // Outer-name-wins: stamp the outer command so `.` replays it, not
             // any inner native command the body dispatched via `call!`.
-            commands::step_stamp_repeatable(&mut self.state, &name, ctx.count, char_arg, Some(pre_recipe));
+            commands::step_stamp_repeatable(
+                &mut self.state,
+                &name,
+                ctx.count,
+                char_arg,
+                Some(pre_recipe),
+            );
         }
         // Non-repeatable outer: leave inner dispatch's repeatable action intact.
         self.state.selection_recipe.clear();
@@ -559,7 +586,13 @@ impl Editor {
     ///
     /// Returns `false` if the command aborted (lazy activation failure, scripting
     /// error, or `scripting` is `None`). On error, the caller skips AFTER stages.
-    fn run_steel_command(&mut self, cmd: MappableCommand, name: &str, ctx: &CmdCtx, char_arg: Option<char>) -> bool {
+    fn run_steel_command(
+        &mut self,
+        cmd: MappableCommand,
+        name: &str,
+        ctx: &CmdCtx,
+        char_arg: Option<char>,
+    ) -> bool {
         let count = ctx.count;
         let extend = ctx.extend;
 
@@ -586,7 +619,10 @@ impl Editor {
         let (inline_output, cmd_arity, cmd_is_variadic) =
             match self.state.registry.get_mappable(name) {
                 Some(MappableCommand::SteelBacked {
-                    inline_output, arity, is_variadic, ..
+                    inline_output,
+                    arity,
+                    is_variadic,
+                    ..
                 }) => (*inline_output, *arity, *is_variadic),
                 _ => {
                     self.report(
@@ -659,7 +695,11 @@ impl Editor {
         }
 
         let (wait_char_cmd, lang_sets, grammar_sweeps) = match result {
-            Ok(r) => (r.wait_char_request, r.pending_language_sets, r.grammar_sweeps),
+            Ok(r) => (
+                r.wait_char_request,
+                r.pending_language_sets,
+                r.grammar_sweeps,
+            ),
             Err(e) => {
                 self.report(Severity::Error, e);
                 return false;
@@ -691,12 +731,19 @@ impl Editor {
     /// After replay, neutralizes `last_command` so bare `p` reads the clipboard,
     /// but preserves `last_repeatable_action` so `.` chains.
     pub(crate) fn replay_dot(&mut self, count: usize) {
-        let Some(action) = self.state.last_repeatable_action.take() else { return };
+        let Some(action) = self.state.last_repeatable_action.take() else {
+            return;
+        };
 
         // Resolve the edit body before opening the edit group: a missing command
         // must return while there is still no cleanup obligation, so this path
         // cannot leak an open group.
-        let Some(edit_cmd) = self.state.registry.get_mappable(action.command.as_ref()).cloned() else {
+        let Some(edit_cmd) = self
+            .state
+            .registry
+            .get_mappable(action.command.as_ref())
+            .cloned()
+        else {
             self.state.last_repeatable_action = Some(action);
             return;
         };
@@ -708,10 +755,21 @@ impl Editor {
         // Rebuild the selection extent the edit originally acted on.
         for step in &action.selection_recipe {
             self.state.pending_char = step.char_arg;
-            let Some(cmd) = self.state.registry.get_mappable(step.command.as_ref()).cloned() else {
+            let Some(cmd) = self
+                .state
+                .registry
+                .get_mappable(step.command.as_ref())
+                .cloned()
+            else {
                 continue;
             };
-            commands::run_native_body(&mut self.state, &mut self.view, cmd, step.count, step.extend);
+            commands::run_native_body(
+                &mut self.state,
+                &mut self.view,
+                cmd,
+                step.count,
+                step.extend,
+            );
         }
 
         // Restore the edit's own char arg.
@@ -720,7 +778,11 @@ impl Editor {
         // Run the edit body.
         match &edit_cmd {
             MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
-                let ctx = CmdCtx { count, extend: false, steel_args: vec![] };
+                let ctx = CmdCtx {
+                    count,
+                    extend: false,
+                    steel_args: vec![],
+                };
                 let cmd_name = action.command.clone();
                 // A Steel command can succeed when first run yet fail on dot-repeat:
                 // the buffer state differs (no match at the new cursor, a guard that
@@ -789,7 +851,6 @@ impl Editor {
         self.state.last_command = None;
         self.state.last_repeatable_action = saved_action;
     }
-
 }
 
 // ── Test constructors ─────────────────────────────────────────────────────────
@@ -858,7 +919,11 @@ impl Editor {
                     jumps.insert(pane_id, self::jump_list::JumpList::new(jump_list_capacity));
                     let mut transient = SecondaryMap::new();
                     transient.insert(pane_id, pane_state::PaneTransient::default());
-                    PaneView { state: pane_buf_state, transient, jumps }
+                    PaneView {
+                        state: pane_buf_state,
+                        transient,
+                        jumps,
+                    }
                 },
                 history: self::minibuf_history::HistoryStore::new(history_capacity),
                 focused_pane_id: pane_id,
@@ -904,8 +969,16 @@ impl Editor {
     pub(crate) fn open_pane(&mut self, buffer_id: BufferId) -> PaneId {
         let pid = self.view.panes.insert(Pane::new(buffer_id));
         self.state.panes.state.insert(pid, SecondaryMap::new());
-        pane_state::ensure(&mut self.state.panes.state, &self.state.buffers, pid, buffer_id);
-        self.state.panes.transient.insert(pid, PaneTransient::default());
+        pane_state::ensure(
+            &mut self.state.panes.state,
+            &self.state.buffers,
+            pid,
+            buffer_id,
+        );
+        self.state
+            .panes
+            .transient
+            .insert(pid, PaneTransient::default());
         self.state.panes.jumps.insert(
             pid,
             self::jump_list::JumpList::new(self.state.settings.jump_list_capacity),
@@ -925,7 +998,10 @@ impl Editor {
         );
         self.state.focused_pane_id = target;
         if !self.state.panes.transient.contains_key(target) {
-            self.state.panes.transient.insert(target, PaneTransient::default());
+            self.state
+                .panes
+                .transient
+                .insert(target, PaneTransient::default());
         }
         if !self.state.panes.jumps.contains_key(target) {
             self.state.panes.jumps.insert(
@@ -934,7 +1010,12 @@ impl Editor {
             );
         }
         let bid = self.focused_buffer_id();
-        pane_state::ensure(&mut self.state.panes.state, &self.state.buffers, target, bid);
+        pane_state::ensure(
+            &mut self.state.panes.state,
+            &self.state.buffers,
+            target,
+            bid,
+        );
     }
 
     /// Remove pane `target` and all its per-pane state.
@@ -955,7 +1036,9 @@ impl Editor {
         pane: PaneId,
         buf: BufferId,
     ) -> Option<&hume_editing::selection::SelectionSet> {
-        self.state.panes.state
+        self.state
+            .panes
+            .state
             .get(pane)
             .and_then(|m| m.get(buf))
             .map(|s| &s.selections)

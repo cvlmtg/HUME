@@ -40,7 +40,10 @@ impl fmt::Display for ThemeError {
                 write!(f, "theme key '{key}': bad color value '{value}'")
             }
             ThemeError::BadScopeValue { key, value } => {
-                write!(f, "theme key '{key}': unsupported value type '{value}' (expected string or table)")
+                write!(
+                    f,
+                    "theme key '{key}': unsupported value type '{value}' (expected string or table)"
+                )
             }
             ThemeError::BadModifier { key, value } => {
                 write!(f, "theme key '{key}': unknown modifier '{value}'")

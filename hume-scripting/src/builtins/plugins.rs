@@ -128,10 +128,7 @@ pub(crate) fn declare_plugin(
         .map(|s| {
             HookId::from_symbol(s).ok_or_else(|| {
                 let valid = HookId::all_names().collect::<Vec<_>>().join(", ");
-                steel_parse_err(format!(
-                    "events: unknown hook '{}'; valid: {}",
-                    s, valid
-                ))
+                steel_parse_err(format!("events: unknown hook '{}'; valid: {}", s, valid))
             })
         })
         .collect::<Result<_, _>>()?;
@@ -146,7 +143,12 @@ pub(crate) fn declare_plugin(
                 crate::log::LogLevel::Error,
                 format!("declare-plugin: command '{cmd}' conflicts with a built-in; activation entry ignored"),
             );
-        } else if ctx.registries.lazy_registry.activation_commands.contains_key(&cmd) {
+        } else if ctx
+            .registries
+            .lazy_registry
+            .activation_commands
+            .contains_key(&cmd)
+        {
             ctx.log(
                 crate::log::LogLevel::Error,
                 format!("declare-plugin: command '{cmd}' already claimed by another lazy plugin; activation entry ignored"),
@@ -195,7 +197,9 @@ pub(crate) fn declare_plugin(
             PluginId::Core(_) => log_absent_core(ctx, &name, "declare-plugin"),
             PluginId::User { .. } => ctx.log(
                 crate::log::LogLevel::Info,
-                format!("declare-plugin: '{name}' not found on disk; install and reload to activate."),
+                format!(
+                    "declare-plugin: '{name}' not found on disk; install and reload to activate."
+                ),
             ),
         }
         return Ok(SteelVal::Void);
@@ -208,15 +212,17 @@ pub(crate) fn declare_plugin(
     // missing plugin would create orphan attribution entries that drop_activations_for
     // can never clean up (it only fires on load/fail, not on absent-path skips).
     for cmd in &cmd_list {
-        ctx.registries.cmd_owners.insert(cmd.clone(), plugin_id.to_string());
+        ctx.registries
+            .cmd_owners
+            .insert(cmd.clone(), plugin_id.to_string());
     }
 
-    ctx.registries.lazy_registry
+    ctx.registries
+        .lazy_registry
         .declare(plugin_id, path, cmd_list, evt_list, lang_list);
 
     Ok(SteelVal::Void)
 }
-
 
 /// Pure path resolution: given a plugin name and the runtime / data directories,
 /// return the resolved `PathBuf` if the plugin file exists on disk, or `None`.
@@ -313,7 +319,8 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
             .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
         match path {
             Some(p) => {
-                ctx.registries.lazy_registry
+                ctx.registries
+                    .lazy_registry
                     .plugins
                     .insert(id.clone(), PluginState::Declared { path: p });
             }
@@ -356,7 +363,10 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
     };
 
     if ctx.plugin_stack.len() >= MAX_ACTIVATION_DEPTH {
-        ctx.registries.lazy_registry.plugins.insert(id.clone(), PluginState::Failed);
+        ctx.registries
+            .lazy_registry
+            .plugins
+            .insert(id.clone(), PluginState::Failed);
         steel::stop!(Generic =>
             "%begin-lazy-activation: activation depth limit ({}) exceeded — \
              check for circular load-plugin chains; '{}' marked Failed",
@@ -365,7 +375,8 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
 
     let abs_str = path.to_string_lossy();
     if abs_str.contains('"') {
-        ctx.registries.lazy_registry
+        ctx.registries
+            .lazy_registry
             .plugins
             .insert(id.clone(), PluginState::Failed);
         steel::stop!(Generic =>
@@ -376,7 +387,8 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
     let escaped = abs_str.replace('\\', "\\\\");
     let require_program = format!("(require \"{escaped}\")");
 
-    ctx.registries.lazy_registry
+    ctx.registries
+        .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Loading);
     ctx.plugin_stack.push(id);
@@ -406,8 +418,15 @@ pub(crate) fn finish_lazy_activation(
 
     ctx.plugin_stack.pop();
 
-    let new_state = if success { PluginState::Loaded } else { PluginState::Failed };
-    ctx.registries.lazy_registry.plugins.insert(id.clone(), new_state);
+    let new_state = if success {
+        PluginState::Loaded
+    } else {
+        PluginState::Failed
+    };
+    ctx.registries
+        .lazy_registry
+        .plugins
+        .insert(id.clone(), new_state);
     ctx.registries.lazy_registry.drop_activations_for(&id);
 
     if !success {
@@ -533,17 +552,21 @@ mod tests {
     /// an infinite cycle would stack-overflow instead of hard-erroring.
     #[test]
     fn begin_lazy_activation_at_depth_cap_errors_and_marks_failed() {
+        use crate::{ScriptingHost, null_host::NullHost};
         use std::io::Write as _;
         use tempfile::TempDir;
-        use crate::{ScriptingHost, null_host::NullHost};
 
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("deep.scm");
-        std::fs::File::create(&path).unwrap().write_all(b"(define x 1)").unwrap();
+        std::fs::File::create(&path)
+            .unwrap()
+            .write_all(b"(define x 1)")
+            .unwrap();
 
         let id = PluginId::parse("core:deep").unwrap();
         let mut host = ScriptingHost::new();
-        host.registries.lazy_registry
+        host.registries
+            .lazy_registry
             .plugins
             .insert(id.clone(), PluginState::Declared { path });
         // Simulate maximum nesting depth already reached by seeding the stack.
@@ -554,7 +577,10 @@ mod tests {
 
         let result = host.eval_source(r#"(%begin-lazy-activation "core:deep")"#, &mut NullHost);
 
-        assert!(result.is_err(), "depth cap must raise a Steel error; got Ok");
+        assert!(
+            result.is_err(),
+            "depth cap must raise a Steel error; got Ok"
+        );
         assert!(
             matches!(
                 host.registries.lazy_registry.plugins.get(&id),
@@ -569,17 +595,21 @@ mod tests {
     /// Confirms the off-by-one is correct: depth 15 of 16 is still allowed.
     #[test]
     fn begin_lazy_activation_below_depth_cap_succeeds() {
+        use crate::{ScriptingHost, null_host::NullHost};
         use std::io::Write as _;
         use tempfile::TempDir;
-        use crate::{ScriptingHost, null_host::NullHost};
 
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("ok.scm");
-        std::fs::File::create(&path).unwrap().write_all(b"(define x 1)").unwrap();
+        std::fs::File::create(&path)
+            .unwrap()
+            .write_all(b"(define x 1)")
+            .unwrap();
 
         let id = PluginId::parse("core:ok").unwrap();
         let mut host = ScriptingHost::new();
-        host.registries.lazy_registry
+        host.registries
+            .lazy_registry
             .plugins
             .insert(id.clone(), PluginState::Declared { path });
         // One below the cap — must still be allowed.
@@ -620,7 +650,10 @@ mod tests {
             r#"(declare-plugin "core:nonexistent-plugin" #:commands '("my-cmd"))"#,
             &mut NullHost,
         );
-        assert!(result.is_ok(), "absent-path declare-plugin must not error; got: {result:?}");
+        assert!(
+            result.is_ok(),
+            "absent-path declare-plugin must not error; got: {result:?}"
+        );
         assert!(
             !host.cmd_owners_for_test().contains_key("my-cmd"),
             "cmd_owners must not be seeded when the plugin is absent on disk"
@@ -637,8 +670,8 @@ mod tests {
     /// message → second assertion fires.
     #[test]
     fn declare_plugin_all_on_command_collided_message_mentions_conflict() {
-        use std::collections::HashSet;
         use crate::{ScriptingHost, null_host::NullHost};
+        use std::collections::HashSet;
         let mut host = ScriptingHost::new();
         // Mark "insert-mode" as a built-in so collision filtering drops it.
         let mut builtin_names = HashSet::new();
@@ -675,7 +708,10 @@ mod tests {
             r#"(declare-plugin "core:nonexistent-plugin" #:commands '("my-cmd"))"#,
             &mut NullHost,
         );
-        assert!(result.is_ok(), "absent core: declare must be non-fatal; got: {result:?}");
+        assert!(
+            result.is_ok(),
+            "absent core: declare must be non-fatal; got: {result:?}"
+        );
         let messages = host.peek_pending_messages();
         assert!(
             messages.iter().any(|(level, msg)| {
@@ -686,7 +722,9 @@ mod tests {
             "must log Error for absent core: plugin; messages: {messages:?}"
         );
         assert!(
-            !messages.iter().any(|(_, msg)| msg.contains("install and reload")),
+            !messages
+                .iter()
+                .any(|(_, msg)| msg.contains("install and reload")),
             "must not suggest install for core: plugin; messages: {messages:?}"
         );
     }
@@ -703,7 +741,10 @@ mod tests {
             r#"(declare-plugin "user/definitely-absent-99" #:commands '("my-cmd-2"))"#,
             &mut NullHost,
         );
-        assert!(result.is_ok(), "absent user/ declare must be non-fatal; got: {result:?}");
+        assert!(
+            result.is_ok(),
+            "absent user/ declare must be non-fatal; got: {result:?}"
+        );
         let messages = host.peek_pending_messages();
         assert!(
             messages.iter().any(|(level, msg)| {
@@ -720,11 +761,11 @@ mod tests {
     fn load_plugin_core_absent_logs_error() {
         use crate::{ScriptingHost, null_host::NullHost};
         let mut host = ScriptingHost::new();
-        let result = host.eval_source(
-            r#"(load-plugin "core:nonexistent-plugin")"#,
-            &mut NullHost,
+        let result = host.eval_source(r#"(load-plugin "core:nonexistent-plugin")"#, &mut NullHost);
+        assert!(
+            result.is_ok(),
+            "absent core: load must be non-fatal; got: {result:?}"
         );
-        assert!(result.is_ok(), "absent core: load must be non-fatal; got: {result:?}");
         let messages = host.peek_pending_messages();
         assert!(
             messages.iter().any(|(level, msg)| {
@@ -751,14 +792,20 @@ mod tests {
         let id = PluginId::parse("core:my-plugin").unwrap();
         let mut host = ScriptingHost::new();
         // Simulate declare-plugin having claimed the name as an activation entry.
-        host.registries.lazy_registry.activation_commands.insert("my-lazy-cmd".to_string(), id);
+        host.registries
+            .lazy_registry
+            .activation_commands
+            .insert("my-lazy-cmd".to_string(), id);
 
         let result = host.eval_source(
             r#"(define-command! "my-lazy-cmd" "doc" (lambda () 0))"#,
             &mut NullHost,
         );
 
-        assert!(result.is_err(), "define-command! must reject a name claimed by a lazy plugin; got Ok");
+        assert!(
+            result.is_err(),
+            "define-command! must reject a name claimed by a lazy plugin; got Ok"
+        );
         let err = result.unwrap_err();
         assert!(
             err.contains("claimed as an activation command"),
@@ -766,7 +813,10 @@ mod tests {
         );
         // The activation entry must survive — only drop_activations_for removes it (on load/fail).
         assert!(
-            host.registries.lazy_registry.activation_commands.contains_key("my-lazy-cmd"),
+            host.registries
+                .lazy_registry
+                .activation_commands
+                .contains_key("my-lazy-cmd"),
             "activation_commands entry must not be removed by the failed define-command!"
         );
     }
@@ -781,9 +831,9 @@ mod tests {
     #[test]
     #[cfg(not(windows))]
     fn declare_plugin_drops_sole_command_conflicting_with_eager() {
-        use tempfile::TempDir;
         use crate::{ScriptingHost, null_host::NullHost};
         use steel::rvals::SteelVal;
+        use tempfile::TempDir;
 
         let dir = TempDir::new().unwrap();
         // Plugin file must exist so declare-plugin proceeds past the path check.
@@ -794,7 +844,9 @@ mod tests {
         let mut host = ScriptingHost::new();
         host.set_data_dir(dir.path().to_path_buf());
         // Simulate an eager command already occupying the name.
-        host.registries.command_table.insert("my-eager-cmd".to_string(), SteelVal::Void);
+        host.registries
+            .command_table
+            .insert("my-eager-cmd".to_string(), SteelVal::Void);
 
         let result = host.eval_source(
             r#"(declare-plugin "user/test-repo" #:commands '("my-eager-cmd"))"#,
@@ -803,7 +855,7 @@ mod tests {
 
         // All entries filtered → declare-plugin must fail with "no activation entries".
         let err = result.expect_err(
-            "declare-plugin must error when sole #:commands entry is taken by an eager command"
+            "declare-plugin must error when sole #:commands entry is taken by an eager command",
         );
         assert!(
             err.contains("no activation entries") || err.contains("conflicted"),
@@ -811,7 +863,11 @@ mod tests {
         );
         // Must not pollute activation_commands with the orphan entry.
         assert!(
-            !host.registries.lazy_registry.activation_commands.contains_key("my-eager-cmd"),
+            !host
+                .registries
+                .lazy_registry
+                .activation_commands
+                .contains_key("my-eager-cmd"),
             "activation_commands must not be polluted with the conflicting eager command name"
         );
     }
@@ -833,10 +889,20 @@ mod tests {
 
         let mut host = ScriptingHost::new();
         // Seed two entries: only "x" will be dropped.
-        host.registries.lazy_registry.activation_commands.insert("x".to_string(), id.clone());
-        host.registries.cmd_owners.insert("x".to_string(), id.to_string());
-        host.registries.lazy_registry.activation_commands.insert("y".to_string(), id2.clone());
-        host.registries.cmd_owners.insert("y".to_string(), id2.to_string());
+        host.registries
+            .lazy_registry
+            .activation_commands
+            .insert("x".to_string(), id.clone());
+        host.registries
+            .cmd_owners
+            .insert("x".to_string(), id.to_string());
+        host.registries
+            .lazy_registry
+            .activation_commands
+            .insert("y".to_string(), id2.clone());
+        host.registries
+            .cmd_owners
+            .insert("y".to_string(), id2.to_string());
 
         host.drop_activation_command("x");
 
@@ -876,8 +942,8 @@ mod tests {
     /// `error` fires → `eval_source` returns `Err` → `unwrap` panics.
     #[test]
     fn begin_lazy_activation_escapes_backslashes_in_path() {
-        use std::path::PathBuf;
         use crate::{ScriptingHost, null_host::NullHost};
+        use std::path::PathBuf;
 
         let id = PluginId::parse("core:winpath").unwrap();
         let mut host = ScriptingHost::new();

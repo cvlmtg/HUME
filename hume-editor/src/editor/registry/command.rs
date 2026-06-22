@@ -1,11 +1,11 @@
 use std::borrow::Cow;
 
-use hume_editing::changeset::ChangeSet;
 use crate::editor::error::CommandError;
+use crate::ops::MotionMode;
+use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
 use hume_engine::pipeline::EngineView;
-use crate::ops::MotionMode;
 
 // ── Command metadata for dispatch bookkeeping ────────────────────────────────
 
@@ -314,7 +314,14 @@ impl MappableCommand {
                 repeatable: *repeatable,
                 stamps_last_command: true,
             },
-            Self::EditorCmd { category, repeatable, jump, visual_move, stamps_last_command, .. } => CmdMeta {
+            Self::EditorCmd {
+                category,
+                repeatable,
+                jump,
+                visual_move,
+                stamps_last_command,
+                ..
+            } => CmdMeta {
                 category: *category,
                 is_jump: *jump,
                 is_visual_move: *visual_move,

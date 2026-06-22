@@ -58,13 +58,27 @@ impl Default for MockHost {
 }
 
 impl EditorHost for MockHost {
-    fn buffer_ids(&self) -> Vec<BufferId> { Vec::new() }
-    fn pane_ids(&self) -> Vec<PaneId> { Vec::new() }
-    fn buffer_exists(&self, _id: BufferId) -> bool { false }
-    fn buffer_path(&self, _id: BufferId) -> Option<std::path::PathBuf> { None }
-    fn buffer_display_name(&self, _id: BufferId) -> Option<String> { None }
-    fn buffer_is_dirty(&self, _id: BufferId) -> Option<bool> { None }
-    fn buffer_stored_language(&self, _id: BufferId) -> Option<String> { None }
+    fn buffer_ids(&self) -> Vec<BufferId> {
+        Vec::new()
+    }
+    fn pane_ids(&self) -> Vec<PaneId> {
+        Vec::new()
+    }
+    fn buffer_exists(&self, _id: BufferId) -> bool {
+        false
+    }
+    fn buffer_path(&self, _id: BufferId) -> Option<std::path::PathBuf> {
+        None
+    }
+    fn buffer_display_name(&self, _id: BufferId) -> Option<String> {
+        None
+    }
+    fn buffer_is_dirty(&self, _id: BufferId) -> Option<bool> {
+        None
+    }
+    fn buffer_stored_language(&self, _id: BufferId) -> Option<String> {
+        None
+    }
     fn open_buffer(&mut self, _path: &std::path::Path) -> Result<BufferId, String> {
         Err("MockHost: open_buffer not available".into())
     }
@@ -77,7 +91,13 @@ impl EditorHost for MockHost {
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
         use hume::settings::{BufferOverrides, SettingScope, apply_setting};
         let mut dummy = BufferOverrides::default();
-        apply_setting(SettingScope::Global, key, value, &mut self.settings, &mut dummy)
+        apply_setting(
+            SettingScope::Global,
+            key,
+            value,
+            &mut self.settings,
+            &mut dummy,
+        )
     }
     fn configure_statusline(
         &mut self,
@@ -88,13 +108,20 @@ impl EditorHost for MockHost {
         use hume::ui::statusline::{StatusElement, StatusLineConfig};
         let parse = |list: Vec<String>, section: &str| -> Result<Vec<StatusElement>, String> {
             list.iter()
-                .map(|s| s.parse::<StatusElement>().map_err(|e| format!("configure-statusline! {section}: {e}")))
+                .map(|s| {
+                    s.parse::<StatusElement>()
+                        .map_err(|e| format!("configure-statusline! {section}: {e}"))
+                })
                 .collect()
         };
         let left = parse(left, "left")?;
         let center = parse(center, "center")?;
         let right = parse(right, "right")?;
-        self.settings.statusline = StatusLineConfig { left, center, right };
+        self.settings.statusline = StatusLineConfig {
+            left,
+            center,
+            right,
+        };
         Ok(())
     }
     fn bind_key(
@@ -139,16 +166,27 @@ impl EditorHost for MockHost {
         self.grammars.insert(name.to_owned());
         Ok(())
     }
-    fn has_grammar(&self, language: &str) -> bool { self.grammars.contains(language) }
+    fn has_grammar(&self, language: &str) -> bool {
+        self.grammars.contains(language)
+    }
     fn is_valid_register_name(&self, ch: char) -> bool {
         hume::ops::register::is_valid_register_name(ch)
     }
-    fn steel_command_budget_ms(&self) -> u64 { self.settings.steel_command_budget_ms as u64 }
+    fn steel_command_budget_ms(&self) -> u64 {
+        self.settings.steel_command_budget_ms as u64
+    }
     fn command_is_native(&self, name: &str) -> Result<bool, String> {
         Ok(self.native_names.contains(name))
     }
-    fn run_command_sync(&mut self, name: &str, count: usize, extend: bool, register: Option<char>) -> Result<(), String> {
-        self.dispatched_native.push((name.to_owned(), count, extend, register));
+    fn run_command_sync(
+        &mut self,
+        name: &str,
+        count: usize,
+        extend: bool,
+        register: Option<char>,
+    ) -> Result<(), String> {
+        self.dispatched_native
+            .push((name.to_owned(), count, extend, register));
         Ok(())
     }
     fn register_command(&mut self, def: hume_scripting::SteelCmdDef) -> Result<(), String> {
@@ -158,8 +196,12 @@ impl EditorHost for MockHost {
     fn unregister_command(&mut self, name: &str) {
         self.registered_cmds.retain(|d| d.name != name);
     }
-    fn current_line_number(&self) -> Option<usize> { None }
-    fn cursor_char_index(&self) -> Option<usize> { None }
+    fn current_line_number(&self) -> Option<usize> {
+        None
+    }
+    fn cursor_char_index(&self) -> Option<usize> {
+        None
+    }
 }
 
 fn to_editor_bind_mode(mode: BindMode) -> hume::KeymapBindMode {

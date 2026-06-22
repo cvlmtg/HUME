@@ -71,7 +71,8 @@ fn ctrl_p_w_is_pane_focus_next_stub() {
     ed.handle_key(key('w'));
     assert_eq!(state(&ed), "-[h]>ello world\n", "stub must not move cursor");
     assert!(
-        ed.state.status_msg
+        ed.state
+            .status_msg
             .as_deref()
             .unwrap_or("")
             .contains("not yet implemented"),
@@ -96,7 +97,8 @@ fn ctrl_p_directional_stubs_report_not_implemented() {
             "Ctrl+p {second_key}: stub must not move cursor",
         );
         assert!(
-            ed.state.status_msg
+            ed.state
+                .status_msg
                 .as_deref()
                 .unwrap_or("")
                 .contains("not yet implemented"),
@@ -225,7 +227,8 @@ fn ctrl_d_does_not_extend_in_normal_mode() {
     let mut ed = scroll_test_editor_kitty();
     let before = ed.current_selections().primary();
     assert_eq!(
-        before.anchor(), before.head(),
+        before.anchor(),
+        before.head(),
         "precondition: collapsed selection"
     );
 
@@ -234,7 +237,8 @@ fn ctrl_d_does_not_extend_in_normal_mode() {
     let after = ed.current_selections().primary();
     // Selection must still be collapsed — anchor == head.
     assert_eq!(
-        after.anchor(), after.head(),
+        after.anchor(),
+        after.head(),
         "Ctrl+d must not extend the selection"
     );
     // The cursor must have moved (scroll actually did something).
@@ -251,7 +255,8 @@ fn ctrl_u_does_not_extend_in_normal_mode() {
 
     let after = ed.current_selections().primary();
     assert_eq!(
-        after.anchor(), after.head(),
+        after.anchor(),
+        after.head(),
         "Ctrl+u must not extend the selection"
     );
 }
@@ -269,7 +274,8 @@ fn extend_mode_ctrl_d_extends() {
     let after = ed.current_selections().primary();
     // In Extend mode the anchor must not have moved.
     assert_eq!(
-        after.anchor(), before_anchor,
+        after.anchor(),
+        before_anchor,
         "anchor must be pinned in Extend mode"
     );
     // And head must have moved (scroll happened).

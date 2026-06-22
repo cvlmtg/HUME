@@ -1,15 +1,15 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use hume_editing::changeset::ChangeSet;
-use hume_editing::history::{History, RevisionId};
 use super::search_state::{SearchMatches, SearchPattern};
-use hume_editing::selection::SelectionSet;
-use hume_editing::text::Text;
 use crate::editor::pane_state::EditGroup;
 use crate::editor::syntax::BufferSyntax;
-use hume_platform::io::FileMeta;
 use crate::settings::BufferOverrides;
+use hume_editing::changeset::ChangeSet;
+use hume_editing::history::{History, RevisionId};
+use hume_editing::selection::SelectionSet;
+use hume_editing::text::Text;
+use hume_platform::io::FileMeta;
 
 // ── Buffer ────────────────────────────────────────────────────────────────────
 
@@ -325,8 +325,7 @@ impl Buffer {
             .as_mut()
             .expect("apply_edit_regrouped called without an open group");
 
-        let (new_text, new_sels, new_cs) =
-            cmd(group.text_snapshot.clone(), group.pre_sels.clone());
+        let (new_text, new_sels, new_cs) = cmd(group.text_snapshot.clone(), group.pre_sels.clone());
 
         // Build the propagation CS: maps current buffer text → new_text.
         // On the first paste group.cs is None, meaning current == snapshot,
@@ -481,8 +480,7 @@ mod tests {
             cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
         ) {
             let sels = std::mem::take(&mut self.sels);
-            let (new_sels, _cs) =
-                self.buf.apply_edit_grouped(sels, &mut self.edit_group, cmd);
+            let (new_sels, _cs) = self.buf.apply_edit_grouped(sels, &mut self.edit_group, cmd);
             self.sels = new_sels;
         }
 

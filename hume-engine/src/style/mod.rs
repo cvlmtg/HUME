@@ -1,7 +1,7 @@
 mod highlight;
+use highlight::HighlightStack;
 pub use highlight::TierBufs;
 pub(crate) use highlight::rebuild_tier_bufs;
-use highlight::HighlightStack;
 
 use crate::theme::Theme;
 use crate::types::{DisplayRow, EditorMode, Grapheme, ResolvedStyle, ScopeId, Selection};
@@ -347,9 +347,7 @@ fn char_offset_to_col(
 mod tests {
     use super::*;
     use crate::theme::Theme;
-    use crate::types::{
-        CellContent, DisplayRow, Grapheme, ResolvedStyle, RowKind, Selection,
-    };
+    use crate::types::{CellContent, DisplayRow, Grapheme, ResolvedStyle, RowKind, Selection};
     use std::collections::HashMap;
 
     /// Test driver mirroring the live pipeline's Style-stage orchestration
@@ -366,7 +364,9 @@ mod tests {
         scratch: &mut StyleScratch,
     ) {
         scratch.populate_sorted_sels(selections, 0);
-        scratch.styles.resize(graphemes.len(), ResolvedStyle::default());
+        scratch
+            .styles
+            .resize(graphemes.len(), ResolvedStyle::default());
         let mut current_line: Option<usize> = None;
         for row in rows {
             let Some(line_idx) = row.kind.line_idx() else {
@@ -382,7 +382,16 @@ mod tests {
                 .primary_idx_in_sorted
                 .and_then(|i| scratch.sorted_sels.get(i))
                 .is_some_and(|s| s.head >= line_start_char && s.head < line_end_char);
-            style_row(row, graphemes, line_start_char, line_end_char, is_head_line, mode, theme, scratch);
+            style_row(
+                row,
+                graphemes,
+                line_start_char,
+                line_end_char,
+                is_head_line,
+                mode,
+                theme,
+                scratch,
+            );
         }
     }
 
@@ -717,8 +726,10 @@ mod tests {
         let graphemes = make_graphemes(5);
         let rows = vec![make_row(0..5)];
         // Two selections: head 0 = primary, head 2 = secondary.
-        let selections =
-            vec![Selection { anchor: 0, head: 0 }, Selection { anchor: 2, head: 2 }];
+        let selections = vec![
+            Selection { anchor: 0, head: 0 },
+            Selection { anchor: 2, head: 2 },
+        ];
 
         let mut styles_map = HashMap::new();
         styles_map.insert(
@@ -741,8 +752,14 @@ mod tests {
             &mut scratch,
         );
 
-        assert_eq!(scratch.styles[0].bg, None, "primary insert head has no block bg");
-        assert_eq!(scratch.styles[2].bg, None, "secondary insert head has no block bg");
+        assert_eq!(
+            scratch.styles[0].bg, None,
+            "primary insert head has no block bg"
+        );
+        assert_eq!(
+            scratch.styles[2].bg, None,
+            "secondary insert head has no block bg"
+        );
     }
 
     #[test]
@@ -824,7 +841,10 @@ mod tests {
         assert_eq!(scratch.styles[1].bg, None, "line 1 no head line");
         // line 2 has a non-primary selection head: primary-based is_head_line = false,
         // so the live pipeline does NOT apply cursorline there.
-        assert_eq!(scratch.styles[2].bg, None, "line 2 non-primary head: no cursorline");
+        assert_eq!(
+            scratch.styles[2].bg, None,
+            "line 2 non-primary head: no cursorline"
+        );
     }
 
     #[test]

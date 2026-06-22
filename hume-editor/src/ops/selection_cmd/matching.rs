@@ -1,12 +1,12 @@
 use regex_cursor::engines::meta::Regex;
 
+use crate::ops::MotionMode;
+use crate::ops::search::find_matches_in_range;
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use hume_editing::lines::line_content_end;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
-use hume_editing::lines::line_content_end;
 use hume_editing::word::{CharClass, classify_char};
-use crate::ops::search::find_matches_in_range;
-use crate::ops::MotionMode;
 
 // ── Split on newlines ─────────────────────────────────────────────────────────
 
@@ -293,8 +293,14 @@ mod tests {
         assert_eq!(sels_out.len(), 2);
         let s: Vec<_> = sels_out.iter_sorted().copied().collect();
         // Both pieces should be backward selections.
-        assert!(s[0].anchor() > s[0].head(), "line 0 piece should be backward");
-        assert!(s[1].anchor() > s[1].head(), "line 1 piece should be backward");
+        assert!(
+            s[0].anchor() > s[0].head(),
+            "line 0 piece should be backward"
+        );
+        assert!(
+            s[1].anchor() > s[1].head(),
+            "line 1 piece should be backward"
+        );
     }
 
     #[test]

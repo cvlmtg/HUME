@@ -61,4 +61,3 @@ pub struct HookResult {
     pub pending_language_sets: PendingLanguageSets,
     pub grammar_sweeps: Vec<String>,
 }
-

@@ -92,7 +92,11 @@ impl OverlayProvider for CompletionOverlay {
         // 1. Fill the entire outer rectangle with the popup background.
         //    This gives a solid, opaque backdrop — no buffer content bleeds through.
         //    For border=false it also acts as the visible 1-cell margin.
-        fill_rect_bg(buf, Rect::new(popup_x, popup_y, outer_w, outer_h), menu_style);
+        fill_rect_bg(
+            buf,
+            Rect::new(popup_x, popup_y, outer_w, outer_h),
+            menu_style,
+        );
 
         // 2. Optionally overdraw the 1-cell frame with box-drawing characters.
         if view.border {

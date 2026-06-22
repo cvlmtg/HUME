@@ -44,8 +44,8 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
 #[cfg(test)]
 mod tests {
     use super::*;
-    use steel::rvals::IntoSteelVal as _;
     use crate::test_support::SteelCtxTestHarness;
+    use steel::rvals::IntoSteelVal as _;
 
     /// `set-option!` is blocked in plain command mode (init/plugin-load only).
     ///
@@ -58,7 +58,10 @@ mod tests {
         let result = set_option(&mut ctx, "tab-width".into(), SteelVal::IntV(2));
         assert!(result.is_err(), "set-option! must error in command mode");
         let msg = result.unwrap_err().to_string();
-        assert!(msg.contains("init"), "error must mention 'init'; got: {msg}");
+        assert!(
+            msg.contains("init"),
+            "error must mention 'init'; got: {msg}"
+        );
     }
 
     /// `set-option!` rejects value types that are not string, bool, or integer.
@@ -72,7 +75,10 @@ mod tests {
         // Pass a list — not a valid value type.
         let list: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
         let result = set_option(&mut ctx, "tab-width".into(), list);
-        assert!(result.is_err(), "set-option! must reject non-string/bool/int value");
+        assert!(
+            result.is_err(),
+            "set-option! must reject non-string/bool/int value"
+        );
     }
 
     /// In init mode with valid args, `set-option!` reaches the host (NullHost → Err,

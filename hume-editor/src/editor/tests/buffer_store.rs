@@ -3,9 +3,9 @@ use pretty_assertions::assert_eq;
 
 // ── Phase 6 — BufferStore + buffer choke-points ───────────────────────────────
 
+use crate::editor::doc_ops;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
-use crate::editor::doc_ops;
 
 /// `open_buffer` allocates a new BufferId, seeds pane_state, and tracks MRU.
 #[test]
@@ -73,10 +73,16 @@ fn p6_replace_buffer_in_place_reseeds() {
     let bid = ed.focused_buffer_id();
     // Move the cursor somewhere non-zero.
     let focused = ed.state.focused_pane_id;
-    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.panes.state, focused, bid, |b, _sels| {
-        let head = b.len_chars().saturating_sub(2);
-        SelectionSet::single(hume_editing::selection::Selection::collapsed(head))
-    });
+    doc_ops::apply_doc_motion(
+        &ed.state.buffers,
+        &mut ed.state.panes.state,
+        focused,
+        bid,
+        |b, _sels| {
+            let head = b.len_chars().saturating_sub(2);
+            SelectionSet::single(hume_editing::selection::Selection::collapsed(head))
+        },
+    );
     let replacement = Buffer::new(Text::from("new content\n"), SelectionSet::default());
     ed.replace_buffer_in_place(bid, replacement);
     // Selections should be reset to initial (cursor at 0).
@@ -170,7 +176,8 @@ fn colon_split_vsplit_are_stubs() {
         );
         // execute_typed also sets status_msg so the user sees the error.
         assert!(
-            ed.state.status_msg
+            ed.state
+                .status_msg
                 .as_deref()
                 .unwrap_or("")
                 .contains("not yet implemented"),
@@ -244,10 +251,7 @@ fn p6_edit_opens_new_buffer() {
     );
     assert_eq!(ed.doc().text().to_string(), "file content\n");
     // Path stored correctly.
-    assert_eq!(
-        ed.doc().path(),
-        Some(canonical.as_path())
-    );
+    assert_eq!(ed.doc().path(), Some(canonical.as_path()));
 }
 
 /// `:e path` deduplicates: switching to an already-open file doesn't create a new buffer.
@@ -295,18 +299,19 @@ fn p6_reload_preserves_cursor_same_content() {
 
     // Five content lines: line 0..4, each "lineN\n" (6 chars).
     let content = "line0\nline1\nline2\nline3\nline4\n";
-    let mut ed = Editor::for_testing(Buffer::new(
-        Text::from(content),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::new(Text::from(content), SelectionSet::default()));
     let bid = ed.focused_buffer_id();
     let focused = ed.state.focused_pane_id;
 
     // Place cursor at line 2, col 3 (char offset = 6+6+3 = 15).
     let expected_head = 15usize;
-    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.panes.state, focused, bid, |_, _| {
-        SelectionSet::single(Selection::collapsed(expected_head))
-    });
+    doc_ops::apply_doc_motion(
+        &ed.state.buffers,
+        &mut ed.state.panes.state,
+        focused,
+        bid,
+        |_, _| SelectionSet::single(Selection::collapsed(expected_head)),
+    );
 
     // Reload with identical content.
     let replacement = Buffer::new(Text::from(content), SelectionSet::default());
@@ -327,17 +332,18 @@ fn p6_reload_clamps_cursor_to_last_line() {
 
     // Five content lines; cursor on line 4.
     let content = "line0\nline1\nline2\nline3\nline4\n";
-    let mut ed = Editor::for_testing(Buffer::new(
-        Text::from(content),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::new(Text::from(content), SelectionSet::default()));
     let bid = ed.focused_buffer_id();
     let focused = ed.state.focused_pane_id;
 
     // line 4 starts at char 24.
-    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.panes.state, focused, bid, |_, _| {
-        SelectionSet::single(Selection::collapsed(24))
-    });
+    doc_ops::apply_doc_motion(
+        &ed.state.buffers,
+        &mut ed.state.panes.state,
+        focused,
+        bid,
+        |_, _| SelectionSet::single(Selection::collapsed(24)),
+    );
 
     // Reload with a 1-line file.
     let replacement = Buffer::new(Text::from("short\n"), SelectionSet::default());
@@ -365,9 +371,13 @@ fn p6_reload_clamps_col_to_line_end() {
     let focused = ed.state.focused_pane_id;
 
     // Cursor at col 10 ('d' in "hello world\n"). head=10.
-    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.panes.state, focused, bid, |_, _| {
-        SelectionSet::single(Selection::collapsed(10))
-    });
+    doc_ops::apply_doc_motion(
+        &ed.state.buffers,
+        &mut ed.state.panes.state,
+        focused,
+        bid,
+        |_, _| SelectionSet::single(Selection::collapsed(10)),
+    );
 
     // Reload with a shorter line "hi\n" (h=0,i=1,\n=2).
     let replacement = Buffer::new(Text::from("hi\n"), SelectionSet::default());
@@ -390,17 +400,13 @@ fn p6_reload_snaps_col_to_grapheme_boundary() {
     // "caf" + é (U+0065 U+0301, two chars) + "\n" → len_chars=6.
     // Grapheme boundaries: 0,1,2,3,5,6 — é occupies chars 3..5.
     let content = "caf\u{0065}\u{0301}\n";
-    let mut ed = Editor::for_testing(Buffer::new(
-        Text::from(content),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::new(Text::from(content), SelectionSet::default()));
     let bid = ed.focused_buffer_id();
     let focused = ed.state.focused_pane_id;
 
     // Place cursor mid-cluster at char 4 (the combining acute U+0301).
     // Normal motions won't do this; set directly.
-    ed.state.panes.state[focused][bid].selections =
-        SelectionSet::single(Selection::collapsed(4));
+    ed.state.panes.state[focused][bid].selections = SelectionSet::single(Selection::collapsed(4));
 
     // Reload with identical content — col=4 is mid-cluster.
     let replacement = Buffer::new(Text::from(content), SelectionSet::default());
@@ -421,10 +427,7 @@ fn p6_reload_collapses_multi_selection_to_primary() {
 
     // "line0\nline1\nline2\n": line 0 starts at 0, line 1 at 6, line 2 at 12.
     let content = "line0\nline1\nline2\n";
-    let mut ed = Editor::for_testing(Buffer::new(
-        Text::from(content),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::new(Text::from(content), SelectionSet::default()));
     let bid = ed.focused_buffer_id();
     let focused = ed.state.focused_pane_id;
 
@@ -433,13 +436,21 @@ fn p6_reload_collapses_multi_selection_to_primary() {
         vec![Selection::collapsed(6), Selection::collapsed(12)],
         0, // primary index
     );
-    assert_eq!(ed.current_selections().len(), 2, "sanity: two selections set");
+    assert_eq!(
+        ed.current_selections().len(),
+        2,
+        "sanity: two selections set"
+    );
 
     let replacement = Buffer::new(Text::from(content), SelectionSet::default());
     ed.reload_buffer_in_place(bid, replacement);
 
     let sels = ed.current_selections();
-    assert_eq!(sels.len(), 1, "multi-selection collapsed to single after reload");
+    assert_eq!(
+        sels.len(),
+        1,
+        "multi-selection collapsed to single after reload"
+    );
     assert_eq!(
         sels.primary().head(),
         6,

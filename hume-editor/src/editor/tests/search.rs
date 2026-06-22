@@ -308,7 +308,8 @@ fn select_within_does_not_overwrite_search_register() {
     let mut ed = editor_from("-[ab cd ab]>\n");
     // Simulate a prior search by writing directly to the search register (as
     // search confirm does).
-    ed.state.registers
+    ed.state
+        .registers
         .write_text(SEARCH_REGISTER, vec!["cd".to_string()]);
     // Select within using a different pattern.
     ed.handle_key(key('s'));
@@ -834,7 +835,11 @@ fn search_backspace_on_empty_dismisses() {
     ed.handle_key(key('/'));
     ed.handle_key(key('f'));
     ed.handle_key(key_backspace());
-    assert_eq!(ed.state.mode, Mode::Search, "first Backspace must keep Search open");
+    assert_eq!(
+        ed.state.mode,
+        Mode::Search,
+        "first Backspace must keep Search open"
+    );
     assert!(ed.state.minibuf.is_some());
     assert_eq!(state(&ed), "-[h]>ello world\n"); // snapshot restored
 

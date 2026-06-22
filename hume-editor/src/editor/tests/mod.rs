@@ -4,12 +4,12 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use hume_editing::selection::SelectionSet;
-use hume_editing::text::Text;
 use crate::editor::SearchDirection;
 use crate::editor::buffer::Buffer;
 use crate::testing::{parse_state, serialize_state};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use hume_editing::selection::SelectionSet;
+use hume_editing::text::Text;
 
 use super::{Editor, Mode, Severity};
 
@@ -81,7 +81,8 @@ fn type_cmd(ed: &mut Editor, cmd: &str) {
 }
 
 fn reg(ed: &Editor, name: char) -> Vec<String> {
-    ed.state.registers
+    ed.state
+        .registers
         .read(name)
         .and_then(|r| r.as_text())
         .unwrap_or_default()
@@ -150,7 +151,11 @@ impl HumeRuntimeGuard {
             std::env::set_var("HUME_RUNTIME", runtime.path());
             std::env::set_var("TMPDIR", tmp.path());
         }
-        HumeRuntimeGuard { runtime, tmp, _lock: lock }
+        HumeRuntimeGuard {
+            runtime,
+            tmp,
+            _lock: lock,
+        }
     }
 }
 
@@ -239,12 +244,17 @@ pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
     let pane_id = ed.state.focused_pane_id;
     BookkeepingSnapshot {
         last_command: ed.state.last_command.as_deref().map(str::to_owned),
-        last_repeatable: ed.state.last_repeatable_action.as_ref().map(|a| {
-            (a.command.to_string(), a.count, a.char_arg)
-        }),
+        last_repeatable: ed
+            .state
+            .last_repeatable_action
+            .as_ref()
+            .map(|a| (a.command.to_string(), a.count, a.char_arg)),
         // JumpList::len() is cfg(test)-only; safe to call here.
         jump_len: ed.state.panes.jumps[pane_id].len(),
-        paste_session_open: ed.state.panes.state
+        paste_session_open: ed
+            .state
+            .panes
+            .state
             .iter()
             .flat_map(|(_, inner)| inner.iter())
             .any(|(_, pbs)| pbs.paste_group.is_some()),
@@ -260,9 +270,13 @@ pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
 ///
 /// Fixtures are installed by `scripts/fetch-test-grammars.sh`.
 pub(crate) fn grammar_parser_path(name: &str) -> PathBuf {
-    let suffix = if cfg!(target_os = "macos") { "dylib" }
-                 else if cfg!(windows) { "dll" }
-                 else { "so" };
+    let suffix = if cfg!(target_os = "macos") {
+        "dylib"
+    } else if cfg!(windows) {
+        "dll"
+    } else {
+        "so"
+    };
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
@@ -286,7 +300,6 @@ mod auto_pairs;
 mod buffer;
 mod buffer_store;
 mod cd;
-mod plugins;
 mod command_mode;
 mod commands;
 mod completion;
@@ -295,15 +308,16 @@ mod file_io;
 mod find;
 mod hooks;
 mod incremental_parse;
-mod language;
 mod jump_list;
 mod kitty;
+mod language;
 mod list_buffers;
 mod macros;
 mod multi_pane;
 mod page_scroll;
 mod pane_sync;
 mod per_pane_jumps;
+mod plugins;
 mod render_snapshot;
 mod scripting_grammar;
 mod search;

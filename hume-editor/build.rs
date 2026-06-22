@@ -1,6 +1,5 @@
 fn main() {
-    let manifest = std::env::var("CARGO_MANIFEST_DIR")
-        .expect("CARGO_MANIFEST_DIR set by cargo");
+    let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR set by cargo");
     // editor/ is one level below the workspace root where .git/ lives
     let workspace = std::path::Path::new(&manifest)
         .parent()

@@ -51,27 +51,25 @@ pub mod log;
 mod activation;
 mod codegen;
 mod context;
-mod types;
-pub(crate) mod watchdog;
 #[cfg(test)]
 mod null_host;
 #[cfg(test)]
 mod test_support;
+mod types;
+pub(crate) mod watchdog;
 
 // ── Public API re-exports ─────────────────────────────────────────────────────
 // Types the editor and editor tests use directly.
+pub use attribution::PluginId;
+pub use builtins::commands::parse_count_extend;
+pub use builtins::ids::SteelBufferId;
+#[cfg(any(test, feature = "test-util"))]
+pub use builtins::sandbox::init_dirs;
 pub use hooks::HookId;
 pub use host::{BindMode, EditorHost};
 pub use log::LogLevel;
-pub use types::{
-    HookResult, PendingLanguageReg, SteelCmdDef, SteelCmdResult,
-};
-pub use builtins::commands::parse_count_extend;
-pub use attribution::PluginId;
-pub use builtins::ids::SteelBufferId;
+pub use types::{HookResult, PendingLanguageReg, SteelCmdDef, SteelCmdResult};
 pub use watchdog::EvalWatchdog;
-#[cfg(any(test, feature = "test-util"))]
-pub use builtins::sandbox::init_dirs;
 
 // ── Internal re-exports (within-crate use) ────────────────────────────────────
 pub(crate) use activation::run_steel;
@@ -81,16 +79,13 @@ pub(crate) use context::SteelCtx;
 // ── Internal imports ──────────────────────────────────────────────────────────
 
 use std::path::{Path, PathBuf};
-use std::sync::{
-    Arc,
-    atomic::AtomicBool,
-};
+use std::sync::{Arc, atomic::AtomicBool};
 
 use steel::rvals::SteelVal;
 use steel::steel_vm::engine::Engine;
 
-use hooks::HookRegistry;
 use attribution::PluginStack;
+use hooks::HookRegistry;
 use lazy::{LazyRegistry, PluginState};
 
 use codegen::{build_hook_program, hook_arg_name, hook_proc_name};
@@ -211,7 +206,6 @@ impl ScriptingHost {
             hook_program_cache: std::collections::HashMap::new(),
         }
     }
-
 }
 
 impl Default for ScriptingHost {
@@ -314,9 +308,7 @@ impl ScriptingHost {
     }
 
     /// A snapshot of the command activation entries declared during init.
-    pub fn activation_commands(
-        &self,
-    ) -> std::collections::HashMap<String, attribution::PluginId> {
+    pub fn activation_commands(&self) -> std::collections::HashMap<String, attribution::PluginId> {
         self.registries.lazy_registry.activation_commands.clone()
     }
 
@@ -326,7 +318,10 @@ impl ScriptingHost {
     /// `Lazy` stub was registered — the declare-time claim (seeded in
     /// `declare_plugin`) must not linger in the activation maps.
     pub fn drop_activation_command(&mut self, name: &str) {
-        self.registries.lazy_registry.activation_commands.remove(name);
+        self.registries
+            .lazy_registry
+            .activation_commands
+            .remove(name);
         self.registries.cmd_owners.remove(name);
     }
 
@@ -342,7 +337,8 @@ impl ScriptingHost {
 
     /// Plugin ids that should be activated when `hook_id` fires.
     pub fn activation_event_plugins(&self, hook_id: hooks::HookId) -> Vec<attribution::PluginId> {
-        self.registries.lazy_registry
+        self.registries
+            .lazy_registry
             .activation_events
             .get(&hook_id)
             .cloned()
@@ -351,7 +347,8 @@ impl ScriptingHost {
 
     /// Plugin ids that should be activated when `language` is set on a buffer.
     pub fn activation_language_plugins(&self, language: &str) -> Vec<attribution::PluginId> {
-        self.registries.lazy_registry
+        self.registries
+            .lazy_registry
             .activation_languages
             .get(language)
             .cloned()
@@ -360,18 +357,23 @@ impl ScriptingHost {
 
     /// Status of a plugin in the lazy registry.
     pub fn plugin_status(&self, id: &attribution::PluginId) -> Option<PluginStatus> {
-        self.registries.lazy_registry.plugins.get(id).map(|state| match state {
-            PluginState::Declared { .. } => PluginStatus::Declared,
-            PluginState::Loading => PluginStatus::Loading,
-            PluginState::Loaded => PluginStatus::Loaded,
-            PluginState::Failed => PluginStatus::Failed,
-        })
+        self.registries
+            .lazy_registry
+            .plugins
+            .get(id)
+            .map(|state| match state {
+                PluginState::Declared { .. } => PluginStatus::Declared,
+                PluginState::Loading => PluginStatus::Loading,
+                PluginState::Loaded => PluginStatus::Loaded,
+                PluginState::Failed => PluginStatus::Failed,
+            })
     }
 
     /// Returns `true` if any plugin in the registry has transitioned to `Loaded`.
     #[cfg(any(test, feature = "test-util"))]
     pub fn has_any_loaded_plugin(&self) -> bool {
-        self.registries.lazy_registry
+        self.registries
+            .lazy_registry
             .plugins
             .values()
             .any(|s| matches!(s, PluginState::Loaded))
@@ -401,7 +403,6 @@ impl ScriptingHost {
         self.data_dir = Some(dir);
     }
 
-
     #[cfg(any(test, feature = "test-util"))]
     pub fn interrupt_flag_for_test(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
         std::sync::Arc::clone(&self.interrupt_flag)
@@ -422,7 +423,6 @@ impl ScriptingHost {
         self.plugin_stack.push(id);
     }
 
-
     #[cfg(any(test, feature = "test-util"))]
     pub fn cmd_owners_for_test(&self) -> &std::collections::HashMap<String, String> {
         &self.registries.cmd_owners
@@ -434,7 +434,9 @@ impl ScriptingHost {
     /// assert inline `define-command!` populated the table correctly — which is the
     /// precondition for `%lookup-plugin-proc` returning the closure rather than `#f`.
     #[cfg(any(test, feature = "test-util"))]
-    pub fn command_table_for_test(&self) -> &std::collections::HashMap<String, steel::rvals::SteelVal> {
+    pub fn command_table_for_test(
+        &self,
+    ) -> &std::collections::HashMap<String, steel::rvals::SteelVal> {
         &self.registries.command_table
     }
 
@@ -511,10 +513,14 @@ impl ScriptingHost {
             format!("(%dispatch-command \"{name}\" (list))")
         } else {
             for (i, arg) in args.iter().enumerate() {
-                self.steel.register_value(&cmd_arg_global_name(i), arg.clone());
+                self.steel
+                    .register_value(&cmd_arg_global_name(i), arg.clone());
             }
             let arg_refs: Vec<String> = (0..args.len()).map(cmd_arg_global_name).collect();
-            format!("(%dispatch-command \"{name}\" (list {}))", arg_refs.join(" "))
+            format!(
+                "(%dispatch-command \"{name}\" (list {}))",
+                arg_refs.join(" ")
+            )
         };
 
         let (result, wait_char_request, pending_language_sets, grammar_sweeps) = {
@@ -528,17 +534,27 @@ impl ScriptingHost {
             );
 
             let result = run_steel(steel, &mut steel_ctx, invocation, budget_ms);
-            (result, steel_ctx.wait_char_request, steel_ctx.pending_language_sets, steel_ctx.pending_grammar_sweeps)
+            (
+                result,
+                steel_ctx.wait_char_request,
+                steel_ctx.pending_language_sets,
+                steel_ctx.pending_grammar_sweeps,
+            )
         };
 
         // Null out arg globals — releases any Arc references and prevents stale
         // values leaking into later calls.
         for i in 0..args.len() {
-            self.steel.update_value(&cmd_arg_global_name(i), SteelVal::Void);
+            self.steel
+                .update_value(&cmd_arg_global_name(i), SteelVal::Void);
         }
 
         result?;
-        Ok(SteelCmdResult { wait_char_request, pending_language_sets, grammar_sweeps })
+        Ok(SteelCmdResult {
+            wait_char_request,
+            pending_language_sets,
+            grammar_sweeps,
+        })
     }
 
     /// Fire all registered handlers for `hook_id`, passing `args` to each.
@@ -560,7 +576,10 @@ impl ScriptingHost {
         // Collect handler procs before borrowing self mutably for the SteelCtx.
         let handler_procs: Vec<SteelVal> = self.registries.hooks.handlers_for(hook_id).to_vec();
         if handler_procs.is_empty() {
-            return Ok(HookResult { pending_language_sets: vec![], grammar_sweeps: vec![] });
+            return Ok(HookResult {
+                pending_language_sets: vec![],
+                grammar_sweeps: vec![],
+            });
         }
 
         let budget_ms = host.steel_command_budget_ms();
@@ -584,16 +603,15 @@ impl ScriptingHost {
 
         let (result, pending_language_sets, grammar_sweeps) = {
             let (steel, bundle) = self.steel_and_bundle();
-            let mut steel_ctx = SteelCtx::new_command(
-                host,
-                bundle,
-                focused_pane_id,
-                focused_buffer_id,
-                None,
-            );
+            let mut steel_ctx =
+                SteelCtx::new_command(host, bundle, focused_pane_id, focused_buffer_id, None);
 
             let result = run_steel(steel, &mut steel_ctx, program, budget_ms);
-            (result, steel_ctx.pending_language_sets, steel_ctx.pending_grammar_sweeps)
+            (
+                result,
+                steel_ctx.pending_language_sets,
+                steel_ctx.pending_grammar_sweeps,
+            )
         };
 
         // Null out arg and proc globals before returning — releases Arc references
@@ -606,7 +624,10 @@ impl ScriptingHost {
         }
 
         result?;
-        Ok(HookResult { pending_language_sets, grammar_sweeps })
+        Ok(HookResult {
+            pending_language_sets,
+            grammar_sweeps,
+        })
     }
 }
 
@@ -619,11 +640,7 @@ impl ScriptingHost {
     /// Convenience wrapper for testing.  Delegates to `eval_source_raw` with
     /// empty `builtin_names` and the default 10-second init budget (harmless
     /// for normal tests that complete quickly).
-    pub fn eval_source(
-        &mut self,
-        source: &str,
-        host: &mut dyn EditorHost,
-    ) -> Result<(), String> {
+    pub fn eval_source(&mut self, source: &str, host: &mut dyn EditorHost) -> Result<(), String> {
         self.eval_source_raw(source.to_owned(), Default::default(), 10_000, host)
     }
 
@@ -664,4 +681,3 @@ pub enum PluginStatus {
     /// Load failed (will not retry until `:reload-config`).
     Failed,
 }
-

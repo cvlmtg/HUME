@@ -1,10 +1,10 @@
-use hume_engine::pipeline::EngineView;
 use crate::ops::MotionMode;
+use hume_engine::pipeline::EngineView;
 
-use super::super::visual_move::{cmd_visual_move_down, cmd_visual_move_up};
 use super::super::EditorState;
-use crate::editor::error::CommandError;
+use super::super::visual_move::{cmd_visual_move_down, cmd_visual_move_up};
 use super::{current_selections, focused_buffer_id, focused_format_context, viewport};
+use crate::editor::error::CommandError;
 
 // ── Page / half-page scroll ───────────────────────────────────────────────────
 //

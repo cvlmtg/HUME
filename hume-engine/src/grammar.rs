@@ -66,13 +66,17 @@ impl LoadedGrammar {
         // `language`. The symbol is a well-known tree-sitter grammar entry point.
         unsafe {
             let lib = libloading::Library::new(path).map_err(GrammarLoadError::Dlopen)?;
-            let sym: libloading::Symbol<unsafe extern "C" fn() -> *const ()> =
-                lib.get(symbol.as_bytes()).map_err(GrammarLoadError::MissingSymbol)?;
+            let sym: libloading::Symbol<unsafe extern "C" fn() -> *const ()> = lib
+                .get(symbol.as_bytes())
+                .map_err(GrammarLoadError::MissingSymbol)?;
             // Copy the raw fn pointer out of `sym` before `sym` (which borrows
             // `lib`) is dropped.
             let fn_ptr: unsafe extern "C" fn() -> *const () = *sym;
             let lang = Language::from(LanguageFn::from_raw(fn_ptr));
-            Ok(LoadedGrammar { language: lang, _library: lib })
+            Ok(LoadedGrammar {
+                language: lang,
+                _library: lib,
+            })
         }
     }
 

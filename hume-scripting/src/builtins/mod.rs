@@ -7,13 +7,13 @@
 
 pub(crate) mod buffers;
 pub(crate) mod commands;
-pub(crate) mod grammar;
-pub(crate) mod panes;
 pub(crate) mod fs;
+pub(crate) mod grammar;
 pub(crate) mod hooks;
 pub(crate) mod ids;
 pub(crate) mod interrupt;
 pub(crate) mod keymap_bind;
+pub(crate) mod panes;
 pub(crate) mod plugins;
 pub(crate) mod sandbox;
 pub(crate) mod settings;
@@ -195,7 +195,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_fn_with_ctx(HUME_CTX, "bind-key-extend!", keymap_bind::bind_key_extend);
     steel.register_fn_with_ctx(HUME_CTX, "unbind-key!", keymap_bind::unbind_key);
     steel.register_fn_with_ctx(HUME_CTX, "bind-wait-char!", keymap_bind::bind_wait_char);
-    steel.register_fn_with_ctx(HUME_CTX, "set-register-prefix!", commands::set_register_prefix);
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "set-register-prefix!",
+        commands::set_register_prefix,
+    );
 
     // Plugin lifecycle
     steel.register_fn_with_ctx(HUME_CTX, "%declare-plugin!", plugins::declare_plugin);
@@ -212,8 +216,16 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
     // Inline activation primitives — called from the %activate-plugin-inline
     // Scheme helper to drive mid-eval plugin loading without &mut Engine.
-    steel.register_fn_with_ctx(HUME_CTX, "%begin-lazy-activation", plugins::begin_lazy_activation);
-    steel.register_fn_with_ctx(HUME_CTX, "%finish-lazy-activation", plugins::finish_lazy_activation);
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "%begin-lazy-activation",
+        plugins::begin_lazy_activation,
+    );
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "%finish-lazy-activation",
+        plugins::finish_lazy_activation,
+    );
     steel.register_fn_with_ctx(HUME_CTX, "%lazy-command-owner", plugins::lazy_command_owner);
 
     // Hook registration — init-only
@@ -229,7 +241,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_fn_with_ctx(HUME_CTX, "%call-native!", commands::call_command_primitive);
     // %lookup-plugin-proc: returns the Steel closure for an activated plugin command,
     // or #f. Called by %dispatch-command in Steel to decide inline-apply vs. %call-native!.
-    steel.register_fn_with_ctx(HUME_CTX, "%lookup-plugin-proc", commands::lookup_plugin_proc);
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "%lookup-plugin-proc",
+        commands::lookup_plugin_proc,
+    );
     steel.register_fn_with_ctx(HUME_CTX, "request-wait-char!", commands::request_wait_char);
     steel.register_fn_with_ctx(HUME_CTX, "pending-char", commands::pending_char);
     steel.register_fn_with_ctx(HUME_CTX, "command-plugin", commands::command_plugin);
@@ -241,7 +257,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_fn_with_ctx(HUME_CTX, "curl-fetch", shell::curl_fetch);
 
     // Grammar compilation
-    steel.register_fn_with_ctx(HUME_CTX, "grammar-output-path", grammar::grammar_output_path);
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "grammar-output-path",
+        grammar::grammar_output_path,
+    );
     steel.register_fn_with_ctx(HUME_CTX, "compile-grammar!", grammar::compile_grammar);
 
     // Logging — push messages to the editor message log
@@ -262,7 +282,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_fn_with_ctx(HUME_CTX, "buffer-name", buffers::buffer_name);
     steel.register_fn_with_ctx(HUME_CTX, "buffer-dirty?", buffers::buffer_dirty);
     // Live cursor/selection reads — reflect synchronous edits in the same eval.
-    steel.register_fn_with_ctx(HUME_CTX, "current-line-number", buffers::current_line_number);
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "current-line-number",
+        buffers::current_line_number,
+    );
     steel.register_fn_with_ctx(HUME_CTX, "cursor-char-index", buffers::cursor_char_index);
 
     // Multi-buffer mutating builtins
@@ -273,9 +297,17 @@ pub(crate) fn register_all(steel: &mut Engine) {
     // Language identity and grammar builtins
     steel.register_fn_with_ctx(HUME_CTX, "%define-language!", syntax::define_language);
     steel.register_fn_with_ctx(HUME_CTX, "register-grammar!", syntax::register_grammar);
-    steel.register_fn_with_ctx(HUME_CTX, "language-has-grammar?", syntax::language_has_grammar);
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "language-has-grammar?",
+        syntax::language_has_grammar,
+    );
     steel.register_fn_with_ctx(HUME_CTX, "buffer-language", buffers::buffer_language);
-    steel.register_fn_with_ctx(HUME_CTX, "set-buffer-language!", buffers::set_buffer_language_steel);
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "set-buffer-language!",
+        buffers::set_buffer_language_steel,
+    );
 
     // Pane stubs — reserved names for M9+ :split feature.
     // These never use SteelCtx so they register as plain register_fn.

@@ -1,6 +1,6 @@
 use hume_editing::grapheme::next_grapheme_boundary;
-use hume_editing::text::Text;
 use hume_editing::lines::{line_content_end, line_end_exclusive, snap_to_grapheme_boundary};
+use hume_editing::text::Text;
 
 // ── Line motions (inner) ──────────────────────────────────────────────────────
 

@@ -41,7 +41,10 @@ fn backspace_clearing_last_char_keeps_minibuf_open() {
     ed.handle_key(key_backspace());
     // First Backspace clears the single char but leaves the minibuffer open.
     assert_eq!(ed.state.mode, Mode::Command);
-    assert_eq!(ed.state.minibuf.as_ref().expect("minibuf still open").input, "");
+    assert_eq!(
+        ed.state.minibuf.as_ref().expect("minibuf still open").input,
+        ""
+    );
     // Second Backspace (cursor already at 0) dismisses.
     ed.handle_key(key_backspace());
     assert_eq!(ed.state.mode, Mode::Normal);
@@ -63,7 +66,11 @@ fn backspace_at_cursor_start_with_nonempty_input_is_noop() {
     // Backspace at start of non-empty input must be a no-op.
     ed.handle_key(key_backspace());
     assert_eq!(ed.state.mode, Mode::Command, "minibuf must stay open");
-    let mb = ed.state.minibuf.as_ref().expect("minibuf must still be present");
+    let mb = ed
+        .state
+        .minibuf
+        .as_ref()
+        .expect("minibuf must still be present");
     assert_eq!(mb.input, "hello", "input must be unchanged");
     assert_eq!(mb.cursor, 0, "cursor must remain at start");
 }
@@ -121,7 +128,8 @@ fn colon_w_writes_file() {
 
     assert_eq!(ed.state.mode, Mode::Normal);
     assert!(
-        ed.state.status_msg
+        ed.state
+            .status_msg
             .as_deref()
             .unwrap_or("")
             .starts_with("Written")
@@ -149,7 +157,10 @@ fn colon_unknown_sets_error() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    assert_eq!(ed.state.status_msg.as_deref(), Some("Unknown command: nonsense"));
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("Unknown command: nonsense")
+    );
     assert!(!ed.state.should_quit);
 }
 
@@ -259,7 +270,10 @@ fn colon_q_view_buffer_with_real_buffer_switches_not_quits() {
 
     type_cmd(&mut ed, ":q");
 
-    assert!(!ed.state.should_quit, ":q must not exit when a real buffer remains");
+    assert!(
+        !ed.state.should_quit,
+        ":q must not exit when a real buffer remains"
+    );
     assert_eq!(
         ed.focused_buffer_id(),
         file_buf,
@@ -281,7 +295,10 @@ fn colon_q_real_buffer_with_clean_scratch_quits() {
 
     type_cmd(&mut ed, ":q");
 
-    assert!(ed.state.should_quit, ":q must exit when the only remaining buffer is an empty scratch");
+    assert!(
+        ed.state.should_quit,
+        ":q must exit when the only remaining buffer is an empty scratch"
+    );
 }
 
 #[test]
@@ -305,7 +322,10 @@ fn colon_q_with_dirty_scratch_remaining_stays() {
 
     type_cmd(&mut ed, ":q");
 
-    assert!(!ed.state.should_quit, ":q must not exit when a dirty scratch remains");
+    assert!(
+        !ed.state.should_quit,
+        ":q must not exit when a dirty scratch remains"
+    );
     assert_eq!(
         ed.focused_buffer_id(),
         scratch_id,
@@ -334,7 +354,10 @@ fn colon_q_one_of_two_file_buffers_switches_not_quits() {
 
     type_cmd(&mut ed, ":q");
 
-    assert!(!ed.state.should_quit, ":q must not exit when another file buffer remains");
+    assert!(
+        !ed.state.should_quit,
+        ":q must not exit when another file buffer remains"
+    );
     assert_eq!(
         ed.focused_buffer_id(),
         first_buf,
@@ -391,7 +414,10 @@ fn colon_q_bang_on_dirty_buffer_with_other_real_buffer_closes_not_quits() {
 
     type_cmd(&mut ed, ":q!");
 
-    assert!(!ed.state.should_quit, ":q! must not quit when another real buffer remains");
+    assert!(
+        !ed.state.should_quit,
+        ":q! must not quit when another real buffer remains"
+    );
     assert_eq!(
         ed.focused_buffer_id(),
         other_buf,
@@ -419,7 +445,10 @@ fn colon_qa_quits_with_multiple_clean_buffers() {
 
     type_cmd(&mut ed, ":qa");
 
-    assert!(ed.state.should_quit, ":qa must quit with multiple clean buffers");
+    assert!(
+        ed.state.should_quit,
+        ":qa must quit with multiple clean buffers"
+    );
 }
 
 #[test]
@@ -454,7 +483,10 @@ fn colon_qa_refused_when_a_background_buffer_is_dirty() {
 
     type_cmd(&mut ed, ":qa");
 
-    assert!(!ed.state.should_quit, ":qa must be refused when any buffer is dirty");
+    assert!(
+        !ed.state.should_quit,
+        ":qa must be refused when any buffer is dirty"
+    );
     // Focus must have jumped to the dirty buffer.
     assert_eq!(
         ed.focused_buffer_id(),
@@ -499,7 +531,10 @@ fn colon_qa_stays_on_focused_dirty_buffer() {
 
     type_cmd(&mut ed, ":qa");
 
-    assert!(!ed.state.should_quit, ":qa must refuse when focused buffer is dirty");
+    assert!(
+        !ed.state.should_quit,
+        ":qa must refuse when focused buffer is dirty"
+    );
     assert_eq!(
         ed.focused_buffer_id(),
         dirty_buf,
@@ -588,7 +623,11 @@ fn colon_qa_walk_through_dirty_buffers() {
     // First :qa → lands on first_dirty.
     type_cmd(&mut ed, ":qa");
     assert!(!ed.state.should_quit);
-    assert_eq!(ed.focused_buffer_id(), first_dirty, "first :qa must land on first dirty buffer");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        first_dirty,
+        "first :qa must land on first dirty buffer"
+    );
 
     // Save first_dirty, then :qa → lands on second_dirty.
     let save_path = tmp2.path().to_path_buf();
@@ -601,7 +640,11 @@ fn colon_qa_walk_through_dirty_buffers() {
 
     type_cmd(&mut ed, ":qa");
     assert!(!ed.state.should_quit);
-    assert_eq!(ed.focused_buffer_id(), second_dirty, "second :qa must land on second dirty buffer");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        second_dirty,
+        "second :qa must land on second dirty buffer"
+    );
 
     // Suppress unused-variable warnings from the tempfiles.
     let _ = tmp1;
@@ -621,7 +664,8 @@ fn colon_w_path_creates_new_file() {
     ed.handle_key(key_enter());
 
     assert!(
-        ed.state.status_msg
+        ed.state
+            .status_msg
             .as_deref()
             .unwrap_or("")
             .starts_with("Written")
@@ -657,7 +701,8 @@ fn colon_w_path_updates_file_path_for_subsequent_writes() {
     }
     ed.handle_key(key_enter());
     assert!(
-        ed.state.status_msg
+        ed.state
+            .status_msg
             .as_deref()
             .unwrap_or("")
             .starts_with("Written")
@@ -721,7 +766,8 @@ fn submit(ed: &mut Editor, cmd: &str) {
 fn open_and_up(ed: &mut Editor) -> String {
     ed.handle_key(key(':'));
     ed.handle_key(key_up());
-    ed.state.minibuf
+    ed.state
+        .minibuf
         .as_ref()
         .map(|m| m.input.clone())
         .unwrap_or_default()
@@ -956,7 +1002,8 @@ fn colon_edit_bang_path_parses() {
 
     let mut ed = editor_from("-[h]>ello\n");
     // Open the file first so it's in the buffer list.
-    ed.execute_typed("e", Some(canonical.to_str().unwrap())).unwrap();
+    ed.execute_typed("e", Some(canonical.to_str().unwrap()))
+        .unwrap();
     // :e! with no space before path must still open/switch correctly.
     let cmd = format!("e!{}", canonical.display());
     submit(&mut ed, &cmd);

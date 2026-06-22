@@ -4,11 +4,14 @@ extern crate hume_editor as hume;
 #[path = "../src/testing/mock_host.rs"]
 mod mock_host;
 
-use mock_host::MockHost;
-use hume_scripting::*;
-use hume_scripting::EvalWatchdog;
 use hume_engine::pipeline::{BufferId, PaneId};
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use hume_scripting::EvalWatchdog;
+use hume_scripting::*;
+use mock_host::MockHost;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 fn host() -> ScriptingHost {
     ScriptingHost::new()
@@ -66,16 +69,14 @@ fn bind_key_does_not_error_on_valid_input() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    h.eval_source(
-        "(bind-key! \"normal\" \"z\" \"move-right\")",
-        &mut mock,
-    )
-    .unwrap();
+    h.eval_source("(bind-key! \"normal\" \"z\" \"move-right\")", &mut mock)
+        .unwrap();
 
-    use hume_editor::KeymapBindMode as BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use hume_editor::KeymapBindMode as BindMode;
     let z_key = &[KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)];
-    let (name, _) = mock.keymap
+    let (name, _) = mock
+        .keymap
         .lookup_command(BindMode::Normal, z_key)
         .expect("bind-key! must bind 'z' in the keymap");
     assert_eq!(name, "move-right", "z must be bound to move-right");
@@ -86,17 +87,15 @@ fn bind_key_multi_key_sequence_no_error() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    h.eval_source(
-        "(bind-key! \"normal\" \"g h\" \"move-right\")",
-        &mut mock,
-    )
-    .unwrap();
+    h.eval_source("(bind-key! \"normal\" \"g h\" \"move-right\")", &mut mock)
+        .unwrap();
 
-    use hume_editor::KeymapBindMode as BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use hume_editor::KeymapBindMode as BindMode;
     let g_key = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
     let h_key = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE);
-    let (name, _) = mock.keymap
+    let (name, _) = mock
+        .keymap
         .lookup_command(BindMode::Normal, &[g_key, h_key])
         .expect("bind-key! must bind the 'g h' sequence");
     assert_eq!(name, "move-right", "g h must be bound to move-right");
@@ -119,10 +118,7 @@ fn bind_key_invalid_key_sequence_errors() {
     let mut mock = MockHost::new();
 
     let err = h
-        .eval_source(
-            "(bind-key! \"normal\" \"boguskey\" \"cmd\")",
-        &mut mock,
-        )
+        .eval_source("(bind-key! \"normal\" \"boguskey\" \"cmd\")", &mut mock)
         .unwrap_err();
     assert!(!err.is_empty(), "expected error for unknown key 'boguskey'");
 }
@@ -133,7 +129,6 @@ fn bind_key_invalid_key_sequence_errors() {
 fn load_plugin_missing_plugin_declared_not_loaded() {
     let mut h = host();
     let mut mock = MockHost::new();
-
 
     // Eval #1: declare an absent plugin.
     h.eval_source("(load-plugin \"user/nonexistent-repo\")", &mut mock)
@@ -186,7 +181,6 @@ fn configure_statusline_sets_left_section() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-
     h.eval_source(
         r#"(configure-statusline! '("Mode" "FileName") '() '("Position"))"#,
         &mut mock,
@@ -198,7 +192,10 @@ fn configure_statusline_sets_left_section() {
         vec![StatusElement::Mode, StatusElement::FileName]
     );
     assert_eq!(mock.settings.statusline.center, vec![]);
-    assert_eq!(mock.settings.statusline.right, vec![StatusElement::Position]);
+    assert_eq!(
+        mock.settings.statusline.right,
+        vec![StatusElement::Position]
+    );
 }
 
 #[test]
@@ -206,7 +203,6 @@ fn configure_statusline_all_sections() {
     use hume_editor::ui::statusline::StatusElement;
     let mut h = host();
     let mut mock = MockHost::new();
-
 
     h.eval_source(
         r#"(configure-statusline!
@@ -225,7 +221,10 @@ fn configure_statusline_all_sections() {
             StatusElement::DirtyIndicator
         ]
     );
-    assert_eq!(mock.settings.statusline.center, vec![StatusElement::SearchMatches]);
+    assert_eq!(
+        mock.settings.statusline.center,
+        vec![StatusElement::SearchMatches]
+    );
     assert_eq!(
         mock.settings.statusline.right,
         vec![StatusElement::Separator, StatusElement::Mode]
@@ -236,7 +235,6 @@ fn configure_statusline_all_sections() {
 fn configure_statusline_empty_sections() {
     let mut h = host();
     let mut mock = MockHost::new();
-
 
     h.eval_source("(configure-statusline! '() '() '())", &mut mock)
         .unwrap();
@@ -251,11 +249,10 @@ fn configure_statusline_unknown_element_errors() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-
     let err = h
         .eval_source(
             r#"(configure-statusline! '("NotAnElement") '() '())"#,
-        &mut mock,
+            &mut mock,
         )
         .unwrap_err();
     assert!(err.contains("NotAnElement"), "got: {err}");
@@ -267,14 +264,16 @@ fn configure_statusline_new_elements() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-
     h.eval_source(
         r#"(configure-statusline! '("LineEnding") '() '("Cwd"))"#,
         &mut mock,
     )
     .unwrap();
 
-    assert_eq!(mock.settings.statusline.left, vec![StatusElement::LineEnding]);
+    assert_eq!(
+        mock.settings.statusline.left,
+        vec![StatusElement::LineEnding]
+    );
     assert_eq!(mock.settings.statusline.center, vec![]);
     assert_eq!(mock.settings.statusline.right, vec![StatusElement::Cwd]);
 }
@@ -283,7 +282,6 @@ fn configure_statusline_new_elements() {
 fn configure_statusline_wrong_arity_errors() {
     let mut h = host();
     let mut mock = MockHost::new();
-
 
     let err = h
         .eval_source("(configure-statusline! '())", &mut mock)
@@ -307,7 +305,6 @@ fn hume_yield_with_interrupt_errors() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-
     // Pre-set the interrupt flag before the eval.
     h.interrupt_flag_for_test().store(true, Ordering::Relaxed);
     let err = h.eval_source("(hume/yield!)", &mut mock).unwrap_err();
@@ -328,14 +325,13 @@ fn hume_yield_stops_loop_when_interrupted() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-
     // Pre-set so the loop aborts on the very first yield call.
     h.interrupt_flag_for_test().store(true, Ordering::Relaxed);
     let err = h
         .eval_source(
             // Without the interrupt flag this loop would run forever.
             "(let loop () (hume/yield!) (loop))",
-        &mut mock,
+            &mut mock,
         )
         .unwrap_err();
     assert!(err.contains("interrupted"), "got: {err}");
@@ -345,7 +341,6 @@ fn hume_yield_stops_loop_when_interrupted() {
 fn interrupt_flag_reset_after_eval() {
     let mut h = host();
     let mut mock = MockHost::new();
-
 
     // Pre-set the flag; after eval_source it must be cleared.
     h.interrupt_flag_for_test().store(true, Ordering::Relaxed);
@@ -360,7 +355,6 @@ fn interrupt_flag_reset_after_eval() {
 }
 
 // ── command-plugin ────────────────────────────────────────────────────────
-
 
 /// Unknown (built-in) commands return "hume".
 #[test]
@@ -412,10 +406,24 @@ fn define_command_inline_output_sets_flag() {
     )
     .expect("eval should succeed");
 
-    let inline = mock.registered_cmds.iter().find(|d| d.name == "inline-cmd").expect("inline-cmd not found");
-    let plain  = mock.registered_cmds.iter().find(|d| d.name == "plain-cmd").expect("plain-cmd not found");
-    assert!(inline.inline_output, "#:inline-output #t should set inline_output = true");
-    assert!(!plain.inline_output, "plain define-command! should set inline_output = false");
+    let inline = mock
+        .registered_cmds
+        .iter()
+        .find(|d| d.name == "inline-cmd")
+        .expect("inline-cmd not found");
+    let plain = mock
+        .registered_cmds
+        .iter()
+        .find(|d| d.name == "plain-cmd")
+        .expect("plain-cmd not found");
+    assert!(
+        inline.inline_output,
+        "#:inline-output #t should set inline_output = true"
+    );
+    assert!(
+        !plain.inline_output,
+        "plain define-command! should set inline_output = false"
+    );
 }
 
 /// `#:repeatable #t` sets `repeatable: true`; plain `define-command!` does not.
@@ -433,10 +441,24 @@ fn define_command_repeatable_sets_flag() {
     )
     .expect("eval should succeed");
 
-    let rep   = mock.registered_cmds.iter().find(|d| d.name == "rep-cmd").expect("rep-cmd not found");
-    let plain = mock.registered_cmds.iter().find(|d| d.name == "plain-cmd").expect("plain-cmd not found");
-    assert!(rep.repeatable,   "#:repeatable #t should set repeatable = true");
-    assert!(!plain.repeatable, "plain define-command! should set repeatable = false");
+    let rep = mock
+        .registered_cmds
+        .iter()
+        .find(|d| d.name == "rep-cmd")
+        .expect("rep-cmd not found");
+    let plain = mock
+        .registered_cmds
+        .iter()
+        .find(|d| d.name == "plain-cmd")
+        .expect("plain-cmd not found");
+    assert!(
+        rep.repeatable,
+        "#:repeatable #t should set repeatable = true"
+    );
+    assert!(
+        !plain.repeatable,
+        "plain define-command! should set repeatable = false"
+    );
 }
 
 /// `#:repeatable #t` and `#:inline-output #t` together must raise a Steel error
@@ -503,7 +525,7 @@ fn eval_source_returning_defs_watchdog_aborts_runaway() {
             // This loop would run forever without the watchdog.
             "(let loop () (hume/yield!) (loop))",
             budget,
-        &mut mock,
+            &mut mock,
         )
         .unwrap_err();
 
@@ -530,7 +552,6 @@ fn call_steel_cmd_watchdog_aborts_runaway() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-
     // Register a command whose body loops forever.
     h.eval_source(
         r#"(define-command! "spin" "spin forever" (lambda () (let loop () (hume/yield!) (loop))))"#,
@@ -544,7 +565,14 @@ fn call_steel_cmd_watchdog_aborts_runaway() {
 
     let start = std::time::Instant::now();
     let err = h
-        .call_steel_cmd(&cmd_name, None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .call_steel_cmd(
+            &cmd_name,
+            None,
+            vec![],
+            mock.focused_pane_id,
+            mock.focused_buffer_id,
+            &mut mock,
+        )
         .unwrap_err();
 
     assert!(
@@ -571,7 +599,6 @@ fn call_steel_cmd_interrupt_leaves_settings_unchanged() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-
     h.eval_source(
         r#"(define-command! "looper" "loop" (lambda () (let loop () (hume/yield!) (loop))))"#,
         &mut mock,
@@ -583,7 +610,14 @@ fn call_steel_cmd_interrupt_leaves_settings_unchanged() {
     mock.settings.steel_command_budget_ms = 50;
 
     let err = h
-        .call_steel_cmd(&cmd_name, None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .call_steel_cmd(
+            &cmd_name,
+            None,
+            vec![],
+            mock.focused_pane_id,
+            mock.focused_buffer_id,
+            &mut mock,
+        )
         .unwrap_err();
 
     assert!(
@@ -604,7 +638,6 @@ fn call_steel_cmd_set_option_from_body_returns_steel_error() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-
     h.eval_source(
         r#"(define-command! "try-set" "" (lambda () (set-option! "tab-width" 8)))"#,
         &mut mock,
@@ -612,7 +645,14 @@ fn call_steel_cmd_set_option_from_body_returns_steel_error() {
     .unwrap();
 
     let err = h
-        .call_steel_cmd("try-set", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .call_steel_cmd(
+            "try-set",
+            None,
+            vec![],
+            mock.focused_pane_id,
+            mock.focused_buffer_id,
+            &mut mock,
+        )
         .unwrap_err();
 
     assert!(
@@ -638,7 +678,6 @@ fn call_bang_passes_args_to_command() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-
     // Define a command that takes one arg x and calls (call! x).
     // The lambda receives x as *hume.ca0*, then dispatches x as a command name.
     h.eval_source(
@@ -660,7 +699,8 @@ fn call_bang_passes_args_to_command() {
     let msgs = h.take_pending_messages();
     assert!(
         msgs.iter().any(|(_, m)| m.contains("hello")),
-        "call! must dispatch arg value as command name; got: {:?}", msgs
+        "call! must dispatch arg value as command name; got: {:?}",
+        msgs
     );
 }
 
@@ -672,7 +712,6 @@ fn call_bang_forwards_multiple_args_to_lambda() {
     use steel::rvals::SteelVal;
     let mut h = host();
     let mut mock = MockHost::new();
-
 
     h.eval_source(
         r#"(define-command! "route-three" "" (lambda (a b c) (call! a) (call! b) (call! c)))"#,
@@ -695,12 +734,15 @@ fn call_bang_forwards_multiple_args_to_lambda() {
     .expect("call should succeed");
 
     let msgs = h.take_pending_messages();
-    let warned: Vec<&str> = msgs.iter()
+    let warned: Vec<&str> = msgs
+        .iter()
         .filter_map(|(_, m)| m.strip_prefix("unknown command: "))
         .collect();
     assert_eq!(
-        warned, vec!["x", "y", "z"],
-        "each arg must reach the corresponding lambda parameter; got: {:?}", msgs
+        warned,
+        vec!["x", "y", "z"],
+        "each arg must reach the corresponding lambda parameter; got: {:?}",
+        msgs
     );
 }
 
@@ -711,7 +753,6 @@ fn call_bang_arity_mismatch_surfaces_steel_error() {
     use steel::rvals::SteelVal;
     let mut h = host();
     let mut mock = MockHost::new();
-
 
     h.eval_source(
         r#"(define-command! "needs-two" "" (lambda (a b) (call! "move-right")))"#,
@@ -730,7 +771,10 @@ fn call_bang_arity_mismatch_surfaces_steel_error() {
         )
         .unwrap_err();
 
-    assert!(!err.is_empty(), "expected a Steel arity error, got empty string");
+    assert!(
+        !err.is_empty(),
+        "expected a Steel arity error, got empty string"
+    );
 }
 
 // ── register-hook! / fire_hook ────────────────────────────────────────────
@@ -750,11 +794,19 @@ fn register_hook_fires_on_buffer_open() {
     .unwrap();
     let bid = BufferId::default();
     let val = SteelBufferId::new(bid).into_steel_val();
-    h.fire_hook(HookId::OnBufferOpen, &[val], PaneId::default(), bid, &mut mock).unwrap();
+    h.fire_hook(
+        HookId::OnBufferOpen,
+        &[val],
+        PaneId::default(),
+        bid,
+        &mut mock,
+    )
+    .unwrap();
     let msgs = h.take_pending_messages();
     assert!(
         msgs.iter().any(|(_, m)| m.contains("move-right")),
-        "hook handler must have dispatched move-right; got: {:?}", msgs
+        "hook handler must have dispatched move-right; got: {:?}",
+        msgs
     );
 }
 
@@ -770,11 +822,19 @@ fn register_hook_fires_on_buffer_close() {
     .unwrap();
     let bid = BufferId::default();
     let val = SteelBufferId::new(bid).into_steel_val();
-    h.fire_hook(HookId::OnBufferClose, &[val], PaneId::default(), bid, &mut mock).unwrap();
+    h.fire_hook(
+        HookId::OnBufferClose,
+        &[val],
+        PaneId::default(),
+        bid,
+        &mut mock,
+    )
+    .unwrap();
     let msgs = h.take_pending_messages();
     assert!(
         msgs.iter().any(|(_, m)| m.contains("move-left")),
-        "hook handler must have dispatched move-left; got: {:?}", msgs
+        "hook handler must have dispatched move-left; got: {:?}",
+        msgs
     );
 }
 
@@ -790,11 +850,19 @@ fn register_hook_fires_on_buffer_save() {
     .unwrap();
     let bid = BufferId::default();
     let val = SteelBufferId::new(bid).into_steel_val();
-    h.fire_hook(HookId::OnBufferSave, &[val], PaneId::default(), bid, &mut mock).unwrap();
+    h.fire_hook(
+        HookId::OnBufferSave,
+        &[val],
+        PaneId::default(),
+        bid,
+        &mut mock,
+    )
+    .unwrap();
     let msgs = h.take_pending_messages();
     assert!(
         msgs.iter().any(|(_, m)| m.contains("move-right")),
-        "hook handler must have dispatched move-right; got: {:?}", msgs
+        "hook handler must have dispatched move-right; got: {:?}",
+        msgs
     );
 }
 
@@ -824,7 +892,8 @@ fn register_hook_fires_on_mode_change() {
     let msgs = h.take_pending_messages();
     assert!(
         msgs.iter().any(|(_, m)| m.contains("move-right")),
-        "hook handler must have dispatched move-right; got: {:?}", msgs
+        "hook handler must have dispatched move-right; got: {:?}",
+        msgs
     );
 }
 
@@ -834,8 +903,14 @@ fn register_hook_no_fire_if_no_handlers() {
     let mut mock = MockHost::new();
 
     // No handlers registered — fire_hook must succeed without dispatching anything.
-    h.fire_hook(HookId::OnBufferOpen, &[], PaneId::default(), BufferId::default(), &mut mock)
-        .unwrap();
+    h.fire_hook(
+        HookId::OnBufferOpen,
+        &[],
+        PaneId::default(),
+        BufferId::default(),
+        &mut mock,
+    )
+    .unwrap();
 
     // Proves no native dispatch occurred (would have been recorded in dispatched_native).
     assert!(
@@ -859,12 +934,25 @@ fn register_hook_multiple_handlers_all_fire() {
     .unwrap();
     let bid = BufferId::default();
     let val = SteelBufferId::new(bid).into_steel_val();
-    h.fire_hook(HookId::OnBufferSave, &[val], PaneId::default(), bid, &mut mock).unwrap();
+    h.fire_hook(
+        HookId::OnBufferSave,
+        &[val],
+        PaneId::default(),
+        bid,
+        &mut mock,
+    )
+    .unwrap();
     let msgs = h.take_pending_messages();
-    let warned: Vec<&str> = msgs.iter()
+    let warned: Vec<&str> = msgs
+        .iter()
         .filter_map(|(_, m)| m.strip_prefix("unknown command: "))
         .collect();
-    assert_eq!(warned, vec!["move-right", "move-left"], "both handlers must have fired; got: {:?}", msgs);
+    assert_eq!(
+        warned,
+        vec!["move-right", "move-left"],
+        "both handlers must have fired; got: {:?}",
+        msgs
+    );
 }
 
 #[test]
@@ -880,7 +968,14 @@ fn register_hook_errors_in_command_mode() {
     )
     .unwrap();
     let err = h
-        .call_steel_cmd("bad-cmd", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .call_steel_cmd(
+            "bad-cmd",
+            None,
+            vec![],
+            mock.focused_pane_id,
+            mock.focused_buffer_id,
+            &mut mock,
+        )
         .unwrap_err();
     assert!(err.contains("can only be called during init"), "got: {err}");
 }
@@ -893,7 +988,7 @@ fn register_hook_unknown_name_errors() {
     let err = h
         .eval_source(
             r#"(register-hook! 'on-nonexistent (lambda () #f))"#,
-        &mut mock,
+            &mut mock,
         )
         .unwrap_err();
     assert!(err.contains("unknown hook"), "got: {err}");
@@ -927,7 +1022,8 @@ fn fire_hook_globals_cleared_between_fires() {
     let msgs1 = h.take_pending_messages();
     assert!(
         msgs1.iter().any(|(_, m)| m.contains("insert")),
-        "first fire must dispatch 'insert'; got: {:?}", msgs1
+        "first fire must dispatch 'insert'; got: {:?}",
+        msgs1
     );
 
     // Second fire with different args — stale *hume.ha1* would give wrong result.
@@ -943,11 +1039,13 @@ fn fire_hook_globals_cleared_between_fires() {
     let msgs2 = h.take_pending_messages();
     assert!(
         msgs2.iter().any(|(_, m)| m.contains("normal")),
-        "second fire must dispatch 'normal'; got: {:?}", msgs2
+        "second fire must dispatch 'normal'; got: {:?}",
+        msgs2
     );
     assert!(
         !msgs2.iter().any(|(_, m)| m.contains("insert")),
-        "second fire must NOT see stale 'insert' from first; got: {:?}", msgs2
+        "second fire must NOT see stale 'insert' from first; got: {:?}",
+        msgs2
     );
 }
 
@@ -965,12 +1063,27 @@ fn set_register_prefix_passed_to_dispatch() {
     )
     .unwrap();
     mock.native_names.insert("paste-after".to_string());
-    h.call_steel_cmd("paste-ring", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
-        .unwrap();
-    assert_eq!(mock.dispatched_native.len(), 1, "paste-after must be dispatched once");
+    h.call_steel_cmd(
+        "paste-ring",
+        None,
+        vec![],
+        mock.focused_pane_id,
+        mock.focused_buffer_id,
+        &mut mock,
+    )
+    .unwrap();
+    assert_eq!(
+        mock.dispatched_native.len(),
+        1,
+        "paste-after must be dispatched once"
+    );
     let (name, _, _, reg) = &mock.dispatched_native[0];
     assert_eq!(name, "paste-after");
-    assert_eq!(*reg, Some('k'), "set-register-prefix! must pass register 'k' to dispatch");
+    assert_eq!(
+        *reg,
+        Some('k'),
+        "set-register-prefix! must pass register 'k' to dispatch"
+    );
 }
 
 #[test]
@@ -989,9 +1102,20 @@ fn set_register_prefix_sticky_across_multiple_calls() {
     .unwrap();
     mock.native_names.insert("yank".to_string());
     mock.native_names.insert("delete".to_string());
-    h.call_steel_cmd("multi", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
-        .unwrap();
-    assert_eq!(mock.dispatched_native.len(), 2, "yank and delete must each be dispatched");
+    h.call_steel_cmd(
+        "multi",
+        None,
+        vec![],
+        mock.focused_pane_id,
+        mock.focused_buffer_id,
+        &mut mock,
+    )
+    .unwrap();
+    assert_eq!(
+        mock.dispatched_native.len(),
+        2,
+        "yank and delete must each be dispatched"
+    );
     let (name0, _, _, reg0) = &mock.dispatched_native[0];
     let (name1, _, _, reg1) = &mock.dispatched_native[1];
     assert_eq!(name0, "yank");
@@ -1017,15 +1141,26 @@ fn set_register_prefix_change_mid_body() {
     .unwrap();
     mock.native_names.insert("yank".to_string());
     mock.native_names.insert("paste-after".to_string());
-    h.call_steel_cmd("switch", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
-        .unwrap();
+    h.call_steel_cmd(
+        "switch",
+        None,
+        vec![],
+        mock.focused_pane_id,
+        mock.focused_buffer_id,
+        &mut mock,
+    )
+    .unwrap();
     assert_eq!(mock.dispatched_native.len(), 2);
     let (name0, _, _, reg0) = &mock.dispatched_native[0];
     let (name1, _, _, reg1) = &mock.dispatched_native[1];
     assert_eq!(name0, "yank");
     assert_eq!(*reg0, Some('5'), "first dispatch must use register '5'");
     assert_eq!(name1, "paste-after");
-    assert_eq!(*reg1, Some('6'), "second dispatch must use changed register '6'");
+    assert_eq!(
+        *reg1,
+        Some('6'),
+        "second dispatch must use changed register '6'"
+    );
 }
 
 #[test]
@@ -1039,9 +1174,19 @@ fn set_register_prefix_invalid_name_errors() {
     )
     .unwrap();
     let err = h
-        .call_steel_cmd("bad-reg", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .call_steel_cmd(
+            "bad-reg",
+            None,
+            vec![],
+            mock.focused_pane_id,
+            mock.focused_buffer_id,
+            &mut mock,
+        )
         .unwrap_err();
-    assert!(err.contains("invalid register"), "expected register-name error, got: {err}");
+    assert!(
+        err.contains("invalid register"),
+        "expected register-name error, got: {err}"
+    );
 }
 
 #[test]
@@ -1055,9 +1200,19 @@ fn set_register_prefix_multichar_name_errors() {
     )
     .unwrap();
     let err = h
-        .call_steel_cmd("bad-multi", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .call_steel_cmd(
+            "bad-multi",
+            None,
+            vec![],
+            mock.focused_pane_id,
+            mock.focused_buffer_id,
+            &mut mock,
+        )
         .unwrap_err();
-    assert!(err.contains("single-character"), "expected single-char error, got: {err}");
+    assert!(
+        err.contains("single-character"),
+        "expected single-char error, got: {err}"
+    );
 }
 
 #[test]
@@ -1129,7 +1284,14 @@ fn language_builtins_error_on_stale_buffer_id() {
     .unwrap();
 
     let err = h
-        .call_steel_cmd("q-lang", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .call_steel_cmd(
+            "q-lang",
+            None,
+            vec![],
+            mock.focused_pane_id,
+            mock.focused_buffer_id,
+            &mut mock,
+        )
         .unwrap_err();
     assert!(
         err.contains("buffer-language: invalid buffer id"),
@@ -1137,7 +1299,14 @@ fn language_builtins_error_on_stale_buffer_id() {
     );
 
     let err = h
-        .call_steel_cmd("set-lang", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .call_steel_cmd(
+            "set-lang",
+            None,
+            vec![],
+            mock.focused_pane_id,
+            mock.focused_buffer_id,
+            &mut mock,
+        )
         .unwrap_err();
     assert!(
         err.contains("set-buffer-language!: invalid buffer id"),
@@ -1157,10 +1326,11 @@ fn bind_key_extend_creates_force_extending_leaf() {
         &mut mock,
     )
     .unwrap();
-    use hume_editor::KeymapBindMode as BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use hume_editor::KeymapBindMode as BindMode;
     let z_key = &[KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)];
-    let (name, force_extend) = mock.keymap
+    let (name, force_extend) = mock
+        .keymap
         .lookup_command(BindMode::Normal, z_key)
         .expect("z must be bound after bind-key-extend!");
     assert_eq!(name, "select-line");
@@ -1177,10 +1347,11 @@ fn bind_key_does_not_force_extend() {
 
     h.eval_source(r#"(bind-key! "normal" "z" "select-line")"#, &mut mock)
         .unwrap();
-    use hume_editor::KeymapBindMode as BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use hume_editor::KeymapBindMode as BindMode;
     let z_key = &[KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)];
-    let (_, force_extend) = mock.keymap
+    let (_, force_extend) = mock
+        .keymap
         .lookup_command(BindMode::Normal, z_key)
         .expect("z must be bound after bind-key!");
     assert!(!force_extend, "bind-key! must produce force_extend = false");
@@ -1204,11 +1375,13 @@ fn unbind_key_removes_default_binding() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    use hume_editor::KeymapBindMode as BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use hume_editor::KeymapBindMode as BindMode;
     let h_key = &[KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE)];
     assert!(
-        mock.keymap.lookup_command(BindMode::Normal, h_key).is_some(),
+        mock.keymap
+            .lookup_command(BindMode::Normal, h_key)
+            .is_some(),
         "'h' must be bound by default"
     );
 
@@ -1216,7 +1389,9 @@ fn unbind_key_removes_default_binding() {
         .unwrap();
 
     assert!(
-        mock.keymap.lookup_command(BindMode::Normal, h_key).is_none(),
+        mock.keymap
+            .lookup_command(BindMode::Normal, h_key)
+            .is_none(),
         "'h' must be unbound after unbind-key!"
     );
 }
@@ -1226,21 +1401,26 @@ fn unbind_key_noop_on_already_unbound() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    use hume_editor::KeymapBindMode as BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use hume_editor::KeymapBindMode as BindMode;
     let q_key = &[KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE)];
 
     // 'Q' is not in the default keymap.
     assert!(
-        mock.keymap.lookup_command(BindMode::Normal, q_key).is_none(),
+        mock.keymap
+            .lookup_command(BindMode::Normal, q_key)
+            .is_none(),
         "'Q' must not be bound before unbind-key! (baseline check)"
     );
 
-    h.eval_source(r#"(unbind-key! "normal" "Q")"#, &mut mock).unwrap();
+    h.eval_source(r#"(unbind-key! "normal" "Q")"#, &mut mock)
+        .unwrap();
 
     // The no-op must not corrupt the keymap — 'Q' remains absent.
     assert!(
-        mock.keymap.lookup_command(BindMode::Normal, q_key).is_none(),
+        mock.keymap
+            .lookup_command(BindMode::Normal, q_key)
+            .is_none(),
         "'Q' must remain unbound after no-op unbind-key!"
     );
 }
@@ -1437,12 +1617,11 @@ const PRELUDE_MACROS: &str = r#"
 
 #[test]
 fn prelude_bind_keys_batch_binds_multiple() {
-    use hume_editor::KeymapBindMode as BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use hume_editor::KeymapBindMode as BindMode;
 
     let mut h = host();
     let mut mock = MockHost::new();
-
 
     h.eval_source(PRELUDE_MACROS, &mut mock).unwrap();
     h.eval_source(
@@ -1456,13 +1635,15 @@ fn prelude_bind_keys_batch_binds_multiple() {
     let z = KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE);
     let l = KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE);
 
-    let (name, fe) = mock.keymap
+    let (name, fe) = mock
+        .keymap
         .lookup_command(BindMode::Normal, &[z, z])
         .expect("\"z z\" must be bound after bind-keys!");
     assert_eq!(name, "move-left");
     assert!(!fe, "bind-keys! must not force extend");
 
-    let (name2, _) = mock.keymap
+    let (name2, _) = mock
+        .keymap
         .lookup_command(BindMode::Normal, &[z, l])
         .expect("\"z l\" must be bound after bind-keys!");
     assert_eq!(name2, "move-right");
@@ -1470,12 +1651,11 @@ fn prelude_bind_keys_batch_binds_multiple() {
 
 #[test]
 fn prelude_bind_keys_extend_creates_force_extend_leaves() {
-    use hume_editor::KeymapBindMode as BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use hume_editor::KeymapBindMode as BindMode;
 
     let mut h = host();
     let mut mock = MockHost::new();
-
 
     h.eval_source(PRELUDE_MACROS, &mut mock).unwrap();
     h.eval_source(
@@ -1489,13 +1669,15 @@ fn prelude_bind_keys_extend_creates_force_extend_leaves() {
     let q = &[KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE)];
     let w = &[KeyEvent::new(KeyCode::Char('W'), KeyModifiers::NONE)];
 
-    let (name, fe) = mock.keymap
+    let (name, fe) = mock
+        .keymap
         .lookup_command(BindMode::Normal, q)
         .expect("\"Q\" must be bound after bind-keys-extend!");
     assert_eq!(name, "select-line");
     assert!(fe, "bind-keys-extend! must produce force_extend = true");
 
-    let (name2, fe2) = mock.keymap
+    let (name2, fe2) = mock
+        .keymap
         .lookup_command(BindMode::Normal, w)
         .expect("\"W\" must be bound after bind-keys-extend!");
     assert_eq!(name2, "select-to-end");
@@ -1504,12 +1686,11 @@ fn prelude_bind_keys_extend_creates_force_extend_leaves() {
 
 #[test]
 fn prelude_unbind_keys_batch_removes_bindings() {
-    use hume_editor::KeymapBindMode as BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use hume_editor::KeymapBindMode as BindMode;
 
     let mut h = host();
     let mut mock = MockHost::new();
-
 
     h.eval_source(PRELUDE_MACROS, &mut mock).unwrap();
 
@@ -1517,26 +1698,31 @@ fn prelude_unbind_keys_batch_removes_bindings() {
     let h_key = &[KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE)];
     let l_key = &[KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE)];
     assert!(
-        mock.keymap.lookup_command(BindMode::Normal, h_key).is_some(),
+        mock.keymap
+            .lookup_command(BindMode::Normal, h_key)
+            .is_some(),
         "'h' must be bound by default"
     );
     assert!(
-        mock.keymap.lookup_command(BindMode::Normal, l_key).is_some(),
+        mock.keymap
+            .lookup_command(BindMode::Normal, l_key)
+            .is_some(),
         "'l' must be bound by default"
     );
 
-    h.eval_source(
-        r#"(unbind-keys! "normal" "h" "l")"#,
-        &mut mock,
-    )
-    .unwrap();
+    h.eval_source(r#"(unbind-keys! "normal" "h" "l")"#, &mut mock)
+        .unwrap();
 
     assert!(
-        mock.keymap.lookup_command(BindMode::Normal, h_key).is_none(),
+        mock.keymap
+            .lookup_command(BindMode::Normal, h_key)
+            .is_none(),
         "'h' must be unbound after unbind-keys!"
     );
     assert!(
-        mock.keymap.lookup_command(BindMode::Normal, l_key).is_none(),
+        mock.keymap
+            .lookup_command(BindMode::Normal, l_key)
+            .is_none(),
         "'l' must be unbound after unbind-keys!"
     );
 }
@@ -1559,7 +1745,11 @@ fn prelude_eval_init_sequence_makes_macros_available_to_init_scm() {
 
     std::fs::write(&prelude_path, PRELUDE_MACROS).unwrap();
     let mut f = std::fs::File::create(&init_path).unwrap();
-    writeln!(f, r#"(bind-keys! "normal" ("Q Q" "move-left") ("Q W" "move-right"))"#).unwrap();
+    writeln!(
+        f,
+        r#"(bind-keys! "normal" ("Q Q" "move-left") ("Q W" "move-right"))"#
+    )
+    .unwrap();
 
     // Load prelude first, then init.scm — mirroring init_scripting's sequence.
     h.eval_init(&prelude_path, 10_000, &mut mock, builtin_names.clone())
@@ -1567,23 +1757,28 @@ fn prelude_eval_init_sequence_makes_macros_available_to_init_scm() {
     assert!(
         mock.registered_cmds.is_empty(),
         "prelude must define no commands; got {:?}",
-        mock.registered_cmds.iter().map(|d| &d.name).collect::<Vec<_>>()
+        mock.registered_cmds
+            .iter()
+            .map(|d| &d.name)
+            .collect::<Vec<_>>()
     );
 
     h.eval_init(&init_path, 10_000, &mut mock, builtin_names)
         .expect("init.scm using bind-keys! must succeed after prelude is loaded");
 
-    use hume_editor::KeymapBindMode as BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use hume_editor::KeymapBindMode as BindMode;
     let q = KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE);
     let w = KeyEvent::new(KeyCode::Char('W'), KeyModifiers::NONE);
 
-    let (name1, _) = mock.keymap
+    let (name1, _) = mock
+        .keymap
         .lookup_command(BindMode::Normal, &[q, q])
         .expect("\"Q Q\" must be bound via bind-keys! from init.scm");
     assert_eq!(name1, "move-left");
 
-    let (name2, _) = mock.keymap
+    let (name2, _) = mock
+        .keymap
         .lookup_command(BindMode::Normal, &[q, w])
         .expect("\"Q W\" must be bound via bind-keys! from init.scm");
     assert_eq!(name2, "move-right");
@@ -1596,13 +1791,9 @@ fn bind_keys_without_prelude_fails_gracefully() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-
     // bind-keys! is NOT defined — init.scm uses it directly.
     let err = h
-        .eval_source(
-            r#"(bind-keys! "normal" ("z" "move-left"))"#,
-        &mut mock,
-        )
+        .eval_source(r#"(bind-keys! "normal" ("z" "move-left"))"#, &mut mock)
         .unwrap_err();
 
     // Steel reports an unbound identifier or similar error; the editor survives.
@@ -1644,7 +1835,6 @@ fn eager_load_no_keywords_reaches_loaded_state() {
     h.set_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("eager load must succeed");
 
@@ -1660,7 +1850,10 @@ fn eager_load_no_keywords_reaches_loaded_state() {
     assert!(
         mock.registered_cmds.iter().any(|d| d.name == "tp-cmd"),
         "tp-cmd must be registered; got {:?}",
-        mock.registered_cmds.iter().map(|d| &d.name).collect::<Vec<_>>()
+        mock.registered_cmds
+            .iter()
+            .map(|d| &d.name)
+            .collect::<Vec<_>>()
     );
 }
 
@@ -1677,7 +1870,6 @@ fn lazy_load_stays_declared_body_not_evaluated() {
     let mut h = host();
     h.set_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
-
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("lazy load must not error during init");
@@ -1710,7 +1902,6 @@ fn on_command_trigger_populates_registry_body_not_evaluated() {
     let mut h = host();
     h.set_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
-
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("#:commands declaration must not error during init");
@@ -1750,7 +1941,6 @@ fn activate_plugin_idempotent_on_declared_lazy_plugin() {
     h.set_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("init must succeed");
 
@@ -1777,7 +1967,8 @@ fn activate_plugin_idempotent_on_declared_lazy_plugin() {
     h.activate_plugin_inline(&id, 10_000, &mut mock, &Default::default())
         .expect("second activate_plugin_inline must succeed");
     assert_eq!(
-        mock.registered_cmds.len(), count_after_first,
+        mock.registered_cmds.len(),
+        count_after_first,
         "second activation must be idempotent (no new commands registered)"
     );
 }
@@ -1796,9 +1987,11 @@ fn eager_plugin_body_error_aborts_init() {
     h.set_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-
     let result = h.eval_init(&init_path, 10_000, &mut mock, Default::default());
-    assert!(result.is_err(), "init must fail when eager plugin body errors");
+    assert!(
+        result.is_err(),
+        "init must fail when eager plugin body errors"
+    );
 
     let id = attribution::PluginId::User {
         user: "user".to_string(),
@@ -1875,8 +2068,7 @@ fn manifest_collision_with_builtin_logs_error_continues() {
     let mut h2 = host();
     h2.set_data_dir(dir2.path().to_path_buf());
     let mut mock2 = MockHost::new();
-    
-    
+
     let builtin_names2: std::collections::HashSet<String> =
         ["move-right".to_string()].into_iter().collect();
     h2.eval_init(&init_path2, 10_000, &mut mock2, builtin_names2)
@@ -1906,13 +2098,25 @@ fn manifest_collision_lazy_vs_lazy_logs_error_continues() {
     let pb = dir.path().join("plugins").join("user").join("pb");
     std::fs::create_dir_all(&pa).unwrap();
     std::fs::create_dir_all(&pb).unwrap();
-    std::fs::write(pa.join("plugin.scm"), r#"(define-command! "tp-a" "doc" (lambda () (+ 1 0)))"#).unwrap();
-    std::fs::write(pb.join("plugin.scm"), r#"(define-command! "tp-b" "doc" (lambda () (+ 1 0)))"#).unwrap();
+    std::fs::write(
+        pa.join("plugin.scm"),
+        r#"(define-command! "tp-a" "doc" (lambda () (+ 1 0)))"#,
+    )
+    .unwrap();
+    std::fs::write(
+        pb.join("plugin.scm"),
+        r#"(define-command! "tp-b" "doc" (lambda () (+ 1 0)))"#,
+    )
+    .unwrap();
     let init_path = dir.path().join("init.scm");
-    std::fs::write(&init_path, r#"
+    std::fs::write(
+        &init_path,
+        r#"
 (declare-plugin "user/pa" #:commands '("bar"))
 (declare-plugin "user/pb" #:commands '("bar" "pb-only"))
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
     let mut h = host();
     h.set_data_dir(dir.path().to_path_buf());
@@ -1947,17 +2151,11 @@ fn manifest_collision_lazy_vs_lazy_logs_error_continues() {
         repo: "pb".to_string(),
     };
     assert!(
-        matches!(
-            h.plugin_status(&pa_id),
-            Some(PluginStatus::Declared)
-        ),
+        matches!(h.plugin_status(&pa_id), Some(PluginStatus::Declared)),
         "pa must be Declared"
     );
     assert!(
-        matches!(
-            h.plugin_status(&pb_id),
-            Some(PluginStatus::Declared)
-        ),
+        matches!(h.plugin_status(&pb_id), Some(PluginStatus::Declared)),
         "pb must be Declared even with its activation entry dropped"
     );
 }
@@ -2030,7 +2228,6 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
     );
 }
 
-
 /// `(declare-plugin "user/tp" #:languages '("rust"))` → plugin stays lazy,
 /// `activation_languages["rust"]` contains the plugin, body not evaluated.
 ///
@@ -2047,7 +2244,6 @@ fn on_language_trigger_populates_registry_body_not_evaluated() {
     let mut h = host();
     h.set_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
-
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("#:languages declaration must not error during init");
@@ -2457,7 +2653,11 @@ fn arity1_list_command_accepts_list_arg() {
         mock.focused_buffer_id,
         &mut mock,
     );
-    assert!(result.is_ok(), "expected Ok for valid list arg, got: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "expected Ok for valid list arg, got: {:?}",
+        result.err()
+    );
 }
 
 /// `(load-plugin …)` raises a Steel error when called from a command body
@@ -2478,7 +2678,14 @@ fn load_plugin_runtime_guard_fires() {
     .unwrap();
 
     let err = h
-        .call_steel_cmd("try-load", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .call_steel_cmd(
+            "try-load",
+            None,
+            vec![],
+            mock.focused_pane_id,
+            mock.focused_buffer_id,
+            &mut mock,
+        )
         .unwrap_err();
     assert!(
         err.contains("top level") || err.contains("init.scm"),

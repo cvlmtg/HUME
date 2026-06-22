@@ -87,7 +87,10 @@ impl Editor {
                 };
                 self.flush_script_messages();
                 match result {
-                    Ok(HookResult { pending_language_sets, grammar_sweeps }) => {
+                    Ok(HookResult {
+                        pending_language_sets,
+                        grammar_sweeps,
+                    }) => {
                         for (bid, lang) in pending_language_sets {
                             self.set_buffer_language(bid, lang);
                         }
@@ -167,8 +170,13 @@ impl Editor {
         if let Some(prelude_path) = host.runtime_dir().map(|rt| rt.join("scheme/prelude.scm")) {
             let init_budget = self.state.settings.steel_init_budget_ms as u64;
             let mut ih = make_init_host(&mut self.state, &mut self.view);
-            if let Err(msg) = host.eval_init(&prelude_path, init_budget, &mut ih, builtin_names.clone()) {
-                self.report(Severity::Error, format!("runtime/scheme/prelude.scm: {msg}"));
+            if let Err(msg) =
+                host.eval_init(&prelude_path, init_budget, &mut ih, builtin_names.clone())
+            {
+                self.report(
+                    Severity::Error,
+                    format!("runtime/scheme/prelude.scm: {msg}"),
+                );
             }
         }
         // Load languages.scm between prelude and init.scm so (define-language! …)
@@ -177,8 +185,13 @@ impl Editor {
         if let Some(langs_path) = langs_path {
             let init_budget = self.state.settings.steel_init_budget_ms as u64;
             let mut ih = make_init_host(&mut self.state, &mut self.view);
-            if let Err(msg) = host.eval_init(&langs_path, init_budget, &mut ih, builtin_names.clone()) {
-                self.report(Severity::Error, format!("runtime/scheme/languages.scm: {msg}"));
+            if let Err(msg) =
+                host.eval_init(&langs_path, init_budget, &mut ih, builtin_names.clone())
+            {
+                self.report(
+                    Severity::Error,
+                    format!("runtime/scheme/languages.scm: {msg}"),
+                );
             }
             self.flush_pending_language_regs(&mut host);
         }
@@ -205,7 +218,9 @@ impl Editor {
         // plugins that ran during init.scm.
         self.flush_pending_language_regs(&mut host);
         // Pick up any (set-option! "history-capacity" N) calls from init.scm.
-        self.state.history.set_capacity(self.state.settings.history_capacity);
+        self.state
+            .history
+            .set_capacity(self.state.settings.history_capacity);
         // Flush any `(log! …)` messages produced during init.scm evaluation.
         for (level, text) in host.take_pending_messages() {
             self.report(log_level_to_severity(level), text);
@@ -301,10 +316,12 @@ impl Editor {
                 );
                 collided.push(name.clone());
             } else {
-                self.state.registry.register(super::registry::MappableCommand::Lazy {
-                    name: name.clone().into(),
-                    plugin: plugin.clone(),
-                });
+                self.state
+                    .registry
+                    .register(super::registry::MappableCommand::Lazy {
+                        name: name.clone().into(),
+                        plugin: plugin.clone(),
+                    });
             }
         }
         collided

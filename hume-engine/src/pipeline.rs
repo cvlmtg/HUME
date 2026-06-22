@@ -44,7 +44,10 @@ pub struct SharedBuffer {
 
 impl SharedBuffer {
     pub fn new() -> Self {
-        Self { tree: None, syntax: None }
+        Self {
+            tree: None,
+            syntax: None,
+        }
     }
 }
 

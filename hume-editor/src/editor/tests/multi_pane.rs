@@ -405,8 +405,8 @@ fn pane_engine_mirror_synced_for_non_focused_pane_after_edit() {
 /// overwrite existing state (e.g. selections moved away from initial).
 #[test]
 fn ensure_is_idempotent() {
-    use hume_editing::selection::{Selection, SelectionSet};
     use crate::editor::pane_state;
+    use hume_editing::selection::{Selection, SelectionSet};
 
     let mut ed = editor_from("-[h]>ello\n");
     let pid = ed.state.focused_pane_id;

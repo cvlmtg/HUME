@@ -1,16 +1,12 @@
 use hume_engine::pipeline::BufferId;
 
-use super::super::{ops, Severity};
 use super::super::Editor;
+use super::super::{Severity, ops};
 use crate::editor::error::CommandError;
 
 // ── Typed file commands ───────────────────────────────────────────────────────
 
-pub fn typed_quit(
-    ed: &mut Editor,
-    _arg: Option<&str>,
-    force: bool,
-) -> Result<(), CommandError> {
+pub fn typed_quit(ed: &mut Editor, _arg: Option<&str>, force: bool) -> Result<(), CommandError> {
     if !force && ed.doc().is_dirty() {
         return Err(CommandError::new("Unsaved changes (add ! to override)"));
     }
@@ -21,7 +17,8 @@ pub fn typed_quit(
     // Empty scratch buffers and read-only views (e.g. [messages]) are disposable —
     // :q exits rather than parking on them.
     let any_other_real = ed
-        .state.buffers
+        .state
+        .buffers
         .iter()
         .filter(|(id, _)| *id != current)
         .any(|(_, buf)| (buf.path().is_some() && !buf.is_read_only()) || buf.is_dirty());
@@ -41,7 +38,10 @@ pub fn typed_quit_all(
 ) -> Result<(), CommandError> {
     if !force {
         // Find the first dirty buffer in open-order.
-        let dirty_id = ed.state.buffers.iter()
+        let dirty_id = ed
+            .state
+            .buffers
+            .iter()
             .find(|(_, buf)| buf.is_dirty())
             .map(|(id, _)| id);
 
@@ -62,11 +62,7 @@ pub fn typed_quit_all(
     Ok(())
 }
 
-pub fn typed_write(
-    ed: &mut Editor,
-    arg: Option<&str>,
-    force: bool,
-) -> Result<(), CommandError> {
+pub fn typed_write(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), CommandError> {
     write_file(ed, arg, force)
 }
 
@@ -96,7 +92,11 @@ pub fn typed_toggle_soft_wrap(
     _force: bool,
 ) -> Result<(), CommandError> {
     use hume_engine::pane::WrapMode;
-    let currently_wrapping = ed.doc().overrides.wrap_mode(&ed.state.settings).is_wrapping();
+    let currently_wrapping = ed
+        .doc()
+        .overrides
+        .wrap_mode(&ed.state.settings)
+        .is_wrapping();
     if currently_wrapping {
         ed.doc_mut().overrides.wrap_mode = Some(WrapMode::None);
         // Horizontal offset is now meaningful; scroll stays where it is.
@@ -112,11 +112,7 @@ pub fn typed_toggle_soft_wrap(
     Ok(())
 }
 
-pub fn typed_set(
-    ed: &mut Editor,
-    arg: Option<&str>,
-    _force: bool,
-) -> Result<(), CommandError> {
+pub fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
     const USAGE: &str = "Usage: :set global|buffer key=value";
     let Some(arg) = arg else {
         return Err(CommandError::new(USAGE));
@@ -133,10 +129,14 @@ pub fn typed_set(
     if key == "language" {
         return match scope {
             "global" => Err(CommandError::new(
-                "'language' is per-buffer — use ':set buffer language=<name>'"
+                "'language' is per-buffer — use ':set buffer language=<name>'",
             )),
             "buffer" => {
-                let new_lang = if value.is_empty() { None } else { Some(value.to_owned()) };
+                let new_lang = if value.is_empty() {
+                    None
+                } else {
+                    Some(value.to_owned())
+                };
                 if let Some(ref name) = new_lang
                     && ed.state.languages.by_name(name).is_none()
                 {
@@ -174,9 +174,12 @@ pub fn typed_set(
         )),
     };
     if result.is_ok() && key == "history-capacity" {
-        ed.state.history.set_capacity(ed.state.settings.history_capacity);
+        ed.state
+            .history
+            .set_capacity(ed.state.settings.history_capacity);
     }
-    if result.is_ok() && key == "theme" && scope == "global" && !ed.state.settings.theme.is_empty() {
+    if result.is_ok() && key == "theme" && scope == "global" && !ed.state.settings.theme.is_empty()
+    {
         ops::load_theme_by_name(
             &mut ed.view,
             &mut ed.state.message_log,
@@ -253,7 +256,11 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
             let p = std::path::Path::new(expanded.as_ref());
             // Resolve relative paths against editor.cwd, not the process cwd,
             // so `:w relpath` is stable regardless of how the process cwd drifts.
-            if p.is_relative() { ed.state.cwd.join(p) } else { p.to_owned() }
+            if p.is_relative() {
+                ed.state.cwd.join(p)
+            } else {
+                p.to_owned()
+            }
         };
         // Lexically-normalized absolute path without symlink resolution, recorded for
         // the FilePath statusline element so it shows the user-typed path, not the
@@ -274,7 +281,8 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
                 // Synthetic buffers (e.g. [messages]) stay path-less after save-as —
                 // the write dumps content to disk but the buffer itself is unaffected.
                 if !ed.doc().is_synthetic() {
-                    ed.doc_mut().set_path(Some(meta.resolved_path().to_path_buf()));
+                    ed.doc_mut()
+                        .set_path(Some(meta.resolved_path().to_path_buf()));
                     ed.doc_mut().set_display_path(Some(display_path));
                     ed.doc_mut().file_meta = Some(meta);
                 }

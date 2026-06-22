@@ -1,13 +1,15 @@
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
-use hume_editing::selection::Selection;
 use crate::ops::MotionMode;
 use crate::ops::edit::{delete_selection, paste_after, paste_before, replace_selections};
-use crate::ops::register::{BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, KILL_RING_REGISTER, yank_selections};
+use crate::ops::register::{
+    BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, KILL_RING_REGISTER, yank_selections,
+};
 use crate::ops::surround::wrap_each_selection;
+use hume_editing::selection::Selection;
 
-use super::super::{doc_ops, register_ops, EditorState, Severity};
-use super::{focused_buffer_id, begin_insert_session};
+use super::super::{EditorState, Severity, doc_ops, register_ops};
+use super::{begin_insert_session, focused_buffer_id};
 use crate::editor::error::CommandError;
 use crate::editor::registry::CmdCategory;
 
@@ -30,10 +32,19 @@ pub fn cmd_delete(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let yanked = yank_selections(super::doc(state, view).text(), super::current_selections(state, view));
+    let yanked = yank_selections(
+        super::doc(state, view).text(),
+        super::current_selections(state, view),
+    );
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_edit(&mut state.buffers, &mut state.panes.state, focused, buf, delete_selection);
+    doc_ops::apply_doc_edit(
+        &mut state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf,
+        delete_selection,
+    );
     match state.take_register_prefix() {
         None | Some(KILL_RING_REGISTER) => state.kill_ring.push(yanked),
         Some(reg) => state.write_register(reg, yanked),
@@ -51,11 +62,20 @@ pub fn cmd_change(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let yanked = yank_selections(super::doc(state, view).text(), super::current_selections(state, view));
+    let yanked = yank_selections(
+        super::doc(state, view).text(),
+        super::current_selections(state, view),
+    );
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     begin_insert_session(state, view);
-    doc_ops::apply_doc_edit_grouped(&mut state.buffers, &mut state.panes.state, focused, buf, delete_selection);
+    doc_ops::apply_doc_edit_grouped(
+        &mut state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf,
+        delete_selection,
+    );
     match state.take_register_prefix() {
         None | Some(KILL_RING_REGISTER) => state.kill_ring.push(yanked),
         Some(reg) => state.write_register(reg, yanked),
@@ -73,7 +93,10 @@ pub fn cmd_yank(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let yanked = yank_selections(super::doc(state, view).text(), super::current_selections(state, view));
+    let yanked = yank_selections(
+        super::doc(state, view).text(),
+        super::current_selections(state, view),
+    );
     match state.take_register_prefix() {
         None => {
             state.write_clipboard(&yanked);
@@ -158,7 +181,10 @@ fn open_paste_session_and_apply(
     values: &[String],
 ) {
     let pre_sels = state.panes.state[focused][buf].selections.clone();
-    state.buffers.get(buf).begin_edit_group(&mut state.panes.state[focused][buf].paste_group, pre_sels);
+    state
+        .buffers
+        .get(buf)
+        .begin_edit_group(&mut state.panes.state[focused][buf].paste_group, pre_sels);
     let paste_fn = if before { paste_before } else { paste_after };
     doc_ops::apply_doc_edit_regrouped(
         &mut state.buffers,
@@ -174,7 +200,10 @@ fn open_paste_session_and_apply(
 /// Returns `(values, cycle_origin)` where `cycle_origin` is `Some(slot)` for
 /// ring-seeded pastes and `None` for clipboard / named-register pastes.
 /// Returns `None` to signal a no-op (black-hole, empty register, or empty ring+clipboard).
-fn resolve_paste_values(state: &mut EditorState, last_cmd: Option<&str>) -> Option<(Vec<String>, Option<usize>)> {
+fn resolve_paste_values(
+    state: &mut EditorState,
+    last_cmd: Option<&str>,
+) -> Option<(Vec<String>, Option<usize>)> {
     match state.take_register_prefix() {
         None => {
             let prefer_ring = last_cmd.is_some_and(|c| SMART_P_LAST_CMDS.contains(&c));
@@ -220,11 +249,8 @@ fn resolve_paste_values(state: &mut EditorState, last_cmd: Option<&str>) -> Opti
         Some(c) => {
             // Digits and clipboard. Digits read in-memory RegisterSet (symmetric
             // with "Ny writes). Clipboard routes through the OS clipboard.
-            let (cow, warn) = register_ops::read_register_text(
-                &state.registers,
-                &mut state.clipboard,
-                c,
-            );
+            let (cow, warn) =
+                register_ops::read_register_text(&state.registers, &mut state.clipboard, c);
             let values = cow.map(|c| c.to_vec()); // end borrow of state.registers
             if let Some(w) = warn {
                 state.report(Severity::Warning, w);
@@ -260,7 +286,11 @@ pub fn cmd_paste_before(
 /// cursor and re-paste from the session snapshot.
 ///
 /// Noop when no paste session is open or when the cycle is already at a boundary.
-fn do_paste_cycle(state: &mut EditorState, view: &mut EngineView, older: bool) -> Result<(), CommandError> {
+fn do_paste_cycle(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    older: bool,
+) -> Result<(), CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     if state.panes.state[focused][buf].paste_group.is_none() {
@@ -345,9 +375,13 @@ pub fn cmd_replace(
     if let Some(ch) = state.pending_char.take() {
         let focused = state.focused_pane_id;
         let buf = focused_buffer_id(state, view);
-        doc_ops::apply_doc_edit(&mut state.buffers, &mut state.panes.state, focused, buf, |b, s| {
-            replace_selections(b, s, ch)
-        });
+        doc_ops::apply_doc_edit(
+            &mut state.buffers,
+            &mut state.panes.state,
+            focused,
+            buf,
+            |b, s| replace_selections(b, s, ch),
+        );
     }
     Ok(())
 }
@@ -362,7 +396,9 @@ pub fn cmd_surround_add(
     let Some(ch) = state.pending_char.take() else {
         return Ok(());
     };
-    let (_ap_enabled, ap_pairs) = super::doc(state, view).overrides.auto_pairs_ref(&state.settings);
+    let (_ap_enabled, ap_pairs) = super::doc(state, view)
+        .overrides
+        .auto_pairs_ref(&state.settings);
     let (open, close) = ap_pairs
         .iter()
         .find(|p| p.open == ch || p.close == ch)
@@ -370,8 +406,12 @@ pub fn cmd_surround_add(
         .unwrap_or((ch, ch));
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_edit(&mut state.buffers, &mut state.panes.state, focused, buf, |b, s| {
-        wrap_each_selection(b, s, open, close)
-    });
+    doc_ops::apply_doc_edit(
+        &mut state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf,
+        |b, s| wrap_each_selection(b, s, open, close),
+    );
     Ok(())
 }

@@ -3,10 +3,10 @@ use std::sync::Arc;
 use hume_engine::builtins::tree_sitter_hl::TreeSitterHighlighter;
 use hume_engine::pipeline::BufferId;
 
-use super::{Editor, Severity};
 use super::buffer::Buffer;
 use super::parse_worker::{ParseDone, ParseOutcome, ParseRequest};
 use super::syntax::BufferSyntax;
+use super::{Editor, Severity};
 use hume_editing::changeset::{ChangeSet, Operation};
 
 // ── Incremental parse helpers ─────────────────────────────────────────────────
@@ -16,23 +16,26 @@ use hume_editing::changeset::{ChangeSet, Operation};
 /// `rope` must be the buffer text **before** the edit (the old document).  All
 /// char offsets in the changeset are converted to byte offsets and (row, byte-col)
 /// positions via the rope's index helpers.
-fn input_edits_from_changeset(
-    cs: &ChangeSet,
-    rope: &ropey::Rope,
-) -> Vec<tree_sitter::InputEdit> {
+fn input_edits_from_changeset(cs: &ChangeSet, rope: &ropey::Rope) -> Vec<tree_sitter::InputEdit> {
     let mut edits = Vec::new();
     let mut pre_char: usize = 0;
     let mut ops = cs.ops().iter();
 
     while let Some(op) = ops.next() {
         match op {
-            Operation::Retain(n) => { pre_char += n; }
+            Operation::Retain(n) => {
+                pre_char += n;
+            }
             Operation::Delete(del_n) => {
                 let start_char = pre_char;
                 let old_end_char = pre_char + del_n;
                 // A following Insert forms a replace — consume it together.
                 let inserted = match ops.as_slice().first() {
-                    Some(Operation::Insert(s)) => { let s = s.as_str(); ops.next(); s }
+                    Some(Operation::Insert(s)) => {
+                        let s = s.as_str();
+                        ops.next();
+                        s
+                    }
                     _ => "",
                 };
                 edits.push(make_input_edit(start_char, old_end_char, inserted, rope));
@@ -54,15 +57,15 @@ fn make_input_edit(
     inserted: &str,
     rope: &ropey::Rope,
 ) -> tree_sitter::InputEdit {
-    let start_byte    = rope.char_to_byte(start_char);
-    let old_end_byte  = rope.char_to_byte(old_end_char);
-    let new_end_byte  = start_byte + inserted.len(); // str::len() is byte count
+    let start_byte = rope.char_to_byte(start_char);
+    let old_end_byte = rope.char_to_byte(old_end_char);
+    let new_end_byte = start_byte + inserted.len(); // str::len() is byte count
 
-    let start_row     = rope.char_to_line(start_char);
-    let start_col     = start_byte - rope.line_to_byte(start_row);
+    let start_row = rope.char_to_line(start_char);
+    let start_col = start_byte - rope.line_to_byte(start_row);
 
-    let old_end_row   = rope.char_to_line(old_end_char);
-    let old_end_col   = old_end_byte - rope.line_to_byte(old_end_row);
+    let old_end_row = rope.char_to_line(old_end_char);
+    let old_end_col = old_end_byte - rope.line_to_byte(old_end_row);
 
     let (new_end_row, new_end_col) = new_end_point(start_row, start_col, inserted);
 
@@ -70,9 +73,18 @@ fn make_input_edit(
         start_byte,
         old_end_byte,
         new_end_byte,
-        start_position:   tree_sitter::Point { row: start_row,   column: start_col   },
-        old_end_position: tree_sitter::Point { row: old_end_row, column: old_end_col },
-        new_end_position: tree_sitter::Point { row: new_end_row, column: new_end_col },
+        start_position: tree_sitter::Point {
+            row: start_row,
+            column: start_col,
+        },
+        old_end_position: tree_sitter::Point {
+            row: old_end_row,
+            column: old_end_col,
+        },
+        new_end_position: tree_sitter::Point {
+            row: new_end_row,
+            column: new_end_col,
+        },
     }
 }
 
@@ -136,7 +148,9 @@ impl Editor {
         };
 
         // Size gate.
-        if self.state.buffers.get(bid).text().len_bytes() > self.state.settings.syntax_highlight_max_bytes {
+        if self.state.buffers.get(bid).text().len_bytes()
+            > self.state.settings.syntax_highlight_max_bytes
+        {
             return;
         }
 
@@ -149,8 +163,7 @@ impl Editor {
                 .expect("grammar.is_some() checked at match guard above")
                 .query,
         );
-        let highlighter =
-            TreeSitterHighlighter::from_shared_query(query, &mut self.view.registry);
+        let highlighter = TreeSitterHighlighter::from_shared_query(query, &mut self.view.registry);
 
         let text_gen = self.state.buffers.get(bid).text_gen;
 
@@ -165,7 +178,11 @@ impl Editor {
         // Empty buffers need no parse — mark up to date so reparse_stale_buffers
         // skips them until the first edit arrives.
         if self.state.buffers.get(bid).text().len_bytes() == 0 {
-            self.state.buffers.get_mut(bid).syntax.as_mut()
+            self.state
+                .buffers
+                .get_mut(bid)
+                .syntax
+                .as_mut()
                 .expect("syntax just set above")
                 .parsed_gen = text_gen;
             return;
@@ -179,7 +196,13 @@ impl Editor {
         // Tests: InlineParseBackend completes the parse inside post() — a single
         // reparse_stale_buffers call drains and installs the result.
         let text = self.state.buffers.get(bid).text().clone();
-        self.parse_worker.post(ParseRequest { bid, text_gen, lang: lang_config, text, old_tree: None });
+        self.parse_worker.post(ParseRequest {
+            bid,
+            text_gen,
+            lang: lang_config,
+            text,
+            old_tree: None,
+        });
     }
 
     /// Install a `ParseDone` result: update `sbuf.tree` and advance
@@ -191,9 +214,15 @@ impl Editor {
     /// - the grammar identity changed (grammar was swapped while in flight)
     /// - the text advanced past this result (another edit arrived first)
     fn install_parse_done(&mut self, done: ParseDone) {
-        let ParseDone { bid, text_gen, lang, outcome } = done;
+        let ParseDone {
+            bid,
+            text_gen,
+            lang,
+            outcome,
+        } = done;
         self.apply_parse_outcome(bid, text_gen, &lang, outcome);
-        self.parse_worker.clear_in_flight_if_matches(bid, text_gen, &lang);
+        self.parse_worker
+            .clear_in_flight_if_matches(bid, text_gen, &lang);
     }
 
     fn apply_parse_outcome(
@@ -244,7 +273,11 @@ impl Editor {
             }
         }
 
-        self.state.buffers.get_mut(bid).syntax.as_mut()
+        self.state
+            .buffers
+            .get_mut(bid)
+            .syntax
+            .as_mut()
             .expect("syntax.is_some() guaranteed: checked above before install")
             .parsed_gen = text_gen;
     }
@@ -304,7 +337,12 @@ impl Editor {
             // syntax detached by the growth branch above.
             if buf.syntax.is_none() {
                 if byte_len <= max_bytes
-                    && self.state.buffers.get(bid).language.as_deref()
+                    && self
+                        .state
+                        .buffers
+                        .get(bid)
+                        .language
+                        .as_deref()
                         .and_then(|l| self.state.languages.by_name(l))
                         .is_some_and(|c| c.grammar.is_some())
                 {
@@ -315,7 +353,11 @@ impl Editor {
 
             // Gen-gate: skip if already up to date.
             // buf.syntax.is_some() is guaranteed — the is_none branch above continues.
-            let parsed_gen = buf.syntax.as_ref().expect("syntax is_none handled above").parsed_gen;
+            let parsed_gen = buf
+                .syntax
+                .as_ref()
+                .expect("syntax is_none handled above")
+                .parsed_gen;
             if parsed_gen == text_gen {
                 continue;
             }
@@ -336,7 +378,12 @@ impl Editor {
             // existed), so clone it directly.  Falls back to None (full reparse)
             // when no tree exists yet or the chain was broken.
             let old_tree: Option<tree_sitter::Tree> = {
-                let tree_gen = self.state.buffers.get(bid).syntax.as_ref()
+                let tree_gen = self
+                    .state
+                    .buffers
+                    .get(bid)
+                    .syntax
+                    .as_ref()
                     .expect("syntax is_some guaranteed above")
                     .tree_gen;
                 if tree_gen == text_gen {
@@ -348,12 +395,22 @@ impl Editor {
 
             let text = self.state.buffers.get(bid).text().clone();
             let lang = Arc::clone(
-                &self.state.buffers.get(bid).syntax
+                &self
+                    .state
+                    .buffers
+                    .get(bid)
+                    .syntax
                     .as_ref()
                     .expect("syntax is_some guaranteed above")
                     .lang,
             );
-            self.parse_worker.post(ParseRequest { bid, text_gen, lang, text, old_tree });
+            self.parse_worker.post(ParseRequest {
+                bid,
+                text_gen,
+                lang,
+                text,
+                old_tree,
+            });
         }
     }
 
@@ -370,7 +427,9 @@ impl Editor {
     /// cleared and `tree_gen` is left unchanged; the caller then posts a full
     /// reparse (`old_tree = None`).
     fn bake_pending_edits(&mut self, bid: BufferId, text_gen: u64) {
-        let Some(buf_syntax) = self.state.buffers.get(bid).syntax.as_ref() else { return };
+        let Some(buf_syntax) = self.state.buffers.get(bid).syntax.as_ref() else {
+            return;
+        };
         let tree_gen = buf_syntax.tree_gen;
         let has_pending = !buf_syntax.pending_edits.is_empty();
 
@@ -378,19 +437,31 @@ impl Editor {
             return;
         }
 
-        let pending = &self.state.buffers.get(bid).syntax.as_ref()
+        let pending = &self
+            .state
+            .buffers
+            .get(bid)
+            .syntax
+            .as_ref()
             .expect("syntax checked above")
             .pending_edits;
-        let chain_ok = pending[0].0 == tree_gen + 1
-            && pending.last().unwrap().0 == text_gen;
+        let chain_ok = pending[0].0 == tree_gen + 1 && pending.last().unwrap().0 == text_gen;
 
         if chain_ok {
             let edits: Vec<_> = pending.iter().map(|(_, e)| *e).collect();
-            let tree = self.view.buffers[bid].tree.as_mut().expect("tree checked above");
+            let tree = self.view.buffers[bid]
+                .tree
+                .as_mut()
+                .expect("tree checked above");
             for edit in &edits {
                 tree.edit(edit);
             }
-            let syn = self.state.buffers.get_mut(bid).syntax.as_mut()
+            let syn = self
+                .state
+                .buffers
+                .get_mut(bid)
+                .syntax
+                .as_mut()
                 .expect("syntax checked above");
             syn.tree_gen = text_gen;
             syn.pending_edits.clear();
@@ -409,9 +480,14 @@ impl Editor {
                     pending.last().map(|(g, _)| *g),
                 ),
             );
-            self.state.buffers.get_mut(bid).syntax.as_mut()
+            self.state
+                .buffers
+                .get_mut(bid)
+                .syntax
+                .as_mut()
                 .expect("syntax checked above")
-                .pending_edits.clear();
+                .pending_edits
+                .clear();
         }
     }
 
@@ -433,7 +509,8 @@ impl Editor {
             return;
         }
         let bids: Vec<BufferId> = self
-            .state.buffers
+            .state
+            .buffers
             .iter()
             .filter(|(_, buf)| {
                 buf.language
@@ -452,8 +529,8 @@ impl Editor {
 
 #[cfg(test)]
 mod tests {
-    use hume_editing::changeset::ChangeSetBuilder;
     use super::{input_edits_from_changeset, new_end_point};
+    use hume_editing::changeset::ChangeSetBuilder;
 
     #[test]
     fn pure_insert_at_start() {
@@ -567,15 +644,18 @@ mod tests {
     fn two_separate_edit_sites_emit_two_edits() {
         let rope = ropey::Rope::from_str("abc\n");
         let mut b = ChangeSetBuilder::new(rope.len_chars());
-        b.delete(1);    // delete 'a'
-        b.retain(1);    // keep 'b'
-        b.delete(1);    // delete 'c'
+        b.delete(1); // delete 'a'
+        b.retain(1); // keep 'b'
+        b.delete(1); // delete 'c'
         b.retain_rest();
         let cs = b.finish();
 
         let edits = input_edits_from_changeset(&cs, &rope);
         assert_eq!(edits.len(), 2);
-        assert!(edits[0].start_byte < edits[1].start_byte, "edits must be in order");
+        assert!(
+            edits[0].start_byte < edits[1].start_byte,
+            "edits must be in order"
+        );
         assert_eq!(edits[0].start_byte, 0);
         assert_eq!(edits[0].old_end_byte, 1);
         assert_eq!(edits[1].start_byte, 2);

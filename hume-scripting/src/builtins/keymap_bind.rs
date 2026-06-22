@@ -74,7 +74,15 @@ pub(crate) fn bind_key(
     key_str: String,
     cmd_name: String,
 ) -> SteelResult {
-    bind_inner(ctx, "bind-key!", mode_str, key_str, cmd_name, BindKind::Normal, false)
+    bind_inner(
+        ctx,
+        "bind-key!",
+        mode_str,
+        key_str,
+        cmd_name,
+        BindKind::Normal,
+        false,
+    )
 }
 
 /// `(bind-key-extend! mode key-sequence command-name)`
@@ -90,7 +98,15 @@ pub(crate) fn bind_key_extend(
     key_str: String,
     cmd_name: String,
 ) -> SteelResult {
-    bind_inner(ctx, "bind-key-extend!", mode_str, key_str, cmd_name, BindKind::Normal, true)
+    bind_inner(
+        ctx,
+        "bind-key-extend!",
+        mode_str,
+        key_str,
+        cmd_name,
+        BindKind::Normal,
+        true,
+    )
 }
 
 /// `(unbind-key! mode key-sequence)`
@@ -124,7 +140,15 @@ pub(crate) fn bind_wait_char(
     key_str: String,
     cmd_name: String,
 ) -> SteelResult {
-    bind_inner(ctx, "bind-wait-char!", mode_str, key_str, cmd_name, BindKind::WaitChar, false)
+    bind_inner(
+        ctx,
+        "bind-wait-char!",
+        mode_str,
+        key_str,
+        cmd_name,
+        BindKind::WaitChar,
+        false,
+    )
 }
 
 #[cfg(test)]
@@ -144,7 +168,10 @@ mod tests {
         let result = bind_key(&mut ctx, "normal".into(), "z".into(), "move-right".into());
         assert!(result.is_err(), "bind-key! must error in command mode");
         let msg = result.unwrap_err().to_string();
-        assert!(msg.contains("init"), "error must mention 'init'; got: {msg}");
+        assert!(
+            msg.contains("init"),
+            "error must mention 'init'; got: {msg}"
+        );
     }
 
     /// `bind-key-extend!` is blocked in plain command mode.
@@ -153,7 +180,10 @@ mod tests {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
         let result = bind_key_extend(&mut ctx, "normal".into(), "z".into(), "move-right".into());
-        assert!(result.is_err(), "bind-key-extend! must error in command mode");
+        assert!(
+            result.is_err(),
+            "bind-key-extend! must error in command mode"
+        );
     }
 
     /// `unbind-key!` is blocked in plain command mode.
@@ -164,7 +194,10 @@ mod tests {
         let result = unbind_key(&mut ctx, "normal".into(), "z".into());
         assert!(result.is_err(), "unbind-key! must error in command mode");
         let msg = result.unwrap_err().to_string();
-        assert!(msg.contains("init"), "error must mention 'init'; got: {msg}");
+        assert!(
+            msg.contains("init"),
+            "error must mention 'init'; got: {msg}"
+        );
     }
 
     /// `bind-wait-char!` is blocked in plain command mode.
@@ -173,7 +206,10 @@ mod tests {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
         let result = bind_wait_char(&mut ctx, "normal".into(), "f".into(), "wait-f".into());
-        assert!(result.is_err(), "bind-wait-char! must error in command mode");
+        assert!(
+            result.is_err(),
+            "bind-wait-char! must error in command mode"
+        );
     }
 
     // ── Mode validation ───────────────────────────────────────────────────────
@@ -189,7 +225,10 @@ mod tests {
         let result = bind_key(&mut ctx, "visual".into(), "z".into(), "move-right".into());
         assert!(result.is_err(), "bind-key! must reject unknown mode");
         let msg = result.unwrap_err().to_string();
-        assert!(msg.contains("mode"), "error must mention 'mode'; got: {msg}");
+        assert!(
+            msg.contains("mode"),
+            "error must mention 'mode'; got: {msg}"
+        );
     }
 
     /// `unbind-key!` rejects an unknown mode name.
@@ -212,8 +251,16 @@ mod tests {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx_init();
         // "<NOTAKEY>" is not a valid key name.
-        let result = bind_key(&mut ctx, "normal".into(), "<NOTAKEY>".into(), "move-right".into());
-        assert!(result.is_err(), "bind-key! must reject invalid key sequences");
+        let result = bind_key(
+            &mut ctx,
+            "normal".into(),
+            "<NOTAKEY>".into(),
+            "move-right".into(),
+        );
+        assert!(
+            result.is_err(),
+            "bind-key! must reject invalid key sequences"
+        );
     }
 
     /// `unbind-key!` also validates the key sequence.
@@ -222,7 +269,10 @@ mod tests {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx_init();
         let result = unbind_key(&mut ctx, "normal".into(), "<NOTAKEY>".into());
-        assert!(result.is_err(), "unbind-key! must reject invalid key sequences");
+        assert!(
+            result.is_err(),
+            "unbind-key! must reject invalid key sequences"
+        );
     }
 
     // ── Guard passes, host called ─────────────────────────────────────────────
@@ -251,14 +301,18 @@ mod tests {
     fn bind_key_permitted_during_plugin_load() {
         use crate::attribution::PluginId;
         let mut h = SteelCtxTestHarness::new();
-        h.plugin_stack.push(PluginId::parse("core:myplugin").unwrap());
+        h.plugin_stack
+            .push(PluginId::parse("core:myplugin").unwrap());
         {
             let mut ctx = h.ctx(); // is_init=false, plugin_stack non-empty → allowed
             let result = bind_key(&mut ctx, "normal".into(), "z".into(), "cmd".into());
             // Guard must pass; NullHost error is expected.
             assert!(result.is_err());
             assert!(
-                !result.unwrap_err().to_string().contains("only valid during"),
+                !result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("only valid during"),
                 "bind-key! must not hit the init guard during plugin load"
             );
         }

@@ -629,9 +629,18 @@ mod tests {
         for d in '0'..='9' {
             assert!(is_valid_register_name(d), "digit '{d}' must be valid");
         }
-        assert!(is_valid_register_name(CLIPBOARD_REGISTER), "'c' must be valid");
-        assert!(is_valid_register_name(BLACK_HOLE_REGISTER), "'b' must be valid");
-        assert!(is_valid_register_name(KILL_RING_REGISTER), "'k' must be valid");
+        assert!(
+            is_valid_register_name(CLIPBOARD_REGISTER),
+            "'c' must be valid"
+        );
+        assert!(
+            is_valid_register_name(BLACK_HOLE_REGISTER),
+            "'b' must be valid"
+        );
+        assert!(
+            is_valid_register_name(KILL_RING_REGISTER),
+            "'k' must be valid"
+        );
     }
 
     #[test]
@@ -643,7 +652,13 @@ mod tests {
 
     #[test]
     fn macro_and_search_registers_not_valid_for_prefix() {
-        assert!(!is_valid_register_name(MACRO_REGISTER), "'q' not prefix-accessible");
-        assert!(!is_valid_register_name(SEARCH_REGISTER), "'s' not prefix-accessible");
+        assert!(
+            !is_valid_register_name(MACRO_REGISTER),
+            "'q' not prefix-accessible"
+        );
+        assert!(
+            !is_valid_register_name(SEARCH_REGISTER),
+            "'s' not prefix-accessible"
+        );
     }
 }

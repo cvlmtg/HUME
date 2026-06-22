@@ -11,7 +11,7 @@
 use std::borrow::Cow;
 
 use crate::editor::clipboard::SystemClipboard;
-use crate::ops::register::{RegisterSet, CLIPBOARD_REGISTER};
+use crate::ops::register::{CLIPBOARD_REGISTER, RegisterSet};
 
 /// Read text from an explicitly named register.
 ///
@@ -41,7 +41,10 @@ pub(crate) fn read_register_text<'a>(
             }
         }
     } else {
-        let v = registers.read(name).and_then(|r| r.as_text()).map(Cow::Borrowed);
+        let v = registers
+            .read(name)
+            .and_then(|r| r.as_text())
+            .map(Cow::Borrowed);
         (v, None)
     }
 }

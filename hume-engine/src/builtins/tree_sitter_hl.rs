@@ -98,10 +98,7 @@ impl TreeSitterHighlighter {
     /// Use this when the `Query` has already been compiled at language
     /// registration time (e.g. from `GrammarBundle.query`) to avoid
     /// re-parsing the `highlights.scm` source per buffer open.
-    pub fn from_shared_query(
-        query: Arc<Query>,
-        registry: &mut ScopeRegistry,
-    ) -> Self {
+    pub fn from_shared_query(query: Arc<Query>, registry: &mut ScopeRegistry) -> Self {
         let capture_scopes: Vec<Option<ScopeId>> = query
             .capture_names()
             .iter()
@@ -240,7 +237,7 @@ fn flatten_overlaps(
     let mut events: Vec<(usize, bool, ScopeId)> = Vec::with_capacity(raw.len() * 2);
     for &(start, end, scope) in raw.iter() {
         events.push((start, false, scope)); // Start
-        events.push((end, true, scope));    // End
+        events.push((end, true, scope)); // End
     }
     raw.clear();
     // Sort: by position, ends before starts at the same position.

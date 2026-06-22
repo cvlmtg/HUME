@@ -92,8 +92,8 @@ pub(crate) fn configure_statusline(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use steel::rvals::IntoSteelVal as _;
     use crate::test_support::SteelCtxTestHarness;
+    use steel::rvals::IntoSteelVal as _;
 
     fn empty_list() -> SteelVal {
         Vec::<SteelVal>::new().into_steelval().unwrap()
@@ -119,9 +119,15 @@ mod tests {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
         let result = configure_statusline(&mut ctx, empty_list(), empty_list(), empty_list());
-        assert!(result.is_err(), "configure-statusline! must error in command mode");
+        assert!(
+            result.is_err(),
+            "configure-statusline! must error in command mode"
+        );
         let msg = result.unwrap_err().to_string();
-        assert!(msg.contains("init"), "error must mention 'init'; got: {msg}");
+        assert!(
+            msg.contains("init"),
+            "error must mention 'init'; got: {msg}"
+        );
     }
 
     // ── Type validation of section args ───────────────────────────────────────
@@ -140,7 +146,10 @@ mod tests {
             empty_list(),
             empty_list(),
         );
-        assert!(result.is_err(), "configure-statusline! must reject non-list left");
+        assert!(
+            result.is_err(),
+            "configure-statusline! must reject non-list left"
+        );
     }
 
     /// `configure-statusline!` rejects a non-list `center` argument.
@@ -148,13 +157,11 @@ mod tests {
     fn configure_statusline_non_list_center_errors() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx_init();
-        let result = configure_statusline(
-            &mut ctx,
-            empty_list(),
-            SteelVal::IntV(42),
-            empty_list(),
+        let result = configure_statusline(&mut ctx, empty_list(), SteelVal::IntV(42), empty_list());
+        assert!(
+            result.is_err(),
+            "configure-statusline! must reject non-list center"
         );
-        assert!(result.is_err(), "configure-statusline! must reject non-list center");
     }
 
     /// `configure-statusline!` rejects a non-list `right` argument.
@@ -168,7 +175,10 @@ mod tests {
             empty_list(),
             SteelVal::SymbolV("bad".into()),
         );
-        assert!(result.is_err(), "configure-statusline! must reject non-list right");
+        assert!(
+            result.is_err(),
+            "configure-statusline! must reject non-list right"
+        );
     }
 
     /// `configure-statusline!` rejects a list that contains a non-string element.
@@ -181,7 +191,10 @@ mod tests {
         let mut ctx = h.ctx_init();
         let bad_list: SteelVal = vec![SteelVal::IntV(1)].into_steelval().unwrap();
         let result = configure_statusline(&mut ctx, bad_list, empty_list(), empty_list());
-        assert!(result.is_err(), "configure-statusline! must reject non-string list items");
+        assert!(
+            result.is_err(),
+            "configure-statusline! must reject non-string list items"
+        );
     }
 
     // ── Guard passes, host called ─────────────────────────────────────────────

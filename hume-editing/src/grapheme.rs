@@ -410,5 +410,4 @@ mod tests {
         assert_eq!(buf.len_chars(), 3);
         assert_eq!(grapheme_count(&buf, 0, 3), 3);
     }
-
 }

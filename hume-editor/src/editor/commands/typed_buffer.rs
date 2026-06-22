@@ -1,7 +1,7 @@
 use hume_engine::pipeline::BufferId;
 
-use super::super::{Severity};
 use super::super::Editor;
+use super::super::Severity;
 use crate::editor::error::CommandError;
 
 // ── Multi-buffer typed commands ───────────────────────────────────────────────
@@ -15,11 +15,7 @@ use crate::editor::error::CommandError;
 /// Dedup uses `find_by_path` (canonical path comparison). `force` (`!` suffix)
 /// only takes effect in the no-arg reload branch: it discards unsaved changes
 /// and re-reads the file from disk. When a path is given, `force` is unused.
-pub fn typed_edit(
-    ed: &mut Editor,
-    arg: Option<&str>,
-    force: bool,
-) -> Result<(), CommandError> {
+pub fn typed_edit(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), CommandError> {
     use std::path::Path;
 
     if let Some(path_str) = arg {
@@ -85,11 +81,7 @@ pub fn typed_edit(
 /// - No arg: change to `$HOME`.
 /// - `path` given: `~` / env-var expansion applied first; relative paths
 ///   resolve against the current process cwd (which mirrors `editor.cwd`).
-pub fn typed_cd(
-    ed: &mut Editor,
-    arg: Option<&str>,
-    _force: bool,
-) -> Result<(), CommandError> {
+pub fn typed_cd(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
     let target = match arg.map(str::trim).filter(|s| !s.is_empty()) {
         Some(s) => {
             let expanded = hume_platform::path::expand(s);
@@ -106,12 +98,11 @@ pub fn typed_cd(
 }
 
 /// `:pwd` / `:print-working-directory` — display the current working directory.
-pub fn typed_pwd(
-    ed: &mut Editor,
-    _arg: Option<&str>,
-    _force: bool,
-) -> Result<(), CommandError> {
-    ed.report(Severity::Info, hume_platform::path::shorten_home(&ed.state.cwd));
+pub fn typed_pwd(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+    ed.report(
+        Severity::Info,
+        hume_platform::path::shorten_home(&ed.state.cwd),
+    );
     Ok(())
 }
 
@@ -142,11 +133,7 @@ pub fn typed_buffer_delete(
 ///
 /// The `force` flag is accepted syntactically but has no effect — there is
 /// nothing to force on a plain buffer switch.
-pub fn typed_buffer(
-    ed: &mut Editor,
-    arg: Option<&str>,
-    _force: bool,
-) -> Result<(), CommandError> {
+pub fn typed_buffer(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
     let arg = arg.ok_or_else(|| CommandError::new("usage: :b <name|#|index>"))?;
     let bid = resolve_buffer_arg(ed, arg)?;
     if bid != ed.focused_buffer_id() {
@@ -176,14 +163,15 @@ fn find_buffer_by_path_arg(ed: &Editor, arg: &str) -> Option<BufferId> {
 fn warn_if_file_gone(ed: &mut Editor, bid: BufferId) {
     // Check while holding the borrow; capture only the display string so the
     // borrow is released before the &mut ed.report() call below.
-    let display = ed.state.buffers.get(bid).path().and_then(|p| {
-        match std::fs::metadata(p) {
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                Some(p.display().to_string())
-            }
+    let display = ed
+        .state
+        .buffers
+        .get(bid)
+        .path()
+        .and_then(|p| match std::fs::metadata(p) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(p.display().to_string()),
             _ => None,
-        }
-    });
+        });
     if let Some(msg) = display {
         ed.report(
             Severity::Warning,
@@ -213,7 +201,8 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
             .checked_sub(1)
             .ok_or_else(|| CommandError::new(format!("no buffer at index {n}")))?;
         return ed
-            .state.buffers
+            .state
+            .buffers
             .iter()
             .nth(idx)
             .map(|(id, _)| id)
@@ -229,7 +218,8 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
 
     // 3. Exact display-name match.
     let exact: Vec<BufferId> = ed
-        .state.buffers
+        .state
+        .buffers
         .iter()
         .filter(|(_, buf)| buf.display_name() == arg)
         .map(|(id, _)| id)
@@ -237,7 +227,10 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
     match exact.len() {
         1 => return Ok(exact[0]),
         n if n > 1 => {
-            let labels: Vec<String> = exact.iter().map(|&id| label(ed.state.buffers.get(id))).collect();
+            let labels: Vec<String> = exact
+                .iter()
+                .map(|&id| label(ed.state.buffers.get(id)))
+                .collect();
             return Err(CommandError::new(format!(
                 "ambiguous buffer name '{arg}': {}",
                 labels.join(", ")
@@ -248,7 +241,8 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
 
     // 4. Unique basename-prefix match.
     let prefix_matches: Vec<BufferId> = ed
-        .state.buffers
+        .state
+        .buffers
         .iter()
         .filter(|(_, buf)| buf.display_name().starts_with(arg))
         .map(|(id, _)| id)
@@ -270,11 +264,7 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
 }
 
 /// `:bnext` / `:bn` — switch to the next buffer in open-order.
-pub fn typed_bnext(
-    ed: &mut Editor,
-    _arg: Option<&str>,
-    _force: bool,
-) -> Result<(), CommandError> {
+pub fn typed_bnext(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
     let target = ed.state.buffers.next(ed.focused_buffer_id());
     if target != ed.focused_buffer_id() {
         ed.switch_to_buffer_with_jump(target);
@@ -283,11 +273,7 @@ pub fn typed_bnext(
 }
 
 /// `:bprev` / `:bp` — switch to the previous buffer in open-order.
-pub fn typed_bprev(
-    ed: &mut Editor,
-    _arg: Option<&str>,
-    _force: bool,
-) -> Result<(), CommandError> {
+pub fn typed_bprev(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
     let target = ed.state.buffers.prev(ed.focused_buffer_id());
     if target != ed.focused_buffer_id() {
         ed.switch_to_buffer_with_jump(target);

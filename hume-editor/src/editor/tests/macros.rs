@@ -14,7 +14,10 @@ fn macro_qq_records_into_register_q() {
         ed.state.macro_recording.is_none(),
         "recording not started until register name given"
     );
-    assert!(ed.state.macro_pending.is_some(), "pending should be set after Q");
+    assert!(
+        ed.state.macro_pending.is_some(),
+        "pending should be set after Q"
+    );
 
     // Second `Q` is consumed as the register name — recording starts now.
     ed.handle_key(key('Q'));
@@ -36,7 +39,8 @@ fn macro_qq_records_into_register_q() {
 
     // Register 'q' should now hold a macro with [j] (not the register-name Q or stop Q)
     let keys = ed
-        .state.registers
+        .state
+        .registers
         .read('q')
         .and_then(|r| r.as_macro())
         .map(|k| k.to_vec());
@@ -62,7 +66,8 @@ fn macro_q_digit_records_into_named_register() {
     ed.handle_key(key('Q'));
     assert!(ed.state.macro_recording.is_none());
     let keys = ed
-        .state.registers
+        .state
+        .registers
         .read('0')
         .and_then(|r| r.as_macro())
         .map(|k| k.to_vec());
@@ -75,7 +80,10 @@ fn macro_q_digit_records_into_named_register() {
 fn macro_q_esc_cancels() {
     let mut ed = editor_from("-[a]>bcd\n");
     ed.handle_key(key('Q'));
-    assert!(ed.state.macro_pending.is_some(), "pending should be set after Q");
+    assert!(
+        ed.state.macro_pending.is_some(),
+        "pending should be set after Q"
+    );
     ed.handle_key(key_esc());
     assert!(
         ed.state.macro_pending.is_none(),
@@ -279,7 +287,8 @@ fn macro_records_insert_mode_keys() {
 
     // The recorded macro should contain: i, x, Esc (3 keys)
     let keys = ed
-        .state.registers
+        .state
+        .registers
         .read('q')
         .and_then(|r| r.as_macro())
         .map(|k| k.to_vec())
@@ -373,7 +382,8 @@ fn macro_with_find_char() {
     ed.handle_key(key('Q'));
 
     let keys = ed
-        .state.registers
+        .state
+        .registers
         .read('q')
         .and_then(|r| r.as_macro())
         .map(|k| k.to_vec())
@@ -446,7 +456,11 @@ fn macro_replay_preserves_dot_repeat() {
 
     // Perform a `d` (delete) to establish last_repeatable_action = "delete".
     ed.handle_key(key('d'));
-    let action_after_delete = ed.state.last_repeatable_action.as_ref().map(|a| a.command.as_ref());
+    let action_after_delete = ed
+        .state
+        .last_repeatable_action
+        .as_ref()
+        .map(|a| a.command.as_ref());
     assert_eq!(
         action_after_delete,
         Some("delete"),
@@ -465,7 +479,11 @@ fn macro_replay_preserves_dot_repeat() {
     ed.drain_replay_queue();
 
     // last_repeatable_action must still be "delete", not whatever the macro did.
-    let action_after_replay = ed.state.last_repeatable_action.as_ref().map(|a| a.command.as_ref());
+    let action_after_replay = ed
+        .state
+        .last_repeatable_action
+        .as_ref()
+        .map(|a| a.command.as_ref());
     assert_eq!(
         action_after_replay,
         Some("delete"),
@@ -502,7 +520,8 @@ fn macro_q_during_recording_is_captured() {
 
     // The `q` must have been captured as a recorded key.
     let keys = ed
-        .state.registers
+        .state
+        .registers
         .read('q')
         .and_then(|r| r.as_macro())
         .map(|k| k.to_vec())
@@ -565,7 +584,8 @@ fn macro_empty_recording() {
 
     // Register 'q' should hold an empty macro (Some, but zero keys).
     let keys = ed
-        .state.registers
+        .state
+        .registers
         .read('q')
         .and_then(|r| r.as_macro())
         .map(|k| k.to_vec());
@@ -596,7 +616,10 @@ fn macro_esc_during_recording_is_captured() {
 
     // Press Esc — this should be recorded, not stop the session.
     ed.handle_key(key_esc());
-    assert!(ed.state.macro_recording.is_some(), "Esc must not stop recording");
+    assert!(
+        ed.state.macro_recording.is_some(),
+        "Esc must not stop recording"
+    );
 
     // Record a motion to confirm the session is still open.
     ed.handle_key(key('j'));
@@ -607,7 +630,8 @@ fn macro_esc_during_recording_is_captured() {
 
     // Macro should contain Esc and j.
     let keys = ed
-        .state.registers
+        .state
+        .registers
         .read('q')
         .and_then(|r| r.as_macro())
         .map(|k| k.to_vec())
@@ -690,7 +714,10 @@ fn macro_q1_replay_after_undo() {
     // Q 1: start recording into register '1'
     ed.handle_key(key('Q'));
     ed.handle_key(key('1'));
-    assert!(ed.state.macro_recording.is_some(), "recording into register 1");
+    assert!(
+        ed.state.macro_recording.is_some(),
+        "recording into register 1"
+    );
 
     // Record: w (select word) → c (change) → x (insert 'x') → Esc
     ed.handle_key(key('w'));
@@ -702,7 +729,11 @@ fn macro_q1_replay_after_undo() {
     ed.handle_key(key('Q'));
     assert!(ed.state.macro_recording.is_none());
     assert!(
-        ed.state.registers.read('1').and_then(|r| r.as_macro()).is_some(),
+        ed.state
+            .registers
+            .read('1')
+            .and_then(|r| r.as_macro())
+            .is_some(),
         "macro saved"
     );
 
@@ -731,7 +762,9 @@ fn macro_with_two_pastes_does_not_panic() {
     ed.handle_key(key('d')); // kill "AB"; ring head = "AB"; buffer = "-[C]>D\n"
 
     // Seed a macro [p, p] — two consecutive pastes — into register 'q'.
-    ed.state.registers.write_macro('q', vec![key('p'), key('p')]);
+    ed.state
+        .registers
+        .write_macro('q', vec![key('p'), key('p')]);
 
     // Replay: qq + drain. Must not panic.
     ed.handle_key(key('q'));
@@ -768,7 +801,9 @@ fn dot_inside_macro_replay_fires_drain() {
 
     // Record a macro ["d", "."] — d deletes, then . repeats the delete.
     // seed directly to avoid mutating the buffer during the recording phase.
-    ed.state.registers.write_macro('q', vec![key('d'), key('.')]);
+    ed.state
+        .registers
+        .write_macro('q', vec![key('d'), key('.')]);
 
     // Replay: qq + drain.
     // drain_replay_queue:

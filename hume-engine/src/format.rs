@@ -640,12 +640,30 @@ mod tests {
         let rope = Rope::from_str("a");
         let inserts = Vec::new();
         let mut scratch = FormatScratch::new();
-        format_buffer_line(&rope, 0, 4, &WhitespaceConfig::default(), &WrapMode::None, &inserts, &mut scratch);
-        assert_eq!(scratch.display_rows[0].kind, RowKind::LineStart { line_idx: 0 });
+        format_buffer_line(
+            &rope,
+            0,
+            4,
+            &WhitespaceConfig::default(),
+            &WrapMode::None,
+            &inserts,
+            &mut scratch,
+        );
+        assert_eq!(
+            scratch.display_rows[0].kind,
+            RowKind::LineStart { line_idx: 0 }
+        );
         // Simulate the pipeline's past-EOF Filler emission.
         let g = scratch.graphemes.len();
-        scratch.display_rows.push(DisplayRow { kind: RowKind::Filler, graphemes: g..g });
-        assert!(scratch.display_rows[1..].iter().all(|r| r.kind == RowKind::Filler));
+        scratch.display_rows.push(DisplayRow {
+            kind: RowKind::Filler,
+            graphemes: g..g,
+        });
+        assert!(
+            scratch.display_rows[1..]
+                .iter()
+                .all(|r| r.kind == RowKind::Filler)
+        );
     }
 
     #[test]
@@ -663,7 +681,15 @@ mod tests {
         let inserts = Vec::new();
         let mut scratch = FormatScratch::new();
         for line_idx in 0..rope.len_lines() {
-            format_buffer_line(&rope, line_idx, 4, &ws, &WrapMode::None, &inserts, &mut scratch);
+            format_buffer_line(
+                &rope,
+                line_idx,
+                4,
+                &ws,
+                &WrapMode::None,
+                &inserts,
+                &mut scratch,
+            );
         }
         (scratch.display_rows, scratch.graphemes)
     }

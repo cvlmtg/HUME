@@ -407,8 +407,8 @@ pub(super) fn default_insert_keymap() -> KeyTrie {
 
 #[cfg(test)]
 mod tests {
-    use super::{default_extend_keymap, default_insert_keymap, default_normal_keymap};
     use super::super::{KeymapCommand, WalkResult};
+    use super::{default_extend_keymap, default_insert_keymap, default_normal_keymap};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     #[test]

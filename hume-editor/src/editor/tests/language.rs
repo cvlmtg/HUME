@@ -1,8 +1,8 @@
 use super::*;
 
 use crate::editor::error::CommandError;
-use hume_scripting::ScriptingHost;
 use crate::testing::MockHost;
+use hume_scripting::ScriptingHost;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -18,7 +18,9 @@ fn attach_host(ed: &mut Editor, src: &str) {
 
 /// Register rust-only identities into `ed.state.languages` directly (no Scheme eval).
 fn register_rust(ed: &mut Editor, name: &str, exts: &[&str]) {
-    ed.state.languages.register_identity_no_rebuild(name, exts, &[], &[]);
+    ed.state
+        .languages
+        .register_identity_no_rebuild(name, exts, &[], &[]);
     ed.state.languages.rebuild_glob_set().expect("rebuild ok");
 }
 
@@ -32,7 +34,10 @@ fn set_buffer_language_writes_language_field() {
     ed.set_buffer_language(bid, Some("rust".to_owned()));
     assert_eq!(ed.state.buffers.get(bid).language.as_deref(), Some("rust"));
     // Flip: wrong language must not match.
-    assert_ne!(ed.state.buffers.get(bid).language.as_deref(), Some("python"));
+    assert_ne!(
+        ed.state.buffers.get(bid).language.as_deref(),
+        Some("python")
+    );
 }
 
 #[test]
@@ -101,7 +106,10 @@ fn typed_set_language_global_scope_errors() {
     let result = run_cmd(&mut ed, "global language=rust");
     assert!(result.is_err(), "global language must be an error");
     let msg = result.unwrap_err().message().to_owned();
-    assert!(msg.contains("per-buffer"), "error should mention per-buffer: {msg}");
+    assert!(
+        msg.contains("per-buffer"),
+        "error should mention per-buffer: {msg}"
+    );
 }
 
 #[test]
@@ -131,8 +139,14 @@ fn typed_set_language_unknown_warns_but_sets() {
     let bid = ed.focused_buffer_id();
     // "unknown-lang" is not registered — should warn but still set.
     let result = run_cmd(&mut ed, "buffer language=unknown-lang");
-    assert!(result.is_ok(), "unknown language must not error, got: {result:?}");
-    assert_eq!(ed.state.buffers.get(bid).language.as_deref(), Some("unknown-lang"));
+    assert!(
+        result.is_ok(),
+        "unknown language must not error, got: {result:?}"
+    );
+    assert_eq!(
+        ed.state.buffers.get(bid).language.as_deref(),
+        Some("unknown-lang")
+    );
 }
 
 // ── OnLanguageSet hook fires ──────────────────────────────────────────────────
@@ -164,25 +178,32 @@ fn invalid_glob_in_define_language_warns_and_skips() {
     use hume_scripting::PendingLanguageReg;
     let mut ed = editor_from("-[a]>b\n");
     attach_host(&mut ed, "");
-    let regs = vec![
-        PendingLanguageReg::Identity {
-            name: "test-lang".to_owned(),
-            extensions: vec!["xyz".to_owned()],
-            globs: vec!["valid/*.xyz".to_owned(), "[invalid-glob".to_owned()],
-            shebangs: vec![],
-        },
-    ];
+    let regs = vec![PendingLanguageReg::Identity {
+        name: "test-lang".to_owned(),
+        extensions: vec!["xyz".to_owned()],
+        globs: vec!["valid/*.xyz".to_owned(), "[invalid-glob".to_owned()],
+        shebangs: vec![],
+    }];
     ed.apply_pending_language_regs(regs);
     // Valid glob must be registered; extension lookup must work.
-    assert!(ed.state.languages.by_extension("xyz").is_some(), "extension must register despite bad glob");
+    assert!(
+        ed.state.languages.by_extension("xyz").is_some(),
+        "extension must register despite bad glob"
+    );
     // At least one warning must mention the bad pattern.
-    let has_warning = ed.state.message_log.entries().any(|e| {
-        e.text.contains("[invalid-glob") || e.text.contains("invalid-glob")
-    });
+    let has_warning = ed
+        .state
+        .message_log
+        .entries()
+        .any(|e| e.text.contains("[invalid-glob") || e.text.contains("invalid-glob"));
     assert!(
         has_warning,
         "invalid glob must produce a warning; log: {:?}",
-        ed.state.message_log.entries().map(|e| &e.text).collect::<Vec<_>>()
+        ed.state
+            .message_log
+            .entries()
+            .map(|e| &e.text)
+            .collect::<Vec<_>>()
     );
 }
 
@@ -199,5 +220,9 @@ fn on_language_set_hook_does_not_fire_on_no_op() {
     let after_first = state(&ed);
     // Set same value again — should be a no-op; hook must not fire.
     ed.set_buffer_language(bid, Some("rust".to_owned()));
-    assert_eq!(state(&ed), after_first, "hook must not fire on unchanged language");
+    assert_eq!(
+        state(&ed),
+        after_first,
+        "hook must not fire on unchanged language"
+    );
 }

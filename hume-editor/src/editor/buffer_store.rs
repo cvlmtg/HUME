@@ -149,7 +149,8 @@ mod tests {
     use hume_engine::theme::Theme;
 
     fn make_id(ev: &mut EngineView) -> BufferId {
-        ev.buffers.insert(hume_engine::pipeline::SharedBuffer::new())
+        ev.buffers
+            .insert(hume_engine::pipeline::SharedBuffer::new())
     }
 
     fn make_buf() -> Buffer {

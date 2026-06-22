@@ -1,5 +1,5 @@
-use hume_editing::text::Text;
 use hume_editing::lines::line_end_exclusive;
+use hume_editing::text::Text;
 
 // ── Paragraph motion helpers ─────────────────────────────────────────────────
 

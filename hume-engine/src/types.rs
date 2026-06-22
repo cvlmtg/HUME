@@ -456,16 +456,25 @@ mod tests {
     #[test]
     fn new_modifiers_convert_to_ratatui() {
         let s = ResolvedStyle {
-            modifiers: Modifiers::DIM | Modifiers::REVERSED | Modifiers::HIDDEN
-                | Modifiers::SLOW_BLINK | Modifiers::RAPID_BLINK,
+            modifiers: Modifiers::DIM
+                | Modifiers::REVERSED
+                | Modifiers::HIDDEN
+                | Modifiers::SLOW_BLINK
+                | Modifiers::RAPID_BLINK,
             ..Default::default()
         };
         let r: ratatui::style::Style = s.into();
         assert!(r.add_modifier.contains(ratatui::style::Modifier::DIM));
         assert!(r.add_modifier.contains(ratatui::style::Modifier::REVERSED));
         assert!(r.add_modifier.contains(ratatui::style::Modifier::HIDDEN));
-        assert!(r.add_modifier.contains(ratatui::style::Modifier::SLOW_BLINK));
-        assert!(r.add_modifier.contains(ratatui::style::Modifier::RAPID_BLINK));
+        assert!(
+            r.add_modifier
+                .contains(ratatui::style::Modifier::SLOW_BLINK)
+        );
+        assert!(
+            r.add_modifier
+                .contains(ratatui::style::Modifier::RAPID_BLINK)
+        );
     }
 
     #[test]

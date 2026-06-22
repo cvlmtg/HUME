@@ -751,8 +751,7 @@ mod tests {
     fn set_buffer_global_only_setting_errors() {
         let mut s = EditorSettings::default();
         let mut ov = BufferOverrides::default();
-        let err =
-            apply_setting(SettingScope::Text, "scrolloff", "3", &mut s, &mut ov).unwrap_err();
+        let err = apply_setting(SettingScope::Text, "scrolloff", "3", &mut s, &mut ov).unwrap_err();
         assert!(
             err.contains("global-only"),
             "expected 'global-only' in error: {err}"

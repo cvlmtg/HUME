@@ -881,9 +881,15 @@ fn paste_after_linewise_overlapping_line_ranges_each_replaced() {
     );
     let (new_buf, _new_sels, _cs) = pa(buf, sels, &["X\n".to_string()]);
     let result = new_buf.to_string();
-    assert_eq!(result, "ab\nX\ny\nX\noo\n", "each selection replaced; gaps on own lines");
+    assert_eq!(
+        result, "ab\nX\ny\nX\noo\n",
+        "each selection replaced; gaps on own lines"
+    );
     // "xy" must not appear — "x" was part of sel1, "z" was part of sel2, only "y" survives.
-    assert!(!result.contains("xy"), "sel1 content must not leak into gap");
+    assert!(
+        !result.contains("xy"),
+        "sel1 content must not leak into gap"
+    );
 }
 
 // ── repeat_edit count=0 ───────────────────────────────────────────────────

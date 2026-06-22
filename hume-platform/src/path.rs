@@ -313,7 +313,11 @@ pub fn has_dotdot(path: &Path) -> bool {
 /// where the user expects to see the path as they typed it (e.g. inside a
 /// symlinked project root).
 pub fn absolute_unresolved(typed: &Path, cwd: &Path) -> PathBuf {
-    let joined = if typed.is_relative() { cwd.join(typed) } else { typed.to_owned() };
+    let joined = if typed.is_relative() {
+        cwd.join(typed)
+    } else {
+        typed.to_owned()
+    };
     normalize_lexical(&joined)
 }
 
@@ -351,8 +355,7 @@ pub fn normalize_lexical(path: &Path) -> PathBuf {
 /// Used to validate plugin-name components and path arguments before they are
 /// joined onto sandboxed base directories.
 pub fn is_safe_segment(s: &str) -> bool {
-    !s.is_empty() && s != "." && s != ".."
-        && s.chars().all(|c| c != '/' && c != '\\' && c != '\0')
+    !s.is_empty() && s != "." && s != ".." && s.chars().all(|c| c != '/' && c != '\\' && c != '\0')
 }
 
 #[cfg(test)]
@@ -793,8 +796,7 @@ mod tests {
     fn absolute_unresolved_collapses_dots() {
         let cwd = PathBuf::from("/home/user");
         // `./foo/../bar` → `/home/user/bar`
-        let result =
-            absolute_unresolved(std::path::Path::new("./foo/../bar.txt"), &cwd);
+        let result = absolute_unresolved(std::path::Path::new("./foo/../bar.txt"), &cwd);
         assert_eq!(result, PathBuf::from("/home/user/bar.txt"));
     }
 
@@ -804,8 +806,7 @@ mod tests {
         // a directory name that looks like it could be a symlink (e.g. "link")
         // is passed through unchanged — no fs access occurs.
         let cwd = PathBuf::from("/real/path");
-        let result =
-            absolute_unresolved(std::path::Path::new("../symlink-dir/file.txt"), &cwd);
+        let result = absolute_unresolved(std::path::Path::new("../symlink-dir/file.txt"), &cwd);
         // `../` from `/real/path` → `/real` (lexical pop), then `symlink-dir/file.txt`
         assert_eq!(result, PathBuf::from("/real/symlink-dir/file.txt"));
     }

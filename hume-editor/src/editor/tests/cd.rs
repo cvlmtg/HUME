@@ -14,7 +14,10 @@ fn set_cwd_updates_editor_and_process_cwd() {
 
     ed.set_cwd(&canonical).unwrap();
 
-    assert_eq!(ed.state.cwd, canonical, "editor.cwd must match the target dir");
+    assert_eq!(
+        ed.state.cwd, canonical,
+        "editor.cwd must match the target dir"
+    );
     assert_eq!(
         std::env::current_dir().unwrap(),
         canonical,
@@ -35,7 +38,10 @@ fn set_cwd_rejects_non_directory() {
     let err = ed.set_cwd(&canonical).unwrap_err();
     assert_eq!(err.kind(), std::io::ErrorKind::NotADirectory);
     // cwd must be unchanged on failure
-    assert_eq!(ed.state.cwd, before_editor, "editor.cwd must not change on error");
+    assert_eq!(
+        ed.state.cwd, before_editor,
+        "editor.cwd must not change on error"
+    );
     assert_eq!(
         std::env::current_dir().unwrap(),
         before,
@@ -107,7 +113,10 @@ fn typed_cd_no_arg_goes_home() {
 
     ed.execute_typed("cd", None).unwrap();
 
-    assert_eq!(ed.state.cwd, canonical_home, ":cd with no arg must go to $HOME");
+    assert_eq!(
+        ed.state.cwd, canonical_home,
+        ":cd with no arg must go to $HOME"
+    );
 }
 
 #[test]
@@ -210,10 +219,7 @@ fn cd_then_edit_resolves_relative_to_new_cwd() {
         .unwrap();
     ed.execute_typed("e", Some("myfile.txt")).unwrap();
 
-    let open_path = ed
-        .doc()
-        .path()
-        .expect("opened file must have a path");
+    let open_path = ed.doc().path().expect("opened file must have a path");
     assert_eq!(
         open_path,
         canonical_file.as_path(),
@@ -235,7 +241,8 @@ fn typed_pwd_reports_current_directory() {
     ed.execute_typed("pwd", None).unwrap();
 
     let msg = ed
-        .state.status_msg
+        .state
+        .status_msg
         .as_deref()
         .expect(":pwd must report a message");
     let expected = hume_platform::path::shorten_home(&canonical);
@@ -254,7 +261,8 @@ fn typed_pwd_long_alias_works() {
     ed.execute_typed("print-working-directory", None).unwrap();
 
     let msg = ed
-        .state.status_msg
+        .state
+        .status_msg
         .as_deref()
         .expect(":print-working-directory must report a message");
     let expected = hume_platform::path::shorten_home(&canonical);

@@ -12,8 +12,8 @@ use std::path::{Path, PathBuf};
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use crate::log::LogLevel;
 use crate::SteelCtx;
+use crate::log::LogLevel;
 
 // ── Sandbox kind ─────────────────────────────────────────────────────────────
 
@@ -48,13 +48,19 @@ pub(crate) fn validate_new_path(
     let parent = dest.parent().ok_or_else(|| {
         SteelErr::new(
             steel::rerrs::ErrorKind::Generic,
-            format!("{fn_name}: dest has no parent directory: {}", dest.display()),
+            format!(
+                "{fn_name}: dest has no parent directory: {}",
+                dest.display()
+            ),
         )
     })?;
     let canonical_parent = hume_platform::fs::canonicalize(parent).map_err(|e| {
         SteelErr::new(
             steel::rerrs::ErrorKind::Generic,
-            format!("{fn_name}: cannot resolve parent of '{}': {e}", dest.display()),
+            format!(
+                "{fn_name}: cannot resolve parent of '{}': {e}",
+                dest.display()
+            ),
         )
     })?;
     // file_name() is None for paths ending in "." (CurDir); has_dotdot() only
@@ -180,8 +186,11 @@ pub(crate) fn git_clone_rev(
     dest: String,
     rev: String,
 ) -> Result<SteelVal, SteelErr> {
-    let dest_path =
-        validate_new_path(&PathBuf::from(&dest), "git-clone-rev", SandboxKind::Grammars)?;
+    let dest_path = validate_new_path(
+        &PathBuf::from(&dest),
+        "git-clone-rev",
+        SandboxKind::Grammars,
+    )?;
 
     ctx.log(
         LogLevel::Trace,
@@ -216,8 +225,7 @@ pub(crate) fn curl_fetch(
     url: String,
     dest: String,
 ) -> Result<SteelVal, SteelErr> {
-    let dest_path =
-        validate_new_path(&PathBuf::from(&dest), "curl-fetch", SandboxKind::Grammars)?;
+    let dest_path = validate_new_path(&PathBuf::from(&dest), "curl-fetch", SandboxKind::Grammars)?;
 
     // Create parent after the sandbox check so we don't mkdir outside the sandbox.
     if let Some(parent) = dest_path.parent() {
@@ -382,7 +390,10 @@ mod tests {
             "abc123".into(),
         )
         .unwrap_err();
-        assert!(err.to_string().contains(".."), "expected .. error, got: {err}");
+        assert!(
+            err.to_string().contains(".."),
+            "expected .. error, got: {err}"
+        );
     }
 
     #[test]
@@ -393,8 +404,7 @@ mod tests {
         let dest = format!("{}/hume/plugins/queries.scm", tmp.path().display());
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        let err =
-            curl_fetch(&mut ctx, "https://example.com/hl.scm".into(), dest).unwrap_err();
+        let err = curl_fetch(&mut ctx, "https://example.com/hl.scm".into(), dest).unwrap_err();
         assert!(
             err.to_string().contains("sandbox"),
             "expected sandbox error, got: {err}"

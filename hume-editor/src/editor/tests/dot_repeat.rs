@@ -231,7 +231,12 @@ fn dot_repeats_select_line_delete() {
 
     // The recipe must be [select-line] (not empty).
     assert_eq!(
-        ed.state.last_repeatable_action.as_ref().unwrap().selection_recipe.len(),
+        ed.state
+            .last_repeatable_action
+            .as_ref()
+            .unwrap()
+            .selection_recipe
+            .len(),
         1,
         "recipe must contain select-line step"
     );
@@ -255,16 +260,21 @@ fn dot_repeats_extend_select_delete() {
     // Four lines; cursor on 'a'.
     let mut ed = editor_from("-[a]>aa\nbbb\nccc\nddd\n");
 
-    ed.feed_key(key('x'));          // select "aaa\n"
-    ed.feed_key(key_ctrl('x'));     // extend to "aaa\nbbb\n"
-    ed.feed_key(key('d'));          // delete → "ccc\nddd\n", cursor on 'c'
+    ed.feed_key(key('x')); // select "aaa\n"
+    ed.feed_key(key_ctrl('x')); // extend to "aaa\nbbb\n"
+    ed.feed_key(key('d')); // delete → "ccc\nddd\n", cursor on 'c'
     assert_eq!(ed.doc().text().to_string(), "ccc\nddd\n");
 
     // Recipe must be [select-line F, select-line T] (establish + one extend).
-    let recipe = &ed.state.last_repeatable_action.as_ref().unwrap().selection_recipe;
+    let recipe = &ed
+        .state
+        .last_repeatable_action
+        .as_ref()
+        .unwrap()
+        .selection_recipe;
     assert_eq!(recipe.len(), 2, "recipe must have 2 steps");
     assert!(!recipe[0].extend, "first step must be Move (establish)");
-    assert!(recipe[1].extend,  "second step must be Extend");
+    assert!(recipe[1].extend, "second step must be Extend");
 
     // `.` replays: x (select "ccc\n") + Ctrl+x (extend to "ccc\nddd\n") + d.
     ed.feed_key(key('.'));
@@ -299,7 +309,12 @@ fn dot_repeat_navigation_not_in_recipe() {
 
     // Recipe must have exactly one step (x only — j must have been cleared).
     assert_eq!(
-        ed.state.last_repeatable_action.as_ref().unwrap().selection_recipe.len(),
+        ed.state
+            .last_repeatable_action
+            .as_ref()
+            .unwrap()
+            .selection_recipe
+            .len(),
         1,
         "navigation (j) must not appear in the selection recipe"
     );
@@ -328,7 +343,12 @@ fn dot_repeat_collapsed_cursor_empty_recipe() {
 
     // Recipe must be empty.
     assert_eq!(
-        ed.state.last_repeatable_action.as_ref().unwrap().selection_recipe.len(),
+        ed.state
+            .last_repeatable_action
+            .as_ref()
+            .unwrap()
+            .selection_recipe
+            .len(),
         0,
         "empty recipe for plain single-char delete"
     );
@@ -368,13 +388,21 @@ fn dot_repeats_change_reselects_line() {
     // Recipe must be [select-line F]; insert_keys must be ['z'].
     {
         let action = ed.state.last_repeatable_action.as_ref().unwrap();
-        assert_eq!(action.selection_recipe.len(), 1, "recipe must have select-line step");
-        assert_eq!(action.insert_keys.len(), 1, "insert_keys must capture typed chars");
+        assert_eq!(
+            action.selection_recipe.len(),
+            1,
+            "recipe must have select-line step"
+        );
+        assert_eq!(
+            action.insert_keys.len(),
+            1,
+            "insert_keys must capture typed chars"
+        );
     }
 
     // Move to 'c' and press `.`.
     ed.feed_key(key('j')); // move-down to 'c' (line 1)
-    ed.feed_key(key('.'));  // re-select "ccc\n" via recipe, change, retype 'z'
+    ed.feed_key(key('.')); // re-select "ccc\n" via recipe, change, retype 'z'
 
     // Oracle: recipe re-selects "ccc\n", change deletes "ccc" (structural '\n' stays),
     // inserts 'z' → "zbbb\nz\n". Without recipe, only 'c' would be deleted → "zbbb\nzcc\n".
@@ -398,14 +426,16 @@ fn undo_clears_selection_recipe() {
     // Establish a recipe via `x`.
     ed.feed_key(key('x'));
     assert_eq!(
-        ed.state.selection_recipe.len(), 1,
+        ed.state.selection_recipe.len(),
+        1,
         "setup: x must establish a 1-step recipe"
     );
 
     // `u` (undo) is a non-repeatable EditorCmd → must clear the recipe.
     ed.feed_key(key('u'));
     assert_eq!(
-        ed.state.selection_recipe.len(), 0,
+        ed.state.selection_recipe.len(),
+        0,
         "undo must clear the selection recipe buffer"
     );
 }
@@ -445,7 +475,9 @@ fn dot_restamps_last_command() {
 
     let mut ed = editor_from("-[foo]> bar\n");
     // Seed the clipboard with a sentinel value distinct from the kill-ring head.
-    ed.state.registers.write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    ed.state
+        .registers
+        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
 
     ed.feed_key(key('d')); // delete "foo" → ring head = ["foo"], last_command = "delete"
     assert_eq!(
@@ -459,8 +491,7 @@ fn dot_restamps_last_command() {
 
     // White-box: last_command is neutralized to None after dot-repeat replay.
     assert_eq!(
-        ed.state.last_command,
-        None,
+        ed.state.last_command, None,
         "replay_dot must neutralize last_command to None"
     );
 
@@ -496,7 +527,12 @@ fn dot_repeat_reaching_select_acts_on_current_selection() {
 
     // Recipe must be empty — reaching `w` must not create an establish step.
     assert_eq!(
-        ed.state.last_repeatable_action.as_ref().unwrap().selection_recipe.len(),
+        ed.state
+            .last_repeatable_action
+            .as_ref()
+            .unwrap()
+            .selection_recipe
+            .len(),
         0,
         "reaching select-next-word must not push an establish step"
     );
@@ -527,14 +563,21 @@ fn editor_with_steel(initial_state: &str, source: &str) -> Editor {
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from(initial_state);
-    let names: Vec<String> =
-        ed.state.registry.native_mappable_names().map(str::to_owned).collect();
+    let names: Vec<String> = ed
+        .state
+        .registry
+        .native_mappable_names()
+        .map(str::to_owned)
+        .collect();
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
 
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl { state: &mut ed.state, view: &mut ed.view };
+    let mut init_host = EditorHostImpl {
+        state: &mut ed.state,
+        view: &mut ed.view,
+    };
     host.eval_source_returning_defs(source.to_owned(), Default::default(), &mut init_host)
         .expect("Steel eval must succeed in editor_with_steel");
 
@@ -574,14 +617,17 @@ fn steel_dot_repeatable_round_trip() {
 
     // last_repeatable_action must name the outer Steel command, not inner "delete".
     assert_eq!(
-        ed.state.last_repeatable_action.as_ref().map(|a| a.command.as_ref()),
+        ed.state
+            .last_repeatable_action
+            .as_ref()
+            .map(|a| a.command.as_ref()),
         Some("del-sel"),
         "outer Steel command must win the repeat slot over the inner 'delete'"
     );
 
     // Select "bar" then press `.` — replay must delete the current selection.
     ed.feed_key(key('w')); // select "bar"
-    ed.feed_key(key('.'));  // replay "del-sel" → delete "bar"
+    ed.feed_key(key('.')); // replay "del-sel" → delete "bar"
     // Oracle: " bar\n" → " \n" after "bar" is deleted.
     assert_eq!(
         ed.doc().text().to_string(),
@@ -608,7 +654,10 @@ fn steel_command_is_not_repeatable() {
     ed.feed_key(key('d')); // delete "foo" → " bar\n"
     assert_eq!(ed.doc().text().to_string(), " bar\n");
     assert_eq!(
-        ed.state.last_repeatable_action.as_ref().map(|a| a.command.as_ref()),
+        ed.state
+            .last_repeatable_action
+            .as_ref()
+            .map(|a| a.command.as_ref()),
         Some("delete"),
         "setup: last_repeatable_action must be 'delete' after d"
     );
@@ -618,7 +667,10 @@ fn steel_command_is_not_repeatable() {
 
     // last_repeatable_action must still be "delete", not "del-sel".
     assert_eq!(
-        ed.state.last_repeatable_action.as_ref().map(|a| a.command.as_ref()),
+        ed.state
+            .last_repeatable_action
+            .as_ref()
+            .map(|a| a.command.as_ref()),
         Some("delete"),
         "Steel command must not overwrite last_repeatable_action"
     );
@@ -642,7 +694,10 @@ fn non_repeatable_steel_does_not_hijack_dot() {
     ed.feed_key(key('d')); // delete "foo" → " bar\n"
     assert_eq!(ed.doc().text().to_string(), " bar\n");
     assert_eq!(
-        ed.state.last_repeatable_action.as_ref().map(|a| a.command.as_ref()),
+        ed.state
+            .last_repeatable_action
+            .as_ref()
+            .map(|a| a.command.as_ref()),
         Some("delete"),
         "setup: last_repeatable_action must be 'delete' after d"
     );
@@ -652,7 +707,10 @@ fn non_repeatable_steel_does_not_hijack_dot() {
 
     // last_repeatable_action must still be "delete".
     assert_eq!(
-        ed.state.last_repeatable_action.as_ref().map(|a| a.command.as_ref()),
+        ed.state
+            .last_repeatable_action
+            .as_ref()
+            .map(|a| a.command.as_ref()),
         Some("delete"),
         "non-repeatable Steel command must not overwrite last_repeatable_action"
     );
@@ -693,12 +751,14 @@ fn lazy_repeatable_round_trip() {
     std::fs::write(
         plugin_dir.join("plugin.scm"),
         r#"(define-command! "tp-del" "" (lambda () (call! "delete")) #:repeatable #t)"#,
-    ).unwrap();
+    )
+    .unwrap();
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
         r#"(declare-plugin "user/tp" #:commands '("tp-del"))"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     let mut ed = editor_from("-[foo]> bar\n");
     let mut host = ScriptingHost::new();
@@ -706,7 +766,8 @@ fn lazy_repeatable_round_trip() {
     {
         let mut ih = make_init_host(&mut ed.state, &mut ed.view);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    }.expect("eval_init must succeed");
+    }
+    .expect("eval_init must succeed");
     let activation_commands = host.activation_commands();
     ed.register_lazy_command_stubs(&activation_commands);
     ed.scripting = Some(host);
@@ -717,7 +778,10 @@ fn lazy_repeatable_round_trip() {
 
     // The re-query must see the now-activated SteelBacked repeatable entry.
     assert_eq!(
-        ed.state.last_repeatable_action.as_ref().map(|a| a.command.as_ref()),
+        ed.state
+            .last_repeatable_action
+            .as_ref()
+            .map(|a| a.command.as_ref()),
         Some("tp-del"),
         "lazy-activated repeatable command must be recorded on first dispatch"
     );
@@ -730,4 +794,3 @@ fn lazy_repeatable_round_trip() {
         "dot-repeat must replay the lazy-activated Steel command"
     );
 }
-

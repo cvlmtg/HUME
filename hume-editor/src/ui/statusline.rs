@@ -11,11 +11,11 @@ use unicode_width::UnicodeWidthStr;
 use hume_engine::render::fill_rect_bg;
 use hume_engine::types::EditorMode;
 
+use crate::editor::Editor;
+use crate::ui::theme::EditorColors;
 use hume_editing::grapheme::grapheme_col_in_line;
 use hume_editing::text::LineEnding as TextLineEnding;
-use crate::editor::Editor;
 use hume_platform::path::shorten_home;
-use crate::ui::theme::EditorColors;
 
 /// Hardcoded left section for Command/Search modes.
 const MINIBUF_LEFT: &[StatusElement] = &[StatusElement::MiniBuf];
@@ -299,9 +299,7 @@ impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
 /// `~`-collapsed for display. Returns `""` for scratch and synthetic buffers.
 fn statusline_display_path(editor: &Editor) -> String {
     let doc = editor.doc();
-    let path = doc
-        .display_path()
-        .or_else(|| doc.path());
+    let path = doc.display_path().or_else(|| doc.path());
     match path {
         Some(p) => shorten_home(p),
         None => String::new(),
@@ -438,9 +436,15 @@ fn render_statusline(
         shorten_path_to_width(&filepath_full, budget)
     };
 
-    let left_spans = pad_left(render_section(left_elems, editor, colors, &filepath_display), colors);
+    let left_spans = pad_left(
+        render_section(left_elems, editor, colors, &filepath_display),
+        colors,
+    );
     let center_spans = render_section(center_elems, editor, colors, &filepath_display);
-    let right_spans = pad_right(render_section(right_elems, editor, colors, &filepath_display), colors);
+    let right_spans = pad_right(
+        render_section(right_elems, editor, colors, &filepath_display),
+        colors,
+    );
 
     let left_w = section_width(&left_spans);
     let center_w = section_width(&center_spans);
@@ -491,9 +495,7 @@ fn render_element(
             (Cow::Borrowed(label), style)
         }
         StatusElement::Separator => (Cow::Borrowed("│"), colors.statusline),
-        StatusElement::FileName => {
-            (Cow::Owned(editor.doc().display_name()), colors.statusline)
-        }
+        StatusElement::FileName => (Cow::Owned(editor.doc().display_name()), colors.statusline),
         StatusElement::FilePath => {
             // `filepath_text` is computed and optionally shortened by `render_statusline`
             // before this is called. Empty string in the measure pass → zero width.
@@ -510,7 +512,11 @@ fn render_element(
             )
         }
         StatusElement::KittyProtocol => {
-            let label = if editor.kitty_enabled { "ᓚᘏᗢ" } else { "" };
+            let label = if editor.kitty_enabled {
+                "ᓚᘏᗢ"
+            } else {
+                ""
+            };
             (Cow::Borrowed(label), colors.statusline)
         }
         StatusElement::Selections => (Cow::Borrowed(""), colors.statusline),
@@ -525,7 +531,10 @@ fn render_element(
             };
             (Cow::Borrowed(label), colors.statusline)
         }
-        StatusElement::Cwd => (Cow::Owned(shorten_home(&editor.state.cwd)), colors.statusline),
+        StatusElement::Cwd => (
+            Cow::Owned(shorten_home(&editor.state.cwd)),
+            colors.statusline,
+        ),
         StatusElement::SearchMatches => {
             if let Some((current, total)) = editor.current_search_cursor().match_count {
                 if total == 0 {
@@ -570,7 +579,11 @@ fn render_element(
             None => (Cow::Borrowed(""), colors.statusline),
         },
         StatusElement::ReadOnly => {
-            let label = if editor.doc().is_read_only() { "[RO]" } else { "" };
+            let label = if editor.doc().is_read_only() {
+                "[RO]"
+            } else {
+                ""
+            };
             (Cow::Borrowed(label), colors.statusline)
         }
     }
@@ -686,11 +699,11 @@ mod tests {
     // ── MacroRecording element ────────────────────────────────────────────────
 
     fn test_editor() -> crate::editor::Editor {
+        use crate::editor::buffer::Buffer;
         use hume_editing::{
             selection::{Selection, SelectionSet},
             text::Text,
         };
-        use crate::editor::buffer::Buffer;
         let text = Text::from("hello\n");
         let sels = SelectionSet::single(Selection::collapsed(0));
         crate::editor::Editor::for_testing(Buffer::new(text, sels))
@@ -732,11 +745,11 @@ mod tests {
     // ── LineEnding element ────────────────────────────────────────────────────
 
     fn test_editor_with_text(s: &str) -> crate::editor::Editor {
+        use crate::editor::buffer::Buffer;
         use hume_editing::{
             selection::{Selection, SelectionSet},
             text::Text,
         };
-        use crate::editor::buffer::Buffer;
         let text = Text::from(s);
         let sels = SelectionSet::single(Selection::collapsed(0));
         crate::editor::Editor::for_testing(Buffer::new(text, sels))
@@ -802,7 +815,10 @@ mod tests {
         let ed = test_editor();
         let colors = crate::ui::theme::EditorColors::default();
         let (text, _) = render_element(StatusElement::ReadOnly, &ed, &colors, "");
-        assert!(text.is_empty(), "expected empty for writable buffer, got {text:?}");
+        assert!(
+            text.is_empty(),
+            "expected empty for writable buffer, got {text:?}"
+        );
     }
 
     #[test]
@@ -934,7 +950,10 @@ mod tests {
         // Flip-a-condition check: path would fail if we just returned input.
         let path = "~/aaaa/bbbb/cccc.txt"; // 20 cols
         let result = shorten_path_to_width(path, 15);
-        assert_ne!(result, path, "path was not shortened when it should have been");
+        assert_ne!(
+            result, path,
+            "path was not shortened when it should have been"
+        );
         assert!(
             unicode_width::UnicodeWidthStr::width(result.as_str()) <= 15,
             "shortened path {result:?} exceeds budget of 15 cols"

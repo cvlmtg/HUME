@@ -31,13 +31,15 @@
 //!    groups, parameterized motions). Implemented in `editor/commands/`; stored
 //!    and dispatched as a function pointer exactly like the other variants.
 
-use std::collections::HashMap;
 use std::borrow::Cow;
+use std::collections::HashMap;
 
 mod command;
 mod defaults;
 
-pub(crate) use command::{CmdCategory, CmdMeta, EditorCmdFn, MappableCommand, PasteFamily, TypedCommand};
+pub(crate) use command::{
+    CmdCategory, CmdMeta, EditorCmdFn, MappableCommand, PasteFamily, TypedCommand,
+};
 
 // ── CommandRegistry ───────────────────────────────────────────────────────────
 
@@ -120,9 +122,8 @@ impl CommandRegistry {
     /// phantom "conflicts with a built-in command" error. `Lazy` stubs must
     /// also be cleared so re-declared activation command names do not collide.
     pub(crate) fn unregister_dynamic_commands(&mut self) {
-        self.commands.retain(|_, cmd| {
-            !matches!(cmd, Command::Mappable(mc) if !mc.is_native())
-        });
+        self.commands
+            .retain(|_, cmd| !matches!(cmd, Command::Mappable(mc) if !mc.is_native()));
     }
 
     /// Register a typed command.
@@ -486,7 +487,10 @@ mod tests {
         // before the plugin is activated.
         let cmd = MappableCommand::Lazy {
             name: "lazy-cmd".into(),
-            plugin: PluginId::User { user: "u".to_string(), repo: "r".to_string() },
+            plugin: PluginId::User {
+                user: "u".to_string(),
+                repo: "r".to_string(),
+            },
         };
         assert!(cmd.is_extendable());
     }

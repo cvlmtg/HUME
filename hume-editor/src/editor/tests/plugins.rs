@@ -12,10 +12,7 @@ use hume_scripting::{PluginStatus, ScriptingHost, hooks::HookId};
 /// `init.scm`, evaluate it, set up the lazy stubs, and wire the host into
 /// `ed`.  Caller must keep `TempDir` alive.
 #[cfg(not(windows))]
-fn setup_lazy_editor(
-    init_body: &str,
-    plugin_body: &str,
-) -> (Editor, tempfile::TempDir) {
+fn setup_lazy_editor(init_body: &str, plugin_body: &str) -> (Editor, tempfile::TempDir) {
     // Hold HUME_RUNTIME_MUTEX while creating the temp dir so that a concurrent
     // HumeRuntimeGuard test cannot redirect TMPDIR and nest our dir inside its
     // managed cleanup tree (which it deletes when the guard drops).
@@ -32,11 +29,13 @@ fn setup_lazy_editor(
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
-    { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
-        .expect("eval_init must succeed in setup_lazy_editor");
+    {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init must succeed in setup_lazy_editor");
 
-    let activation_commands: std::collections::HashMap<_, _> =
-        host.activation_commands();
+    let activation_commands: std::collections::HashMap<_, _> = host.activation_commands();
     ed.register_lazy_command_stubs(&activation_commands);
     ed.scripting = Some(host);
     (ed, dir)
@@ -54,7 +53,10 @@ fn lazy_stub_present_after_init() {
         r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
     assert!(
-        matches!(ed.state.registry.get_mappable("bar"), Some(MappableCommand::Lazy { .. })),
+        matches!(
+            ed.state.registry.get_mappable("bar"),
+            Some(MappableCommand::Lazy { .. })
+        ),
         "Lazy stub must be present after init; got: {:?}",
         ed.state.registry.get_mappable("bar").map(|c| c.name())
     );
@@ -78,10 +80,17 @@ fn first_dispatch_activates_plugin_and_runs() {
     type_cmd(&mut ed, ":bar");
 
     // Cursor must have moved.
-    assert_ne!(state(&ed), before, "dispatching lazy 'bar' must move the cursor");
+    assert_ne!(
+        state(&ed),
+        before,
+        "dispatching lazy 'bar' must move the cursor"
+    );
     // Stub must be replaced by a real SteelBacked command.
     assert!(
-        matches!(ed.state.registry.get_mappable("bar"), Some(MappableCommand::SteelBacked { .. })),
+        matches!(
+            ed.state.registry.get_mappable("bar"),
+            Some(MappableCommand::SteelBacked { .. })
+        ),
         "stub must be replaced by SteelBacked after first dispatch; got: {:?}",
         ed.state.registry.get_mappable("bar").map(|c| c.name())
     );
@@ -102,7 +111,10 @@ fn loop_guard_removes_stub_when_body_never_defines_command() {
 
     // Stub must be present before dispatch.
     assert!(
-        matches!(ed.state.registry.get_mappable("bar"), Some(MappableCommand::Lazy { .. })),
+        matches!(
+            ed.state.registry.get_mappable("bar"),
+            Some(MappableCommand::Lazy { .. })
+        ),
         "Lazy stub must be present before dispatch"
     );
 
@@ -123,7 +135,6 @@ fn loop_guard_removes_stub_when_body_never_defines_command() {
 #[test]
 #[cfg(not(windows))]
 fn body_error_removes_stub_and_marks_failed() {
-    
     use hume_scripting::attribution::PluginId;
 
     let (mut ed, _dir) = setup_lazy_editor(
@@ -131,7 +142,10 @@ fn body_error_removes_stub_and_marks_failed() {
         r#"(error "intentional plugin failure")"#,
     );
     assert!(
-        matches!(ed.state.registry.get_mappable("bar"), Some(MappableCommand::Lazy { .. })),
+        matches!(
+            ed.state.registry.get_mappable("bar"),
+            Some(MappableCommand::Lazy { .. })
+        ),
         "stub must be present before dispatch"
     );
 
@@ -143,7 +157,10 @@ fn body_error_removes_stub_and_marks_failed() {
         "stub must be removed after body error"
     );
     // Plugin state is Failed.
-    let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+    let id = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
     assert!(
         matches!(
             ed.scripting.as_ref().unwrap().plugin_status(&id),
@@ -165,7 +182,10 @@ fn unregister_dynamic_commands_clears_lazy_stubs() {
     );
 
     assert!(
-        matches!(ed.state.registry.get_mappable("bar"), Some(MappableCommand::Lazy { .. })),
+        matches!(
+            ed.state.registry.get_mappable("bar"),
+            Some(MappableCommand::Lazy { .. })
+        ),
         "Lazy stub must be present before unregister"
     );
 
@@ -191,7 +211,6 @@ fn unregister_dynamic_commands_clears_lazy_stubs() {
 #[cfg(not(windows))]
 fn lazy_cmd_arg_passed_on_first_call() {
     use hume_scripting::attribution::PluginId;
-    
 
     // The plugin defines a 1-arity "bar" that does nothing visible — we just
     // verify that after activation the command is SteelBacked (i.e. arg was
@@ -204,7 +223,10 @@ fn lazy_cmd_arg_passed_on_first_call() {
     // Dispatch ":bar hello" — would fail at arity check if arg were dropped.
     type_cmd(&mut ed, ":bar hello");
 
-    let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+    let id = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
     assert!(
         matches!(
             ed.scripting.as_ref().unwrap().plugin_status(&id),
@@ -213,7 +235,10 @@ fn lazy_cmd_arg_passed_on_first_call() {
         "plugin must be Loaded after first dispatch with arg"
     );
     assert!(
-        matches!(ed.state.registry.get_mappable("bar"), Some(MappableCommand::SteelBacked { .. })),
+        matches!(
+            ed.state.registry.get_mappable("bar"),
+            Some(MappableCommand::SteelBacked { .. })
+        ),
         "stub must be replaced by SteelBacked after first dispatch with arg"
     );
 }
@@ -234,14 +259,23 @@ fn key_press_activates_lazy_plugin_via_keymap() {
     );
     // setup_lazy_editor passes a throwaway Keymap to eval_init; bind here so
     // the key lands in the editor's actual keymap.
-    ed.state.keymap.bind_user_with_extend(BindMode::Normal, &[key('z')], "bar".into(), false);
+    ed.state
+        .keymap
+        .bind_user_with_extend(BindMode::Normal, &[key('z')], "bar".into(), false);
     let before = state(&ed);
 
     ed.handle_key(key('z'));
 
-    assert_ne!(state(&ed), before, "pressing 'z' must activate 'bar' and move the cursor");
+    assert_ne!(
+        state(&ed),
+        before,
+        "pressing 'z' must activate 'bar' and move the cursor"
+    );
     assert!(
-        matches!(ed.state.registry.get_mappable("bar"), Some(MappableCommand::SteelBacked { .. })),
+        matches!(
+            ed.state.registry.get_mappable("bar"),
+            Some(MappableCommand::SteelBacked { .. })
+        ),
         "stub must be replaced by SteelBacked after command-activated; got: {:?}",
         ed.state.registry.get_mappable("bar").map(|c| c.name())
     );
@@ -270,7 +304,8 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     std::fs::write(
         eager_dir.join("plugin.scm"),
         r#"(define-command! "foo" "doc" (lambda () (+ 1 0)))"#,
-    ).unwrap();
+    )
+    .unwrap();
     // Lazy plugin — declares "foo" as its sole activation command, which
     // conflicts with the eager plugin.  The declare hard-errors at init time.
     let lazy_dir = dir.path().join("plugins").join("user").join("lz");
@@ -281,7 +316,8 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     std::fs::write(
         &init_path,
         "(load-plugin \"user/eager\")\n(declare-plugin \"user/lz\" #:commands '(\"foo\"))",
-    ).unwrap();
+    )
+    .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
@@ -294,7 +330,8 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     };
     // declare-plugin now hard-errors when all entries are filtered (collision
     // caught at declaration, not at stub registration).
-    let err = init_err.expect_err("eval_init must fail: declare-plugin rejects 'foo' at declare time");
+    let err =
+        init_err.expect_err("eval_init must fail: declare-plugin rejects 'foo' at declare time");
     assert!(
         err.contains("no activation entries") || err.contains("conflicted"),
         "error must explain the cause; got: {err}"
@@ -312,7 +349,10 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
 
     // The eager command still registered correctly before the error.
     assert!(
-        matches!(ed.state.registry.get_mappable("foo"), Some(MappableCommand::SteelBacked { .. })),
+        matches!(
+            ed.state.registry.get_mappable("foo"),
+            Some(MappableCommand::SteelBacked { .. })
+        ),
         "eager 'foo' must survive as SteelBacked; got: {:?}",
         ed.state.registry.get_mappable("foo").map(|c| c.name())
     );
@@ -329,13 +369,15 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
 #[cfg(not(windows))]
 fn event_trigger_activates_on_first_fire() {
     use hume_scripting::attribution::PluginId;
-    
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:events '("on-buffer-save"))"#,
         r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
     );
-    let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+    let id = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
 
     assert!(
         matches!(
@@ -345,7 +387,11 @@ fn event_trigger_activates_on_first_fire() {
         "plugin must be Declared before first fire"
     );
     assert!(
-        !ed.scripting.as_ref().unwrap().activation_event_plugins(HookId::OnBufferSave).is_empty(),
+        !ed.scripting
+            .as_ref()
+            .unwrap()
+            .activation_event_plugins(HookId::OnBufferSave)
+            .is_empty(),
         "activation_events must be populated before first fire"
     );
 
@@ -354,7 +400,11 @@ fn event_trigger_activates_on_first_fire() {
     ed.fire_hook_buffer_save(bid);
     ed.drain_hooks();
 
-    assert_ne!(state(&ed), before, "hook handler must run and move the cursor on first fire");
+    assert_ne!(
+        state(&ed),
+        before,
+        "hook handler must run and move the cursor on first fire"
+    );
     assert!(
         matches!(
             ed.scripting.as_ref().unwrap().plugin_status(&id),
@@ -363,7 +413,11 @@ fn event_trigger_activates_on_first_fire() {
         "plugin must be Loaded after first fire"
     );
     assert!(
-        ed.scripting.as_ref().unwrap().activation_event_plugins(HookId::OnBufferSave).is_empty(),
+        ed.scripting
+            .as_ref()
+            .unwrap()
+            .activation_event_plugins(HookId::OnBufferSave)
+            .is_empty(),
         "activation_events must be cleared after plugin loads"
     );
 }
@@ -377,27 +431,37 @@ fn event_trigger_activates_on_first_fire() {
 #[cfg(not(windows))]
 fn event_trigger_idempotent_on_second_fire() {
     use hume_scripting::attribution::PluginId;
-    
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:events '("on-buffer-save"))"#,
         r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
     );
-    let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+    let id = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
     let bid = ed.focused_buffer_id();
 
-    ed.fire_hook_buffer_save(bid);  // first fire — activates
+    ed.fire_hook_buffer_save(bid); // first fire — activates
     ed.drain_hooks();
     assert!(
-        ed.scripting.as_ref().unwrap().activation_event_plugins(HookId::OnBufferSave).is_empty(),
+        ed.scripting
+            .as_ref()
+            .unwrap()
+            .activation_event_plugins(HookId::OnBufferSave)
+            .is_empty(),
         "activation_events must be empty after first fire"
     );
 
     let after_first = state(&ed);
-    ed.fire_hook_buffer_save(bid);  // second fire — handler runs, no re-activation
+    ed.fire_hook_buffer_save(bid); // second fire — handler runs, no re-activation
     ed.drain_hooks();
 
-    assert_ne!(state(&ed), after_first, "handler must run again on second fire");
+    assert_ne!(
+        state(&ed),
+        after_first,
+        "handler must run again on second fire"
+    );
     assert!(
         matches!(
             ed.scripting.as_ref().unwrap().plugin_status(&id),
@@ -416,7 +480,6 @@ fn event_trigger_idempotent_on_second_fire() {
 #[cfg(not(windows))]
 fn event_trigger_one_to_many_activates_all() {
     use hume_scripting::attribution::PluginId;
-    
 
     let dir = {
         let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
@@ -427,28 +490,41 @@ fn event_trigger_one_to_many_activates_all() {
     std::fs::write(
         dir_a.join("plugin.scm"),
         r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
-    ).unwrap();
+    )
+    .unwrap();
     let dir_b = dir.path().join("plugins").join("user").join("tp2");
     std::fs::create_dir_all(&dir_b).unwrap();
     std::fs::write(
         dir_b.join("plugin.scm"),
         r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
-    ).unwrap();
+    )
+    .unwrap();
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
         "(declare-plugin \"user/tp\"  #:events '(\"on-buffer-save\"))\n\
          (declare-plugin \"user/tp2\" #:events '(\"on-buffer-save\"))",
-    ).unwrap();
+    )
+    .unwrap();
 
     let mut ed = editor_from("-[a]>b c d\n");
     let mut host = ScriptingHost::new();
-    host.set_data_dir(dir.path().to_path_buf());    { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
-        .expect("eval_init must succeed");
+    host.set_data_dir(dir.path().to_path_buf());
+    {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init must succeed");
     ed.scripting = Some(host);
 
-    let id_a = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
-    let id_b = PluginId::User { user: "user".to_string(), repo: "tp2".to_string() };
+    let id_a = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
+    let id_b = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp2".to_string(),
+    };
     let bid = ed.focused_buffer_id();
     ed.fire_hook_buffer_save(bid);
     ed.drain_hooks();
@@ -468,7 +544,11 @@ fn event_trigger_one_to_many_activates_all() {
         "plugin B must be Loaded after fire"
     );
     assert!(
-        ed.scripting.as_ref().unwrap().activation_event_plugins(HookId::OnBufferSave).is_empty(),
+        ed.scripting
+            .as_ref()
+            .unwrap()
+            .activation_event_plugins(HookId::OnBufferSave)
+            .is_empty(),
         "activation_events must be fully cleared after both plugins load"
     );
 }
@@ -482,17 +562,20 @@ fn event_trigger_one_to_many_activates_all() {
 #[cfg(not(windows))]
 fn event_plugin_failure_marks_failed_no_retry() {
     use hume_scripting::attribution::PluginId;
-    
+
     use crate::editor::Severity;
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:events '("on-buffer-save"))"#,
         r#"(error "intentional plugin failure")"#,
     );
-    let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+    let id = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
     let bid = ed.focused_buffer_id();
 
-    ed.fire_hook_buffer_save(bid);  // first fire — activates → body fails
+    ed.fire_hook_buffer_save(bid); // first fire — activates → body fails
     ed.drain_hooks();
 
     assert!(
@@ -503,16 +586,23 @@ fn event_plugin_failure_marks_failed_no_retry() {
         "plugin must be Failed after body error"
     );
     assert!(
-        ed.scripting.as_ref().unwrap().activation_event_plugins(HookId::OnBufferSave).is_empty(),
+        ed.scripting
+            .as_ref()
+            .unwrap()
+            .activation_event_plugins(HookId::OnBufferSave)
+            .is_empty(),
         "activation_events must be cleared even after failure"
     );
     assert!(
-        ed.state.message_log.entries().any(|e| e.severity == Severity::Error),
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error),
         "Severity::Error must be logged after body failure"
     );
 
     let msg_count = ed.state.message_log.entries().count();
-    ed.fire_hook_buffer_save(bid);  // second fire — no retry
+    ed.fire_hook_buffer_save(bid); // second fire — no retry
     ed.drain_hooks();
 
     assert!(
@@ -546,7 +636,8 @@ fn declare_plugin_no_triggers_is_hard_error() {
         std::fs::write(
             plugin_dir.join("plugin.scm"),
             r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
-        ).unwrap();
+        )
+        .unwrap();
         let init_path = dir.path().join("init.scm");
         std::fs::write(&init_path, "(declare-plugin \"user/tp\")").unwrap();
         (dir, init_path)
@@ -574,8 +665,6 @@ fn declare_plugin_no_triggers_is_hard_error() {
 #[test]
 #[cfg(not(windows))]
 fn load_plugin_absent_top_level_silently_skips() {
-    
-
     let (dir, init_path) = {
         let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
@@ -588,11 +677,17 @@ fn load_plugin_absent_top_level_silently_skips() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
     let mut ed = editor_from("-[a]>b\n");
-    { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
-        .expect("absent top-level load-plugin must not error");
+    {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("absent top-level load-plugin must not error");
 
     // Plugin was not inserted into lazy_registry (absent on disk).
-    assert!(!host.has_any_loaded_plugin(), "no plugin must be Loaded when absent on disk");
+    assert!(
+        !host.has_any_loaded_plugin(),
+        "no plugin must be Loaded when absent on disk"
+    );
 }
 
 /// A lazy plugin B can call another lazy plugin A's command via `(call! "a-cmd")`.
@@ -616,40 +711,58 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     std::fs::write(
         dir_a.join("plugin.scm"),
         r#"(define-command! "a-cmd" "doc" (lambda () (call! "move-right")))"#,
-    ).unwrap();
+    )
+    .unwrap();
     // Plugin B — command activation entry; body calls "a-cmd" inline (no load-plugin).
     let dir_b = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&dir_b).unwrap();
     std::fs::write(
         dir_b.join("plugin.scm"),
         "(define-command! \"b-cmd\" \"doc\" (lambda () (call! \"a-cmd\")))",
-    ).unwrap();
+    )
+    .unwrap();
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
         "(declare-plugin \"user/tpa\" #:commands '(\"a-cmd\"))\n\
          (declare-plugin \"user/tp\"  #:commands '(\"b-cmd\"))",
-    ).unwrap();
+    )
+    .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
-    { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
-        .expect("eval_init must succeed");
+    {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init must succeed");
     let activation_commands = host.activation_commands();
     ed.register_lazy_command_stubs(&activation_commands);
     ed.scripting = Some(host);
 
-    let id_a = PluginId::User { user: "user".to_string(), repo: "tpa".to_string() };
-    let id_b = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+    let id_a = PluginId::User {
+        user: "user".to_string(),
+        repo: "tpa".to_string(),
+    };
+    let id_b = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
 
     // After init: both Declared.
     assert!(
-        matches!(ed.scripting.as_ref().unwrap().plugin_status(&id_a), Some(PluginStatus::Declared)),
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&id_a),
+            Some(PluginStatus::Declared)
+        ),
         "dep A must be Declared after init"
     );
     assert!(
-        matches!(ed.scripting.as_ref().unwrap().plugin_status(&id_b), Some(PluginStatus::Declared)),
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&id_b),
+            Some(PluginStatus::Declared)
+        ),
         "plugin B must be Declared after init"
     );
 
@@ -658,13 +771,23 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     let before = state(&ed);
     type_cmd(&mut ed, ":b-cmd");
 
-    assert_ne!(state(&ed), before, "b-cmd via (call! \"a-cmd\") must have moved the cursor");
+    assert_ne!(
+        state(&ed),
+        before,
+        "b-cmd via (call! \"a-cmd\") must have moved the cursor"
+    );
     assert!(
-        matches!(ed.scripting.as_ref().unwrap().plugin_status(&id_b), Some(PluginStatus::Loaded)),
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&id_b),
+            Some(PluginStatus::Loaded)
+        ),
         "plugin B must be Loaded after dispatch"
     );
     assert!(
-        matches!(ed.scripting.as_ref().unwrap().plugin_status(&id_a), Some(PluginStatus::Loaded)),
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&id_a),
+            Some(PluginStatus::Loaded)
+        ),
         "dep A must be Loaded after B calls (call! \"a-cmd\")"
     );
 }
@@ -680,13 +803,15 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
 #[cfg(not(windows))]
 fn language_trigger_activates_on_set() {
     use hume_scripting::attribution::PluginId;
-    
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:languages '("rust"))"#,
         r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
     );
-    let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+    let id = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
 
     assert!(
         matches!(
@@ -696,7 +821,11 @@ fn language_trigger_activates_on_set() {
         "plugin must be Declared before first language set"
     );
     assert!(
-        !ed.scripting.as_ref().unwrap().activation_language_plugins("rust").is_empty(),
+        !ed.scripting
+            .as_ref()
+            .unwrap()
+            .activation_language_plugins("rust")
+            .is_empty(),
         "activation_languages must be populated before first set"
     );
 
@@ -705,7 +834,11 @@ fn language_trigger_activates_on_set() {
     ed.set_buffer_language(bid, Some("rust".into()));
     ed.drain_hooks();
 
-    assert_ne!(state(&ed), before, "on-language-set handler must run and move cursor on first set");
+    assert_ne!(
+        state(&ed),
+        before,
+        "on-language-set handler must run and move cursor on first set"
+    );
     assert!(
         matches!(
             ed.scripting.as_ref().unwrap().plugin_status(&id),
@@ -714,7 +847,11 @@ fn language_trigger_activates_on_set() {
         "plugin must be Loaded after first language set"
     );
     assert!(
-        ed.scripting.as_ref().unwrap().activation_language_plugins("rust").is_empty(),
+        ed.scripting
+            .as_ref()
+            .unwrap()
+            .activation_language_plugins("rust")
+            .is_empty(),
         "activation_languages must be cleared after plugin loads"
     );
 }
@@ -728,29 +865,39 @@ fn language_trigger_activates_on_set() {
 #[cfg(not(windows))]
 fn language_trigger_idempotent_on_round_trip() {
     use hume_scripting::attribution::PluginId;
-    
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:languages '("rust"))"#,
         r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
     );
-    let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+    let id = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
     let bid = ed.focused_buffer_id();
 
-    ed.set_buffer_language(bid, Some("rust".into()));  // first set — activates
+    ed.set_buffer_language(bid, Some("rust".into())); // first set — activates
     ed.drain_hooks();
     assert!(
-        ed.scripting.as_ref().unwrap().activation_language_plugins("rust").is_empty(),
+        ed.scripting
+            .as_ref()
+            .unwrap()
+            .activation_language_plugins("rust")
+            .is_empty(),
         "activation_languages must be empty after first set"
     );
 
     let after_first = state(&ed);
-    ed.set_buffer_language(bid, Some("toml".into()));  // round-trip out
+    ed.set_buffer_language(bid, Some("toml".into())); // round-trip out
     ed.drain_hooks();
-    ed.set_buffer_language(bid, Some("rust".into()));  // round-trip back — handler runs, no re-activation
+    ed.set_buffer_language(bid, Some("rust".into())); // round-trip back — handler runs, no re-activation
     ed.drain_hooks();
 
-    assert_ne!(state(&ed), after_first, "handler must run again on second rust set");
+    assert_ne!(
+        state(&ed),
+        after_first,
+        "handler must run again on second rust set"
+    );
     assert!(
         matches!(
             ed.scripting.as_ref().unwrap().plugin_status(&id),
@@ -759,7 +906,11 @@ fn language_trigger_idempotent_on_round_trip() {
         "plugin must remain Loaded after round-trip (not re-enter Declared or fail)"
     );
     assert!(
-        ed.scripting.as_ref().unwrap().activation_language_plugins("rust").is_empty(),
+        ed.scripting
+            .as_ref()
+            .unwrap()
+            .activation_language_plugins("rust")
+            .is_empty(),
         "activation_languages must remain cleared after round-trip"
     );
 }
@@ -773,7 +924,6 @@ fn language_trigger_idempotent_on_round_trip() {
 #[cfg(not(windows))]
 fn language_trigger_one_to_many_activates_all() {
     use hume_scripting::attribution::PluginId;
-    
 
     let dir = {
         let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
@@ -784,28 +934,41 @@ fn language_trigger_one_to_many_activates_all() {
     std::fs::write(
         dir_a.join("plugin.scm"),
         r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
-    ).unwrap();
+    )
+    .unwrap();
     let dir_b = dir.path().join("plugins").join("user").join("tp2");
     std::fs::create_dir_all(&dir_b).unwrap();
     std::fs::write(
         dir_b.join("plugin.scm"),
         r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
-    ).unwrap();
+    )
+    .unwrap();
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
         "(declare-plugin \"user/tp\"  #:languages '(\"rust\"))\n\
          (declare-plugin \"user/tp2\" #:languages '(\"rust\"))",
-    ).unwrap();
+    )
+    .unwrap();
 
     let mut ed = editor_from("-[a]>b c d\n");
     let mut host = ScriptingHost::new();
-    host.set_data_dir(dir.path().to_path_buf());    { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
-        .expect("eval_init must succeed");
+    host.set_data_dir(dir.path().to_path_buf());
+    {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init must succeed");
     ed.scripting = Some(host);
 
-    let id_a = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
-    let id_b = PluginId::User { user: "user".to_string(), repo: "tp2".to_string() };
+    let id_a = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
+    let id_b = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp2".to_string(),
+    };
     let bid = ed.focused_buffer_id();
     ed.set_buffer_language(bid, Some("rust".into()));
 
@@ -824,7 +987,11 @@ fn language_trigger_one_to_many_activates_all() {
         "plugin B must be Loaded after language set"
     );
     assert!(
-        ed.scripting.as_ref().unwrap().activation_language_plugins("rust").is_empty(),
+        ed.scripting
+            .as_ref()
+            .unwrap()
+            .activation_language_plugins("rust")
+            .is_empty(),
         "activation_languages must be fully cleared after both plugins load"
     );
 }
@@ -837,16 +1004,18 @@ fn language_trigger_one_to_many_activates_all() {
 #[cfg(not(windows))]
 fn language_trigger_does_not_fire_on_unrelated_language() {
     use hume_scripting::attribution::PluginId;
-    
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:languages '("rust"))"#,
         r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
     );
-    let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+    let id = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
     let bid = ed.focused_buffer_id();
 
-    ed.set_buffer_language(bid, Some("toml".into()));  // unrelated language
+    ed.set_buffer_language(bid, Some("toml".into())); // unrelated language
 
     assert!(
         matches!(
@@ -856,7 +1025,11 @@ fn language_trigger_does_not_fire_on_unrelated_language() {
         "plugin must stay Declared when an unrelated language is set"
     );
     assert!(
-        !ed.scripting.as_ref().unwrap().activation_language_plugins("rust").is_empty(),
+        !ed.scripting
+            .as_ref()
+            .unwrap()
+            .activation_language_plugins("rust")
+            .is_empty(),
         "activation_languages[\"rust\"] must remain intact after an unrelated set"
     );
 }
@@ -879,11 +1052,13 @@ fn command_trigger_logs_trace_on_activation() {
     );
 
     assert!(
-        !ed.state.message_log
+        !ed.state
+            .message_log
             .entries()
             .any(|e| e.severity == Severity::Trace && e.text.contains("by command")),
         "no activation Trace before dispatch; messages: {:?}",
-        ed.state.message_log
+        ed.state
+            .message_log
             .entries()
             .map(|e| format!("{:?}: {}", e.severity, e.text))
             .collect::<Vec<_>>()
@@ -893,12 +1068,11 @@ fn command_trigger_logs_trace_on_activation() {
 
     assert!(
         ed.state.message_log.entries().any(|e| {
-            e.severity == Severity::Trace
-                && e.text.contains("bar")
-                && e.text.contains("by command")
+            e.severity == Severity::Trace && e.text.contains("bar") && e.text.contains("by command")
         }),
         "expected Trace entry naming command activation 'bar' after dispatch; messages: {:?}",
-        ed.state.message_log
+        ed.state
+            .message_log
             .entries()
             .map(|e| format!("{:?}: {}", e.severity, e.text))
             .collect::<Vec<_>>()
@@ -949,16 +1123,17 @@ fn setup_editor_with_init_scripting(init_scm: &str) -> (Editor, Vec<tempfile::Te
 fn keymap_lint_warns_on_unknown_command() {
     use crate::editor::Severity;
 
-    let (ed, _dirs) = setup_editor_with_init_scripting(
-        r#"(bind-key! "normal" "Q" "bogus-unknown-cmd")"#,
-    );
+    let (ed, _dirs) =
+        setup_editor_with_init_scripting(r#"(bind-key! "normal" "Q" "bogus-unknown-cmd")"#);
 
     assert!(
-        ed.state.message_log.entries().any(|e| {
-            e.severity == Severity::Warning && e.text.contains("bogus-unknown-cmd")
-        }),
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| { e.severity == Severity::Warning && e.text.contains("bogus-unknown-cmd") }),
         "expected Warning about unknown command 'bogus-unknown-cmd'; messages: {:?}",
-        ed.state.message_log
+        ed.state
+            .message_log
             .entries()
             .map(|e| format!("{:?}: {}", e.severity, e.text))
             .collect::<Vec<_>>()
@@ -974,8 +1149,8 @@ fn keymap_lint_warns_on_unknown_command() {
 #[test]
 #[cfg(not(windows))]
 fn load_plugin_in_runtime_plugin_body_fails_fast() {
-    use hume_scripting::attribution::PluginId;
     use crate::editor::Severity;
+    use hume_scripting::attribution::PluginId;
 
     let dir = {
         let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
@@ -989,7 +1164,8 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
             // Plugin body calls (load-plugin) at runtime — hard error expected.
             r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))
                (load-plugin "user/dep")"#,
-        ).unwrap();
+        )
+        .unwrap();
         std::fs::write(dep_dir.join("plugin.scm"), r#"(+ 1 0)"#).unwrap();
         let init = dir.path().join("init.scm");
         std::fs::write(&init, r#"(declare-plugin "user/tp" #:commands '("bar"))"#).unwrap();
@@ -1000,15 +1176,21 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
     let init_path = dir.path().join("init.scm");
-    { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
-        .expect("eval_init must succeed");
+    {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init must succeed");
     let activation_commands: std::collections::HashMap<_, _> = host.activation_commands();
     ed.register_lazy_command_stubs(&activation_commands);
     ed.scripting = Some(host);
 
     type_cmd(&mut ed, ":bar");
 
-    let tp_id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+    let tp_id = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
     assert!(
         matches!(
             ed.scripting.as_ref().unwrap().plugin_status(&tp_id),
@@ -1017,7 +1199,10 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
         "plugin must be Failed when body calls (load-plugin) at runtime"
     );
     assert!(
-        ed.state.message_log.entries().any(|e| e.severity == Severity::Error),
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error),
         "error must be logged when (load-plugin) is called from a runtime plugin body"
     );
 }
@@ -1041,17 +1226,28 @@ fn define_command_collision_with_builtin_keeps_builtin() {
 
     // The built-in "move-right" must survive — not replaced by SteelBacked.
     assert!(
-        !matches!(ed.state.registry.get_mappable("move-right"), Some(MappableCommand::SteelBacked { .. })),
+        !matches!(
+            ed.state.registry.get_mappable("move-right"),
+            Some(MappableCommand::SteelBacked { .. })
+        ),
         "built-in move-right must not be replaced by Steel; got: {:?}",
-        ed.state.registry.get_mappable("move-right").map(|c| c.name())
+        ed.state
+            .registry
+            .get_mappable("move-right")
+            .map(|c| c.name())
     );
     // A Severity::Error must have been logged about the conflict.
     assert!(
-        ed.state.message_log.entries().any(|e| {
-            e.severity == Severity::Error && e.text.contains("move-right")
-        }),
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| { e.severity == Severity::Error && e.text.contains("move-right") }),
         "collision must produce an Error; messages: {:?}",
-        ed.state.message_log.entries().map(|e| format!("{:?}: {}", e.severity, e.text)).collect::<Vec<_>>()
+        ed.state
+            .message_log
+            .entries()
+            .map(|e| format!("{:?}: {}", e.severity, e.text))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -1100,7 +1296,12 @@ fn setup_lang_lint_editor(init_body: &str) -> (Editor, Vec<tempfile::TempDir>) {
     let data_tmp = tempfile::tempdir().unwrap();
 
     // Trivial plugin body — the lint checks activation entry names, not plugin behaviour.
-    let plugin_dir = data_tmp.path().join("hume").join("plugins").join("user").join("tp");
+    let plugin_dir = data_tmp
+        .path()
+        .join("hume")
+        .join("plugins")
+        .join("user")
+        .join("tp");
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(plugin_dir.join("plugin.scm"), "(+ 1 0)").unwrap();
 
@@ -1136,16 +1337,16 @@ fn setup_lang_lint_editor(init_body: &str) -> (Editor, Vec<tempfile::TempDir>) {
 fn language_activation_lint_warns_on_unknown_language() {
     use crate::editor::Severity;
 
-    let (ed, _dirs) = setup_lang_lint_editor(
-        r#"(declare-plugin "user/tp" #:languages '("rsut"))"#,
-    );
+    let (ed, _dirs) = setup_lang_lint_editor(r#"(declare-plugin "user/tp" #:languages '("rsut"))"#);
 
     assert!(
-        ed.state.message_log.entries().any(|e| {
-            e.severity == Severity::Warning && e.text.contains("rsut")
-        }),
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| { e.severity == Severity::Warning && e.text.contains("rsut") }),
         "expected Warning about unknown language 'rsut'; messages: {:?}",
-        ed.state.message_log
+        ed.state
+            .message_log
             .entries()
             .map(|e| format!("{:?}: {}", e.severity, e.text))
             .collect::<Vec<_>>()
@@ -1171,11 +1372,13 @@ fn language_trigger_lint_silent_for_known_language() {
     );
 
     assert!(
-        !ed.state.message_log.entries().any(|e| {
-            e.severity == Severity::Warning && e.text.contains("foo")
-        }),
+        !ed.state
+            .message_log
+            .entries()
+            .any(|e| { e.severity == Severity::Warning && e.text.contains("foo") }),
         "must not warn about known language 'foo'; messages: {:?}",
-        ed.state.message_log
+        ed.state
+            .message_log
             .entries()
             .map(|e| format!("{:?}: {}", e.severity, e.text))
             .collect::<Vec<_>>()
@@ -1204,11 +1407,13 @@ fn language_trigger_lint_silent_for_forward_defined_language() {
     );
 
     assert!(
-        !ed.state.message_log.entries().any(|e| {
-            e.severity == Severity::Warning && e.text.contains("foo")
-        }),
+        !ed.state
+            .message_log
+            .entries()
+            .any(|e| { e.severity == Severity::Warning && e.text.contains("foo") }),
         "forward-defined language must not warn; messages: {:?}",
-        ed.state.message_log
+        ed.state
+            .message_log
             .entries()
             .map(|e| format!("{:?}: {}", e.severity, e.text))
             .collect::<Vec<_>>()
@@ -1224,16 +1429,16 @@ fn language_trigger_lint_silent_for_forward_defined_language() {
 fn keymap_lint_silent_for_known_command() {
     use crate::editor::Severity;
 
-    let (ed, _dirs) = setup_editor_with_init_scripting(
-        r#"(bind-key! "normal" "Q" "move-down")"#,
-    );
+    let (ed, _dirs) = setup_editor_with_init_scripting(r#"(bind-key! "normal" "Q" "move-down")"#);
 
     assert!(
-        !ed.state.message_log.entries().any(|e| {
-            e.severity == Severity::Warning && e.text.contains("move-down")
-        }),
+        !ed.state
+            .message_log
+            .entries()
+            .any(|e| { e.severity == Severity::Warning && e.text.contains("move-down") }),
         "must not warn about known command 'move-down'; messages: {:?}",
-        ed.state.message_log
+        ed.state
+            .message_log
             .entries()
             .map(|e| format!("{:?}: {}", e.severity, e.text))
             .collect::<Vec<_>>()
@@ -1254,7 +1459,10 @@ fn lazy_stub_collision_returned_and_stub_not_registered() {
     use hume_scripting::attribution::PluginId;
 
     let mut ed = editor_from("-[a]>b\n");
-    let plugin = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+    let plugin = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
 
     // "move-right" is a native built-in guaranteed to be in the registry.
     let activations: std::collections::HashMap<String, PluginId> =

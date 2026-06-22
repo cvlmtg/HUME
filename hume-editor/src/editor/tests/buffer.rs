@@ -297,7 +297,8 @@ fn buffer_switch_to_deleted_file_by_path() {
         ":b <deleted-path> must still switch to the open buffer"
     );
     assert!(
-        ed.state.status_msg
+        ed.state
+            .status_msg
             .as_deref()
             .is_some_and(|m| m.contains("no longer exists")),
         "must warn that the file is gone, got: {:?}",
@@ -324,7 +325,8 @@ fn buffer_switch_to_deleted_file_by_basename() {
         ":b <basename> must switch even when the file is deleted"
     );
     assert!(
-        ed.state.status_msg
+        ed.state
+            .status_msg
             .as_deref()
             .is_some_and(|m| m.contains("no longer exists")),
         "must warn that the file is gone, got: {:?}",
@@ -345,7 +347,8 @@ fn buffer_switch_to_live_file_no_warning() {
     ed.execute_typed("b", Some(canonical.to_str().unwrap()))
         .unwrap();
     assert!(
-        !ed.state.status_msg
+        !ed.state
+            .status_msg
             .as_deref()
             .is_some_and(|m| m.contains("no longer exists")),
         ":b on a live file must not warn 'no longer exists', got: {:?}",

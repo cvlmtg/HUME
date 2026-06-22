@@ -48,4 +48,4 @@ pub use lines::{line_content_end, line_end_exclusive, snap_to_grapheme_boundary}
 pub use selection::{Selection, SelectionSet};
 pub use text::{LineEnding, Text};
 pub use transaction::Transaction;
-pub use word::{classify_char, is_long_word_boundary, is_word_boundary, CharClass};
+pub use word::{CharClass, classify_char, is_long_word_boundary, is_word_boundary};

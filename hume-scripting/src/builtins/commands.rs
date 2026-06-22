@@ -32,10 +32,10 @@ use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::SteelVal;
 
 use super::require_cmd_ctx;
+use crate::SteelCtx;
 use crate::attribution::Owner;
 use crate::log::LogLevel;
 use crate::types::SteelCmdDef;
-use crate::SteelCtx;
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -107,7 +107,10 @@ fn define_command_inner(
     // checking cmd_owners here would falsely reject a plugin defining its own
     // activation command.
     if ctx.registries.command_table.contains_key(&name) {
-        let owner = ctx.registries.cmd_owners.get(&name)
+        let owner = ctx
+            .registries
+            .cmd_owners
+            .get(&name)
             .map(|s| s.as_str())
             .unwrap_or("unknown");
         steel::stop!(Generic =>
@@ -141,10 +144,20 @@ fn define_command_inner(
     };
     let current_owner = ctx.plugin_stack.current_owner();
     ctx.registries.command_table.insert(name.clone(), proc);
-    ctx.registries.cmd_owners.insert(name.clone(), current_owner.to_string());
+    ctx.registries
+        .cmd_owners
+        .insert(name.clone(), current_owner.to_string());
     // Register inline in the editor's CommandRegistry so subsequent keypresses
     // find SteelBacked entries immediately — no post-eval second pass.
-    ctx.host.register_command(SteelCmdDef { name, doc, arity, is_variadic, inline_output, repeatable })
+    ctx.host
+        .register_command(SteelCmdDef {
+            name,
+            doc,
+            arity,
+            is_variadic,
+            inline_output,
+            repeatable,
+        })
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
     Ok(SteelVal::Void)
 }
@@ -178,7 +191,8 @@ pub(crate) fn call_command_primitive(
             }
             let (count, extend) = parse_count_extend(&args_vec)
                 .map_err(|e| SteelErr::new(ErrorKind::Generic, format!("%call-native!: {e}")))?;
-            ctx.host.run_command_sync(&name, count, extend, ctx.current_register_prefix)
+            ctx.host
+                .run_command_sync(&name, count, extend, ctx.current_register_prefix)
                 .map(|()| SteelVal::Void)
                 .map_err(|e| SteelErr::new(ErrorKind::Generic, format!("%call-native!: {e}")))
         }
@@ -215,7 +229,8 @@ pub fn parse_count_extend(args: &[SteelVal]) -> Result<(usize, bool), String> {
         [SteelVal::IntV(n)] => Ok(((*n).max(1) as usize, false)),
         [SteelVal::IntV(n), SteelVal::BoolV(ext)] => Ok(((*n).max(1) as usize, *ext)),
         _ => Err(format!(
-            "native command args must be [], [count], or [count extend]; got {:?}", args
+            "native command args must be [], [count], or [count extend]; got {:?}",
+            args
         )),
     }
 }
@@ -323,11 +338,19 @@ mod tests {
         let mut h = SteelCtxTestHarness::new();
         {
             let mut ctx = h.ctx_init();
-            call_command_primitive(&mut ctx, "plum-ensure-grammars".to_string(), make_list(vec![])).unwrap();
+            call_command_primitive(
+                &mut ctx,
+                "plum-ensure-grammars".to_string(),
+                make_list(vec![]),
+            )
+            .unwrap();
         }
         assert!(
-            h.pending_messages.iter().any(|(_, msg)| msg.contains("plum-ensure-grammars")),
-            "unknown command must log a warning; got: {:?}", h.pending_messages
+            h.pending_messages
+                .iter()
+                .any(|(_, msg)| msg.contains("plum-ensure-grammars")),
+            "unknown command must log a warning; got: {:?}",
+            h.pending_messages
         );
     }
 
@@ -339,8 +362,11 @@ mod tests {
             call_command_primitive(&mut ctx, "move-right".to_string(), make_list(vec![])).unwrap();
         }
         assert!(
-            h.pending_messages.iter().any(|(_, msg)| msg.contains("move-right")),
-            "unknown command in command mode must log a warning; got: {:?}", h.pending_messages
+            h.pending_messages
+                .iter()
+                .any(|(_, msg)| msg.contains("move-right")),
+            "unknown command in command mode must log a warning; got: {:?}",
+            h.pending_messages
         );
     }
 
@@ -352,9 +378,18 @@ mod tests {
             call_command_primitive(&mut ctx, "move-right".to_string(), make_list(vec![])).unwrap();
             call_command_primitive(&mut ctx, "move-left".to_string(), make_list(vec![])).unwrap();
         }
-        let has_right = h.pending_messages.iter().any(|(_, msg)| msg.contains("move-right"));
-        let has_left = h.pending_messages.iter().any(|(_, msg)| msg.contains("move-left"));
-        assert!(has_right && has_left, "each unknown command must produce a warning");
+        let has_right = h
+            .pending_messages
+            .iter()
+            .any(|(_, msg)| msg.contains("move-right"));
+        let has_left = h
+            .pending_messages
+            .iter()
+            .any(|(_, msg)| msg.contains("move-left"));
+        assert!(
+            has_right && has_left,
+            "each unknown command must produce a warning"
+        );
     }
 
     #[test]
@@ -403,7 +438,10 @@ mod tests {
 
     #[test]
     fn parse_count_extend_count_only() {
-        assert_eq!(parse_count_extend(&[SteelVal::IntV(5)]).unwrap(), (5, false));
+        assert_eq!(
+            parse_count_extend(&[SteelVal::IntV(5)]).unwrap(),
+            (5, false)
+        );
     }
 
     #[test]
@@ -417,7 +455,10 @@ mod tests {
     /// Negative counts clamp to 1 — `(*n).max(1) as usize`.
     #[test]
     fn parse_count_extend_negative_clamps_to_one() {
-        assert_eq!(parse_count_extend(&[SteelVal::IntV(-7)]).unwrap(), (1, false));
+        assert_eq!(
+            parse_count_extend(&[SteelVal::IntV(-7)]).unwrap(),
+            (1, false)
+        );
         assert_eq!(
             parse_count_extend(&[SteelVal::IntV(-1), SteelVal::BoolV(false)]).unwrap(),
             (1, false)
@@ -427,7 +468,10 @@ mod tests {
     /// Zero also clamps to 1 (max(0, 1) = 1).
     #[test]
     fn parse_count_extend_zero_clamps_to_one() {
-        assert_eq!(parse_count_extend(&[SteelVal::IntV(0)]).unwrap(), (1, false));
+        assert_eq!(
+            parse_count_extend(&[SteelVal::IntV(0)]).unwrap(),
+            (1, false)
+        );
     }
 
     #[test]
@@ -472,7 +516,8 @@ mod tests {
             "bad\"name".to_string(),
             "doc".to_string(),
             SteelVal::BoolV(false), // type check comes after name check
-            false, false,
+            false,
+            false,
         )
         .unwrap_err();
         assert!(
@@ -490,7 +535,8 @@ mod tests {
             "bad\\name".to_string(),
             "doc".to_string(),
             SteelVal::BoolV(false),
-            false, false,
+            false,
+            false,
         )
         .unwrap_err();
         assert!(
@@ -518,7 +564,8 @@ mod tests {
             "my-cmd".to_string(),
             "doc".to_string(),
             SteelVal::BoolV(false),
-            false, false,
+            false,
+            false,
         )
         .unwrap_err();
         let msg = err.to_string();

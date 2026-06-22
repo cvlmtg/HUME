@@ -12,11 +12,11 @@ use slotmap::SecondaryMap;
 
 use hume_engine::pipeline::{BufferId, PaneId};
 
+use crate::editor::buffer_store::BufferStore;
+use crate::editor::pane_state::PaneBufferState;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
-use crate::editor::buffer_store::BufferStore;
-use crate::editor::pane_state::PaneBufferState;
 
 use super::syntax_glue;
 
@@ -97,12 +97,24 @@ pub(crate) fn apply_doc_edit_regrouped(
     let rope_pre = buf_pre.rope().clone();
     // Borrow paste_group from pane_state; NLL ends this borrow after the call.
     let pbs = &mut pane_state[focused_pane_id][buf_id];
-    let (new_sels, propagation_cs) =
-        buffers.get_mut(buf_id).apply_edit_regrouped(&mut pbs.paste_group, cmd);
+    let (new_sels, propagation_cs) = buffers
+        .get_mut(buf_id)
+        .apply_edit_regrouped(&mut pbs.paste_group, cmd);
     pane_state[focused_pane_id][buf_id].selections = new_sels;
-    propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &propagation_cs, &buf_pre);
+    propagate_cs_to_panes(
+        pane_state,
+        focused_pane_id,
+        buf_id,
+        &propagation_cs,
+        &buf_pre,
+    );
     let text_gen = buffers.get(buf_id).text_gen;
-    syntax_glue::record_pending_edits(buffers.get_mut(buf_id), text_gen, &propagation_cs, &rope_pre);
+    syntax_glue::record_pending_edits(
+        buffers.get_mut(buf_id),
+        text_gen,
+        &propagation_cs,
+        &rope_pre,
+    );
 }
 
 /// Apply undo to the focused buffer and propagate the inverse `ChangeSet` to
@@ -230,6 +242,8 @@ pub(crate) fn propagate_cs_to_panes(
         })
         .collect();
     for pid in affected {
-        pane_state[pid][buf_id].selections.translate_in_place(cs, buf_pre);
+        pane_state[pid][buf_id]
+            .selections
+            .translate_in_place(cs, buf_pre);
     }
 }

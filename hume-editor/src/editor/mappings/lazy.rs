@@ -1,5 +1,5 @@
-use super::super::{Editor, Severity, scripting_setup::make_init_host};
 use super::super::registry::MappableCommand;
+use super::super::{Editor, Severity, scripting_setup::make_init_host};
 use hume_scripting::PluginStatus;
 
 impl Editor {
@@ -11,7 +11,9 @@ impl Editor {
     pub(super) fn activate_and_register(&mut self, plugin: &hume_scripting::attribution::PluginId) {
         let init_budget = self.state.settings.steel_init_budget_ms as u64;
         let result = {
-            let Some(host) = self.scripting.as_mut() else { return };
+            let Some(host) = self.scripting.as_mut() else {
+                return;
+            };
             let mut ih = make_init_host(&mut self.state, &mut self.view);
             host.activate_plugin_inline(plugin, init_budget, &mut ih, &self.builtin_cmd_names)
         };
@@ -90,7 +92,9 @@ impl Editor {
         let pending = match self.scripting.as_ref() {
             Some(host) => {
                 let plugins = host.activation_event_plugins(hook_id);
-                if plugins.is_empty() { return; }
+                if plugins.is_empty() {
+                    return;
+                }
                 plugins
             }
             None => return,
@@ -106,7 +110,9 @@ impl Editor {
         let pending = match self.scripting.as_ref() {
             Some(host) => {
                 let plugins = host.activation_language_plugins(lang);
-                if plugins.is_empty() { return; }
+                if plugins.is_empty() {
+                    return;
+                }
                 plugins
             }
             None => return,

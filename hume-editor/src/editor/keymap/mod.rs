@@ -371,11 +371,7 @@ impl Keymap {
 
     /// Return the command name and `force_extend` flag for `keys` in `mode`,
     /// or `None` if the sequence is unbound.
-    pub fn lookup_command(
-        &self,
-        mode: BindMode,
-        keys: &[KeyEvent],
-    ) -> Option<(String, bool)> {
+    pub fn lookup_command(&self, mode: BindMode, keys: &[KeyEvent]) -> Option<(String, bool)> {
         let trie = match mode {
             BindMode::Normal => &self.normal,
             BindMode::Extend => &self.extend,
@@ -581,9 +577,18 @@ mod tests {
         names.sort();
 
         // Independent oracle: exact expected set.
-        assert!(names.contains(&"delete-char-forward".to_string()), "leaf must appear");
-        assert!(names.contains(&"goto-first-line".to_string()), "nested leaf must appear");
-        assert!(names.contains(&"find-char".to_string()), "wait-char must appear");
+        assert!(
+            names.contains(&"delete-char-forward".to_string()),
+            "leaf must appear"
+        );
+        assert!(
+            names.contains(&"goto-first-line".to_string()),
+            "nested leaf must appear"
+        );
+        assert!(
+            names.contains(&"find-char".to_string()),
+            "wait-char must appear"
+        );
     }
 
     #[test]
@@ -603,7 +608,13 @@ mod tests {
             false,
         );
         let names = km.all_command_names();
-        assert!(names.contains(&"normal-sentinel".to_string()), "normal mode must be swept");
-        assert!(names.contains(&"insert-sentinel".to_string()), "insert mode must be swept");
+        assert!(
+            names.contains(&"normal-sentinel".to_string()),
+            "normal mode must be swept"
+        );
+        assert!(
+            names.contains(&"insert-sentinel".to_string()),
+            "insert mode must be swept"
+        );
     }
 }

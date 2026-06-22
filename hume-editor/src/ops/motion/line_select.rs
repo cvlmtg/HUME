@@ -1,7 +1,7 @@
 use super::MotionMode;
+use hume_editing::lines::line_end_exclusive;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
-use hume_editing::lines::line_end_exclusive;
 
 // ── Line selection motions ────────────────────────────────────────────────────
 

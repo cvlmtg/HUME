@@ -77,7 +77,9 @@ mod tests {
     fn pane_set_buffer_returns_deferred_error() {
         let mut h = host();
         let mut mock = NullHost;
-        let err = h.eval_source("(pane-set-buffer! #f #f)", &mut mock).unwrap_err();
+        let err = h
+            .eval_source("(pane-set-buffer! #f #f)", &mut mock)
+            .unwrap_err();
         assert!(err.contains("deferred to M9+"), "got: {err}");
     }
 }

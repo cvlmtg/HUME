@@ -76,14 +76,18 @@ impl LazyRegistry {
         let Some(path) = path else {
             return; // absent on disk — silently skip, no activation entries
         };
-        self.plugins.insert(id.clone(), PluginState::Declared { path });
+        self.plugins
+            .insert(id.clone(), PluginState::Declared { path });
 
         for cmd in commands {
             // Collisions already filtered by declare_plugin; commands list is clean.
             self.activation_commands.insert(cmd, id.clone());
         }
         for hook in events {
-            self.activation_events.entry(hook).or_default().push(id.clone());
+            self.activation_events
+                .entry(hook)
+                .or_default()
+                .push(id.clone());
         }
         for lang in languages {
             self.activation_languages
@@ -313,9 +317,21 @@ mod tests {
     #[test]
     fn case_insensitive_dedup() {
         let mut reg = LazyRegistry::default();
-        reg.declare(id_user("Alice", "Foo"), Some(fake_path()), vec![], vec![], vec![]);
+        reg.declare(
+            id_user("Alice", "Foo"),
+            Some(fake_path()),
+            vec![],
+            vec![],
+            vec![],
+        );
         // Same plugin, different casing — PluginId equality is case-insensitive.
-        reg.declare(id_user("alice", "foo"), Some(fake_path()), vec![], vec![], vec![]);
+        reg.declare(
+            id_user("alice", "foo"),
+            Some(fake_path()),
+            vec![],
+            vec![],
+            vec![],
+        );
         assert_eq!(reg.plugins.len(), 1, "case-insensitive dedup must fire");
     }
 
@@ -328,8 +344,20 @@ mod tests {
         let mut reg = LazyRegistry::default();
         let a = id_user("a", "x");
         let b = id_user("b", "y");
-        reg.declare(a.clone(), Some(fake_path()), vec!["foo".to_string()], vec![], vec![]);
-        reg.declare(b.clone(), Some(fake_path()), vec!["foo".to_string()], vec![], vec![]);
+        reg.declare(
+            a.clone(),
+            Some(fake_path()),
+            vec!["foo".to_string()],
+            vec![],
+            vec![],
+        );
+        reg.declare(
+            b.clone(),
+            Some(fake_path()),
+            vec!["foo".to_string()],
+            vec![],
+            vec![],
+        );
         // Second declare overwrites — collisions are caught before this is called.
         assert_eq!(reg.activation_commands["foo"], b);
     }
@@ -354,7 +382,11 @@ mod tests {
             vec![],
         );
         let handlers = &reg.activation_events[&HookId::OnBufferSave];
-        assert_eq!(handlers.len(), 2, "two plugins must both register for the hook");
+        assert_eq!(
+            handlers.len(),
+            2,
+            "two plugins must both register for the hook"
+        );
         assert!(handlers.contains(&a));
         assert!(handlers.contains(&b));
     }
@@ -364,8 +396,20 @@ mod tests {
         let mut reg = LazyRegistry::default();
         let a = id_user("a", "x");
         let b = id_user("b", "y");
-        reg.declare(a.clone(), Some(fake_path()), vec![], vec![], vec!["rust".to_string()]);
-        reg.declare(b.clone(), Some(fake_path()), vec![], vec![], vec!["rust".to_string()]);
+        reg.declare(
+            a.clone(),
+            Some(fake_path()),
+            vec![],
+            vec![],
+            vec!["rust".to_string()],
+        );
+        reg.declare(
+            b.clone(),
+            Some(fake_path()),
+            vec![],
+            vec![],
+            vec!["rust".to_string()],
+        );
         let handlers = &reg.activation_languages["rust"];
         assert_eq!(handlers.len(), 2);
         assert!(handlers.contains(&a));
@@ -411,7 +455,13 @@ mod tests {
         let declared_id = id_user("pending", "two");
 
         reg.declare(loaded_id.clone(), Some(fake_path()), vec![], vec![], vec![]);
-        reg.declare(declared_id.clone(), Some(fake_path()), vec![], vec![], vec![]);
+        reg.declare(
+            declared_id.clone(),
+            Some(fake_path()),
+            vec![],
+            vec![],
+            vec![],
+        );
 
         // Manually advance one to Loaded to simulate activate_plugin.
         *reg.plugins.get_mut(&loaded_id).unwrap() = PluginState::Loaded;
@@ -447,9 +497,18 @@ mod tests {
         let out = reg.format_status();
         assert!(out.contains("alice/lazy"), "plugin id must appear");
         assert!(out.contains("declared"), "state must be 'declared'");
-        assert!(out.contains("cmd:my-cmd"), "command activation entry must appear");
-        assert!(out.contains("event:on-buffer-save"), "event activation entry must appear");
-        assert!(out.contains("lang:rust"), "language activation entry must appear");
+        assert!(
+            out.contains("cmd:my-cmd"),
+            "command activation entry must appear"
+        );
+        assert!(
+            out.contains("event:on-buffer-save"),
+            "event activation entry must appear"
+        );
+        assert!(
+            out.contains("lang:rust"),
+            "language activation entry must appear"
+        );
     }
 
     // The data layer accepts zero-activation plugins (LazyRegistry::declare has no
@@ -468,7 +527,10 @@ mod tests {
         let out = reg.format_status();
         assert!(out.contains("bob/bare"));
         assert!(out.contains("declared"));
-        assert!(out.contains('\u{2014}'), "zero-entry plugin must show em dash");
+        assert!(
+            out.contains('\u{2014}'),
+            "zero-entry plugin must show em dash"
+        );
         assert!(!out.contains("cmd:"), "no cmd prefix for zero-entry plugin");
     }
 
@@ -491,7 +553,10 @@ mod tests {
         let out = reg.format_status();
         assert!(out.contains("carol/eager"), "plugin id must appear");
         assert!(out.contains("loaded"), "state must be 'loaded'");
-        assert!(!out.contains("eager-cmd"), "loaded plugin must not show its old activation entry");
+        assert!(
+            !out.contains("eager-cmd"),
+            "loaded plugin must not show its old activation entry"
+        );
     }
 
     #[test]
@@ -511,14 +576,29 @@ mod tests {
         let out = reg.format_status();
         assert!(out.contains("core:broken"));
         assert!(out.contains("failed"));
-        assert!(!out.contains("broken-cmd"), "failed plugin must not show activation entry");
+        assert!(
+            !out.contains("broken-cmd"),
+            "failed plugin must not show activation entry"
+        );
     }
 
     #[test]
     fn format_status_sorts_by_id() {
         let mut reg = LazyRegistry::default();
-        reg.declare(id_user("z", "last"), Some(fake_path()), vec![], vec![], vec![]);
-        reg.declare(id_user("a", "first"), Some(fake_path()), vec![], vec![], vec![]);
+        reg.declare(
+            id_user("z", "last"),
+            Some(fake_path()),
+            vec![],
+            vec![],
+            vec![],
+        );
+        reg.declare(
+            id_user("a", "first"),
+            Some(fake_path()),
+            vec![],
+            vec![],
+            vec![],
+        );
         let out = reg.format_status();
         let z_pos = out.find("z/last").expect("z/last must appear");
         let a_pos = out.find("a/first").expect("a/first must appear");

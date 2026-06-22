@@ -51,9 +51,9 @@ pub(crate) fn hume_yield(ctx: &mut SteelCtx) -> SteelResult {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::Ordering;
     use super::*;
     use crate::test_support::SteelCtxTestHarness;
+    use std::sync::atomic::Ordering;
 
     /// `hume_yield` returns `Void` when the interrupt flag is clear.
     ///
@@ -82,6 +82,9 @@ mod tests {
         let result = hume_yield(&mut ctx);
         assert!(result.is_err(), "yield with set flag must return Err");
         let msg = result.unwrap_err().to_string();
-        assert!(msg.contains("interrupted"), "error must mention 'interrupted'; got: {msg}");
+        assert!(
+            msg.contains("interrupted"),
+            "error must mention 'interrupted'; got: {msg}"
+        );
     }
 }

@@ -86,7 +86,10 @@ impl ScopeRegistry {
 
     /// Look up an already-interned scope without inserting.
     pub fn get(&self, name: &str) -> Option<ScopeId> {
-        self.static_map.get(name).copied().or_else(|| self.runtime_map.get(name).copied())
+        self.static_map
+            .get(name)
+            .copied()
+            .or_else(|| self.runtime_map.get(name).copied())
     }
 
     /// Reverse-lookup: return the name interned as `id`.
@@ -181,8 +184,10 @@ impl Theme {
     /// with compile-time string literals. `ui` fields are resolved immediately
     /// from `styles`, so callers can use `theme.ui.*` before calling `bake()`.
     pub fn new(styles: HashMap<&'static str, ResolvedStyle>, default: ResolvedStyle) -> Self {
-        let owned: HashMap<String, ResolvedStyle> =
-            styles.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+        let owned: HashMap<String, ResolvedStyle> = styles
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
         Self::from_owned(owned, default)
     }
 
@@ -283,10 +288,8 @@ impl Theme {
             cursor_primary: self.resolve_raw("ui.cursor.primary"),
             // Primary insert cursor: prefer ui.cursor.primary.insert, then ui.cursor.insert,
             // then empty. No fallback to the block ui.cursor (same rationale as cursor_insert).
-            cursor_insert_primary: self.resolve_cursor_chain(&[
-                "ui.cursor.primary.insert",
-                "ui.cursor.insert",
-            ]),
+            cursor_insert_primary: self
+                .resolve_cursor_chain(&["ui.cursor.primary.insert", "ui.cursor.insert"]),
             // Primary selection: dot-notation fallback ui.selection.primary → ui.selection is correct.
             selection_primary: self.resolve_raw("ui.selection.primary"),
             background: self.resolve_raw("ui.background"),
@@ -298,7 +301,9 @@ impl Theme {
     /// hierarchy: `ui.cursor.insert` must never inherit `ui.cursor`'s block background.
     /// Returns an empty (all-`None`) style when no listed key is defined.
     fn resolve_cursor_chain(&self, keys: &[&str]) -> ResolvedStyle {
-        keys.iter().find_map(|k| self.raw.get(*k).copied()).unwrap_or_default()
+        keys.iter()
+            .find_map(|k| self.raw.get(*k).copied())
+            .unwrap_or_default()
     }
 }
 

@@ -14,7 +14,8 @@ fn key_shift_tab() -> KeyEvent {
 
 /// Drain the minibuf input for assertions.
 fn minibuf_input(ed: &Editor) -> &str {
-    ed.state.minibuf
+    ed.state
+        .minibuf
         .as_ref()
         .map(|mb| mb.input.as_str())
         .unwrap_or("")
@@ -298,7 +299,8 @@ fn enter_on_directory_candidate_restarts_completion() {
     );
     // Completion re-triggered with the directory's children.
     let restarted = ed
-        .state.completion
+        .state
+        .completion
         .as_ref()
         .expect("completion should restart for dir children");
     assert_eq!(
@@ -374,11 +376,17 @@ fn ctrl_w_dismisses_open_completion_popup() {
     ed.handle_key(key(':'));
     ed.handle_key(key('w'));
     ed.handle_key(key_tab()); // opens popup for "w"-prefixed commands
-    assert!(ed.state.completion.is_some(), "sanity: popup should be open");
+    assert!(
+        ed.state.completion.is_some(),
+        "sanity: popup should be open"
+    );
 
     ed.handle_key(key_ctrl('w'));
     // Edited event clears completion; Ctrl-W consumed the word ("w"-based candidate).
-    assert!(ed.state.completion.is_none(), "Ctrl-W must dismiss the popup");
+    assert!(
+        ed.state.completion.is_none(),
+        "Ctrl-W must dismiss the popup"
+    );
 }
 
 #[test]

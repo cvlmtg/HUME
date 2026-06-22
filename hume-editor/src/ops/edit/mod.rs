@@ -1,8 +1,8 @@
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use hume_editing::lines::line_end_exclusive;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
-use hume_editing::lines::line_end_exclusive;
 
 // ── Edit scaffolding ──────────────────────────────────────────────────────────
 //
@@ -227,7 +227,11 @@ fn paste_impl(
     };
 
     apply_edit(buf, sels, |b, buf, i, sel, new_sels| {
-        let text: &str = if n_sels == n_vals { &values[i] } else { &joined };
+        let text: &str = if n_sels == n_vals {
+            &values[i]
+        } else {
+            &joined
+        };
 
         if sel.is_collapsed() {
             if text.ends_with('\n') {
@@ -281,7 +285,11 @@ fn paste_impl(
             // is the '\n' that terminates the selection's last line.
             let last_line = buf.char_to_line(end_incl);
             let newline_pos = line_end_exclusive(buf, last_line) - 1;
-            let del_end = if end_incl + 1 == newline_pos { newline_pos + 1 } else { end_incl + 1 };
+            let del_end = if end_incl + 1 == newline_pos {
+                newline_pos + 1
+            } else {
+                end_incl + 1
+            };
 
             b.retain(start - b.old_pos());
             b.delete(del_end - start);

@@ -44,8 +44,8 @@ pub(crate) fn register_hook(ctx: &mut SteelCtx, name: SteelVal, proc: SteelVal) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::SteelCtxTestHarness;
     use crate::hooks::HookId;
+    use crate::test_support::SteelCtxTestHarness;
 
     /// `register-hook!` is blocked in plain command mode (init/plugin-load only).
     ///
@@ -62,7 +62,10 @@ mod tests {
         );
         assert!(result.is_err(), "register-hook! must error in command mode");
         let msg = result.unwrap_err().to_string();
-        assert!(msg.contains("init"), "error must mention 'init'; got: {msg}");
+        assert!(
+            msg.contains("init"),
+            "error must mention 'init'; got: {msg}"
+        );
     }
 
     /// `register-hook!` errors when the first argument is not a symbol.
@@ -94,9 +97,15 @@ mod tests {
             SteelVal::SymbolV("on-nonexistent-event".into()),
             SteelVal::BoolV(true),
         );
-        assert!(result.is_err(), "register-hook! must reject unknown hook names");
+        assert!(
+            result.is_err(),
+            "register-hook! must reject unknown hook names"
+        );
         let msg = result.unwrap_err().to_string();
-        assert!(msg.contains("unknown hook"), "error must mention 'unknown hook'; got: {msg}");
+        assert!(
+            msg.contains("unknown hook"),
+            "error must mention 'unknown hook'; got: {msg}"
+        );
     }
 
     /// `register-hook!` in init mode with a valid name registers the handler.
@@ -128,7 +137,8 @@ mod tests {
         use crate::attribution::PluginId;
         let mut h = SteelCtxTestHarness::new();
         // Simulate being inside a plugin body.
-        h.plugin_stack.push(PluginId::parse("core:myplugin").unwrap());
+        h.plugin_stack
+            .push(PluginId::parse("core:myplugin").unwrap());
         {
             let mut ctx = h.ctx(); // is_init=false but plugin_stack non-empty → allowed
             let result = register_hook(
@@ -136,7 +146,10 @@ mod tests {
                 SteelVal::SymbolV("on-buffer-open".into()),
                 SteelVal::IntV(42),
             );
-            assert!(result.is_ok(), "register-hook! must succeed during plugin load");
+            assert!(
+                result.is_ok(),
+                "register-hook! must succeed during plugin load"
+            );
         }
         assert!(!h.registries.hooks.is_empty_for(HookId::OnBufferOpen));
     }

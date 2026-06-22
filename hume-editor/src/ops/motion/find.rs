@@ -1,8 +1,8 @@
 use super::{FindKind, MotionMode, apply_motion};
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use hume_editing::lines::line_end_exclusive;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
-use hume_editing::lines::line_end_exclusive;
 
 // ── Find/till character motions ───────────────────────────────────────────────
 

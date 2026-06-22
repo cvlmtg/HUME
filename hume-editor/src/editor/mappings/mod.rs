@@ -124,8 +124,8 @@ mod tests {
     ///   - key 4 → TTL ticks 1→0 → mark_all_seen() fires, summary gone
     #[test]
     fn message_log_summary_ttl() {
-        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         use super::super::{Editor, Severity};
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
         let noop = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE);
 
@@ -140,35 +140,47 @@ mod tests {
         // Key 1: status_msg clears, TTL armed — summary visible.
         ed.handle_key(noop);
         assert!(ed.state.status_msg.is_none());
-        assert!(ed.state.message_log.has_unseen(), "summary should still be visible after key 1");
+        assert!(
+            ed.state.message_log.has_unseen(),
+            "summary should still be visible after key 1"
+        );
 
         // Key 2: TTL ticks 3→2 — summary still visible.
         ed.handle_key(noop);
-        assert!(ed.state.message_log.has_unseen(), "summary should still be visible after key 2");
+        assert!(
+            ed.state.message_log.has_unseen(),
+            "summary should still be visible after key 2"
+        );
 
         // Key 3: TTL ticks 2→1 — summary still visible.
         ed.handle_key(noop);
-        assert!(ed.state.message_log.has_unseen(), "summary should still be visible after key 3");
+        assert!(
+            ed.state.message_log.has_unseen(),
+            "summary should still be visible after key 3"
+        );
 
         // Key 4: TTL ticks 1→0 → auto-dismissed.
         ed.handle_key(noop);
-        assert!(!ed.state.message_log.has_unseen(), "summary should be gone after key 4");
+        assert!(
+            !ed.state.message_log.has_unseen(),
+            "summary should be gone after key 4"
+        );
     }
 
     #[test]
     fn parse_typed_command_table() {
         use super::command_mode::parse_typed_command;
         let cases: &[(&str, &str, bool, Option<&str>)] = &[
-            ("",              "",             false, None),           // empty
-            ("!",             "",             true,  None),           // lone bang
-            ("e",             "e",            false, None),           // bare command
-            ("e!",            "e",            true,  None),           // force, no arg
-            ("e!path",        "e",            true,  Some("path")),   // force adjacent to arg
-            ("e foo",         "e",            false, Some("foo")),    // space-separated arg
-            ("e   foo  ",     "e",            false, Some("foo")),    // arg trimming
-            ("list-buffers",  "list-buffers", false, None),           // hyphenated name
-            ("b#",            "b",            false, Some("#")),      // non-alpha arg
-            ("b#alt",         "b",            false, Some("#alt")),   // alternate-buffer style
+            ("", "", false, None),                         // empty
+            ("!", "", true, None),                         // lone bang
+            ("e", "e", false, None),                       // bare command
+            ("e!", "e", true, None),                       // force, no arg
+            ("e!path", "e", true, Some("path")),           // force adjacent to arg
+            ("e foo", "e", false, Some("foo")),            // space-separated arg
+            ("e   foo  ", "e", false, Some("foo")),        // arg trimming
+            ("list-buffers", "list-buffers", false, None), // hyphenated name
+            ("b#", "b", false, Some("#")),                 // non-alpha arg
+            ("b#alt", "b", false, Some("#alt")),           // alternate-buffer style
         ];
         for &(input, cmd, force, arg) in cases {
             let (got_cmd, got_force, got_arg) = parse_typed_command(input);

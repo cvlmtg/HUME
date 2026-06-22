@@ -13,8 +13,8 @@
 
 use regex_cursor::{Input, RopeyCursor, engines::meta::Regex};
 
-use hume_editing::text::Text;
 use crate::editor::SearchDirection;
+use hume_editing::text::Text;
 
 // ── compile_search_regex ──────────────────────────────────────────────────────
 

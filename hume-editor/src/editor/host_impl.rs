@@ -103,7 +103,13 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     // ── Settings ─────────────────────────────────────────────────────────────
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
         let mut dummy = BufferOverrides::default();
-        apply_setting(SettingScope::Global, key, value, &mut self.state.settings, &mut dummy)
+        apply_setting(
+            SettingScope::Global,
+            key,
+            value,
+            &mut self.state.settings,
+            &mut dummy,
+        )
     }
 
     // ── Statusline ────────────────────────────────────────────────────────────
@@ -115,13 +121,20 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     ) -> Result<(), String> {
         let parse = |list: Vec<String>, section: &str| -> Result<Vec<StatusElement>, String> {
             list.iter()
-                .map(|s| s.parse::<StatusElement>().map_err(|e| format!("configure-statusline! {section}: {e}")))
+                .map(|s| {
+                    s.parse::<StatusElement>()
+                        .map_err(|e| format!("configure-statusline! {section}: {e}"))
+                })
                 .collect()
         };
         let left = parse(left, "left")?;
         let center = parse(center, "center")?;
         let right = parse(right, "right")?;
-        self.state.settings.statusline = StatusLineConfig { left, center, right };
+        self.state.settings.statusline = StatusLineConfig {
+            left,
+            center,
+            right,
+        };
         Ok(())
     }
 
@@ -155,7 +168,9 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Ok(())
     }
     fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String> {
-        self.state.keymap.unbind_user(to_editor_bind_mode(mode), keys);
+        self.state
+            .keymap
+            .unbind_user(to_editor_bind_mode(mode), keys);
         Ok(())
     }
 
@@ -167,8 +182,15 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         symbol: &str,
         highlights_path: &Path,
     ) -> Result<(), String> {
-        self.state.languages
-            .attach_grammar(name, grammar_path, symbol, highlights_path, &mut self.view.registry)
+        self.state
+            .languages
+            .attach_grammar(
+                name,
+                grammar_path,
+                symbol,
+                highlights_path,
+                &mut self.view.registry,
+            )
             .map_err(|e| format!("register-grammar! '{name}': {e}"))?;
         self.view.theme.bake(&self.view.registry);
         Ok(())
@@ -232,7 +254,9 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             return Err(format!("unknown command: {name}"));
         };
         if !cmd.is_native() {
-            return Err(format!("{name} is not a native command — use call! instead of call-native!"));
+            return Err(format!(
+                "{name} is not a native command — use call! instead of call-native!"
+            ));
         }
         // Arm the register prefix so register-aware commands (yank, delete,
         // paste-after, …) route to the right destination.
@@ -263,16 +287,30 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     // ── Live cursor/selection reads ──────────────────────────────────────────
     fn current_line_number(&self) -> Option<usize> {
         let buf_id = crate::editor::commands::focused_buffer_id(self.state, self.view);
-        let pbs = self.state.panes.state
+        let pbs = self
+            .state
+            .panes
+            .state
             .get(self.state.focused_pane_id)?
             .get(buf_id)?;
         let head = pbs.selections.primary().head();
-        Some(self.state.buffers.get(buf_id).text().rope().char_to_line(head) + 1)
+        Some(
+            self.state
+                .buffers
+                .get(buf_id)
+                .text()
+                .rope()
+                .char_to_line(head)
+                + 1,
+        )
     }
 
     fn cursor_char_index(&self) -> Option<usize> {
         let buf_id = crate::editor::commands::focused_buffer_id(self.state, self.view);
-        let pbs = self.state.panes.state
+        let pbs = self
+            .state
+            .panes
+            .state
             .get(self.state.focused_pane_id)?
             .get(buf_id)?;
         Some(pbs.selections.primary().head())
@@ -297,8 +335,8 @@ mod tests {
     use hume_engine::pipeline::BufferId;
     use hume_scripting::host::EditorHost;
 
-    use crate::editor::scripting_setup::make_init_host;
     use crate::editor::Editor;
+    use crate::editor::scripting_setup::make_init_host;
 
     #[test]
     fn close_buffer_errs_when_id_unknown() {
@@ -332,8 +370,16 @@ mod tests {
         ));
         let mut host = make_init_host(&mut ed.state, &mut ed.view);
         let err = host
-            .attach_grammar("rust", Path::new("/no/such/lib.dylib"), "rust_language", Path::new("/no/such/highlights.scm"))
+            .attach_grammar(
+                "rust",
+                Path::new("/no/such/lib.dylib"),
+                "rust_language",
+                Path::new("/no/such/highlights.scm"),
+            )
             .unwrap_err();
-        assert!(err.contains("register-grammar!"), "unexpected message: {err}");
+        assert!(
+            err.contains("register-grammar!"),
+            "unexpected message: {err}"
+        );
     }
 }

@@ -5,21 +5,21 @@
 //! `FormatScratch` — unavailable in the pure `(&Text, SelectionSet) ->
 //! SelectionSet` motion signature — so they live here instead of `ops/motion`.
 
-use hume_editing::selection::Selection;
-use hume_engine::pipeline::EngineView;
 use super::cursor::format_row_col;
 use crate::ops::MotionMode;
 use crate::ops::motion::{cmd_move_down, cmd_move_up};
 use crate::ops::text_object::{
     apply_nearest_word_result, cmd_select_word_nearest_on_line, nearest_word_on_line,
 };
+use hume_editing::selection::Selection;
 use hume_engine::format::{FormatScratch, format_buffer_line};
 use hume_engine::pane::{WhitespaceConfig, WrapMode};
+use hume_engine::pipeline::EngineView;
 use hume_engine::types::CellContent;
 
-use super::{doc_ops, EditorState};
-use crate::editor::error::CommandError;
 use super::commands::{focused_buffer_id, focused_format_context};
+use super::{EditorState, doc_ops};
+use crate::editor::error::CommandError;
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -103,7 +103,15 @@ fn visual_move_down_one(
             return head;
         }
         scratch.clear();
-        format_buffer_line(rope, next_line, tab_width, whitespace, wrap_mode, &[], scratch);
+        format_buffer_line(
+            rope,
+            next_line,
+            tab_width,
+            whitespace,
+            wrap_mode,
+            &[],
+            scratch,
+        );
         find_char_at_display_col(scratch, 0, target_col)
     }
 }
@@ -128,7 +136,15 @@ fn visual_move_up_one(
         }
         let prev_line = line - 1;
         scratch.clear();
-        format_buffer_line(rope, prev_line, tab_width, whitespace, wrap_mode, &[], scratch);
+        format_buffer_line(
+            rope,
+            prev_line,
+            tab_width,
+            whitespace,
+            wrap_mode,
+            &[],
+            scratch,
+        );
         let last_sub_row = scratch.display_rows.len().saturating_sub(1);
         find_char_at_display_col(scratch, last_sub_row, target_col)
     }
@@ -151,12 +167,20 @@ pub(super) fn apply_visual_vertical(
         let focused = state.focused_pane_id;
         let buf = focused_buffer_id(state, view);
         match down {
-            true => doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
-                cmd_move_down(b, s, count, mode)
-            }),
-            false => doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
-                cmd_move_up(b, s, count, mode)
-            }),
+            true => doc_ops::apply_doc_motion(
+                &state.buffers,
+                &mut state.panes.state,
+                focused,
+                buf,
+                |b, s| cmd_move_down(b, s, count, mode),
+            ),
+            false => doc_ops::apply_doc_motion(
+                &state.buffers,
+                &mut state.panes.state,
+                focused,
+                buf,
+                |b, s| cmd_move_up(b, s, count, mode),
+            ),
         }
         return;
     }
@@ -167,39 +191,73 @@ pub(super) fn apply_visual_vertical(
     let target_cols = &mut state.visual_move_target_cols;
     target_cols.clear();
 
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf_id, |text, sels| {
-        let rope = text.rope();
+    doc_ops::apply_doc_motion(
+        &state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf_id,
+        |text, sels| {
+            let rope = text.rope();
 
-        // Pass 1: resolve each selection's sticky display column from sel.horiz,
-        // computing it fresh on the first j/k press (when horiz is None).
-        target_cols.extend(sels.iter_sorted().map(|sel| {
-            if let Some(col) = sel.horiz() {
-                col as u16
-            } else {
-                let line = rope.char_to_line(sel.head());
-                let (_, col) = format_row_col(rope, line, sel.head(), &wrap_mode, tab_width, &whitespace, scratch);
-                col as u16
-            }
-        }));
-
-        // Pass 2: move each selection by `count` display rows, preserving the
-        // sticky column in sel.horiz so consecutive j/k presses reuse it.
-        let cols: &[u16] = target_cols;
-        let mut col_iter = cols.iter();
-        sels.map(|sel| {
-            let &target_col = col_iter.next().unwrap();
-            let mut head = sel.head();
-            for _ in 0..count {
-                head = if down {
-                    visual_move_down_one(rope, head, &wrap_mode, tab_width, &whitespace, target_col, scratch)
+            // Pass 1: resolve each selection's sticky display column from sel.horiz,
+            // computing it fresh on the first j/k press (when horiz is None).
+            target_cols.extend(sels.iter_sorted().map(|sel| {
+                if let Some(col) = sel.horiz() {
+                    col as u16
                 } else {
-                    visual_move_up_one(rope, head, &wrap_mode, tab_width, &whitespace, target_col, scratch)
+                    let line = rope.char_to_line(sel.head());
+                    let (_, col) = format_row_col(
+                        rope,
+                        line,
+                        sel.head(),
+                        &wrap_mode,
+                        tab_width,
+                        &whitespace,
+                        scratch,
+                    );
+                    col as u16
+                }
+            }));
+
+            // Pass 2: move each selection by `count` display rows, preserving the
+            // sticky column in sel.horiz so consecutive j/k presses reuse it.
+            let cols: &[u16] = target_cols;
+            let mut col_iter = cols.iter();
+            sels.map(|sel| {
+                let &target_col = col_iter.next().unwrap();
+                let mut head = sel.head();
+                for _ in 0..count {
+                    head = if down {
+                        visual_move_down_one(
+                            rope,
+                            head,
+                            &wrap_mode,
+                            tab_width,
+                            &whitespace,
+                            target_col,
+                            scratch,
+                        )
+                    } else {
+                        visual_move_up_one(
+                            rope,
+                            head,
+                            &wrap_mode,
+                            tab_width,
+                            &whitespace,
+                            target_col,
+                            scratch,
+                        )
+                    };
+                }
+                let anchor = if mode == MotionMode::Extend {
+                    sel.anchor()
+                } else {
+                    head
                 };
-            }
-            let anchor = if mode == MotionMode::Extend { sel.anchor() } else { head };
-            Selection::with_horiz(anchor, head, target_col as u32)
-        })
-    });
+                Selection::with_horiz(anchor, head, target_col as u32)
+            })
+        },
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -278,9 +336,13 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     if !wrap_mode.is_wrapping() {
         let focused = state.focused_pane_id;
         let buf_id = focused_buffer_id(state, view);
-        doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf_id, |buf, sels| {
-            cmd_select_word_nearest_on_line(buf, sels, mode)
-        });
+        doc_ops::apply_doc_motion(
+            &state.buffers,
+            &mut state.panes.state,
+            focused,
+            buf_id,
+            |buf, sels| cmd_select_word_nearest_on_line(buf, sels, mode),
+        );
         return Ok(());
     }
 
@@ -288,30 +350,43 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     let buf_id = focused_buffer_id(state, view);
     let scratch = &mut state.motion_format_scratch;
 
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf_id, |text, sels| {
-        let rope = text.rope();
-        let new_sels = sels.map(|sel| {
-            let buf_line = text.char_to_line(sel.anchor());
-            let (sub_row, _) =
-                format_row_col(rope, buf_line, sel.anchor(), &wrap_mode, tab_width, &whitespace, scratch);
+    doc_ops::apply_doc_motion(
+        &state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf_id,
+        |text, sels| {
+            let rope = text.rope();
+            let new_sels = sels.map(|sel| {
+                let buf_line = text.char_to_line(sel.anchor());
+                let (sub_row, _) = format_row_col(
+                    rope,
+                    buf_line,
+                    sel.anchor(),
+                    &wrap_mode,
+                    tab_width,
+                    &whitespace,
+                    scratch,
+                );
 
-            let (line_start, line_end_excl) =
-                sub_row_char_bounds(scratch, sub_row, buf_line, rope).unwrap_or_else(|| {
-                    let ls = text.line_to_char(buf_line);
-                    let le = if buf_line + 1 < text.len_lines() {
-                        text.line_to_char(buf_line + 1)
-                    } else {
-                        text.len_chars()
-                    };
-                    (ls, le)
-                });
+                let (line_start, line_end_excl) =
+                    sub_row_char_bounds(scratch, sub_row, buf_line, rope).unwrap_or_else(|| {
+                        let ls = text.line_to_char(buf_line);
+                        let le = if buf_line + 1 < text.len_lines() {
+                            text.line_to_char(buf_line + 1)
+                        } else {
+                            text.len_chars()
+                        };
+                        (ls, le)
+                    });
 
-            let found = nearest_word_on_line(text, sel.anchor(), line_start, line_end_excl);
-            apply_nearest_word_result(sel, found, mode)
-        });
-        new_sels.debug_assert_valid(text);
-        new_sels
-    });
+                let found = nearest_word_on_line(text, sel.anchor(), line_start, line_end_excl);
+                apply_nearest_word_result(sel, found, mode)
+            });
+            new_sels.debug_assert_valid(text);
+            new_sels
+        },
+    );
 
     Ok(())
 }

@@ -16,10 +16,10 @@ use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use hume_engine::format::{FormatScratch, count_visual_rows};
 use hume_engine::pane::WrapMode;
 
-use super::visual_move::{cmd_visual_move_down, cmd_visual_move_up};
-use hume_editing::selection::{Selection, SelectionSet};
 use super::cursor;
+use super::visual_move::{cmd_visual_move_down, cmd_visual_move_up};
 use crate::ops::MotionMode;
+use hume_editing::selection::{Selection, SelectionSet};
 
 use super::{Editor, Mode};
 
@@ -126,7 +126,12 @@ impl Editor {
         };
         // Only move cursors if the viewport actually moved (file may already be at top).
         if vp_before != vp_after {
-            let _ = cmd_visual_move_up(&mut self.state, &mut self.view, scroll_lines, MotionMode::Move);
+            let _ = cmd_visual_move_up(
+                &mut self.state,
+                &mut self.view,
+                scroll_lines,
+                MotionMode::Move,
+            );
         }
     }
 
@@ -165,7 +170,12 @@ impl Editor {
         };
         // Only move cursors if the viewport actually moved (file may fit entirely in the pane).
         if vp_before != vp_after {
-            let _ = cmd_visual_move_down(&mut self.state, &mut self.view, scroll_lines, MotionMode::Move);
+            let _ = cmd_visual_move_down(
+                &mut self.state,
+                &mut self.view,
+                scroll_lines,
+                MotionMode::Move,
+            );
         }
     }
 
@@ -182,7 +192,11 @@ impl Editor {
             (pane.viewport.clone(), gw)
         };
         let content_width = vp.width.saturating_sub(gutter_w).max(1);
-        let wrap_mode = self.doc().overrides.wrap_mode(&self.state.settings).resolve(content_width);
+        let wrap_mode = self
+            .doc()
+            .overrides
+            .wrap_mode(&self.state.settings)
+            .resolve(content_width);
         let tab_width = self.doc().overrides.tab_width(&self.state.settings);
         let whitespace = self.doc().overrides.whitespace(&self.state.settings);
         let rope = self.state.buffers.get(buf_id).text().rope();

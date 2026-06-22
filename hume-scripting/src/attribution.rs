@@ -52,7 +52,9 @@ impl PluginId {
                     "invalid plugin name '{name}': expected user/repo with exactly one slash"
                 ));
             }
-            if !hume_platform::path::is_safe_segment(user) || !hume_platform::path::is_safe_segment(repo) {
+            if !hume_platform::path::is_safe_segment(user)
+                || !hume_platform::path::is_safe_segment(repo)
+            {
                 return Err(format!(
                     "invalid plugin name '{name}': user and repo must be non-empty valid path segments"
                 ));

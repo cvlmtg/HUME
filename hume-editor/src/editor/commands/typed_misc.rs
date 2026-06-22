@@ -1,5 +1,5 @@
-use super::super::{ops, Severity};
 use super::super::Editor;
+use super::super::{Severity, ops};
 use crate::editor::error::CommandError;
 
 // ── Message log ──────────────────────────────────────────────────────────────
@@ -134,11 +134,7 @@ pub fn typed_reload_config(
 
 // ── :split / :vsplit typed stubs ──────────────────────────────────────────────
 
-pub fn typed_split(
-    _ed: &mut Editor,
-    _arg: Option<&str>,
-    _force: bool,
-) -> Result<(), CommandError> {
+pub fn typed_split(_ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
     Err(CommandError::new(":split not yet implemented"))
 }
 
@@ -154,11 +150,7 @@ pub fn typed_vsplit(
 ///
 /// On success the engine view's theme is replaced and re-baked.
 /// On failure a warning is shown and the current theme is left unchanged.
-pub fn typed_theme(
-    ed: &mut Editor,
-    arg: Option<&str>,
-    _force: bool,
-) -> Result<(), CommandError> {
+pub fn typed_theme(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
     let Some(name) = arg.map(str::trim).filter(|s| !s.is_empty()) else {
         let current: &str = if ed.state.settings.theme.is_empty() {
             super::DEFAULT_THEME_LABEL
@@ -264,15 +256,11 @@ pub fn typed_version(
     Ok(())
 }
 
-pub fn typed_tutor(
-    ed: &mut Editor,
-    _arg: Option<&str>,
-    _force: bool,
-) -> Result<(), CommandError> {
+pub fn typed_tutor(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
     // Resolve the install source. Fail fast on missing runtime or file.
     let Some(runtime) = hume_platform::dirs::runtime_dir() else {
         return Err(CommandError::new(
-            "runtime directory not found (set HUME_RUNTIME to override)"
+            "runtime directory not found (set HUME_RUNTIME to override)",
         ));
     };
     let source_path = runtime.join("tutor.txt");

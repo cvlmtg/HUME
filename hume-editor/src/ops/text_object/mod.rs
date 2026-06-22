@@ -1,9 +1,9 @@
 use super::MotionMode;
 use super::pair::{find_bracket_pair, find_quote_pair};
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use hume_editing::lines::{line_content_end, line_end_exclusive};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
-use hume_editing::lines::{line_content_end, line_end_exclusive};
 use hume_editing::word::{CharClass, classify_char, is_long_word_boundary, is_word_boundary};
 
 // ── Text object framework ──────────────────────────────────────────────────────
@@ -370,7 +370,9 @@ pub(crate) fn apply_nearest_word_result(
     found: Option<(usize, usize)>,
     mode: MotionMode,
 ) -> Selection {
-    let Some((start, end)) = found else { return sel };
+    let Some((start, end)) = found else {
+        return sel;
+    };
     match mode {
         MotionMode::Move => match sel.horiz() {
             Some(h) => Selection::with_horiz(start, end, h),

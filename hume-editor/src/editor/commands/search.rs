@@ -1,23 +1,23 @@
 use std::sync::Arc;
 
-use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use super::super::search_state::SearchPattern;
-use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::word::{CharClass, classify_char, is_word_boundary};
-use hume_engine::pipeline::EngineView;
 use crate::ops::MotionMode;
 use crate::ops::register::SEARCH_REGISTER;
 use crate::ops::search::{
     compile_search_regex, escape_regex, find_all_matches, find_match_from_cache, find_next_match,
 };
 use crate::ops::text_object::inner_word_impl;
+use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::word::{CharClass, classify_char, is_word_boundary};
+use hume_engine::pipeline::EngineView;
 
-use super::super::{MiniBuffer, Mode, SearchDirection, EditorState};
-use crate::editor::error::CommandError;
+use super::super::{EditorState, MiniBuffer, Mode, SearchDirection};
 use super::{
-    current_selections, doc, focused_buffer_id,
-    search_pattern, set_current_selections, set_primary_selection,
+    current_selections, doc, focused_buffer_id, search_pattern, set_current_selections,
+    set_primary_selection,
 };
+use crate::editor::error::CommandError;
 
 // ── Search ────────────────────────────────────────────────────────────────────
 
@@ -369,7 +369,9 @@ pub fn cmd_use_selection_as_search(
         return Ok(());
     };
 
-    state.registers.write_text(SEARCH_REGISTER, vec![pattern.clone()]);
+    state
+        .registers
+        .write_text(SEARCH_REGISTER, vec![pattern.clone()]);
     state.search.direction = SearchDirection::Forward;
     let bid = focused_buffer_id(state, view);
     state.buffers.get_mut(bid).search_pattern = Some(SearchPattern {

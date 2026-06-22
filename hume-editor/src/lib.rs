@@ -47,8 +47,10 @@ pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error
     let mut guard = hume_platform::terminal::TerminalGuard::new();
 
     let mut editor = editor::Editor::open(first)?;
-    let (mut term, kitty_enabled) =
-        hume_platform::terminal::init(editor.state.settings.mouse_enabled, editor.state.settings.mouse_select)?;
+    let (mut term, kitty_enabled) = hume_platform::terminal::init(
+        editor.state.settings.mouse_enabled,
+        editor.state.settings.mouse_select,
+    )?;
     editor.kitty_enabled = kitty_enabled;
     // Paint the buffer with default settings immediately so the user sees the
     // editor chrome while Steel initialises, rather than a blank alt-screen.

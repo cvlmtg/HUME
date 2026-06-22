@@ -16,7 +16,8 @@ use hume_engine::types::EditorMode;
 fn enqueue_macro_replay(ed: &mut Editor, reg: char) {
     let count = ed.state.count.take().unwrap_or(1);
     if let Some(keys) = ed
-        .state.registers
+        .state
+        .registers
         .read(reg)
         .and_then(|r| r.as_macro())
         .map(|k| k.to_vec())
@@ -245,7 +246,8 @@ impl Editor {
         // only `Interior` commits the key (so the sequence accumulates correctly
         // across keypresses). On `NoMatch` the key is not yet in `pending_keys`,
         // so the normal-trie path below can push it as usual.
-        if self.state.mode() == EditorMode::Extend && !key.modifiers.contains(KeyModifiers::CONTROL) {
+        if self.state.mode() == EditorMode::Extend && !key.modifiers.contains(KeyModifiers::CONTROL)
+        {
             let mut seq = self.state.pending_keys.clone();
             seq.push(key);
             match self.state.keymap.extend.walk(&seq) {
@@ -305,58 +307,64 @@ impl Editor {
         // For Ctrl keys at the trie root, walk once to check for an explicit
         // binding. If found, reuse that result directly (no second walk).
         // If NoMatch, strip CONTROL and re-walk only on kitty terminals.
-        let (result, ctrl_extend) =
-            if key.modifiers.contains(KeyModifiers::CONTROL) && self.state.pending_keys.is_empty() {
-                match self.state.keymap.normal.walk(&[key]) {
-                    WalkResult::NoMatch if self.kitty_enabled => {
-                        // Kitty mode: strip CONTROL, re-walk as extend. Only proceed if the
-                        // resolved command is extendable — prevents e.g. Ctrl+u running
-                        // "undo" (not a motion) as a one-shot extend.
-                        let bare = KeyEvent::new(key.code, KeyModifiers::NONE);
-                        self.state.pending_keys.push(bare);
-                        let result = self.state.keymap.normal.walk(&self.state.pending_keys);
-                        let is_extendable = match &result {
-                            WalkResult::Leaf(c) => self
-                                .state.registry
-                                .get_mappable(c.name.as_ref())
-                                .is_some_and(|r| r.is_extendable()),
-                            WalkResult::WaitChar(wc) => self
-                                .state.registry
-                                .get_mappable(wc.cmd_name.as_ref())
-                                .is_some_and(|r| r.is_extendable()),
-                            _ => false,
-                        };
-                        if !is_extendable {
-                            self.state.pending_keys.clear();
-                            self.state.count = None;
-                            return;
-                        }
-                        (result, true)
+        let (result, ctrl_extend) = if key.modifiers.contains(KeyModifiers::CONTROL)
+            && self.state.pending_keys.is_empty()
+        {
+            match self.state.keymap.normal.walk(&[key]) {
+                WalkResult::NoMatch if self.kitty_enabled => {
+                    // Kitty mode: strip CONTROL, re-walk as extend. Only proceed if the
+                    // resolved command is extendable — prevents e.g. Ctrl+u running
+                    // "undo" (not a motion) as a one-shot extend.
+                    let bare = KeyEvent::new(key.code, KeyModifiers::NONE);
+                    self.state.pending_keys.push(bare);
+                    let result = self.state.keymap.normal.walk(&self.state.pending_keys);
+                    let is_extendable = match &result {
+                        WalkResult::Leaf(c) => self
+                            .state
+                            .registry
+                            .get_mappable(c.name.as_ref())
+                            .is_some_and(|r| r.is_extendable()),
+                        WalkResult::WaitChar(wc) => self
+                            .state
+                            .registry
+                            .get_mappable(wc.cmd_name.as_ref())
+                            .is_some_and(|r| r.is_extendable()),
+                        _ => false,
+                    };
+                    if !is_extendable {
+                        self.state.pending_keys.clear();
+                        self.state.count = None;
+                        return;
                     }
-                    WalkResult::NoMatch => return, // Legacy: no-op.
-                    // Explicit Ctrl+letter binding. Extend only if the binding
-                    // itself declares force_extend (e.g. Ctrl+x → select-line).
-                    // Registry's is_extendable() is not consulted here — that
-                    // flag means "compatible with sticky Extend mode", not
-                    // "pressing Ctrl means the user asked to extend".
-                    // Interior: the Ctrl+key starts a multi-key sequence (e.g.
-                    // Ctrl+p → pane prefix); save it in pending_keys so the
-                    // follow-up keypress can complete the trie walk.
-                    matched => {
-                        let ctrl_extend = match &matched {
-                            WalkResult::Leaf(c) => c.force_extend,
-                            _ => false,
-                        };
-                        if matches!(matched, WalkResult::Interior { .. }) {
-                            self.state.pending_keys.push(key);
-                        }
-                        (matched, ctrl_extend)
-                    }
+                    (result, true)
                 }
-            } else {
-                self.state.pending_keys.push(key);
-                (self.state.keymap.normal.walk(&self.state.pending_keys), false)
-            };
+                WalkResult::NoMatch => return, // Legacy: no-op.
+                // Explicit Ctrl+letter binding. Extend only if the binding
+                // itself declares force_extend (e.g. Ctrl+x → select-line).
+                // Registry's is_extendable() is not consulted here — that
+                // flag means "compatible with sticky Extend mode", not
+                // "pressing Ctrl means the user asked to extend".
+                // Interior: the Ctrl+key starts a multi-key sequence (e.g.
+                // Ctrl+p → pane prefix); save it in pending_keys so the
+                // follow-up keypress can complete the trie walk.
+                matched => {
+                    let ctrl_extend = match &matched {
+                        WalkResult::Leaf(c) => c.force_extend,
+                        _ => false,
+                    };
+                    if matches!(matched, WalkResult::Interior { .. }) {
+                        self.state.pending_keys.push(key);
+                    }
+                    (matched, ctrl_extend)
+                }
+            }
+        } else {
+            self.state.pending_keys.push(key);
+            (
+                self.state.keymap.normal.walk(&self.state.pending_keys),
+                false,
+            )
+        };
 
         // ── Stage 3: Final extend merge ───────────────────────────────────────
         //

@@ -4,10 +4,8 @@ use std::time::Duration;
 
 use crossterm::event::{self, Event, KeyEventKind};
 
-use hume_engine::pane::{Pane, WrapMode, WhitespaceConfig};
-use hume_engine::pipeline::{
-    BufferId, EngineView, PaneId, PaneRenderSettings, RenderContext,
-};
+use hume_engine::pane::{Pane, WhitespaceConfig, WrapMode};
+use hume_engine::pipeline::{BufferId, EngineView, PaneId, PaneRenderSettings, RenderContext};
 use hume_engine::types::EditorMode;
 
 use super::search_state::SearchCursor;
@@ -32,11 +30,14 @@ pub(super) fn write_pane_mirror(
     use hume_engine::types::Selection as EngineSelection;
     let primary_head = sels.primary().head();
     pane.selections.clear();
-    pane.selections
-        .extend(sels.iter_head_sorted().into_iter().map(|s| EngineSelection {
-            anchor: s.anchor(),
-            head: s.head(),
-        }));
+    pane.selections.extend(
+        sels.iter_head_sorted()
+            .into_iter()
+            .map(|s| EngineSelection {
+                anchor: s.anchor(),
+                head: s.head(),
+            }),
+    );
     pane.primary_idx = pane
         .selections
         .iter()
@@ -50,21 +51,23 @@ impl Editor {
     /// The cursor starts at position 0 in Normal mode. Terminal dimensions are
     /// placeholder values replaced on the first event-loop iteration.
     pub(crate) fn open(file_path: Option<std::path::PathBuf>) -> io::Result<Self> {
-        use std::collections::VecDeque;
-        use slotmap::SecondaryMap;
-        use hume_engine::builtins::line_number::{LineNumberColumn, LineNumberStyle as EngineLineNumberStyle};
-        use hume_engine::pipeline::{LayoutTree, SharedBuffer};
-        use hume_editing::selection::{Selection, SelectionSet};
-        use hume_editing::text::Text;
+        use super::clipboard;
+        use super::keymap::Keymap;
+        use super::message_log::MessageLog;
+        use super::registry::CommandRegistry;
         use crate::editor::buffer::Buffer;
         use crate::editor::buffer_store::BufferStore;
         use crate::editor::pane_state::{PaneBufferState, PaneTransient, PaneView};
         use crate::ops::register::{KillRing, RegisterSet};
         use crate::settings::EditorSettings;
-        use super::registry::CommandRegistry;
-        use super::keymap::Keymap;
-        use super::message_log::MessageLog;
-        use super::clipboard;
+        use hume_editing::selection::{Selection, SelectionSet};
+        use hume_editing::text::Text;
+        use hume_engine::builtins::line_number::{
+            LineNumberColumn, LineNumberStyle as EngineLineNumberStyle,
+        };
+        use hume_engine::pipeline::{LayoutTree, SharedBuffer};
+        use slotmap::SecondaryMap;
+        use std::collections::VecDeque;
 
         let startup_cwd = std::env::current_dir().unwrap_or_default();
         let mut doc = match file_path {
@@ -183,7 +186,11 @@ impl Editor {
                     jumps.insert(pane_id, super::jump_list::JumpList::new(jump_list_capacity));
                     let mut transient = SecondaryMap::new();
                     transient.insert(pane_id, PaneTransient::default());
-                    PaneView { state: pane_buf_state, transient, jumps }
+                    PaneView {
+                        state: pane_buf_state,
+                        transient,
+                        jumps,
+                    }
                 },
                 history: super::minibuf_history::HistoryStore::new(history_capacity),
                 focused_pane_id: pane_id,
@@ -262,12 +269,12 @@ impl Editor {
                 Some((mb.statusline_cursor_col(), statusline_row))
             } else if self.state.mode().cursor_is_bar() {
                 // Insert / Select: place the terminal cursor at the document head.
-                let cursor_char = self.state.panes.state[self.state.focused_pane_id][self.focused_buffer_id()]
-                    .selections
-                    .primary()
-                    .head();
-                let (pane_settings_cursor, gutter_w) =
-                    self.resolve_focused_pane_settings();
+                let cursor_char = self.state.panes.state[self.state.focused_pane_id]
+                    [self.focused_buffer_id()]
+                .selections
+                .primary()
+                .head();
+                let (pane_settings_cursor, gutter_w) = self.resolve_focused_pane_settings();
                 let vp = self.view.panes[self.state.focused_pane_id].viewport.clone();
                 super::cursor::screen_pos(
                     &vp,
@@ -330,8 +337,7 @@ impl Editor {
             if last_cursor_color_mode != Some(self.state.mode()) {
                 // Command/Search place the cursor on a white statusline background;
                 // use black so it remains visible. All other modes reset to default.
-                let black =
-                    matches!(self.state.mode(), EditorMode::Command | EditorMode::Search);
+                let black = matches!(self.state.mode(), EditorMode::Command | EditorMode::Search);
                 let _ = hume_platform::terminal::set_cursor_color(black);
                 last_cursor_color_mode = Some(self.state.mode());
             }
@@ -419,16 +425,21 @@ impl Editor {
     fn resolve_focused_pane_settings(&self) -> (PaneRenderSettings, u16) {
         let len_lines = self.doc().text().len_lines();
         let pane = &self.view.panes[self.state.focused_pane_id];
-        let gutter_w = super::cursor::gutter_width(
-            pane.providers.gutter_columns(),
-            len_lines,
-        );
+        let gutter_w = super::cursor::gutter_width(pane.providers.gutter_columns(), len_lines);
         let raw_wrap = self.doc().overrides.wrap_mode(&self.state.settings);
         let content_width = pane.viewport.width.saturating_sub(gutter_w).max(1);
         let wrap_mode = raw_wrap.resolve(content_width);
         let tab_width = self.doc().overrides.tab_width(&self.state.settings);
         let whitespace = self.doc().overrides.whitespace(&self.state.settings);
-        (PaneRenderSettings { mode: self.state.mode(), wrap_mode, tab_width, whitespace }, gutter_w)
+        (
+            PaneRenderSettings {
+                mode: self.state.mode(),
+                wrap_mode,
+                tab_width,
+                whitespace,
+            },
+            gutter_w,
+        )
     }
 
     /// Paint one frame immediately — called before `init_scripting` so the
@@ -472,10 +483,7 @@ impl Editor {
     /// to date before rendering.  Used by snapshot tests to lock down styled
     /// output without a live terminal.
     #[cfg(test)]
-    pub(crate) fn render_to_buf(
-        &mut self,
-        rect: ratatui::layout::Rect,
-    ) -> ratatui::buffer::Buffer {
+    pub(crate) fn render_to_buf(&mut self, rect: ratatui::layout::Rect) -> ratatui::buffer::Buffer {
         let mut buf = ratatui::buffer::Buffer::empty(rect);
         let mut ctx = RenderContext::new();
         self.prepare_frame(rect.width, rect.height, &mut ctx);
@@ -488,7 +496,13 @@ impl Editor {
             rect,
             &mut buf,
             |bid| if bid == buffer_id { Some(rope) } else { None },
-            |pid| if pid == pane_id { pane_settings.clone() } else { PaneRenderSettings::default() },
+            |pid| {
+                if pid == pane_id {
+                    pane_settings.clone()
+                } else {
+                    PaneRenderSettings::default()
+                }
+            },
             None,
             &mut ctx,
         );
@@ -530,10 +544,11 @@ impl Editor {
         }
 
         // 4. Scroll so the primary cursor stays visible.
-        let cursor_char = self.state.panes.state[self.state.focused_pane_id][self.focused_buffer_id()]
-            .selections
-            .primary()
-            .head();
+        let cursor_char = self.state.panes.state[self.state.focused_pane_id]
+            [self.focused_buffer_id()]
+        .selections
+        .primary()
+        .head();
         let scrolloff = self.state.settings.scrolloff;
         let tab_width = self.doc().overrides.tab_width(&self.state.settings);
         let whitespace = self.doc().overrides.whitespace(&self.state.settings);
@@ -582,7 +597,12 @@ impl Editor {
         let state = &mut self.state;
         let view = &mut self.view;
         for (pid, pane) in view.panes.iter_mut() {
-            if let Some(pbs) = state.panes.state.get(pid).and_then(|m| m.get(pane.buffer_id)) {
+            if let Some(pbs) = state
+                .panes
+                .state
+                .get(pid)
+                .and_then(|m| m.get(pane.buffer_id))
+            {
                 write_pane_mirror(pane, &pbs.selections);
             }
         }
@@ -603,7 +623,8 @@ impl Editor {
     /// Accessor for the focused buffer's active search pattern (used in tests).
     #[cfg(test)]
     pub(crate) fn search_pattern(&self) -> Option<&SearchPattern> {
-        self.state.buffers
+        self.state
+            .buffers
             .get(self.focused_buffer_id())
             .search_pattern
             .as_ref()
@@ -612,7 +633,11 @@ impl Editor {
     /// Accessor for the focused buffer's match cache.
     #[cfg(test)]
     pub(crate) fn search_matches(&self) -> &SearchMatches {
-        &self.state.buffers.get(self.focused_buffer_id()).search_matches
+        &self
+            .state
+            .buffers
+            .get(self.focused_buffer_id())
+            .search_matches
     }
 
     /// Accessor for the focused pane's search cursor (match count, wrapped flag).
@@ -625,7 +650,12 @@ impl Editor {
     pub(super) fn sync_search_cache(&mut self) {
         let pid = self.state.focused_pane_id;
         let bid = self.focused_buffer_id();
-        search_ops::sync_search_cache(&mut self.state.buffers, &mut self.state.panes.state, pid, bid);
+        search_ops::sync_search_cache(
+            &mut self.state.buffers,
+            &mut self.state.panes.state,
+            pid,
+            bid,
+        );
     }
 
     /// Write per-frame highlight data to the shared `Arc<RwLock<...>>` buffers
@@ -652,7 +682,8 @@ impl Editor {
                 // match that starts at or after `top_line` to skip pre-viewport entries.
                 let top_char = buf.line_to_char(top_line.min(buf.len_lines().saturating_sub(1)));
                 let matches = &self
-                    .state.buffers
+                    .state
+                    .buffers
                     .get(self.focused_buffer_id())
                     .search_matches
                     .matches;
@@ -676,10 +707,11 @@ impl Editor {
             let mut data = self.bracket_hl_data.write().expect("RwLock not poisoned");
             data.clear();
             if self.state.mode() != EditorMode::Insert {
-                let head = self.state.panes.state[self.state.focused_pane_id][self.focused_buffer_id()]
-                    .selections
-                    .primary()
-                    .head();
+                let head = self.state.panes.state[self.state.focused_pane_id]
+                    [self.focused_buffer_id()]
+                .selections
+                .primary()
+                .head();
                 if let Some(ch) = buf.char_at(head) {
                     let pair = match ch {
                         '(' | ')' => Some(('(', ')')),
@@ -722,7 +754,8 @@ impl Editor {
         use unicode_width::UnicodeWidthStr as _;
         let view = self.state.completion.as_ref().map(|state| {
             let anchor_col = self
-                .state.minibuf
+                .state
+                .minibuf
                 .as_ref()
                 .map(|mb| {
                     let pad: u16 = 1;

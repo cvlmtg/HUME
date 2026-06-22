@@ -6,17 +6,14 @@ use hume_engine::types::EditorMode;
 use crate::ops::MotionMode;
 use crate::ops::edit::insert_char;
 use crate::ops::motion::{
-    cmd_goto_first_nonblank, cmd_goto_line_newline, cmd_goto_line_start, cmd_goto_line_end,
+    cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_newline, cmd_goto_line_start,
     cmd_move_left, cmd_move_right,
 };
 use crate::ops::selection_cmd::cmd_collapse_selection;
 
-use super::super::{doc_ops, EditorState, MiniBuffer, Mode, PendingRepeat};
+use super::super::{EditorState, MiniBuffer, Mode, PendingRepeat, doc_ops};
+use super::{begin_insert_session, end_insert_session, focused_buffer_id};
 use crate::editor::error::CommandError;
-use super::{
-    begin_insert_session, end_insert_session,
-    focused_buffer_id,
-};
 
 // ── Mode transitions ──────────────────────────────────────────────────────────
 
@@ -28,9 +25,13 @@ pub fn cmd_insert_before(
 ) -> Result<(), CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |_b, sels| {
-        sels.map(|s| Selection::collapsed(s.start()))
-    });
+    doc_ops::apply_doc_motion(
+        &state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf,
+        |_b, sels| sels.map(|s| Selection::collapsed(s.start())),
+    );
     begin_insert_session(state, view);
     Ok(())
 }
@@ -43,9 +44,13 @@ pub fn cmd_insert_after(
 ) -> Result<(), CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
-        cmd_move_right(b, s, 1, MotionMode::Move)
-    });
+    doc_ops::apply_doc_motion(
+        &state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf,
+        |b, s| cmd_move_right(b, s, 1, MotionMode::Move),
+    );
     begin_insert_session(state, view);
     Ok(())
 }
@@ -58,9 +63,13 @@ pub fn cmd_insert_at_line_start(
 ) -> Result<(), CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
-        cmd_goto_first_nonblank(b, s, 1, MotionMode::Move)
-    });
+    doc_ops::apply_doc_motion(
+        &state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf,
+        |b, s| cmd_goto_first_nonblank(b, s, 1, MotionMode::Move),
+    );
     begin_insert_session(state, view);
     Ok(())
 }
@@ -73,12 +82,20 @@ pub fn cmd_insert_at_line_end(
 ) -> Result<(), CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
-        cmd_goto_line_end(b, s, 1, MotionMode::Move)
-    });
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
-        cmd_move_right(b, s, 1, MotionMode::Move)
-    });
+    doc_ops::apply_doc_motion(
+        &state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf,
+        |b, s| cmd_goto_line_end(b, s, 1, MotionMode::Move),
+    );
+    doc_ops::apply_doc_motion(
+        &state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf,
+        |b, s| cmd_move_right(b, s, 1, MotionMode::Move),
+    );
     begin_insert_session(state, view);
     state.mark_insert_step_back();
     Ok(())
@@ -94,9 +111,13 @@ pub fn cmd_insert_at_selection_start(
 ) -> Result<(), CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |_b, sels| {
-        sels.map(|sel| Selection::collapsed(sel.start()))
-    });
+    doc_ops::apply_doc_motion(
+        &state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf,
+        |_b, sels| sels.map(|sel| Selection::collapsed(sel.start())),
+    );
     begin_insert_session(state, view);
     Ok(())
 }
@@ -115,11 +136,17 @@ pub fn cmd_insert_at_selection_end(
 ) -> Result<(), CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, sels| {
-        // len_chars() - 1 is safe: the buffer invariant guarantees at least one char.
-        let max = b.len_chars() - 1;
-        sels.map(|sel| Selection::collapsed(next_grapheme_boundary(b, sel.end()).min(max)))
-    });
+    doc_ops::apply_doc_motion(
+        &state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf,
+        |b, sels| {
+            // len_chars() - 1 is safe: the buffer invariant guarantees at least one char.
+            let max = b.len_chars() - 1;
+            sels.map(|sel| Selection::collapsed(next_grapheme_boundary(b, sel.end()).min(max)))
+        },
+    );
     begin_insert_session(state, view);
     state.mark_insert_step_back();
     Ok(())
@@ -140,12 +167,20 @@ pub fn cmd_open_line_below(
     let buf = focused_buffer_id(state, view);
     begin_insert_session(state, view);
     state.mark_insert_step_back();
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
-        cmd_goto_line_newline(b, s, 1, MotionMode::Move)
-    });
-    doc_ops::apply_doc_edit_grouped(&mut state.buffers, &mut state.panes.state, focused, buf, |b, s| {
-        insert_char(b, s, '\n')
-    });
+    doc_ops::apply_doc_motion(
+        &state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf,
+        |b, s| cmd_goto_line_newline(b, s, 1, MotionMode::Move),
+    );
+    doc_ops::apply_doc_edit_grouped(
+        &mut state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf,
+        |b, s| insert_char(b, s, '\n'),
+    );
     Ok(())
 }
 
@@ -160,15 +195,27 @@ pub fn cmd_open_line_above(
     let buf = focused_buffer_id(state, view);
     begin_insert_session(state, view);
     state.mark_insert_step_back();
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
-        cmd_goto_line_start(b, s, 1, MotionMode::Move)
-    });
-    doc_ops::apply_doc_edit_grouped(&mut state.buffers, &mut state.panes.state, focused, buf, |b, s| {
-        insert_char(b, s, '\n')
-    });
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
-        cmd_move_left(b, s, 1, MotionMode::Move)
-    });
+    doc_ops::apply_doc_motion(
+        &state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf,
+        |b, s| cmd_goto_line_start(b, s, 1, MotionMode::Move),
+    );
+    doc_ops::apply_doc_edit_grouped(
+        &mut state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf,
+        |b, s| insert_char(b, s, '\n'),
+    );
+    doc_ops::apply_doc_motion(
+        &state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf,
+        |b, s| cmd_move_left(b, s, 1, MotionMode::Move),
+    );
     Ok(())
 }
 
@@ -206,7 +253,11 @@ pub fn cmd_toggle_extend(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let target = if state.mode() == EditorMode::Extend { EditorMode::Normal } else { EditorMode::Extend };
+    let target = if state.mode() == EditorMode::Extend {
+        EditorMode::Normal
+    } else {
+        EditorMode::Extend
+    };
     state.set_mode(target);
     Ok(())
 }
@@ -224,9 +275,13 @@ pub fn cmd_collapse_and_exit_extend(
     state.set_mode(EditorMode::Normal);
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
-        cmd_collapse_selection(b, s, MotionMode::Move)
-    });
+    doc_ops::apply_doc_motion(
+        &state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf,
+        |b, s| cmd_collapse_selection(b, s, MotionMode::Move),
+    );
     Ok(())
 }
 
@@ -255,7 +310,11 @@ pub fn cmd_repeat(
         return Ok(());
     };
     // Prefer an explicit user count; fall back to the count from the original action.
-    let effective = if state.explicit_count { count } else { orig_count };
+    let effective = if state.explicit_count {
+        count
+    } else {
+        orig_count
+    };
     state.pending_repeat = Some(PendingRepeat { count: effective });
     Ok(())
 }

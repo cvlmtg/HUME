@@ -50,9 +50,7 @@ impl EditorColors {
     pub(crate) fn from_theme(theme: &hume_engine::theme::Theme) -> Self {
         use hume_engine::types::Scope;
 
-        let style_for = |s: &'static str| -> Style {
-            theme.resolve_by_name(Scope(s)).into()
-        };
+        let style_for = |s: &'static str| -> Style { theme.resolve_by_name(Scope(s)).into() };
 
         Self {
             statusline: style_for("ui.statusline"),
@@ -103,11 +101,19 @@ mod tests {
         let mut styles: HashMap<&'static str, ResolvedStyle> = HashMap::new();
         styles.insert(
             "ui.statusline",
-            ResolvedStyle { fg: Some(base_fg), bg: Some(base_bg), ..Default::default() },
+            ResolvedStyle {
+                fg: Some(base_fg),
+                bg: Some(base_bg),
+                ..Default::default()
+            },
         );
         styles.insert(
             "ui.statusline.mode.insert",
-            ResolvedStyle { fg: Some(insert_fg), bg: Some(base_bg), ..Default::default() },
+            ResolvedStyle {
+                fg: Some(insert_fg),
+                bg: Some(base_bg),
+                ..Default::default()
+            },
         );
         hume_engine::theme::Theme::new(styles, ResolvedStyle::default())
     }
@@ -121,15 +127,27 @@ mod tests {
         // Independent oracle: expected values derived directly from dark.toml palette.
         // black = #000000, white = #ffffff, mid_gray = #8c8ca0, selection = #444478
         let cursor_primary = theme.resolve_by_name(Scope("ui.cursor.primary"));
-        assert_eq!(cursor_primary.fg, Some(Color::Rgb(0x00, 0x00, 0x00)), "cursor.primary fg");
-        assert_eq!(cursor_primary.bg, Some(Color::Rgb(0xff, 0xff, 0xff)), "cursor.primary bg");
+        assert_eq!(
+            cursor_primary.fg,
+            Some(Color::Rgb(0x00, 0x00, 0x00)),
+            "cursor.primary fg"
+        );
+        assert_eq!(
+            cursor_primary.bg,
+            Some(Color::Rgb(0xff, 0xff, 0xff)),
+            "cursor.primary bg"
+        );
 
         let cursor = theme.resolve_by_name(Scope("ui.cursor"));
         assert_eq!(cursor.fg, Some(Color::Rgb(0x00, 0x00, 0x00)), "cursor fg");
         assert_eq!(cursor.bg, Some(Color::Rgb(0x8c, 0x8c, 0xa0)), "cursor bg");
 
         let selection = theme.resolve_by_name(Scope("ui.selection"));
-        assert_eq!(selection.bg, Some(Color::Rgb(0x44, 0x44, 0x78)), "selection bg");
+        assert_eq!(
+            selection.bg,
+            Some(Color::Rgb(0x44, 0x44, 0x78)),
+            "selection bg"
+        );
 
         // menu: fg = #b4b4c8, bg = #282832
         let menu = theme.resolve_by_name(Scope("ui.menu"));
@@ -138,8 +156,16 @@ mod tests {
 
         // statusline: fg = black (#000000), bg = white (#ffffff)
         let statusline = theme.resolve_by_name(Scope("ui.statusline"));
-        assert_eq!(statusline.fg, Some(Color::Rgb(0x00, 0x00, 0x00)), "statusline fg");
-        assert_eq!(statusline.bg, Some(Color::Rgb(0xff, 0xff, 0xff)), "statusline bg");
+        assert_eq!(
+            statusline.fg,
+            Some(Color::Rgb(0x00, 0x00, 0x00)),
+            "statusline fg"
+        );
+        assert_eq!(
+            statusline.bg,
+            Some(Color::Rgb(0xff, 0xff, 0xff)),
+            "statusline bg"
+        );
     }
 
     #[test]
@@ -162,7 +188,11 @@ mod tests {
         let mut styles: HashMap<&'static str, ResolvedStyle> = HashMap::new();
         styles.insert(
             "ui.statusline",
-            ResolvedStyle { fg: Some(Color::White), bg: Some(Color::DarkGray), ..Default::default() },
+            ResolvedStyle {
+                fg: Some(Color::White),
+                bg: Some(Color::DarkGray),
+                ..Default::default()
+            },
         );
         let theme = hume_engine::theme::Theme::new(styles, ResolvedStyle::default());
         let colors = EditorColors::from_theme(&theme);

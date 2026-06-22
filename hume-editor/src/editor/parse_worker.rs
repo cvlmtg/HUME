@@ -1,5 +1,9 @@
 use std::collections::HashMap;
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}, mpsc};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+    mpsc,
+};
 use std::thread;
 
 use hume_engine::pipeline::BufferId;
@@ -58,14 +62,15 @@ pub(super) struct ParseDone {
 fn coalesce_one(batch: &mut HashMap<BufferId, ParseRequest>, req: ParseRequest) {
     use std::collections::hash_map::Entry;
     match batch.entry(req.bid) {
-        Entry::Vacant(v) => { v.insert(req); }
+        Entry::Vacant(v) => {
+            v.insert(req);
+        }
         Entry::Occupied(mut o) => {
             // Keep the latest generation; when generations are equal, a different
             // grammar Arc means a grammar swap on a quiescent buffer — take the
             // new entry so the fresh grammar wins even without a text edit.
             if req.text_gen > o.get().text_gen
-                || (req.text_gen == o.get().text_gen
-                    && !Arc::ptr_eq(&req.lang, &o.get().lang))
+                || (req.text_gen == o.get().text_gen && !Arc::ptr_eq(&req.lang, &o.get().lang))
             {
                 o.insert(req);
             }
@@ -84,13 +89,16 @@ fn do_parse(
     req: ParseRequest,
     cancel: &AtomicBool,
 ) -> ParseDone {
-    let language_changed = current_lang.as_ref()
+    let language_changed = current_lang
+        .as_ref()
         .is_none_or(|cur| !Arc::ptr_eq(cur, &req.lang));
 
     if language_changed {
-        let bundle = req.lang.grammar.as_ref()
-            .expect("grammar must be Some — setup_buffer_syntax verifies grammar.is_some() before posting");
-        parser.set_language(bundle.grammar.language())
+        let bundle = req.lang.grammar.as_ref().expect(
+            "grammar must be Some — setup_buffer_syntax verifies grammar.is_some() before posting",
+        );
+        parser
+            .set_language(bundle.grammar.language())
             .expect("ABI verified at grammar registration time in attach_grammar");
         *current_lang = Some(Arc::clone(&req.lang));
     }
@@ -98,7 +106,11 @@ fn do_parse(
     let outcome = {
         use std::ops::ControlFlow;
         let mut progress = |_state: &tree_sitter::ParseState| -> ControlFlow<()> {
-            if cancel.load(Ordering::Relaxed) { ControlFlow::Break(()) } else { ControlFlow::Continue(()) }
+            if cancel.load(Ordering::Relaxed) {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
         };
         let options = tree_sitter::ParseOptions::new().progress_callback(&mut progress);
         // Feed the rope via chunked callback — avoids the full Vec<u8> allocation
@@ -123,7 +135,12 @@ fn do_parse(
         }
     };
 
-    ParseDone { bid: req.bid, text_gen: req.text_gen, lang: req.lang, outcome }
+    ParseDone {
+        bid: req.bid,
+        text_gen: req.text_gen,
+        lang: req.lang,
+        outcome,
+    }
 }
 
 // ── Worker internals (stays on the worker thread) ─────────────────────────────
@@ -266,9 +283,14 @@ impl ParseBackend for ThreadedParseBackend {
         }
         if let Some(ref tx) = self.tx_req {
             let bid = req.bid;
-            let inf = InFlight { text_gen: req.text_gen, lang: Arc::clone(&req.lang) };
+            let inf = InFlight {
+                text_gen: req.text_gen,
+                lang: Arc::clone(&req.lang),
+            };
             match tx.send(req) {
-                Ok(()) => { self.in_flight.insert(bid, inf); }
+                Ok(()) => {
+                    self.in_flight.insert(bid, inf);
+                }
                 Err(_) => {
                     self.disconnected = true;
                     self.in_flight.clear();
@@ -294,7 +316,9 @@ impl ParseBackend for ThreadedParseBackend {
     }
 
     fn is_in_flight(&self, bid: BufferId, text_gen: u64) -> bool {
-        self.in_flight.get(&bid).is_some_and(|inf| inf.text_gen == text_gen)
+        self.in_flight
+            .get(&bid)
+            .is_some_and(|inf| inf.text_gen == text_gen)
     }
 
     fn remove_in_flight(&mut self, bid: BufferId) {
@@ -308,15 +332,20 @@ impl ParseBackend for ThreadedParseBackend {
         lang: &Arc<LanguageConfig>,
     ) {
         if let Some(inf) = self.in_flight.get(&bid)
-            && inf.text_gen == text_gen && Arc::ptr_eq(&inf.lang, lang)
+            && inf.text_gen == text_gen
+            && Arc::ptr_eq(&inf.lang, lang)
         {
             self.in_flight.remove(&bid);
         }
     }
 
-    fn has_in_flight(&self) -> bool { !self.in_flight.is_empty() }
+    fn has_in_flight(&self) -> bool {
+        !self.in_flight.is_empty()
+    }
 
-    fn is_disconnected(&self) -> bool { self.disconnected }
+    fn is_disconnected(&self) -> bool {
+        self.disconnected
+    }
 }
 
 impl Drop for ThreadedParseBackend {
@@ -347,7 +376,11 @@ pub(super) struct InlineParseBackend {
 #[cfg(test)]
 impl InlineParseBackend {
     pub(super) fn new() -> Self {
-        Self { parser: tree_sitter::Parser::new(), current_lang: None, done: std::collections::VecDeque::new() }
+        Self {
+            parser: tree_sitter::Parser::new(),
+            current_lang: None,
+            done: std::collections::VecDeque::new(),
+        }
     }
 }
 
@@ -363,12 +396,24 @@ impl ParseBackend for InlineParseBackend {
         self.done.drain(..).collect()
     }
 
-    fn is_in_flight(&self, _bid: BufferId, _text_gen: u64) -> bool { false }
+    fn is_in_flight(&self, _bid: BufferId, _text_gen: u64) -> bool {
+        false
+    }
     fn remove_in_flight(&mut self, _bid: BufferId) {}
-    fn clear_in_flight_if_matches(&mut self, _bid: BufferId, _text_gen: u64, _lang: &Arc<LanguageConfig>) {}
+    fn clear_in_flight_if_matches(
+        &mut self,
+        _bid: BufferId,
+        _text_gen: u64,
+        _lang: &Arc<LanguageConfig>,
+    ) {
+    }
     // Inline parses complete synchronously inside `post` — nothing is ever pending.
-    fn has_in_flight(&self) -> bool { false }
-    fn is_disconnected(&self) -> bool { false }
+    fn has_in_flight(&self) -> bool {
+        false
+    }
+    fn is_disconnected(&self) -> bool {
+        false
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -383,10 +428,12 @@ mod tests {
     use hume_engine::grammar::LoadedGrammar;
     use hume_engine::pipeline::BufferId;
 
-    use super::{LanguageConfig, ParseOutcome, ParseRequest, ThreadedParseBackend, Text, coalesce_one};
     use super::ParseBackend as _;
+    use super::{
+        LanguageConfig, ParseOutcome, ParseRequest, Text, ThreadedParseBackend, coalesce_one,
+    };
     use crate::editor::syntax::GrammarBundle;
-    use crate::editor::tests::{grammar_parser_path};
+    use crate::editor::tests::grammar_parser_path;
 
     fn make_lang(name: &str, symbol: &str) -> Arc<LanguageConfig> {
         let path = grammar_parser_path(name);
@@ -397,9 +444,7 @@ mod tests {
             );
         }
         let grammar = LoadedGrammar::open(&path, symbol).expect("load grammar");
-        let query = Arc::new(
-            tree_sitter::Query::new(grammar.language(), "").expect("empty query"),
-        );
+        let query = Arc::new(tree_sitter::Query::new(grammar.language(), "").expect("empty query"));
         Arc::new(LanguageConfig {
             name: name.to_owned(),
             extensions: vec![],
@@ -424,32 +469,67 @@ mod tests {
         let mut batch: HashMap<BufferId, ParseRequest> = HashMap::new();
 
         // Gen 2 lands first.
-        coalesce_one(&mut batch, ParseRequest {
-            bid, text_gen: 2, lang: Arc::clone(&lang),
-            text: Text::from("bb\n"), old_tree: None,
-        });
+        coalesce_one(
+            &mut batch,
+            ParseRequest {
+                bid,
+                text_gen: 2,
+                lang: Arc::clone(&lang),
+                text: Text::from("bb\n"),
+                old_tree: None,
+            },
+        );
         // Gen 1 must not overwrite gen 2.
-        coalesce_one(&mut batch, ParseRequest {
-            bid, text_gen: 1, lang: Arc::clone(&lang),
-            text: Text::from("a\n"), old_tree: None,
-        });
-        assert_eq!(batch[&bid].text_gen, 2, "lower-gen request must not overwrite");
-        assert_eq!(batch[&bid].text.len_chars(), 3, "text must match the winning gen");
+        coalesce_one(
+            &mut batch,
+            ParseRequest {
+                bid,
+                text_gen: 1,
+                lang: Arc::clone(&lang),
+                text: Text::from("a\n"),
+                old_tree: None,
+            },
+        );
+        assert_eq!(
+            batch[&bid].text_gen, 2,
+            "lower-gen request must not overwrite"
+        );
+        assert_eq!(
+            batch[&bid].text.len_chars(),
+            3,
+            "text must match the winning gen"
+        );
 
         // Gen 3 must overwrite gen 2.
-        coalesce_one(&mut batch, ParseRequest {
-            bid, text_gen: 3, lang: Arc::clone(&lang),
-            text: Text::from("ccc\n"), old_tree: None,
-        });
+        coalesce_one(
+            &mut batch,
+            ParseRequest {
+                bid,
+                text_gen: 3,
+                lang: Arc::clone(&lang),
+                text: Text::from("ccc\n"),
+                old_tree: None,
+            },
+        );
         assert_eq!(batch[&bid].text_gen, 3, "higher-gen request must win");
         assert_eq!(batch[&bid].text.len_chars(), 4);
 
         // Equal gen must not overwrite (no-op).
-        coalesce_one(&mut batch, ParseRequest {
-            bid, text_gen: 3, lang: Arc::clone(&lang),
-            text: Text::from("REPLACED\n"), old_tree: None,
-        });
-        assert_eq!(batch[&bid].text.len_chars(), 4, "equal-gen request must be dropped");
+        coalesce_one(
+            &mut batch,
+            ParseRequest {
+                bid,
+                text_gen: 3,
+                lang: Arc::clone(&lang),
+                text: Text::from("REPLACED\n"),
+                old_tree: None,
+            },
+        );
+        assert_eq!(
+            batch[&bid].text.len_chars(),
+            4,
+            "equal-gen request must be dropped"
+        );
     }
 
     #[test]
@@ -461,25 +541,54 @@ mod tests {
         let mut batch: HashMap<BufferId, ParseRequest> = HashMap::new();
 
         // lang_a arrives first at gen 5.
-        coalesce_one(&mut batch, ParseRequest {
-            bid, text_gen: 5, lang: Arc::clone(&lang_a),
-            text: Text::from("{}\n"), old_tree: None,
-        });
+        coalesce_one(
+            &mut batch,
+            ParseRequest {
+                bid,
+                text_gen: 5,
+                lang: Arc::clone(&lang_a),
+                text: Text::from("{}\n"),
+                old_tree: None,
+            },
+        );
         // lang_b at the same gen — grammar swap on a quiescent buffer.
-        coalesce_one(&mut batch, ParseRequest {
-            bid, text_gen: 5, lang: Arc::clone(&lang_b),
-            text: Text::from("fn f(){}\n"), old_tree: None,
-        });
+        coalesce_one(
+            &mut batch,
+            ParseRequest {
+                bid,
+                text_gen: 5,
+                lang: Arc::clone(&lang_b),
+                text: Text::from("fn f(){}\n"),
+                old_tree: None,
+            },
+        );
         // The new lang must win.
-        assert!(Arc::ptr_eq(&batch[&bid].lang, &lang_b), "grammar swap must replace same-gen entry");
-        assert_eq!(batch[&bid].text.len_chars(), 9, "text must match the winning lang");
+        assert!(
+            Arc::ptr_eq(&batch[&bid].lang, &lang_b),
+            "grammar swap must replace same-gen entry"
+        );
+        assert_eq!(
+            batch[&bid].text.len_chars(),
+            9,
+            "text must match the winning lang"
+        );
 
         // A second request with the same lang does not replace.
-        coalesce_one(&mut batch, ParseRequest {
-            bid, text_gen: 5, lang: Arc::clone(&lang_b),
-            text: Text::from("REPLACED\n"), old_tree: None,
-        });
-        assert_eq!(batch[&bid].text.len_chars(), 9, "same-lang equal-gen request must be dropped");
+        coalesce_one(
+            &mut batch,
+            ParseRequest {
+                bid,
+                text_gen: 5,
+                lang: Arc::clone(&lang_b),
+                text: Text::from("REPLACED\n"),
+                old_tree: None,
+            },
+        );
+        assert_eq!(
+            batch[&bid].text.len_chars(),
+            9,
+            "same-lang equal-gen request must be dropped"
+        );
     }
 
     // ── ThreadedParseBackend shutdown ─────────────────────────────────────────
@@ -513,9 +622,14 @@ mod tests {
         });
         // Ensure json parse is done before sending rust, so the worker must
         // switch language on the second request.
-        let done1 = worker.rx_done.recv_timeout(Duration::from_secs(5))
+        let done1 = worker
+            .rx_done
+            .recv_timeout(Duration::from_secs(5))
             .expect("json parse timed out");
-        assert!(matches!(done1.outcome, ParseOutcome::Ok(..)), "json parse must succeed");
+        assert!(
+            matches!(done1.outcome, ParseOutcome::Ok(..)),
+            "json parse must succeed"
+        );
         assert!(Arc::ptr_eq(&done1.lang, &json_lang));
 
         worker.post(ParseRequest {
@@ -525,9 +639,14 @@ mod tests {
             text: Text::from("fn main() {}\n"),
             old_tree: None,
         });
-        let done2 = worker.rx_done.recv_timeout(Duration::from_secs(5))
+        let done2 = worker
+            .rx_done
+            .recv_timeout(Duration::from_secs(5))
             .expect("rust parse timed out");
-        assert!(matches!(done2.outcome, ParseOutcome::Ok(..)), "rust parse must succeed after language switch");
+        assert!(
+            matches!(done2.outcome, ParseOutcome::Ok(..)),
+            "rust parse must succeed after language switch"
+        );
         assert!(Arc::ptr_eq(&done2.lang, &rust_lang));
     }
 }

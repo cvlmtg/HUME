@@ -77,8 +77,7 @@ pub fn init_dirs(data_dir: Option<PathBuf>, runtime_dir: Option<PathBuf>) {
 
     // Canonicalize data_dir for the display form; fall back to raw path when
     // the directory doesn't exist (e.g. sandboxed FS test environments).
-    let canonical_data =
-        data_dir.map(|d| hume_platform::fs::canonicalize(&d).unwrap_or(d));
+    let canonical_data = data_dir.map(|d| hume_platform::fs::canonicalize(&d).unwrap_or(d));
     // Display form strips `\\?\` so Scheme can safely concatenate `/`-separated
     // segments on Windows without producing malformed extended-length paths.
     let data_dir_display = canonical_data.map(hume_platform::path::strip_unc_prefix);
@@ -158,7 +157,9 @@ pub(crate) fn with_data_grammars_or_subpath<R>(
     if !hume_platform::path::is_safe_segment(seg) {
         return Err(SteelErr::new(
             ErrorKind::Generic,
-            format!("invalid path segment '{seg}': must be a single normal component (no '..' / '.' / separators)"),
+            format!(
+                "invalid path segment '{seg}': must be a single normal component (no '..' / '.' / separators)"
+            ),
         ));
     }
     with_data_grammars(|grammars| f(&grammars.join(seg)))

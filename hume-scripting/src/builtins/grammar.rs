@@ -10,17 +10,23 @@ use std::path::PathBuf;
 use steel::rerrs::SteelErr;
 use steel::rvals::{IntoSteelVal, SteelVal};
 
-use crate::log::LogLevel;
 use crate::SteelCtx;
+use crate::log::LogLevel;
 
 /// Platform-specific shared library extension for tree-sitter grammars.
 fn platform_grammar_ext() -> &'static str {
     #[cfg(target_os = "macos")]
-    { "dylib" }
+    {
+        "dylib"
+    }
     #[cfg(target_os = "windows")]
-    { "dll" }
+    {
+        "dll"
+    }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    { "so" }
+    {
+        "so"
+    }
 }
 
 /// `(grammar-output-path name)` — return the output path for a compiled grammar:
@@ -28,18 +34,13 @@ fn platform_grammar_ext() -> &'static str {
 ///
 /// `name` must be a single normal path component (no `..`, no separators).
 /// Safe in both init and command mode — does not touch the filesystem.
-pub(crate) fn grammar_output_path(
-    _ctx: &mut SteelCtx,
-    name: String,
-) -> Result<SteelVal, SteelErr> {
+pub(crate) fn grammar_output_path(_ctx: &mut SteelCtx, name: String) -> Result<SteelVal, SteelErr> {
     let filename = format!("{}.{}", name, platform_grammar_ext());
     let path = super::sandbox::with_data_grammars_or_subpath(&filename, |p| p.to_path_buf())?;
     path.to_string_lossy()
         .as_ref()
         .into_steelval()
-        .map_err(|e| {
-            SteelErr::new(steel::rerrs::ErrorKind::ConversionError, e.to_string())
-        })
+        .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::ConversionError, e.to_string()))
 }
 
 /// `(compile-grammar! src out)` — compile the tree-sitter grammar source at
@@ -64,8 +65,11 @@ pub(crate) fn compile_grammar(
     }
     // validate_new_path returns the canonical dest — use it for the subprocess
     // so the same resolved path is used for both the check and the spawn.
-    let canonical_out =
-        super::shell::validate_new_path(&out_path, "compile-grammar!", super::shell::SandboxKind::Grammars)?;
+    let canonical_out = super::shell::validate_new_path(
+        &out_path,
+        "compile-grammar!",
+        super::shell::SandboxKind::Grammars,
+    )?;
 
     // Sandbox-check src (must exist → full canonicalize).
     let canonical_src = hume_platform::fs::canonicalize(&src_path).map_err(|e| {
@@ -220,5 +224,4 @@ mod tests {
             "expected sandbox error, got: {err}"
         );
     }
-
 }

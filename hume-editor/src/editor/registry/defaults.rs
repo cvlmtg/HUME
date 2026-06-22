@@ -25,7 +25,9 @@ use crate::ops::text_object::{
     cmd_inner_paren, cmd_inner_single_quote, cmd_inner_word,
 };
 
-use super::{CmdCategory, CommandRegistry, EditorCmdFn, MappableCommand, PasteFamily, TypedCommand};
+use super::{
+    CmdCategory, CommandRegistry, EditorCmdFn, MappableCommand, PasteFamily, TypedCommand,
+};
 
 impl CommandRegistry {
     pub(super) fn register_defaults(&mut self) {
@@ -154,8 +156,16 @@ impl CommandRegistry {
         }
         // Construct a builder for an EditorCmd. All handlers share one shape:
         // fn(&mut EditorState, &mut EngineView, usize, MotionMode) -> Result<(), CommandError>.
-        let ecmd = |name: &'static str, doc: &'static str, fun: EditorCmdFn| {
-            EditorCmdBuilder { name, doc, fun, category: CmdCategory::EditorAction, repeatable: false, jump: false, visual_move: false, extendable: false, stamps_last_command: true }
+        let ecmd = |name: &'static str, doc: &'static str, fun: EditorCmdFn| EditorCmdBuilder {
+            name,
+            doc,
+            fun,
+            category: CmdCategory::EditorAction,
+            repeatable: false,
+            jump: false,
+            visual_move: false,
+            extendable: false,
+            stamps_last_command: true,
         };
 
         // ── Character motions ─────────────────────────────────────────────────
@@ -286,7 +296,12 @@ impl CommandRegistry {
             "Remove all selections except the primary.",
             cmd_keep_primary_selection
         );
-        selection!("select-all", "Select the entire buffer.", cmd_select_all, jump);
+        selection!(
+            "select-all",
+            "Select the entire buffer.",
+            cmd_select_all,
+            jump
+        );
         selection!(
             "remove-primary-selection",
             "Remove the primary selection, promoting the next.",
@@ -892,7 +907,12 @@ impl CommandRegistry {
         }
 
         typed_cmd!("quit", "Close the editor.", &["q"], typed_quit);
-        typed_cmd!("quit-all", "Quit the editor, closing all buffers.", &["qa"], typed_quit_all);
+        typed_cmd!(
+            "quit-all",
+            "Quit the editor, closing all buffers.",
+            &["qa"],
+            typed_quit_all
+        );
         typed_cmd!("write", "Write changes to disk.", &["w"], typed_write);
         typed_cmd!(
             "write-quit",
@@ -1009,11 +1029,6 @@ impl CommandRegistry {
             &["ver"],
             typed_version
         );
-        typed_cmd!(
-            "tutor",
-            "Open the interactive tutorial.",
-            &[],
-            typed_tutor
-        );
+        typed_cmd!("tutor", "Open the interactive tutorial.", &[], typed_tutor);
     }
 }

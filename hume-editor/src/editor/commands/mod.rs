@@ -17,19 +17,19 @@ pub(super) const DEFAULT_THEME_LABEL: &str = "default (built-in)";
 
 use std::borrow::Cow;
 
-use hume_engine::pipeline::{BufferId, EngineView};
 use hume_editing::selection::{Selection, SelectionSet};
+use hume_engine::pipeline::{BufferId, EngineView};
 
 use super::registry::MappableCommand;
 
-use super::{register_ops, Severity};
-use super::{EditorState, InsertSession, Mode, RegisterPrefix, RepeatableAction, SelectionStep};
+use super::CmdCtx;
 use super::buffer::Buffer;
 use super::doc_ops;
 use super::jump_list::JumpEntry;
 use super::registry::{CmdCategory, CmdMeta, PasteFamily};
 use super::search_state::SearchPattern;
-use super::CmdCtx;
+use super::{EditorState, InsertSession, Mode, RegisterPrefix, RepeatableAction, SelectionStep};
+use super::{Severity, register_ops};
 use crate::ops::MotionMode;
 
 // ── EditorState helpers ───────────────────────────────────────────────────────
@@ -46,14 +46,18 @@ impl EditorState {
 
     /// Write `values` into `name`, routing `'c'` through the OS clipboard.
     pub(super) fn write_register(&mut self, name: char, values: Vec<String>) {
-        if let Some(w) = register_ops::write_register(&mut self.registers, &mut self.clipboard, name, values) {
+        if let Some(w) =
+            register_ops::write_register(&mut self.registers, &mut self.clipboard, name, values)
+        {
             self.report(Severity::Warning, w);
         }
     }
 
     /// Write `values` to the system clipboard only (no kill-ring push).
     pub(super) fn write_clipboard(&mut self, values: &[String]) {
-        if let Some(w) = register_ops::write_clipboard(&mut self.registers, &mut self.clipboard, values) {
+        if let Some(w) =
+            register_ops::write_clipboard(&mut self.registers, &mut self.clipboard, values)
+        {
             self.report(Severity::Warning, w);
         }
     }
@@ -65,10 +69,13 @@ impl EditorState {
     /// is committed before undo, motions, or the next `p`/`P`.
     pub(super) fn commit_paste_session(&mut self) {
         use hume_engine::pipeline::PaneId;
-        let open: Vec<(PaneId, BufferId)> = self.panes.state
+        let open: Vec<(PaneId, BufferId)> = self
+            .panes
+            .state
             .iter()
             .flat_map(|(pid, inner)| {
-                inner.iter()
+                inner
+                    .iter()
                     .filter(|(_, pbs)| pbs.paste_group.is_some())
                     .map(move |(bid, _)| (pid, bid))
             })
@@ -76,7 +83,9 @@ impl EditorState {
         for (pid, bid) in open {
             let post_sels = self.panes.state[pid][bid].selections.clone();
             let pbs = &mut self.panes.state[pid][bid];
-            self.buffers.get_mut(bid).commit_edit_group(&mut pbs.paste_group, post_sels);
+            self.buffers
+                .get_mut(bid)
+                .commit_edit_group(&mut pbs.paste_group, post_sels);
         }
     }
 }
@@ -96,25 +105,39 @@ pub(super) fn run_native_body(
     count: usize,
     extend: bool,
 ) {
-    let motion_mode = if extend { MotionMode::Extend } else { MotionMode::Move };
+    let motion_mode = if extend {
+        MotionMode::Extend
+    } else {
+        MotionMode::Move
+    };
     let buf = focused_buffer_id(state, view);
     let focused = state.focused_pane_id;
     match cmd {
         MappableCommand::Motion { fun, .. } => {
             doc_ops::apply_doc_motion(
-                &state.buffers, &mut state.panes.state, focused, buf,
+                &state.buffers,
+                &mut state.panes.state,
+                focused,
+                buf,
                 |b, s| fun(b, s, count, motion_mode),
             );
         }
         MappableCommand::Selection { fun, .. } => {
             doc_ops::apply_doc_motion(
-                &state.buffers, &mut state.panes.state, focused, buf,
+                &state.buffers,
+                &mut state.panes.state,
+                focused,
+                buf,
                 |b, s| fun(b, s, motion_mode),
             );
         }
         MappableCommand::Edit { fun, .. } => {
             doc_ops::apply_doc_edit(
-                &mut state.buffers, &mut state.panes.state, focused, buf, fun,
+                &mut state.buffers,
+                &mut state.panes.state,
+                focused,
+                buf,
+                fun,
             );
         }
         MappableCommand::EditorCmd { fun, .. } => {
@@ -134,7 +157,12 @@ pub(super) fn run_native_body(
 
 /// Commit paste session unless the command is a ring-cycle paste.
 pub(super) fn step_paste_commit(state: &mut EditorState, category: &CmdCategory) {
-    if !matches!(category, CmdCategory::Paste { family: PasteFamily::RingCycle }) {
+    if !matches!(
+        category,
+        CmdCategory::Paste {
+            family: PasteFamily::RingCycle
+        }
+    ) {
         state.commit_paste_session();
     }
 }
@@ -188,7 +216,11 @@ pub(super) fn step_snapshot_recipe(
 ///
 /// Called **after** body for native (smart-p reads old value during body),
 /// **before** body for Steel (outer name pre-stamped; inner `call!` overrides).
-pub(super) fn step_stamp_last_command(state: &mut EditorState, name: Cow<'static, str>, stamps: bool) {
+pub(super) fn step_stamp_last_command(
+    state: &mut EditorState,
+    name: Cow<'static, str>,
+    stamps: bool,
+) {
     if stamps {
         state.last_command = Some(name);
     }
@@ -207,8 +239,11 @@ pub(super) fn step_record_jump(
             .text()
             .char_to_line(current_selections(state, view).primary().head());
         if is_jump || pre_line.abs_diff(post_line) > state.settings.jump_line_threshold {
-            state.panes.jumps[state.focused_pane_id]
-                .push(JumpEntry::from_pre_motion(pre_primary, pre_line, pre_bid));
+            state.panes.jumps[state.focused_pane_id].push(JumpEntry::from_pre_motion(
+                pre_primary,
+                pre_line,
+                pre_bid,
+            ));
         }
     }
 }
@@ -346,7 +381,10 @@ pub(super) fn focused_buffer_read_only(state: &EditorState, view: &EngineView) -
 }
 
 /// Focused pane's selections for the current buffer.
-pub(super) fn current_selections<'a>(state: &'a EditorState, view: &EngineView) -> &'a SelectionSet {
+pub(super) fn current_selections<'a>(
+    state: &'a EditorState,
+    view: &EngineView,
+) -> &'a SelectionSet {
     let bid = focused_buffer_id(state, view);
     &state.panes.state[state.focused_pane_id][bid].selections
 }
@@ -359,7 +397,9 @@ pub(super) fn alternate_buffer(state: &EditorState, view: &EngineView) -> Option
 /// `true` when the focused (pane, buffer) has an open edit group.
 fn is_group_open_current(state: &EditorState, view: &EngineView) -> bool {
     let bid = focused_buffer_id(state, view);
-    state.panes.state[state.focused_pane_id][bid].edit_group.is_some()
+    state.panes.state[state.focused_pane_id][bid]
+        .edit_group
+        .is_some()
 }
 
 /// Open a new edit group on the focused (pane, buffer) pair.
@@ -377,12 +417,22 @@ pub(super) fn commit_edit_group_current(state: &mut EditorState, view: &EngineVi
 }
 
 /// Active search pattern on the focused buffer, if any.
-pub(super) fn search_pattern<'a>(state: &'a EditorState, view: &EngineView) -> Option<&'a SearchPattern> {
-    state.buffers.get(focused_buffer_id(state, view)).search_pattern.as_ref()
+pub(super) fn search_pattern<'a>(
+    state: &'a EditorState,
+    view: &EngineView,
+) -> Option<&'a SearchPattern> {
+    state
+        .buffers
+        .get(focused_buffer_id(state, view))
+        .search_pattern
+        .as_ref()
 }
 
 /// Viewport state of the focused pane.
-pub(super) fn viewport<'a>(state: &EditorState, view: &'a EngineView) -> &'a hume_engine::pane::ViewportState {
+pub(super) fn viewport<'a>(
+    state: &EditorState,
+    view: &'a EngineView,
+) -> &'a hume_engine::pane::ViewportState {
     &view.panes[state.focused_pane_id].viewport
 }
 
@@ -390,7 +440,11 @@ pub(super) fn viewport<'a>(state: &EditorState, view: &'a EngineView) -> &'a hum
 pub(super) fn focused_format_context(
     state: &EditorState,
     view: &EngineView,
-) -> (hume_engine::pane::WrapMode, u8, hume_engine::pane::WhitespaceConfig) {
+) -> (
+    hume_engine::pane::WrapMode,
+    u8,
+    hume_engine::pane::WhitespaceConfig,
+) {
     let buf = doc(state, view);
     let raw_wrap = buf.overrides.wrap_mode(&state.settings);
     let tab_width = buf.overrides.tab_width(&state.settings);
@@ -419,13 +473,21 @@ pub(super) fn switch_to_buffer_without_jump(
 }
 
 /// Replace the focused pane's selections for the current buffer.
-pub(super) fn set_current_selections(state: &mut EditorState, view: &EngineView, sels: SelectionSet) {
+pub(super) fn set_current_selections(
+    state: &mut EditorState,
+    view: &EngineView,
+    sels: SelectionSet,
+) {
     let bid = focused_buffer_id(state, view);
     state.panes.state[state.focused_pane_id][bid].selections = sels;
 }
 
 /// Replace the primary selection in the focused pane (merging overlaps).
-pub(super) fn set_primary_selection(state: &mut EditorState, view: &EngineView, new_sel: hume_editing::selection::Selection) {
+pub(super) fn set_primary_selection(
+    state: &mut EditorState,
+    view: &EngineView,
+    new_sel: hume_editing::selection::Selection,
+) {
     let pid = state.focused_pane_id;
     let bid = focused_buffer_id(state, view);
     let idx = state.panes.state[pid][bid].selections.primary_index();
@@ -465,11 +527,15 @@ pub(super) fn begin_insert_session(state: &mut EditorState, view: &EngineView) {
 
 /// Exit Insert mode and finalise the undo/repeat state.
 pub(super) fn end_insert_session(state: &mut EditorState, view: &EngineView) {
-    let step_back = state.insert_session.as_ref().is_some_and(|s| s.step_back_on_exit);
+    let step_back = state
+        .insert_session
+        .as_ref()
+        .is_some_and(|s| s.step_back_on_exit);
     commit_edit_group_current(state, view);
-    if let (Some(session), Some(action)) =
-        (state.insert_session.take(), state.last_repeatable_action.as_mut())
-    {
+    if let (Some(session), Some(action)) = (
+        state.insert_session.take(),
+        state.last_repeatable_action.as_mut(),
+    ) {
         action.insert_keys = session.keystrokes;
     }
     if step_back {
@@ -497,24 +563,24 @@ pub(super) fn end_insert_session(state: &mut EditorState, view: &EngineView) {
     state.set_mode(Mode::Normal);
 }
 
-mod mode;
 mod edit;
 mod find;
+mod jump;
+mod mode;
 mod scroll;
 mod search;
-mod jump;
-mod typed_file;
 mod typed_buffer;
+mod typed_file;
 mod typed_misc;
 
-pub(super) use mode::*;
 pub(super) use edit::*;
 pub(super) use find::*;
+pub(super) use jump::*;
+pub(super) use mode::*;
 pub(super) use scroll::*;
 pub(super) use search::*;
-pub(super) use jump::*;
-pub(super) use typed_file::*;
 pub(super) use typed_buffer::*;
+pub(super) use typed_file::*;
 pub(super) use typed_misc::*;
 
 // Visual-line commands live in visual_move.rs; re-export for the registry glob.

@@ -89,7 +89,8 @@ fn ctrl_6_warns_when_no_alternate() {
         "no buffer change with no alternate"
     );
     let msg = ed
-        .state.status_msg
+        .state
+        .status_msg
         .as_deref()
         .expect("warning should be reported");
     assert!(
@@ -128,7 +129,11 @@ fn colon_e_hash_opens_alternate() {
 fn colon_e_hash_errors_with_no_alternate() {
     let mut ed = editor_from("-[h]>ello\n");
     type_cmd(&mut ed, ":e #");
-    let msg = ed.state.status_msg.as_deref().expect("error should be reported");
+    let msg = ed
+        .state
+        .status_msg
+        .as_deref()
+        .expect("error should be reported");
     assert!(
         msg.contains("No alternate buffer"),
         "unexpected status: {msg:?}"
@@ -150,14 +155,22 @@ fn colon_e_percent_is_noop_reload() {
         id_before,
         ":e % stays on same buffer"
     );
-    assert_eq!(ed.state.buffers.len(), count_before, ":e % does not duplicate");
+    assert_eq!(
+        ed.state.buffers.len(),
+        count_before,
+        ":e % does not duplicate"
+    );
 }
 
 #[test]
 fn colon_e_percent_errors_with_no_path() {
     let mut ed = editor_from("-[h]>ello\n");
     type_cmd(&mut ed, ":e %");
-    let msg = ed.state.status_msg.as_deref().expect("error should be reported");
+    let msg = ed
+        .state
+        .status_msg
+        .as_deref()
+        .expect("error should be reported");
     assert!(msg.contains("No file name"), "unexpected status: {msg:?}");
 }
 
@@ -169,5 +182,8 @@ fn goto_alternate_file_is_registered_as_jump() {
     let cmd = reg
         .get_mappable("goto-alternate-file")
         .expect("goto-alternate-file must be registered");
-    assert!(cmd.meta().is_jump, "goto-alternate-file must have jump:true");
+    assert!(
+        cmd.meta().is_jump,
+        "goto-alternate-file must have jump:true"
+    );
 }

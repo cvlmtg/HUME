@@ -64,7 +64,10 @@ impl Editor {
         let canonical = hume_platform::fs::canonicalize(expanded_path)?;
         let (bid, is_new) = self.open_or_dedup(&canonical)?;
         if is_new {
-            self.state.buffers.get_mut(bid).set_display_path(Some(display));
+            self.state
+                .buffers
+                .get_mut(bid)
+                .set_display_path(Some(display));
         }
         Ok(())
     }
@@ -261,5 +264,4 @@ impl Editor {
         self.state.panes.state[pid][bid].selections =
             SelectionSet::single(Selection::collapsed(char_pos));
     }
-
 }

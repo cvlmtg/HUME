@@ -49,7 +49,13 @@ pub(crate) fn define_language(
     let extensions = list_to_strings(exts_val, "%define-language! extensions")?;
     let globs = list_to_strings(globs_val, "%define-language! globs")?;
     let shebangs = list_to_strings(shebangs_val, "%define-language! shebangs")?;
-    ctx.pending_language_regs.push(PendingLanguageReg::Identity { name, extensions, globs, shebangs });
+    ctx.pending_language_regs
+        .push(PendingLanguageReg::Identity {
+            name,
+            extensions,
+            globs,
+            shebangs,
+        });
     Ok(SteelVal::Void)
 }
 
@@ -100,8 +106,8 @@ pub(crate) fn language_has_grammar(ctx: &mut SteelCtx, name: SteelVal) -> SteelR
 #[cfg(test)]
 mod tests {
     use super::*;
-    use steel::rvals::IntoSteelVal as _;
     use crate::{PendingLanguageReg, test_support::SteelCtxTestHarness};
+    use steel::rvals::IntoSteelVal as _;
 
     fn str_val(s: &str) -> SteelVal {
         SteelVal::StringV(s.into())
@@ -128,9 +134,15 @@ mod tests {
             empty_list(),
             empty_list(),
         );
-        assert!(result.is_err(), "%define-language! must error in command mode");
+        assert!(
+            result.is_err(),
+            "%define-language! must error in command mode"
+        );
         let msg = result.unwrap_err().to_string();
-        assert!(msg.contains("init"), "error must mention 'init'; got: {msg}");
+        assert!(
+            msg.contains("init"),
+            "error must mention 'init'; got: {msg}"
+        );
     }
 
     /// `%define-language!` rejects a non-string/symbol `name`.
@@ -145,7 +157,10 @@ mod tests {
             empty_list(),
             empty_list(),
         );
-        assert!(result.is_err(), "%define-language! must reject non-string name");
+        assert!(
+            result.is_err(),
+            "%define-language! must reject non-string name"
+        );
     }
 
     /// `%define-language!` in init mode queues a `PendingLanguageReg::Identity`.
@@ -164,7 +179,10 @@ mod tests {
                 empty_list(),
                 empty_list(),
             );
-            assert!(result.is_ok(), "%define-language! must succeed in init mode");
+            assert!(
+                result.is_ok(),
+                "%define-language! must succeed in init mode"
+            );
         }
         assert_eq!(h.pending_language_regs.len(), 1);
         assert!(
@@ -240,10 +258,16 @@ mod tests {
                 str_val("/tmp/highlights.scm"),
             );
             // NullHost.attach_grammar returns Err.
-            assert!(result.is_err(), "NullHost must return Err from attach_grammar");
+            assert!(
+                result.is_err(),
+                "NullHost must return Err from attach_grammar"
+            );
         }
         // Nothing queued — command mode calls the host directly.
-        assert!(h.pending_language_regs.is_empty(), "command mode must not queue pending regs");
+        assert!(
+            h.pending_language_regs.is_empty(),
+            "command mode must not queue pending regs"
+        );
     }
 
     // ── language-has-grammar? ─────────────────────────────────────────────────

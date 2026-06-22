@@ -1,7 +1,4 @@
-use std::sync::{
-    Arc,
-    atomic::AtomicBool,
-};
+use std::sync::{Arc, atomic::AtomicBool};
 
 use steel::gc::unsafe_erased_pointers::CustomReference;
 
@@ -179,8 +176,8 @@ impl<'a> SteelCtx<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::SteelCtxTestHarness;
     use crate::log::LogLevel;
+    use crate::test_support::SteelCtxTestHarness;
 
     // ── Mode discriminant ─────────────────────────────────────────────────────
 
@@ -227,8 +224,10 @@ mod tests {
         let ctx = h.ctx();
         assert_eq!(ctx.focused_pane_id, PaneId::default());
         assert_eq!(ctx.focused_buffer_id, BufferId::default());
-        assert_eq!(ctx.live_focused_buffer_id, ctx.focused_buffer_id,
-            "live_focused_buffer_id must start equal to focused_buffer_id");
+        assert_eq!(
+            ctx.live_focused_buffer_id, ctx.focused_buffer_id,
+            "live_focused_buffer_id must start equal to focused_buffer_id"
+        );
     }
 
     /// `new_command` stores `pending_char` correctly.

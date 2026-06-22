@@ -272,7 +272,8 @@ fn visual_extend_down_crosses_buffer_line() {
     let sel = ed.current_selections().primary();
     assert_eq!(sel.anchor(), 76, "anchor fixed at last sub-row");
     assert_eq!(
-        sel.head(), 81,
+        sel.head(),
+        81,
         "head crosses to first char of next buffer line"
     );
 }
@@ -297,7 +298,8 @@ fn visual_extend_up_enters_previous_line_last_subrow() {
     let sel = ed.current_selections().primary();
     assert_eq!(sel.anchor(), 81, "anchor fixed at line 1 start");
     assert_eq!(
-        sel.head(), 76,
+        sel.head(),
+        76,
         "head enters last sub-row of previous buffer line"
     );
 }
@@ -351,8 +353,16 @@ fn select_word_nearest_scopes_to_visual_subrow() {
     );
 
     let sel = ed.current_selections().primary();
-    assert_ne!(sel.head(), 75, "must NOT snap to '+' across the wrap boundary");
-    assert_eq!(sel.head(), 83, "must snap to 'ratatui' (last char = 'i' at char 83)");
+    assert_ne!(
+        sel.head(),
+        75,
+        "must NOT snap to '+' across the wrap boundary"
+    );
+    assert_eq!(
+        sel.head(),
+        83,
+        "must snap to 'ratatui' (last char = 'i' at char 83)"
+    );
     assert_eq!(sel.horiz(), Some(0), "horiz preserved through snap");
 }
 

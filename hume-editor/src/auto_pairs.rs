@@ -1,9 +1,9 @@
+use crate::ops::edit::apply_edit;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
 use hume_editing::word::{CharClass, classify_char};
-use crate::ops::edit::apply_edit;
 
 // ── Config ────────────────────────────────────────────────────────────────────
 

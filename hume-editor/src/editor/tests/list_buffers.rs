@@ -158,7 +158,10 @@ fn messages_opens_read_only_view_buffer() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.report(Severity::Warning, "test message".to_string());
     ed.execute_typed("messages", None).unwrap();
-    assert!(ed.doc().is_read_only(), ":messages must open a read-only buffer");
+    assert!(
+        ed.doc().is_read_only(),
+        ":messages must open a read-only buffer"
+    );
     assert_eq!(ed.doc().display_name(), "[messages]");
 }
 
@@ -178,7 +181,8 @@ fn view_buffer_arrow_keys_move_cursor_not_select() {
     let sel = ed.current_selections().primary();
     // Selection must be collapsed (anchor == head) — not a whole-line span.
     assert_eq!(
-        sel.anchor(), sel.head(),
+        sel.anchor(),
+        sel.head(),
         "Up in view buffer must produce a collapsed cursor, not a selection"
     );
     assert!(
@@ -207,7 +211,8 @@ fn messages_reuses_existing_view_buffer() {
     ed.execute_typed("messages", None).unwrap();
     // Switch back to the scratch buffer so the second :messages performs a real switch.
     let scratch_id = ed
-        .state.buffers
+        .state
+        .buffers
         .iter()
         .find(|(_, buf)| buf.label.is_none() && buf.path().is_none())
         .map(|(id, _)| id)
@@ -218,11 +223,15 @@ fn messages_reuses_existing_view_buffer() {
 
     // Count buffers with the [messages] label — must be exactly 1.
     let count = ed
-        .state.buffers
+        .state
+        .buffers
         .iter()
         .filter(|(_, buf)| buf.label.as_deref() == Some("[messages]"))
         .count();
-    assert_eq!(count, 1, ":messages must reuse the existing [messages] buffer");
+    assert_eq!(
+        count, 1,
+        ":messages must reuse the existing [messages] buffer"
+    );
 }
 
 /// Editing commands on a read-only view buffer must be silently blocked.
@@ -268,11 +277,15 @@ fn ls_does_not_list_itself_on_second_call() {
 
     // First call: [buffers] doesn't yet exist, so output is clean.
     let out1 = ls_output(&mut ed);
-    assert!(!out1.contains("[buffers]"), "first :ls must not mention [buffers]");
+    assert!(
+        !out1.contains("[buffers]"),
+        "first :ls must not mention [buffers]"
+    );
 
     // Switch back to the scratch buffer so the second :ls triggers a real switch.
     let scratch_id = ed
-        .state.buffers
+        .state
+        .buffers
         .iter()
         .find(|(_, buf)| buf.label.is_none() && buf.path().is_none())
         .map(|(id, _)| id)
@@ -435,15 +448,26 @@ fn view_buffer_save_as_stays_synthetic() {
 
     let content_before = ed.doc().text().to_string();
 
-    ed.execute_typed("w", Some(out_path.to_str().unwrap())).unwrap();
+    ed.execute_typed("w", Some(out_path.to_str().unwrap()))
+        .unwrap();
 
     // File on disk must have the buffer content.
     let written = std::fs::read_to_string(&out_path).unwrap();
-    assert_eq!(written, content_before, "file on disk must match buffer content");
+    assert_eq!(
+        written, content_before,
+        "file on disk must match buffer content"
+    );
 
     // Buffer state must be unchanged — still synthetic, still pathless, still RO.
-    assert!(ed.doc().path().is_none(), "synthetic buffer must stay pathless after :w /path");
-    assert_eq!(ed.doc().display_name(), "[messages]", "label must be preserved");
+    assert!(
+        ed.doc().path().is_none(),
+        "synthetic buffer must stay pathless after :w /path"
+    );
+    assert_eq!(
+        ed.doc().display_name(),
+        "[messages]",
+        "label must be preserved"
+    );
     assert!(ed.doc().is_synthetic(), "is_synthetic() must remain true");
     assert!(ed.doc().is_read_only(), "is_read_only() must remain true");
 }
@@ -468,6 +492,10 @@ fn synthetic_buffer_e_bang_errors() {
 
     // Buffer must be untouched.
     assert!(ed.doc().is_synthetic(), "buffer must still be synthetic");
-    assert_eq!(ed.doc().display_name(), "[messages]", "label must be preserved");
+    assert_eq!(
+        ed.doc().display_name(),
+        "[messages]",
+        "label must be preserved"
+    );
     assert!(ed.doc().is_read_only(), "buffer must still be read-only");
 }

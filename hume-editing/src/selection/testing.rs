@@ -32,23 +32,33 @@ pub fn parse_state(input: &str) -> (Text, SelectionSet) {
         match (&state, ch) {
             (State::Normal, '-') if chars.peek() == Some(&'[') => {
                 chars.next();
-                state = State::InForward { anchor_offset: char_count(&text) };
+                state = State::InForward {
+                    anchor_offset: char_count(&text),
+                };
             }
             (State::Normal, '<') if chars.peek() == Some(&'[') => {
                 chars.next();
-                state = State::InBackward { head_offset: char_count(&text) };
+                state = State::InBackward {
+                    head_offset: char_count(&text),
+                };
             }
             (State::InForward { anchor_offset }, ']') if chars.peek() == Some(&'>') => {
                 chars.next();
                 let count = char_count(&text);
-                assert!(count > *anchor_offset, "parse_state: empty selection in {input:?}");
+                assert!(
+                    count > *anchor_offset,
+                    "parse_state: empty selection in {input:?}"
+                );
                 selections.push(Selection::new(*anchor_offset, count - 1));
                 state = State::Normal;
             }
             (State::InBackward { head_offset }, ']') if chars.peek() == Some(&'-') => {
                 chars.next();
                 let count = char_count(&text);
-                assert!(count > *head_offset, "parse_state: empty selection in {input:?}");
+                assert!(
+                    count > *head_offset,
+                    "parse_state: empty selection in {input:?}"
+                );
                 selections.push(Selection::new(count - 1, *head_offset));
                 state = State::Normal;
             }
@@ -59,6 +69,12 @@ pub fn parse_state(input: &str) -> (Text, SelectionSet) {
         !selections.is_empty(),
         "parse_state: no selection markers in {input:?}"
     );
-    assert!(text.ends_with('\n'), "parse_state: buffer must end with '\\n'");
-    (Text::from(text.as_str()), SelectionSet::from_vec(selections, 0))
+    assert!(
+        text.ends_with('\n'),
+        "parse_state: buffer must end with '\\n'"
+    );
+    (
+        Text::from(text.as_str()),
+        SelectionSet::from_vec(selections, 0),
+    )
 }

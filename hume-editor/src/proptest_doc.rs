@@ -13,9 +13,6 @@
 mod tests {
     use proptest::prelude::*;
 
-    use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::Text;
-    use hume_editing::changeset::ChangeSet;
     use crate::editor::buffer::Buffer;
     use crate::ops::MotionMode;
     use crate::ops::edit::{
@@ -31,6 +28,9 @@ mod tests {
         cmd_flip_selections, cmd_keep_primary_selection,
     };
     use crate::ops::text_object::{cmd_around_word, cmd_inner_line, cmd_inner_word};
+    use hume_editing::changeset::ChangeSet;
+    use hume_editing::selection::{Selection, SelectionSet};
+    use hume_editing::text::Text;
 
     // ── DocHelper — thin wrapper keeping sels alongside Buffer ────────────────
 

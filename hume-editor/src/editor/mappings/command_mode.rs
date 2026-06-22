@@ -1,10 +1,10 @@
 use crossterm::event::KeyEvent;
 
 use super::super::minibuf::MiniBufferEvent;
+use super::super::minibuf_history::{HistoryDir, HistoryKind};
 use super::super::registry::MappableCommand;
 use super::super::{Editor, Mode, Severity};
 use crate::editor::error::CommandError;
-use super::super::minibuf_history::{HistoryDir, HistoryKind};
 
 impl Editor {
     // ── Command mode ──────────────────────────────────────────────────────────
@@ -31,7 +31,8 @@ impl Editor {
                 // we just dismiss the popup and restart completion for the
                 // directory's children.
                 if self
-                    .state.completion
+                    .state
+                    .completion
                     .as_ref()
                     .and_then(|s| s.candidates.get(s.selected))
                     .is_some_and(|c| c.replacement.ends_with('/'))
@@ -63,7 +64,8 @@ impl Editor {
             | MiniBufferEvent::Edited
             | MiniBufferEvent::CursorMoved => {
                 self.state.completion = None;
-                self.state.history
+                self.state
+                    .history
                     .get_mut(HistoryKind::Command)
                     .demote_to_scratch();
             }
@@ -94,7 +96,8 @@ impl Editor {
     /// minibuffer or when the ring has nowhere to go.
     pub(super) fn recall_history(&mut self, kind: HistoryKind, dir: HistoryDir) {
         let current = self
-            .state.minibuf
+            .state
+            .minibuf
             .as_ref()
             .map(|m| m.input.as_str())
             .unwrap_or("");
@@ -183,7 +186,11 @@ impl Editor {
                 Some((cmd_raw, _)) => {
                     // Resolve alias → canonical name.
                     let cmd = cmd_raw.strip_suffix('!').unwrap_or(cmd_raw);
-                    let canonical = self.state.registry.get_typed(cmd).map(|tc| tc.name.as_ref());
+                    let canonical = self
+                        .state
+                        .registry
+                        .get_typed(cmd)
+                        .map(|tc| tc.name.as_ref());
                     match canonical {
                         Some("edit" | "write" | "write-quit") => {
                             PathCompleter { dirs_only: false }.complete(&input, cursor, &ctx)
@@ -236,7 +243,8 @@ impl Editor {
     /// Called just before the mini-buffer is cleared and mode returns to Normal.
     fn execute_command(&mut self) {
         let input = self
-            .state.minibuf
+            .state
+            .minibuf
             .as_ref()
             .map(|m| m.input.trim().to_owned())
             .unwrap_or_default();
@@ -284,9 +292,7 @@ impl Editor {
                 }
             }
             let steel_args = if let MappableCommand::SteelBacked {
-                arity,
-                is_variadic,
-                ..
+                arity, is_variadic, ..
             } = &mappable
             {
                 use steel::rvals::SteelVal;
@@ -365,7 +371,8 @@ fn expand_command_arg(ed: &Editor, arg: &str) -> Result<String, CommandError> {
                     .alternate_buffer()
                     .ok_or_else(|| CommandError::new("No alternate buffer"))?;
                 let alt_path = ed
-                    .state.buffers
+                    .state
+                    .buffers
                     .get(alt_id)
                     .path()
                     .ok_or_else(|| CommandError::new("Alternate buffer has no file name"))?;

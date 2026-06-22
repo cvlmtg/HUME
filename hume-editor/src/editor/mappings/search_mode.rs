@@ -3,11 +3,11 @@ use std::sync::Arc;
 use crossterm::event::KeyEvent;
 
 use super::super::commands::search_sel;
-use super::super::minibuf::MiniBufferEvent;
-use super::super::{search_ops, Editor, Mode, SearchDirection};
 use super::super::jump_list::JumpEntry;
+use super::super::minibuf::MiniBufferEvent;
 use super::super::minibuf_history::{HistoryDir, HistoryStore};
 use super::super::search_state::SearchPattern;
+use super::super::{Editor, Mode, SearchDirection, search_ops};
 use crate::ops::search::{compile_search_regex, find_next_match};
 
 impl Editor {
@@ -23,14 +23,17 @@ impl Editor {
             MiniBufferEvent::Confirm(pattern) => {
                 // Record into the correct search ring before closing the minibuf.
                 let kind = self
-                    .state.minibuf
+                    .state
+                    .minibuf
                     .as_ref()
                     .and_then(|m| HistoryStore::kind_for_prompt(m.prompt));
                 if let Some(k) = kind {
                     self.state.history.get_mut(k).push(pattern.clone());
                 }
                 // Persist pattern in 's' register for future n/N.
-                self.state.registers.write_text(crate::ops::register::SEARCH_REGISTER, vec![pattern]);
+                self.state
+                    .registers
+                    .write_text(crate::ops::register::SEARCH_REGISTER, vec![pattern]);
                 // Record the pre-search position in the jump list before
                 // discarding it — the search moved the cursor to the match.
                 let pid = self.state.focused_pane_id;
@@ -49,7 +52,11 @@ impl Editor {
                 // stay in Search mode. A second Backspace (BackspaceOnEmpty) dismisses.
                 self.restore_search_snapshot();
                 let bid = self.focused_buffer_id();
-                search_ops::clear_buffer_search(&mut self.state.buffers, &mut self.state.panes.state, bid);
+                search_ops::clear_buffer_search(
+                    &mut self.state.buffers,
+                    &mut self.state.panes.state,
+                    bid,
+                );
             }
             MiniBufferEvent::BackspaceOnEmpty => {
                 // Input already empty — user pressed Backspace a second time to dismiss.
@@ -57,7 +64,8 @@ impl Editor {
             }
             MiniBufferEvent::Edited => {
                 if let Some(k) = self
-                    .state.minibuf
+                    .state
+                    .minibuf
                     .as_ref()
                     .and_then(|m| HistoryStore::kind_for_prompt(m.prompt))
                 {
@@ -116,7 +124,11 @@ impl Editor {
         let Some(regex) = compile_search_regex(&pattern) else {
             // Invalid regex in progress — clear pattern so highlights disappear.
             let bid = self.focused_buffer_id();
-            search_ops::clear_buffer_search(&mut self.state.buffers, &mut self.state.panes.state, bid);
+            search_ops::clear_buffer_search(
+                &mut self.state.buffers,
+                &mut self.state.panes.state,
+                bid,
+            );
             return;
         };
 
