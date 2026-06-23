@@ -155,6 +155,8 @@ Wrap each selection with a delimiter pair. Press `m w` then a character; if it's
 | `[` | Within a paste session: cycle one step older and re-paste |
 | `]` | Within a paste session: cycle one step newer and re-paste |
 | `r <char>` | Replace every character in each selection with `<char>` |
+| `J` | Join the current line with the next, replacing the newline with a space; cursor lands on the inserted space. If the selection spans multiple lines, all are joined into one. |
+| `&` | Align all selections to the column of the primary selection's anchor. Spaces are inserted or removed at the left edge of each selection. Multi-line selections are left unchanged. |
 | `u` | Undo |
 | `U` / `Ctrl+r` | Redo |
 | `.` | Repeat last editing action |
