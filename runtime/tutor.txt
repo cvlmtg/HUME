@@ -537,9 +537,13 @@ replacing it. Press `e` again to leave Extend mode. Check the
 bottom-right corner of the window — it shows the current mode
 ( EXT  when active,  NOR  when not).
 
+Selection-consuming edits — delete, change, paste, replace — exit
+Extend mode automatically and return you to Normal. Yank (`y`) keeps
+you in Extend mode so you can extend further before acting.
+
   >> Press `e` to enter Extend mode, then press `w` several times to
      grow the selection across multiple words. Press `d` to delete the
-     entire extended selection, then `e` again to leave Extend mode:
+     span — you will land back in Normal mode automatically:
 
   Extend: remove all of these words right here.
 
@@ -581,7 +585,15 @@ Ctrl+w / Ctrl+f / Ctrl+t do nothing — use Extend mode instead.
   Ctrl+; collapse the selection to a single-character selection at ANCHOR
   Ctrl+, remove the PRIMARY selection (the next becomes primary)
 
+Both `;` and `Ctrl+;` also exit Extend mode if it is active.
+
 Note: `Ctrl+;` and `Ctrl+,` require the kitty keyboard protocol.
+
+Support for this protocol varies between terminals. Some implement only
+part of it, some have rough edges, and some need it enabled in their
+configuration. If a key like `Ctrl+;` does nothing in your terminal,
+check its documentation for keyboard-protocol settings — or fall back to
+the plain `;` and `,` commands above.
 
 After a multi-cursor operation (e.g. `%` then `s`), you may have
 many cursors. Use `,` to get back to just one.
@@ -720,6 +732,8 @@ reads from a specific register. Valid register names:
 
   "5y   yank into in-memory register  5    "5p   paste from register  5
   (registers 0–9 are symmetric named storage — "Ny/"Np round-trip)
+  Note: digit registers are shared with macros — recording `Q5` overwrites
+  any text stored in register 5, and `"5y` overwrites any macro there.
 
   "kp   paste from the kill-ring head (most recent kill)
   "ky   push yank onto the kill ring (ring only, no clipboard)
@@ -736,7 +750,7 @@ MACROS
 
 HUME uses uppercase to record and lowercase to replay.
 
-UNDO TREE
+UNDO
 
 Undo is linear: `u` steps back, `U` / `Ctrl+r` step forward.
 
