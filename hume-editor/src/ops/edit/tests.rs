@@ -386,6 +386,76 @@ fn delete_selection_multi_char_ends_at_grapheme_base() {
     );
 }
 
+// ── delete_selection — last-line whole-line deletion ──────────────────────
+
+#[test]
+fn delete_selection_last_line_removes_line_not_content() {
+    // "foo\nbar\n": x on last line selects [4,7] (anchor 4, head on structural
+    // '\n' at 7). Deleting must remove the preceding '\n' so "bar" vanishes
+    // entirely — result "foo\n", cursor at start of "foo" (pos 0 = 'f').
+    assert_state!(
+        "foo\n-[bar\n]>",
+        |(buf, sels)| delete_selection(buf, sels),
+        "-[f]>oo\n"
+    );
+}
+
+#[test]
+fn delete_selection_last_line_with_empty_preceding_line() {
+    // "foo\n\nbar\n": delete last line → "foo\n\n", cursor on the now-last
+    // empty line ('\n' at pos 4).
+    assert_state!(
+        "foo\n\n-[bar\n]>",
+        |(buf, sels)| delete_selection(buf, sels),
+        "foo\n-[\n]>"
+    );
+}
+
+#[test]
+fn delete_selection_last_line_single_line_still_empties() {
+    // Single-line buffer "foo\n": selection [0,3] — no preceding line, so the
+    // normal cap applies: only content deleted, structural '\n' kept.
+    assert_state!(
+        "-[foo\n]>",
+        |(buf, sels)| delete_selection(buf, sels),
+        "-[\n]>"
+    );
+}
+
+#[test]
+fn delete_selection_whole_buffer_caps_at_last_content_char() {
+    // "foo\nbar\n", selection [0,7]: start==0, no preceding line, normal cap.
+    // "foo\n" is not at line boundary for preceding detection (start==0).
+    assert_state!(
+        "-[foo\nbar\n]>",
+        |(buf, sels)| delete_selection(buf, sels),
+        "-[\n]>"
+    );
+}
+
+#[test]
+fn delete_selection_partial_last_line_still_caps() {
+    // "foo\nbar\n", select [5,7] (head on structural '\n', but NOT at line
+    // start — anchor is mid-line 'a'). Must use normal capped path: deletes
+    // "ar", leaves "foo\nb\n", cursor at pos 5 = '\n' (deletion point).
+    assert_state!(
+        "foo\nb-[ar\n]>",
+        |(buf, sels)| delete_selection(buf, sels),
+        "foo\nb-[\n]>"
+    );
+}
+
+#[test]
+fn delete_selection_three_lines_delete_last() {
+    // "a\nb\nc\n": x selects last line [4,6] (anchor 4 'c', head 6 '\n').
+    // After delete: "a\nb\n", cursor at start of "b" line (pos 2).
+    assert_state!(
+        "a\nb\n-[c\n]>",
+        |(buf, sels)| delete_selection(buf, sels),
+        "a\n-[b]>\n"
+    );
+}
+
 // ── paste_after ───────────────────────────────────────────────────────────
 
 fn pa(buf: Text, sels: SelectionSet, values: &[String]) -> (Text, SelectionSet, ChangeSet) {

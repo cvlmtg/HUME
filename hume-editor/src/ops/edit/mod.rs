@@ -166,6 +166,13 @@ fn delete_one_grapheme(
 /// trailing `\n` is never removed — matching the protection in
 /// `delete_one_grapheme`.
 ///
+/// **Last-line whole-line special case**: when the selection spans the entire
+/// last content line (head on the structural `\n`, anchor at the line's start)
+/// *and* there is a preceding line, the preceding `\n` is consumed instead of
+/// the structural one. This matches the vim `dd`-on-last-line convention:
+/// rather than leaving a blank trailing line the line merges back into the one
+/// above it by removing the separator newline.
+///
 /// Shared by `delete_char_forward` and `delete_char_backward`, which have
 /// identical selection branches.
 fn delete_sel_region(
@@ -175,12 +182,43 @@ fn delete_sel_region(
     new_sels: &mut Vec<Selection>,
 ) {
     let start = sel.start();
-    // Cap at the last content char so the structural trailing '\n' is never removed.
-    let end_incl = sel.end_inclusive(buf).min(buf.last_content_char());
-    b.retain(start - b.old_pos());
-    b.delete(end_incl + 1 - start); // end_incl inclusive → +1 for exclusive bound
-    let sel = Selection::collapsed(b.new_pos());
-    new_sels.push(sel);
+    // Detect "whole last line": head is on the structural trailing '\n' AND the
+    // selection begins right at a line start (i.e. the char immediately before
+    // `start` is the '\n' of the previous line).
+    let on_structural = sel.end_inclusive(buf) > buf.last_content_char();
+    let has_prev_line =
+        start > 0 && buf.char_at(prev_grapheme_boundary(buf, start)) == Some('\n');
+
+    let del_start = if has_prev_line {
+        prev_grapheme_boundary(buf, start)
+    } else {
+        start
+    };
+    if on_structural && has_prev_line && del_start >= b.old_pos() {
+        // Consume the preceding '\n' instead of the structural one so that the
+        // last line disappears rather than becoming an empty trailing line.
+        // Cursor: land at the start of the now-last line (what was the line
+        // above the deleted one).
+        let prev_line = buf.char_to_line(del_start);
+        let cursor_line_start = buf.line_to_char(prev_line);
+        // `cursor_line_start` is in original-buffer coordinate space. Translate
+        // to the result space: add however many chars were already retained/deleted
+        // by earlier selections in this pass. `saturating_sub` guards the rare
+        // multi-cursor case where a prior selection overlapped into this region.
+        let cursor_new = b.new_pos() + cursor_line_start.saturating_sub(b.old_pos());
+        b.retain(del_start - b.old_pos());
+        // Delete from the preceding '\n' through the last content char, keeping
+        // the structural trailing '\n'.
+        b.delete(buf.last_content_char() + 1 - del_start);
+        new_sels.push(Selection::collapsed(cursor_new));
+    } else {
+        // Normal path: cap at the last content char so the structural '\n' is
+        // never removed.
+        let end_incl = sel.end_inclusive(buf).min(buf.last_content_char());
+        b.retain(start - b.old_pos());
+        b.delete(end_incl + 1 - start); // end_incl inclusive → +1 for exclusive bound
+        new_sels.push(Selection::collapsed(b.new_pos()));
+    }
 }
 
 /// Private implementation shared by [`paste_after`] and [`paste_before`].
