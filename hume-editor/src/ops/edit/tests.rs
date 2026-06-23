@@ -1280,3 +1280,143 @@ fn join_lines_cursor_on_last_line_noop() {
         "1\n2\n3\n4\n-[5]>\n"
     );
 }
+
+// ── align_selections ──────────────────────────────────────────────────────────
+
+#[test]
+fn align_single_selection_noop() {
+    // Only the primary: always at target col, no change.
+    assert_state!(
+        "foo -[=]> 1\n",
+        |(buf, sels)| align_selections(buf, sels),
+        "foo -[=]> 1\n"
+    );
+}
+
+#[test]
+fn align_forward_insert_spaces() {
+    // Primary '=' at col 4 ("foo ="). Secondary '=' at col 3 ("fo =").
+    // One space inserted before secondary to reach col 4.
+    assert_state!(
+        "foo -[=]> 1\nfo -[=]> 2\n",
+        |(buf, sels)| align_selections(buf, sels),
+        "foo -[=]> 1\nfo  -[=]> 2\n"
+    );
+}
+
+#[test]
+fn align_forward_multiple_spaces_inserted() {
+    // Primary '=' at col 2 (on line "ab=c"). Secondary '=' at col 0 (on line "=de").
+    // Two spaces inserted before secondary to reach col 2.
+    // "foo = 1" has no selection — just buffer content.
+    assert_state!(
+        "foo = 1\nab-[=]>c\n-[=]>de\n",
+        |(buf, sels)| align_selections(buf, sels),
+        "foo = 1\nab-[=]>c\n  -[=]>de\n"
+    );
+}
+
+#[test]
+fn align_forward_two_secondaries_insert() {
+    // Primary '=' at col 6 (first sel). Both secondaries need spaces.
+    // "foobar = 1"   — primary '=' at col 7
+    // "foo = 2"      — secondary '=' at col 4, needs 3 spaces
+    // "fo = 3"       — secondary '=' at col 3, needs 4 spaces
+    assert_state!(
+        "foobar -[=]> 1\nfoo -[=]> 2\nfo -[=]> 3\n",
+        |(buf, sels)| align_selections(buf, sels),
+        "foobar -[=]> 1\nfoo    -[=]> 2\nfo     -[=]> 3\n"
+    );
+}
+
+#[test]
+fn align_forward_remove_spaces() {
+    // Primary '=' at col 3. Secondary '=' at col 6 (has 3 extra spaces before it).
+    // Removing 3 spaces. Available = 3, so max removable = 3-1 = 2.
+    // col 6 - col 3 = 3 spaces to remove, but only 3 available so max = 2.
+    // Result: secondary '=' moves to col 4 (removed 2 spaces).
+    assert_state!(
+        "fo -[=]> 1\nfoo   -[=]> 2\n",
+        |(buf, sels)| align_selections(buf, sels),
+        "fo -[=]> 1\nfoo -[=]> 2\n"
+    );
+}
+
+#[test]
+fn align_forward_clamped_removal_one_space_left() {
+    // Primary '=' at col 2. Secondary '=' at col 7 with only 2 spaces before it.
+    // Need to remove 5 but avail=2 → max removable = N-1 = 1. One space removed.
+    // Secondary lands at col 6, stopping short of primary's col 2.
+    assert_state!(
+        "ab-[=]>\nabcde  -[=]>\n",
+        |(buf, sels)| align_selections(buf, sels),
+        "ab-[=]>\nabcde -[=]>\n"
+    );
+}
+
+#[test]
+fn align_clamped_exactly_one_space_available_removes_nothing() {
+    // Only 1 space before secondary — N-1 = 0, nothing removed.
+    assert_state!(
+        "fo -[=]>\nfoo -[=]>\n",
+        |(buf, sels)| align_selections(buf, sels),
+        "fo -[=]>\nfoo -[=]>\n"
+    );
+}
+
+#[test]
+fn align_bidirectional_insert_and_remove() {
+    // Primary (first sel) '=' at col 4.
+    // Second sel '=' at col 3 — insert 1 space → col 4.
+    // Third sel '=' at col 6 with 3 spaces before it — need -2, avail=3,
+    // max_remove = N-1 = 2 → remove 2, col 4.
+    assert_state!(
+        "foo -[=]>\nfo -[=]>\nfoo   -[=]>\n",
+        |(buf, sels)| align_selections(buf, sels),
+        "foo -[=]>\nfo  -[=]>\nfoo -[=]>\n"
+    );
+}
+
+#[test]
+fn align_direction_preserved_forward() {
+    // Forward selection spans multiple chars; direction preserved after align.
+    assert_state!(
+        "foo -[== ]> 1\nfo -[== ]> 2\n",
+        |(buf, sels)| align_selections(buf, sels),
+        "foo -[== ]> 1\nfo  -[== ]> 2\n"
+    );
+}
+
+#[test]
+fn align_backward_selection_right_aligns() {
+    // Backward selection: anchor = right edge. Primary anchor at col 5.
+    // "foo  = 1" — primary, backward '=' anchor at col 5.
+    // "foo = 2"  — secondary, backward '=' anchor at col 4. Insert 1 space.
+    assert_state!(
+        "foo  <[=]- 1\nfoo <[=]- 2\n",
+        |(buf, sels)| align_selections(buf, sels),
+        "foo  <[=]- 1\nfoo  <[=]- 2\n"
+    );
+}
+
+#[test]
+fn align_multiline_passthrough() {
+    // Primary '=' at col 4. Single-line secondary '=' at col 3 — gets +1 space.
+    // Multiline "bar\nbaz" spans two lines — passed through unchanged, but its
+    // buffer positions shift by +1 (the space inserted for the single-line sel).
+    assert_state!(
+        "foo -[=]>\nfo -[=]>\nfoo -[bar\nbaz]>\n",
+        |(buf, sels)| align_selections(buf, sels),
+        "foo -[=]>\nfo  -[=]>\nfoo -[bar\nbaz]>\n"
+    );
+}
+
+#[test]
+fn align_primary_unchanged() {
+    // Primary selection itself is never modified (amount == 0).
+    assert_state!(
+        "foo -[=]>\nfoo -[=]>\n",
+        |(buf, sels)| align_selections(buf, sels),
+        "foo -[=]>\nfoo -[=]>\n"
+    );
+}

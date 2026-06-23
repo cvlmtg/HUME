@@ -1,5 +1,7 @@
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
-use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use hume_editing::grapheme::{
+    grapheme_col_in_line, next_grapheme_boundary, prev_grapheme_boundary,
+};
 use hume_editing::lines::{is_line_start, line_end_exclusive};
 use hume_editing::selection::{Selection, SelectionSet, is_selection_linewise};
 use hume_editing::text::Text;
@@ -726,6 +728,78 @@ pub(crate) fn join_lines_select_spaces(
     };
 
     (new_buf, new_sel_set, cs)
+}
+
+/// Align each selection's anchor to the column of the primary selection's anchor.
+///
+/// For forward selections the anchor is the left edge, producing left-alignment.
+/// For backward selections the anchor is the right edge, producing right-alignment.
+///
+/// Spaces are inserted or removed at the selection's left edge to reach the target
+/// column. Removal is clamped so at least one space always remains before the
+/// selection (the selection never runs into the preceding text). Multiline
+/// selections are passed through unchanged.
+pub(crate) fn align_selections(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, ChangeSet) {
+    let primary = sels.primary();
+    let primary_line = buf.char_to_line(primary.anchor());
+    let target_col = grapheme_col_in_line(&buf, primary_line, primary.anchor());
+
+    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+        let sel_start = sel.start();
+        let sel_end = sel.end_inclusive(buf);
+        let content_len = sel_end + 1 - sel_start;
+        let forward = sel.anchor() <= sel.head();
+
+        let start_line = buf.char_to_line(sel_start);
+
+        // Multiline: pass through, shifted by any accumulated delta from prior edits.
+        if start_line != buf.char_to_line(sel_end) {
+            b.retain(sel_start - b.old_pos());
+            let delta = b.new_pos() as isize - b.old_pos() as isize;
+            b.retain(content_len);
+            let new_anchor = (sel.anchor() as isize + delta) as usize;
+            let new_head = (sel.head() as isize + delta) as usize;
+            new_sels.push(Selection::new(new_anchor, new_head));
+            return;
+        }
+
+        let anchor_col = grapheme_col_in_line(buf, start_line, sel.anchor());
+        let amount = target_col as isize - anchor_col as isize;
+
+        if amount > 0 {
+            // Insert spaces before the selection to reach the target column.
+            b.retain(sel_start - b.old_pos());
+            b.insert(&" ".repeat(amount as usize));
+        } else if amount < 0 {
+            // Remove spaces immediately before the selection, keeping at least one
+            // so the selection never collides with the preceding text.
+            let line_start = buf.line_to_char(start_line);
+            let avail: usize = (line_start..sel_start)
+                .rev()
+                .take_while(|&p| buf.char_at(p) == Some(' '))
+                .count();
+            let remove = ((-amount) as usize)
+                .min(avail.saturating_sub(1))
+                // Guard against two selections on the same line: never step past
+                // b.old_pos(), which already consumed earlier content on this line.
+                .min(sel_start.saturating_sub(b.old_pos()));
+            b.retain((sel_start - remove) - b.old_pos());
+            if remove > 0 {
+                b.delete(remove);
+            }
+        } else {
+            b.retain(sel_start - b.old_pos());
+        }
+
+        // b.old_pos() is now at sel_start. Record where sel_start maps in the
+        // new buffer, then retain the selection content unchanged.
+        let new_start = b.new_pos();
+        b.retain(content_len);
+        // Use sel.end() (not end_inclusive) so the anchor/head land on the
+        // grapheme boundary they were on, not on a trailing combining codepoint.
+        let new_end = new_start + (sel.end() - sel_start);
+        new_sels.push(Selection::directed(new_start, new_end, forward));
+    })
 }
 
 #[cfg(test)]

@@ -684,6 +684,14 @@ impl CommandRegistry {
         .repeatable()
         .clears_extend()
         .reg(self);
+        ecmd(
+            "align-selections",
+            "Align each selection's anchor to the primary selection's anchor column.",
+            cmd_align_selections,
+        )
+        .repeatable()
+        .clears_extend()
+        .reg(self);
         ecmd("undo", "Undo the last change.", cmd_undo).reg(self);
         ecmd("redo", "Redo the last undone change.", cmd_redo).reg(self);
 
