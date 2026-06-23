@@ -291,6 +291,11 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
 
     // ── Extend mode ───────────────────────────────────────────────────────────
     t.bind_leaf(key!('e'), cmd!("toggle-extend"));
+    // Ctrl+e flips anchor↔head (same as `o` in Extend mode). Unlike Ctrl+;,
+    // this emits a real control byte (0x05), so it works on legacy terminals
+    // that don't support the kitty keyboard protocol. In Extend mode it falls
+    // through to here with extend=true; flip-selections ignores MotionMode.
+    t.bind_leaf(key!(Ctrl + 'e'), cmd!("flip-selections"));
 
     // ── Edit ──────────────────────────────────────────────────────────────────
     t.bind_leaf(key!('d'), cmd!("delete"));
@@ -652,6 +657,11 @@ mod tests {
             matches!(trie.walk(&[key!(Ctrl + 'x')]), WalkResult::Leaf(ref cmd) if cmd.name == "select-line"),
             "Ctrl+x should map to select-line"
         );
+        // Ctrl+e flips anchor↔head and works on legacy terminals (0x05 control byte).
+        assert!(
+            matches!(trie.walk(&[key!(Ctrl + 'e')]), WalkResult::Leaf(ref cmd) if cmd.name == "flip-selections"),
+            "Ctrl+e should map to flip-selections"
+        );
         // Ctrl+w is deliberately unbound (kitty one-shot extend via strip-CONTROL).
         assert!(
             matches!(trie.walk(&[key!(Ctrl + 'w')]), WalkResult::NoMatch),
@@ -749,6 +759,7 @@ mod tests {
             key!(Ctrl + 'i'),
             key!(Tab),
             key!(Ctrl + 'p'), // pane prefix (Interior)
+            key!(Ctrl + 'e'), // flip-selections
         ];
         for k in must_be_bound {
             assert!(

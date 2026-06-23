@@ -595,6 +595,15 @@ configuration. If a key like `Ctrl+;` does nothing in your terminal,
 check its documentation for keyboard-protocol settings — or fall back to
 the plain `;` and `,` commands above.
 
+FLIPPING THE SELECTION
+
+  o         (in Extend mode) swap anchor and head
+  Ctrl+e    swap anchor and head — works in Normal and Extend mode,
+            and works on all terminals (does not require kitty)
+
+Flipping is useful after growing a selection: if you extended too far in
+one direction, flip to put the cursor at the other end and trim back.
+
 After a multi-cursor operation (e.g. `%` then `s`), you may have
 many cursors. Use `,` to get back to just one.
 
@@ -645,6 +654,7 @@ several lines, then make the same edit on all of them at once.
   x / X       select line down / up     e       extend mode toggle
   ;           collapse to head          ,       keep primary only
   Ctrl+;      collapse to anchor        Ctrl+,  remove primary
+  Ctrl+e      flip anchor ↔ head (all terminals)
   ( / )       cycle primary             C       copy on next line
   _           trim whitespace           S       split on newlines
   Ctrl+w / Ctrl+f<c> / Ctrl+t<c>   one-shot extend (kitty only)

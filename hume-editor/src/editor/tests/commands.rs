@@ -679,6 +679,37 @@ fn o_in_normal_mode_still_opens_line_below() {
     assert_eq!(ed.doc().text().to_string(), "hello\n\n");
 }
 
+// ── `Ctrl+e` flips the selection in Normal AND Extend mode ───────────────────
+
+/// `Ctrl+e` in Normal mode must swap anchor and head — same effect as `o` in
+/// Extend mode. This works on legacy terminals because `Ctrl+e` emits 0x05.
+#[test]
+fn ctrl_e_in_normal_mode_flips_selection() {
+    let mut ed = editor_from("-[hell]>o\n");
+    // Normal mode (the default) — no Extend active.
+
+    ed.handle_key(key_ctrl('e'));
+
+    // anchor and head are swapped; selection is now backward.
+    assert_eq!(state(&ed), "<[hell]-o\n");
+    // Normal mode stays; flip does not enter or exit Extend.
+    assert_eq!(ed.state.mode, Mode::Normal);
+}
+
+/// `Ctrl+e` in Extend mode also flips (it falls through to the Normal trie with
+/// extend=true; `cmd_flip_selections` ignores MotionMode, so the result is the
+/// same as `o`). Extend mode must remain active after the flip.
+#[test]
+fn ctrl_e_in_extend_mode_flips_selection() {
+    let mut ed = editor_from("-[hell]>o\n");
+    ed.state.mode = Mode::Extend;
+
+    ed.handle_key(key_ctrl('e'));
+
+    assert_eq!(state(&ed), "<[hell]-o\n");
+    assert_eq!(ed.state.mode, Mode::Extend);
+}
+
 // ── `;` collapses selection AND clears extend mode ─────────────────────────
 
 /// `;` must (a) collapse every selection to its head and (b) clear the

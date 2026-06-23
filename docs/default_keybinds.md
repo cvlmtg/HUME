@@ -187,6 +187,7 @@ To force a specific source, use the register prefix `"`:
 | `Ctrl+;` | Collapse selections to anchor, exit extend mode (kitty only) |
 | `,` | Keep only the primary selection |
 | `Ctrl+,` | Remove primary selection, promote next (kitty only) |
+| `Ctrl+e` | Flip anchor and head of each selection (works in kitty and legacy) |
 | `S` | Split multi-line selections — one selection per line |
 | `(` | Cycle primary selection backward |
 | `)` | Cycle primary selection forward |
@@ -266,6 +267,7 @@ Extend mode has a sparse keymap. Keys not listed below fall through to the norma
 | Key | Command |
 |-----|---------|
 | `o` | Flip anchor and head of each selection |
+| `Ctrl+e` | Flip anchor and head of each selection (falls through from normal mode) |
 
 All other keys behave as in normal mode, but motions and selections grow the current selection instead of replacing it.
 
