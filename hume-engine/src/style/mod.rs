@@ -241,6 +241,13 @@ fn collect_selection_spans(
     let row_last_char_excl = row_gs.last().map_or(0, |g| g.char_offset.saturating_add(1));
 
     for (idx, sel) in sorted_sels.iter().enumerate() {
+        // A collapsed selection (anchor == head) has no extent to paint — the
+        // cursor at Tier 0 is its sole representation. Emitting a 1-cell span
+        // here is invisible under the Normal block cursor but leaks through the
+        // transparent Insert bar cursor as a spuriously highlighted cell.
+        if sel.is_collapsed() {
+            continue;
+        }
         let (start, end) = sel.range(); // (usize, usize) absolute char offsets
 
         // Skip if the selection doesn't overlap this line at all.
@@ -674,6 +681,49 @@ mod tests {
             Some(ratatui::style::Color::Blue),
             "col 2 is the anchor — must have selection bg (regression)"
         );
+    }
+
+    /// Regression: a collapsed selection (anchor == head, i.e. bare cursor) must
+    /// not emit a selection-highlight span. In Insert mode the bar cursor is
+    /// transparent, so a spurious 1-cell span shows through as a highlighted char.
+    #[test]
+    fn insert_mode_collapsed_selection_not_highlighted() {
+        let rope = ropey::Rope::from_str("foo");
+        let graphemes = make_graphemes(3);
+        let rows = vec![make_row(0..3)];
+        // Collapsed selection: head == anchor == char 1 (the 'o').
+        let selections = vec![Selection { anchor: 1, head: 1 }];
+
+        let mut styles_map = HashMap::new();
+        styles_map.insert(
+            "ui.selection",
+            ResolvedStyle {
+                bg: Some(ratatui::style::Color::Blue),
+                ..Default::default()
+            },
+        );
+        let theme = Theme::new(styles_map, ResolvedStyle::default());
+
+        let mut scratch = StyleScratch::new();
+        apply_styles(
+            &rows,
+            &graphemes,
+            &selections,
+            EditorMode::Insert,
+            &theme,
+            &rope,
+            &mut scratch,
+        );
+
+        // The cursor cell itself carries Tier-0 cursor styling, not selection bg.
+        assert_ne!(
+            scratch.styles[1].bg,
+            Some(ratatui::style::Color::Blue),
+            "col 1 is the collapsed cursor — must NOT have selection bg"
+        );
+        // Neighboring cells are also not highlighted.
+        assert_ne!(scratch.styles[0].bg, Some(ratatui::style::Color::Blue), "col 0 not highlighted");
+        assert_ne!(scratch.styles[2].bg, Some(ratatui::style::Color::Blue), "col 2 not highlighted");
     }
 
     #[test]
