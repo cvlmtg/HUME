@@ -148,7 +148,7 @@ Wrap each selection with a delimiter pair. Press `m w` then a character; if it's
 | Key | Command |
 |-----|---------|
 | `d` | Delete selections; push deleted text onto the kill ring |
-| `c` | Delete selections, push onto kill ring, enter insert mode (one undo group) |
+| `c` | Delete selection content, push onto kill ring, enter insert mode (one undo group). A trailing newline is kept — `c` on a line rewrites its content without removing the line itself. |
 | `y` | Yank selections: write to system clipboard **and** push onto kill ring |
 | `p` | Smart-p paste after selection (see below) |
 | `P` | Smart-p paste before selection (see below) |
@@ -251,7 +251,7 @@ The prefix is sticky across motions and text objects, but consumed (cleared) by 
 | Key | Command |
 |-----|---------|
 | `i` | Enter insert mode at selection start |
-| `a` | Enter insert mode after selection end |
+| `a` | Enter insert mode after selection end (stays on the line if selection ends on a newline) |
 | `I` | Enter insert mode at first non-blank on line |
 | `A` | Enter insert mode at end of line |
 | `o` | Open new line below, enter insert mode |
