@@ -138,25 +138,47 @@ impl CommandRegistry {
         self.commands.insert(canonical, Command::Typed(cmd));
     }
 
-    /// Look up a mappable command by name.
+    /// Look up a mappable command by name (case-insensitive).
     ///
     /// Returns `None` if the name is unknown or resolves to a typed command.
     /// Used by `execute_keymap_command` in `editor/mappings.rs`.
     pub(crate) fn get_mappable(&self, name: &str) -> Option<&MappableCommand> {
-        match self.commands.get(name)? {
+        let found = self.commands.get(name).or_else(|| {
+            self.commands
+                .iter()
+                .find(|(k, _)| k.as_ref().eq_ignore_ascii_case(name))
+                .map(|(_, v)| v)
+        })?;
+        match found {
             Command::Mappable(cmd) => Some(cmd),
             Command::Typed(_) => None,
         }
     }
 
-    /// Look up a typed command by canonical name or alias.
+    /// Look up a typed command by canonical name or alias (case-insensitive).
     ///
     /// Returns `None` if the name is unknown or resolves to a mappable command.
     /// The `:` command dispatcher falls back to [`Self::get_mappable`] when
     /// this returns `None` — see `execute_command` in `editor/mappings.rs`.
     pub(crate) fn get_typed(&self, name: &str) -> Option<&TypedCommand> {
-        let canonical = self.alias_map.get(name).map_or(name, |c| c.as_ref());
-        match self.commands.get(canonical)? {
+        let canonical = self
+            .alias_map
+            .get(name)
+            .or_else(|| {
+                self.alias_map
+                    .iter()
+                    .find(|(k, _)| k.eq_ignore_ascii_case(name))
+                    .map(|(_, v)| v)
+            })
+            .map(|c| c.as_ref())
+            .unwrap_or(name);
+        let found = self.commands.get(canonical).or_else(|| {
+            self.commands
+                .iter()
+                .find(|(k, _)| k.as_ref().eq_ignore_ascii_case(canonical))
+                .map(|(_, v)| v)
+        })?;
+        match found {
             Command::Typed(cmd) => Some(cmd),
             Command::Mappable(_) => None,
         }

@@ -1028,3 +1028,68 @@ fn colon_enter_empty_silently_dismisses() {
         ed.state.status_msg
     );
 }
+
+// ── Case-insensitive typed commands ──────────────────────────────────────────
+
+#[test]
+fn colon_capital_q_quits() {
+    let mut ed = editor_from("-[h]>ello\n");
+    for ch in ":Q".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+    assert!(ed.state.should_quit);
+}
+
+#[test]
+fn colon_quit_mixed_case_quits() {
+    let mut ed = editor_from("-[h]>ello\n");
+    for ch in ":Quit".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+    assert!(ed.state.should_quit);
+}
+
+#[test]
+fn colon_capital_w_writes_file() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+
+    for ch in ":W".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+
+    assert_eq!(ed.state.mode, Mode::Normal);
+    assert!(
+        ed.state
+            .status_msg
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("Written")
+    );
+    assert_eq!(std::fs::read_to_string(&tmp).unwrap(), "hello\n");
+}
+
+#[test]
+fn colon_capital_wq_writes_and_quits() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+
+    for ch in ":WQ".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+
+    assert!(ed.state.should_quit);
+    assert_eq!(std::fs::read_to_string(&tmp).unwrap(), "hello\n");
+}
+
+#[test]
+fn colon_capital_qa_quits_single_clean_buffer() {
+    let mut ed = editor_from("-[h]>ello\n");
+    for ch in ":QA".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+    assert!(ed.state.should_quit);
+}

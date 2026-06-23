@@ -103,7 +103,11 @@ impl Completer for CommandCompleter {
         let mut candidates: Vec<Completion> = ctx
             .registry
             .iter_names_and_aliases()
-            .filter(|name| name.starts_with(prefix) && *name != prefix)
+            .filter(|name| {
+                name.len() >= prefix.len()
+                    && name[..prefix.len()].eq_ignore_ascii_case(prefix)
+                    && !name.eq_ignore_ascii_case(prefix)
+            })
             .map(|name| Completion {
                 replacement: name.to_owned(),
                 display: name.to_owned(),
