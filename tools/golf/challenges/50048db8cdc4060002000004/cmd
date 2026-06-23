@@ -1,1 +1,1 @@
-%s\n<ret>(<c-,>c, <esc>I[ <esc>%s\w+<ret>mw",A ]<esc>
+%Smw"(<c-,>a,<esc>Jxmw xmw[
