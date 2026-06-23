@@ -354,7 +354,8 @@ The canonical "change a word" workflow:
 
 These are single-key commands followed by one character. The selection
 lands on (or just before/after) the target — a fresh 1-char selection.
-To select a range up to a char, use Extend mode (see Lesson 7.4).
+To select a range up to a char: use `Ctrl+f<c>` / `Ctrl+t<c>` for a
+one-shot extend, or enter Extend mode first (see Lesson 7.4).
 
   >> Press `f.` (find dot) to jump the selection onto the period in
      this sentence. The selection shrinks to just the period.
