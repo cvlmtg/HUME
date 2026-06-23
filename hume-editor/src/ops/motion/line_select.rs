@@ -21,12 +21,11 @@ pub(crate) fn cmd_select_line(buf: &Text, sels: SelectionSet, mode: MotionMode) 
                 let bottom_line = buf.char_to_line(sel.end());
                 let end_excl = line_end_exclusive(buf, bottom_line);
                 // If selection already ends on the trailing `\n`, jump to the next line.
-                let target_line =
-                    if sel.ends_on_newline(buf) && end_excl < buf.len_chars() {
-                        bottom_line + 1
-                    } else {
-                        buf.char_to_line(sel.start())
-                    };
+                let target_line = if sel.ends_on_newline(buf) && end_excl < buf.len_chars() {
+                    bottom_line + 1
+                } else {
+                    buf.char_to_line(sel.start())
+                };
                 let start = buf.line_to_char(target_line);
                 let end = line_end_exclusive(buf, target_line) - 1; // inclusive `\n`
                 Selection::new(start, end)
@@ -101,7 +100,10 @@ pub(crate) fn cmd_select_line_backward(
                 } else {
                     // Expand to cover full lines.
                     let bottom_line = buf.char_to_line(sel.end());
-                    (buf.line_to_char(top_line), line_end_exclusive(buf, bottom_line) - 1)
+                    (
+                        buf.line_to_char(top_line),
+                        line_end_exclusive(buf, bottom_line) - 1,
+                    )
                 };
                 let new_start = sel.start().min(tgt_start);
                 let new_end = sel.end().max(tgt_end);

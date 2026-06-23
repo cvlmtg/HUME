@@ -8,9 +8,9 @@ use crate::ops::motion::{
     cmd_select_prev_WORD, cmd_select_prev_word,
 };
 use crate::ops::selection_cmd::{
-    cmd_collapse_selection_to_head, cmd_copy_selection_on_next_line, cmd_copy_selection_on_prev_line,
-    cmd_cycle_primary_backward, cmd_cycle_primary_forward, cmd_flip_selections,
-    cmd_keep_primary_selection, cmd_remove_primary_selection, cmd_select_all,
+    cmd_collapse_selection_to_head, cmd_copy_selection_on_next_line,
+    cmd_copy_selection_on_prev_line, cmd_cycle_primary_backward, cmd_cycle_primary_forward,
+    cmd_flip_selections, cmd_keep_primary_selection, cmd_remove_primary_selection, cmd_select_all,
     cmd_split_selection_on_newlines, cmd_trim_selection_whitespace,
 };
 use crate::ops::surround::{

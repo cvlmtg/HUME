@@ -722,8 +722,16 @@ mod tests {
             "col 1 is the collapsed cursor — must NOT have selection bg"
         );
         // Neighboring cells are also not highlighted.
-        assert_ne!(scratch.styles[0].bg, Some(ratatui::style::Color::Blue), "col 0 not highlighted");
-        assert_ne!(scratch.styles[2].bg, Some(ratatui::style::Color::Blue), "col 2 not highlighted");
+        assert_ne!(
+            scratch.styles[0].bg,
+            Some(ratatui::style::Color::Blue),
+            "col 0 not highlighted"
+        );
+        assert_ne!(
+            scratch.styles[2].bg,
+            Some(ratatui::style::Color::Blue),
+            "col 2 not highlighted"
+        );
     }
 
     #[test]

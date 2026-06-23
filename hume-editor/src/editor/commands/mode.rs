@@ -10,7 +10,7 @@ use crate::ops::motion::{
     cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_newline, cmd_goto_line_start,
     cmd_move_left, cmd_move_right,
 };
-use crate::ops::selection_cmd::{cmd_collapse_selection_to_head, cmd_collapse_selection_to_anchor};
+use crate::ops::selection_cmd::{cmd_collapse_selection_to_anchor, cmd_collapse_selection_to_head};
 
 use super::super::{EditorState, MiniBuffer, Mode, PendingRepeat, doc_ops};
 use super::{begin_insert_session, end_insert_session, focused_buffer_id};
@@ -295,7 +295,13 @@ fn do_collapse_and_exit_extend(
     state.set_mode(EditorMode::Normal);
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, collapse);
+    doc_ops::apply_doc_motion(
+        &state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf,
+        collapse,
+    );
 }
 
 /// Collapse each selection to its cursor (head) and exit extend mode.
