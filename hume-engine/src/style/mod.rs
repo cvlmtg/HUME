@@ -266,7 +266,11 @@ fn collect_selection_spans(
         }
 
         let col_start = char_offset_to_col(sel_char_start, graphemes, row_range).unwrap_or(0);
-        let col_end = char_offset_to_col(sel_char_end, graphemes, row_range)
+        // Selections are inclusive at both ends, so the exclusive upper bound is
+        // the right edge of the end grapheme (col + width), not its left edge
+        // (col). Using the left edge caused backward selections to silently drop
+        // their anchor cell from the highlighted span.
+        let col_end = char_offset_to_end_col(sel_char_end, graphemes, row_range)
             .unwrap_or_else(|| row_gs.last().map_or(0, |g| g.col + g.width as u16));
         if col_end > col_start {
             out.push((col_start, col_end));
@@ -335,6 +339,30 @@ fn char_offset_to_col(
             None
         } else {
             Some(g.col)
+        }
+    })
+}
+
+/// Like [`char_offset_to_col`], but returns the exclusive right edge of the
+/// resolved grapheme — `g.col + g.width` — rather than its left edge `g.col`.
+///
+/// Used for inclusive selection-span upper bounds: the span `[col_start, col_end)`
+/// must cover the end grapheme itself, which requires `col_end = col + width`.
+fn char_offset_to_end_col(
+    char_offset: usize,
+    graphemes: &[Grapheme],
+    row_range: &std::ops::Range<usize>,
+) -> Option<u16> {
+    if char_offset == usize::MAX {
+        return None;
+    }
+    let row_graphemes = &graphemes[row_range.clone()];
+    let idx = row_graphemes.partition_point(|g| g.char_offset < char_offset);
+    row_graphemes.get(idx).and_then(|g| {
+        if idx == 0 && char_offset < g.char_offset {
+            None
+        } else {
+            Some(g.col + g.width as u16)
         }
     })
 }
@@ -587,6 +615,64 @@ mod tests {
             scratch.styles[2].bg,
             Some(ratatui::style::Color::Red),
             "col 2 inside selection"
+        );
+    }
+
+    /// Regression test: backward selections (head < anchor, e.g. after flip-selections)
+    /// must highlight their full inclusive range. Before the fix, the anchor cell at
+    /// the high end of the range was excluded from the selection span and rendered plain.
+    #[test]
+    fn backward_selection_anchor_cell_highlighted() {
+        // "foo": chars 0,1,2. Backward selection: head=0, anchor=2.
+        // Expected: col 0 painted as cursor (head), cols 1 and 2 painted as selection.
+        let rope = ropey::Rope::from_str("foo");
+        let graphemes = make_graphemes(3);
+        let rows = vec![make_row(0..3)];
+        let selections = vec![Selection { anchor: 2, head: 0 }];
+
+        let mut styles_map = HashMap::new();
+        styles_map.insert(
+            "ui.selection",
+            ResolvedStyle {
+                bg: Some(ratatui::style::Color::Blue),
+                ..Default::default()
+            },
+        );
+        styles_map.insert(
+            "ui.cursor",
+            ResolvedStyle {
+                fg: Some(ratatui::style::Color::White),
+                ..Default::default()
+            },
+        );
+        let theme = Theme::new(styles_map, ResolvedStyle::default());
+
+        let mut scratch = StyleScratch::new();
+        apply_styles(
+            &rows,
+            &graphemes,
+            &selections,
+            EditorMode::Normal,
+            &theme,
+            &rope,
+            &mut scratch,
+        );
+
+        assert_eq!(
+            scratch.styles[0].fg,
+            Some(ratatui::style::Color::White),
+            "col 0 is the head — must have cursor fg"
+        );
+        assert_eq!(
+            scratch.styles[1].bg,
+            Some(ratatui::style::Color::Blue),
+            "col 1 is inside selection — must have selection bg"
+        );
+        // Regression: col 2 is the anchor (highest char), was rendered plain before fix.
+        assert_eq!(
+            scratch.styles[2].bg,
+            Some(ratatui::style::Color::Blue),
+            "col 2 is the anchor — must have selection bg (regression)"
         );
     }
 
@@ -1024,8 +1110,12 @@ mod tests {
             Some(ratatui::style::Color::Blue),
             "col 4 in secondary selection"
         );
-        // Col 2 is between selections
-        assert_eq!(scratch.styles[2].bg, None, "col 2 outside both selections");
+        // Col 2 is the head of the primary selection — included in the span, so it gets primary bg.
+        assert_eq!(
+            scratch.styles[2].bg,
+            Some(ratatui::style::Color::Cyan),
+            "col 2 is primary head — must have primary selection bg"
+        );
     }
 
     #[test]
@@ -1271,7 +1361,12 @@ mod tests {
             Some(ratatui::style::Color::Blue),
             "col 1 in selection"
         );
-        assert_eq!(scratch.styles[2].bg, None, "col 2 outside selection");
+        // Col 2 is the head of the selection (char 2 is included in [0,2]); it gets selection bg.
+        assert_eq!(
+            scratch.styles[2].bg,
+            Some(ratatui::style::Color::Blue),
+            "col 2 is selection head — included in inclusive span"
+        );
         // Segment 1: no selection highlight at all.
         assert_eq!(
             scratch.styles[3].bg, None,
