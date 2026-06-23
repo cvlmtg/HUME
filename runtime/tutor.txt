@@ -194,10 +194,31 @@ On a wider selection it overwrites every character in the range
      then press `Esc`. Press `u` to undo the entire insert — the new
      line disappears. Press `U` to redo it.
 
+2.5  JOIN LINES
+
+  J   join the current line with the next, replacing the newline with a space
+
+After joining, the cursor lands on the inserted space. If the selection spans
+multiple lines, all of them are collapsed into a single line.
+
+  >> Press `J` on the first line below to join the two halves into one
+     sentence:
+
+  The quick
+  brown fox
+
+  >> Select all three lines below with `x Ctrl+x Ctrl+x`, then press `J`
+     to join them into one:
+
+  one
+  two
+  three
+
   ── Lesson 2 Summary ─────────────────────────────────────────────
   d   delete selection      c   change selection
   r<char>  replace each selected char (stays in Normal mode)
   u   undo                  U   redo
+  J   join current line with the next (or all selected lines)
   Select first, then act — the selection is always ready.
   ─────────────────────────────────────────────────────────────────
 
@@ -747,13 +768,38 @@ MACROS
 
 HUME uses uppercase to record and lowercase to replay.
 
-UNDO
-
-Undo is linear: `u` steps back, `U` / `Ctrl+r` step forward.
-
 SOFT WRAP
 
   :wrap   :toggle-soft-wrap   toggle line wrapping in the current pane
+
+ALIGN SELECTIONS
+
+  &   align all cursors to the column of the primary selection's anchor
+
+Spaces are inserted or removed at the left edge of each non-primary selection
+until it sits in the same column as the primary. Multi-line selections are
+left unchanged.
+
+  >> Go to the first line below, press `C C` to create a multi selection,
+     then press `w` to select the three `=`. Now press `&` to align them
+     all to the primary's (last `=`) column:
+
+  x = 2
+  y = 3
+  longer_name = 1
+
+To right-align instead: rotate the primary to the widest item, then flip
+all selections so each anchor sits on the RIGHT edge of its match. `&` then
+aligns right edges.
+
+  >> Select the three lines below with `x Ctrl+x Ctrl+x`, then `s\d+` Enter
+     to put a cursor on each number. Press `)` to rotate the primary to
+     `1000`. Press `Ctrl+e` to flip all selections (anchor moves to the last
+     digit of each number). Press `&` to right-align all numbers:
+
+  price: 5
+  price: 1000
+  price: 42
 
 CLOSING NOTE
 
