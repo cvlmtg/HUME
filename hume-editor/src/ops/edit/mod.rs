@@ -311,7 +311,7 @@ fn paste_impl(
             // and does not already end in '\n' (i.e. we're not at a line start). When
             // the previous edit ended right at `start` (start == b.old_pos()), the
             // prior paste already supplied the separating '\n'.
-            let needs_prefix = start > b.old_pos() && !is_line_start(buf, start);
+            let needs_prefix = start > b.old_pos() && !is_line_start(buf, sel);
 
             // Consume the line's trailing '\n' when the selection ends right before it,
             // so the pasted line's own '\n' doesn't create a blank line. `newline_pos`

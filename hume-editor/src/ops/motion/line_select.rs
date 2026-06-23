@@ -77,7 +77,7 @@ pub(crate) fn cmd_select_line_backward(
             MotionMode::Move => {
                 let top_line = buf.char_to_line(sel.start());
                 // If selection already starts at line start, jump to previous line.
-                let target_line = if is_line_start(buf, sel.start()) && top_line > 0 {
+                let target_line = if is_line_start(buf, &sel) && top_line > 0 {
                     top_line - 1
                 } else {
                     top_line
@@ -88,10 +88,10 @@ pub(crate) fn cmd_select_line_backward(
             }
             MotionMode::Extend => {
                 let top_line = buf.char_to_line(sel.start());
-                if is_line_start(buf, sel.start()) && top_line == 0 {
+                if is_line_start(buf, &sel) && top_line == 0 {
                     return sel; // already at first line — clamp
                 }
-                let (tgt_start, tgt_end) = if is_line_start(buf, sel.start()) {
+                let (tgt_start, tgt_end) = if is_line_start(buf, &sel) {
                     // Already starts at line boundary — target previous line.
                     let prev_line = top_line - 1;
                     (

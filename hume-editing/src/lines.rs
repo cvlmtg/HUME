@@ -4,14 +4,18 @@
 //! All positions are **char offsets** into a [`Text`] buffer.
 
 use crate::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use crate::selection::Selection;
 use crate::text::Text;
 
-/// Returns `true` if `pos` is the first char of its line (or the buffer start).
+/// Returns `true` if the start of `sel` is the first char of its line (or the
+/// buffer start).
 ///
-/// Equivalent to "the char before `pos` is a `\n`, or `pos` is 0", but
-/// expressed via line arithmetic — no grapheme-stepping needed.
-pub fn is_line_start(buf: &Text, pos: usize) -> bool {
-    pos == buf.line_to_char(buf.char_to_line(pos))
+/// Equivalent to "the char before `sel.start()` is a `\n`, or `sel.start()` is
+/// 0", but expressed via line arithmetic — no grapheme-stepping needed.
+pub fn is_line_start(buf: &Text, sel: &Selection) -> bool {
+    let pos = sel.start();
+    let line = buf.char_to_line(pos);
+    pos == buf.line_to_char(line)
 }
 
 /// Exclusive end of `line`: char offset of the first char on the *next* line,
@@ -77,14 +81,14 @@ mod tests {
     fn is_line_start_buffer_start() {
         // "hello\n" — char 0 is the buffer start, which is a line start.
         let (buf, _) = parse_state("-[h]>ello\n");
-        assert!(is_line_start(&buf, 0));
+        assert!(is_line_start(&buf, &Selection::collapsed(0)));
     }
 
     #[test]
     fn is_line_start_mid_line_is_false() {
         // "hello\n" — char 2 ('l') is not at a line start.
         let (buf, _) = parse_state("-[h]>ello\n");
-        assert!(!is_line_start(&buf, 2));
+        assert!(!is_line_start(&buf, &Selection::collapsed(2)));
     }
 
     #[test]
@@ -92,9 +96,9 @@ mod tests {
         // "hi\nbye\n" — line 1 starts at char 3 ('b').
         // h=0, i=1, \n=2, b=3, y=4, e=5, \n=6
         let (buf, _) = parse_state("-[h]>i\nbye\n");
-        assert!(is_line_start(&buf, 3));
+        assert!(is_line_start(&buf, &Selection::collapsed(3)));
         // Verify a non-boundary on line 1 is false (independent oracle: char 4 = 'y').
-        assert!(!is_line_start(&buf, 4));
+        assert!(!is_line_start(&buf, &Selection::collapsed(4)));
     }
 
     #[test]
@@ -103,7 +107,7 @@ mod tests {
         // (line 0 starts at char 0). This test verifies the function uses line
         // arithmetic rather than just checking the previous char.
         let (buf, _) = parse_state("-[h]>i\n");
-        assert!(!is_line_start(&buf, 2)); // '\n' at end of line 0
+        assert!(!is_line_start(&buf, &Selection::collapsed(2))); // '\n' at end of line 0
     }
 
     // ── line_end_exclusive ────────────────────────────────────────────────────

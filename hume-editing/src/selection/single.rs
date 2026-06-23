@@ -218,7 +218,7 @@ impl Selection {
 /// Counterpart to `is_register_linewise` in `ops::register`, which answers
 /// "is this *register text* linewise?" at paste time.
 pub fn is_selection_linewise(buf: &Text, sel: &Selection) -> bool {
-    sel.ends_on_newline(buf) && is_line_start(buf, sel.start())
+    sel.ends_on_newline(buf) && is_line_start(buf, sel)
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
