@@ -248,7 +248,7 @@ mod tests {
     use super::*;
 
     /// Exhaustiveness guard: if a command is added without a registry entry, this test catches it.
-    const EXPECTED_COMMAND_COUNT: usize = 140;
+    const EXPECTED_COMMAND_COUNT: usize = 141;
 
     #[test]
     fn registry_has_expected_count() {

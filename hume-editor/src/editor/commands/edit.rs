@@ -2,8 +2,8 @@ use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use crate::ops::MotionMode;
 use crate::ops::edit::{
-    change_span, delete_selection, delete_selection_content, paste_after, paste_before,
-    replace_selections,
+    change_span, delete_selection, delete_selection_content, join_lines_select_spaces, paste_after,
+    paste_before, replace_selections,
 };
 use crate::ops::register::{
     BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, KILL_RING_REGISTER, yank_selections,
@@ -394,6 +394,25 @@ pub fn cmd_replace(
             |b, s| replace_selections(b, s, ch),
         );
     }
+    Ok(())
+}
+
+/// Join lines inside each selection and select the inserted spaces.
+pub fn cmd_join_lines_select_spaces(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    _count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    let focused = state.focused_pane_id;
+    let buf = focused_buffer_id(state, view);
+    doc_ops::apply_doc_edit(
+        &mut state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf,
+        join_lines_select_spaces,
+    );
     Ok(())
 }
 

@@ -299,6 +299,7 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
 
     // ── Edit ──────────────────────────────────────────────────────────────────
     t.bind_leaf(key!('d'), cmd!("delete"));
+    t.bind_leaf(key!('J'), cmd!("join-lines-select-spaces"));
     t.bind_leaf(key!('c'), cmd!("change"));
     t.bind_leaf(key!('y'), cmd!("yank"));
     t.bind_leaf(key!('p'), cmd!("paste-after"));

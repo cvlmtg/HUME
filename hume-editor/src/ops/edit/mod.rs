@@ -648,5 +648,85 @@ pub(crate) fn replace_selections(
     })
 }
 
+/// Join lines inside each selection and select the inserted spaces.
+///
+/// For each selection:
+/// - Single-line: join with the next line.
+/// - Multi-line: join all lines in the range.
+///
+/// Each consecutive pair is joined by replacing the newline (and leading
+/// whitespace of the next line) with a single space. Whitespace-only or empty
+/// next lines produce no separator — the newline is simply removed.
+///
+/// After the join, every inserted space becomes a 1-char selection.
+pub(crate) fn join_lines_select_spaces(
+    buf: Text,
+    sels: SelectionSet,
+) -> (Text, SelectionSet, ChangeSet) {
+    // Fast path: no selection spans or reaches a joinable line pair.
+    // Return unchanged to avoid resetting cursors (all on last line → no-op).
+    let has_work = sels.iter_sorted().any(|sel| {
+        let start = buf.char_to_line(sel.start());
+        let end = buf.char_to_line(sel.end_inclusive(&buf));
+        start != end || start < buf.len_lines().saturating_sub(2)
+    });
+    if !has_work {
+        let mut b = ChangeSetBuilder::new(buf.len_chars());
+        b.retain_rest();
+        return (buf, sels, b.finish());
+    }
+
+    let mut space_positions: Vec<usize> = Vec::new();
+
+    let (new_buf, fallback_sels, cs) = apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+        let start_line = buf.char_to_line(sel.start());
+        let mut end_line = buf.char_to_line(sel.end_inclusive(buf));
+        if start_line == end_line {
+            end_line = (end_line + 1).min(buf.len_lines() - 1);
+        }
+
+        for line in start_line..end_line {
+            let nl_pos = line_end_exclusive(buf, line).saturating_sub(1);
+            let next_start = line_end_exclusive(buf, line);
+            let next_end_excl = line_end_exclusive(buf, line + 1);
+
+            let content_start = {
+                let mut p = next_start;
+                while p < next_end_excl {
+                    match buf.char_at(p) {
+                        Some(c) if c == ' ' || c == '\t' || c == '\r' => p += 1,
+                        _ => break,
+                    }
+                }
+                p
+            };
+
+            let is_blank = content_start >= next_end_excl.saturating_sub(1);
+
+            b.retain(nl_pos.saturating_sub(b.old_pos()));
+            b.delete(content_start - nl_pos);
+
+            if !is_blank {
+                b.insert(" ");
+                space_positions.push(b.new_pos() - 1);
+            }
+        }
+
+        new_sels.push(Selection::collapsed(b.new_pos().saturating_sub(1)));
+    });
+
+    let new_sel_set = if space_positions.is_empty() {
+        fallback_sels
+    } else {
+        let sels: Vec<Selection> = space_positions
+            .into_iter()
+            .map(Selection::collapsed)
+            .collect();
+        SelectionSet::from_vec(sels, 0)
+    };
+
+    (new_buf, new_sel_set, cs)
+}
+
 #[cfg(test)]
 mod tests;

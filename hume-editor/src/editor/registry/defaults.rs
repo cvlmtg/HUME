@@ -676,6 +676,14 @@ impl CommandRegistry {
         .repeatable()
         .clears_extend()
         .reg(self);
+        ecmd(
+            "join-lines-select-spaces",
+            "Join lines inside each selection and select the inserted spaces.",
+            cmd_join_lines_select_spaces,
+        )
+        .repeatable()
+        .clears_extend()
+        .reg(self);
         ecmd("undo", "Undo the last change.", cmd_undo).reg(self);
         ecmd("redo", "Redo the last undone change.", cmd_redo).reg(self);
 
