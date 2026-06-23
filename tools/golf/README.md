@@ -4,14 +4,6 @@ Vimgolf-style editing challenges for HUME. Each challenge transforms a starting
 text (`in`) into a target text (`out`) using a sequence of keystrokes (`cmd`).
 Lowest keystroke count wins.
 
-## Setup
-
-Build HUME first:
-
-```sh
-cargo build --release
-```
-
 ## Running
 
 ```sh
@@ -19,29 +11,26 @@ cd tools/golf
 ./golf.sh
 ```
 
-The script finds the HUME binary automatically (checks `$PATH`, then
-`../../target/release/hume`, then `../../target/debug/hume`).
+The script builds HUME automatically before running.
 
-Score a single challenge or a directory of them:
+Score a single challenge or all challenges at once:
 
 ```sh
-./golf.sh challenges/4d1a34ccce8814b72600002b/  # one challenge
-./golf.sh                                         # all in challenges/
+./golf.sh 4d1a34ccce8814b72600002b  # one challenge
+./golf.sh                           # all in challenges/
 ```
 
 ## Output
 
 ```
-CHALLENGE                      SCORE  RESULT
-------------------------------------------------------------
-example-add-exclamations           5  OK
-example-delete-first-line          2  OK
-example-replace-word              10  OK
-------------------------------------------------------------
-3 passed, 0 failed
+CHALLENGE                      HUME  KAKOUNE  RESULT
+----------------------------------------------------------------------
+4d1a34ccfa85f32065000004         10       10  OK
+4d1a8bf2b8cb3409320002c4          9        8  OK
+----------------------------------------------------------------------
+2 passed, 0 failed
 ```
 
-`SCORE` is the keystroke count for HUME's solution in the `cmd` file.
 `RESULT` is `OK` if the output matches `out` byte-for-byte, `FAIL` otherwise.
 Challenges without a `cmd` file are listed as `SKIP`.
 
@@ -61,10 +50,6 @@ This fetches the challenge from vimgolf.com (requires `curl` and `jq`), writes
 #   Solve it in hume, then write your keystrokes to: challenges/4d1a34ccce8814b72600002b/cmd
 #   Score it with: ./golf.sh challenges/4d1a34ccce8814b72600002b/
 ```
-
-The `example-*` directories are hand-crafted challenges designed for the
-[learning doc](../../docs/learning/vimgolf.md). Real vimgolf challenges are
-named by their hex ID.
 
 ## Keystroke notation
 
@@ -92,7 +77,12 @@ Verify it passes by running `./golf.sh challenges/my-challenge/`.
 
 ## Cross-editor scores
 
-Score comparisons with Vim are for fun and orientation. Different editing models
-have different strengths; a challenge that rewards a Vim-specific idiom will
-score poorly for HUME, and vice versa. See `docs/learning/vimgolf.md` for a
-discussion of where the models differ.
+Score comparisons with Kakoune are for orientation, not benchmarking. The
+`KAKOUNE` column shows the best known score from `mawww/golf`, adjusted by −2
+to account for the mandatory `<space>q` (save-and-quit) overhead that Kakoune
+solutions require but HUME does not.
+
+HUME's goal is to be pragmatic and intuitive — features are designed to make
+editing feel natural, not to minimise keystroke counts. A challenge where HUME
+loses is not a bug; a challenge where it wins is not a design target. The
+comparisons show where the two editing models diverge and why.
