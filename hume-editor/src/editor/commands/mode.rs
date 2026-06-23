@@ -88,14 +88,23 @@ pub fn cmd_insert_at_line_end(
         &mut state.panes.state,
         focused,
         buf,
-        |b, s| cmd_goto_line_end(b, s, 1, MotionMode::Move),
-    );
-    doc_ops::apply_doc_motion(
-        &state.buffers,
-        &mut state.panes.state,
-        focused,
-        buf,
-        |b, s| cmd_move_right(b, s, 1, MotionMode::Move),
+        |b, s| {
+            // Move to line content-end, then step right onto the \n slot — unless the
+            // line is empty, in which case line-end is already the \n and stepping past
+            // it would land on the next line.
+            let max = b.len_chars() - 1;
+            let at_end = cmd_goto_line_end(b, s, 1, MotionMode::Move);
+            at_end.map(|sel| {
+                let pos = if b.char_at(sel.head()) == Some('\n') {
+                    // Empty line — cursor is on the \n; inserting here equals `i`.
+                    sel.head()
+                } else {
+                    // Non-empty line — advance one grapheme onto the trailing \n slot.
+                    next_grapheme_boundary(b, sel.head()).min(max)
+                };
+                Selection::collapsed(pos)
+            })
+        },
     );
     begin_insert_session(state, view);
     state.mark_insert_step_back();
@@ -129,6 +138,10 @@ pub fn cmd_insert_at_selection_start(
 /// On Esc, the cursor steps back one grapheme (`mark_insert_step_back`) so that
 /// pressing `a` again re-enters Insert at the same spot rather than advancing forward.
 /// Clamps to `len_chars() - 1` so `a` on the buffer-final `\n` stays in bounds.
+///
+/// If the selection ends on a `\n` (e.g. after `select-line` / `x`, or on an empty
+/// line), the cursor stays on that `\n` slot rather than stepping past it — `a` on
+/// an empty line is identical to `i`.
 pub fn cmd_insert_at_selection_end(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -145,7 +158,15 @@ pub fn cmd_insert_at_selection_end(
         |b, sels| {
             // len_chars() - 1 is safe: the buffer invariant guarantees at least one char.
             let max = b.len_chars() - 1;
-            sels.map(|sel| Selection::collapsed(next_grapheme_boundary(b, sel.end()).min(max)))
+            sels.map(|sel| {
+                let pos = if b.char_at(sel.end()) == Some('\n') {
+                    // Selection ends on a newline — insert before it, not past it.
+                    sel.end()
+                } else {
+                    next_grapheme_boundary(b, sel.end())
+                };
+                Selection::collapsed(pos.min(max))
+            })
         },
     );
     begin_insert_session(state, view);

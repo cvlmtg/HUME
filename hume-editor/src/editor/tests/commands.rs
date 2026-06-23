@@ -575,17 +575,16 @@ fn o_esc_on_empty_line_does_not_step_to_previous_line() {
 // ── multi-cursor `a` collision (merge edge cases) ─────────────────────────────
 
 /// `a` on two cursors where one sits on the last character and the other on the
-/// trailing `\n`: both collapse to `next(end).min(max)` which is the same char
-/// index (the `\n`). The two coincident results must merge to one cursor.
+/// trailing `\n`: both land on the `\n` and must merge to one cursor.
+///
+/// - cursor on c(2): char_at(2)='c' → `next(2)=3`.
+/// - cursor on \n(3): char_at(3)='\n' → stays at 3.
+/// Both land on 3 → merge → single cursor on \n.
 ///
 /// Regression: without `map` merging after the transform, this leaves two
 /// identical collapsed selections — a `SelectionSet` invariant violation.
 #[test]
 fn a_multi_cursor_clamp_collision_merges_to_one() {
-    // "abc\n": a=0 b=1 c=2 \n=3, max=3.
-    // cursor on c(2): next(2)=3, min(3,3)=3.
-    // cursor on \n(3): next(3)=4, min(4,3)=3.
-    // Both land on 3 → merge → single cursor on \n.
     let mut ed = editor_from("ab-[c]>-[\n]>");
     ed.handle_key(key('a'));
 
@@ -593,24 +592,180 @@ fn a_multi_cursor_clamp_collision_merges_to_one() {
     assert_eq!(state(&ed), "abc-[\n]>");
 }
 
-/// `a Esc` on two adjacent cursors where the step-back brings both to the same
-/// position: they must merge to one cursor rather than leaving a duplicate.
-///
-/// Regression: without `map` merging during `end_insert_session`, two identical
-/// collapsed selections survive — a `SelectionSet` invariant violation.
+/// `a Esc` on two cursors where one is on a `\n` and the other on a content char:
+/// the `\n`-cursor stays put (on the `\n`) and the content-char cursor advances
+/// one grapheme. No collision — they end up on distinct lines after step-back.
 #[test]
-fn a_esc_multi_cursor_step_back_collision_merges_to_one() {
-    // "ab\ncd\n": a=0 b=1 \n=2 c=3 d=4 \n=5. Line 1 starts at char 3.
-    // `a`: \n(2)→next=3; c(3)→next=4. Cursors at 3, 4 (distinct).
-    // Esc step-back: head=3 equals line-start(3) → stays 3;
-    //                head=4 > line-start(3) → prev(4)=3. Both → 3.
-    // Merge → single cursor on c.
+fn a_esc_newline_cursor_stays_on_its_line() {
+    // "ab\ncd\n": a=0 b=1 \n=2 c=3 d=4 \n=5.
+    // `a`: \n(2) → stays 2 (it is a \n); c(3) → next(3)=4. Cursors at 2, 4.
+    // Esc step-back: head=2, line_start=0, 2>0 → prev(2)=1 (b).
+    //                head=4, line_start=3, 4>3 → prev(4)=3 (c).
     let mut ed = editor_from("ab-[\n]>-[c]>d\n");
     ed.handle_key(key('a'));
     ed.handle_key(key_esc());
 
     assert_eq!(ed.state.mode, Mode::Normal);
-    assert_eq!(state(&ed), "ab\n-[c]>d\n");
+    assert_eq!(state(&ed), "a-[b]>\n-[c]>d\n");
+}
+
+// ── `a` / `A` trailing-newline content rule ────────────────────────────────────
+
+/// `a` on an empty line must stay on that line (≡ `i`) — not jump to the next.
+///
+/// An empty line is just a `\n`; the selection ends on that `\n`. Under the
+/// content rule `a` does not step past a trailing `\n`.
+#[test]
+fn a_on_empty_line_stays_on_same_line() {
+    // Buffer: "foo\n\nbar\n" — the middle line is empty (char index 4 = '\n').
+    let mut ed = editor_from("foo\n-[\n]>bar\n");
+    ed.handle_key(key('a'));
+
+    assert_eq!(ed.state.mode, Mode::Insert);
+    // Cursor must remain on the \n at position 4, not jump to 'b'.
+    assert_eq!(state(&ed), "foo\n-[\n]>bar\n");
+}
+
+/// `a` after `x` (select-line) on an interior non-last line must place the
+/// cursor on the line's trailing `\n`, not at the start of the next line.
+#[test]
+fn a_after_select_line_stays_on_same_line() {
+    // select-line on 'b' → anchor=4 ('b'), head=7 ('\n').
+    // `a`: sel.end()=7, char_at(7)='\n' → stay at 7.
+    let mut ed = editor_from("foo\n-[b]>ar\nbaz\n");
+    ed.handle_key(key('x')); // select "bar\n" — head on '\n'
+    ed.handle_key(key('a'));
+
+    assert_eq!(ed.state.mode, Mode::Insert);
+    // Cursor on the trailing '\n' of the line — same line, not on 'b' of next line.
+    assert_eq!(state(&ed), "foo\nbar-[\n]>baz\n");
+}
+
+/// `A` on an empty line must stay on the `\n` of that line — not step onto the
+/// next line.  Regression: the old two-motion implementation applied an
+/// unconditional `move_right` after `goto_line_end`, which advanced past the
+/// `\n` on empty lines.
+#[test]
+fn capital_a_on_empty_line_stays_on_same_line() {
+    let mut ed = editor_from("foo\n-[\n]>bar\n");
+    ed.handle_key(key('A'));
+
+    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(state(&ed), "foo\n-[\n]>bar\n");
+}
+
+/// `A` on a non-empty line must still position after the last content character
+/// (on the trailing `\n` slot) — unchanged from before.
+#[test]
+fn capital_a_on_nonempty_line_is_unchanged() {
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    ed.handle_key(key('A'));
+
+    assert_eq!(ed.state.mode, Mode::Insert);
+    // Cursor on the \n at position 5 (between "hello" and "world").
+    assert_eq!(state(&ed), "hello-[\n]>world\n");
+}
+
+// ── `c` trailing-newline content rule ─────────────────────────────────────────
+
+/// `c` on an empty line must not delete anything — the line stays, cursor stays.
+/// Equivalent to pressing `i` on an empty line.
+#[test]
+fn change_on_empty_line_is_noop() {
+    let mut ed = editor_from("foo\n-[\n]>bar\n");
+    ed.handle_key(key('c'));
+
+    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "foo\n\nbar\n",
+        "empty line must survive"
+    );
+    // Cursor on the \n (empty line).
+    assert_eq!(state(&ed), "foo\n-[\n]>bar\n");
+}
+
+/// `c` after `x` (select-line) on an interior line clears the content but keeps
+/// the line — `c` rewrites a line, not deletes it.
+#[test]
+fn change_after_select_line_keeps_line() {
+    let mut ed = editor_from("foo\n-[b]>ar\nbaz\n");
+    ed.handle_key(key('x')); // selects "bar\n" (head on \n)
+    ed.handle_key(key('c'));
+
+    assert_eq!(ed.state.mode, Mode::Insert);
+    // "bar" deleted, \n kept → line 1 is now empty; cursor at line start.
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "foo\n\nbaz\n",
+        "line must be kept"
+    );
+    assert_eq!(state(&ed), "foo\n-[\n]>baz\n");
+}
+
+/// Multi-line `c`: interior `\n`s are deleted normally; only the final `\n` is
+/// kept, collapsing the selection to a single empty line.
+#[test]
+fn change_multi_line_collapses_to_one_empty_line() {
+    // Selection covers "bar\nbaz\n" (anchor=4, head=11 on the last '\n').
+    // change_span: sel.end()=11, char_at(11)='\n' → stop=11.
+    // Deletes chars 4..11 = "bar\nbaz". Buffer → "foo\n\n".
+    let mut ed = editor_from("foo\n-[bar\nbaz\n]>");
+    ed.handle_key(key('c'));
+
+    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "foo\n\n",
+        "two lines become one empty line"
+    );
+    assert_eq!(state(&ed), "foo\n-[\n]>");
+}
+
+/// `c` on a plain (non-`\n`) char still deletes it — regression guard.
+#[test]
+fn change_on_content_char_still_deletes() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('c'));
+
+    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.doc().text().to_string(), "ello\n");
+    assert_eq!(state(&ed), "-[e]>llo\n");
+}
+
+/// After `c` of a line-selected region, the kill ring must contain only the
+/// line content — no trailing `\n`.
+#[test]
+fn change_kill_ring_excludes_trailing_newline() {
+    let mut ed = editor_from("-[b]>ar\n");
+    ed.handle_key(key('x')); // select "bar\n" (head on \n)
+    ed.handle_key(key('c'));
+
+    assert_eq!(
+        ed.state.kill_ring.head(),
+        Some(["bar".to_string()].as_slice()),
+        "kill ring must hold content only, no trailing newline"
+    );
+}
+
+/// `d` after `x` (select-line) still removes the whole line including its `\n`
+/// — regression guard ensuring `d` was not affected by the `c`-only change.
+#[test]
+fn d_after_select_line_removes_entire_line() {
+    let mut ed = editor_from("foo\n-[b]>ar\nbaz\n");
+    ed.handle_key(key('x')); // selects "bar\n" (head on \n)
+    ed.handle_key(key('d'));
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "foo\nbaz\n",
+        "whole line including \\n must be deleted"
+    );
+    assert_eq!(
+        ed.state.kill_ring.head(),
+        Some(["bar\n".to_string()].as_slice()),
+        "kill ring holds full line including \\n"
+    );
 }
 
 // ── `S` splits selection on newlines ──────────────────────────────────────────

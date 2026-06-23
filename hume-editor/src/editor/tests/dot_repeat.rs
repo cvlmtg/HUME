@@ -372,20 +372,19 @@ fn dot_repeat_collapsed_cursor_empty_recipe() {
 /// "ccc", leaving the structural '\n'), inserts 'z' → "zbbb\nz\n".
 ///
 /// Fail oracle: without the recipe, `.` would run change on the collapsed
-/// 1-char cursor at 'c', deleting only 'c' and inserting 'z' → "zbbb\nzcc\n".
+/// 1-char cursor at 'b', deleting only 'b' and inserting 'z' → "z\nzbb\nccc\n".
 #[test]
 fn dot_repeats_change_reselects_line() {
-    // Three lines; the structural-'\n' protection only affects the last content
-    // line (here "ccc\n"), which is fine — the test still proves full-line reselect.
+    // Three lines; `c` after select-line removes the content but keeps the `\n`.
     let mut ed = editor_from("-[a]>aa\nbbb\nccc\n");
 
-    ed.feed_key(key('x')); // select "aaa\n"
-    ed.feed_key(key('c')); // change: delete "aaa\n" → "bbb\nccc\n", cursor at 'b'; enter Insert
-    ed.feed_key(key('z')); // type 'z' → "zbbb\nccc\n"
-    ed.feed_key(key_esc()); // back to Normal
-    assert_eq!(ed.doc().text().to_string(), "zbbb\nccc\n");
+    ed.feed_key(key('x')); // select "aaa\n" — head on '\n'
+    ed.feed_key(key('c')); // change: delete "aaa" (not '\n') → "\nbbb\nccc\n", cursor at 0
+    ed.feed_key(key('z')); // type 'z' → "z\nbbb\nccc\n"
+    ed.feed_key(key_esc()); // back to Normal, cursor on 'z'
+    assert_eq!(ed.doc().text().to_string(), "z\nbbb\nccc\n");
 
-    // Recipe must be [select-line F]; insert_keys must be ['z'].
+    // Recipe must be [select-line]; insert_keys must be ['z'].
     {
         let action = ed.state.last_repeatable_action.as_ref().unwrap();
         assert_eq!(
@@ -400,15 +399,15 @@ fn dot_repeats_change_reselects_line() {
         );
     }
 
-    // Move to 'c' and press `.`.
-    ed.feed_key(key('j')); // move-down to 'c' (line 1)
-    ed.feed_key(key('.')); // re-select "ccc\n" via recipe, change, retype 'z'
+    // Move to 'b' and press `.`.
+    ed.feed_key(key('j')); // move-down to 'b' (line 1)
+    ed.feed_key(key('.')); // re-select "bbb\n" via recipe, change, retype 'z'
 
-    // Oracle: recipe re-selects "ccc\n", change deletes "ccc" (structural '\n' stays),
-    // inserts 'z' → "zbbb\nz\n". Without recipe, only 'c' would be deleted → "zbbb\nzcc\n".
+    // Oracle: recipe re-selects "bbb\n", change deletes "bbb" (keeps '\n'),
+    // inserts 'z' → "z\nz\nccc\n". Without recipe, only 'b' would be deleted → "z\nzbb\nccc\n".
     assert_eq!(
         ed.doc().text().to_string(),
-        "zbbb\nz\n",
+        "z\nz\nccc\n",
         "`.` must re-select the full line, change it, and replay insert_keys"
     );
 }

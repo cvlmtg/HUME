@@ -446,6 +446,62 @@ pub(crate) fn delete_selection(buf: Text, sels: SelectionSet) -> (Text, Selectio
     delete_char_forward(buf, sels)
 }
 
+/// Exclusive upper bound for the content `c` should delete from `sel`.
+///
+/// Returns `(start, stop)` where `start..stop` is the range to delete.
+/// A trailing `\n` at `sel.end()` is excluded — `c` clears line content but
+/// keeps the line. A collapsed selection on a lone `\n` (empty line) returns
+/// `(pos, pos)`, a zero-length no-op.
+pub(crate) fn change_span(buf: &Text, sel: &Selection) -> (usize, usize) {
+    let start = sel.start();
+    let stop = if buf.char_at(sel.end()) == Some('\n') {
+        // Selection ends on a newline — stop before it.
+        sel.end()
+    } else {
+        // end_inclusive accounts for multi-codepoint grapheme clusters; +1 converts
+        // to exclusive upper bound for deletion.
+        sel.end_inclusive(buf) + 1
+    };
+    (start, stop)
+}
+
+/// Delete the content of each selection, excluding a trailing `\n` — used by `c`.
+fn delete_sel_content(
+    b: &mut ChangeSetBuilder,
+    buf: &Text,
+    sel: &Selection,
+    new_sels: &mut Vec<Selection>,
+) {
+    let (start, stop) = change_span(buf, sel);
+    b.retain(start - b.old_pos());
+    if stop > start {
+        b.delete(stop - start);
+    }
+    new_sels.push(Selection::collapsed(b.new_pos()));
+}
+
+/// Delete the content of each selection, excluding a trailing `\n` (normal-mode `c`).
+///
+/// Differs from [`delete_selection`] in one way: if a selection ends on a `\n`
+/// (because `select-line` / `x` was used, or the line is empty), that newline
+/// is kept and only the preceding content is removed. This preserves the line
+/// structure — `c` rewrites a line's content, not the line itself.
+///
+/// - Interior `\n`s (mid-selection) are deleted normally — so a multi-line `c`
+///   collapses to a single empty line.
+/// - Collapsed selection on a lone `\n` (empty line) → no deletion (≡ `i`).
+///
+/// The caller is responsible for yanking before calling this; use
+/// [`change_span`] to extract the same content range for the kill ring.
+pub(crate) fn delete_selection_content(
+    buf: Text,
+    sels: SelectionSet,
+) -> (Text, SelectionSet, ChangeSet) {
+    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+        delete_sel_content(b, buf, sel, new_sels);
+    })
+}
+
 /// Paste `values` after/onto each selection (normal-mode `p`).
 ///
 /// **Cursor selections (`is_collapsed()`):**

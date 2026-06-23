@@ -1,7 +1,10 @@
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use crate::ops::MotionMode;
-use crate::ops::edit::{delete_selection, paste_after, paste_before, replace_selections};
+use crate::ops::edit::{
+    change_span, delete_selection, delete_selection_content, paste_after, paste_before,
+    replace_selections,
+};
 use crate::ops::register::{
     BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, KILL_RING_REGISTER, yank_selections,
 };
@@ -54,16 +57,26 @@ pub fn cmd_delete(
 ///
 /// **Bare default**: pushes to kill ring only. **Explicit register**: routes through
 /// `write_register` — same as `cmd_delete`.
+///
+/// Unlike `d`, a trailing `\n` at the end of a selection is not deleted — `c`
+/// clears line content but keeps the line. The yank is trimmed accordingly so
+/// the kill-ring entry matches what was removed (no trailing `\n`).
 pub fn cmd_change(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let yanked = yank_selections(
-        super::doc(state, view).text(),
-        super::current_selections(state, view),
-    );
+    let yanked = {
+        let doc = super::doc(state, view);
+        let sels = super::current_selections(state, view);
+        sels.iter_sorted()
+            .map(|sel| {
+                let (start, stop) = change_span(doc.text(), sel);
+                doc.text().slice(start..stop).to_string()
+            })
+            .collect::<Vec<_>>()
+    };
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     begin_insert_session(state, view);
@@ -72,7 +85,7 @@ pub fn cmd_change(
         &mut state.panes.state,
         focused,
         buf,
-        delete_selection,
+        delete_selection_content,
     );
     match state.take_register_prefix() {
         None | Some(KILL_RING_REGISTER) => state.kill_ring.push(yanked),
