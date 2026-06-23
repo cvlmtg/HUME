@@ -95,7 +95,10 @@ for dir in "${dirs[@]}"; do
             > "$kakoune_cmd_file" 2>/dev/null || rm -f "$kakoune_cmd_file"
     fi
     if [[ -f "$kakoune_cmd_file" ]]; then
-        kakoune_score="$(count_keys "$(cat "$kakoune_cmd_file")")"
+        # Every kakoune golf solution ends with `<space>q`, which is needed to save
+        # the result and quit kakoune. HUME doesn't need this, so to make the comparison
+        # more fair we subtract 2 from kakoune score.
+        kakoune_score="$(( $(count_keys "$(cat "$kakoune_cmd_file")") - 2 ))"
     fi
 
     tmp="$(mktemp)"
