@@ -6,6 +6,14 @@
 use crate::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use crate::text::Text;
 
+/// Returns `true` if `pos` is the first char of its line (or the buffer start).
+///
+/// Equivalent to "the char before `pos` is a `\n`, or `pos` is 0", but
+/// expressed via line arithmetic — no grapheme-stepping needed.
+pub fn is_line_start(buf: &Text, pos: usize) -> bool {
+    pos == buf.line_to_char(buf.char_to_line(pos))
+}
+
 /// Exclusive end of `line`: char offset of the first char on the *next* line,
 /// or `buf.len_chars()` for the last line.
 pub fn line_end_exclusive(buf: &Text, line: usize) -> usize {
@@ -62,6 +70,41 @@ pub fn line_content_end(buf: &Text, line: usize) -> usize {
 mod tests {
     use super::*;
     use crate::selection::testing::parse_state;
+
+    // ── is_line_start ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn is_line_start_buffer_start() {
+        // "hello\n" — char 0 is the buffer start, which is a line start.
+        let (buf, _) = parse_state("-[h]>ello\n");
+        assert!(is_line_start(&buf, 0));
+    }
+
+    #[test]
+    fn is_line_start_mid_line_is_false() {
+        // "hello\n" — char 2 ('l') is not at a line start.
+        let (buf, _) = parse_state("-[h]>ello\n");
+        assert!(!is_line_start(&buf, 2));
+    }
+
+    #[test]
+    fn is_line_start_second_line_start() {
+        // "hi\nbye\n" — line 1 starts at char 3 ('b').
+        // h=0, i=1, \n=2, b=3, y=4, e=5, \n=6
+        let (buf, _) = parse_state("-[h]>i\nbye\n");
+        assert!(is_line_start(&buf, 3));
+        // Verify a non-boundary on line 1 is false (independent oracle: char 4 = 'y').
+        assert!(!is_line_start(&buf, 4));
+    }
+
+    #[test]
+    fn is_line_start_newline_itself_is_not_line_start() {
+        // "hi\n" — the '\n' is at char 2, which is NOT the start of its line
+        // (line 0 starts at char 0). This test verifies the function uses line
+        // arithmetic rather than just checking the previous char.
+        let (buf, _) = parse_state("-[h]>i\n");
+        assert!(!is_line_start(&buf, 2)); // '\n' at end of line 0
+    }
 
     // ── line_end_exclusive ────────────────────────────────────────────────────
 

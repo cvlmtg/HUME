@@ -1,5 +1,5 @@
 use super::MotionMode;
-use hume_editing::lines::line_end_exclusive;
+use hume_editing::lines::{is_line_start, line_end_exclusive};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
 
@@ -21,11 +21,12 @@ pub(crate) fn cmd_select_line(buf: &Text, sels: SelectionSet, mode: MotionMode) 
                 let bottom_line = buf.char_to_line(sel.end());
                 let end_excl = line_end_exclusive(buf, bottom_line);
                 // If selection already ends on the trailing `\n`, jump to the next line.
-                let target_line = if sel.end() + 1 >= end_excl && end_excl < buf.len_chars() {
-                    bottom_line + 1
-                } else {
-                    buf.char_to_line(sel.start())
-                };
+                let target_line =
+                    if sel.ends_on_newline(buf) && end_excl < buf.len_chars() {
+                        bottom_line + 1
+                    } else {
+                        buf.char_to_line(sel.start())
+                    };
                 let start = buf.line_to_char(target_line);
                 let end = line_end_exclusive(buf, target_line) - 1; // inclusive `\n`
                 Selection::new(start, end)
@@ -33,10 +34,10 @@ pub(crate) fn cmd_select_line(buf: &Text, sels: SelectionSet, mode: MotionMode) 
             MotionMode::Extend => {
                 let bottom_line = buf.char_to_line(sel.end());
                 let end_excl = line_end_exclusive(buf, bottom_line);
-                if sel.end() + 1 >= end_excl && end_excl >= buf.len_chars() {
+                if sel.ends_on_newline(buf) && end_excl >= buf.len_chars() {
                     return sel; // already at last line — clamp
                 }
-                let (tgt_start, tgt_end) = if sel.end() + 1 >= end_excl {
+                let (tgt_start, tgt_end) = if sel.ends_on_newline(buf) {
                     // Already ends on `\n` — target next line.
                     let next_line = bottom_line + 1;
                     (
@@ -75,9 +76,8 @@ pub(crate) fn cmd_select_line_backward(
         match mode {
             MotionMode::Move => {
                 let top_line = buf.char_to_line(sel.start());
-                let top_line_start = buf.line_to_char(top_line);
                 // If selection already starts at line start, jump to previous line.
-                let target_line = if sel.start() == top_line_start && top_line > 0 {
+                let target_line = if is_line_start(buf, sel.start()) && top_line > 0 {
                     top_line - 1
                 } else {
                     top_line
@@ -88,11 +88,10 @@ pub(crate) fn cmd_select_line_backward(
             }
             MotionMode::Extend => {
                 let top_line = buf.char_to_line(sel.start());
-                let top_line_start = buf.line_to_char(top_line);
-                if sel.start() == top_line_start && top_line == 0 {
+                if is_line_start(buf, sel.start()) && top_line == 0 {
                     return sel; // already at first line — clamp
                 }
-                let (tgt_start, tgt_end) = if sel.start() == top_line_start {
+                let (tgt_start, tgt_end) = if is_line_start(buf, sel.start()) {
                     // Already starts at line boundary — target previous line.
                     let prev_line = top_line - 1;
                     (
@@ -102,7 +101,7 @@ pub(crate) fn cmd_select_line_backward(
                 } else {
                     // Expand to cover full lines.
                     let bottom_line = buf.char_to_line(sel.end());
-                    (top_line_start, line_end_exclusive(buf, bottom_line) - 1)
+                    (buf.line_to_char(top_line), line_end_exclusive(buf, bottom_line) - 1)
                 };
                 let new_start = sel.start().min(tgt_start);
                 let new_end = sel.end().max(tgt_end);

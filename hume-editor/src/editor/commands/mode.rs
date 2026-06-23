@@ -159,9 +159,8 @@ pub fn cmd_insert_at_selection_end(
             // len_chars() - 1 is safe: the buffer invariant guarantees at least one char.
             let max = b.len_chars() - 1;
             sels.map(|sel| {
-                let pos = if b.char_at(sel.end()) == Some('\n') {
-                    // Selection ends on a newline — insert before it, not past it.
-                    sel.end()
+                let pos = if sel.ends_on_newline(b) {
+                    sel.end() // selection ends on '\n' — insert before it, not past it
                 } else {
                     next_grapheme_boundary(b, sel.end())
                 };

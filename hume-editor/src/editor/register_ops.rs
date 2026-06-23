@@ -11,7 +11,7 @@
 use std::borrow::Cow;
 
 use crate::editor::clipboard::SystemClipboard;
-use crate::ops::register::{CLIPBOARD_REGISTER, RegisterSet, is_linewise};
+use crate::ops::register::{CLIPBOARD_REGISTER, RegisterSet, is_register_linewise};
 
 /// Read text from an explicitly named register.
 ///
@@ -78,7 +78,7 @@ pub(crate) fn write_register(
         // not "line\n\nword" which the old all-or-nothing join produced).
         let mut blob = String::new();
         for (i, v) in values.iter().enumerate() {
-            if i > 0 && !is_linewise(&values[i - 1]) {
+            if i > 0 && !is_register_linewise(&values[i - 1]) {
                 blob.push('\n');
             }
             blob.push_str(v);

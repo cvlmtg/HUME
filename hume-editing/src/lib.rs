@@ -44,8 +44,8 @@ pub use grapheme::{
     grapheme_col_in_line, grapheme_count, next_grapheme_boundary, prev_grapheme_boundary,
 };
 pub use history::{History, RevisionId};
-pub use lines::{line_content_end, line_end_exclusive, snap_to_grapheme_boundary};
-pub use selection::{Selection, SelectionSet};
+pub use lines::{is_line_start, line_content_end, line_end_exclusive, snap_to_grapheme_boundary};
+pub use selection::{Selection, SelectionSet, is_selection_linewise};
 pub use text::{LineEnding, Text};
 pub use transaction::Transaction;
 pub use word::{CharClass, classify_char, is_long_word_boundary, is_word_boundary};

@@ -306,10 +306,14 @@ pub(crate) fn yank_selections(buf: &Text, sels: &SelectionSet) -> Vec<String> {
 
 /// Returns `true` if `text` represents linewise register content.
 ///
-/// Linewise content always ends with `\n` because each selected line
-/// includes its trailing newline, and the buffer invariant ensures
-/// even the last line has one. Charwise/wordwise content does not.
-pub(crate) fn is_linewise(text: &str) -> bool {
+/// Linewise content always ends with `\n` because each selected line includes
+/// its trailing newline, and the buffer invariant ensures even the last line
+/// has one. Charwise/wordwise content does not.
+///
+/// This operates on *register/clipboard text* (paste time), not on a
+/// selection. For the selection-geometry predicate see
+/// `hume_editing::is_selection_linewise`.
+pub(crate) fn is_register_linewise(text: &str) -> bool {
     text.ends_with('\n')
 }
 

@@ -1,7 +1,7 @@
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
-use hume_editing::lines::line_end_exclusive;
-use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::lines::{is_line_start, line_end_exclusive};
+use hume_editing::selection::{Selection, SelectionSet, is_selection_linewise};
 use hume_editing::text::Text;
 
 use crate::ops::register;
@@ -182,43 +182,38 @@ fn delete_sel_region(
     new_sels: &mut Vec<Selection>,
 ) {
     let start = sel.start();
-    // Detect "whole last line": head is on the structural trailing '\n' AND the
-    // selection begins right at a line start (i.e. the char immediately before
-    // `start` is the '\n' of the previous line).
-    let on_structural = sel.end_inclusive(buf) > buf.last_content_char();
-    let has_prev_line =
-        start > 0 && buf.char_at(prev_grapheme_boundary(buf, start)) == Some('\n');
-
-    let del_start = if has_prev_line {
-        prev_grapheme_boundary(buf, start)
-    } else {
-        start
-    };
-    if on_structural && has_prev_line && del_start >= b.old_pos() {
-        // Consume the preceding '\n' instead of the structural one so that the
-        // last line disappears rather than becoming an empty trailing line.
-        // Cursor: land at the start of the now-last line (what was the line
-        // above the deleted one).
-        let prev_line = buf.char_to_line(del_start);
-        let cursor_line_start = buf.line_to_char(prev_line);
-        // `cursor_line_start` is in original-buffer coordinate space. Translate
-        // to the result space: add however many chars were already retained/deleted
-        // by earlier selections in this pass. `saturating_sub` guards the rare
-        // multi-cursor case where a prior selection overlapped into this region.
-        let cursor_new = b.new_pos() + cursor_line_start.saturating_sub(b.old_pos());
-        b.retain(del_start - b.old_pos());
-        // Delete from the preceding '\n' through the last content char, keeping
-        // the structural trailing '\n'.
-        b.delete(buf.last_content_char() + 1 - del_start);
-        new_sels.push(Selection::collapsed(cursor_new));
-    } else {
-        // Normal path: cap at the last content char so the structural '\n' is
-        // never removed.
-        let end_incl = sel.end_inclusive(buf).min(buf.last_content_char());
-        b.retain(start - b.old_pos());
-        b.delete(end_incl + 1 - start); // end_incl inclusive → +1 for exclusive bound
-        new_sels.push(Selection::collapsed(b.new_pos()));
+    // Special case: whole last line with a preceding line.
+    // `is_selection_linewise` confirms the selection spans full lines (starts at a
+    // line boundary, ends on '\n'). `end_inclusive > last_content_char` confirms
+    // the selection reaches the structural trailing '\n' (i.e. this is the last
+    // line). `start > 0` confirms there is a line above to merge into.
+    let on_last_line = sel.end_inclusive(buf) > buf.last_content_char();
+    if on_last_line && is_selection_linewise(buf, sel) && start > 0 {
+        // Consume the preceding '\n' instead of the structural one so the last
+        // line disappears rather than becoming an empty trailing line (vim
+        // `dd`-on-last-line convention).
+        let del_start = prev_grapheme_boundary(buf, start);
+        if del_start >= b.old_pos() {
+            // Cursor: land at the start of the now-last line (what was the line
+            // above the deleted one).
+            let prev_line = buf.char_to_line(del_start);
+            let cursor_line_start = buf.line_to_char(prev_line);
+            // Translate to result-buffer coordinates; `saturating_sub` guards the
+            // rare multi-cursor case where a prior selection overlapped this region.
+            let cursor_new = b.new_pos() + cursor_line_start.saturating_sub(b.old_pos());
+            b.retain(del_start - b.old_pos());
+            // Delete from the preceding '\n' through the last content char,
+            // keeping the structural trailing '\n'.
+            b.delete(buf.last_content_char() + 1 - del_start);
+            new_sels.push(Selection::collapsed(cursor_new));
+            return;
+        }
     }
+    // Normal path: cap at the last content char so the structural '\n' is never removed.
+    let end_incl = sel.content_end(buf);
+    b.retain(start - b.old_pos());
+    b.delete(end_incl + 1 - start); // end_incl inclusive → +1 for exclusive bound
+    new_sels.push(Selection::collapsed(b.new_pos()));
 }
 
 /// Private implementation shared by [`paste_after`] and [`paste_before`].
@@ -274,7 +269,7 @@ fn paste_impl(
         };
 
         if sel.is_collapsed() {
-            if register::is_linewise(text) {
+            if register::is_register_linewise(text) {
                 // Linewise cursor paste: insert as whole new line(s).
                 // insert advances new_pos() by the char count of the inserted text,
                 // so new_pos() - text.chars().count() is the first inserted char.
@@ -305,7 +300,7 @@ fn paste_impl(
                     new_sels.push(Selection::new(b.new_pos() - count, b.new_pos() - 1));
                 }
             }
-        } else if register::is_linewise(text) {
+        } else if register::is_register_linewise(text) {
             // Linewise over a non-collapsed selection: replace the selected fragment
             // with the pasted line(s). Unselected text before/after on the same line
             // is retained and pushed onto its own line by the pasted '\n'.
@@ -316,9 +311,7 @@ fn paste_impl(
             // and does not already end in '\n' (i.e. we're not at a line start). When
             // the previous edit ended right at `start` (start == b.old_pos()), the
             // prior paste already supplied the separating '\n'.
-            let start_line = buf.char_to_line(start);
-            let at_line_start = start == buf.line_to_char(start_line);
-            let needs_prefix = start > b.old_pos() && !at_line_start;
+            let needs_prefix = start > b.old_pos() && !is_line_start(buf, start);
 
             // Consume the line's trailing '\n' when the selection ends right before it,
             // so the pasted line's own '\n' doesn't create a blank line. `newline_pos`
@@ -341,9 +334,8 @@ fn paste_impl(
             new_sels.push(Selection::new(b.new_pos() - count, b.new_pos() - 1));
         } else {
             // Charwise over a non-collapsed selection: delete and inline-insert.
-            // Cap end at the last content char to protect the structural trailing '\n'.
             let start = sel.start();
-            let end_incl = sel.end_inclusive(buf).min(buf.last_content_char());
+            let end_incl = sel.content_end(buf);
             let end_excl = end_incl + 1;
             b.retain(start - b.old_pos());
             b.delete(end_excl - start);
@@ -384,10 +376,7 @@ pub(crate) fn insert_char(
         let start = sel.start();
         b.retain(start - b.old_pos());
         if !sel.is_collapsed() {
-            // Delete the selected region. Cap at the last content char to protect
-            // the structural trailing '\n'.
-            let end_incl = sel.end_inclusive(buf).min(buf.last_content_char());
-            b.delete(end_incl + 1 - start);
+            b.delete(sel.content_end(buf) + 1 - start);
         }
         b.insert_char(ch);
         // new_pos() is one past the inserted char — the cursor sits on the
@@ -492,9 +481,8 @@ pub(crate) fn delete_selection(buf: Text, sels: SelectionSet) -> (Text, Selectio
 /// `(pos, pos)`, a zero-length no-op.
 pub(crate) fn change_span(buf: &Text, sel: &Selection) -> (usize, usize) {
     let start = sel.start();
-    let stop = if buf.char_at(sel.end()) == Some('\n') {
-        // Selection ends on a newline — stop before it.
-        sel.end()
+    let stop = if sel.ends_on_newline(buf) {
+        sel.end() // stop before the '\n': `c` clears line content but keeps the line
     } else {
         // end_inclusive accounts for multi-codepoint grapheme clusters; +1 converts
         // to exclusive upper bound for deletion.
