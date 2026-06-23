@@ -1,1 +1,1 @@
-xs, <ret>c,<ret>            <esc>,gekxs, <ret>c,<ret>              <esc>
+<c-x><c-x>s, <ret>c,<ret><esc>%s:\w<ret>&<c-,><c-,><c-,>&
