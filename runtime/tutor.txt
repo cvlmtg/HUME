@@ -202,7 +202,54 @@ On a wider selection it overwrites every character in the range
   ─────────────────────────────────────────────────────────────────
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  L E S S O N   3 — Y A N K ,   P A S T E ,
+  L E S S O N   3 — I N S E R T I N G   T E X T
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To type text you must enter Insert mode. There are several ways to
+start inserting, each placing the cursor at a slightly different spot.
+
+  i   insert at the START of the current selection
+  a   insert at the END of the current selection
+  I   insert at the beginning of the line (first non-blank)
+  A   insert at the end of the line
+  o   open a new line BELOW the cursor and enter Insert
+  O   open a new line ABOVE the cursor and enter Insert
+
+  Esc   or   Ctrl+c   exits Insert mode.
+
+3.1  BASIC INSERT
+
+  >> Navigate to the blank after "Name:" and press `a` to append.
+     Type your name, then press `Esc`:
+
+  Name:
+
+  >> Use `I` to prepend "DONE: " to the line below (press `I`, type
+     the prefix, then `Esc`):
+
+  finish this task
+
+3.2  OPEN NEW LINES
+
+  >> Press `o` on the line below, then type `Shopping list item 2`.
+     Press `Esc` when done:
+
+  Shopping list item 1:
+
+  >> Press `O` on the line below, then type `Shopping list:` as a
+     title. Press `Esc` when done:
+
+  First item of the list.
+
+  ── Lesson 3 Summary ─────────────────────────────────────────────
+  i / a    insert at start / end of selection
+  I / A    insert at line start / end
+  o / O    open new line below / above
+  Esc      return to Normal mode
+  ─────────────────────────────────────────────────────────────────
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  L E S S O N   4 — Y A N K ,   P A S T E ,
                     A N D   T H E   K I L L   R I N G
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -213,7 +260,7 @@ system) and the KILL RING (internal to the editor).
   p   smart-paste after the selection
   P   smart-paste before the selection
 
-3.1  YANK AND PASTE
+4.1  YANK AND PASTE
 
 `y` copies the selection but leaves it selected. Because `p` pastes
 OVER a multi-character selection (replacing it), pressing `p` right
@@ -242,7 +289,7 @@ When the cursor covers a single character, `p` inserts after it.
 When the yanked text was a whole line (selected with `x`), `p` inserts
 a new line below.
 
-3.2  THE KILL RING
+4.2  THE KILL RING
 
 `c` and `d` (change and delete) push their result into the kill ring
 separately from the clipboard. The ring keeps the 10 most recent
@@ -261,7 +308,7 @@ sequence collapses into one undo step: a single `u` reverts all of it.
 
   OLD word and ALSO word here.
 
-3.3  SMART PASTE
+4.3  SMART PASTE
 
 `p` is context-aware:
   - after `c` or `d` (a kill), it reads from the kill ring
@@ -273,72 +320,11 @@ to paste the deleted text, without switching registers manually.
 If the clipboard is empty when `p` would read it, it falls back to
 the most recent kill so there is always something to paste.
 
-  ── Lesson 3 Summary ─────────────────────────────────────────────
+  ── Lesson 4 Summary ─────────────────────────────────────────────
   y         yank to clipboard + kill ring   p / P  paste after / before
   c / d     push to kill ring (10)          [ / ]  cycle ring (after paste)
   p reads from kill ring after c/d, from clipboard otherwise
   y leaves the selection — press `;` to collapse before pasting a copy
-  ─────────────────────────────────────────────────────────────────
-
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  L E S S O N   4 — I N S E R T I N G   T E X T
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To type text you must enter Insert mode. There are several ways to
-start inserting, each placing the cursor at a slightly different spot.
-
-  i   insert at the START of the current selection
-  a   insert at the END of the current selection
-  I   insert at the beginning of the line (first non-blank)
-  A   insert at the end of the line
-  o   open a new line BELOW the cursor and enter Insert
-  O   open a new line ABOVE the cursor and enter Insert
-
-  Esc   or   Ctrl+c   exits Insert mode.
-
-4.1  BASIC INSERT
-
-  >> Navigate to the blank after "Name:" and press `a` to append.
-     Type your name, then press `Esc`:
-
-  Name:
-
-  >> Use `I` to prepend "DONE: " to the line below (press `I`, type
-     the prefix, then `Esc`):
-
-  finish this task
-
-4.2  OPEN NEW LINES
-
-  >> Press `o` on the line below, then type `Shopping list item 2`.
-     Press `Esc` when done:
-
-  Shopping list item 1:
-
-  >> Press `O` on the line below, then type `Shopping list:` as a
-     title. Press `Esc` when done:
-
-  First item of the list.
-
-4.3  REPLACE A WORD
-
-The canonical "change a word" workflow:
-  1.  w   (select the whole next word)
-  2.  c   (delete it and enter Insert)
-  3. type the replacement
-  4.  Esc
-
-  >> Navigate onto the word "placeholder", press `w` to select it,
-     press `c`, type `42`, press `Esc`. The line should read:
-     The value is 42.
-
-  The value is placeholder.
-
-  ── Lesson 4 Summary ─────────────────────────────────────────────
-  i / a    insert at start / end of selection
-  I / A    insert at line start / end
-  o / O    open new line below / above
-  Esc      return to Normal mode
   ─────────────────────────────────────────────────────────────────
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
