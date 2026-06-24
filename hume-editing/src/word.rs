@@ -35,9 +35,9 @@ pub fn is_word_boundary(a: CharClass, b: CharClass) -> bool {
 /// transitions involving Space or Eol count (`W` semantics).
 ///
 /// The name follows Vim's uppercase-W convention for WORD (long-word) motions:
-/// `is_long_word_boundary` returns `true` only at whitespace-or-newline ↔
+/// `is_uppercase_word_boundary` returns `true` only at whitespace-or-newline ↔
 /// non-whitespace-non-newline transitions.
-pub fn is_long_word_boundary(a: CharClass, b: CharClass) -> bool {
+pub fn is_uppercase_word_boundary(a: CharClass, b: CharClass) -> bool {
     let merge = |c: CharClass| {
         if c == CharClass::Punctuation {
             CharClass::Word
@@ -113,21 +113,21 @@ mod tests {
         assert!(is_word_boundary(Space, Eol));
     }
 
-    // ── is_long_word_boundary ─────────────────────────────────────────────────
+    // ── is_uppercase_word_boundary ─────────────────────────────────────────────────
 
     #[test]
-    fn long_word_boundary_merges_word_and_punctuation() {
+    fn uppercase_word_boundary_merges_word_and_punctuation() {
         use CharClass::*;
         // Word ↔ Punctuation are merged — no long-word boundary between them
-        assert!(!is_long_word_boundary(Word, Punctuation));
-        assert!(!is_long_word_boundary(Punctuation, Word));
+        assert!(!is_uppercase_word_boundary(Word, Punctuation));
+        assert!(!is_uppercase_word_boundary(Punctuation, Word));
         // Same class → no boundary
-        assert!(!is_long_word_boundary(Word, Word));
-        assert!(!is_long_word_boundary(Space, Space));
+        assert!(!is_uppercase_word_boundary(Word, Word));
+        assert!(!is_uppercase_word_boundary(Space, Space));
         // Space/Eol transitions are still boundaries
-        assert!(is_long_word_boundary(Word, Space));
-        assert!(is_long_word_boundary(Punctuation, Space));
-        assert!(is_long_word_boundary(Word, Eol));
-        assert!(is_long_word_boundary(Space, Eol));
+        assert!(is_uppercase_word_boundary(Word, Space));
+        assert!(is_uppercase_word_boundary(Punctuation, Space));
+        assert!(is_uppercase_word_boundary(Word, Eol));
+        assert!(is_uppercase_word_boundary(Space, Eol));
     }
 }

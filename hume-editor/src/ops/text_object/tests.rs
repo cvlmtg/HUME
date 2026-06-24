@@ -163,11 +163,11 @@ fn inner_word_includes_combining_grapheme() {
 
 #[test]
 #[allow(non_snake_case)]
-fn inner_WORD_spans_punctuation() {
+fn inner_uppercase_word_spans_punctuation() {
     // `hello.world` is one WORD (no whitespace boundary within it).
     assert_state!(
         "-[h]>ello.world foo\n",
-        |(buf, sels)| cmd_inner_WORD(&buf, sels, MotionMode::Move),
+        |(buf, sels)| cmd_inner_uppercase_word(&buf, sels, MotionMode::Move),
         "-[hello.world]> foo\n"
     );
 }
@@ -436,10 +436,10 @@ fn around_line_multi_cursor_different_lines() {
 
 #[test]
 #[allow(non_snake_case)]
-fn inner_WORD_multi_cursor() {
+fn inner_uppercase_word_multi_cursor() {
     assert_state!(
         "-[h]>ello.world -[f]>oo\n",
-        |(buf, sels)| cmd_inner_WORD(&buf, sels, MotionMode::Move),
+        |(buf, sels)| cmd_inner_uppercase_word(&buf, sels, MotionMode::Move),
         "-[hello.world]> -[foo]>\n"
     );
 }
@@ -458,71 +458,71 @@ fn inner_paren_two_cursors_same_pair_merge() {
 
 #[test]
 #[allow(non_snake_case)]
-fn around_WORD_includes_trailing_space() {
+fn around_uppercase_word_includes_trailing_space() {
     assert_state!(
         "-[h]>ello.world foo\n",
-        |(buf, sels)| cmd_around_WORD(&buf, sels, MotionMode::Move),
+        |(buf, sels)| cmd_around_uppercase_word(&buf, sels, MotionMode::Move),
         "-[hello.world ]>foo\n"
     );
 }
 
 #[test]
 #[allow(non_snake_case)]
-fn around_WORD_no_trailing_space_uses_leading() {
+fn around_uppercase_word_no_trailing_space_uses_leading() {
     // Last WORD has no trailing space — grabs leading space instead.
     assert_state!(
         "hello.world -[f]>oo\n",
-        |(buf, sels)| cmd_around_WORD(&buf, sels, MotionMode::Move),
+        |(buf, sels)| cmd_around_uppercase_word(&buf, sels, MotionMode::Move),
         "hello.world-[ foo]>\n"
     );
 }
 
 #[test]
 #[allow(non_snake_case)]
-fn around_WORD_end_of_buffer_with_leading_space_uses_WORD_boundary() {
+fn around_uppercase_word_end_of_buffer_with_leading_space_uses_uppercase_word_boundary() {
     // B1 regression: the fallback path for "WORD at end of buffer with no
     // trailing space" was calling inner_word_impl with the wrong predicate
-    // (is_word_boundary instead of is_long_word_boundary). This test catches
+    // (is_word_boundary instead of is_uppercase_word_boundary). This test catches
     // that by using a WORD that contains punctuation — `is_word_boundary`
-    // would split "foo.bar" into two words while `is_long_word_boundary` keeps
+    // would split "foo.bar" into two words while `is_uppercase_word_boundary` keeps
     // it as one WORD, so the leading-space extent would differ.
     assert_state!(
         "  -[f]>oo.bar\n",
-        |(buf, sels)| cmd_around_WORD(&buf, sels, MotionMode::Move),
+        |(buf, sels)| cmd_around_uppercase_word(&buf, sels, MotionMode::Move),
         "-[  foo.bar]>\n"
     );
 }
 
 #[test]
 #[allow(non_snake_case)]
-fn around_WORD_cursor_on_whitespace_extends_to_next_WORD() {
+fn around_uppercase_word_cursor_on_whitespace_extends_to_next_uppercase_word() {
     assert_state!(
         "foo-[ ]>bar\n",
-        |(buf, sels)| cmd_around_WORD(&buf, sels, MotionMode::Move),
+        |(buf, sels)| cmd_around_uppercase_word(&buf, sels, MotionMode::Move),
         "foo-[ bar]>\n"
     );
 }
 
 #[test]
 #[allow(non_snake_case)]
-fn around_WORD_multi_cursor() {
+fn around_uppercase_word_multi_cursor() {
     // "hello world foo\n": cursor on 'h'(0) → "hello "(0..5); cursor on 'f'(12) → " foo"(11..14).
     assert_state!(
         "-[h]>ello world-[ ]>foo\n",
-        |(buf, sels)| cmd_around_WORD(&buf, sels, MotionMode::Move),
+        |(buf, sels)| cmd_around_uppercase_word(&buf, sels, MotionMode::Move),
         "-[hello ]>world-[ foo]>\n"
     );
 }
 
 #[test]
 #[allow(non_snake_case)]
-fn around_WORD_treats_punctuation_as_part_of_word() {
+fn around_uppercase_word_treats_punctuation_as_part_of_word() {
     // WORD includes adjacent punctuation; `around_word` (lower-case) would stop at '.'.
     // "foo.bar baz\n" — cursor on 'f': around_WORD selects "foo.bar " (whole WORD + space).
     // around_word would only select "foo " (stopping at '.').
     assert_state!(
         "-[f]>oo.bar baz\n",
-        |(buf, sels)| cmd_around_WORD(&buf, sels, MotionMode::Move),
+        |(buf, sels)| cmd_around_uppercase_word(&buf, sels, MotionMode::Move),
         "-[foo.bar ]>baz\n"
     );
 }
@@ -615,10 +615,10 @@ fn inner_word_on_structural_newline() {
 
 #[test]
 #[allow(non_snake_case)]
-fn inner_WORD_on_structural_newline() {
+fn inner_uppercase_word_on_structural_newline() {
     assert_state!(
         "-[\n]>",
-        |(buf, sels)| cmd_inner_WORD(&buf, sels, MotionMode::Move),
+        |(buf, sels)| cmd_inner_uppercase_word(&buf, sels, MotionMode::Move),
         "-[\n]>"
     );
 }

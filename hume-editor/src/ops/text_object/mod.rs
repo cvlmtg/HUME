@@ -4,7 +4,7 @@ use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::lines::{line_content_end, line_end_exclusive};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
-use hume_editing::word::{CharClass, classify_char, is_long_word_boundary, is_word_boundary};
+use hume_editing::word::{CharClass, classify_char, is_uppercase_word_boundary, is_word_boundary};
 
 // ── Text object framework ──────────────────────────────────────────────────────
 
@@ -424,16 +424,16 @@ pub(crate) fn cmd_around_word(buf: &Text, sels: SelectionSet, mode: MotionMode) 
 }
 
 #[allow(non_snake_case)]
-pub(crate) fn cmd_inner_WORD(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_inner_uppercase_word(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, |b, pos| {
-        inner_word_impl(b, pos, is_long_word_boundary)
+        inner_word_impl(b, pos, is_uppercase_word_boundary)
     })
 }
 
 #[allow(non_snake_case)]
-pub(crate) fn cmd_around_WORD(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_around_uppercase_word(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, |b, pos| {
-        around_word_impl(b, pos, is_long_word_boundary)
+        around_word_impl(b, pos, is_uppercase_word_boundary)
     })
 }
 

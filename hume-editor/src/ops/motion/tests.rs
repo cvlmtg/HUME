@@ -817,22 +817,22 @@ fn select_prev_word_count_overshoots() {
 
 #[test]
 #[allow(non_snake_case)]
-fn select_next_WORD_skips_punct() {
+fn select_next_uppercase_word_skips_punct() {
     // W: "hello.world" is a single WORD — W selects it entirely.
     assert_state!(
         "-[h]>ello.world bar\n",
-        |(buf, sels)| cmd_select_next_WORD(&buf, sels, 1, MotionMode::Move),
+        |(buf, sels)| cmd_select_next_uppercase_word(&buf, sels, 1, MotionMode::Move),
         "hello.world -[bar]>\n"
     );
 }
 
 #[test]
 #[allow(non_snake_case)]
-fn select_next_WORD_crosses_newline() {
+fn select_next_uppercase_word_crosses_newline() {
     // W at end of a line crosses the newline and selects the first WORD on the next line.
     assert_state!(
         "-[h]>ello.world\nbar\n",
-        |(buf, sels)| cmd_select_next_WORD(&buf, sels, 1, MotionMode::Move),
+        |(buf, sels)| cmd_select_next_uppercase_word(&buf, sels, 1, MotionMode::Move),
         "hello.world\n-[bar]>\n"
     );
 }
@@ -849,23 +849,23 @@ fn select_next_word_stops_at_punct() {
 
 #[test]
 #[allow(non_snake_case)]
-fn select_prev_WORD_skips_punct() {
+fn select_prev_uppercase_word_skips_punct() {
     // B: from "bar", jumps back over "hello.world" as ONE WORD (the dot is not
     // a WORD boundary), selecting the whole token.
     assert_state!(
         "hello.world -[bar]>\n",
-        |(buf, sels)| cmd_select_prev_WORD(&buf, sels, 1, MotionMode::Move),
+        |(buf, sels)| cmd_select_prev_uppercase_word(&buf, sels, 1, MotionMode::Move),
         "-[hello.world]> bar\n"
     );
 }
 
 #[test]
 #[allow(non_snake_case)]
-fn select_prev_WORD_crosses_newline() {
+fn select_prev_uppercase_word_crosses_newline() {
     // B at the start of a line crosses the newline and selects the last WORD on the previous line.
     assert_state!(
         "hello.world\n-[bar]>\n",
-        |(buf, sels)| cmd_select_prev_WORD(&buf, sels, 1, MotionMode::Move),
+        |(buf, sels)| cmd_select_prev_uppercase_word(&buf, sels, 1, MotionMode::Move),
         "-[hello.world]>\nbar\n"
     );
 }

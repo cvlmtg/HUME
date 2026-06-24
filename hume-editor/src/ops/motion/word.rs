@@ -2,7 +2,7 @@ use super::MotionMode;
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
-use hume_editing::word::{CharClass, classify_char, is_long_word_boundary, is_word_boundary};
+use hume_editing::word::{CharClass, classify_char, is_uppercase_word_boundary, is_word_boundary};
 
 // ── Word motions (inner) ──────────────────────────────────────────────────────
 
@@ -13,7 +13,7 @@ use hume_editing::word::{CharClass, classify_char, is_long_word_boundary, is_wor
 /// (but not newlines), and lands on the next word/punct start or on a newline.
 ///
 /// The `is_boundary` parameter is `is_word_boundary` for `w` and
-/// `is_long_word_boundary` for `W`.
+/// `is_uppercase_word_boundary` for `W`.
 pub(super) fn next_word_start(
     buf: &Text,
     head: usize,
@@ -345,7 +345,7 @@ pub(crate) fn cmd_select_next_word(
 
 /// Select or extend to the next WORD (`W`): like `w` but treats word+punct as one class.
 #[allow(non_snake_case)]
-pub(crate) fn cmd_select_next_WORD(
+pub(crate) fn cmd_select_next_uppercase_word(
     buf: &Text,
     sels: SelectionSet,
     count: usize,
@@ -353,10 +353,10 @@ pub(crate) fn cmd_select_next_WORD(
 ) -> SelectionSet {
     match mode {
         MotionMode::Move => apply_word_select(buf, sels, count, |b, pos| {
-            select_next_word(b, pos, is_long_word_boundary)
+            select_next_word(b, pos, is_uppercase_word_boundary)
         }),
         MotionMode::Extend => apply_word_select_extend_forward(buf, sels, count, |b, pos| {
-            select_next_word(b, pos, is_long_word_boundary)
+            select_next_word(b, pos, is_uppercase_word_boundary)
         }),
     }
 }
@@ -381,7 +381,7 @@ pub(crate) fn cmd_select_prev_word(
 
 /// Select or extend to the previous WORD (`B`): like `b` but treats word+punct as one class.
 #[allow(non_snake_case)]
-pub(crate) fn cmd_select_prev_WORD(
+pub(crate) fn cmd_select_prev_uppercase_word(
     buf: &Text,
     sels: SelectionSet,
     count: usize,
@@ -389,10 +389,10 @@ pub(crate) fn cmd_select_prev_WORD(
 ) -> SelectionSet {
     match mode {
         MotionMode::Move => apply_word_select(buf, sels, count, |b, pos| {
-            select_prev_word(b, pos, is_long_word_boundary)
+            select_prev_word(b, pos, is_uppercase_word_boundary)
         }),
         MotionMode::Extend => apply_word_select_extend_backward(buf, sels, count, |b, pos| {
-            select_prev_word(b, pos, is_long_word_boundary)
+            select_prev_word(b, pos, is_uppercase_word_boundary)
         }),
     }
 }
