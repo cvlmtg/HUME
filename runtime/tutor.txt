@@ -66,9 +66,13 @@ whitespace divides WORDs).
 
 1.3  LINE MOTION
 
-  0   or  Home    go to start of line (first character)
-  ^               go to first non-blank character
-  $   or  End     go to end of line (last character)
+  gh  or  Home    go to start of line (first character)
+  gs              go to first non-blank character
+  gl  or  End     go to end of line (last character)
+
+To select a range up to the start/end of the line: use `Ctrl+g h` /
+`Ctrl+g s` / `Ctrl+g l` for a one-shot extend, or enter Extend mode
+first (see Lesson 7.4).
 
   >> Navigate to the start and end of this intentionally long line:
 
@@ -110,9 +114,6 @@ glyph (ᓚᘏᗢ) in the statusline.
 
 Counts apply to motions, not edits.
 
-Note: `0` alone jumps to line start; with a count already pending,
-it becomes a digit (so `10w`, `20j`).
-
   >> Place the cursor on `one` in the line below, then press `3w` to
      jump three words forward. You should land on `four`:
 
@@ -123,7 +124,7 @@ it becomes a digit (so `10w`, `20j`).
 
   ── Lesson 1 Summary ─────────────────────────────────────────────
   h j k l    basic motion         gg / ge      first / last line
-  w / W      next word / WORD     0 ^ $        line start / end
+  w / W      next word / WORD     gh gl gs     line start / end
   b / B      prev word / WORD     { }          paragraph motion
   3w / 5j    count + motion       3f. / 3n     count + find / search
   Ctrl+o / Ctrl+i   jump backward / forward in movement history
@@ -569,6 +570,9 @@ Extend mode by holding Ctrl. Every motion supports it:
   Ctrl+t<c>  extend forward to just before <char>
   Ctrl+F<c>  extend backward to <char>
   Ctrl+T<c>  extend backward to just after <char>
+  Ctrl+g h   extend to start of line
+  Ctrl+g l   extend to end of line
+  Ctrl+g s   extend to first non-blank character
 
 The idiomatic delete-to-char pattern:
   Ctrl+f.   (extend the selection to the next period)
@@ -576,7 +580,7 @@ The idiomatic delete-to-char pattern:
 
 NOTE: one-shot Ctrl extend requires the kitty keyboard protocol
 (look for the cat glyph ᓚᘏᗢ in the statusline). Without it,
-Ctrl+w / Ctrl+f / Ctrl+t do nothing — use Extend mode instead.
+Ctrl+w / Ctrl+f / etc. do nothing — use Extend mode instead.
 
   >> (Kitty) Press `Ctrl+w` a few times to grow the selection across
      words below, then `d` to delete the span.
@@ -670,6 +674,7 @@ several lines, then make the same edit on all of them at once.
   ( / )       cycle primary             C       copy on next line
   _           trim whitespace           S       split on newlines
   Ctrl+w / Ctrl+f<c> / Ctrl+t<c>   one-shot extend (kitty only)
+  Ctrl+g h / Ctrl+g l / Ctrl+g s    one-shot extend line motions
   ─────────────────────────────────────────────────────────────────
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
