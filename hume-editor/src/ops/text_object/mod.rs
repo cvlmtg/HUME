@@ -126,11 +126,11 @@ fn around_line(buf: &Text, pos: usize) -> Option<(usize, usize)> {
     Some((start, end_excl - 1))
 }
 
-pub(crate) fn cmd_inner_line(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_inner_line(buf: &Text, sels: SelectionSet, _count: usize, mode: MotionMode) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, inner_line)
 }
 
-pub(crate) fn cmd_around_line(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_around_line(buf: &Text, sels: SelectionSet, _count: usize, mode: MotionMode) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, around_line)
 }
 
@@ -278,7 +278,7 @@ fn around_word_impl(
     Some((start, end))
 }
 
-pub(crate) fn cmd_inner_word(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_inner_word(buf: &Text, sels: SelectionSet, _count: usize, mode: MotionMode) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, |b, pos| {
         inner_word_impl(b, pos, is_word_boundary)
     })
@@ -404,6 +404,7 @@ pub(crate) fn apply_nearest_word_result(
 pub(crate) fn cmd_select_word_nearest_on_line(
     buf: &Text,
     sels: SelectionSet,
+    _count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
     let result = sels.map(|sel| {
@@ -417,7 +418,7 @@ pub(crate) fn cmd_select_word_nearest_on_line(
     result
 }
 
-pub(crate) fn cmd_around_word(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_around_word(buf: &Text, sels: SelectionSet, _count: usize, mode: MotionMode) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, |b, pos| {
         around_word_impl(b, pos, is_word_boundary)
     })
@@ -427,6 +428,7 @@ pub(crate) fn cmd_around_word(buf: &Text, sels: SelectionSet, mode: MotionMode) 
 pub(crate) fn cmd_inner_uppercase_word(
     buf: &Text,
     sels: SelectionSet,
+    _count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, |b, pos| {
@@ -438,6 +440,7 @@ pub(crate) fn cmd_inner_uppercase_word(
 pub(crate) fn cmd_around_uppercase_word(
     buf: &Text,
     sels: SelectionSet,
+    _count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, |b, pos| {
@@ -465,6 +468,7 @@ macro_rules! bracket_cmds {
         pub(crate) fn $inner_name(
             buf: &Text,
             sels: SelectionSet,
+            _count: usize,
             mode: MotionMode,
         ) -> SelectionSet {
             apply_text_object_by_mode(buf, sels, mode, |b, pos| {
@@ -474,6 +478,7 @@ macro_rules! bracket_cmds {
         pub(crate) fn $around_name(
             buf: &Text,
             sels: SelectionSet,
+            _count: usize,
             mode: MotionMode,
         ) -> SelectionSet {
             apply_text_object_by_mode(buf, sels, mode, |b, pos| {
@@ -508,6 +513,7 @@ macro_rules! quote_cmds {
         pub(crate) fn $inner_name(
             buf: &Text,
             sels: SelectionSet,
+            _count: usize,
             mode: MotionMode,
         ) -> SelectionSet {
             apply_text_object_by_mode(buf, sels, mode, |b, pos| inner_quote(b, pos, $quote))
@@ -515,6 +521,7 @@ macro_rules! quote_cmds {
         pub(crate) fn $around_name(
             buf: &Text,
             sels: SelectionSet,
+            _count: usize,
             mode: MotionMode,
         ) -> SelectionSet {
             apply_text_object_by_mode(buf, sels, mode, |b, pos| around_quote(b, pos, $quote))
@@ -697,13 +704,14 @@ fn around_argument(buf: &Text, pos: usize) -> Option<(usize, usize)> {
     }
 }
 
-pub(crate) fn cmd_inner_argument(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_inner_argument(buf: &Text, sels: SelectionSet, _count: usize, mode: MotionMode) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, inner_argument)
 }
 
 pub(crate) fn cmd_around_argument(
     buf: &Text,
     sels: SelectionSet,
+    _count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, around_argument)

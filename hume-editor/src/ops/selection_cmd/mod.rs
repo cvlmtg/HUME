@@ -21,6 +21,7 @@ use hume_editing::text::Text;
 pub(crate) fn cmd_collapse_selection_to_head(
     buf: &Text,
     sels: SelectionSet,
+    _count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
     let new_sels = sels.map(|s| Selection::collapsed(s.head()));
@@ -38,6 +39,7 @@ pub(crate) fn cmd_collapse_selection_to_head(
 pub(crate) fn cmd_collapse_selection_to_anchor(
     buf: &Text,
     sels: SelectionSet,
+    _count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
     let new_sels = sels.map(|s| Selection::collapsed(s.anchor()));
@@ -53,6 +55,7 @@ pub(crate) fn cmd_collapse_selection_to_anchor(
 pub(crate) fn cmd_flip_selections(
     buf: &Text,
     sels: SelectionSet,
+    _count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
     // `flip` only swaps anchor/head — no range change → no new overlaps.
@@ -66,7 +69,7 @@ pub(crate) fn cmd_flip_selections(
 /// Replaces all selections with a single selection spanning from the first
 /// character to the last (the structural trailing `\n`). Head is placed at
 /// the end so the cursor sits at the bottom — consistent with Helix `%`.
-pub(crate) fn cmd_select_all(buf: &Text, _sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_select_all(buf: &Text, _sels: SelectionSet, _count: usize, _mode: MotionMode) -> SelectionSet {
     let end = buf.len_chars().saturating_sub(1);
     let sels = SelectionSet::single(Selection::new(0, end));
     sels.debug_assert_valid(buf);
@@ -80,6 +83,7 @@ pub(crate) fn cmd_select_all(buf: &Text, _sels: SelectionSet, _mode: MotionMode)
 pub(crate) fn cmd_keep_primary_selection(
     buf: &Text,
     sels: SelectionSet,
+    _count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
     let new_sels = sels.keep_primary();
@@ -95,18 +99,27 @@ pub(crate) fn cmd_keep_primary_selection(
 pub(crate) fn cmd_remove_primary_selection(
     buf: &Text,
     sels: SelectionSet,
+    count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
-    let idx = sels.primary_index();
-    let new_sels = sels.remove(idx); // no-op when len == 1
-    new_sels.debug_assert_valid(buf);
-    new_sels
+    let count = count.max(1);
+    let mut sels = sels;
+    for _ in 0..count {
+        if sels.len() <= 1 {
+            break;
+        }
+        let idx = sels.primary_index();
+        sels = sels.remove(idx);
+    }
+    sels.debug_assert_valid(buf);
+    sels
 }
 
 /// Move the primary selection to the next one in document order, wrapping.
 pub(crate) fn cmd_cycle_primary_forward(
     buf: &Text,
     sels: SelectionSet,
+    _count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
     let new_sels = sels.cycle_primary(1);
@@ -118,6 +131,7 @@ pub(crate) fn cmd_cycle_primary_forward(
 pub(crate) fn cmd_cycle_primary_backward(
     buf: &Text,
     sels: SelectionSet,
+    _count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
     let new_sels = sels.cycle_primary(-1);
@@ -141,7 +155,7 @@ mod tests {
         // A cursor (anchor == head) collapsing to itself — no change.
         assert_state!(
             "-[h]>ello\n",
-            |(buf, sels)| cmd_collapse_selection_to_head(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_collapse_selection_to_head(&buf, sels, 0, MotionMode::Move),
             "-[h]>ello\n"
         );
     }
@@ -150,7 +164,7 @@ mod tests {
     fn collapse_forward_selection() {
         assert_state!(
             "-[hell]>o\n",
-            |(buf, sels)| cmd_collapse_selection_to_head(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_collapse_selection_to_head(&buf, sels, 0, MotionMode::Move),
             // head was at 'l' (offset 3)
             "hel-[l]>o\n"
         );
@@ -161,7 +175,7 @@ mod tests {
         // Backward: anchor=3, head=0, selects "hell" (4 chars). Collapses to cursor at head=0.
         assert_state!(
             "<[hell]-o\n",
-            |(buf, sels)| cmd_collapse_selection_to_head(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_collapse_selection_to_head(&buf, sels, 0, MotionMode::Move),
             "-[h]>ello\n"
         );
     }
@@ -171,7 +185,7 @@ mod tests {
         // Two cursors at different positions stay separate after collapse —
         // they only merge if their heads land on the exact same position.
         let (buf, sels) = parse_state("-[h]>el-[l]>o\n");
-        let result = cmd_collapse_selection_to_head(&buf, sels, MotionMode::Move);
+        let result = cmd_collapse_selection_to_head(&buf, sels, 0, MotionMode::Move);
         assert_eq!(result.len(), 2); // still 2 — they don't converge
     }
 
@@ -182,7 +196,7 @@ mod tests {
         // Forward: anchor=0, head=3, selects "hell". After flip: anchor=3, head=0.
         assert_state!(
             "-[hell]>o\n",
-            |(buf, sels)| cmd_flip_selections(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_flip_selections(&buf, sels, 0, MotionMode::Move),
             "<[hell]-o\n"
         );
     }
@@ -192,7 +206,7 @@ mod tests {
         // Backward: anchor=3, head=0, selects "hell". After flip: anchor=0, head=3.
         assert_state!(
             "<[hell]-o\n",
-            |(buf, sels)| cmd_flip_selections(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_flip_selections(&buf, sels, 0, MotionMode::Move),
             "-[hell]>o\n"
         );
     }
@@ -202,7 +216,7 @@ mod tests {
         // anchor == head → flip does nothing observable.
         assert_state!(
             "-[h]>ello\n",
-            |(buf, sels)| cmd_flip_selections(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_flip_selections(&buf, sels, 0, MotionMode::Move),
             "-[h]>ello\n"
         );
     }
@@ -213,8 +227,8 @@ mod tests {
         assert_state!(
             "-[hell]>o\n",
             |(buf, sels)| {
-                let sels = cmd_flip_selections(&buf, sels, MotionMode::Move);
-                cmd_flip_selections(&buf, sels, MotionMode::Move)
+                let sels = cmd_flip_selections(&buf, sels, 0, MotionMode::Move);
+                cmd_flip_selections(&buf, sels, 0, MotionMode::Move)
             },
             "-[hell]>o\n"
         );
@@ -227,7 +241,7 @@ mod tests {
         // Cursor at 'e'; after select-all, anchor=0 head=last char ('\n').
         assert_state!(
             "h-[e]>llo\n",
-            |(buf, sels)| cmd_select_all(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_select_all(&buf, sels, 0, MotionMode::Move),
             "-[hello\n]>"
         );
     }
@@ -236,7 +250,7 @@ mod tests {
     fn select_all_multi_line() {
         assert_state!(
             "foo\nb-[a]>r\nbaz\n",
-            |(buf, sels)| cmd_select_all(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_select_all(&buf, sels, 0, MotionMode::Move),
             "-[foo\nbar\nbaz\n]>"
         );
     }
@@ -246,7 +260,7 @@ mod tests {
         // Minimal buffer is just '\n'. select-all produces a cursor at 0.
         assert_state!(
             "-[\n]>",
-            |(buf, sels)| cmd_select_all(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_select_all(&buf, sels, 0, MotionMode::Move),
             "-[\n]>"
         );
     }
@@ -258,7 +272,7 @@ mod tests {
         // Three cursors; primary (first yielded by DSL) is at 0. Others dropped.
         assert_state!(
             "-[h]>el-[l]>-[o]>\n",
-            |(buf, sels)| cmd_keep_primary_selection(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_keep_primary_selection(&buf, sels, 0, MotionMode::Move),
             "-[h]>ello\n"
         );
     }
@@ -267,7 +281,7 @@ mod tests {
     fn keep_primary_single_unchanged() {
         assert_state!(
             "-[hell]>o\n",
-            |(buf, sels)| cmd_keep_primary_selection(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_keep_primary_selection(&buf, sels, 0, MotionMode::Move),
             "-[hell]>o\n"
         );
     }
@@ -278,7 +292,7 @@ mod tests {
     fn remove_primary_single_is_noop() {
         assert_state!(
             "-[h]>ello\n",
-            |(buf, sels)| cmd_remove_primary_selection(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_remove_primary_selection(&buf, sels, 0, MotionMode::Move),
             "-[h]>ello\n"
         );
     }
@@ -289,7 +303,7 @@ mod tests {
         // After removal: only the cursor at 4 remains, becomes primary.
         assert_state!(
             "-[h]>ell-[o]>\n",
-            |(buf, sels)| cmd_remove_primary_selection(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_remove_primary_selection(&buf, sels, 0, MotionMode::Move),
             "hell-[o]>\n"
         );
     }
@@ -301,10 +315,10 @@ mod tests {
         // Three cursors. After cycling forward, primary should be the next one.
         let (buf, sels) = parse_state("-[h]>el-[l]>o\n"); // two cursors, primary at 0
         assert_eq!(sels.primary().head(), 0);
-        let sels = cmd_cycle_primary_forward(&buf, sels, MotionMode::Move);
+        let sels = cmd_cycle_primary_forward(&buf, sels, 0, MotionMode::Move);
         assert_eq!(sels.primary().head(), 3);
         // Cycle again — wraps back to first.
-        let sels = cmd_cycle_primary_forward(&buf, sels, MotionMode::Move);
+        let sels = cmd_cycle_primary_forward(&buf, sels, 0, MotionMode::Move);
         assert_eq!(sels.primary().head(), 0);
     }
 
@@ -313,7 +327,7 @@ mod tests {
     #[test]
     fn cycle_backward_wraps_to_last() {
         let (buf, sels) = parse_state("-[h]>el-[l]>o\n"); // primary at 0
-        let sels = cmd_cycle_primary_backward(&buf, sels, MotionMode::Move);
+        let sels = cmd_cycle_primary_backward(&buf, sels, 0, MotionMode::Move);
         assert_eq!(sels.primary().head(), 3); // wraps to last
     }
 
@@ -324,7 +338,7 @@ mod tests {
         // anchor == head → collapsing to anchor is the same as collapsing to head.
         assert_state!(
             "-[h]>ello\n",
-            |(buf, sels)| cmd_collapse_selection_to_anchor(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_collapse_selection_to_anchor(&buf, sels, 0, MotionMode::Move),
             "-[h]>ello\n"
         );
     }
@@ -334,7 +348,7 @@ mod tests {
         // Forward: anchor=0 (h), head=3 (l). Collapse to anchor → cursor at h.
         assert_state!(
             "-[hell]>o\n",
-            |(buf, sels)| cmd_collapse_selection_to_anchor(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_collapse_selection_to_anchor(&buf, sels, 0, MotionMode::Move),
             "-[h]>ello\n"
         );
     }
@@ -344,7 +358,7 @@ mod tests {
         // Backward: anchor=3 (l), head=0 (h). Collapse to anchor → cursor at l.
         assert_state!(
             "<[hell]-o\n",
-            |(buf, sels)| cmd_collapse_selection_to_anchor(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_collapse_selection_to_anchor(&buf, sels, 0, MotionMode::Move),
             "hel-[l]>o\n"
         );
     }
@@ -361,7 +375,7 @@ mod tests {
             ],
             0,
         );
-        let result = cmd_collapse_selection_to_anchor(&buf, sels, MotionMode::Move);
+        let result = cmd_collapse_selection_to_anchor(&buf, sels, 0, MotionMode::Move);
         assert_eq!(result.len(), 1); // merged — both collapsed to cursor at 0
         assert_eq!(result.primary().head(), 0);
     }
@@ -372,7 +386,7 @@ mod tests {
     fn collapse_empty_buffer() {
         assert_state!(
             "-[\n]>",
-            |(buf, sels)| cmd_collapse_selection_to_head(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_collapse_selection_to_head(&buf, sels, 0, MotionMode::Move),
             "-[\n]>"
         );
     }
@@ -389,7 +403,7 @@ mod tests {
             ],
             0,
         );
-        let result = cmd_collapse_selection_to_head(&buf, sels, MotionMode::Move);
+        let result = cmd_collapse_selection_to_head(&buf, sels, 0, MotionMode::Move);
         assert_eq!(result.len(), 1); // merged — both collapsed to cursor at 3
         assert_eq!(result.primary().head(), 3);
     }
@@ -401,7 +415,7 @@ mod tests {
         // Two forward selections both flip to backward.
         assert_state!(
             "-[hell]>o -[worl]>d\n",
-            |(buf, sels)| cmd_flip_selections(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_flip_selections(&buf, sels, 0, MotionMode::Move),
             "<[hell]-o <[worl]-d\n"
         );
     }
@@ -412,8 +426,8 @@ mod tests {
     fn keep_primary_when_primary_is_not_first() {
         // Cycle primary to the second cursor, then keep — should keep that one.
         let (buf, sels) = parse_state("-[h]>el-[l]>o\n"); // primary at index 0 (head=0)
-        let sels = cmd_cycle_primary_forward(&buf, sels, MotionMode::Move); // primary now at index 1 (head=3)
-        let sels_out = cmd_keep_primary_selection(&buf, sels, MotionMode::Move);
+        let sels = cmd_cycle_primary_forward(&buf, sels, 0, MotionMode::Move); // primary now at index 1 (head=3)
+        let sels_out = cmd_keep_primary_selection(&buf, sels, 0, MotionMode::Move);
         assert_eq!(sels_out.len(), 1);
         assert_eq!(sels_out.primary().head(), 3); // kept the second one
     }
@@ -425,8 +439,8 @@ mod tests {
         // Three cursors at 0, 3, 6. Cycle to last, then remove — should wrap
         // to the first remaining cursor (index 0 of the new set).
         let (buf, sels) = parse_state("-[h]>el-[l]>o-[\n]>"); // 3 cursors, primary at 0
-        let sels = cmd_cycle_primary_backward(&buf, sels, MotionMode::Move); // primary at last (head=6)
-        let sels_out = cmd_remove_primary_selection(&buf, sels, MotionMode::Move);
+        let sels = cmd_cycle_primary_backward(&buf, sels, 0, MotionMode::Move); // primary at last (head=6)
+        let sels_out = cmd_remove_primary_selection(&buf, sels, 0, MotionMode::Move);
         assert_eq!(sels_out.len(), 2);
         assert_eq!(sels_out.primary().head(), 0); // wrapped to first
     }

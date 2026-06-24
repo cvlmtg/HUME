@@ -24,6 +24,7 @@ use hume_editing::word::{CharClass, classify_char};
 pub(crate) fn cmd_split_selection_on_newlines(
     buf: &Text,
     sels: SelectionSet,
+    _count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
     let primary_idx = sels.primary_index();
@@ -133,6 +134,7 @@ pub(crate) fn select_matches_within(
 pub(crate) fn cmd_trim_selection_whitespace(
     buf: &Text,
     sels: SelectionSet,
+    _count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
     let new_sels = sels.map(|sel| {
@@ -189,7 +191,7 @@ mod tests {
     fn split_single_line_is_noop() {
         assert_state!(
             "-[hell]>o\n",
-            |(buf, sels)| cmd_split_selection_on_newlines(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_split_selection_on_newlines(&buf, sels, 0, MotionMode::Move),
             "-[hell]>o\n"
         );
     }
@@ -200,7 +202,7 @@ mod tests {
         // "#[foo\nba|r]#\n" → anchor=0, head=6 (cursor on 'r').
         // After split: "foo" on line 0, "bar" on line 1.
         let (buf, sels) = parse_state("-[foo\nbar]>\n");
-        let sels_out = cmd_split_selection_on_newlines(&buf, sels, MotionMode::Move);
+        let sels_out = cmd_split_selection_on_newlines(&buf, sels, 0, MotionMode::Move);
         // Text unchanged (pure op).
         assert_eq!(buf.to_string(), "foo\nbar\n");
         // Two selections.
@@ -220,7 +222,7 @@ mod tests {
     fn split_three_line_selection() {
         // "a\nb\nc\n" — forward selection from 'a' to 'c'.
         let (buf, sels) = parse_state("-[a\nb\nc]>\n");
-        let sels_out = cmd_split_selection_on_newlines(&buf, sels, MotionMode::Move);
+        let sels_out = cmd_split_selection_on_newlines(&buf, sels, 0, MotionMode::Move);
         assert_eq!(sels_out.len(), 3);
         let s: Vec<_> = sels_out.iter_sorted().copied().collect();
         // Line 0: just 'a' at offset 0.
@@ -239,7 +241,7 @@ mod tests {
         // A cursor sitting on a newline character is a single-line selection
         // (the \n is part of its line).
         let (buf, sels) = parse_state("foo-[\n]>bar\n");
-        let sels_out = cmd_split_selection_on_newlines(&buf, sels, MotionMode::Move);
+        let sels_out = cmd_split_selection_on_newlines(&buf, sels, 0, MotionMode::Move);
         assert_eq!(sels_out.len(), 1);
         assert_eq!(sels_out.primary().head(), 3); // still on \n
     }
@@ -250,7 +252,7 @@ mod tests {
         // Line 0: "foo\n", line 1: "\n" (empty), line 2: "bar\n".
         // Middle piece should be a cursor on the lone '\n' at offset 4.
         let (buf, sels) = parse_state("-[foo\n\nbar]>\n");
-        let sels_out = cmd_split_selection_on_newlines(&buf, sels, MotionMode::Move);
+        let sels_out = cmd_split_selection_on_newlines(&buf, sels, 0, MotionMode::Move);
         assert_eq!(sels_out.len(), 3);
         let s: Vec<_> = sels_out.iter_sorted().copied().collect();
         // Line 0: "foo" → offsets 0–2.
@@ -270,7 +272,7 @@ mod tests {
         // empty one. All 3 pieces must be backward, and the empty-line piece
         // must be a cursor on the '\n'.
         let (buf, sels) = parse_state("<[foo\n\nbar]-\n");
-        let sels_out = cmd_split_selection_on_newlines(&buf, sels, MotionMode::Move);
+        let sels_out = cmd_split_selection_on_newlines(&buf, sels, 0, MotionMode::Move);
         assert_eq!(sels_out.len(), 3);
         let s: Vec<_> = sels_out.iter_sorted().copied().collect();
         // All pieces must be backward (anchor >= head; cursor is anchor == head).
@@ -289,7 +291,7 @@ mod tests {
         // "foo\nbar\n" — backward selection: anchor=6('r'), head=0('f').
         // Each piece should be backward (anchor > head).
         let (buf, sels) = parse_state("<[foo\nbar]-\n");
-        let sels_out = cmd_split_selection_on_newlines(&buf, sels, MotionMode::Move);
+        let sels_out = cmd_split_selection_on_newlines(&buf, sels, 0, MotionMode::Move);
         assert_eq!(sels_out.len(), 2);
         let s: Vec<_> = sels_out.iter_sorted().copied().collect();
         // Both pieces should be backward selections.
@@ -309,7 +311,7 @@ mod tests {
         // start_line == end_line → single-line branch → kept as-is.
         assert_state!(
             "-[\n]>",
-            |(buf, sels)| cmd_split_selection_on_newlines(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_split_selection_on_newlines(&buf, sels, 0, MotionMode::Move),
             "-[\n]>"
         );
     }
@@ -322,7 +324,7 @@ mod tests {
         // "#[  hell|o]#\n" → anchor=0, head=6 (cursor on 'o', offsets:  (0) (1) h(2) e(3) l(4) l(5) o(6)).
         // After trim: start advances past the 2 spaces → start=2, end=6.
         let (buf, sels) = parse_state("-[  hello]>\n");
-        let sels_out = cmd_trim_selection_whitespace(&buf, sels, MotionMode::Move);
+        let sels_out = cmd_trim_selection_whitespace(&buf, sels, 0, MotionMode::Move);
         assert_eq!(sels_out.primary().start(), 2); // after the two spaces
         assert_eq!(sels_out.primary().end(), 6); // 'o' at offset 6
     }
@@ -333,7 +335,7 @@ mod tests {
         // "#[hello | ]#\n" → anchor=0, head=6 (cursor on second space).
         // After trim: end walks back past 2 spaces → end=4 ('o').
         let (buf, sels) = parse_state("-[hello  ]>\n");
-        let sels_out = cmd_trim_selection_whitespace(&buf, sels, MotionMode::Move);
+        let sels_out = cmd_trim_selection_whitespace(&buf, sels, 0, MotionMode::Move);
         assert_eq!(sels_out.primary().start(), 0);
         assert_eq!(sels_out.primary().end(), 4); // 'o' at offset 4
     }
@@ -342,7 +344,7 @@ mod tests {
     fn trim_all_whitespace_collapses_to_cursor_at_head() {
         // Selection covering only spaces — should collapse to cursor at head.
         let (buf, sels) = parse_state("-[    ]>\n");
-        let sels_out = cmd_trim_selection_whitespace(&buf, sels, MotionMode::Move);
+        let sels_out = cmd_trim_selection_whitespace(&buf, sels, 0, MotionMode::Move);
         assert!(sels_out.primary().is_collapsed());
         // Head was at offset 3 (the `|` position in DSL).
         assert_eq!(sels_out.primary().head(), 3);
@@ -352,7 +354,7 @@ mod tests {
     fn trim_no_whitespace_is_noop() {
         assert_state!(
             "-[hell]>o\n",
-            |(buf, sels)| cmd_trim_selection_whitespace(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_trim_selection_whitespace(&buf, sels, 0, MotionMode::Move),
             "-[hell]>o\n"
         );
     }
@@ -363,7 +365,7 @@ mod tests {
         // After trim: start=1 ('h'), end=5 ('o').
         // "\thello\t\n": \t(0),h(1),e(2),l(3),l(4),o(5),\t(6),\n(7).
         let (buf, sels) = parse_state("-[\thello]>\t\n");
-        let sels_out = cmd_trim_selection_whitespace(&buf, sels, MotionMode::Move);
+        let sels_out = cmd_trim_selection_whitespace(&buf, sels, 0, MotionMode::Move);
         assert_eq!(sels_out.primary().start(), 1); // past leading tab
         assert_eq!(sels_out.primary().end(), 5); // 'o'
     }
@@ -374,7 +376,7 @@ mod tests {
         // After trim: spans 'h'(2) to 'o'(6), still backward.
         assert_state!(
             "<[  hello\n]-",
-            |(buf, sels)| cmd_trim_selection_whitespace(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_trim_selection_whitespace(&buf, sels, 0, MotionMode::Move),
             "  <[hello]-\n"
         );
     }
@@ -384,7 +386,7 @@ mod tests {
         // Only char is '\n' (whitespace) — all-whitespace selection collapses.
         assert_state!(
             "-[\n]>",
-            |(buf, sels)| cmd_trim_selection_whitespace(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_trim_selection_whitespace(&buf, sels, 0, MotionMode::Move),
             "-[\n]>"
         );
     }

@@ -147,18 +147,19 @@ pub(crate) enum MappableCommand {
         /// extend grows an existing selection by a relative amount and is safe.
         reaching: bool,
     },
-    /// Selection or text-object operation (no count).
+    /// Selection or text-object operation (accepts count).
     ///
-    /// Signature: `fn(&Text, SelectionSet, MotionMode) -> SelectionSet`
+    /// Signature: `fn(&Text, SelectionSet, usize, MotionMode) -> SelectionSet`
     ///
     /// All selection commands receive `MotionMode`. Non-extendable ones accept
-    /// `_mode` and ignore it; extendable text objects branch on it.
+    /// `_mode` and ignore it; extendable text objects branch on it. The `usize`
+    /// is a count argument; commands that don't use it accept `_count`.
     Selection {
         name: Cow<'static, str>,
         // Pending command-palette / :help integration.
         #[allow(dead_code)]
         doc: Cow<'static, str>,
-        fun: fn(&Text, SelectionSet, MotionMode) -> SelectionSet,
+        fun: fn(&Text, SelectionSet, usize, MotionMode) -> SelectionSet,
         /// Whether this command always records a jump list entry before executing,
         /// regardless of how far the cursor moves. Used for `select-all` (`%`).
         jump: bool,

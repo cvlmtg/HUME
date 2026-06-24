@@ -119,7 +119,7 @@ pub(super) fn run_native_body(
                 &mut state.panes.state,
                 focused,
                 buf,
-                |b, s| fun(b, s, motion_mode),
+                |b, s| fun(b, s, count, motion_mode),
             );
         }
         MappableCommand::Edit { fun, .. } => {

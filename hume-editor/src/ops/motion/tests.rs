@@ -1418,7 +1418,7 @@ fn select_line_from_mid_line() {
     // Cursor mid-line → select full line forward.
     assert_state!(
         "hello -[w]>orld\nfoo\n",
-        |(buf, sels)| cmd_select_line(&buf, sels, MotionMode::Move),
+        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Move),
         "-[hello world\n]>foo\n"
     );
 }
@@ -1428,7 +1428,7 @@ fn select_line_already_full_line_jumps_to_next() {
     // Selection already covers full line → jump to next line.
     assert_state!(
         "-[hello world\n]>foo\n",
-        |(buf, sels)| cmd_select_line(&buf, sels, MotionMode::Move),
+        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Move),
         "hello world\n-[foo\n]>"
     );
 }
@@ -1438,7 +1438,7 @@ fn select_line_clamps_at_last_line() {
     // Already on last line → no change.
     assert_state!(
         "hello\n-[foo\n]>",
-        |(buf, sels)| cmd_select_line(&buf, sels, MotionMode::Move),
+        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Move),
         "hello\n-[foo\n]>"
     );
 }
@@ -1448,7 +1448,7 @@ fn select_line_backward_from_mid_line() {
     // Cursor mid-line → select full line backward (anchor=`\n`, head=start).
     assert_state!(
         "hello -[w]>orld\nfoo\n",
-        |(buf, sels)| cmd_select_line_backward(&buf, sels, MotionMode::Move),
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Move),
         "<[hello world\n]-foo\n"
     );
 }
@@ -1458,7 +1458,7 @@ fn select_line_backward_already_at_start_jumps_to_prev() {
     // Selection already starts at line boundary → jump to previous line.
     assert_state!(
         "aaa\n<[bbb\n]-ccc\n",
-        |(buf, sels)| cmd_select_line_backward(&buf, sels, MotionMode::Move),
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Move),
         "<[aaa\n]-bbb\nccc\n"
     );
 }
@@ -1468,7 +1468,7 @@ fn select_line_backward_clamps_at_first_line() {
     // Already on first line → no change.
     assert_state!(
         "<[hello\n]-world\n",
-        |(buf, sels)| cmd_select_line_backward(&buf, sels, MotionMode::Move),
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Move),
         "<[hello\n]-world\n"
     );
 }
@@ -1480,7 +1480,7 @@ fn extend_select_line_accumulates_downward() {
     // Each press accumulates one more line.
     assert_state!(
         "-[hello\n]>foo\nbar\n",
-        |(buf, sels)| cmd_select_line(&buf, sels, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
         "-[hello\nfoo\n]>bar\n"
     );
 }
@@ -1490,7 +1490,7 @@ fn extend_select_line_clamps_at_last_line() {
     // Already at last line → no change.
     assert_state!(
         "hello\n-[foo\n]>",
-        |(buf, sels)| cmd_select_line(&buf, sels, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
         "hello\n-[foo\n]>"
     );
 }
@@ -1500,7 +1500,7 @@ fn extend_select_line_backward_accumulates_upward() {
     // Each press accumulates one more line upward.
     assert_state!(
         "aaa\n<[bbb\n]-ccc\n",
-        |(buf, sels)| cmd_select_line_backward(&buf, sels, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Extend),
         "<[aaa\nbbb\n]-ccc\n"
     );
 }
@@ -1510,7 +1510,7 @@ fn extend_select_line_backward_clamps_at_first_line() {
     // Already at first line → no change.
     assert_state!(
         "<[hello\n]-world\n",
-        |(buf, sels)| cmd_select_line_backward(&buf, sels, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Extend),
         "<[hello\n]-world\n"
     );
 }
@@ -1520,7 +1520,7 @@ fn extend_select_line_from_mid_line() {
     // Starting from a partial selection, the first extend covers the full line.
     assert_state!(
         "hello -[w]>orld\nfoo\n",
-        |(buf, sels)| cmd_select_line(&buf, sels, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
         "-[hello world\n]>foo\n"
     );
 }
@@ -1530,7 +1530,7 @@ fn extend_select_line_backward_from_mid_line() {
     // Starting from a partial selection, the first backward extend covers the full line.
     assert_state!(
         "hello -[w]>orld\nfoo\n",
-        |(buf, sels)| cmd_select_line_backward(&buf, sels, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Extend),
         "<[hello world\n]-foo\n"
     );
 }
@@ -1541,7 +1541,7 @@ fn select_line_empty_line() {
     // so `x` immediately jumps to the next line.
     assert_state!(
         "hello\n-[\n]>world\n",
-        |(buf, sels)| cmd_select_line(&buf, sels, MotionMode::Move),
+        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Move),
         "hello\n\n-[world\n]>"
     );
 }
@@ -1551,7 +1551,7 @@ fn select_line_backward_empty_line() {
     // A bare `\n` line: cursor is at line start → `X` jumps to the previous line.
     assert_state!(
         "hello\n-[\n]>world\n",
-        |(buf, sels)| cmd_select_line_backward(&buf, sels, MotionMode::Move),
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Move),
         "<[hello\n]-\nworld\n"
     );
 }
@@ -1562,7 +1562,7 @@ fn select_line_multi_cursor() {
     // The resulting line selections are non-overlapping and stay separate.
     assert_state!(
         "hello -[w]>orld\nfoo -[b]>ar\nbaz\n",
-        |(buf, sels)| cmd_select_line(&buf, sels, MotionMode::Move),
+        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Move),
         "-[hello world\n]>-[foo bar\n]>baz\n"
     );
 }
@@ -1573,7 +1573,7 @@ fn select_line_multi_cursor_same_line_merges() {
     // which `map` (which always merges) collapses to a single selection.
     assert_state!(
         "hell-[o]> -[w]>orld\nfoo\n",
-        |(buf, sels)| cmd_select_line(&buf, sels, MotionMode::Move),
+        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Move),
         "-[hello world\n]>foo\n"
     );
 }
@@ -1588,7 +1588,7 @@ fn extend_select_line_multi_cursor_merges() {
     // (0,15) and (12,19) overlap → merged to (0,19)
     assert_state!(
         "-[hello world\n]>-[foo\n]>bar\n",
-        |(buf, sels)| cmd_select_line(&buf, sels, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
         "-[hello world\nfoo\nbar\n]>"
     );
 }

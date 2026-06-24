@@ -341,7 +341,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
             &mut state.panes.state,
             focused,
             buf_id,
-            |buf, sels| cmd_select_word_nearest_on_line(buf, sels, mode),
+            |buf, sels| cmd_select_word_nearest_on_line(buf, sels, 0, mode),
         );
         return Ok(());
     }

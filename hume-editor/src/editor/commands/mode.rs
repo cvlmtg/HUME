@@ -314,7 +314,7 @@ pub fn cmd_collapse_to_head_and_exit_extend(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     do_collapse_and_exit_extend(state, view, |b, s| {
-        cmd_collapse_selection_to_head(b, s, MotionMode::Move)
+        cmd_collapse_selection_to_head(b, s, 0, MotionMode::Move)
     });
     Ok(())
 }
@@ -332,7 +332,7 @@ pub fn cmd_collapse_to_anchor_and_exit_extend(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     do_collapse_and_exit_extend(state, view, |b, s| {
-        cmd_collapse_selection_to_anchor(b, s, MotionMode::Move)
+        cmd_collapse_selection_to_anchor(b, s, 0, MotionMode::Move)
     });
     Ok(())
 }

@@ -14,7 +14,7 @@ use hume_editing::text::Text;
 /// `Extend` — grows the selection to cover the current line. If the selection
 /// already ends on a `\n`, accumulates the next line instead. Always produces a
 /// forward selection (anchor=start, head=`\n`).
-pub(crate) fn cmd_select_line(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_select_line(buf: &Text, sels: SelectionSet, _count: usize, mode: MotionMode) -> SelectionSet {
     let result = sels.map(|sel| {
         match mode {
             MotionMode::Move => {
@@ -69,6 +69,7 @@ pub(crate) fn cmd_select_line(buf: &Text, sels: SelectionSet, mode: MotionMode) 
 pub(crate) fn cmd_select_line_backward(
     buf: &Text,
     sels: SelectionSet,
+    _count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
     let result = sels.map(|sel| {

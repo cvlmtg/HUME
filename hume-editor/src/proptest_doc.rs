@@ -323,15 +323,15 @@ mod tests {
             PureOp::SelectPrevWord => cmd_select_prev_word(buf, sels, 1, mode),
             PureOp::SelectNextUppercaseWord => cmd_select_next_uppercase_word(buf, sels, 1, mode),
             PureOp::SelectPrevUppercaseWord => cmd_select_prev_uppercase_word(buf, sels, 1, mode),
-            PureOp::InnerWord => cmd_inner_word(buf, sels, mode),
-            PureOp::AroundWord => cmd_around_word(buf, sels, mode),
-            PureOp::InnerLine => cmd_inner_line(buf, sels, mode),
+            PureOp::InnerWord => cmd_inner_word(buf, sels, 0, mode),
+            PureOp::AroundWord => cmd_around_word(buf, sels, 0, mode),
+            PureOp::InnerLine => cmd_inner_line(buf, sels, 0, mode),
             // Selection-manipulation commands don't use mode; pass it anyway for API uniformity.
-            PureOp::CollapseSelection => cmd_collapse_selection_to_head(buf, sels, mode),
-            PureOp::FlipSelections => cmd_flip_selections(buf, sels, mode),
-            PureOp::KeepPrimarySelection => cmd_keep_primary_selection(buf, sels, mode),
-            PureOp::CyclePrimaryForward => cmd_cycle_primary_forward(buf, sels, mode),
-            PureOp::CyclePrimaryBackward => cmd_cycle_primary_backward(buf, sels, mode),
+            PureOp::CollapseSelection => cmd_collapse_selection_to_head(buf, sels, 0, mode),
+            PureOp::FlipSelections => cmd_flip_selections(buf, sels, 0, mode),
+            PureOp::KeepPrimarySelection => cmd_keep_primary_selection(buf, sels, 0, mode),
+            PureOp::CyclePrimaryForward => cmd_cycle_primary_forward(buf, sels, 0, mode),
+            PureOp::CyclePrimaryBackward => cmd_cycle_primary_backward(buf, sels, 0, mode),
         }
     }
 
