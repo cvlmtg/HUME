@@ -4,8 +4,8 @@ use crate::ops::edit::{delete_char_backward, delete_char_forward, delete_selecti
 use crate::ops::motion::{
     cmd_goto_first_line, cmd_goto_first_nonblank, cmd_goto_last_line, cmd_goto_line_end,
     cmd_goto_line_start, cmd_move_left, cmd_move_right, cmd_next_paragraph, cmd_prev_paragraph,
-    cmd_select_line, cmd_select_line_backward, cmd_select_next_uppercase_word, cmd_select_next_word,
-    cmd_select_prev_uppercase_word, cmd_select_prev_word,
+    cmd_select_line, cmd_select_line_backward, cmd_select_next_uppercase_word,
+    cmd_select_next_word, cmd_select_prev_uppercase_word, cmd_select_prev_word,
 };
 use crate::ops::selection_cmd::{
     cmd_collapse_selection_to_head, cmd_copy_selection_on_next_line,
@@ -18,11 +18,12 @@ use crate::ops::surround::{
     cmd_surround_double_quote, cmd_surround_paren, cmd_surround_single_quote,
 };
 use crate::ops::text_object::{
-    cmd_around_uppercase_word, cmd_around_angle, cmd_around_argument, cmd_around_backtick, cmd_around_brace,
+    cmd_around_angle, cmd_around_argument, cmd_around_backtick, cmd_around_brace,
     cmd_around_bracket, cmd_around_double_quote, cmd_around_line, cmd_around_paren,
-    cmd_around_single_quote, cmd_around_word, cmd_inner_uppercase_word, cmd_inner_angle, cmd_inner_argument,
-    cmd_inner_backtick, cmd_inner_brace, cmd_inner_bracket, cmd_inner_double_quote, cmd_inner_line,
-    cmd_inner_paren, cmd_inner_single_quote, cmd_inner_word,
+    cmd_around_single_quote, cmd_around_uppercase_word, cmd_around_word, cmd_inner_angle,
+    cmd_inner_argument, cmd_inner_backtick, cmd_inner_brace, cmd_inner_bracket,
+    cmd_inner_double_quote, cmd_inner_line, cmd_inner_paren, cmd_inner_single_quote,
+    cmd_inner_uppercase_word, cmd_inner_word,
 };
 
 use super::{CommandRegistry, EditorCmdFn, MappableCommand, TypedCommand};

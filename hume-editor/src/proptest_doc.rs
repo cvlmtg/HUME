@@ -20,8 +20,8 @@ mod tests {
     };
     use crate::ops::motion::{
         cmd_goto_line_end, cmd_goto_line_start, cmd_move_down, cmd_move_left, cmd_move_right,
-        cmd_move_up, cmd_select_next_uppercase_word, cmd_select_next_word, cmd_select_prev_uppercase_word,
-        cmd_select_prev_word,
+        cmd_move_up, cmd_select_next_uppercase_word, cmd_select_next_word,
+        cmd_select_prev_uppercase_word, cmd_select_prev_word,
     };
     use crate::ops::selection_cmd::{
         cmd_collapse_selection_to_head, cmd_cycle_primary_backward, cmd_cycle_primary_forward,
