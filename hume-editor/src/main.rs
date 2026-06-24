@@ -40,7 +40,9 @@ fn resolve(cli: Cli) -> Result<Mode, String> {
     match cli.keys {
         Some(keys) => {
             // Safe: clap's `requires` ensures output is set when keys is set.
-            let output = cli.output.expect("clap ensures --output when --keys is set");
+            let output = cli
+                .output
+                .expect("clap ensures --output when --keys is set");
             match cli.files.as_slice() {
                 [input] => Ok(Mode::Headless {
                     input: input.clone(),
@@ -63,7 +65,11 @@ fn main() {
         }
     };
     let result = match mode {
-        Mode::Headless { input, keys, output } => hume_editor::run_keys(input, &keys, output),
+        Mode::Headless {
+            input,
+            keys,
+            output,
+        } => hume_editor::run_keys(input, &keys, output),
         Mode::Normal { files } => hume_editor::run(files),
     };
     if let Err(e) = result {
@@ -105,7 +111,10 @@ mod tests {
             .expect("normal multi-file invocation should parse");
         assert_eq!(cli.keys, None);
         assert_eq!(cli.output, None);
-        assert_eq!(cli.files, vec![PathBuf::from("a.rs"), PathBuf::from("b.rs")]);
+        assert_eq!(
+            cli.files,
+            vec![PathBuf::from("a.rs"), PathBuf::from("b.rs")]
+        );
     }
 
     #[test]
@@ -126,14 +135,23 @@ mod tests {
     }
 
     fn make_normal(files: Vec<PathBuf>) -> Cli {
-        Cli { keys: None, output: None, files }
+        Cli {
+            keys: None,
+            output: None,
+            files,
+        }
     }
 
     #[test]
     fn resolve_headless_exactly_one_file_succeeds() {
         let cli = make_headless(vec![PathBuf::from("in.txt")]);
         let mode = resolve(cli).expect("one input file should succeed");
-        let Mode::Headless { input, keys, output } = mode else {
+        let Mode::Headless {
+            input,
+            keys,
+            output,
+        } = mode
+        else {
             panic!("expected Mode::Headless");
         };
         assert_eq!(input, PathBuf::from("in.txt"));

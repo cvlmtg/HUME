@@ -38,8 +38,8 @@ pub fn run_keys(
     keys: &str,
     output: std::path::PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let parsed = hume_scripting::parse_key_stream(keys)
-        .map_err(|e| format!("invalid key stream: {e}"))?;
+    let parsed =
+        hume_scripting::parse_key_stream(keys).map_err(|e| format!("invalid key stream: {e}"))?;
 
     let mut editor = editor::Editor::open(Some(input))?;
     // Headless mode: no terminal to negotiate kitty protocol, so assume

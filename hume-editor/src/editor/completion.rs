@@ -104,8 +104,10 @@ impl Completer for CommandCompleter {
             .registry
             .iter_names_and_aliases()
             .filter(|name| {
-                name.len() >= prefix.len()
-                    && name[..prefix.len()].eq_ignore_ascii_case(prefix)
+                // `str::get` returns None if `prefix.len()` is off a char boundary or
+                // out of range — safe for non-ASCII command/alias names from plugins.
+                name.get(..prefix.len())
+                    .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
                     && !name.eq_ignore_ascii_case(prefix)
             })
             .map(|name| Completion {
@@ -505,6 +507,41 @@ mod tests {
         let ctx = ctx(&reg, &store, dir.path());
         let result = CommandCompleter.complete("quit", 4, &ctx);
         assert!(!result.candidates.iter().any(|c| c.replacement == "quit"));
+    }
+
+    #[test]
+    fn command_completer_non_ascii_name_does_not_panic() {
+        // Regression: the old `name[..prefix.len()]` byte-slice would panic when
+        // `prefix.len()` lands mid-codepoint in a non-ASCII command/alias name.
+        // Here "naïve-cmd" has 'ï' at bytes 2-3; a 1-byte prefix "n" must not panic.
+        use std::borrow::Cow;
+        let mut reg = CommandRegistry::with_defaults();
+        fn noop(
+            _ed: &mut crate::editor::Editor,
+            _arg: Option<&str>,
+            _force: bool,
+        ) -> Result<(), crate::editor::error::CommandError> {
+            Ok(())
+        }
+        reg.register_typed(crate::editor::registry::TypedCommand {
+            name: Cow::Borrowed("naïve-cmd"),
+            doc: Cow::Borrowed(""),
+            aliases: &[],
+            fun: noop,
+        });
+        let store = crate::editor::buffer_store::BufferStore::new();
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = ctx(&reg, &store, dir.path());
+        // "n" has byte-length 1; "ï" at bytes 2-3 means name[..1] would panic.
+        // Must not panic and must return the non-ASCII command as a candidate.
+        let result = CommandCompleter.complete("n", 1, &ctx);
+        assert!(
+            result
+                .candidates
+                .iter()
+                .any(|c| c.replacement == "naïve-cmd"),
+            "non-ASCII command must appear in completions"
+        );
     }
 
     // ── BufferNameCompleter ───────────────────────────────────────────────────

@@ -322,36 +322,46 @@ fn collect_head_cols(
 }
 
 /// Binary-search for the grapheme in `row_range` whose `char_offset` equals or
-/// immediately follows `char_offset`, returning its display column.
+/// immediately follows `char_offset`, returning `(col, width)`.
 ///
-/// Returns `None` when `char_offset` is before this row's first grapheme (the
-/// head belongs to an earlier wrap segment and should not be claimed for this row).
-/// Returns `None` when `char_offset` is past all graphemes (caller uses a
-/// fallback such as end-of-row column).
+/// Returns `None` when `char_offset` is the sentinel `usize::MAX` (meaning
+/// "extend to end of row"), or when it falls before this row's first grapheme
+/// (it belongs to an earlier wrap segment and must not be claimed for this row).
+fn resolve_grapheme_col(
+    char_offset: usize,
+    graphemes: &[Grapheme],
+    row_range: &std::ops::Range<usize>,
+) -> Option<(u16, u16)> {
+    if char_offset == usize::MAX {
+        // Sentinel: "extend to end of row" — let the caller use the fallback.
+        return None;
+    }
+    let row_graphemes = &graphemes[row_range.clone()];
+    let idx = row_graphemes.partition_point(|g| g.char_offset < char_offset);
+    // If char_offset falls before this row's first grapheme, the position
+    // belongs to an earlier wrap segment — don't claim it for this row.
+    row_graphemes.get(idx).and_then(|g| {
+        if idx == 0 && char_offset < g.char_offset {
+            None
+        } else {
+            Some((g.col, g.width as u16))
+        }
+    })
+}
+
+/// Left edge (`g.col`) of the grapheme at `char_offset` in this row.
+///
+/// Returns `None` for the usize::MAX sentinel or for positions on an earlier
+/// wrap segment. Callers use a fallback when `None`.
 fn char_offset_to_col(
     char_offset: usize,
     graphemes: &[Grapheme],
     row_range: &std::ops::Range<usize>,
 ) -> Option<u16> {
-    if char_offset == usize::MAX {
-        // Sentinel value meaning "extend to end of row" — let the caller use the fallback.
-        return None;
-    }
-    let row_graphemes = &graphemes[row_range.clone()];
-    let idx = row_graphemes.partition_point(|g| g.char_offset < char_offset);
-    // If char_offset falls before this row's first grapheme, the head belongs
-    // to an earlier wrap segment — don't claim it for this row.
-    row_graphemes.get(idx).and_then(|g| {
-        if idx == 0 && char_offset < g.char_offset {
-            None
-        } else {
-            Some(g.col)
-        }
-    })
+    resolve_grapheme_col(char_offset, graphemes, row_range).map(|(col, _)| col)
 }
 
-/// Like [`char_offset_to_col`], but returns the exclusive right edge of the
-/// resolved grapheme — `g.col + g.width` — rather than its left edge `g.col`.
+/// Exclusive right edge (`g.col + g.width`) of the grapheme at `char_offset`.
 ///
 /// Used for inclusive selection-span upper bounds: the span `[col_start, col_end)`
 /// must cover the end grapheme itself, which requires `col_end = col + width`.
@@ -360,18 +370,7 @@ fn char_offset_to_end_col(
     graphemes: &[Grapheme],
     row_range: &std::ops::Range<usize>,
 ) -> Option<u16> {
-    if char_offset == usize::MAX {
-        return None;
-    }
-    let row_graphemes = &graphemes[row_range.clone()];
-    let idx = row_graphemes.partition_point(|g| g.char_offset < char_offset);
-    row_graphemes.get(idx).and_then(|g| {
-        if idx == 0 && char_offset < g.char_offset {
-            None
-        } else {
-            Some(g.col + g.width as u16)
-        }
-    })
+    resolve_grapheme_col(char_offset, graphemes, row_range).map(|(col, width)| col + width)
 }
 
 // ---------------------------------------------------------------------------

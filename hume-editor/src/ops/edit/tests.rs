@@ -456,6 +456,39 @@ fn delete_selection_three_lines_delete_last() {
     );
 }
 
+#[test]
+fn delete_selection_last_line_multi_cursor_cursor_lands_at_merged_line_start() {
+    // Regression: multi-cursor dd-on-last-line. The first cursor deletes 'b'
+    // (char 1), advancing b.old_pos. The second cursor covers the whole last
+    // line "c\n" [anchor=3, head=4]. The cursor produced for that deletion must
+    // land at char 0 (start of the merged "a" line), not at char 1.
+    //
+    // Old code computed: cursor_new = b.new_pos() + cursor_line_start.saturating_sub(b.old_pos())
+    //   = 1 + (0.saturating_sub(2)) = 1 + 0 = 1  ← wrong
+    // New code: col_in_line = del_start - line_to_char(prev_line) = 2 - 0 = 2
+    //           retain(0); cursor_new = b.new_pos().saturating_sub(2) = 1 - 2 = 0 ✓
+    use crate::ops::edit::delete_selection;
+    use hume_editing::selection::SelectionSet;
+    let buf = hume_editing::text::Text::from("ab\nc\n");
+    // primary=1 so the last-line selection is the primary; we assert its cursor.
+    let sels = SelectionSet::from_vec(
+        vec![
+            hume_editing::selection::Selection::collapsed(1), // on 'b'
+            hume_editing::selection::Selection::new(3, 4),    // last line "c\n"
+        ],
+        1, // primary is the last-line cursor
+    );
+    let (new_buf, new_sels, _cs) = delete_selection(buf, sels);
+    // 'b' deleted and "c\n" merged into preceding line → "a\n"
+    assert_eq!(new_buf.to_string(), "a\n");
+    // Primary cursor must land at char 0 (start of merged "a" line).
+    assert_eq!(
+        new_sels.primary().head(),
+        0,
+        "cursor must land at merged-line start"
+    );
+}
+
 // ── paste_after ───────────────────────────────────────────────────────────
 
 fn pa(buf: Text, sels: SelectionSet, values: &[String]) -> (Text, SelectionSet, ChangeSet) {
@@ -1418,5 +1451,36 @@ fn align_primary_unchanged() {
         "foo -[=]>\nfoo -[=]>\n",
         |(buf, sels)| align_selections(buf, sels),
         "foo -[=]>\nfoo -[=]>\n"
+    );
+}
+
+#[test]
+fn align_remove_tab_before_selection() {
+    // Regression: the old avail count used `== Some(' ')`, so a tab in the
+    // whitespace run before a selection broke the reverse-scan chain early,
+    // yielding avail=0 and silently skipping all removal.
+    //
+    // Buffer " =\n  \t=\n":
+    //   Line 0: ' '+'=' (primary '=' at grapheme col 1)  → target_col=1
+    //   Line 1: ' ',' ','\t','=' (secondary '=' at grapheme col 3) → amount=-2
+    //
+    // Old code: reverse scan hits '\t' first, stops, avail=0 → remove=0 (bug).
+    // New code: '\t' matches, scan continues through spaces, avail=3,
+    //           remove=min(2, 3-1)=2 → removes ' '+'\t' → '=' lands at col 1. ✓
+    use crate::ops::edit::align_selections;
+    use hume_editing::selection::SelectionSet;
+    let buf = hume_editing::text::Text::from(" =\n  \t=\n");
+    let sels = SelectionSet::from_vec(
+        vec![
+            hume_editing::selection::Selection::collapsed(1), // primary: '=' col 1
+            hume_editing::selection::Selection::collapsed(6), // secondary: '=' col 3
+        ],
+        0,
+    );
+    let (new_buf, _new_sels, _cs) = align_selections(buf, sels);
+    assert_eq!(
+        new_buf.to_string(),
+        " =\n =\n",
+        "tab should count toward alignment removal"
     );
 }

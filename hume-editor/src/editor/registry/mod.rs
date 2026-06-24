@@ -39,6 +39,22 @@ mod defaults;
 
 pub(crate) use command::{CmdMeta, EditorCmdFn, MappableCommand, TypedCommand};
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Case-insensitive HashMap lookup: exact hit first, then linear-scan fallback.
+///
+/// Used only for typed-command resolution (`:` command line), where the key
+/// space is aliases + typed canonical names — none of which collide on case.
+/// Not used for mappable commands, whose names are case-significant
+/// (e.g. `inner-word` vs `inner-WORD`).
+fn ci_get<'a, V>(map: &'a HashMap<Cow<'static, str>, V>, name: &str) -> Option<&'a V> {
+    map.get(name).or_else(|| {
+        map.iter()
+            .find(|(k, _)| k.as_ref().eq_ignore_ascii_case(name))
+            .map(|(_, v)| v)
+    })
+}
+
 // ── CommandRegistry ───────────────────────────────────────────────────────────
 
 /// Registry of all commands — the single namespace for mappable and typed commands.
@@ -138,18 +154,17 @@ impl CommandRegistry {
         self.commands.insert(canonical, Command::Typed(cmd));
     }
 
-    /// Look up a mappable command by name (case-insensitive).
+    /// Look up a mappable command by exact name.
     ///
     /// Returns `None` if the name is unknown or resolves to a typed command.
     /// Used by `execute_keymap_command` in `editor/mappings.rs`.
+    ///
+    /// Exact-only: the mappable namespace uses case to distinguish commands
+    /// (e.g. `inner-word` vs `inner-WORD`) so case-insensitive fallback would
+    /// resolve nondeterministically. Case-insensitivity is intentionally
+    /// confined to the typed (`:`) path in [`Self::get_typed`].
     pub(crate) fn get_mappable(&self, name: &str) -> Option<&MappableCommand> {
-        let found = self.commands.get(name).or_else(|| {
-            self.commands
-                .iter()
-                .find(|(k, _)| k.as_ref().eq_ignore_ascii_case(name))
-                .map(|(_, v)| v)
-        })?;
-        match found {
+        match self.commands.get(name)? {
             Command::Mappable(cmd) => Some(cmd),
             Command::Typed(_) => None,
         }
@@ -161,24 +176,10 @@ impl CommandRegistry {
     /// The `:` command dispatcher falls back to [`Self::get_mappable`] when
     /// this returns `None` — see `execute_command` in `editor/mappings.rs`.
     pub(crate) fn get_typed(&self, name: &str) -> Option<&TypedCommand> {
-        let canonical = self
-            .alias_map
-            .get(name)
-            .or_else(|| {
-                self.alias_map
-                    .iter()
-                    .find(|(k, _)| k.eq_ignore_ascii_case(name))
-                    .map(|(_, v)| v)
-            })
+        let canonical = ci_get(&self.alias_map, name)
             .map(|c| c.as_ref())
             .unwrap_or(name);
-        let found = self.commands.get(canonical).or_else(|| {
-            self.commands
-                .iter()
-                .find(|(k, _)| k.as_ref().eq_ignore_ascii_case(canonical))
-                .map(|(_, v)| v)
-        })?;
-        match found {
+        match ci_get(&self.commands, canonical)? {
             Command::Typed(cmd) => Some(cmd),
             Command::Mappable(_) => None,
         }

@@ -196,14 +196,14 @@ fn delete_sel_region(
         // `dd`-on-last-line convention).
         let del_start = prev_grapheme_boundary(buf, start);
         if del_start >= b.old_pos() {
-            // Cursor: land at the start of the now-last line (what was the line
-            // above the deleted one).
+            // Cursor: land at the start of the merged line (what was the line
+            // above the deleted one). Compute as (del_start's new_pos) minus
+            // del_start's column within its original line — this stays correct
+            // in the multi-cursor case where b.new_pos() != b.old_pos().
             let prev_line = buf.char_to_line(del_start);
-            let cursor_line_start = buf.line_to_char(prev_line);
-            // Translate to result-buffer coordinates; `saturating_sub` guards the
-            // rare multi-cursor case where a prior selection overlapped this region.
-            let cursor_new = b.new_pos() + cursor_line_start.saturating_sub(b.old_pos());
+            let col_in_line = del_start - buf.line_to_char(prev_line);
             b.retain(del_start - b.old_pos());
+            let cursor_new = b.new_pos().saturating_sub(col_in_line);
             // Delete from the preceding '\n' through the last content char,
             // keeping the structural trailing '\n'.
             b.delete(buf.last_content_char() + 1 - del_start);
@@ -776,7 +776,7 @@ pub(crate) fn align_selections(buf: Text, sels: SelectionSet) -> (Text, Selectio
             let line_start = buf.line_to_char(start_line);
             let avail: usize = (line_start..sel_start)
                 .rev()
-                .take_while(|&p| buf.char_at(p) == Some(' '))
+                .take_while(|&p| matches!(buf.char_at(p), Some(' ') | Some('\t')))
                 .count();
             let remove = ((-amount) as usize)
                 .min(avail.saturating_sub(1))

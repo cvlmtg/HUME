@@ -95,7 +95,7 @@ pub fn cmd_insert_at_line_end(
             let max = b.len_chars() - 1;
             let at_end = cmd_goto_line_end(b, s, 1, MotionMode::Move);
             at_end.map(|sel| {
-                let pos = if b.char_at(sel.head()) == Some('\n') {
+                let pos = if sel.ends_on_newline(b) {
                     // Empty line — cursor is on the \n; inserting here equals `i`.
                     sel.head()
                 } else {

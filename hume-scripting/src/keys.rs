@@ -180,7 +180,10 @@ pub fn parse_key_stream(s: &str) -> Result<Vec<KeyEvent>, String> {
             i = start + close + 1; // advance past '>'
         } else {
             // Literal character — may be multi-byte UTF-8.
-            let ch = s[i..].chars().next().unwrap();
+            let ch = s[i..]
+                .chars()
+                .next()
+                .expect("i is on a char boundary: advanced by len_utf8 each iteration");
             keys.push(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE));
             i += ch.len_utf8();
         }
