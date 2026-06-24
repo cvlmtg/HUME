@@ -230,6 +230,19 @@ fn kitty_ctrl_z_z_does_not_extend() {
     assert_eq!(sel.anchor(), sel.head(), "Ctrl+z z must not extend");
 }
 
+/// Esc after Ctrl+g must clear pending_ctrl_extend so the next keypress
+/// doesn't incorrectly extend. Regression test for the Esc reset path.
+#[test]
+fn kitty_ctrl_g_esc_then_l_does_not_extend() {
+    let mut ed = editor_from_kitty("-[h]>ello world\n");
+    ed.handle_key(key_ctrl('g'));
+    ed.handle_key(key_esc());
+    ed.handle_key(key('l'));
+    // Selection must stay collapsed — Esc cancelled the Ctrl+g sequence.
+    let sel = ed.current_selections().primary();
+    assert_eq!(sel.anchor(), sel.head(), "Esc must clear pending_ctrl_extend");
+}
+
 /// Ctrl+U (redo) must also be a no-op in kitty mode.
 #[test]
 fn kitty_ctrl_shift_u_is_noop() {

@@ -79,6 +79,7 @@ impl Editor {
         if key.code == KeyCode::Esc {
             self.state.pending_keys.clear();
             self.state.count = None;
+            self.state.pending_ctrl_extend = false; // cancel any pending extend mode
             self.state.macro_pending = None; // cancel any pending q/Q register-name prompt
             self.state.register_prefix = None; // cancel any pending "<reg> state
             // Esc exits Extend mode; Normal is the reset state.
