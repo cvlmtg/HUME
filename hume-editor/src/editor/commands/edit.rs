@@ -353,24 +353,44 @@ pub fn cmd_paste_ring_newer(
 pub fn cmd_undo(
     state: &mut EditorState,
     view: &mut EngineView,
-    _count: usize,
+    count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
+    if super::focused_buffer_read_only(state, view) {
+        state.report(Severity::Info, "Buffer is read-only".to_string());
+        return Ok(());
+    }
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_undo(&mut state.buffers, &mut state.panes.state, focused, buf);
+    for _ in 0..count {
+        if !state.buffers.get(buf).can_undo() {
+            state.report(Severity::Info, "Already at oldest change".to_string());
+            break;
+        }
+        doc_ops::apply_doc_undo(&mut state.buffers, &mut state.panes.state, focused, buf);
+    }
     Ok(())
 }
 
 pub fn cmd_redo(
     state: &mut EditorState,
     view: &mut EngineView,
-    _count: usize,
+    count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
+    if super::focused_buffer_read_only(state, view) {
+        state.report(Severity::Info, "Buffer is read-only".to_string());
+        return Ok(());
+    }
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_redo(&mut state.buffers, &mut state.panes.state, focused, buf);
+    for _ in 0..count {
+        if !state.buffers.get(buf).can_redo() {
+            state.report(Severity::Info, "Already at newest change".to_string());
+            break;
+        }
+        doc_ops::apply_doc_redo(&mut state.buffers, &mut state.panes.state, focused, buf);
+    }
     Ok(())
 }
 

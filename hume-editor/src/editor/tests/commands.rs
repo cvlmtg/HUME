@@ -35,6 +35,99 @@ fn c_groups_delete_and_insert_into_one_undo_step() {
     assert!(!ed.doc().can_undo());
 }
 
+// ── Undo/redo boundary messages ────────────────────────────────────────────
+
+#[test]
+fn undo_at_root_shows_message() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    ed.handle_key(key('u'));
+    assert!(
+        ed.state.status_msg.is_none(),
+        "first undo should succeed — no message"
+    );
+    ed.handle_key(key('u'));
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("Already at oldest change"),
+        "second undo at root should show message"
+    );
+}
+
+#[test]
+fn undo_message_cleared_on_next_keypress() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    ed.handle_key(key('u'));
+    ed.handle_key(key('u'));
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("Already at oldest change")
+    );
+    ed.handle_key(key('l'));
+    assert!(
+        ed.state.status_msg.is_none(),
+        "next keypress clears the undo-at-root message"
+    );
+}
+
+#[test]
+fn redo_at_newest_shows_message() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    ed.handle_key(key('u'));
+    ed.handle_key(key_ctrl('r'));
+    assert!(
+        ed.state.status_msg.is_none(),
+        "first redo should succeed — no message"
+    );
+    ed.handle_key(key_ctrl('r'));
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("Already at newest change"),
+        "second redo at newest should show message"
+    );
+}
+
+#[test]
+fn undo_with_count_shows_message_on_exhaustion() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    // Type a count prefix "2" before "u"
+    ed.handle_key(key('2'));
+    ed.handle_key(key('u'));
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("Already at oldest change"),
+        "count=2 with only 1 undo step should show message on final step"
+    );
+}
+
+#[test]
+fn redo_with_count_shows_message_on_exhaustion() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    ed.handle_key(key('u'));
+    // Type a count prefix "2" before Ctrl+r
+    ed.handle_key(key('2'));
+    ed.handle_key(key_ctrl('r'));
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("Already at newest change"),
+        "count=2 with only 1 redo step should show message on final step"
+    );
+}
+
 // ── `d` pushes deleted text onto the kill ring ─────────────────────────────
 
 /// Deleting a selection must push the deleted text onto the kill ring.
