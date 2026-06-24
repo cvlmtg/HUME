@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use crate::ops::edit::{delete_char_backward, delete_char_forward, delete_selection};
+use crate::ops::edit::{delete_char_backward, delete_char_forward, delete_selection, delete_word_backward};
 use crate::ops::motion::{
     cmd_goto_first_line, cmd_goto_first_nonblank, cmd_goto_last_line, cmd_goto_line_end,
     cmd_goto_line_start, cmd_move_left, cmd_move_right, cmd_next_paragraph, cmd_prev_paragraph,
@@ -544,6 +544,11 @@ impl CommandRegistry {
             "delete-selection",
             "Delete all selections.",
             delete_selection
+        );
+        edit!(
+            "delete-word-backward",
+            "Delete the word before each cursor.",
+            delete_word_backward
         );
 
         use super::super::commands::*;

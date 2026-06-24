@@ -60,7 +60,7 @@ use line::{
 mod word;
 pub(crate) use word::{
     cmd_select_next_uppercase_word, cmd_select_next_word, cmd_select_prev_uppercase_word,
-    cmd_select_prev_word,
+    cmd_select_prev_word, prev_word_start,
 };
 mod paragraph;
 use paragraph::{next_paragraph, prev_paragraph};

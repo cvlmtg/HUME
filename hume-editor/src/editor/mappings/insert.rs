@@ -1,7 +1,8 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::super::keymap::WalkResult;
-use super::super::{Editor, doc_ops};
+use super::super::registry::MappableCommand;
+use super::super::{Editor, Severity, doc_ops};
 use crate::auto_pairs::{delete_pair, insert_pair_close};
 use crate::ops::MotionMode;
 use crate::ops::edit::{delete_char_backward, delete_char_forward, insert_char};
@@ -17,7 +18,31 @@ impl Editor {
         let trie_result = self.state.keymap.insert.walk(&[key]);
         match trie_result {
             WalkResult::Leaf(cmd) => {
-                self.execute_keymap_command(cmd.name.clone(), 1, false, vec![]);
+                // Dispatch Edit commands (e.g. Ctrl-W) as grouped edits so they
+                // compose into the insert session's open edit group instead of
+                // creating a standalone undo revision that would corrupt the
+                // group's changeset composition.
+                let Some(reg_cmd) = self.state.registry.get_mappable(cmd.name.as_ref()).cloned() else {
+                        self.report(
+                        Severity::Warning,
+                        format!("unknown command: {}", cmd.name),
+                    );
+                    return;
+                };
+                if let MappableCommand::Edit { fun, name, .. } = reg_cmd { // single-funnel-exempt: insert-mode edits must go through apply_doc_edit_grouped (stamps_last_command handled inline)
+                    let focused = self.state.focused_pane_id;
+                    let buf = self.focused_buffer_id();
+                    doc_ops::apply_doc_edit_grouped(
+                        &mut self.state.buffers,
+                        &mut self.state.panes.state,
+                        focused,
+                        buf,
+                        |text, sels| fun(text, sels),
+                    );
+                    self.state.last_command = Some(name);
+                    return;
+                }
+                self.execute_keymap_command(cmd.name, 1, false, vec![]);
                 return;
             }
             WalkResult::NoMatch => {}

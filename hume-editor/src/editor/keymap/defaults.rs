@@ -407,6 +407,8 @@ pub(super) fn default_insert_keymap() -> KeyTrie {
     t.bind_leaf(key!(Home), cmd!("goto-line-start"));
     t.bind_leaf(key!(End), cmd!("goto-line-end"));
 
+    t.bind_leaf(key!(Ctrl + 'w'), cmd!("delete-word-backward"));
+
     // Special insert-mode keys (Backspace, Delete, Enter) are handled directly
     // in handle_insert because they interact with auto-pairs logic.
     // Characters that are NOT in the trie fall through to char-insertion.

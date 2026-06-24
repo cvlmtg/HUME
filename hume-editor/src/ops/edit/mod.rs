@@ -5,7 +5,9 @@ use hume_editing::grapheme::{
 use hume_editing::lines::{is_line_start, line_end_exclusive};
 use hume_editing::selection::{Selection, SelectionSet, is_selection_linewise};
 use hume_editing::text::Text;
+use hume_editing::word::is_word_boundary;
 
+use crate::ops::motion::prev_word_start;
 use crate::ops::register;
 
 // ── Edit scaffolding ──────────────────────────────────────────────────────────
@@ -441,6 +443,39 @@ pub(crate) fn delete_char_backward(
             }
             b.retain(prev - b.old_pos());
             b.delete(p - prev);
+            let sel = Selection::collapsed(b.new_pos());
+            new_sels.push(sel);
+        } else {
+            delete_sel_region(b, buf, sel, new_sels);
+        }
+    })
+}
+
+/// Delete the word before each cursor (Ctrl-W in insert mode).
+///
+/// - **Collapsed cursor**: deletes from the word start to the cursor position,
+///   using `prev_word_start` to find the boundary. No-op at buffer start.
+/// - **Non-collapsed selection**: delegates to `delete_sel_region`.
+pub(crate) fn delete_word_backward(
+    buf: Text,
+    sels: SelectionSet,
+) -> (Text, SelectionSet, ChangeSet) {
+    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+        if sel.is_collapsed() {
+            let p = sel.head();
+            if p == 0 {
+                let sel = Selection::collapsed(b.new_pos());
+                new_sels.push(sel);
+                return;
+            }
+            let word_start = prev_word_start(buf, p, is_word_boundary);
+            if word_start < b.old_pos() {
+                let sel = Selection::collapsed(b.new_pos());
+                new_sels.push(sel);
+                return;
+            }
+            b.retain(word_start - b.old_pos());
+            b.delete(p - word_start);
             let sel = Selection::collapsed(b.new_pos());
             new_sels.push(sel);
         } else {

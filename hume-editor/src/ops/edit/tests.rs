@@ -277,6 +277,97 @@ fn delete_backward_adjacent_cursors_merge() {
     );
 }
 
+// ── delete_word_backward ─────────────────────────────────────────────────
+
+#[test]
+fn delete_word_backward_at_end_of_word() {
+    // Cursor after "hello"; Ctrl-W deletes the word; cursor at buffer start.
+    assert_state!(
+        "hello-[\n]>",
+        |(buf, sels)| delete_word_backward(buf, sels),
+        "-[\n]>"
+    );
+}
+
+#[test]
+fn delete_word_backward_mid_word() {
+    // Cursor at offset 3 (inside "hello" on 'l'); deletes "hel" → cursor after "lo".
+    assert_state!(
+        "hel-[l]>o\n",
+        |(buf, sels)| delete_word_backward(buf, sels),
+        "-[l]>o\n"
+    );
+}
+
+#[test]
+fn delete_word_backward_skips_whitespace() {
+    // Cursor after "hello world" whitespace + "world"; deletes back past whitespace.
+    assert_state!(
+        "hello world-[\n]>",
+        |(buf, sels)| delete_word_backward(buf, sels),
+        "hello -[\n]>"
+    );
+}
+
+#[test]
+fn delete_word_backward_at_start_is_noop() {
+    assert_state!(
+        "-[h]>ello\n",
+        |(buf, sels)| delete_word_backward(buf, sels),
+        "-[h]>ello\n"
+    );
+}
+
+#[test]
+fn delete_word_backward_empty_buffer_is_noop() {
+    assert_state!(
+        "-[\n]>",
+        |(buf, sels)| delete_word_backward(buf, sels),
+        "-[\n]>"
+    );
+}
+
+#[test]
+fn delete_word_backward_selection() {
+    // Multi-char selection: delegates to delete_sel_region.
+    assert_state!(
+        "-[hell]>o\n",
+        |(buf, sels)| delete_word_backward(buf, sels),
+        "-[o]>\n"
+    );
+}
+
+#[test]
+fn delete_word_backward_two_cursors() {
+    // Cursors at offsets 5 and 11 in "hello world". First deletes "hello"
+    // (offsets 0..5), second deletes "world" (offsets 6..11).
+    assert_state!(
+        "hello-[\n]>world-[\n]>",
+        |(buf, sels)| delete_word_backward(buf, sels),
+        "-[\n]>-[\n]>"
+    );
+}
+
+#[test]
+fn delete_word_backward_punctuation_group() {
+    // Cursor after "foo.bar()"; punctuation group "()" is one word.
+    assert_state!(
+        "foo.bar()-[\n]>",
+        |(buf, sels)| delete_word_backward(buf, sels),
+        "foo.bar-[\n]>"
+    );
+}
+
+#[test]
+fn delete_word_backward_only_whitespace_goes_to_start() {
+    // Buffer containing only whitespace before cursor.
+    assert_state!(
+        "   -[x]>\n",
+        |(buf, sels)| delete_word_backward(buf, sels),
+        "-[x]>\n"
+    );
+}
+
 // ── delete_selection ──────────────────────────────────────────────────────
 
 #[test]
