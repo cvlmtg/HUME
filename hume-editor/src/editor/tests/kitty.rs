@@ -186,6 +186,50 @@ fn kitty_ctrl_0_extends_line_start() {
     assert_eq!(state(&ed), "<[hello w]-orld\n");
 }
 
+// ── Ctrl+prefix sequences — one-shot extend via Interior nodes ─────────────
+
+/// Ctrl+g l extends to end of line via the goto-prefix trie.
+/// The kitty strip-CONTROL path resolves Ctrl+g to the Interior "goto" node,
+/// persists `pending_ctrl_extend`, and the follow-up `l` completes the
+/// sequence with extend=true.
+#[test]
+fn kitty_ctrl_g_l_extends_line_end() {
+    let mut ed = editor_from_kitty("-[h]>ello world\n");
+    ed.handle_key(key_ctrl('g'));
+    ed.handle_key(key('l'));
+    assert_eq!(state(&ed), "-[hello world]>\n");
+}
+
+/// Ctrl+g h extends to start of line.
+#[test]
+fn kitty_ctrl_g_h_extends_line_start() {
+    let mut ed = editor_from_kitty("hello -[w]>orld\n");
+    ed.handle_key(key_ctrl('g'));
+    ed.handle_key(key('h'));
+    assert_eq!(state(&ed), "<[hello w]-orld\n");
+}
+
+/// Ctrl+g g extends to first line of buffer.
+#[test]
+fn kitty_ctrl_g_g_extends_to_first_line() {
+    let mut ed = editor_from_kitty("first\n-[s]>econd\n");
+    ed.handle_key(key_ctrl('g'));
+    ed.handle_key(key('g'));
+    assert_eq!(state(&ed), "<[first\ns]-econd\n");
+}
+
+/// Ctrl+z z must NOT extend — center-view-on-cursor is not extendable.
+/// The flag is persisted at the Interior node but rejected at Leaf resolution.
+#[test]
+fn kitty_ctrl_z_z_does_not_extend() {
+    let mut ed = editor_from_kitty("-[h]>ello\n");
+    ed.handle_key(key_ctrl('z'));
+    ed.handle_key(key('z'));
+    // Selection must stay collapsed.
+    let sel = ed.current_selections().primary();
+    assert_eq!(sel.anchor(), sel.head(), "Ctrl+z z must not extend");
+}
+
 /// Ctrl+U (redo) must also be a no-op in kitty mode.
 #[test]
 fn kitty_ctrl_shift_u_is_noop() {

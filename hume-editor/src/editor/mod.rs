@@ -301,6 +301,11 @@ pub(crate) struct EditorState {
     pub(super) insert_session: Option<InsertSession>,
     /// Whether the user explicitly typed a count prefix before the current command.
     pub(super) explicit_count: bool,
+    /// `true` when the current multi-key sequence began with a kitty one-shot
+    /// Ctrl+key that resolved to a prefix (Interior) node. Cleared on sequence
+    /// completion or abort. At Leaf resolution, only applied if the command is
+    /// extendable.
+    pub(super) pending_ctrl_extend: bool,
     /// Active macro recording session.
     pub(super) macro_recording: Option<(char, Vec<KeyEvent>)>,
     /// Pending two-keystroke macro command.
@@ -916,6 +921,7 @@ impl Editor {
                 pending_repeat: None,
                 insert_session: None,
                 explicit_count: false,
+                pending_ctrl_extend: false,
                 search: SearchState::default(),
                 panes: {
                     let mut jumps = SecondaryMap::new();

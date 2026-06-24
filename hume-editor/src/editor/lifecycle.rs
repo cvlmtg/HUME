@@ -180,6 +180,7 @@ impl Editor {
                 selection_recipe: Vec::new(),
                 insert_session: None,
                 explicit_count: false,
+                pending_ctrl_extend: false,
                 search: super::search_state::SearchState::default(),
                 panes: {
                     let mut jumps = SecondaryMap::new();

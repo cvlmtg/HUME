@@ -318,7 +318,14 @@ impl Editor {
                     let bare = KeyEvent::new(key.code, KeyModifiers::NONE);
                     self.state.pending_keys.push(bare);
                     let result = self.state.keymap.normal.walk(&self.state.pending_keys);
-                    let is_extendable = match &result {
+                    let ctrl_extend = match &result {
+                        // Prefix key (g, m, z…): persist extend intent for the
+                        // remaining keys in the sequence. Extendability is
+                        // checked at Leaf resolution, not here.
+                        WalkResult::Interior { .. } => {
+                            self.state.pending_ctrl_extend = true;
+                            true
+                        }
                         WalkResult::Leaf(c) => self
                             .state
                             .registry
@@ -329,9 +336,9 @@ impl Editor {
                             .registry
                             .get_mappable(wc.cmd_name.as_ref())
                             .is_some_and(|r| r.is_extendable()),
-                        _ => false,
+                        WalkResult::NoMatch => false,
                     };
-                    if !is_extendable {
+                    if !ctrl_extend {
                         self.state.pending_keys.clear();
                         self.state.count = None;
                         return;
@@ -362,7 +369,7 @@ impl Editor {
             self.state.pending_keys.push(key);
             (
                 self.state.keymap.normal.walk(&self.state.pending_keys),
-                false,
+                self.state.pending_ctrl_extend,
             )
         };
 
@@ -376,6 +383,14 @@ impl Editor {
         match result {
             WalkResult::Leaf(cmd) => {
                 self.state.pending_keys.clear();
+                self.state.pending_ctrl_extend = false;
+                // Only apply one-shot extend if the command supports it.
+                let extend = extend
+                    && self
+                        .state
+                        .registry
+                        .get_mappable(cmd.name.as_ref())
+                        .is_some_and(|r| r.is_extendable());
                 let raw_count = self.state.count.take();
                 self.state.explicit_count = raw_count.is_some();
                 let count = raw_count.unwrap_or(1);
@@ -384,6 +399,7 @@ impl Editor {
             }
             WalkResult::WaitChar(mut wc) => {
                 self.state.pending_keys.clear();
+                self.state.pending_ctrl_extend = false;
                 // Carry ctrl_extend into WaitCharPending so extend resolution
                 // happens at char-consumption time.
                 wc.ctrl_extend = ctrl_extend;
@@ -394,6 +410,7 @@ impl Editor {
             }
             WalkResult::NoMatch => {
                 self.state.pending_keys.clear();
+                self.state.pending_ctrl_extend = false;
                 self.state.count = None;
             }
         }
