@@ -91,21 +91,21 @@ fn build_text_object_trie() -> KeyTrie {
     #[rustfmt::skip]
     let objects: &[(&[char], &str, &str)] = &[
         // ── Word / WORD ───────────────────────────────────────────────────
-        (&['w'],             "inner-word",         "around-word"),
-        (&['W'],             "inner-uppercase-word",         "around-uppercase-word"),
+        (&['w'],             "inner-word",           "around-word"),
+        (&['W'],             "inner-uppercase-word", "around-uppercase-word"),
         // ── Brackets ─────────────────────────────────────────────────────
-        (&['(', ')'],        "inner-paren",        "around-paren"),
-        (&['[', ']'],        "inner-bracket",      "around-bracket"),
-        (&['{', '}'],        "inner-brace",        "around-brace"),
-        (&['<', '>'],        "inner-angle",        "around-angle"),
+        (&['(', ')'],        "inner-paren",          "around-paren"),
+        (&['[', ']'],        "inner-bracket",        "around-bracket"),
+        (&['{', '}'],        "inner-brace",          "around-brace"),
+        (&['<', '>'],        "inner-angle",          "around-angle"),
         // ── Quotes ───────────────────────────────────────────────────────
-        (&['"'],             "inner-double-quote", "around-double-quote"),
-        (&['\''],            "inner-single-quote", "around-single-quote"),
-        (&['`'],             "inner-backtick",     "around-backtick"),
+        (&['"'],             "inner-double-quote",   "around-double-quote"),
+        (&['\''],            "inner-single-quote",   "around-single-quote"),
+        (&['`'],             "inner-backtick",       "around-backtick"),
         // ── Arguments ────────────────────────────────────────────────────
-        (&['a'],             "inner-argument",     "around-argument"),
+        (&['a'],             "inner-argument",       "around-argument"),
         // ── Line ─────────────────────────────────────────────────────────
-        (&['l'],             "inner-line",         "around-line"),
+        (&['l'],             "inner-line",           "around-line"),
     ];
 
     let mut inner_trie = KeyTrie::new("inner");
@@ -148,7 +148,18 @@ fn build_text_object_trie() -> KeyTrie {
     match_trie.bind(key!('s'), KeyTrieNode::Node(surround_trie));
     match_trie.bind(key!('w'), wait_char!("surround-add"));
     match_trie.bind_leaf(key!('/'), cmd!("select-all-matches"));
+    // `mm` → `miw` — faster shortcut for selecting inner word.
+    match_trie.bind_leaf(key!('m'), cmd!("inner-word"));
     match_trie
+}
+
+/// Build a standalone trie for the `M` prefix so that `MM` selects the
+/// inner WORD without opening the full text-object trie.  This keeps `m`
+/// and `M` as separate roots — `mM` and `Mm` are no-ops.
+fn build_uppercase_match_trie() -> KeyTrie {
+    let mut t = KeyTrie::new("match");
+    t.bind_leaf(key!('M'), cmd!("inner-uppercase-word"));
+    t
 }
 
 // ── Goto trie ─────────────────────────────────────────────────────────────────
@@ -355,9 +366,11 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     // `z` → second key (zz/zt/zb viewport repositioning).
     t.bind(key!('z'), KeyTrieNode::Node(build_view_trie()));
 
-    // ── Match prefix (`m`) ────────────────────────────────────────────────────
+    // ── Match prefix (`m` / `M`) ───────────────────────────────────────────────
     // `m` → text objects (`mi`/`ma`), surround (`ms`), and `m/` (select-all-matches).
+    // `M` mirrors `m`; `MM` is a shortcut for `miW` (inner WORD).
     t.bind(key!('m'), KeyTrieNode::Node(build_text_object_trie()));
+    t.bind(key!('M'), KeyTrieNode::Node(build_uppercase_match_trie()));
 
     // ── Mode transitions ──────────────────────────────────────────────────────
     t.bind_leaf(key!(':'), cmd!("command-mode"));
