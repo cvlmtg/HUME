@@ -1,1 +1,1 @@
-%s :<ret>c<ret>         :<esc>
+%s :<ret><c-;>c<ret><esc>%s:<ret>&
