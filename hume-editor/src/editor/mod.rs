@@ -596,7 +596,7 @@ impl Editor {
         ctx: &CmdCtx,
         char_arg: Option<char>,
     ) -> bool {
-        let count = ctx.count;
+        let count = ctx.count.max(1);
         let extend = ctx.extend;
 
         // For a Lazy stub, activate the owning plugin now so we can read

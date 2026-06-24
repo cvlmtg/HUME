@@ -161,7 +161,6 @@ fn search_jump(
         )
     };
 
-    let count = count.max(1);
     let mut last_match: Option<(usize, usize)> = None;
     let mut any_wrapped = false;
 

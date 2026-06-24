@@ -96,6 +96,7 @@ pub(super) fn run_native_body(
     count: usize,
     extend: bool,
 ) {
+    let count = count.max(1);
     let motion_mode = if extend {
         MotionMode::Extend
     } else {

@@ -102,7 +102,6 @@ pub(crate) fn cmd_remove_primary_selection(
     count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
-    let count = count.max(1);
     let mut sels = sels;
     for _ in 0..count {
         if sels.len() <= 1 {
@@ -292,7 +291,7 @@ mod tests {
     fn remove_primary_single_is_noop() {
         assert_state!(
             "-[h]>ello\n",
-            |(buf, sels)| cmd_remove_primary_selection(&buf, sels, 0, MotionMode::Move),
+            |(buf, sels)| cmd_remove_primary_selection(&buf, sels, 1, MotionMode::Move),
             "-[h]>ello\n"
         );
     }
@@ -303,7 +302,7 @@ mod tests {
         // After removal: only the cursor at 4 remains, becomes primary.
         assert_state!(
             "-[h]>ell-[o]>\n",
-            |(buf, sels)| cmd_remove_primary_selection(&buf, sels, 0, MotionMode::Move),
+            |(buf, sels)| cmd_remove_primary_selection(&buf, sels, 1, MotionMode::Move),
             "hell-[o]>\n"
         );
     }
@@ -440,7 +439,7 @@ mod tests {
         // to the first remaining cursor (index 0 of the new set).
         let (buf, sels) = parse_state("-[h]>el-[l]>o-[\n]>"); // 3 cursors, primary at 0
         let sels = cmd_cycle_primary_backward(&buf, sels, 0, MotionMode::Move); // primary at last (head=6)
-        let sels_out = cmd_remove_primary_selection(&buf, sels, 0, MotionMode::Move);
+        let sels_out = cmd_remove_primary_selection(&buf, sels, 1, MotionMode::Move);
         assert_eq!(sels_out.len(), 2);
         assert_eq!(sels_out.primary().head(), 0); // wrapped to first
     }
