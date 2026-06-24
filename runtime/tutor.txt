@@ -104,9 +104,9 @@ glyph (ᓚᘏᗢ) in the statusline.
 
   Prefix a motion with digits to repeat it:
 
-    3w   step three words forward
-    5j   move five lines down
-    2{   jump two paragraphs back
+  3w   step three words forward
+  5j   move five lines down
+  2{   jump two paragraphs back
 
 Counts apply to motions, not edits.
 
@@ -116,7 +116,7 @@ it becomes a digit (so `10w`, `20j`).
   >> Place the cursor on `one` in the line below, then press `3w` to
      jump three words forward. You should land on `four`:
 
-one two three four five six
+  one two three four five six
 
   >> Now press `2b` to jump two words backward. You should land back
      on `two`.
@@ -437,8 +437,8 @@ brings it back.
      the search pattern. Press `n` to jump to the next `apple`, then
      `n` again for the third one:
 
-I had an apple for breakfast, an apple for lunch, and a third apple
-for dinner.
+  I had an apple for breakfast, an apple for lunch, and a third apple
+  for dinner.
 
 6.2  TEXT OBJECTS
 
@@ -454,8 +454,12 @@ delimiters) or `ma` for AROUND (including delimiters):
   mil         inner line            mal       around line (incl. \n)
   mia  maa    inner / around argument (comma-separated)
   miw  maw    inner / around word
+  miW  maW    inner / around WORD
 
-  >> Delete the content inside the parentheses below using `mi( d`:
+Since `miw` and `miW` are very frequent operations, HUME adds a couple
+of shortcuts: `mm` for the inner word and `MM` for the inner WORD.
+
+   >> Delete the content inside the parentheses below using `mi( d`:
 
   The result is (REMOVE THIS CONTENT) and nothing else.
 
@@ -607,7 +611,7 @@ FLIPPING THE SELECTION
 
   o         (in Extend mode) swap anchor and head
   Ctrl+e    swap anchor and head — works in Normal and Extend mode,
-            and works on all terminals (does not require kitty)
+            and works on all terminals.
 
 Flipping is useful after growing a selection: if you extended too far in
 one direction, flip to put the cursor at the other end and trim back.
@@ -792,14 +796,25 @@ To right-align instead: rotate the primary to the widest item, then flip
 all selections so each anchor sits on the RIGHT edge of its match. `&` then
 aligns right edges.
 
-  >> Select the three lines below with `x Ctrl+x Ctrl+x`, then `s\d+` Enter
-     to put a cursor on each number. Press `)` to rotate the primary to
-     `1000`. Press `Ctrl+e` to flip all selections (anchor moves to the last
-     digit of each number). Press `&` to right-align all numbers:
+  >> Select the lines below with `Ctrl+x Ctrl+x Ctrl+x`, then press `s` and type
+     `\d+`, then press `Enter` to put a cursor on each number. Press `)` to rotate
+     the primary to `1000`. Press `Ctrl+e` to flip all selections (anchor moves
+     to the last digit of each number). Press `&` to right-align all numbers:
 
   price: 5
   price: 1000
   price: 42
+
+Alignment can work on multiple selections too.
+
+  >> Select the lines below with `Ctrl+x Ctrl+x Ctrl+x`, then press `s` and type
+     `=|//` to select the equal signs and the comments. Press `Enter` and then
+     press `&` to align the text, finally press `,` to discard all the secondary
+     selections.
+
+  const bananas = 4; // 4 bananas
+  const apples = 123; // 123 apples
+  const watermelons = 2; // 2 watermelons
 
 CLOSING NOTE
 

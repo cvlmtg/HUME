@@ -100,8 +100,6 @@ Text object commands collapse or extend the selection to cover an object. `m i` 
 
 | Sequence | Inner | Around |
 |----------|-------|--------|
-| `m i w` / `m a w` | Inner word | Word + surrounding whitespace |
-| `m i W` / `m a W` | Inner WORD | WORD + surrounding whitespace |
 | `m i (` or `)` / `m a (` or `)` | Inside `()` | Including `()` |
 | `m i [` or `]` / `m a [` or `]` | Inside `[]` | Including `[]` |
 | `m i {` or `}` / `m a {` or `}` | Inside `{}` | Including `{}` |
@@ -111,6 +109,10 @@ Text object commands collapse or extend the selection to cover an object. `m i` 
 | `m i `` ` `` / `m a `` ` `` | Inside `` `...` `` | Including `` `...` `` |
 | `m i a` / `m a a` | Argument (trimmed) | Argument + separator comma |
 | `m i l` / `m a l` | Line content (no newline) | Full line (including newline) |
+| `m i w` / `m a w` | Inner word | Word + surrounding whitespace |
+| `m i W` / `m a W` | Inner WORD | WORD + surrounding whitespace |
+| `m m` | Inner word | - |
+| `M M` | Inner WORD | - |
 
 ### Surround (`m s`)
 
