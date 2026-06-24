@@ -110,7 +110,7 @@ pub(super) struct InsertSession {
 /// extent the edit originally acted on.
 ///
 /// Only in-place selections (e.g. `select-line`) appear as establish steps;
-/// reaching selections (`select-next-word` / `-prev-word` / WORD variants) are
+/// reaching selections (`select-next-word` / `-prev-word` / uppercase-word variants) are
 /// not recorded in Move mode — replaying one would advance past the cursor and
 /// act on the wrong region. Extend steps of any selection are always recorded.
 #[derive(Debug, Clone)]
@@ -151,7 +151,7 @@ pub(super) struct RepeatableAction {
     /// Invariant: `[]` (edit acted on pre-existing selection or after a reaching
     /// selection — `.` deletes the current selection as-is) or `[one in-place
     /// Move-mode establish, then zero+ Extend appends]`. Reaching selections
-    /// (`select-next-word` / `-prev-word` / WORD variants) are excluded from
+    /// (`select-next-word` / `-prev-word` / uppercase-word variants) are excluded from
     /// establish steps because replaying them advances past the cursor. Rebuilt
     /// from `EditorState::selection_recipe` each time a repeatable command is
     /// recorded.

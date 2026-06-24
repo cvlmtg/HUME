@@ -259,7 +259,7 @@ pub(super) fn apply_word_select(
 /// Apply a forward word-select motion in extend mode: union the returned word range
 /// with the existing selection rather than replacing it.
 ///
-/// The motion origin is `sel.end()` so that `select-next-word`/`select-next-WORD` always searches
+/// The motion origin is `sel.end()` so that `select-next-word`/`select-next-uppercase-word` always searches
 /// *ahead* of the current selection, regardless of how far it already extends.
 /// If `motion` returns `None`, iteration stops early and the last selection is kept.
 pub(super) fn apply_word_select_extend_forward(
@@ -292,7 +292,7 @@ pub(super) fn apply_word_select_extend_forward(
 /// Apply a backward word-select motion in extend mode: union the returned word range
 /// with the existing selection rather than replacing it.
 ///
-/// The motion origin is `sel.start()` so that `select-prev-word`/`select-prev-WORD` always searches
+/// The motion origin is `sel.start()` so that `select-prev-word`/`select-prev-uppercase-word` always searches
 /// *behind* the current selection, regardless of how far it already extends.
 /// Without this, `select_prev_word(sel.head)` finds a word already inside the
 /// selection, making union a no-op.

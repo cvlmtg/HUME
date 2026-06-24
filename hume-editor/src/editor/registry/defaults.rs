@@ -258,8 +258,8 @@ impl CommandRegistry {
             reaching
         );
         motion!(
-            "select-next-WORD",
-            "Select the next WORD (whitespace-delimited).",
+            "select-next-uppercase-word",
+            "Select the next uppercase word (whitespace-delimited).",
             cmd_select_next_uppercase_word,
             reaching
         );
@@ -270,8 +270,8 @@ impl CommandRegistry {
             reaching
         );
         motion!(
-            "select-prev-WORD",
-            "Select the previous WORD (whitespace-delimited).",
+            "select-prev-uppercase-word",
+            "Select the previous uppercase word (whitespace-delimited).",
             cmd_select_prev_uppercase_word,
             reaching
         );
@@ -385,13 +385,13 @@ impl CommandRegistry {
             cmd_around_word
         );
         selection!(
-            "inner-WORD",
-            "Select inner WORD (whitespace-delimited).",
+            "inner-uppercase-word",
+            "Select inner uppercase word (whitespace-delimited).",
             cmd_inner_uppercase_word
         );
         selection!(
-            "around-WORD",
-            "Select WORD plus surrounding whitespace.",
+            "around-uppercase-word",
+            "Select uppercase word plus surrounding whitespace.",
             cmd_around_uppercase_word
         );
 

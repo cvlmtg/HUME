@@ -63,7 +63,7 @@ pub(crate) struct CmdMeta {
     pub is_jump: bool,
     /// Whether this motion's Move-mode result is a reaching selection (i.e. it
     /// navigates away from the cursor to anchor on a new region). `true` for the
-    /// word motions (`select-next-word` / `-prev-word` / WORD variants). `false`
+    /// word motions (`select-next-word` / `-prev-word` / uppercase-word variants). `false`
     /// for everything else.
     ///
     /// `step_update_recipe` uses this to suppress the establish step for reaching

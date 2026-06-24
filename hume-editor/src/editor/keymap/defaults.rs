@@ -92,7 +92,7 @@ fn build_text_object_trie() -> KeyTrie {
     let objects: &[(&[char], &str, &str)] = &[
         // ── Word / WORD ───────────────────────────────────────────────────
         (&['w'],             "inner-word",         "around-word"),
-        (&['W'],             "inner-WORD",         "around-WORD"),
+        (&['W'],             "inner-uppercase-word",         "around-uppercase-word"),
         // ── Brackets ─────────────────────────────────────────────────────
         (&['(', ')'],        "inner-paren",        "around-paren"),
         (&['[', ']'],        "inner-bracket",      "around-bracket"),
@@ -224,9 +224,9 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
 
     // ── Word motion ───────────────────────────────────────────────────────────
     t.bind_leaf(key!('w'), cmd!("select-next-word"));
-    t.bind_leaf(key!('W'), cmd!("select-next-WORD"));
+    t.bind_leaf(key!('W'), cmd!("select-next-uppercase-word"));
     t.bind_leaf(key!('b'), cmd!("select-prev-word"));
-    t.bind_leaf(key!('B'), cmd!("select-prev-WORD"));
+    t.bind_leaf(key!('B'), cmd!("select-prev-uppercase-word"));
 
     // ── Line start / end ──────────────────────────────────────────────────────
     t.bind_leaf(key!('0'), cmd!("goto-line-start"));
