@@ -26,7 +26,8 @@ Tab completion is available for command names and, where applicable, their argum
 | `:b <name>` | — | Switch to buffer |
 | `:bnext` | `:bn` | Next buffer |
 | `:bprev` | `:bp` | Previous buffer |
-| `:bd` | — | Close buffer |
+| `:bd` | — | Close buffer (blocked if there are unsaved changes) |
+| `:bd!` | — | Force close buffer (discard unsaved changes) |
 
 ## Panes
 

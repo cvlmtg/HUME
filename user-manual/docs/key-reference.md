@@ -10,8 +10,8 @@
 | `l` / `→` | Move right one grapheme |
 | `j` / `↓` | Move down one visual line |
 | `k` / `↑` | Move up one visual line |
-| `w` | Next word start |
-| `b` | Previous word start |
+| `w` | Select next word |
+| `b` | Select previous word |
 | `W` / `B` | WORD variants of `w` / `b` |
 | `0` / `Home` | Start of line (vim convenience; idiomatic form is `g h`) |
 | `$` / `End` | End of line (vim convenience; idiomatic form is `g l`) |

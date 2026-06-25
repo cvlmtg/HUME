@@ -79,7 +79,7 @@ A key string is a **whitespace-separated** list of tokens. Each token is `[modif
 | Named keys | `space`, `tab`, `enter` / `return` / `cr` / `ret`, `esc` / `escape`, `lt` (`<`), `backspace` / `bs`, `delete` / `del`, `insert` / `ins`, `home`, `end`, `pageup`, `pagedown`, `up`, `down`, `left`, `right`, `f1`–`f12` |
 | Single char | Any single Unicode character; case is preserved (`"G"` and `"g"` are distinct) |
 
-Multi-key sequences are space-separated: `"g e"`, `"m i w"`, `"Ctrl+p h"`. Examples: `"ctrl-j"`, `"shift-tab"` (becomes `BackTab`), `"ctrl-shift-left"`, `"g e"`.
+Multi-key sequences are space-separated: `"g e"`, `"m i w"`, `"ctrl-p h"`. Examples: `"ctrl-j"`, `"shift-tab"` (becomes `BackTab`), `"ctrl-shift-left"`, `"g e"`.
 
 ## Statusline
 

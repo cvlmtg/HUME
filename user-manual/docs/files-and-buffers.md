@@ -21,7 +21,8 @@ A **buffer** is an open file (or scratch text). HUME can have multiple buffers o
 | `:b name` | Switch to buffer by name or number |
 | `:bnext` | Switch to next buffer |
 | `:bprev` | Switch to previous buffer |
-| `:bd` | Close (delete) current buffer |
+| `:bd` | Close (delete) current buffer (blocked if unsaved) |
+| `:bd!` | Force close, discarding unsaved changes |
 
 `:b` accepts a name prefix, a full path, or a 1-based index as shown by `:ls`. If two open files share the same name, their parent directory is shown to disambiguate.
 

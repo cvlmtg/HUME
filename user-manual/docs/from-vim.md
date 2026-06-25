@@ -27,7 +27,7 @@ In HUME, the order is reversed: you **select first, then act**. `w` selects the 
 
 ### Extend mode vs Visual mode
 
-Vim's Visual mode is entered once and stays until you act. HUME's Extend mode is similar, but you can also build up a selection with a single motion (e.g. pressing `w` multiple times in Normal mode still extends the selection with `e` toggled on).
+Vim's Visual mode is entered once and stays until you act. HUME's Extend mode is similar — press `e` to enter it, and every motion extends the selection until you act or press `Esc`.
 
 ### Registers
 

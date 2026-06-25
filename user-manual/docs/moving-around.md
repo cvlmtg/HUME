@@ -10,8 +10,8 @@ All movement happens in Normal mode. Motions move the cursor and change the curr
 | `l` | One character right |
 | `j` | One line down |
 | `k` | One line up |
-| `w`/`W` | Next word/WORD start |
-| `b`/`B` | Previous word/WORD start |
+| `w`/`W` | Select next word/WORD |
+| `b`/`B` | Select previous word/WORD |
 
 A `word` breaks at punctuation, so `don't` is three `words`. A `WORD` only breaks at spaces, so `don't` is one `WORD`.
 

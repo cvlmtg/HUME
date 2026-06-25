@@ -18,7 +18,7 @@ Helix uses TOML. HUME uses **Scheme** (`init.scm`). You bind keys and set option
 
 ```scheme
 (set-option! "theme" "ember")
-(bind-key! "normal" "ctrl+j" "move-down")
+(bind-key! "normal" "ctrl-j" "move-down")
 ```
 
 This makes HUME's config a real programming language — conditionals, loops, and abstraction are available from day one.
