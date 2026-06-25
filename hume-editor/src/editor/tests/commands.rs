@@ -672,6 +672,7 @@ fn o_esc_on_empty_line_does_not_step_to_previous_line() {
 ///
 /// - cursor on c(2): char_at(2)='c' → `next(2)=3`.
 /// - cursor on \n(3): char_at(3)='\n' → stays at 3.
+///
 /// Both land on 3 → merge → single cursor on \n.
 ///
 /// Regression: without `map` merging after the transform, this leaves two

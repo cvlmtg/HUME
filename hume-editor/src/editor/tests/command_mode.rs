@@ -599,11 +599,12 @@ fn colon_qa_walk_through_dirty_buffers() {
         let tmp = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(tmp.path(), "content\n").unwrap();
         let (_, meta) = hume_platform::io::read_file(tmp.path()).unwrap();
+        let path = tmp.path().to_path_buf();
         let mut buf = crate::editor::buffer::Buffer::new(
             hume_editing::text::Text::from("content\n"),
             SelectionSet::default(),
         );
-        buf.set_path(Some(tmp.path().to_path_buf()));
+        buf.set_path(Some(path));
         buf.file_meta = Some(meta);
         let id = ed.open_buffer(buf);
         ed.switch_to_buffer_without_jump(id);
@@ -611,7 +612,12 @@ fn colon_qa_walk_through_dirty_buffers() {
         ed.handle_key(key('x'));
         ed.handle_key(key_esc());
         assert!(ed.doc().is_dirty());
-        (id, tmp)
+        // Drop the open handle: on Windows, NamedTempFile opens without
+        // FILE_SHARE_DELETE, so an open handle would block the atomic rename
+        // in `:w` with ERROR_SHARING_VIOLATION. TempPath keeps the file on disk
+        // until it is dropped.
+        let tmp_path = tmp.into_temp_path();
+        (id, tmp_path)
     };
 
     let (first_dirty, tmp2) = mk_dirty_buf(&mut ed);
@@ -630,7 +636,7 @@ fn colon_qa_walk_through_dirty_buffers() {
     );
 
     // Save first_dirty, then :qa → lands on second_dirty.
-    let save_path = tmp2.path().to_path_buf();
+    let save_path = tmp2.to_path_buf();
     let cmd = format!(":w {}", save_path.display());
     for ch in cmd.chars() {
         ed.handle_key(key(ch));
