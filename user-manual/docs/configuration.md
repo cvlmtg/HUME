@@ -5,7 +5,7 @@ HUME is configured via a Scheme file at:
 - **macOS / Linux:** `$XDG_CONFIG_HOME/hume/init.scm` (defaults to `~/.config/hume/init.scm`)
 - **Windows:** `%APPDATA%\hume\init.scm`
 
-If the file does not exist, HUME starts with defaults. Parse errors show a warning and fall back to defaults.
+If the file does not exist, HUME starts with defaults. Parse errors show a warning and fall back to defaults. A bundled reference config ships at `runtime/init.scm.example` (inside the runtime directory — see [File locations](#file-locations)); HUME never auto-copies it, so copy it to the path above manually if you want a starting point.
 
 ## Setting options
 
@@ -13,7 +13,7 @@ If the file does not exist, HUME starts with defaults. Parse errors show a warni
 (set-option! "option-name" value)
 ```
 
-Use `:set` from the command line for quick changes — see [Command Line](command-line.md).
+Use `:set` from the command line for quick changes — see [Commands](commands.md).
 
 ## Global options
 
@@ -32,9 +32,9 @@ Use `:set` from the command line for quick changes — see [Command Line](comman
 | `popup-border` | bool | `#t` | Show popup borders |
 | `syntax-highlight-max-bytes` | integer ≥ 1 | `1048576` | Max bytes for syntax highlighting |
 
-## Per-buffer options
+## Per-buffer options (with global default)
 
-Set an option for the current buffer only from the command line or init.scm:
+These options have a global default (set via `set-option!` at init.scm time, or `:set global <option>=<value>`) that new buffers inherit, and a per-buffer override (set via `:set buffer <option>=<value>`). The per-buffer override takes precedence when present.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -44,23 +44,42 @@ Set an option for the current buffer only from the command line or init.scm:
 | `auto-pairs-enabled` | bool | `#t` | Enable auto-pair insertion |
 | `language` | string | *(auto-detected)* | Language for syntax highlighting |
 
-Use `:set buffer <option>=<value>`:
+Use `:set buffer <option>=<value>` to override for the current buffer:
 
 ```
 :set buffer tab-width=2
 :set buffer language=markdown
 ```
 
+Or set the global default from `init.scm`:
+
+```scheme
+(set-option! "line-number-style" "absolute")
+(set-option! "tab-width" 2)
+```
+
 ## Key bindings
 
 ```scheme
-(bind-key! "normal" "ctrl+j" "move-down")
+(bind-key! "normal" "ctrl-j" "move-down")
 (bind-key! "normal" "g e" "goto-last-line")
-(unbind-key! "normal" "ctrl+j")
+(unbind-key! "normal" "ctrl-j")
 ```
 
 `bind-key!` — binds a key in the given mode (`"normal"`, `"insert"`, `"extend"`).
 `unbind-key!` — removes a binding.
+
+### Key-string grammar
+
+A key string is a **whitespace-separated** list of tokens. Each token is `[modifier-]*key` where the modifier separator is a **dash** `-` (not `+`):
+
+| Component | Values |
+|-----------|--------|
+| Modifiers | `ctrl-`, `shift-`, `alt-` (case-insensitive, repeatable, any order) |
+| Named keys | `space`, `tab`, `enter` / `return` / `cr` / `ret`, `esc` / `escape`, `lt` (`<`), `backspace` / `bs`, `delete` / `del`, `insert` / `ins`, `home`, `end`, `pageup`, `pagedown`, `up`, `down`, `left`, `right`, `f1`–`f12` |
+| Single char | Any single Unicode character; case is preserved (`"G"` and `"g"` are distinct) |
+
+Multi-key sequences are space-separated: `"g e"`, `"m i w"`, `"Ctrl+p h"`. Examples: `"ctrl-j"`, `"shift-tab"` (becomes `BackTab`), `"ctrl-shift-left"`, `"g e"`.
 
 ## Statusline
 
@@ -70,7 +89,18 @@ The statusline is fully configurable from Steel:
 (configure-statusline! '("Mode" "Separator" "FileName") '() '("Position"))
 ```
 
-Each argument is a list of element name strings. Available elements:
+Each argument is a list of element name strings: left, center, right.
+
+**Default layout** (used when no `configure-statusline!` call is in your `init.scm`):
+
+```
+Position  FilePath  Language  ReadOnly  DirtyIndicator      MacroRecording  SearchMatches  KittyProtocol  │  Mode
+└──────────────────── left ────────────────────────┘      └──────────────── right ───────────────────────┘
+```
+
+The mode label lives on the **right**, not the left.
+
+Available elements:
 
 | Element | Description |
 |---------|-------------|
@@ -132,8 +162,22 @@ Hooks can trigger on language detection:
 (set-option! "tab-width" 2)
 (set-option! "scrolloff" 8)
 
-(bind-key! "normal" "ctrl+h" "select-prev-word")
-(bind-key! "normal" "ctrl+l" "select-next-word")
+(bind-key! "normal" "ctrl-h" "select-prev-word")
+(bind-key! "normal" "ctrl-l" "select-next-word")
 
 (declare-plugin "username/hume-plugin-example" #:commands '("hello"))
 ```
+
+## File locations
+
+HUME resolves its directories per OS:
+
+| Path | macOS / Linux | Windows |
+|------|---------------|---------|
+| Config dir (`init.scm`, user `themes/`) | `$XDG_CONFIG_HOME/hume/` (default `~/.config/hume/`) | `%APPDATA%\hume\` |
+| Data dir (plugin clones, tree-sitter grammars) | `$XDG_DATA_HOME/hume/` (default `~/.local/share/hume/`) | `%LOCALAPPDATA%\hume\` (fallback `%APPDATA%\hume\`) |
+| Runtime dir (bundled `runtime/`: `tutor.txt`, `themes/`, `init.scm.example`, core plugins) | `$HUME_RUNTIME` if set; else `../share/hume/` relative to the binary; else `./runtime` in dev | `$HUME_RUNTIME` if set; else the binary's directory; else `./runtime` in dev |
+
+Notable subpaths inside the data dir: `data/plugins/` (PLUM-managed plugin clones), `data/grammars/` and `data/grammars/sources/` (compiled and source tree-sitter grammars). Plugin sandboxed filesystem operations are restricted to `data/plugins/`, `data/grammars/`, and `runtime/plugins/` (read-only).
+
+Note: on macOS HUME follows the XDG convention (`~/.config/hume/`, `~/.local/share/hume/`) rather than `~/Library/Application Support/`.

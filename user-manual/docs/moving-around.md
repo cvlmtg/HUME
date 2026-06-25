@@ -95,6 +95,31 @@ Press `z` followed by a second key to reposition the view (the cursor itself sta
 | `*` | Use the primary selection as the search pattern. When the whole selection is word-class, the pattern is wrapped in word boundaries (`\b…\b`) for whole-word search; otherwise the text is searched literally. |
 | `m /` | Turn every search match in the buffer into a selection |
 
+### `m /` precondition
+
+`m /` uses the buffer's live search pattern if one is active; otherwise it falls back to the search register `s` (the last pattern submitted to `/` or `?`, or set by `*`). If neither is available it is a **silent no-op** — no error, selections unchanged. It runs from Normal or Extend mode.
+
+### Regex syntax
+
+`/`, `?`, `s` (select-within), and `*` all use the [Rust `regex` crate](https://docs.rs/regex) syntax via `regex-cursor`. Notable points:
+
+- **Smart case.** An all-lowercase pattern is case-insensitive; any uppercase character makes the match case-sensitive. Override with inline flags: `(?i)` forces case-insensitive, `(?-i)` forces case-sensitive.
+- **Other inline flags** — `(?m)` multiline `^`/`$`, `(?s)` dot-matches-newline, `(?x)` extended (whitespace ignored), `(?U)` swap greedy/non-greedy.
+- **`.` does not match newlines** by default; use `(?s)` if you need it to.
+- **No backreferences, no lookaround, no possessive quantifiers** — Rust regex is RE2-like. No Vim-style `\c` / `\C` case toggles (they'd match the literal letters `c` / `C`).
+- **Invalid patterns** are silently ignored during live preview (the cursor stays put); committing an invalid pattern leaves the previous search state intact.
+
+## Search and replace
+
+HUME has no `:s/foo/bar/g` substitute command. Find-and-replace is done with multi-cursor selection:
+
+1. Search for the pattern with `/foo` (or `*` on a word to match it).
+2. Press `m /` to turn every match in the buffer into a selection.
+3. Press `c` to change them all at once — type the replacement once and every selected instance updates together.
+4. `Esc` returns you to Normal.
+
+To replace within a single region instead of the whole buffer, select the region first (e.g. `x` for a line, or `m i {` for a block), then use `s` (select-within) with a regex instead of `m /`.
+
 ## Jump list
 
 HUME maintains a jump list of recent cursor positions.

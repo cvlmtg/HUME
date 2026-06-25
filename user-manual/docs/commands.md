@@ -1,6 +1,6 @@
-# Command Line
+# Commands
 
-Press `:` in Normal mode to open the command line. Type a command name and press `Enter` to run it. `Esc` dismisses without running.
+Press `:` in Normal mode to open the command line. Type a command name and press `Enter` to run it. `Esc` dismisses without running. This page lists the built-in `:` commands; for launching HUME from a shell, see [Command-line Flags](cli.md).
 
 Tab completion is available for command names and, where applicable, their arguments.
 
@@ -55,8 +55,9 @@ See [Configuration](configuration.md) for all available options.
 | `:theme-debug` | — | Show resolved styles for key UI scopes |
 | `:wrap` | `:toggle-soft-wrap` | Toggle soft line wrapping |
 | `:messages` | `:mes` | Show message log in a read-only buffer |
+| `:clear-search` | — | Clear search highlights (also clears automatically on `Esc`) |
 
-Search highlights clear automatically when you press `Esc`. You can also clear them on demand with `:clear-search`.
+Search highlights clear automatically when you press `Esc`. `:clear-search` clears them on demand.
 
 ## Navigation
 
@@ -72,21 +73,7 @@ Search highlights clear automatically when you press `Esc`. You can also clear t
 | `:plugin-status` | `:plugins` | Show declared plugins and their load state |
 | `:reload-config` | — | Reload `init.scm` from scratch |
 
-## PLUM (plugin and grammar management)
-
-The `:plum-*` commands are provided by the bundled **`core:plum`** plugin. They are only available when that plugin is loaded — add `(load-plugin "core:plum")` to your `init.scm` if they are not present.
-
-| Command | Effect |
-|---------|--------|
-| `:plum-install-grammar` | Install tree-sitter grammar for current buffer's language |
-| `:plum-update-grammar` | Re-clone and recompile grammar for current buffer's language |
-| `:plum-ensure-grammars` | Install grammars from a list, skip compiled |
-| `:plum-list-grammars` | Show known/installed/orphan/missing grammars |
-| `:plum-cleanup-grammars` | Delete orphan compiled grammar files |
-| `:plum-install` | Install all declared plugins not yet on disk |
-| `:plum-cleanup` | Remove on-disk plugins no longer declared |
-| `:plum-update` | Pull latest in every installed third-party plugin |
-| `:plum-list` | Show declared/installed/orphan/missing plugins |
+The `:plum-*` commands (plugin and grammar installation, updates, cleanup) are provided by the bundled `core:plum` plugin — see [Plugins](plugins.md#plum-plugin-and-grammar-management) for the full list.
 
 ## Other
 
@@ -94,3 +81,11 @@ The `:plum-*` commands are provided by the bundled **`core:plum`** plugin. They 
 |---------|---------|--------|
 | `:tutor` | — | Open the interactive tutorial |
 | `:version` | `:ver` | Show editor version |
+
+## Discovering commands
+
+There is no `:commands` listing command. To discover available commands, open the command line with `:` and press `Tab` — completion lists every registered name and alias. The list reflects both built-in commands and stubs registered by lazy plugins (see [Plugins](plugins.md)).
+
+## Mappable commands from the command line
+
+In addition to the typed commands above, **any mappable editor command** can be invoked from `:`. Commands like `:clear-search`, `:undo`, `:redo`, and `:select-all-matches` work this way without dedicated typed-command wrappers. Mappable commands take no aliases and accept an implicit count of 1.

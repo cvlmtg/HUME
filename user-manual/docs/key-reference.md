@@ -130,7 +130,7 @@ Text objects (use the `m` prefix):
 | Key | Action |
 |-----|--------|
 | `"` + reg | Register prefix (`0`–`9`, `k`, `c`, `b`) |
-| `1`–`9` | Numeric count prefix |
+| `1`–`9` then `[0-9]*` | Numeric count prefix (`0` is a digit only inside a count; otherwise `0` is `goto-line-start`) |
 
 ## Goto prefix (`g`)
 
@@ -199,3 +199,35 @@ The status bar shows `EXT` in Extend mode.
 | `Tab` | Complete |
 | `Shift+Tab` | Complete (previous) |
 | `Up` / `Down` | History |
+
+## Search mode
+
+Entered with `/` (forward) or `?` (backward). Every keystroke live-previews the next match from the position where search was opened.
+
+| Key | Action |
+|-----|--------|
+| `Enter` (empty input) | Cancel and return to Normal |
+| `Enter` (non-empty) | Commit pattern to the search register, jump to first match, return to Normal |
+| `Esc` / `Ctrl+c` | Cancel, restore pre-search selection |
+| `Backspace` (input non-empty) | Delete char and re-preview |
+| `Backspace` (empties input) | Restore pre-search selection, stay in Search mode |
+| `Backspace` (on empty input) | Exit Search mode |
+| `Ctrl+w` | Delete word before cursor |
+| `Up` / `Down` | Recall previous / next pattern from history (separate `/` and `?` rings) |
+| Any other character | Insert and re-preview |
+| `Tab` / `Shift+Tab` / `Left` / `Right` | No-op |
+
+## Select mode
+
+Entered with `s` from Normal mode (requires at least one non-collapsed selection). Live-previews sub-match selections within the original selections. Does **not** overwrite the search register, so `n`/`N` continue the prior search after `Enter`.
+
+| Key | Action |
+|-----|--------|
+| `Enter` (empty input) | Cancel, restore original selections |
+| `Enter` (non-empty) | Keep the live-preview selections, return to Normal |
+| `Esc` / `Ctrl+c` | Cancel, restore original selections |
+| `Backspace` (input non-empty) | Delete char and re-preview |
+| `Backspace` (empties input or on empty) | Restore original selections, stay in Select mode |
+| `Ctrl+w` | Delete word before cursor |
+| Any other character | Insert and re-preview |
+| `Tab` / `Shift+Tab` / `Up` / `Down` / `Left` / `Right` | No-op (Select mode has no pattern history) |

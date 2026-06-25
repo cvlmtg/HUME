@@ -1,6 +1,6 @@
 # Modes
 
-HUME is a modal editor. The meaning of every key depends on the current mode. The active mode is shown on the left side of the status bar.
+HUME is a modal editor. The meaning of every key depends on the current mode. The active mode is shown in the status bar (mode label on the right).
 
 ## Normal mode
 
@@ -37,7 +37,7 @@ Extend mode works like Normal mode, but every motion *extends* the current selec
 
 Invoked with `:`, command mode opens the command line at the bottom of the screen. Type a command name and press `Enter` to execute. Press `Esc` to dismiss.
 
-See [Command Line](command-line.md) for a full list of commands.
+See [Commands](commands.md) for a full list of commands.
 
 ## Search mode
 
@@ -49,9 +49,11 @@ Invoked with `s` in Normal mode. Select mode opens a regex prompt (`⫽`). Enter
 
 **Enter from Normal:** `s`
 
-## Prefix sequences (transient states)
+## Multi-key sequences
 
-Some Normal-mode keys begin a two-key sequence:
+Some Normal-mode keys take a second input. They fall into two groups: **prefix states** (a transient mode that waits for a follow-up key) and **char-argument motions** (a motion that consumes one typed character).
+
+### Prefix states
 
 | Prefix | Keys | Purpose |
 |--------|------|---------|
@@ -59,7 +61,18 @@ Some Normal-mode keys begin a two-key sequence:
 | Match | `m` + key | Select text objects and surrounding delimiters — see [Selections](selections.md) |
 | View | `z` + key | Scroll the view to a position — see [Moving Around](moving-around.md) |
 | Pane | `Ctrl+p` + key | Move focus between panes — see [Key Reference](key-reference.md) |
-| Find | `f`, `F`, `t`, `T` + char | Search for a character on the current line — see [Moving Around](moving-around.md) |
 | Register | `"` + char | Target a specific register for yank, paste, or delete — see [Editing](editing.md) |
-| Count | `1`–`9` | Repeat the next command a number of times — see [Editing](editing.md) |
+
+### Char-argument motions
+
+| Keys | Purpose |
+|------|---------|
+| `f`, `F`, `t`, `T` + char | Search for a character on the current line — see [Moving Around](moving-around.md) |
+| `r` + char | Replace the selected characters with the typed character — see [Editing](editing.md) |
+
+### Count prefix
+
+| Prefix | Purpose |
+|--------|---------|
+| `1`–`9` then `[0-9]*` | Repeat the next command a number of times — see [Editing](editing.md) |
 

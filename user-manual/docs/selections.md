@@ -66,7 +66,7 @@ HUME supports multiple simultaneous selections. Each selection behaves independe
 |--------|-----|--------|
 | Select within selection | `s` | Enter a regex pattern; each selection is filtered to its sub-matches |
 | Split on newlines | `S` | Split multi-line selections into one selection per line |
-| Copy to next line | `C` | Duplicate each selection to the line below |
+| Copy to next line | `C` | Duplicate each selection to the same character column on the line below, adding a multi-cursor. No text is copied — the new selections are empty cursors at the same column. Repeating `C` stacks cursors line by line for column-style editing. HUME has no rectangular/visual-block selection primitive. |
 | Trim whitespace | `_` | Remove leading/trailing whitespace from all selections |
 | Keep primary | `,` | Remove all selections except the primary |
 | Remove primary | `Ctrl+,` | Remove the primary selection, promote next (kitty only) |
@@ -80,3 +80,5 @@ Press `s` to enter Select mode. Type a regex pattern and press `Enter`. Each exi
 1. Select a line (`x`)
 2. Press `s` and type `\w+` to select each word individually
 3. Press `d` to delete all words at once
+
+`s` requires at least one non-collapsed selection — on a bare single-character cursor it is a silent no-op. See [Regex syntax](moving-around.md#regex-syntax) for the pattern flavor and case-sensitivity rules.

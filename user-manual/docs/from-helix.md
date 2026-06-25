@@ -6,7 +6,7 @@ HUME shares Helix's core editing model — select-then-act, selections as first-
 
 - Select-then-act: motions change the selection; operators act on it
 - Selections are always visible and always cover at least one character
-- `w`, `b` word motions (HUME has no `e` word-end motion — use `m i w` / `m m` instead)
+- `w`, `b` word motions (HUME has no `e` word-end motion — to land on the last character of a word, use `w` then `h`, or enter Extend mode with `e`, press `w`, then `;` to collapse to the head)
 - `:` command line, `/` search
 - `d`, `c`, `y`, `p` for delete/change/yank/paste
 - `u` / `U` undo / redo
@@ -76,7 +76,7 @@ Both editors share the same foundations — multiple cursors, `;` to collapse, `
 
 | Operation | Helix | HUME |
 |-----------|-------|------|
-| Copy selection on line below | `Alt-C` | `C` |
+| Copy selection on line below | `Alt-C` | `C` (duplicates each selection to the same column on the next line, adding a multi-cursor — column-style editing via multi-cursor, not a rectangular visual block) |
 | Copy selection on line above | `Alt-c` | (unbound) |
 | Remove primary selection | `Alt-,` | `Ctrl+,` |
 | Flip selections | `Alt-o` (extend mode) | `o` (extend mode) |

@@ -20,7 +20,7 @@ In HUME, the order is reversed: you **select first, then act**. `w` selects the 
 | Insert | Insert |
 | Visual | Extend mode (`e`) or any motion that grows the selection |
 | Visual Line | Extend mode + line motions |
-| Visual Block | `C` (copy selection to next line) |
+| Visual Block | HUME has no rectangular selection. Use `C` to spawn column-aligned multi-cursors (one per line below), then edit — this approximates column editing without a true visual block. |
 | Command-line | Command line (`:`) |
 
 ## Key differences
@@ -31,7 +31,7 @@ Vim's Visual mode is entered once and stays until you act. HUME's Extend mode is
 
 ### Registers
 
-HUME replaces Vim's letter registers (`a`–`z`) with a small set of mnemonic single-character names and digit registers `"0`–`"9`. The default paste (`p`) is smart: it reads from the kill ring when the last operation was a delete or change, and from the system clipboard otherwise. Cycle kill-ring entries with `[` and `]`.
+HUME replaces Vim's letter registers (`a`–`z`) with a small set of mnemonic single-character names and digit registers `"0`–`"9`. The default paste (`p`) is smart: it reads from the kill ring when the last operation was a `d` or `c`, and from the system clipboard otherwise. After `y` this still pastes the text you just yanked, because `y` writes the clipboard as well as the kill ring — but if you yanked to an explicit non-default register (`"0y`), `p` reads the clipboard (which was not touched), so use `"0p` to paste from the named register. Cycle kill-ring entries with `[` and `]`.
 
 | Name | HUME function | Vim equivalent |
 |------|---------------|----------------|

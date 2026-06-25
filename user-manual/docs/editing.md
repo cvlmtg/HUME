@@ -46,8 +46,11 @@ HUME has two paste sources: the system clipboard and an internal kill ring.
 
 `p` and `P` decide what to paste based on the last command:
 
-- **After `d`, `c`, or a paste/ring command** — reads the kill ring head (the most recently killed or pasted text).
-- **Otherwise** — reads the system clipboard.
+- **After `d` or `c`** — reads the kill ring head (the most recently killed or changed text).
+- **After a paste-family command** (`p`, `P`, `[`, `]`) — re-pastes `last_paste` verbatim, appending onto the previous paste.
+- **Otherwise** (including after `y`) — reads the system clipboard.
+
+The clipboard rule after `y` deserves a note: `y` writes the yanked text to **both** the system clipboard and the kill ring, so `y` then `p` pastes the clipboard, which is the text you just yanked — the common case behaves as expected. The subtlety is when you yank to an explicit non-default register (e.g. `"0y`): the clipboard is left untouched and a following `p` pastes whatever was previously in the clipboard. To paste from the just-yanked named register, prefix with the register: `"0p`.
 
 `[` and `]` cycle within the current **paste session** (opened by a preceding `p`/`P`). Each cycle replaces the previous paste, and the whole session records as a single undo step. Consecutive `p` presses append copies (each starts a new session and a separate undo step).
 
@@ -104,12 +107,14 @@ Macros record and replay sequences of keys and are stored in registers. Register
 
 ## Numeric count
 
-Prefix a motion with a number `1`–`9` to repeat it that many times:
+Prefix a motion with one or more digits — the first digit must be `1`–`9`; `0` is a digit only inside an already-started count, otherwise `0` is `goto-line-start`. So `12w` moves forward 12 words and `10j` moves down 10 lines, while `0` alone jumps to the start of the line.
 
 | Example | Effect |
 |---------|--------|
 | `3w` | Move forward 3 words |
 | `5j` | Move down 5 lines |
+| `12w` | Move forward 12 words |
+| `10j` | Move down 10 lines |
 
 ## Surround
 

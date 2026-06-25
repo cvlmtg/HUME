@@ -30,6 +30,10 @@ HUME is under active development. Here is what's coming.
 
 **DAP debugger** — debugger adapter protocol support for interactive debugging.
 
+**In-editor help (`:help`)** — browse the manual or per-command docs from inside HUME. Currently all documentation lives outside the editor (this manual and `:tutor`).
+
+**Persistent undo tree** — persist the branching undo history to disk so it survives restart. Today the undo tree is in-memory only.
+
 ---
 
 ::: info

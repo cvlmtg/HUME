@@ -46,7 +46,7 @@ There are two ways to bring a plugin into the editor from `init.scm`:
 
 A lazy plugin must declare at least one activation entry. Without one, the plugin could never activate:
 
-- **`#:commands`** — command names the plugin provides. HUME creates placeholder stubs so the names appear in `:commands` immediately; the first dispatch triggers real definition.
+- **`#:commands`** — command names the plugin provides. HUME creates placeholder stubs so the names appear in `:` Tab completion immediately; the first dispatch triggers real definition.
 - **`#:events`** — lifecycle hooks that trigger loading (e.g., `'on-buffer-open`).
 - **`#:languages`** — buffer language names that trigger loading.
 
@@ -178,6 +178,22 @@ HUME ships with several built-in plugins that are always available:
 | `core:classic-paste` | Classic paste commands (`:classic-ring-after`, `:classic-clipboard-before`, etc.) |
 
 These plugins are declared in the default `init.scm` and loaded on demand.
+
+## PLUM (plugin and grammar management)
+
+The `:plum-*` commands are provided by the bundled **`core:plum`** plugin. They are only available when that plugin is loaded — add `(load-plugin "core:plum")` to your `init.scm` if they are not present.
+
+| Command | Effect |
+|---------|--------|
+| `:plum-install-grammar` | Install tree-sitter grammar for current buffer's language |
+| `:plum-update-grammar` | Re-clone and recompile grammar for current buffer's language |
+| `:plum-ensure-grammars` | Install grammars from a list, skip compiled |
+| `:plum-list-grammars` | Show known/installed/orphan/missing grammars |
+| `:plum-cleanup-grammars` | Delete orphan compiled grammar files |
+| `:plum-install` | Install all declared plugins not yet on disk |
+| `:plum-cleanup` | Remove on-disk plugins no longer declared |
+| `:plum-update` | Pull latest in every installed third-party plugin |
+| `:plum-list` | Show declared/installed/orphan/missing plugins |
 
 ## Example plugin
 
