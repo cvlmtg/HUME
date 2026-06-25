@@ -6,7 +6,6 @@ HUME shares Helix's core editing model — select-then-act, selections as first-
 
 - Select-then-act: motions change the selection; operators act on it
 - Selections are always visible and always cover at least one character
-- `w`, `b` word motions (HUME has no `e` word-end motion — to land on the last character of a word, use `w` then `h`, or enter Extend mode with `e`, press `w`, then `;` to collapse to the head)
 - `:` command line, `/` search
 - `d`, `c`, `y`, `p` for delete/change/yank/paste
 - `u` / `U` undo / redo
@@ -55,6 +54,10 @@ Enable the Helix-style bindings by loading the built-in plugin:
 ```scheme
 (load-plugin "core:helix-surround")
 ```
+
+### Word motions
+
+- `w`, `b`: Both editors re-anchor on each press (the anchor moves with the head — it does not stay pinned at the origin). The difference is **what gets selected**: Helix selects the gap traversed (from the old position to the next word start, e.g. `Basic ` including the trailing space); HUME selects the destination word itself (from its start to its end, e.g. `forward` with no surrounding whitespace). To grow a selection across multiple words in HUME, use Extend mode (`e` then `w`), or a one-shot extend (`Ctrl+w` under the kitty protocol).
 
 ### Line selection: `x` vs Extend mode (`e`)
 

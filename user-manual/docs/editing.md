@@ -4,7 +4,16 @@ HUME follows a **select-then-act** model. You first select the text you want to 
 
 ## Inserting text
 
-Enter Insert mode with `i`, `a`, `o`, `O`, `I`, or `A`. See [Modes](modes.md) for what each key does.
+| Key | Where insertion begins |
+|-----|----------------------|
+| `i` | Before the selection |
+| `a` | After the selection |
+| `I` | Start of line |
+| `A` | End of line |
+| `o` | New line below |
+| `O` | New line above |
+
+Press `Esc` to return to Normal mode.
 
 ## Deleting
 
@@ -13,7 +22,7 @@ Enter Insert mode with `i`, `a`, `o`, `O`, `I`, or `A`. See [Modes](modes.md) fo
 | `d` | Delete selection (pushed onto the kill ring) |
 | `c` | Delete selection content and enter Insert mode (one undo group). A trailing newline is kept — `c` on a line rewrites its content without removing the line itself. |
 
-Use `x` to select the current line first if you want a line-wise delete (`x` then `d`). There is no single-key "delete character" command — select the character (or use `c`) and delete.
+Use `x` to select the current line first if you want a line-wise delete (`x` then `d`).
 
 ## Replacing
 
@@ -21,7 +30,7 @@ Use `x` to select the current line first if you want a line-wise delete (`x` the
 |-----|--------|
 | `r` + char | Replace every selected character with the typed character |
 
-After pressing `r`, HUME waits for the replacement character. The character under each cursor is replaced with the typed character.
+After pressing `r`, HUME waits for the replacement character. All the characters in the selection are replaced with the typed character.
 
 ## Lines and alignment
 

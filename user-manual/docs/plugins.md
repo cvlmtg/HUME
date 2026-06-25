@@ -1,6 +1,8 @@
 # Plugins
 
-HUME plugins are written in Scheme (Steel dialect) and managed by **PLUM** — the HUME plugin manager, included with the editor.
+HUME plugins are written in Scheme (Steel dialect) and managed by **PLUM** — the HUME **PLU**gin **M**anager, included with the editor.
+
+PLUM is not different from any other plugin, so you must load it — add `(load-plugin "core:plum")` to your `init.scm`.
 
 ## Installing a plugin
 
@@ -30,6 +32,20 @@ Shows all declared plugins, whether they loaded successfully, and which commands
 ```
 
 Reloads `init.scm` from scratch. Useful after editing your config without restarting the editor.
+
+## PLUM commands
+
+| Command | Effect |
+|---------|--------|
+| `:plum-install-grammar` | Install tree-sitter grammar for current buffer's language |
+| `:plum-update-grammar` | Re-clone and recompile grammar for current buffer's language |
+| `:plum-ensure-grammars` | Install grammars from a list, skip compiled |
+| `:plum-list-grammars` | Show known/installed/orphan/missing grammars |
+| `:plum-cleanup-grammars` | Delete orphan compiled grammar files |
+| `:plum-install` | Install all declared plugins not yet on disk |
+| `:plum-cleanup` | Remove on-disk plugins no longer declared |
+| `:plum-update` | Pull latest in every installed third-party plugin |
+| `:plum-list` | Show declared/installed/orphan/missing plugins |
 
 ## How plugins are loaded
 
@@ -178,37 +194,3 @@ HUME ships with several built-in plugins that are always available:
 | `core:classic-paste` | Classic paste commands (`:classic-ring-after`, `:classic-clipboard-before`, etc.) |
 
 These plugins are declared in the default `init.scm` and loaded on demand.
-
-## PLUM (plugin and grammar management)
-
-The `:plum-*` commands are provided by the bundled **`core:plum`** plugin. They are only available when that plugin is loaded — add `(load-plugin "core:plum")` to your `init.scm` if they are not present.
-
-| Command | Effect |
-|---------|--------|
-| `:plum-install-grammar` | Install tree-sitter grammar for current buffer's language |
-| `:plum-update-grammar` | Re-clone and recompile grammar for current buffer's language |
-| `:plum-ensure-grammars` | Install grammars from a list, skip compiled |
-| `:plum-list-grammars` | Show known/installed/orphan/missing grammars |
-| `:plum-cleanup-grammars` | Delete orphan compiled grammar files |
-| `:plum-install` | Install all declared plugins not yet on disk |
-| `:plum-cleanup` | Remove on-disk plugins no longer declared |
-| `:plum-update` | Pull latest in every installed third-party plugin |
-| `:plum-list` | Show declared/installed/orphan/missing plugins |
-
-## Example plugin
-
-```scheme
-;; ~/.config/hume/plugins/my-utils.scm
-
-(define-command! "greet"
-  (lambda ()
-    (log-info "Hello! The current file is: " (buffer-name))))
-
-(define-command-repeatable! "duplicate-line"
-  (lambda ()
-    (call! "copy-selection-on-next-line")))
-
-(define-event! "on-save-notify"
-  (lambda ()
-    (log-info "Saved: " (buffer-name))))
-```

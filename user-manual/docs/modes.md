@@ -14,16 +14,7 @@ Insert mode lets you type text directly into the buffer. The cursor changes to a
 
 **Enter from Normal:**
 
-| Key | Where insertion begins |
-|-----|----------------------|
-| `i` | Before the selection |
-| `a` | After the selection |
-| `o` | New line below |
-| `O` | New line above |
-| `I` | Start of line |
-| `A` | End of line |
-
-Press `Esc` to return to Normal mode.
+Enter Insert mode with `i`, `a`, `o`, `O`, `I`, or `A`. See [Editing](editing.md) for what each key does.
 
 ## Extend mode
 
