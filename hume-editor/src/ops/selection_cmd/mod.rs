@@ -69,7 +69,12 @@ pub(crate) fn cmd_flip_selections(
 /// Replaces all selections with a single selection spanning from the first
 /// character to the last (the structural trailing `\n`). Head is placed at
 /// the end so the cursor sits at the bottom — consistent with Helix `%`.
-pub(crate) fn cmd_select_all(buf: &Text, _sels: SelectionSet, _count: usize, _mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_select_all(
+    buf: &Text,
+    _sels: SelectionSet,
+    _count: usize,
+    _mode: MotionMode,
+) -> SelectionSet {
     let end = buf.len_chars().saturating_sub(1);
     let sels = SelectionSet::single(Selection::new(0, end));
     sels.debug_assert_valid(buf);

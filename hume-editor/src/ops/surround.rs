@@ -154,12 +154,22 @@ fn select_surround(
 
 macro_rules! surround_cmd {
     ($name:ident, bracket, $open:literal, $close:literal) => {
-        pub(crate) fn $name(buf: &Text, sels: SelectionSet, _count: usize, _mode: MotionMode) -> SelectionSet {
+        pub(crate) fn $name(
+            buf: &Text,
+            sels: SelectionSet,
+            _count: usize,
+            _mode: MotionMode,
+        ) -> SelectionSet {
             select_surround(buf, sels, |b, pos| find_bracket_pair(b, pos, $open, $close))
         }
     };
     ($name:ident, quote, $quote:literal) => {
-        pub(crate) fn $name(buf: &Text, sels: SelectionSet, _count: usize, _mode: MotionMode) -> SelectionSet {
+        pub(crate) fn $name(
+            buf: &Text,
+            sels: SelectionSet,
+            _count: usize,
+            _mode: MotionMode,
+        ) -> SelectionSet {
             select_surround(buf, sels, |b, pos| find_quote_pair(b, pos, $quote))
         }
     };

@@ -22,14 +22,13 @@ impl Editor {
                 // compose into the insert session's open edit group instead of
                 // creating a standalone undo revision that would corrupt the
                 // group's changeset composition.
-                let Some(reg_cmd) = self.state.registry.get_mappable(cmd.name.as_ref()).cloned() else {
-                        self.report(
-                        Severity::Warning,
-                        format!("unknown command: {}", cmd.name),
-                    );
+                let Some(reg_cmd) = self.state.registry.get_mappable(cmd.name.as_ref()).cloned()
+                else {
+                    self.report(Severity::Warning, format!("unknown command: {}", cmd.name));
                     return;
                 };
-                if let MappableCommand::Edit { fun, name, .. } = reg_cmd { // single-funnel-exempt: insert-mode edits must go through apply_doc_edit_grouped (stamps_last_command handled inline)
+                if let MappableCommand::Edit { fun, name, .. } = reg_cmd {
+                    // single-funnel-exempt: insert-mode edits must go through apply_doc_edit_grouped (stamps_last_command handled inline)
                     let focused = self.state.focused_pane_id;
                     let buf = self.focused_buffer_id();
                     doc_ops::apply_doc_edit_grouped(

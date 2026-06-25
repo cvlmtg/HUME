@@ -126,11 +126,21 @@ fn around_line(buf: &Text, pos: usize) -> Option<(usize, usize)> {
     Some((start, end_excl - 1))
 }
 
-pub(crate) fn cmd_inner_line(buf: &Text, sels: SelectionSet, _count: usize, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_inner_line(
+    buf: &Text,
+    sels: SelectionSet,
+    _count: usize,
+    mode: MotionMode,
+) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, inner_line)
 }
 
-pub(crate) fn cmd_around_line(buf: &Text, sels: SelectionSet, _count: usize, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_around_line(
+    buf: &Text,
+    sels: SelectionSet,
+    _count: usize,
+    mode: MotionMode,
+) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, around_line)
 }
 
@@ -278,7 +288,12 @@ fn around_word_impl(
     Some((start, end))
 }
 
-pub(crate) fn cmd_inner_word(buf: &Text, sels: SelectionSet, _count: usize, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_inner_word(
+    buf: &Text,
+    sels: SelectionSet,
+    _count: usize,
+    mode: MotionMode,
+) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, |b, pos| {
         inner_word_impl(b, pos, is_word_boundary)
     })
@@ -418,7 +433,12 @@ pub(crate) fn cmd_select_word_nearest_on_line(
     result
 }
 
-pub(crate) fn cmd_around_word(buf: &Text, sels: SelectionSet, _count: usize, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_around_word(
+    buf: &Text,
+    sels: SelectionSet,
+    _count: usize,
+    mode: MotionMode,
+) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, |b, pos| {
         around_word_impl(b, pos, is_word_boundary)
     })
@@ -704,7 +724,12 @@ fn around_argument(buf: &Text, pos: usize) -> Option<(usize, usize)> {
     }
 }
 
-pub(crate) fn cmd_inner_argument(buf: &Text, sels: SelectionSet, _count: usize, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_inner_argument(
+    buf: &Text,
+    sels: SelectionSet,
+    _count: usize,
+    mode: MotionMode,
+) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, inner_argument)
 }
 

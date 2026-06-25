@@ -240,7 +240,11 @@ fn kitty_ctrl_g_esc_then_l_does_not_extend() {
     ed.handle_key(key('l'));
     // Selection must stay collapsed — Esc cancelled the Ctrl+g sequence.
     let sel = ed.current_selections().primary();
-    assert_eq!(sel.anchor(), sel.head(), "Esc must clear pending_ctrl_extend");
+    assert_eq!(
+        sel.anchor(),
+        sel.head(),
+        "Esc must clear pending_ctrl_extend"
+    );
 }
 
 /// Ctrl+U (redo) must also be a no-op in kitty mode.
