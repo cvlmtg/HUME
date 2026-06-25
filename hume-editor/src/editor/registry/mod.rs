@@ -43,10 +43,10 @@ pub(crate) use command::{CmdMeta, EditorCmdFn, MappableCommand, TypedCommand};
 
 /// Case-insensitive HashMap lookup: exact hit first, then linear-scan fallback.
 ///
-/// Used only for typed-command resolution (`:` command line), where the key
-/// space is aliases + typed canonical names — none of which collide on case.
-/// Not used for mappable commands, whose names are case-significant
-/// (e.g. `inner-word` vs `inner-uppercase-word`).
+/// Used only for the typed-command path (`:` command line) so a user typing
+/// `:W` still resolves the canonical `:w`. Mappable commands are looked up by
+/// exact name only (see [`CommandRegistry::get_mappable`]) since they are
+/// resolved from key bindings, not user-typed names.
 fn ci_get<'a, V>(map: &'a HashMap<Cow<'static, str>, V>, name: &str) -> Option<&'a V> {
     map.get(name).or_else(|| {
         map.iter()
@@ -159,10 +159,10 @@ impl CommandRegistry {
     /// Returns `None` if the name is unknown or resolves to a typed command.
     /// Used by `execute_keymap_command` in `editor/mappings.rs`.
     ///
-    /// Exact-only: the mappable namespace uses case to distinguish commands
-    /// (e.g. `inner-word` vs `inner-uppercase-word`) so case-insensitive fallback would
-    /// resolve nondeterministically. Case-insensitivity is intentionally
-    /// confined to the typed (`:`) path in [`Self::get_typed`].
+    /// Exact-only: mappable commands are resolved from key bindings, not
+    /// user-typed names, so there is no user typo to tolerate and case-folding
+    /// has no purpose here. Case-insensitivity is confined to the typed (`:`)
+    /// path in [`Self::get_typed`].
     pub(crate) fn get_mappable(&self, name: &str) -> Option<&MappableCommand> {
         match self.commands.get(name)? {
             Command::Mappable(cmd) => Some(cmd),
