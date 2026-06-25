@@ -26,27 +26,6 @@ This project is driven by curiosity and the pure joy of hacking, not by deadline
 
 ---
 
-## Install (nightly builds)
+## Quick start
 
-Pre-built archives are published on every push to `main` at the [**nightly release**](../../releases/tag/nightly).
-
-| Platform | Archive |
-|---|---|
-| macOS (Apple Silicon) | `hume-*-aarch64-apple-darwin.tar.gz` |
-| Linux (x86\_64, glibc 2.39+) | `hume-*-x86_64-unknown-linux-gnu.tar.gz` |
-| Windows (x86\_64) | `hume-*-x86_64-pc-windows-msvc.zip` |
-
-**macOS / Linux** — extract and run:
-```
-tar xzf hume-*.tar.gz
-./hume-*/bin/hume
-```
-Or copy to `/usr/local/` for a system install: `cp -R hume-*/* /usr/local/`
-
-**Windows** — extract the `.zip`, then run `hume.exe` from inside the folder, or add the folder to your `PATH`.
-
-Run `hume --version` to confirm the build (e.g. `hume 0.1.0-f460770`). The same string is available inside the editor via `:version`.
-
-## Getting started
-
-Once inside the editor, type `:tutor` and press Enter to open the interactive tutorial. It covers motion, editing, search, multi-cursor, and file commands through hands-on exercises you can practice directly in the buffer.
+Check the user manual to see how to install **HUME** and how to use it effectively.

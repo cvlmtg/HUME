@@ -1,0 +1,162 @@
+/* ============================================================
+   HUME — a warm, editorial VitePress theme  (ember + plum)
+   Recreates "variant B": warm paper, ember primary, plum accent,
+   serif display headings, centered hero. Light + dark.
+   ------------------------------------------------------------
+   This file only overrides VitePress design tokens, so it keeps
+   working across VitePress updates. Drop it in and you're done.
+   ============================================================ */
+
+/* ---- Typography -------------------------------------------- */
+:root {
+  --vp-font-family-base: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --vp-font-family-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
+}
+
+/* Serif display headings — the editorial part of the look */
+.VPHero .name,
+.VPHero .text,
+.vp-doc h1,
+.vp-doc h2,
+.vp-doc h3,
+.vp-doc h4 {
+  font-family: 'Newsreader', Georgia, 'Times New Roman', serif;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.VPHero .name { font-style: italic; }   /* the ember word in the headline */
+
+/* =================  LIGHT (default)  ======================== */
+:root {
+  /* surfaces */
+  --vp-c-bg: #FBF8F4;        /* warm paper */
+  --vp-c-bg-alt: #F2EBE0;    /* sidebar, footer */
+  --vp-c-bg-soft: #F6F0E7;   /* cards, custom blocks */
+  --vp-c-bg-elv: #FFFFFF;    /* elevated surfaces */
+
+  /* text */
+  --vp-c-text-1: #241E1A;
+  --vp-c-text-2: #6B5F54;
+  --vp-c-text-3: #9C8F81;
+
+  /* lines */
+  --vp-c-border: #DBD0C1;
+  --vp-c-divider: #EBE2D5;
+  --vp-c-gutter: #EBE2D5;
+
+  /* brand = EMBER (primary): links, nav/sidebar active, hero name */
+  --vp-c-brand-1: #BE4A24;
+  --vp-c-brand-2: #A23E1C;
+  --vp-c-brand-3: #C04A24;
+  --vp-c-brand-soft: rgba(192, 74, 36, 0.12);
+
+  /* primary (solid) buttons — hero "Get started" */
+  --vp-button-brand-bg: #C04A24;
+  --vp-button-brand-text: #FFF7F1;
+  --vp-button-brand-hover-bg: #A23E1C;
+  --vp-button-brand-hover-text: #FFF7F1;
+  --vp-button-brand-active-bg: #9A3B1C;
+
+  /* secondary (alt) buttons — hero "Read the guide" */
+  --vp-button-alt-bg: transparent;
+  --vp-button-alt-text: var(--vp-c-text-1);
+  --vp-button-alt-border: var(--vp-c-border);
+  --vp-button-alt-hover-bg: transparent;
+  --vp-button-alt-hover-border: var(--vp-c-brand-1);
+  --vp-button-alt-hover-text: var(--vp-c-brand-1);
+
+  /* code */
+  --vp-code-block-bg: #F6F0E7;
+  --vp-code-color: var(--vp-c-brand-1);     /* inline code = ember */
+  --vp-code-bg: rgba(192, 74, 36, 0.07);
+
+  /* custom blocks:  ::: tip = ember   ·   ::: info / important = PLUM */
+  --vp-custom-block-tip-border: rgba(192, 74, 36, 0.30);
+  --vp-custom-block-tip-text: #9A3B1C;
+  --vp-custom-block-tip-bg: #F7E8E0;
+  --vp-custom-block-tip-code-bg: #F1DACE;
+
+  --vp-custom-block-info-border: rgba(122, 58, 96, 0.28);
+  --vp-custom-block-info-text: #6A3153;
+  --vp-custom-block-info-bg: #F2E7EF;
+
+  --vp-custom-block-important-border: rgba(122, 58, 96, 0.28);
+  --vp-custom-block-important-text: #6A3153;
+  --vp-custom-block-important-bg: #F2E7EF;
+
+  /* hero name colour (solid ember, no gradient) */
+  --vp-home-hero-name-color: var(--vp-c-brand-1);
+}
+
+::selection { background: rgba(192, 74, 36, 0.20); }
+
+/* =================  DARK  =================================== */
+.dark {
+  --vp-c-bg: #16110E;
+  --vp-c-bg-alt: #1D1712;
+  --vp-c-bg-soft: #221B15;
+  --vp-c-bg-elv: #221B15;
+
+  --vp-c-text-1: #EFE7DC;
+  --vp-c-text-2: #B2A597;
+  --vp-c-text-3: #867A6C;
+
+  --vp-c-border: #40352A;
+  --vp-c-divider: #312721;
+  --vp-c-gutter: #312721;
+
+  --vp-c-brand-1: #E87642;
+  --vp-c-brand-2: #F0916A;
+  --vp-c-brand-3: #C0532B;
+  --vp-c-brand-soft: rgba(232, 118, 66, 0.16);
+
+  --vp-button-brand-bg: #C9582E;
+  --vp-button-brand-text: #FFF7F1;
+  --vp-button-brand-hover-bg: #E87642;
+  --vp-button-brand-hover-text: #FFF7F1;
+  --vp-button-brand-active-bg: #B14B26;
+
+  --vp-code-block-bg: #1B1510;
+  --vp-code-color: var(--vp-c-brand-1);
+  --vp-code-bg: rgba(232, 118, 66, 0.12);
+
+  --vp-custom-block-tip-border: rgba(232, 118, 66, 0.32);
+  --vp-custom-block-tip-text: #F0916A;
+  --vp-custom-block-tip-bg: #2C1C12;
+  --vp-custom-block-tip-code-bg: #3A2417;
+
+  --vp-custom-block-info-border: rgba(201, 130, 172, 0.30);
+  --vp-custom-block-info-text: #D89BBF;
+  --vp-custom-block-info-bg: #281825;
+
+  --vp-custom-block-important-border: rgba(201, 130, 172, 0.30);
+  --vp-custom-block-important-text: #D89BBF;
+  --vp-custom-block-important-bg: #281825;
+}
+.dark ::selection { background: rgba(232, 118, 66, 0.26); }
+
+/* ---- OPTIONAL: book-like serif body for doc pages -----------
+   Uncomment to read the article column in Newsreader, the way the
+   "reads like a book" guide page looked in the mockup.
+
+.vp-doc p,
+.vp-doc li {
+  font-family: 'Newsreader', Georgia, serif;
+  font-size: 17px;
+  line-height: 1.78;
+}
+------------------------------------------------------------- */
+
+@media (min-width: 768px) {
+  /* 1. Force the container holding the items to stay visible */
+  .VPNavBarAppearance,
+  .VPNavBarSocialLinks {
+    display: flex !important;
+    align-items: center;
+  }
+
+  /* 2. Hide the actual 3-dots menu button */
+  .VPNavBarExtra {
+    display: none !important;
+  }
+}

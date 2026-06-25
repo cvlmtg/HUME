@@ -205,7 +205,7 @@ To force a specific source, use the register prefix `"`:
 |-----|---------|
 | `e` | Toggle sticky extend mode on/off |
 
-In extend mode, all motion and selection commands grow the selection rather than replacing it. The mode indicator in the status line changes to `EXTEND`.
+In extend mode, all motion and selection commands grow the selection rather than replacing it. The mode indicator in the status line changes to `EXT`.
 
 ### Macros
 

@@ -18,6 +18,11 @@ Thumbs.db
 # Build artifacts
 /dist/
 
+# Manual (VitePress)
+/user-manual/node_modules/
+/user-manual/.vitepress/dist/
+/user-manual/.vitepress/cache/
+
 # Tree-sitter grammar test fixtures (fetched by scripts/fetch-test-grammars.sh)
 /tests/fixtures/grammars/
 

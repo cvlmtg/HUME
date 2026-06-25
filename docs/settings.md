@@ -20,6 +20,12 @@ These settings can only be set globally (not overridden per-buffer).
 | `mouse-select` | bool | `false` | Allow click-to-move and click-drag selection with the mouse |
 | `jump-list-capacity` | integer ≥ 1 | `100` | Maximum number of entries in the jump list |
 | `jump-line-threshold` | integer | `5` | Minimum line distance for a motion to be recorded as a jump-list entry |
+| `history-capacity` | integer ≥ 1 | `100` | Maximum entries kept in the undo tree |
+| `steel-init-budget-ms` | integer ≥ 1 | `10000` | Maximum time (ms) allowed for evaluating `init.scm` at startup |
+| `steel-command-budget-ms` | integer ≥ 1 | `1000` | Maximum time (ms) allowed for a single Steel command invocation |
+| `popup-border` | bool | `true` | Draw a border around popup menus |
+| `theme` | string | `""` (built-in dark) | Active color theme name |
+| `syntax-highlight-max-bytes` | integer ≥ 1 | `1048576` | Buffers larger than this skip syntax highlighting |
 
 ---
 
@@ -30,9 +36,10 @@ These settings can be set globally (affecting all buffers) or overridden for a s
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `tab-width` | integer 1–255 | `4` | Width of a tab character in columns, and number of spaces inserted when pressing Tab |
-| `wrap-mode` | `none` \| `indent:N` | `indent:76` | Soft line wrapping. `none` disables wrapping; `indent:N` wraps at column N with continuation lines indented to match the wrapped line's indent level |
+| `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Soft line wrapping. `none` disables wrapping. The bare keyword (`soft`, `word`, or `indent`) wraps at the pane content width; appending `:N` wraps at column N. `indent` indents continuation lines to match the line's indent level |
 | `line-number-style` | `absolute` \| `relative` \| `hybrid` | `hybrid` | Line number display. `absolute`: plain line numbers. `relative`: distance from cursor. `hybrid`: absolute on the cursor line, relative elsewhere |
 | `auto-pairs-enabled` | bool | `true` | Enable auto-pairs: automatically insert closing delimiters and skip over them on close |
+| `language` | string | *(auto-detected)* | Language identifier used for syntax highlighting. Override with `:set buffer language=<name>` when auto-detection is wrong |
 
 ---
 
@@ -67,9 +74,11 @@ The statusline is configured via `(configure-statusline! left center right)` in 
 
 | Element | Description |
 |---------|-------------|
-| `"Mode"` | Current mode (`NORMAL`, `INSERT`, `EXTEND`) |
+| `"Mode"` | Current mode (`NOR`, `INS`, `EXT`, `CMD`, `SRC`, `SEL`) |
 | `"Separator"` | Visual divider between element groups |
 | `"FileName"` | Name of the current file (basename only) |
+| `"FilePath"` | Full path of the current buffer |
+| `"Cwd"` | Current working directory |
 | `"DirtyIndicator"` | Shows `[+]` when the buffer has unsaved changes |
 | `"Position"` | Cursor line and column |
 | `"Selections"` | Number of active selections (hidden when just one) |
@@ -78,6 +87,8 @@ The statusline is configured via `(configure-statusline! left center right)` in 
 | `"MacroRecording"` | Recording indicator when a macro is being captured |
 | `"KittyProtocol"` | Shows `[kitty]` when the kitty keyboard protocol is active |
 | `"Language"` | Detected language identifier (e.g. `rust`, `json`); empty for scratch/unknown buffers |
+| `"LineEnding"` | Line ending type (LF/CRLF) |
+| `"ReadOnly"` | `[RO]` indicator shown for read-only buffers |
 
 ---
 
