@@ -37,9 +37,12 @@
 //! binds the `fun` field of a native `MappableCommand` variant for execution.
 //! Only `src/editor/commands/mod.rs` is allowed to do that.
 //!
-//! **Opt-out**: annotate a line with `// single-funnel-exempt: <reason>`.  Use
-//! only when a deliberate second dispatch path is introduced with its own
-//! equivalent bookkeeping (which should be exceedingly rare).
+//! **Opt-out**: annotate the violation line (or the line immediately above it)
+//! with `// single-funnel-exempt: <reason>`.  Use only when a deliberate second
+//! dispatch path is introduced with its own equivalent bookkeeping (which
+//! should be exceedingly rare).  The preceding-line form is the natural one:
+//! `cargo fmt` hoists trailing comments onto their own line, and a leading
+//! comment reads as "why the next line is exempt".
 
 #[cfg(test)]
 mod tests {
@@ -223,7 +226,10 @@ mod tests {
     /// silently drop the bookkeeping cluster (jump list, last_command,
     /// dot-repeat, paste session) exactly as happened in the original regression.
     ///
-    /// Opt-out: annotate the line with `// single-funnel-exempt: <reason>`.
+    /// Opt-out: annotate the violation line, or the line immediately above it,
+    /// with `// single-funnel-exempt: <reason>`.  The preceding-line form is the
+    /// natural one (`cargo fmt` hoists trailing comments above, and a leading
+    /// comment reads as "why the next line is exempt").
     ///
     /// Fail oracle: paste
     ///   `MappableCommand::Motion { fun, .. } => fun(t, s, 1, m),`
@@ -271,9 +277,20 @@ mod tests {
             let mut brace_depth: i64 = 0;
             let mut test_entry_depth: i64 = 0;
             let mut saw_cfg_test = false;
+            // Previous non-test source line, kept so an exempt marker on the line
+            // *above* a violation suppresses it. `cargo fmt` hoists trailing
+            // comments onto their own line, so the marker often sits above the
+            // forbidden pattern rather than beside it.
+            let mut prev_line: &str = "";
 
             for (lineno, line) in src.lines().enumerate() {
                 let trimmed = line.trim();
+
+                // Track the previous source line for the preceding-line opt-out.
+                // Done first so every `continue` below still keeps prev_line in
+                // sync with the real line history.
+                let prev_for_exempt = prev_line;
+                prev_line = line;
 
                 if trimmed == "#[cfg(test)]" {
                     saw_cfg_test = true;
@@ -299,6 +316,7 @@ mod tests {
                     continue;
                 }
 
+                // Same-line opt-out (marker sits beside the forbidden pattern).
                 if line.contains("// single-funnel-exempt:") {
                     continue;
                 }
@@ -310,6 +328,12 @@ mod tests {
 
                 for pattern in forbidden_patterns {
                     if code.contains(pattern) {
+                        // Previous-line opt-out: marker on the line above the
+                        // forbidden pattern. fmt moves trailing comments above,
+                        // so this is the common placement.
+                        if prev_for_exempt.contains("// single-funnel-exempt:") {
+                            continue;
+                        }
                         violations.push(format!(
                             "  {rel}:{} — `{pattern}` outside dispatch funnel: {trimmed}",
                             lineno + 1,
@@ -325,7 +349,8 @@ mod tests {
              Only that function may destructure and call native MappableCommand variants.\n\
              All bookkeeping (jump list, last_command, dot-repeat, paste session) lives\n\
              there — a second dispatch path silently drops the entire cluster.\n\
-             Annotate with `// single-funnel-exempt: <reason>` only if a deliberate\n\
+             Annotate the violation line (or the line above it) with\n\
+             `// single-funnel-exempt: <reason>` only if a deliberate\n\
              second path is introduced with equivalent bookkeeping.\n\
              Violations:\n{}\n",
             violations.join("\n")

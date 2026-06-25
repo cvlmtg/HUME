@@ -27,8 +27,8 @@ impl Editor {
                     self.report(Severity::Warning, format!("unknown command: {}", cmd.name));
                     return;
                 };
+                // single-funnel-exempt: insert-mode edits must go through apply_doc_edit_grouped (stamps_last_command handled inline)
                 if let MappableCommand::Edit { fun, name, .. } = reg_cmd {
-                    // single-funnel-exempt: insert-mode edits must go through apply_doc_edit_grouped (stamps_last_command handled inline)
                     let focused = self.state.focused_pane_id;
                     let buf = self.focused_buffer_id();
                     doc_ops::apply_doc_edit_grouped(
