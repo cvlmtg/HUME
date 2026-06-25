@@ -37,7 +37,7 @@ impl Editor {
                         &mut self.state.panes.state,
                         focused,
                         buf,
-                        |text, sels| fun(text, sels),
+                        fun,
                     );
                     self.state.last_command = Some(name);
                     return;
