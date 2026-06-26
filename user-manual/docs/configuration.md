@@ -148,6 +148,8 @@ The definition registers the language and associates it with tree-sitter grammar
 :plum-install-grammar
 ```
 
+See [Syntax Highlighting](syntax-highlighting.md) for the full grammar workflow — prerequisites, batch install, manual `register-grammar!`, and troubleshooting.
+
 Hooks can trigger on language detection:
 
 ```scheme

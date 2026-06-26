@@ -160,3 +160,11 @@
     display: none !important;
   }
 }
+
+/* Drop the hairline divider VitePress paints above every sidebar group
+   (see VPSidebarGroup.vue `.group + .group`). With many small groups the
+   hairlines stack up and eat vertical space. */
+.VPSidebar .group + .group {
+  border-top: none !important;
+  padding-top: 0 !important;
+}

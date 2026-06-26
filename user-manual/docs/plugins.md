@@ -37,11 +37,6 @@ Reloads `init.scm` from scratch. Useful after editing your config without restar
 
 | Command | Effect |
 |---------|--------|
-| `:plum-install-grammar` | Install tree-sitter grammar for current buffer's language |
-| `:plum-update-grammar` | Re-clone and recompile grammar for current buffer's language |
-| `:plum-ensure-grammars` | Install grammars from a list, skip compiled |
-| `:plum-list-grammars` | Show known/installed/orphan/missing grammars |
-| `:plum-cleanup-grammars` | Delete orphan compiled grammar files |
 | `:plum-install` | Install all declared plugins not yet on disk |
 | `:plum-cleanup` | Remove on-disk plugins no longer declared |
 | `:plum-update` | Pull latest in every installed third-party plugin |

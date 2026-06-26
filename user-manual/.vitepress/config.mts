@@ -26,18 +26,44 @@ export default defineConfig({
 
     sidebar: [
       { text: 'Home', link: '/' },
-      { text: 'Installation', link: '/installation' },
-      { text: 'Getting Started', link: '/getting-started' },
-      { text: 'Modes', link: '/modes' },
-      { text: 'Moving Around', link: '/moving-around' },
-      { text: 'Editing', link: '/editing' },
-      { text: 'Selections', link: '/selections' },
-      { text: 'Files & Buffers', link: '/files-and-buffers' },
-      { text: 'Command-line Flags', link: '/cli' },
-      { text: 'Commands', link: '/commands' },
-      { text: 'Plugins', link: '/plugins' },
-      { text: 'Configuration', link: '/configuration' },
-      { text: 'Key Reference', link: '/key-reference' },
+      {
+        text: 'Getting Started',
+        items: [
+          { text: 'Installation', link: '/installation' },
+          { text: 'Getting Started', link: '/getting-started' },
+          { text: 'Modes', link: '/modes' },
+        ],
+      },
+      {
+        text: 'Editing',
+        items: [
+          { text: 'Moving Around', link: '/moving-around' },
+          { text: 'Editing', link: '/editing' },
+          { text: 'Selections', link: '/selections' },
+        ],
+      },
+      {
+        text: 'Files & Syntax',
+        items: [
+          { text: 'Files & Buffers', link: '/files-and-buffers' },
+          { text: 'Syntax Highlighting', link: '/syntax-highlighting' },
+        ],
+      },
+      {
+        text: 'Reference',
+        items: [
+          { text: 'Command-line Flags', link: '/cli' },
+          { text: 'Commands', link: '/commands' },
+          { text: 'Key Reference', link: '/key-reference' },
+        ],
+      },
+      {
+        text: 'Customization',
+        items: [
+          { text: 'Plugins', link: '/plugins' },
+          { text: 'Configuration', link: '/configuration' },
+        ],
+      },
       {
         text: 'Coming From',
         items: [

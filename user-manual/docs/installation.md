@@ -45,17 +45,9 @@ cargo build --release
 ./target/release/hume
 ```
 
-## Grammar installation (syntax highlighting)
+## Syntax highlighting
 
-HUME uses tree-sitter for syntax highlighting. PLUM handles grammar installation automatically:
-
-```
-:plum-install-grammar       # install grammar for current buffer's language
-:plum-list-grammars
-:plum-ensure-grammars
-```
-
-Grammars are compiled native libraries stored under your HUME data directory. Most grammars install without any additional tools beyond a C compiler.
+HUME highlights code with tree-sitter. Grammars are installed on demand by PLUM — see [Syntax Highlighting](syntax-highlighting.md) for the full guide, including prerequisites (`git`, `curl`, `tree-sitter`, a C compiler) and the `:plum-*` commands.
 
 ## Terminal compatibility
 
