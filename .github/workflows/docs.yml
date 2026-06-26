@@ -4,7 +4,8 @@ on:
   push:
     branches: [main]
     paths:
-      - "manual/**"
+      - "user-manual/**"
+      - ".github/workflows/docs.yml"
   workflow_dispatch:
 
 permissions:
@@ -28,20 +29,20 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: manual/package-lock.json
+          cache-dependency-path: user-manual/package-lock.json
 
       - name: Install dependencies
-        working-directory: manual
+        working-directory: user-manual
         run: npm install
 
       - name: Build
-        working-directory: manual
+        working-directory: user-manual
         run: npm run build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: manual/.vitepress/dist
+          path: user-manual/.vitepress/dist
 
   deploy:
     needs: build
@@ -51,4 +52,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
