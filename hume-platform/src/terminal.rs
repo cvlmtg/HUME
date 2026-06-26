@@ -87,7 +87,16 @@ pub fn init(mouse_enabled: bool, mouse_select: bool) -> io::Result<(Term, bool)>
     enable_raw_mode()?;
     let mut out = stdout();
 
-    let kitty_enabled = crate::probe_kitty_support().unwrap_or(false);
+    // Probe failures (channel errors, not mere timeouts) are surfaced to the
+    // user as a one-line stderr hint: kitty support degrades to "off" but the
+    // editor still starts. A plain timeout reports `Ok(false)` upstream.
+    let kitty_enabled = match crate::probe_kitty_support() {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("hume: kitty keyboard probe failed: {e}");
+            false
+        }
+    };
 
     // Enter alternate screen before pushing kitty flags.  Some terminals
     // (WezTerm, kitty) maintain a per-screen keyboard stack; the push must

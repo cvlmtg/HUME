@@ -5,7 +5,7 @@ use std::os::windows::io::FromRawHandle;
 use std::time::Instant;
 
 use windows_sys::Win32::{
-    Foundation::{INVALID_HANDLE_VALUE, WAIT_OBJECT_0},
+    Foundation::{INVALID_HANDLE_VALUE, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT},
     System::{
         Console::{
             ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, GetConsoleMode,
@@ -134,9 +134,13 @@ impl super::ProbeChannel for WinChannel {
         // SAFETY: stdin_handle is a valid Win32 HANDLE obtained from
         // GetStdHandle (invariant of `WinChannel::new`).
         let r = unsafe { WaitForSingleObject(self.stdin_handle, remaining_ms) };
-        // WAIT_OBJECT_0 = signaled (input ready). WAIT_TIMEOUT / WAIT_FAILED
-        // both collapse to "not ready"; the shared loop treats the former as a
-        // deadline expiry and the latter semantics match the previous impl.
-        Ok(r == WAIT_OBJECT_0)
+        // WAIT_OBJECT_0 = signaled (input ready); WAIT_TIMEOUT = deadline
+        // expiry (transient, loop will retry); WAIT_FAILED = permanent
+        // channel failure the caller surfaces to the user.
+        match r {
+            WAIT_OBJECT_0 => Ok(true),
+            WAIT_TIMEOUT => Ok(false),
+            _ => Err(io::Error::last_os_error()),
+        }
     }
 }

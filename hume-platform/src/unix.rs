@@ -42,13 +42,17 @@ impl super::ProbeChannel for TtyChannel {
             return Ok(false);
         }
         let mut pfds = [PollFd::new(self.file.as_fd(), PollFlags::POLLIN)];
-        // `poll` returns ready count (>0), 0 on timeout, or Errno. We collapse
-        // Errno into "not ready" to match the previous behaviour: a transient
-        // EINTR should not abort the probe, and the shared loop will simply
-        // retry until the overall deadline expires. The 500 ms probe budget
-        // fits comfortably in `u16` (max 65535 ms), nix's only non-trivial
-        // `From` impl for `PollTimeout`.
-        let ready = poll(&mut pfds, PollTimeout::from(remaining_ms as u16)).unwrap_or(0);
-        Ok(ready > 0)
+        // `poll` returns ready count (>0), 0 on timeout, or Errno. EINTR is
+        // transient — collapse it to "not ready" and let the shared loop
+        // retry until the overall deadline expires. Any other errno (EBADF,
+        // EINVAL, …) is a permanent channel failure the caller surfaces to
+        // the user as a kitty-probe error. The 500 ms probe budget fits
+        // comfortably in `u16` (max 65535 ms), nix's only non-trivial `From`
+        // impl for `PollTimeout`.
+        match poll(&mut pfds, PollTimeout::from(remaining_ms as u16)) {
+            Ok(ready) => Ok(ready > 0),
+            Err(nix::errno::Errno::EINTR) => Ok(false),
+            Err(e) => Err(io::Error::from(e)),
+        }
     }
 }

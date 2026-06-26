@@ -100,6 +100,17 @@ trait ProbeChannel {
 /// [`has_kitty_xtversion`]. A single 500 ms overall deadline bounds the whole
 /// exchange; local terminals reply in single-digit ms, slow/remote ones get
 /// one generous budget rather than per-read timeouts.
+///
+/// Assumes terminal replies arrive in order: DA1 is the last response the
+/// terminal sends to our three-query burst, so stopping at the first complete
+/// DA1 is safe. Terminals that reordered DA1 ahead of an earlier kitty/XTVERSION
+/// reply would cause us to miss it and report `false` — no known terminal does
+/// this, but it is the assumption the early-stop rests on.
+///
+/// `Ok(0)` from the channel (clean EOF) breaks the loop and reports `false` —
+/// the terminal went away without answering, so kitty is unavailable. An `Err`
+/// from `read` or `wait_until` is a permanent channel failure and propagates to
+/// the caller, which surfaces it to the user rather than degrading silently.
 fn run_probe(ch: &mut impl ProbeChannel) -> std::io::Result<bool> {
     ch.write_all(b"\x1B[?u\x1B[>q\x1B[c")?;
 
@@ -111,8 +122,11 @@ fn run_probe(ch: &mut impl ProbeChannel) -> std::io::Result<bool> {
         if !ch.wait_until(deadline)? {
             break; // timeout
         }
+        // Ok(0) = clean EOF: terminal closed the channel mid-probe — stop
+        // and report unsupported. Err = permanent failure; propagate.
         let n = match ch.read(&mut buf) {
-            Ok(0) | Err(_) => break,
+            Ok(0) => break,
+            Err(e) => return Err(e),
             Ok(n) => n,
         };
         response.extend_from_slice(&buf[..n]);
@@ -327,11 +341,18 @@ mod tests {
     // not the classification helpers' internals.
 
     /// In-memory [`ProbeChannel`] that yields canned reply chunks and records
-    /// the query bytes written so tests can assert both directions.
+    /// the query bytes written so tests can assert both directions. The
+    /// `read_err` / `wait_err` fields inject permanent channel failures used
+    /// to pin the trait contract: when set, the next call returns `Err`
+    /// instead of canned data, then clears so subsequent calls resume normal
+    /// behaviour.
+    #[derive(Default)]
     struct MockChannel {
         written: Vec<u8>,
         replies: Vec<Vec<u8>>,
         read_idx: usize,
+        read_err: Option<io::Error>,
+        wait_err: Option<io::Error>,
     }
 
     impl super::ProbeChannel for MockChannel {
@@ -341,6 +362,9 @@ mod tests {
         }
 
         fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            if let Some(e) = self.read_err.take() {
+                return Err(e);
+            }
             if self.read_idx >= self.replies.len() {
                 return Ok(0);
             }
@@ -352,8 +376,12 @@ mod tests {
         }
 
         // Mock has no real wait; "readable" iff a reply chunk remains
-        // unconsumed. The deadline argument is therefore ignored.
+        // unconsumed, unless `wait_err` is set (then the trait contract
+        // fires). The deadline argument is otherwise ignored.
         fn wait_until(&mut self, _deadline: Instant) -> io::Result<bool> {
+            if let Some(e) = self.wait_err.take() {
+                return Err(e);
+            }
             Ok(self.read_idx < self.replies.len())
         }
     }
@@ -361,9 +389,8 @@ mod tests {
     #[test]
     fn probe_writes_three_queries() {
         let mut ch = MockChannel {
-            written: Vec::new(),
             replies: vec![b"\x1B[?1;0c".to_vec()],
-            read_idx: 0,
+            ..Default::default()
         };
         let _ = run_probe(&mut ch);
         assert_eq!(ch.written, b"\x1B[?u\x1B[>q\x1B[c");
@@ -371,11 +398,9 @@ mod tests {
 
     #[test]
     fn probe_detects_kitty_flags_response() {
-        let replies = vec![b"\x1B[?0u\x1B[?62;22c".to_vec()];
         let mut ch = MockChannel {
-            written: Vec::new(),
-            replies,
-            read_idx: 0,
+            replies: vec![b"\x1B[?0u\x1B[?62;22c".to_vec()],
+            ..Default::default()
         };
         assert!(run_probe(&mut ch).unwrap());
     }
@@ -383,11 +408,9 @@ mod tests {
     #[test]
     fn probe_detects_xtversion_fallback() {
         // WezTerm XTVERSION but no kitty flags reply, terminated by DA1.
-        let replies = vec![b"\x1BP>|WezTerm 20240203\x1B\\\x1B[?65;22c".to_vec()];
         let mut ch = MockChannel {
-            written: Vec::new(),
-            replies,
-            read_idx: 0,
+            replies: vec![b"\x1BP>|WezTerm 20240203\x1B\\\x1B[?65;22c".to_vec()],
+            ..Default::default()
         };
         assert!(run_probe(&mut ch).unwrap());
     }
@@ -395,11 +418,9 @@ mod tests {
     #[test]
     fn probe_returns_false_for_unsupported_terminal() {
         // Only DA1, no kitty flags, no matching XTVERSION name.
-        let replies = vec![b"\x1B[?1;0c".to_vec()];
         let mut ch = MockChannel {
-            written: Vec::new(),
-            replies,
-            read_idx: 0,
+            replies: vec![b"\x1B[?1;0c".to_vec()],
+            ..Default::default()
         };
         assert!(!run_probe(&mut ch).unwrap());
     }
@@ -408,11 +429,9 @@ mod tests {
     fn probe_stops_after_da1_even_if_more_chunks_remain() {
         // DA1 arrives in the first chunk; a second "would-be-consumed" chunk
         // must NOT be read — DA1 terminates the loop.
-        let replies = vec![b"\x1B[?62;22c".to_vec(), b"\x1B[?0u".to_vec()];
         let mut ch = MockChannel {
-            written: Vec::new(),
-            replies,
-            read_idx: 0,
+            replies: vec![b"\x1B[?62;22c".to_vec(), b"\x1B[?0u".to_vec()],
+            ..Default::default()
         };
         // No kitty flags before DA1 and DA1 carries no XTVERSION -> false.
         assert!(!run_probe(&mut ch).unwrap());
@@ -422,12 +441,71 @@ mod tests {
 
     #[test]
     fn probe_empty_replies_returns_false() {
-        let mut ch = MockChannel {
-            written: Vec::new(),
-            replies: Vec::new(),
-            read_idx: 0,
-        };
+        let mut ch = MockChannel::default();
         // `wait_until` reports "no input" -> loop breaks immediately -> false.
         assert!(!run_probe(&mut ch).unwrap());
+    }
+
+    // ── error / EOF paths (trait contract honesty) ───────────────────────────
+    //
+    // These pin the contract documented on `ProbeChannel` and `run_probe`:
+    // an `Err` from `read` or `wait_until` is a permanent channel failure
+    // and must propagate; `Ok(0)` (clean EOF) breaks the loop and reports
+    // `false`. Without these, the production `wait_until`/`read` Err arms
+    // would be untested dead code (CLAUDE.md test-validity rule).
+
+    #[test]
+    fn probe_propagates_read_error() {
+        let mut ch = MockChannel {
+            read_err: Some(io::Error::other("broken pipe")),
+            // wait_until reports ready iff a chunk remains; supplying one
+            // moves the loop past the wait step so the injected read Err
+            // actually fires.
+            replies: vec![b"x".to_vec()],
+            ..Default::default()
+        };
+        let err = run_probe(&mut ch).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::Other);
+        assert_eq!(err.to_string(), "broken pipe");
+    }
+
+    #[test]
+    fn probe_propagates_wait_until_error() {
+        let mut ch = MockChannel {
+            wait_err: Some(io::Error::other("poll failed")),
+            ..Default::default()
+        };
+        let err = run_probe(&mut ch).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::Other);
+        assert_eq!(err.to_string(), "poll failed");
+    }
+
+    #[test]
+    fn probe_eof_returns_false_not_error() {
+        // Terminal closed the channel cleanly mid-probe (`read` returns
+        // Ok(0) after wait reports ready): we must report "kitty
+        // unavailable", not an error.
+        let mut ch = MockChannel {
+            replies: vec![Vec::new()],
+            ..Default::default()
+        };
+        // Empty reply chunk → `read` returns Ok(0) on first call. wait_until
+        // reports ready (a chunk remains at idx 0), then read sees an empty
+        // chunk → n=0 not >0; the loop treats Ok(0) as EOF and breaks -> false.
+        assert!(!run_probe(&mut ch).unwrap());
+    }
+
+    #[test]
+    fn probe_accumulates_split_da1_across_reads() {
+        // Kitty flags reply in chunk 0, DA1 split: '?' arrives in chunk 0 and
+        // the 'c' terminator arrives in chunk 1. `has_da1_response` must fire
+        // only after chunk 1, so the loop does exactly 2 reads and we still
+        // detect kitty support from chunk 0.
+        let mut ch = MockChannel {
+            replies: vec![b"\x1B[?0u\x1B[?".to_vec(), b"62;22c".to_vec()],
+            ..Default::default()
+        };
+        assert!(run_probe(&mut ch).unwrap());
+        assert_eq!(ch.read_idx, 2);
     }
 }
