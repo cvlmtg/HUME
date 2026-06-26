@@ -13,6 +13,10 @@ env:
   # Tighter debug info reduces artifact size without hiding symbol names.
   RUSTFLAGS: "-C debuginfo=1"
 
+# Minimal token scope — this workflow only reads code and runs tests.
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Test (${{ matrix.os }})
