@@ -404,7 +404,17 @@ pub(crate) fn delete_char_forward(
 ) -> (Text, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         if sel.is_collapsed() {
-            delete_one_grapheme(b, buf, new_sels, sel.head());
+            let p = sel.head();
+            // Collapsed cursor on the structural trailing '\n' means the cursor
+            // is on a blank last line. Route to delete_sel_region so the
+            // whole-last-line merge special-case removes it by consuming the
+            // preceding '\n'. `p > 0` excludes the lone-'\n' buffer where no
+            // line above exists and the structural '\n' must stay.
+            if p + 1 >= buf.len_chars() && p > 0 {
+                delete_sel_region(b, buf, sel, new_sels);
+            } else {
+                delete_one_grapheme(b, buf, new_sels, p);
+            }
         } else {
             delete_sel_region(b, buf, sel, new_sels);
         }

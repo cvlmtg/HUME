@@ -56,5 +56,3 @@ HUME targets modern terminals. There is no hard capability check at startup — 
 - **24-bit true color.** Colors are emitted as RGB escapes unconditionally. Terminals without truecolor will render an approximation or wrong colors, but HUME will still run.
 - **Synchronized output (DEC 2026).** Emitted unconditionally per frame; terminals that don't recognise it ignore the sequence (no harm done).
 - **Kitty keyboard protocol.** Auto-detected at startup on supported terminals (WezTerm, kitty, ghostty, foot).
-
-

@@ -547,6 +547,46 @@ fn delete_selection_three_lines_delete_last() {
     );
 }
 
+// ── delete_selection — blank last line (collapsed cursor) ────────────────
+//
+// A collapsed cursor on the structural trailing '\n' means the cursor sits
+// on a blank last line. Pressing `d` must remove it (by consuming the
+// preceding '\n'), not silently no-op.
+
+#[test]
+fn delete_selection_blank_last_line_one_above() {
+    // "a\n\n": cursor on the structural '\n' at pos 2. Deleting removes the
+    // blank last line; result is "a\n", cursor on 'a' (pos 0 = line start).
+    assert_state!(
+        "a\n-[\n]>",
+        |(buf, sels)| delete_selection(buf, sels),
+        "-[a]>\n"
+    );
+}
+
+#[test]
+fn delete_selection_two_blank_lines_removes_one() {
+    // "a\n\n\n": cursor on the structural '\n' at pos 3 (the last blank line).
+    // One blank line removed; result "a\n\n", cursor on the remaining blank
+    // last line '\n' at pos 2.
+    assert_state!(
+        "a\n\n-[\n]>",
+        |(buf, sels)| delete_selection(buf, sels),
+        "a\n-[\n]>"
+    );
+}
+
+#[test]
+fn delete_selection_lone_blank_line_is_noop() {
+    // Single-char buffer "\n": the structural '\n' IS the entire buffer.
+    // No line above exists, so deletion is a no-op (invariant preserved).
+    assert_state!(
+        "-[\n]>",
+        |(buf, sels)| delete_selection(buf, sels),
+        "-[\n]>"
+    );
+}
+
 #[test]
 fn delete_selection_last_line_multi_cursor_cursor_lands_at_merged_line_start() {
     // Regression: multi-cursor dd-on-last-line. The first cursor deletes 'b'

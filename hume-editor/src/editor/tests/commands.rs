@@ -862,6 +862,60 @@ fn d_after_select_line_removes_entire_line() {
     );
 }
 
+// ── `d` / `xd` on blank last line ────────────────────────────────────────────
+
+/// `d` on a blank last line must delete it, not silently no-op.
+///
+/// A blank last line is a collapsed cursor on the structural trailing `\n`.
+/// Before the fix, `delete_one_grapheme` would no-op because the cursor is
+/// already on the structural `\n`. After the fix it routes through
+/// `delete_sel_region`'s merge path, consuming the preceding `\n`.
+#[test]
+fn d_on_blank_last_line_removes_it() {
+    let mut ed = editor_from("foo\n-[\n]>");
+    ed.handle_key(key('d'));
+
+    assert_eq!(
+        state(&ed),
+        "-[f]>oo\n",
+        "blank last line must be removed, cursor on first line"
+    );
+    assert_eq!(
+        ed.state.kill_ring.head(),
+        Some(["\n".to_string()].as_slice()),
+        "kill ring holds the blank line"
+    );
+}
+
+/// `x` on a blank last line leaves a collapsed selection (existing behaviour);
+/// the subsequent `d` must still remove the blank line.
+#[test]
+fn xd_on_blank_last_line_removes_it() {
+    let mut ed = editor_from("foo\n-[\n]>");
+    ed.handle_key(key('x')); // collapsed selection stays on structural '\n'
+    ed.handle_key(key('d'));
+
+    assert_eq!(
+        state(&ed),
+        "-[f]>oo\n",
+        "xd on blank last line must remove it"
+    );
+}
+
+/// Reported regression: file ends in two blank lines; `d` on the last one
+/// must remove exactly one blank line, leaving the other intact.
+#[test]
+fn d_on_last_of_two_blank_lines_removes_one() {
+    let mut ed = editor_from("foo\n\n-[\n]>");
+    ed.handle_key(key('d'));
+
+    assert_eq!(
+        state(&ed),
+        "foo\n-[\n]>",
+        "one blank line removed, second (now last) blank line intact"
+    );
+}
+
 // ── `S` splits selection on newlines ──────────────────────────────────────────
 
 /// `S` must split a multi-line selection into one cursor per line, which is
