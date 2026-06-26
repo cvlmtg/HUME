@@ -13,10 +13,7 @@ use std::io::{self, BufWriter, Stdout, Write, stdout};
 
 use crossterm::{
     cursor::SetCursorStyle,
-    event::{
-        Event, KeyEventKind, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
-        PushKeyboardEnhancementFlags, read,
-    },
+    event::{Event, KeyEventKind, KeyboardEnhancementFlags, read},
     execute,
     terminal::{
         BeginSynchronizedUpdate, EndSynchronizedUpdate, EnterAlternateScreen, LeaveAlternateScreen,
@@ -34,14 +31,23 @@ pub type Term = Terminal<CrosstermBackend<BufWriter<Stdout>>>;
 // ── Shared escape-sequence helpers ───────────────────────────────────────────
 
 fn push_kitty_flags(out: &mut Stdout) -> io::Result<()> {
-    execute!(
-        out,
-        PushKeyboardEnhancementFlags(
-            KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-                | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
-                | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS,
-        )
-    )
+    let flags = KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+        | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
+        | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS;
+    // Bypass crossterm's PushKeyboardEnhancementFlags Command: its Windows
+    // path hardcodes is_ansi_code_supported()=false and returns Unsupported,
+    // but ConPTY passes raw VT through to WezTerm/kitty/ghostty/foot which
+    // interpret the kitty keyboard protocol natively. emit_ansi mirrors
+    // crossterm's own write_ansi (`\x1b[>{bits}u`).
+    write!(out, "\x1b[>{}u", flags.bits())?;
+    out.flush()
+}
+
+fn pop_kitty_flags(out: &mut Stdout) -> io::Result<()> {
+    // Pop one level of the keyboard enhancement stack. Fixed protocol
+    // sequence (no flag argument); harmless no-op when stack is empty.
+    out.write_all(b"\x1b[<1u")?;
+    out.flush()
 }
 
 fn enable_mouse(out: &mut Stdout, select: bool) -> io::Result<()> {
@@ -138,7 +144,7 @@ pub fn restore() -> io::Result<()> {
     try_op(execute!(stdout(), EndSynchronizedUpdate));
     // Pop kitty keyboard protocol. Harmless on legacy terminals — the pop
     // is a no-op if the stack is empty.
-    try_op(execute!(stdout(), PopKeyboardEnhancementFlags));
+    try_op(pop_kitty_flags(&mut stdout()));
     // Disable all mouse tracking modes. The `l` (low) sequences are harmless
     // no-ops if the corresponding mode was never enabled.
     try_op(disable_mouse(&mut stdout()));
@@ -150,7 +156,7 @@ pub fn restore() -> io::Result<()> {
     // pushes onto the alt screen's stack, the first pop (above) clears it.
     // This extra pop handles terminals with a global keyboard stack — it is
     // a harmless no-op on per-screen-buffer terminals (WezTerm, kitty).
-    try_op(execute!(stdout(), PopKeyboardEnhancementFlags));
+    try_op(pop_kitty_flags(&mut stdout()));
 
     match first_err {
         Some(e) => Err(e),
@@ -272,7 +278,7 @@ pub fn enter_inline_output(kitty_enabled: bool, mouse_enabled: bool) -> io::Resu
     // Close any open synchronized-output envelope (harmless if none is open).
     let _ = execute!(stdout(), EndSynchronizedUpdate);
     if kitty_enabled {
-        execute!(stdout(), PopKeyboardEnhancementFlags)?;
+        pop_kitty_flags(&mut stdout())?;
     }
     if mouse_enabled {
         disable_mouse(&mut stdout())?;
