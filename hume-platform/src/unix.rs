@@ -45,10 +45,8 @@ impl super::ProbeChannel for TtyChannel {
         // `poll` returns ready count (>0), 0 on timeout, or Errno. EINTR is
         // transient — collapse it to "not ready" and let the shared loop
         // retry until the overall deadline expires. Any other errno (EBADF,
-        // EINVAL, …) is a permanent channel failure the caller surfaces to
-        // the user as a kitty-probe error. The 500 ms probe budget fits
-        // comfortably in `u16` (max 65535 ms), nix's only non-trivial `From`
-        // impl for `PollTimeout`.
+        // EINVAL, …) is a permanent channel failure and propagates.
+        // `PollTimeout` takes `u16`; the probe budget fits comfortably.
         match poll(&mut pfds, PollTimeout::from(remaining_ms as u16)) {
             Ok(ready) => Ok(ready > 0),
             Err(nix::errno::Errno::EINTR) => Ok(false),
