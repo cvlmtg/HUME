@@ -67,8 +67,9 @@ A plugin is a Scheme file placed in PLUM's managed directory. The simplest plugi
 
 ```scheme
 (define-command! "hello"
+  "Print a greeting from my plugin."
   (lambda ()
-    (log-info "Hello from my plugin!")))
+    (log! 'info "Hello from my plugin!")))
 ```
 
 This registers `:hello` as a typed command.
@@ -77,26 +78,32 @@ This registers `:hello` as a typed command.
 
 ```scheme
 (define-command! "command-name"
+  "One-line description shown in command help."
   (lambda ()
     ...))
 ```
 
-Registers a typed command available as `:command-name`. The function is called when the command is dispatched.
+Registers a typed command available as `:command-name`. The second argument is a doc string shown in command help; the function is called when the command is dispatched.
 
-For commands that produce subprocess output (formatters, installers, linters), use `define-command-inline-output!` — this exits the alt-screen so output is visible:
+For commands that stream subprocess output to the terminal (installers, git operations), add the `#:inline-output #t` keyword — HUME exits the alt-screen so output is visible, then waits for a keypress before returning. HUME exposes narrow shell builtins (`git-clone`, `git-pull`, `git-clone-rev`, `curl-fetch`) rather than a generic `system` call:
 
 ```scheme
-(define-command-inline-output! "format"
+(define-command! "fetch-config"
+  "Clone the team config repo into the data directory."
   (lambda ()
-    (system "rustfmt" (buffer-path))))
+    (git-clone "https://github.com/team/hume-config.git"
+               (path-join (data-dir) "config")))
+  #:inline-output #t)
 ```
 
-For commands that should support dot-repeat (`.`), use `define-command-repeatable!`:
+For commands that should support dot-repeat (`.`), add `#:repeatable #t`. `#:repeatable` and `#:inline-output` are mutually exclusive:
 
 ```scheme
-(define-command-repeatable! "indent-two"
+(define-command! "delete-and-repeat"
+  "Delete the current selection; dot-repeatable."
   (lambda ()
-    (call! "indent")))
+    (call! "delete-selection"))
+  #:repeatable #t)
 ```
 
 ### Calling other commands
@@ -105,8 +112,9 @@ Use `(call! ...)` to dispatch other commands from within a plugin:
 
 ```scheme
 (define-command! "delete-and-save"
+  "Delete the selection and write the buffer to disk."
   (lambda ()
-    (call! "delete")
+    (call! "delete-selection")
     (call! "write")))
 ```
 
@@ -114,55 +122,53 @@ Use `(call! ...)` to dispatch other commands from within a plugin:
 
 ### Pending character input
 
-Some commands need a character argument from the user (like surround operations). Use `(request-wait-char!)` to arm the pending-char mechanism:
+Some commands need a character argument from the user (like surround operations). `(request-wait-char! cmd-name)` arms the pending-char mechanism and dispatches `cmd-name` once the user types a char; `(pending-char)` then reads that char inside the dispatched command:
 
 ```scheme
 (define-command! "my-surround"
+  "Select the surrounding pair, then replace it with the next typed char."
   (lambda ()
-    (request-wait-char!)
-    (let ((ch (pending-char)))
-      (log-info "User typed: " ch))))
+    (call! "surround-paren")
+    (request-wait-char! "replace")))
 ```
 
-`(pending-char)` reads the character the user typed after the command was dispatched. The status bar shows a pending indicator while waiting.
+The status bar shows a pending indicator while waiting.
 
 ### Register prefix
 
-To read a user-chosen register before an operation:
+To make subsequent `(call! …)` invocations in a command body target a specific register, call `set-register-prefix!` with a single-character register name (`0`–`9`, `k`, `c`, `b`):
 
 ```scheme
-(set-register-prefix!)
-(let ((reg (pending-register)))
-  ...)
-```
-
-This arms the register prompt. The status bar shows `"` while waiting for the register name.
-
-### Defining events
-
-Plugins can hook into editor lifecycle events:
-
-```scheme
-(define-event! "my-init"
+(define-command! "paste-kill-ring-after"
+  "Paste the kill-ring head after the selection (same as \"kp)."
   (lambda ()
-    (log-info "Buffer opened: " (buffer-name))))
+    (set-register-prefix! "k")
+    (call! "paste-after")))
 ```
 
-Available event types:
+The prefix persists for the rest of the command body. The status bar shows `"` while the register prompt is active.
 
-| Event | Fires when |
-|-------|-----------|
-| `on-buffer-open` | A buffer is opened |
-| `on-buffer-close` | A buffer is about to close |
-| `on-buffer-save` | A buffer is saved |
-| `on-mode-change` | The editor mode changes |
-| `on-language-set` | A buffer's language is detected or changed |
+### Hooks
 
-Register a plugin to respond to events:
+Plugins react to editor lifecycle events by registering a hook handler with `register-hook!`. It must be called at the top level or inside a plugin body — not from a command body:
 
 ```scheme
-(declare-plugin "my-plugin" #:events '(on-buffer-open on-language-set))
+(register-hook! 'on-buffer-save
+  (lambda (buffer-id)
+    (log! 'info (string-append "saved buffer " (to-string buffer-id)))))
 ```
+
+Available hooks and their lambda signatures:
+
+| Hook | Fires when | Lambda args |
+|------|------------|-------------|
+| `on-buffer-open` | A buffer is opened | `(buffer-id)` |
+| `on-buffer-close` | A buffer is about to close | `(buffer-id)` |
+| `on-buffer-save` | A buffer is saved | `(buffer-id)` |
+| `on-mode-change` | The editor mode changes | `(old new)` — mode strings |
+| `on-language-set` | A buffer's language is detected or changed | `(buffer-id lang)` — `lang` is a string or `#f` |
+
+For lazy plugins, declare the events that should trigger activation via `#:events` on `declare-plugin` instead (see [How plugins are loaded](#how-plugins-are-loaded)).
 
 ### Sandboxed filesystem
 

@@ -55,12 +55,6 @@ HUME targets modern terminals. There is no hard capability check at startup — 
 
 - **24-bit true color.** Colors are emitted as RGB escapes unconditionally. Terminals without truecolor will render an approximation or wrong colors, but HUME will still run.
 - **Synchronized output (DEC 2026).** Emitted unconditionally per frame; terminals that don't recognise it ignore the sequence (no harm done).
-- **Kitty keyboard protocol.** Auto-detected at startup on supported terminals (WezTerm, kitty, ghostty, foot). When available it enables:
-  - `Ctrl+;` (collapse selection to anchor)
-  - `Ctrl+,` (remove primary selection)
-  - `Ctrl+h`/`j`/`k`/`l`/`w`/`b` one-shot extend of the corresponding motion
-  - `Ctrl+Shift+<char>` one-shot extend via `REPORT_ALTERNATE_KEYS`
+- **Kitty keyboard protocol.** Auto-detected at startup on supported terminals (WezTerm, kitty, ghostty, foot).
 
-  On a legacy terminal all of the above are **silent no-ops**. The keys that emit real C0 control bytes — `Ctrl+d`, `Ctrl+u`, `Ctrl+o`, `Ctrl+i` (also `Tab`), `Ctrl+r`, `Ctrl+e`, `Ctrl+x`, `Ctrl+X`, `Ctrl+6` — work everywhere.
 
-  Known limitation: WezTerm builds before `20240203-110809-5046fc22` do not fully support `REPORT_ALTERNATE_KEYS`, so `Ctrl+Shift+<char>` one-shot extend may fail there even with kitty enabled.

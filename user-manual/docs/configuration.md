@@ -51,6 +51,8 @@ Use `:set buffer <option>=<value>` to override for the current buffer:
 :set buffer language=markdown
 ```
 
+Note: `language` has no global default — it is auto-detected per buffer and can only be set with `:set buffer language=<name>`.
+
 Or set the global default from `init.scm`:
 
 ```scheme
@@ -136,10 +138,12 @@ HUME detects file languages from extension, glob pattern, or shebang line. Defin
 
 ```scheme
 (define-language! "my-lang"
-  #:extensions '(".myl")
-  #:glob "*.my"
-  #:shebangs '("myinterpreter"))
+  '(".myl")
+  '("*.my")
+  '("myinterpreter"))
 ```
+
+The arguments, in order, are: the language name, a list of file extensions, a list of glob patterns, and a list of shebang lines. Trailing arguments you don't need can be dropped — `(define-language! "my-lang" '(".myl"))` is fine.
 
 The definition registers the language and associates it with tree-sitter grammars installed via PLUM:
 
@@ -178,7 +182,7 @@ HUME resolves its directories per OS:
 |------|---------------|---------|
 | Config dir (`init.scm`, user `themes/`) | `$XDG_CONFIG_HOME/hume/` (default `~/.config/hume/`) | `%APPDATA%\hume\` |
 | Data dir (plugin clones, tree-sitter grammars) | `$XDG_DATA_HOME/hume/` (default `~/.local/share/hume/`) | `%LOCALAPPDATA%\hume\` (fallback `%APPDATA%\hume\`) |
-| Runtime dir (bundled `runtime/`: `tutor.txt`, `themes/`, `init.scm.example`, core plugins) | `$HUME_RUNTIME` if set; else `../share/hume/` relative to the binary; else `./runtime` in dev | `$HUME_RUNTIME` if set; else the binary's directory; else `./runtime` in dev |
+| Runtime dir (bundled `runtime/`: `tutor.txt`, `themes/`, `init.scm.example`, core plugins) | `$HUME_RUNTIME` if set; else `../share/hume/` relative to the binary; else `./runtime` in dev | `$HUME_RUNTIME` if set; else the binary's directory |
 
 Notable subpaths inside the data dir: `data/plugins/` (PLUM-managed plugin clones), `data/grammars/` and `data/grammars/sources/` (compiled and source tree-sitter grammars). Plugin sandboxed filesystem operations are restricted to `data/plugins/`, `data/grammars/`, and `runtime/plugins/` (read-only).
 
