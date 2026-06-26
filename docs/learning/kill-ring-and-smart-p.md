@@ -19,12 +19,17 @@ previous one.
 
 The kill ring is a fixed-size queue of the last ten yanks, deletes, and
 changes. Newest at the head; once full, the oldest entry falls off. Every
-editing capture pushes a new entry; nothing in the ring is overwritten in
-place.
+editing capture pushes a new entry — with one exception: if the current head
+is a *pure whitespace* entry (spaces, tabs, newlines), the new entry overwrites
+that slot in place rather than taking a fresh one. Deleting a space to fix a
+typo (`dp`) should not cost you a ring slot you would never want to cycle back
+to. The just-deleted whitespace stays retrievable until the next push, so the
+swap itself still works; only afterwards is it gone. To keep whitespace durably,
+yank it into a named register (`"0`–`"9`).
 
 Ring entries are reachable in two ways: by pasting the head with `"kp` or by
 relative position via `[`/`]` cycling (covered below). The ring keeps up to
-ten entries; nothing is overwritten in place.
+ten entries.
 
 **What the kill ring rescues you from:**
 

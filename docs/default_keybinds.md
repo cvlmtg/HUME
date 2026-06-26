@@ -149,9 +149,11 @@ Wrap each selection with a delimiter pair. Press `m w` then a character; if it's
 
 | Key | Command |
 |-----|---------|
-| `d` | Delete selections; push deleted text onto the kill ring |
+| `d` | Delete selections; push deleted text onto the kill ring¹ |
 | `c` | Delete selection content, push onto kill ring, enter insert mode (one undo group). A trailing newline is kept — `c` on a line rewrites its content without removing the line itself. |
-| `y` | Yank selections: write to system clipboard **and** push onto kill ring |
+| `y` | Yank selections: write to system clipboard **and** push onto kill ring¹ |
+
+> ¹ On a `d`/`c`/`y` push, if the current kill-ring head is a pure-whitespace entry (spaces, tabs, newlines — including a lone `\n` from deleting an empty line), the new entry overwrites that slot in place instead of taking a fresh one. What is being pushed is irrelevant — the rule inspects only the head. This keeps swap-junk (`dp` of a space) from filling the ring. The just-killed whitespace stays retrievable until the next push; to keep it durably, use `"0`–`"9`.
 | `p` | Smart-p paste after selection (see below) |
 | `P` | Smart-p paste before selection (see below) |
 | `[` | Within a paste session: cycle one step older and re-paste |

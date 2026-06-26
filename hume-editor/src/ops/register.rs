@@ -214,7 +214,22 @@ impl KillRing {
     }
 
     /// Push a new entry to the head of the ring, evicting the oldest if full.
+    ///
+    /// Whitespace collapse: when the current head is a *pure whitespace* entry
+    /// (every string, every char `is_whitespace`), the new entry overwrites
+    /// it in place instead of taking a fresh slot. This keeps from filling the
+    /// ring with entries you never want to cycle back to.
     pub(crate) fn push(&mut self, values: Vec<String>) {
+        let head_is_ws = self
+            .entries
+            .front()
+            .is_some_and(|head| entry_is_whitespace(head));
+        if head_is_ws
+            && let Some(slot) = self.entries.front_mut()
+        {
+            *slot = values;
+            return;
+        }
         self.entries.push_front(values);
         if self.entries.len() > KILL_RING_DEPTH {
             self.entries.pop_back();
@@ -277,6 +292,13 @@ impl KillRing {
     pub(crate) fn len(&self) -> usize {
         self.entries.len()
     }
+}
+
+/// Whether a kill-ring entry is pure whitespace — every string in the entry,
+/// every char `char::is_whitespace`. Used by [`KillRing::push`] to decide
+/// whether to overwrite the head in place or take a fresh slot.
+fn entry_is_whitespace(entry: &[String]) -> bool {
+    entry.iter().all(|s| s.chars().all(char::is_whitespace))
 }
 
 /// Extract the text of each selection from the buffer, in document order.
@@ -499,8 +521,6 @@ mod tests {
         vec![s.to_string()]
     }
 
-    // -- push / head / slot -------------------------------------------------------
-
     #[test]
     fn kill_ring_push_head_eviction() {
         let mut ring = KillRing::new();
@@ -528,6 +548,93 @@ mod tests {
         assert_eq!(ring.slot(1), Some(vs("b").as_slice()));
         assert_eq!(ring.slot(2), Some(vs("a").as_slice()));
         assert!(ring.slot(3).is_none());
+    }
+
+    // -- push: whitespace collapse ------------------------------------------------
+
+    #[test]
+    fn push_overwrites_whitespace_head() {
+        let mut ring = KillRing::new();
+        ring.push(vs(" "));
+        ring.push(vs("x"));
+        assert_eq!(ring.head(), Some(vs("x").as_slice()));
+        assert_eq!(ring.len(), 1);
+    }
+
+    #[test]
+    fn push_overwrites_single_newline_head() {
+        let mut ring = KillRing::new();
+        ring.push(vs("\n"));
+        ring.push(vs("x"));
+        assert_eq!(ring.head(), Some(vs("x").as_slice()));
+        assert_eq!(ring.len(), 1);
+    }
+
+    #[test]
+    fn push_overwrites_all_whitespace_multi_string_entry() {
+        let mut ring = KillRing::new();
+        ring.push(vec![" ".to_string(), "\t\n".to_string()]);
+        ring.push(vs("x"));
+        assert_eq!(ring.head(), Some(vs("x").as_slice()));
+        assert_eq!(ring.len(), 1);
+    }
+
+    #[test]
+    fn push_keeps_non_whitespace_head_when_new_is_whitespace() {
+        let mut ring = KillRing::new();
+        ring.push(vs("hello"));
+        ring.push(vs(" "));
+        assert_eq!(ring.head(), Some(vs(" ").as_slice()));
+        assert_eq!(ring.slot(1), Some(vs("hello").as_slice()));
+        assert_eq!(ring.len(), 2);
+    }
+
+    #[test]
+    fn push_on_empty_ring_just_inserts() {
+        let mut ring = KillRing::new();
+        ring.push(vs(" "));
+        assert_eq!(ring.head(), Some(vs(" ").as_slice()));
+        assert_eq!(ring.len(), 1);
+    }
+
+    #[test]
+    fn push_whitespace_head_when_ring_full_no_eviction() {
+        // Fill to depth, then make the head whitespace. Overwriting the head
+        // must not evict the oldest real entry (no push_front, no overflow).
+        let mut ring = KillRing::new();
+        for i in 0..KILL_RING_DEPTH {
+            ring.push(vs(&format!("entry{i}")));
+        }
+        ring.push(vs(" ")); // normal push: evicts entry0, head=" ", oldest=entry1
+        ring.push(vs("new")); // whitespace collapse: reclaims " " slot, no eviction
+        assert_eq!(ring.head(), Some(vs("new").as_slice()));
+        assert_eq!(ring.len(), KILL_RING_DEPTH);
+        assert_eq!(ring.slot(KILL_RING_DEPTH - 1), Some(vs("entry1").as_slice()));
+    }
+
+    #[test]
+    fn push_mixed_entry_not_overwritten() {
+        let mut ring = KillRing::new();
+        ring.push(vec![" ".to_string(), "x".to_string()]);
+        ring.push(vs("y"));
+        assert_eq!(ring.head(), Some(vs("y").as_slice()));
+        assert_eq!(
+            ring.slot(1),
+            Some(vec![" ".to_string(), "x".to_string()].as_slice())
+        );
+        assert_eq!(ring.len(), 2);
+    }
+
+    #[test]
+    fn push_consecutive_whitespace_kills_collapse() {
+        // d<space>, d<tab>, d<x>: each whitespace head is overwritten in turn,
+        // so all three share a single slot — no whitespace junk lingers.
+        let mut ring = KillRing::new();
+        ring.push(vs(" "));
+        ring.push(vs("\t"));
+        ring.push(vs("x"));
+        assert_eq!(ring.len(), 1);
+        assert_eq!(ring.head(), Some(vs("x").as_slice()));
     }
 
     // -- seed_cycle ---------------------------------------------------------------

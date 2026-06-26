@@ -63,6 +63,10 @@ The clipboard rule after `y` deserves a note: `y` writes the yanked text to **bo
 
 `[` and `]` cycle within the current **paste session** (opened by a preceding `p`/`P`). Each cycle replaces the previous paste, and the whole session records as a single undo step. Consecutive `p` presses append copies (each starts a new session and a separate undo step).
 
+### Whitespace and the kill ring
+
+When the current kill-ring head is a pure-whitespace entry (only spaces, tabs, and/or newlines), the next delete, change, or yank overwrites that slot in place instead of taking a fresh one. This stops filling the ring with entries you would never want to cycle back to. The just-killed whitespace remains retrievable until the next capture, so a swap still works; afterwards it is gone. To keep whitespace durably, yank it into a named register (`"0`–`"9`).
+
 ### Register prefix (`"`)
 
 Prefix a yank, delete, change, or paste with `"` + a register name to target a specific source or destination:
