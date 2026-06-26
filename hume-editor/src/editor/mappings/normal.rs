@@ -33,22 +33,28 @@ impl Editor {
 
     pub(super) fn handle_normal(&mut self, key: KeyEvent) {
         // ── Kitty SHIFT normalization ─────────────────────────────────────────
-        // The kitty keyboard protocol reports uppercase letters as Char('Q') with
-        // KeyModifiers::SHIFT. For HUME's purposes the uppercase-ness is already
-        // encoded in the char, so SHIFT is redundant and should be stripped — both
-        // for the q/Q intercept below and for trie lookup (which stores bindings
-        // as key!('Q') = Char('Q') + NONE).
+        // The kitty keyboard protocol reports shifted keys as Char('Q') / Char(':')
+        // / Char('$') with KeyModifiers::SHIFT. DISAMBIGUATE_ESCAPE_CODES keeps the
+        // physically-held SHIFT in the modifier field; REPORT_ALTERNATE_KEYS is what
+        // makes compliant terminals strip it again. WezTerm and other terminals
+        // enable DISAMBIGUATE but do not fully honor REPORT_ALTERNATE_KEYS, so
+        // shifted punctuation (`:`, `$`, `?`, `{`, …) arrives as Char(x) + SHIFT and
+        // misses its Char(x) + NONE trie binding — silently swallowing `:`, `$`,
+        // `?` etc. in Normal/Extend mode.
         //
-        // Only strip SHIFT when it is the *only* modifier (bare Shift+letter).
-        // Ctrl+Shift combinations (e.g. Ctrl+X) keep their modifiers so they
-        // match explicit Ctrl bindings in the keymap.
+        // For HUME's purposes the shifted-ness is already encoded in the char
+        // itself (every printable binding in the keymap is stored as Char(x) +
+        // NONE; no binding distinguishes via SHIFT), so the SHIFT bit is redundant
+        // for any Char and is stripped here. This covers both kitty's letter
+        // reporting and the shifted-punctuation gap on partially-compliant terminals.
+        //
+        // Only strip SHIFT when it is the *only* modifier. Ctrl+Shift combinations
+        // (e.g. Ctrl+X, Ctrl+}) keep CONTROL so they match their explicit Ctrl
+        // bindings; Shift+Tab arrives as KeyCode::BackTab (not Char), so it is
+        // untouched and keeps its SHIFT bit for the completion back-cycle.
         let key = if key.modifiers == KeyModifiers::SHIFT {
-            if let KeyCode::Char(ch) = key.code {
-                if ch.is_alphabetic() {
-                    KeyEvent::new(key.code, KeyModifiers::NONE)
-                } else {
-                    key
-                }
+            if let KeyCode::Char(_) = key.code {
+                KeyEvent::new(key.code, KeyModifiers::NONE)
             } else {
                 key
             }

@@ -326,6 +326,7 @@ mod render_snapshot;
 mod scripting_grammar;
 mod search;
 mod select_all;
+mod shift_punctuation;
 mod surround;
 mod sync_dispatch;
 mod tutor;
