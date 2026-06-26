@@ -29,6 +29,8 @@ pub mod path;
 pub mod process;
 pub mod terminal;
 
+use std::time::{Duration, Instant};
+
 /// Install a process-wide signal handler that restores the terminal before
 /// exiting.
 ///
@@ -52,11 +54,11 @@ pub fn install_signal_handlers() -> Result<(), ctrlc::Error> {
 
 /// Probe the terminal for kitty keyboard protocol support.
 ///
-/// Dispatches to the platform-specific implementation in `unix` or `windows`.
-/// Each implementation sends `\x1B[?u` (kitty flags query), `\x1B[>q`
-/// (XTVERSION), and `\x1B[c` (DA1 sentinel) to the terminal and inspects the
-/// raw response bytes. Returns `Ok(true)` if the terminal supports kitty
-/// keyboard protocol push, `Ok(false)` otherwise.
+/// Dispatches to the platform-specific implementation in `unix` or `windows`,
+/// each of which constructs a [`ProbeChannel`] over native polling primitives
+/// and delegates the actual query/response loop to [`run_probe`]. Returns
+/// `Ok(true)` if the terminal supports kitty keyboard protocol push,
+/// `Ok(false)` otherwise.
 ///
 /// Must be called after `enable_raw_mode()`.
 pub(crate) fn probe_kitty_support() -> std::io::Result<bool> {
@@ -72,6 +74,57 @@ pub(crate) fn probe_kitty_support() -> std::io::Result<bool> {
     {
         Ok(false)
     }
+}
+
+/// Bidirectional byte channel used by [`run_probe`] to query the terminal.
+///
+/// Each platform implements this on top of its native readable-with-deadline
+/// primitive (`poll(2)` on Unix, `WaitForSingleObject` on Windows). The trait
+/// isolates the one OS-specific concern — "is there input ready before
+/// `deadline`?" — so the shared query/response loop in [`run_probe`] is
+/// platform-agnostic and unit-testable via a mock channel.
+trait ProbeChannel {
+    fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()>;
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize>;
+    /// Block until readable or until `deadline` elapses. Returns `Ok(true)`
+    /// when input is available, `Ok(false)` on timeout, `Err` on a permanent
+    /// channel failure.
+    fn wait_until(&mut self, deadline: Instant) -> std::io::Result<bool>;
+}
+
+/// Shared kitty-keyboard-protocol probe body.
+///
+/// Writes three queries — `\x1B[?u` (kitty flags), `\x1B[>q` (XTVERSION),
+/// `\x1B[c` (DA1 sentinel) — then reads replies until DA1 arrives or the
+/// deadline expires, and classifies via [`has_kitty_response`] /
+/// [`has_kitty_xtversion`]. A single 500 ms overall deadline bounds the whole
+/// exchange; local terminals reply in single-digit ms, slow/remote ones get
+/// one generous budget rather than per-read timeouts.
+fn run_probe(ch: &mut impl ProbeChannel) -> std::io::Result<bool> {
+    ch.write_all(b"\x1B[?u\x1B[>q\x1B[c")?;
+
+    let mut response = Vec::with_capacity(256);
+    let mut buf = [0u8; 256];
+    let deadline = Instant::now() + Duration::from_millis(500);
+
+    loop {
+        if !ch.wait_until(deadline)? {
+            break; // timeout
+        }
+        let n = match ch.read(&mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => n,
+        };
+        response.extend_from_slice(&buf[..n]);
+
+        // DA1 is the last reply; once it lands the terminal has finished
+        // responding to all three queries.
+        if has_da1_response(&response) {
+            break;
+        }
+    }
+
+    Ok(has_kitty_response(&response) || has_kitty_xtversion(&response))
 }
 
 /// Scan raw terminal response bytes for a kitty keyboard protocol reply.
@@ -151,7 +204,9 @@ fn has_da1_response(buf: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{has_da1_response, has_kitty_response, has_kitty_xtversion};
+    use super::{has_da1_response, has_kitty_response, has_kitty_xtversion, run_probe};
+    use std::io;
+    use std::time::Instant;
 
     // ── has_kitty_response ────────────────────────────────────────────────────
 
@@ -261,5 +316,118 @@ mod tests {
     fn xtversion_empty_name() {
         // Empty name should not match any known terminal.
         assert!(!has_kitty_xtversion(b"\x1BP>|\x1B\\\x1B[?1c"));
+    }
+
+    // ── run_probe (shared probe loop via a mock channel) ──────────────────────
+    //
+    // These tests exercise the platform-agnostic body that unix/windows both
+    // delegate to, so the probe classification loop runs identically on both
+    // CI matrices. The classifier helpers exercised here are already covered
+    // above; the mock verifies the query-write step and the read/stop loop,
+    // not the classification helpers' internals.
+
+    /// In-memory [`ProbeChannel`] that yields canned reply chunks and records
+    /// the query bytes written so tests can assert both directions.
+    struct MockChannel {
+        written: Vec<u8>,
+        replies: Vec<Vec<u8>>,
+        read_idx: usize,
+    }
+
+    impl super::ProbeChannel for MockChannel {
+        fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+            self.written.extend_from_slice(buf);
+            Ok(())
+        }
+
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            if self.read_idx >= self.replies.len() {
+                return Ok(0);
+            }
+            let chunk = &self.replies[self.read_idx];
+            let n = chunk.len().min(buf.len());
+            buf[..n].copy_from_slice(&chunk[..n]);
+            self.read_idx += 1;
+            Ok(n)
+        }
+
+        // Mock has no real wait; "readable" iff a reply chunk remains
+        // unconsumed. The deadline argument is therefore ignored.
+        fn wait_until(&mut self, _deadline: Instant) -> io::Result<bool> {
+            Ok(self.read_idx < self.replies.len())
+        }
+    }
+
+    #[test]
+    fn probe_writes_three_queries() {
+        let mut ch = MockChannel {
+            written: Vec::new(),
+            replies: vec![b"\x1B[?1;0c".to_vec()],
+            read_idx: 0,
+        };
+        let _ = run_probe(&mut ch);
+        assert_eq!(ch.written, b"\x1B[?u\x1B[>q\x1B[c");
+    }
+
+    #[test]
+    fn probe_detects_kitty_flags_response() {
+        let replies = vec![b"\x1B[?0u\x1B[?62;22c".to_vec()];
+        let mut ch = MockChannel {
+            written: Vec::new(),
+            replies,
+            read_idx: 0,
+        };
+        assert!(run_probe(&mut ch).unwrap());
+    }
+
+    #[test]
+    fn probe_detects_xtversion_fallback() {
+        // WezTerm XTVERSION but no kitty flags reply, terminated by DA1.
+        let replies = vec![b"\x1BP>|WezTerm 20240203\x1B\\\x1B[?65;22c".to_vec()];
+        let mut ch = MockChannel {
+            written: Vec::new(),
+            replies,
+            read_idx: 0,
+        };
+        assert!(run_probe(&mut ch).unwrap());
+    }
+
+    #[test]
+    fn probe_returns_false_for_unsupported_terminal() {
+        // Only DA1, no kitty flags, no matching XTVERSION name.
+        let replies = vec![b"\x1B[?1;0c".to_vec()];
+        let mut ch = MockChannel {
+            written: Vec::new(),
+            replies,
+            read_idx: 0,
+        };
+        assert!(!run_probe(&mut ch).unwrap());
+    }
+
+    #[test]
+    fn probe_stops_after_da1_even_if_more_chunks_remain() {
+        // DA1 arrives in the first chunk; a second "would-be-consumed" chunk
+        // must NOT be read — DA1 terminates the loop.
+        let replies = vec![b"\x1B[?62;22c".to_vec(), b"\x1B[?0u".to_vec()];
+        let mut ch = MockChannel {
+            written: Vec::new(),
+            replies,
+            read_idx: 0,
+        };
+        // No kitty flags before DA1 and DA1 carries no XTVERSION -> false.
+        assert!(!run_probe(&mut ch).unwrap());
+        // Exactly one read occurred — the loop did not consume the post-DA1 chunk.
+        assert_eq!(ch.read_idx, 1);
+    }
+
+    #[test]
+    fn probe_empty_replies_returns_false() {
+        let mut ch = MockChannel {
+            written: Vec::new(),
+            replies: Vec::new(),
+            read_idx: 0,
+        };
+        // `wait_until` reports "no input" -> loop breaks immediately -> false.
+        assert!(!run_probe(&mut ch).unwrap());
     }
 }

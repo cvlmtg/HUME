@@ -1,76 +1,54 @@
 use std::fs::OpenOptions;
 use std::io::{self, Read, Write};
 use std::os::fd::AsFd;
+use std::time::Instant;
 
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 
-/// Probe for kitty keyboard protocol support by querying the terminal directly.
+/// Probe for kitty keyboard protocol support on Unix.
 ///
-/// Sends three queries in one write: `\x1B[?u` (kitty keyboard protocol flags
-/// query), `\x1B[>q` (XTVERSION — terminal name/version, used as a fallback
-/// for terminals that support kitty push but don't answer the flags query),
-/// and `\x1B[c` (DA1 sentinel — virtually all terminals respond to this,
-/// bounding the read loop).
-///
-/// We write to and read from `/dev/tty` directly, bypassing crossterm's
-/// internal event system, which is subject to timing issues on some terminals.
+/// Opens `/dev/tty` directly (bypassing crossterm's internal event system,
+/// which is subject to timing issues on some terminals), builds a
+/// [`super::TtyChannel`] over it, and delegates the query/response loop to
+/// [`super::run_probe`].
 ///
 /// Must be called after `enable_raw_mode()`.
 pub(super) fn probe_kitty_support() -> io::Result<bool> {
-    let mut tty = OpenOptions::new().read(true).write(true).open("/dev/tty")?;
+    let tty = OpenOptions::new().read(true).write(true).open("/dev/tty")?;
+    super::run_probe(&mut TtyChannel { file: tty })
+}
 
-    // Send three queries together:
-    //   \x1B[?u   — kitty keyboard protocol flags query
-    //   \x1B[>q   — XTVERSION (terminal name/version), fallback for terminals
-    //               that support kitty push but don't answer the flags query
-    //   \x1B[c    — DA1 sentinel; virtually all terminals respond to this,
-    //               and its response arrives last, so it terminates our read loop
-    tty.write_all(b"\x1B[?u\x1B[>q\x1B[c")?;
-    tty.flush()?;
+/// [`super::ProbeChannel`] backed by an open `/dev/tty` `File`, using
+/// `poll(2)` to wait for input with a deadline.
+struct TtyChannel {
+    file: std::fs::File,
+}
 
-    let mut response = Vec::with_capacity(256);
-    let mut buf = [0u8; 256]; // large enough for kitty + XTVERSION + DA1
-
-    // We sent three queries and expect up to three responses:
-    //   \x1B[?<flags>u        — kitty flags reply   (only on kitty-capable terminals)
-    //   \x1BP>|<name>\x1B\\   — XTVERSION reply     (most modern terminals)
-    //   \x1B[?<attrs>c        — DA1 sentinel         (virtually all terminals)
-    //
-    // We read until we have seen the DA1 'c' terminator, which signals that the
-    // terminal has finished responding. Stopping at the first 'c' or 'u' would
-    // risk missing the kitty response if the replies arrive in separate reads.
-    //
-    // Initial timeout covers slow/remote terminals; local terminals reply in
-    // single-digit ms, so 100 ms is ample. Subsequent reads use a short
-    // timeout since bytes arrive nearly instantaneously once the terminal
-    // starts responding.
-    let mut timeout_ms: i32 = 100;
-    loop {
-        let mut pfds = [PollFd::new(tty.as_fd(), PollFlags::POLLIN)];
-        let ready = poll(&mut pfds, PollTimeout::from(timeout_ms as u16)).unwrap_or(0);
-
-        if ready <= 0 {
-            break; // timeout or error — stop reading
-        }
-
-        let n = tty.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
-        response.extend_from_slice(&buf[..n]);
-
-        // Keep reading until we see a complete DA1 response (ESC [ ? ... c),
-        // which is the last thing the terminal sends. Checking for the full
-        // CSI sequence rather than a raw 'c' byte avoids false positives from
-        // any 'c' that might appear mid-stream.
-        if super::has_da1_response(&response) {
-            break;
-        }
-
-        // Short timeout for follow-up reads: if more bytes are coming they'll
-        // arrive almost immediately.
-        timeout_ms = 50;
+impl super::ProbeChannel for TtyChannel {
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+        self.file.write_all(buf)
     }
 
-    Ok(super::has_kitty_response(&response) || super::has_kitty_xtversion(&response))
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.file.read(buf)
+    }
+
+    fn wait_until(&mut self, deadline: Instant) -> io::Result<bool> {
+        let remaining_ms = deadline
+            .checked_duration_since(Instant::now())
+            .map(|d| d.as_millis() as u32)
+            .unwrap_or(0);
+        if remaining_ms == 0 {
+            return Ok(false);
+        }
+        let mut pfds = [PollFd::new(self.file.as_fd(), PollFlags::POLLIN)];
+        // `poll` returns ready count (>0), 0 on timeout, or Errno. We collapse
+        // Errno into "not ready" to match the previous behaviour: a transient
+        // EINTR should not abort the probe, and the shared loop will simply
+        // retry until the overall deadline expires. The 500 ms probe budget
+        // fits comfortably in `u16` (max 65535 ms), nix's only non-trivial
+        // `From` impl for `PollTimeout`.
+        let ready = poll(&mut pfds, PollTimeout::from(remaining_ms as u16)).unwrap_or(0);
+        Ok(ready > 0)
+    }
 }

@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{self, Read, Write};
 use std::mem::ManuallyDrop;
 use std::os::windows::io::FromRawHandle;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use windows_sys::Win32::{
     Foundation::{INVALID_HANDLE_VALUE, WAIT_OBJECT_0},
@@ -17,17 +17,17 @@ use windows_sys::Win32::{
 
 /// Probe for kitty keyboard protocol support on Windows.
 ///
-/// Uses the same DA1-sentinel method as the Unix probe: sends `\x1B[?u`
-/// (kitty keyboard protocol flags query), `\x1B[>q` (XTVERSION — terminal
-/// name/version, fallback for terminals that support kitty push but don't
-/// answer the flags query), and `\x1B[c` (DA1 sentinel). A terminal supporting
-/// the protocol responds with `\x1B[?<flags>u`; one that doesn't responds only
-/// with the XTVERSION and DA1 replies.
+/// Temporarily enables `ENABLE_VIRTUAL_TERMINAL_INPUT` on stdin (so terminal
+/// replies arrive as raw VT bytes via `ReadFile` instead of translated
+/// `KEY_EVENT` records) and `ENABLE_VIRTUAL_TERMINAL_PROCESSING` on stdout
+/// (so the probe escape sequences are interpreted), then builds a
+/// [`WinChannel`] over the console handles and delegates the query/response
+/// loop to [`super::run_probe`]. Original console modes are restored on every
+/// exit path.
 ///
-/// We temporarily enable `ENABLE_VIRTUAL_TERMINAL_INPUT` on stdin so that the
-/// terminal's response arrives as raw VT bytes instead of translated
-/// `KEY_EVENT` records, and restore the
-/// original mode unconditionally before returning.
+/// Under ConPTY the raw VT bytes pass straight through to the hosting terminal
+/// (WezTerm, Windows Terminal, …) which interprets the kitty/XTVERSION/DA1
+/// queries natively.
 ///
 /// Must be called after `enable_raw_mode()`.
 pub(super) fn probe_kitty_support() -> io::Result<bool> {
@@ -71,7 +71,8 @@ pub(super) fn probe_kitty_support() -> io::Result<bool> {
             return Ok(false);
         }
 
-        let result = run_probe(stdout_handle, stdin_handle);
+        let mut ch = WinChannel::new(stdout_handle, stdin_handle);
+        let result = super::run_probe(&mut ch);
 
         // Restore original modes unconditionally regardless of probe outcome.
         SetConsoleMode(stdin_handle, orig_in_mode);
@@ -81,58 +82,61 @@ pub(super) fn probe_kitty_support() -> io::Result<bool> {
     }
 }
 
-unsafe fn run_probe(
-    stdout_handle: windows_sys::Win32::Foundation::HANDLE,
+/// [`super::ProbeChannel`] backed by Windows console handles obtained from
+/// `GetStdHandle`, using `WaitForSingleObject` to wait for stdin readiness
+/// with a deadline.
+///
+/// `ManuallyDrop<File>` wraps the borrowed handles so the `File` destructor
+/// does not close them — `GetStdHandle` returns pseudo-handles owned by the
+/// process, not by us.
+struct WinChannel {
+    stdout: ManuallyDrop<File>,
+    stdin: ManuallyDrop<File>,
     stdin_handle: windows_sys::Win32::Foundation::HANDLE,
-) -> io::Result<bool> {
-    // Send three queries together: kitty flags query, XTVERSION (fallback
-    // identification for terminals that support push but not query), DA1 sentinel.
-    // ManuallyDrop prevents closing the underlying OS handle when dropped —
-    // we borrowed these handles from GetStdHandle, we don't own them.
-    let query = b"\x1B[?u\x1B[>q\x1B[c";
-    // SAFETY: handle is a valid Win32 HANDLE from GetStdHandle (caller guarantee);
-    // ManuallyDrop prevents File::drop from closing it.
-    let mut stdout_file = ManuallyDrop::new(unsafe { File::from_raw_handle(stdout_handle as _) });
-    if stdout_file.write_all(query).is_err() {
-        return Ok(false);
+}
+
+impl WinChannel {
+    /// # Safety
+    /// Both handles must be valid Win32 console handles obtained from
+    /// `GetStdHandle` (caller-owned; we must not close them).
+    unsafe fn new(
+        stdout_handle: windows_sys::Win32::Foundation::HANDLE,
+        stdin_handle: windows_sys::Win32::Foundation::HANDLE,
+    ) -> Self {
+        // SAFETY: caller guarantees both handles are valid Win32 console
+        // handles from GetStdHandle. ManuallyDrop prevents File::drop from
+        // closing them.
+        Self {
+            stdout: ManuallyDrop::new(unsafe { File::from_raw_handle(stdout_handle as _) }),
+            stdin: ManuallyDrop::new(unsafe { File::from_raw_handle(stdin_handle as _) }),
+            stdin_handle,
+        }
+    }
+}
+
+impl super::ProbeChannel for WinChannel {
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+        self.stdout.write_all(buf)
     }
 
-    // Read the response with a deadline. Use a generous initial budget (500 ms)
-    // to accommodate slow terminals; once data starts flowing everything arrives
-    // quickly, so remaining time naturally bounds the subsequent reads.
-    let mut response = Vec::with_capacity(256);
-    let mut buf = [0u8; 256]; // large enough for kitty + XTVERSION + DA1
-    // SAFETY: same as stdout_file above.
-    let mut stdin_file = ManuallyDrop::new(unsafe { File::from_raw_handle(stdin_handle as _) });
-    let deadline = Instant::now() + Duration::from_millis(500);
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.stdin.read(buf)
+    }
 
-    loop {
+    fn wait_until(&mut self, deadline: Instant) -> io::Result<bool> {
         let remaining_ms = deadline
             .checked_duration_since(Instant::now())
             .map(|d| d.as_millis() as u32)
             .unwrap_or(0);
         if remaining_ms == 0 {
-            break;
+            return Ok(false);
         }
-
-        // SAFETY: stdin_handle is a valid Win32 HANDLE (caller guarantee).
-        if unsafe { WaitForSingleObject(stdin_handle, remaining_ms) } != WAIT_OBJECT_0 {
-            break; // timeout or error
-        }
-
-        let bytes_read = match stdin_file.read(&mut buf) {
-            Ok(0) | Err(_) => break,
-            Ok(n) => n,
-        };
-
-        response.extend_from_slice(&buf[..bytes_read]);
-
-        // Keep reading until we see a complete DA1 response (ESC [ ? ... c),
-        // which is the last thing the terminal sends.
-        if super::has_da1_response(&response) {
-            break;
-        }
+        // SAFETY: stdin_handle is a valid Win32 HANDLE obtained from
+        // GetStdHandle (invariant of `WinChannel::new`).
+        let r = unsafe { WaitForSingleObject(self.stdin_handle, remaining_ms) };
+        // WAIT_OBJECT_0 = signaled (input ready). WAIT_TIMEOUT / WAIT_FAILED
+        // both collapse to "not ready"; the shared loop treats the former as a
+        // deadline expiry and the latter semantics match the previous impl.
+        Ok(r == WAIT_OBJECT_0)
     }
-
-    Ok(super::has_kitty_response(&response) || super::has_kitty_xtversion(&response))
 }
