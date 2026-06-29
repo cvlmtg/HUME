@@ -26,11 +26,54 @@
 //! Settings with non-trivial resolution (`auto_pairs_ref`, whitespace
 //! sub-fields) are handled manually below the macro invocation.
 
+use std::fmt;
+use std::str::FromStr;
+
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
 
 use crate::auto_pairs::Pair;
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
+
+// ── TabStyle ──────────────────────────────────────────────────────────────────
+
+/// What the Tab key inserts in Insert mode.
+///
+/// `Hard` inserts a literal `\t` character; `Soft` inserts enough spaces to
+/// reach the next tab stop (governed by `tab-width`). This is the single knob
+/// — there is no separate "shiftwidth" or "softtabstop": `tab-width` is the
+/// only width, used for both rendering and Tab-key spacing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TabStyle {
+    /// Tab key inserts one `\t` character per press.
+    #[default]
+    Hard,
+    /// Tab key inserts spaces up to the next tab stop.
+    Soft,
+}
+
+impl fmt::Display for TabStyle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Hard => f.write_str("hard"),
+            Self::Soft => f.write_str("soft"),
+        }
+    }
+}
+
+impl FromStr for TabStyle {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "hard" | "tab" | "true" => Ok(Self::Hard),
+            "soft" | "spaces" | "false" => Ok(Self::Soft),
+            _ => Err(format!(
+                "invalid tab-style: expected 'hard' or 'soft', got '{s}'"
+            )),
+        }
+    }
+}
 
 // ── SettingScope ──────────────────────────────────────────────────────────────
 
@@ -257,6 +300,8 @@ define_settings! {
     buffer {
         "tab-width"          => tab_width:          u8              = 4,
             parser: tab_width;
+        "tab-style"          => tab_style:          TabStyle        = TabStyle::Hard,
+            parser: from_str;
         "wrap-mode"          => wrap_mode:          WrapMode        = WrapMode::Indent { width: 0 },
             parser: from_str;
         "line-number-style"  => line_number_style:  LineNumberStyle = LineNumberStyle::Hybrid,
@@ -405,6 +450,7 @@ mod tests {
         assert_eq!(s.jump_line_threshold, 5);
         assert_eq!(s.history_capacity, 100);
         assert_eq!(s.tab_width, 4);
+        assert_eq!(s.tab_style, TabStyle::Hard);
         assert_eq!(s.wrap_mode, WrapMode::Indent { width: 0 });
         assert_eq!(s.line_number_style, LineNumberStyle::Hybrid);
         assert!(s.auto_pairs_enabled);
@@ -414,6 +460,7 @@ mod tests {
     fn buffer_overrides_default_is_all_none() {
         let ov = BufferOverrides::default();
         assert!(ov.tab_width.is_none());
+        assert!(ov.tab_style.is_none());
         assert!(ov.wrap_mode.is_none());
         assert!(ov.line_number_style.is_none());
         assert!(ov.auto_pairs_enabled.is_none());
@@ -462,6 +509,38 @@ mod tests {
         let global = EditorSettings::default();
         let ov = BufferOverrides::default();
         assert_eq!(ov.tab_width(&global), global.tab_width);
+    }
+
+    #[test]
+    fn resolution_tab_style_override_wins() {
+        let global = EditorSettings::default();
+        let ov = BufferOverrides {
+            tab_style: Some(TabStyle::Soft),
+            ..Default::default()
+        };
+        assert_eq!(ov.tab_style(&global), TabStyle::Soft);
+    }
+
+    #[test]
+    fn resolution_falls_back_to_global_tab_style() {
+        let global = EditorSettings::default();
+        let ov = BufferOverrides::default();
+        assert_eq!(ov.tab_style(&global), global.tab_style);
+    }
+
+    // ── TabStyle parsing ─────────────────────────────────────────────────────
+
+    #[test]
+    fn tab_style_parses_hard_soft_case_insensitive() {
+        assert_eq!("hard".parse::<TabStyle>().unwrap(), TabStyle::Hard);
+        assert_eq!("SOFT".parse::<TabStyle>().unwrap(), TabStyle::Soft);
+        assert_eq!("spaces".parse::<TabStyle>().unwrap(), TabStyle::Soft);
+        assert_eq!("tab".parse::<TabStyle>().unwrap(), TabStyle::Hard);
+    }
+
+    #[test]
+    fn tab_style_rejects_unknown() {
+        assert!("bogus".parse::<TabStyle>().is_err());
     }
 
     #[test]
@@ -585,6 +664,19 @@ mod tests {
     }
 
     #[test]
+    fn set_global_tab_style() {
+        assert_eq!(
+            global("tab-style", "soft").unwrap().tab_style,
+            TabStyle::Soft
+        );
+    }
+
+    #[test]
+    fn set_global_tab_style_invalid_errors() {
+        assert!(global("tab-style", "bogus").is_err());
+    }
+
+    #[test]
     fn set_global_line_number_style() {
         assert_eq!(
             global("line-number-style", "relative")
@@ -686,6 +778,13 @@ mod tests {
         let global = EditorSettings::default();
         let ov = buffer("tab-width", "8").unwrap();
         assert_eq!(ov.tab_width(&global), 8);
+    }
+
+    #[test]
+    fn set_buffer_tab_style() {
+        let global = EditorSettings::default();
+        let ov = buffer("tab-style", "soft").unwrap();
+        assert_eq!(ov.tab_style(&global), TabStyle::Soft);
     }
 
     #[test]
@@ -806,6 +905,14 @@ mod tests {
         apply_setting(SettingScope::Global, "tab-width", "2", &mut global, &mut ov).unwrap();
         // Text has no override, so it inherits the new global value.
         assert_eq!(ov.tab_width(&global), 2);
+    }
+
+    #[test]
+    fn set_global_tab_style_propagates_to_unoverridden_buffer() {
+        let mut global = EditorSettings::default();
+        let mut ov = BufferOverrides::default();
+        apply_setting(SettingScope::Global, "tab-style", "soft", &mut global, &mut ov).unwrap();
+        assert_eq!(ov.tab_style(&global), TabStyle::Soft);
     }
 
     #[test]

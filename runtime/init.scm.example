@@ -11,7 +11,8 @@
 ;;
 ;; (set-option! key value)
 ;; Valid keys and their defaults:
-;;   "tab-width"          integer   4        — spaces per indent level
+;;   "tab-width"          integer   4        — tab width in columns (rendering + Tab spacing)
+;;   "tab-style"          string    "hard"   — "hard" (literal \t) or "soft" (spaces to next tab stop)
 ;;   "auto-pairs-enabled" bool      #t       — insert matching close delimiter
 ;;   "line-number-style"  string    "hybrid" — "absolute", "relative", "hybrid"
 ;;   "wrap-mode"          string    "indent" — "none", "word", "indent"
@@ -20,6 +21,7 @@
 ;;   "mouse-select"       bool      #f       — mouse drag creates a selection
 
 (set-option! "tab-width" 2)
+;; (set-option! "tab-style" "soft")
 ;; (set-option! "auto-pairs-enabled" #f)
 ;; (set-option! "line-number-style" "relative")
 

@@ -35,7 +35,8 @@ These settings can be set globally (affecting all buffers) or overridden for a s
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `tab-width` | integer 1–255 | `4` | Width of a tab character in columns, and number of spaces inserted when pressing Tab |
+| `tab-width` | integer 1–255 | `4` | Width of a tab character in columns. Also the spacing used when pressing Tab with `tab-style = soft` |
+| `tab-style` | `hard` \| `soft` | `hard` | What the Tab key inserts in Insert mode. `hard` inserts a literal tab character; `soft` inserts spaces up to the next tab stop (spaced by `tab-width`) |
 | `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Soft line wrapping. `none` disables wrapping. The bare keyword (`soft`, `word`, or `indent`) wraps at the pane content width; appending `:N` wraps at column N. `indent` indents continuation lines to match the line's indent level |
 | `line-number-style` | `absolute` \| `relative` \| `hybrid` | `hybrid` | Line number display. `absolute`: plain line numbers. `relative`: distance from cursor. `hybrid`: absolute on the cursor line, relative elsewhere |
 | `auto-pairs-enabled` | bool | `true` | Enable auto-pairs: automatically insert closing delimiters and skip over them on close |
@@ -102,6 +103,7 @@ Apply a global setting. Equivalent to `:set global key=value`. Invalid values ar
 
 ```scheme
 (set-option! "tab-width" "2")
+(set-option! "tab-style" "soft")
 (set-option! "wrap-mode" "none")
 (set-option! "scrolloff" "5")
 ```

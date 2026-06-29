@@ -111,6 +111,216 @@ fn insert_char_unicode() {
     );
 }
 
+// ── insert_tab ────────────────────────────────────────────────────────────
+
+#[test]
+fn insert_tab_hard_at_cursor() {
+    // Hard tab at col 0 → inserts '\t', cursor stays on the original char.
+    assert_state!(
+        "-[h]>ello\n",
+        |(buf, sels)| insert_tab(buf, sels, TabStyle::Hard, 4),
+        "\t-[h]>ello\n"
+    );
+}
+
+#[test]
+fn insert_tab_hard_mid_line() {
+    assert_state!(
+        "hel-[l]>o\n",
+        |(buf, sels)| insert_tab(buf, sels, TabStyle::Hard, 4),
+        "hel\t-[l]>o\n"
+    );
+}
+
+#[test]
+fn insert_tab_hard_replaces_selection() {
+    // Tab over a selection replaces it, same as typing any char.
+    assert_state!(
+        "-[hell]>o\n",
+        |(buf, sels)| insert_tab(buf, sels, TabStyle::Hard, 4),
+        "\t-[o]>\n"
+    );
+}
+
+#[test]
+fn insert_tab_hard_two_cursors() {
+    assert_state!(
+        "-[f]>oo-[ ]>bar\n",
+        |(buf, sels)| insert_tab(buf, sels, TabStyle::Hard, 4),
+        "\t-[f]>oo\t-[ ]>bar\n"
+    );
+}
+
+#[test]
+fn insert_tab_soft_at_col0_inserts_full_width() {
+    // Soft tab at col 0, tw=4 → 4 spaces.
+    assert_state!(
+        "-[h]>ello\n",
+        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 4),
+        "    -[h]>ello\n"
+    );
+}
+
+#[test]
+fn insert_tab_soft_at_col2_inserts_two_spaces() {
+    // Soft tab at col 2, tw=4 → 2 spaces (to reach next stop at col 4).
+    assert_state!(
+        "he-[l]>lo\n",
+        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 4),
+        "he  -[l]>lo\n"
+    );
+}
+
+#[test]
+fn insert_tab_soft_at_col4_inserts_full_width() {
+    // Already on a tab stop (col 4) → full tab-width of spaces.
+    assert_state!(
+        "abcd-[e]>\n",
+        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 4),
+        "abcd    -[e]>\n"
+    );
+}
+
+#[test]
+fn insert_tab_soft_after_tab_uses_current_col() {
+    // "\tx" → cursor after 'x' is at display col 5, tw=4 → 3 spaces to col 8.
+    assert_state!(
+        "\tx-[y]>\n",
+        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 4),
+        "\tx   -[y]>\n"
+    );
+}
+
+#[test]
+fn insert_tab_soft_tab_width_8() {
+    // tw=8 at col 0 → 8 spaces.
+    assert_state!(
+        "-[h]>i\n",
+        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 8),
+        "        -[h]>i\n"
+    );
+}
+
+#[test]
+fn insert_tab_soft_replaces_selection() {
+    // Soft tab over a selection: delete selection, insert spaces for the
+    // cursor's column (which is the selection start).
+    assert_state!(
+        "-[hell]>o\n",
+        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 4),
+        "    -[o]>\n"
+    );
+}
+
+#[test]
+fn insert_tab_soft_two_cursors() {
+    // Two cursors at different columns get independent space counts.
+    // "abc xyz\n": cursor1 on 'c' (col 2) → 2 spaces (to col 4);
+    // cursor2 on 'z' (col 6) → 2 spaces (to col 8). tw=4.
+    assert_state!(
+        "ab-[c]> xy-[z]>\n",
+        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 4),
+        "ab  -[c]> xy  -[z]>\n"
+    );
+}
+
+// ── dedent_tab_backward ───────────────────────────────────────────────────
+
+#[test]
+fn dedent_spaces_to_prev_tab_stop() {
+    // "    x" cursor at col 4 (after 4 spaces, on 'x'? No — cursor on a space).
+    // Cursor at col 4 means 4 spaces before it. tw=4 → prev_stop 0, delete all 4.
+    // Text: "    \n" with cursor at char 4 (on '\n'). Hmm — let's put content after.
+    // "    x\n": cursor on 'x' (char 4, col 4). prev_stop 0. Delete [0,4) = 4 spaces.
+    assert_state!(
+        "    -[x]>\n",
+        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        "-[x]>\n"
+    );
+}
+
+#[test]
+fn dedent_six_spaces_to_col_four() {
+    // "      x\n" (6 spaces + x). cursor on 'x' (col 6). prev_stop 4. Delete 2 spaces.
+    assert_state!(
+        "      -[x]>\n",
+        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        "    -[x]>\n"
+    );
+}
+
+#[test]
+fn dedent_hard_tab_to_prev_stop() {
+    // "\t\tx\n": two tabs (col 8). cursor on 'x' (col 8). prev_stop 4. Delete 1 tab.
+    assert_state!(
+        "\t\t-[x]>\n",
+        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        "\t-[x]>\n"
+    );
+}
+
+#[test]
+fn dedent_single_tab_to_zero() {
+    // "\tx\n": one tab (col 4). cursor on 'x' (col 4). prev_stop 0. Delete the tab.
+    assert_state!(
+        "\t-[x]>\n",
+        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        "-[x]>\n"
+    );
+}
+
+#[test]
+fn dedent_mid_indent_snaps_to_prev_stop() {
+    // "    \n" (4 spaces, whole line ws). cursor on '\n' (col 4)? No — cursor on
+    // a space mid-indent. "    \n" cursor at char 2 (col 2). prev_stop 0. Delete 2 spaces.
+    assert_state!(
+        "  -[ ]>  \n",
+        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        "-[ ]>  \n"
+    );
+}
+
+#[test]
+fn dedent_mixed_tabs_spaces() {
+    // "  \tx\n" (2 spaces + tab = col 4). cursor on 'x' (col 4). prev_stop 0.
+    // Delete [0,3) = "  \t".
+    assert_state!(
+        "  \t-[x]>\n",
+        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        "-[x]>\n"
+    );
+}
+
+#[test]
+fn dedent_tab_width_8() {
+    // "        x\n" (8 spaces). cursor on 'x' (col 8). tw=8 → prev_stop 0. Delete 8.
+    assert_state!(
+        "        -[x]>\n",
+        |(buf, sels)| dedent_tab_backward(buf, sels, 8),
+        "-[x]>\n"
+    );
+}
+
+#[test]
+fn dedent_two_cursors_in_leading_ws() {
+    // Two lines, each "  x", cursor on 'x' (col 2). prev_stop 0. Delete 2 each.
+    assert_state!(
+        "  -[x]>\n  -[y]>\n",
+        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        "-[x]>\n-[y]>\n"
+    );
+}
+
+#[test]
+fn dedent_at_col_one_deletes_one_space() {
+    // " x\n" (1 space + x). cursor on 'x' (col 1). prev_stop 0. Delete 1 space.
+    assert_state!(
+        " -[x]>\n",
+        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        "-[x]>\n"
+    );
+}
+
 // ── delete_char_forward ───────────────────────────────────────────────────
 
 #[test]
@@ -871,6 +1081,102 @@ fn insert_char_newline() {
         "-[h]>ello\n",
         |(buf, sels)| insert_char(buf, sels, '\n'),
         "\n-[h]>ello\n"
+    );
+}
+
+// ── insert_newline_indent (auto-indent on Enter) ──────────────────────────
+
+#[test]
+fn newline_indent_copies_tab_indent() {
+    // "\tfoo" cursor on 'f' → new line gets "\t", cursor on 'f' (new line).
+    assert_state!(
+        "\t-[f]>oo\n",
+        |(buf, sels)| insert_newline_indent(buf, sels),
+        "\t\n\t-[f]>oo\n"
+    );
+}
+
+#[test]
+fn newline_indent_copies_space_indent() {
+    // "    bar" cursor on 'b' → new line gets "    ".
+    assert_state!(
+        "    -[b]>ar\n",
+        |(buf, sels)| insert_newline_indent(buf, sels),
+        "    \n    -[b]>ar\n"
+    );
+}
+
+#[test]
+fn newline_indent_no_indent_on_bare_line() {
+    // "foo" cursor on 'o' (last char) → new line bare.
+    assert_state!(
+        "fo-[o]>\n",
+        |(buf, sels)| insert_newline_indent(buf, sels),
+        "fo\n-[o]>\n"
+    );
+}
+
+#[test]
+fn newline_indent_at_line_start_no_indent_before_cursor() {
+    // "foo\n" cursor on 'f' (line start, no indent before cursor) → new line
+    // is bare, original 'f' moves to new line.
+    assert_state!(
+        "-[f]>oo\n",
+        |(buf, sels)| insert_newline_indent(buf, sels),
+        "\n-[f]>oo\n"
+    );
+}
+
+#[test]
+fn newline_indent_mid_line_preserves_content_before_cursor() {
+    // "\tfoo" cursor on 'o' (mid content) → content before cursor stays on
+    // old line; new line gets indent; cursor on 'o'.
+    assert_state!(
+        "\tfo-[o]>\n",
+        |(buf, sels)| insert_newline_indent(buf, sels),
+        "\tfo\n\t-[o]>\n"
+    );
+}
+
+#[test]
+fn newline_indent_mixed_indent() {
+    // "\t  x" cursor on 'x' → new line gets "\t  ".
+    assert_state!(
+        "\t  -[x]>\n",
+        |(buf, sels)| insert_newline_indent(buf, sels),
+        "\t  \n\t  -[x]>\n"
+    );
+}
+
+#[test]
+fn newline_indent_replaces_selection() {
+    // Selection over "foo" in "\tfoo\n": delete selection, insert "\n" + indent.
+    // Cursor lands on the structural trailing '\n' (the retained original).
+    assert_state!(
+        "\t-[foo]>\n",
+        |(buf, sels)| insert_newline_indent(buf, sels),
+        "\t\n\t-[\n]>"
+    );
+}
+
+#[test]
+fn newline_indent_second_line() {
+    // "a\n\tb\n" cursor on 'b' (line 1, indented) → new line gets "\t".
+    assert_state!(
+        "a\n\t-[b]>\n",
+        |(buf, sels)| insert_newline_indent(buf, sels),
+        "a\n\t\n\t-[b]>\n"
+    );
+}
+
+#[test]
+fn newline_indent_two_cursors_different_indents() {
+    // Two cursors on differently-indented lines get their own indent.
+    // Line 0 "  a" (cursor on 'a'), line 1 "\tb" (cursor on 'b').
+    assert_state!(
+        "  -[a]>\n\t-[b]>\n",
+        |(buf, sels)| insert_newline_indent(buf, sels),
+        "  \n  -[a]>\n\t\n\t-[b]>\n"
     );
 }
 

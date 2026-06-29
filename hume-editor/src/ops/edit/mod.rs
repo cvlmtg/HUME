@@ -1,14 +1,16 @@
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::grapheme::{
-    grapheme_col_in_line, next_grapheme_boundary, prev_grapheme_boundary,
+    char_pos_at_display_col, display_col_in_line, grapheme_col_in_line,
+    next_grapheme_boundary, prev_grapheme_boundary,
 };
-use hume_editing::lines::{is_line_start, line_end_exclusive};
+use hume_editing::lines::{is_line_start, leading_whitespace, line_end_exclusive};
 use hume_editing::selection::{Selection, SelectionSet, is_selection_linewise};
 use hume_editing::text::Text;
 use hume_editing::word::is_word_boundary;
 
 use crate::ops::motion::prev_word_start;
 use crate::ops::register;
+use crate::settings::TabStyle;
 
 // ── Edit scaffolding ──────────────────────────────────────────────────────────
 //
@@ -390,6 +392,78 @@ pub(crate) fn insert_char(
     })
 }
 
+/// Insert a newline followed by the current line's leading whitespace at every
+/// selection.
+///
+/// This is auto-indent on Enter: the indent of the line containing each
+/// selection's `start` is copied verbatim onto the new line. No smart indent
+/// (no extra level after `{`, `:`, etc.) — tree-sitter `indent.scm` is a
+/// separate roadmap milestone. The copied indent is the *full* leading
+/// whitespace of the source line, computed on the pre-edit buffer.
+///
+/// Cursor lands on the first character after the inserted indent on the new
+/// line — i.e. the original character at `start` (now shifted onto the new
+/// line), matching `insert_char`'s "cursor stays on the original char" rule.
+pub(crate) fn insert_newline_indent(
+    buf: Text,
+    sels: SelectionSet,
+) -> (Text, SelectionSet, ChangeSet) {
+    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+        let start = sel.start();
+        let line_idx = buf.char_to_line(start);
+        let indent = leading_whitespace(buf, line_idx);
+        b.retain(start - b.old_pos());
+        if !sel.is_collapsed() {
+            b.delete(sel.content_end(buf) + 1 - start);
+        }
+        b.insert_char('\n');
+        if !indent.is_empty() {
+            b.insert(&indent);
+        }
+        new_sels.push(Selection::collapsed(b.new_pos()));
+    })
+}
+
+/// Insert a tab at every selection, governed by `style` and `tab_width`.
+///
+/// - **`TabStyle::Hard`**: inserts one literal `\t` per selection (same
+///   mechanical effect as `insert_char(.., '\t')`).
+/// - **`TabStyle::Soft`**: inserts enough spaces to reach the next tab stop.
+///   The display column of the cursor is computed with tab expansion (see
+///   [`hume_editing::grapheme::display_col_in_line`]); `spaces = tab_width -
+///   (col % tab_width)`, so a cursor already on a stop gets a full tab-width
+///   of spaces.
+///
+/// Non-collapsed selections are deleted first, same as `insert_char` — Tab
+/// over a selection replaces it, just like typing any other key.
+pub(crate) fn insert_tab(
+    buf: Text,
+    sels: SelectionSet,
+    style: TabStyle,
+    tab_width: u8,
+) -> (Text, SelectionSet, ChangeSet) {
+    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+        let start = sel.start();
+        b.retain(start - b.old_pos());
+        if !sel.is_collapsed() {
+            b.delete(sel.content_end(buf) + 1 - start);
+        }
+        match style {
+            TabStyle::Hard => {
+                b.insert_char('\t');
+            }
+            TabStyle::Soft => {
+                let line_idx = buf.char_to_line(start);
+                let col = display_col_in_line(buf, line_idx, start, tab_width);
+                let tw = tab_width.max(1) as usize;
+                let n = tw - (col % tw);
+                b.insert(&" ".repeat(n));
+            }
+        }
+        new_sels.push(Selection::collapsed(b.new_pos()));
+    })
+}
+
 /// Delete the grapheme cluster at the cursor, or delete the selected region.
 ///
 /// - **Single-character selection**: delete the grapheme cluster at `head`
@@ -458,6 +532,58 @@ pub(crate) fn delete_char_backward(
         } else {
             delete_sel_region(b, buf, sel, new_sels);
         }
+    })
+}
+
+/// Dedent to the previous tab stop at every selection.
+///
+/// For each collapsed cursor sitting in leading whitespace (caller-checked —
+/// see [`Editor::should_dedent_backspace`]), this deletes the whitespace
+/// between the cursor and the previous tab-stop column. Mixed tabs and spaces
+/// are handled by walking the line forward with tab expansion to locate the
+/// char offset at the target column ([`char_pos_at_display_col`]).
+///
+/// Non-collapsed selections and cursors not in leading whitespace are left to
+/// [`delete_char_backward`] — the caller dispatches based on the
+/// all-or-nothing predicate.
+pub(crate) fn dedent_tab_backward(
+    buf: Text,
+    sels: SelectionSet,
+    tab_width: u8,
+) -> (Text, SelectionSet, ChangeSet) {
+    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+        // Caller guarantees collapsed + in-leading-ws, but guard defensively:
+        // any selection that doesn't qualify becomes a no-op cursor.
+        if !sel.is_collapsed() {
+            let p = sel.start();
+            b.retain(p - b.old_pos());
+            new_sels.push(Selection::collapsed(b.new_pos()));
+            return;
+        }
+        let p = sel.head();
+        if p == 0 {
+            new_sels.push(Selection::collapsed(b.new_pos()));
+            return;
+        }
+        let line_idx = buf.char_to_line(p);
+        let col = display_col_in_line(buf, line_idx, p, tab_width);
+        let tw = tab_width.max(1) as usize;
+        let prev_stop = if col.is_multiple_of(tw) {
+            col.saturating_sub(tw)
+        } else {
+            (col / tw) * tw
+        };
+        let target = char_pos_at_display_col(buf, line_idx, prev_stop, tab_width);
+        if target < b.old_pos() || target >= p {
+            // Overlap with a prior selection's delete, or nothing to delete —
+            // no-op. Land the cursor at the current new position.
+            b.retain(p - b.old_pos());
+            new_sels.push(Selection::collapsed(b.new_pos()));
+            return;
+        }
+        b.retain(target - b.old_pos());
+        b.delete(p - target);
+        new_sels.push(Selection::collapsed(b.new_pos()));
     })
 }
 

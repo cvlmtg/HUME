@@ -185,6 +185,86 @@ pub fn grapheme_col_in_line(buf: &Text, line_idx: usize, char_pos: usize) -> usi
     grapheme_count(buf, buf.line_to_char(line_idx), char_pos)
 }
 
+/// 0-based display column of `char_pos` within line `line_idx`, with `\t`
+/// expanded to tab stops of width `tab_width`.
+///
+/// Non-tab graphemes count as one column each (matching the logical-column
+/// convention of [`grapheme_col_in_line`]); wide CJK characters are therefore
+/// undercounted by one. This is acceptable for tab-stop alignment — the only
+/// place display width matters for editing — since CJK-plus-tab mixtures are
+/// rare and any error there is bounded. A `'\t'` advances the column to the
+/// next multiple of `tab_width`.
+///
+/// Used by `insert_tab` (Soft style: insert spaces to the next tab stop) and
+/// by dedent-on-Backspace (compute the previous tab stop).
+pub fn display_col_in_line(buf: &Text, line_idx: usize, char_pos: usize, tab_width: u8) -> usize {
+    let line_start = buf.line_to_char(line_idx);
+    let tw = tab_width.max(1) as usize;
+    let mut col = 0usize;
+    let mut pos = line_start;
+    while pos < char_pos {
+        let next = next_grapheme_boundary(buf, pos);
+        if next > char_pos || next == pos {
+            break;
+        }
+        let ch = buf.char_at(pos);
+        if ch == Some('\t') {
+            col = (col / tw + 1) * tw;
+        } else {
+            col += 1;
+        }
+        pos = next;
+    }
+    col
+}
+
+/// Return the char offset on `line_idx` at which the display column first
+/// reaches `target_col`, walking forward from the line start with `\t`
+/// expanded to tab stops of width `tab_width`.
+///
+/// For `target_col == 0` this is the line start. When `target_col` is a tab
+/// stop and the line's leading content is whitespace (the only context in
+/// which this helper is called — dedent-on-Backspace), the position is exact:
+/// tabs jump to multiples of `tab_width` and spaces step by one, so every
+/// tab stop along the way is hit. If a grapheme would overshoot `target_col`
+/// (e.g. a tab when not aligned), the walk stops at the current position —
+/// the closest position not exceeding `target_col`.
+pub fn char_pos_at_display_col(
+    buf: &Text,
+    line_idx: usize,
+    target_col: usize,
+    tab_width: u8,
+) -> usize {
+    let line_start = buf.line_to_char(line_idx);
+    if target_col == 0 {
+        return line_start;
+    }
+    let tw = tab_width.max(1) as usize;
+    let mut col = 0usize;
+    let mut pos = line_start;
+    loop {
+        let next = next_grapheme_boundary(buf, pos);
+        if next == pos {
+            break; // end of buffer
+        }
+        let ch = buf.char_at(pos);
+        let w = if ch == Some('\t') {
+            tw - (col % tw)
+        } else {
+            1
+        };
+        if col + w > target_col {
+            break; // this grapheme would overshoot — stop here
+        }
+        col += w;
+        pos = next;
+        if col == target_col {
+            break;
+        }
+    }
+    pos
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -409,5 +489,96 @@ mod tests {
         let buf = Text::from("hi\n");
         assert_eq!(buf.len_chars(), 3);
         assert_eq!(grapheme_count(&buf, 0, 3), 3);
+    }
+
+    // ── display_col_in_line ───────────────────────────────────────────────────
+
+    #[test]
+    fn display_col_no_tabs_matches_grapheme_col() {
+        // No tabs → display col == grapheme col.
+        let buf = Text::from("hello\n");
+        assert_eq!(display_col_in_line(&buf, 0, 0, 4), 0);
+        assert_eq!(display_col_in_line(&buf, 0, 2, 4), 2);
+        assert_eq!(display_col_in_line(&buf, 0, 5, 4), 5);
+    }
+
+    #[test]
+    fn display_col_tab_advances_to_next_stop() {
+        // "\tx\n": tab at col 0 → col 4; 'x' at col 4 → col 5.
+        let buf = Text::from("\tx\n");
+        assert_eq!(display_col_in_line(&buf, 0, 0, 4), 0); // at the tab itself
+        assert_eq!(display_col_in_line(&buf, 0, 1, 4), 4); // past the tab
+        assert_eq!(display_col_in_line(&buf, 0, 2, 4), 5); // past 'x'
+    }
+
+    #[test]
+    fn display_col_tab_mid_line_uses_current_col() {
+        // "ab\tcd\n" with tw=4: 'a'(1) 'b'(2) '\t' → next stop of 2 is 4; then 'c'(5).
+        let buf = Text::from("ab\tcd\n");
+        assert_eq!(display_col_in_line(&buf, 0, 2, 4), 2); // before the tab
+        assert_eq!(display_col_in_line(&buf, 0, 3, 4), 4); // past the tab
+        assert_eq!(display_col_in_line(&buf, 0, 4, 4), 5); // past 'c'
+    }
+
+    #[test]
+    fn display_col_tab_width_8() {
+        // "\t\n" with tw=8: tab → col 8.
+        let buf = Text::from("\t\n");
+        assert_eq!(display_col_in_line(&buf, 0, 1, 8), 8);
+    }
+
+    #[test]
+    fn display_col_at_line_start_is_zero() {
+        let buf = Text::from("ab\ncd\n");
+        // char 3 is the start of line 1.
+        assert_eq!(display_col_in_line(&buf, 1, 3, 4), 0);
+        assert_eq!(display_col_in_line(&buf, 1, 4, 4), 1);
+    }
+
+    // ── char_pos_at_display_col ───────────────────────────────────────────────
+
+    #[test]
+    fn char_pos_at_col_zero_is_line_start() {
+        let buf = Text::from("\tfoo\n");
+        assert_eq!(char_pos_at_display_col(&buf, 0, 0, 4), 0);
+    }
+
+    #[test]
+    fn char_pos_at_tab_stop_after_tab() {
+        // "\tx\n": tab takes col 0→4. char at col 4 is past the tab (char 1).
+        let buf = Text::from("\tx\n");
+        assert_eq!(char_pos_at_display_col(&buf, 0, 4, 4), 1);
+    }
+
+    #[test]
+    fn char_pos_at_col_two_in_spaces() {
+        // "    \n": 4 spaces. char at col 2 is char 2 (third space).
+        let buf = Text::from("    \n");
+        assert_eq!(char_pos_at_display_col(&buf, 0, 2, 4), 2);
+    }
+
+    #[test]
+    fn char_pos_at_col_eight_two_tabs() {
+        // "\t\t\n": tab→col4, tab→col8. char at col 8 is past second tab (char 2).
+        let buf = Text::from("\t\t\n");
+        assert_eq!(char_pos_at_display_col(&buf, 0, 8, 4), 2);
+        // Mid stop: col 4 is past first tab (char 1).
+        assert_eq!(char_pos_at_display_col(&buf, 0, 4, 4), 1);
+    }
+
+    #[test]
+    fn char_pos_mixed_spaces_and_tab() {
+        // "  \t\n": 2 spaces (col 0,1) + tab (col 2→4). char at col 4 is char 3.
+        let buf = Text::from("  \t\n");
+        assert_eq!(char_pos_at_display_col(&buf, 0, 4, 4), 3);
+        assert_eq!(char_pos_at_display_col(&buf, 0, 2, 4), 2);
+    }
+
+    #[test]
+    fn char_pos_overshoot_stops_short() {
+        // "\t\n" with tw=4, target col 2: the tab would jump col 0→4,
+        // overshooting 2. Walk stops at line_start (col 0).
+        let buf = Text::from("\t\n");
+        assert_eq!(char_pos_at_display_col(&buf, 0, 2, 4), 0);
     }
 }

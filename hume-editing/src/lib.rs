@@ -41,10 +41,14 @@ pub mod word;
 pub use changeset::{ChangeSet, ChangeSetBuilder, Operation};
 pub use error::{ApplyError, TransactionError, ValidationError};
 pub use grapheme::{
-    grapheme_col_in_line, grapheme_count, next_grapheme_boundary, prev_grapheme_boundary,
+    char_pos_at_display_col, display_col_in_line, grapheme_col_in_line, grapheme_count,
+    next_grapheme_boundary, prev_grapheme_boundary,
 };
 pub use history::{History, RevisionId};
-pub use lines::{is_line_start, line_content_end, line_end_exclusive, snap_to_grapheme_boundary};
+pub use lines::{
+    is_line_start, leading_whitespace, line_content_end, line_end_exclusive,
+    snap_to_grapheme_boundary,
+};
 pub use selection::{Selection, SelectionSet, is_selection_linewise};
 pub use text::{LineEnding, Text};
 pub use transaction::Transaction;

@@ -5,7 +5,10 @@ use super::super::registry::MappableCommand;
 use super::super::{Editor, Severity, doc_ops};
 use crate::auto_pairs::{delete_pair, insert_pair_close};
 use crate::ops::MotionMode;
-use crate::ops::edit::{delete_char_backward, delete_char_forward, insert_char};
+use crate::ops::edit::{
+    dedent_tab_backward, delete_char_backward, delete_char_forward, insert_char,
+    insert_newline_indent, insert_tab,
+};
 use crate::ops::motion::cmd_move_right;
 
 impl Editor {
@@ -131,14 +134,32 @@ impl Editor {
                 }
             }
 
+            // ── Tab ────────────────────────────────────────────────────────────
+            // Governed by the `tab-style` setting: Hard inserts a literal `\t`,
+            // Soft inserts spaces to the next tab stop (width from `tab-width`).
+            KeyCode::Tab => {
+                let style = self.doc().overrides.tab_style(&self.state.settings);
+                let tw = self.doc().overrides.tab_width(&self.state.settings);
+                doc_ops::apply_doc_edit_grouped(
+                    &mut self.state.buffers,
+                    &mut self.state.panes.state,
+                    focused,
+                    buf,
+                    move |b, s| insert_tab(b, s, style, tw),
+                );
+            }
+
             // ── Newline ───────────────────────────────────────────────────────
+            // Auto-indent: copy the current line's leading whitespace onto the
+            // new line. No smart indent (tree-sitter indent.scm is a separate
+            // roadmap milestone).
             KeyCode::Enter => {
                 doc_ops::apply_doc_edit_grouped(
                     &mut self.state.buffers,
                     &mut self.state.panes.state,
                     focused,
                     buf,
-                    |b, s| insert_char(b, s, '\n'),
+                    insert_newline_indent,
                 );
             }
 
@@ -146,7 +167,19 @@ impl Editor {
             KeyCode::Backspace => {
                 let (ap_enabled, ap_pairs) =
                     self.doc().overrides.auto_pairs_ref(&self.state.settings);
-                if ap_enabled && self.is_between_pair(ap_pairs) {
+                let tw = self.doc().overrides.tab_width(&self.state.settings);
+                if self.should_dedent_backspace() {
+                    // Dedent: snap every cursor in leading whitespace back to
+                    // the previous tab stop. All-or-nothing — if any cursor
+                    // isn't in leading ws, the whole batch falls back.
+                    doc_ops::apply_doc_edit_grouped(
+                        &mut self.state.buffers,
+                        &mut self.state.panes.state,
+                        focused,
+                        buf,
+                        move |b, s| dedent_tab_backward(b, s, tw),
+                    );
+                } else if ap_enabled && self.is_between_pair(ap_pairs) {
                     // NLL: `ap_pairs` last used in the condition above; borrow ends here.
                     doc_ops::apply_doc_edit_grouped(
                         &mut self.state.buffers,
@@ -180,6 +213,46 @@ impl Editor {
     }
 
     // ── Auto-pair helpers ─────────────────────────────────────────────────────
+
+    /// Returns `true` if every selection is a collapsed cursor sitting in a
+    /// line's leading whitespace (spaces/tabs), with at least one whitespace
+    /// char before it. All-or-nothing: if any selection doesn't qualify, the
+    /// whole batch falls back to plain Backspace so multi-cursor behaviour
+    /// stays consistent.
+    ///
+    /// "In leading whitespace" means every char in `[line_start, head)` is a
+    /// space or tab — so a cursor on the first content char (right after the
+    /// indent) also qualifies, matching the dedent-to-prev-tab-stop behaviour
+    /// of modern editors. Leading whitespace is ASCII; the byte scan over the
+    /// rope slice is safe and avoids a `leading_whitespace` allocation.
+    fn should_dedent_backspace(&self) -> bool {
+        let buf = self.doc().text();
+        self.current_selections().iter_sorted().all(|sel| {
+            if !sel.is_collapsed() {
+                return false;
+            }
+            let p = sel.head();
+            if p == 0 {
+                return false;
+            }
+            let line_idx = buf.char_to_line(p);
+            let line_start = buf.line_to_char(line_idx);
+            if p == line_start {
+                return false; // col 0 — nothing to dedent
+            }
+            // Every char in [line_start, p) must be a space or tab. Since each
+            // contributes ≥1 display column, this also implies col > 0.
+            let slice = buf.slice(line_start..p);
+            for chunk in slice.chunks() {
+                for b in chunk.bytes() {
+                    if b != b' ' && b != b'\t' {
+                        return false;
+                    }
+                }
+            }
+            true
+        })
+    }
 
     /// Returns `true` if every selection is a cursor AND the character at each
     /// cursor's `head` equals `ch`.

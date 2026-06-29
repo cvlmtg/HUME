@@ -329,6 +329,7 @@ mod select_all;
 mod shift_punctuation;
 mod surround;
 mod sync_dispatch;
+mod tabs;
 mod tutor;
 mod view_scroll;
 mod visual_move;
