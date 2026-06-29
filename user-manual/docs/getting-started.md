@@ -13,7 +13,7 @@ Or run `hume` with no arguments to open a scratch buffer. The current mode is sh
 ## The first minute
 
 1. **Launch:** `hume path/to/file.txt` (or just `hume` for a scratch buffer).
-2. **Learn the keys:** type `:tutor` and press `Enter` to open the interactive tutorial. The tutorial is an editable copy of the bundled `tutor.txt` — feel free to experiment in it. Re-running `:tutor` later in the same session switches back to your existing buffer, preserving any edits; after `:bd!` it opens a fresh copy.
+2. **Learn the keys:** type `:tutor` and press `Enter` to open the interactive tutorial. The tutorial is an editable copy of the bundled `tutor.rst` — feel free to experiment in it. Re-running `:tutor` later in the same session switches back to your existing buffer, preserving any edits; after `:bd!` it opens a fresh copy.
 3. **Quit:** `:q` quits the current buffer. `:q!` quits without saving. `:wq` saves and quits. `:qa` quits all buffers.
 4. **Where am I?** The mode label (`NOR`, `INS`, `EXT`, …) sits on the right of the status bar; the file path and cursor position sit on the left.
 

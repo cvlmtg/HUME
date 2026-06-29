@@ -182,7 +182,7 @@ HUME resolves its directories per OS:
 |------|---------------|---------|
 | Config dir (`init.scm`, user `themes/`) | `$XDG_CONFIG_HOME/hume/` (default `~/.config/hume/`) | `%APPDATA%\hume\` |
 | Data dir (plugin clones, tree-sitter grammars) | `$XDG_DATA_HOME/hume/` (default `~/.local/share/hume/`) | `%LOCALAPPDATA%\hume\` (fallback `%APPDATA%\hume\`) |
-| Runtime dir (bundled `runtime/`: `tutor.txt`, `themes/`, `init.scm.example`, core plugins) | `$HUME_RUNTIME` if set; else `../share/hume/` relative to the binary; else `./runtime` in dev | `$HUME_RUNTIME` if set; else the binary's directory |
+| Runtime dir (bundled `runtime/`: `tutor.rst`, `themes/`, `init.scm.example`, core plugins) | `$HUME_RUNTIME` if set; else `../share/hume/` relative to the binary; else `./runtime` in dev | `$HUME_RUNTIME` if set; else the binary's directory |
 
 Notable subpaths inside the data dir: `data/plugins/` (PLUM-managed plugin clones), `data/grammars/` and `data/grammars/sources/` (compiled and source tree-sitter grammars). Plugin sandboxed filesystem operations are restricted to `data/plugins/`, `data/grammars/`, and `runtime/plugins/` (read-only).
 

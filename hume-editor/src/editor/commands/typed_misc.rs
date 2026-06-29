@@ -263,15 +263,15 @@ pub fn typed_tutor(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<
             "runtime directory not found (set HUME_RUNTIME to override)",
         ));
     };
-    let source_path = runtime.join("tutor.txt");
+    let source_path = runtime.join("tutor.rst");
     let source = hume_platform::fs::canonicalize(&source_path).map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             CommandError::new(format!(
-                "tutor.txt not found at {} (set HUME_RUNTIME to override)",
+                "tutor.rst not found at {} (set HUME_RUNTIME to override)",
                 source_path.display()
             ))
         } else {
-            CommandError::new(format!("could not access tutor.txt: {e}"))
+            CommandError::new(format!("could not access tutor.rst: {e}"))
         }
     })?;
 
@@ -283,7 +283,7 @@ pub fn typed_tutor(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<
         .map_err(|e| CommandError::new(format!("could not create tutor tmp dir: {e}")))?;
     let canonical_tmp = hume_platform::fs::canonicalize(&tmp_dir)
         .map_err(|e| CommandError::new(format!("could not canonicalize tutor tmp dir: {e}")))?
-        .join("tutor.txt");
+        .join("tutor.rst");
 
     // If a buffer is already open at the tmp path, switch — no re-copy so that
     // unsaved in-memory edits are preserved.
@@ -295,7 +295,7 @@ pub fn typed_tutor(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<
     // No live buffer at tmp. Copy fresh source content (overwrites any stale
     // file from a prior `:bd!`), then open the copy.
     std::fs::copy(&source, &canonical_tmp)
-        .map_err(|e| CommandError::new(format!("could not copy tutor.txt to tmp: {e}")))?;
+        .map_err(|e| CommandError::new(format!("could not copy tutor.rst to tmp: {e}")))?;
     let (bid, _) = ed
         .open_or_dedup(&canonical_tmp)
         .map_err(|e| CommandError::new(format!("could not open tutor copy: {e}")))?;

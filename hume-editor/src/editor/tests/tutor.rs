@@ -8,10 +8,10 @@ use super::*;
 const MARKER: &str = "=== HUME Tutor Test ===";
 const STUB: &str = "=== HUME Tutor Test ===\nLesson 1\n";
 
-/// Write STUB into `dir/tutor.txt` and return the canonical path of that file.
+/// Write STUB into `dir/tutor.rst` and return the canonical path of that file.
 #[cfg(not(windows))]
 fn write_stub_tutor(dir: &std::path::Path) -> std::path::PathBuf {
-    let path = dir.join("tutor.txt");
+    let path = dir.join("tutor.rst");
     std::fs::write(&path, STUB).unwrap();
     std::fs::canonicalize(&path).unwrap()
 }
@@ -171,12 +171,12 @@ fn tutor_buffer_is_editable() {
     );
 }
 
-// ── missing tutor.txt produces a clear error ──────────────────────────────────
+// ── missing tutor.rst produces a clear error ──────────────────────────────────
 
 #[test]
 #[cfg(not(windows))]
 fn tutor_missing_file_returns_error() {
-    // Do NOT write tutor.txt — the runtime directory is empty.
+    // Do NOT write tutor.rst — the runtime directory is empty.
     let _guard = HumeRuntimeGuard::new();
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -190,13 +190,13 @@ fn tutor_missing_file_returns_error() {
     );
     let msg = result.unwrap_err().message().to_owned();
     assert!(
-        msg.contains("tutor.txt not found"),
-        "error message must mention 'tutor.txt not found', got: {msg:?}"
+        msg.contains("tutor.rst not found"),
+        "error message must mention 'tutor.rst not found', got: {msg:?}"
     );
     assert_eq!(
         ed.state.buffers.iter().count(),
         count_before,
-        "no new buffer must be created when tutor.txt is missing"
+        "no new buffer must be created when tutor.rst is missing"
     );
 }
 
@@ -206,7 +206,7 @@ fn tutor_missing_file_returns_error() {
 #[cfg(not(windows))]
 fn tutor_save_does_not_overwrite_source() {
     let guard = HumeRuntimeGuard::new();
-    let source_path = guard.runtime.path().join("tutor.txt");
+    let source_path = guard.runtime.path().join("tutor.rst");
     std::fs::write(&source_path, STUB).unwrap();
 
     let mut ed = editor_from("-[h]>ello\n");
