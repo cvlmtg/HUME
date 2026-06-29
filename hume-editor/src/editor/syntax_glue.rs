@@ -47,6 +47,15 @@ fn input_edits_from_changeset(cs: &ChangeSet, rope: &ropey::Rope) -> Vec<tree_si
             }
         }
     }
+
+    // All edits are computed in pre-edit coordinate space (the old rope).
+    // `tree.edit()` mutates coordinates in-place: applying a left edit first shifts
+    // every subsequent byte position, so a right edit specified in original coords
+    // would land at the wrong place.  Reversing to descending start order means the
+    // rightmost edit is applied first — its coordinates are never invalidated by
+    // anything to its left, and vice versa, so all edits remain valid in the
+    // pre-edit coordinate space at apply time.
+    edits.reverse();
     edits
 }
 
@@ -652,14 +661,17 @@ mod tests {
 
         let edits = input_edits_from_changeset(&cs, &rope);
         assert_eq!(edits.len(), 2);
+        // Edits are returned in DESCENDING start-byte order so callers that apply
+        // them via `tree.edit()` (which mutates coordinates in-place) apply the
+        // rightmost edit first — keeping all original-coordinate offsets valid.
         assert!(
-            edits[0].start_byte < edits[1].start_byte,
-            "edits must be in order"
+            edits[0].start_byte > edits[1].start_byte,
+            "edits must be in descending start-byte order for correct tree.edit() baking"
         );
-        assert_eq!(edits[0].start_byte, 0);
-        assert_eq!(edits[0].old_end_byte, 1);
-        assert_eq!(edits[1].start_byte, 2);
-        assert_eq!(edits[1].old_end_byte, 3);
+        assert_eq!(edits[0].start_byte, 2);
+        assert_eq!(edits[0].old_end_byte, 3);
+        assert_eq!(edits[1].start_byte, 0);
+        assert_eq!(edits[1].old_end_byte, 1);
     }
 
     #[test]
@@ -702,5 +714,85 @@ mod tests {
         let (row, col) = new_end_point(0, 0, "foo\n");
         assert_eq!(row, 1);
         assert_eq!(col, 0);
+    }
+
+    /// Regression: a single changeset with edits at two non-adjacent positions must
+    /// produce an incremental parse tree identical to a full reparse of the same bytes.
+    ///
+    /// The fix: `input_edits_from_changeset` returns edits in DESCENDING start-byte
+    /// order.  `tree.edit()` mutates coordinates in-place, so the rightmost edit must
+    /// be applied first — its original-coordinate bytes stay valid because nothing to
+    /// its left has been touched yet.  Before the fix (ascending order), a left edit's
+    /// byte-delta corrupted the right edit's coordinates, misaligning nodes and causing
+    /// highlight queries to return wrong results after multi-cursor edits.
+    ///
+    /// Uses the JSON grammar from `tests/fixtures/grammars/` (requires
+    /// `scripts/fetch-test-grammars.sh`).
+    #[test]
+    fn multi_edit_changeset_incremental_tree_matches_full_reparse() {
+        use hume_engine::grammar::LoadedGrammar;
+
+        let parser_path = crate::editor::tests::grammar_parser_path("json");
+        if !parser_path.exists() {
+            // Grammar fixture not fetched — skip rather than fail CI unexpectedly.
+            return;
+        }
+
+        let grammar = LoadedGrammar::open(&parser_path, "tree_sitter_json")
+            .expect("load json grammar");
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(grammar.language()).expect("set language");
+
+        // Old text: JSON array.  Two edits: replace "abc" (chars 2-4) with "X" and
+        // replace "def" (chars 8-10) with "YY".  Different byte deltas at each site
+        // so the left edit's shift would corrupt the right edit's coordinates if
+        // applied in the wrong order.
+        //
+        // Chars: [ " a b c " , " d e f " ]  \n
+        //         0  1 2 3 4 5 6  7 8 9 10 11 12 13
+        let old_text = "[\"abc\",\"def\"]\n";
+        let rope = ropey::Rope::from_str(old_text);
+
+        let old_bytes: Vec<u8> = old_text.bytes().collect();
+        let old_tree = parser.parse(&old_bytes, None).expect("initial parse");
+
+        // Changeset: retain 2, delete 3 + insert "X", retain 3, delete 3 + insert "YY", retain rest.
+        // Edit 1: chars [2,5) → "X"   (byte delta: 1 - 3 = -2)
+        // Edit 2: chars [8,11) → "YY" (byte delta: 2 - 3 = -1)
+        let mut b = ChangeSetBuilder::new(rope.len_chars());
+        b.retain(2);
+        b.delete(3);
+        b.insert("X");
+        b.retain(3);
+        b.delete(3);
+        b.insert("YY");
+        b.retain_rest();
+        let cs = b.finish();
+
+        // Verify edits come out in descending order (right before left).
+        let edits = input_edits_from_changeset(&cs, &rope);
+        assert_eq!(edits.len(), 2, "expected two edits from the changeset");
+        assert!(
+            edits[0].start_byte > edits[1].start_byte,
+            "edits must be descending: right edit first, then left"
+        );
+
+        // Apply edits and do an incremental reparse.
+        let mut baked_tree = old_tree;
+        for edit in &edits {
+            baked_tree.edit(edit);
+        }
+        let new_text = "[\"X\",\"YY\"]\n";
+        let new_bytes: Vec<u8> = new_text.bytes().collect();
+        let incremental_tree = parser
+            .parse(&new_bytes, Some(&baked_tree))
+            .expect("incremental parse");
+        let full_tree = parser.parse(&new_bytes, None).expect("full parse");
+
+        assert_eq!(
+            incremental_tree.root_node().to_sexp(),
+            full_tree.root_node().to_sexp(),
+            "incremental tree from multi-edit changeset must match full parse"
+        );
     }
 }
