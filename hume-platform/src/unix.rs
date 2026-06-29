@@ -34,23 +34,25 @@ impl super::ProbeChannel for TtyChannel {
     }
 
     fn wait_until(&mut self, deadline: Instant) -> io::Result<bool> {
-        let remaining_ms = deadline
-            .checked_duration_since(Instant::now())
-            .map(|d| d.as_millis() as u32)
-            .unwrap_or(0);
-        if remaining_ms == 0 {
-            return Ok(false);
-        }
         let mut pfds = [PollFd::new(self.file.as_fd(), PollFlags::POLLIN)];
-        // `poll` returns ready count (>0), 0 on timeout, or Errno. EINTR is
-        // transient — collapse it to "not ready" and let the shared loop
-        // retry until the overall deadline expires. Any other errno (EBADF,
+        // Retry on EINTR (SIGWINCH/SIGCONT are common at startup) with the
+        // budget recomputed each pass, so `Ok(false)` always means a genuine
+        // deadline timeout — never a transient signal. Any other errno (EBADF,
         // EINVAL, …) is a permanent channel failure and propagates.
-        // `PollTimeout` takes `u16`; the probe budget fits comfortably.
-        match poll(&mut pfds, PollTimeout::from(remaining_ms as u16)) {
-            Ok(ready) => Ok(ready > 0),
-            Err(nix::errno::Errno::EINTR) => Ok(false),
-            Err(e) => Err(io::Error::from(e)),
+        // `PollTimeout` takes `u16`; the 500 ms probe budget fits comfortably.
+        loop {
+            let remaining_ms = deadline
+                .checked_duration_since(Instant::now())
+                .map(|d| d.as_millis() as u32)
+                .unwrap_or(0);
+            if remaining_ms == 0 {
+                return Ok(false);
+            }
+            match poll(&mut pfds, PollTimeout::from(remaining_ms as u16)) {
+                Ok(ready) => return Ok(ready > 0),
+                Err(nix::errno::Errno::EINTR) => continue,
+                Err(e) => return Err(io::Error::from(e)),
+            }
         }
     }
 }
