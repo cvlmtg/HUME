@@ -1,1 +1,1 @@
-<c-x><c-x>s, <ret>c,<ret><esc>%s:\w<ret>&<c-,><c-,><c-,>&
+QQxs, <ret>c,<ret><esc>x<c-X>s:<ret>&Qjqq
