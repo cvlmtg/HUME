@@ -195,6 +195,14 @@ pub fn grapheme_col_in_line(buf: &Text, line_idx: usize, char_pos: usize) -> usi
 /// rare and any error there is bounded. A `'\t'` advances the column to the
 /// next multiple of `tab_width`.
 ///
+/// The tab-stop arithmetic here is intentionally duplicated with the
+/// renderer's `hume_engine::format::grapheme_display`. `hume-engine` does not
+/// depend on `hume-editing` (the engine doesn't know about the text model), so
+/// the primitive lives in each crate. The two also diverge on purpose: the
+/// renderer uses `unicode-width` so wide CJK chars take 2 columns for
+/// display, while this helper counts every non-tab grapheme as 1 — see the
+/// comment in `grapheme_display` for the rationale.
+///
 /// Used by `insert_tab` (Soft style: insert spaces to the next tab stop) and
 /// by dedent-on-Backspace (compute the previous tab stop).
 pub fn display_col_in_line(buf: &Text, line_idx: usize, char_pos: usize, tab_width: u8) -> usize {

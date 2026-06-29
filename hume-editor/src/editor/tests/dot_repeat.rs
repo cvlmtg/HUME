@@ -58,6 +58,32 @@ fn dot_repeats_insert_before() {
 /// `r` + char replaces every character in the selection. `.` should replay with
 /// the same replacement character.
 #[test]
+fn dot_repeat_replays_dedent() {
+    // Insert session containing a dedent-on-Backspace must be replayable as a
+    // unit: `.` re-enters insert at the new cursor and replays the Backspace,
+    // which dedents the second indented line just like the first.
+    //
+    // 2-space indent + tw=4: Backspace at col 2 snaps to col 0 (deletes both
+    // spaces). After the first dedent the cursor sits at col 0 of line 0; `j`
+    // would land on col 0 of line 1 (where dedent doesn't apply), so step right
+    // onto the content first — `.` then enters insert there and dedents.
+    let mut ed = editor_from("  -[x]>\n  y\n");
+
+    ed.feed_key(key('i')); // insert at 'x'
+    ed.feed_key(key_backspace()); // dedent line 0 → "x\n  y\n", cursor on 'x'
+    ed.feed_key(key_esc()); // back to Normal
+
+    assert_eq!(ed.doc().text().to_string(), "x\n  y\n");
+
+    ed.feed_key(key('j')); // down to col 0 of line 1 (first space)
+    ed.feed_key(key('l')); // onto the second space
+    ed.feed_key(key('l')); // onto 'y' (col 2, inside leading-ws end)
+    ed.feed_key(key('.')); // replay insert-session: insert + Backspace dedents
+
+    assert_eq!(ed.doc().text().to_string(), "x\ny\n");
+}
+
+#[test]
 fn dot_repeats_replace() {
     // Use a space between words so `w` can navigate to the second word.
     let mut ed = editor_from("-[ab]> cd\n");

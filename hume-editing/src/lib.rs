@@ -46,8 +46,8 @@ pub use grapheme::{
 };
 pub use history::{History, RevisionId};
 pub use lines::{
-    is_line_start, leading_whitespace, line_content_end, line_end_exclusive,
-    snap_to_grapheme_boundary,
+    is_line_start, leading_whitespace, leading_whitespace_end, line_content_end,
+    line_end_exclusive, snap_to_grapheme_boundary,
 };
 pub use selection::{Selection, SelectionSet, is_selection_linewise};
 pub use text::{LineEnding, Text};

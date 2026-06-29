@@ -401,9 +401,12 @@ pub(crate) fn insert_char(
 /// separate roadmap milestone. The copied indent is the *full* leading
 /// whitespace of the source line, computed on the pre-edit buffer.
 ///
-/// Cursor lands on the first character after the inserted indent on the new
-/// line — i.e. the original character at `start` (now shifted onto the new
-/// line), matching `insert_char`'s "cursor stays on the original char" rule.
+/// Cursor placement matches `insert_char`'s "stay on the original char" rule:
+/// - **Collapsed cursor**: lands on the first char after the inserted indent on
+///   the new line — i.e. the original char at `start`, now shifted down.
+/// - **Non-collapsed selection**: the selection is deleted first, so there is
+///   no "original char at `start`" to land on; the cursor ends up on the
+///   structural `\n` that the newline insert leaves at the original position.
 pub(crate) fn insert_newline_indent(
     buf: Text,
     sels: SelectionSet,
@@ -556,11 +559,9 @@ pub(crate) fn dedent_tab_backward(
         let line_idx = buf.char_to_line(p);
         let col = display_col_in_line(buf, line_idx, p, tab_width);
         let tw = tab_width.max(1) as usize;
-        let prev_stop = if col.is_multiple_of(tw) {
-            col.saturating_sub(tw)
-        } else {
-            (col / tw) * tw
-        };
+        // Previous tab stop: floor (col-1)/tw * tw handles col 0 (saturates to 0),
+        // exact tab stops (jumps back a full tw), and mid-stop cols (rounds down).
+        let prev_stop = (col.saturating_sub(1) / tw) * tw;
         let target = char_pos_at_display_col(buf, line_idx, prev_stop, tab_width);
         if target < b.old_pos() || target >= p {
             // Overlap with a prior selection's delete, or nothing to delete —

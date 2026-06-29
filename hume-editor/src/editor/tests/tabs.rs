@@ -209,3 +209,14 @@ fn backspace_dedent_all_or_nothing() {
     // Cursor 1 (on 'c', col 2): plain backspace deletes 'b' before it → "ac".
     assert_eq!(state(&ed), " -[x]>\na-[c]>\n");
 }
+
+#[test]
+fn backspace_dedent_mid_indent_with_content() {
+    // "  x\n" with the cursor on the second space (col 1): the cursor sits in
+    // leading whitespace, content after it is irrelevant. Backspace snaps to
+    // the previous tab stop (col 0), deleting one space.
+    let mut ed = editor_from(" -[ ]>x\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key_backspace());
+    assert_eq!(state(&ed), "-[ ]>x\n");
+}

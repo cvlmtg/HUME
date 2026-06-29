@@ -438,6 +438,16 @@ fn grapheme_display(
     line_is_blank: bool,
 ) -> (u8, CellContent) {
     // Tab: expand to next tab stop.
+    //
+    // This is the renderer's tab-stop arithmetic. It is intentionally
+    // duplicated with `hume_editing::grapheme::display_col_in_line` (which
+    // serves the editing ops) rather than shared: `hume-engine` deliberately
+    // does not depend on `hume-editing` (engine has no knowledge of the text
+    // model), and the two diverge on purpose — here non-tab graphemes use
+    // `unicode-width` so wide CJK chars take 2 columns for rendering, while the
+    // editing helper counts every non-tab grapheme as 1 (so CJK-plus-tab
+    // mixtures may misalign a tab stop there; bounded and rare). See the doc on
+    // `display_col_in_line` for the divergence rationale.
     if grapheme_str == "\t" {
         let tab_width = tab_width.max(1) as u16;
         let next_stop = (current_col / tab_width + 1) * tab_width;

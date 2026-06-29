@@ -1,4 +1,5 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use hume_editing::lines::leading_whitespace_end;
 
 use super::super::keymap::WalkResult;
 use super::super::registry::MappableCommand;
@@ -223,8 +224,9 @@ impl Editor {
     /// "In leading whitespace" means every char in `[line_start, head)` is a
     /// space or tab — so a cursor on the first content char (right after the
     /// indent) also qualifies, matching the dedent-to-prev-tab-stop behaviour
-    /// of modern editors. Leading whitespace is ASCII; the byte scan over the
-    /// rope slice is safe and avoids a `leading_whitespace` allocation.
+    /// of modern editors. The boundary itself comes from the shared
+    /// [`leading_whitespace_end`] primitive, so this gate and
+    /// [`hume_editing::lines::leading_whitespace`] agree on what counts.
     fn should_dedent_backspace(&self) -> bool {
         let buf = self.doc().text();
         self.current_selections().iter_sorted().all(|sel| {
@@ -232,25 +234,13 @@ impl Editor {
                 return false;
             }
             let p = sel.head();
-            if p == 0 {
-                return false;
-            }
             let line_idx = buf.char_to_line(p);
             let line_start = buf.line_to_char(line_idx);
-            if p == line_start {
-                return false; // col 0 — nothing to dedent
-            }
-            // Every char in [line_start, p) must be a space or tab. Since each
-            // contributes ≥1 display column, this also implies col > 0.
-            let slice = buf.slice(line_start..p);
-            for chunk in slice.chunks() {
-                for b in chunk.bytes() {
-                    if b != b' ' && b != b'\t' {
-                        return false;
-                    }
-                }
-            }
-            true
+            // `p > line_start` rules out col 0 (nothing to dedent). `p <=
+            // leading_whitespace_end` keeps the all-or-nothing "in leading ws"
+            // rule from the byte-scan version: at exactly the end the cursor
+            // sits on the first content char and still qualifies.
+            p > line_start && p <= leading_whitespace_end(buf, line_idx)
         })
     }
 

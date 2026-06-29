@@ -224,6 +224,22 @@ fn insert_tab_soft_two_cursors() {
     );
 }
 
+#[test]
+fn insert_tab_soft_tab_width_1() {
+    // Minimum tab width: every column is a stop, so exactly one space is
+    // inserted regardless of the cursor's column.
+    assert_state!(
+        "-[h]>i\n",
+        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 1),
+        " -[h]>i\n"
+    );
+    assert_state!(
+        "he-[l]>lo\n",
+        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 1),
+        "he -[l]>lo\n"
+    );
+}
+
 // ── dedent_tab_backward ───────────────────────────────────────────────────
 
 #[test]
@@ -332,6 +348,19 @@ fn dedent_two_cursors_same_line_independent() {
         "  -[ ]>  -[\n]>",
         |(buf, sels)| dedent_tab_backward(buf, sels, 4),
         "-[ ]> -[\n]>"
+    );
+}
+
+#[test]
+fn dedent_mid_indent_with_content() {
+    // "  x\n": 2-space indent then 'x'. Cursor on the second space (col 1),
+    // inside leading ws with content after. tw=4 → prev_stop 0, delete 1 space.
+    // Pins that content after the cursor doesn't disqualify a mid-indent
+    // cursor from dedenting (only chars *before* the cursor matter).
+    assert_state!(
+        " -[ ]>x\n",
+        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        "-[ ]>x\n"
     );
 }
 
@@ -1191,6 +1220,34 @@ fn newline_indent_two_cursors_different_indents() {
         "  -[a]>\n\t-[b]>\n",
         |(buf, sels)| insert_newline_indent(buf, sels),
         "  \n  -[a]>\n\t\n\t-[b]>\n"
+    );
+}
+
+#[test]
+fn newline_indent_cursor_on_structural_newline() {
+    // Cursor on the structural '\n' of an indented line ("  x\n"): the '\n'
+    // is retained, a new line is opened after it with the line's indent
+    // copied across, and the cursor lands on the new line's '\n'. Mirrors
+    // `insert_char` behaviour for a cursor on the structural newline.
+    assert_state!(
+        "  x-[\n]>",
+        |(buf, sels)| insert_newline_indent(buf, sels),
+        "  x\n  -[\n]>"
+    );
+}
+
+#[test]
+fn newline_indent_replaces_multi_line_selection() {
+    // Selection spans "ab\n\txy" in "\tab\n\txy\n": the whole span is deleted,
+    // then a '\n' + the source line's indent ("\t") is inserted at the
+    // selection's start. With the retained leading '\t' and the trailing
+    // structural '\n', the buffer collapses to "\t\n\t\n" and the cursor ends
+    // on that final '\n' — the same "land on the structural '\n'" rule as the
+    // single-line selection case.
+    assert_state!(
+        "\t-[ab\n\txy]>\n",
+        |(buf, sels)| insert_newline_indent(buf, sels),
+        "\t\n\t-[\n]>"
     );
 }
 
