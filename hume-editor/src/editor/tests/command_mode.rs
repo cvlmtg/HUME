@@ -951,6 +951,11 @@ fn cursor_is_at_end_after_recall() {
 // ── Bug fixes: parser and empty Enter ────────────────────────────────────────
 
 /// `:b#` (no space) must switch to the alternate buffer via the minibuf path.
+/// The alternate must be reachable even when it has no file name — the
+/// `[buffers]` view opened by `:ls` is the canonical pathless case (bug:
+/// `:b#` used to error with "Alternate buffer has no file name" because the
+/// arg was expanded to the alternate's path before `:b` saw it). Also covers
+/// the `:buffer#` full-alias form.
 #[test]
 #[cfg(not(windows))]
 fn colon_b_hash_switches_to_alternate() {
@@ -958,24 +963,46 @@ fn colon_b_hash_switches_to_alternate() {
     std::fs::write(f1.path(), "file1\n").unwrap();
     let c1 = std::fs::canonicalize(f1.path()).unwrap();
 
-    let f2 = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(f2.path(), "file2\n").unwrap();
-    let c2 = std::fs::canonicalize(f2.path()).unwrap();
-
     let mut ed = editor_from("-[h]>ello\n");
-    // Open both files. After this: current=f2, alternate=f1.
+    // focused=scratch, alternate=None
     ed.execute_typed("e", Some(c1.to_str().unwrap())).unwrap();
-    ed.execute_typed("e", Some(c2.to_str().unwrap())).unwrap();
-    assert_eq!(ed.doc().path(), Some(c2.as_path()), "should be on f2");
+    // focused=f1, alternate=scratch
+    assert_eq!(ed.doc().path(), Some(c1.as_path()));
 
-    // `:b#` through the key handler (minibuf path) must switch to the
-    // alternate (f1) without a space before `#`.
+    // :ls opens the pathless [buffers] view buffer; alternate is now f1.
+    submit(&mut ed, "ls");
+    assert_eq!(ed.doc().display_name(), "[buffers]");
+    assert_eq!(
+        ed.alternate_buffer()
+            .and_then(|id| ed.state.buffers.get(id).path()),
+        Some(c1.as_path()),
+    );
+
+    // :b# returns to f1 (alternate has a path — this already worked).
     submit(&mut ed, "b#");
+    assert_eq!(ed.doc().path(), Some(c1.as_path()));
+    // The alternate is now the pathless [buffers] view — the bug case.
+    assert_eq!(
+        ed.alternate_buffer()
+            .map(|id| ed.state.buffers.get(id).display_name().to_string()),
+        Some("[buffers]".to_string()),
+    );
+
+    // :b# again must switch to the pathless alternate, not error with
+    // "Alternate buffer has no file name".
+    submit(&mut ed, "b#");
+    assert_eq!(
+        ed.doc().display_name(),
+        "[buffers]",
+        ":b# must switch to the pathless alternate buffer",
+    );
+
+    // Ping-pong back to f1 via the full `:buffer#` alias — same path, must work.
+    submit(&mut ed, "buffer#");
     assert_eq!(
         ed.doc().path(),
         Some(c1.as_path()),
-        ":b# must switch to alternate (f1), but got {:?}",
-        ed.doc().path()
+        ":buffer# must switch to the alternate buffer too",
     );
 }
 

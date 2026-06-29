@@ -195,6 +195,15 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
             .unwrap_or_else(|| Buffer::SCRATCH_BUFFER_NAME.to_owned())
     };
 
+    // 0. `#` — the alternate buffer (Vim's `<C-^>` equivalent). Resolved by
+    //    ID, not by path, so pathless buffers (scratch, [messages], the
+    //    [buffers] view from :ls) remain reachable as the alternate.
+    if arg == "#" {
+        return ed
+            .alternate_buffer()
+            .ok_or_else(|| CommandError::new("no alternate buffer"));
+    }
+
     // 1. Numeric 1-based index.
     if let Ok(n) = arg.parse::<usize>() {
         let idx = n

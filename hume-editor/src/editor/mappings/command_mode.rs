@@ -252,15 +252,21 @@ impl Editor {
         let (cmd, force, arg) = parse_typed_command(&input);
 
         // Expand `%`/`#` tokens in the arg. Gate on the fast-path check so the
-        // common case (no expansion) stays allocation-free.
+        // common case (no expansion) stays allocation-free. Skip expansion for
+        // `:b`/`:buffer`: their `#` is the alternate-buffer specifier itself,
+        // not a filename token — expanding it to a path loses pathless
+        // alternates (scratch, [messages], the [buffers] view from :ls).
+        let needs_expansion = !matches!(cmd, "b" | "buffer");
         let expanded: Option<String> = match arg {
-            Some(a) if a.contains('%') || a.contains('#') => match expand_command_arg(self, a) {
-                Ok(s) => Some(s),
-                Err(e) => {
-                    self.report(Severity::Error, e.message().to_owned());
-                    return;
+            Some(a) if needs_expansion && (a.contains('%') || a.contains('#')) => {
+                match expand_command_arg(self, a) {
+                    Ok(s) => Some(s),
+                    Err(e) => {
+                        self.report(Severity::Error, e.message().to_owned());
+                        return;
+                    }
                 }
-            },
+            }
             Some(a) => Some(a.to_owned()),
             None => None,
         };
