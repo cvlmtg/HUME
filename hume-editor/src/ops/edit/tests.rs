@@ -321,6 +321,20 @@ fn dedent_at_col_one_deletes_one_space() {
     );
 }
 
+#[test]
+fn dedent_two_cursors_same_line_independent() {
+    // Two cursors on the same line "     \n" (5 spaces):
+    // cursor 0 at col 2 → prev_stop 0, deletes 2 chars.
+    // cursor 1 at col 5 → prev_stop 4, deletes 1 char.
+    // Each cursor acts independently; no overlap (target 4 > old_pos 2 after
+    // cursor 0's delete). Result: 2 spaces remain, then \n.
+    assert_state!(
+        "  -[ ]>  -[\n]>",
+        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        "-[ ]> -[\n]>"
+    );
+}
+
 // ── delete_char_forward ───────────────────────────────────────────────────
 
 #[test]

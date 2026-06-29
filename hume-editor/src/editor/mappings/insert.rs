@@ -167,8 +167,8 @@ impl Editor {
             KeyCode::Backspace => {
                 let (ap_enabled, ap_pairs) =
                     self.doc().overrides.auto_pairs_ref(&self.state.settings);
-                let tw = self.doc().overrides.tab_width(&self.state.settings);
                 if self.should_dedent_backspace() {
+                    let tw = self.doc().overrides.tab_width(&self.state.settings);
                     // Dedent: snap every cursor in leading whitespace back to
                     // the previous tab stop. All-or-nothing — if any cursor
                     // isn't in leading ws, the whole batch falls back.

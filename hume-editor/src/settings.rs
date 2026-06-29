@@ -66,8 +66,8 @@ impl FromStr for TabStyle {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_ascii_lowercase().as_str() {
-            "hard" | "tab" | "true" => Ok(Self::Hard),
-            "soft" | "spaces" | "false" => Ok(Self::Soft),
+            "hard" => Ok(Self::Hard),
+            "soft" => Ok(Self::Soft),
             _ => Err(format!(
                 "invalid tab-style: expected 'hard' or 'soft', got '{s}'"
             )),
@@ -533,9 +533,9 @@ mod tests {
     #[test]
     fn tab_style_parses_hard_soft_case_insensitive() {
         assert_eq!("hard".parse::<TabStyle>().unwrap(), TabStyle::Hard);
+        assert_eq!("HARD".parse::<TabStyle>().unwrap(), TabStyle::Hard);
+        assert_eq!("soft".parse::<TabStyle>().unwrap(), TabStyle::Soft);
         assert_eq!("SOFT".parse::<TabStyle>().unwrap(), TabStyle::Soft);
-        assert_eq!("spaces".parse::<TabStyle>().unwrap(), TabStyle::Soft);
-        assert_eq!("tab".parse::<TabStyle>().unwrap(), TabStyle::Hard);
     }
 
     #[test]

@@ -426,8 +426,8 @@ pub(crate) fn insert_newline_indent(
 
 /// Insert a tab at every selection, governed by `style` and `tab_width`.
 ///
-/// - **`TabStyle::Hard`**: inserts one literal `\t` per selection (same
-///   mechanical effect as `insert_char(.., '\t')`).
+/// - **`TabStyle::Hard`**: delegates to `insert_char(.., '\t')` — same as
+///   typing any other character.
 /// - **`TabStyle::Soft`**: inserts enough spaces to reach the next tab stop.
 ///   The display column of the cursor is computed with tab expansion (see
 ///   [`hume_editing::grapheme::display_col_in_line`]); `spaces = tab_width -
@@ -442,24 +442,20 @@ pub(crate) fn insert_tab(
     style: TabStyle,
     tab_width: u8,
 ) -> (Text, SelectionSet, ChangeSet) {
+    if style == TabStyle::Hard {
+        return insert_char(buf, sels, '\t');
+    }
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         let start = sel.start();
         b.retain(start - b.old_pos());
         if !sel.is_collapsed() {
             b.delete(sel.content_end(buf) + 1 - start);
         }
-        match style {
-            TabStyle::Hard => {
-                b.insert_char('\t');
-            }
-            TabStyle::Soft => {
-                let line_idx = buf.char_to_line(start);
-                let col = display_col_in_line(buf, line_idx, start, tab_width);
-                let tw = tab_width.max(1) as usize;
-                let n = tw - (col % tw);
-                b.insert(&" ".repeat(n));
-            }
-        }
+        let line_idx = buf.char_to_line(start);
+        let col = display_col_in_line(buf, line_idx, start, tab_width);
+        let tw = tab_width.max(1) as usize;
+        let n = tw - (col % tw);
+        b.insert(&" ".repeat(n));
         new_sels.push(Selection::collapsed(b.new_pos()));
     })
 }
@@ -552,19 +548,11 @@ pub(crate) fn dedent_tab_backward(
     tab_width: u8,
 ) -> (Text, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
-        // Caller guarantees collapsed + in-leading-ws, but guard defensively:
-        // any selection that doesn't qualify becomes a no-op cursor.
-        if !sel.is_collapsed() {
-            let p = sel.start();
-            b.retain(p - b.old_pos());
-            new_sels.push(Selection::collapsed(b.new_pos()));
-            return;
-        }
+        // Caller (`should_dedent_backspace`) guarantees: collapsed and sitting
+        // in leading whitespace with p > line_start. Assert the invariant so
+        // any future caller mismatch fails loudly in debug builds.
+        debug_assert!(sel.is_collapsed(), "dedent_tab_backward called on non-collapsed selection");
         let p = sel.head();
-        if p == 0 {
-            new_sels.push(Selection::collapsed(b.new_pos()));
-            return;
-        }
         let line_idx = buf.char_to_line(p);
         let col = display_col_in_line(buf, line_idx, p, tab_width);
         let tw = tab_width.max(1) as usize;
