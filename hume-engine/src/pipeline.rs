@@ -26,28 +26,23 @@ new_key_type! {
 
 /// State shared across all panes that view the same file.
 ///
-/// The rope is intentionally absent — it lives in the editor's `Document` and
-/// is passed to `EngineView::render()` via the `get_rope` closure at render
-/// time. Keeping it here would require a per-frame clone to stay in sync.
+/// The rope and the syntax highlighter are intentionally absent — they live in
+/// the editor's `Document` / `BufferSyntax` respectively, and are injected into
+/// `EngineView::render()` via the `get_rope` / `get_syntax` closures at render
+/// time. Keeping them here would couple the engine to editor-domain types and
+/// require per-frame clones to stay in sync.
 pub struct SharedBuffer {
     /// Incremental tree-sitter parse tree, rebuilt on each edit.
-    pub tree: Option<tree_sitter::Tree>,
-    /// Tree-sitter highlight provider for this buffer's language, if configured.
     ///
-    /// Stored here (not per-pane) because highlights are a pure function of
-    /// the buffer content, not the viewport. All panes sharing this buffer share
-    /// the same highlighter. The tree is owned by `SharedBuffer` and passed at
-    /// query time via `SourceContext`; byte text is fed from the live rope via
-    /// `RopeProvider` inside the highlighter itself.
-    pub syntax: Option<Arc<TreeSitterHighlighter>>,
+    /// Written by the parse worker (`install_parse_done`) and baked each frame
+    /// by `bake_pending_edits`. `None` until the first parse result arrives.
+    /// The renderer tolerates `None` — it just renders without highlights.
+    pub tree: Option<tree_sitter::Tree>,
 }
 
 impl SharedBuffer {
     pub fn new() -> Self {
-        Self {
-            tree: None,
-            syntax: None,
-        }
+        Self { tree: None }
     }
 }
 
@@ -262,11 +257,12 @@ impl EngineView {
     ///
     /// Layout: the tab bar (if present) occupies the top row, the statusline
     /// (if present) occupies the bottom row. Panes fill the remaining area.
-    pub fn render<'rope>(
+    pub fn render<'rope, 'syn>(
         &self,
         area: ratatui::layout::Rect,
         buf: &mut ratatui::buffer::Buffer,
         get_rope: impl Fn(BufferId) -> Option<&'rope ropey::Rope>,
+        get_syntax: impl Fn(BufferId) -> Option<&'syn Arc<TreeSitterHighlighter>>,
         get_pane_settings: impl Fn(PaneId) -> PaneRenderSettings,
         statusline: Option<&dyn StatuslineProvider>,
         ctx: &mut RenderContext,
@@ -334,7 +330,7 @@ impl EngineView {
                 pane,
                 rope,
                 tree: buffer.tree.as_ref(),
-                syntax: buffer.syntax.as_ref(),
+                syntax: get_syntax(pane.buffer_id),
                 theme: &self.theme,
                 rect,
                 settings: get_pane_settings(pane_id),

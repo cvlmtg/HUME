@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use globset::{GlobSet, GlobSetBuilder};
 
+use hume_engine::builtins::tree_sitter_hl::TreeSitterHighlighter;
 use hume_engine::grammar::LoadedGrammar;
 use hume_engine::theme::ScopeRegistry;
 
@@ -39,10 +40,23 @@ pub(crate) struct LanguageConfig {
 /// The `tree_sitter::Parser` lives on the parse worker thread.  This struct
 /// tracks the grammar identity (for keepalive and grammar-swap detection via
 /// `Arc::ptr_eq`) and the most recently installed tree generation.
+///
+/// The highlighter lives here (not in `SharedBuffer`) so there is a single
+/// `Option<BufferSyntax>` attachment flag: `Some` means syntax is wired up,
+/// `None` means it is not.  Moving it to the engine side would require the
+/// engine crate to depend on editor-domain types (`LanguageConfig`), which
+/// would invert the crate layering.  The renderer receives the highlighter via
+/// the `get_syntax` closure injected into `EngineView::render`, parallel to
+/// `get_rope`.
 pub(crate) struct BufferSyntax {
     /// Keepalive: holds the Arc so the dlopen'd grammar is not unloaded while
     /// this buffer is syntax-attached.
     pub(crate) lang: Arc<LanguageConfig>,
+    /// Compiled highlight query + capture-name mapping for this buffer's language.
+    ///
+    /// Shared across all panes viewing this buffer (highlights are a pure
+    /// function of content, not of the viewport).
+    pub(crate) highlighter: Arc<TreeSitterHighlighter>,
     /// `text_gen` of the most recently installed tree.  When this equals
     /// `Buffer.text_gen`, the installed tree is up to date.
     pub(crate) parsed_gen: u64,
@@ -64,9 +78,10 @@ pub(crate) struct BufferSyntax {
 }
 
 impl BufferSyntax {
-    pub(crate) fn new(lang: Arc<LanguageConfig>) -> Self {
+    pub(crate) fn new(lang: Arc<LanguageConfig>, highlighter: Arc<TreeSitterHighlighter>) -> Self {
         Self {
             lang,
+            highlighter,
             parsed_gen: 0,
             tree_gen: 0,
             pending_edits: Vec::new(),

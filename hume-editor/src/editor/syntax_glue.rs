@@ -134,11 +134,7 @@ impl Editor {
     /// the buffer exceeds `syntax-highlight-max-bytes`.
     pub(super) fn setup_buffer_syntax(&mut self, bid: BufferId) {
         // Clear existing syntax state unconditionally.
-        {
-            let sbuf = &mut self.view.buffers[bid];
-            sbuf.syntax = None;
-            sbuf.tree = None;
-        }
+        self.view.buffers[bid].tree = None;
         self.state.buffers.get_mut(bid).syntax = None;
         // Must clear before posting the fresh request: is_in_flight() matches on
         // text_gen alone, so a stale entry (different Arc<LanguageConfig> after a
@@ -176,13 +172,12 @@ impl Editor {
 
         let text_gen = self.state.buffers.get(bid).text_gen;
 
-        // Write engine state: tree stays None until the backend responds.
-        {
-            let sbuf = &mut self.view.buffers[bid];
-            sbuf.tree = None;
-            sbuf.syntax = Some(Arc::new(highlighter));
-        }
-        self.state.buffers.get_mut(bid).syntax = Some(BufferSyntax::new(Arc::clone(&lang_config)));
+        // Store the highlighter in BufferSyntax (state side). The engine tree
+        // stays None until the backend responds; the renderer receives the
+        // highlighter via the get_syntax closure injected into EngineView::render.
+        self.view.buffers[bid].tree = None;
+        self.state.buffers.get_mut(bid).syntax =
+            Some(BufferSyntax::new(Arc::clone(&lang_config), Arc::new(highlighter)));
 
         // Empty buffers need no parse — mark up to date so reparse_stale_buffers
         // skips them until the first edit arrives.
@@ -333,9 +328,7 @@ impl Editor {
 
             // Detach if grown past cap.
             if buf.syntax.is_some() && byte_len > max_bytes {
-                let sbuf = &mut self.view.buffers[bid];
-                sbuf.syntax = None;
-                sbuf.tree = None;
+                self.view.buffers[bid].tree = None;
                 self.state.buffers.get_mut(bid).syntax = None;
                 self.parse_worker.remove_in_flight(bid);
                 continue;

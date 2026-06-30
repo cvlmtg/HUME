@@ -102,10 +102,6 @@ fn attach_then_set_language_attaches_syntax() {
         "syntax must be set after attach"
     );
     assert!(
-        ed.view.buffers[bid].syntax.is_some(),
-        "engine syntax must be set"
-    );
-    assert!(
         ed.view.buffers[bid].tree.is_some(),
         "engine tree must be set"
     );
@@ -138,10 +134,6 @@ fn clear_language_detaches_syntax_keeps_identity() {
     assert!(
         ed.state.buffers.get(bid).syntax.is_none(),
         "syntax must be cleared on language=None"
-    );
-    assert!(
-        ed.view.buffers[bid].syntax.is_none(),
-        "syntax must be cleared"
     );
     assert!(ed.view.buffers[bid].tree.is_none(), "tree must be cleared");
     // Identity survives detach — grammar is gone, language definition is not.
@@ -344,7 +336,7 @@ fn reparse_detaches_when_buffer_exceeds_max_bytes() {
         "syntax must detach when exceeding max_bytes"
     );
     assert!(
-        ed.view.buffers[bid].syntax.is_none(),
+        ed.state.buffers.get(bid).syntax.is_none(),
         "syntax must be cleared"
     );
 }
@@ -405,7 +397,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
         "has_grammar must be true after attach"
     );
     assert!(
-        ed.view.buffers[bid].syntax.is_some(),
+        ed.state.buffers.get(bid).syntax.is_some(),
         "buffer syntax must be set after command-mode register-grammar! + auto-sweep",
     );
 }
@@ -482,7 +474,7 @@ fn replace_buffer_in_place_clears_engine_syntax_state() {
         "tree must be set before replace"
     );
     assert!(
-        ed.view.buffers[bid].syntax.is_some(),
+        ed.state.buffers.get(bid).syntax.is_some(),
         "syntax must be set before replace"
     );
 
@@ -496,7 +488,7 @@ fn replace_buffer_in_place_clears_engine_syntax_state() {
         "stale tree must be cleared on replace"
     );
     assert!(
-        ed.view.buffers[bid].syntax.is_none(),
+        ed.state.buffers.get(bid).syntax.is_none(),
         "stale syntax must be cleared on replace"
     );
     assert!(
@@ -547,7 +539,7 @@ fn reparse_reattaches_after_shrink_under_cap() {
         "syntax must detach when exceeding cap"
     );
     assert!(
-        ed.view.buffers[bid].syntax.is_none(),
+        ed.state.buffers.get(bid).syntax.is_none(),
         "syntax must be cleared on detach"
     );
 
@@ -559,7 +551,7 @@ fn reparse_reattaches_after_shrink_under_cap() {
         "syntax must re-attach when buffer shrinks back under cap",
     );
     assert!(
-        ed.view.buffers[bid].syntax.is_some(),
+        ed.state.buffers.get(bid).syntax.is_some(),
         "engine syntax must be rebuilt after re-attach",
     );
 }
@@ -575,7 +567,7 @@ fn reparse_reattaches_after_shrink_under_cap() {
 /// engine side dark (`view.syntax = None`) while `state.syntax` remained Some,
 /// preventing the re-attach branch in `reparse_stale_buffers` from ever firing.
 ///
-/// Flip: with the old two-liner the `view.buffers[bid].syntax.is_some()` assert
+/// Flip: with the old two-liner the `state.buffers.get(bid).syntax.is_some()` assert
 /// below fails, confirming the test catches the regression.
 #[test]
 fn reload_buffer_in_place_keeps_syntax_highlighting() {
@@ -613,7 +605,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     ed.reparse_stale_buffers();
 
     assert!(
-        ed.view.buffers[bid].syntax.is_some(),
+        ed.state.buffers.get(bid).syntax.is_some(),
         "syntax must be attached before reload"
     );
     assert!(
@@ -630,11 +622,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
 
     assert!(
         ed.state.buffers.get(bid).syntax.is_some(),
-        "state syntax must survive reload"
-    );
-    assert!(
-        ed.view.buffers[bid].syntax.is_some(),
-        "engine syntax must be re-attached after reload"
+        "syntax must survive reload"
     );
     assert!(
         ed.view.buffers[bid].tree.is_some(),
@@ -1039,7 +1027,7 @@ fn install_real_json_grammar_e2e() {
         "grammar must be registered after e2e install; log={errors:#?}",
     );
     assert!(
-        ed.view.buffers[bid].syntax.is_some(),
+        ed.state.buffers.get(bid).syntax.is_some(),
         "syntax must be set after e2e install + sweep; log={errors:#?}",
     );
 
@@ -1122,16 +1110,20 @@ fn rust_function_highlight_snapshot() {
     // Runs the highlight pipeline directly so the test fails even if the snapshot
     // renderer masks absent colours behind cursor/selection background.
     {
-        let shared = &ed.view.buffers[bid];
-        let rope = ed.state.buffers.get(bid).text().rope();
-        let hl_src = shared
+        let hl_src = ed
+            .state
+            .buffers
+            .get(bid)
             .syntax
             .as_ref()
-            .expect("TreeSitterHighlighter must be set");
+            .expect("BufferSyntax must be set")
+            .highlighter
+            .as_ref();
+        let rope = ed.state.buffers.get(bid).text().rope();
         let line_start_byte = rope.line_to_byte(1);
         let ctx = SourceContext {
             rope,
-            tree: shared.tree.as_ref(),
+            tree: ed.view.buffers[bid].tree.as_ref(),
             line_start_byte,
         };
         let mut spans = Vec::new();

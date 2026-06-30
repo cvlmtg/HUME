@@ -147,17 +147,16 @@ pub(crate) fn close_buffer(
     }
 }
 
-// ── clear_engine_syntax ───────────────────────────────────────────────────────
+// ── clear_engine_tree ────────────────────────────────────────────────────────
 
-/// Drop the engine-side parse tree and highlighter for buffer `id`.
+/// Drop the engine-side parse tree for buffer `id`.
 ///
-/// Both the wholesale [`replace_buffer_in_place`] swap and the
-/// history-preserving `:e!` reload need this: the cached tree/highlighter still
-/// reference the pre-reload content. The caller is responsible for re-detecting
-/// the language and re-parsing afterwards (e.g. `detect_and_set_language`).
-pub(crate) fn clear_engine_syntax(ev: &mut EngineView, id: BufferId) {
+/// The highlighter now lives in `BufferSyntax` on the state side — clearing
+/// it is the caller's responsibility (e.g. set `state.buffers[id].syntax = None`
+/// or let `setup_buffer_syntax` do it). This function only clears the tree
+/// so the stale parse result is not used by the renderer or incremental baking.
+pub(crate) fn clear_engine_tree(ev: &mut EngineView, id: BufferId) {
     ev.buffers[id].tree = None;
-    ev.buffers[id].syntax = None;
 }
 
 // ── replace_buffer_in_place ───────────────────────────────────────────────────
@@ -179,10 +178,10 @@ pub(crate) fn replace_buffer_in_place(
         "replace_buffer_in_place: new_doc must have no active search state",
     );
     *buffers.get_mut(id) = new_doc;
-    // The new doc carries no parser/language; drop the engine-side parse tree
-    // and highlighter that still reference the old content. Callers that need
-    // language re-detection (e.g. :e! via the Editor wrapper) handle that separately.
-    clear_engine_syntax(ev, id);
+    // The new doc carries no syntax attachment (Buffer.syntax = None by
+    // construction); drop the stale engine tree so the renderer does not use
+    // a tree aligned to the old content.
+    clear_engine_tree(ev, id);
     // Collect before mutating (borrow checker); n≈1 in the single-pane case.
     let pane_ids: Vec<PaneId> = ev
         .panes

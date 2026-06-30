@@ -261,10 +261,9 @@ impl Editor {
     /// [`reload_buffer_in_place`](Self::reload_buffer_in_place) (history-preserving)
     /// instead; this wrapper survives for tests that exercise the
     /// `ops::replace_buffer_in_place` reset path (scratch-swap on last-buffer
-    /// close, read-only-view refresh invariants) and the engine-syntax-clear
-    /// regression test. The prod non-test callers go through
-    /// `ops::replace_buffer_in_place` directly (`close_buffer`'s last-buffer
-    /// branch).
+    /// close, read-only-view refresh invariants). The prod non-test callers go
+    /// through `ops::replace_buffer_in_place` directly (`close_buffer`'s
+    /// last-buffer branch).
     ///
     /// Caller contract: `new_doc.search_pattern` must be `None` (enforced by
     /// debug_assert — `Buffer::from_file` satisfies this by construction).
@@ -279,8 +278,8 @@ impl Editor {
             new_doc,
         );
         // Re-detect language and rebuild syntax (mirrors open_buffer). For scratch
-        // (no path/language), detect returns None and set_buffer_language no-ops —
-        // the engine-side clear in ops::replace_buffer_in_place is the cleanup there.
+        // (no path/language), detect returns None, set_buffer_language no-ops, and
+        // the replaced Buffer.syntax = None already dropped the old highlighter.
         self.detect_and_set_language(id);
     }
 

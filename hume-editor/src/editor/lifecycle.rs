@@ -318,6 +318,7 @@ impl Editor {
             // Resolve mode and display settings once — passed to the engine via
             // closure so the engine never stores editor-domain state on Pane.
             let (pane_settings, _) = self.resolve_focused_pane_settings();
+            let state_buffers = &self.state.buffers;
             let engine_view = &self.view;
             // Open the synchronized-output envelope so the terminal defers
             // display until after every byte of this frame has been written.
@@ -329,6 +330,12 @@ impl Editor {
                     frame.area(),
                     frame.buffer_mut(),
                     |bid| if bid == buffer_id { Some(rope) } else { None },
+                    |bid| {
+                        state_buffers
+                            .try_get(bid)
+                            .and_then(|b| b.syntax.as_ref())
+                            .map(|s| &s.highlighter)
+                    },
                     |pid| {
                         if pid == pane_id {
                             pane_settings.clone()
@@ -470,6 +477,7 @@ impl Editor {
         let buffer_id = self.focused_buffer_id();
         let pane_id = self.state.focused_pane_id;
         let (pane_settings, _) = self.resolve_focused_pane_settings();
+        let state_buffers = &self.state.buffers;
         let engine_view = &self.view;
         let _ = hume_platform::terminal::begin_synchronized_update();
         term.draw(|frame| {
@@ -477,6 +485,12 @@ impl Editor {
                 frame.area(),
                 frame.buffer_mut(),
                 |bid| if bid == buffer_id { Some(rope) } else { None },
+                |bid| {
+                    state_buffers
+                        .try_get(bid)
+                        .and_then(|b| b.syntax.as_ref())
+                        .map(|s| &s.highlighter)
+                },
                 |pid| {
                     if pid == pane_id {
                         pane_settings.clone()
@@ -506,11 +520,18 @@ impl Editor {
         let buffer_id = self.focused_buffer_id();
         let pane_id = self.state.focused_pane_id;
         let (pane_settings, _) = self.resolve_focused_pane_settings();
+        let state_buffers = &self.state.buffers;
         let engine_view = &self.view;
         engine_view.render(
             rect,
             &mut buf,
             |bid| if bid == buffer_id { Some(rope) } else { None },
+            |bid| {
+                state_buffers
+                    .try_get(bid)
+                    .and_then(|b| b.syntax.as_ref())
+                    .map(|s| &s.highlighter)
+            },
             |pid| {
                 if pid == pane_id {
                     pane_settings.clone()
