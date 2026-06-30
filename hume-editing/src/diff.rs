@@ -28,15 +28,22 @@
 use std::ops::Range;
 use std::time::{Duration, Instant};
 
-use similar::{Algorithm, DiffOp, capture_diff_slices, capture_diff_slices_deadline};
+use similar::{Algorithm, DiffOp, capture_diff_slices_deadline};
 use unicode_segmentation::UnicodeSegmentation;
 
-/// Wall-clock budget for the histogram pass. If histogram cannot finish within
-/// this duration, the line diff falls back to Myers with a fresh budget of the
-/// same size.
+/// Wall-clock budget for the line-level histogram pass. If histogram cannot
+/// finish within this duration, the line diff falls back to Myers with a
+/// fresh budget of the same size.
 ///
 /// Configurable later: replace with a setting threaded through from the editor.
-const DIFF_DEADLINE: Duration = Duration::from_millis(250);
+const DIFF_LINE_DEADLINE: Duration = Duration::from_millis(250);
+
+/// Wall-clock budget for the word-level Myers pass. Word diffs are meant as a
+/// refinement pass on single replaced lines, so the budget is tighter than the
+/// line-level one; on timeout Myers returns a coarse (Replace-all) result and
+/// [`WordDiff::deadline_hit`] reports it. The guard is a safety net — callers
+/// are still expected to pass short strings.
+const DIFF_WORD_DEADLINE: Duration = Duration::from_millis(50);
 
 // ── Line-level types ──────────────────────────────────────────────────────────
 
@@ -107,7 +114,7 @@ impl LineDiff {
 
 /// Line-level diff with an explicit deadline, for callers that want a tighter
 /// budget than the public default (e.g. scripting, tests). The public
-/// [`diff_lines`] uses [`DIFF_DEADLINE`].
+/// [`diff_lines`] uses [`DIFF_LINE_DEADLINE`].
 pub fn diff_lines_with_deadline(old: &[&str], new: &[&str], deadline: Duration) -> LineDiff {
     let start = Instant::now();
     let deadline_instant = start + deadline;
@@ -141,7 +148,7 @@ pub fn diff_lines_with_deadline(old: &[&str], new: &[&str], deadline: Duration) 
 /// (rope lines, file lines, etc.). This keeps `diff.rs` independent of
 /// `ropey` and lets the rope-vs-plain-text choice live with the caller.
 pub fn diff_lines(old: &[&str], new: &[&str]) -> LineDiff {
-    diff_lines_with_deadline(old, new, DIFF_DEADLINE)
+    diff_lines_with_deadline(old, new, DIFF_LINE_DEADLINE)
 }
 
 fn ops_to_line_hunks(ops: &[DiffOp], old: &[&str], new: &[&str]) -> Vec<LineHunk> {
@@ -209,20 +216,36 @@ pub struct WordHunk {
 }
 
 /// Result of a word-level diff.
+///
+/// `deadline_hit()` reports whether Myers could not finish within
+/// [`DIFF_WORD_DEADLINE`] and returned a coarse (Replace-all) result. Unlike
+/// [`LineDiff`], word-level has a single algorithm, so the deadline hit is
+/// independent state with nothing to derive from — hence the private field
+/// behind the accessor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[must_use]
 pub struct WordDiff {
     /// The captured change hunks, in order.
     pub hunks: Vec<WordHunk>,
+    deadline_hit: bool,
 }
 
-/// Word-level diff using Myers (no deadline — word inputs are small by nature).
+impl WordDiff {
+    /// `true` when Myers could not finish within [`DIFF_WORD_DEADLINE`] and
+    /// returned a coarse (Replace-all) result.
+    pub fn deadline_hit(&self) -> bool {
+        self.deadline_hit
+    }
+}
+
+/// Word-level diff using Myers, protected by [`DIFF_WORD_DEADLINE`].
 ///
 /// # Contract
 ///
-/// Callers **must** pass short strings (e.g. the contents of a single replaced
-/// line, or two short snippets for plugin use). There is no deadline guard:
-/// two huge single-line strings (e.g. minified files) will blow up Myers. For
+/// Callers **should** pass short strings (e.g. the contents of a single
+/// replaced line, or two short snippets for plugin use). The deadline is a
+/// safety net, not a license to feed huge inputs: on timeout Myers returns a
+/// coarse (Replace-all) result and [`WordDiff::deadline_hit`] reports it. For
 /// large inputs, diff at the line level first and refine per-line with this.
 ///
 /// Tokenization uses Unicode word boundaries (UAX #29) via
@@ -234,13 +257,33 @@ pub struct WordDiff {
 /// vim `w`/`W` semantics in [`crate::word`]; the two intentionally do not
 /// agree.
 pub fn diff_words(old: &str, new: &str) -> WordDiff {
+    diff_words_with_deadline(old, new, DIFF_WORD_DEADLINE)
+}
+
+/// Word-level diff with an explicit deadline, for callers that want a tighter
+/// budget than the public default (e.g. scripting, tests). The public
+/// [`diff_words`] uses [`DIFF_WORD_DEADLINE`].
+///
+/// Myers' divide-and-conquer recursion still produces a coherent (if coarser)
+/// result when it hits the deadline — the ranges always partition the input —
+/// so we keep whatever it returns and report the timeout via
+/// [`WordDiff::deadline_hit`].
+pub fn diff_words_with_deadline(old: &str, new: &str, deadline: Duration) -> WordDiff {
     // Tokenize into words (including whitespace runs as separate tokens, so
     // the diff reconstructs the full input). Track each token's char offset;
     // a trailing sentinel offset makes range ends O(1).
     let (old_tokens, old_offsets) = tokenize_with_offsets(old);
     let (new_tokens, new_offsets) = tokenize_with_offsets(new);
 
-    let ops = capture_diff_slices(Algorithm::Myers, &old_tokens, &new_tokens);
+    let start = Instant::now();
+    let deadline_instant = start + deadline;
+    let ops = capture_diff_slices_deadline(
+        Algorithm::Myers,
+        &old_tokens,
+        &new_tokens,
+        Some(deadline_instant),
+    );
+    let deadline_hit = start.elapsed() >= deadline;
     let hunks = ops
         .iter()
         .map(|op| {
@@ -266,7 +309,10 @@ pub fn diff_words(old: &str, new: &str) -> WordDiff {
             }
         })
         .collect();
-    WordDiff { hunks }
+    WordDiff {
+        hunks,
+        deadline_hit,
+    }
 }
 
 /// Split `s` into Unicode word-boundary tokens, returning the tokens and the
@@ -539,9 +585,11 @@ mod tests {
 
     #[test]
     fn diff_words_empty() {
-        // Empty strings → no hunks. Pins the empty-input contract.
+        // Empty strings → no hunks, guard not triggered. Pins the empty-input
+        // contract.
         let d = diff_words("", "");
         assert!(d.hunks.is_empty());
+        assert!(!d.deadline_hit());
     }
 
     #[test]
@@ -617,6 +665,35 @@ mod tests {
     // Independent oracle: the hunk ranges must partition the input, so
     // concatenating the covered slices reconstructs the original input. This
     // catches off-by-one range bugs without mirroring the implementation.
+
+    #[test]
+    fn diff_words_deadline_hit() {
+        // With a zero deadline Myers bails immediately. The input is large
+        // enough (400 tokens, no common prefix) that Myers returns a coarse
+        // result: a single Replace covering everything except the trailing
+        // space, which is common to both inputs and found as an Equal anchor
+        // before the deadline check. Deterministic regardless of machine speed.
+        let old: String = (0..200).map(|i| format!("a{i} ")).collect();
+        let new: String = (0..200).map(|i| format!("b{i} ")).collect();
+        let d = diff_words_with_deadline(&old, &new, Duration::ZERO);
+        assert!(d.deadline_hit());
+        assert_eq!(d.hunks.len(), 2);
+        assert_eq!(d.hunks[0].old, 0..889);
+        assert_eq!(d.hunks[0].new, 0..889);
+        assert!(matches!(d.hunks[0].kind, WordHunkKind::Replace { .. }));
+        assert_eq!(d.hunks[1].old, 889..890);
+        assert_eq!(d.hunks[1].new, 889..890);
+        assert_eq!(d.hunks[1].kind, WordHunkKind::Equal);
+    }
+
+    #[test]
+    fn diff_words_no_deadline_on_small_input() {
+        // A small input finishes well within the 50ms budget — the guard must
+        // not fire spuriously on fast machines.
+        let d = diff_words("foo bar", "foo baz");
+        assert!(!d.deadline_hit());
+        assert_eq!(d.hunks.len(), 2);
+    }
 
     use proptest::prelude::*;
 
