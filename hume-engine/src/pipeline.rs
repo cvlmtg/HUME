@@ -255,6 +255,7 @@ impl EngineView {
     ///
     /// Layout: the tab bar (if present) occupies the top row, the statusline
     /// (if present) occupies the bottom row. Panes fill the remaining area.
+    #[allow(clippy::too_many_arguments)]
     pub fn render<'rope, 'syn>(
         &self,
         area: ratatui::layout::Rect,
