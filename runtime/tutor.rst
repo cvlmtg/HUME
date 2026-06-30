@@ -115,6 +115,10 @@ The release pipeline failed during artifact signing because the certificate had 
 | ge | go to the LAST line of the buffer  |
 +----+------------------------------------+
 
+To jump to a specific line by number, type ``:N`` at the command prompt
+(for example, ``:42`` lands on line 42). The full name is ``:goto 42``.
+Both forms record a jump, so ``Ctrl+o`` brings you back.
+
 +--------+---------------------------------------------+
 | Ctrl+o | jump backward through your movement history |
 +--------+---------------------------------------------+
@@ -136,6 +140,12 @@ Exercise
 
 Press ``gg`` to jump to the top of the tutor, then press ``ge``
 to jump to the end, then press ``Ctrl+o`` twice to return here.
+
+Exercise
+~~~~~~~~
+
+Type ``:goto 3`` and press ``Enter`` to jump to the line nr. 3 of
+this buffer. Then press ``Ctrl+o`` to return here.
 
 1.5 Scrolling
 -------------
@@ -219,6 +229,8 @@ Summary
 | b / B           | previous word / WORD                        |
 +-----------------+---------------------------------------------+
 | gg / ge         | first / last line                           |
++-----------------+---------------------------------------------+
+| :N / :goto N    | jump to line N by number (e.g. ``:42``)     |
 +-----------------+---------------------------------------------+
 | gh / gl / gs    | line start / end / first non-blank          |
 +-----------------+---------------------------------------------+
