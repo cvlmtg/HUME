@@ -5,7 +5,7 @@ use super::search_state::{SearchMatches, SearchPattern};
 use crate::editor::pane_state::EditGroup;
 use crate::editor::syntax::BufferSyntax;
 use crate::settings::BufferOverrides;
-use hume_editing::changeset::ChangeSet;
+use hume_editing::changeset::{ChangeSet, changesets_from_line_diff};
 use hume_editing::history::{History, RevisionId};
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
@@ -243,6 +243,56 @@ impl Buffer {
             .and_then(|p| p.file_name())
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| Self::SCRATCH_BUFFER_NAME.to_owned())
+    }
+
+    /// Replace `self.text` with `new_text`, recording the swap as a single
+    /// revision in the existing history so `u` reverts to the pre-reload state.
+    ///
+    /// This is the history-preserving reload path used by `:e!`. Unlike
+    /// [`set_view_content`](Self::set_view_content) (which resets history) or
+    /// the full `Buffer` swap performed by `ops::replace_buffer_in_place`
+    /// (which discards history), this treats the reload as an ordinary edit:
+    /// `u` after `:e!` shows the pre-reload buffer with its full prior undo
+    /// tree intact beneath, and `Ctrl-r` re-applies the reload.
+    ///
+    /// `pre_sels` is the cursor state before the reload (stored on the inverse
+    /// transaction — undo restores it); `post_sels` is the cursor state after
+    /// the reload (stored on the forward transaction — redo restores it). Both
+    /// are caller-computed; `post_sels` is typically the grapheme-snapped
+    /// clamped cursor the reload UI wants visible.
+    ///
+    /// The `ChangeSet` pair is line-diff-derived
+    /// ([`changesets_from_line_diff`]) so the inverse carries only the
+    /// changed lines, not a full-buffer delete-all + insert-all. After
+    /// recording, `saved_revision` is bumped to the new revision so the
+    /// freshly-reloaded buffer is `!is_dirty()` — matching the old
+    /// buffer-swap behaviour where the fresh-from-disk doc was clean.
+    pub(crate) fn reload_from_text(
+        &mut self,
+        new_text: Text,
+        pre_sels: SelectionSet,
+        post_sels: SelectionSet,
+    ) {
+        // Build the CS pair from immutable borrows of both texts, before
+        // `set_text` mutates `self.text`. The helper takes `&Text` on both
+        // sides; `new_text` is still owned by us here so the borrow is fine.
+        let (forward, inverse) = changesets_from_line_diff(&self.text, &new_text);
+
+        // `set_text` only bumps `text_gen`; it does NOT reset history
+        // (`set_view_content` is the only writer that resets history).
+        self.set_text(new_text);
+
+        // Reload of identical-to-disk content: don't litter the undo tree with a
+        // no-op revision. Just re-anchor `saved_revision` to the current node so
+        // the buffer reads clean (it now matches disk). `pre_sels`/`post_sels`
+        // are dropped — there is nothing to undo to.
+        if forward.is_identity() {
+            self.saved_revision = self.history.current_id();
+            return;
+        }
+
+        self.history.record(forward, inverse, pre_sels, post_sels);
+        self.saved_revision = self.history.current_id();
     }
 
     /// `true` if the buffer has unsaved changes.
@@ -510,6 +560,16 @@ mod tests {
 
         fn goto_revision(&mut self, target: hume_editing::history::RevisionId) {
             self.buf.goto_revision(&mut self.sels, target);
+        }
+
+        /// Reload the buffer text in place, preserving history. The current
+        /// selections become the stored `pre_sels` (undo restores them);
+        /// `post_sels` becomes both the stored post-reload selection and the
+        /// helper's live `self.sels`.
+        fn reload_from(&mut self, new_text: Text, post_sels: SelectionSet) {
+            let pre_sels = self.sels.clone();
+            self.buf.reload_from_text(new_text, pre_sels, post_sels.clone());
+            self.sels = post_sels;
         }
 
         fn text(&self) -> &Text {
@@ -1056,5 +1116,107 @@ mod tests {
         let before = d.buf.text_gen;
         d.undo(); // nothing to undo — no-op
         assert_eq!(d.buf.text_gen, before, "no-op undo must not bump gen");
+    }
+
+    // ── reload_from_text ────────────────────────────────────────────────────
+
+    #[test]
+    fn reload_from_text_keeps_buffer_not_dirty() {
+        let mut d = doc("-[a]>lpha\nbeta\ngamma\n");
+        assert!(!d.is_dirty());
+        d.reload_from(Text::from("alpha\nBETA\ngamma\n"), SelectionSet::default());
+        assert!(!d.is_dirty(), "freshly reloaded buffer is clean");
+        assert_eq!(d.text().to_string(), "alpha\nBETA\ngamma\n");
+    }
+
+    #[test]
+    fn reload_from_text_is_undoable() {
+        let mut d = doc("hel-[l]>o\n");
+        let pre_state = state(&d);
+        d.reload_from(Text::from("hello world\n"), SelectionSet::default());
+        assert!(d.can_undo(), "reload recorded a revision");
+        assert_eq!(d.text().to_string(), "hello world\n");
+
+        d.undo();
+        // Undo restores pre-reload text AND pre-reload selections.
+        assert_eq!(state(&d), pre_state);
+        assert!(!d.can_undo(), "undoing the reload reaches the root");
+        assert!(d.is_dirty(), "undo past the saved reload revision is dirty");
+    }
+
+    #[test]
+    fn reload_from_text_redo_reapplies_reload() {
+        let mut d = doc("hel-[l]>o\n");
+        d.reload_from(Text::from("hello world\n"), SelectionSet::default());
+        d.undo();
+        assert_eq!(d.text().to_string(), "hello\n");
+        d.redo();
+        assert_eq!(d.text().to_string(), "hello world\n");
+        assert!(!d.is_dirty(), "redo lands on the saved reload revision");
+    }
+
+    #[test]
+    fn reload_from_text_then_edit_branches_off_old_tree() {
+        // edit → reload → undo → new edit: the new edit must branch as a
+        // sibling of the reload (tree-monotonicity invariant), reachable via
+        // `current_id`/redo. Mirrors `branching_preserves_old_path` in
+        // history.rs.
+        let mut d = doc("-[h]>ello\n");
+        d.apply_edit(|b, s| insert_char(b, s, '1'));
+        let after_first_edit = d.buf.history.current_id();
+        d.reload_from(Text::from("hello world\n"), SelectionSet::default());
+        let reload_rev = d.buf.history.current_id();
+        assert_ne!(reload_rev, after_first_edit);
+
+        // Undo the reload (back to the first-edit revision), then make a new
+        // edit — it becomes a sibling of the reload.
+        d.undo();
+        assert_eq!(d.buf.history.current_id(), after_first_edit);
+        d.apply_edit(|b, s| insert_char(b, s, '2'));
+        let branched_rev = d.buf.history.current_id();
+        assert_ne!(branched_rev, reload_rev);
+        assert_eq!(d.buf.history.parent(branched_rev), Some(after_first_edit));
+
+        // Redo from here jumps to the new branch, not the reload.
+        d.undo();
+        d.redo();
+        assert_eq!(d.buf.history.current_id(), branched_rev);
+    }
+
+    #[test]
+    fn reload_from_text_noop_when_unchanged() {
+        // Identical old/new → identity forward CS. Reload records NO revision
+        // (a no-op `:e!` must not litter the undo tree) and leaves the buffer
+        // clean and at the same revision it started on.
+        let mut d = doc("-[s]>ame\ncontent\n");
+        let before = d.buf.history.current_id();
+        d.reload_from(Text::from("same\ncontent\n"), SelectionSet::default());
+        assert!(!d.can_undo(), "no-op reload records no undo step");
+        assert_eq!(d.buf.history.current_id(), before, "revision unchanged");
+        assert!(!d.is_dirty());
+        assert_eq!(d.text().to_string(), "same\ncontent\n");
+    }
+
+    #[test]
+    fn reload_from_text_inverse_is_fine_grained() {
+        // Pin the "fine-grained, not coarse" property at the Buffer layer: a
+        // single-line change's inverse re-inserts only the changed line, not a
+        // full-buffer delete-all. The inverse is what `undo` returns.
+        use hume_editing::changeset::Operation;
+        let mut d = doc("-[a]>lpha\nbeta\ngamma\n");
+        d.reload_from(Text::from("alpha\nBETA\ngamma\n"), SelectionSet::default());
+        let (_, inv_cs) = d
+            .buf
+            .undo()
+            .expect("undo after reload returns the inverse CS");
+        let has_small_insert = inv_cs
+            .ops()
+            .iter()
+            .any(|op| matches!(op, Operation::Insert(s) if s == "beta\n"));
+        assert!(
+            has_small_insert,
+            "reload inverse should re-insert only the changed line, got {:?}",
+            inv_cs.ops(),
+        );
     }
 }

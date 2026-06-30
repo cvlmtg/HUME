@@ -36,7 +36,7 @@ use unicode_segmentation::UnicodeSegmentation;
 /// fresh budget of the same size.
 ///
 /// Configurable later: replace with a setting threaded through from the editor.
-const DIFF_LINE_DEADLINE: Duration = Duration::from_millis(250);
+pub(crate) const DIFF_LINE_DEADLINE: Duration = Duration::from_millis(250);
 
 /// Wall-clock budget for the word-level Myers pass. Word diffs are meant as a
 /// refinement pass on single replaced lines, so the budget is tighter than the

@@ -147,6 +147,19 @@ pub(crate) fn close_buffer(
     }
 }
 
+// ── clear_engine_syntax ───────────────────────────────────────────────────────
+
+/// Drop the engine-side parse tree and highlighter for buffer `id`.
+///
+/// Both the wholesale [`replace_buffer_in_place`] swap and the
+/// history-preserving `:e!` reload need this: the cached tree/highlighter still
+/// reference the pre-reload content. The caller is responsible for re-detecting
+/// the language and re-parsing afterwards (e.g. `detect_and_set_language`).
+pub(crate) fn clear_engine_syntax(ev: &mut EngineView, id: BufferId) {
+    ev.buffers[id].tree = None;
+    ev.buffers[id].syntax = None;
+}
+
 // ── replace_buffer_in_place ───────────────────────────────────────────────────
 
 /// Replace buffer `id` with `new_doc` in-place, reseeding all pane state.
@@ -169,8 +182,7 @@ pub(crate) fn replace_buffer_in_place(
     // The new doc carries no parser/language; drop the engine-side parse tree
     // and highlighter that still reference the old content. Callers that need
     // language re-detection (e.g. :e! via the Editor wrapper) handle that separately.
-    ev.buffers[id].tree = None;
-    ev.buffers[id].syntax = None;
+    clear_engine_syntax(ev, id);
     // Collect before mutating (borrow checker); n≈1 in the single-pane case.
     let pane_ids: Vec<PaneId> = ev
         .panes

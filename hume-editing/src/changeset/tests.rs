@@ -138,18 +138,18 @@ fn builder_finish_panics_on_unconsumed() {
 }
 
 #[test]
-fn is_empty_for_identity() {
+fn is_identity_true_for_identity() {
     let mut b = ChangeSetBuilder::new(5);
     b.retain_rest();
-    assert!(b.finish().is_empty());
+    assert!(b.finish().is_identity());
 }
 
 #[test]
-fn is_empty_false_for_real_changes() {
+fn is_identity_false_for_real_changes() {
     let mut b = ChangeSetBuilder::new(5);
     b.delete(1);
     b.retain_rest();
-    assert!(!b.finish().is_empty());
+    assert!(!b.finish().is_identity());
 }
 
 // ── apply tests ──────────────────────────────────────────────────────────
@@ -392,7 +392,7 @@ fn invert_identity() {
     let cs = b.finish();
     let inv = cs.invert(&buf);
 
-    assert!(inv.is_empty());
+    assert!(inv.is_identity());
     assert_eq!(inv.len_before, 6);
     assert_eq!(inv.len_after, 6);
 }
@@ -575,7 +575,7 @@ fn compose_insert_then_delete() {
     let b = b_b.finish();
 
     let composed = a.compose(b);
-    assert!(composed.is_empty(), "insert then delete should cancel");
+    assert!(composed.is_identity(), "insert then delete should cancel");
     assert_eq!(composed.apply(&buf).unwrap().to_string(), "abc\n");
 }
 

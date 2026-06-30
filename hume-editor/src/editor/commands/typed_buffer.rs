@@ -52,18 +52,18 @@ pub fn typed_edit(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(),
         }
         Ok(())
     } else {
-        // Reload current file. Preserve the display_path across the reload (the fresh
-        // Buffer from from_file has None, since from_file only knows the canonical path).
+        // Reload current file. The history-preserving reload keeps the existing
+        // Buffer (only its text + file_meta are swapped), so `path` and
+        // `display_path` are retained as-is — no need to re-seed them onto the
+        // freshly read doc.
         let Some(path) = ed.doc().path().map(Path::to_path_buf) else {
             return Err(CommandError::new("no file name"));
         };
         if ed.doc().is_dirty() && !force {
             return Err(CommandError::new("unsaved changes (use :e! to force)"));
         }
-        let saved_display = ed.doc().display_path().map(Path::to_path_buf);
-        let mut doc = crate::editor::buffer::Buffer::from_file(&path)
+        let doc = crate::editor::buffer::Buffer::from_file(&path)
             .map_err(|e| CommandError::new(format!("{}: {e}", path.display())))?;
-        doc.set_display_path(saved_display);
         let id = ed.focused_buffer_id();
         ed.reload_buffer_in_place(id, doc);
         let name = path

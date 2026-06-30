@@ -159,8 +159,7 @@ fn advance_op(
 impl ChangeSet {
     /// Returns `true` if this changeset is the identity transform — all
     /// operations are `Retain` and the document is unchanged.
-    #[cfg(test)]
-    fn is_empty(&self) -> bool {
+    pub fn is_identity(&self) -> bool {
         self.ops.iter().all(|op| matches!(op, Operation::Retain(_)))
     }
 
@@ -565,6 +564,9 @@ impl ChangeSet {
 
 pub mod builder;
 pub use builder::ChangeSetBuilder;
+
+mod diff_cs;
+pub use diff_cs::{changesets_from_line_diff, changesets_from_line_diff_with_deadline};
 
 #[cfg(test)]
 mod tests;
