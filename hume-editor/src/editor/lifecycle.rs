@@ -6,6 +6,7 @@ use crossterm::event::{self, Event, KeyEventKind};
 
 use hume_engine::pane::{Pane, WhitespaceConfig, WrapMode};
 use hume_engine::pipeline::{BufferId, EngineView, PaneId, PaneRenderSettings, RenderContext};
+use hume_engine::providers::StatuslineProvider;
 use hume_engine::types::EditorMode;
 
 use super::search_state::SearchCursor;
@@ -305,47 +306,16 @@ impl Editor {
                 None
             };
 
-            // The statusline provider borrows `self` — create it before the
-            // draw closure so the lifetime is tied to this stack frame.
+            // The statusline provider borrows `self` immutably — create it
+            // before the draw closure so the lifetime is tied to this stack frame.
             let statusline = crate::ui::statusline::HumeStatusline { editor: self };
-
-            // Split borrows: `engine_view` and `doc` are disjoint fields of
-            // `self`. Extract the rope and pane settings to render before
-            // moving `engine_view` into the draw closure.
-            let rope: &ropey::Rope = self.doc().text().rope();
-            let buffer_id = self.focused_buffer_id();
-            let pane_id = self.state.focused_pane_id;
-            // Resolve mode and display settings once — passed to the engine via
-            // closure so the engine never stores editor-domain state on Pane.
-            let (pane_settings, _) = self.resolve_focused_pane_settings();
-            let state_buffers = &self.state.buffers;
-            let engine_view = &self.view;
             // Open the synchronized-output envelope so the terminal defers
             // display until after every byte of this frame has been written.
             // Terminals that don't support DEC 2026 silently ignore the
             // sequence — hence `let _ =` rather than `?`.
             let _ = hume_platform::terminal::begin_synchronized_update();
             term.draw(|frame| {
-                engine_view.render(
-                    frame.area(),
-                    frame.buffer_mut(),
-                    |bid| if bid == buffer_id { Some(rope) } else { None },
-                    |bid| {
-                        state_buffers
-                            .try_get(bid)
-                            .and_then(|b| b.syntax.as_ref())
-                            .map(|s| &s.highlighter)
-                    },
-                    |pid| {
-                        if pid == pane_id {
-                            pane_settings.clone()
-                        } else {
-                            PaneRenderSettings::default()
-                        }
-                    },
-                    Some(&statusline),
-                    &mut ctx,
-                );
+                self.render_into(frame.area(), frame.buffer_mut(), Some(&statusline), &mut ctx);
                 if let Some((col, row)) = cursor_screen {
                     frame.set_cursor_position((col, row));
                 }
@@ -464,6 +434,43 @@ impl Editor {
         )
     }
 
+    /// Render one frame into `buf`. Single home for the rope / syntax /
+    /// pane-settings closures shared by the event loop, `draw_once`, and
+    /// `render_to_buf`.
+    fn render_into(
+        &self,
+        area: ratatui::layout::Rect,
+        buf: &mut ratatui::buffer::Buffer,
+        statusline: Option<&dyn StatuslineProvider>,
+        ctx: &mut RenderContext,
+    ) {
+        let rope = self.doc().text().rope();
+        let buffer_id = self.focused_buffer_id();
+        let pane_id = self.state.focused_pane_id;
+        let (pane_settings, _) = self.resolve_focused_pane_settings();
+        self.view.render(
+            area,
+            buf,
+            |bid| if bid == buffer_id { Some(rope) } else { None },
+            |bid| {
+                self.state
+                    .buffers
+                    .try_get(bid)
+                    .and_then(|b| b.syntax.as_ref())
+                    .map(|s| &s.highlighter)
+            },
+            |pid| {
+                if pid == pane_id {
+                    pane_settings.clone()
+                } else {
+                    PaneRenderSettings::default()
+                }
+            },
+            statusline,
+            ctx,
+        );
+    }
+
     /// Paint one frame immediately — called before `init_scripting` so the
     /// editor chrome is visible during Steel engine init instead of a blank
     /// alt-screen.  Skips the statusline and cursor-position overlay (those
@@ -473,34 +480,9 @@ impl Editor {
         let size = term.size()?;
         self.prepare_frame(size.width, size.height, &mut ctx);
 
-        let rope = self.doc().text().rope();
-        let buffer_id = self.focused_buffer_id();
-        let pane_id = self.state.focused_pane_id;
-        let (pane_settings, _) = self.resolve_focused_pane_settings();
-        let state_buffers = &self.state.buffers;
-        let engine_view = &self.view;
         let _ = hume_platform::terminal::begin_synchronized_update();
         term.draw(|frame| {
-            engine_view.render(
-                frame.area(),
-                frame.buffer_mut(),
-                |bid| if bid == buffer_id { Some(rope) } else { None },
-                |bid| {
-                    state_buffers
-                        .try_get(bid)
-                        .and_then(|b| b.syntax.as_ref())
-                        .map(|s| &s.highlighter)
-                },
-                |pid| {
-                    if pid == pane_id {
-                        pane_settings.clone()
-                    } else {
-                        PaneRenderSettings::default()
-                    }
-                },
-                None,
-                &mut ctx,
-            );
+            self.render_into(frame.area(), frame.buffer_mut(), None, &mut ctx);
         })?;
         let _ = hume_platform::terminal::end_synchronized_update();
         Ok(())
@@ -516,32 +498,7 @@ impl Editor {
         let mut buf = ratatui::buffer::Buffer::empty(rect);
         let mut ctx = RenderContext::new();
         self.prepare_frame(rect.width, rect.height, &mut ctx);
-        let rope = self.doc().text().rope();
-        let buffer_id = self.focused_buffer_id();
-        let pane_id = self.state.focused_pane_id;
-        let (pane_settings, _) = self.resolve_focused_pane_settings();
-        let state_buffers = &self.state.buffers;
-        let engine_view = &self.view;
-        engine_view.render(
-            rect,
-            &mut buf,
-            |bid| if bid == buffer_id { Some(rope) } else { None },
-            |bid| {
-                state_buffers
-                    .try_get(bid)
-                    .and_then(|b| b.syntax.as_ref())
-                    .map(|s| &s.highlighter)
-            },
-            |pid| {
-                if pid == pane_id {
-                    pane_settings.clone()
-                } else {
-                    PaneRenderSettings::default()
-                }
-            },
-            None,
-            &mut ctx,
-        );
+        self.render_into(rect, &mut buf, None, &mut ctx);
         buf
     }
 
