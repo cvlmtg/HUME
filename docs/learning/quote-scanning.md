@@ -55,11 +55,19 @@ text object silently fails on multiline inline code spans in Markdown
 ## The planned fix: tree-sitter when available, parity fallback
 
 Tree-sitter builds a syntax tree that distinguishes string literals from other
-uses of quote characters. When a tree-sitter grammar is loaded, quote text
-objects can query the tree for the enclosing string node — getting multiline
-correctness and proper handling of escaped quotes for free.
+uses of quote characters. The plan is for quote text objects, when a
+tree-sitter grammar is loaded, to query the enclosing string *node* in the
+tree — getting multiline correctness and proper handling of escaped quotes for
+free. That path is not implemented yet; the parity scan is still the only
+quote text object.
 
-When no grammar is loaded (plain text, unsupported language), the line-bounded
-parity scan remains the fallback. It is fast and correct for the common case
-of same-line pairs; the limitation is documented and visible rather than
-silently wrong.
+When a grammar is loaded in the meantime, the parity scan still wins on the
+common same-line case. When no grammar is loaded (plain text, unsupported
+language), the parity scan is the only option. Either way the limitation is
+documented and visible rather than silently wrong.
+
+One further corner worth naming: an empty pair — `""`, `''`, `` `` — has no
+inner range in the inclusive-selection model, so `mi"` inside `""` is a no-op
+rather than producing a zero-width selection. The same parity algorithm backs
+the surround family (`ms"`, `ms'`, `` ms` ``), so they inherit the line-bounded
+limitation too.

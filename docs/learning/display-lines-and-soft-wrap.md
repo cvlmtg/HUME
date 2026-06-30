@@ -35,8 +35,14 @@ buffer line, filler rows fill the remaining space.
 
 When soft wrap is enabled, lines longer than the content area width are split
 at grapheme boundaries. The split point respects word boundaries in "word wrap"
-mode: the renderer walks back from the right edge to find the last space or
-word boundary before the wrap point.
+mode: as the format stage walks the line forward it remembers the most recent
+whitespace position, and when a grapheme would overflow the right edge it
+breaks at that remembered position rather than mid-word. The effect is the
+same as walking back from the right edge; the cost is a single forward pass.
+
+A second mode, *indent wrap*, starts each continuation row at the same column
+as the leading whitespace of its parent line, so deeply nested arguments stay
+visually nested across the wrap instead of snapping back to column zero.
 
 Every continuation row knows which buffer line it belongs to (so line-number
 rendering and selection highlighting still work) and which sub-row within that
@@ -78,14 +84,17 @@ vertical movement with short lines.
 
 Virtual rows currently go unused — the infrastructure is there, but no provider
 injects them yet. When HUME gains LSP support, inline diagnostic messages will
-appear as virtual rows anchored below the line they annotate, without disrupting
-the buffer text or changing any buffer line numbers. The format stage is already
-ready for this.
+appear as virtual rows anchored below the line they annotate, without
+disrupting the buffer text or changing any buffer line numbers. The format
+stage is already ready for this. A parallel mechanism — inline decorations —
+can inject cells *inside* a row at byte offsets rather than as separate rows,
+the natural shape for inlay hints and ghost text; the path is open but no
+provider wires it yet.
 
 The display-line abstraction is also the mechanism by which syntax-highlighted
-folding ("fold this function to one line") would eventually work: a fold would
-suppress all but the "line start" row of the folded range, with one virtual row
-substituting a summary.
+folding ("fold this function to one line") would eventually work: a fold
+would suppress all but the "line start" row of the folded range, with one
+virtual row substituting a summary.
 
 ---
 

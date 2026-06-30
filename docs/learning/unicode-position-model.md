@@ -27,8 +27,10 @@ character — it is not a valid character boundary. This is why `s[3..4]` on
 `"café"` panics in Rust: slicing through a multi-byte character is undefined.
 
 Byte offsets are used internally by Rust's `str` and by `ropey`, but they are
-**never exposed across module boundaries** in HUME. They are an implementation
-detail.
+**never used for buffer positions** in HUME. They surface at one narrow seam:
+converting positions to and from byte offsets when an external library speaks
+bytes (regular-expression matchers, tree-sitter nodes). Outside that
+interoperability seam, byte offsets are an implementation detail.
 
 ## Char offset
 
@@ -82,3 +84,9 @@ The boundary between layers is strict: the grapheme layer **consumes** char
 offsets and **produces** char offsets that happen to land on grapheme
 boundaries. Everything above it works purely in char offsets and never needs
 to know about bytes or grapheme internals.
+
+The grapheme layer also answers a related family of questions for vertical and
+horizontal layout: the display column of a position once tab stops are
+expanded, the position that lands on a given display column, the number of
+graphemes in a range. The same abstraction that gives you "next grapheme
+boundary" gives you tab-aware column arithmetic for free.

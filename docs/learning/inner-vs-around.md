@@ -31,6 +31,15 @@ with `m` (mnemonic: **m**atch or **m**ore): `miw`, `ma(`. This frees `i` and
 `m` prefix also signals "I'm about to name a text region" — a consistent entry
 point for text objects, surround operations, and other structural commands.
 
+The `m` root grows a small family beyond `mi`/`ma`. `ms` followed by a
+delimiter character (`ms(`, `ms[`, `ms{`, `ms<`, `ms"`, `ms'`, ``ms` ``) selects
+the two delimiter characters as cursors — the building block for surround
+editing, where you then act on both delimiters at once (replace them, delete
+them, change them as a pair). `mw` plus a delimiter wraps the current selection
+in that pair. `mm` is a shortcut for `miw` and `MM` for `miW`, the two most
+common inner-word variants. The same prefix keeps every "name a structural
+region" command under one key.
+
 ## The trailing-whitespace rule for words
 
 For bracket text objects, inner/around is straightforward: include or exclude

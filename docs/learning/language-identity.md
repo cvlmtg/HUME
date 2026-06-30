@@ -58,17 +58,21 @@ Every change to a buffer's language — whether from automatic detection, the
 function. Nothing writes the language field directly; all callers go through
 the funnel.
 
-The funnel does three things in sequence:
+The funnel does four things in sequence:
 
 1. Writes the new language name to the buffer.
-2. Sets up (or tears down) syntax parsing for the buffer based on the new
+2. Activates any lazy plugins that declared this language as one of their
+   activation entries — so a plugin listed as `#:languages '("rust")` loads
+   its body the first time a buffer becomes Rust.
+3. Queues the `OnLanguageSet` hook so plugins can react; the hook is drained
+   at the tail of the current event, after syntax setup has already run.
+4. Sets up (or tears down) syntax parsing for the buffer based on the new
    language.
-3. Fires the `OnLanguageSet` hook so plugins can react.
 
 Having one funnel makes it impossible for any code path to change the language
 and forget to update syntax state, or to change it without notifying plugins.
-The invariant — language field, syntax state, and hook notification always
-move together — is structural, not just conventional.
+The invariant — language field, plugin activation, syntax state, and hook
+notification always move together — is structural, not just conventional.
 
 ## The `OnLanguageSet` hook
 

@@ -49,9 +49,13 @@ so `(command-plugin "cmd")` resolves correctly even when queried before the firs
 activation.
 
 ```scheme
-(command-plugin "move-right")   ; => "hume"  (built-in Rust command)
+(command-plugin "move-right")   ; => "hume"     (built-in Rust command)
 (command-plugin "my-cmd")       ; => "alice/my-plugin" (if defined inside that plugin)
+(command-plugin "setup-hook")   ; => "user"     (if defined at the top level of init.scm)
 ```
+
+The `"user"` string surfaces for anything defined outside a plugin body — the
+user's own `init.scm` customisations.
 
 ## Conflict detection
 

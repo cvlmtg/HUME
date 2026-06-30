@@ -43,7 +43,7 @@ stayed put.
 | Mode | Anchor | Head | Typical use |
 |------|--------|------|-------------|
 | `Move`   | `new_head`   | `new_head` | Plain cursor move — `h`, `j`, `k`, `l` |
-| `Extend` | `old_anchor` | `new_head` | Grow selection — extend mode, Ctrl+letter |
+| `Extend` | `old_anchor` | `new_head` | Grow selection — sticky extend mode (toggled by `e`), one-shot Ctrl+letter on kitty-capable terminals |
 
 `Move` always produces a collapsed single-character selection (anchor == head).
 `Extend` keeps the existing anchor, only moving the head.
@@ -66,3 +66,10 @@ The framework branches on the mode when constructing the resulting selection:
 Move   → anchor = new_head, head = new_head   (collapsed single-char)
 Extend → anchor = old_anchor, head = new_head (anchor stays, head moves)
 ```
+
+A few anchor-manipulation commands sit beside this framework without being a
+new mode. `o` (and `Ctrl+e`) flip which end of the selection is the head and
+which is the anchor — useful once an extend has overshot, so you can walk the
+other end back into place. `Ctrl+;` collapses the selection onto its anchor,
+discarding the head. Neither invents a separate command for the moved pair;
+both reuse the same positions the existing selection already carries.

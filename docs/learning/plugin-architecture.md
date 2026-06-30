@@ -75,8 +75,8 @@ react to buffer events globally (not just for a specific language):
 ; body runs the first time any buffer is opened
 ```
 
-**`#:languages`** defers loading until the buffer language is set to one of the named
-languages. This is the preferred pattern for language-specific plugins (see
+**`#:languages`** defers loading until the buffer language is set to one of the
+named languages. This is the preferred pattern for language-specific plugins (see
 [Language Identity and Detection](language-identity.md) for how languages are detected):
 
 ```scheme
@@ -88,6 +88,21 @@ Use `#:languages` rather than `#:events '("on-language-set")` when you only care
 one language. A `on-language-set` event fires for *every* language, so a Rust plugin
 declared that way would load the moment you open a PHP file. `#:languages` names only the
 languages you care about, keeping the plugin dormant until one of them appears.
+
+The full set of lifecycle hooks, for reference:
+
+| Hook | Fires |
+|------|-------|
+| `on-buffer-open` | A buffer is opened |
+| `on-buffer-close` | A buffer is closed |
+| `on-buffer-save` | A buffer is written to disk |
+| `on-mode-change` | The editor mode changes (e.g. entering insert) |
+| `on-language-set` | A buffer's language is set or cleared |
+
+All hooks fire at the tail of an event dispatch, never mid-dispatch. If a
+single event triggers several hooks, they are queued and drained together
+after the dispatch completes — plugins observe the editor in a stable state,
+not mid-edit.
 
 One caveat: the named language must already be known to the editor when a buffer is
 opened. If a plugin is the sole definer of its own activation language — registering it
@@ -132,6 +147,13 @@ HUME's APIs: commands (`define-command!`), hooks (`register-hook!`), and key bin
 This means there is no "library plugin" concept in HUME. A plugin cannot export raw
 helper functions for other plugins to import. If shared logic is needed, it can be exposed
 as a command that other plugins invoke by name.
+
+A plugin *can* split its own body across multiple files using `require`. The
+main file pulls in siblings, and private helpers stay private to the
+combined module — `plum` itself is structured this way, with grammar
+management, plugin management, and shared helpers in separate files all
+required by one entry point. What still cannot cross plugin boundaries is
+reaching into another plugin's private helpers by name.
 
 ---
 

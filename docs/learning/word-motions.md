@@ -94,3 +94,11 @@ When word motions run in extend mode (sticky extend, or Ctrl+key), each press
 grows the selection to encompass the next (or previous) word rather than
 replacing the selection entirely. `w` in extend mode adds the next word to
 whatever is already selected; `b` adds the previous word.
+
+## Counts fold inside one undo step
+
+A count prefix (`3w`, `2b`) is folded per-selection into the word-select
+framework rather than re-running the command `count` times from scratch. Each
+selection walks `count` words in one pass, and the resulting edit or selection
+records as a single undo step — typing `3w` then `d` deletes three words in one
+motion, undoable as one.

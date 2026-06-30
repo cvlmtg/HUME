@@ -14,16 +14,17 @@ The representation is a sequence of three operations:
 | `Delete(n)` | Remove `n` chars from the old doc |
 | `Insert(s)` | Add `s` to the new doc |
 
-**Example:** Insert `!` at positions 0 and 6 in `"hello world"`:
+**Example:** Insert `!` at positions 0 and 6 in `"hello world\n"` (the buffer
+includes its structural trailing newline, so it is twelve characters):
 
 ```
-Insert("!"), Retain(6), Insert("!"), Retain(5)
+Insert("!"), Retain(6), Insert("!"), Retain(6)
 ```
 
 This single object describes the entire multi-cursor edit. Applying it clones
-the underlying rope (O(1) — arc-based structural sharing) and executes each
-Delete/Insert on the clone — each O(log n). Retain operations are free.
-Total cost: O(k log n) for k non-retain operations.
+the underlying rope — O(1), because the rope uses arc-based structural sharing
+— and then executes each Delete/Insert on the clone. Each edit is O(log n) and
+Retain operations are free. Total cost: O(k log n) for k non-retain operations.
 
 The original buffer remains intact after application. The inverse must be
 computed from the original before applying the forward changeset, because
@@ -45,19 +46,33 @@ the edit as data, which enables:
 2. **Composition.** Two sequential changesets A→B and B→C can be merged into
    a single A→C changeset. This is essential for grouping keystrokes into
    undo steps (typing a word should undo as one operation, not per-character).
+   Composition walks both changesets in lockstep from left to right; when an
+   insertion in one lines up with a deletion in the other, the two cancel
+   rather than producing a redundant delete-then-insert pair.
+
+   Composition is one half of keystroke grouping; the other half is the *edit
+   group* itself, the live accumulator the editor maintains between an
+   explicit "begin" and "commit" pair. While a group is open, every edit a
+   command makes composes into the group's placeholder changeset; nothing is
+   recorded on the undo tree yet. Only when the group commits does the
+   accumulated changeset become a single revision.
 
 3. **Position mapping.** Given a position in the old document, the changeset
    can compute where it ends up in the new document — accounting for all
    insertions and deletions. An association parameter (before/after) controls
    which side of an insertion the position sticks to.
 
-   Edit operations and undo/redo never use position mapping. Edits compute
-   result positions directly during construction; undo/redo restores selections
-   from the stored transaction (see below). Position mapping is reserved for
-   **external positions** — things that exist independently of any specific
-   edit, like LSP diagnostic ranges or bookmarks. When a diagnostic sits at
-   offset 5 and text is inserted at offset 5, before-sticky keeps it glued to
-   the left of the insertion; after-sticky pushes it past.
+Edit operations and undo/redo never use position mapping. Edits compute
+result positions directly during construction; undo/redo restore selections
+from the stored transaction (see below). The in-editor consumer of position
+mapping today is **non-acting-pane cursor propagation**: when one pane edits a
+buffer that other panes also have open, the other panes' selections must ride
+the changeset to stay meaningful in the new text. Each selection is mapped
+through the changeset character by character, anchored to the *after* side of
+any nearby insertion. External positions not tied to a specific edit —
+diagnostic ranges, bookmarks, future cross-tool references — are the other
+natural consumer, modelled by the same mechanism and ready for the day they
+appear.
 
 ## The builder pattern
 
@@ -71,14 +86,15 @@ This dual tracking replaces manual delta accumulation. After each insert, the
 produced position tells you exactly where a cursor should land in the result.
 
 ```text
-Building insert_char('x') with cursor at offset 3 in "hello":
+Building insert_char('x') with cursor at offset 3 in "hello\n" (six chars,
+including the structural newline):
 
   retain(3)     →  consumed=3, produced=3    (skip "hel")
   insert("x")   →  consumed=3, produced=4    (insert 'x')
-  retain_rest() →  consumed=5, produced=6    (keep "lo")
+  retain_rest() →  consumed=6, produced=7    (keep "lo\n")
 
-  Result: Retain(3), Insert("x"), Retain(2)
-  Cursor position at insert time = 4  →  "helx|lo"
+  Result: Retain(3), Insert("x"), Retain(3)
+  Cursor position at insert time = 4  →  "helx|lo\n"
 ```
 
 All positions are in **original-buffer space** — no delta tracking, no
@@ -114,6 +130,19 @@ new content, the original deleted text is gone.
 
 The history manager stores both transactions. Applying the inverse restores
 both the text and the cursor positions in a single step.
+
+Reloads share the same algebra. `:e!` does not throw away the buffer and start
+over; it derives a (forward, inverse) changeset pair from a line-level diff
+against the disk content and records it as a normal revision. Undo after a
+reload brings the pre-reload text back with its full undo tree intact beneath
+— the reload is just another edit at another branch tip. When the disk content
+matches the buffer exactly, the forward changeset is the identity and no
+revision is recorded at all.
+
+One final detail on position mapping: the "before" association mode is used
+only in tests that probe the algorithm itself. Every production caller asks for
+"after" association — cursors sit on the far side of insertions, never
+suspended at the insertion site.
 
 ## The undo tree
 

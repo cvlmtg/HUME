@@ -14,10 +14,13 @@ HUME classifies every character into one of four classes:
 
 | Class | Members | Example chars |
 |-------|---------|---------------|
-| Word | alphanumeric + underscore | `a`–`z`, `A`–`Z`, `0`–`9`, `_` |
+| Word | alphanumeric (Unicode) + underscore | `a`–`z`, `A`–`Z`, `0`–`9`, `_`, `é`, `文` |
 | Punctuation | printable non-word non-space | `.`, `(`, `#`, `-`, `"` |
 | Space | horizontal whitespace | space, tab |
 | Eol | end-of-line | `\n` |
+
+The Word class follows Unicode's notion of "alphanumeric", so accented letters
+like `é` and Han characters like `文` classify as Word just as `a` does.
 
 For `word` boundaries, any adjacent class change is a boundary — `Word`→`Punctuation`,
 `Punctuation`→`Space`, and so on. For `WORD` boundaries, Punctuation is

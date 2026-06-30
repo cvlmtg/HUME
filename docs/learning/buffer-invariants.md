@@ -59,10 +59,29 @@ There are two kinds of call sites:
   expect success and treat a failure as an engine bug — a hard crash with a
   diagnostic message is appropriate here.
 
-- **The plugin entry point**: a plugin assembles a changeset from scratch and
-  submits it. This is the only place where untrusted data enters the system.
-  This single entry point validates the operation and returns an error on
-  failure.
+- **The trust boundary**: a *transaction* — a changeset paired with a
+  destination selection set — describes an edit from outside the editor core,
+  and that is where untrusted data could enter. Applying a transaction
+  validates the changeset first, then validates the resulting selection
+  against the new buffer, and returns an error on failure.
+
+  Today this boundary exists by design and is exercised by history replay:
+  every undo, redo, and cross-branch jump replays a transaction the editor
+  itself authored, so a corrupt revision would surface as a clean error rather
+  than a silent miscomputation. The boundary is not yet reachable from the
+  scripting layer — by design, scripts do not build raw transactions. Plugin
+  code instead issues named editor commands, each of which constructs its
+  changeset internally and runs through the fast, expecting-success path. The
+  boundary is ready for the day a future scripting API wants to submit edits
+  directly, but the only road into the buffer today is through commands the
+  editor itself authors.
+
+There is one other place untrusted text enters the buffer: reloading a file
+from disk (`:e!`). The contents come from outside the editor, but they enter
+through the changeset *builder* — a forward and inverse changeset are derived
+from a line-level diff against the current buffer — not through the transaction
+boundary. The algebra still applies: a reload whose net effect equals what's
+already on disk records no revision at all.
 
 Adding validation to every internal function would be noise — forcing internal
 code to handle errors that provably cannot occur. The right design is:
@@ -107,11 +126,11 @@ The problem: if `apply` failed, the buffer was gone. The caller had no way to
 recover the original.
 
 The fix: take the buffer by reference instead. Cloning the rope before mutating
-costs almost nothing because the rope's tree is built from reference-counted
-nodes — cloning just bumps a reference count. Apply then works on the clone,
-checks the post-conditions, and only wraps the clone in a new buffer if
-everything succeeded. On failure, the clone is dropped and the original is
-intact.
+costs almost nothing because the rope uses arc-based structural sharing —
+cloning just bumps a reference count, sharing the whole tree. Apply then works
+on the clone, checks the post-conditions, and only wraps the clone in a new
+buffer if everything succeeded. On failure, the clone is dropped and the
+original is intact.
 
 The key insight is that "recoverable failure" and "mutation in place" are
 in tension. The optimization that worked when the operation always succeeded
@@ -134,4 +153,6 @@ buffer is returned.
 
 Separating the two keeps each failure type narrow and diagnosable — a plugin
 author seeing "selection out of bounds" knows their cursor math is wrong, not
-their changeset.
+their changeset. The error itself is more specific still: it identifies which
+selection in the set was bad and whether its anchor or its head was the offender,
+so the misbehaving call site is a quick diagnosis rather than a guess.

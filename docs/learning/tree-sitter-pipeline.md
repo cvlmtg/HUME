@@ -65,8 +65,9 @@ names; together they map parse trees to styled text.
 ## Plum: the grammar manager
 
 `plum` is HUME's built-in plugin manager. It is written in Scheme and ships
-with the editor — not a separate CLI binary. For grammars specifically, plum
-provides:
+with the editor — not a separate CLI binary. The name covers two roles:
+plugin management (install, update, list, cleanup for Scheme plugins) and
+grammar management. For grammars specifically, plum provides:
 
 - **`:plum-install-grammar`** — installs the grammar for the current buffer's
   language.
@@ -89,11 +90,13 @@ place where the list of supported grammars is maintained.
 When you run `:plum-install-grammar`, plum:
 
 1. Clones the grammar repository at the pinned revision.
-2. Fetches the matching highlight query from Helix's pinned runtime.
-3. Compiles the C source to a shared library and writes it to the editor's
-   data directory.
-4. Writes the highlight query alongside it.
-5. Calls `register-grammar!` to load the grammar into the running editor.
+2. Fetches the matching highlight query from Helix's pinned runtime and writes
+   it to the editor's data directory.
+3. Compiles the C source to a shared library, also in the data directory.
+4. Calls `register-grammar!` to load the shared library and the query into
+   the running editor. A grammar whose tree-sitter ABI version is incompatible
+   with the editor is rejected here with a clear error rather than crashing
+   the parse worker later.
 
 On subsequent starts, plum calls `register-installed-grammars!` during
 initialization, which scans the data directory and registers every grammar
@@ -147,7 +150,10 @@ Putting it all together, here is what happens when you open `main.rs`:
    parse request is queued to the background parse worker. Parsing happens
    off the main thread; when the worker responds, the buffer's syntax tree is
    installed and the highlighter is wired up. A size gate prevents very large
-   files from being parsed at all.
+   files from being parsed at all — the default cap is one mebibyte, and it is
+   enforced not just at open but mid-session: a buffer that grows past the cap
+   has its syntax detached, and one that later shrinks back under the cap is
+   re-attached without a restart.
 
 5. **Hook** — `OnLanguageSet` fires with the buffer id and `"rust"`. Plugins
    can react (e.g. configuring indent width, setting options, enabling
@@ -163,3 +169,6 @@ Putting it all together, here is what happens when you open `main.rs`:
 
 The parse tree lives on the buffer and is updated incrementally on each edit.
 The query and the theme are shared resources read during every render pass.
+Incremental updates are baked once per frame before the renderer runs, so the
+tree the renderer reads is always coordinate-aligned with the buffer text on
+screen even while a fresh reparse is still in flight on the background worker.

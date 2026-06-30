@@ -33,10 +33,16 @@ Commands come in a few varieties:
 - **Edit** commands return a new buffer *and* new cursor state, plus a
   changeset (the description of what changed, used for undo).
 - **Editor-level** commands have access to the full editor state: mode
-  changes, registers, undo groups, named selections. Used for operations that
-  don't fit the pure model.
+  changes, registers, undo groups. Used for operations that don't fit the pure
+  model.
 - **Script-backed** commands are defined in Steel (HUME's scripting language)
-  and stored by the procedure name that handles them.
+  and stored by name. The command table maps the command name to its handler
+  separately; the command itself carries its name plus metadata, never a
+  pointer to the procedure. Both lookups happen by name at dispatch time.
+- **Lazy** commands are placeholder stubs registered up front for commands a
+  plugin has declared but not yet loaded. The first dispatch of one triggers
+  the owning plugin's body, which replaces the stub with the real
+  implementation.
 
 The first three variants are pure functions — they cannot touch anything
 outside their inputs. This makes them trivially testable and composable.
@@ -86,7 +92,7 @@ full command body at a new cursor position is meaningful. Shell-out commands
 
 The registry also holds commands invoked from the `:` command line. They share
 the same name namespace as key-bound commands, which prevents collisions and
-provides a single source for `:help`.
+gives a single source for future `:help` and command-palette features.
 
 ## Layer 2: Commands
 
@@ -208,3 +214,14 @@ The value of the split is that any layer can change without touching the others:
 
 A change in one layer cannot corrupt another because they communicate only
 through name strings.
+
+A related invariant is enforced at the dispatch layer: every native command's
+function body must run through one funnel. A build-time lint scans the crate
+for any second place that calls a native command's function pointer directly,
+and fails the build if it finds one. The funnel is where the bookkeeping that
+surrounds every command — last-command tracking, dot-repeat, paste-session
+commits, jump-list updates, register routing — gets applied. Letting a second
+call site bypass it would mean two paths for the same command, and the
+bookkeeping would silently regress on whichever path skipped the funnel;
+tests that pin the primary effect would stay green either way. The lint makes
+that mistake a compile error rather than a behavioural drift.

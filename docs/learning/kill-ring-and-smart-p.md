@@ -102,11 +102,14 @@ the ring. The yanked text is still pushed into the ring and remains
 reachable by name or by cycling; it is simply not the first thing bare paste
 reaches for.
 
-**Macro replay is a single non-exception.** After a macro replays, the
-heuristic is left in a "not delete, not change" state regardless of what the
-macro contained. This makes replay deterministic — the paste source after
-`q<reg>` is always the clipboard, independent of the macro's contents — and
-avoids surprising flip-flops inside replay loops.
+**Macro replay and dot-repeat are both non-exceptions.** After a macro
+replay and after a dot-repeat, the heuristic is left in a "not delete, not
+change" state regardless of what the macro or the repeated command contained.
+This makes replay deterministic — the paste source after `q<reg>` or `.` is
+always the clipboard, independent of what was just re-run — and avoids
+surprising flip-flops inside replay loops. Leaving insert mode (`<esc>`) is
+also transparent to the heuristic, so `c <text> <esc> p` still reads the
+ring: the `change` marker survives the escape and the swap idiom lands.
 
 ## Paste sessions and cycling
 
@@ -145,6 +148,17 @@ ring's history, and the clipboard lives outside that history.
 
 **`[` and `]` without an open session are noops.** To cycle, you must first
 paste with `p` or `P`.
+
+## Linewise versus charwise paste
+
+A register's content chooses its own paste shape from how it ends. Content
+ending in a newline is *linewise*: over a cursor it inserts as new line(s)
+below or above the cursor line; over an explicit selection it replaces
+line-by-line and reflows what is left. Content without a trailing newline is
+*charwise*: it lands inline at the cursor, or replaces the selected span in
+place. The distinction falls out of inspecting the yanked text — no separate
+`P`-linewise command names it, and cycling the kill ring moves freely between
+linewise and charwise entries as the cycle position changes.
 
 **Consecutive `p` presses append** rather than replacing. After a paste, the
 pasted text is selected. A second `p` collapses that selection and pastes

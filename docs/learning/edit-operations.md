@@ -34,7 +34,7 @@ translation internally. See the [Changesets](changesets.md) section.
 
 All selections are **equal for editing** — insert, delete, and motions apply
 to every selection in the set simultaneously. The *primary* is just the
-"focused" one. It is distinguished in four specific situations:
+"focused" one. It is distinguished in five specific situations:
 
 1. **Status bar**: shows the primary's line and column position. You can't
    display all N cursors at once — one has to be canonical.
@@ -65,8 +65,13 @@ to every selection in the set simultaneously. The *primary* is just the
    | `b` | Black hole | Discards writes |
    | `s` | Search | Holds last search pattern |
 
-   The default register (receives all yanks/deletes when no register is
-   named) is an internal sentinel — users never type it.
+   There is no single "default register" that all bare yanks and deletes flow
+   through. The bare behaviour is split: a bare yank writes to the system
+   clipboard *and* pushes a copy onto the kill ring; a bare delete or change
+   pushes onto the kill ring only, leaving the clipboard untouched. The split
+   is what lets a stray delete never overwrite cross-app text the user just
+   copied, and a bare paste choose the right source via the heuristic
+   described in [Kill Ring and Smart-p](kill-ring-and-smart-p.md).
 
    **Why not `a`–`z`?** Traditional named registers borrow letters for text
    storage, forcing special registers into punctuation (`+`, `_`). HUME flips
@@ -109,6 +114,13 @@ to every selection in the set simultaneously. The *primary* is just the
    selection — no separate command needed. HUME avoids the Vim `"0` register
    workaround by never clobbering the ring entry on replace: the kill ring
    already holds the selection's history.
+
+   A register's content chooses its own paste shape. Content that ends in a
+   newline is *linewise*: over a cursor it inserts as new line(s) below or
+   above; over a selection it replaces line-by-line and reflows what is left.
+   Content without a trailing newline is *charwise*: it lands inline at the
+   cursor. The distinction falls out of inspecting the yanked text — no
+   separate `p` vs `P`-linewise command names it.
 
 **Why cycle the primary?** In a keyboard-only multi-cursor world, cycling
 forward and backward through primaries is how you "focus" a different cursor
