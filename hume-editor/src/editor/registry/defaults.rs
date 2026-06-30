@@ -1087,5 +1087,11 @@ impl CommandRegistry {
             typed_version
         );
         typed_cmd!("tutor", "Open the interactive tutorial.", &[], typed_tutor);
+        typed_cmd!(
+            "goto",
+            "Jump to a 1-based line number: :goto 42.",
+            &[],
+            typed_goto_line
+        );
     }
 }

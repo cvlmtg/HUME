@@ -1126,3 +1126,140 @@ fn colon_capital_qa_quits_single_clean_buffer() {
     ed.handle_key(key_enter());
     assert!(ed.state.should_quit);
 }
+
+// ── :goto / bare :N line-jump ─────────────────────────────────────────────────
+
+/// `:goto N` places the cursor at the start of line N (1-based).
+/// Validity: assert line index 2 — if the handler is a no-op the head stays on
+/// line 0, which fails the assertion.
+#[test]
+fn colon_goto_moves_to_line() {
+    let mut ed = jump_editor(0);
+    type_cmd(&mut ed, ":goto 3");
+    assert_eq!(
+        ed.doc()
+            .text()
+            .char_to_line(ed.current_selections().primary().head()),
+        2, // 0-indexed: line 3 → index 2
+        ":goto 3 must land on line 3 (0-indexed: 2)"
+    );
+}
+
+/// Bare `:3` is accepted as shorthand for `:goto 3`.
+/// Validity: same as above — no-op leaves head on line 0, failing index-2 check.
+#[test]
+fn colon_bare_number_moves_to_line() {
+    let mut ed = jump_editor(0);
+    type_cmd(&mut ed, ":3");
+    assert_eq!(
+        ed.doc()
+            .text()
+            .char_to_line(ed.current_selections().primary().head()),
+        2,
+        ":3 must land on line 3 (0-indexed: 2)"
+    );
+}
+
+/// Past-EOF numbers clamp to the last content line.
+/// 20-line buffer → last content index is 19.
+/// Validity: remove the `.min(last)` clamp and line_to_char panics or returns
+/// the ghost-line position, which fails the index-19 check.
+#[test]
+fn colon_goto_clamps_past_eof() {
+    let mut ed = jump_editor(0);
+    type_cmd(&mut ed, ":goto 9999");
+    assert_eq!(
+        ed.doc()
+            .text()
+            .char_to_line(ed.current_selections().primary().head()),
+        19,
+        ":goto 9999 must clamp to last content line (index 19)"
+    );
+}
+
+/// Bare large number also clamps.
+#[test]
+fn colon_bare_number_clamps_past_eof() {
+    let mut ed = jump_editor(0);
+    type_cmd(&mut ed, ":9999");
+    assert_eq!(
+        ed.doc()
+            .text()
+            .char_to_line(ed.current_selections().primary().head()),
+        19,
+        ":9999 must clamp to last content line (index 19)"
+    );
+}
+
+/// `:goto 0` is an error — line numbers start at 1.
+/// Validity: remove `checked_sub(1)` and 0 maps to index -1 (wraps to usize::MAX),
+/// which would clamp to last line — a bogus move rather than an error.
+#[test]
+fn colon_goto_zero_is_error() {
+    let mut ed = jump_editor(5);
+    let before = state(&ed);
+    type_cmd(&mut ed, ":goto 0");
+    assert_eq!(state(&ed), before, ":goto 0 must not move the cursor");
+    assert!(
+        ed.state.status_msg.is_some(),
+        ":goto 0 must report an error"
+    );
+}
+
+/// Non-numeric argument reports an error and leaves the cursor unmoved.
+/// Validity: replace the parse error with Ok(1) and state() would change.
+#[test]
+fn colon_goto_invalid_arg_is_error() {
+    let mut ed = jump_editor(5);
+    let before = state(&ed);
+    type_cmd(&mut ed, ":goto abc");
+    assert_eq!(state(&ed), before, ":goto abc must not move the cursor");
+    assert!(
+        ed.state
+            .status_msg
+            .as_deref()
+            .unwrap_or("")
+            .contains("invalid line number"),
+        ":goto abc must report 'invalid line number', got: {:?}",
+        ed.state.status_msg
+    );
+}
+
+/// `:goto` with no argument reports an error.
+#[test]
+fn colon_goto_no_arg_is_error() {
+    let mut ed = jump_editor(5);
+    let before = state(&ed);
+    type_cmd(&mut ed, ":goto");
+    assert_eq!(
+        state(&ed),
+        before,
+        ":goto with no arg must not move the cursor"
+    );
+    assert!(
+        ed.state.status_msg.is_some(),
+        ":goto with no arg must report an error"
+    );
+}
+
+/// `:goto` records the pre-jump position so `Ctrl+O` returns to it.
+/// Validity: remove the jump-push block and Ctrl+O leaves the cursor at line 14
+/// instead of restoring to before.
+#[test]
+fn colon_goto_records_jump() {
+    let mut ed = jump_editor(5);
+    let before = state(&ed);
+
+    type_cmd(&mut ed, ":goto 15");
+    assert_eq!(
+        ed.doc()
+            .text()
+            .char_to_line(ed.current_selections().primary().head()),
+        14, // 0-indexed: line 15 → index 14
+        ":goto 15 must land on line 15 (index 14)"
+    );
+
+    // Ctrl+O must restore the pre-jump position.
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(state(&ed), before, "Ctrl+O must restore the pre-goto position");
+}

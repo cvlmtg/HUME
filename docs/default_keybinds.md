@@ -318,5 +318,6 @@ Auto-pairs: when `auto-pairs-enabled` is on, typing an opening delimiter (`(`, `
 | `:split` | `:sp` | Split current pane horizontally *(not yet implemented)* |
 | `:vsplit` | `:vsp` | Split current pane vertically *(not yet implemented)* |
 | `:clear-search` | | Clear search highlights |
+| `:goto <N>` | `:N` | Jump to 1-based line N (`:42` also accepted as shorthand) |
 
 See [settings.md](settings.md) for the full list of available keys and values for `:set`.

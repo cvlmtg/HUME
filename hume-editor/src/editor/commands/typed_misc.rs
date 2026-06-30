@@ -1,3 +1,4 @@
+use super::current_jump_entry;
 use super::super::Editor;
 use super::super::{Severity, ops};
 use crate::editor::error::CommandError;
@@ -300,5 +301,42 @@ pub fn typed_tutor(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<
         .open_or_dedup(&canonical_tmp)
         .map_err(|e| CommandError::new(format!("could not open tutor copy: {e}")))?;
     ed.switch_to_buffer_with_jump(bid);
+    Ok(())
+}
+
+// ── Go-to-line ────────────────────────────────────────────────────────────────
+
+/// `:goto N` — jump to 1-based line `N`, clamped to the last content line.
+///
+/// The pre-jump position is recorded in the jump list so `Ctrl+o` returns here.
+/// `:42` is accepted as shorthand (the command-mode dispatcher intercepts bare
+/// digit strings and routes them here before the normal registry lookup).
+pub fn typed_goto_line(
+    ed: &mut Editor,
+    arg: Option<&str>,
+    _force: bool,
+) -> Result<(), CommandError> {
+    use hume_editing::selection::{Selection, SelectionSet};
+
+    let raw = arg.ok_or_else(|| CommandError::new(":goto requires a line number"))?;
+    let n: usize = raw
+        .trim()
+        .parse()
+        .map_err(|_| CommandError::new(format!("invalid line number: {raw}")))?;
+    let line0 = n
+        .checked_sub(1)
+        .ok_or_else(|| CommandError::new("line numbers start at 1"))?;
+
+    // len_lines() counts the ghost line after the trailing '\n', so the last
+    // real content line is always at index len_lines() - 2.
+    let last = ed.doc().text().len_lines().saturating_sub(2);
+    let target = line0.min(last);
+    let char_pos = ed.doc().text().line_to_char(target);
+
+    // Record pre-jump position before moving so Ctrl+O can return here.
+    let entry = current_jump_entry(&ed.state, &ed.view);
+    ed.state.panes.jumps[ed.state.focused_pane_id].push(entry);
+
+    ed.set_current_selections(SelectionSet::single(Selection::collapsed(char_pos)));
     Ok(())
 }

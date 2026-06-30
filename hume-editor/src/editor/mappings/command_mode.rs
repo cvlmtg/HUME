@@ -1,5 +1,6 @@
 use crossterm::event::KeyEvent;
 
+use super::super::commands::typed_goto_line;
 use super::super::minibuf::MiniBufferEvent;
 use super::super::minibuf_history::{HistoryDir, HistoryKind};
 use super::super::registry::MappableCommand;
@@ -250,6 +251,19 @@ impl Editor {
             .unwrap_or_default();
 
         let (cmd, force, arg) = parse_typed_command(&input);
+
+        // Bare line number `:42` — shorthand for `:goto 42`.
+        // The parser leaves `cmd = ""` for digit-only input (digits are excluded
+        // from the command-name alphabet so `:42` → cmd="" arg=Some("42")).
+        if cmd.is_empty()
+            && !force
+            && arg.is_some_and(|a| !a.is_empty() && a.bytes().all(|b| b.is_ascii_digit()))
+        {
+            if let Err(e) = typed_goto_line(self, arg, false) {
+                self.report(Severity::Error, e.message().to_owned());
+            }
+            return;
+        }
 
         // Expand `%`/`#` tokens in the arg. Gate on the fast-path check so the
         // common case (no expansion) stays allocation-free. Skip expansion for
