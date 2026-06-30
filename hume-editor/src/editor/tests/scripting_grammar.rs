@@ -541,18 +541,23 @@ fn reparse_reattaches_after_shrink_under_cap() {
 }
 
 // ---------------------------------------------------------------------------
-// Fix 4 — reload_buffer_in_place must re-attach syntax after reload
+// Highlighting self-heals after :e! reload
 // ---------------------------------------------------------------------------
 
-/// Regression: `reload_buffer_in_place` (`:e!`) must keep syntax highlighting
-/// alive when the buffer's language is unchanged across the reload.
+/// `reload_buffer_in_place` (`:e!`) must keep syntax highlighting alive across
+/// a reload when the buffer's language is unchanged.
 ///
-/// The old path (`clear_engine_syntax` + `detect_and_set_language`) left the
-/// engine side dark (`view.syntax = None`) while `state.syntax` remained Some,
-/// preventing the re-attach branch in `reparse_stale_buffers` from ever firing.
+/// Mechanism: `reload_from_text` leaves `state.syntax` (the highlighter) intact
+/// and bumps `text_gen`. `reparse_stale_buffers` sees `syntax.is_some()` + a
+/// gen mismatch → posts a fresh full parse (no pending edits, so no incremental
+/// baking) → second tick drains and installs the new tree.
 ///
-/// Flip: with the old two-liner the `state.buffers.get(bid).syntax.is_some()` assert
-/// below fails, confirming the test catches the regression.
+/// The `end_byte()` assertion catches the reparse loop failing to post or
+/// install a request against the new content.  `state.syntax.is_some()` would
+/// fail if `detect_and_set_language` incorrectly cleared the language on reload.
+/// One thing the test cannot probe: that `clear_engine_tree` was called
+/// immediately on reload; that prevents a one-frame stale-tree in the renderer
+/// but is invisible to `InlineParseBackend`.
 #[test]
 fn reload_buffer_in_place_keeps_syntax_highlighting() {
     use crate::editor::buffer::Buffer;
@@ -597,20 +602,34 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
         "tree must be installed before reload"
     );
 
-    // Reload with different (non-identical) content — language stays "json"
-    // because the buffer path (.json extension) still matches.
-    let mut replacement = Buffer::new(Text::from("[1, 2, 3]\n"), SelectionSet::default());
+    // Reload with different-length content — language stays "json" (path unchanged).
+    // `{"x": 1}\n` (original, 9 bytes) → `[1, 2, 3]\n` (replacement, 10 bytes).
+    // The byte-length difference makes the tree-alignment check below definitive:
+    // a stale tree (not rebuilt) would report end_byte() == 9, not 10.
+    let new_text = "[1, 2, 3]\n";
+    let new_byte_len = new_text.len();
+    let mut replacement = Buffer::new(Text::from(new_text), SelectionSet::default());
     replacement.set_path(Some(std::path::PathBuf::from("data.json")));
     ed.reload_buffer_in_place(bid, replacement);
+    // Two ticks: first `reparse_stale_buffers` sees the gen mismatch and posts the
+    // parse request (InlineParseBackend completes synchronously into the done queue);
+    // the second drains and installs the tree. The real run loop does the same across
+    // two event-loop iterations.
+    ed.reparse_stale_buffers();
     ed.reparse_stale_buffers();
 
     assert!(
         ed.state.buffers.get(bid).syntax.is_some(),
-        "syntax must survive reload"
+        "highlighter must survive reload"
     );
-    assert!(
-        ed.view.buffers[bid].tree.is_some(),
-        "parse tree must be installed after reload"
+    let tree = ed.view.buffers[bid]
+        .tree
+        .as_ref()
+        .expect("engine tree must be re-installed after reload");
+    assert_eq!(
+        tree.root_node().end_byte(),
+        new_byte_len,
+        "engine tree must be aligned to the reloaded content, not the stale pre-reload text"
     );
 }
 

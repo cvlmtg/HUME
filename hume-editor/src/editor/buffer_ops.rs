@@ -214,16 +214,13 @@ impl Editor {
             .reload_from_text(new_text, pre_sels, post_sels);
         self.state.buffers.get_mut(id).file_meta = new_file_meta;
 
-        // Re-detect language (the reloaded first line may change shebang detection).
-        // On a change, set_buffer_language re-runs setup_buffer_syntax for us. When
-        // the language is unchanged, detect_and_set_language no-ops, so force a full
-        // re-attach: the old engine tree/highlighter referenced stale content and must
-        // be rebuilt against the new text.
-        let prev_lang = self.state.buffers.get(id).language.clone();
+        // Drop the stale engine tree (it references pre-reload content). The
+        // highlighter in `state.syntax` survives reload untouched; `set_text` bumped
+        // `text_gen`, so `reparse_stale_buffers` will post a fresh full parse on the
+        // next tick. `detect_and_set_language` handles a genuine language change
+        // (shebang/extension), re-running setup via `set_buffer_language` itself.
+        ops::clear_engine_tree(&mut self.view, id);
         self.detect_and_set_language(id);
-        if self.state.buffers.get(id).language == prev_lang {
-            self.setup_buffer_syntax(id);
-        }
 
         // ── Phase 3: reseed per-pane selections / edit groups / scroll ───────
         // Targeted, not `fresh_from_buf`: selections are restored to the clamped
