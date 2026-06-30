@@ -26,6 +26,7 @@
 //! or selection code.
 
 pub mod changeset;
+pub mod diff;
 pub mod error;
 pub mod grapheme;
 pub mod history;
