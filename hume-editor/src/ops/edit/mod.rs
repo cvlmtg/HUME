@@ -470,7 +470,13 @@ pub(crate) fn insert_tab(
                 as usize;
         if !sel.is_collapsed() {
             let del_end = sel.content_end(buf) + 1;
-            let del_width = display_col_in_line(buf, line_idx, del_end, tab_width)
+            // Clamp del_end to the line boundary before computing the display-column
+            // width to keep col_shift accurate. A multi-line selection (del_end on
+            // a different line) would otherwise walk past the '\n' when counting
+            // columns, making col_shift wrong for later same-line cursors.
+            let line_end = line_end_exclusive(buf, line_idx);
+            let del_end_clamped = del_end.min(line_end);
+            let del_width = display_col_in_line(buf, line_idx, del_end_clamped, tab_width)
                 - display_col_in_line(buf, line_idx, start, tab_width);
             b.delete(del_end - start);
             col_shift -= del_width as isize;
@@ -615,21 +621,22 @@ pub(crate) fn delete_word_backward(
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         if sel.is_collapsed() {
             let p = sel.head();
-            if p == 0 {
-                let sel = Selection::collapsed(b.new_pos());
-                new_sels.push(sel);
-                return;
-            }
-            let word_start = prev_word_start(buf, p, is_word_boundary);
-            if word_start < b.old_pos() {
-                let sel = Selection::collapsed(b.new_pos());
-                new_sels.push(sel);
-                return;
-            }
+            // Determine how far back to delete. Three no-op cases:
+            // (1) cursor at buffer start, (2) prior same-word cursor already consumed
+            // past word_start — retain to `p` so this cursor lands at its own position.
+            let word_start = if p > 0 {
+                let ws = prev_word_start(buf, p, is_word_boundary);
+                // `ws < b.old_pos()` means a prior cursor in the same word already
+                // consumed past `ws`. Treat as no-op so the cursor lands at `p`.
+                if ws >= b.old_pos() { ws } else { p }
+            } else {
+                p // at buffer start — nothing to delete
+            };
             b.retain(word_start - b.old_pos());
-            b.delete(p - word_start);
-            let sel = Selection::collapsed(b.new_pos());
-            new_sels.push(sel);
+            if word_start < p {
+                b.delete(p - word_start);
+            }
+            new_sels.push(Selection::collapsed(b.new_pos()));
         } else {
             delete_sel_region(b, buf, sel, new_sels);
         }

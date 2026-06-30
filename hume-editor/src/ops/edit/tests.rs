@@ -684,6 +684,20 @@ fn delete_word_backward_two_cursors() {
 }
 
 #[test]
+fn delete_word_backward_two_cursors_same_word() {
+    // Two cursors inside the same word: heads at 2 ('o') and 5 ('r') in "foobar\n".
+    // Cursor 1 (head=2): word_start=0 >= old_pos=0 → delete [0,2) → "foobar\n"
+    //   becomes "obar\n"; cursor 1 at new offset 0.
+    // Cursor 2 (head=5): word_start=0 < old_pos=2 (prior cursor consumed there) →
+    //   overlap-skip → retain [2,5) → cursor 2 at new offset 3, NOT 0.
+    assert_state!(
+        "fo-[o]>ba-[r]>\n",
+        |(buf, sels)| delete_word_backward(buf, sels),
+        "-[o]>ba-[r]>\n"
+    );
+}
+
+#[test]
 fn delete_word_backward_punctuation_group() {
     // Cursor after "foo.bar()"; punctuation group "()" is one word.
     assert_state!(
