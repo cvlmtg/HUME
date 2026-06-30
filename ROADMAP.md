@@ -109,27 +109,33 @@
 - [x] Hierarchical theming (Helix-compatible scopes, TOML format, `inherits`, bundled themes, `:theme`/`:theme-debug`)
 - [x] `ui.menu`/`ui.menu.selected` scopes for completion popup styling; default theme from `dark.toml`
 
-### M9 — Syntax awareness (in progress)
+### M9 — Syntax awareness (complete)
 - [x] Language identity (`Buffer.language`, `LanguageRegistry`, `detect_language`, `on-language-set` hook, `define-language!`)
 - [x] Syntax highlighting via tree-sitter (grammar loading, `BufferSyntax`, `TreeSitterHighlighter`, `register-grammar!`)
 - [x] Grammar installation via PLUM (`plum/ensure-grammars!`, `:plum-install-grammar`, compile step)
 - [x] Off-main-thread tree-sitter parsing (parse worker thread, non-blocking request/drain cycle)
 - [x] Incremental tree-sitter parsing (`ChangeSet` → `InputEdit`, pending-edit chain, COW tree clone)
-- [ ] **Multi-layer tree-sitter injections**: embedded languages (JavaScript in HTML, code blocks in Markdown). Defer until injection orchestration can be built on the worker architecture already in place.
-- [ ] **Tree-sitter structural features**: text objects (`locals.scm`, `textobjects.scm`), scope-aware local rename (LSP fallback).
-- [ ] **`(set-buffer-option! key value)` Steel builtin**: per-buffer option overrides (e.g. `tab-width` per filetype).
-  Required pieces:
-  1. `active_overrides: BufferOverrides` on `SteelCtx<'a>` — builtin writes there; `set-option!` continues to write to `EditorSettings`.
-  2. Persistent `BufferOverrides` slot on `Buffer` merged at render/edit time (currently computed fresh each call).
-  3. `set-buffer-option!` builtin in `hume-editor/src/scripting/builtins/settings.rs` — valid only during `call_steel_cmd`; error if called at init time.
-- [ ] **Code folding** (tree-sitter powered collapse/expand)
 
 ### M10 — Splits (planned)
 
 - **Splits & pane focus (`:split` / `:vsplit` / pane focus commands)**: stubs already registered; multi-pane scaffolding on `Editor` is split-ready. Requires a layout engine to render side-by-side views.
   - **Design note — move `wrap_mode` onto `Pane` when wiring splits**: wrap is a view property; two panes sharing a buffer at different widths each want their own wrap mode. Add `pub wrap_mode: WrapMode` to `Pane`; initialise from `EditorSettings::wrap_mode`; read from `pane_ctx.pane.wrap_mode` in the format pipeline. Keep `tab_width` and `whitespace` on `Buffer.overrides` — they are document preferences, not view preferences.
-- **Class B chrome slot (bottom drawer)**: full-width, auto-sized, capped at ~50% terminal height. Hosts transient read-only content: `:ls`, `:messages`, LSP hover docs, notifications, command/search history pagers. Not a Pane — spans full terminal regardless of split layout. Editor-side viewport sync queries engine chrome height instead of hardcoding `-1` for statusline only.
 - **Tabline UI**: buffer/tab bar rendered by the engine; `TabBarProvider` slot already exists.
+
+### M11 — Syntax depth (planned)
+
+- **Multi-layer tree-sitter injections**: embedded languages (JavaScript in HTML, code blocks in Markdown). Defer until injection orchestration can be built on the worker architecture already in place.
+- **Tree-sitter structural features**: text objects (`locals.scm`, `textobjects.scm`), scope-aware local rename (LSP fallback).
+- **`(set-buffer-option! key value)` Steel builtin**: per-buffer option overrides (e.g. `tab-width` per filetype).
+  Required pieces:
+  1. `active_overrides: BufferOverrides` on `SteelCtx<'a>` — builtin writes there; `set-option!` continues to write to `EditorSettings`.
+  2. Persistent `BufferOverrides` slot on `Buffer` merged at render/edit time (currently computed fresh each call).
+  3. `set-buffer-option!` builtin in `hume-editor/src/scripting/builtins/settings.rs` — valid only during `call_steel_cmd`; error if called at init time.
+- **Code folding** (tree-sitter powered collapse/expand)
+
+### M12 — Editor chrome (planned)
+
+- **Class B chrome slot (bottom drawer)**: full-width, auto-sized, capped at ~50% terminal height. Hosts transient read-only content: `:ls`, `:messages`, LSP hover docs, notifications, command/search history pagers. Not a Pane — spans full terminal regardless of split layout. Editor-side viewport sync queries engine chrome height instead of hardcoding `-1` for statusline only.
 - **File picker / fuzzy finder** (Helix-style): depends on split/pane layout. Deferred until post-splits.
 - **Class A docked panes (fixed-row-count `LayoutTree` variant)**: real panes docked to a fixed row count inside the split tree. `LayoutTree::Fixed { rows, main, dock }` alongside `Split { ratio }`. Clients: quickfix list, LSP references/diagnostics, embedded terminal/REPL, build/test runner, `:help` pager, DAP debugger views. Deferred until the first concrete client is scoped.
 
