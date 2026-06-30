@@ -3,7 +3,7 @@ use hume_editing::lines::leading_whitespace_end;
 
 use super::super::keymap::WalkResult;
 use super::super::registry::MappableCommand;
-use super::super::{Editor, Severity, doc_ops};
+use super::super::{Editor, Severity, commands, doc_ops};
 use crate::auto_pairs::{delete_pair, insert_pair_close};
 use crate::ops::MotionMode;
 use crate::ops::edit::{
@@ -22,26 +22,17 @@ impl Editor {
         let trie_result = self.state.keymap.insert.walk(&[key]);
         match trie_result {
             WalkResult::Leaf(cmd) => {
-                // Dispatch Edit commands (e.g. Ctrl-W) as grouped edits so they
-                // compose into the insert session's open edit group instead of
-                // creating a standalone undo revision that would corrupt the
-                // group's changeset composition.
                 let Some(reg_cmd) = self.state.registry.get_mappable(cmd.name.as_ref()).cloned()
                 else {
                     self.report(Severity::Warning, format!("unknown command: {}", cmd.name));
                     return;
                 };
-                // single-funnel-exempt: insert-mode edits must go through apply_doc_edit_grouped (stamps_last_command handled inline)
-                if let MappableCommand::Edit { fun, name, .. } = reg_cmd {
-                    let focused = self.state.focused_pane_id;
-                    let buf = self.focused_buffer_id();
-                    doc_ops::apply_doc_edit_grouped(
-                        &mut self.state.buffers,
-                        &mut self.state.panes.state,
-                        focused,
-                        buf,
-                        fun,
-                    );
+                // Edit commands (e.g. Ctrl-W) must compose into the open insert-session
+                // edit group. `run_native_body` routes through `apply_doc_edit_grouped`
+                // when a group is open, so no special-casing is needed here.
+                if let MappableCommand::Edit { .. } = reg_cmd {
+                    let name = reg_cmd.name().clone();
+                    commands::run_native_body(&mut self.state, &mut self.view, reg_cmd, 1, false);
                     self.state.last_command = Some(name);
                     return;
                 }

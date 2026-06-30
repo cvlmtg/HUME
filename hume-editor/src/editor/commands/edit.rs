@@ -356,10 +356,6 @@ pub fn cmd_undo(
     count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if super::focused_buffer_read_only(state, view) {
-        state.report(Severity::Info, "Buffer is read-only".to_string());
-        return Ok(());
-    }
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     for _ in 0..count {
@@ -378,10 +374,6 @@ pub fn cmd_redo(
     count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if super::focused_buffer_read_only(state, view) {
-        state.report(Severity::Info, "Buffer is read-only".to_string());
-        return Ok(());
-    }
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     for _ in 0..count {

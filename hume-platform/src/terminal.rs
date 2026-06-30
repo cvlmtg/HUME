@@ -93,7 +93,11 @@ pub fn init(mouse_enabled: bool, mouse_select: bool) -> io::Result<(Term, bool)>
     let kitty_enabled = match crate::probe_kitty_support() {
         Ok(v) => v,
         Err(e) => {
+            // Disable raw mode so the hint prints with normal line discipline
+            // (no staircase) and is visible before the alternate screen hides it.
+            let _ = disable_raw_mode();
             eprintln!("hume: kitty keyboard probe failed: {e}");
+            enable_raw_mode()?;
             false
         }
     };

@@ -448,17 +448,37 @@ pub(crate) fn insert_tab(
     if style == TabStyle::Hard {
         return insert_char(buf, sels, '\t');
     }
-    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+    // Track the accumulated display-column shift from insertions/deletions made by
+    // earlier cursors on the same line. Without this, the second cursor on a line
+    // would compute its tab-stop offset from the original-buffer column, missing the
+    // spaces the first cursor already inserted.
+    let mut prev_line: Option<usize> = None;
+    let mut col_shift: isize = 0;
+    apply_edit(buf, sels, move |b, buf, _i, sel, new_sels| {
         let start = sel.start();
         b.retain(start - b.old_pos());
-        if !sel.is_collapsed() {
-            b.delete(sel.content_end(buf) + 1 - start);
-        }
         let line_idx = buf.char_to_line(start);
-        let col = display_col_in_line(buf, line_idx, start, tab_width);
+        if prev_line != Some(line_idx) {
+            col_shift = 0;
+            prev_line = Some(line_idx);
+        }
+        // Compute the effective display column of the cursor after all prior
+        // same-line edits. Cast to isize because col_shift is signed (a
+        // selection deletion can decrease it), then clamp to avoid underflow.
+        let col =
+            (display_col_in_line(buf, line_idx, start, tab_width) as isize + col_shift).max(0)
+                as usize;
+        if !sel.is_collapsed() {
+            let del_end = sel.content_end(buf) + 1;
+            let del_width = display_col_in_line(buf, line_idx, del_end, tab_width)
+                - display_col_in_line(buf, line_idx, start, tab_width);
+            b.delete(del_end - start);
+            col_shift -= del_width as isize;
+        }
         let tw = tab_width.max(1) as usize;
         let n = tw - (col % tw);
         b.insert(&" ".repeat(n));
+        col_shift += n as isize;
         new_sels.push(Selection::collapsed(b.new_pos()));
     })
 }
@@ -562,10 +582,14 @@ pub(crate) fn dedent_tab_backward(
         // Previous tab stop: floor (col-1)/tw * tw handles col 0 (saturates to 0),
         // exact tab stops (jumps back a full tw), and mid-stop cols (rounds down).
         let prev_stop = (col.saturating_sub(1) / tw) * tw;
-        let target = char_pos_at_display_col(buf, line_idx, prev_stop, tab_width);
-        if target < b.old_pos() || target >= p {
-            // Overlap with a prior selection's delete, or nothing to delete —
-            // no-op. Land the cursor at the current new position.
+        // Clamp target up to the boundary already consumed by a prior same-line
+        // cursor, so the second cursor still deletes whatever space remains
+        // between that boundary and its own head.
+        let target = char_pos_at_display_col(buf, line_idx, prev_stop, tab_width)
+            .max(b.old_pos());
+        if target >= p {
+            // Nothing to delete (cursor already at or past its tab stop, or
+            // immediately adjacent to the prior cursor's delete).
             b.retain(p - b.old_pos());
             new_sels.push(Selection::collapsed(b.new_pos()));
             return;
@@ -581,6 +605,9 @@ pub(crate) fn dedent_tab_backward(
 /// - **Collapsed cursor**: deletes from the word start to the cursor position,
 ///   using `prev_word_start` to find the boundary. No-op at buffer start.
 /// - **Non-collapsed selection**: delegates to `delete_sel_region`.
+///
+/// Non-yanking by design: Ctrl-W is readline-style word-rubout, not a kill —
+/// the deleted text is not pushed to the kill ring or any register.
 pub(crate) fn delete_word_backward(
     buf: Text,
     sels: SelectionSet,

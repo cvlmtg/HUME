@@ -213,14 +213,50 @@ fn insert_tab_soft_replaces_selection() {
 }
 
 #[test]
-fn insert_tab_soft_two_cursors() {
-    // Two cursors at different columns get independent space counts.
-    // "abc xyz\n": cursor1 on 'c' (col 2) → 2 spaces (to col 4);
-    // cursor2 on 'z' (col 6) → 2 spaces (to col 8). tw=4.
+fn insert_tab_soft_two_cursors_different_lines() {
+    // Two cursors on different lines: each column is independent.
+    // Line 0: cursor on 'c' (col 2) → 2 spaces to reach col 4.
+    // Line 1: cursor on 'z' (col 2) → 2 spaces to reach col 4.
+    assert_state!(
+        "ab-[c]>\nxy-[z]>\n",
+        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 4),
+        "ab  -[c]>\nxy  -[z]>\n"
+    );
+}
+
+#[test]
+fn insert_tab_soft_two_cursors_same_line() {
+    // Two cursors on the SAME line: cursor 1's effective column accounts for
+    // the spaces cursor 0 already inserted, so it aligns to the correct stop.
+    //
+    // "abc xyz\n": cursor 0 on 'c' (col 2), cursor 1 on 'z' (col 6). tw=4.
+    // Cursor 0: col 2 → 2 spaces to reach col 4. col_shift = +2.
+    // Cursor 1: original col 6 + shift 2 = effective col 8. 8 is a tab stop,
+    //           so a full tw=4 spaces to reach col 12.
+    // Independent oracle: after cursor 0's 2 spaces, 'z' sits at col 8;
+    //                     next stop = 12; spaces needed = 4.
     assert_state!(
         "ab-[c]> xy-[z]>\n",
         |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 4),
-        "ab  -[c]> xy  -[z]>\n"
+        "ab  -[c]> xy    -[z]>\n"
+    );
+}
+
+#[test]
+fn insert_tab_soft_two_cursors_same_line_not_on_stop() {
+    // Both cursors on the same line; cursor 0 is NOT at col 0, so cursor 1's
+    // effective col is not a multiple of tw — verifies the arithmetic mid-stop.
+    //
+    // "abcde fgh\n": cursor 0 on 'd' (col 3), cursor 1 on 'h' (col 8). tw=4.
+    // Cursor 0: col 3 → 1 space to reach col 4. col_shift = +1.
+    // Cursor 1: original col 8 + shift 1 = effective col 9. Next stop = 12.
+    //           Spaces = 12 - 9 = 3.
+    // Independent oracle: after cursor 0's 1 space, 'h' is at col 9; next stop
+    //                     at col 12; spaces needed = 3.
+    assert_state!(
+        "abc-[d]>e fg-[h]>\n",
+        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 4),
+        "abc -[d]>e fg   -[h]>\n"
     );
 }
 
@@ -340,14 +376,60 @@ fn dedent_at_col_one_deletes_one_space() {
 #[test]
 fn dedent_two_cursors_same_line_independent() {
     // Two cursors on the same line "     \n" (5 spaces):
-    // cursor 0 at col 2 → prev_stop 0, deletes 2 chars.
-    // cursor 1 at col 5 → prev_stop 4, deletes 1 char.
-    // Each cursor acts independently; no overlap (target 4 > old_pos 2 after
-    // cursor 0's delete). Result: 2 spaces remain, then \n.
+    // cursor 0 at col 2 → prev_stop 0, deletes 2 chars (positions 0..2).
+    // cursor 1 at col 5 (on '\n') → prev_stop 4, target=4. After cursor 0's
+    // delete, old_pos=2; target 4 > 2 → no clamp needed. Delete 1 char (pos 4).
+    // Result: 2 spaces remain, then '\n'.
+    //
+    // Independent oracle: "     \n" → cursor 0 deletes "  " from front,
+    // cursor 1 deletes the last space before '\n'. Result: "  \n".
     assert_state!(
         "  -[ ]>  -[\n]>",
         |(buf, sels)| dedent_tab_backward(buf, sels, 4),
         "-[ ]> -[\n]>"
+    );
+}
+
+#[test]
+fn dedent_two_cursors_same_line_target_overlap() {
+    // Two cursors on the same line where cursor 1's natural prev-stop target
+    // falls behind the boundary cursor 0 already consumed.
+    //
+    // "      \n" (6 spaces): cursor 0 at col 5 (char 5), cursor 1 at col 6 ('\n').
+    // Cursor 0: col 5, prev_stop = floor(4/4)*4 = 4. retain 4, delete 1. old_pos=5.
+    // Cursor 1: col 6, prev_stop = floor(5/4)*4 = 4. target = char_pos_at_col_4 = 4.
+    //   Without fix: target(4) < old_pos(5) → no-op; bug: cursor 1 leaves 1 space.
+    //   With fix:    target clamped to max(4,5) = 5; delete 1 char. Both land at 4.
+    //
+    // Independent oracle: cursor 0 deletes the space at col 4..5; cursor 1 deletes
+    // the space at col 5..6 (clamped start). Net: 2 spaces removed → 4 remain.
+    assert_state!(
+        "     -[ ]>-[\n]>",
+        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        "    -[\n]>"
+    );
+}
+
+#[test]
+fn dedent_two_cursors_same_line_same_target() {
+    // Two cursors whose natural tab-stop targets collide on the SAME position.
+    // This tests the `target.max(b.old_pos()) >= p` guard that prevents a
+    // zero-length or inverted delete when the second cursor is at old_pos.
+    //
+    // "    \n" (4 spaces): cursor 0 at col 4 (on '\n'), cursor 1 at col 4 (on '\n').
+    // This is a degenerate case — SelectionSet prevents duplicate positions, so
+    // instead: cursor 0 at col 3 (char 3), cursor 1 at col 4 (char 4, '\n').
+    //
+    // Cursor 0: col 3, prev_stop = 0, target = 0. Delete chars 0..3 (3 spaces). old_pos=3.
+    // Cursor 1: col 4 ('\n', char 4). prev_stop = floor(3/4)*4 = 0. target=0.
+    //   Clamped: max(0,3) = 3. 3 < 4 → delete chars 3..4 (1 space).
+    // Result: '\n' only. Both cursors at position 0.
+    //
+    // Independent oracle: all 4 spaces deleted.
+    assert_state!(
+        "   -[ ]>-[\n]>",
+        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        "-[\n]>"
     );
 }
 
