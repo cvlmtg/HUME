@@ -315,7 +315,12 @@ impl Editor {
             // sequence — hence `let _ =` rather than `?`.
             let _ = hume_platform::terminal::begin_synchronized_update();
             term.draw(|frame| {
-                self.render_into(frame.area(), frame.buffer_mut(), Some(&statusline), &mut ctx);
+                self.render_into(
+                    frame.area(),
+                    frame.buffer_mut(),
+                    Some(&statusline),
+                    &mut ctx,
+                );
                 if let Some((col, row)) = cursor_screen {
                     frame.set_cursor_position((col, row));
                 }

@@ -1,6 +1,6 @@
-use super::current_jump_entry;
 use super::super::Editor;
 use super::super::{Severity, ops};
+use super::current_jump_entry;
 use crate::editor::error::CommandError;
 
 // ── Message log ──────────────────────────────────────────────────────────────

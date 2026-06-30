@@ -134,8 +134,7 @@ pub fn diff_lines_with_deadline(old: &[&str], new: &[&str], deadline: Duration) 
     // the deadline, so we keep whatever it returns.
     let myers_start = Instant::now();
     let myers_deadline = myers_start + deadline;
-    let myers_ops =
-        capture_diff_slices_deadline(Algorithm::Myers, old, new, Some(myers_deadline));
+    let myers_ops = capture_diff_slices_deadline(Algorithm::Myers, old, new, Some(myers_deadline));
     LineDiff {
         algo_used: AlgoUsed::Myers,
         hunks: ops_to_line_hunks(&myers_ops, old, new),
@@ -160,12 +159,8 @@ fn ops_to_line_hunks(ops: &[DiffOp], old: &[&str], new: &[&str]) -> Vec<LineHunk
             let new_range = op.new_range();
             let kind = match op {
                 DiffOp::Equal { .. } => LineHunkKind::Equal,
-                DiffOp::Delete { .. } => {
-                    LineHunkKind::Delete(old[old_range.clone()].join(""))
-                }
-                DiffOp::Insert { .. } => {
-                    LineHunkKind::Insert(new[new_range.clone()].join(""))
-                }
+                DiffOp::Delete { .. } => LineHunkKind::Delete(old[old_range.clone()].join("")),
+                DiffOp::Insert { .. } => LineHunkKind::Insert(new[new_range.clone()].join("")),
                 DiffOp::Replace { .. } => LineHunkKind::Replace {
                     old: old[old_range.clone()].join(""),
                     new: new[new_range.clone()].join(""),
@@ -565,9 +560,7 @@ mod tests {
         // Myers too hits the zero budget immediately and returns the coarsest
         // result — a single Replace spanning the whole input — which is still
         // a coherent, well-formed diff (ranges cover the inputs, kind matches).
-        let old: Vec<String> = (0..20)
-            .map(|i| format!("line-{i}-pad-{}", i % 3))
-            .collect();
+        let old: Vec<String> = (0..20).map(|i| format!("line-{i}-pad-{}", i % 3)).collect();
         let new: Vec<String> = (0..20)
             .map(|i| format!("line-{i}-pad-{}", (i + 1) % 5))
             .collect();

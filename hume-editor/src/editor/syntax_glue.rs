@@ -731,10 +731,12 @@ mod tests {
             return;
         }
 
-        let grammar = LoadedGrammar::open(&parser_path, "tree_sitter_json")
-            .expect("load json grammar");
+        let grammar =
+            LoadedGrammar::open(&parser_path, "tree_sitter_json").expect("load json grammar");
         let mut parser = tree_sitter::Parser::new();
-        parser.set_language(grammar.language()).expect("set language");
+        parser
+            .set_language(grammar.language())
+            .expect("set language");
 
         // Old text: JSON array.  Two edits: replace "abc" (chars 2-4) with "X" and
         // replace "def" (chars 8-10) with "YY".  Different byte deltas at each site

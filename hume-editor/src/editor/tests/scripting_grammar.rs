@@ -561,8 +561,8 @@ fn reparse_reattaches_after_shrink_under_cap() {
 #[test]
 fn reload_buffer_in_place_keeps_syntax_highlighting() {
     use crate::editor::buffer::Buffer;
-    use hume_editing::text::Text;
     use hume_editing::selection::SelectionSet;
+    use hume_editing::text::Text;
 
     let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");

@@ -22,7 +22,7 @@
 use std::ops::Range;
 use std::time::Duration;
 
-use crate::diff::{diff_lines_with_deadline, LineHunk, LineHunkKind};
+use crate::diff::{LineHunk, LineHunkKind, diff_lines_with_deadline};
 use crate::text::Text;
 
 use super::{ChangeSet, ChangeSetBuilder};
@@ -96,7 +96,8 @@ fn build_changesets(
 
     let span = |offsets: &[usize], range: &Range<usize>| offsets[range.end] - offsets[range.start];
     let slice = |text: &Text, offsets: &[usize], range: &Range<usize>| {
-        text.slice(offsets[range.start]..offsets[range.end]).to_string()
+        text.slice(offsets[range.start]..offsets[range.end])
+            .to_string()
     };
 
     for hunk in hunks {
@@ -286,7 +287,9 @@ mod tests {
         // return the coarsest single-Replace result. The hunk partition
         // invariant still holds, so the round-trip must succeed regardless.
         let old: String = (0..40).map(|i| format!("line-{i}-pad-{}", i % 3)).collect();
-        let new: String = (0..40).map(|i| format!("line-{i}-pad-{}", (i + 1) % 5)).collect();
+        let new: String = (0..40)
+            .map(|i| format!("line-{i}-pad-{}", (i + 1) % 5))
+            .collect();
         let old_t = Text::from(old.as_str());
         let new_t = Text::from(new.as_str());
         let (fwd, inv) = changesets_from_line_diff_with_deadline(&old_t, &new_t, Duration::ZERO);

@@ -1261,5 +1261,9 @@ fn colon_goto_records_jump() {
 
     // Ctrl+O must restore the pre-jump position.
     ed.handle_key(key_ctrl('o'));
-    assert_eq!(state(&ed), before, "Ctrl+O must restore the pre-goto position");
+    assert_eq!(
+        state(&ed),
+        before,
+        "Ctrl+O must restore the pre-goto position"
+    );
 }

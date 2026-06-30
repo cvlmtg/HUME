@@ -911,7 +911,14 @@ mod tests {
     fn set_global_tab_style_propagates_to_unoverridden_buffer() {
         let mut global = EditorSettings::default();
         let mut ov = BufferOverrides::default();
-        apply_setting(SettingScope::Global, "tab-style", "soft", &mut global, &mut ov).unwrap();
+        apply_setting(
+            SettingScope::Global,
+            "tab-style",
+            "soft",
+            &mut global,
+            &mut ov,
+        )
+        .unwrap();
         assert_eq!(ov.tab_style(&global), TabStyle::Soft);
     }
 

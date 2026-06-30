@@ -256,11 +256,7 @@ pub fn char_pos_at_display_col(
             break; // end of buffer
         }
         let ch = buf.char_at(pos);
-        let w = if ch == Some('\t') {
-            tw - (col % tw)
-        } else {
-            1
-        };
+        let w = if ch == Some('\t') { tw - (col % tw) } else { 1 };
         if col + w > target_col {
             break; // this grapheme would overshoot — stop here
         }

@@ -224,9 +224,7 @@ impl KillRing {
             .entries
             .front()
             .is_some_and(|head| entry_is_whitespace(head));
-        if head_is_ws
-            && let Some(slot) = self.entries.front_mut()
-        {
+        if head_is_ws && let Some(slot) = self.entries.front_mut() {
             *slot = values;
             return;
         }
@@ -609,7 +607,10 @@ mod tests {
         ring.push(vs("new")); // whitespace collapse: reclaims " " slot, no eviction
         assert_eq!(ring.head(), Some(vs("new").as_slice()));
         assert_eq!(ring.len(), KILL_RING_DEPTH);
-        assert_eq!(ring.slot(KILL_RING_DEPTH - 1), Some(vs("entry1").as_slice()));
+        assert_eq!(
+            ring.slot(KILL_RING_DEPTH - 1),
+            Some(vs("entry1").as_slice())
+        );
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::grapheme::{
-    char_pos_at_display_col, display_col_in_line, grapheme_col_in_line,
-    next_grapheme_boundary, prev_grapheme_boundary,
+    char_pos_at_display_col, display_col_in_line, grapheme_col_in_line, next_grapheme_boundary,
+    prev_grapheme_boundary,
 };
 use hume_editing::lines::{is_line_start, leading_whitespace, line_end_exclusive};
 use hume_editing::selection::{Selection, SelectionSet, is_selection_linewise};
@@ -465,9 +465,8 @@ pub(crate) fn insert_tab(
         // Compute the effective display column of the cursor after all prior
         // same-line edits. Cast to isize because col_shift is signed (a
         // selection deletion can decrease it), then clamp to avoid underflow.
-        let col =
-            (display_col_in_line(buf, line_idx, start, tab_width) as isize + col_shift).max(0)
-                as usize;
+        let col = (display_col_in_line(buf, line_idx, start, tab_width) as isize + col_shift).max(0)
+            as usize;
         if !sel.is_collapsed() {
             let del_end = sel.content_end(buf) + 1;
             // Clamp del_end to the line boundary before computing the display-column
@@ -580,7 +579,10 @@ pub(crate) fn dedent_tab_backward(
         // Caller (`should_dedent_backspace`) guarantees: collapsed and sitting
         // in leading whitespace with p > line_start. Assert the invariant so
         // any future caller mismatch fails loudly in debug builds.
-        debug_assert!(sel.is_collapsed(), "dedent_tab_backward called on non-collapsed selection");
+        debug_assert!(
+            sel.is_collapsed(),
+            "dedent_tab_backward called on non-collapsed selection"
+        );
         let p = sel.head();
         let line_idx = buf.char_to_line(p);
         let col = display_col_in_line(buf, line_idx, p, tab_width);
@@ -591,8 +593,7 @@ pub(crate) fn dedent_tab_backward(
         // Clamp target up to the boundary already consumed by a prior same-line
         // cursor, so the second cursor still deletes whatever space remains
         // between that boundary and its own head.
-        let target = char_pos_at_display_col(buf, line_idx, prev_stop, tab_width)
-            .max(b.old_pos());
+        let target = char_pos_at_display_col(buf, line_idx, prev_stop, tab_width).max(b.old_pos());
         if target >= p {
             // Nothing to delete (cursor already at or past its tab stop, or
             // immediately adjacent to the prior cursor's delete).

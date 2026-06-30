@@ -568,7 +568,8 @@ mod tests {
         /// helper's live `self.sels`.
         fn reload_from(&mut self, new_text: Text, post_sels: SelectionSet) {
             let pre_sels = self.sels.clone();
-            self.buf.reload_from_text(new_text, pre_sels, post_sels.clone());
+            self.buf
+                .reload_from_text(new_text, pre_sels, post_sels.clone());
             self.sels = post_sels;
         }
 

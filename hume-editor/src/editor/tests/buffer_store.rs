@@ -543,14 +543,20 @@ fn p6_e_bang_undo_restores_pre_reload_buffer() {
     // revision, and "original\n" no longer matches the on-disk "changed\n".
     ed.handle_key(key('u'));
     assert_eq!(ed.doc().text().to_string(), "original\n");
-    assert!(ed.doc().is_dirty(), "root content differs from disk after reload");
+    assert!(
+        ed.doc().is_dirty(),
+        "root content differs from disk after reload"
+    );
     assert!(!ed.doc().can_undo(), "back at the root after two undos");
 
     // Redo re-applies the reload.
     ed.handle_key(key_ctrl('r')); // → "Xoriginal\n"
     ed.handle_key(key_ctrl('r')); // → "changed\n"
     assert_eq!(ed.doc().text().to_string(), "changed\n");
-    assert!(!ed.doc().is_dirty(), "redo lands on the saved reload revision");
+    assert!(
+        !ed.doc().is_dirty(),
+        "redo lands on the saved reload revision"
+    );
 }
 
 /// `:e!` → `u` → new edit branches off the old tree: the new edit becomes a
