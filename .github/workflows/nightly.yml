@@ -52,7 +52,7 @@ jobs:
 
       - name: Stage archive
         shell: bash
-        run: bash packaging/stage.sh ${{ matrix.target }} ${{ matrix.layout }}
+        run: bash scripts/stage.sh ${{ matrix.target }} ${{ matrix.layout }}
 
       - name: Pack tar.gz
         if: matrix.archive == 'tar.gz'
