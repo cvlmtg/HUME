@@ -565,6 +565,84 @@ fn reparse_reattaches_after_shrink_under_cap() {
 }
 
 // ---------------------------------------------------------------------------
+// Fix 4 — reload_buffer_in_place must re-attach syntax after reload
+// ---------------------------------------------------------------------------
+
+/// Regression: `reload_buffer_in_place` (`:e!`) must keep syntax highlighting
+/// alive when the buffer's language is unchanged across the reload.
+///
+/// The old path (`clear_engine_syntax` + `detect_and_set_language`) left the
+/// engine side dark (`view.syntax = None`) while `state.syntax` remained Some,
+/// preventing the re-attach branch in `reparse_stale_buffers` from ever firing.
+///
+/// Flip: with the old two-liner the `view.buffers[bid].syntax.is_some()` assert
+/// below fails, confirming the test catches the regression.
+#[test]
+fn reload_buffer_in_place_keeps_syntax_highlighting() {
+    use crate::editor::buffer::Buffer;
+    use hume_editing::text::Text;
+    use hume_editing::selection::SelectionSet;
+
+    let (parser, hl) = grammar_fixture("json");
+    let mut ed = editor_from("-[{]>\"x\": 1}\n");
+    let bid = ed.focused_buffer_id();
+
+    // Give the buffer a path so detect_and_set_language keeps returning "json"
+    // after reload (pathless buffers re-detect to None, which is a language
+    // *change* — a different code path than the one we're testing here).
+    ed.state
+        .buffers
+        .get_mut(bid)
+        .set_path(Some(std::path::PathBuf::from("data.json")));
+
+    ed.state
+        .languages
+        .register_identity("json", &["json"], &[], &[])
+        .unwrap();
+    ed.state
+        .languages
+        .attach_grammar(
+            "json",
+            &parser,
+            "tree_sitter_json",
+            &hl,
+            &mut ed.view.registry,
+        )
+        .unwrap();
+    ed.set_buffer_language(bid, Some("json".to_owned()));
+    ed.reparse_stale_buffers();
+
+    assert!(
+        ed.view.buffers[bid].syntax.is_some(),
+        "syntax must be attached before reload"
+    );
+    assert!(
+        ed.view.buffers[bid].tree.is_some(),
+        "tree must be installed before reload"
+    );
+
+    // Reload with different (non-identical) content — language stays "json"
+    // because the buffer path (.json extension) still matches.
+    let mut replacement = Buffer::new(Text::from("[1, 2, 3]\n"), SelectionSet::default());
+    replacement.set_path(Some(std::path::PathBuf::from("data.json")));
+    ed.reload_buffer_in_place(bid, replacement);
+    ed.reparse_stale_buffers();
+
+    assert!(
+        ed.state.buffers.get(bid).syntax.is_some(),
+        "state syntax must survive reload"
+    );
+    assert!(
+        ed.view.buffers[bid].syntax.is_some(),
+        "engine syntax must be re-attached after reload"
+    );
+    assert!(
+        ed.view.buffers[bid].tree.is_some(),
+        "parse tree must be installed after reload"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // M9.4 — Off-main-thread parse worker
 // ---------------------------------------------------------------------------
 

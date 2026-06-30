@@ -200,7 +200,7 @@ impl Editor {
             .expect("focused pane must view the reloaded buffer");
         let post_sels = SelectionSet::single(Selection::collapsed(focused_post_head));
 
-        // ── Phase 2b: history-preserving reload + engine syntax clear ────────
+        // ── Phase 2b: history-preserving reload ──────────────────────────────
         // Refresh `file_meta` so save-time permission/ownership checks see the
         // current on-disk metadata (the whole-Buffer swap this replaces also
         // picked up the fresh `from_file` metadata).
@@ -214,10 +214,16 @@ impl Editor {
             .reload_from_text(new_text, pre_sels, post_sels);
         self.state.buffers.get_mut(id).file_meta = new_file_meta;
 
-        // Drop the engine-side parse tree + highlighter that still reference
-        // the old content; `detect_and_set_language` re-detects and re-parses.
-        ops::clear_engine_syntax(&mut self.view, id);
+        // Re-detect language (the reloaded first line may change shebang detection).
+        // On a change, set_buffer_language re-runs setup_buffer_syntax for us. When
+        // the language is unchanged, detect_and_set_language no-ops, so force a full
+        // re-attach: the old engine tree/highlighter referenced stale content and must
+        // be rebuilt against the new text.
+        let prev_lang = self.state.buffers.get(id).language.clone();
         self.detect_and_set_language(id);
+        if self.state.buffers.get(id).language == prev_lang {
+            self.setup_buffer_syntax(id);
+        }
 
         // ── Phase 3: reseed per-pane selections / edit groups / scroll ───────
         // Targeted, not `fresh_from_buf`: selections are restored to the clamped
