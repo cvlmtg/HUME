@@ -291,6 +291,7 @@ All other keys behave as in normal mode, but motions and selections grow the cur
 | `Backspace` | Delete character before cursor. When the cursor sits in leading whitespace, snaps back to the previous tab stop instead of deleting one character at a time (auto-pairs aware) |
 | `Delete` | Delete character under cursor |
 | `Enter` | Insert newline, copying the current line's leading whitespace onto the new line (auto-pairs aware) |
+| `Ctrl+w` | Delete word before cursor |
 | Any other character | Insert character (auto-pairs aware) |
 
 Auto-pairs: when `auto-pairs-enabled` is on, typing an opening delimiter (`(`, `[`, `{`, `"`, `'`, `` ` ``) inside an empty selection automatically inserts the closing character. Typing a closing delimiter when the cursor is directly before it skips over it instead of inserting a duplicate.

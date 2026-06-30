@@ -39,6 +39,7 @@ These options have a global default (set via `set-option!` at init.scm time, or 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `tab-width` | integer | `4` | Spaces per indent level |
+| `tab-style` | `hard` \| `soft` | `hard` | What `Tab` inserts: `hard` = literal `\t`; `soft` = spaces to next tab stop |
 | `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Line wrapping behavior |
 | `line-number-style` | `absolute` \| `relative` \| `hybrid` | `hybrid` | Line number display in the gutter |
 | `auto-pairs-enabled` | bool | `#t` | Enable auto-pair insertion |

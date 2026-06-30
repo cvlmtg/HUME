@@ -173,9 +173,10 @@ Press `Ctrl+p` then a second key:
 | `Esc` / `Ctrl+c` | Return to Normal mode |
 | `←` / `→` / `↑` / `↓` | Move cursor |
 | `Home` / `End` | Go to line start / end |
-| `Backspace` | Delete character before cursor (auto-pairs aware) |
+| `Tab` | Insert tab (literal `\t`, or spaces to the next tab stop when `tab-style = soft`) |
+| `Backspace` | Delete character before cursor; snaps to previous tab stop when in leading whitespace (auto-pairs aware) |
 | `Delete` | Delete character under cursor |
-| `Enter` | Insert newline (auto-pairs aware) |
+| `Enter` | Insert newline, copying leading whitespace from current line (auto-pairs aware) |
 | `Ctrl+w` | Delete word before cursor |
 | Any other character | Insert character (auto-pairs aware) |
 

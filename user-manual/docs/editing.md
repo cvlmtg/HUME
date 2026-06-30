@@ -8,7 +8,7 @@ HUME follows a **select-then-act** model. You first select the text you want to 
 |-----|----------------------|
 | `i` | Before the selection |
 | `a` | After the selection |
-| `I` | Start of line |
+| `I` | First non-blank character on line |
 | `A` | End of line |
 | `o` | New line below |
 | `O` | New line above |
