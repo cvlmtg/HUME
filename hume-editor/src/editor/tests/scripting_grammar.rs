@@ -335,10 +335,6 @@ fn reparse_detaches_when_buffer_exceeds_max_bytes() {
         ed.state.buffers.get(bid).syntax.is_none(),
         "syntax must detach when exceeding max_bytes"
     );
-    assert!(
-        ed.state.buffers.get(bid).syntax.is_none(),
-        "syntax must be cleared"
-    );
 }
 
 // ---------------------------------------------------------------------------
@@ -491,10 +487,6 @@ fn replace_buffer_in_place_clears_engine_syntax_state() {
         ed.state.buffers.get(bid).syntax.is_none(),
         "stale syntax must be cleared on replace"
     );
-    assert!(
-        ed.state.buffers.get(bid).syntax.is_none(),
-        "syntax must be cleared on replace"
-    );
 }
 
 // ---------------------------------------------------------------------------
@@ -538,10 +530,6 @@ fn reparse_reattaches_after_shrink_under_cap() {
         ed.state.buffers.get(bid).syntax.is_none(),
         "syntax must detach when exceeding cap"
     );
-    assert!(
-        ed.state.buffers.get(bid).syntax.is_none(),
-        "syntax must be cleared on detach"
-    );
 
     // Restore a generous cap — next reparse must re-attach.
     ed.state.settings.syntax_highlight_max_bytes = usize::MAX;
@@ -549,10 +537,6 @@ fn reparse_reattaches_after_shrink_under_cap() {
     assert!(
         ed.state.buffers.get(bid).syntax.is_some(),
         "syntax must re-attach when buffer shrinks back under cap",
-    );
-    assert!(
-        ed.state.buffers.get(bid).syntax.is_some(),
-        "engine syntax must be rebuilt after re-attach",
     );
 }
 
@@ -1110,15 +1094,14 @@ fn rust_function_highlight_snapshot() {
     // Runs the highlight pipeline directly so the test fails even if the snapshot
     // renderer masks absent colours behind cursor/selection background.
     {
-        let hl_src = ed
+        let hl_src = &ed
             .state
             .buffers
             .get(bid)
             .syntax
             .as_ref()
             .expect("BufferSyntax must be set")
-            .highlighter
-            .as_ref();
+            .highlighter;
         let rope = ed.state.buffers.get(bid).text().rope();
         let line_start_byte = rope.line_to_byte(1);
         let ctx = SourceContext {

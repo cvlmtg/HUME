@@ -54,9 +54,9 @@ pub(crate) struct BufferSyntax {
     pub(crate) lang: Arc<LanguageConfig>,
     /// Compiled highlight query + capture-name mapping for this buffer's language.
     ///
-    /// Shared across all panes viewing this buffer (highlights are a pure
-    /// function of content, not of the viewport).
-    pub(crate) highlighter: Arc<TreeSitterHighlighter>,
+    /// Owned here; panes receive a reference via the `get_syntax` closure passed
+    /// to `EngineView::render` — no cloning, no shared ownership needed.
+    pub(crate) highlighter: TreeSitterHighlighter,
     /// `text_gen` of the most recently installed tree.  When this equals
     /// `Buffer.text_gen`, the installed tree is up to date.
     pub(crate) parsed_gen: u64,
@@ -78,7 +78,7 @@ pub(crate) struct BufferSyntax {
 }
 
 impl BufferSyntax {
-    pub(crate) fn new(lang: Arc<LanguageConfig>, highlighter: Arc<TreeSitterHighlighter>) -> Self {
+    pub(crate) fn new(lang: Arc<LanguageConfig>, highlighter: TreeSitterHighlighter) -> Self {
         Self {
             lang,
             highlighter,

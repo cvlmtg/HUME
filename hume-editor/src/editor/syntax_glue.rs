@@ -177,7 +177,7 @@ impl Editor {
         // highlighter via the get_syntax closure injected into EngineView::render.
         self.view.buffers[bid].tree = None;
         self.state.buffers.get_mut(bid).syntax =
-            Some(BufferSyntax::new(Arc::clone(&lang_config), Arc::new(highlighter)));
+            Some(BufferSyntax::new(Arc::clone(&lang_config), highlighter));
 
         // Empty buffers need no parse — mark up to date so reparse_stale_buffers
         // skips them until the first edit arrives.

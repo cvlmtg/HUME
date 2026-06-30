@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use slotmap::{SlotMap, new_key_type};
 
 use crate::builtins::tree_sitter_hl::TreeSitterHighlighter;
@@ -262,7 +260,7 @@ impl EngineView {
         area: ratatui::layout::Rect,
         buf: &mut ratatui::buffer::Buffer,
         get_rope: impl Fn(BufferId) -> Option<&'rope ropey::Rope>,
-        get_syntax: impl Fn(BufferId) -> Option<&'syn Arc<TreeSitterHighlighter>>,
+        get_syntax: impl Fn(BufferId) -> Option<&'syn TreeSitterHighlighter>,
         get_pane_settings: impl Fn(PaneId) -> PaneRenderSettings,
         statusline: Option<&dyn StatuslineProvider>,
         ctx: &mut RenderContext,
@@ -386,7 +384,7 @@ pub(crate) struct PaneRenderCtx<'a> {
     /// Tree-sitter parse tree from `SharedBuffer`, if available.
     pub tree: Option<&'a tree_sitter::Tree>,
     /// Tree-sitter syntax highlighter from `SharedBuffer`, if language is configured.
-    pub syntax: Option<&'a Arc<TreeSitterHighlighter>>,
+    pub syntax: Option<&'a TreeSitterHighlighter>,
     pub theme: &'a Theme,
     pub rect: ratatui::layout::Rect,
     pub settings: PaneRenderSettings,
@@ -632,7 +630,7 @@ fn render_buffer_line(
         // Stage 3 (per line): build highlight intervals for this buffer line.
         style::rebuild_tier_bufs(
             line_idx,
-            pane_ctx.syntax.map(Arc::as_ref),
+            pane_ctx.syntax,
             &pane_ctx.pane.providers.highlights,
             pane_ctx.rope,
             pane_ctx.tree,
