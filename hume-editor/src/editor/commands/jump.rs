@@ -106,29 +106,36 @@ fn focus_in_direction(
     let Some(&(_, cur)) = view.pane_rects.iter().find(|(p, _)| *p == focused) else {
         return Ok(());
     };
-    // Nearest by primary-axis gap; tie-break on perpendicular center distance.
-    // Pack gap into the high 16 bits and perp into the low 16 bits so a single
-    // `min_by_key` orders by gap then perp — both are u16 so neither can
-    // contaminate the other.
+    let cur_cx = cur.x + cur.width / 2;
+    let cur_cy = cur.y + cur.height / 2;
+    // Nearest by primary-axis gap among panes that overlap on the perpendicular
+    // axis (excludes purely-diagonal neighbours); tie-break on perpendicular
+    // center distance. Pack gap into the high 16 bits and perp into the low 16
+    // bits so a single `min_by_key` orders by gap then perp — both are u16 so
+    // neither can contaminate the other.
     let target = view
         .pane_rects
         .iter()
         .copied()
         .filter(|(p, _)| p != &focused)
         .filter_map(|(pid, r)| {
+            let overlaps_v = r.y < cur.y + cur.height && cur.y < r.y + r.height;
+            let overlaps_h = r.x < cur.x + cur.width && cur.x < r.x + r.width;
             let (gap, perp): (u16, u16) = match dir {
-                Dir::Left if r.x + r.width <= cur.x => {
-                    (cur.x - (r.x + r.width), cur.y.abs_diff(r.y))
+                Dir::Left if overlaps_v && r.x + r.width <= cur.x => {
+                    (cur.x - (r.x + r.width), cur_cy.abs_diff(r.y + r.height / 2))
                 }
-                Dir::Right if r.x >= cur.x + cur.width => {
-                    (r.x - (cur.x + cur.width), cur.y.abs_diff(r.y))
+                Dir::Right if overlaps_v && r.x >= cur.x + cur.width => (
+                    r.x - (cur.x + cur.width),
+                    cur_cy.abs_diff(r.y + r.height / 2),
+                ),
+                Dir::Up if overlaps_h && r.y + r.height <= cur.y => {
+                    (cur.y - (r.y + r.height), cur_cx.abs_diff(r.x + r.width / 2))
                 }
-                Dir::Up if r.y + r.height <= cur.y => {
-                    (cur.y - (r.y + r.height), cur.x.abs_diff(r.x))
-                }
-                Dir::Down if r.y >= cur.y + cur.height => {
-                    (r.y - (cur.y + cur.height), cur.x.abs_diff(r.x))
-                }
+                Dir::Down if overlaps_h && r.y >= cur.y + cur.height => (
+                    r.y - (cur.y + cur.height),
+                    cur_cx.abs_diff(r.x + r.width / 2),
+                ),
                 _ => return None,
             };
             Some(((gap as u32) << 16 | (perp as u32), pid))

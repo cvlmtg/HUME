@@ -320,6 +320,33 @@ impl EngineView {
         }
     }
 
+    /// Partition `area` into the pane-content rect, reserving a tab-bar row at
+    /// the top (if `self.tabbar` is set) and a statusline row at the bottom (if
+    /// `has_statusline`). Single source of truth for chrome layout — `render`
+    /// and the editor's `prepare_frame` (which caches pane rects a frame ahead
+    /// of `render`) both partition through this method so the cache and the
+    /// draw never disagree.
+    pub fn pane_area(
+        &self,
+        area: ratatui::layout::Rect,
+        has_statusline: bool,
+    ) -> ratatui::layout::Rect {
+        let tabbar_height: u16 = if self.tabbar.is_some() { 1 } else { 0 };
+        let statusline_height: u16 = if has_statusline { 1 } else { 0 };
+        let chrome_height = tabbar_height + statusline_height;
+
+        if chrome_height < area.height {
+            ratatui::layout::Rect {
+                y: area.y + tabbar_height,
+                height: area.height - chrome_height,
+                ..area
+            }
+        } else {
+            // Degenerate: terminal too small to fit chrome + content.
+            ratatui::layout::Rect { height: 0, ..area }
+        }
+    }
+
     /// Render all panes into `buf` for the given terminal area.
     ///
     /// `get_rope` resolves a `BufferId` to the authoritative `&Rope` owned by
@@ -341,22 +368,7 @@ impl EngineView {
     ) {
         let scratch = &mut ctx.frame;
         let pane_rects = &mut ctx.pane_rects;
-        // ── Partition the terminal area for chrome ────────────────────────────
-        let tabbar_height: u16 = if self.tabbar.is_some() { 1 } else { 0 };
-        let statusline_height: u16 = if statusline.is_some() { 1 } else { 0 };
-        let chrome_height = tabbar_height + statusline_height;
-
-        // Area available for pane content (after reserving chrome rows).
-        let pane_area = if chrome_height < area.height {
-            ratatui::layout::Rect {
-                y: area.y + tabbar_height,
-                height: area.height - chrome_height,
-                ..area
-            }
-        } else {
-            // Degenerate: terminal too small to fit chrome + content.
-            ratatui::layout::Rect { height: 0, ..area }
-        };
+        let pane_area = self.pane_area(area, statusline.is_some());
 
         // ── Render tab bar ────────────────────────────────────────────────────
         if let Some(ref tabbar) = self.tabbar {

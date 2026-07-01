@@ -526,15 +526,17 @@ impl Editor {
         terminal_height: u16,
         ctx: &mut RenderContext,
     ) {
-        // Shared rect list every per-pane step below drives off — the same
-        // partitioning `EngineView::render` uses, so viewport dims and drawn
-        // rects never disagree. Engine reserves 1 row for the statusline.
-        let pane_area = ratatui::layout::Rect {
+        // Shared rect list every per-pane step below drives off — partitioned
+        // through the same `EngineView::pane_area` that `render` uses, so
+        // viewport dims and drawn rects never disagree even when a tab bar is
+        // present. The interactive render path always draws a statusline.
+        let terminal_area = ratatui::layout::Rect {
             x: 0,
             y: 0,
             width: terminal_width,
-            height: terminal_height.saturating_sub(1),
+            height: terminal_height,
         };
+        let pane_area = self.view.pane_area(terminal_area, true);
         let mut rects = Vec::new();
         self.view.layout.collect_rects_into(pane_area, &mut rects);
 

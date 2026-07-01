@@ -82,6 +82,35 @@ fn t4_directional_focus_in_2x2_grid() {
     expect_noop(&mut ed, pid_d, cmd_pane_focus_down);
 }
 
+/// Regression: tie-break must use perpendicular *center* distance, not origin
+/// distance. Layout: `a` full-height on the left; the right column split into
+/// a short top pane `b` (rows 0-15, center row 7) and a tall bottom pane `c`
+/// (rows 15-50, center row 32). `a`'s center row is 25.
+///
+/// Both `b` and `c` tie on primary-axis gap (0, both touch `a`'s right edge).
+/// Center distance favors `c` (|25-32|=7 vs |25-7|=18); an origin-distance
+/// tie-break would wrongly favor `b` (|0-0|=0 vs |0-15|=15).
+#[test]
+fn t4_tie_break_uses_center_distance_not_origin() {
+    let mut ed = editor_from("-[a]>bc\n");
+    let bid = ed.focused_buffer_id();
+    let pid_a = ed.state.focused_pane_id;
+    let pid_b = ed.open_pane(bid);
+    ed.view
+        .layout
+        .split_leaf(pid_a, pid_b, Direction::Horizontal, 0.5); // a | b
+    let pid_c = ed.open_pane(bid);
+    ed.view
+        .layout
+        .split_leaf(pid_b, pid_c, Direction::Vertical, 0.3); // b (top, short) / c (bottom, tall)
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(100, 51, &mut ctx);
+
+    ed.state.focused_pane_id = pid_a;
+    cmd_pane_focus_right(&mut ed.state, &mut ed.view, 1, MotionMode::Move).unwrap();
+    assert_eq!(ed.state.focused_pane_id, pid_c);
+}
+
 #[test]
 fn t4_pane_focus_next_cycles_dfs_order_and_wraps() {
     let (mut ed, [pid_a, pid_c, pid_b, pid_d]) = build_2x2();
