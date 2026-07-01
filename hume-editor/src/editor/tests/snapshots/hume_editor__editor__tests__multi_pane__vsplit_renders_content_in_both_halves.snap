@@ -1,0 +1,7 @@
+---
+source: hume-editor/src/editor/tests/multi_pane.rs
+expression: "render_to_styled_string(&mut ed, rect)"
+---
+<fg=#000000,bg=#ffffff>a</><bg=#3a3a3a>bc       </><fg=#000000,bg=#ffffff>a</><bg=#3a3a3a>bc</>
+<fg=#808080>~</><>         </><fg=#808080>~</>
+<fg=#808080>~</><>         </><fg=#808080>~</>

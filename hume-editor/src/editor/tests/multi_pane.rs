@@ -583,3 +583,67 @@ fn split_via_command_mode_moves_focus() {
         "layout is a Split"
     );
 }
+
+// ── T3: Multi-pane render / prepare_frame ──────────────────────────────────────
+
+/// After `:vsplit`, `prepare_frame` must size both panes from the layout tree,
+/// not just the focused one. Regression guard: before the fix the sibling
+/// pane kept its `Pane::new` default viewport instead of tiling its half of
+/// the terminal.
+#[test]
+fn vsplit_sizes_both_panes_from_layout() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let pid_a = ed.state.focused_pane_id;
+    ed.execute_typed("vsplit", None).unwrap();
+    let pid_b = ed.state.focused_pane_id;
+    assert_ne!(pid_a, pid_b);
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.prepare_frame(100, 25, &mut ctx); // 25 rows → 24 usable after statusline
+
+    let wa = ed.view.panes[pid_a].viewport.width;
+    let wb = ed.view.panes[pid_b].viewport.width;
+    assert_eq!(
+        wa + wb,
+        100,
+        "vsplit halves must tile the full terminal width"
+    );
+    assert!(
+        wa < 100 && wb < 100,
+        "neither pane keeps the full terminal width"
+    );
+    assert_eq!(ed.view.panes[pid_a].viewport.height, 24);
+    assert_eq!(ed.view.panes[pid_b].viewport.height, 24);
+}
+
+/// `:split` stacks panes: height is partitioned, width stays full for both.
+#[test]
+fn split_sizes_both_panes_stacked() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let pid_a = ed.state.focused_pane_id;
+    ed.execute_typed("split", None).unwrap();
+    let pid_b = ed.state.focused_pane_id;
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.prepare_frame(80, 41, &mut ctx); // 41 rows → 40 usable after statusline
+
+    let ha = ed.view.panes[pid_a].viewport.height;
+    let hb = ed.view.panes[pid_b].viewport.height;
+    assert_eq!(ha + hb, 40, "split halves must tile the full usable height");
+    assert_eq!(ed.view.panes[pid_a].viewport.width, 80);
+    assert_eq!(ed.view.panes[pid_b].viewport.width, 80);
+}
+
+/// After `:vsplit`, `render_into` must draw both panes at their own rects —
+/// not just the focused one. Both panes view the same buffer here, so the
+/// same content must appear in both halves of the styled-frame snapshot.
+#[test]
+fn vsplit_renders_content_in_both_halves() {
+    use super::render_snapshot::render_to_styled_string;
+
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.execute_typed("vsplit", None).unwrap();
+
+    let rect = ratatui::layout::Rect::new(0, 0, 20, 4);
+    insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
+}

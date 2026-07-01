@@ -290,8 +290,26 @@ impl Editor {
                 .selections
                 .primary()
                 .head();
-                let (pane_settings_cursor, gutter_w) = self.resolve_focused_pane_settings();
+                let (pane_settings_cursor, gutter_w) =
+                    self.resolve_pane_settings(self.state.focused_pane_id);
                 let vp = self.view.panes[self.state.focused_pane_id].viewport.clone();
+                // Post-split the focused pane may be offset from the terminal's
+                // top-left (e.g. focus moved to a `:vsplit`'s right half) — find
+                // its rect origin so the bar cursor lands inside it, not at (0,0).
+                // TODO(T4): replace with the cached rect list `EngineView` will carry.
+                let pane_area = ratatui::layout::Rect {
+                    x: 0,
+                    y: 0,
+                    width: size.width,
+                    height: size.height.saturating_sub(1),
+                };
+                let mut rects = Vec::new();
+                self.view.layout.collect_rects_into(pane_area, &mut rects);
+                let (ox, oy) = rects
+                    .iter()
+                    .find(|(pid, _)| *pid == self.state.focused_pane_id)
+                    .map(|(_, r)| (r.x, r.y))
+                    .unwrap_or((0, 0));
                 super::cursor::screen_pos(
                     &vp,
                     self.doc().text().rope(),
@@ -301,7 +319,7 @@ impl Editor {
                     &pane_settings_cursor.whitespace,
                     &mut ctx,
                 )
-                .map(|(col, row)| (col + gutter_w, row))
+                .map(|(col, row)| (col + gutter_w + ox, row + oy))
             } else {
                 None
             };
@@ -414,20 +432,23 @@ impl Editor {
         Ok(())
     }
 
-    /// Resolve the focused pane's render settings and gutter width.
+    /// Resolve any pane's render settings and gutter width, from that pane's
+    /// own buffer's overrides.
     ///
-    /// Returns `(PaneRenderSettings, gutter_w)` for the focused pane.
-    /// Single source of truth for wrap_mode / tab_width / whitespace settings
-    /// across all render paths.
-    fn resolve_focused_pane_settings(&self) -> (PaneRenderSettings, u16) {
-        let len_lines = self.doc().text().len_lines();
-        let pane = &self.view.panes[self.state.focused_pane_id];
+    /// Returns `(PaneRenderSettings, gutter_w)`. Single source of truth for
+    /// wrap_mode / tab_width / whitespace settings across all render paths.
+    /// `mode` is global to the editor — inactive panes render their cursor
+    /// under the current mode too (no Helix-style inactive dimming yet).
+    fn resolve_pane_settings(&self, pid: PaneId) -> (PaneRenderSettings, u16) {
+        let pane = &self.view.panes[pid];
+        let doc = self.state.buffers.get(pane.buffer_id);
+        let len_lines = doc.text().len_lines();
         let gutter_w = super::cursor::gutter_width(pane.providers.gutter_columns(), len_lines);
-        let raw_wrap = self.doc().overrides.wrap_mode(&self.state.settings);
+        let raw_wrap = doc.overrides.wrap_mode(&self.state.settings);
         let content_width = pane.viewport.width.saturating_sub(gutter_w).max(1);
         let wrap_mode = raw_wrap.resolve(content_width);
-        let tab_width = self.doc().overrides.tab_width(&self.state.settings);
-        let whitespace = self.doc().overrides.whitespace(&self.state.settings);
+        let tab_width = doc.overrides.tab_width(&self.state.settings);
+        let whitespace = doc.overrides.whitespace(&self.state.settings);
         (
             PaneRenderSettings {
                 mode: self.state.mode(),
@@ -449,14 +470,10 @@ impl Editor {
         statusline: Option<&dyn StatuslineProvider>,
         ctx: &mut RenderContext,
     ) {
-        let rope = self.doc().text().rope();
-        let buffer_id = self.focused_buffer_id();
-        let pane_id = self.state.focused_pane_id;
-        let (pane_settings, _) = self.resolve_focused_pane_settings();
         self.view.render(
             area,
             buf,
-            |bid| if bid == buffer_id { Some(rope) } else { None },
+            |bid| self.state.buffers.try_get(bid).map(|b| b.text().rope()),
             |bid| {
                 self.state
                     .buffers
@@ -464,13 +481,7 @@ impl Editor {
                     .and_then(|b| b.syntax.as_ref())
                     .map(|s| &s.highlighter)
             },
-            |pid| {
-                if pid == pane_id {
-                    pane_settings.clone()
-                } else {
-                    PaneRenderSettings::default()
-                }
-            },
+            |pid| self.resolve_pane_settings(pid).0,
             statusline,
             ctx,
         );
@@ -522,44 +533,62 @@ impl Editor {
         terminal_height: u16,
         ctx: &mut RenderContext,
     ) {
-        // 1. Sync viewport dimensions.
-        // Engine reserves 1 row for the statusline; the pane gets the rest.
-        {
-            let vp = self.viewport_mut();
-            vp.width = terminal_width;
-            vp.height = terminal_height.saturating_sub(1);
+        // Shared rect list every per-pane step below drives off — the same
+        // partitioning `EngineView::render` uses, so viewport dims and drawn
+        // rects never disagree. Engine reserves 1 row for the statusline.
+        let pane_area = ratatui::layout::Rect {
+            x: 0,
+            y: 0,
+            width: terminal_width,
+            height: terminal_height.saturating_sub(1),
+        };
+        let mut rects = Vec::new();
+        self.view.layout.collect_rects_into(pane_area, &mut rects);
+
+        // 1. Sync viewport dimensions for every pane.
+        for &(pid, rect) in &rects {
+            let vp = &mut self.view.panes[pid].viewport;
+            vp.width = rect.width;
+            vp.height = rect.height;
         }
 
         // 2. Sync selection mirrors for every pane.
         self.sync_all_pane_mirrors();
 
-        // 3. Sync line-number style provider (depends on buffer overrides).
-        {
-            let ln_style = self.doc().overrides.line_number_style(&self.state.settings);
-            self.view.panes[self.state.focused_pane_id]
+        // 3. Sync line-number style provider for every pane (depends on that
+        //    pane's own buffer overrides).
+        for &(pid, _) in &rects {
+            let buf_id = self.view.panes[pid].buffer_id;
+            let ln_style = self
+                .state
+                .buffers
+                .get(buf_id)
+                .overrides
+                .line_number_style(&self.state.settings);
+            self.view.panes[pid]
                 .providers
                 .sync_line_number_style(ln_style);
         }
 
-        // 4. Scroll so the primary cursor stays visible.
-        let cursor_char = self.state.panes.state[self.state.focused_pane_id]
-            [self.focused_buffer_id()]
-        .selections
-        .primary()
-        .head();
+        // 4. Scroll every pane so its primary cursor stays visible.
         let scrolloff = self.state.settings.scrolloff;
-        let tab_width = self.doc().overrides.tab_width(&self.state.settings);
-        let whitespace = self.doc().overrides.whitespace(&self.state.settings);
-        {
-            let buf_id = self.focused_buffer_id();
-            let raw_wrap = self.doc().overrides.wrap_mode(&self.state.settings);
-            let len_lines = self.state.buffers.get(buf_id).text().len_lines();
-            let rope = self.state.buffers.get(buf_id).text().rope();
+        for &(pid, _) in &rects {
+            let buf_id = self.view.panes[pid].buffer_id;
+            let doc = self.state.buffers.get(buf_id);
+            let tab_width = doc.overrides.tab_width(&self.state.settings);
+            let whitespace = doc.overrides.whitespace(&self.state.settings);
+            let raw_wrap = doc.overrides.wrap_mode(&self.state.settings);
+            let len_lines = doc.text().len_lines();
+            let rope = doc.text().rope();
+            let cursor_char = self.state.panes.state[pid][buf_id]
+                .selections
+                .primary()
+                .head();
             let wrap_mode = {
-                let pane = &self.view.panes[self.state.focused_pane_id];
+                let pane = &self.view.panes[pid];
                 raw_wrap.resolve(pane.content_width(len_lines))
             };
-            let pane = &mut self.view.panes[self.state.focused_pane_id];
+            let pane = &mut self.view.panes[pid];
             scroll_into_view(
                 pane,
                 rope,
