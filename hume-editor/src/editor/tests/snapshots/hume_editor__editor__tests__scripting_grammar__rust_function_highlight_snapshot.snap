@@ -2,10 +2,10 @@
 source: hume-editor/src/editor/tests/scripting_grammar.rs
 expression: "render_to_styled_string(&mut ed, rect)"
 ---
-<fg=#6a7080,italic>// hi</>
-<fg=#5bc0eb,bold>fn</><> </><fg=#e8c83a>main</><fg=#8c8ca0>()</><> </><fg=#8c8ca0>{</>
-<>    </><fg=#5bc0eb,bold>let</><> x</><fg=#808080>:</><> </><fg=#5bc4b4,bold>u32</><> = </><fg=#c07ad8>1</><fg=#808080>;</>
+<fg=#6a7080,bg=#1a1a1a,italic>// hi</>
+<fg=#5bc0eb,bg=#1a1a1a,bold>fn</><bg=#1a1a1a> </><fg=#e8c83a,bg=#1a1a1a>main</><fg=#8c8ca0,bg=#1a1a1a>()</><bg=#1a1a1a> </><fg=#8c8ca0,bg=#1a1a1a>{</>
+<bg=#1a1a1a>    </><fg=#5bc0eb,bg=#1a1a1a,bold>let</><bg=#1a1a1a> x</><fg=#808080,bg=#1a1a1a>:</><bg=#1a1a1a> </><fg=#5bc4b4,bg=#1a1a1a,bold>u32</><bg=#1a1a1a> = </><fg=#c07ad8,bg=#1a1a1a>1</><fg=#808080,bg=#1a1a1a>;</>
 <fg=#8c8ca0,bg=#3a3a3a>}</>
-<fg=#808080>~</>
-<fg=#808080>~</>
-<fg=#808080>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>

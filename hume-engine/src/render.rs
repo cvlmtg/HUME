@@ -333,6 +333,22 @@ fn set_cell(
     }
 }
 
+/// Clamp `rect` to `buf`'s area, returning exclusive `(x0, y0, x1, y1)`
+/// bounds ready for a `for y in y0..y1 { for x in x0..x1 }` cell loop.
+/// Shared by every rect-filling primitive below so the clip math lives once.
+#[inline]
+fn clamp_rect_to_buf(
+    buf: &ratatui::buffer::Buffer,
+    rect: ratatui::layout::Rect,
+) -> (u16, u16, u16, u16) {
+    let area = buf.area();
+    let x0 = rect.x.max(area.x);
+    let y0 = rect.y.max(area.y);
+    let x1 = (rect.x + rect.width).min(area.x + area.width);
+    let y1 = (rect.y + rect.height).min(area.y + area.height);
+    (x0, y0, x1, y1)
+}
+
 /// Paint every cell of `rect` with a space glyph and `style`, clipping to buffer bounds.
 ///
 /// `Buffer::set_style` only rewrites `Style`, leaving previous glyphs visible.
@@ -343,14 +359,72 @@ pub fn fill_rect_bg(
     rect: ratatui::layout::Rect,
     style: ratatui::style::Style,
 ) {
-    let area = buf.area();
-    let x0 = rect.x.max(area.x);
-    let y0 = rect.y.max(area.y);
-    let x1 = (rect.x + rect.width).min(area.x + area.width);
-    let y1 = (rect.y + rect.height).min(area.y + area.height);
+    let (x0, y0, x1, y1) = clamp_rect_to_buf(buf, rect);
     for y in y0..y1 {
         for x in x0..x1 {
             buf[(x, y)].set_char(' ').set_style(style);
+        }
+    }
+}
+
+/// Write `glyph` into every cell of `rect`, overwriting both symbol and
+/// style. Used for pane-seam dividers (`│`/`─`) — same clamp-then-index
+/// pattern as `fill_rect_bg`, generalised to an arbitrary glyph.
+#[inline]
+pub(crate) fn draw_glyph_rect(
+    buf: &mut ratatui::buffer::Buffer,
+    rect: ratatui::layout::Rect,
+    glyph: &str,
+    style: ratatui::style::Style,
+) {
+    let (x0, y0, x1, y1) = clamp_rect_to_buf(buf, rect);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            buf[(x, y)].set_symbol(glyph).set_style(style);
+        }
+    }
+}
+
+/// Blend `color` toward `target` by `factor` (0.0 = unchanged, 1.0 = fully
+/// `target`). Non-RGB colors (indexed/named) are returned unchanged — HUME
+/// requires true-color themes (see project CLAUDE.md), so callers only ever
+/// need to blend `Color::Rgb`.
+#[inline]
+fn blend_toward(
+    color: ratatui::style::Color,
+    target: (u8, u8, u8),
+    factor: f32,
+) -> ratatui::style::Color {
+    use ratatui::style::Color;
+    let Color::Rgb(r, g, b) = color else {
+        return color;
+    };
+    let lerp = |c: u8, t: u8| (c as f32 + (t as f32 - c as f32) * factor).round() as u8;
+    Color::Rgb(lerp(r, target.0), lerp(g, target.1), lerp(b, target.2))
+}
+
+/// Dim every cell in `rect` by blending its fg/bg toward `target` — used to
+/// visually de-emphasize non-focused panes. A true-color blend, not
+/// `Modifier::DIM`: many terminals render that modifier inconsistently (or
+/// ignore it outright), which would defeat the purpose on exactly the
+/// terminals HUME targets.
+pub(crate) fn dim_rect(
+    buf: &mut ratatui::buffer::Buffer,
+    rect: ratatui::layout::Rect,
+    target: ratatui::style::Color,
+    factor: f32,
+) {
+    let ratatui::style::Color::Rgb(tr, tg, tb) = target else {
+        return; // no defined blend target for a non-RGB theme background
+    };
+    let (x0, y0, x1, y1) = clamp_rect_to_buf(buf, rect);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let cell = &mut buf[(x, y)];
+            let fg = blend_toward(cell.fg, (tr, tg, tb), factor);
+            let bg = blend_toward(cell.bg, (tr, tg, tb), factor);
+            cell.set_fg(fg);
+            cell.set_bg(bg);
         }
     }
 }
@@ -943,5 +1017,129 @@ mod tests {
         // x_start == x_end and x_start > x_end should both be no-ops.
         clear_row_span(&mut buf, 5, 5, 0);
         clear_row_span(&mut buf, 7, 3, 0);
+    }
+
+    // ── draw_glyph_rect ──────────────────────────────────────────────────
+
+    #[test]
+    fn draw_glyph_rect_fills_every_cell() {
+        let mut buf = make_test_buf(5, 3);
+        draw_glyph_rect(
+            &mut buf,
+            ratatui::layout::Rect::new(1, 0, 1, 3),
+            "│",
+            ratatui::style::Style::default(),
+        );
+        for y in 0..3 {
+            assert_eq!(
+                buf.cell(ratatui::layout::Position { x: 1, y })
+                    .unwrap()
+                    .symbol(),
+                "│"
+            );
+        }
+        // Untouched column stays blank (buffer default).
+        assert_ne!(
+            buf.cell(ratatui::layout::Position { x: 0, y: 0 })
+                .unwrap()
+                .symbol(),
+            "│"
+        );
+    }
+
+    #[test]
+    fn draw_glyph_rect_clips_to_buffer_bounds() {
+        let mut buf = make_test_buf(5, 3);
+        // Rect extends past the buffer edge — must clip, not panic.
+        draw_glyph_rect(
+            &mut buf,
+            ratatui::layout::Rect::new(3, 0, 10, 10),
+            "─",
+            ratatui::style::Style::default(),
+        );
+        assert_eq!(
+            buf.cell(ratatui::layout::Position { x: 4, y: 2 })
+                .unwrap()
+                .symbol(),
+            "─"
+        );
+    }
+
+    // ── dim_rect ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn dim_rect_blends_toward_target() {
+        use ratatui::style::Color;
+        let mut buf = make_test_buf(3, 1);
+        set_cell(
+            &mut buf,
+            0,
+            0,
+            "x",
+            ratatui::style::Style::default()
+                .fg(Color::Rgb(255, 255, 255))
+                .bg(Color::Rgb(0, 0, 0)),
+        );
+        dim_rect(
+            &mut buf,
+            ratatui::layout::Rect::new(0, 0, 1, 1),
+            Color::Rgb(0, 0, 0),
+            0.5,
+        );
+        let cell = buf.cell(ratatui::layout::Position { x: 0, y: 0 }).unwrap();
+        // Independent oracle: halfway from 255 to 0 is 127.5, rounds up to 128.
+        assert_eq!(cell.fg, Color::Rgb(128, 128, 128));
+        // Already at the target — blending toward itself is a no-op.
+        assert_eq!(cell.bg, Color::Rgb(0, 0, 0));
+    }
+
+    #[test]
+    fn dim_rect_leaves_non_rgb_colors_untouched() {
+        use ratatui::style::Color;
+        let mut buf = make_test_buf(3, 1);
+        set_cell(
+            &mut buf,
+            0,
+            0,
+            "x",
+            ratatui::style::Style::default().fg(Color::Indexed(5)),
+        );
+        dim_rect(
+            &mut buf,
+            ratatui::layout::Rect::new(0, 0, 1, 1),
+            Color::Rgb(0, 0, 0),
+            0.5,
+        );
+        assert_eq!(
+            buf.cell(ratatui::layout::Position { x: 0, y: 0 })
+                .unwrap()
+                .fg,
+            Color::Indexed(5)
+        );
+    }
+
+    #[test]
+    fn dim_rect_non_rgb_target_is_noop() {
+        use ratatui::style::Color;
+        let mut buf = make_test_buf(3, 1);
+        set_cell(
+            &mut buf,
+            0,
+            0,
+            "x",
+            ratatui::style::Style::default().fg(Color::Rgb(255, 255, 255)),
+        );
+        dim_rect(
+            &mut buf,
+            ratatui::layout::Rect::new(0, 0, 1, 1),
+            Color::Reset,
+            0.5,
+        );
+        assert_eq!(
+            buf.cell(ratatui::layout::Position { x: 0, y: 0 })
+                .unwrap()
+                .fg,
+            Color::Rgb(255, 255, 255)
+        );
     }
 }

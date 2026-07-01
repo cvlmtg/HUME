@@ -476,6 +476,8 @@ impl Editor {
             },
             |pid| self.resolve_pane_settings(pid).0,
             statusline,
+            self.state.focused_pane_id,
+            self.state.settings.pane_dividers,
             ctx,
         );
     }

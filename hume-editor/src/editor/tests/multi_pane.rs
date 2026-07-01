@@ -605,8 +605,8 @@ fn vsplit_sizes_both_panes_from_layout() {
     let wb = ed.view.panes[pid_b].viewport.width;
     assert_eq!(
         wa + wb,
-        100,
-        "vsplit halves must tile the full terminal width"
+        99,
+        "vsplit halves plus the 1-column seam must tile the full terminal width"
     );
     assert!(
         wa < 100 && wb < 100,
@@ -629,9 +629,105 @@ fn split_sizes_both_panes_stacked() {
 
     let ha = ed.view.panes[pid_a].viewport.height;
     let hb = ed.view.panes[pid_b].viewport.height;
-    assert_eq!(ha + hb, 40, "split halves must tile the full usable height");
+    assert_eq!(
+        ha + hb,
+        39,
+        "split halves plus the 1-row seam must tile the full usable height"
+    );
     assert_eq!(ed.view.panes[pid_a].viewport.width, 80);
     assert_eq!(ed.view.panes[pid_b].viewport.width, 80);
+}
+
+// ── T4: Split-too-small guard ────────────────────────────────────────────────
+
+/// `:vsplit` on a pane too narrow to fit two minimum-width panes plus the
+/// seam divider is a noop with a warning, not a degraded split.
+#[test]
+fn vsplit_too_narrow_is_noop_with_warning() {
+    use hume_engine::pipeline::LayoutTree;
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let pid_a = ed.state.focused_pane_id;
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.prepare_frame(20, 25, &mut ctx); // width 20 < 2*MIN_PANE_WIDTH(10)+1 = 21
+
+    ed.execute_typed("vsplit", None).unwrap();
+
+    assert_eq!(
+        ed.state.focused_pane_id, pid_a,
+        "focus does not move — split was rejected"
+    );
+    assert!(
+        matches!(ed.view.layout, LayoutTree::Leaf(_)),
+        "layout is unchanged"
+    );
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("pane too small to split")
+    );
+}
+
+/// `:split` on a pane too short is likewise a noop with a warning.
+#[test]
+fn split_too_short_is_noop_with_warning() {
+    use hume_engine::pipeline::LayoutTree;
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let pid_a = ed.state.focused_pane_id;
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.prepare_frame(80, 7, &mut ctx); // 7 rows -> 6 usable after statusline < 2*MIN_PANE_HEIGHT(3)+1 = 7
+
+    ed.execute_typed("split", None).unwrap();
+
+    assert_eq!(
+        ed.state.focused_pane_id, pid_a,
+        "focus does not move — split was rejected"
+    );
+    assert!(
+        matches!(ed.view.layout, LayoutTree::Leaf(_)),
+        "layout is unchanged"
+    );
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("pane too small to split")
+    );
+}
+
+/// The guard is a threshold, not a blanket restriction: a pane at exactly
+/// the minimum-fitting size still splits.
+#[test]
+fn vsplit_at_minimum_width_still_splits() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let pid_a = ed.state.focused_pane_id;
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.prepare_frame(21, 25, &mut ctx); // exactly 2*MIN_PANE_WIDTH(10)+1
+
+    ed.execute_typed("vsplit", None).unwrap();
+
+    assert_ne!(
+        ed.state.focused_pane_id, pid_a,
+        "split succeeds at the threshold"
+    );
+}
+
+/// Symmetric threshold check for `:split`'s height axis.
+#[test]
+fn split_at_minimum_height_still_splits() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let pid_a = ed.state.focused_pane_id;
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.prepare_frame(80, 8, &mut ctx); // 8 rows -> 7 usable = exactly 2*MIN_PANE_HEIGHT(3)+1
+
+    ed.execute_typed("split", None).unwrap();
+
+    assert_ne!(
+        ed.state.focused_pane_id, pid_a,
+        "split succeeds at the threshold"
+    );
 }
 
 /// After `:vsplit`, `render_into` must draw both panes at their own rects —

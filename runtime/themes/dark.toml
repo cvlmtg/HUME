@@ -26,6 +26,11 @@
 # ── Whitespace ────────────────────────────────────────────────────────────────
 "ui.whitespace" = { fg = "#464650" }
 
+# ── Pane background / seam dividers ─────────────────────────────────────────────
+"ui.background"     = { bg = "bg" }
+"ui.window"         = { fg = "dark_gray" }
+"ui.window.focused" = { fg = "syn_keyword" }
+
 # ── Syntax highlighting (tree-sitter) ─────────────────────────────────────────
 "comment"               = { fg = "syn_comment",  modifiers = ["italic"] }
 "string"                = { fg = "syn_string" }

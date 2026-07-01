@@ -141,6 +141,11 @@ pub struct UiScopes {
     /// Pane background colour. Painted behind all content cells so the theme bg shows
     /// through trailing whitespace and empty lines rather than the terminal default.
     pub background: ResolvedStyle,
+    /// Seam divider drawn between sibling panes (`ui.window`, Helix convention).
+    pub window: ResolvedStyle,
+    /// Seam divider segments adjacent to the focused pane. Dot-notation
+    /// fallback to `ui.window` when unset, same as the other `.primary` scopes.
+    pub window_focused: ResolvedStyle,
 }
 
 // ---------------------------------------------------------------------------
@@ -293,6 +298,8 @@ impl Theme {
             // Primary selection: dot-notation fallback ui.selection.primary → ui.selection is correct.
             selection_primary: self.resolve_raw("ui.selection.primary"),
             background: self.resolve_raw("ui.background"),
+            window: self.resolve_raw("ui.window"),
+            window_focused: self.resolve_raw("ui.window.focused"),
         }
     }
 

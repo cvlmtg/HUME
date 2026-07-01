@@ -294,6 +294,7 @@ define_settings! {
         "steel-init-budget-ms"    => steel_init_budget_ms:    usize = 10_000, parser: usize_nonzero;
         "steel-command-budget-ms" => steel_command_budget_ms: usize = 1_000,  parser: usize_nonzero;
         "popup-border" => popup_border: bool = true, parser: bool;
+        "pane-dividers" => pane_dividers: bool = true, parser: bool;
         "theme" => theme: String = String::new(), parser: string;
         "syntax-highlight-max-bytes" => syntax_highlight_max_bytes: usize = 1_048_576, parser: usize_nonzero;
     }
@@ -454,6 +455,7 @@ mod tests {
         assert_eq!(s.wrap_mode, WrapMode::Indent { width: 0 });
         assert_eq!(s.line_number_style, LineNumberStyle::Hybrid);
         assert!(s.auto_pairs_enabled);
+        assert!(s.pane_dividers);
     }
 
     #[test]
@@ -593,6 +595,11 @@ mod tests {
     #[test]
     fn set_global_scrolloff() {
         assert_eq!(global("scrolloff", "1").unwrap().scrolloff, 1);
+    }
+
+    #[test]
+    fn set_global_pane_dividers() {
+        assert!(!global("pane-dividers", "false").unwrap().pane_dividers);
     }
 
     #[test]
@@ -870,6 +877,7 @@ mod tests {
             "jump-line-threshold",
             "history-capacity",
             "popup-border",
+            "pane-dividers",
         ] {
             let err = apply_setting(SettingScope::Text, key, "1", &mut s, &mut ov).unwrap_err();
             assert!(

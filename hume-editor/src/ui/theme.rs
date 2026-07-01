@@ -166,6 +166,27 @@ mod tests {
             Some(Color::Rgb(0xff, 0xff, 0xff)),
             "statusline bg"
         );
+
+        // Pane background/seam scopes, read via the pre-resolved `theme.ui`
+        // fields — the actual path the renderer uses (see hume-engine's
+        // pipeline::render and PANE_DIM_FACTOR blending).
+        // background: bg = #1a1a1a; window: fg = dark_gray (#808080);
+        // window.focused: fg = syn_keyword (#5bc0eb).
+        assert_eq!(
+            theme.ui.background.bg,
+            Some(Color::Rgb(0x1a, 0x1a, 0x1a)),
+            "background bg"
+        );
+        assert_eq!(
+            theme.ui.window.fg,
+            Some(Color::Rgb(0x80, 0x80, 0x80)),
+            "window fg"
+        );
+        assert_eq!(
+            theme.ui.window_focused.fg,
+            Some(Color::Rgb(0x5b, 0xc0, 0xeb)),
+            "window.focused fg"
+        );
     }
 
     #[test]
