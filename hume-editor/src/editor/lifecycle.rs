@@ -61,11 +61,9 @@ impl Editor {
         use crate::editor::pane_state::{PaneBufferState, PaneTransient, PaneView};
         use crate::ops::register::{KillRing, RegisterSet};
         use crate::settings::EditorSettings;
+        use crate::ui::highlight_providers::build_pane_providers;
         use hume_editing::selection::{Selection, SelectionSet};
         use hume_editing::text::Text;
-        use hume_engine::builtins::line_number::{
-            LineNumberColumn, LineNumberStyle as EngineLineNumberStyle,
-        };
         use hume_engine::pipeline::{LayoutTree, SharedBuffer};
         use slotmap::SecondaryMap;
         use std::collections::VecDeque;
@@ -89,11 +87,8 @@ impl Editor {
         let theme = crate::ui::theme::build_default_theme();
         let mut engine_view = EngineView::new(theme);
 
-        // Intern highlight scopes before registering providers.
-        let bracket_scope = engine_view.registry.intern("ui.cursor.match");
-        let search_scope = engine_view.registry.intern("ui.selection.search");
-
-        // Register the shared highlight data arcs.
+        // Shared highlight/completion data, written once per frame and read by
+        // every pane's providers (see `build_pane_providers`).
         let bracket_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>> =
             Arc::new(RwLock::new(Vec::new()));
         let search_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>> =
@@ -104,28 +99,14 @@ impl Editor {
         // Insert a buffer — just metadata; the rope is passed at render time.
         let buffer_id = engine_view.buffers.insert(SharedBuffer::new());
 
-        // Build the initial pane.
-        let mut providers = hume_engine::providers::ProviderSet::new();
-        providers.add_gutter_column(Box::new(LineNumberColumn::with_style(
-            EngineLineNumberStyle::Hybrid,
-        )));
-        providers.add_highlight_source(Box::new(
-            crate::ui::highlight_providers::SharedHighlighter {
-                scope: bracket_scope,
-                tier: hume_engine::providers::HighlightTier::BracketMatch,
-                data: Arc::clone(&bracket_hl_data),
-            },
-        ));
-        providers.add_highlight_source(Box::new(
-            crate::ui::highlight_providers::SharedHighlighter {
-                scope: search_scope,
-                tier: hume_engine::providers::HighlightTier::SearchMatch,
-                data: Arc::clone(&search_hl_data),
-            },
-        ));
-        providers.add_overlay(Box::new(crate::ui::completion_overlay::CompletionOverlay {
-            data: Arc::clone(&completion_view),
-        }));
+        // Build the initial pane. Every later split-created pane gets the same
+        // provider set via `commands::open_pane` calling `build_pane_providers`.
+        let providers = build_pane_providers(
+            &mut engine_view.registry,
+            &bracket_hl_data,
+            &search_hl_data,
+            &completion_view,
+        );
 
         let settings = EditorSettings::default();
 
@@ -208,11 +189,11 @@ impl Editor {
                 languages: crate::editor::syntax::LanguageRegistry::new(),
                 cwd: std::env::current_dir().unwrap_or_default(),
                 pending_hooks: Vec::new(),
+                bracket_hl_data,
+                search_hl_data,
+                completion_view,
             },
             view: engine_view,
-            bracket_hl_data,
-            search_hl_data,
-            completion_view,
             kitty_enabled: false,
             scripting: None,
             builtin_cmd_names: std::collections::HashSet::new(),
@@ -701,7 +682,11 @@ impl Editor {
 
         // ── Search match highlights ───────────────────────────────────────────
         {
-            let mut data = self.search_hl_data.write().expect("RwLock not poisoned");
+            let mut data = self
+                .state
+                .search_hl_data
+                .write()
+                .expect("RwLock not poisoned");
             data.clear();
             // Hidden in Insert mode — matches aren't actionable while typing and
             // clutter the view. Same pattern as bracket match highlights below.
@@ -732,7 +717,11 @@ impl Editor {
 
         // ── Bracket match highlight ───────────────────────────────────────────
         {
-            let mut data = self.bracket_hl_data.write().expect("RwLock not poisoned");
+            let mut data = self
+                .state
+                .bracket_hl_data
+                .write()
+                .expect("RwLock not poisoned");
             data.clear();
             if self.state.mode() != EditorMode::Insert {
                 let head = self.state.panes.state[self.state.focused_pane_id]
@@ -771,6 +760,7 @@ impl Editor {
         // while no popup is open.
         if self.state.completion.is_none()
             && self
+                .state
                 .completion_view
                 .read()
                 .expect("RwLock not poisoned")
@@ -800,7 +790,11 @@ impl Editor {
                 border: self.state.settings.popup_border,
             }
         });
-        *self.completion_view.write().expect("RwLock not poisoned") = view;
+        *self
+            .state
+            .completion_view
+            .write()
+            .expect("RwLock not poisoned") = view;
     }
 
     /// Set the editing mode. The cursor shape reflecting the new mode will be

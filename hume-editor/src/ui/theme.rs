@@ -167,6 +167,16 @@ mod tests {
             "statusline bg"
         );
 
+        // `ui.text` (fg = #d0d0d0) must fold into `theme.default` — the base
+        // style every plain-text cell starts from (see `style::apply_styles`)
+        // — so unhighlighted text carries an explicit color the focus-dimming
+        // blend can act on instead of escaping it as `Color::Reset`.
+        assert_eq!(
+            theme.default.fg,
+            Some(Color::Rgb(0xd0, 0xd0, 0xd0)),
+            "default fg (from ui.text)"
+        );
+
         // Pane background/seam scopes, read via the pre-resolved `theme.ui`
         // fields — the actual path the renderer uses (see hume-engine's
         // pipeline::render and PANE_DIM_FACTOR blending).

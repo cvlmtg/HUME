@@ -408,7 +408,19 @@ pub(super) fn open_pane(
     view: &mut EngineView,
     buffer_id: BufferId,
 ) -> PaneId {
-    let pid = view.panes.insert(Pane::new(buffer_id));
+    // Every pane gets the same providers (gutter + bracket/search highlight +
+    // completion overlay) as the initial pane — see `build_pane_providers`.
+    let providers = crate::ui::highlight_providers::build_pane_providers(
+        &mut view.registry,
+        &state.bracket_hl_data,
+        &state.search_hl_data,
+        &state.completion_view,
+    );
+    let pane = Pane {
+        providers,
+        ..Pane::new(buffer_id)
+    };
+    let pid = view.panes.insert(pane);
     state.panes.state.insert(pid, SecondaryMap::new());
     super::pane_state::ensure(&mut state.panes.state, &state.buffers, pid, buffer_id);
     state.panes.transient.insert(pid, PaneTransient::default());

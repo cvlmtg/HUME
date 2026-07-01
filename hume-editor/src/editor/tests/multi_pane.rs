@@ -743,3 +743,32 @@ fn vsplit_renders_content_in_both_halves() {
     let rect = ratatui::layout::Rect::new(0, 0, 20, 4);
     insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
 }
+
+/// A pane created via `open_pane` (the shared core of `:split`/`:vsplit` and the
+/// keymap-bound `pane-split`/`pane-vsplit`) must get the same gutter column as
+/// the initial pane — not the empty `ProviderSet` `Pane::new` alone would give
+/// it. Uses the real `Editor::open` constructor (not the bare-pane `for_testing`
+/// harness used elsewhere in this file) so the initial pane reflects actual
+/// production setup. Independent oracle: compare the split pane's
+/// `gutter_columns().len()` against the pre-existing initial pane's, rather
+/// than asserting a hardcoded count that could pass even if both were wrongly
+/// empty.
+#[test]
+fn split_pane_gets_gutter_column() {
+    let mut ed = Editor::open(None).unwrap();
+    let pid_a = ed.state.focused_pane_id;
+    let initial_gutter_cols = ed.view.panes[pid_a].providers.gutter_columns().len();
+    assert!(
+        initial_gutter_cols > 0,
+        "sanity: the initial pane must itself have a gutter column"
+    );
+
+    let bid = ed.focused_buffer_id();
+    let pid_b = ed.open_pane(bid);
+
+    assert_eq!(
+        ed.view.panes[pid_b].providers.gutter_columns().len(),
+        initial_gutter_cols,
+        "split pane must have the same gutter columns as the initial pane"
+    );
+}

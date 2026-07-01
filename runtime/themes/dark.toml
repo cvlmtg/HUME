@@ -4,6 +4,11 @@
 #
 # Note: [palette] must come after all scope definitions (TOML section semantics).
 
+# ── Base text ─────────────────────────────────────────────────────────────────
+# Base foreground for plain (unhighlighted) text — folded into `theme.default`
+# so it can be dimmed like syntax-highlighted spans (see loader.rs).
+"ui.text" = { fg = "fg" }
+
 # ── Cursor ────────────────────────────────────────────────────────────────────
 "ui.cursor.primary" = { fg = "black", bg = "white" }
 "ui.cursor"         = { fg = "black", bg = "mid_gray" }

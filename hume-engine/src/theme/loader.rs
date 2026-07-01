@@ -132,6 +132,14 @@ fn parse_recursive(
         scopes.insert(key.clone(), style);
     }
 
+    // `ui.text` (Helix's base-foreground convention) folds into `default`, the
+    // style every cell starts from (see `style::apply_styles`). Without this,
+    // plain/unhighlighted text has `fg: None` → renders as the terminal-default
+    // color, which `render::blend_toward` can't dim (it only blends `Color::Rgb`).
+    if let Some(ui_text) = scopes.get("ui.text") {
+        default = default.layer(*ui_text);
+    }
+
     Ok((scopes, default))
 }
 

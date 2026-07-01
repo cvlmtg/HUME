@@ -328,6 +328,15 @@ pub(crate) struct EditorState {
     /// after each command. The unified firing path — `fire_hook_silent` pushes
     /// here; no hook fires inline during command execution.
     pub(super) pending_hooks: Vec<(hume_scripting::hooks::HookId, Vec<steel::rvals::SteelVal>)>,
+    /// Shared bracket match highlight data: `(line_idx, byte_start, byte_end)`.
+    /// Read by every pane's `SharedHighlighter` provider; reachable here (not on
+    /// `Editor`) so the free `commands::open_pane` can build a new pane's provider
+    /// set without needing a full `&mut Editor`.
+    pub(crate) bracket_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>>,
+    /// Shared search match highlight data: same shape as `bracket_hl_data`.
+    pub(crate) search_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>>,
+    /// Shared completion-popup view: written by `prepare_frame`, read by provider.
+    pub(crate) completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>>,
 }
 
 impl EditorState {
@@ -414,12 +423,6 @@ pub(crate) struct Editor {
     pub(crate) state: EditorState,
     /// Engine rendering state: layout, panes, buffers, theme.
     pub(crate) view: EngineView,
-    /// Shared bracket match highlight data: `(line_idx, byte_start, byte_end)`.
-    pub(crate) bracket_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>>,
-    /// Shared search match highlight data: same shape as `bracket_hl_data`.
-    pub(crate) search_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>>,
-    /// Shared completion-popup view: written by `prepare_frame`, read by provider.
-    pub(crate) completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>>,
     /// Whether the kitty keyboard protocol was successfully activated at startup.
     pub(crate) kitty_enabled: bool,
     /// The embedded Steel scripting host.
@@ -958,11 +961,11 @@ impl Editor {
                 languages: syntax::LanguageRegistry::new(),
                 cwd: std::env::temp_dir(),
                 pending_hooks: Vec::new(),
+                bracket_hl_data: Arc::new(RwLock::new(Vec::new())),
+                search_hl_data: Arc::new(RwLock::new(Vec::new())),
+                completion_view: Arc::new(RwLock::new(None)),
             },
             view: engine_view,
-            bracket_hl_data: Arc::new(RwLock::new(Vec::new())),
-            search_hl_data: Arc::new(RwLock::new(Vec::new())),
-            completion_view: Arc::new(RwLock::new(None)),
             kitty_enabled: false,
             scripting: None,
             builtin_cmd_names: std::collections::HashSet::new(),
