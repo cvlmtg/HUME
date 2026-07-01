@@ -154,6 +154,7 @@ pub enum Direction {
 }
 
 /// Recursive layout tree. Leaves reference panes; splits partition space.
+#[derive(Clone, Debug, PartialEq)]
 pub enum LayoutTree {
     Leaf(PaneId),
     Split {
@@ -182,6 +183,67 @@ impl LayoutTree {
                 let (r1, r2) = split_rect(area, *direction == Direction::Vertical, *ratio);
                 children.0.collect_rects_into(r1, out);
                 children.1.collect_rects_into(r2, out);
+            }
+        }
+    }
+
+    /// Replace `Leaf(target)` with a `Split` of `(Leaf(target), Leaf(new_pane))`.
+    /// Returns whether `target` was found.
+    pub fn split_leaf(
+        &mut self,
+        target: PaneId,
+        new_pane: PaneId,
+        direction: Direction,
+        ratio: f32,
+    ) -> bool {
+        match self {
+            LayoutTree::Leaf(id) if *id == target => {
+                *self = LayoutTree::Split {
+                    direction,
+                    ratio,
+                    children: Box::new((LayoutTree::Leaf(target), LayoutTree::Leaf(new_pane))),
+                };
+                true
+            }
+            LayoutTree::Leaf(_) => false,
+            LayoutTree::Split { children, .. } => {
+                children.0.split_leaf(target, new_pane, direction.clone(), ratio)
+                    || children.1.split_leaf(target, new_pane, direction, ratio)
+            }
+        }
+    }
+
+    /// Leftmost leaf, found by descending into the first child at each split.
+    fn first_leaf(&self) -> PaneId {
+        match self {
+            LayoutTree::Leaf(id) => *id,
+            LayoutTree::Split { children, .. } => children.0.first_leaf(),
+        }
+    }
+
+    /// Prune `Leaf(target)`, collapsing its parent `Split` onto the sibling.
+    /// Returns the leftmost leaf of the promoted sibling (the new focus target),
+    /// or `None` if `self` is the sole leaf.
+    pub fn remove_leaf(&mut self, target: PaneId) -> Option<PaneId> {
+        match self {
+            LayoutTree::Leaf(_) => None,
+            LayoutTree::Split { children, .. } => {
+                let hit0 = matches!(&children.0, LayoutTree::Leaf(id) if *id == target);
+                let hit1 = matches!(&children.1, LayoutTree::Leaf(id) if *id == target);
+                if hit0 || hit1 {
+                    // Promote the sibling subtree; the placeholder left behind
+                    // in `keep` is discarded when `*self` is overwritten below.
+                    let keep = if hit0 { &mut children.1 } else { &mut children.0 };
+                    let sibling = std::mem::replace(keep, LayoutTree::Leaf(PaneId::default()));
+                    let survivor = sibling.first_leaf();
+                    *self = sibling;
+                    Some(survivor)
+                } else {
+                    children
+                        .0
+                        .remove_leaf(target)
+                        .or_else(|| children.1.remove_leaf(target))
+                }
             }
         }
     }
@@ -885,6 +947,124 @@ mod tests {
         let mut out = vec![(PaneId::default(), rect(99, 99, 1, 1))]; // pre-existing entry
         tree.collect_rects_into(rect(0, 0, 80, 24), &mut out);
         assert_eq!(out.len(), 2); // appended, not replaced
+    }
+
+    /// `PaneId::default()` is the slotmap null key — every default is equal,
+    /// so tests that assert on distinct ids mint real ones off a throwaway map.
+    fn pane_ids<const N: usize>() -> [PaneId; N] {
+        let mut sm: SlotMap<PaneId, ()> = SlotMap::with_key();
+        std::array::from_fn(|_| sm.insert(()))
+    }
+
+    #[test]
+    fn split_leaf_on_root() {
+        let [a, b] = pane_ids();
+        let mut tree = LayoutTree::Leaf(a);
+        assert!(tree.split_leaf(a, b, Direction::Vertical, 0.5));
+        assert_eq!(
+            tree,
+            LayoutTree::Split {
+                direction: Direction::Vertical,
+                ratio: 0.5,
+                children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(b))),
+            }
+        );
+    }
+
+    #[test]
+    fn split_leaf_missing_target_is_noop() {
+        let [a, b, missing] = pane_ids();
+        let mut tree = LayoutTree::Leaf(a);
+        assert!(!tree.split_leaf(missing, b, Direction::Vertical, 0.5));
+        assert_eq!(tree, LayoutTree::Leaf(a));
+    }
+
+    #[test]
+    fn split_leaf_on_nested_target() {
+        let [a, b, c] = pane_ids();
+        let mut tree = LayoutTree::Split {
+            direction: Direction::Horizontal,
+            ratio: 0.5,
+            children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(b))),
+        };
+        assert!(tree.split_leaf(b, c, Direction::Vertical, 0.5));
+        assert_eq!(
+            tree,
+            LayoutTree::Split {
+                direction: Direction::Horizontal,
+                ratio: 0.5,
+                children: Box::new((
+                    LayoutTree::Leaf(a),
+                    LayoutTree::Split {
+                        direction: Direction::Vertical,
+                        ratio: 0.5,
+                        children: Box::new((LayoutTree::Leaf(b), LayoutTree::Leaf(c))),
+                    },
+                )),
+            }
+        );
+        let mut out = Vec::new();
+        tree.collect_rects_into(rect(0, 0, 100, 100), &mut out);
+        assert_eq!(out.len(), 3);
+    }
+
+    #[test]
+    fn remove_leaf_collapses_parent() {
+        let [a, b] = pane_ids();
+        let mut tree = LayoutTree::Split {
+            direction: Direction::Horizontal,
+            ratio: 0.5,
+            children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(b))),
+        };
+        assert_eq!(tree.remove_leaf(a), Some(b));
+        assert_eq!(tree, LayoutTree::Leaf(b));
+    }
+
+    #[test]
+    fn remove_leaf_promotes_subtree_and_returns_its_leftmost_leaf() {
+        let [a, b, c] = pane_ids();
+        let mut tree = LayoutTree::Split {
+            direction: Direction::Horizontal,
+            ratio: 0.5,
+            children: Box::new((
+                LayoutTree::Leaf(a),
+                LayoutTree::Split {
+                    direction: Direction::Vertical,
+                    ratio: 0.5,
+                    children: Box::new((LayoutTree::Leaf(b), LayoutTree::Leaf(c))),
+                },
+            )),
+        };
+        assert_eq!(tree.remove_leaf(a), Some(b));
+        assert_eq!(
+            tree,
+            LayoutTree::Split {
+                direction: Direction::Vertical,
+                ratio: 0.5,
+                children: Box::new((LayoutTree::Leaf(b), LayoutTree::Leaf(c))),
+            }
+        );
+    }
+
+    #[test]
+    fn remove_leaf_sole_leaf_returns_none() {
+        let [a] = pane_ids();
+        let mut tree = LayoutTree::Leaf(a);
+        assert_eq!(tree.remove_leaf(a), None);
+        assert_eq!(tree, LayoutTree::Leaf(a));
+    }
+
+    #[test]
+    fn remove_leaf_missing_target_is_noop() {
+        let [a, b, missing] = pane_ids();
+        let mut tree = LayoutTree::Split {
+            direction: Direction::Horizontal,
+            ratio: 0.5,
+            children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(b))),
+        };
+        let before = tree.clone();
+        assert_eq!(tree.remove_leaf(missing), None);
+        assert_eq!(tree, before);
     }
 
     // ── FrameScratch ─────────────────────────────────────────────────────
