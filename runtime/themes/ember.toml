@@ -4,6 +4,7 @@
 "ui.text.inactive" = { fg = "muted" }
 "ui.text.info" = { fg = "blue" }
 "ui.window" = { fg = "surface" }
+"ui.window.focused" = { fg = "ember" }
 "ui.popup" = { fg = "fg", bg = "surface" }
 "ui.popup.info" = { fg = "fg", bg = "surface" }
 "ui.menu" = { fg = "fg", bg = "surface" }
@@ -21,7 +22,7 @@
 "ui.cursorline.secondary" = { bg = "surface" }
 "ui.linenr" = { fg = "muted" }
 "ui.linenr.selected" = { fg = "ember" }
-"ui.statusline" = { fg = "bg", bg = "ember" }
+"ui.statusline" = { fg = "bg", bg = "ember", modifiers = [ "bold" ] }
 "ui.statusline.inactive" = { fg = "muted", bg = "bg" }
 "ui.statusline.separator" = { fg = "surface" }
 "ui.statusline.mode.normal" = { fg = "bg", bg = "ember" }
