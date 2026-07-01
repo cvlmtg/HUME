@@ -160,10 +160,7 @@ fn ctrl_p_c_is_noop_with_single_pane() {
 
     assert_eq!(ed.view.panes.len(), 1, "sole pane is not closed");
     assert_eq!(ed.state.focused_pane_id, pid_a);
-    assert!(
-        !ed.state.should_quit,
-        "pane-close must not quit the editor"
-    );
+    assert!(!ed.state.should_quit, "pane-close must not quit the editor");
     assert_eq!(
         ed.state.status_msg.as_deref(),
         Some("cannot close last pane")
