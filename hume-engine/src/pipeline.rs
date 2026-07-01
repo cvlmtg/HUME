@@ -298,6 +298,10 @@ pub struct EngineView {
     pub registry: ScopeRegistry,
     /// Optional tab bar rendered at the top of the terminal area.
     pub tabbar: Option<Box<dyn TabBarProvider>>,
+    /// Last-rendered pane rects (DFS pre-order). Populated by the editor's
+    /// `prepare_frame` each frame; read by pane-focus commands + cursor
+    /// placement. Empty until the first `prepare_frame`.
+    pub pane_rects: Vec<(PaneId, ratatui::layout::Rect)>,
 }
 
 impl EngineView {
@@ -312,6 +316,7 @@ impl EngineView {
             theme,
             registry: ScopeRegistry::new(),
             tabbar: None,
+            pane_rects: Vec::new(),
         }
     }
 

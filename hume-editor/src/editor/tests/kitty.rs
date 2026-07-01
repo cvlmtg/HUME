@@ -63,30 +63,29 @@ fn ctrl_p_starts_pane_prefix() {
     );
 }
 
-/// Ctrl+p, w → pane-focus-next stub (not yet implemented).
+/// Ctrl+p, w → pane-focus-next. Single-pane no-op: no neighbour to cycle to,
+/// so the command returns `Ok` silently and leaves state untouched.
 #[test]
-fn ctrl_p_w_is_pane_focus_next_stub() {
+fn ctrl_p_w_is_noop_with_single_pane() {
     let mut ed = editor_from_kitty("-[h]>ello world\n");
     ed.handle_key(key_ctrl('p'));
     ed.handle_key(key('w'));
-    assert_eq!(state(&ed), "-[h]>ello world\n", "stub must not move cursor");
+    assert_eq!(
+        state(&ed),
+        "-[h]>ello world\n",
+        "single pane: cursor must not move"
+    );
     assert!(
-        ed.state
-            .status_msg
-            .as_deref()
-            .unwrap_or("")
-            .contains("not yet implemented"),
-        "stub must report not-yet-implemented: {:?}",
+        ed.state.status_msg.is_none(),
+        "single pane: silent no-op, got {:?}",
         ed.state.status_msg,
     );
 }
 
-/// Ctrl+p, h/j/k/l → directional pane-focus stubs (M9+ placeholders).
-///
-/// Locks the contract that all four directional variants are stubs until
-/// the `:split` feature lands — they must not mutate state or panic.
+/// Ctrl+p, h/j/k/l → directional pane focus. Single-pane no-op: no neighbour in
+/// the requested direction → silent `Ok`, no status message and no state change.
 #[test]
-fn ctrl_p_directional_stubs_report_not_implemented() {
+fn ctrl_p_directionals_are_noop_with_single_pane() {
     for second_key in ['h', 'j', 'k', 'l'] {
         let mut ed = editor_from_kitty("-[h]>ello world\n");
         ed.handle_key(key_ctrl('p'));
@@ -94,15 +93,11 @@ fn ctrl_p_directional_stubs_report_not_implemented() {
         assert_eq!(
             state(&ed),
             "-[h]>ello world\n",
-            "Ctrl+p {second_key}: stub must not move cursor",
+            "Ctrl+p {second_key}: single pane: cursor must not move",
         );
         assert!(
-            ed.state
-                .status_msg
-                .as_deref()
-                .unwrap_or("")
-                .contains("not yet implemented"),
-            "Ctrl+p {second_key}: stub must report not-yet-implemented: {:?}",
+            ed.state.status_msg.is_none(),
+            "Ctrl+p {second_key}: single pane: silent no-op, got {:?}",
             ed.state.status_msg,
         );
     }

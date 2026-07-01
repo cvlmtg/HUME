@@ -293,19 +293,12 @@ impl Editor {
                 let (pane_settings_cursor, gutter_w) =
                     self.resolve_pane_settings(self.state.focused_pane_id);
                 let vp = self.view.panes[self.state.focused_pane_id].viewport.clone();
-                // Post-split the focused pane may be offset from the terminal's
-                // top-left (e.g. focus moved to a `:vsplit`'s right half) — find
-                // its rect origin so the bar cursor lands inside it, not at (0,0).
-                // TODO(T4): replace with the cached rect list `EngineView` will carry.
-                let pane_area = ratatui::layout::Rect {
-                    x: 0,
-                    y: 0,
-                    width: size.width,
-                    height: size.height.saturating_sub(1),
-                };
-                let mut rects = Vec::new();
-                self.view.layout.collect_rects_into(pane_area, &mut rects);
-                let (ox, oy) = rects
+                // `prepare_frame` ran earlier this iteration and cached the
+                // partitioned rects; look up the focused pane's origin so the
+                // bar cursor lands inside it, not at (0,0).
+                let (ox, oy) = self
+                    .view
+                    .pane_rects
                     .iter()
                     .find(|(pid, _)| *pid == self.state.focused_pane_id)
                     .map(|(_, r)| (r.x, r.y))
@@ -610,6 +603,10 @@ impl Editor {
 
         // 7. Sync completion-popup view to the shared Arc for `CompletionOverlay`.
         self.sync_completion_view();
+
+        // 8. Cache the partitioned rects so pane-focus commands and the
+        //    cursor-screen path below read geometry without recomputing it.
+        self.view.pane_rects = rects;
     }
 
     /// Sync every engine pane's selection mirror from the authoritative `pane_state`.

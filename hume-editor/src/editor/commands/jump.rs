@@ -83,49 +83,113 @@ pub fn cmd_goto_alternate_file(
     Ok(())
 }
 
-// ── Pane focus stubs (M9+) ────────────────────────────────────────────────────
+// ── Pane focus (M10/T4) ──────────────────────────────────────────────────────
+
+/// Directional neighbour selection for pane focus.
+enum Dir {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+/// Move focus to the nearest pane in `dir`, reading geometry from the cache
+/// populated by `prepare_frame`. Silent no-op (`Ok`) when no pane lies in that
+/// direction. Focus switch is a single field write — `open_pane` already
+/// seeded per-pane maps for every existing pane.
+fn focus_in_direction(
+    state: &mut EditorState,
+    view: &EngineView,
+    dir: Dir,
+) -> Result<(), CommandError> {
+    let focused = state.focused_pane_id;
+    let Some(&(_, cur)) = view.pane_rects.iter().find(|(p, _)| *p == focused) else {
+        return Ok(());
+    };
+    // Nearest by primary-axis gap; tie-break on perpendicular center distance.
+    // Pack gap into the high 16 bits and perp into the low 16 bits so a single
+    // `min_by_key` orders by gap then perp — both are u16 so neither can
+    // contaminate the other.
+    let target = view
+        .pane_rects
+        .iter()
+        .copied()
+        .filter(|(p, _)| p != &focused)
+        .filter_map(|(pid, r)| {
+            let (gap, perp): (u16, u16) = match dir {
+                Dir::Left if r.x + r.width <= cur.x => {
+                    (cur.x - (r.x + r.width), cur.y.abs_diff(r.y))
+                }
+                Dir::Right if r.x >= cur.x + cur.width => {
+                    (r.x - (cur.x + cur.width), cur.y.abs_diff(r.y))
+                }
+                Dir::Up if r.y + r.height <= cur.y => {
+                    (cur.y - (r.y + r.height), cur.x.abs_diff(r.x))
+                }
+                Dir::Down if r.y >= cur.y + cur.height => {
+                    (r.y - (cur.y + cur.height), cur.x.abs_diff(r.x))
+                }
+                _ => return None,
+            };
+            Some(((gap as u32) << 16 | (perp as u32), pid))
+        })
+        .min_by_key(|(score, _)| *score)
+        .map(|(_, pid)| pid);
+    if let Some(pid) = target {
+        state.focused_pane_id = pid;
+    }
+    Ok(())
+}
 
 pub fn cmd_pane_focus_next(
-    _state: &mut EditorState,
-    _view: &mut EngineView,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    Err(CommandError::new(":split not yet implemented"))
+    let focused = state.focused_pane_id;
+    let Some(idx) = view.pane_rects.iter().position(|(p, _)| *p == focused) else {
+        return Ok(());
+    };
+    let n = view.pane_rects.len();
+    if n > 1 {
+        state.focused_pane_id = view.pane_rects[(idx + 1) % n].0;
+    }
+    Ok(())
 }
 
 pub fn cmd_pane_focus_left(
-    _state: &mut EditorState,
-    _view: &mut EngineView,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    Err(CommandError::new(":split not yet implemented"))
+    focus_in_direction(state, view, Dir::Left)
 }
 
 pub fn cmd_pane_focus_right(
-    _state: &mut EditorState,
-    _view: &mut EngineView,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    Err(CommandError::new(":split not yet implemented"))
+    focus_in_direction(state, view, Dir::Right)
 }
 
 pub fn cmd_pane_focus_up(
-    _state: &mut EditorState,
-    _view: &mut EngineView,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    Err(CommandError::new(":split not yet implemented"))
+    focus_in_direction(state, view, Dir::Up)
 }
 
 pub fn cmd_pane_focus_down(
-    _state: &mut EditorState,
-    _view: &mut EngineView,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    Err(CommandError::new(":split not yet implemented"))
+    focus_in_direction(state, view, Dir::Down)
 }
