@@ -1046,13 +1046,13 @@ impl CommandRegistry {
         );
         typed_cmd!(
             "split",
-            "Split the current pane horizontally.",
+            "Split the focused pane, stacking the new pane below it.",
             &["sp"],
             typed_split
         );
         typed_cmd!(
             "vsplit",
-            "Split the current pane vertically.",
+            "Split the focused pane side by side.",
             &["vsp"],
             typed_vsplit
         );

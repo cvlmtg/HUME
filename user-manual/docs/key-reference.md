@@ -167,6 +167,7 @@ Press `Ctrl+p` then a second key:
 | `Ctrl+p l` | Focus pane to the right |
 | `Ctrl+p s` | Split the focused pane, stacking the new pane below it |
 | `Ctrl+p v` | Split the focused pane side by side |
+| `Ctrl+p c` | Close the focused pane (does nothing if it's the only pane) |
 
 ## Insert mode
 

@@ -34,6 +34,29 @@ A **buffer** is an open file (or scratch text). HUME can have multiple buffers o
 
 This works like Vim's `Ctrl+^` — toggles between the current and previous buffer.
 
+## Splits and panes
+
+A **pane** is a viewport onto a buffer. A buffer is the open file itself; a pane is where you view it — two panes can show the same buffer at once, each scrolled and wrapped independently.
+
+| Command | Aliases | Effect |
+|---------|---------|--------|
+| `:split <path>` | `:sp` | Split the focused pane, stacking the new pane below it |
+| `:vsplit <path>` | `:vsp` | Split the focused pane side by side |
+
+`<path>` is optional. Without it, the new pane views the same buffer as the focused one. With it, the new pane opens that file instead.
+
+| Key | Effect |
+|-----|--------|
+| `Ctrl+p s` | Split the focused pane, stacking the new pane below it |
+| `Ctrl+p v` | Split the focused pane side by side |
+| `Ctrl+p p` | Focus next pane |
+| `Ctrl+p h` / `j` / `k` / `l` | Focus the pane to the left / below / above / to the right |
+| `Ctrl+p c` | Close the focused pane (does nothing if it's the only pane) |
+
+`:q` is pane-aware: with multiple panes open, it closes the focused pane and leaves the buffer open in the buffer list; with a single pane, it falls through to the usual quit behavior (blocked on unsaved changes).
+
+A divider is drawn between panes, and the pane without focus is dimmed. Soft wrap (`:wrap`) is per-pane, so two panes on the same buffer can wrap independently.
+
 ## Saving
 
 | Command | Effect |
@@ -55,7 +78,7 @@ A `[+]` indicator in the status bar means the buffer has unsaved changes. Files 
 
 | Command | Effect |
 |---------|--------|
-| `:q` | Quit (blocked if there are unsaved changes) |
+| `:q` | Close the focused pane if others are open; otherwise quit (blocked if there are unsaved changes) |
 | `:q!` | Quit without saving |
 | `:wq` | Save and quit |
 | `:qa` | Quit, closing all buffers |

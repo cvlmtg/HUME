@@ -13,7 +13,7 @@ Tab completion is available for command names and, where applicable, their argum
 | `:w <path>` | Save as |
 | `:w!` | Force save (retry with chmod on permission errors) |
 | `:wa` | Write all modified buffers to disk |
-| `:q` | Quit |
+| `:q` | Close the focused pane if others are open; otherwise quit (blocked on unsaved changes; use `:q!`) |
 | `:q!` | Force quit |
 | `:wq` | Save and quit |
 | `:qa` | Quit all buffers |
@@ -36,7 +36,7 @@ Tab completion is available for command names and, where applicable, their argum
 | `:split` | `:sp` | Split the focused pane, stacking the new pane below it |
 | `:vsplit` | `:vsp` | Split the focused pane side by side |
 
-Pane focus and splitting use the `Ctrl+p` prefix (`Ctrl+p h`/`j`/`k`/`l`/`p`/`s`/`v`) — see the [Key Reference](key-reference.md).
+Pane focus, splitting, and closing use the `Ctrl+p` prefix (`Ctrl+p h`/`j`/`k`/`l`/`p`/`s`/`v`/`c`) — see the [Key Reference](key-reference.md).
 
 ## Settings
 
