@@ -207,7 +207,9 @@ impl LayoutTree {
             }
             LayoutTree::Leaf(_) => false,
             LayoutTree::Split { children, .. } => {
-                children.0.split_leaf(target, new_pane, direction.clone(), ratio)
+                children
+                    .0
+                    .split_leaf(target, new_pane, direction.clone(), ratio)
                     || children.1.split_leaf(target, new_pane, direction, ratio)
             }
         }
@@ -233,7 +235,11 @@ impl LayoutTree {
                 if hit0 || hit1 {
                     // Promote the sibling subtree; the placeholder left behind
                     // in `keep` is discarded when `*self` is overwritten below.
-                    let keep = if hit0 { &mut children.1 } else { &mut children.0 };
+                    let keep = if hit0 {
+                        &mut children.1
+                    } else {
+                        &mut children.0
+                    };
                     let sibling = std::mem::replace(keep, LayoutTree::Leaf(PaneId::default()));
                     let survivor = sibling.first_leaf();
                     *self = sibling;
