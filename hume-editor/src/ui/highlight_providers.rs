@@ -18,6 +18,10 @@ use hume_engine::providers::{HighlightSource, HighlightTier, ProviderSet, Source
 use hume_engine::theme::ScopeRegistry;
 use hume_engine::types::ScopeId;
 
+/// Shared per-frame highlight data: `(line_idx, byte_start, byte_end)` triples,
+/// written once per frame and read during the engine's per-line render loop.
+pub(crate) type HighlightRanges = Arc<RwLock<Vec<(usize, usize, usize)>>>;
+
 /// Highlights a set of byte ranges, all sharing the same scope and tier.
 ///
 /// Data is `(line_idx, byte_start, byte_end)` in line-relative byte offsets.
@@ -27,7 +31,7 @@ pub(crate) struct SharedHighlighter {
     pub(crate) scope: ScopeId,
     pub(crate) tier: HighlightTier,
     /// Shared data: `(line_idx, byte_start, byte_end)` for each highlight.
-    pub(crate) data: Arc<RwLock<Vec<(usize, usize, usize)>>>,
+    pub(crate) data: HighlightRanges,
 }
 
 impl HighlightSource for SharedHighlighter {
@@ -63,8 +67,8 @@ impl HighlightSource for SharedHighlighter {
 /// `Pane::new` alone has an empty `ProviderSet` (no gutter column at all).
 pub(crate) fn build_pane_providers(
     registry: &mut ScopeRegistry,
-    bracket_hl_data: &Arc<RwLock<Vec<(usize, usize, usize)>>>,
-    search_hl_data: &Arc<RwLock<Vec<(usize, usize, usize)>>>,
+    bracket_hl_data: &HighlightRanges,
+    search_hl_data: &HighlightRanges,
     completion_view: &Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>>,
 ) -> ProviderSet {
     let bracket_scope = registry.intern("ui.cursor.match");

@@ -332,9 +332,9 @@ pub(crate) struct EditorState {
     /// Read by every pane's `SharedHighlighter` provider; reachable here (not on
     /// `Editor`) so the free `commands::open_pane` can build a new pane's provider
     /// set without needing a full `&mut Editor`.
-    pub(crate) bracket_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>>,
+    pub(crate) bracket_hl_data: crate::ui::highlight_providers::HighlightRanges,
     /// Shared search match highlight data: same shape as `bracket_hl_data`.
-    pub(crate) search_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>>,
+    pub(crate) search_hl_data: crate::ui::highlight_providers::HighlightRanges,
     /// Shared completion-popup view: written by `prepare_frame`, read by provider.
     pub(crate) completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>>,
 }

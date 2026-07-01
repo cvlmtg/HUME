@@ -89,9 +89,9 @@ impl Editor {
 
         // Shared highlight/completion data, written once per frame and read by
         // every pane's providers (see `build_pane_providers`).
-        let bracket_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>> =
+        let bracket_hl_data: crate::ui::highlight_providers::HighlightRanges =
             Arc::new(RwLock::new(Vec::new()));
-        let search_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>> =
+        let search_hl_data: crate::ui::highlight_providers::HighlightRanges =
             Arc::new(RwLock::new(Vec::new()));
         let completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>> =
             Arc::new(RwLock::new(None));
