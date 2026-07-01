@@ -63,13 +63,13 @@ fn ctrl_p_starts_pane_prefix() {
     );
 }
 
-/// Ctrl+p, w → pane-focus-next. Single-pane no-op: no neighbour to cycle to,
+/// Ctrl+p, p → pane-focus-next. Single-pane no-op: no neighbour to cycle to,
 /// so the command returns `Ok` silently and leaves state untouched.
 #[test]
-fn ctrl_p_w_is_noop_with_single_pane() {
+fn ctrl_p_p_is_noop_with_single_pane() {
     let mut ed = editor_from_kitty("-[h]>ello world\n");
     ed.handle_key(key_ctrl('p'));
-    ed.handle_key(key('w'));
+    ed.handle_key(key('p'));
     assert_eq!(
         state(&ed),
         "-[h]>ello world\n",
@@ -79,6 +79,46 @@ fn ctrl_p_w_is_noop_with_single_pane() {
         ed.state.status_msg.is_none(),
         "single pane: silent no-op, got {:?}",
         ed.state.status_msg,
+    );
+}
+
+/// Ctrl+p, s → pane-split. Creates a second pane, stacking it below the
+/// focused one, and moves focus onto the new pane.
+#[test]
+fn ctrl_p_s_splits_pane() {
+    use hume_engine::pipeline::LayoutTree;
+
+    let mut ed = editor_from_kitty("-[h]>ello world\n");
+    let pid_a = ed.state.focused_pane_id;
+    ed.handle_key(key_ctrl('p'));
+    ed.handle_key(key('s'));
+    assert_ne!(
+        ed.state.focused_pane_id, pid_a,
+        "focus moves to the new pane"
+    );
+    assert!(
+        matches!(ed.view.layout, LayoutTree::Split { .. }),
+        "layout is a Split"
+    );
+}
+
+/// Ctrl+p, v → pane-vsplit. Creates a second pane side by side, and moves
+/// focus onto the new pane.
+#[test]
+fn ctrl_p_v_vsplits_pane() {
+    use hume_engine::pipeline::LayoutTree;
+
+    let mut ed = editor_from_kitty("-[h]>ello world\n");
+    let pid_a = ed.state.focused_pane_id;
+    ed.handle_key(key_ctrl('p'));
+    ed.handle_key(key('v'));
+    assert_ne!(
+        ed.state.focused_pane_id, pid_a,
+        "focus moves to the new pane"
+    );
+    assert!(
+        matches!(ed.view.layout, LayoutTree::Split { .. }),
+        "layout is a Split"
     );
 }
 

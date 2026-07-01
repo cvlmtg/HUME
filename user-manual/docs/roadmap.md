@@ -8,9 +8,7 @@ HUME is under active development. Here is what's coming.
 
 **Multiple selections** — `s` to select within selection, `S` to split on newlines, `C` to copy selections, and simultaneous multi-cursor editing.
 
-## In progress
-
-**Split panes** — `:split` and `:vsplit` to view multiple buffers side by side. Commands are registered (show a "not yet implemented" message).
+**Split panes** — `:split` and `:vsplit` (or `Ctrl+p s`/`Ctrl+p v`) to view multiple buffers side by side, with directional pane focus (`Ctrl+p h/j/k/l`) and a visible divider between panes.
 
 ## Planned
 

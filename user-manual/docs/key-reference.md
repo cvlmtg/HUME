@@ -160,11 +160,13 @@ Press `Ctrl+p` then a second key:
 
 | Key | Action |
 |-----|--------|
-| `Ctrl+p w` | Focus next pane |
+| `Ctrl+p p` | Focus next pane |
 | `Ctrl+p h` | Focus pane to the left |
 | `Ctrl+p j` | Focus pane below |
 | `Ctrl+p k` | Focus pane above |
 | `Ctrl+p l` | Focus pane to the right |
+| `Ctrl+p s` | Split the focused pane, stacking the new pane below it |
+| `Ctrl+p v` | Split the focused pane side by side |
 
 ## Insert mode
 

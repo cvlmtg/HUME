@@ -242,15 +242,17 @@ The prefix is sticky across motions and text objects, but consumed (cleared) by 
 | `Ctrl+o` | Jump backward in the jump list |
 | `Ctrl+i` / `Tab` | Jump forward in the jump list |
 
-### Pane Focus (`Ctrl+p` prefix)
+### Panes (`Ctrl+p` prefix)
 
 | Sequence | Command |
 |----------|---------|
-| `Ctrl+p w` | Focus next pane |
+| `Ctrl+p p` | Focus next pane |
 | `Ctrl+p h` | Focus pane to the left |
 | `Ctrl+p j` | Focus pane below |
 | `Ctrl+p k` | Focus pane above |
 | `Ctrl+p l` | Focus pane to the right |
+| `Ctrl+p s` | Split the focused pane, stacking the new pane below it |
+| `Ctrl+p v` | Split the focused pane side by side |
 
 ### Mode Transitions
 
@@ -315,8 +317,8 @@ Auto-pairs: when `auto-pairs-enabled` is on, typing an opening delimiter (`(`, `
 | `:bprev` | `:bp` | Switch to the previous open buffer |
 | `:buffer-delete` | `:bd` | Close the focused buffer (guards unsaved changes) |
 | `:reload-config` | | Reload `init.scm` from scratch |
-| `:split` | `:sp` | Split current pane horizontally *(not yet implemented)* |
-| `:vsplit` | `:vsp` | Split current pane vertically *(not yet implemented)* |
+| `:split` | `:sp` | Split the focused pane, stacking the new pane below it |
+| `:vsplit` | `:vsp` | Split the focused pane side by side |
 | `:clear-search` | | Clear search highlights |
 | `:goto <N>` | `:N` | Jump to 1-based line N (`:42` also accepted as shorthand) |
 

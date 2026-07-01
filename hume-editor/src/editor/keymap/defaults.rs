@@ -187,11 +187,13 @@ fn build_goto_trie() -> KeyTrie {
 
 fn build_pane_trie() -> KeyTrie {
     let mut t = KeyTrie::new("pane");
-    t.bind_leaf(key!('w'), cmd!("pane-focus-next"));
+    t.bind_leaf(key!('p'), cmd!("pane-focus-next"));
     t.bind_leaf(key!('h'), cmd!("pane-focus-left"));
     t.bind_leaf(key!('j'), cmd!("pane-focus-down"));
     t.bind_leaf(key!('k'), cmd!("pane-focus-up"));
     t.bind_leaf(key!('l'), cmd!("pane-focus-right"));
+    t.bind_leaf(key!('s'), cmd!("pane-split"));
+    t.bind_leaf(key!('v'), cmd!("pane-vsplit"));
     t
 }
 

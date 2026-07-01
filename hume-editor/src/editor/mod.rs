@@ -5,12 +5,14 @@ use std::sync::{Arc, RwLock};
 
 use crossterm::event::{Event, KeyEvent};
 
+#[cfg(test)]
 use hume_engine::pane::Pane;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 #[cfg(test)]
 use hume_engine::pipeline::{LayoutTree, SharedBuffer};
 #[cfg(test)]
 use search_state::SearchPattern;
+#[cfg(test)]
 use slotmap::SecondaryMap;
 
 use self::registry::{CommandRegistry, MappableCommand};
@@ -18,6 +20,7 @@ use crate::editor::buffer::Buffer;
 use crate::editor::buffer_store::BufferStore;
 #[cfg(test)]
 use crate::editor::pane_state::PaneBufferState;
+#[cfg(test)]
 use crate::editor::pane_state::PaneTransient;
 use crate::editor::pane_state::PaneView;
 use crate::ops::motion::FindKind;
@@ -858,35 +861,21 @@ impl Editor {
         self.state.last_command = None;
         self.state.last_repeatable_action = saved_action;
     }
-
-    // ── Pane choke-points ─────────────────────────────────────────────────────
-
-    /// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its id.
-    pub(crate) fn open_pane(&mut self, buffer_id: BufferId) -> PaneId {
-        let pid = self.view.panes.insert(Pane::new(buffer_id));
-        self.state.panes.state.insert(pid, SecondaryMap::new());
-        pane_state::ensure(
-            &mut self.state.panes.state,
-            &self.state.buffers,
-            pid,
-            buffer_id,
-        );
-        self.state
-            .panes
-            .transient
-            .insert(pid, PaneTransient::default());
-        self.state.panes.jumps.insert(
-            pid,
-            self::jump_list::JumpList::new(self.state.settings.jump_list_capacity),
-        );
-        pid
-    }
 }
 
 // ── Test constructors ─────────────────────────────────────────────────────────
 
 #[cfg(test)]
 impl Editor {
+    /// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its id.
+    /// Delegates to `commands::open_pane` — the single source of truth, also
+    /// used directly by production `EditorCmd` handlers (`pane-split`,
+    /// `pane-vsplit`) that only have `state`+`view` access. Test-only:
+    /// production code builds panes exclusively through `split_pane_onto`.
+    pub(crate) fn open_pane(&mut self, buffer_id: BufferId) -> PaneId {
+        commands::open_pane(&mut self.state, &mut self.view, buffer_id)
+    }
+
     /// Construct a minimal `Editor` for renderer unit tests.
     ///
     /// Only `doc` and `view` are meaningful — all other fields are set to

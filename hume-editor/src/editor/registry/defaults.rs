@@ -950,6 +950,18 @@ impl CommandRegistry {
             cmd_pane_focus_down,
         )
         .reg(self);
+        ecmd(
+            "pane-split",
+            "Split the focused pane, stacking the new pane below it.",
+            cmd_split_pane,
+        )
+        .reg(self);
+        ecmd(
+            "pane-vsplit",
+            "Split the focused pane side by side.",
+            cmd_vsplit_pane,
+        )
+        .reg(self);
 
         // ── Typed commands (`:` command line) ─────────────────────────────────
         macro_rules! typed_cmd {

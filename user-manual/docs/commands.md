@@ -33,10 +33,10 @@ Tab completion is available for command names and, where applicable, their argum
 
 | Command | Aliases | Effect |
 |---------|---------|--------|
-| `:split` | `:sp` | Split the current pane horizontally *(not yet implemented)* |
-| `:vsplit` | `:vsp` | Split the current pane vertically *(not yet implemented)* |
+| `:split` | `:sp` | Split the focused pane, stacking the new pane below it |
+| `:vsplit` | `:vsp` | Split the focused pane side by side |
 
-Pane focus uses the `Ctrl+p` prefix (`Ctrl+p h`/`j`/`k`/`l`/`w`) — see the [Key Reference](key-reference.md).
+Pane focus and splitting use the `Ctrl+p` prefix (`Ctrl+p h`/`j`/`k`/`l`/`p`/`s`/`v`) — see the [Key Reference](key-reference.md).
 
 ## Settings
 

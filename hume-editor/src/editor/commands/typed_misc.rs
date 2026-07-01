@@ -151,73 +151,32 @@ pub fn typed_vsplit(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<
     split_focused_pane(ed, arg, Direction::Horizontal)
 }
 
-/// Minimum content rows a pane must keep on its split axis for `:split`
-/// (a height split) to be allowed.
-const MIN_PANE_HEIGHT: u16 = 3;
-/// Minimum content columns a pane must keep on its split axis for `:vsplit`
-/// (a width split) to be allowed. Wider than `MIN_PANE_HEIGHT` because text
-/// needs more horizontal room than vertical to stay usable.
-const MIN_PANE_WIDTH: u16 = 10;
-
-/// Whether the focused pane's current on-screen rect has room for another
-/// split on `direction`, including the 1-cell seam divider drawn between the
-/// two resulting panes (see `hume_engine::pipeline::split_rect`).
-///
-/// Reads the rect cache populated by the last `prepare_frame`. If no cache
-/// exists yet (e.g. the very first frame, before any render has run), there
-/// is no geometry to check against — allow the split; `prepare_frame` sizes
-/// it correctly on the next frame regardless.
-fn fits_split(ed: &Editor, direction: Direction) -> bool {
-    let Some(&(_, rect)) = ed
-        .view
-        .pane_rects
-        .iter()
-        .find(|(pid, _)| *pid == ed.state.focused_pane_id)
-    else {
-        return true;
-    };
-    match direction {
-        Direction::Vertical => rect.height > 2 * MIN_PANE_HEIGHT,
-        Direction::Horizontal => rect.width > 2 * MIN_PANE_WIDTH,
-    }
-}
-
 /// Split the focused pane and move focus to the new pane.
 ///
 /// `direction` is the engine's split axis, which is *inverted* from the Vim
 /// command names: `Direction::Vertical` divides height (stacked panes, what
 /// `:split` means), `Direction::Horizontal` divides width (side by side,
 /// `:vsplit`) — see `LayoutTree::collect_rects_into`'s use of `split_rect`.
+///
+/// Checks `fits_split` up front, before resolving `arg`, so a too-small pane
+/// rejects the split without the side effect of opening a path argument's
+/// file. `split_pane_onto` (the shared core with the keymap-bound
+/// `pane-split`/`pane-vsplit` commands) checks again once `bid` is known —
+/// redundant here but the only guard on the no-arg keymap path.
 fn split_focused_pane(
     ed: &mut Editor,
     arg: Option<&str>,
     direction: Direction,
 ) -> Result<(), CommandError> {
-    if !fits_split(ed, direction) {
-        ed.report(Severity::Warning, "pane too small to split".to_string());
+    if !super::fits_split(&ed.state, &ed.view, direction) {
+        ed.report(Severity::Warning, super::SPLIT_TOO_SMALL_MSG.to_string());
         return Ok(());
     }
     let bid = match arg {
         Some(path) => open_path_arg(ed, path)?,
         None => ed.focused_buffer_id(),
     };
-    let old_focused = ed.state.focused_pane_id;
-    let new_pid = ed.open_pane(bid);
-    let found = ed
-        .view
-        .layout
-        .split_leaf(old_focused, new_pid, direction, 0.5);
-    debug_assert!(
-        found,
-        "focused pane {old_focused:?} absent from layout tree"
-    );
-    // `open_pane` already seeded every per-pane map for `new_pid`, so a direct
-    // assignment is complete. Do NOT route through `switch_focused_pane`: its
-    // Normal-mode debug_assert would fire here, because typed commands
-    // dispatch while the editor is still in `Mode::Command` (mode flips to
-    // Normal only after `execute_command` returns — see `command_mode.rs`).
-    ed.state.focused_pane_id = new_pid;
-    Ok(())
+    super::split_pane_onto(&mut ed.state, &mut ed.view, bid, direction)
 }
 
 /// Resolve a `:split`/`:vsplit` path argument to a `BufferId`, opening the

@@ -18,7 +18,9 @@ pub(super) const DEFAULT_THEME_LABEL: &str = "default (built-in)";
 use std::borrow::Cow;
 
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_engine::pipeline::{BufferId, EngineView};
+use hume_engine::pane::Pane;
+use hume_engine::pipeline::{BufferId, Direction, EngineView, PaneId};
+use slotmap::SecondaryMap;
 
 use super::registry::MappableCommand;
 
@@ -26,10 +28,12 @@ use super::CmdCtx;
 use super::buffer::Buffer;
 use super::doc_ops;
 use super::jump_list::JumpEntry;
+use super::pane_state::PaneTransient;
 use super::registry::CmdMeta;
 use super::search_state::SearchPattern;
 use super::{EditorState, InsertSession, Mode, RegisterPrefix, RepeatableAction, SelectionStep};
 use super::{Severity, register_ops};
+use crate::editor::error::CommandError;
 use crate::ops::MotionMode;
 
 // ── EditorState helpers ───────────────────────────────────────────────────────
@@ -390,6 +394,98 @@ pub(super) fn focused_buffer_id(state: &EditorState, view: &EngineView) -> Buffe
 /// Shared reference to the focused buffer.
 pub(super) fn doc<'a>(state: &'a EditorState, view: &EngineView) -> &'a Buffer {
     state.buffers.get(focused_buffer_id(state, view))
+}
+
+// ── Pane creation / splitting ─────────────────────────────────────────────────
+
+/// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its id.
+///
+/// Free-function twin of `Editor::open_pane`, for `EditorCmd` handlers that
+/// only have `&mut EditorState` + `&mut EngineView` access — `Editor::open_pane`
+/// delegates here so the setup logic has a single source of truth.
+pub(super) fn open_pane(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    buffer_id: BufferId,
+) -> PaneId {
+    let pid = view.panes.insert(Pane::new(buffer_id));
+    state.panes.state.insert(pid, SecondaryMap::new());
+    super::pane_state::ensure(&mut state.panes.state, &state.buffers, pid, buffer_id);
+    state.panes.transient.insert(pid, PaneTransient::default());
+    state.panes.jumps.insert(
+        pid,
+        super::jump_list::JumpList::new(state.settings.jump_list_capacity),
+    );
+    pid
+}
+
+/// Status message reported when a split is rejected for being too small.
+/// Shared constant: the typed `:split`/`:vsplit [path]` guard and
+/// `split_pane_onto`'s guard both report this for the same failure.
+pub(super) const SPLIT_TOO_SMALL_MSG: &str = "pane too small to split";
+
+/// Minimum content rows a pane must keep on its split axis for a height
+/// split (`:split`) to be allowed.
+const MIN_PANE_HEIGHT: u16 = 3;
+/// Minimum content columns a pane must keep on its split axis for a width
+/// split (`:vsplit`) to be allowed. Wider than `MIN_PANE_HEIGHT` because text
+/// needs more horizontal room than vertical to stay usable.
+const MIN_PANE_WIDTH: u16 = 10;
+
+/// Whether the focused pane's current on-screen rect has room for another
+/// split on `direction`, including the 1-cell seam divider drawn between the
+/// two resulting panes (see `hume_engine::pipeline::split_rect`).
+///
+/// Reads the rect cache populated by the last `prepare_frame`. If no cache
+/// exists yet (e.g. the very first frame, before any render has run), there
+/// is no geometry to check against — allow the split; `prepare_frame` sizes
+/// it correctly on the next frame regardless.
+pub(super) fn fits_split(state: &EditorState, view: &EngineView, direction: Direction) -> bool {
+    let Some(&(_, rect)) = view
+        .pane_rects
+        .iter()
+        .find(|(pid, _)| *pid == state.focused_pane_id)
+    else {
+        return true;
+    };
+    match direction {
+        Direction::Vertical => rect.height > 2 * MIN_PANE_HEIGHT,
+        Direction::Horizontal => rect.width > 2 * MIN_PANE_WIDTH,
+    }
+}
+
+/// Split the focused pane so the new pane views `bid`, and move focus to it.
+/// No-ops with a status warning if the focused pane is too small to fit two
+/// panes plus the seam divider (see `fits_split`).
+///
+/// Shared core for the typed `:split`/`:vsplit [path]` commands (which resolve
+/// `bid` from an optional path argument first) and the bare keymap-bound
+/// `pane-split`/`pane-vsplit` commands (which always split onto the focused
+/// pane's own buffer).
+pub(super) fn split_pane_onto(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    bid: BufferId,
+    direction: Direction,
+) -> Result<(), CommandError> {
+    if !fits_split(state, view, direction) {
+        state.report(Severity::Warning, SPLIT_TOO_SMALL_MSG.to_string());
+        return Ok(());
+    }
+    let old_focused = state.focused_pane_id;
+    let new_pid = open_pane(state, view, bid);
+    let found = view.layout.split_leaf(old_focused, new_pid, direction, 0.5);
+    debug_assert!(
+        found,
+        "focused pane {old_focused:?} absent from layout tree"
+    );
+    // `open_pane` already seeded every per-pane map for `new_pid`, so a direct
+    // assignment is complete. Do NOT route through `switch_focused_pane`: its
+    // Normal-mode debug_assert would fire when called from the typed
+    // `:split`/`:vsplit` path, which dispatches while still in `Mode::Command`
+    // (mode flips to Normal only after `execute_command` returns).
+    state.focused_pane_id = new_pid;
+    Ok(())
 }
 
 /// `true` when the focused buffer is read-only.

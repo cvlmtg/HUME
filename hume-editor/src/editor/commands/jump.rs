@@ -1,5 +1,5 @@
 use crate::ops::MotionMode;
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{Direction, EngineView};
 
 use super::super::{EditorState, Severity};
 use super::{
@@ -199,4 +199,31 @@ pub fn cmd_pane_focus_down(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     focus_in_direction(state, view, Dir::Down)
+}
+
+// ── Pane split (keymap-bound, no path argument) ─────────────────────────────
+
+/// `Ctrl+p s` — split the focused pane, stacking the new pane below it, onto
+/// the same buffer. Keymap-bound sibling of the typed `:split` (which also
+/// accepts an optional path argument); shares its core via `split_pane_onto`.
+pub fn cmd_split_pane(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    _count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    let bid = focused_buffer_id(state, view);
+    super::split_pane_onto(state, view, bid, Direction::Vertical)
+}
+
+/// `Ctrl+p v` — split the focused pane side by side, onto the same buffer.
+/// Keymap-bound sibling of the typed `:vsplit`.
+pub fn cmd_vsplit_pane(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    _count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    let bid = focused_buffer_id(state, view);
+    super::split_pane_onto(state, view, bid, Direction::Horizontal)
 }
