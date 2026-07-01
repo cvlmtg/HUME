@@ -112,6 +112,7 @@ impl Editor {
 
         let pane = hume_engine::pane::Pane {
             providers,
+            wrap_mode: settings.wrap_mode,
             ..hume_engine::pane::Pane::new(buffer_id)
         };
         let pane_id = engine_view.panes.insert(pane);
@@ -406,21 +407,22 @@ impl Editor {
         Ok(())
     }
 
-    /// Resolve any pane's render settings and gutter width, from that pane's
-    /// own buffer's overrides.
+    /// Resolve any pane's render settings and gutter width.
     ///
     /// Returns `(PaneRenderSettings, gutter_w)`. Single source of truth for
     /// wrap_mode / tab_width / whitespace settings across all render paths.
-    /// `mode` is global to the editor — inactive panes render their cursor
-    /// under the current mode too (no Helix-style inactive dimming yet).
+    /// `tab_width` / `whitespace` resolve from that pane's buffer overrides
+    /// (document facts); `wrap_mode` resolves from the pane itself — its SSOT
+    /// is `Pane::wrap_mode`, not the buffer. `mode` is global to the editor —
+    /// inactive panes render their cursor under the current mode too (no
+    /// Helix-style inactive dimming yet).
     fn resolve_pane_settings(&self, pid: PaneId) -> (PaneRenderSettings, u16) {
         let pane = &self.view.panes[pid];
         let doc = self.state.buffers.get(pane.buffer_id);
         let len_lines = doc.text().len_lines();
         let gutter_w = super::cursor::gutter_width(pane.providers.gutter_columns(), len_lines);
-        let raw_wrap = doc.overrides.wrap_mode(&self.state.settings);
         let content_width = pane.viewport.width.saturating_sub(gutter_w).max(1);
-        let wrap_mode = raw_wrap.resolve(content_width);
+        let wrap_mode = pane.wrap_mode.resolve(content_width);
         let tab_width = doc.overrides.tab_width(&self.state.settings);
         let whitespace = doc.overrides.whitespace(&self.state.settings);
         (
@@ -555,7 +557,6 @@ impl Editor {
             let doc = self.state.buffers.get(buf_id);
             let tab_width = doc.overrides.tab_width(&self.state.settings);
             let whitespace = doc.overrides.whitespace(&self.state.settings);
-            let raw_wrap = doc.overrides.wrap_mode(&self.state.settings);
             let len_lines = doc.text().len_lines();
             let rope = doc.text().rope();
             let cursor_char = self.state.panes.state[pid][buf_id]
@@ -564,7 +565,7 @@ impl Editor {
                 .head();
             let wrap_mode = {
                 let pane = &self.view.panes[pid];
-                raw_wrap.resolve(pane.content_width(len_lines))
+                pane.wrap_mode.resolve(pane.content_width(len_lines))
             };
             let pane = &mut self.view.panes[pid];
             scroll_into_view(

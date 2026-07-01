@@ -570,10 +570,15 @@ impl EngineView {
 
 /// Per-pane render settings supplied by the editor at render time.
 ///
-/// Mode, wrap, tab-width, and whitespace are editor-domain facts (they depend
-/// on global settings and per-buffer overrides). Storing them on the engine
-/// `Pane` would duplicate state and require frame-by-frame sync. Instead the
-/// editor resolves them once per frame and passes them via this bundle.
+/// `mode`, `tab_width`, and `whitespace` are document facts — resolved from
+/// per-buffer overrides against global settings, identical for every pane
+/// viewing the same buffer. Caching them on the engine `Pane` would duplicate
+/// state and require frame-by-frame sync, so the editor resolves them fresh
+/// each frame and passes them via this bundle. `wrap_mode` is genuinely
+/// per-pane (two panes on the same buffer may wrap differently) — its SSOT
+/// is `Pane::wrap_mode`; the editor just copies the resolved value through
+/// here alongside the document facts so the render pipeline has one bundle
+/// to read.
 #[derive(Clone)]
 pub struct PaneRenderSettings {
     pub mode: EditorMode,

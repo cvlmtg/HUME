@@ -17,8 +17,8 @@ fn page_test_editor() -> Editor {
     let buf = Text::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
-    // Override via buffer: scroll logic reads overrides at call time.
-    ed.doc_mut().overrides.wrap_mode = Some(hume_engine::pane::WrapMode::None);
+    // wrap_mode is pane-owned (SSOT), not a buffer override.
+    ed.view.panes[ed.state.focused_pane_id].wrap_mode = hume_engine::pane::WrapMode::None;
     ed
 }
 

@@ -31,6 +31,7 @@ Use `:set` from the command line for quick changes — see [Commands](commands.m
 | `steel-command-budget-ms` | integer ≥ 1 | `1000` | Max Steel command evaluation time (ms) |
 | `popup-border` | bool | `#t` | Show popup borders |
 | `syntax-highlight-max-bytes` | integer ≥ 1 | `1048576` | Max bytes for syntax highlighting |
+| `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Line wrapping behavior for newly opened panes. Wrapping is a per-pane view setting, not per-buffer — this only seeds new panes; use `:wrap` to toggle it for the current pane |
 
 ## Per-buffer options (with global default)
 
@@ -40,7 +41,6 @@ These options have a global default (set via `set-option!` at init.scm time, or 
 |--------|------|---------|-------------|
 | `tab-width` | integer | `4` | Spaces per indent level |
 | `tab-style` | `hard` \| `soft` | `hard` | What `Tab` inserts: `hard` = literal `\t`; `soft` = spaces to next tab stop |
-| `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Line wrapping behavior |
 | `line-number-style` | `absolute` \| `relative` \| `hybrid` | `hybrid` | Line number display in the gutter |
 | `auto-pairs-enabled` | bool | `#t` | Enable auto-pair insertion |
 | `language` | string | *(auto-detected)* | Language for syntax highlighting |

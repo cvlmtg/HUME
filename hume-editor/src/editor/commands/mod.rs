@@ -418,6 +418,7 @@ pub(super) fn open_pane(
     );
     let pane = Pane {
         providers,
+        wrap_mode: state.settings.wrap_mode,
         ..Pane::new(buffer_id)
     };
     let pid = view.panes.insert(pane);
@@ -589,11 +590,12 @@ pub(super) fn focused_format_context(
     hume_engine::pane::WhitespaceConfig,
 ) {
     let buf = doc(state, view);
-    let raw_wrap = buf.overrides.wrap_mode(&state.settings);
     let tab_width = buf.overrides.tab_width(&state.settings);
     let whitespace = buf.overrides.whitespace(&state.settings);
     let pane = &view.panes[state.focused_pane_id];
-    let wrap_mode = raw_wrap.resolve(pane.content_width(buf.text().len_lines()));
+    let wrap_mode = pane
+        .wrap_mode
+        .resolve(pane.content_width(buf.text().len_lines()));
     (wrap_mode, tab_width, whitespace)
 }
 

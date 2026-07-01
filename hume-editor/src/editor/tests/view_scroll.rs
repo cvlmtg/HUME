@@ -16,7 +16,7 @@ fn view_test_editor() -> Editor {
     let buf = Text::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
-    ed.doc_mut().overrides.wrap_mode = Some(hume_engine::pane::WrapMode::None);
+    ed.view.panes[ed.state.focused_pane_id].wrap_mode = hume_engine::pane::WrapMode::None;
     ed
 }
 
@@ -109,7 +109,8 @@ fn zz_in_wrap_mode_walks_display_rows() {
     let head = buf.rope().line_to_char(1) + 8;
     let sels = SelectionSet::single(Selection::collapsed(head));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
-    ed.doc_mut().overrides.wrap_mode = Some(hume_engine::pane::WrapMode::Soft { width: 4 });
+    ed.view.panes[ed.state.focused_pane_id].wrap_mode =
+        hume_engine::pane::WrapMode::Soft { width: 4 };
 
     // Override viewport height to 4 so target_row = 2 (height / 2).
     ed.viewport_mut().height = 4;
@@ -134,7 +135,8 @@ fn zt_in_wrap_mode_anchors_cursor_row_at_top() {
     let head = buf.rope().line_to_char(1) + 9;
     let sels = SelectionSet::single(Selection::collapsed(head));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
-    ed.doc_mut().overrides.wrap_mode = Some(hume_engine::pane::WrapMode::Soft { width: 4 });
+    ed.view.panes[ed.state.focused_pane_id].wrap_mode =
+        hume_engine::pane::WrapMode::Soft { width: 4 };
     ed.viewport_mut().height = 4;
 
     ed.handle_key(key('z'));

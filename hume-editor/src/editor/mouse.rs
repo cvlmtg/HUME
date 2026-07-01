@@ -100,7 +100,7 @@ impl Editor {
         };
         {
             let buf_id = self.focused_buffer_id();
-            let raw_wrap = self.doc().overrides.wrap_mode(&self.state.settings);
+            let raw_wrap = self.focused_wrap_mode();
             let len_lines = self.state.buffers.get(buf_id).text().len_lines();
             let tab_width = self.doc().overrides.tab_width(&self.state.settings);
             let whitespace = self.doc().overrides.whitespace(&self.state.settings);
@@ -143,7 +143,7 @@ impl Editor {
         };
         {
             let buf_id = self.focused_buffer_id();
-            let raw_wrap = self.doc().overrides.wrap_mode(&self.state.settings);
+            let raw_wrap = self.focused_wrap_mode();
             let tab_width = self.doc().overrides.tab_width(&self.state.settings);
             let whitespace = self.doc().overrides.whitespace(&self.state.settings);
             let rope = self.state.buffers.get(buf_id).text().rope();
@@ -192,11 +192,7 @@ impl Editor {
             (pane.viewport.clone(), gw)
         };
         let content_width = vp.width.saturating_sub(gutter_w).max(1);
-        let wrap_mode = self
-            .doc()
-            .overrides
-            .wrap_mode(&self.state.settings)
-            .resolve(content_width);
+        let wrap_mode = self.focused_wrap_mode().resolve(content_width);
         let tab_width = self.doc().overrides.tab_width(&self.state.settings);
         let whitespace = self.doc().overrides.whitespace(&self.state.settings);
         let rope = self.state.buffers.get(buf_id).text().rope();

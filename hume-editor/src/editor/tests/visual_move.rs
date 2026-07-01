@@ -31,8 +31,9 @@ fn visual_test_editor(head: usize) -> Editor {
     let sels = SelectionSet::single(Selection::collapsed(head));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
     // Pin to 76-column indent-wrap so the char-offset expectations in the tests
-    // are stable regardless of terminal size.
-    ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::Indent { width: 76 };
+    // are stable regardless of terminal size. wrap_mode is pane-owned (SSOT).
+    ed.view.panes[ed.state.focused_pane_id].wrap_mode =
+        hume_engine::pane::WrapMode::Indent { width: 76 };
     ed
 }
 
@@ -170,8 +171,8 @@ fn visual_preferred_col_reset_on_horizontal_motion() {
 #[test]
 fn visual_move_no_wrap_falls_back_to_buffer_line() {
     let mut ed = visual_test_editor(0);
-    // Override via buffer: apply_visual_vertical reads overrides at call time.
-    ed.doc_mut().overrides.wrap_mode = Some(hume_engine::pane::WrapMode::None);
+    // wrap_mode is pane-owned: apply_visual_vertical reads it via the focused pane.
+    ed.view.panes[ed.state.focused_pane_id].wrap_mode = hume_engine::pane::WrapMode::None;
 
     ed.handle_key(key('j'));
     // With no wrapping: j moves by one buffer line (0 → 81 "short").
@@ -226,7 +227,8 @@ fn visual_move_per_selection_sticky_col() {
         1, // primary is B
     );
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
-    ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::Indent { width: 76 };
+    ed.view.panes[ed.state.focused_pane_id].wrap_mode =
+        hume_engine::pane::WrapMode::Indent { width: 76 };
 
     // j: each cursor should use its own column, not the primary's.
     ed.handle_key(key('j'));
@@ -327,7 +329,8 @@ fn word_wrap_editor() -> Editor {
     let buf = Text::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
-    ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::Indent { width: 76 };
+    ed.view.panes[ed.state.focused_pane_id].wrap_mode =
+        hume_engine::pane::WrapMode::Indent { width: 76 };
     ed
 }
 

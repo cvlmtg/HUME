@@ -484,6 +484,13 @@ impl Editor {
 
     // ── Pane-state accessors ──────────────────────────────────────────────────
 
+    /// The focused pane's wrap mode. `Pane::wrap_mode` is the SSOT (a view
+    /// property, not a document one — two panes on the same buffer may wrap
+    /// differently); this is the raw (unresolved sentinel) value.
+    pub(crate) fn focused_wrap_mode(&self) -> hume_engine::pane::WrapMode {
+        self.view.panes[self.state.focused_pane_id].wrap_mode
+    }
+
     /// The focused pane's selections for the current buffer.
     pub(super) fn current_selections(&self) -> &SelectionSet {
         &self.state.panes.state[self.state.focused_pane_id][self.focused_buffer_id()].selections
@@ -892,7 +899,10 @@ impl Editor {
         let settings = EditorSettings::default();
         let jump_list_capacity = settings.jump_list_capacity;
         let history_capacity = settings.history_capacity;
-        let pane = Pane::new(buffer_id);
+        let pane = Pane {
+            wrap_mode: settings.wrap_mode,
+            ..Pane::new(buffer_id)
+        };
         let pane_id = engine_view.panes.insert(pane);
         engine_view.layout = LayoutTree::Leaf(pane_id);
         engine_view.theme.bake(&engine_view.registry);

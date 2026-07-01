@@ -297,13 +297,16 @@ define_settings! {
         "pane-dividers" => pane_dividers: bool = true, parser: bool;
         "theme" => theme: String = String::new(), parser: string;
         "syntax-highlight-max-bytes" => syntax_highlight_max_bytes: usize = 1_048_576, parser: usize_nonzero;
+        // Global-only: seeds new panes' `Pane::wrap_mode` at creation time
+        // (`hume-engine`'s `Pane` is the live SSOT — see `commands::open_pane`).
+        // Not per-buffer: wrap is a view property, and two panes on the same
+        // buffer may wrap differently.
+        "wrap-mode"           => wrap_mode:           WrapMode = WrapMode::Indent { width: 0 }, parser: from_str;
     }
     buffer {
         "tab-width"          => tab_width:          u8              = 4,
             parser: tab_width;
         "tab-style"          => tab_style:          TabStyle        = TabStyle::Hard,
-            parser: from_str;
-        "wrap-mode"          => wrap_mode:          WrapMode        = WrapMode::Indent { width: 0 },
             parser: from_str;
         "line-number-style"  => line_number_style:  LineNumberStyle = LineNumberStyle::Hybrid,
             parser: from_str;
@@ -463,7 +466,6 @@ mod tests {
         let ov = BufferOverrides::default();
         assert!(ov.tab_width.is_none());
         assert!(ov.tab_style.is_none());
-        assert!(ov.wrap_mode.is_none());
         assert!(ov.line_number_style.is_none());
         assert!(ov.auto_pairs_enabled.is_none());
         assert!(ov.auto_pairs.is_none());
@@ -482,16 +484,6 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(ov.tab_width(&global), 8);
-    }
-
-    #[test]
-    fn resolution_wrap_mode_override_wins() {
-        let global = EditorSettings::default();
-        let ov = BufferOverrides {
-            wrap_mode: Some(WrapMode::None),
-            ..Default::default()
-        };
-        assert_eq!(ov.wrap_mode(&global), WrapMode::None);
     }
 
     #[test]
@@ -543,13 +535,6 @@ mod tests {
     #[test]
     fn tab_style_rejects_unknown() {
         assert!("bogus".parse::<TabStyle>().is_err());
-    }
-
-    #[test]
-    fn resolution_falls_back_to_global_wrap_mode() {
-        let global = EditorSettings::default();
-        let ov = BufferOverrides::default();
-        assert_eq!(ov.wrap_mode(&global), global.wrap_mode);
     }
 
     // ── Auto-pairs resolution ─────────────────────────────────────────────────
@@ -795,10 +780,10 @@ mod tests {
     }
 
     #[test]
-    fn set_buffer_wrap_mode() {
-        let global = EditorSettings::default();
-        let ov = buffer("wrap-mode", "none").unwrap();
-        assert_eq!(ov.wrap_mode(&global), WrapMode::None);
+    fn set_buffer_wrap_mode_rejected_as_global_only() {
+        // wrap-mode is global-only: it seeds new panes' `Pane::wrap_mode`, the
+        // live per-pane SSOT — there is no buffer-scoped override anymore.
+        assert!(buffer("wrap-mode", "none").is_err());
     }
 
     #[test]

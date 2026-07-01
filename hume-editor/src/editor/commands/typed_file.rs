@@ -100,18 +100,15 @@ pub fn typed_toggle_soft_wrap(
     _force: bool,
 ) -> Result<(), CommandError> {
     use hume_engine::pane::WrapMode;
-    let currently_wrapping = ed
-        .doc()
-        .overrides
-        .wrap_mode(&ed.state.settings)
-        .is_wrapping();
+    let currently_wrapping = ed.focused_wrap_mode().is_wrapping();
+    let focused_pane = &mut ed.view.panes[ed.state.focused_pane_id];
     if currently_wrapping {
-        ed.doc_mut().overrides.wrap_mode = Some(WrapMode::None);
+        focused_pane.wrap_mode = WrapMode::None;
         // Horizontal offset is now meaningful; scroll stays where it is.
     } else {
         // width: 0 is the sentinel for "content width" — resolved via
         // WrapMode::resolve(content_width) at render time, so this reflows on resize.
-        ed.doc_mut().overrides.wrap_mode = Some(WrapMode::Indent { width: 0 });
+        focused_pane.wrap_mode = WrapMode::Indent { width: 0 };
         ed.viewport_mut().horizontal_offset = 0;
         ed.viewport_mut().top_row_offset = 0;
     }

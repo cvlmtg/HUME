@@ -897,3 +897,56 @@ fn quit_in_grid_promotes_correct_sibling() {
         other => panic!("expected Split layout, got {other:?}"),
     }
 }
+
+// ── wrap_mode: per-pane SSOT (M10 T6) ──────────────────────────────────────────
+
+/// A new pane seeds its `wrap_mode` from `EditorSettings::wrap_mode` (the
+/// init-default), not from the buffer it opens onto.
+#[test]
+fn split_seeds_new_pane_wrap_mode_from_global_default() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::Soft { width: 40 };
+
+    ed.execute_typed("split", None).unwrap();
+    let pid_b = ed.state.focused_pane_id;
+
+    assert_eq!(
+        ed.view.panes[pid_b].wrap_mode,
+        hume_engine::pane::WrapMode::Soft { width: 40 },
+        "new pane inherits the global default at creation time"
+    );
+}
+
+/// `:wrap` toggles only the focused pane's `wrap_mode` — a sibling pane on
+/// the same buffer is untouched. This is the core payoff of moving wrap_mode
+/// onto `Pane`: previously it was a buffer-keyed override, so toggling wrap
+/// in one pane on a buffer changed it for every pane viewing that buffer.
+#[test]
+fn wrap_toggle_affects_only_focused_pane() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::None;
+    let pid_a = ed.state.focused_pane_id;
+    // A was already constructed before the settings write above (which only
+    // seeds panes created from here on) — pin its baseline explicitly.
+    ed.view.panes[pid_a].wrap_mode = hume_engine::pane::WrapMode::None;
+
+    ed.execute_typed("split", None).unwrap();
+    let pid_b = ed.state.focused_pane_id;
+    assert_ne!(pid_a, pid_b);
+    assert_eq!(
+        ed.view.panes[pid_a].buffer_id, ed.view.panes[pid_b].buffer_id,
+        "sanity: both panes view the same buffer"
+    );
+
+    // Focus is on B (the new pane) after :split — toggle wrap there.
+    ed.execute_typed("wrap", None).unwrap();
+
+    assert!(
+        ed.view.panes[pid_b].wrap_mode.is_wrapping(),
+        "B: wrap toggled on"
+    );
+    assert!(
+        !ed.view.panes[pid_a].wrap_mode.is_wrapping(),
+        "A: unaffected by B's toggle, despite sharing a buffer"
+    );
+}

@@ -142,7 +142,11 @@ impl WrapMode {
     /// Replace the `width: 0` sentinel with a concrete column count.
     ///
     /// `WrapMode::None` and concrete non-zero widths pass through unchanged.
-    /// Call this once at the editor→engine boundary, passing `pane_width − gutter_width`.
+    /// `Pane.wrap_mode` stores the raw (unresolved) mode; call this at each
+    /// use site — editor's `resolve_pane_settings`, scroll/cursor/mouse —
+    /// passing that pane's `pane_width − gutter_width` (see
+    /// `Pane::content_width`), since content width depends on live pane
+    /// geometry and must re-derive on resize.
     pub fn resolve(self, content_width: u16) -> WrapMode {
         match self {
             WrapMode::Soft { width: 0 } => WrapMode::Soft {
@@ -241,6 +245,11 @@ pub struct Pane {
     pub primary_idx: usize,
     /// Registered providers for this pane.
     pub providers: ProviderSet,
+    /// How this pane wraps long lines — a view property, not a document one:
+    /// two panes on the same buffer may wrap differently. Stored raw (the
+    /// `width: 0` sentinel unresolved); call `WrapMode::resolve(content_width)`
+    /// at each use site since content width depends on live pane geometry.
+    pub wrap_mode: WrapMode,
 }
 
 impl Pane {
@@ -255,6 +264,7 @@ impl Pane {
             selections: vec![Selection { anchor: 0, head: 0 }],
             primary_idx: 0,
             providers: ProviderSet::new(),
+            wrap_mode: WrapMode::default(),
         }
     }
 
