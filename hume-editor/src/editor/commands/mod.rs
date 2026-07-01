@@ -431,6 +431,24 @@ pub(super) fn open_pane(
     pid
 }
 
+/// Close the focused pane: prune it from the layout tree, move focus to the
+/// promoted sibling, and drop all its per-pane state.
+///
+/// Precondition: more than one pane exists — callers check `view.panes.len() > 1`
+/// before calling. `remove_leaf` returning `None` (sole leaf) is a bug here.
+pub(super) fn close_focused_pane(state: &mut EditorState, view: &mut EngineView) {
+    let old = state.focused_pane_id;
+    let survivor = view
+        .layout
+        .remove_leaf(old)
+        .expect("close_focused_pane requires more than one pane");
+    state.focused_pane_id = survivor;
+    view.panes.remove(old);
+    state.panes.state.remove(old);
+    state.panes.transient.remove(old);
+    state.panes.jumps.remove(old);
+}
+
 /// Status message reported when a split is rejected for being too small.
 /// Shared constant: the typed `:split`/`:vsplit [path]` guard and
 /// `split_pane_onto`'s guard both report this for the same failure.

@@ -253,6 +253,7 @@ The prefix is sticky across motions and text objects, but consumed (cleared) by 
 | `Ctrl+p l` | Focus pane to the right |
 | `Ctrl+p s` | Split the focused pane, stacking the new pane below it |
 | `Ctrl+p v` | Split the focused pane side by side |
+| `Ctrl+p c` | Close the focused pane (does nothing if it's the only pane) |
 
 ### Mode Transitions
 
@@ -304,7 +305,7 @@ Auto-pairs: when `auto-pairs-enabled` is on, typing an opening delimiter (`(`, `
 
 | Command | Aliases | Description |
 |---------|---------|-------------|
-| `:quit` | `:q` | Close the current buffer; quit when it is the last real buffer. Add `!` to discard unsaved changes. |
+| `:quit` | `:q` | Close the focused pane if others are open; otherwise close the current buffer, quitting when it is the last real buffer. Add `!` to discard unsaved changes. |
 | `:write` | `:w` | Write current buffer to disk |
 | `:write-quit` | `:wq` | Write and quit |
 | `:quit-all` | `:qa` | Quit the editor, refusing if any buffer has unsaved changes. Use `:qa!` to force. |

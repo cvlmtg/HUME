@@ -227,3 +227,19 @@ pub fn cmd_vsplit_pane(
     let bid = focused_buffer_id(state, view);
     super::split_pane_onto(state, view, bid, Direction::Horizontal)
 }
+
+/// `Ctrl+p c` — close the focused pane, collapsing the split onto its sibling.
+/// No-ops with a warning when only one pane remains (`:q` owns quitting).
+pub fn cmd_close_pane(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    _count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    if view.panes.len() > 1 {
+        super::close_focused_pane(state, view);
+    } else {
+        state.report(Severity::Warning, "cannot close last pane".to_string());
+    }
+    Ok(())
+}

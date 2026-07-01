@@ -962,6 +962,7 @@ impl CommandRegistry {
             cmd_vsplit_pane,
         )
         .reg(self);
+        ecmd("pane-close", "Close the focused pane.", cmd_close_pane).reg(self);
 
         // ── Typed commands (`:` command line) ─────────────────────────────────
         macro_rules! typed_cmd {

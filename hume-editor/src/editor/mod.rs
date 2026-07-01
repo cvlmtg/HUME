@@ -1020,18 +1020,6 @@ impl Editor {
         );
     }
 
-    /// Remove pane `target` and all its per-pane state.
-    ///
-    /// Precondition: at least one other pane exists. Callers must switch focus
-    /// away before calling this if `target` is the focused pane.
-    #[allow(dead_code)] // wired in M9+ :split/:close
-    pub(crate) fn close_pane(&mut self, target: PaneId) {
-        self.view.panes.remove(target);
-        self.state.panes.state.remove(target);
-        self.state.panes.transient.remove(target);
-        self.state.panes.jumps.remove(target);
-    }
-
     /// Read-only accessor used by tests to inspect any pane's selections.
     pub(crate) fn selections_for(
         &self,

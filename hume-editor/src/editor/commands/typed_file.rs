@@ -7,6 +7,14 @@ use crate::editor::error::CommandError;
 // ── Typed file commands ───────────────────────────────────────────────────────
 
 pub fn typed_quit(ed: &mut Editor, _arg: Option<&str>, force: bool) -> Result<(), CommandError> {
+    // Multiple panes open: `:q` closes the focused pane, not the editor. The
+    // buffer stays open in the buffer list (no edits lost), so no dirty check —
+    // that guard belongs to the single-pane path below, which actually quits.
+    if ed.view.panes.len() > 1 {
+        super::close_focused_pane(&mut ed.state, &mut ed.view);
+        return Ok(());
+    }
+
     if !force && ed.doc().is_dirty() {
         return Err(CommandError::new("Unsaved changes (add ! to override)"));
     }

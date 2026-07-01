@@ -194,6 +194,7 @@ fn build_pane_trie() -> KeyTrie {
     t.bind_leaf(key!('l'), cmd!("pane-focus-right"));
     t.bind_leaf(key!('s'), cmd!("pane-split"));
     t.bind_leaf(key!('v'), cmd!("pane-vsplit"));
+    t.bind_leaf(key!('c'), cmd!("pane-close"));
     t
 }
 

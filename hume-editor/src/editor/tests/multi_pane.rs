@@ -772,3 +772,128 @@ fn split_pane_gets_gutter_column() {
         "split pane must have the same gutter columns as the initial pane"
     );
 }
+
+// ── T5: `:q` pane-awareness + close-pane semantics ──────────────────────────
+//
+// `close_focused_pane` backs both `:q` (multi-pane branch, exercised here)
+// and the keymap-bound `pane-close` (`Ctrl+p c`, exercised in kitty.rs).
+
+/// With multiple panes open, `:q` closes the focused pane instead of the
+/// editor, and moves focus to the promoted sibling.
+#[test]
+fn quit_with_multiple_panes_closes_focused_pane_not_editor() {
+    use hume_engine::pipeline::LayoutTree;
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let pid_a = ed.state.focused_pane_id;
+    ed.execute_typed("split", None).unwrap();
+    let pid_b = ed.state.focused_pane_id;
+    assert_ne!(pid_a, pid_b);
+
+    ed.execute_typed("quit", None).unwrap();
+
+    assert!(
+        !ed.state.should_quit,
+        ":q with panes open must not quit the editor"
+    );
+    assert_eq!(ed.view.panes.len(), 1, "the focused pane is closed");
+    assert_eq!(
+        ed.state.focused_pane_id, pid_a,
+        "focus returns to the surviving pane"
+    );
+    assert!(
+        matches!(ed.view.layout, LayoutTree::Leaf(id) if id == pid_a),
+        "layout collapses back to a single leaf"
+    );
+}
+
+/// The multi-pane `:q` branch skips the dirty check entirely — closing a pane
+/// never loses edits because the buffer stays open in the buffer list. This
+/// is a deliberate difference from the single-pane path, which still refuses
+/// on unsaved changes (covered by `colon_q_on_dirty_buffer_refuses`).
+#[test]
+fn quit_with_multiple_panes_ignores_dirty_buffer() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("split", None).unwrap();
+
+    // Dirty the buffer both panes are viewing.
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    assert!(ed.doc().is_dirty(), "sanity: buffer is dirty");
+
+    let result = ed.execute_typed("quit", None);
+    assert!(
+        result.is_ok(),
+        "multi-pane :q must not be blocked by unsaved changes: {result:?}"
+    );
+    assert_eq!(ed.view.panes.len(), 1);
+}
+
+/// Closing one leaf of a 2×2 grid promotes the correct sibling and leaves the
+/// other three panes untouched. Independent oracle: the expected post-close
+/// shape (`Split{Leaf(A), Split{B, C}}`) is derived from how the grid was
+/// built, not by re-running the close logic.
+#[test]
+fn quit_in_grid_promotes_correct_sibling() {
+    use hume_engine::pipeline::LayoutTree;
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let pid_a = ed.state.focused_pane_id;
+
+    // A/B stacked.
+    ed.execute_typed("split", None).unwrap();
+    let pid_b = ed.state.focused_pane_id;
+
+    // A/D side by side — top row.
+    ed.switch_focused_pane(pid_a);
+    ed.execute_typed("vsplit", None).unwrap();
+    let pid_d = ed.state.focused_pane_id;
+
+    // B/C side by side — bottom row. Grid is now: top (A, D), bottom (B, C).
+    ed.switch_focused_pane(pid_b);
+    ed.execute_typed("vsplit", None).unwrap();
+    let pid_c = ed.state.focused_pane_id;
+
+    assert_eq!(ed.view.panes.len(), 4, "sanity: four panes in the grid");
+
+    // Close D (top-right): its sibling A is promoted, collapsing the top row
+    // to a single leaf; the bottom row (B, C) is untouched.
+    ed.switch_focused_pane(pid_d);
+    ed.execute_typed("quit", None).unwrap();
+
+    assert_eq!(ed.view.panes.len(), 3, "one pane closed");
+    assert_eq!(
+        ed.state.focused_pane_id, pid_a,
+        "A is promoted as D's surviving sibling"
+    );
+    assert!(!ed.view.panes.contains_key(pid_d), "D was closed");
+
+    match &ed.view.layout {
+        LayoutTree::Split { children, .. } => {
+            assert!(
+                matches!(&children.0, LayoutTree::Leaf(id) if *id == pid_a),
+                "top row collapses to A"
+            );
+            match &children.1 {
+                LayoutTree::Split {
+                    children: bottom, ..
+                } => {
+                    let leaves: Vec<_> = [&bottom.0, &bottom.1]
+                        .into_iter()
+                        .map(|c| match c {
+                            LayoutTree::Leaf(id) => *id,
+                            other => panic!("expected leaf, got {other:?}"),
+                        })
+                        .collect();
+                    assert!(
+                        leaves.contains(&pid_b) && leaves.contains(&pid_c),
+                        "bottom row keeps B and C untouched"
+                    );
+                }
+                other => panic!("expected bottom row Split, got {other:?}"),
+            }
+        }
+        other => panic!("expected Split layout, got {other:?}"),
+    }
+}

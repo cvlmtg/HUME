@@ -122,6 +122,54 @@ fn ctrl_p_v_vsplits_pane() {
     );
 }
 
+/// Ctrl+p, c → pane-close. Closes the focused pane, collapsing the split back
+/// onto its sibling and moving focus there.
+#[test]
+fn ctrl_p_c_closes_pane() {
+    use hume_engine::pipeline::LayoutTree;
+
+    let mut ed = editor_from_kitty("-[h]>ello world\n");
+    let pid_a = ed.state.focused_pane_id;
+    ed.handle_key(key_ctrl('p'));
+    ed.handle_key(key('s')); // split: focus moves to the new pane, B
+    let pid_b = ed.state.focused_pane_id;
+    assert_ne!(pid_b, pid_a);
+
+    ed.handle_key(key_ctrl('p'));
+    ed.handle_key(key('c'));
+
+    assert_eq!(ed.view.panes.len(), 1, "closing B leaves only A");
+    assert_eq!(
+        ed.state.focused_pane_id, pid_a,
+        "focus returns to the surviving pane"
+    );
+    assert!(
+        matches!(ed.view.layout, LayoutTree::Leaf(id) if id == pid_a),
+        "layout collapses back to a single leaf"
+    );
+}
+
+/// Ctrl+p, c on the sole pane warns instead of quitting — `:q` alone owns
+/// quitting the editor.
+#[test]
+fn ctrl_p_c_is_noop_with_single_pane() {
+    let mut ed = editor_from_kitty("-[h]>ello world\n");
+    let pid_a = ed.state.focused_pane_id;
+    ed.handle_key(key_ctrl('p'));
+    ed.handle_key(key('c'));
+
+    assert_eq!(ed.view.panes.len(), 1, "sole pane is not closed");
+    assert_eq!(ed.state.focused_pane_id, pid_a);
+    assert!(
+        !ed.state.should_quit,
+        "pane-close must not quit the editor"
+    );
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("cannot close last pane")
+    );
+}
+
 /// Ctrl+p, h/j/k/l → directional pane focus. Single-pane no-op: no neighbour in
 /// the requested direction → silent `Ok`, no status message and no state change.
 #[test]
