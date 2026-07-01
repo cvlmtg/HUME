@@ -159,34 +159,6 @@ fn p6_bd_force_closes_dirty_buffer() {
     assert_eq!(ed.focused_buffer_id(), bid_clean);
 }
 
-/// `:split`, `:vsplit`, and their aliases `:sp`/`:vsp` are M9+ stubs.
-///
-/// Locks the error contract so the stubs can't accidentally become no-ops
-/// or panics when the feature isn't yet wired.
-#[test]
-fn colon_split_vsplit_are_stubs() {
-    use crate::editor::error::CommandError;
-    for cmd in ["split", "vsplit", "sp", "vsp"] {
-        let mut ed = editor_from("-[h]>ello\n");
-        let err: CommandError = ed.execute_typed(cmd, None).unwrap_err();
-        assert!(
-            err.message().contains("not yet implemented"),
-            ":{cmd} must report not-yet-implemented, got: {:?}",
-            err.message().to_owned(),
-        );
-        // execute_typed also sets status_msg so the user sees the error.
-        assert!(
-            ed.state
-                .status_msg
-                .as_deref()
-                .unwrap_or("")
-                .contains("not yet implemented"),
-            ":{cmd} must set error status: {:?}",
-            ed.state.status_msg,
-        );
-    }
-}
-
 /// `close_buffer` redirects ALL panes viewing the closed buffer to the MRU alternative.
 ///
 /// The `:bd` tests verify the single-pane path. This test targets the multi-pane

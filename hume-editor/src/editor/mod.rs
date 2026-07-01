@@ -5,22 +5,21 @@ use std::sync::{Arc, RwLock};
 
 use crossterm::event::{Event, KeyEvent};
 
-#[cfg(test)]
 use hume_engine::pane::Pane;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 #[cfg(test)]
 use hume_engine::pipeline::{LayoutTree, SharedBuffer};
 #[cfg(test)]
 use search_state::SearchPattern;
-#[cfg(test)]
 use slotmap::SecondaryMap;
 
 use self::registry::{CommandRegistry, MappableCommand};
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer_store::BufferStore;
-use crate::editor::pane_state::PaneView;
 #[cfg(test)]
-use crate::editor::pane_state::{PaneBufferState, PaneTransient};
+use crate::editor::pane_state::PaneBufferState;
+use crate::editor::pane_state::PaneTransient;
+use crate::editor::pane_state::PaneView;
 use crate::ops::motion::FindKind;
 use crate::ops::register::{KillRing, RegisterSet};
 use crate::settings::EditorSettings;
@@ -859,6 +858,29 @@ impl Editor {
         self.state.last_command = None;
         self.state.last_repeatable_action = saved_action;
     }
+
+    // ── Pane choke-points ─────────────────────────────────────────────────────
+
+    /// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its id.
+    pub(crate) fn open_pane(&mut self, buffer_id: BufferId) -> PaneId {
+        let pid = self.view.panes.insert(Pane::new(buffer_id));
+        self.state.panes.state.insert(pid, SecondaryMap::new());
+        pane_state::ensure(
+            &mut self.state.panes.state,
+            &self.state.buffers,
+            pid,
+            buffer_id,
+        );
+        self.state
+            .panes
+            .transient
+            .insert(pid, PaneTransient::default());
+        self.state.panes.jumps.insert(
+            pid,
+            self::jump_list::JumpList::new(self.state.settings.jump_list_capacity),
+        );
+        pid
+    }
 }
 
 // ── Test constructors ─────────────────────────────────────────────────────────
@@ -972,28 +994,7 @@ impl Editor {
         self
     }
 
-    // ── Pane choke-points ─────────────────────────────────────────────────────
-
-    /// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its id.
-    pub(crate) fn open_pane(&mut self, buffer_id: BufferId) -> PaneId {
-        let pid = self.view.panes.insert(Pane::new(buffer_id));
-        self.state.panes.state.insert(pid, SecondaryMap::new());
-        pane_state::ensure(
-            &mut self.state.panes.state,
-            &self.state.buffers,
-            pid,
-            buffer_id,
-        );
-        self.state
-            .panes
-            .transient
-            .insert(pid, PaneTransient::default());
-        self.state.panes.jumps.insert(
-            pid,
-            self::jump_list::JumpList::new(self.state.settings.jump_list_capacity),
-        );
-        pid
-    }
+    // ── Pane choke-points (test-only) ─────────────────────────────────────────
 
     /// Switch focus to `target`, seeding its per-pane maps if not yet present.
     ///

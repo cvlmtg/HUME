@@ -452,3 +452,134 @@ fn ensure_seeds_new_entry_with_initial_sels() {
         "ensure must seed with buffer's initial_sels on first visit",
     );
 }
+
+// ── T2: `:split` / `:vsplit` typed commands ────────────────────────────────────
+
+/// `:split` stacks a new pane below the focused one, viewing the same buffer,
+/// and moves focus there. Vim naming is inverted from the engine's `Direction`:
+/// stacked panes are `Direction::Vertical` (it divides height).
+#[test]
+fn split_stacks_pane_on_same_buffer() {
+    use hume_engine::pipeline::{Direction, LayoutTree};
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let bid = ed.focused_buffer_id();
+    let pid_a = ed.state.focused_pane_id;
+
+    ed.execute_typed("split", None).unwrap();
+
+    assert_eq!(ed.view.panes.len(), 2, "split creates exactly one new pane");
+    let pid_b = ed.state.focused_pane_id;
+    assert_ne!(pid_b, pid_a, "focus moves to the new pane");
+    assert_eq!(
+        ed.view.panes[pid_b].buffer_id, bid,
+        "new pane views the same buffer"
+    );
+
+    match &ed.view.layout {
+        LayoutTree::Split {
+            direction,
+            children,
+            ..
+        } => {
+            assert_eq!(*direction, Direction::Vertical, ":split stacks panes");
+            let leaves: Vec<_> = [&children.0, &children.1]
+                .into_iter()
+                .map(|c| match c {
+                    LayoutTree::Leaf(id) => *id,
+                    other => panic!("expected two leaves, got {other:?}"),
+                })
+                .collect();
+            assert!(
+                leaves.contains(&pid_a) && leaves.contains(&pid_b),
+                "layout's two leaves are the original and new pane"
+            );
+        }
+        other => panic!("expected Split layout, got {other:?}"),
+    }
+}
+
+/// `:vsplit` places the new pane side by side with the focused one —
+/// `Direction::Horizontal` in the engine (it divides width).
+#[test]
+fn vsplit_places_pane_side_by_side() {
+    use hume_engine::pipeline::{Direction, LayoutTree};
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("vsplit", None).unwrap();
+
+    match &ed.view.layout {
+        LayoutTree::Split { direction, .. } => {
+            assert_eq!(*direction, Direction::Horizontal, ":vsplit is side-by-side")
+        }
+        other => panic!("expected Split layout, got {other:?}"),
+    }
+}
+
+/// `:vsplit <path>` opens the given file in the new pane instead of mirroring
+/// the focused pane's buffer.
+#[test]
+#[cfg(not(windows))]
+fn vsplit_path_opens_that_buffer() {
+    use hume_engine::pipeline::{Direction, LayoutTree};
+
+    let f = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(f.path(), "other file\n").unwrap();
+    let path = f.path().to_path_buf();
+    let _tmp_path = f.into_temp_path();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let bid_a = ed.focused_buffer_id();
+    let pid_a = ed.state.focused_pane_id;
+
+    ed.execute_typed("vsplit", Some(path.to_str().unwrap()))
+        .unwrap();
+
+    let pid_b = ed.state.focused_pane_id;
+    assert_ne!(pid_b, pid_a, "focus moves to the new pane");
+    let bid_b = ed.view.panes[pid_b].buffer_id;
+    assert_ne!(
+        bid_b, bid_a,
+        "new pane views the opened file, not the original buffer"
+    );
+
+    // macOS temp paths differ from their canonical form (/var vs /private/var);
+    // canonicalize before comparing against the stored buffer path.
+    let canonical = hume_platform::fs::canonicalize(&path).unwrap();
+    assert_eq!(
+        ed.state.buffers.find_by_path(&canonical),
+        Some(bid_b),
+        "new pane's buffer resolves to the opened file"
+    );
+
+    match &ed.view.layout {
+        LayoutTree::Split { direction, .. } => assert_eq!(*direction, Direction::Horizontal),
+        other => panic!("expected Split layout, got {other:?}"),
+    }
+}
+
+/// End-to-end regression guard: `:split` typed through the real command-mode
+/// dispatch path (`Mode::Command`, not `Mode::Normal`) must still move focus
+/// to the new pane. `execute_typed`-based tests above run with the editor
+/// already in Normal mode and would not catch a regression that routed focus
+/// through `switch_focused_pane` (whose Normal-mode debug_assert would panic
+/// here, since mode flips back to Normal only after dispatch completes).
+#[test]
+fn split_via_command_mode_moves_focus() {
+    use hume_engine::pipeline::LayoutTree;
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let pid_a = ed.state.focused_pane_id;
+
+    type_cmd(&mut ed, ":split");
+
+    let pid_b = ed.state.focused_pane_id;
+    assert_ne!(
+        pid_b, pid_a,
+        "focus moves to the new pane through the real command-mode path"
+    );
+    assert!(
+        matches!(ed.view.layout, LayoutTree::Split { .. }),
+        "layout is a Split"
+    );
+}

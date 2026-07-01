@@ -1,3 +1,5 @@
+use hume_engine::pipeline::{BufferId, Direction};
+
 use super::super::Editor;
 use super::super::{Severity, ops};
 use super::current_jump_entry;
@@ -133,18 +135,75 @@ pub fn typed_reload_config(
     Ok(())
 }
 
-// ── :split / :vsplit typed stubs ──────────────────────────────────────────────
+// ── :split / :vsplit ──────────────────────────────────────────────────────────
 
-pub fn typed_split(_ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
-    Err(CommandError::new(":split not yet implemented"))
+/// `:split [path]` — split the focused pane, stacking the new pane below it.
+///
+/// With no `path`, the new pane views the same buffer as the focused one.
+/// With `path`, the new pane views that file instead (opened via the usual
+/// dedup-on-canonical-path rule — see [`open_path_arg`]).
+pub fn typed_split(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+    split_focused_pane(ed, arg, Direction::Vertical)
 }
 
-pub fn typed_vsplit(
-    _ed: &mut Editor,
-    _arg: Option<&str>,
-    _force: bool,
+/// `:vsplit [path]` — split the focused pane side by side.
+pub fn typed_vsplit(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+    split_focused_pane(ed, arg, Direction::Horizontal)
+}
+
+/// Split the focused pane and move focus to the new pane.
+///
+/// `direction` is the engine's split axis, which is *inverted* from the Vim
+/// command names: `Direction::Vertical` divides height (stacked panes, what
+/// `:split` means), `Direction::Horizontal` divides width (side by side,
+/// `:vsplit`) — see `LayoutTree::collect_rects_into`'s use of `split_rect`.
+fn split_focused_pane(
+    ed: &mut Editor,
+    arg: Option<&str>,
+    direction: Direction,
 ) -> Result<(), CommandError> {
-    Err(CommandError::new(":vsplit not yet implemented"))
+    let bid = match arg {
+        Some(path) => open_path_arg(ed, path)?,
+        None => ed.focused_buffer_id(),
+    };
+    let old_focused = ed.state.focused_pane_id;
+    let new_pid = ed.open_pane(bid);
+    let found = ed
+        .view
+        .layout
+        .split_leaf(old_focused, new_pid, direction, 0.5);
+    debug_assert!(
+        found,
+        "focused pane {old_focused:?} absent from layout tree"
+    );
+    // `open_pane` already seeded every per-pane map for `new_pid`, so a direct
+    // assignment is complete. Do NOT route through `switch_focused_pane`: its
+    // Normal-mode debug_assert would fire here, because typed commands
+    // dispatch while the editor is still in `Mode::Command` (mode flips to
+    // Normal only after `execute_command` returns — see `command_mode.rs`).
+    ed.state.focused_pane_id = new_pid;
+    Ok(())
+}
+
+/// Resolve a `:split`/`:vsplit` path argument to a `BufferId`, opening the
+/// file if it isn't already open. Mirrors `Editor::try_open_extra`'s
+/// resolve-dedup-open sequence.
+fn open_path_arg(ed: &mut Editor, path_str: &str) -> Result<BufferId, CommandError> {
+    let expanded = hume_platform::path::expand(path_str);
+    let path = std::path::Path::new(expanded.as_ref());
+    let display = hume_platform::path::absolute_unresolved(path, &ed.state.cwd);
+    let canonical = hume_platform::fs::canonicalize(path)
+        .map_err(|e| CommandError::new(format!("{}: {e}", path.display())))?;
+    let (bid, is_new) = ed
+        .open_or_dedup(&canonical)
+        .map_err(|e| CommandError::new(format!("{}: {e}", path.display())))?;
+    if is_new {
+        ed.state
+            .buffers
+            .get_mut(bid)
+            .set_display_path(Some(display));
+    }
+    Ok(bid)
 }
 
 /// `:theme <name>` — load a theme by name from the theme search path.
