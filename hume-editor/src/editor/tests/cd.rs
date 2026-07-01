@@ -7,9 +7,8 @@ use pretty_assertions::assert_eq;
 #[test]
 #[cfg(not(windows))]
 fn set_cwd_updates_editor_and_process_cwd() {
-    let _guard = CwdGuard::new();
-    let dir = tempfile::tempdir().unwrap();
-    let canonical = std::fs::canonicalize(dir.path()).unwrap();
+    let cwd = CwdSandbox::new();
+    let canonical = cwd.path();
     let mut ed = editor_from("-[h]>ello\n");
 
     ed.set_cwd(&canonical).unwrap();
@@ -66,9 +65,8 @@ fn set_cwd_rejects_nonexistent_path() {
 #[test]
 #[cfg(not(windows))]
 fn typed_cd_absolute_path() {
-    let _guard = CwdGuard::new();
-    let dir = tempfile::tempdir().unwrap();
-    let canonical = std::fs::canonicalize(dir.path()).unwrap();
+    let cwd = CwdSandbox::new();
+    let canonical = cwd.path();
     let mut ed = editor_from("-[h]>ello\n");
 
     ed.execute_typed("cd", Some(canonical.to_str().unwrap()))
@@ -81,12 +79,11 @@ fn typed_cd_absolute_path() {
 #[test]
 #[cfg(not(windows))]
 fn typed_cd_relative_path() {
-    let _guard = CwdGuard::new();
-    // Create a tempdir containing a subdirectory.
-    let parent = tempfile::tempdir().unwrap();
-    let child = parent.path().join("subdir");
+    let cwd = CwdSandbox::new();
+    // Create a subdirectory inside the sandboxed tempdir.
+    let child = cwd.raw().join("subdir");
     std::fs::create_dir(&child).unwrap();
-    let canonical_parent = std::fs::canonicalize(parent.path()).unwrap();
+    let canonical_parent = cwd.path();
     let canonical_child = std::fs::canonicalize(&child).unwrap();
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -189,9 +186,8 @@ fn typed_cd_error_on_file_path() {
 #[test]
 #[cfg(not(windows))]
 fn typed_cd_alias_works() {
-    let _guard = CwdGuard::new();
-    let dir = tempfile::tempdir().unwrap();
-    let canonical = std::fs::canonicalize(dir.path()).unwrap();
+    let cwd = CwdSandbox::new();
+    let canonical = cwd.path();
     let mut ed = editor_from("-[h]>ello\n");
 
     // Both the canonical name and the `cd` alias must work.
@@ -205,13 +201,12 @@ fn typed_cd_alias_works() {
 #[test]
 #[cfg(not(windows))]
 fn cd_then_edit_resolves_relative_to_new_cwd() {
-    let _guard = CwdGuard::new();
+    let cwd = CwdSandbox::new();
 
-    // Create a tempdir with a file in it.
-    let dir = tempfile::tempdir().unwrap();
-    let file_path = dir.path().join("myfile.txt");
+    // Create a file inside the sandboxed tempdir.
+    let file_path = cwd.raw().join("myfile.txt");
     std::fs::write(&file_path, "hello\n").unwrap();
-    let canonical_dir = std::fs::canonicalize(dir.path()).unwrap();
+    let canonical_dir = cwd.path();
     let canonical_file = std::fs::canonicalize(&file_path).unwrap();
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -232,9 +227,8 @@ fn cd_then_edit_resolves_relative_to_new_cwd() {
 #[test]
 #[cfg(not(windows))]
 fn typed_pwd_reports_current_directory() {
-    let _guard = CwdGuard::new();
-    let dir = tempfile::tempdir().unwrap();
-    let canonical = std::fs::canonicalize(dir.path()).unwrap();
+    let cwd = CwdSandbox::new();
+    let canonical = cwd.path();
     let mut ed = editor_from("-[h]>ello\n");
     ed.set_cwd(&canonical).unwrap();
 
@@ -252,9 +246,8 @@ fn typed_pwd_reports_current_directory() {
 #[test]
 #[cfg(not(windows))]
 fn typed_pwd_long_alias_works() {
-    let _guard = CwdGuard::new();
-    let dir = tempfile::tempdir().unwrap();
-    let canonical = std::fs::canonicalize(dir.path()).unwrap();
+    let cwd = CwdSandbox::new();
+    let canonical = cwd.path();
     let mut ed = editor_from("-[h]>ello\n");
     ed.set_cwd(&canonical).unwrap();
 
@@ -313,5 +306,83 @@ fn path_completer_dirs_only_mode() {
     assert!(
         all_names.contains(&"myfile.txt"),
         "dirs_only=false must include files"
+    );
+}
+
+// ── CwdSandbox teardown ordering ───────────────────────────────────────────────
+
+/// Basic mechanics, checked entirely while `CwdSandbox` (and thus `CWD_MUTEX`)
+/// is held, so nothing else can mutate cwd mid-check: cd into the sandbox's
+/// tempdir, confirm cwd matches it, then drop and confirm the tempdir is
+/// actually gone from disk.
+///
+/// Deliberately does NOT re-read `std::env::current_dir()` after `cwd` drops
+/// and releases `CWD_MUTEX` — cwd is process-global, so any other
+/// CWD-mutating test could legitimately acquire the lock and change it before
+/// the next line ran, making such a check racy against unrelated tests, not a
+/// signal about this sandbox's correctness.
+#[test]
+#[cfg(not(windows))]
+fn cwd_sandbox_restores_cwd_and_deletes_tempdir() {
+    let cwd = CwdSandbox::new();
+    let raw = cwd.raw().to_path_buf();
+
+    std::env::set_current_dir(&raw).unwrap();
+    assert_eq!(
+        std::env::current_dir().unwrap(),
+        std::fs::canonicalize(&raw).unwrap(),
+        "cwd must be the sandboxed tempdir while the sandbox is held"
+    );
+
+    drop(cwd);
+
+    assert!(
+        !raw.exists(),
+        "tempdir must be deleted once CwdSandbox drops"
+    );
+}
+
+/// Stress regression guard for the actual historical bug: a background thread
+/// polls `std::env::current_dir()` in a tight loop while the main thread
+/// repeatedly opens and tears down `CwdSandbox`es. `current_dir()` only
+/// errors when cwd points at a deleted directory, so this asserts the
+/// property a single after-the-fact check can't: cwd is never left dangling
+/// even under concurrent reads, for the whole lifetime of every sandbox.
+///
+/// Fail oracle: swap `CwdSandbox` here for the historical buggy pattern
+/// (`CwdGuard::new()` + a separately-scoped `tempfile::tempdir()` local) and
+/// the reader thread reliably observes `current_dir()` failing mid-loop.
+#[test]
+#[cfg(not(windows))]
+fn cwd_sandbox_never_dangles_under_concurrent_reads() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let saw_error = Arc::new(AtomicBool::new(false));
+
+    let reader = {
+        let stop = Arc::clone(&stop);
+        let saw_error = Arc::clone(&saw_error);
+        std::thread::spawn(move || {
+            while !stop.load(Ordering::Relaxed) {
+                if std::env::current_dir().is_err() {
+                    saw_error.store(true, Ordering::Relaxed);
+                }
+            }
+        })
+    };
+
+    for _ in 0..200 {
+        let cwd = CwdSandbox::new();
+        std::env::set_current_dir(cwd.raw()).unwrap();
+    }
+
+    stop.store(true, Ordering::Relaxed);
+    reader.join().expect("reader thread must not panic");
+
+    assert!(
+        !saw_error.load(Ordering::Relaxed),
+        "cwd must never dangle while any CwdSandbox is in use"
     );
 }

@@ -264,9 +264,8 @@ fn edit_deleted_file_with_no_buffer_errors() {
 fn edit_relative_path_matches_existing_buffer() {
     // Open a file by absolute path, then :e its basename from the same dir.
     // The lexical-absolute fallback in find_buffer_by_path_arg must match.
-    let _cwd = CwdGuard::new();
-    let dir = tempfile::tempdir().unwrap();
-    let canonical_dir = std::fs::canonicalize(&dir).unwrap();
+    let cwd = CwdSandbox::new();
+    let canonical_dir = cwd.path();
     let path = canonical_dir.join("relpath_test.txt");
     std::fs::write(&path, "hello\n").unwrap();
 

@@ -191,6 +191,58 @@ impl Drop for CwdGuard {
     }
 }
 
+/// Like `CwdGuard`, but also owns a tempdir the test can `cd` into.
+///
+/// Bundling the tempdir into the same struct as the restore-on-drop logic is
+/// what fixes the historical bug, not the fields' declaration order: Rust
+/// always runs a struct's custom `Drop::drop` to completion *before* dropping
+/// any of its own fields, regardless of their order. So restoring cwd inside
+/// `CwdSandbox::drop` is guaranteed to happen before `dir` (the `TempDir`
+/// field) is deleted.
+///
+/// A test that instead pairs a bare `CwdGuard` with a *separately-scoped*
+/// `tempfile::tempdir()` local doesn't get that guarantee — independent
+/// locals in a function body drop in reverse declaration order, so the
+/// tempdir (declared after the guard) drops *first*, deleting the directory
+/// while the process cwd still points inside it. Any concurrently-running
+/// test that calls `std::env::current_dir()` in that window — e.g. Steel's
+/// `Engine::new()`, which falls back to it while compiling `ALL_MODULES` —
+/// gets `ENOENT` and panics. `CwdSandbox` closes that window structurally.
+#[cfg(not(windows))]
+struct CwdSandbox {
+    dir: tempfile::TempDir,
+    saved: PathBuf,
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+#[cfg(not(windows))]
+impl CwdSandbox {
+    fn new() -> Self {
+        let _lock = CWD_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let saved = std::env::current_dir().expect("current_dir");
+        let dir = tempfile::tempdir().expect("tempdir");
+        Self { dir, saved, _lock }
+    }
+
+    /// Raw tempdir path — build child dirs/files under this.
+    fn raw(&self) -> &std::path::Path {
+        self.dir.path()
+    }
+
+    /// Canonicalized tempdir path (macOS /var → /private/var) for cwd asserts.
+    fn path(&self) -> PathBuf {
+        std::fs::canonicalize(self.dir.path()).expect("canonicalize")
+    }
+}
+
+#[cfg(not(windows))]
+impl Drop for CwdSandbox {
+    fn drop(&mut self) {
+        // Restore first; `dir` is only deleted afterwards, when the field drops.
+        let _ = std::env::set_current_dir(&self.saved);
+    }
+}
+
 // ── Event-loop faithful helpers ───────────────────────────────────────────────
 
 impl Editor {
