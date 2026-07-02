@@ -727,9 +727,9 @@ mod tests {
             dim: None,
         };
         compose(
-            &rows,
-            &graphemes,
-            &styles,
+            rows,
+            graphemes,
+            styles,
             &line_texts,
             &line_text_offsets,
             &ctx,
