@@ -522,10 +522,10 @@ pub struct EngineView {
     pub panes: SlotMap<PaneId, Pane>,
     pub buffers: SlotMap<BufferId, SharedBuffer>,
     pub theme: Theme,
-    /// Session-wide scope registry. Providers intern their scopes here at
-    /// construction time. Call `theme.bake(&registry)` once, after all
-    /// providers are registered and before the first render, to make
-    /// `theme.resolve(ScopeId)` an O(1) Vec index.
+    /// Session-wide scope registry. Providers intern their scopes here.
+    /// `Editor::prepare_frame` calls `theme.bake_if_stale(&registry)` once per
+    /// frame, before every render, so newly interned scopes are always baked —
+    /// no other call site needs to bake manually after interning.
     pub registry: ScopeRegistry,
     /// Optional tab bar rendered at the top of the terminal area.
     pub tabbar: Option<Box<dyn TabBarProvider>>,

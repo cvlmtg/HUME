@@ -227,9 +227,11 @@ fn forget_buffer_in_all_panes(
 ///
 /// Searches `<config_dir>/themes/<name>.toml` first, then
 /// `<runtime_dir>/themes/<name>.toml`. On success the engine view's theme is
-/// replaced and re-baked against the live scope registry. On failure a warning
-/// is pushed to `message_log` and written to `status_msg`, leaving the current
-/// theme unchanged. Returns `true` on success.
+/// replaced; `prepare_frame`'s `bake_if_stale` re-bakes it against the live
+/// scope registry before the next render (a freshly loaded theme's `baked`
+/// table starts empty, which is always stale). On failure a warning is pushed
+/// to `message_log` and written to `status_msg`, leaving the current theme
+/// unchanged. Returns `true` on success.
 ///
 /// `engine_view`, `message_log`, and `status_msg` are disjoint `Editor` fields;
 /// passing them separately lets the caller hold `&editor.settings.theme` for
@@ -241,8 +243,7 @@ pub(crate) fn load_theme_by_name(
     name: &str,
 ) -> bool {
     match load_theme(name, &super::theme_search_paths()) {
-        Ok(mut theme) => {
-            theme.bake(&engine_view.registry);
+        Ok(theme) => {
             engine_view.theme = theme;
             true
         }

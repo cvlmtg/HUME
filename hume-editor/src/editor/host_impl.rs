@@ -192,7 +192,6 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
                 &mut self.view.registry,
             )
             .map_err(|e| format!("register-grammar! '{name}': {e}"))?;
-        self.view.theme.bake(&self.view.registry);
         Ok(())
     }
     fn has_grammar(&self, language: &str) -> bool {

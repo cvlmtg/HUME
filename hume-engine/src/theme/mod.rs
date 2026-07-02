@@ -215,8 +215,11 @@ impl Theme {
     ///
     /// After baking, [`resolve`] is an O(1) `Vec` index — no hashing.
     ///
-    /// Call this once, after all providers have been registered (so their
-    /// scopes are interned) and before the first render.
+    /// Unconditional — always re-resolves every interned scope, even ones
+    /// already baked. In production, prefer [`bake_if_stale`], which skips the
+    /// work when nothing changed; it's what `prepare_frame` calls every frame.
+    /// Call `bake` directly only when you need an immediate, unconditional
+    /// re-bake against a specific registry (e.g. tests).
     pub fn bake(&mut self, registry: &ScopeRegistry) {
         self.baked.clear();
         self.baked.resize(registry.len(), self.default);
@@ -225,6 +228,19 @@ impl Theme {
         }
         // Re-populate ui in case bake() is called after construction (idempotent).
         self.ui = self.compute_ui();
+    }
+
+    /// Re-bake only if scopes were interned since the last [`bake`] call.
+    ///
+    /// `ScopeRegistry` is append-only and `bake` sizes `baked` to exactly
+    /// `registry.len()`, so `baked.len() != registry.len()` is precisely "new
+    /// scopes are unbaked". Called once per frame from `prepare_frame` — the
+    /// single pre-render sync point — so no other call site needs to remember
+    /// to bake after interning.
+    pub fn bake_if_stale(&mut self, registry: &ScopeRegistry) {
+        if self.baked.len() != registry.len() {
+            self.bake(registry);
+        }
     }
 
     /// Look up the style for an interned scope.
@@ -390,6 +406,30 @@ mod tests {
         assert_eq!(theme.resolve(kw).fg, Some(Color::Blue));
         assert_eq!(theme.resolve(kw_op).fg, Some(Color::Cyan));
         assert_eq!(theme.resolve(kw_fn).fg, Some(Color::Blue)); // fallback baked in
+    }
+
+    #[test]
+    fn bake_if_stale_rebakes_scopes_interned_after_bake() {
+        let mut reg = ScopeRegistry::new();
+        let kw = reg.intern("keyword");
+        let mut theme = make_theme();
+        theme.bake(&reg);
+        assert_eq!(theme.baked.len(), reg.len());
+
+        // Intern a new scope after bake() — this id is now unbaked.
+        let kw_op = reg.intern("keyword.operator");
+        assert!(theme.baked.len() < reg.len(), "registry must have outgrown baked");
+
+        theme.bake_if_stale(&reg);
+        assert_eq!(theme.baked.len(), reg.len());
+        // Independent oracle: the themed color, not the pre-rebake default.
+        assert_eq!(theme.resolve(kw_op).fg, Some(Color::Cyan));
+        assert_eq!(theme.resolve(kw).fg, Some(Color::Blue));
+
+        // No new scopes interned — bake_if_stale is a no-op.
+        let baked_before = theme.baked.clone();
+        theme.bake_if_stale(&reg);
+        assert_eq!(theme.baked, baked_before);
     }
 
     #[test]

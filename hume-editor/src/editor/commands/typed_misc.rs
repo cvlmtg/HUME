@@ -191,8 +191,9 @@ fn open_path_arg(ed: &mut Editor, path_str: &str) -> Result<BufferId, CommandErr
 
 /// `:theme <name>` — load a theme by name from the theme search path.
 ///
-/// On success the engine view's theme is replaced and re-baked.
-/// On failure a warning is shown and the current theme is left unchanged.
+/// On success the engine view's theme is replaced; the next `prepare_frame`
+/// re-bakes it (see `Theme::bake_if_stale`). On failure a warning is shown and
+/// the current theme is left unchanged.
 pub fn typed_theme(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
     let Some(name) = arg.map(str::trim).filter(|s| !s.is_empty()) else {
         let current: &str = if ed.state.settings.theme.is_empty() {

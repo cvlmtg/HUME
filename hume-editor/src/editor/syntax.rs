@@ -545,7 +545,6 @@ impl Editor {
             );
         }
         if !grammar_sweeps.is_empty() {
-            self.view.theme.bake(&self.view.registry);
             self.sweep_buffers_for_grammars(grammar_sweeps);
         }
     }

@@ -123,9 +123,6 @@ impl Editor {
             SecondaryMap::new();
         pane_buf_state.insert(pane_id, per_pane_bufs);
 
-        // Bake theme now that all scopes are interned.
-        engine_view.theme.bake(&engine_view.registry);
-
         let mut buffers = BufferStore::new();
         buffers.open(buffer_id, doc);
 
@@ -505,6 +502,11 @@ impl Editor {
         terminal_height: u16,
         ctx: &mut RenderContext,
     ) {
+        // Re-bake the theme if any scope was interned since the last bake —
+        // the single per-frame chokepoint that makes forgetting to bake after
+        // an `intern`/`intern_runtime` call harmless (see `bake_if_stale`).
+        self.view.theme.bake_if_stale(&self.view.registry);
+
         // Shared rect list every per-pane step below drives off — partitioned
         // through the same `EngineView::pane_area` that `render` uses, so
         // viewport dims and drawn rects never disagree even when a tab bar is

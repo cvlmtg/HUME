@@ -896,7 +896,6 @@ impl Editor {
         };
         let pane_id = engine_view.panes.insert(pane);
         engine_view.layout = LayoutTree::Leaf(pane_id);
-        engine_view.theme.bake(&engine_view.registry);
 
         let mut buffers = BufferStore::new();
         buffers.open(buffer_id, doc);
