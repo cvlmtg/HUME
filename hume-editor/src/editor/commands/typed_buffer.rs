@@ -31,21 +31,12 @@ pub fn typed_edit(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(),
             return Ok(());
         }
 
-        let path = Path::new(expanded.as_ref());
-        let display = hume_platform::path::absolute_unresolved(path, &ed.state.cwd);
-        let canonical = hume_platform::fs::canonicalize(path)
-            .map_err(|e| CommandError::new(format!("{path_str}: {e}")))?;
         let (bid, is_new) = ed
-            .open_or_dedup(&canonical)
+            .resolve_open_path(path_str)
             .map_err(|e| CommandError::new(format!("{path_str}: {e}")))?;
         if is_new {
-            let name = canonical
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(path_str)
-                .to_string();
+            let name = ed.state.buffers.get(bid).display_name();
             ed.switch_to_buffer_with_jump(bid);
-            ed.doc_mut().set_display_path(Some(display));
             ed.report(Severity::Info, format!("Opened {name}"));
         } else if bid != ed.focused_buffer_id() {
             ed.switch_to_buffer_with_jump(bid);

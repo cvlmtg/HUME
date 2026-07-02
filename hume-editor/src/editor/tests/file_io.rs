@@ -259,6 +259,35 @@ fn edit_deleted_file_with_no_buffer_errors() {
     );
 }
 
+/// `:e <missing-path>` reports the path exactly as the user typed it, not its
+/// tilde-expanded form — matches `:split`/`:vsplit`
+/// (`split_missing_file_error_shows_raw_typed_path` in `multi_pane.rs`), which
+/// both share `Editor::resolve_open_path`.
+///
+/// Uses a `~`-prefixed path rather than a plain relative one: `expand()` is a
+/// no-op on inputs with no `~`/env-var sigil, so a plain relative path can't
+/// distinguish "show what was typed" from "show the expanded-but-unresolved
+/// path". Only an input `expand()` actually rewrites, like `~/...`, proves
+/// which one the error message is built from.
+#[test]
+#[cfg(not(windows))]
+fn edit_missing_file_error_shows_raw_typed_path() {
+    let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
+    let mut ed = editor_from("-[h]>ello\n");
+    let err = ed
+        .execute_typed("e", Some("~/no-such-file-xyz.txt"))
+        .unwrap_err();
+    assert!(
+        err.to_string().starts_with("~/no-such-file-xyz.txt: "),
+        "error must lead with the raw typed path, got: {err}"
+    );
+    assert!(
+        !err.to_string()
+            .contains(&home.to_string_lossy().to_string()),
+        "error must not leak the expanded $HOME path, got: {err}"
+    );
+}
+
 #[test]
 #[cfg(not(windows))]
 fn edit_relative_path_matches_existing_buffer() {
