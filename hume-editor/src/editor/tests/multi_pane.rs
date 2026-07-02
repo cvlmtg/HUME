@@ -744,6 +744,28 @@ fn vsplit_renders_content_in_both_halves() {
     insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
 }
 
+/// Entering Insert mode must hide the fake block cursor only in the focused
+/// pane (which real terminal bar cursor overlays) — not in every pane.
+/// `resolve_pane_settings` (lifecycle.rs) forces a block-cursor mode for
+/// unfocused panes regardless of the editor's global mode; this locks that
+/// per-pane behavior at the render level. `:vsplit` moves focus to the new
+/// (right) pane, so the left pane's cursor cell must keep its block style
+/// after `i`, while the right pane's cursor cell goes transparent.
+#[test]
+fn insert_mode_hides_cursor_only_in_focused_pane() {
+    use super::render_snapshot::render_to_styled_string;
+
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.execute_typed("vsplit", None).unwrap();
+    assert_eq!(ed.state.mode(), Mode::Normal, "sanity: starts in Normal");
+
+    ed.feed_key(key('i'));
+    assert_eq!(ed.state.mode(), Mode::Insert, "sanity: entered Insert mode");
+
+    let rect = ratatui::layout::Rect::new(0, 0, 20, 4);
+    insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
+}
+
 /// A pane created via `open_pane` (the shared core of `:split`/`:vsplit` and the
 /// keymap-bound `pane-split`/`pane-vsplit`) must get the same gutter column as
 /// the initial pane — not the empty `ProviderSet` `Pane::new` alone would give

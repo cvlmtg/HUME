@@ -413,9 +413,10 @@ impl Editor {
     /// wrap_mode / tab_width / whitespace settings across all render paths.
     /// `tab_width` / `whitespace` resolve from that pane's buffer overrides
     /// (document facts); `wrap_mode` resolves from the pane itself — its SSOT
-    /// is `Pane::wrap_mode`, not the buffer. `mode` is global to the editor —
-    /// inactive panes render their cursor under the current mode too (no
-    /// Helix-style inactive dimming yet).
+    /// is `Pane::wrap_mode`, not the buffer. `mode` is a per-focus fact: only
+    /// the focused pane owns the real terminal cursor, so it alone gets the
+    /// live editor mode; other panes are forced to a block-cursor mode so
+    /// their fake cursor stays visible instead of turning transparent.
     fn resolve_pane_settings(&self, pid: PaneId) -> (PaneRenderSettings, u16) {
         let pane = &self.view.panes[pid];
         let doc = self.state.buffers.get(pane.buffer_id);
@@ -425,9 +426,14 @@ impl Editor {
         let wrap_mode = pane.wrap_mode.resolve(content_width);
         let tab_width = doc.overrides.tab_width(&self.state.settings);
         let whitespace = doc.overrides.whitespace(&self.state.settings);
+        let mode = if pid == self.state.focused_pane_id {
+            self.state.mode()
+        } else {
+            EditorMode::Normal
+        };
         (
             PaneRenderSettings {
-                mode: self.state.mode(),
+                mode,
                 wrap_mode,
                 tab_width,
                 whitespace,
