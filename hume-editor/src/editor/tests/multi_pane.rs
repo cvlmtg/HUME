@@ -1016,12 +1016,16 @@ fn quit_in_grid_promotes_correct_sibling() {
 
 // ── wrap_mode: per-pane SSOT (M10 T6) ──────────────────────────────────────────
 
-/// A new pane seeds its `wrap_mode` from `EditorSettings::wrap_mode` (the
-/// init-default), not from the buffer it opens onto.
+/// A same-buffer split (`:split` with no path) inherits the source pane's
+/// live `wrap_mode` — not the global default. This lets a `:wrap`-toggled
+/// pane pass its mode on to a split of itself.
 #[test]
-fn split_seeds_new_pane_wrap_mode_from_global_default() {
+fn same_buffer_split_inherits_source_pane_wrap_mode() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::Soft { width: 40 };
+    let pid_a = ed.state.focused_pane_id;
+    ed.view.panes[pid_a].wrap_mode = hume_engine::pane::WrapMode::Soft { width: 40 };
+    // Global default deliberately differs, to prove it is NOT the source.
+    ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::None;
 
     ed.execute_typed("split", None).unwrap();
     let pid_b = ed.state.focused_pane_id;
@@ -1029,7 +1033,36 @@ fn split_seeds_new_pane_wrap_mode_from_global_default() {
     assert_eq!(
         ed.view.panes[pid_b].wrap_mode,
         hume_engine::pane::WrapMode::Soft { width: 40 },
-        "new pane inherits the global default at creation time"
+        "same-buffer split inherits the source pane's live wrap_mode"
+    );
+}
+
+/// `:vsplit <path>` onto a different buffer starts fresh from the global
+/// `EditorSettings::wrap_mode`, ignoring the source pane's (unrelated) mode.
+#[test]
+#[cfg(not(windows))]
+fn new_file_split_reads_global_wrap_mode() {
+    let f = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(f.path(), "other file\n").unwrap();
+    let path = f.path().to_path_buf();
+    let _tmp_path = f.into_temp_path();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let pid_a = ed.state.focused_pane_id;
+    let bid_a = ed.focused_buffer_id();
+    ed.view.panes[pid_a].wrap_mode = hume_engine::pane::WrapMode::None;
+    ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::Soft { width: 40 };
+
+    ed.execute_typed("vsplit", Some(path.to_str().unwrap()))
+        .unwrap();
+    let pid_b = ed.state.focused_pane_id;
+    let bid_b = ed.view.panes[pid_b].buffer_id;
+    assert_ne!(bid_b, bid_a, "sanity: new pane views a different buffer");
+
+    assert_eq!(
+        ed.view.panes[pid_b].wrap_mode,
+        hume_engine::pane::WrapMode::Soft { width: 40 },
+        "new-file split reads the global default, not the source pane's mode"
     );
 }
 
