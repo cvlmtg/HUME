@@ -328,14 +328,19 @@ impl LayoutTree {
 // junction glyph (`┬ ┴ ├ ┤ ┼`) instead of a plain `│`/`─`. Connectivity at a
 // cell is a 4-bit compass mask; `junction_glyph` resolves a mask to a glyph,
 // and `collect_seam_arms` derives the perpendicular bits a seam contributes
-// to its two endpoints.
+// to the cells just past its two endpoints.
 //
-// A seam spans the *entire* extent of its split area (see `split_rect`), so
-// along its interior the perpendicular neighbours are always pane cells —
-// never another seam. A crossing can therefore only occur at a seam's two
-// endpoints, where it abuts (T) or is sandwiched by (`┼`) a perpendicular
-// seam. That means junctions are found by inspecting two cells per seam,
-// never by scanning the frame.
+// `collect_seam_arms` touches only two cells per seam: the one beyond each
+// endpoint where a perpendicular seam would be drawn if one abuts. But those
+// recorded cells can land on the *interior* of the perpendicular seam being
+// drawn — a child split's seam starts or ends partway along the parent seam,
+// so its endpoint-adjacent record lands on an interior cell of the parent
+// (see `collect_seam_arms_t_junction`: a `│` seam starting one row below a
+// `─` seam records `ARM_S` on the `─` seam's interior). The draw loop
+// therefore probes every cell of each seam's rect, OR-ing the seam's `base`
+// mask with any arms recorded for that cell. This stays per-seam, not a
+// full-frame scan, and the arms map is sparse (at most two entries per seam)
+// so the lookups hit a tiny map — the per-cell buffer writes dominate.
 
 const ARM_N: u8 = 0b0001;
 const ARM_E: u8 = 0b0010;
