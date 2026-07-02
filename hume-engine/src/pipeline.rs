@@ -495,6 +495,23 @@ fn focused_seam_segment(
     None
 }
 
+/// The four cells just outside the corners of `pane` — where the pane's
+/// edge seams meet perpendicular seams from siblings, forming junctions.
+/// `focused_seam_segment` misses these because a junction cell sits on the
+/// perpendicular seam's column/row, which is the pane's boundary and thus
+/// one cell outside the accent sub-rect (which only covers the pane's own
+/// span on the parallel axis). A corner is `None` when it would sit off the
+/// screen origin: the screen edge carries no seam, so there is no junction
+/// there to color. Coordinates past the far screen edge are harmless — the
+/// draw loop's buffer clamp never visits them.
+fn focused_pane_corners(pane: ratatui::layout::Rect) -> [Option<(u16, u16)>; 4] {
+    let x0 = pane.x.checked_sub(1);
+    let x1 = pane.x.checked_add(pane.width);
+    let y0 = pane.y.checked_sub(1);
+    let y1 = pane.y.checked_add(pane.height);
+    [x0.zip(y0), x1.zip(y0), x0.zip(y1), x1.zip(y1)]
+}
+
 // ---------------------------------------------------------------------------
 // Editor view — top-level owner
 // ---------------------------------------------------------------------------
@@ -706,6 +723,11 @@ impl EngineView {
                 .layer(self.theme.ui.window_focused)
                 .into();
 
+            // Junction cells at the focused pane's corners are missed by the
+            // per-seam accent test (see `focused_pane_corners`); precompute
+            // them once so the per-cell loop only does a membership check.
+            let corners = focused_rect.map(focused_pane_corners);
+
             for seam in &ctx.seams {
                 let base = match seam.direction {
                     Direction::Horizontal => ARM_N | ARM_S,
@@ -723,7 +745,7 @@ impl EngineView {
                         let glyph = junction_glyph(base | arms);
                         let in_accent = accent_rect.is_some_and(|r| {
                             x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height
-                        });
+                        }) || corners.is_some_and(|cs| cs.contains(&Some((x, y))));
                         let style = if in_accent { accent } else { muted };
                         buf[(x, y)].set_symbol(glyph).set_style(style);
                     }
@@ -1450,6 +1472,37 @@ mod tests {
         let seam = rect(0, 24, 100, 1);
         let pane_a = rect(0, 0, 100, 24);
         assert_eq!(focused_seam_segment(seam, pane_a), Some(seam));
+    }
+
+    // ── focused_pane_corners ─────────────────────────────────────────────
+
+    #[test]
+    fn focused_pane_corners_interior_pane_yields_all_four() {
+        // A pane at (5, 5, 10, 10) has its corners one cell diagonally outside
+        // each corner: top-left (4,4), top-right (15,4), bottom-left (4,15),
+        // bottom-right (15,15). Expected values derived from the geometry
+        // (pane.x-1, pane.y-1) etc., independent of the helper.
+        let pane = rect(5, 5, 10, 10);
+        let corners = focused_pane_corners(pane);
+        assert_eq!(corners[0], Some((4, 4)), "top-left");
+        assert_eq!(corners[1], Some((15, 4)), "top-right");
+        assert_eq!(corners[2], Some((4, 15)), "bottom-left");
+        assert_eq!(corners[3], Some((15, 15)), "bottom-right");
+    }
+
+    #[test]
+    fn focused_pane_corners_at_screen_origin_drops_origin_corners() {
+        // A pane flush with the top-left screen edge has no seam above its
+        // top edge or to the left of its left edge (the screen edge carries
+        // no seam), so every corner touching one of those edges is `None`;
+        // only the bottom-right corner — bounded by seams on both sides —
+        // survives.
+        let pane = rect(0, 0, 10, 10);
+        let corners = focused_pane_corners(pane);
+        assert_eq!(corners[0], None, "top-left off-origin on both axes");
+        assert_eq!(corners[1], None, "top-right off-origin on y");
+        assert_eq!(corners[2], None, "bottom-left off-origin on x");
+        assert_eq!(corners[3], Some((10, 10)), "bottom-right");
     }
 
     /// `PaneId::default()` is the slotmap null key — every default is equal,
