@@ -60,8 +60,8 @@ export default defineConfig({
       {
         text: 'Customization',
         items: [
-          { text: 'Plugins', link: '/plugins' },
           { text: 'Configuration', link: '/configuration' },
+          { text: 'Plugins', link: '/plugins' },
         ],
       },
       {
