@@ -280,20 +280,6 @@ impl Editor {
         }
     }
 
-    // ── Theme loading ─────────────────────────────────────────────────────────
-
-    /// Test-only wrapper: splits the three disjoint `Editor` fields so tests can
-    /// load a theme via `&mut self` without manual field extraction.
-    #[cfg(test)]
-    pub(crate) fn load_theme_by_name(&mut self, name: &str) -> bool {
-        ops::load_theme_by_name(
-            &mut self.view,
-            &mut self.state.message_log,
-            &mut self.state.status_msg,
-            name,
-        )
-    }
-
     /// Register a `Lazy` stub for each command activation entry from the plugin manifests.
     ///
     /// Called after `register_steel_cmds` (eager plugins run first) so a

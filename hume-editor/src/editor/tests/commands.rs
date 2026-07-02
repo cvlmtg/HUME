@@ -2387,7 +2387,12 @@ fn bundled_themes_load_and_resolve() {
 #[test]
 fn load_theme_by_name_fails_gracefully() {
     let mut ed = editor_from("-[a]>b\n");
-    let ok = ed.load_theme_by_name("no_such_theme_xyz");
+    let ok = crate::editor::ops::load_theme_by_name(
+        &mut ed.view,
+        &mut ed.state.message_log,
+        &mut ed.state.status_msg,
+        "no_such_theme_xyz",
+    );
     assert!(!ok, "expected false for nonexistent theme");
     // Failure warning ends up in the message log, not as an error result.
     assert!(
