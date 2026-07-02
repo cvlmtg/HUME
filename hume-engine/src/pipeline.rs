@@ -588,19 +588,17 @@ impl EngineView {
                 theme: &self.theme,
                 rect,
                 settings: get_pane_settings(pane_id),
+                // Dim non-focused panes so the active one reads clearly at a
+                // glance — independent of `draw_dividers`, which only controls
+                // the seam glyph. Skipped when `ui.background` has no explicit
+                // bg — there is no defined blend target for custom themes that
+                // leave it unset. Non-RGB targets no-op inside the compose path.
+                dim: (pane_id != focused_pane_id)
+                    .then_some(self.theme.ui.background.bg)
+                    .flatten()
+                    .map(|bg| (bg, PANE_DIM_FACTOR)),
             };
             render_pane(&pane_ctx, scratch, buf);
-
-            // Dim non-focused panes so the active one reads clearly at a
-            // glance — independent of `draw_dividers`, which only controls
-            // the seam glyph. Skipped when `ui.background` has no explicit
-            // bg — there is no defined blend target for custom themes that
-            // leave it unset.
-            if pane_id != focused_pane_id
-                && let Some(bg) = self.theme.ui.background.bg
-            {
-                crate::render::dim_rect(buf, rect, bg, PANE_DIM_FACTOR);
-            }
         }
 
         // ── Render seam dividers between panes ────────────────────────────────
@@ -695,6 +693,9 @@ pub(crate) struct PaneRenderCtx<'a> {
     pub theme: &'a Theme,
     pub rect: ratatui::layout::Rect,
     pub settings: PaneRenderSettings,
+    /// `Some` for non-focused panes — blend every written cell's fg/bg toward
+    /// this target by `factor`. `None` for the focused pane.
+    pub dim: Option<(ratatui::style::Color, f32)>,
 }
 
 // ---------------------------------------------------------------------------
@@ -812,6 +813,7 @@ pub(crate) fn render_pane(
         pane_rect: pane_ctx.rect,
         theme: pane_ctx.theme,
         pane_bg: pane_ctx.theme.ui.background.bg,
+        dim: pane_ctx.dim,
     };
 
     let mut vc = ViewportCursor {

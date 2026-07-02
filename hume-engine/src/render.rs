@@ -27,6 +27,16 @@ pub(crate) struct ComposeCtx<'a> {
     /// Background colour from `ui.background`, threaded to every row so trailing
     /// cells and gutter cells use the theme bg rather than the terminal default.
     pub pane_bg: Option<ratatui::style::Color>,
+    /// When set, every cell written by `compose_row` / `render_tilde_fillers`
+    /// blends its fg and bg toward this target by `factor` — used to de-emphasize
+    /// non-focused panes. Fuses the old `dim_rect` post-pass into the single
+    /// cell-write sweep.
+    ///
+    /// Only active when `pane_bg` is `Some` (the pipeline gates dimming on the
+    /// same `theme.ui.background.bg`), so the `clear_row_span` branch — taken
+    /// when `pane_bg` is `None` — never co-occurs with dim and needs no blend.
+    /// Non-RGB target is a no-op, matching the prior `dim_rect` semantics.
+    pub dim: Option<(ratatui::style::Color, f32)>,
 }
 
 /// Render a single display row at `screen_row` into the ratatui buffer.
@@ -73,6 +83,7 @@ pub(crate) fn compose_row(
             Some(bg) => ratatui::style::Style::default().bg(bg).patch(scope_style),
             None => scope_style,
         };
+        let style = blend_style(style, compose_ctx.dim);
 
         // Right-align within usable width, then write a trailing separator space.
         let usable = col_width.saturating_sub(1); // 1 col reserved as right-padding separator
@@ -95,9 +106,9 @@ pub(crate) fn compose_row(
 
     match row.kind {
         RowKind::Filler => {
-            set_cell(buf, content_x_origin, y, "~", compose_ctx.tilde_style);
+            set_cell(buf, content_x_origin, y, "~", blend_style(compose_ctx.tilde_style, compose_ctx.dim));
             match compose_ctx.pane_bg {
-                Some(bg) => fill_row_bg(buf, content_x_origin + 1, right_edge, y, bg),
+                Some(bg) => fill_row_bg(buf, content_x_origin + 1, right_edge, y, blend_color(bg, compose_ctx.dim)),
                 None => clear_row_span(buf, content_x_origin + 1, right_edge, y),
             }
         }
@@ -105,7 +116,7 @@ pub(crate) fn compose_row(
             // Fill trailing cells with row bg (cursorline) or pane bg, so the theme
             // background shows past the last grapheme rather than the terminal default.
             match row_bg.or(compose_ctx.pane_bg) {
-                Some(bg) => fill_row_bg(buf, content_x_origin, right_edge, y, bg),
+                Some(bg) => fill_row_bg(buf, content_x_origin, right_edge, y, blend_color(bg, compose_ctx.dim)),
                 None => clear_row_span(buf, content_x_origin, right_edge, y),
             }
 
@@ -129,7 +140,8 @@ pub(crate) fn compose_row(
                     break; // past right edge — done with this row
                 }
 
-                let ratatui_style: ratatui::style::Style = (*style).into();
+                let ratatui_style: ratatui::style::Style =
+                    blend_style((*style).into(), compose_ctx.dim);
 
                 match &g.content {
                     CellContent::Grapheme => {
@@ -185,7 +197,7 @@ pub(crate) fn compose_row(
                 let visible_col = guide_col.saturating_sub(h_offset);
                 let screen_x = content_x_origin + visible_col;
                 if screen_x < right_edge {
-                    set_cell(buf, screen_x, y, "│", compose_ctx.indent_guide_style);
+                    set_cell(buf, screen_x, y, "│", blend_style(compose_ctx.indent_guide_style, compose_ctx.dim));
                 }
             }
         }
@@ -301,11 +313,11 @@ pub(crate) fn render_tilde_fillers(
         let y = compose_ctx.pane_rect.y + screen_row;
         let right_edge = compose_ctx.pane_rect.x + compose_ctx.pane_rect.width;
         match compose_ctx.pane_bg {
-            Some(bg) => fill_row_bg(buf, compose_ctx.pane_rect.x, right_edge, y, bg),
+            Some(bg) => fill_row_bg(buf, compose_ctx.pane_rect.x, right_edge, y, blend_color(bg, compose_ctx.dim)),
             None => clear_row_span(buf, compose_ctx.pane_rect.x, right_edge, y),
         }
         let content_x = compose_ctx.pane_rect.x + compose_ctx.visible.gutter_width;
-        set_cell(buf, content_x, y, "~", compose_ctx.tilde_style);
+        set_cell(buf, content_x, y, "~", blend_style(compose_ctx.tilde_style, compose_ctx.dim));
         screen_row += 1;
     }
 }
@@ -403,30 +415,36 @@ fn blend_toward(
     Color::Rgb(lerp(r, target.0), lerp(g, target.1), lerp(b, target.2))
 }
 
-/// Dim every cell in `rect` by blending its fg/bg toward `target` — used to
-/// visually de-emphasize non-focused panes. A true-color blend, not
-/// `Modifier::DIM`: many terminals render that modifier inconsistently (or
-/// ignore it outright), which would defeat the purpose on exactly the
-/// terminals HUME targets.
-pub(crate) fn dim_rect(
-    buf: &mut ratatui::buffer::Buffer,
-    rect: ratatui::layout::Rect,
-    target: ratatui::style::Color,
-    factor: f32,
-) {
-    let ratatui::style::Color::Rgb(tr, tg, tb) = target else {
-        return; // no defined blend target for a non-RGB theme background
+/// Blend a single colour toward `dim`'s target, if any. No-op for non-RGB
+/// target — mirrors `dim_rect`'s prior early-return.
+#[inline]
+fn blend_color(
+    color: ratatui::style::Color,
+    dim: Option<(ratatui::style::Color, f32)>,
+) -> ratatui::style::Color {
+    use ratatui::style::Color;
+    let Some((Color::Rgb(tr, tg, tb), factor)) = dim else {
+        return color;
     };
-    let (x0, y0, x1, y1) = clamp_rect_to_buf(buf, rect);
-    for y in y0..y1 {
-        for x in x0..x1 {
-            let cell = &mut buf[(x, y)];
-            let fg = blend_toward(cell.fg, (tr, tg, tb), factor);
-            let bg = blend_toward(cell.bg, (tr, tg, tb), factor);
-            cell.set_fg(fg);
-            cell.set_bg(bg);
+    blend_toward(color, (tr, tg, tb), factor)
+}
+
+/// Blend both fg and bg of `style` toward `dim`'s target, if any. `None`
+/// fg/bg are left as-is (no colour to blend).
+#[inline]
+fn blend_style(
+    mut style: ratatui::style::Style,
+    dim: Option<(ratatui::style::Color, f32)>,
+) -> ratatui::style::Style {
+    if dim.is_some() {
+        if let Some(fg) = style.fg {
+            style = style.fg(blend_color(fg, dim));
+        }
+        if let Some(bg) = style.bg {
+            style = style.bg(blend_color(bg, dim));
         }
     }
+    style
 }
 
 /// Fill a horizontal span with spaces using an explicit background colour.
@@ -564,6 +582,7 @@ mod tests {
             pane_rect,
             theme: &theme,
             pane_bg: None,
+            dim: None,
         };
         compose(
             &rows,
@@ -627,6 +646,7 @@ mod tests {
             pane_rect,
             theme: &theme,
             pane_bg: None,
+            dim: None,
         };
         compose(
             &rows,
@@ -686,11 +706,12 @@ mod tests {
             pane_rect,
             theme: &theme,
             pane_bg: None,
+            dim: None,
         };
         compose(
-            rows,
-            graphemes,
-            styles,
+            &rows,
+            &graphemes,
+            &styles,
             &line_texts,
             &line_text_offsets,
             &ctx,
@@ -1065,75 +1086,126 @@ mod tests {
         );
     }
 
-    // ── dim_rect ─────────────────────────────────────────────────────────
+    // ── fused dim (compose path) ───────────────────────────────────────
 
+    /// `dim` on `ComposeCtx` must blend each written cell's fg/bg toward the
+    /// target inline — replacing the old `dim_rect` post-pass. Verifies the
+    /// same lerp oracle (255→0 at 0.5 ⇒ 128) holds through `compose_row`.
     #[test]
-    fn dim_rect_blends_toward_target() {
+    fn compose_row_dims_cells_inline() {
         use ratatui::style::Color;
-        let mut buf = make_test_buf(3, 1);
-        set_cell(
+        let rope = Rope::from_str("x\n");
+        let graphemes = vec![simple_grapheme(0, 0, 1)];
+        let rows = vec![simple_row(0..1)];
+        let styles = vec![ResolvedStyle {
+            fg: Some(Color::Rgb(255, 255, 255)),
+            bg: Some(Color::Rgb(0, 0, 0)),
+            ..Default::default()
+        }];
+        let visible = VisibleRange {
+            line_range: 0..1,
+            top_skip_rows: 0,
+            content_height: 1,
+            content_width: 2,
+            gutter_width: 0,
+            last_line_idx: 0,
+        };
+        let viewport = ViewportState::new(2, 1);
+        let pane_rect = ratatui::layout::Rect {
+            x: 0,
+            y: 0,
+            width: 2,
+            height: 1,
+        };
+        let mut buf = make_test_buf(2, 1);
+        let theme = Theme::default();
+        let (line_texts, line_text_offsets) = make_line_texts(&rope, visible.line_range.clone());
+        let mut col_widths = Vec::new();
+        let ctx = ComposeCtx {
+            gutter_columns: &[],
+            visible: &visible,
+            viewport: &viewport,
+            mode: EditorMode::Normal,
+            primary_head_line: 0,
+            tab_width: 4,
+            tilde_style: ratatui::style::Style::default(),
+            indent_guide_style: ratatui::style::Style::default(),
+            pane_rect,
+            theme: &theme,
+            pane_bg: Some(Color::Rgb(0, 0, 0)),
+            dim: Some((Color::Rgb(0, 0, 0), 0.5)),
+        };
+        compose(
+            &rows,
+            &graphemes,
+            &styles,
+            &line_texts,
+            &line_text_offsets,
+            &ctx,
+            &mut col_widths,
             &mut buf,
-            0,
-            0,
-            "x",
-            ratatui::style::Style::default()
-                .fg(Color::Rgb(255, 255, 255))
-                .bg(Color::Rgb(0, 0, 0)),
-        );
-        dim_rect(
-            &mut buf,
-            ratatui::layout::Rect::new(0, 0, 1, 1),
-            Color::Rgb(0, 0, 0),
-            0.5,
         );
         let cell = buf.cell(ratatui::layout::Position { x: 0, y: 0 }).unwrap();
-        // Independent oracle: halfway from 255 to 0 is 127.5, rounds up to 128.
+        // Independent oracle: 255 lerp 0 at 0.5 ⇒ 127.5, rounds to 128.
         assert_eq!(cell.fg, Color::Rgb(128, 128, 128));
-        // Already at the target — blending toward itself is a no-op.
+        // bg already at target ⇒ blend is a no-op.
         assert_eq!(cell.bg, Color::Rgb(0, 0, 0));
     }
 
+    /// A non-RGB dim target must be a no-op (cell keeps its original colours),
+    /// matching the prior `dim_rect` semantics.
     #[test]
-    fn dim_rect_leaves_non_rgb_colors_untouched() {
+    fn compose_row_non_rgb_dim_target_is_noop() {
         use ratatui::style::Color;
-        let mut buf = make_test_buf(3, 1);
-        set_cell(
+        let rope = Rope::from_str("x\n");
+        let graphemes = vec![simple_grapheme(0, 0, 1)];
+        let rows = vec![simple_row(0..1)];
+        let styles = vec![ResolvedStyle {
+            fg: Some(Color::Rgb(255, 255, 255)),
+            ..Default::default()
+        }];
+        let visible = VisibleRange {
+            line_range: 0..1,
+            top_skip_rows: 0,
+            content_height: 1,
+            content_width: 2,
+            gutter_width: 0,
+            last_line_idx: 0,
+        };
+        let viewport = ViewportState::new(2, 1);
+        let pane_rect = ratatui::layout::Rect {
+            x: 0,
+            y: 0,
+            width: 2,
+            height: 1,
+        };
+        let mut buf = make_test_buf(2, 1);
+        let theme = Theme::default();
+        let (line_texts, line_text_offsets) = make_line_texts(&rope, visible.line_range.clone());
+        let mut col_widths = Vec::new();
+        let ctx = ComposeCtx {
+            gutter_columns: &[],
+            visible: &visible,
+            viewport: &viewport,
+            mode: EditorMode::Normal,
+            primary_head_line: 0,
+            tab_width: 4,
+            tilde_style: ratatui::style::Style::default(),
+            indent_guide_style: ratatui::style::Style::default(),
+            pane_rect,
+            theme: &theme,
+            pane_bg: Some(Color::Rgb(0, 0, 0)),
+            dim: Some((Color::Reset, 0.5)),
+        };
+        compose(
+            &rows,
+            &graphemes,
+            &styles,
+            &line_texts,
+            &line_text_offsets,
+            &ctx,
+            &mut col_widths,
             &mut buf,
-            0,
-            0,
-            "x",
-            ratatui::style::Style::default().fg(Color::Indexed(5)),
-        );
-        dim_rect(
-            &mut buf,
-            ratatui::layout::Rect::new(0, 0, 1, 1),
-            Color::Rgb(0, 0, 0),
-            0.5,
-        );
-        assert_eq!(
-            buf.cell(ratatui::layout::Position { x: 0, y: 0 })
-                .unwrap()
-                .fg,
-            Color::Indexed(5)
-        );
-    }
-
-    #[test]
-    fn dim_rect_non_rgb_target_is_noop() {
-        use ratatui::style::Color;
-        let mut buf = make_test_buf(3, 1);
-        set_cell(
-            &mut buf,
-            0,
-            0,
-            "x",
-            ratatui::style::Style::default().fg(Color::Rgb(255, 255, 255)),
-        );
-        dim_rect(
-            &mut buf,
-            ratatui::layout::Rect::new(0, 0, 1, 1),
-            Color::Reset,
-            0.5,
         );
         assert_eq!(
             buf.cell(ratatui::layout::Position { x: 0, y: 0 })
