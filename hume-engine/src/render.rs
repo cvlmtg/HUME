@@ -27,16 +27,49 @@ pub(crate) struct ComposeCtx<'a> {
     /// Background colour from `ui.background`, threaded to every row so trailing
     /// cells and gutter cells use the theme bg rather than the terminal default.
     pub pane_bg: Option<ratatui::style::Color>,
-    /// When set, every cell written by `compose_row` / `render_tilde_fillers`
-    /// blends its fg and bg toward this target by `factor` — used to de-emphasize
-    /// non-focused panes. Fuses the old `dim_rect` post-pass into the single
-    /// cell-write sweep.
-    ///
-    /// Only active when `pane_bg` is `Some` (the pipeline gates dimming on the
-    /// same `theme.ui.background.bg`), so the `clear_row_span` branch — taken
-    /// when `pane_bg` is `None` — never co-occurs with dim and needs no blend.
-    /// Non-RGB target is a no-op, matching the prior `dim_rect` semantics.
-    pub dim: Option<(ratatui::style::Color, f32)>,
+}
+
+/// The pane's drawing surface — every cell write for a pane goes through here.
+///
+/// Wraps the ratatui `Buffer` and, when set, a dim target: fg/bg is blended
+/// toward it on every write. This is the single chokepoint for the non-focused
+/// pane dim effect — `compose_row` / `render_tilde_fillers` never touch `buf`
+/// directly, so a future write site cannot forget to dim. Replaces the old
+/// `dim_rect` post-pass (a second full-rect walk after `render_pane`) without
+/// reopening that gap: the blend still happens exactly once per cell, just
+/// inline in the single write instead of a separate sweep.
+pub(crate) struct PaneCanvas<'a> {
+    buf: &'a mut ratatui::buffer::Buffer,
+    dim: Option<(ratatui::style::Color, f32)>,
+}
+
+impl<'a> PaneCanvas<'a> {
+    pub(crate) fn new(
+        buf: &'a mut ratatui::buffer::Buffer,
+        dim: Option<(ratatui::style::Color, f32)>,
+    ) -> Self {
+        Self { buf, dim }
+    }
+
+    fn set_cell(&mut self, x: u16, y: u16, text: &str, style: ratatui::style::Style) {
+        set_cell(self.buf, x, y, text, blend_style(style, self.dim));
+    }
+
+    fn set_string(&mut self, x: u16, y: u16, text: &str, style: ratatui::style::Style) {
+        self.buf
+            .set_string(x, y, text, blend_style(style, self.dim));
+    }
+
+    fn fill_row_bg(&mut self, x_start: u16, x_end: u16, y: u16, bg: ratatui::style::Color) {
+        fill_row_bg(self.buf, x_start, x_end, y, blend_color(bg, self.dim));
+    }
+
+    /// Writes `Cell::default()` (terminal-default colours), taken only when
+    /// `pane_bg` is `None` — which is exactly when `dim` is `None` too (the
+    /// pipeline gates both on the same `theme.ui.background.bg`). No blend needed.
+    fn clear_row_span(&mut self, x_start: u16, x_end: u16, y: u16) {
+        clear_row_span(self.buf, x_start, x_end, y);
+    }
 }
 
 /// Render a single display row at `screen_row` into the ratatui buffer.
@@ -58,7 +91,7 @@ pub(crate) fn compose_row(
     screen_row: u16,
     col_widths: &[u16],
     compose_ctx: &ComposeCtx,
-    buf: &mut ratatui::buffer::Buffer,
+    canvas: &mut PaneCanvas,
     // Background colour to fill the entire row (gutter + content) before
     // writing graphemes. Used for cursorline highlighting so the tint
     // extends to the right edge even past the last character.
@@ -83,18 +116,16 @@ pub(crate) fn compose_row(
             Some(bg) => ratatui::style::Style::default().bg(bg).patch(scope_style),
             None => scope_style,
         };
-        let style = blend_style(style, compose_ctx.dim);
 
         // Right-align within usable width, then write a trailing separator space.
         let usable = col_width.saturating_sub(1); // 1 col reserved as right-padding separator
         let text_len = unicode_display_width(text) as u16;
         let pad = usable.saturating_sub(text_len);
         for px in 0..pad {
-            set_cell(buf, gutter_x + px, y, " ", style);
+            canvas.set_cell(gutter_x + px, y, " ", style);
         }
-        // set_string writes each character into its own cell, handles multi-byte UTF-8.
-        buf.set_string(gutter_x + pad, y, text, style);
-        set_cell(buf, gutter_x + pad + text_len, y, " ", style);
+        canvas.set_string(gutter_x + pad, y, text, style);
+        canvas.set_cell(gutter_x + pad + text_len, y, " ", style);
 
         gutter_x += col_width;
     }
@@ -106,36 +137,18 @@ pub(crate) fn compose_row(
 
     match row.kind {
         RowKind::Filler => {
-            set_cell(
-                buf,
-                content_x_origin,
-                y,
-                "~",
-                blend_style(compose_ctx.tilde_style, compose_ctx.dim),
-            );
+            canvas.set_cell(content_x_origin, y, "~", compose_ctx.tilde_style);
             match compose_ctx.pane_bg {
-                Some(bg) => fill_row_bg(
-                    buf,
-                    content_x_origin + 1,
-                    right_edge,
-                    y,
-                    blend_color(bg, compose_ctx.dim),
-                ),
-                None => clear_row_span(buf, content_x_origin + 1, right_edge, y),
+                Some(bg) => canvas.fill_row_bg(content_x_origin + 1, right_edge, y, bg),
+                None => canvas.clear_row_span(content_x_origin + 1, right_edge, y),
             }
         }
         _ => {
             // Fill trailing cells with row bg (cursorline) or pane bg, so the theme
             // background shows past the last grapheme rather than the terminal default.
             match row_bg.or(compose_ctx.pane_bg) {
-                Some(bg) => fill_row_bg(
-                    buf,
-                    content_x_origin,
-                    right_edge,
-                    y,
-                    blend_color(bg, compose_ctx.dim),
-                ),
-                None => clear_row_span(buf, content_x_origin, right_edge, y),
+                Some(bg) => canvas.fill_row_bg(content_x_origin, right_edge, y, bg),
+                None => canvas.clear_row_span(content_x_origin, right_edge, y),
             }
 
             let row_graphemes = &graphemes[row.graphemes.start..row.graphemes.end];
@@ -158,8 +171,7 @@ pub(crate) fn compose_row(
                     break; // past right edge — done with this row
                 }
 
-                let ratatui_style: ratatui::style::Style =
-                    blend_style((*style).into(), compose_ctx.dim);
+                let ratatui_style: ratatui::style::Style = (*style).into();
 
                 match &g.content {
                     CellContent::Grapheme => {
@@ -167,28 +179,28 @@ pub(crate) fn compose_row(
                             && g.byte_range.end <= line_str.len()
                         {
                             let text = &line_str[g.byte_range.clone()];
-                            set_cell(buf, screen_x, y, text, ratatui_style);
+                            canvas.set_cell(screen_x, y, text, ratatui_style);
                             // For double-width chars, blank the continuation cell.
                             if g.width >= 2 && screen_x + 1 < right_edge {
-                                set_cell(buf, screen_x + 1, y, " ", ratatui_style);
+                                canvas.set_cell(screen_x + 1, y, " ", ratatui_style);
                             }
                         }
                     }
                     CellContent::Indicator(s) => {
-                        set_cell(buf, screen_x, y, s, ratatui_style);
+                        canvas.set_cell(screen_x, y, s, ratatui_style);
                         // Fill remaining tab/wide cells with spaces.
                         for extra in 1..g.width as u16 {
                             let ex = screen_x + extra;
                             if ex < right_edge {
-                                set_cell(buf, ex, y, " ", ratatui_style);
+                                canvas.set_cell(ex, y, " ", ratatui_style);
                             }
                         }
                     }
                     CellContent::Virtual(s) => {
-                        set_cell(buf, screen_x, y, s, ratatui_style);
+                        canvas.set_cell(screen_x, y, s, ratatui_style);
                     }
                     CellContent::Empty => {
-                        set_cell(buf, screen_x, y, " ", ratatui_style);
+                        canvas.set_cell(screen_x, y, " ", ratatui_style);
                     }
                     CellContent::WidthContinuation => unreachable!(),
                 }
@@ -215,13 +227,7 @@ pub(crate) fn compose_row(
                 let visible_col = guide_col.saturating_sub(h_offset);
                 let screen_x = content_x_origin + visible_col;
                 if screen_x < right_edge {
-                    set_cell(
-                        buf,
-                        screen_x,
-                        y,
-                        "│",
-                        blend_style(compose_ctx.indent_guide_style, compose_ctx.dim),
-                    );
+                    canvas.set_cell(screen_x, y, "│", compose_ctx.indent_guide_style);
                 }
             }
         }
@@ -252,7 +258,7 @@ pub(crate) fn compose(
     line_text_offsets: &[usize],
     compose_ctx: &ComposeCtx,
     col_widths: &mut Vec<u16>,
-    buf: &mut ratatui::buffer::Buffer,
+    canvas: &mut PaneCanvas,
 ) {
     // Skip the first `top_skip_rows` rows from the formatted output so the
     // viewport starts partway through a wrapped line when scrolled.
@@ -308,13 +314,13 @@ pub(crate) fn compose(
             screen_row,
             col_widths,
             compose_ctx,
-            buf,
+            canvas,
             None,
         );
         screen_row += 1;
     }
 
-    render_tilde_fillers(screen_row, compose_ctx, buf);
+    render_tilde_fillers(screen_row, compose_ctx, canvas);
 }
 
 /// Draw tilde filler rows from `start_screen_row` up to (but not including)
@@ -325,7 +331,7 @@ pub(crate) fn compose(
 pub(crate) fn render_tilde_fillers(
     start_screen_row: u16,
     compose_ctx: &ComposeCtx,
-    buf: &mut ratatui::buffer::Buffer,
+    canvas: &mut PaneCanvas,
 ) {
     let mut screen_row = start_screen_row;
     while screen_row
@@ -337,23 +343,11 @@ pub(crate) fn render_tilde_fillers(
         let y = compose_ctx.pane_rect.y + screen_row;
         let right_edge = compose_ctx.pane_rect.x + compose_ctx.pane_rect.width;
         match compose_ctx.pane_bg {
-            Some(bg) => fill_row_bg(
-                buf,
-                compose_ctx.pane_rect.x,
-                right_edge,
-                y,
-                blend_color(bg, compose_ctx.dim),
-            ),
-            None => clear_row_span(buf, compose_ctx.pane_rect.x, right_edge, y),
+            Some(bg) => canvas.fill_row_bg(compose_ctx.pane_rect.x, right_edge, y, bg),
+            None => canvas.clear_row_span(compose_ctx.pane_rect.x, right_edge, y),
         }
         let content_x = compose_ctx.pane_rect.x + compose_ctx.visible.gutter_width;
-        set_cell(
-            buf,
-            content_x,
-            y,
-            "~",
-            blend_style(compose_ctx.tilde_style, compose_ctx.dim),
-        );
+        canvas.set_cell(content_x, y, "~", compose_ctx.tilde_style);
         screen_row += 1;
     }
 }
@@ -600,8 +594,8 @@ mod tests {
             pane_rect,
             theme: &theme,
             pane_bg: None,
-            dim: None,
         };
+        let mut canvas = PaneCanvas::new(&mut buf, None);
         compose(
             &rows,
             &graphemes,
@@ -610,7 +604,7 @@ mod tests {
             &line_text_offsets,
             &ctx,
             &mut col_widths,
-            &mut buf,
+            &mut canvas,
         );
 
         assert_eq!(
@@ -664,8 +658,8 @@ mod tests {
             pane_rect,
             theme: &theme,
             pane_bg: None,
-            dim: None,
         };
+        let mut canvas = PaneCanvas::new(&mut buf, None);
         compose(
             &rows,
             &graphemes,
@@ -674,7 +668,7 @@ mod tests {
             &line_text_offsets,
             &ctx,
             &mut col_widths,
-            &mut buf,
+            &mut canvas,
         );
 
         // Row 0 has 'x', rows 1–4 should have '~'
@@ -724,8 +718,8 @@ mod tests {
             pane_rect,
             theme: &theme,
             pane_bg: None,
-            dim: None,
         };
+        let mut canvas = PaneCanvas::new(&mut buf, None);
         compose(
             rows,
             graphemes,
@@ -734,7 +728,7 @@ mod tests {
             &line_text_offsets,
             &ctx,
             &mut col_widths,
-            &mut buf,
+            &mut canvas,
         );
         buf
     }
@@ -1060,7 +1054,7 @@ mod tests {
 
     // ── fused dim (compose path) ───────────────────────────────────────
 
-    /// `dim` on `ComposeCtx` must blend each written cell's fg/bg toward the
+    /// `dim` on `PaneCanvas` must blend each written cell's fg/bg toward the
     /// target inline — replacing the old `dim_rect` post-pass. Verifies the
     /// same lerp oracle (255→0 at 0.5 ⇒ 128) holds through `compose_row`.
     #[test]
@@ -1105,8 +1099,8 @@ mod tests {
             pane_rect,
             theme: &theme,
             pane_bg: Some(Color::Rgb(0, 0, 0)),
-            dim: Some((Color::Rgb(0, 0, 0), 0.5)),
         };
+        let mut canvas = PaneCanvas::new(&mut buf, Some((Color::Rgb(0, 0, 0), 0.5)));
         compose(
             &rows,
             &graphemes,
@@ -1115,7 +1109,7 @@ mod tests {
             &line_text_offsets,
             &ctx,
             &mut col_widths,
-            &mut buf,
+            &mut canvas,
         );
         let cell = buf.cell(ratatui::layout::Position { x: 0, y: 0 }).unwrap();
         // Independent oracle: 255 lerp 0 at 0.5 ⇒ 127.5, rounds to 128.
@@ -1167,8 +1161,8 @@ mod tests {
             pane_rect,
             theme: &theme,
             pane_bg: Some(Color::Rgb(0, 0, 0)),
-            dim: Some((Color::Reset, 0.5)),
         };
+        let mut canvas = PaneCanvas::new(&mut buf, Some((Color::Reset, 0.5)));
         compose(
             &rows,
             &graphemes,
@@ -1177,7 +1171,7 @@ mod tests {
             &line_text_offsets,
             &ctx,
             &mut col_widths,
-            &mut buf,
+            &mut canvas,
         );
         assert_eq!(
             buf.cell(ratatui::layout::Position { x: 0, y: 0 })

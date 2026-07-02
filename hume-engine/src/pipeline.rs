@@ -8,7 +8,7 @@ use crate::pane::{Pane, WhitespaceConfig, WrapMode};
 use crate::providers::{
     GutterCell, InlineInsert, StatuslineProvider, TabBarProvider, VirtualLineAnchor,
 };
-use crate::render::ComposeCtx;
+use crate::render::{self, ComposeCtx};
 use crate::style::StyleScratch;
 use crate::theme::{ScopeRegistry, Theme};
 use crate::types::{DisplayRow, EditorMode, ResolvedStyle, RowKind};
@@ -850,7 +850,7 @@ pub(crate) fn render_pane(
     scratch: &mut FrameScratch,
     buf: &mut ratatui::buffer::Buffer,
 ) {
-    use crate::{layout, render};
+    use crate::layout;
 
     // ── Stage 1: Layout ───────────────────────────────────────────────────
     let visible = layout::compute_viewport(
@@ -905,8 +905,8 @@ pub(crate) fn render_pane(
         pane_rect: pane_ctx.rect,
         theme: pane_ctx.theme,
         pane_bg: pane_ctx.theme.ui.background.bg,
-        dim: pane_ctx.dim,
     };
+    let mut canvas = render::PaneCanvas::new(buf, pane_ctx.dim);
 
     let mut vc = ViewportCursor {
         screen_row: 0,
@@ -922,13 +922,20 @@ pub(crate) fn render_pane(
             &mut vc,
             scratch,
             &compose_ctx,
-            buf,
+            &mut canvas,
         );
         if vc.is_full() {
             break;
         }
 
-        render_buffer_line(pane_ctx, line_idx, &mut vc, scratch, &compose_ctx, buf);
+        render_buffer_line(
+            pane_ctx,
+            line_idx,
+            &mut vc,
+            scratch,
+            &compose_ctx,
+            &mut canvas,
+        );
         if vc.is_full() {
             break;
         }
@@ -938,14 +945,14 @@ pub(crate) fn render_pane(
             &mut vc,
             scratch,
             &compose_ctx,
-            buf,
+            &mut canvas,
         );
         if vc.is_full() {
             break;
         }
     }
 
-    render::render_tilde_fillers(vc.screen_row, &compose_ctx, buf);
+    render::render_tilde_fillers(vc.screen_row, &compose_ctx, &mut canvas);
 }
 
 // ---------------------------------------------------------------------------
@@ -961,7 +968,7 @@ fn drain_virtual_lines(
     vc: &mut ViewportCursor,
     scratch: &mut FrameScratch,
     compose_ctx: &ComposeCtx,
-    buf: &mut ratatui::buffer::Buffer,
+    canvas: &mut render::PaneCanvas,
 ) {
     let line_idx = match anchor {
         VirtualLineAnchor::Before(n) | VirtualLineAnchor::After(n) => n,
@@ -982,7 +989,7 @@ fn drain_virtual_lines(
             vc.screen_row,
             scratch,
             compose_ctx,
-            buf,
+            canvas,
         );
         vc.vl_cursor += 1;
         vc.screen_row += 1;
@@ -1001,9 +1008,9 @@ fn render_buffer_line(
     vc: &mut ViewportCursor,
     scratch: &mut FrameScratch,
     compose_ctx: &ComposeCtx,
-    buf: &mut ratatui::buffer::Buffer,
+    canvas: &mut render::PaneCanvas,
 ) {
-    use crate::{format, render, style};
+    use crate::{format, style};
 
     scratch.format.line_texts.clear();
 
@@ -1088,7 +1095,7 @@ fn render_buffer_line(
                 vc.screen_row,
                 &scratch.col_widths,
                 compose_ctx,
-                buf,
+                canvas,
                 row_bg,
             );
             vc.screen_row += 1;
@@ -1109,7 +1116,7 @@ fn render_buffer_line(
                 vc.screen_row,
                 &scratch.col_widths,
                 compose_ctx,
-                buf,
+                canvas,
                 None,
             );
             vc.screen_row += 1;
@@ -1126,10 +1133,8 @@ fn emit_virtual_row(
     screen_row: u16,
     scratch: &mut FrameScratch,
     compose_ctx: &ComposeCtx,
-    buf: &mut ratatui::buffer::Buffer,
+    canvas: &mut render::PaneCanvas,
 ) {
-    use crate::render;
-
     // Field-split: read virtual_lines, write graphemes — different sub-struct fields.
     let g_start = scratch.format.graphemes.len();
     scratch
@@ -1160,7 +1165,7 @@ fn emit_virtual_row(
         screen_row,
         &scratch.col_widths,
         compose_ctx,
-        buf,
+        canvas,
         None,
     );
 
