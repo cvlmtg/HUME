@@ -32,6 +32,7 @@ Use `:set` from the command line for quick changes — see [Commands](commands.m
 | `popup-border` | bool | `#t` | Show popup borders |
 | `syntax-highlight-max-bytes` | integer ≥ 1 | `1048576` | Max bytes for syntax highlighting |
 | `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Line wrapping behavior for newly opened panes. Wrapping is a per-pane view setting, not per-buffer — this only seeds new panes; use `:wrap` to toggle it for the current pane |
+| `pane-dividers` | bool | `#t` | Draw a 1-cell divider between sibling panes |
 
 ## Per-buffer options (with global default)
 
