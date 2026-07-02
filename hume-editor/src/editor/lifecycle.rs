@@ -6,7 +6,6 @@ use crossterm::event::{self, Event, KeyEventKind};
 
 use hume_engine::pane::{Pane, WhitespaceConfig, WrapMode};
 use hume_engine::pipeline::{BufferId, EngineView, PaneId, PaneRenderSettings, RenderContext};
-use hume_engine::providers::StatuslineProvider;
 use hume_engine::types::EditorMode;
 
 use super::search_state::SearchCursor;
@@ -237,8 +236,8 @@ impl Editor {
     /// 4. Dispatch the event.
     pub(crate) fn run(&mut self, term: &mut Term) -> io::Result<()> {
         // Render context lives here — allocated once, reused every frame.
-        // It must be outside `self` so `HumeStatusline { editor: self }` can
-        // borrow `self` immutably while ctx is borrowed mutably.
+        // It must be outside `self` so `render_into` can borrow `self`
+        // immutably while `ctx` is borrowed mutably alongside it.
         let mut ctx = RenderContext::new();
         let mut last_cursor_color_mode: Option<EditorMode> = None;
         loop {
@@ -295,21 +294,13 @@ impl Editor {
                 None
             };
 
-            // The statusline provider borrows `self` immutably — create it
-            // before the draw closure so the lifetime is tied to this stack frame.
-            let statusline = crate::ui::statusline::HumeStatusline { editor: self };
             // Open the synchronized-output envelope so the terminal defers
             // display until after every byte of this frame has been written.
             // Terminals that don't support DEC 2026 silently ignore the
             // sequence — hence `let _ =` rather than `?`.
             let _ = hume_platform::terminal::begin_synchronized_update();
             term.draw(|frame| {
-                self.render_into(
-                    frame.area(),
-                    frame.buffer_mut(),
-                    Some(&statusline),
-                    &mut ctx,
-                );
+                self.render_into(frame.area(), frame.buffer_mut(), &mut ctx);
                 if let Some((col, row)) = cursor_screen {
                     frame.set_cursor_position((col, row));
                 }
@@ -444,9 +435,11 @@ impl Editor {
         &self,
         area: ratatui::layout::Rect,
         buf: &mut ratatui::buffer::Buffer,
-        statusline: Option<&dyn StatuslineProvider>,
         ctx: &mut RenderContext,
     ) {
+        // The statusline provider borrows `self` immutably; it's built here so
+        // its lifetime is tied to this call, not stored across the draw closure.
+        let statusline = crate::ui::statusline::HumeStatusline { editor: self };
         self.view.render(
             area,
             buf,
@@ -459,7 +452,7 @@ impl Editor {
                     .map(|s| &s.highlighter)
             },
             |pid| self.resolve_pane_settings(pid).0,
-            statusline,
+            &statusline,
             self.state.focused_pane_id,
             self.state.settings.pane_dividers,
             ctx,
@@ -468,8 +461,8 @@ impl Editor {
 
     /// Paint one frame immediately — called before `init_scripting` so the
     /// editor chrome is visible during Steel engine init instead of a blank
-    /// alt-screen.  Skips the statusline and cursor-position overlay (those
-    /// are only live inside the event loop) but renders the full buffer view.
+    /// alt-screen.  Skips the cursor-position overlay (only live inside the
+    /// event loop) but renders the full buffer view and statusline.
     pub(crate) fn draw_once(&mut self, term: &mut Term) -> io::Result<()> {
         let mut ctx = RenderContext::new();
         let size = term.size()?;
@@ -477,7 +470,7 @@ impl Editor {
 
         let _ = hume_platform::terminal::begin_synchronized_update();
         term.draw(|frame| {
-            self.render_into(frame.area(), frame.buffer_mut(), None, &mut ctx);
+            self.render_into(frame.area(), frame.buffer_mut(), &mut ctx);
         })?;
         let _ = hume_platform::terminal::end_synchronized_update();
         Ok(())
@@ -493,7 +486,7 @@ impl Editor {
         let mut buf = ratatui::buffer::Buffer::empty(rect);
         let mut ctx = RenderContext::new();
         self.prepare_frame(rect.width, rect.height, &mut ctx);
-        self.render_into(rect, &mut buf, None, &mut ctx);
+        self.render_into(rect, &mut buf, &mut ctx);
         buf
     }
 
@@ -515,14 +508,14 @@ impl Editor {
         // Shared rect list every per-pane step below drives off — partitioned
         // through the same `EngineView::pane_area` that `render` uses, so
         // viewport dims and drawn rects never disagree even when a tab bar is
-        // present. The interactive render path always draws a statusline.
+        // present.
         let terminal_area = ratatui::layout::Rect {
             x: 0,
             y: 0,
             width: terminal_width,
             height: terminal_height,
         };
-        let pane_area = self.view.pane_area(terminal_area, true);
+        let pane_area = self.view.pane_area(terminal_area);
         let reserve_seam = self.state.settings.pane_dividers;
         let mut rects = Vec::new();
         self.view

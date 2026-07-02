@@ -584,18 +584,13 @@ impl EngineView {
     }
 
     /// Partition `area` into the pane-content rect, reserving a tab-bar row at
-    /// the top (if `self.tabbar` is set) and a statusline row at the bottom (if
-    /// `has_statusline`). Single source of truth for chrome layout — `render`
-    /// and the editor's `prepare_frame` both partition through this method so
-    /// pane geometry is computed identically wherever it's needed.
-    pub fn pane_area(
-        &self,
-        area: ratatui::layout::Rect,
-        has_statusline: bool,
-    ) -> ratatui::layout::Rect {
+    /// the top (if `self.tabbar` is set) and a statusline row at the bottom
+    /// (always). Single source of truth for chrome layout — `render` and the
+    /// editor's `prepare_frame` both partition through this method so pane
+    /// geometry is computed identically wherever it's needed.
+    pub fn pane_area(&self, area: ratatui::layout::Rect) -> ratatui::layout::Rect {
         let tabbar_height: u16 = if self.tabbar.is_some() { 1 } else { 0 };
-        let statusline_height: u16 = if has_statusline { 1 } else { 0 };
-        let chrome_height = tabbar_height + statusline_height;
+        let chrome_height = tabbar_height + 1;
 
         if chrome_height < area.height {
             ratatui::layout::Rect {
@@ -616,7 +611,7 @@ impl EngineView {
     /// inside this call — no rope is stored in `SharedBuffer`.
     ///
     /// Layout: the tab bar (if present) occupies the top row, the statusline
-    /// (if present) occupies the bottom row. Panes fill the remaining area.
+    /// always occupies the bottom row. Panes fill the remaining area.
     ///
     /// `focused_pane_id` drives seam-accent styling and non-focused dimming.
     /// `draw_dividers` mirrors the `pane-dividers` setting: `true` reserves
@@ -632,14 +627,14 @@ impl EngineView {
         get_rope: impl Fn(BufferId) -> Option<&'rope ropey::Rope>,
         get_syntax: impl Fn(BufferId) -> Option<&'syn TreeSitterHighlighter>,
         get_pane_settings: impl Fn(PaneId) -> PaneRenderSettings,
-        statusline: Option<&dyn StatuslineProvider>,
+        statusline: &dyn StatuslineProvider,
         focused_pane_id: PaneId,
         draw_dividers: bool,
         ctx: &mut RenderContext,
     ) {
         let scratch = &mut ctx.frame;
         let pane_rects = &mut ctx.pane_rects;
-        let pane_area = self.pane_area(area, statusline.is_some());
+        let pane_area = self.pane_area(area);
 
         // ── Render tab bar ────────────────────────────────────────────────────
         if let Some(ref tabbar) = self.tabbar {
@@ -652,15 +647,13 @@ impl EngineView {
         }
 
         // ── Render statusline ─────────────────────────────────────────────────
-        if let Some(statusline) = statusline {
-            let sl_y = area.y + area.height.saturating_sub(1);
-            let sl_area = ratatui::layout::Rect {
-                y: sl_y,
-                height: 1,
-                ..area
-            };
-            statusline.render(sl_area, &self.theme, buf);
-        }
+        let sl_y = area.y + area.height.saturating_sub(1);
+        let sl_area = ratatui::layout::Rect {
+            y: sl_y,
+            height: 1,
+            ..area
+        };
+        statusline.render(sl_area, &self.theme, buf);
 
         // ── Compute pane rects once; reuse for panes and overlays ─────────────
         pane_rects.clear();
