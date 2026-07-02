@@ -189,9 +189,14 @@ pub enum LayoutTree {
 impl LayoutTree {
     /// Compute (PaneId, Rect) pairs for the leaf panes given the total area.
     /// Results are appended to `out` (which is not cleared — caller must clear first).
+    ///
+    /// `reserve_seam` mirrors the `pane-dividers` setting: `true` carves a
+    /// 1-cell seam out of each split axis (see `split_rect`); `false` tiles
+    /// children edge-to-edge with no reserved gap.
     pub fn collect_rects_into(
         &self,
         area: ratatui::layout::Rect,
+        reserve_seam: bool,
         out: &mut Vec<(PaneId, ratatui::layout::Rect)>,
     ) {
         match self {
@@ -201,9 +206,14 @@ impl LayoutTree {
                 ratio,
                 children,
             } => {
-                let (r1, _seam, r2) = split_rect(area, *direction == Direction::Vertical, *ratio);
-                children.0.collect_rects_into(r1, out);
-                children.1.collect_rects_into(r2, out);
+                let (r1, _seam, r2) = split_rect(
+                    area,
+                    *direction == Direction::Vertical,
+                    *ratio,
+                    reserve_seam,
+                );
+                children.0.collect_rects_into(r1, reserve_seam, out);
+                children.1.collect_rects_into(r2, reserve_seam, out);
             }
         }
     }
@@ -213,6 +223,10 @@ impl LayoutTree {
     /// `collect_rects_into`, off the same `split_rect` math, so seams always
     /// align with the leaf rects computed for the same `area` this frame.
     /// Results are appended to `out` (not cleared — caller must clear first).
+    ///
+    /// Always reserves the seam: callers only invoke this when dividers are
+    /// being drawn, which is also when `collect_rects_into` is called with
+    /// `reserve_seam: true` — the two stay aligned by construction.
     pub fn collect_seams_into(&self, area: ratatui::layout::Rect, out: &mut Vec<Seam>) {
         if let LayoutTree::Split {
             direction,
@@ -220,7 +234,7 @@ impl LayoutTree {
             children,
         } = self
         {
-            let (r1, seam, r2) = split_rect(area, *direction == Direction::Vertical, *ratio);
+            let (r1, seam, r2) = split_rect(area, *direction == Direction::Vertical, *ratio, true);
             if seam.width > 0 && seam.height > 0 {
                 out.push(Seam {
                     rect: seam,
@@ -298,9 +312,13 @@ impl LayoutTree {
     }
 }
 
-/// Split `area` into two child rects plus the 1-cell seam divider drawn
-/// between them, reserving that cell from the split axis so `first`, `seam`,
-/// and `second` together — not `first`/`second` alone — tile `area` exactly.
+/// Split `area` into two child rects plus the seam divider drawn between
+/// them, reserving that cell from the split axis so `first`, `seam`, and
+/// `second` together — not `first`/`second` alone — tile `area` exactly.
+///
+/// `reserve_seam` mirrors the `pane-dividers` setting: `true` reserves a
+/// 1-cell seam; `false` reserves none, so `first`/`second` tile `area`
+/// edge-to-edge and `seam` is a zero-size rect.
 ///
 /// All arithmetic is saturating so degenerate areas (zero width/height, or a
 /// ratio that leaves no room for a seam) clamp to empty rects rather than
@@ -311,15 +329,17 @@ fn split_rect(
     area: ratatui::layout::Rect,
     vertical: bool,
     ratio: f32,
+    reserve_seam: bool,
 ) -> (
     ratatui::layout::Rect,
     ratatui::layout::Rect,
     ratatui::layout::Rect,
 ) {
+    let seam_reserve: u16 = if reserve_seam { 1 } else { 0 };
     if vertical {
-        let usable = area.height.saturating_sub(1);
+        let usable = area.height.saturating_sub(seam_reserve);
         let h1 = ((usable as f32 * ratio) as u16).min(usable);
-        let seam_h = area.height.saturating_sub(h1).min(1);
+        let seam_h = area.height.saturating_sub(h1).min(seam_reserve);
         let r1 = ratatui::layout::Rect { height: h1, ..area };
         let seam = ratatui::layout::Rect {
             y: area.y + h1,
@@ -333,9 +353,9 @@ fn split_rect(
         };
         (r1, seam, r2)
     } else {
-        let usable = area.width.saturating_sub(1);
+        let usable = area.width.saturating_sub(seam_reserve);
         let w1 = ((usable as f32 * ratio) as u16).min(usable);
-        let seam_w = area.width.saturating_sub(w1).min(1);
+        let seam_w = area.width.saturating_sub(w1).min(seam_reserve);
         let r1 = ratatui::layout::Rect { width: w1, ..area };
         let seam = ratatui::layout::Rect {
             x: area.x + w1,
@@ -407,10 +427,18 @@ pub struct EngineView {
     pub registry: ScopeRegistry,
     /// Optional tab bar rendered at the top of the terminal area.
     pub tabbar: Option<Box<dyn TabBarProvider>>,
-    /// Last-rendered pane rects (DFS pre-order). Populated by the editor's
-    /// `prepare_frame` each frame; read by pane-focus commands + cursor
-    /// placement. Empty until the first `prepare_frame`.
-    pub pane_rects: Vec<(PaneId, ratatui::layout::Rect)>,
+    /// Terminal area available to panes as of the last `prepare_frame`.
+    /// Pane-focus/split commands run between frames with no terminal handle
+    /// of their own, so they recompute geometry from this plus `layout`
+    /// (see `pane_rects`/`pane_rect`) rather than trusting a stored rect
+    /// list — a handful of panes makes the DFS cheap enough that there is no
+    /// cache to go stale when a command mutates `layout` mid-frame. Zero
+    /// area until the first `prepare_frame`.
+    pub last_pane_area: ratatui::layout::Rect,
+    /// Whether pane splits reserve a 1-cell seam column/row — mirrors the
+    /// `pane-dividers` setting. Set alongside `last_pane_area`; consulted by
+    /// the same recompute helpers.
+    pub reserve_seam: bool,
 }
 
 /// Blend fraction used to dim non-focused panes toward `ui.background` — 0.0
@@ -429,16 +457,35 @@ impl EngineView {
             theme,
             registry: ScopeRegistry::new(),
             tabbar: None,
-            pane_rects: Vec::new(),
+            last_pane_area: ratatui::layout::Rect::default(),
+            reserve_seam: true,
         }
+    }
+
+    /// Recompute the current pane partition from `layout` and
+    /// `last_pane_area`. Cheap even with several splits open — recomputing
+    /// beats keeping a cross-frame cache in sync with every layout mutation.
+    pub fn pane_rects(&self) -> Vec<(PaneId, ratatui::layout::Rect)> {
+        let mut out = Vec::new();
+        self.layout
+            .collect_rects_into(self.last_pane_area, self.reserve_seam, &mut out);
+        out
+    }
+
+    /// The current on-screen rect of `pid`, or `None` if `last_pane_area` has
+    /// no area yet (before the first `prepare_frame`).
+    pub fn pane_rect(&self, pid: PaneId) -> Option<ratatui::layout::Rect> {
+        self.pane_rects()
+            .into_iter()
+            .find(|(p, _)| *p == pid)
+            .map(|(_, r)| r)
     }
 
     /// Partition `area` into the pane-content rect, reserving a tab-bar row at
     /// the top (if `self.tabbar` is set) and a statusline row at the bottom (if
     /// `has_statusline`). Single source of truth for chrome layout — `render`
-    /// and the editor's `prepare_frame` (which caches pane rects a frame ahead
-    /// of `render`) both partition through this method so the cache and the
-    /// draw never disagree.
+    /// and the editor's `prepare_frame` both partition through this method so
+    /// pane geometry is computed identically wherever it's needed.
     pub fn pane_area(
         &self,
         area: ratatui::layout::Rect,
@@ -469,9 +516,12 @@ impl EngineView {
     /// Layout: the tab bar (if present) occupies the top row, the statusline
     /// (if present) occupies the bottom row. Panes fill the remaining area.
     ///
-    /// `focused_pane_id` and `draw_dividers` drive the pane-seam / dimming
-    /// chrome (see the module-level notes on `Seam`): when `draw_dividers` is
-    /// `false` this behaves exactly as before — panes tile with no gap.
+    /// `focused_pane_id` drives seam-accent styling and non-focused dimming.
+    /// `draw_dividers` mirrors the `pane-dividers` setting: `true` reserves
+    /// and paints a 1-cell seam between sibling panes; `false` tiles panes
+    /// edge-to-edge with no reserved gap. Non-focused panes are dimmed
+    /// either way — dimming is the focus cue, the seam glyph is a separate
+    /// cosmetic choice.
     #[allow(clippy::too_many_arguments)]
     pub fn render<'rope, 'syn>(
         &self,
@@ -512,7 +562,8 @@ impl EngineView {
 
         // ── Compute pane rects once; reuse for panes and overlays ─────────────
         pane_rects.clear();
-        self.layout.collect_rects_into(pane_area, pane_rects);
+        self.layout
+            .collect_rects_into(pane_area, draw_dividers, pane_rects);
 
         // ── Render panes ──────────────────────────────────────────────────────
         for (pane_id, rect) in pane_rects.iter().copied() {
@@ -540,11 +591,12 @@ impl EngineView {
             };
             render_pane(&pane_ctx, scratch, buf);
 
-            // Dim non-focused panes so the active one reads clearly at a glance.
-            // Skipped when `ui.background` has no explicit bg — there is no
-            // defined blend target for custom themes that leave it unset.
-            if draw_dividers
-                && pane_id != focused_pane_id
+            // Dim non-focused panes so the active one reads clearly at a
+            // glance — independent of `draw_dividers`, which only controls
+            // the seam glyph. Skipped when `ui.background` has no explicit
+            // bg — there is no defined blend target for custom themes that
+            // leave it unset.
+            if pane_id != focused_pane_id
                 && let Some(bg) = self.theme.ui.background.bg
             {
                 crate::render::dim_rect(buf, rect, bg, PANE_DIM_FACTOR);
@@ -1044,7 +1096,7 @@ mod tests {
     #[test]
     fn split_rect_horizontal_half() {
         // width=100 → usable=99, w1 = (99*0.5) as u16 = 49 (truncates, not rounds).
-        let (a, seam, b) = split_rect(rect(0, 0, 100, 50), false, 0.5);
+        let (a, seam, b) = split_rect(rect(0, 0, 100, 50), false, 0.5, true);
         assert_eq!(a, rect(0, 0, 49, 50));
         assert_eq!(seam, rect(49, 0, 1, 50));
         assert_eq!(b, rect(50, 0, 50, 50));
@@ -1053,7 +1105,7 @@ mod tests {
     #[test]
     fn split_rect_vertical_half() {
         // height=50 → usable=49, h1 = (49*0.5) as u16 = 24 (truncates, not rounds).
-        let (a, seam, b) = split_rect(rect(0, 0, 100, 50), true, 0.5);
+        let (a, seam, b) = split_rect(rect(0, 0, 100, 50), true, 0.5, true);
         assert_eq!(a, rect(0, 0, 100, 24));
         assert_eq!(seam, rect(0, 24, 100, 1));
         assert_eq!(b, rect(0, 25, 100, 25));
@@ -1062,7 +1114,7 @@ mod tests {
     #[test]
     fn split_rect_ratio_zero_gives_remainder_to_second() {
         // ratio 0.0 → first gets nothing; second gets everything but the seam.
-        let (a, seam, b) = split_rect(rect(0, 0, 100, 50), false, 0.0);
+        let (a, seam, b) = split_rect(rect(0, 0, 100, 50), false, 0.0, true);
         assert_eq!(a.width, 0);
         assert_eq!(seam.width, 1);
         assert_eq!(b.width, 99);
@@ -1071,7 +1123,7 @@ mod tests {
     #[test]
     fn split_rect_ratio_one_gives_remainder_to_first() {
         // ratio 1.0 → first gets everything but the seam; second gets nothing.
-        let (a, seam, b) = split_rect(rect(0, 0, 100, 50), false, 1.0);
+        let (a, seam, b) = split_rect(rect(0, 0, 100, 50), false, 1.0, true);
         assert_eq!(a.width, 99);
         assert_eq!(seam.width, 1);
         assert_eq!(b.width, 0);
@@ -1079,7 +1131,7 @@ mod tests {
 
     #[test]
     fn split_rect_zero_area_no_panic() {
-        let (a, seam, b) = split_rect(rect(0, 0, 0, 0), false, 0.5);
+        let (a, seam, b) = split_rect(rect(0, 0, 0, 0), false, 0.5, true);
         assert_eq!(a.width, 0);
         assert_eq!(seam.width, 0);
         assert_eq!(b.width, 0);
@@ -1088,7 +1140,7 @@ mod tests {
     #[test]
     fn split_rect_children_and_seam_tile_parent() {
         let area = rect(10, 5, 100, 40);
-        let (a, seam, b) = split_rect(area, false, 0.3);
+        let (a, seam, b) = split_rect(area, false, 0.3, true);
         assert_eq!(a.x, area.x);
         assert_eq!(seam.x, a.x + a.width);
         assert_eq!(b.x, seam.x + seam.width);
@@ -1098,13 +1150,24 @@ mod tests {
         assert_eq!(b.height, area.height);
     }
 
+    #[test]
+    fn split_rect_no_reserve_seam_tiles_edge_to_edge() {
+        // pane-dividers=false: no seam reserved, children tile the parent exactly.
+        let area = rect(10, 5, 100, 40);
+        let (a, seam, b) = split_rect(area, false, 0.3, false);
+        assert_eq!(seam.width, 0);
+        assert_eq!(a.x, area.x);
+        assert_eq!(b.x, a.x + a.width);
+        assert_eq!(a.width + b.width, area.width);
+    }
+
     // ── LayoutTree ───────────────────────────────────────────────────────
 
     #[test]
     fn layout_tree_leaf_returns_single_rect() {
         let tree = LayoutTree::Leaf(PaneId::default());
         let mut out = Vec::new();
-        tree.collect_rects_into(rect(0, 0, 80, 24), &mut out);
+        tree.collect_rects_into(rect(0, 0, 80, 24), true, &mut out);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].1, rect(0, 0, 80, 24));
     }
@@ -1119,7 +1182,7 @@ mod tests {
             children: Box::new((LayoutTree::Leaf(id_a), LayoutTree::Leaf(id_b))),
         };
         let mut out = Vec::new();
-        tree.collect_rects_into(rect(0, 0, 100, 50), &mut out);
+        tree.collect_rects_into(rect(0, 0, 100, 50), true, &mut out);
         assert_eq!(out.len(), 2);
         // Seam eats 1 column from the first child; the second child's
         // geometry is unaffected (see split_rect_horizontal_half).
@@ -1139,7 +1202,7 @@ mod tests {
             )),
         };
         let mut out = Vec::new();
-        tree.collect_rects_into(rect(0, 0, 100, 50), &mut out);
+        tree.collect_rects_into(rect(0, 0, 100, 50), true, &mut out);
         assert_eq!(out.len(), 2);
         // Seam eats 1 row from the first child; the second child's geometry
         // is unaffected (see split_rect_vertical_half).
@@ -1149,10 +1212,28 @@ mod tests {
     }
 
     #[test]
+    fn layout_tree_no_reserve_seam_children_tile_edge_to_edge() {
+        // pane-dividers=false: no seam between the two panes.
+        let tree = LayoutTree::Split {
+            direction: Direction::Horizontal,
+            ratio: 0.5,
+            children: Box::new((
+                LayoutTree::Leaf(PaneId::default()),
+                LayoutTree::Leaf(PaneId::default()),
+            )),
+        };
+        let mut out = Vec::new();
+        tree.collect_rects_into(rect(0, 0, 100, 50), false, &mut out);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].1.width + out[1].1.width, 100);
+        assert_eq!(out[1].1.x, out[0].1.width);
+    }
+
+    #[test]
     fn layout_tree_collect_appends_without_clearing() {
         let tree = LayoutTree::Leaf(PaneId::default());
         let mut out = vec![(PaneId::default(), rect(99, 99, 1, 1))]; // pre-existing entry
-        tree.collect_rects_into(rect(0, 0, 80, 24), &mut out);
+        tree.collect_rects_into(rect(0, 0, 80, 24), true, &mut out);
         assert_eq!(out.len(), 2); // appended, not replaced
     }
 
@@ -1321,7 +1402,7 @@ mod tests {
             }
         );
         let mut out = Vec::new();
-        tree.collect_rects_into(rect(0, 0, 100, 100), &mut out);
+        tree.collect_rects_into(rect(0, 0, 100, 100), true, &mut out);
         assert_eq!(out.len(), 3);
     }
 

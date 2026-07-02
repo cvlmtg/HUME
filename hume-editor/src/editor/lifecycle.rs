@@ -275,16 +275,16 @@ impl Editor {
                 let (pane_settings_cursor, gutter_w) =
                     self.resolve_pane_settings(self.state.focused_pane_id);
                 let vp = self.view.panes[self.state.focused_pane_id].viewport.clone();
-                // `prepare_frame` ran earlier this iteration and cached the
-                // partitioned rects; look up the focused pane's origin so the
-                // bar cursor lands inside it, not at (0,0).
+                // `prepare_frame` ran earlier this iteration and stored the
+                // terminal area; recompute the focused pane's origin from it
+                // so the bar cursor lands inside the pane, not at the
+                // origin. The focused pane is always a live layout leaf (see
+                // `close_focused_pane`/`split_pane_onto`), so this can't miss.
                 let (ox, oy) = self
                     .view
-                    .pane_rects
-                    .iter()
-                    .find(|(pid, _)| *pid == self.state.focused_pane_id)
-                    .map(|(_, r)| (r.x, r.y))
-                    .unwrap_or((0, 0));
+                    .pane_rect(self.state.focused_pane_id)
+                    .map(|r| (r.x, r.y))
+                    .expect("focused pane must have a rect after prepare_frame");
                 super::cursor::screen_pos(
                     &vp,
                     self.doc().text().rope(),
@@ -528,8 +528,11 @@ impl Editor {
             height: terminal_height,
         };
         let pane_area = self.view.pane_area(terminal_area, true);
+        let reserve_seam = self.state.settings.pane_dividers;
         let mut rects = Vec::new();
-        self.view.layout.collect_rects_into(pane_area, &mut rects);
+        self.view
+            .layout
+            .collect_rects_into(pane_area, reserve_seam, &mut rects);
 
         // 1. Sync viewport dimensions for every pane.
         for &(pid, rect) in &rects {
@@ -596,9 +599,12 @@ impl Editor {
         // 7. Sync completion-popup view to the shared Arc for `CompletionOverlay`.
         self.sync_completion_view();
 
-        // 8. Cache the partitioned rects so pane-focus commands and the
-        //    cursor-screen path below read geometry without recomputing it.
-        self.view.pane_rects = rects;
+        // 8. Store the terminal area + divider setting: pane-focus/split
+        //    commands have no terminal handle between frames, so they
+        //    recompute geometry from these via `EngineView::pane_rects`/
+        //    `pane_rect` rather than trusting a stored rect list.
+        self.view.last_pane_area = pane_area;
+        self.view.reserve_seam = reserve_seam;
     }
 
     /// Sync every engine pane's selection mirror from the authoritative `pane_state`.

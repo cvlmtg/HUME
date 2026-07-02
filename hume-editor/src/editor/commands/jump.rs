@@ -93,8 +93,9 @@ enum Dir {
     Down,
 }
 
-/// Move focus to the nearest pane in `dir`, reading geometry from the cache
-/// populated by `prepare_frame`. Silent no-op (`Ok`) when no pane lies in that
+/// Move focus to the nearest pane in `dir`, reading geometry recomputed from
+/// the layout tree and the terminal area cached by `prepare_frame` (see
+/// `EngineView::pane_rects`). Silent no-op (`Ok`) when no pane lies in that
 /// direction. Focus switch is a single field write — `open_pane` already
 /// seeded per-pane maps for every existing pane.
 fn focus_in_direction(
@@ -103,7 +104,8 @@ fn focus_in_direction(
     dir: Dir,
 ) -> Result<(), CommandError> {
     let focused = state.focused_pane_id;
-    let Some(&(_, cur)) = view.pane_rects.iter().find(|(p, _)| *p == focused) else {
+    let rects = view.pane_rects();
+    let Some(&(_, cur)) = rects.iter().find(|(p, _)| *p == focused) else {
         return Ok(());
     };
     let cur_cx = cur.x + cur.width / 2;
@@ -113,8 +115,7 @@ fn focus_in_direction(
     // center distance. Pack gap into the high 16 bits and perp into the low 16
     // bits so a single `min_by_key` orders by gap then perp — both are u16 so
     // neither can contaminate the other.
-    let target = view
-        .pane_rects
+    let target = rects
         .iter()
         .copied()
         .filter(|(p, _)| p != &focused)
@@ -155,12 +156,13 @@ pub fn cmd_pane_focus_next(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let focused = state.focused_pane_id;
-    let Some(idx) = view.pane_rects.iter().position(|(p, _)| *p == focused) else {
+    let rects = view.pane_rects();
+    let Some(idx) = rects.iter().position(|(p, _)| *p == focused) else {
         return Ok(());
     };
-    let n = view.pane_rects.len();
+    let n = rects.len();
     if n > 1 {
-        state.focused_pane_id = view.pane_rects[(idx + 1) % n].0;
+        state.focused_pane_id = rects[(idx + 1) % n].0;
     }
     Ok(())
 }

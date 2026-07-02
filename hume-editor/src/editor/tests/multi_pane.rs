@@ -940,9 +940,8 @@ fn split_seeds_new_pane_wrap_mode_from_global_default() {
 }
 
 /// `:wrap` toggles only the focused pane's `wrap_mode` — a sibling pane on
-/// the same buffer is untouched. This is the core payoff of moving wrap_mode
-/// onto `Pane`: previously it was a buffer-keyed override, so toggling wrap
-/// in one pane on a buffer changed it for every pane viewing that buffer.
+/// the same buffer is untouched. `wrap_mode` lives on `Pane`, not on the
+/// buffer, so two panes viewing the same buffer can wrap independently.
 #[test]
 fn wrap_toggle_affects_only_focused_pane() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -971,4 +970,230 @@ fn wrap_toggle_affects_only_focused_pane() {
         !ed.view.panes[pid_a].wrap_mode.is_wrapping(),
         "A: unaffected by B's toggle, despite sharing a buffer"
     );
+}
+
+// ── Geometry regression guards (post-review fixes) ─────────────────────────────
+//
+// `EngineView` no longer caches a `pane_rects` snapshot across frames — every
+// consumer (pane-focus commands, `fits_split`, the bar-cursor lookup)
+// recomputes from the live layout tree plus the terminal area cached by the
+// last `prepare_frame`. These guard the bug the cache used to allow: a
+// close/split earlier in the same macro-replay batch invalidating geometry
+// that a later command in the same batch would otherwise still trust.
+
+/// Closing a pane and then focusing the next one, with no `prepare_frame` in
+/// between (exactly what a macro-replay batch does — several commands run
+/// per frame), must land on the surviving pane. A cached rect list would
+/// still list the just-closed pane, handing focus to a dead `PaneId`.
+#[test]
+fn close_then_focus_next_without_reframe_lands_on_live_pane() {
+    use crate::editor::commands::cmd_pane_focus_next;
+    use crate::ops::MotionMode;
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let pid_a = ed.state.focused_pane_id;
+    ed.execute_typed("split", None).unwrap();
+    let pid_b = ed.state.focused_pane_id;
+    assert_ne!(pid_a, pid_b);
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.prepare_frame(100, 51, &mut ctx); // establish terminal geometry once
+
+    // Close B, then immediately focus-next — no `prepare_frame` in between.
+    ed.execute_typed("quit", None).unwrap();
+    assert_eq!(ed.view.panes.len(), 1, "sanity: B is closed");
+    cmd_pane_focus_next(&mut ed.state, &mut ed.view, 1, MotionMode::Move).unwrap();
+
+    assert_eq!(
+        ed.state.focused_pane_id, pid_a,
+        "focus-next after a same-batch close must land on the live survivor"
+    );
+    assert!(ed.view.panes.contains_key(ed.state.focused_pane_id));
+}
+
+/// Splitting and then focusing directionally, with no `prepare_frame` in
+/// between, must reach the freshly created pane. A cached rect list from
+/// before the split would still show only the original pane, so the focus
+/// command would silently no-op instead of moving to the new pane.
+#[test]
+fn split_then_focus_left_without_reframe_reaches_new_pane() {
+    use crate::editor::commands::cmd_pane_focus_left;
+    use crate::ops::MotionMode;
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let pid_a = ed.state.focused_pane_id;
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.prepare_frame(100, 51, &mut ctx); // geometry established with one pane
+
+    // :vsplit puts the new pane on the right and moves focus to it — no
+    // `prepare_frame` in between.
+    ed.execute_typed("vsplit", None).unwrap();
+    let pid_b = ed.state.focused_pane_id;
+    assert_ne!(pid_a, pid_b);
+
+    cmd_pane_focus_left(&mut ed.state, &mut ed.view, 1, MotionMode::Move).unwrap();
+    assert_eq!(
+        ed.state.focused_pane_id, pid_a,
+        "focus-left from the freshly split pane must reach the original pane"
+    );
+}
+
+/// A bare split (same buffer as the source pane) inherits the source pane's
+/// cursor and scroll position, rather than jumping to the top of the file.
+#[test]
+fn split_inherits_focused_panes_selection_and_scroll() {
+    use hume_editing::selection::Selection;
+
+    let content: String = (0..200).map(|i| format!("line {i}\n")).collect();
+    let buf = Text::from(content.as_str());
+    let sels = SelectionSet::single(Selection::collapsed(0));
+    let mut ed = Editor::for_testing(Buffer::new(buf, sels));
+    let bid = ed.focused_buffer_id();
+    let pid_a = ed.state.focused_pane_id;
+
+    // Move A's cursor and scroll well away from the top of the file.
+    let cursor_pos = ed.doc().text().line_to_char(150);
+    ed.state.panes.state[pid_a][bid].selections =
+        SelectionSet::single(Selection::collapsed(cursor_pos));
+    ed.view.panes[pid_a].viewport.top_line = 140;
+
+    ed.execute_typed("vsplit", None).unwrap();
+    let pid_b = ed.state.focused_pane_id;
+    assert_ne!(pid_a, pid_b);
+
+    assert_eq!(
+        ed.state.panes.state[pid_b][bid].selections, ed.state.panes.state[pid_a][bid].selections,
+        "new pane inherits the source pane's selection"
+    );
+    assert_eq!(
+        ed.view.panes[pid_b].viewport.top_line, 140,
+        "new pane inherits the source pane's scroll position"
+    );
+}
+
+/// `:vsplit <path>` opens a different buffer in the new pane, so it must
+/// start fresh at the buffer's initial selection rather than inheriting the
+/// source pane's (unrelated) cursor position.
+#[test]
+#[cfg(not(windows))]
+fn split_path_arg_does_not_inherit_source_panes_view() {
+    use hume_editing::selection::Selection;
+
+    let f = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(f.path(), "other file\n").unwrap();
+    let path = f.path().to_path_buf();
+    let _tmp_path = f.into_temp_path();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let bid_a = ed.focused_buffer_id();
+    let pid_a = ed.state.focused_pane_id;
+    ed.state.panes.state[pid_a][bid_a].selections = SelectionSet::single(Selection::collapsed(2));
+
+    ed.execute_typed("vsplit", Some(path.to_str().unwrap()))
+        .unwrap();
+    let pid_b = ed.state.focused_pane_id;
+    let bid_b = ed.view.panes[pid_b].buffer_id;
+    assert_ne!(bid_b, bid_a, "sanity: new pane views a different buffer");
+
+    assert_eq!(
+        ed.state.panes.state[pid_b][bid_b].selections,
+        ed.state.buffers.get(bid_b).initial_sels(),
+        "new pane starts at the opened file's initial selection, not A's cursor"
+    );
+}
+
+/// Before the first `prepare_frame`, there is no real terminal geometry to
+/// check a split against — `fits_split` must allow it; the next
+/// `prepare_frame` sizes the result correctly regardless.
+#[test]
+fn fits_split_allows_before_first_frame() {
+    use hume_engine::pipeline::Direction;
+
+    let ed = editor_from("-[h]>ello\n");
+    assert!(crate::editor::commands::fits_split(
+        &ed.state,
+        &ed.view,
+        Direction::Vertical
+    ));
+    assert!(crate::editor::commands::fits_split(
+        &ed.state,
+        &ed.view,
+        Direction::Horizontal
+    ));
+}
+
+/// If `split_leaf` can't find the focused pane in the layout tree — an
+/// invariant violation that should never happen — `split_pane_onto` must
+/// roll back the pane it speculatively created instead of leaving an
+/// orphaned pane with no layout leaf (which would later violate
+/// `close_focused_pane`'s precondition on `remove_leaf`).
+#[test]
+fn split_pane_onto_rolls_back_when_focused_pane_missing_from_layout() {
+    use hume_engine::pipeline::Direction;
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let bid = ed.focused_buffer_id();
+
+    // Fabricate the desync directly: focus a pane that was never attached to
+    // `view.layout` (only the original pane's `Leaf` exists there).
+    let ghost_pid = ed.open_pane(bid);
+    ed.state.focused_pane_id = ghost_pid;
+    let panes_before = ed.view.panes.len();
+
+    let result = crate::editor::commands::split_pane_onto(
+        &mut ed.state,
+        &mut ed.view,
+        bid,
+        Direction::Vertical,
+    );
+
+    assert!(
+        result.is_err(),
+        "split_leaf failure must surface as an error"
+    );
+    assert_eq!(
+        ed.view.panes.len(),
+        panes_before,
+        "the speculatively created pane is rolled back, not leaked"
+    );
+}
+
+/// `pane-dividers=false` reclaims the seam column: sibling panes tile
+/// edge-to-edge instead of leaving an unpainted 1-cell gap between them.
+#[test]
+fn dividers_off_pane_rects_tile_with_no_gap() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.state.settings.pane_dividers = false;
+    ed.execute_typed("vsplit", None).unwrap();
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.prepare_frame(100, 51, &mut ctx);
+
+    let mut rects = ed.view.pane_rects();
+    assert_eq!(rects.len(), 2);
+    rects.sort_by_key(|(_, r)| r.x);
+    let (left, right) = (rects[0].1, rects[1].1);
+    assert_eq!(
+        left.width + right.width,
+        100,
+        "no column is reserved for a seam when pane-dividers is off"
+    );
+    assert_eq!(right.x, left.x + left.width, "panes are adjacent, no gap");
+}
+
+/// Visual lock-in companion to `dividers_off_pane_rects_tile_with_no_gap`:
+/// with `pane-dividers` off the two halves render edge-to-edge (no gap
+/// column between them), and the non-focused pane is still visibly dimmed —
+/// dimming is the focus cue, independent of the divider glyph.
+#[test]
+fn vsplit_dividers_off_tiles_edge_to_edge_and_still_dims() {
+    use super::render_snapshot::render_to_styled_string;
+
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.state.settings.pane_dividers = false;
+    ed.execute_typed("vsplit", None).unwrap();
+
+    let rect = ratatui::layout::Rect::new(0, 0, 20, 4);
+    insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
 }

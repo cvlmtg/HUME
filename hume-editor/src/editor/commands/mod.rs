@@ -432,6 +432,17 @@ pub(super) fn open_pane(
     pid
 }
 
+/// Remove every per-pane state map entry for `pid` (`panes`, per-buffer
+/// state, transient state, jump list) — the inverse of `open_pane`'s
+/// seeding. Shared by `close_focused_pane` and `split_pane_onto`'s
+/// failure-rollback path.
+fn drop_pane_state(state: &mut EditorState, view: &mut EngineView, pid: PaneId) {
+    view.panes.remove(pid);
+    state.panes.state.remove(pid);
+    state.panes.transient.remove(pid);
+    state.panes.jumps.remove(pid);
+}
+
 /// Close the focused pane: prune it from the layout tree, move focus to the
 /// promoted sibling, and drop all its per-pane state.
 ///
@@ -444,10 +455,7 @@ pub(super) fn close_focused_pane(state: &mut EditorState, view: &mut EngineView)
         .remove_leaf(old)
         .expect("close_focused_pane requires more than one pane");
     state.focused_pane_id = survivor;
-    view.panes.remove(old);
-    state.panes.state.remove(old);
-    state.panes.transient.remove(old);
-    state.panes.jumps.remove(old);
+    drop_pane_state(state, view, old);
 }
 
 /// Status message reported when a split is rejected for being too small.
@@ -467,16 +475,17 @@ const MIN_PANE_WIDTH: u16 = 10;
 /// split on `direction`, including the 1-cell seam divider drawn between the
 /// two resulting panes (see `hume_engine::pipeline::split_rect`).
 ///
-/// Reads the rect cache populated by the last `prepare_frame`. If no cache
-/// exists yet (e.g. the very first frame, before any render has run), there
-/// is no geometry to check against — allow the split; `prepare_frame` sizes
-/// it correctly on the next frame regardless.
+/// Recomputes geometry from `view.last_pane_area` on every call (see
+/// `EngineView::pane_rect`) rather than trusting a cross-frame cache, so a
+/// split issued right after a close/split earlier in the same replay batch
+/// always sees current geometry. Before the first `prepare_frame` there is
+/// no real terminal area yet — allow the split; `prepare_frame` sizes it
+/// correctly on the next frame regardless.
 pub(super) fn fits_split(state: &EditorState, view: &EngineView, direction: Direction) -> bool {
-    let Some(&(_, rect)) = view
-        .pane_rects
-        .iter()
-        .find(|(pid, _)| *pid == state.focused_pane_id)
-    else {
+    if view.last_pane_area.area() == 0 {
+        return true;
+    }
+    let Some(rect) = view.pane_rect(state.focused_pane_id) else {
         return true;
     };
     match direction {
@@ -504,12 +513,32 @@ pub(super) fn split_pane_onto(
         return Ok(());
     }
     let old_focused = state.focused_pane_id;
+    let old_buffer_id = view.panes[old_focused].buffer_id;
     let new_pid = open_pane(state, view, bid);
+
     let found = view.layout.split_leaf(old_focused, new_pid, direction, 0.5);
-    debug_assert!(
-        found,
-        "focused pane {old_focused:?} absent from layout tree"
-    );
+    if !found {
+        // `open_pane` already inserted `new_pid`'s state before the layout
+        // mutation could fail — undo it rather than leaving an orphaned pane
+        // with no layout leaf, which would later violate `close_focused_pane`'s
+        // precondition on `remove_leaf`.
+        drop_pane_state(state, view, new_pid);
+        return Err(CommandError::new(format!(
+            "internal error: split target {old_focused:?} missing from pane layout"
+        )));
+    }
+
+    // A bare split (same buffer as the source pane) inherits its cursor and
+    // scroll position — `open_pane` seeds fresh state at the buffer's initial
+    // selection, which would otherwise jump the new pane to the top of the
+    // file regardless of where the source pane was scrolled to. `:split
+    // <path>` (a different buffer) intentionally starts fresh.
+    if bid == old_buffer_id {
+        let selections = state.panes.state[old_focused][bid].selections.clone();
+        state.panes.state[new_pid][bid].selections = selections;
+        view.panes[new_pid].viewport = view.panes[old_focused].viewport.clone();
+    }
+
     // `open_pane` already seeded every per-pane map for `new_pid`, so a direct
     // assignment is complete. Do NOT route through `switch_focused_pane`: its
     // Normal-mode debug_assert would fire when called from the typed
