@@ -552,18 +552,68 @@ fn open_extra_files_nonexistent_logs_warning() {
     let mut ed = Editor::open(Some(canonical.clone())).unwrap();
     let nonexistent = std::path::PathBuf::from("/tmp/hume_test_nonexistent_xyz_404.txt");
 
-    ed.open_extra_files(&[nonexistent]);
+    ed.open_extra_files(std::slice::from_ref(&nonexistent));
 
     assert_eq!(
         ed.state.buffers.len(),
         1,
         "failed open must not add a buffer"
     );
+    // Full path, not just the basename: a message that dropped the directory
+    // (or substituted some other representation ending in the same filename)
+    // would still satisfy a basename-only `contains` check.
     assert!(
         ed.state.message_log.entries().any(|e| {
             e.severity == crate::editor::message_log::Severity::Warning
-                && e.text.contains("hume_test_nonexistent_xyz_404.txt")
+                && e.text
+                    .starts_with(&format!("Failed to open {}: ", nonexistent.display()))
         }),
-        "a warning must be logged for the missing file"
+        "a warning must be logged for the missing file, with its full path"
+    );
+}
+
+/// `open_extra_files`'s warning must echo the `PathBuf` it was given verbatim
+/// (`path.display()` in `open_extra_files`, not anything derived from the
+/// internal `expand()`/canonicalize sequence `resolve_open_path` runs).
+///
+/// A tilde-literal input is required to prove this: `expand()` is a no-op on
+/// inputs with no `~`/env-var sigil, so a plain absolute path (as in
+/// `open_extra_files_nonexistent_logs_warning` above) can't tell "warns with
+/// the raw arg" apart from "warns with an internally-expanded/resolved
+/// path" — both would render identically for such input.
+#[test]
+#[cfg(not(windows))]
+fn open_extra_files_warns_with_untransformed_path() {
+    let f1 = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(f1.path(), "hello\n").unwrap();
+    let canonical = std::fs::canonicalize(f1.path()).unwrap();
+    let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
+
+    let mut ed = Editor::open(Some(canonical)).unwrap();
+    // Bypass shell tilde expansion by constructing the PathBuf directly —
+    // exercises callers (e.g. Steel scripting) that may pass a literal `~`.
+    let tilde_path = std::path::PathBuf::from("~/hume-test-no-such-file-xyz.txt");
+
+    ed.open_extra_files(&[tilde_path]);
+
+    assert!(
+        ed.state.message_log.entries().any(|e| {
+            e.severity == crate::editor::message_log::Severity::Warning
+                && e.text
+                    .starts_with("Failed to open ~/hume-test-no-such-file-xyz.txt: ")
+        }),
+        "warning must echo the raw tilde path, not its expanded $HOME form, got: {:?}",
+        ed.state
+            .message_log
+            .entries()
+            .map(|e| e.text.clone())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .all(|e| !e.text.contains(&home.to_string_lossy().to_string())),
+        "warning must not leak the expanded $HOME path"
     );
 }

@@ -34,10 +34,10 @@ pub fn typed_edit(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(),
         let path = Path::new(expanded.as_ref());
         let display = hume_platform::path::absolute_unresolved(path, &ed.state.cwd);
         let canonical = hume_platform::fs::canonicalize(path)
-            .map_err(|e| CommandError::new(format!("{}: {e}", path.display())))?;
+            .map_err(|e| CommandError::new(format!("{path_str}: {e}")))?;
         let (bid, is_new) = ed
             .open_or_dedup(&canonical)
-            .map_err(|e| CommandError::new(format!("{}: {e}", path.display())))?;
+            .map_err(|e| CommandError::new(format!("{path_str}: {e}")))?;
         if is_new {
             let name = canonical
                 .file_name()

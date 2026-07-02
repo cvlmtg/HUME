@@ -558,6 +558,60 @@ fn vsplit_path_opens_that_buffer() {
     }
 }
 
+/// `:split <missing-path>` reports the path exactly as the user typed it, not
+/// its tilde-expanded form — a symlinked or relative path resolved to an
+/// unrecognizable absolute path would otherwise make the error more
+/// confusing, not less.
+///
+/// Uses a `~`-prefixed path rather than a plain relative one: `expand()` is a
+/// no-op on inputs with no `~`/env-var sigil, so a plain relative path (e.g.
+/// `./foo.txt`) round-trips identically through both "show what was typed"
+/// and "show the expanded-but-unresolved path" — it can't tell the two
+/// implementations apart. Only an input `expand()` actually rewrites, like
+/// `~/...`, can prove which one the error message is built from.
+#[test]
+#[cfg(not(windows))]
+fn split_missing_file_error_shows_raw_typed_path() {
+    let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
+    let mut ed = editor_from("-[h]>ello\n");
+    let err = ed
+        .execute_typed("split", Some("~/no-such-file-xyz.txt"))
+        .unwrap_err();
+    assert!(
+        err.message().starts_with("~/no-such-file-xyz.txt: "),
+        "error must lead with the raw typed path, got: {}",
+        err.message()
+    );
+    assert!(
+        !err.message().contains(&home.to_string_lossy().to_string()),
+        "error must not leak the expanded $HOME path, got: {}",
+        err.message()
+    );
+}
+
+/// Same guarantee as `split_missing_file_error_shows_raw_typed_path`, for
+/// `:vsplit`. Both commands share `open_path_arg`, but each has its own
+/// dispatch entry point (`typed_split`/`typed_vsplit`), so both are covered.
+#[test]
+#[cfg(not(windows))]
+fn vsplit_missing_file_error_shows_raw_typed_path() {
+    let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
+    let mut ed = editor_from("-[h]>ello\n");
+    let err = ed
+        .execute_typed("vsplit", Some("~/no-such-file-xyz.txt"))
+        .unwrap_err();
+    assert!(
+        err.message().starts_with("~/no-such-file-xyz.txt: "),
+        "error must lead with the raw typed path, got: {}",
+        err.message()
+    );
+    assert!(
+        !err.message().contains(&home.to_string_lossy().to_string()),
+        "error must not leak the expanded $HOME path, got: {}",
+        err.message()
+    );
+}
+
 /// End-to-end regression guard: `:split` typed through the real command-mode
 /// dispatch path (`Mode::Command`, not `Mode::Normal`) must still move focus
 /// to the new pane. `execute_typed`-based tests above run with the editor
