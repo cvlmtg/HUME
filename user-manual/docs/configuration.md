@@ -61,6 +61,18 @@ Or set the global default from `init.scm`:
 (set-option! "tab-width" 2)
 ```
 
+## Themes
+
+```scheme
+(set-option! "theme" "ember")
+```
+
+To see which themes are available, type `:theme ` and press `Tab`.
+
+Custom themes are TOML files placed in the `themes/` subdirectory of your HUME config directory.
+
+HUME ships a theme editor — a single-file HTML tool you can open in a browser to edit themes visually and export them as TOML. You can download it from https://github.com/cvlmtg/HUME/blob/main/tools/theme-editor/index.html
+
 ## Key bindings
 
 ```scheme
@@ -122,16 +134,6 @@ Available elements:
 | `"MacroRecording"` | Macro recording indicator |
 | `"Language"` | Buffer language |
 | `"ReadOnly"` | `[RO]` indicator |
-
-## Themes
-
-```scheme
-(set-option! "theme" "ember")
-```
-
-Built-in themes: `dark`, `light`, `ember`, `gruvbox`.
-
-Custom themes are TOML files placed in the `themes/` subdirectory of your HUME config directory.
 
 ## Language detection
 
