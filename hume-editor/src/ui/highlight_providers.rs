@@ -11,11 +11,7 @@
 
 use std::sync::{Arc, RwLock};
 
-use hume_engine::builtins::line_number::{
-    LineNumberColumn, LineNumberStyle as EngineLineNumberStyle,
-};
-use hume_engine::providers::{HighlightSource, HighlightTier, ProviderSet, SourceContext};
-use hume_engine::theme::ScopeRegistry;
+use hume_engine::providers::{HighlightSource, HighlightTier, SourceContext};
 use hume_engine::types::ScopeId;
 
 /// Shared per-frame highlight data: `(line_idx, byte_start, byte_end)` triples,
@@ -56,40 +52,4 @@ impl HighlightSource for SharedHighlighter {
             out.push((byte_start, byte_end, self.scope));
         }
     }
-}
-
-/// Build the provider set every pane gets: a hybrid line-number gutter, the
-/// bracket-match / search-match highlight sources, and the completion popup
-/// overlay.
-///
-/// Shared by the initial pane (`Editor::open`) and every split-created pane
-/// (`commands::open_pane`) so all panes render identically — a pane built with
-/// `Pane::new` alone has an empty `ProviderSet` (no gutter column at all).
-pub(crate) fn build_pane_providers(
-    registry: &mut ScopeRegistry,
-    bracket_hl_data: &HighlightRanges,
-    search_hl_data: &HighlightRanges,
-    completion_view: &Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>>,
-) -> ProviderSet {
-    let bracket_scope = registry.intern("ui.cursor.match");
-    let search_scope = registry.intern("ui.selection.search");
-
-    let mut providers = ProviderSet::new();
-    providers.add_gutter_column(Box::new(LineNumberColumn::with_style(
-        EngineLineNumberStyle::Hybrid,
-    )));
-    providers.add_highlight_source(Box::new(SharedHighlighter {
-        scope: bracket_scope,
-        tier: HighlightTier::BracketMatch,
-        data: Arc::clone(bracket_hl_data),
-    }));
-    providers.add_highlight_source(Box::new(SharedHighlighter {
-        scope: search_scope,
-        tier: HighlightTier::SearchMatch,
-        data: Arc::clone(search_hl_data),
-    }));
-    providers.add_overlay(Box::new(crate::ui::completion_overlay::CompletionOverlay {
-        data: Arc::clone(completion_view),
-    }));
-    providers
 }

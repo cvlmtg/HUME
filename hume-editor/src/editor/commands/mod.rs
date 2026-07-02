@@ -18,7 +18,6 @@ pub(super) const DEFAULT_THEME_LABEL: &str = "default (built-in)";
 use std::borrow::Cow;
 
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_engine::pane::Pane;
 use hume_engine::pipeline::{BufferId, Direction, EngineView, PaneId};
 use slotmap::SecondaryMap;
 
@@ -409,18 +408,15 @@ pub(super) fn open_pane(
     buffer_id: BufferId,
 ) -> PaneId {
     // Every pane gets the same providers (gutter + bracket/search highlight +
-    // completion overlay) as the initial pane — see `build_pane_providers`.
-    let providers = crate::ui::highlight_providers::build_pane_providers(
+    // completion overlay) as the initial pane — see `build_pane`.
+    let pane = crate::ui::build_pane(
         &mut view.registry,
         &state.bracket_hl_data,
         &state.search_hl_data,
         &state.completion_view,
+        state.settings.wrap_mode,
+        buffer_id,
     );
-    let pane = Pane {
-        providers,
-        wrap_mode: state.settings.wrap_mode,
-        ..Pane::new(buffer_id)
-    };
     let pid = view.panes.insert(pane);
     state.panes.state.insert(pid, SecondaryMap::new());
     super::pane_state::ensure(&mut state.panes.state, &state.buffers, pid, buffer_id);

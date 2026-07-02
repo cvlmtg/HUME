@@ -61,7 +61,7 @@ impl Editor {
         use crate::editor::pane_state::{PaneBufferState, PaneTransient, PaneView};
         use crate::ops::register::{KillRing, RegisterSet};
         use crate::settings::EditorSettings;
-        use crate::ui::highlight_providers::build_pane_providers;
+        use crate::ui::build_pane;
         use hume_editing::selection::{Selection, SelectionSet};
         use hume_editing::text::Text;
         use hume_engine::pipeline::{LayoutTree, SharedBuffer};
@@ -88,7 +88,7 @@ impl Editor {
         let mut engine_view = EngineView::new(theme);
 
         // Shared highlight/completion data, written once per frame and read by
-        // every pane's providers (see `build_pane_providers`).
+        // every pane's providers (see `build_pane`).
         let bracket_hl_data: crate::ui::highlight_providers::HighlightRanges =
             Arc::new(RwLock::new(Vec::new()));
         let search_hl_data: crate::ui::highlight_providers::HighlightRanges =
@@ -99,22 +99,18 @@ impl Editor {
         // Insert a buffer — just metadata; the rope is passed at render time.
         let buffer_id = engine_view.buffers.insert(SharedBuffer::new());
 
-        // Build the initial pane. Every later split-created pane gets the same
-        // provider set via `commands::open_pane` calling `build_pane_providers`.
-        let providers = build_pane_providers(
+        let settings = EditorSettings::default();
+
+        // Build the initial pane. Every later split-created pane goes through
+        // the same `build_pane` (see `commands::open_pane`).
+        let pane = build_pane(
             &mut engine_view.registry,
             &bracket_hl_data,
             &search_hl_data,
             &completion_view,
+            settings.wrap_mode,
+            buffer_id,
         );
-
-        let settings = EditorSettings::default();
-
-        let pane = hume_engine::pane::Pane {
-            providers,
-            wrap_mode: settings.wrap_mode,
-            ..hume_engine::pane::Pane::new(buffer_id)
-        };
         let pane_id = engine_view.panes.insert(pane);
         engine_view.layout = LayoutTree::Leaf(pane_id);
 
@@ -422,8 +418,7 @@ impl Editor {
         let doc = self.state.buffers.get(pane.buffer_id);
         let len_lines = doc.text().len_lines();
         let gutter_w = super::cursor::gutter_width(pane.providers.gutter_columns(), len_lines);
-        let content_width = pane.viewport.width.saturating_sub(gutter_w).max(1);
-        let wrap_mode = pane.wrap_mode.resolve(content_width);
+        let wrap_mode = pane.wrap_mode.resolve(pane.content_width(len_lines));
         let tab_width = doc.overrides.tab_width(&self.state.settings);
         let whitespace = doc.overrides.whitespace(&self.state.settings);
         let mode = if pid == self.state.focused_pane_id {

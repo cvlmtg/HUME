@@ -503,6 +503,48 @@ blue = "#0000ff"
         assert_eq!(cm.fg, Some(Color::Rgb(0, 0, 0xff)));
     }
 
+    // ── `ui.text` → `default` fold ────────────────────────────────────────────
+
+    #[test]
+    fn ui_text_folds_into_default() {
+        let theme = parse_theme(r##""ui.text" = { fg = "#d0d0d0" }"##).unwrap();
+        assert_eq!(theme.default.fg, Some(Color::Rgb(0xd0, 0xd0, 0xd0)));
+    }
+
+    #[test]
+    fn inherits_child_overrides_parent_ui_text_default() {
+        let dir = TempDir::new().unwrap();
+        write_theme(dir.path(), "base3", r##""ui.text" = { fg = "#111111" }"##);
+        write_theme(
+            dir.path(),
+            "child3",
+            r##"
+inherits = "base3"
+"ui.text" = { fg = "#222222" }
+"##,
+        );
+
+        let theme = load_theme("child3", &paths(dir.path())).unwrap();
+
+        // Child's own `ui.text` re-folds on top of the parent's — last-wins,
+        // not a stale copy of the parent's default.
+        assert_eq!(theme.default.fg, Some(Color::Rgb(0x22, 0x22, 0x22)));
+    }
+
+    #[test]
+    fn inherits_child_without_ui_text_keeps_parent_default() {
+        let dir = TempDir::new().unwrap();
+        write_theme(dir.path(), "base4", r##""ui.text" = { fg = "#111111" }"##);
+        write_theme(dir.path(), "child4", r#"inherits = "base4""#);
+
+        let theme = load_theme("child4", &paths(dir.path())).unwrap();
+
+        // Child defines no `ui.text` of its own — the parent's already-folded
+        // `default` passes through unchanged (re-folding is a no-op here since
+        // the child's `scopes` map has no "ui.text" entry to layer again).
+        assert_eq!(theme.default.fg, Some(Color::Rgb(0x11, 0x11, 0x11)));
+    }
+
     // ── Cycle detection ───────────────────────────────────────────────────────
 
     #[test]

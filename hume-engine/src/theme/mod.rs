@@ -467,6 +467,44 @@ mod tests {
         assert_eq!(theme.ui.cursorline.bg, Some(Color::Blue));
     }
 
+    #[test]
+    fn window_focused_falls_back_to_window_when_unset() {
+        let mut styles = HashMap::new();
+        styles.insert(
+            "ui.window",
+            ResolvedStyle {
+                fg: Some(Color::Rgb(0x80, 0x80, 0x80)),
+                ..Default::default()
+            },
+        );
+        // No "ui.window.focused" entry — dot-notation must fall back to "ui.window".
+        let theme = Theme::new(styles, ResolvedStyle::default());
+        assert_eq!(theme.ui.window_focused.fg, Some(Color::Rgb(0x80, 0x80, 0x80)));
+        assert_eq!(theme.ui.window_focused, theme.ui.window);
+    }
+
+    #[test]
+    fn window_focused_uses_its_own_entry_when_set() {
+        let mut styles = HashMap::new();
+        styles.insert(
+            "ui.window",
+            ResolvedStyle {
+                fg: Some(Color::Rgb(0x80, 0x80, 0x80)),
+                ..Default::default()
+            },
+        );
+        styles.insert(
+            "ui.window.focused",
+            ResolvedStyle {
+                fg: Some(Color::Rgb(0xff, 0x80, 0x00)),
+                ..Default::default()
+            },
+        );
+        let theme = Theme::new(styles, ResolvedStyle::default());
+        assert_eq!(theme.ui.window_focused.fg, Some(Color::Rgb(0xff, 0x80, 0x00)));
+        assert_ne!(theme.ui.window_focused, theme.ui.window);
+    }
+
     // ── ScopeRegistry ────────────────────────────────────────────────────
 
     #[test]
