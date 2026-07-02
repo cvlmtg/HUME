@@ -351,21 +351,43 @@ fn split_rect(
     }
 }
 
-/// Whether `seam` sits on the boundary of `pane_rect` — used to pick the
-/// focused-accent vs. muted seam color. A seam "touches" a rect if it's
-/// immediately adjacent on the perpendicular axis and their spans on the
-/// parallel axis overlap. Works for both seam orientations without needing
-/// `Seam::direction`: a width-split seam has `width == 1` (checked by the
-/// horizontal-adjacency arm), a height-split seam has `height == 1` (checked
-/// by the vertical-adjacency arm).
-fn seam_touches_rect(seam: ratatui::layout::Rect, pane: ratatui::layout::Rect) -> bool {
-    let touches_horizontally = (seam.x == pane.x + pane.width || seam.x + seam.width == pane.x)
-        && seam.y < pane.y + pane.height
-        && pane.y < seam.y + seam.height;
-    let touches_vertically = (seam.y == pane.y + pane.height || seam.y + seam.height == pane.y)
-        && seam.x < pane.x + pane.width
-        && pane.x < seam.x + seam.width;
-    touches_horizontally || touches_vertically
+/// The slice of `seam` that should render with the focused-accent color when
+/// `pane` is focused: the seam is immediately adjacent on the perpendicular
+/// axis, and the returned rect is the overlap of their spans on the parallel
+/// axis. `None` when not adjacent or the spans don't overlap. A seam shared by
+/// several sibling panes (e.g. one pane stacked over two side-by-side panes)
+/// lights up only above/beside the focused sibling, not the whole seam. Works
+/// for both seam orientations without needing `Seam::direction`: a
+/// width-split seam has `width == 1` (checked by the vertical-adjacency arm),
+/// a height-split seam has `height == 1` (checked by the horizontal-adjacency
+/// arm).
+fn focused_seam_segment(
+    seam: ratatui::layout::Rect,
+    pane: ratatui::layout::Rect,
+) -> Option<ratatui::layout::Rect> {
+    if seam.x == pane.x + pane.width || seam.x + seam.width == pane.x {
+        let y0 = seam.y.max(pane.y);
+        let y1 = (seam.y + seam.height).min(pane.y + pane.height);
+        if y0 < y1 {
+            return Some(ratatui::layout::Rect {
+                y: y0,
+                height: y1 - y0,
+                ..seam
+            });
+        }
+    }
+    if seam.y == pane.y + pane.height || seam.y + seam.height == pane.y {
+        let x0 = seam.x.max(pane.x);
+        let x1 = (seam.x + seam.width).min(pane.x + pane.width);
+        if x0 < x1 {
+            return Some(ratatui::layout::Rect {
+                x: x0,
+                width: x1 - x0,
+                ..seam
+            });
+        }
+    }
+    None
 }
 
 // ---------------------------------------------------------------------------
@@ -538,19 +560,26 @@ impl EngineView {
             ctx.seams.clear();
             self.layout.collect_seams_into(pane_area, &mut ctx.seams);
             for seam in &ctx.seams {
-                let is_focused = focused_rect.is_some_and(|fr| seam_touches_rect(seam.rect, fr));
-                let win_style = if is_focused {
-                    self.theme.ui.window_focused
-                } else {
-                    self.theme.ui.window
-                };
-                let style: ratatui::style::Style = self.theme.ui.background.layer(win_style).into();
                 let glyph = if seam.direction == Direction::Horizontal {
                     "│"
                 } else {
                     "─"
                 };
-                crate::render::draw_glyph_rect(buf, seam.rect, glyph, style);
+                let muted: ratatui::style::Style =
+                    self.theme.ui.background.layer(self.theme.ui.window).into();
+                crate::render::draw_glyph_rect(buf, seam.rect, glyph, muted);
+
+                if let Some(fr) = focused_rect
+                    && let Some(sub) = focused_seam_segment(seam.rect, fr)
+                {
+                    let accent: ratatui::style::Style = self
+                        .theme
+                        .ui
+                        .background
+                        .layer(self.theme.ui.window_focused)
+                        .into();
+                    crate::render::draw_glyph_rect(buf, sub, glyph, accent);
+                }
             }
         }
 
@@ -1175,32 +1204,66 @@ mod tests {
     }
 
     #[test]
-    fn seam_touches_rect_detects_horizontal_adjacency() {
+    fn focused_seam_segment_full_overlap_horizontal_adjacency() {
         // Two panes side by side with a 1-col seam between them at x=49.
+        // Each pane spans the seam's full height, so the highlighted segment
+        // is the whole seam.
         let seam = rect(49, 0, 1, 50);
         let left_pane = rect(0, 0, 49, 50);
         let right_pane = rect(50, 0, 50, 50);
-        assert!(seam_touches_rect(seam, left_pane));
-        assert!(seam_touches_rect(seam, right_pane));
+        assert_eq!(focused_seam_segment(seam, left_pane), Some(seam));
+        assert_eq!(focused_seam_segment(seam, right_pane), Some(seam));
     }
 
     #[test]
-    fn seam_touches_rect_detects_vertical_adjacency() {
-        // Two panes stacked with a 1-row seam between them at y=24.
+    fn focused_seam_segment_full_overlap_vertical_adjacency() {
+        // Two panes stacked with a 1-row seam between them at y=24. Each
+        // pane spans the seam's full width, so the highlighted segment is
+        // the whole seam.
         let seam = rect(0, 24, 100, 1);
         let top_pane = rect(0, 0, 100, 24);
         let bottom_pane = rect(0, 25, 100, 25);
-        assert!(seam_touches_rect(seam, top_pane));
-        assert!(seam_touches_rect(seam, bottom_pane));
+        assert_eq!(focused_seam_segment(seam, top_pane), Some(seam));
+        assert_eq!(focused_seam_segment(seam, bottom_pane), Some(seam));
     }
 
     #[test]
-    fn seam_touches_rect_false_for_non_adjacent_pane() {
+    fn focused_seam_segment_none_for_non_adjacent_pane() {
         // A 3-pane row: a | seam | b | seam | c. The first seam does not
         // touch the third pane.
         let first_seam = rect(32, 0, 1, 50);
         let pane_c = rect(66, 0, 34, 50);
-        assert!(!seam_touches_rect(first_seam, pane_c));
+        assert_eq!(focused_seam_segment(first_seam, pane_c), None);
+    }
+
+    #[test]
+    fn focused_seam_segment_partial_for_shared_seam() {
+        // A over B|C: A spans the full width; the horizontal seam below A
+        // is shared by B (left half) and C (right half). Focusing B or C
+        // should only highlight the half of the seam above that pane, not
+        // the whole seam — this is the bug this function fixes.
+        let seam = rect(0, 24, 100, 1);
+        let pane_b = rect(0, 25, 50, 25);
+        let pane_c = rect(50, 25, 50, 25);
+        assert_eq!(
+            focused_seam_segment(seam, pane_b),
+            Some(rect(0, 24, 50, 1)),
+            "focusing B highlights only the left half of the shared seam"
+        );
+        assert_eq!(
+            focused_seam_segment(seam, pane_c),
+            Some(rect(50, 24, 50, 1)),
+            "focusing C highlights only the right half of the shared seam"
+        );
+    }
+
+    #[test]
+    fn focused_seam_segment_full_for_full_width_pane_above_shared_seam() {
+        // Same seam as above, but focusing A (the full-width pane on the
+        // other side) still highlights the entire seam.
+        let seam = rect(0, 24, 100, 1);
+        let pane_a = rect(0, 0, 100, 24);
+        assert_eq!(focused_seam_segment(seam, pane_a), Some(seam));
     }
 
     /// `PaneId::default()` is the slotmap null key — every default is equal,
