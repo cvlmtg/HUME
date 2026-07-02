@@ -47,8 +47,7 @@ pub fn run_keys(
     // this since the dispatcher strips the Ctrl modifier only when
     // kitty_enabled is true (see handle_normal). The kitty-only default
     // binds are also installed to match interactive kitty.
-    editor.kitty_enabled = true;
-    editor.enable_kitty_keybinds();
+    editor.set_kitty_support(true);
     // The pane viewport defaults to 80×24 (from Pane::new) and is never
     // updated without a terminal, so scores are reproducible.
 
@@ -91,13 +90,7 @@ pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error
         editor.state.settings.mouse_enabled,
         editor.state.settings.mouse_select,
     )?;
-    editor.kitty_enabled = kitty_enabled;
-    // Kitty-only default keybinds are omitted from Keymap::default() since
-    // legacy terminals never deliver them; add them now that the probe has
-    // confirmed kitty support.
-    if kitty_enabled {
-        editor.enable_kitty_keybinds();
-    }
+    editor.set_kitty_support(kitty_enabled);
     // Paint the buffer with default settings immediately so the user sees the
     // editor chrome while Steel initialises, rather than a blank alt-screen.
     editor.draw_once(&mut term)?;
