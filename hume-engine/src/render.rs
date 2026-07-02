@@ -106,9 +106,21 @@ pub(crate) fn compose_row(
 
     match row.kind {
         RowKind::Filler => {
-            set_cell(buf, content_x_origin, y, "~", blend_style(compose_ctx.tilde_style, compose_ctx.dim));
+            set_cell(
+                buf,
+                content_x_origin,
+                y,
+                "~",
+                blend_style(compose_ctx.tilde_style, compose_ctx.dim),
+            );
             match compose_ctx.pane_bg {
-                Some(bg) => fill_row_bg(buf, content_x_origin + 1, right_edge, y, blend_color(bg, compose_ctx.dim)),
+                Some(bg) => fill_row_bg(
+                    buf,
+                    content_x_origin + 1,
+                    right_edge,
+                    y,
+                    blend_color(bg, compose_ctx.dim),
+                ),
                 None => clear_row_span(buf, content_x_origin + 1, right_edge, y),
             }
         }
@@ -116,7 +128,13 @@ pub(crate) fn compose_row(
             // Fill trailing cells with row bg (cursorline) or pane bg, so the theme
             // background shows past the last grapheme rather than the terminal default.
             match row_bg.or(compose_ctx.pane_bg) {
-                Some(bg) => fill_row_bg(buf, content_x_origin, right_edge, y, blend_color(bg, compose_ctx.dim)),
+                Some(bg) => fill_row_bg(
+                    buf,
+                    content_x_origin,
+                    right_edge,
+                    y,
+                    blend_color(bg, compose_ctx.dim),
+                ),
                 None => clear_row_span(buf, content_x_origin, right_edge, y),
             }
 
@@ -197,7 +215,13 @@ pub(crate) fn compose_row(
                 let visible_col = guide_col.saturating_sub(h_offset);
                 let screen_x = content_x_origin + visible_col;
                 if screen_x < right_edge {
-                    set_cell(buf, screen_x, y, "│", blend_style(compose_ctx.indent_guide_style, compose_ctx.dim));
+                    set_cell(
+                        buf,
+                        screen_x,
+                        y,
+                        "│",
+                        blend_style(compose_ctx.indent_guide_style, compose_ctx.dim),
+                    );
                 }
             }
         }
@@ -313,11 +337,23 @@ pub(crate) fn render_tilde_fillers(
         let y = compose_ctx.pane_rect.y + screen_row;
         let right_edge = compose_ctx.pane_rect.x + compose_ctx.pane_rect.width;
         match compose_ctx.pane_bg {
-            Some(bg) => fill_row_bg(buf, compose_ctx.pane_rect.x, right_edge, y, blend_color(bg, compose_ctx.dim)),
+            Some(bg) => fill_row_bg(
+                buf,
+                compose_ctx.pane_rect.x,
+                right_edge,
+                y,
+                blend_color(bg, compose_ctx.dim),
+            ),
             None => clear_row_span(buf, compose_ctx.pane_rect.x, right_edge, y),
         }
         let content_x = compose_ctx.pane_rect.x + compose_ctx.visible.gutter_width;
-        set_cell(buf, content_x, y, "~", blend_style(compose_ctx.tilde_style, compose_ctx.dim));
+        set_cell(
+            buf,
+            content_x,
+            y,
+            "~",
+            blend_style(compose_ctx.tilde_style, compose_ctx.dim),
+        );
         screen_row += 1;
     }
 }
