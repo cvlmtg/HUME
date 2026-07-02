@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use slotmap::{SlotMap, new_key_type};
 
 use crate::builtins::tree_sitter_hl::TreeSitterHighlighter;
@@ -124,6 +126,10 @@ pub struct RenderContext {
     /// Seam dividers computed alongside `pane_rects` each render — reused
     /// scratch storage, same rationale as `pane_rects`.
     pub(crate) seams: Vec<Seam>,
+    /// Perpendicular-arm bits keyed by cell, computed from `seams` each
+    /// render so junction glyphs (`┬ ┴ ├ ┤ ┼`) can be drawn where seams
+    /// cross. Reused scratch storage, same rationale as `seams`.
+    pub(crate) seam_arms: HashMap<(u16, u16), u8>,
     /// Scratch for cursor-position computation (`cursor::screen_pos` and scroll).
     /// Distinct from `frame.format` — used outside the render pipeline, where
     /// borrowing `frame` simultaneously would conflict.
@@ -136,6 +142,7 @@ impl RenderContext {
             frame: FrameScratch::new(),
             pane_rects: Vec::new(),
             seams: Vec::new(),
+            seam_arms: HashMap::new(),
             cursor_format: FormatScratch::new(),
         }
     }
@@ -307,6 +314,78 @@ impl LayoutTree {
                         .remove_leaf(target)
                         .or_else(|| children.1.remove_leaf(target))
                 }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Seam junction glyphs
+// ---------------------------------------------------------------------------
+//
+// Where a horizontal seam meets a vertical seam, the crossing cell needs a
+// junction glyph (`┬ ┴ ├ ┤ ┼`) instead of a plain `│`/`─`. Connectivity at a
+// cell is a 4-bit compass mask; `junction_glyph` resolves a mask to a glyph,
+// and `collect_seam_arms` derives the perpendicular bits a seam contributes
+// to its two endpoints.
+//
+// A seam spans the *entire* extent of its split area (see `split_rect`), so
+// along its interior the perpendicular neighbours are always pane cells —
+// never another seam. A crossing can therefore only occur at a seam's two
+// endpoints, where it abuts (T) or is sandwiched by (`┼`) a perpendicular
+// seam. That means junctions are found by inspecting two cells per seam,
+// never by scanning the frame.
+
+const ARM_N: u8 = 0b0001;
+const ARM_E: u8 = 0b0010;
+const ARM_S: u8 = 0b0100;
+const ARM_W: u8 = 0b1000;
+
+/// Resolve a compass-bit mask (`ARM_N | ARM_E | ...`) to the box-drawing
+/// glyph with exactly those arms. Masks with fewer than two bits, or with
+/// only two opposite bits, fall back to a straight line — this keeps the
+/// function a total resolver even though seam geometry only ever produces
+/// `│ ─ ├ ┤ ┬ ┴ ┼`.
+fn junction_glyph(mask: u8) -> &'static str {
+    match mask {
+        m if m == ARM_N | ARM_E | ARM_S | ARM_W => "┼",
+        m if m == ARM_E | ARM_S | ARM_W => "┬",
+        m if m == ARM_N | ARM_E | ARM_W => "┴",
+        m if m == ARM_N | ARM_E | ARM_S => "├",
+        m if m == ARM_N | ARM_S | ARM_W => "┤",
+        m if m == ARM_N | ARM_E => "└",
+        m if m == ARM_N | ARM_W => "┘",
+        m if m == ARM_E | ARM_S => "┌",
+        m if m == ARM_S | ARM_W => "┐",
+        m if m & (ARM_E | ARM_W) != 0 && m & (ARM_N | ARM_S) == 0 => "─",
+        _ => "│",
+    }
+}
+
+/// Record the perpendicular arms each seam contributes to its two endpoint
+/// cells into `out` (not cleared — caller must clear first). A seam reserves
+/// its own cell (see `split_rect`), so a perpendicular seam's nearest cell
+/// sits one cell *past* this seam's endpoint — e.g. a vertical seam
+/// starting at row `y` contributes a southward arm to the cell at `y - 1`,
+/// which is where a horizontal seam ending there would actually be drawn.
+fn collect_seam_arms(seams: &[Seam], out: &mut HashMap<(u16, u16), u8>) {
+    for seam in seams {
+        match seam.direction {
+            // `Horizontal` (width split) carves a vertical `│` line.
+            Direction::Horizontal => {
+                let x = seam.rect.x;
+                if seam.rect.y > 0 {
+                    *out.entry((x, seam.rect.y - 1)).or_insert(0) |= ARM_S;
+                }
+                *out.entry((x, seam.rect.y + seam.rect.height)).or_insert(0) |= ARM_N;
+            }
+            // `Vertical` (height split) carves a horizontal `─` line.
+            Direction::Vertical => {
+                let y = seam.rect.y;
+                if seam.rect.x > 0 {
+                    *out.entry((seam.rect.x - 1, y)).or_insert(0) |= ARM_E;
+                }
+                *out.entry((seam.rect.x + seam.rect.width, y)).or_insert(0) |= ARM_W;
             }
         }
     }
@@ -609,26 +688,39 @@ impl EngineView {
                 .map(|(_, r)| *r);
             ctx.seams.clear();
             self.layout.collect_seams_into(pane_area, &mut ctx.seams);
-            for seam in &ctx.seams {
-                let glyph = if seam.direction == Direction::Horizontal {
-                    "│"
-                } else {
-                    "─"
-                };
-                let muted: ratatui::style::Style =
-                    self.theme.ui.background.layer(self.theme.ui.window).into();
-                crate::render::draw_glyph_rect(buf, seam.rect, glyph, muted);
+            ctx.seam_arms.clear();
+            collect_seam_arms(&ctx.seams, &mut ctx.seam_arms);
 
-                if let Some(fr) = focused_rect
-                    && let Some(sub) = focused_seam_segment(seam.rect, fr)
-                {
-                    let accent: ratatui::style::Style = self
-                        .theme
-                        .ui
-                        .background
-                        .layer(self.theme.ui.window_focused)
-                        .into();
-                    crate::render::draw_glyph_rect(buf, sub, glyph, accent);
+            let muted: ratatui::style::Style =
+                self.theme.ui.background.layer(self.theme.ui.window).into();
+            let accent: ratatui::style::Style = self
+                .theme
+                .ui
+                .background
+                .layer(self.theme.ui.window_focused)
+                .into();
+
+            for seam in &ctx.seams {
+                let base = match seam.direction {
+                    Direction::Horizontal => ARM_N | ARM_S,
+                    Direction::Vertical => ARM_E | ARM_W,
+                };
+                // The slice of this seam adjacent to the focused pane — drawn
+                // in the accent color. Computed once per seam so the per-cell
+                // loop below only needs a bounds check, not a repeated call.
+                let accent_rect = focused_rect.and_then(|fr| focused_seam_segment(seam.rect, fr));
+
+                let (x0, y0, x1, y1) = crate::render::clamp_rect_to_buf(buf, seam.rect);
+                for y in y0..y1 {
+                    for x in x0..x1 {
+                        let arms = ctx.seam_arms.get(&(x, y)).copied().unwrap_or(0);
+                        let glyph = junction_glyph(base | arms);
+                        let in_accent = accent_rect.is_some_and(|r| {
+                            x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height
+                        });
+                        let style = if in_accent { accent } else { muted };
+                        buf[(x, y)].set_symbol(glyph).set_style(style);
+                    }
                 }
             }
         }
@@ -1354,6 +1446,136 @@ mod tests {
     fn pane_ids<const N: usize>() -> [PaneId; N] {
         let mut sm: SlotMap<PaneId, ()> = SlotMap::with_key();
         std::array::from_fn(|_| sm.insert(()))
+    }
+
+    // ── junction_glyph ───────────────────────────────────────────────────
+
+    #[test]
+    fn junction_glyph_resolves_every_reachable_mask() {
+        // Expected glyphs derived by hand from the compass-bit meaning of
+        // each mask, independent of `junction_glyph`'s own match arms.
+        assert_eq!(junction_glyph(ARM_N | ARM_S), "│", "vertical line");
+        assert_eq!(junction_glyph(ARM_E | ARM_W), "─", "horizontal line");
+        assert_eq!(
+            junction_glyph(ARM_E | ARM_S | ARM_W),
+            "┬",
+            "horizontal line with a downward stem"
+        );
+        assert_eq!(
+            junction_glyph(ARM_N | ARM_E | ARM_W),
+            "┴",
+            "horizontal line with an upward stem"
+        );
+        assert_eq!(
+            junction_glyph(ARM_N | ARM_E | ARM_S),
+            "├",
+            "vertical line with a rightward stem"
+        );
+        assert_eq!(
+            junction_glyph(ARM_N | ARM_S | ARM_W),
+            "┤",
+            "vertical line with a leftward stem"
+        );
+        assert_eq!(
+            junction_glyph(ARM_N | ARM_E | ARM_S | ARM_W),
+            "┼",
+            "full cross"
+        );
+    }
+
+    // ── collect_seam_arms ────────────────────────────────────────────────
+
+    #[test]
+    fn collect_seam_arms_t_junction() {
+        // A over (B|C): the seam below A meets the seam between B and C in a
+        // T. Root split is vertical (height split, ratio 0.5) over a 100x100
+        // area, landing the horizontal seam at row 49 (see
+        // split_rect_vertical_half); the nested horizontal split of the
+        // 100x50 bottom half lands its vertical seam at column 49 (see
+        // split_rect_horizontal_half applied to a 100-wide area).
+        let [a, b, c] = pane_ids();
+        let tree = LayoutTree::Split {
+            direction: Direction::Vertical,
+            ratio: 0.5,
+            children: Box::new((
+                LayoutTree::Leaf(a),
+                LayoutTree::Split {
+                    direction: Direction::Horizontal,
+                    ratio: 0.5,
+                    children: Box::new((LayoutTree::Leaf(b), LayoutTree::Leaf(c))),
+                },
+            )),
+        };
+        let mut seams = Vec::new();
+        tree.collect_seams_into(rect(0, 0, 100, 100), &mut seams);
+
+        let mut arms = HashMap::new();
+        collect_seam_arms(&seams, &mut arms);
+
+        // The B|C seam starts one row below the A|BC seam, so it contributes
+        // a southward arm to the cell where it meets the horizontal line.
+        assert_eq!(arms.get(&(49, 49)), Some(&ARM_S));
+    }
+
+    #[test]
+    fn collect_seam_arms_cross_junction() {
+        // (A|D) over (B|C), both rows split at the same ratio so their
+        // vertical seams land in the same column (49) — the horizontal seam
+        // between the rows is sandwiched by both, producing a full cross.
+        let [a, b, c, d] = pane_ids();
+        let tree = LayoutTree::Split {
+            direction: Direction::Vertical,
+            ratio: 0.5,
+            children: Box::new((
+                LayoutTree::Split {
+                    direction: Direction::Horizontal,
+                    ratio: 0.5,
+                    children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(d))),
+                },
+                LayoutTree::Split {
+                    direction: Direction::Horizontal,
+                    ratio: 0.5,
+                    children: Box::new((LayoutTree::Leaf(b), LayoutTree::Leaf(c))),
+                },
+            )),
+        };
+        let mut seams = Vec::new();
+        tree.collect_seams_into(rect(0, 0, 100, 100), &mut seams);
+
+        let mut arms = HashMap::new();
+        collect_seam_arms(&seams, &mut arms);
+
+        // The top row's seam ends just above the crossing (northward arm);
+        // the bottom row's seam starts just below it (southward arm).
+        assert_eq!(arms.get(&(49, 49)), Some(&(ARM_N | ARM_S)));
+    }
+
+    #[test]
+    fn junction_glyph_at_t_and_cross_scenarios_matches_collect_seam_arms() {
+        // Integration check bridging the two unit-tested pieces: feed real
+        // arms-map output through `junction_glyph` and confirm the resolved
+        // glyphs match what a human reading the layout would expect.
+        let [a, b, c] = pane_ids();
+        let t_tree = LayoutTree::Split {
+            direction: Direction::Vertical,
+            ratio: 0.5,
+            children: Box::new((
+                LayoutTree::Leaf(a),
+                LayoutTree::Split {
+                    direction: Direction::Horizontal,
+                    ratio: 0.5,
+                    children: Box::new((LayoutTree::Leaf(b), LayoutTree::Leaf(c))),
+                },
+            )),
+        };
+        let mut seams = Vec::new();
+        t_tree.collect_seams_into(rect(0, 0, 100, 100), &mut seams);
+        let mut arms = HashMap::new();
+        collect_seam_arms(&seams, &mut arms);
+        // The A|BC seam is horizontal (Direction::Vertical), base E|W.
+        let base = ARM_E | ARM_W;
+        let mask = base | arms.get(&(49, 49)).copied().unwrap_or(0);
+        assert_eq!(junction_glyph(mask), "┬");
     }
 
     #[test]

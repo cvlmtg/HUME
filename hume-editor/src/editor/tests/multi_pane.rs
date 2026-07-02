@@ -744,6 +744,46 @@ fn vsplit_renders_content_in_both_halves() {
     insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
 }
 
+/// Where a horizontal seam meets a vertical seam, the crossing cell must get
+/// a proper junction glyph (`┬`), not whichever straight glyph drew last.
+/// `:split` stacks A/B, then `:vsplit` on B splits it into B|C — the seam
+/// below A meets the seam between B and C in a T shape.
+#[test]
+fn split_then_vsplit_renders_t_junction_glyph() {
+    use super::render_snapshot::render_to_styled_string;
+
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.execute_typed("split", None).unwrap();
+    ed.execute_typed("vsplit", None).unwrap();
+
+    let rect = ratatui::layout::Rect::new(0, 0, 20, 8);
+    insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
+}
+
+/// A 2×2 grid of panes (both rows split at the same ratio, so their vertical
+/// seams align in the same column) must render a full cross (`┼`) where the
+/// horizontal and vertical seams meet — not two overlapping straight lines.
+/// Same grid shape as `quit_in_grid_promotes_correct_sibling`.
+#[test]
+fn grid_of_four_panes_renders_cross_junction_glyph() {
+    use super::render_snapshot::render_to_styled_string;
+
+    let mut ed = editor_from("-[a]>bc\n");
+    let pid_a = ed.state.focused_pane_id;
+
+    ed.execute_typed("split", None).unwrap(); // A/B stacked.
+    let pid_b = ed.state.focused_pane_id;
+
+    ed.switch_focused_pane(pid_a);
+    ed.execute_typed("vsplit", None).unwrap(); // A/D side by side — top row.
+
+    ed.switch_focused_pane(pid_b);
+    ed.execute_typed("vsplit", None).unwrap(); // B/C side by side — bottom row.
+
+    let rect = ratatui::layout::Rect::new(0, 0, 20, 8);
+    insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
+}
+
 /// Entering Insert mode must hide the fake block cursor only in the focused
 /// pane (which real terminal bar cursor overlays) — not in every pane.
 /// `resolve_pane_settings` (lifecycle.rs) forces a block-cursor mode for

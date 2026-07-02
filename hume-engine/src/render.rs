@@ -385,7 +385,7 @@ fn set_cell(
 /// bounds ready for a `for y in y0..y1 { for x in x0..x1 }` cell loop.
 /// Shared by every rect-filling primitive below so the clip math lives once.
 #[inline]
-fn clamp_rect_to_buf(
+pub(crate) fn clamp_rect_to_buf(
     buf: &ratatui::buffer::Buffer,
     rect: ratatui::layout::Rect,
 ) -> (u16, u16, u16, u16) {
@@ -411,24 +411,6 @@ pub fn fill_rect_bg(
     for y in y0..y1 {
         for x in x0..x1 {
             buf[(x, y)].set_char(' ').set_style(style);
-        }
-    }
-}
-
-/// Write `glyph` into every cell of `rect`, overwriting both symbol and
-/// style. Used for pane-seam dividers (`│`/`─`) — same clamp-then-index
-/// pattern as `fill_rect_bg`, generalised to an arbitrary glyph.
-#[inline]
-pub(crate) fn draw_glyph_rect(
-    buf: &mut ratatui::buffer::Buffer,
-    rect: ratatui::layout::Rect,
-    glyph: &str,
-    style: ratatui::style::Style,
-) {
-    let (x0, y0, x1, y1) = clamp_rect_to_buf(buf, rect);
-    for y in y0..y1 {
-        for x in x0..x1 {
-            buf[(x, y)].set_symbol(glyph).set_style(style);
         }
     }
 }
@@ -1074,52 +1056,6 @@ mod tests {
         // x_start == x_end and x_start > x_end should both be no-ops.
         clear_row_span(&mut buf, 5, 5, 0);
         clear_row_span(&mut buf, 7, 3, 0);
-    }
-
-    // ── draw_glyph_rect ──────────────────────────────────────────────────
-
-    #[test]
-    fn draw_glyph_rect_fills_every_cell() {
-        let mut buf = make_test_buf(5, 3);
-        draw_glyph_rect(
-            &mut buf,
-            ratatui::layout::Rect::new(1, 0, 1, 3),
-            "│",
-            ratatui::style::Style::default(),
-        );
-        for y in 0..3 {
-            assert_eq!(
-                buf.cell(ratatui::layout::Position { x: 1, y })
-                    .unwrap()
-                    .symbol(),
-                "│"
-            );
-        }
-        // Untouched column stays blank (buffer default).
-        assert_ne!(
-            buf.cell(ratatui::layout::Position { x: 0, y: 0 })
-                .unwrap()
-                .symbol(),
-            "│"
-        );
-    }
-
-    #[test]
-    fn draw_glyph_rect_clips_to_buffer_bounds() {
-        let mut buf = make_test_buf(5, 3);
-        // Rect extends past the buffer edge — must clip, not panic.
-        draw_glyph_rect(
-            &mut buf,
-            ratatui::layout::Rect::new(3, 0, 10, 10),
-            "─",
-            ratatui::style::Style::default(),
-        );
-        assert_eq!(
-            buf.cell(ratatui::layout::Position { x: 4, y: 2 })
-                .unwrap()
-                .symbol(),
-            "─"
-        );
     }
 
     // ── fused dim (compose path) ───────────────────────────────────────
