@@ -40,7 +40,22 @@ pub(crate) struct ComposeCtx<'a> {
 /// inline in the single write instead of a separate sweep.
 pub(crate) struct PaneCanvas<'a> {
     buf: &'a mut ratatui::buffer::Buffer,
-    dim: Option<(ratatui::style::Color, f32)>,
+    dim: Option<DimTarget>,
+}
+
+/// Flattened, per-cell-ready form of a `(Color, f32)` dim target.
+///
+/// Resolving `Color::Rgb(..)` out of the enum happens once here, in
+/// `PaneCanvas::new`, rather than on every `blend_color`/`blend_style` call —
+/// `dim` is loop-invariant for the whole pane, so re-matching it per cell
+/// (once per gutter cell, per grapheme, per indent-guide cell) was pure
+/// per-frame overhead.
+#[derive(Clone, Copy)]
+struct DimTarget {
+    r: u8,
+    g: u8,
+    b: u8,
+    factor: f32,
 }
 
 impl<'a> PaneCanvas<'a> {
@@ -48,6 +63,11 @@ impl<'a> PaneCanvas<'a> {
         buf: &'a mut ratatui::buffer::Buffer,
         dim: Option<(ratatui::style::Color, f32)>,
     ) -> Self {
+        // Non-RGB target is a no-op — mirrors the prior `dim_rect` semantics.
+        let dim = dim.and_then(|(color, factor)| match color {
+            ratatui::style::Color::Rgb(r, g, b) => Some(DimTarget { r, g, b, factor }),
+            _ => None,
+        });
         Self { buf, dim }
     }
 
@@ -427,33 +447,26 @@ fn blend_toward(
     Color::Rgb(lerp(r, target.0), lerp(g, target.1), lerp(b, target.2))
 }
 
-/// Blend a single colour toward `dim`'s target, if any. No-op for non-RGB
-/// target — mirrors `dim_rect`'s prior early-return.
+/// Blend a single colour toward `dim`'s target, if any.
 #[inline]
-fn blend_color(
-    color: ratatui::style::Color,
-    dim: Option<(ratatui::style::Color, f32)>,
-) -> ratatui::style::Color {
-    use ratatui::style::Color;
-    let Some((Color::Rgb(tr, tg, tb), factor)) = dim else {
+fn blend_color(color: ratatui::style::Color, dim: Option<DimTarget>) -> ratatui::style::Color {
+    let Some(target) = dim else {
         return color;
     };
-    blend_toward(color, (tr, tg, tb), factor)
+    blend_toward(color, (target.r, target.g, target.b), target.factor)
 }
 
 /// Blend both fg and bg of `style` toward `dim`'s target, if any. `None`
 /// fg/bg are left as-is (no colour to blend).
 #[inline]
-fn blend_style(
-    mut style: ratatui::style::Style,
-    dim: Option<(ratatui::style::Color, f32)>,
-) -> ratatui::style::Style {
-    if dim.is_some() {
+fn blend_style(mut style: ratatui::style::Style, dim: Option<DimTarget>) -> ratatui::style::Style {
+    if let Some(target) = dim {
+        let rgb = (target.r, target.g, target.b);
         if let Some(fg) = style.fg {
-            style = style.fg(blend_color(fg, dim));
+            style = style.fg(blend_toward(fg, rgb, target.factor));
         }
         if let Some(bg) = style.bg {
-            style = style.bg(blend_color(bg, dim));
+            style = style.bg(blend_toward(bg, rgb, target.factor));
         }
     }
     style
