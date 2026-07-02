@@ -56,12 +56,16 @@ impl Editor {
         }
     }
 
-    fn try_open_extra(&mut self, path: &std::path::Path) -> io::Result<()> {
-        let lossy = path.to_string_lossy();
-        let expanded = hume_platform::path::expand(&lossy);
-        let expanded_path = std::path::Path::new(expanded.as_ref());
-        let display = hume_platform::path::absolute_unresolved(expanded_path, &self.state.cwd);
-        let canonical = hume_platform::fs::canonicalize(expanded_path)?;
+    /// Resolve a path argument to an open buffer, opening the file if it isn't
+    /// already open. Shared sequence: `expand` → `absolute_unresolved` (display
+    /// path) → `canonicalize` → `open_or_dedup` → `set_display_path` if new.
+    /// Errors propagate as raw `io::Error`; callers format with whichever path
+    /// string suits their reporting.
+    pub(super) fn resolve_open_path(&mut self, path_str: &str) -> io::Result<(BufferId, bool)> {
+        let expanded = hume_platform::path::expand(path_str);
+        let path = std::path::Path::new(expanded.as_ref());
+        let display = hume_platform::path::absolute_unresolved(path, &self.state.cwd);
+        let canonical = hume_platform::fs::canonicalize(path)?;
         let (bid, is_new) = self.open_or_dedup(&canonical)?;
         if is_new {
             self.state
@@ -69,6 +73,11 @@ impl Editor {
                 .get_mut(bid)
                 .set_display_path(Some(display));
         }
+        Ok((bid, is_new))
+    }
+
+    fn try_open_extra(&mut self, path: &std::path::Path) -> io::Result<()> {
+        self.resolve_open_path(&path.to_string_lossy())?;
         Ok(())
     }
 

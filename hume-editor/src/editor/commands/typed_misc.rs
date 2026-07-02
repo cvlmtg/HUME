@@ -180,23 +180,12 @@ fn split_focused_pane(
 }
 
 /// Resolve a `:split`/`:vsplit` path argument to a `BufferId`, opening the
-/// file if it isn't already open. Mirrors `Editor::try_open_extra`'s
-/// resolve-dedup-open sequence.
+/// file if it isn't already open. Thin wrapper over the shared
+/// resolve-dedup-open sequence in [`Editor::resolve_open_path`].
 fn open_path_arg(ed: &mut Editor, path_str: &str) -> Result<BufferId, CommandError> {
-    let expanded = hume_platform::path::expand(path_str);
-    let path = std::path::Path::new(expanded.as_ref());
-    let display = hume_platform::path::absolute_unresolved(path, &ed.state.cwd);
-    let canonical = hume_platform::fs::canonicalize(path)
-        .map_err(|e| CommandError::new(format!("{}: {e}", path.display())))?;
-    let (bid, is_new) = ed
-        .open_or_dedup(&canonical)
-        .map_err(|e| CommandError::new(format!("{}: {e}", path.display())))?;
-    if is_new {
-        ed.state
-            .buffers
-            .get_mut(bid)
-            .set_display_path(Some(display));
-    }
+    let (bid, _) = ed
+        .resolve_open_path(path_str)
+        .map_err(|e| CommandError::new(format!("{path_str}: {e}")))?;
     Ok(bid)
 }
 
