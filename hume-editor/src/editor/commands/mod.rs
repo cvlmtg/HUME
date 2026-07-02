@@ -399,9 +399,10 @@ pub(super) fn doc<'a>(state: &'a EditorState, view: &EngineView) -> &'a Buffer {
 
 /// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its id.
 ///
-/// Free-function twin of `Editor::open_pane`, for `EditorCmd` handlers that
-/// only have `&mut EditorState` + `&mut EngineView` access — `Editor::open_pane`
-/// delegates here so the setup logic has a single source of truth.
+/// The single source of truth for pane creation: used by `split_pane_onto`
+/// (and thus the typed `:split`/`:vsplit` commands and the bare `pane-split`/
+/// `pane-vsplit` keymap commands), and called directly by tests that only
+/// have `&mut EditorState` + `&mut EngineView` access.
 pub(super) fn open_pane(
     state: &mut EditorState,
     view: &mut EngineView,

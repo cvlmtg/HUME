@@ -1,4 +1,5 @@
 use super::*;
+use crate::editor::commands::open_pane;
 use pretty_assertions::assert_eq;
 
 // ── D1–D6: Multi-pane contract tests ──────────────────────────────────────────
@@ -17,7 +18,7 @@ fn d1_selections_are_pane_owned() {
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id;
 
-    let pid_b = ed.open_pane(bid);
+    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
 
     // Pane A → position 2 ('l').
     ed.switch_focused_pane(pid_a);
@@ -53,7 +54,7 @@ fn d4a_search_pattern_is_per_buffer() {
     let mut ed = editor_from("-[f]>oo foo foo\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id;
-    let pid_b = ed.open_pane(bid);
+    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
 
     // Both panes see Buffer.search_pattern — it's a single field on `doc`.
     // Verify independence of search_cursor: write distinct values per pane.
@@ -144,7 +145,7 @@ fn d5_insert_session_is_pane_buffer_scoped() {
     let mut ed = editor_from("-[a]>bc\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id;
-    let pid_b = ed.open_pane(bid);
+    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
 
     // Pane A insert session: type 'X' at the start.
     ed.switch_focused_pane(pid_a);
@@ -208,7 +209,7 @@ fn d6_search_mode_snapshot_is_per_pane() {
     let mut ed = editor_from("-[h]>ello\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id;
-    let pid_b = ed.open_pane(bid);
+    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
 
     let sels_a = SelectionSet::single(Selection::collapsed(1));
     let sels_b = SelectionSet::single(Selection::collapsed(3));
@@ -258,7 +259,7 @@ fn d2_edit_in_pane_a_translates_pane_b_selections() {
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id;
-    let pid_b = ed.open_pane(bid);
+    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
 
     // Position pane B's cursor at char 9 ('j').
     ed.switch_focused_pane(pid_b);
@@ -287,7 +288,7 @@ fn d3_undo_restores_acting_pane_and_translates_others() {
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id;
-    let pid_b = ed.open_pane(bid);
+    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
 
     // Position pane B at char 9.
     ed.switch_focused_pane(pid_b);
@@ -323,7 +324,7 @@ fn propagate_cs_merges_collapsed_non_acting_pane_selections() {
     let mut ed = editor_from("-[a]>bcde\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id;
-    let pid_b = ed.open_pane(bid);
+    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
 
     // Pane B: two cursors at positions 2 ('c') and 4 ('e').
     ed.switch_focused_pane(pid_b);
@@ -369,7 +370,7 @@ fn pane_engine_mirror_synced_for_non_focused_pane_after_edit() {
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id;
-    let pid_b = ed.open_pane(bid);
+    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
 
     // Position pane B's cursor at char 5 ('f').
     ed.switch_focused_pane(pid_b);
@@ -880,7 +881,7 @@ fn split_pane_gets_gutter_column() {
     );
 
     let bid = ed.focused_buffer_id();
-    let pid_b = ed.open_pane(bid);
+    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
 
     assert_eq!(
         ed.view.panes[pid_b].providers.gutter_columns().len(),
@@ -1264,7 +1265,7 @@ fn split_pane_onto_rolls_back_when_focused_pane_missing_from_layout() {
 
     // Fabricate the desync directly: focus a pane that was never attached to
     // `view.layout` (only the original pane's `Leaf` exists there).
-    let ghost_pid = ed.open_pane(bid);
+    let ghost_pid = open_pane(&mut ed.state, &mut ed.view, bid);
     ed.state.focused_pane_id = ghost_pid;
     let panes_before = ed.view.panes.len();
 

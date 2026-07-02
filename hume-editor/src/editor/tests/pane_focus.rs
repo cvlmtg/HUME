@@ -2,7 +2,7 @@ use super::*;
 use crate::editor::EditorState;
 use crate::editor::commands::{
     cmd_pane_focus_down, cmd_pane_focus_left, cmd_pane_focus_next, cmd_pane_focus_right,
-    cmd_pane_focus_up,
+    cmd_pane_focus_up, open_pane,
 };
 use crate::editor::error::CommandError;
 use crate::ops::MotionMode;
@@ -20,15 +20,15 @@ fn build_2x2() -> (Editor, [PaneId; 4]) {
     let mut ed = editor_from("-[a]>bc\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id; // top-left
-    let pid_b = ed.open_pane(bid);
+    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
     ed.view
         .layout
         .split_leaf(pid_a, pid_b, Direction::Vertical, 0.5); // stack a over b
-    let pid_c = ed.open_pane(bid);
+    let pid_c = open_pane(&mut ed.state, &mut ed.view, bid);
     ed.view
         .layout
         .split_leaf(pid_a, pid_c, Direction::Horizontal, 0.5); // a | c (top row)
-    let pid_d = ed.open_pane(bid);
+    let pid_d = open_pane(&mut ed.state, &mut ed.view, bid);
     ed.view
         .layout
         .split_leaf(pid_b, pid_d, Direction::Horizontal, 0.5); // b | d (bottom row)
@@ -95,11 +95,11 @@ fn t4_tie_break_uses_center_distance_not_origin() {
     let mut ed = editor_from("-[a]>bc\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id;
-    let pid_b = ed.open_pane(bid);
+    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
     ed.view
         .layout
         .split_leaf(pid_a, pid_b, Direction::Horizontal, 0.5); // a | b
-    let pid_c = ed.open_pane(bid);
+    let pid_c = open_pane(&mut ed.state, &mut ed.view, bid);
     ed.view
         .layout
         .split_leaf(pid_b, pid_c, Direction::Vertical, 0.3); // b (top, short) / c (bottom, tall)

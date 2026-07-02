@@ -877,15 +877,6 @@ impl Editor {
 
 #[cfg(test)]
 impl Editor {
-    /// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its id.
-    /// Delegates to `commands::open_pane` — the single source of truth, also
-    /// used directly by production `EditorCmd` handlers (`pane-split`,
-    /// `pane-vsplit`) that only have `state`+`view` access. Test-only:
-    /// production code builds panes exclusively through `split_pane_onto`.
-    pub(crate) fn open_pane(&mut self, buffer_id: BufferId) -> PaneId {
-        commands::open_pane(&mut self.state, &mut self.view, buffer_id)
-    }
-
     /// Construct a minimal `Editor` for renderer unit tests.
     ///
     /// Only `doc` and `view` are meaningful — all other fields are set to

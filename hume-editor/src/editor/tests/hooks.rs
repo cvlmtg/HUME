@@ -1,4 +1,5 @@
 use super::*;
+use crate::editor::commands::open_pane;
 
 // ── OnModeChange: Insert → Normal ─────────────────────────────────────────────
 
@@ -190,7 +191,7 @@ fn propagate_cs_syncs_engine_pane_for_non_focused_pane() {
     let buf_id = ed.focused_buffer_id();
 
     // Create a second pane (not the focused one) viewing the same buffer.
-    let second_pane = ed.open_pane(buf_id);
+    let second_pane = open_pane(&mut ed.state, &mut ed.view, buf_id);
     assert!(ed.view.panes.contains_key(second_pane));
 
     // Edit in the focused pane (insert 'x' → "xab\n").

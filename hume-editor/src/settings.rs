@@ -299,6 +299,8 @@ define_settings! {
         "syntax-highlight-max-bytes" => syntax_highlight_max_bytes: usize = 1_048_576, parser: usize_nonzero;
         // Global-only: seeds new panes' `Pane::wrap_mode` at creation time
         // (`hume-engine`'s `Pane` is the live SSOT — see `commands::open_pane`).
+        // A same-buffer `:split`/`:vsplit` overrides that seed with the source
+        // pane's live wrap mode instead (see `commands::split_pane_onto`).
         // Not per-buffer: wrap is a view property, and two panes on the same
         // buffer may wrap differently.
         "wrap-mode"           => wrap_mode:           WrapMode = WrapMode::Indent { width: 0 }, parser: from_str;
