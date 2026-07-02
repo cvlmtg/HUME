@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use ratatui::symbols::line;
 use slotmap::{SlotMap, new_key_type};
 
 use crate::builtins::tree_sitter_hl::TreeSitterHighlighter;
@@ -348,17 +349,17 @@ const ARM_W: u8 = 0b1000;
 /// `│ ─ ├ ┤ ┬ ┴ ┼`.
 fn junction_glyph(mask: u8) -> &'static str {
     match mask {
-        m if m == ARM_N | ARM_E | ARM_S | ARM_W => "┼",
-        m if m == ARM_E | ARM_S | ARM_W => "┬",
-        m if m == ARM_N | ARM_E | ARM_W => "┴",
-        m if m == ARM_N | ARM_E | ARM_S => "├",
-        m if m == ARM_N | ARM_S | ARM_W => "┤",
-        m if m == ARM_N | ARM_E => "└",
-        m if m == ARM_N | ARM_W => "┘",
-        m if m == ARM_E | ARM_S => "┌",
-        m if m == ARM_S | ARM_W => "┐",
-        m if m & (ARM_E | ARM_W) != 0 && m & (ARM_N | ARM_S) == 0 => "─",
-        _ => "│",
+        m if m == ARM_N | ARM_E | ARM_S | ARM_W => line::CROSS,
+        m if m == ARM_E | ARM_S | ARM_W => line::HORIZONTAL_DOWN,
+        m if m == ARM_N | ARM_E | ARM_W => line::HORIZONTAL_UP,
+        m if m == ARM_N | ARM_E | ARM_S => line::VERTICAL_RIGHT,
+        m if m == ARM_N | ARM_S | ARM_W => line::VERTICAL_LEFT,
+        m if m == ARM_N | ARM_E => line::BOTTOM_LEFT,
+        m if m == ARM_N | ARM_W => line::BOTTOM_RIGHT,
+        m if m == ARM_E | ARM_S => line::TOP_LEFT,
+        m if m == ARM_S | ARM_W => line::TOP_RIGHT,
+        m if m & (ARM_E | ARM_W) != 0 && m & (ARM_N | ARM_S) == 0 => line::HORIZONTAL,
+        _ => line::VERTICAL,
     }
 }
 
