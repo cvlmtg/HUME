@@ -449,6 +449,15 @@ impl std::fmt::Debug for Editor {
 }
 
 impl Editor {
+    // ── Kitty keybinds ──────────────────────────────────────────────────────────
+
+    /// Bind the kitty-keyboard-protocol-only default keys that `Keymap::default()`
+    /// omits because legacy terminals never deliver them. Call once after the
+    /// kitty probe succeeds; see `Keymap::apply_kitty_defaults`.
+    pub(crate) fn enable_kitty_keybinds(&mut self) {
+        self.state.keymap.apply_kitty_defaults();
+    }
+
     // ── Buffer accessors ──────────────────────────────────────────────────────
 
     /// The `BufferId` the focused pane is currently viewing.

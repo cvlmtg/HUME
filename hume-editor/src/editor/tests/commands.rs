@@ -935,7 +935,7 @@ fn capital_s_splits_selection_on_newlines() {
 /// leaving all other cursors intact. Plain `,` must still keep only the primary.
 #[test]
 fn ctrl_comma_removes_primary_selection() {
-    let mut ed = editor_from("-[h]>ello -[w]>orld\n");
+    let mut ed = editor_from_kitty("-[h]>ello -[w]>orld\n");
 
     ed.handle_key(key_ctrl(','));
 
@@ -1036,7 +1036,7 @@ fn semicolon_collapses_selection_and_resets_extend() {
 /// `extend` flag — the exact mirror of `;` with `head` replaced by `anchor`.
 #[test]
 fn ctrl_semicolon_collapses_to_anchor_and_resets_extend() {
-    let mut ed = editor_from("-[hell]>o\n");
+    let mut ed = editor_from_kitty("-[hell]>o\n");
     ed.state.mode = Mode::Extend;
 
     ed.handle_key(key_ctrl(';'));

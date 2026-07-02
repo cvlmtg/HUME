@@ -22,9 +22,12 @@ fn editor_from(input: &str) -> Editor {
 }
 
 /// Build a kitty-protocol-enabled editor for testing Ctrl+motion bindings.
+/// Mirrors interactive kitty mode: sets the flag AND installs the kitty-only
+/// default keybinds that `Keymap::default()` omits.
 fn editor_from_kitty(input: &str) -> Editor {
     let mut ed = editor_from(input);
     ed.kitty_enabled = true;
+    ed.enable_kitty_keybinds();
     ed
 }
 

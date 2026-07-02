@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use super::{KeyTrie, KeyTrieNode, KeymapCommand, WaitCharPending};
+use super::{KeyTrie, KeyTrieNode, Keymap, KeymapCommand, WaitCharPending};
 
 // ── Macros ────────────────────────────────────────────────────────────────────
 // Lifted to `defaults.rs` (where they're primarily used).
@@ -289,14 +289,7 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
 
     // ── Selection manipulation ────────────────────────────────────────────────
     t.bind_leaf(key!(';'), cmd!("collapse-and-exit-extend"));
-    // Ctrl+; mirrors `;` but collapses to the anchor (the word's first char for
-    // forward selections). Only transmitted under the kitty keyboard protocol —
-    // harmless on legacy terminals, which never send it.
-    t.bind_leaf(key!(Ctrl + ';'), cmd!("collapse-to-anchor-and-exit-extend"));
     t.bind_leaf(key!(','), cmd!("keep-primary-selection"));
-    // Ctrl+, removes primary; only transmitted with kitty keyboard protocol but
-    // binding it here is harmless — legacy terminals never send it.
-    t.bind_leaf(key!(Ctrl + ','), cmd!("remove-primary-selection"));
     t.bind_leaf(key!('S'), cmd!("split-selection-on-newlines"));
     t.bind_leaf(key!('('), cmd!("cycle-primary-backward"));
     t.bind_leaf(key!(')'), cmd!("cycle-primary-forward"));
@@ -432,11 +425,28 @@ pub(super) fn default_insert_keymap() -> KeyTrie {
     t
 }
 
+// ── Kitty-only default binds ──────────────────────────────────────────────────
+
+impl Keymap {
+    /// Bind the default keys that are only delivered under the kitty keyboard
+    /// protocol. Call this once after the kitty probe succeeds so the binds
+    /// exist only when the terminal can actually produce them.
+    pub fn apply_kitty_defaults(&mut self) {
+        // Ctrl+; mirrors `;` but collapses to the anchor (the word's first char for
+        // forward selections).
+        self.normal
+            .bind_leaf(key!(Ctrl + ';'), cmd!("collapse-to-anchor-and-exit-extend"));
+        // Ctrl+, removes primary.
+        self.normal
+            .bind_leaf(key!(Ctrl + ','), cmd!("remove-primary-selection"));
+    }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
-    use super::super::{KeymapCommand, WalkResult};
+    use super::super::{Keymap, KeymapCommand, WalkResult};
     use super::{default_extend_keymap, default_insert_keymap, default_normal_keymap};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -796,5 +806,44 @@ mod tests {
         assert!(
             matches!(trie.walk(&[key!('o')]), WalkResult::Leaf(ref cmd) if cmd.name == "flip-selections")
         );
+    }
+
+    // ── Kitty-only default binds ──────────────────────────────────────────────
+
+    #[test]
+    fn default_keymap_omits_kitty_only_binds() {
+        let km = Keymap::default();
+        // Ctrl+; and Ctrl+, must NOT be present in the legacy-accurate default
+        // trie — they are installed by apply_kitty_defaults only when the kitty
+        // probe succeeds.
+        assert!(
+            matches!(km.normal.walk(&[key!(Ctrl + ';')]), WalkResult::NoMatch),
+            "Ctrl+; must be unbound in default keymap (legacy mode)"
+        );
+        assert!(
+            matches!(km.normal.walk(&[key!(Ctrl + ',')]), WalkResult::NoMatch),
+            "Ctrl+, must be unbound in default keymap (legacy mode)"
+        );
+        // The plain-key counterparts remain bound regardless of kitty mode.
+        assert!(
+            matches!(km.normal.walk(&[key!(';')]), WalkResult::Leaf(ref c) if c.name == "collapse-and-exit-extend")
+        );
+        assert!(
+            matches!(km.normal.walk(&[key!(',')]), WalkResult::Leaf(ref c) if c.name == "keep-primary-selection")
+        );
+    }
+
+    #[test]
+    fn apply_kitty_defaults_binds_kitty_only_keys() {
+        let mut km = Keymap::default();
+        km.apply_kitty_defaults();
+        let WalkResult::Leaf(c) = km.normal.walk(&[key!(Ctrl + ';')]) else {
+            panic!("Ctrl+; should bind to collapse-to-anchor-and-exit-extend");
+        };
+        assert_eq!(c.name, "collapse-to-anchor-and-exit-extend");
+        let WalkResult::Leaf(c) = km.normal.walk(&[key!(Ctrl + ',')]) else {
+            panic!("Ctrl+, should bind to remove-primary-selection");
+        };
+        assert_eq!(c.name, "remove-primary-selection");
     }
 }
