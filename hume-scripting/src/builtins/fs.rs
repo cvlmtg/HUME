@@ -233,7 +233,9 @@ pub(crate) fn make_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
             "make-dir: path is outside the write sandbox (<data>/plugins/ or <data>/grammars/): {}", raw);
     }
 
-    hume_platform::fs::create_dir_all(&path).map_err(|e| {
+    // Create through the sandbox-checked resolved path, not the raw input —
+    // the raw path could be re-pointed (symlinked) between check and create.
+    hume_platform::fs::create_dir_all(&effective).map_err(|e| {
         SteelErr::new(
             ErrorKind::Generic,
             format!("make-dir: cannot create '{}': {e}", raw),
