@@ -49,7 +49,6 @@ pub(crate) mod lazy;
 pub mod log;
 // ── Private implementation details ────────────────────────────────────────────
 mod activation;
-mod codegen;
 mod context;
 #[cfg(test)]
 mod null_host;
@@ -73,23 +72,25 @@ pub use types::{HookResult, PendingLanguageReg, SteelCmdDef, SteelCmdResult};
 pub use watchdog::EvalWatchdog;
 
 // ── Internal re-exports (within-crate use) ────────────────────────────────────
-pub(crate) use activation::run_steel;
-pub(crate) use codegen::{HUME_CTX, cmd_arg_global_name};
+pub(crate) use activation::{run_steel_call, run_steel_session};
 pub(crate) use context::SteelCtx;
+
+/// Steel global name under which the live [`SteelCtx`] reference is visible to
+/// builtins during an eval (injected by `run_steel_session`, reset to `#void`
+/// after).
+pub(crate) const HUME_CTX: &str = "*hume.ctx*";
 
 // ── Internal imports ──────────────────────────────────────────────────────────
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, atomic::AtomicBool};
 
-use steel::rvals::SteelVal;
+use steel::rvals::{IntoSteelVal as _, SteelVal};
 use steel::steel_vm::engine::Engine;
 
 use attribution::PluginStack;
 use hooks::HookRegistry;
 use lazy::{LazyRegistry, PluginState};
-
-use codegen::{build_hook_program, hook_arg_name, hook_proc_name};
 
 // ── ScriptingRegistries ───────────────────────────────────────────────────────
 
@@ -168,10 +169,8 @@ pub struct ScriptingHost {
     /// `(hume/yield!)` calls should abort the running script.  Reset to
     /// `false` after every `eval_init` call.
     interrupt_flag: Arc<AtomicBool>,
-    /// Cache of pre-built hook invocation programs keyed by
-    /// `(arg_count, handler_count)`.  The program text is deterministic given
-    /// those two values, so it is built once and reused across fires.
-    hook_program_cache: std::collections::HashMap<(usize, usize), String>,
+    /// Persistent budget-enforcement thread, re-armed around every eval.
+    watchdog: EvalWatchdog,
 }
 
 impl ScriptingHost {
@@ -204,7 +203,7 @@ impl ScriptingHost {
             data_dir,
             runtime_dir,
             interrupt_flag: Arc::new(AtomicBool::new(false)),
-            hook_program_cache: std::collections::HashMap::new(),
+            watchdog: EvalWatchdog::new(),
         }
     }
 }
@@ -216,13 +215,13 @@ impl Default for ScriptingHost {
 }
 
 impl ScriptingHost {
-    /// Split `self` into the Steel engine and the [`HostBundle`] of persistent
-    /// borrows needed to build a [`SteelCtx`].
+    /// Split `self` into the Steel engine, the watchdog, and the [`HostBundle`]
+    /// of persistent borrows needed to build a [`SteelCtx`].
     ///
     /// The returned borrows are disjoint fields of `self` (NLL field-split), so
     /// the VM can be run while the bundle is lent to the eval context. Shared
     /// by `eval_source_raw`, `activate_plugin`, `call_steel_cmd`, and `fire_hook`.
-    pub(crate) fn steel_and_bundle(&mut self) -> (&mut Engine, HostBundle<'_>) {
+    pub(crate) fn steel_and_bundle(&mut self) -> (&mut Engine, &EvalWatchdog, HostBundle<'_>) {
         let Self {
             steel,
             registries,
@@ -232,10 +231,12 @@ impl ScriptingHost {
             data_dir,
             runtime_dir,
             interrupt_flag,
+            watchdog,
             ..
         } = self;
         (
             steel,
+            watchdog,
             HostBundle {
                 registries,
                 plugin_stack,
@@ -506,26 +507,17 @@ impl ScriptingHost {
     ) -> Result<SteelCmdResult, String> {
         let budget_ms = host.steel_command_budget_ms();
 
-        // Pre-bind positional args as *hume.ca{i}* globals, then build the
-        // invocation string referencing them — mirrors the hook arg pattern.
         // Keypress dispatch routes through %dispatch-command so Lazy-miss
         // auto-activation and command_table lookup use the same path as call!.
-        let invocation = if args.is_empty() {
-            format!("(%dispatch-command \"{name}\" (list))")
-        } else {
-            for (i, arg) in args.iter().enumerate() {
-                self.steel
-                    .register_value(&cmd_arg_global_name(i), arg.clone());
-            }
-            let arg_refs: Vec<String> = (0..args.len()).map(cmd_arg_global_name).collect();
-            format!(
-                "(%dispatch-command \"{name}\" (list {}))",
-                arg_refs.join(" ")
-            )
-        };
+        // The name and args are passed as values via a direct function call —
+        // nothing is spliced into source and nothing is compiled per dispatch.
+        let args_list = args
+            .into_steelval()
+            .map_err(|e| format!("call_steel_cmd: cannot convert args: {e}"))?;
+        let call_args = vec![SteelVal::StringV(name.into()), args_list];
 
         let (result, wait_char_request, pending_language_sets, grammar_sweeps) = {
-            let (steel, bundle) = self.steel_and_bundle();
+            let (steel, watchdog, bundle) = self.steel_and_bundle();
             let mut steel_ctx = SteelCtx::new_command(
                 host,
                 bundle,
@@ -534,7 +526,14 @@ impl ScriptingHost {
                 pending_char,
             );
 
-            let result = run_steel(steel, &mut steel_ctx, invocation, budget_ms);
+            let result = run_steel_call(
+                steel,
+                watchdog,
+                &mut steel_ctx,
+                "%dispatch-command",
+                call_args,
+                budget_ms,
+            );
             (
                 result,
                 steel_ctx.wait_char_request,
@@ -542,13 +541,6 @@ impl ScriptingHost {
                 steel_ctx.pending_grammar_sweeps,
             )
         };
-
-        // Null out arg globals — releases any Arc references and prevents stale
-        // values leaking into later calls.
-        for i in 0..args.len() {
-            self.steel
-                .update_value(&cmd_arg_global_name(i), SteelVal::Void);
-        }
 
         result?;
         Ok(SteelCmdResult {
@@ -585,44 +577,27 @@ impl ScriptingHost {
 
         let budget_ms = host.steel_command_budget_ms();
 
-        // Pre-bind each arg global.
-        for (i, arg) in args.iter().enumerate() {
-            self.steel.register_value(&hook_arg_name(i), arg.clone());
-        }
-
-        // Pre-bind each handler proc global.
-        for (i, proc) in handler_procs.iter().enumerate() {
-            self.steel.register_value(&hook_proc_name(i), proc.clone());
-        }
-
-        // Look up (or build once) the composite invocation program.
-        let program = self
-            .hook_program_cache
-            .entry((args.len(), handler_procs.len()))
-            .or_insert_with(|| build_hook_program(args.len(), handler_procs.len()))
-            .clone();
-
         let (result, pending_language_sets, grammar_sweeps) = {
-            let (steel, bundle) = self.steel_and_bundle();
+            let (steel, watchdog, bundle) = self.steel_and_bundle();
             let mut steel_ctx =
                 SteelCtx::new_command(host, bundle, focused_pane_id, focused_buffer_id, None);
 
-            let result = run_steel(steel, &mut steel_ctx, program, budget_ms);
+            // Call each handler directly with the arg values — no source
+            // program, no per-fire globals.  The first handler error aborts
+            // the remaining handlers, matching the composite-program semantics
+            // this replaced.
+            let result = run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
+                for proc in handler_procs {
+                    steel.call_function_with_args(proc, args.to_vec())?;
+                }
+                Ok(())
+            });
             (
                 result,
                 steel_ctx.pending_language_sets,
                 steel_ctx.pending_grammar_sweeps,
             )
         };
-
-        // Null out arg and proc globals before returning — releases Arc references
-        // to closed buffers and prevents stale values leaking into later fires.
-        for i in 0..args.len() {
-            self.steel.update_value(&hook_arg_name(i), SteelVal::Void);
-        }
-        for i in 0..handler_procs.len() {
-            self.steel.update_value(&hook_proc_name(i), SteelVal::Void);
-        }
 
         result?;
         Ok(HookResult {

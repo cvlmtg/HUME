@@ -7,7 +7,7 @@
 //! aborted with a Steel error; otherwise execution continues normally.
 //!
 //! The flag is set by:
-//! - The [`EvalWatchdog`](crate::EvalWatchdog) spawned at the start of
+//! - The [`EvalWatchdog`](crate::EvalWatchdog) armed at the start of
 //!   each eval (fires after the configured budget; see `steel-init-budget-ms`
 //!   and `steel-command-budget-ms`).
 //! - Future Ctrl-C handling: the editor can set

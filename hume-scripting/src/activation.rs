@@ -21,29 +21,33 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
+use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
+use steel::steel_vm::engine::Engine;
 
+use crate::HUME_CTX;
 use crate::ScriptingHost;
 use crate::attribution;
-use crate::codegen::HUME_CTX;
 use crate::context::SteelCtx;
 use crate::host::EditorHost;
 use crate::watchdog::EvalWatchdog;
 
 // ── run_steel ──────────────────────────────────��──────────────────────────────
 
-/// Arm the watchdog, run `program` inside `steel` with `ctx` visible as
+/// Arm the watchdog, run `body` against `steel` with `ctx` visible as
 /// `*hume.ctx*`, then cancel the watchdog and reset the interrupt flag.
 ///
-/// Used by `eval_source_raw`, `call_steel_cmd`, and `fire_hook` to avoid
-/// repeating the same arm / eval / cancel / reset ceremony in each entry point.
-pub(crate) fn run_steel<'a>(
-    steel: &mut steel::steel_vm::engine::Engine,
+/// Shared by `eval_source_raw` (compiles a source program), `call_steel_cmd` /
+/// `fire_hook` / `activate_plugin_inline` (direct function calls) so the
+/// arm / eval / cancel / reset ceremony lives in one place.
+pub(crate) fn run_steel_session<'a, R>(
+    steel: &mut Engine,
+    watchdog: &EvalWatchdog,
     ctx: &mut SteelCtx<'a>,
-    program: String,
     budget_ms: u64,
+    body: impl FnOnce(&mut Engine) -> Result<R, SteelErr>,
 ) -> Result<(), String> {
-    let watchdog = EvalWatchdog::arm(
+    watchdog.arm(
         Arc::clone(&ctx.interrupt_flag),
         std::time::Duration::from_millis(budget_ms),
     );
@@ -55,7 +59,7 @@ pub(crate) fn run_steel<'a>(
                 .next()
                 .expect("with_mut_reference yields one arg");
             steel.update_value(HUME_CTX, ctx_val);
-            let res = steel.compile_and_run_raw_program(program);
+            let res = body(steel);
             steel.update_value(HUME_CTX, SteelVal::Void);
             res
         })
@@ -64,6 +68,40 @@ pub(crate) fn run_steel<'a>(
     watchdog.cancel();
     ctx.interrupt_flag.store(false, Ordering::Relaxed);
     result
+}
+
+/// [`run_steel_session`] with a source-program body — parse + compile + run.
+///
+/// Only for genuinely dynamic source (init.scm, test snippets).  Fixed-shape
+/// invocations use [`run_steel_call`], which skips the compiler entirely.
+pub(crate) fn run_steel<'a>(
+    steel: &mut Engine,
+    watchdog: &EvalWatchdog,
+    ctx: &mut SteelCtx<'a>,
+    program: String,
+    budget_ms: u64,
+) -> Result<(), String> {
+    run_steel_session(steel, watchdog, ctx, budget_ms, |steel| {
+        steel.compile_and_run_raw_program(program)
+    })
+}
+
+/// [`run_steel_session`] with a direct function-call body.
+///
+/// Calls the global Steel function `fn_name` with `args` — no source string,
+/// no compilation, and no way for a hostile name or argument to alter program
+/// structure (args are passed as values, never spliced into source).
+pub(crate) fn run_steel_call<'a>(
+    steel: &mut Engine,
+    watchdog: &EvalWatchdog,
+    ctx: &mut SteelCtx<'a>,
+    fn_name: &str,
+    args: Vec<SteelVal>,
+    budget_ms: u64,
+) -> Result<(), String> {
+    run_steel_session(steel, watchdog, ctx, budget_ms, |steel| {
+        steel.call_function_by_name_with_args(fn_name, args)
+    })
 }
 
 // ── ScriptingHost — activation impl ──────────────────────────────────────────
@@ -83,12 +121,12 @@ impl ScriptingHost {
         budget_ms: u64,
         host: &mut dyn EditorHost,
     ) -> Result<(), String> {
-        let (steel, bundle) = self.steel_and_bundle();
+        let (steel, watchdog, bundle) = self.steel_and_bundle();
         let mut steel_ctx = SteelCtx::new_init(host, bundle, builtin_names);
-        run_steel(steel, &mut steel_ctx, source, budget_ms)
+        run_steel(steel, watchdog, &mut steel_ctx, source, budget_ms)
     }
 
-    /// Activate a plugin inline via `%activate-plugin-inline` using `run_steel`.
+    /// Activate a plugin inline via `%activate-plugin-inline` using `run_steel_call`.
     ///
     /// Used by event- and language-activation paths (`activate_and_register`) that
     /// fire outside any running eval and need their own watchdog.  The plugin body
@@ -102,10 +140,17 @@ impl ScriptingHost {
         host: &mut dyn EditorHost,
         builtin_names: &HashSet<String>,
     ) -> Result<(), String> {
-        let program = format!(r#"(%activate-plugin-inline "{id}")"#);
-        let (steel, bundle) = self.steel_and_bundle();
+        let args = vec![SteelVal::StringV(id.to_string().into())];
+        let (steel, watchdog, bundle) = self.steel_and_bundle();
         let mut steel_ctx = SteelCtx::new_activation(host, bundle, builtin_names.clone());
-        run_steel(steel, &mut steel_ctx, program, budget_ms)
+        run_steel_call(
+            steel,
+            watchdog,
+            &mut steel_ctx,
+            "%activate-plugin-inline",
+            args,
+            budget_ms,
+        )
     }
 }
 

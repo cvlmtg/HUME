@@ -490,13 +490,14 @@ fn repeatable_and_inline_output_mutually_exclusive() {
 // ── EvalWatchdog ──────────────────────────────────────────────────────────
 
 /// Cancelling a watchdog with a long budget wakes the thread immediately.
-/// Without `park_timeout` + `unpark`, this would block for the full budget.
+/// The channel-driven cancel must not block until the budget elapses.
 #[test]
 fn watchdog_cancel_wakes_thread_immediately() {
     let flag = Arc::new(AtomicBool::new(false));
     let budget = std::time::Duration::from_secs(10);
     let start = std::time::Instant::now();
-    let watchdog = EvalWatchdog::arm(Arc::clone(&flag), budget);
+    let watchdog = EvalWatchdog::new();
+    watchdog.arm(Arc::clone(&flag), budget);
     watchdog.cancel();
     // cancel() must return well within the budget; 500 ms is generous.
     assert!(
@@ -665,11 +666,10 @@ fn call_steel_cmd_set_option_from_body_returns_steel_error() {
 
 // ── call! ─────────────────────────────────────────────────────────────────
 
-/// The variadic `call!` macro desugars to `%call!` and correctly binds
-/// positional args as `*hume.ca{i}*` globals, passing them into the invoked
-/// lambda.  This is the independent oracle for the arg-binding splice in
-/// `call_steel_cmd`: the expected dispatch name is derived from the input arg,
-/// not from re-reading the implementation.
+/// `call_steel_cmd` forwards positional args by value into the invoked
+/// lambda (direct `%dispatch-command` function call).  Independent oracle:
+/// the expected dispatch name is derived from the input arg, not from
+/// re-reading the implementation.
 ///
 /// Verification validity: changing "hello" in the assert to "world" makes the test fail.
 #[test]
@@ -679,7 +679,7 @@ fn call_bang_passes_args_to_command() {
     let mut mock = MockHost::new();
 
     // Define a command that takes one arg x and calls (call! x).
-    // The lambda receives x as *hume.ca0*, then dispatches x as a command name.
+    // The lambda receives x positionally, then dispatches x as a command name.
     h.eval_source(
         r#"(define-command! "echo-arg" "" (lambda (x) (call! x)))"#,
         &mut mock,
@@ -706,7 +706,7 @@ fn call_bang_passes_args_to_command() {
 
 #[test]
 fn call_bang_forwards_multiple_args_to_lambda() {
-    // Tests the multi-arg *hume.ca{i}* splice for i > 0.
+    // Tests multi-arg forwarding beyond the first positional arg.
     // Oracle: each dispatched command name equals the corresponding input arg.
     // Verification: change "z" to "w" in the assert → test fails.
     use steel::rvals::SteelVal;
@@ -996,9 +996,9 @@ fn register_hook_unknown_name_errors() {
 
 #[test]
 fn fire_hook_globals_cleared_between_fires() {
-    // After each fire_hook call, *hume.ha0* / *hume.hp0* … must be Void.
-    // Leaking them keeps Arc references alive (e.g. to a closed buffer)
-    // and may surface stale data in subsequent fires with fewer args.
+    // Each fire must see exactly its own args — stale values from a prior
+    // fire (e.g. Arc references to a closed buffer) must never leak into a
+    // subsequent fire with different args.
     let mut h = host();
     let mut mock = MockHost::new();
 
@@ -1026,7 +1026,7 @@ fn fire_hook_globals_cleared_between_fires() {
         msgs1
     );
 
-    // Second fire with different args — stale *hume.ha1* would give wrong result.
+    // Second fire with different args — any stale first-fire arg would give a wrong result.
     let new_val2 = "normal".into_steelval().unwrap();
     h.fire_hook(
         HookId::OnModeChange,
