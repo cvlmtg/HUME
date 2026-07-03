@@ -161,6 +161,7 @@ Press `Ctrl+p` then a second key:
 | Key | Action |
 |-----|--------|
 | `Ctrl+p p` | Focus next pane |
+| `Tab` | Focus next pane (kitty only) |
 | `Ctrl+p h` | Focus pane to the left |
 | `Ctrl+p j` | Focus pane below |
 | `Ctrl+p k` | Focus pane above |

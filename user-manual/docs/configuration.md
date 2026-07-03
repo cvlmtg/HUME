@@ -25,24 +25,13 @@ The `:set` command takes a scope and a `key=value` pair. The scope is required:
 
 Changes apply to the current session and are not persisted — for persistent configuration, use `init.scm` (below).
 
-`language` is a special case: it has no global default and can only be set per buffer with `:set buffer language=<name>`. Passing `:set global language=…` is rejected.
-
-`:set pane` only supports `wrap-mode` — see [Text wrap](#text-wrap).
-
-```
-:set buffer tab-width=2
-:set buffer language=markdown
-```
-
-See [Commands](commands.md) for the full command list.
-
 ### From `init.scm`
 
 ```scheme
 (set-option! "option-name" value)
 ```
 
-Sets the global default. The value is a string, boolean, or integer. `set-option!` is global-only — it cannot set a per-buffer override; use `:set buffer …` for that. It is only valid inside `init.scm` or during plugin activation.
+Sets the global default. The value is a string, boolean, or integer. It is only valid inside `init.scm` or during plugin activation.
 
 ```scheme
 (set-option! "line-number-style" "absolute")
@@ -73,7 +62,9 @@ Global-only settings: `:set global <option>=<value>` or `(set-option! "option" v
 
 ## Buffer options
 
-These options have a global default that new buffers inherit, and a per-buffer override that takes precedence when present. Set the global default with `:set global <option>=<value>` or `set-option!`; override the current buffer with `:set buffer <option>=<value>`.
+These options have a global default that new buffers inherit, and a per-buffer override that takes precedence when present. Set the global default with `:set global <option>=<value>` or `(set-option! "option" value)`; override the current buffer with `:set buffer <option>=<value>`.
+
+`language` is an exception, it has no global default — it is auto-detected per buffer and can only be set with `:set buffer language=<name>`.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -85,8 +76,6 @@ These options have a global default that new buffers inherit, and a per-buffer o
 | `whitespace-tab` | `none` \| `all` \| `trailing` | `none` | When to render tab indicators |
 | `whitespace-newline` | `none` \| `all` \| `trailing` | `none` | When to render newline indicators |
 | `language` | string | *(auto-detected)* | Language for syntax highlighting |
-
-`language` has no global default — it is auto-detected per buffer and can only be set with `:set buffer language=<name>`.
 
 ## Text wrap
 
@@ -160,15 +149,6 @@ The statusline is fully configurable from Steel:
 ```
 
 Each argument is a list of element name strings: left, center, right.
-
-**Default layout** (used when no `configure-statusline!` call is in your `init.scm`):
-
-```
-Position  FilePath  Language  ReadOnly  DirtyIndicator      MacroRecording  SearchMatches  KittyProtocol  │  Mode
-└──────────────────── left ────────────────────────┘      └──────────────── right ───────────────────────┘
-```
-
-The mode label lives on the **right**, not the left.
 
 Available elements:
 

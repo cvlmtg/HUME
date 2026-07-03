@@ -55,7 +55,7 @@ A **pane** is a viewport onto a buffer. A buffer is the open file itself; a pane
 
 `:q` is pane-aware: with multiple panes open, it closes the focused pane and leaves the buffer open in the buffer list; with a single pane, it falls through to the usual quit behavior (blocked on unsaved changes).
 
-A divider is drawn between panes (controlled by the `pane-dividers` option, on by default), and the pane without focus is dimmed. Soft wrap (`:wrap`) is per-pane, so two panes on the same buffer can wrap independently.
+A divider is drawn between panes (controlled by the `pane-dividers` option, on by default), and the pane without focus is dimmed. Soft wrap is per-pane, so two panes on the same buffer can wrap independently: `:wrap` toggles it on/off for the focused pane, and `:set pane wrap-mode=<value>` changes its style directly — see [Text wrap](configuration.md#text-wrap).
 
 ## Saving
 

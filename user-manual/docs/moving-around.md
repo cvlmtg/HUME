@@ -127,5 +127,5 @@ HUME maintains a jump list of recent cursor positions.
 | Key | Effect |
 |-----|--------|
 | `Ctrl+o` | Jump to previous position |
-| `Ctrl+i` / `Tab` | Jump to next position |
+| `Ctrl+i` | Jump to next position |
 | `Ctrl+6` | Jump to alternate (most-recently-focused) buffer |
