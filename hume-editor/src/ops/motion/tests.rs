@@ -1504,6 +1504,36 @@ fn word_no_truncation_shrink_back_after_cross() {
     );
 }
 
+// ── extend_select word motions: flip redirects the extend ────────────────
+//
+// Flipping a selection (`Ctrl+e` / `o`) swaps anchor and head, and the
+// anchor's word is re-derived from the new anchor on the next press — so
+// flip genuinely hands the "fixed" end to the other side of the selection.
+
+#[test]
+fn word_extend_after_flip_shrinks_to_new_anchor_word() {
+    // Flipped "b c": anchor on 'c'(4), head on 'b'(2). Extend-w's target from
+    // the head is "c" — the new anchor's own word — so the selection collapses
+    // to it. Without the flip the same press is a no-op (no word after "c").
+    assert_state!(
+        "a <[b c]-\n",
+        |(buf, sels)| cmd_select_next_word(&buf, sels, 1, MotionMode::Extend),
+        "a b -[c]>\n"
+    );
+}
+
+#[test]
+fn word_extend_backward_after_flip_grows_over_old_span() {
+    // Same flipped start: extend-b's target "a" lies behind the new anchor's
+    // word "c", so the selection grows backward from "c" over everything.
+    // Without the flip the same press shrinks to "b" instead.
+    assert_state!(
+        "a <[b c]-\n",
+        |(buf, sels)| cmd_select_prev_word(&buf, sels, 1, MotionMode::Extend),
+        "<[a b c]-\n"
+    );
+}
+
 #[test]
 fn extend_select_next_uppercase_word_unit_spans_punctuation() {
     // Under `W` rules, "foo-bar" is a single WORD unit (punctuation merges
@@ -1766,6 +1796,30 @@ fn line_shrink_scenario_step4_crosses_back_shrinks_down() {
         "<[a\nb\n]-c\n",
         |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
         "a\n-[b\n]>c\n"
+    );
+}
+
+#[test]
+fn line_extend_after_flip_shrinks_to_new_anchor_line() {
+    // Flipped "b\nc\n": anchor on line 2 ("c"), head on line 1. Extend-x moves
+    // the head's line down onto the anchor's line, shrinking to "c\n". Without
+    // the flip the same press clamps at the last line (no-op).
+    assert_state!(
+        "a\n<[b\nc\n]-",
+        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
+        "a\nb\n-[c\n]>"
+    );
+}
+
+#[test]
+fn line_extend_backward_after_flip_grows_over_old_span() {
+    // Same flipped start: extend-X moves the head's line up to line 0, and the
+    // span is rebuilt from the anchor's line (2) — the whole buffer, backward.
+    // Without the flip the same press shrinks to "b\n" instead.
+    assert_state!(
+        "a\n<[b\nc\n]-",
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Extend),
+        "<[a\nb\nc\n]-"
     );
 }
 
