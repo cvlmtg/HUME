@@ -122,6 +122,9 @@ pub fn format_buffer_line(
     } else {
         0
     };
+    // Word/Indent backtrack to the last whitespace on overflow; Soft splits at
+    // the exact wrap column.
+    let word_break = matches!(wrap_mode, WrapMode::Word { .. } | WrapMode::Indent { .. });
 
     // ── Row / column state ────────────────────────────────────────────────
     // Aliases into the scratch buffers so the rest of the function can use
@@ -137,6 +140,7 @@ pub fn format_buffer_line(
         // Word-wrap state: remember the last whitespace position in the current row.
         last_ws_g_idx: graphemes_out.len(), // grapheme index of last ws boundary
         last_ws_was_set: false,
+        word_break,
     };
 
     // Push the first row.
@@ -336,13 +340,18 @@ struct WrapState {
     /// Grapheme index of the last seen whitespace boundary (for word-wrap backtracking).
     last_ws_g_idx: usize,
     last_ws_was_set: bool,
+    /// Whether to backtrack to the last whitespace boundary on overflow.
+    /// True for `Word`/`Indent`; false for `Soft`, which always splits at the
+    /// exact wrap column even mid-word.
+    word_break: bool,
 }
 
 impl WrapState {
     /// If adding `width` columns to `current_col` would overflow `wrap_width`,
     /// close the current row and start a new one. Implements word-wrap
-    /// backtracking: if `last_ws_was_set`, the row splits at the last whitespace
-    /// position.
+    /// backtracking: when `word_break` is set and `last_ws_was_set`, the row
+    /// splits at the last whitespace position; otherwise it splits at the
+    /// current grapheme (soft break, may split a word).
     #[allow(clippy::too_many_arguments)]
     fn maybe_wrap(
         &mut self,
@@ -363,8 +372,13 @@ impl WrapState {
             return;
         }
 
-        // Determine split point for word wrap.
-        let split_at = if self.last_ws_was_set && self.last_ws_g_idx > self.row_g_start {
+        // Determine split point: backtrack to last whitespace only when word
+        // breaking is enabled (Word/Indent); Soft always splits at the current
+        // grapheme, mid-word if necessary.
+        let split_at = if self.word_break
+            && self.last_ws_was_set
+            && self.last_ws_g_idx > self.row_g_start
+        {
             self.last_ws_g_idx
         } else {
             graphemes_out.len() // soft break: split here
@@ -627,6 +641,44 @@ mod tests {
         );
         assert_eq!(rows[0].kind, RowKind::LineStart { line_idx: 0 });
         assert!(matches!(rows[1].kind, RowKind::Wrap { line_idx: 0, .. }));
+    }
+
+    #[test]
+    fn soft_wrap_splits_at_exact_column_not_whitespace() {
+        // "hello world" (11 chars) wrapped at width 7. Soft must split mid-word
+        // at column 7 → "hello w" (the 'w' is the 7th grapheme), NOT backtrack
+        // to the space at index 5 ("hello").
+        let (rows, graphemes) = do_format("hello world", WrapMode::Soft { width: 7 });
+        assert!(rows.len() >= 2);
+        let row0 = &graphemes[rows[0].graphemes.clone()];
+        assert_eq!(
+            row0.len(),
+            7,
+            "soft wrap must split at the exact wrap column, got {} graphemes",
+            row0.len()
+        );
+        // The 7th grapheme (index 6) must be 'w', proving the split is mid-word.
+        assert_eq!(row0[6].char_offset, 6, "last grapheme of row 0 is 'w' at char 6");
+    }
+
+    #[test]
+    fn soft_and_word_differ_at_same_width() {
+        // Same input/width as above; Word backtracks to the space ("hello", 5
+        // graphemes) while Soft splits mid-word ("hello w", 7 graphemes). This
+        // is the regression guard: before the fix both produced identical output.
+        let (soft_rows, soft_graphemes) = do_format("hello world", WrapMode::Soft { width: 7 });
+        let (word_rows, word_graphemes) = do_format("hello world", WrapMode::Word { width: 7 });
+        let soft_row0 = &soft_graphemes[soft_rows[0].graphemes.clone()];
+        let word_row0 = &word_graphemes[word_rows[0].graphemes.clone()];
+        assert_ne!(
+            soft_row0.len(),
+            word_row0.len(),
+            "soft and word must differ; soft row0 = {}, word row0 = {}",
+            soft_row0.len(),
+            word_row0.len()
+        );
+        assert_eq!(word_row0.len(), 5, "word wrap backtracks to the space → \"hello\"");
+        assert_eq!(soft_row0.len(), 7, "soft wrap splits mid-word → \"hello w\"");
     }
 
     #[test]
