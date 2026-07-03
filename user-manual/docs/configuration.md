@@ -1,6 +1,8 @@
 # Configuration
 
-HUME is configured via a Scheme file at:
+HUME can be configured two ways: the `:set` command for runtime changes during a session, or a Steel (`init.scm`) file for persistent configuration loaded at startup.
+
+HUME reads persistent configuration from a Scheme file at:
 
 - **macOS / Linux:** `$XDG_CONFIG_HOME/hume/init.scm` (defaults to `~/.config/hume/init.scm`)
 - **Windows:** `%APPDATA%\hume\init.scm`
@@ -9,13 +11,44 @@ If the file does not exist, HUME starts with defaults. Parse errors show a warni
 
 ## Setting options
 
+There are two ways to set an option: the `:set` command for runtime changes, or `set-option!` in `init.scm` for persistent defaults.
+
+### `:set` command
+
+The `:set` command takes a scope and a `key=value` pair. The scope is required:
+
+```
+:set global <option>=<value>     set the global default; new buffers/panes inherit it
+:set buffer <option>=<value>     override for the current buffer only (takes precedence over global)
+```
+
+Changes apply to the current session and are not persisted — for persistent configuration, use `init.scm` (below).
+
+`language` is a special case: it has no global default and can only be set per buffer with `:set buffer language=<name>`. Passing `:set global language=…` is rejected.
+
+```
+:set buffer tab-width=2
+:set buffer language=markdown
+```
+
+See [Commands](commands.md) for the full command list.
+
+### From `init.scm`
+
 ```scheme
 (set-option! "option-name" value)
 ```
 
-Use `:set` from the command line for quick changes — see [Commands](commands.md).
+Sets the global default. The value is a string, boolean, or integer. `set-option!` is global-only — it cannot set a per-buffer override; use `:set buffer …` for that. It is only valid inside `init.scm` or during plugin activation.
+
+```scheme
+(set-option! "line-number-style" "absolute")
+(set-option! "tab-width" 2)
+```
 
 ## Global options
+
+Global-only settings: `:set global <option>=<value>` or `(set-option! "option" value)`.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -31,12 +64,12 @@ Use `:set` from the command line for quick changes — see [Commands](commands.m
 | `steel-command-budget-ms` | integer ≥ 1 | `1000` | Max Steel command evaluation time (ms) |
 | `popup-border` | bool | `#t` | Show popup borders |
 | `syntax-highlight-max-bytes` | integer ≥ 1 | `1048576` | Max bytes for syntax highlighting |
-| `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Line wrapping behavior for newly opened panes. Wrapping is a per-pane view setting, not per-buffer — this only seeds new panes; use `:wrap` to toggle it for the current pane |
 | `pane-dividers` | bool | `#t` | Draw a 1-cell divider between sibling panes |
+| `statusline` | `left|center|right` | see [Statusline](#statusline) | Three `\|`-separated sections, each a comma-separated list of element names (empty sections allowed), e.g. `Mode,FileName\|\|Position` |
 
-## Per-buffer options (with global default)
+## Buffer options
 
-These options have a global default (set via `set-option!` at init.scm time, or `:set global <option>=<value>`) that new buffers inherit, and a per-buffer override (set via `:set buffer <option>=<value>`). The per-buffer override takes precedence when present.
+These options have a global default that new buffers inherit, and a per-buffer override that takes precedence when present. Set the global default with `:set global <option>=<value>` or `set-option!`; override the current buffer with `:set buffer <option>=<value>`.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -44,23 +77,20 @@ These options have a global default (set via `set-option!` at init.scm time, or 
 | `tab-style` | `hard` \| `soft` | `hard` | What `Tab` inserts: `hard` = literal `\t`; `soft` = spaces to next tab stop |
 | `line-number-style` | `absolute` \| `relative` \| `hybrid` | `hybrid` | Line number display in the gutter |
 | `auto-pairs-enabled` | bool | `#t` | Enable auto-pair insertion |
+| `whitespace-space` | `none` \| `all` \| `trailing` | `none` | When to render space indicators |
+| `whitespace-tab` | `none` \| `all` \| `trailing` | `none` | When to render tab indicators |
+| `whitespace-newline` | `none` \| `all` \| `trailing` | `none` | When to render newline indicators |
 | `language` | string | *(auto-detected)* | Language for syntax highlighting |
 
-Use `:set buffer <option>=<value>` to override for the current buffer:
+`language` has no global default — it is auto-detected per buffer and can only be set with `:set buffer language=<name>`.
 
-```
-:set buffer tab-width=2
-:set buffer language=markdown
-```
+## Pane options
 
-Note: `language` has no global default — it is auto-detected per buffer and can only be set with `:set buffer language=<name>`.
+`wrap-mode` is a per-pane view setting rather than a per-buffer one: two panes showing the same buffer may wrap independently. The global value seeds newly opened panes; `:wrap` toggles wrapping for the current pane live.
 
-Or set the global default from `init.scm`:
-
-```scheme
-(set-option! "line-number-style" "absolute")
-(set-option! "tab-width" 2)
-```
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Line wrapping for new panes. `N` is the wrap column (`0` or omitted = pane content width). Use `:wrap` to toggle the current pane |
 
 ## Themes
 
