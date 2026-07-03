@@ -12,6 +12,42 @@ HUME shares Helix's core editing model — select-then-act, selections as first-
 
 ## Key differences
 
+### Word motions
+
+- `w`, `b`: Both editors re-anchor on each press (the anchor moves with the head — it does not stay pinned at the origin). The difference is **what gets selected**: Helix selects the gap traversed (from the old position to the next word start, e.g. `Basic ` including the trailing space); HUME selects the destination word itself (from its start to its end, e.g. `forward` with no surrounding whitespace). To grow a selection across multiple words in HUME, use Extend mode (`e` then `w`), or a one-shot extend (`Ctrl+w` under the kitty protocol). Unlike Helix, HUME's extend is bidirectional: pressing `b`/`Ctrl+b` after growing with `w`/`Ctrl+w` shrinks the selection back word by word (and vice versa) instead of only ever growing it.
+
+### Line selection: `x` vs Extend mode (`e`)
+
+Both editors bind `x` to select the current line. The difference is depth:
+
+| Press | Helix `x` | HUME `x` | HUME `e` then `x` |
+|-------|-----------|----------|-------------------|
+| 1st | Select whole line | Select whole line | Select whole line |
+| 2nd | Extend to next line | Jump to next line (re-anchor) | Extend to next line |
+| 3rd | Extend to next line | Jump to next line (re-anchor) | Extend to next line |
+
+Helix's `x` is **modal** — once pressed, all subsequent `x` presses extend the selection line-wise until you cancel.
+
+HUME's `x` is **one-shot**. Each press re-anchors to the next line. To get Helix's repeat-extend behavior, enter **Extend mode** first (`e`) — in Extend mode, `x` (and every other motion) extends rather than replaces. Use `Ctrl+x` for a one-shot extend without entering the mode.
+
+Once extending, HUME's `x`/`X` are also bidirectional: after growing downward with `x`/`Ctrl+x`, pressing `X`/`Ctrl+X` shrinks the selection back up one line at a time (and vice versa), rather than only ever growing.
+
+### Multiple selections
+
+Both editors share the same foundations — multiple cursors, `;` to collapse, `S` to split into lines — but keybindings and a few operations differ:
+
+| Operation | Helix | HUME |
+|-----------|-------|------|
+| Copy selection on line below | `Alt-C` | `C` (duplicates each selection to the same column on the next line, adding a multi-cursor — column-style editing via multi-cursor, not a rectangular visual block) |
+| Copy selection on line above | `Alt-c` | (unbound) |
+| Remove primary selection | `Alt-,` | `Ctrl+,` |
+| Flip selections | `Alt-o` (extend mode) | `o` (extend mode) |
+| Merge consecutive selections | `Alt-=`, `Alt-+` | automatic — adjacent selections never persist |
+| Align selections | `&` | `&` |
+| Trim whitespace at edges | — | `_` |
+| Select all search matches | `%` (search mode) | `m /` |
+| Select within (regex per selection) | `s` (select mode) | `s` |
+
 ### Configuration language
 
 Helix uses TOML. HUME uses **Scheme** (`init.scm`). You bind keys and set options by calling Scheme functions:
@@ -55,42 +91,6 @@ Enable the Helix-style bindings by loading the built-in plugin:
 (load-plugin "core:helix-surround")
 ```
 
-### Word motions
-
-- `w`, `b`: Both editors re-anchor on each press (the anchor moves with the head — it does not stay pinned at the origin). The difference is **what gets selected**: Helix selects the gap traversed (from the old position to the next word start, e.g. `Basic ` including the trailing space); HUME selects the destination word itself (from its start to its end, e.g. `forward` with no surrounding whitespace). To grow a selection across multiple words in HUME, use Extend mode (`e` then `w`), or a one-shot extend (`Ctrl+w` under the kitty protocol). Unlike Helix, HUME's extend is bidirectional: pressing `b`/`Ctrl+b` after growing with `w`/`Ctrl+w` shrinks the selection back word by word (and vice versa) instead of only ever growing it.
-
-### Line selection: `x` vs Extend mode (`e`)
-
-Both editors bind `x` to select the current line. The difference is depth:
-
-| Press | Helix `x` | HUME `x` | HUME `e` then `x` |
-|-------|-----------|----------|-------------------|
-| 1st | Select whole line | Select whole line | Select whole line |
-| 2nd | Extend to next line | Jump to next line (re-anchor) | Extend to next line |
-| 3rd | Extend to next line | Jump to next line (re-anchor) | Extend to next line |
-
-Helix's `x` is **modal** — once pressed, all subsequent `x` presses extend the selection line-wise until you cancel.
-
-HUME's `x` is **one-shot**. Each press re-anchors to the next line. To get Helix's repeat-extend behavior, enter **Extend mode** first (`e`) — in Extend mode, `x` (and every other motion) extends rather than replaces. Use `Ctrl+x` for a one-shot extend without entering the mode.
-
-Once extending, HUME's `x`/`X` are also bidirectional: after growing downward with `x`/`Ctrl+x`, pressing `X`/`Ctrl+X` shrinks the selection back up one line at a time (and vice versa), rather than only ever growing.
-
-### Multiple selections
-
-Both editors share the same foundations — multiple cursors, `;` to collapse, `S` to split into lines — but keybindings and a few operations differ:
-
-| Operation | Helix | HUME |
-|-----------|-------|------|
-| Copy selection on line below | `Alt-C` | `C` (duplicates each selection to the same column on the next line, adding a multi-cursor — column-style editing via multi-cursor, not a rectangular visual block) |
-| Copy selection on line above | `Alt-c` | (unbound) |
-| Remove primary selection | `Alt-,` | `Ctrl+,` |
-| Flip selections | `Alt-o` (extend mode) | `o` (extend mode) |
-| Merge consecutive selections | `Alt-=`, `Alt-+` | automatic — adjacent selections never persist |
-| Align selections | `&` | `&` |
-| Trim whitespace at edges | — | `_` |
-| Select all search matches | `%` (search mode) | `m /` |
-| Select within (regex per selection) | `s` (select mode) | `s` |
-
 ### What we took from Helix
 
 Several features were intentionally adopted from Helix rather than reinvented:
@@ -103,6 +103,6 @@ Several features were intentionally adopted from Helix rather than reinvented:
 
 - Scripting and plugins (Steel/Scheme)
 - An undo tree (branching history preserved)
-- Smart paste with kill ring (`p` reads kill ring after `d`/`c`, clipboard after `y`)
+- Smart paste with kill ring
 - Fully configurable statusline
 - Hook system (on-buffer-open, on-buffer-save, etc.)

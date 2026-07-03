@@ -103,7 +103,7 @@ Accepted values:
 
 To see which themes are available, type `:theme ` and press `Tab`.
 
-Custom themes are TOML files placed in the `themes/` subdirectory of your HUME config directory.
+Custom themes are TOML files placed in the `themes/` subdirectory of your HUME config directory. HUME uses the Helix theme format, so any theme written for Helix works in HUME too.
 
 HUME ships a theme editor — a single-file HTML tool you can open in a browser to edit themes visually and export them as TOML. You can download it from https://github.com/cvlmtg/HUME/blob/main/tools/theme-editor/index.html
 
