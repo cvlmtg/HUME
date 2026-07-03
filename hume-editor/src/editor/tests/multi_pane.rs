@@ -1325,3 +1325,78 @@ fn vsplit_dividers_off_tiles_edge_to_edge_and_still_dims() {
     let rect = ratatui::layout::Rect::new(0, 0, 20, 4);
     insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
 }
+
+/// A same-buffer split inherits the source pane's jump history so the new
+/// pane can Ctrl+O back to positions visited before the split. The two lists
+/// then diverge: a new jump in either pane does not affect the other.
+#[test]
+fn split_same_buffer_clones_jump_list_then_diverges() {
+    let mut ed = jump_editor(10);
+    let pid_a = ed.state.focused_pane_id;
+
+    // `gg` (goto-first-line) is a jump command: records the pre-jump position.
+    ed.handle_key(key('g'));
+    ed.handle_key(key('g'));
+    assert_eq!(
+        ed.state.panes.jumps[pid_a].len(),
+        1,
+        "source pane has one jump entry after gg"
+    );
+
+    // Same-buffer split — new pane inherits the source pane's jump history.
+    ed.execute_typed("vsplit", None).unwrap();
+    let pid_b = ed.state.focused_pane_id;
+    assert_ne!(pid_a, pid_b, "focus moved to the new pane");
+    assert_eq!(
+        ed.state.panes.jumps[pid_b].len(),
+        1,
+        "new pane inherited the source pane's jump entry"
+    );
+
+    // A new jump in the new pane must not leak back into the source pane.
+    // `ge` (goto-last-line) is a jump command; cursor is at line 0 (inherited
+    // from the source pane's `gg`), so it records {line 0} and moves to line 19.
+    ed.handle_key(key('g'));
+    ed.handle_key(key('e'));
+    assert_eq!(
+        ed.state.panes.jumps[pid_b].len(),
+        2,
+        "new pane recorded its own jump after the split"
+    );
+    assert_eq!(
+        ed.state.panes.jumps[pid_a].len(),
+        1,
+        "source pane's jump list is unchanged after the new pane's jump"
+    );
+}
+
+/// A `:vsplit <path>` onto a different buffer keeps the new pane's jump list
+/// empty — the source pane's history is irrelevant to a different file.
+#[test]
+fn split_different_buffer_keeps_empty_jump_list() {
+    let f = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(f.path(), "other file\n").unwrap();
+    let path = f.path().to_path_buf();
+    let _tmp_path = f.into_temp_path();
+
+    let mut ed = jump_editor(10);
+    let pid_a = ed.state.focused_pane_id;
+
+    // Seed the source pane's jump list with one entry.
+    ed.handle_key(key('g'));
+    ed.handle_key(key('g'));
+    assert_eq!(ed.state.panes.jumps[pid_a].len(), 1);
+
+    ed.execute_typed("vsplit", Some(path.to_str().unwrap()))
+        .unwrap();
+    let pid_b = ed.state.focused_pane_id;
+    assert_ne!(
+        ed.view.panes[pid_b].buffer_id, ed.view.panes[pid_a].buffer_id,
+        "sanity: new pane views a different buffer"
+    );
+    assert_eq!(
+        ed.state.panes.jumps[pid_b].len(),
+        0,
+        "different-buffer split starts with an empty jump list"
+    );
+}

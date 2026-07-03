@@ -68,7 +68,7 @@ impl JumpEntry {
 /// is "at the present" — no backward navigation is active. Navigating backward
 /// decrements cursor; navigating forward increments it. A new `push` truncates
 /// any forward history (entries after cursor) before appending.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct JumpList {
     entries: VecDeque<JumpEntry>,
     /// Current position. `cursor == entries.len()` means "at the present".

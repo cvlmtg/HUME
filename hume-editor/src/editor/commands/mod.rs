@@ -540,6 +540,13 @@ pub(super) fn split_pane_onto(
         // A `:split <path>` onto a different buffer keeps that global seed.
         view.panes[new_pid].wrap_mode = view.panes[old_focused].wrap_mode;
         view.panes[new_pid].saved_wrap_mode = view.panes[old_focused].saved_wrap_mode;
+
+        // A same-buffer split inherits the source pane's jump history so the
+        // new pane can Ctrl+O back to positions the user visited before the
+        // split. The two lists diverge from here — later jumps in either pane
+        // don't affect the other. Cursor position within the history is
+        // preserved too, so a split mid-navigation stays mid-navigation.
+        state.panes.jumps[new_pid] = state.panes.jumps[old_focused].clone();
     }
 
     // `open_pane` already seeded every per-pane map for `new_pid`, so a direct
