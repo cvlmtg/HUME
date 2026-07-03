@@ -66,6 +66,7 @@ Global-only settings: `:set global <option>=<value>` or `(set-option! "option" v
 | `syntax-highlight-max-bytes` | integer ≥ 1 | `1048576` | Max bytes for syntax highlighting |
 | `pane-dividers` | bool | `#t` | Draw a 1-cell divider between sibling panes |
 | `statusline` | `left|center|right` | see [Statusline](#statusline) | Three `\|`-separated sections, each a comma-separated list of element names (empty sections allowed), e.g. `Mode,FileName\|\|Position` |
+| `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Line wrapping for new panes. `N` is the wrap column (`0` or omitted = pane content width). Use `:wrap` to toggle the current pane |
 
 ## Buffer options
 
@@ -84,13 +85,22 @@ These options have a global default that new buffers inherit, and a per-buffer o
 
 `language` has no global default — it is auto-detected per buffer and can only be set with `:set buffer language=<name>`.
 
-## Pane options
+## Text wrap
 
-`wrap-mode` is a per-pane view setting rather than a per-buffer one: two panes showing the same buffer may wrap independently. The global value seeds newly opened panes; `:wrap` toggles wrapping for the current pane live.
+Text wrap is controlled by a global option and a per-pane command.
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Line wrapping for new panes. `N` is the wrap column (`0` or omitted = pane content width). Use `:wrap` to toggle the current pane |
+- `wrap-mode` is the **option** that sets the default wrap *style* for newly opened panes. Set it in config or with `:set global wrap-mode=<value>`.
+- `:wrap` (alias of `:toggle-soft-wrap`) is the **command** that flips wrapping on or off for the pane you're currently in, live. Turning it on always uses the `indent` style; turning it off disables wrapping entirely. It does not remember a `soft` or `word` style set via `wrap-mode` — it comes back as `indent`.
+
+`wrap-mode` is also a per-pane view setting rather than a per-buffer one: two panes showing the same buffer may wrap independently. The global value only seeds newly opened panes. Unlike the [buffer options](#buffer-options) above, `wrap-mode` has no per-buffer override — it can only be set with `:set global wrap-mode=<value>` or `set-option!`, never `:set buffer wrap-mode=...`.
+
+Accepted values:
+
+- `none` — no wrapping; long lines scroll horizontally.
+- `soft` — break at the pane width, splitting at any character (may split a word in the middle).
+- `word` — break at the pane width but prefer whitespace, so words aren't split.
+- `indent` — like `word`, but continuation rows are indented to match the line's leading whitespace, so nested code stays visually nested (this is the default).
+- `:N` suffix — wrap at column `N` instead of the pane's content width (e.g. `word:80`). `0` or omitted means content width.
 
 ## Themes
 
@@ -114,6 +124,16 @@ HUME ships a theme editor — a single-file HTML tool you can open in a browser 
 
 `bind-key!` — binds a key in the given mode (`"normal"`, `"insert"`, `"extend"`).
 `unbind-key!` — removes a binding.
+
+### Binding a key that waits for a character
+
+Some commands need a character typed right after the key (find/till motions, surround). `bind-wait-char!` binds a key sequence so the *next* keypress is captured and passed to the target command instead of being looked up in the keymap:
+
+```scheme
+(bind-wait-char! "normal" "m s" "surround-add")
+```
+
+Inside the target command, read the captured character with `(pending-char)` — see [Plugins](plugins.md) for the full command-writing API, including the related `(request-wait-char! cmd-name)`, which arms the same mechanism from inside an already-running command rather than from a key binding.
 
 ### Key-string grammar
 

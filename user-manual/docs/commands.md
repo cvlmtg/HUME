@@ -54,7 +54,7 @@ See [Configuration](configuration.md) for all available options.
 |---------|---------|--------|
 | `:theme <name>` | — | Load a theme by name; no arg shows current |
 | `:theme-debug` | — | Show resolved styles for key UI scopes |
-| `:toggle-soft-wrap` | `:wrap` | Toggle soft line wrapping |
+| `:toggle-soft-wrap` | `:wrap` | Toggle line wrapping on/off for the current pane. See [wrap styles](configuration.md#text-wrap) |
 | `:messages` | `:mes` | Show message log in a read-only buffer |
 | `:clear-search` | — | Clear search highlights (also clears automatically on `Esc`) |
 
