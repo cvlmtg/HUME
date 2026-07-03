@@ -7,6 +7,13 @@ use hume_scripting::{HookResult, hooks::HookId};
 
 use super::{Editor, Severity, host_impl::EditorHostImpl, ops};
 
+/// Upper bound on `drain_hooks` re-drain passes per drain boundary.
+///
+/// Same philosophy as the plugin-activation depth cap: unreachable in any
+/// legitimate configuration, but stops a handler feedback loop from hanging
+/// the editor forever.
+const MAX_HOOK_DRAIN_PASSES: usize = 100;
+
 impl Editor {
     // ── Message reporting ─────────────────────────────────────────────────────
 
@@ -60,9 +67,27 @@ impl Editor {
     /// Called once per interactive input event by `handle_event` (the single
     /// interactive drain boundary), and once at startup in `lib.rs` before the
     /// event loop begins. Inner hook handlers may enqueue more hooks; the outer
-    /// loop re-drains until the queue is empty.
+    /// loop re-drains until the queue is empty — capped at
+    /// [`MAX_HOOK_DRAIN_PASSES`] so a handler feedback loop (e.g. two
+    /// `on-language-set` handlers ping-ponging `set-buffer-language!` between
+    /// two values) cannot livelock the editor.  The watchdog only bounds each
+    /// individual eval, not this loop.
     pub(crate) fn drain_hooks(&mut self) {
+        let mut passes = 0;
         while !self.state.pending_hooks.is_empty() {
+            passes += 1;
+            if passes > MAX_HOOK_DRAIN_PASSES {
+                let dropped = self.state.pending_hooks.len();
+                self.state.pending_hooks.clear();
+                self.report(
+                    Severity::Error,
+                    format!(
+                        "hook cascade exceeded {MAX_HOOK_DRAIN_PASSES} drain passes — \
+                         dropping {dropped} pending hook(s); handler feedback loop?"
+                    ),
+                );
+                return;
+            }
             let hooks = std::mem::take(&mut self.state.pending_hooks);
             for (hook_id, args) in hooks {
                 // Activate lazy event plugins first so their register-hook! calls

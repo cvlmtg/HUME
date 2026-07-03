@@ -92,6 +92,51 @@ fn mouse_click_in_insert_fires_on_mode_change() {
     );
 }
 
+// ── Hook cascade cap ──────────────────────────────────────────────────────────
+
+/// A handler feedback loop (an `on-language-set` handler that always flips the
+/// language between two values) must be cut off by the drain-pass cap instead
+/// of livelocking the editor.  The watchdog only bounds each individual eval,
+/// not the re-drain loop.
+///
+/// Fail oracle: remove the `MAX_HOOK_DRAIN_PASSES` cap from `drain_hooks` →
+/// this test never returns.
+#[test]
+fn hook_feedback_loop_is_cut_off_by_drain_cap() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-language-set
+             (lambda (bid lang)
+               (set-buffer-language! bid (if (equal? lang "aaa") "bbb" "aaa"))))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+
+    // Kick off the ping-pong: aaa → handler sets bbb → handler sets aaa → …
+    let bid = ed.focused_buffer_id();
+    ed.set_buffer_language(bid, Some("aaa".to_string()));
+    ed.drain_hooks(); // must return, not hang
+
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error && e.text.contains("hook cascade exceeded")),
+        "drain cap must log an Error naming the hook cascade"
+    );
+    assert!(
+        ed.state.pending_hooks.is_empty(),
+        "pending hooks must be dropped when the cap fires"
+    );
+}
+
 // ── Startup hook drain ────────────────────────────────────────────────────────
 
 /// `fire_hook_silent` only enqueues; hooks must be drained explicitly via
