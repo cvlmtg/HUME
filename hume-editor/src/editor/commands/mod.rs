@@ -535,9 +535,11 @@ pub(super) fn split_pane_onto(
         state.panes.state[new_pid][bid].selections = selections;
         view.panes[new_pid].viewport = view.panes[old_focused].viewport.clone();
         // A same-buffer split inherits the source pane's live wrap_mode (e.g. a
-        // `:wrap` toggle); `open_pane` only seeded the global default. A `:split
-        // <path>` onto a different buffer keeps that global seed.
+        // `:wrap` toggle) and its restore target, so a subsequent `:wrap` on the
+        // new pane matches the source instead of falling back to the global seed.
+        // A `:split <path>` onto a different buffer keeps that global seed.
         view.panes[new_pid].wrap_mode = view.panes[old_focused].wrap_mode;
+        view.panes[new_pid].saved_wrap_mode = view.panes[old_focused].saved_wrap_mode;
     }
 
     // `open_pane` already seeded every per-pane map for `new_pid`, so a direct

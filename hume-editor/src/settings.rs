@@ -20,8 +20,23 @@
 //!
 //! Most settings are defined in a single [`define_settings!`] invocation that
 //! generates [`EditorSettings`], [`BufferOverrides`], their `Default` impls,
-//! accessor methods, and the [`apply_setting`] dispatch. Adding a simple
-//! setting requires one entry in the macro and nothing else.
+//! accessor methods, and the [`apply_setting`]/`setting_scopes` dispatch.
+//! Adding a simple setting requires one entry in the macro and nothing else.
+//! `scope: [...]` on that entry is the single source of truth for which
+//! `:set` scopes (`global`/`buffer`/`pane`) the key accepts — `typed_set`
+//! (`editor::commands::typed_file`) looks it up via `setting_scopes(key)`
+//! rather than special-casing scopes per key. A setting placed in the
+//! `buffer{}` section always accepts `["global", "buffer"]`; whether `"pane"`
+//! is also listed is independent of section placement (see `wrap-mode`
+//! below) and requires a matching `if key == "..."` write arm in `typed_set`,
+//! since `apply_setting` has no pane-storage concept at all.
+//!
+//! `language` is the one setting with no macro entry at all: it has no
+//! global default (folding it in would let `:set global language=…`
+//! silently succeed) and its write path needs `Editor`-level access
+//! (`OnLanguageSet` hook, registry lookup) that `apply_setting`'s
+//! `(&mut EditorSettings, &mut BufferOverrides)` signature doesn't have.
+//! It stays a small, explicit special case in `typed_set`.
 //!
 //! Settings with non-trivial resolution (`auto_pairs_ref`, whitespace
 //! sub-fields) are handled manually below the macro invocation.
@@ -146,10 +161,10 @@ macro_rules! parse_setting {
 macro_rules! define_settings {
     (
         global {
-            $( $gkey:literal => $gname:ident : $gtype:ty = $gdefault:expr, parser: $gparser:ident; )*
+            $( $gkey:literal => $gname:ident : $gtype:ty = $gdefault:expr, scope: [$($gscope:literal),+], parser: $gparser:ident; )*
         }
         buffer {
-            $( $bkey:literal => $bname:ident : $btype:ty = $bdefault:expr, parser: $bparser:ident; )*
+            $( $bkey:literal => $bname:ident : $btype:ty = $bdefault:expr, scope: [$($bscope:literal),+], parser: $bparser:ident; )*
         }
         extra_global {
             $( $egname:ident : $egtype:ty = $egdefault:expr; )*
@@ -279,40 +294,92 @@ macro_rules! define_settings {
             }
             Ok(())
         }
+
+        // ── setting_scopes ──────────────────────────────────────────────────────
+
+        /// The `:set` scopes a setting accepts (`"global"`, `"buffer"`, `"pane"`),
+        /// as declared by its `scope: [...]` list in the [`define_settings!`]
+        /// invocation below. Empty for any key not declared there — notably
+        /// `"language"`, which has no generic storage and is handled entirely by
+        /// `typed_set`'s own special case, never through this table.
+        pub(crate) fn setting_scopes(key: &str) -> &'static [&'static str] {
+            match key {
+                $( $gkey => &[$($gscope),+], )*
+                $( $bkey => &[$($bscope),+], )*
+                "whitespace-space" | "whitespace-tab" | "whitespace-newline" => &["global", "buffer"],
+                "statusline" => &["global"],
+                _ => &[],
+            }
+        }
     };
 }
 
 define_settings! {
     global {
-        "scrolloff"           => scrolloff:           usize = 3,    parser: usize;
-        "mouse-scroll-lines"  => mouse_scroll_lines:  usize = 3,    parser: usize;
-        "mouse-enabled"       => mouse_enabled:       bool  = true, parser: bool;
-        "mouse-select"        => mouse_select:        bool  = false, parser: bool;
-        "jump-list-capacity"      => jump_list_capacity:      usize = 100,    parser: usize_nonzero;
-        "jump-line-threshold"     => jump_line_threshold:     usize = 5,      parser: usize;
-        "history-capacity"        => history_capacity:        usize = 100,    parser: usize_nonzero;
-        "steel-init-budget-ms"    => steel_init_budget_ms:    usize = 10_000, parser: usize_nonzero;
-        "steel-command-budget-ms" => steel_command_budget_ms: usize = 1_000,  parser: usize_nonzero;
-        "popup-border" => popup_border: bool = true, parser: bool;
-        "pane-dividers" => pane_dividers: bool = true, parser: bool;
-        "theme" => theme: String = String::new(), parser: string;
-        "syntax-highlight-max-bytes" => syntax_highlight_max_bytes: usize = 1_048_576, parser: usize_nonzero;
-        // Global-only: seeds new panes' `Pane::wrap_mode` at creation time
-        // (`hume-engine`'s `Pane` is the live SSOT — see `commands::open_pane`).
-        // A same-buffer `:split`/`:vsplit` overrides that seed with the source
-        // pane's live wrap mode instead (see `commands::split_pane_onto`).
-        // Not per-buffer: wrap is a view property, and two panes on the same
-        // buffer may wrap differently.
-        "wrap-mode"           => wrap_mode:           WrapMode = WrapMode::Indent { width: 0 }, parser: from_str;
+        "scrolloff" => scrolloff: usize = 3,
+            scope: ["global"],
+            parser: usize;
+        "mouse-scroll-lines" => mouse_scroll_lines: usize = 3,
+            scope: ["global"],
+            parser: usize;
+        "mouse-enabled" => mouse_enabled: bool = true,
+            scope: ["global"],
+            parser: bool;
+        "mouse-select" => mouse_select: bool = false,
+            scope: ["global"],
+            parser: bool;
+        "jump-list-capacity" => jump_list_capacity: usize = 100,
+            scope: ["global"],
+            parser: usize_nonzero;
+        "jump-line-threshold" => jump_line_threshold: usize = 5,
+            scope: ["global"],
+            parser: usize;
+        "history-capacity" => history_capacity: usize = 100,
+            scope: ["global"],
+            parser: usize_nonzero;
+        "steel-init-budget-ms" => steel_init_budget_ms: usize = 10_000,
+            scope: ["global"],
+            parser: usize_nonzero;
+        "steel-command-budget-ms" => steel_command_budget_ms: usize = 1_000,
+            scope: ["global"],
+            parser: usize_nonzero;
+        "popup-border" => popup_border: bool = true,
+            scope: ["global"],
+            parser: bool;
+        "pane-dividers" => pane_dividers: bool = true,
+            scope: ["global"],
+            parser: bool;
+        "theme" => theme: String = String::new(),
+            scope: ["global"],
+            parser: string;
+        "syntax-highlight-max-bytes" => syntax_highlight_max_bytes: usize = 1_048_576,
+            scope: ["global"],
+            parser: usize_nonzero;
+        // Global-only *storage*: seeds new panes' `Pane::wrap_mode` at creation
+        // time (`hume-engine`'s `Pane` is the live SSOT — see
+        // `commands::open_pane`). A same-buffer `:split`/`:vsplit` overrides
+        // that seed with the source pane's live wrap mode instead (see
+        // `commands::split_pane_onto`). Not per-buffer: wrap is a view
+        // property, and two panes on the same buffer may wrap differently.
+        // `scope` below additionally allows "pane" — `:set pane wrap-mode=…`
+        // (see `typed_file::typed_set`) writes straight to the live `Pane`,
+        // a separate path from `apply_setting`/this table.
+        "wrap-mode" => wrap_mode: WrapMode = hume_engine::pane::DEFAULT_WRAP_STYLE,
+            scope: ["global", "pane"],
+            parser: from_str;
     }
     buffer {
-        "tab-width"          => tab_width:          u8              = 4,
+        "tab-width" => tab_width: u8 = 4,
+            scope: ["global", "buffer"],
             parser: tab_width;
-        "tab-style"          => tab_style:          TabStyle        = TabStyle::Hard,
+        "tab-style" => tab_style: TabStyle = TabStyle::Hard,
+            scope: ["global", "buffer"],
             parser: from_str;
-        "line-number-style"  => line_number_style:  LineNumberStyle = LineNumberStyle::Hybrid,
+        "line-number-style" => line_number_style: LineNumberStyle = LineNumberStyle::Hybrid,
+            scope: ["global", "buffer"],
             parser: from_str;
-        "auto-pairs-enabled" => auto_pairs_enabled: bool            = true,
+        "auto-pairs-enabled" => auto_pairs_enabled: bool = true,
+            scope: ["global", "buffer"],
             parser: bool;
     }
     extra_global {

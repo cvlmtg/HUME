@@ -77,6 +77,12 @@ pub enum WrapMode {
     Indent { width: u16 },
 }
 
+/// The wrapping style used whenever a "sensible default" wrapping mode is
+/// needed but nothing more specific applies: `EditorSettings::wrap_mode`'s
+/// own default, and `Pane::new`'s `saved_wrap_mode` fallback when seeded with
+/// `WrapMode::None`. One constant so both stay in sync — see `Pane::new`.
+pub const DEFAULT_WRAP_STYLE: WrapMode = WrapMode::Indent { width: 0 };
+
 impl FromStr for WrapMode {
     type Err = String;
 
@@ -250,13 +256,23 @@ pub struct Pane {
     /// `width: 0` sentinel unresolved); call `WrapMode::resolve(content_width)`
     /// at each use site since content width depends on live pane geometry.
     pub wrap_mode: WrapMode,
+    /// The wrapping mode to restore when `:wrap` turns wrapping back on.
+    /// Always a wrapping variant (never `WrapMode::None`) — toggling wrap off
+    /// stashes the pane's live `wrap_mode` here first.
+    pub saved_wrap_mode: WrapMode,
 }
 
 impl Pane {
-    /// Create a new pane viewing `buffer_id` with default settings.
+    /// Create a new pane viewing `buffer_id`, seeded with `wrap_mode`.
     ///
-    /// Callers that need custom providers should use `Pane { providers, ..Pane::new(bid) }`.
-    pub fn new(buffer_id: BufferId) -> Self {
+    /// `hume-engine` has no dependency on `hume-editor` and so cannot read
+    /// `EditorSettings::wrap_mode` itself — callers pass the global (or
+    /// inherited) value in. `saved_wrap_mode` is derived from it: if
+    /// `wrap_mode` is already wrapping, that's the value to restore later;
+    /// if it's `None`, default the restore target to `DEFAULT_WRAP_STYLE`.
+    ///
+    /// Callers that need custom providers should use `Pane { providers, ..Pane::new(bid, wrap_mode) }`.
+    pub fn new(buffer_id: BufferId, wrap_mode: WrapMode) -> Self {
         Self {
             buffer_id,
             viewport: ViewportState::new(80, 24),
@@ -264,7 +280,12 @@ impl Pane {
             selections: vec![Selection { anchor: 0, head: 0 }],
             primary_idx: 0,
             providers: ProviderSet::new(),
-            wrap_mode: WrapMode::default(),
+            wrap_mode,
+            saved_wrap_mode: if wrap_mode.is_wrapping() {
+                wrap_mode
+            } else {
+                DEFAULT_WRAP_STYLE
+            },
         }
     }
 
@@ -494,6 +515,25 @@ mod tests {
         assert!(WrapMode::Soft { width: 0 }.is_wrapping());
     }
 
+    // ── Pane::new / saved_wrap_mode seeding ─────────────────────────────────
+
+    #[test]
+    fn pane_new_wrapping_seed_becomes_its_own_saved_wrap_mode() {
+        let pane = Pane::new(BufferId::default(), WrapMode::Soft { width: 0 });
+        assert_eq!(pane.wrap_mode, WrapMode::Soft { width: 0 });
+        assert_eq!(pane.saved_wrap_mode, WrapMode::Soft { width: 0 });
+    }
+
+    #[test]
+    fn pane_new_none_seed_defaults_saved_wrap_mode_to_indent() {
+        let pane = Pane::new(BufferId::default(), WrapMode::None);
+        assert_eq!(pane.wrap_mode, WrapMode::None);
+        // saved_wrap_mode must never be None — it's the restore target for a
+        // future toggle-on, so a pane seeded off still has something to fall
+        // back to.
+        assert_eq!(pane.saved_wrap_mode, WrapMode::Indent { width: 0 });
+    }
+
     #[test]
     fn whitespace_config_defaults() {
         let wc = WhitespaceConfig::default();
@@ -511,7 +551,7 @@ mod tests {
                 anchor: head_char,
                 head: head_char,
             }],
-            ..Pane::new(crate::pipeline::BufferId::default())
+            ..Pane::new(crate::pipeline::BufferId::default(), WrapMode::default())
         }
     }
 

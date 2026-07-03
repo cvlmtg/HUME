@@ -20,11 +20,14 @@ The `:set` command takes a scope and a `key=value` pair. The scope is required:
 ```
 :set global <option>=<value>     set the global default; new buffers/panes inherit it
 :set buffer <option>=<value>     override for the current buffer only (takes precedence over global)
+:set pane <option>=<value>       override for the current pane only (view-scoped settings)
 ```
 
 Changes apply to the current session and are not persisted — for persistent configuration, use `init.scm` (below).
 
 `language` is a special case: it has no global default and can only be set per buffer with `:set buffer language=<name>`. Passing `:set global language=…` is rejected.
+
+`:set pane` only supports `wrap-mode` — see [Text wrap](#text-wrap).
 
 ```
 :set buffer tab-width=2
@@ -66,7 +69,7 @@ Global-only settings: `:set global <option>=<value>` or `(set-option! "option" v
 | `syntax-highlight-max-bytes` | integer ≥ 1 | `1048576` | Max bytes for syntax highlighting |
 | `pane-dividers` | bool | `#t` | Draw a 1-cell divider between sibling panes |
 | `statusline` | `left|center|right` | see [Statusline](#statusline) | Three `\|`-separated sections, each a comma-separated list of element names (empty sections allowed), e.g. `Mode,FileName\|\|Position` |
-| `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Line wrapping for new panes. `N` is the wrap column (`0` or omitted = pane content width). Use `:wrap` to toggle the current pane |
+| `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Line wrapping for new panes. `N` is the wrap column (`0` or omitted = pane content width). See [Text wrap](#text-wrap) for per-pane overrides and the `:wrap` toggle |
 
 ## Buffer options
 
@@ -87,12 +90,13 @@ These options have a global default that new buffers inherit, and a per-buffer o
 
 ## Text wrap
 
-Text wrap is controlled by a global option and a per-pane command.
+Text wrap is controlled by a global option, a per-pane override, and a per-pane toggle command.
 
-- `wrap-mode` is the **option** that sets the default wrap *style* for newly opened panes. Set it in config or with `:set global wrap-mode=<value>`.
-- `:wrap` (alias of `:toggle-soft-wrap`) is the **command** that flips wrapping on or off for the pane you're currently in, live. Turning it on always uses the `indent` style; turning it off disables wrapping entirely. It does not remember a `soft` or `word` style set via `wrap-mode` — it comes back as `indent`.
+- `wrap-mode` is the **global option** that sets the default wrap *style* for newly opened panes. Set it in config or with `:set global wrap-mode=<value>`.
+- `:set pane wrap-mode=<value>` overrides the style for the pane you're currently in, live, without affecting other panes or the global default.
+- `:wrap` (alias of `:toggle-soft-wrap`) **toggles** wrapping on or off for the current pane. Turning it off disables wrapping entirely; turning it back on restores whichever style the pane was last wrapping with — whatever `:set pane wrap-mode=…` set, or otherwise the global `wrap-mode`.
 
-`wrap-mode` is also a per-pane view setting rather than a per-buffer one: two panes showing the same buffer may wrap independently. The global value only seeds newly opened panes. Unlike the [buffer options](#buffer-options) above, `wrap-mode` has no per-buffer override — it can only be set with `:set global wrap-mode=<value>` or `set-option!`, never `:set buffer wrap-mode=...`.
+`wrap-mode` is a per-pane view setting rather than a per-buffer one: two panes showing the same buffer may wrap independently — set the global default with `:set global wrap-mode=<value>` or `set-option!`, or override one pane with `:set pane wrap-mode=<value>`; there is no `:set buffer wrap-mode=...`.
 
 Accepted values:
 

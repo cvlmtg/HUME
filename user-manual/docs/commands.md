@@ -45,6 +45,7 @@ Pane focus, splitting, and closing use the `Ctrl+p` prefix (`Ctrl+p h`/`j`/`k`/`
 | `:set <option>` | Show current value of an option |
 | `:set global <option>=<value>` | Set a global option |
 | `:set buffer <option>=<value>` | Set an option for the current buffer only |
+| `:set pane <option>=<value>` | Set an option for the current pane only (`wrap-mode` only) |
 
 See [Configuration](configuration.md) for all available options.
 

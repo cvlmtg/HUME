@@ -101,24 +101,22 @@ pub fn typed_toggle_soft_wrap(
 ) -> Result<(), CommandError> {
     use hume_engine::pane::WrapMode;
     let currently_wrapping = ed.focused_wrap_mode().is_wrapping();
-    let focused_pane = &mut ed.view.panes[ed.state.focused_pane_id];
-    if currently_wrapping {
-        focused_pane.wrap_mode = WrapMode::None;
-        // Horizontal offset is now meaningful; scroll stays where it is.
+    let target = if currently_wrapping {
+        WrapMode::None
     } else {
-        // width: 0 is the sentinel for "content width" — resolved via
-        // WrapMode::resolve(content_width) at render time, so this reflows on resize.
-        focused_pane.wrap_mode = WrapMode::Indent { width: 0 };
-        ed.viewport_mut().horizontal_offset = 0;
-        ed.viewport_mut().top_row_offset = 0;
-    }
+        // saved_wrap_mode is always a wrapping variant — restores whatever
+        // mode this pane last wrapped with (its `:set pane` value, or the
+        // global seed), instead of hardcoding one.
+        ed.view.panes[ed.state.focused_pane_id].saved_wrap_mode
+    };
+    ed.apply_focused_wrap_mode(target);
     let state = if currently_wrapping { "off" } else { "on" };
     ed.report(Severity::Info, format!("Soft wrap {state}"));
     Ok(())
 }
 
 pub fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
-    const USAGE: &str = "Usage: :set global|buffer key=value";
+    const USAGE: &str = "Usage: :set global|buffer|pane key=value";
     let Some(arg) = arg else {
         return Err(CommandError::new(USAGE));
     };
@@ -130,12 +128,12 @@ pub fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(),
     };
     let bid = ed.focused_buffer_id();
 
-    // Language is a per-buffer property, not a generic setting.
+    // `language` has no global default and no generic storage (it lives on
+    // `Buffer.language`, not `EditorSettings`/`BufferOverrides`), so it has no
+    // `scope:` entry in `settings::setting_scopes` — checked here first and
+    // unconditionally, or it would fall through to "unknown setting" below.
     if key == "language" {
         return match scope {
-            "global" => Err(CommandError::new(
-                "'language' is per-buffer — use ':set buffer language=<name>'",
-            )),
             "buffer" => {
                 let new_lang = if value.is_empty() {
                     None
@@ -153,46 +151,86 @@ pub fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(),
                 ed.set_buffer_language(bid, new_lang);
                 Ok(())
             }
-            _ => Err(CommandError::new(format!(
-                "unknown scope '{scope}': expected 'global' or 'buffer'"
-            ))),
+            _ => Err(CommandError::new(
+                "'language' is per-buffer — use ':set buffer language=<name>'",
+            )),
         };
     }
 
-    let result = match scope {
-        "global" => crate::settings::apply_setting(
-            crate::settings::SettingScope::Global,
-            key,
-            value,
-            &mut ed.state.settings,
-            &mut ed.state.buffers.get_mut(bid).overrides,
-        ),
+    // Every other setting declares its valid `:set` scopes on its
+    // `define_settings!` line — one data-driven check instead of per-scope
+    // special-casing.
+    let scopes = crate::settings::setting_scopes(key);
+    if scopes.is_empty() {
+        return Err(CommandError::new(format!("unknown setting '{key}'")));
+    }
+    if !scopes.contains(&scope) {
+        return Err(CommandError::new(format!(
+            "'{key}' cannot be set with :set {scope} — valid scopes: {}",
+            scopes.join(", ")
+        )));
+    }
+
+    match scope {
+        "global" => {
+            let result = crate::settings::apply_setting(
+                crate::settings::SettingScope::Global,
+                key,
+                value,
+                &mut ed.state.settings,
+                &mut ed.state.buffers.get_mut(bid).overrides,
+            );
+            apply_set_side_effects(ed, key, &result);
+            result.map_err(CommandError::new)
+        }
         "buffer" => crate::settings::apply_setting(
             crate::settings::SettingScope::Text,
             key,
             value,
             &mut ed.state.settings,
             &mut ed.state.buffers.get_mut(bid).overrides,
-        ),
-        _ => Err(format!(
-            "unknown scope '{scope}': expected 'global' or 'buffer'"
-        )),
-    };
-    if result.is_ok() && key == "history-capacity" {
-        ed.state
+        )
+        .map_err(CommandError::new),
+        "pane" => {
+            // Only pane-scoped setting today — `scopes.contains(&scope)` above
+            // already proved `key == "wrap-mode"` (it's the only line whose
+            // `scope:` list contains "pane"). A future pane-scoped setting
+            // gets its own `if key == "..."` arm here.
+            if key == "wrap-mode" {
+                use std::str::FromStr;
+                let mode =
+                    hume_engine::pane::WrapMode::from_str(value).map_err(CommandError::new)?;
+                ed.apply_focused_wrap_mode(mode);
+                return Ok(());
+            }
+            unreachable!("'{key}' has scope 'pane' in setting_scopes() but no pane handler here")
+        }
+        _ => unreachable!("setting_scopes() emitted unknown scope literal '{scope}' for '{key}'"),
+    }
+}
+
+/// Side effects that must re-run after a successful `:set global <key>=…`
+/// (both only ever apply at global scope; `apply_setting` itself doesn't know
+/// about `history`/`view` state, so this stays outside it).
+fn apply_set_side_effects(ed: &mut Editor, key: &str, result: &Result<(), String>) {
+    if result.is_err() {
+        return;
+    }
+    match key {
+        "history-capacity" => ed
+            .state
             .history
-            .set_capacity(ed.state.settings.history_capacity);
+            .set_capacity(ed.state.settings.history_capacity),
+        "theme" if !ed.state.settings.theme.is_empty() => {
+            ops::load_theme_by_name(
+                &mut ed.view,
+                &mut ed.state.message_log,
+                &mut ed.state.status_msg,
+                &ed.state.settings.theme,
+            );
+        }
+        _ => {}
     }
-    if result.is_ok() && key == "theme" && scope == "global" && !ed.state.settings.theme.is_empty()
-    {
-        ops::load_theme_by_name(
-            &mut ed.view,
-            &mut ed.state.message_log,
-            &mut ed.state.status_msg,
-            &ed.state.settings.theme,
-        );
-    }
-    result.map_err(CommandError::new)
 }
 
 /// Extract content and line count from a buffer by ID.

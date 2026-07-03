@@ -60,7 +60,6 @@ pub(crate) fn build_pane(
 
     Pane {
         providers,
-        wrap_mode,
-        ..Pane::new(buffer_id)
+        ..Pane::new(buffer_id, wrap_mode)
     }
 }

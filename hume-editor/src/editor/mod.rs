@@ -505,6 +505,36 @@ impl Editor {
         self.view.panes[self.state.focused_pane_id].wrap_mode
     }
 
+    /// Apply `mode` as the focused pane's wrap mode — the shared path behind
+    /// both `:wrap` and `:set pane wrap-mode=…`.
+    ///
+    /// Setting a wrapping mode also updates `saved_wrap_mode` (the restore
+    /// target for a future `:wrap` toggle-on) and, on an off→on transition,
+    /// zeroes horizontal scroll (meaningless once wrapped). Setting
+    /// `WrapMode::None` stashes the pane's current wrap mode into
+    /// `saved_wrap_mode` first, preserving the toggle invariant that it's
+    /// never `None`.
+    pub(crate) fn apply_focused_wrap_mode(&mut self, mode: hume_engine::pane::WrapMode) {
+        use hume_engine::pane::WrapMode;
+        let now_wrapping = mode.is_wrapping();
+        let pane = &mut self.view.panes[self.state.focused_pane_id];
+        let was_wrapping = pane.wrap_mode.is_wrapping();
+        if now_wrapping {
+            pane.wrap_mode = mode;
+            pane.saved_wrap_mode = mode;
+        } else {
+            if was_wrapping {
+                pane.saved_wrap_mode = pane.wrap_mode;
+            }
+            pane.wrap_mode = WrapMode::None;
+        }
+        if now_wrapping && !was_wrapping {
+            let vp = self.viewport_mut();
+            vp.horizontal_offset = 0;
+            vp.top_row_offset = 0;
+        }
+    }
+
     /// The focused pane's selections for the current buffer.
     pub(super) fn current_selections(&self) -> &SelectionSet {
         &self.state.panes.state[self.state.focused_pane_id][self.focused_buffer_id()].selections
@@ -904,10 +934,7 @@ impl Editor {
         let settings = EditorSettings::default();
         let jump_list_capacity = settings.jump_list_capacity;
         let history_capacity = settings.history_capacity;
-        let pane = Pane {
-            wrap_mode: settings.wrap_mode,
-            ..Pane::new(buffer_id)
-        };
+        let pane = Pane::new(buffer_id, settings.wrap_mode);
         let pane_id = engine_view.panes.insert(pane);
         engine_view.layout = LayoutTree::Leaf(pane_id);
 
