@@ -241,6 +241,12 @@ impl LanguageRegistry {
         self.by_name.get(name)
     }
 
+    /// Iterator over registered language names, in arbitrary (HashMap) order.
+    /// Used by `:set buffer language=` completion.
+    pub(crate) fn iter_names(&self) -> impl Iterator<Item = &str> {
+        self.by_name.keys().map(String::as_str)
+    }
+
     /// The compiled glob matcher for path-based detection. Index-aligned with
     /// `glob_lang_name`: `glob_lang_name(i)` is the language for match index `i`.
     pub(crate) fn compiled_globs(&self) -> &GlobSet {

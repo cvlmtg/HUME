@@ -278,10 +278,12 @@ fn path_completer_dirs_only_mode() {
     let canonical = std::fs::canonicalize(dir.path()).unwrap();
     let registry = crate::editor::registry::CommandRegistry::with_defaults();
     let buffers = crate::editor::buffer_store::BufferStore::new();
+    let languages = crate::editor::syntax::LanguageRegistry::new();
     let ctx = CompletionCtx {
         registry: &registry,
         buffers: &buffers,
         cwd: &canonical,
+        languages: &languages,
     };
 
     // dirs_only: true — files must be excluded.

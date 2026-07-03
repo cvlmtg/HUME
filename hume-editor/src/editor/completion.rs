@@ -13,6 +13,8 @@ use std::path::{Path, PathBuf};
 
 use crate::editor::buffer_store::BufferStore;
 use crate::editor::registry::CommandRegistry;
+use crate::editor::syntax::LanguageRegistry;
+use crate::settings::{all_setting_keys, setting_scopes};
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -67,6 +69,7 @@ pub(crate) struct CompletionCtx<'a> {
     pub registry: &'a CommandRegistry,
     pub buffers: &'a BufferStore,
     pub cwd: &'a Path,
+    pub languages: &'a LanguageRegistry,
 }
 
 /// Result of a single `Completer::complete` call.
@@ -307,41 +310,190 @@ pub(crate) struct ThemeCompleter;
 impl Completer for ThemeCompleter {
     fn complete(&self, input: &str, cursor: usize, _ctx: &CompletionCtx<'_>) -> CompletionResult {
         let (arg_start, prefix) = arg_prefix(input, cursor);
-
-        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-        let mut candidates: Vec<Completion> = Vec::new();
-
-        for dir in &super::theme_search_paths() {
-            let entries = match hume_platform::fs::read_dir(dir) {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) != Some("toml") {
-                    continue;
-                }
-                let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
-                    continue;
-                };
-                // User themes (earlier in search_dirs) shadow bundled themes.
-                if !seen.insert(stem.to_owned()) {
-                    continue;
-                }
-                if stem.starts_with(prefix) && stem != prefix {
-                    candidates.push(Completion {
-                        replacement: stem.to_owned(),
-                        display: stem.to_owned(),
-                    });
-                }
-            }
-        }
-
+        let mut candidates = theme_name_candidates(prefix);
         candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
         CompletionResult {
             span_start: arg_start,
             candidates,
         }
+    }
+}
+
+/// Scan `themes/*.toml` in every search path and return the stems that start
+/// with `prefix` (excluding an exact match, so Tab on a fully-typed theme name
+/// is a no-op rather than re-offering it). User themes (earlier in the search
+/// path list) shadow bundled themes with the same stem.
+///
+/// Shared by `:theme` (via [`ThemeCompleter`]) and `:set global theme=` (via
+/// [`SetCompleter`]) so the candidate set stays in sync.
+fn theme_name_candidates(prefix: &str) -> Vec<Completion> {
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut candidates: Vec<Completion> = Vec::new();
+
+    for dir in &super::theme_search_paths() {
+        let entries = match hume_platform::fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+                continue;
+            }
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            // User themes (earlier in search_dirs) shadow bundled themes.
+            if !seen.insert(stem.to_owned()) {
+                continue;
+            }
+            if stem.starts_with(prefix) && stem != prefix {
+                candidates.push(Completion {
+                    replacement: stem.to_owned(),
+                    display: stem.to_owned(),
+                });
+            }
+        }
+    }
+
+    candidates
+}
+
+// ── SetCompleter ──────────────────────────────────────────────────────────────
+
+/// Completes `:set <scope> <key>=<value>` arguments.
+///
+/// Three phases, selected by cursor position within the argument:
+/// - **scope** (no space yet) — offers `global`/`buffer`/`pane`.
+/// - **key** (space present, no `=` yet) — offers every setting key whose
+///   declared scopes include the chosen scope, plus `language` for `buffer`.
+/// - **value** (`=` present) — offers the valid value set for enum/bool keys,
+///   registered language names for `language`, installed theme names for
+///   `theme`. Numeric/free-form keys (e.g. `scrolloff`, `statusline`) get no
+///   candidates — the user types them and `apply_setting` validates.
+///
+/// Value lists are completion *hints* mirrored from each setting's parser;
+/// `apply_setting` remains the validation SSOT, so the two can drift only in
+/// what's offered, never in what's accepted.
+pub(crate) struct SetCompleter;
+
+/// The three `:set` scopes. `pane` exists only because `wrap-mode` declares it.
+const SET_SCOPES: &[&str] = &["global", "buffer", "pane"];
+
+/// Static value candidates for enum/bool keys. Returns `None` for keys whose
+/// values are dynamic (`language`, `theme`) or free-form (numbers,
+/// `statusline`) — those are handled in [`SetCompleter::complete`].
+fn static_value_candidates(key: &str) -> Option<&'static [&'static str]> {
+    Some(match key {
+        "mouse-enabled" | "mouse-select" | "popup-border" | "pane-dividers"
+        | "auto-pairs-enabled" => &["true", "false"],
+        "tab-style" => &["hard", "soft"],
+        "line-number-style" => &["absolute", "relative", "hybrid"],
+        "wrap-mode" => &["none", "soft", "word", "indent"],
+        "whitespace-space" | "whitespace-tab" | "whitespace-newline" => {
+            &["none", "all", "trailing"]
+        }
+        _ => return None,
+    })
+}
+
+/// Phase 1: completing the scope token (`global`/`buffer`/`pane`).
+fn complete_set_scope(prefix: &str, span_start: usize) -> CompletionResult {
+    let mut candidates: Vec<Completion> = SET_SCOPES
+        .iter()
+        .copied()
+        .filter(|s| s.starts_with(prefix) && *s != prefix)
+        .map(|s| Completion {
+            replacement: s.to_owned(),
+            display: s.to_owned(),
+        })
+        .collect();
+    candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
+    CompletionResult {
+        span_start,
+        candidates,
+    }
+}
+
+/// Phase 2: completing the key. Surface every declared key whose scopes
+/// include `scope`; `language` is the one key with no macro entry — valid
+/// only for buffer, so it's appended by hand when the scope matches.
+fn complete_set_key(scope: &str, rest: &str, span_start: usize) -> CompletionResult {
+    let mut candidates: Vec<Completion> = all_setting_keys()
+        .iter()
+        .copied()
+        .filter(|k| setting_scopes(k).contains(&scope) && k.starts_with(rest) && *k != rest)
+        .map(|k| Completion {
+            replacement: k.to_owned(),
+            display: k.to_owned(),
+        })
+        .collect();
+    if scope == "buffer" && "language".starts_with(rest) && rest != "language" {
+        candidates.push(Completion {
+            replacement: "language".to_owned(),
+            display: "language".to_owned(),
+        });
+    }
+    candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
+    CompletionResult {
+        span_start,
+        candidates,
+    }
+}
+
+/// Phase 3: completing the value. Static enum/bool lists come from
+/// [`static_value_candidates`]; `language` and `theme` are dynamic.
+fn complete_set_value(
+    scope: &str,
+    key: &str,
+    value_prefix: &str,
+    span_start: usize,
+    ctx: &CompletionCtx<'_>,
+) -> CompletionResult {
+    let mut candidates: Vec<Completion> = Vec::new();
+    if let Some(values) = static_value_candidates(key) {
+        candidates.extend(values.iter().copied().filter(|v| {
+            v.starts_with(value_prefix) && *v != value_prefix
+        }).map(|v| Completion {
+            replacement: v.to_owned(),
+            display: v.to_owned(),
+        }));
+    } else if key == "language" && scope == "buffer" {
+        candidates.extend(
+            ctx.languages
+                .iter_names()
+                .filter(|n| n.starts_with(value_prefix) && *n != value_prefix)
+                .map(|n| Completion {
+                    replacement: n.to_owned(),
+                    display: n.to_owned(),
+                }),
+        );
+    } else if key == "theme" && scope == "global" {
+        candidates.extend(theme_name_candidates(value_prefix));
+    }
+    candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
+    CompletionResult {
+        span_start,
+        candidates,
+    }
+}
+
+impl Completer for SetCompleter {
+    fn complete(&self, input: &str, cursor: usize, ctx: &CompletionCtx<'_>) -> CompletionResult {
+        // arg_prefix strips the command name ("set"); `arg` is
+        // `"<scope> <key>=<value>"` up to the cursor, and `arg_start` is where
+        // it begins in `input`. Two splits (` ` then `=`) pick the phase.
+        let (arg_start, arg) = arg_prefix(input, cursor);
+        let Some(space) = arg.find(' ') else {
+            return complete_set_scope(arg, arg_start);
+        };
+        let scope = &arg[..space];
+        let key_start = arg_start + space + 1;
+        let rest = &arg[space + 1..];
+        let Some(eq) = rest.find('=') else {
+            return complete_set_key(scope, rest, key_start);
+        };
+        complete_set_value(scope, &rest[..eq], &rest[eq + 1..], key_start + eq + 1, ctx)
     }
 }
 
@@ -390,11 +542,30 @@ mod tests {
         buffers: &'a BufferStore,
         cwd: &'a Path,
     ) -> CompletionCtx<'a> {
+        ctx_with(registry, buffers, cwd, empty_langs())
+    }
+
+    fn ctx_with<'a>(
+        registry: &'a CommandRegistry,
+        buffers: &'a BufferStore,
+        cwd: &'a Path,
+        languages: &'a LanguageRegistry,
+    ) -> CompletionCtx<'a> {
         CompletionCtx {
             registry,
             buffers,
             cwd,
+            languages,
         }
+    }
+
+    /// Shared empty registry for tests that don't register languages — avoids
+    /// re-allocating one per `ctx()` call and sidesteps the borrow-lifetime
+    /// issue of constructing it inline.
+    fn empty_langs() -> &'static LanguageRegistry {
+        use std::sync::OnceLock;
+        static EMPTY: OnceLock<LanguageRegistry> = OnceLock::new();
+        EMPTY.get_or_init(LanguageRegistry::new)
     }
 
     fn ev() -> EngineView {
@@ -734,10 +905,12 @@ mod tests {
     fn path_completer_missing_dir_returns_empty() {
         let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
         let cwd = Path::new("/nonexistent/path/that/does/not/exist");
+        let langs = LanguageRegistry::new();
         let ctx = CompletionCtx {
             registry: &reg,
             buffers: &store,
             cwd,
+            languages: &langs,
         };
         let result = PathCompleter { dirs_only: false }.complete("e foo", 5, &ctx);
         assert!(result.candidates.is_empty());
@@ -773,10 +946,12 @@ mod tests {
 
         let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
         let cwd = Path::new("/tmp");
+        let langs = LanguageRegistry::new();
         let ctx = CompletionCtx {
             registry: &reg,
             buffers: &store,
             cwd,
+            languages: &langs,
         };
 
         let home = home_dir.path().to_path_buf();
@@ -830,10 +1005,12 @@ mod tests {
 
         let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
         let cwd = Path::new("/tmp");
+        let langs = LanguageRegistry::new();
         let ctx = CompletionCtx {
             registry: &reg,
             buffers: &store,
             cwd,
+            languages: &langs,
         };
 
         let expanded = dir.path().to_string_lossy().into_owned();
@@ -867,5 +1044,209 @@ mod tests {
             .map(|c| c.display.as_str())
             .collect();
         assert!(names.contains(&"main.rs"));
+    }
+
+    // ── SetCompleter: scope phase ─────────────────────────────────────────────
+
+    fn set_result(input: &str) -> CompletionResult {
+        let (reg, store, dir) = make_ctx_parts();
+        let ctx = ctx(&reg, &store, dir.path());
+        SetCompleter.complete(input, input.len(), &ctx)
+    }
+
+    fn names_of(result: &CompletionResult) -> Vec<&str> {
+        result
+            .candidates
+            .iter()
+            .map(|c| c.replacement.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn set_completer_scope_empty_prefix_lists_all_scopes() {
+        let result = set_result("set ");
+        assert_eq!(result.span_start, 4);
+        assert_eq!(names_of(&result), vec!["buffer", "global", "pane"]);
+    }
+
+    #[test]
+    fn set_completer_scope_prefix_filters() {
+        let result = set_result("set g");
+        assert_eq!(result.span_start, 4);
+        assert_eq!(names_of(&result), vec!["global"]);
+    }
+
+    #[test]
+    fn set_completer_scope_exact_match_excluded() {
+        let result = set_result("set global");
+        assert!(result.candidates.is_empty());
+    }
+
+    // ── SetCompleter: key phase ───────────────────────────────────────────────
+
+    #[test]
+    fn set_completer_keys_for_global_scope() {
+        let result = set_result("set global ");
+        assert_eq!(result.span_start, 11);
+        let names = names_of(&result);
+        assert!(!names.is_empty());
+        assert!(names.contains(&"scrolloff"), "global-only key should appear");
+        assert!(names.contains(&"tab-width"), "global+buffer key should appear");
+        assert!(names.contains(&"wrap-mode"), "global+pane key should appear");
+        assert!(names.contains(&"statusline"), "hand-listed global key");
+        assert!(
+            !names.contains(&"language"),
+            "language has no global scope"
+        );
+    }
+
+    #[test]
+    fn set_completer_keys_for_buffer_scope_includes_language() {
+        let result = set_result("set buffer ");
+        assert_eq!(result.span_start, 11);
+        let names = names_of(&result);
+        assert!(names.contains(&"language"), "language is buffer-only");
+        assert!(names.contains(&"tab-width"), "buffer-overridable key");
+        assert!(
+            !names.contains(&"scrolloff"),
+            "global-only key must not appear under buffer scope"
+        );
+    }
+
+    #[test]
+    fn set_completer_keys_for_pane_scope_only_wrap_mode() {
+        let result = set_result("set pane ");
+        assert_eq!(result.span_start, 9);
+        assert_eq!(names_of(&result), vec!["wrap-mode"]);
+    }
+
+    #[test]
+    fn set_completer_key_prefix_filters() {
+        let result = set_result("set global tab");
+        assert_eq!(result.span_start, 11);
+        let names = names_of(&result);
+        assert!(names.contains(&"tab-width"));
+        assert!(names.contains(&"tab-style"));
+        assert!(names.iter().all(|n| n.starts_with("tab")));
+    }
+
+    #[test]
+    fn set_completer_key_exact_match_excluded() {
+        let result = set_result("set global tab-width");
+        assert!(!names_of(&result).contains(&"tab-width"));
+    }
+
+    // ── SetCompleter: value phase (static enums / bools) ──────────────────────
+
+    #[test]
+    fn set_completer_value_bool_offers_true_false() {
+        let result = set_result("set global mouse-enabled=");
+        assert_eq!(result.span_start, "set global mouse-enabled=".len());
+        assert_eq!(names_of(&result), vec!["false", "true"]);
+    }
+
+    #[test]
+    fn set_completer_value_tab_style() {
+        let result = set_result("set buffer tab-style=");
+        assert_eq!(names_of(&result), vec!["hard", "soft"]);
+    }
+
+    #[test]
+    fn set_completer_value_wrap_mode() {
+        let result = set_result("set global wrap-mode=");
+        assert_eq!(names_of(&result), vec!["indent", "none", "soft", "word"]);
+    }
+
+    #[test]
+    fn set_completer_value_whitespace_render() {
+        let result = set_result("set buffer whitespace-space=");
+        assert_eq!(names_of(&result), vec!["all", "none", "trailing"]);
+    }
+
+    #[test]
+    fn set_completer_value_prefix_filters() {
+        let result = set_result("set buffer tab-style=s");
+        assert_eq!(result.span_start, "set buffer tab-style=".len());
+        assert_eq!(names_of(&result), vec!["soft"]);
+    }
+
+    #[test]
+    fn set_completer_value_exact_match_excluded() {
+        let result = set_result("set buffer tab-style=hard");
+        assert!(result.candidates.is_empty());
+    }
+
+    #[test]
+    fn set_completer_value_numeric_no_candidates() {
+        let result = set_result("set global scrolloff=");
+        assert!(result.candidates.is_empty());
+    }
+
+    // ── SetCompleter: value phase (language from registry) ────────────────────
+
+    #[test]
+    fn set_completer_value_language_from_registry() {
+        let (reg, store, dir) = make_ctx_parts();
+        let mut langs = LanguageRegistry::new();
+        langs
+            .register_identity("rust", &["rs"], &[], &[])
+            .unwrap();
+        langs
+            .register_identity("ruby", &["rb"], &[], &[])
+            .unwrap();
+        let ctx = ctx_with(&reg, &store, dir.path(), &langs);
+        let result = SetCompleter.complete("set buffer language=", 21, &ctx);
+        let names = names_of(&result);
+        assert!(names.contains(&"rust"));
+        assert!(names.contains(&"ruby"));
+        assert_eq!(result.span_start, "set buffer language=".len());
+    }
+
+    #[test]
+    fn set_completer_value_language_only_buffer_scope() {
+        // `:set global language=` is invalid; the completer must not offer
+        // language names under a non-buffer scope.
+        let (reg, store, dir) = make_ctx_parts();
+        let mut langs = LanguageRegistry::new();
+        langs
+            .register_identity("rust", &["rs"], &[], &[])
+            .unwrap();
+        let ctx = ctx_with(&reg, &store, dir.path(), &langs);
+        let result = SetCompleter.complete("set global language=", 21, &ctx);
+        assert!(result.candidates.is_empty());
+    }
+
+    #[test]
+    fn set_completer_value_language_prefix_filters() {
+        let (reg, store, dir) = make_ctx_parts();
+        let mut langs = LanguageRegistry::new();
+        langs
+            .register_identity("rust", &["rs"], &[], &[])
+            .unwrap();
+        langs
+            .register_identity("ruby", &["rb"], &[], &[])
+            .unwrap();
+        let ctx = ctx_with(&reg, &store, dir.path(), &langs);
+        let result = SetCompleter.complete("set buffer language=ru", 22, &ctx);
+        let names = names_of(&result);
+        assert!(names.contains(&"rust"));
+        assert!(names.contains(&"ruby"));
+    }
+
+    #[test]
+    fn set_completer_value_language_excludes_exact_match() {
+        // The completer must drop a language whose name equals the typed
+        // prefix — Tab on a fully-typed value is a no-op.
+        let (reg, store, dir) = make_ctx_parts();
+        let mut langs = LanguageRegistry::new();
+        langs.register_identity("ru", &[], &[], &[]).unwrap();
+        langs
+            .register_identity("rust", &["rs"], &[], &[])
+            .unwrap();
+        let ctx = ctx_with(&reg, &store, dir.path(), &langs);
+        let result = SetCompleter.complete("set buffer language=ru", 22, &ctx);
+        let names = names_of(&result);
+        assert!(names.contains(&"rust"));
+        assert!(!names.contains(&"ru"));
     }
 }

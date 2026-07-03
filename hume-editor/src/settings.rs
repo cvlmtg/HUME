@@ -311,6 +311,23 @@ macro_rules! define_settings {
                 _ => &[],
             }
         }
+
+        // ── all_setting_keys ───────────────────────────────────────────────────
+
+        /// Every setting key with a `:set` wire format — the union of the
+        /// `global`/`buffer` macro entries and the hand-listed extras
+        /// (`whitespace-*`, `statusline`). Notably **excludes** `"language"`,
+        /// which has no macro entry and is surfaced only when the completer
+        /// knows the scope is `"buffer"` (its sole valid scope). Used by
+        /// [`crate::editor::completion::SetCompleter`] to enumerate key
+        /// candidates, filtered further by [`setting_scopes`] against the
+        /// chosen scope.
+        pub(crate) fn all_setting_keys() -> &'static [&'static str] {
+            &[$($gkey,)* $($bkey,)*
+                "whitespace-space", "whitespace-tab", "whitespace-newline",
+                "statusline",
+            ]
+        }
     };
 }
 

@@ -423,3 +423,95 @@ fn ctrl_w_at_start_of_search_minibuf_is_noop() {
     assert_eq!(ed.state.mode, Mode::Search);
     ed.handle_key(key_esc());
 }
+
+// ── :set completion (integration) ─────────────────────────────────────────────
+
+/// `:set global theme=<name>` must surface installed themes — verifying the
+/// SetCompleter dispatch reaches `theme_name_candidates` (shared with
+/// `:theme`) and that the value phase for `theme` is wired end-to-end.
+///
+/// Sets only `HUME_RUNTIME` (not `TMPDIR`) so it cannot race with the
+/// unguarded path-completion tests, whose `tempfile::tempdir()` respects
+/// `TMPDIR`. The shared `HUME_RUNTIME_MUTEX` still serializes against other
+/// `HUME_RUNTIME`-sensitive tests.
+#[test]
+#[cfg(not(windows))]
+fn tab_completes_set_global_theme_value() {
+    struct HumeRuntimeOnly {
+        _dir: tempfile::TempDir,
+        _lock: std::sync::MutexGuard<'static, ()>,
+    }
+    impl Drop for HumeRuntimeOnly {
+        fn drop(&mut self) {
+            unsafe { std::env::remove_var("HUME_RUNTIME") }
+        }
+    }
+    let lock = super::HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().expect("tempdir");
+    // Two themes so the popup opens (a single candidate completes silently).
+    let themes_dir = dir.path().join("themes");
+    std::fs::create_dir_all(&themes_dir).unwrap();
+    std::fs::write(themes_dir.join("zorro.toml"), b"").unwrap();
+    std::fs::write(themes_dir.join("alpha.toml"), b"").unwrap();
+    unsafe { std::env::set_var("HUME_RUNTIME", dir.path()) }
+    let _guard = HumeRuntimeOnly { _dir: dir, _lock: lock };
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    for ch in "set global theme=".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_tab());
+
+    let state = ed
+        .state
+        .completion
+        .as_ref()
+        .expect("theme value should open a popup (>=2 candidates)");
+    let names: Vec<&str> = state.candidates.iter().map(|c| c.replacement.as_str()).collect();
+    assert!(
+        names.contains(&"zorro"),
+        "theme candidate missing: {names:?}"
+    );
+    assert!(names.contains(&"alpha"), "theme candidate missing: {names:?}");
+}
+
+/// `:set ` with no further input opens the scope popup (>=2 candidates), so
+/// Tab opens the popup rather than silently completing.
+#[test]
+fn tab_on_set_opens_scope_popup() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    for ch in "set".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key(' '));
+    ed.handle_key(key_tab());
+
+    let state = ed
+        .state
+        .completion
+        .as_ref()
+        .expect(":set <space> should open scope popup");
+    let names: Vec<&str> = state
+        .candidates
+        .iter()
+        .map(|c| c.replacement.as_str())
+        .collect();
+    assert!(names.contains(&"global"));
+    assert!(names.contains(&"buffer"));
+    assert!(names.contains(&"pane"));
+}
+
+/// `:set g` is a single unique scope match → silent completion, no popup.
+#[test]
+fn tab_on_set_g_silently_completes_global() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    for ch in "set g".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_tab());
+    assert_eq!(minibuf_input(&ed), "set global");
+    assert!(ed.state.completion.is_none());
+}
