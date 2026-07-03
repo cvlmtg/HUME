@@ -418,7 +418,10 @@ mod tests {
 
         // Intern a new scope after bake() — this id is now unbaked.
         let kw_op = reg.intern("keyword.operator");
-        assert!(theme.baked.len() < reg.len(), "registry must have outgrown baked");
+        assert!(
+            theme.baked.len() < reg.len(),
+            "registry must have outgrown baked"
+        );
 
         theme.bake_if_stale(&reg);
         assert_eq!(theme.baked.len(), reg.len());
@@ -519,7 +522,10 @@ mod tests {
         );
         // No "ui.window.focused" entry — dot-notation must fall back to "ui.window".
         let theme = Theme::new(styles, ResolvedStyle::default());
-        assert_eq!(theme.ui.window_focused.fg, Some(Color::Rgb(0x80, 0x80, 0x80)));
+        assert_eq!(
+            theme.ui.window_focused.fg,
+            Some(Color::Rgb(0x80, 0x80, 0x80))
+        );
         assert_eq!(theme.ui.window_focused, theme.ui.window);
     }
 
@@ -541,7 +547,10 @@ mod tests {
             },
         );
         let theme = Theme::new(styles, ResolvedStyle::default());
-        assert_eq!(theme.ui.window_focused.fg, Some(Color::Rgb(0xff, 0x80, 0x00)));
+        assert_eq!(
+            theme.ui.window_focused.fg,
+            Some(Color::Rgb(0xff, 0x80, 0x00))
+        );
         assert_ne!(theme.ui.window_focused, theme.ui.window);
     }
 

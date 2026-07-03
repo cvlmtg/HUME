@@ -375,14 +375,12 @@ impl WrapState {
         // Determine split point: backtrack to last whitespace only when word
         // breaking is enabled (Word/Indent); Soft always splits at the current
         // grapheme, mid-word if necessary.
-        let split_at = if self.word_break
-            && self.last_ws_was_set
-            && self.last_ws_g_idx > self.row_g_start
-        {
-            self.last_ws_g_idx
-        } else {
-            graphemes_out.len() // soft break: split here
-        };
+        let split_at =
+            if self.word_break && self.last_ws_was_set && self.last_ws_g_idx > self.row_g_start {
+                self.last_ws_g_idx
+            } else {
+                graphemes_out.len() // soft break: split here
+            };
 
         // Close current row at split_at.
         close_row_at(rows_out, self.row_g_start, split_at);
@@ -658,7 +656,10 @@ mod tests {
             row0.len()
         );
         // The 7th grapheme (index 6) must be 'w', proving the split is mid-word.
-        assert_eq!(row0[6].char_offset, 6, "last grapheme of row 0 is 'w' at char 6");
+        assert_eq!(
+            row0[6].char_offset, 6,
+            "last grapheme of row 0 is 'w' at char 6"
+        );
     }
 
     #[test]
@@ -677,8 +678,16 @@ mod tests {
             soft_row0.len(),
             word_row0.len()
         );
-        assert_eq!(word_row0.len(), 5, "word wrap backtracks to the space → \"hello\"");
-        assert_eq!(soft_row0.len(), 7, "soft wrap splits mid-word → \"hello w\"");
+        assert_eq!(
+            word_row0.len(),
+            5,
+            "word wrap backtracks to the space → \"hello\""
+        );
+        assert_eq!(
+            soft_row0.len(),
+            7,
+            "soft wrap splits mid-word → \"hello w\""
+        );
     }
 
     #[test]

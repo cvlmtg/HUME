@@ -441,8 +441,7 @@ impl Keymap {
             .bind_leaf(key!(Ctrl + ','), cmd!("remove-primary-selection"));
         // Tab cycles panes. jump-forward stays reachable via Ctrl+i, which kitty
         // delivers as a distinct key.
-        self.normal
-            .bind_leaf(key!(Tab), cmd!("pane-focus-next"));
+        self.normal.bind_leaf(key!(Tab), cmd!("pane-focus-next"));
     }
 }
 
