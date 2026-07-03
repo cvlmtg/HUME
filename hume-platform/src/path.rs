@@ -346,16 +346,21 @@ pub fn normalize_lexical(path: &Path) -> PathBuf {
 /// A valid segment is:
 /// - Non-empty
 /// - Not `.` or `..`
-/// - Contains no `/`, `\`, or NUL character
+/// - Contains no `/`, `\`, `"`, or NUL character
 ///
-/// Dots elsewhere are permitted (e.g. `v1.2.3`).  The `\` rejection is
-/// cross-platform intentional: on Unix `\` is technically a valid filename
-/// character but is unsafe to use in portable paths.
+/// Dots elsewhere are permitted (e.g. `v1.2.3`).  The `\` and `"` rejections
+/// are cross-platform intentional: on Unix both are technically valid filename
+/// characters, but `\` is unsafe in portable paths and `"` is invalid in
+/// Windows filenames (and unsafe to embed in quoted contexts).
 ///
 /// Used to validate plugin-name components and path arguments before they are
 /// joined onto sandboxed base directories.
 pub fn is_safe_segment(s: &str) -> bool {
-    !s.is_empty() && s != "." && s != ".." && s.chars().all(|c| c != '/' && c != '\\' && c != '\0')
+    !s.is_empty()
+        && s != "."
+        && s != ".."
+        && s.chars()
+            .all(|c| c != '/' && c != '\\' && c != '"' && c != '\0')
 }
 
 #[cfg(test)]
@@ -763,6 +768,11 @@ mod tests {
     #[test]
     fn is_safe_segment_nul_is_rejected() {
         assert!(!is_safe_segment("a\0b"));
+    }
+
+    #[test]
+    fn is_safe_segment_quote_is_rejected() {
+        assert!(!is_safe_segment("a\"b"));
     }
 
     #[test]

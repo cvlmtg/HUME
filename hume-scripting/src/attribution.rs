@@ -33,8 +33,8 @@ impl PluginId {
     /// - `<user>/<repo>` — third-party plugin (exactly one `/`)
     ///
     /// Segments must be non-empty, must not be `.` or `..`, and must not
-    /// contain `/`, `\`, or NUL — ensuring the components are safe to use as
-    /// filesystem path segments.  Validated by [`hume_platform::path::is_safe_segment`].
+    /// contain `/`, `\`, `"`, or NUL — ensuring the components are safe to use
+    /// as filesystem path segments.  Validated by [`hume_platform::path::is_safe_segment`].
     ///
     /// Returns `Err(message)` for any other form.
     pub fn parse(name: &str) -> Result<Self, String> {
@@ -124,6 +124,9 @@ impl Hash for PluginId {
                 for c in user.chars() {
                     c.to_ascii_lowercase().hash(state);
                 }
+                // Separator so ("ab","c") and ("a","bc") hash differently.
+                // '/' cannot appear in a segment, so no legal id collides.
+                '/'.hash(state);
                 for c in repo.chars() {
                     c.to_ascii_lowercase().hash(state);
                 }
@@ -243,6 +246,13 @@ mod tests {
     #[test]
     fn parse_too_many_slashes_errors() {
         assert!(PluginId::parse("a/b/c").is_err());
+    }
+
+    #[test]
+    fn parse_quote_in_segment_errors() {
+        assert!(PluginId::parse("core:a\"b").is_err());
+        assert!(PluginId::parse("a\"b/repo").is_err());
+        assert!(PluginId::parse("user/a\"b").is_err());
     }
 
     // ── PluginId equality and hashing ─────────────────────────────────────────

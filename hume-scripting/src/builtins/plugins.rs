@@ -138,6 +138,12 @@ pub(crate) fn declare_plugin(
     // cmd_owners and activation_commands stay consistent.
     let mut valid = Vec::with_capacity(cmd_list.len());
     for cmd in cmd_list {
+        // Malformed name (not a collision) → hard error, same rule as
+        // define-command!.  A name that can't survive quoting is a typo.
+        if cmd.contains('"') || cmd.contains('\\') {
+            steel::stop!(Generic =>
+                "declare-plugin: command name '{}' must not contain '\"' or '\\'", cmd);
+        }
         if ctx.builtin_cmd_names.contains(&cmd) {
             ctx.log(
                 crate::log::LogLevel::Error,
@@ -627,6 +633,32 @@ mod tests {
                 Some(PluginState::Loading)
             ),
             "plugin must be Loading after successful %begin-lazy-activation"
+        );
+    }
+
+    // ── Command-name character validation ─────────────────────────────────────
+
+    /// `declare-plugin` hard-errors on a `#:commands` entry containing `"` or
+    /// `\` — the same rule `define-command!` enforces.
+    ///
+    /// Fail oracle: remove the character check from the filter loop → the name
+    /// registers as an activation entry and the declare succeeds.
+    #[test]
+    fn declare_plugin_command_name_with_quote_errors() {
+        use crate::{ScriptingHost, null_host::NullHost};
+        let mut host = ScriptingHost::new();
+        let result = host.eval_source(
+            r#"(declare-plugin "user/tp" #:commands '("bad\"name"))"#,
+            &mut NullHost,
+        );
+        let err = result.expect_err("quoted command name must be rejected");
+        assert!(
+            err.contains("must not contain"),
+            "error must name the invalid character rule; got: {err}"
+        );
+        assert!(
+            host.registries.lazy_registry.activation_commands.is_empty(),
+            "no activation entry may be recorded for a malformed name"
         );
     }
 
