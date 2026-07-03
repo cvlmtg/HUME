@@ -439,6 +439,10 @@ impl Keymap {
         // Ctrl+, removes primary.
         self.normal
             .bind_leaf(key!(Ctrl + ','), cmd!("remove-primary-selection"));
+        // Tab cycles panes. jump-forward stays reachable via Ctrl+i, which kitty
+        // delivers as a distinct key.
+        self.normal
+            .bind_leaf(key!(Tab), cmd!("pane-focus-next"));
     }
 }
 
@@ -845,5 +849,9 @@ mod tests {
             panic!("Ctrl+, should bind to remove-primary-selection");
         };
         assert_eq!(c.name, "remove-primary-selection");
+        let WalkResult::Leaf(c) = km.normal.walk(&[key!(Tab)]) else {
+            panic!("Tab should bind to pane-focus-next under kitty defaults");
+        };
+        assert_eq!(c.name, "pane-focus-next");
     }
 }
