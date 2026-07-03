@@ -137,6 +137,53 @@ pub(super) fn find_word_end_from(
     }
 }
 
+/// Scan backward from a char known to be inside a word or punct group,
+/// returning the position of its first char.
+///
+/// Mirror of [`find_word_end_from`]: steps backward by grapheme boundary
+/// while `classify_char` stays in the same class, stopping at the class
+/// change or buffer start.
+pub(super) fn find_word_start_from(
+    buf: &Text,
+    pos: usize,
+    is_boundary: impl Fn(CharClass, CharClass) -> bool,
+) -> usize {
+    let cat = classify_char(buf.char_at(pos).expect("pos < len"));
+    let mut pos = pos;
+    while pos > 0 {
+        let prev_pos = prev_grapheme_boundary(buf, pos);
+        let prev_cat = classify_char(buf.char_at(prev_pos).expect("prev_pos < len"));
+        if is_boundary(prev_cat, cat) {
+            break;
+        }
+        pos = prev_pos;
+    }
+    pos
+}
+
+/// The word (or WORD) containing `anchor`, or the single position `(anchor,
+/// anchor)` if `anchor` sits on whitespace/newline.
+///
+/// This is the range that must never be split when an extend motion crosses
+/// the anchor: re-deriving it fresh from the anchor's current position (never
+/// carrying extra state) is what guarantees whole words stay selected even as
+/// the selection direction flips back and forth.
+pub(super) fn anchor_unit(
+    buf: &Text,
+    anchor: usize,
+    is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
+) -> (usize, usize) {
+    let cat = classify_char(buf.char_at(anchor).expect("anchor < len"));
+    if cat == CharClass::Space || cat == CharClass::Eol {
+        (anchor, anchor)
+    } else {
+        (
+            find_word_start_from(buf, anchor, is_boundary),
+            find_word_end_from(buf, anchor, is_boundary),
+        )
+    }
+}
+
 /// Find the next word (or WORD) from `pos` and return `(word_start, word_end)`.
 ///
 /// Returns `None` when there is no next word — at the last word in the buffer
@@ -256,62 +303,40 @@ pub(super) fn apply_word_select(
     result
 }
 
-/// Apply a forward word-select motion in extend mode: union the returned word range
-/// with the existing selection rather than replacing it.
+/// Apply a word-select motion in extend mode: grow toward the target word if
+/// it lies beyond the anchor's word, shrink toward it if the target has
+/// crossed back onto or past the anchor's word, replacing the old selection
+/// rather than unioning with it.
 ///
-/// The motion origin is `sel.end()` so that `select-next-word`/`select-next-uppercase-word` always searches
-/// *ahead* of the current selection, regardless of how far it already extends.
-/// If `motion` returns `None`, iteration stops early and the last selection is kept.
-pub(super) fn apply_word_select_extend_forward(
+/// The motion origin is `sel.head()` — each press searches from wherever the
+/// last press left the cursor, so repeated presses walk word by word in
+/// either direction. Because a target word can only lie entirely beyond,
+/// entirely behind, or exactly on the anchor's word (`anchor_unit`; words
+/// never partially overlap), the anchor's word is always kept whole: crossing
+/// it flips the selection's direction but never truncates it.
+///
+/// If `motion` returns `None`, iteration stops early and the last selection is
+/// kept.
+pub(super) fn apply_word_select_extend(
     buf: &Text,
     sels: SelectionSet,
     count: usize,
+    is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
     motion: impl Fn(&Text, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
     let result = sels.map(|sel| {
         let mut current = sel;
-        // Preserve direction of the original selection through all union steps.
-        let forward = current.anchor() <= current.head();
         for _ in 0..count {
-            // Start from the far end so the search goes past the selection.
-            match motion(buf, current.end()) {
+            match motion(buf, current.head()) {
                 Some((word_start, word_end)) => {
-                    let new_start = current.start().min(word_start);
-                    let new_end = current.end().max(word_end);
-                    current = Selection::directed(new_start, new_end, forward);
-                }
-                None => break,
-            }
-        }
-        current
-    });
-    result.debug_assert_valid(buf);
-    result
-}
-
-/// Apply a backward word-select motion in extend mode: union the returned word range
-/// with the existing selection rather than replacing it.
-///
-/// The motion origin is `sel.start()` so that `select-prev-word`/`select-prev-uppercase-word` always searches
-/// *behind* the current selection, regardless of how far it already extends.
-/// Without this, `select_prev_word(sel.head)` finds a word already inside the
-/// selection, making union a no-op.
-pub(super) fn apply_word_select_extend_backward(
-    buf: &Text,
-    sels: SelectionSet,
-    count: usize,
-    motion: impl Fn(&Text, usize) -> Option<(usize, usize)>,
-) -> SelectionSet {
-    let result = sels.map(|sel| {
-        let mut current = sel;
-        let forward = current.anchor() <= current.head();
-        for _ in 0..count {
-            // Start from the near end so the search goes past the selection.
-            match motion(buf, current.start()) {
-                Some((word_start, word_end)) => {
-                    let new_start = current.start().min(word_start);
-                    let new_end = current.end().max(word_end);
-                    current = Selection::directed(new_start, new_end, forward);
+                    let (unit_start, unit_end) = anchor_unit(buf, current.anchor(), is_boundary);
+                    current = if word_start > unit_end {
+                        Selection::new(unit_start, word_end) // target beyond anchor — grow forward
+                    } else if word_end < unit_start {
+                        Selection::new(unit_end, word_start) // target behind anchor — grow backward
+                    } else {
+                        Selection::new(unit_start, unit_end) // target is the anchor's own word
+                    };
                 }
                 None => break,
             }
@@ -325,7 +350,8 @@ pub(super) fn apply_word_select_extend_backward(
 /// Select or extend to the next word (`w`): branches on `mode`.
 ///
 /// `Move` — re-anchors on each press (fresh forward selection spanning the word).
-/// `Extend` — unions the next word range with the existing selection.
+/// `Extend` — grows toward the next word, or shrinks back toward it if a
+/// prior press already extended past it (see [`apply_word_select_extend`]).
 #[allow(non_snake_case)]
 pub(crate) fn cmd_select_next_word(
     buf: &Text,
@@ -337,9 +363,11 @@ pub(crate) fn cmd_select_next_word(
         MotionMode::Move => apply_word_select(buf, sels, count, |b, pos| {
             select_next_word(b, pos, is_word_boundary)
         }),
-        MotionMode::Extend => apply_word_select_extend_forward(buf, sels, count, |b, pos| {
-            select_next_word(b, pos, is_word_boundary)
-        }),
+        MotionMode::Extend => {
+            apply_word_select_extend(buf, sels, count, is_word_boundary, |b, pos| {
+                select_next_word(b, pos, is_word_boundary)
+            })
+        }
     }
 }
 
@@ -355,9 +383,11 @@ pub(crate) fn cmd_select_next_uppercase_word(
         MotionMode::Move => apply_word_select(buf, sels, count, |b, pos| {
             select_next_word(b, pos, is_uppercase_word_boundary)
         }),
-        MotionMode::Extend => apply_word_select_extend_forward(buf, sels, count, |b, pos| {
-            select_next_word(b, pos, is_uppercase_word_boundary)
-        }),
+        MotionMode::Extend => {
+            apply_word_select_extend(buf, sels, count, is_uppercase_word_boundary, |b, pos| {
+                select_next_word(b, pos, is_uppercase_word_boundary)
+            })
+        }
     }
 }
 
@@ -373,9 +403,11 @@ pub(crate) fn cmd_select_prev_word(
         MotionMode::Move => apply_word_select(buf, sels, count, |b, pos| {
             select_prev_word(b, pos, is_word_boundary)
         }),
-        MotionMode::Extend => apply_word_select_extend_backward(buf, sels, count, |b, pos| {
-            select_prev_word(b, pos, is_word_boundary)
-        }),
+        MotionMode::Extend => {
+            apply_word_select_extend(buf, sels, count, is_word_boundary, |b, pos| {
+                select_prev_word(b, pos, is_word_boundary)
+            })
+        }
     }
 }
 
@@ -391,8 +423,10 @@ pub(crate) fn cmd_select_prev_uppercase_word(
         MotionMode::Move => apply_word_select(buf, sels, count, |b, pos| {
             select_prev_word(b, pos, is_uppercase_word_boundary)
         }),
-        MotionMode::Extend => apply_word_select_extend_backward(buf, sels, count, |b, pos| {
-            select_prev_word(b, pos, is_uppercase_word_boundary)
-        }),
+        MotionMode::Extend => {
+            apply_word_select_extend(buf, sels, count, is_uppercase_word_boundary, |b, pos| {
+                select_prev_word(b, pos, is_uppercase_word_boundary)
+            })
+        }
     }
 }

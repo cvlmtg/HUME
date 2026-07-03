@@ -1308,13 +1308,13 @@ fn extend_first_nonblank_from_indent() {
     );
 }
 
-// ── extend_select word motions (union semantics) ──────────────────────────
+// ── extend_select word motions (anchor-unit grow/shrink) ──────────────────
 
 #[test]
 fn extend_select_next_word_from_cursor() {
-    // From a collapsed cursor at 'h', extend-w unions cursor pos with next word.
-    // select_next_word from pos 0 jumps to "world" (6,10).
-    // Union: min(0,6)=0, max(0,10)=10 → selection (0,10) = "hello world".
+    // From a collapsed cursor at 'h', the anchor's word is "hello" (0,4).
+    // select_next_word from head=0 finds "world" (6,10), which lies beyond
+    // the anchor's word, so the selection grows to cover both.
     assert_state!(
         "-[h]>ello world foo\n",
         |(buf, sels)| cmd_select_next_word(&buf, sels, 1, MotionMode::Extend),
@@ -1324,14 +1324,13 @@ fn extend_select_next_word_from_cursor() {
 
 #[test]
 fn extend_select_next_word_grows_selection() {
-    // Start with "world" selected via `w`; extend-w unions with "foo".
-    // s1 = "world" (6,10); motion from pos 10 → "foo" (12,14).
-    // Union: min(6,12)=6, max(10,14)=14 → "world foo".
+    // Start with "world" selected via `w` (anchor=6,head=10); extend-w finds
+    // "foo" (12,14), beyond the anchor's own word "world", so it grows.
     assert_state!(
         "-[h]>ello world foo\n",
         |(buf, sels)| {
             let s1 = cmd_select_next_word(&buf, sels, 1, MotionMode::Move); // selects "world" (6,10)
-            cmd_select_next_word(&buf, s1, 1, MotionMode::Extend) // union with "foo" (12,14)
+            cmd_select_next_word(&buf, s1, 1, MotionMode::Extend) // grows to "world foo"
         },
         "hello -[world foo]>\n"
     );
@@ -1339,37 +1338,33 @@ fn extend_select_next_word_grows_selection() {
 
 #[test]
 fn extend_select_prev_word_extends_backward() {
-    // Start with "world" selected via `w`; extend-b unions with "hello".
-    // s1 = "world" (6,10); backward motion from start()=6 → "hello" (0,4).
-    // Union: min(6,0)=0, max(10,4)=10 → "hello world".
+    // Start with "world" selected via `w` (anchor=6,head=10); extend-b finds
+    // "hello" (0,4), behind the anchor's word, so the selection grows
+    // backward — flipping to a backward selection (head=0, anchor=10) while
+    // still covering both words in full.
     assert_state!(
         "-[h]>ello world\n",
         |(buf, sels)| {
             let s1 = cmd_select_next_word(&buf, sels, 1, MotionMode::Move); // selects "world" (6,10)
-            cmd_select_prev_word(&buf, s1, 1, MotionMode::Extend) // union with "hello" (0,4)
+            cmd_select_prev_word(&buf, s1, 1, MotionMode::Extend) // grows backward to "hello world"
         },
-        "-[hello world]>\n"
+        "<[hello world]-\n"
     );
 }
 
 #[test]
 fn extend_select_prev_word_from_multi_word_selection() {
-    // Regression: from a multi-word selection "-[bar baz]>", pressing extend-b
-    // should grow backward to include "foo", not be a no-op.
-    //
-    // Bug: old code used sel.head (=end of "baz") as motion origin.
-    // select_prev_word from inside the selection found "baz" itself → union was
-    // a no-op. Fix: backward variant uses sel.start() as origin, which is at
-    // the start of "bar", so select_prev_word finds "foo".
+    // From a multi-word selection "-[bar baz]>" (anchor=4, head=10), extend-b
+    // searches from the head (10, inside "baz") and finds "bar" — the word
+    // immediately before "baz" — which is exactly the anchor's own word
+    // ("bar", 4..6). Target == anchor unit, so the selection shrinks back to
+    // just "bar" rather than growing to include "foo".
     //
     // "foo bar baz\n": f=0,o=1,o=2,' '=3,b=4,a=5,r=6,' '=7,b=8,a=9,z=10,'\n'=11
-    // "-[bar baz]>" = anchor=4, head=10; start()=4, end()=10.
-    // select_prev_word(buf, start()=4) → "foo" at (0,2).
-    // Union: min(4,0)=0, max(10,2)=10 → (0,10) = "foo bar baz".
     assert_state!(
         "foo -[bar baz]>\n",
         |(buf, sels)| cmd_select_prev_word(&buf, sels, 1, MotionMode::Extend),
-        "-[foo bar baz]>\n"
+        "foo -[bar]> baz\n"
     );
 }
 
@@ -1396,18 +1391,156 @@ fn extend_select_prev_word_at_buffer_start_is_noop() {
 
 #[test]
 fn extend_select_next_word_multi_cursor() {
-    // Two cursors each independently union with the next word. Because
-    // select_next_word skips the word under the cursor and returns the
-    // *following* word, each cursor unites with the word after its current one.
+    // Two cursors each independently grow toward the next word beyond their
+    // own anchor's word. Because select_next_word skips the word under the
+    // cursor and returns the *following* word, each cursor grows to include
+    // the word after its current one.
     //
     // "foo bar baz qux\n": f=0..2,' '=3,b=4..6,' '=7,b=8..10,' '=11,q=12..14
-    // cursor1 at 'f'(0): end()=0, select_next_word → "bar"(4,6). union(0,0,4,6)=(0,6)="foo bar".
-    // cursor2 at 'b'(8): end()=8, select_next_word → "qux"(12,14). union(8,8,12,14)=(8,14)="baz qux".
+    // cursor1 at 'f'(0): anchor unit "foo"(0,2); select_next_word(head=0) → "bar"(4,6) → grows to "foo bar".
+    // cursor2 at 'b'(8): anchor unit "baz"(8,10); select_next_word(head=8) → "qux"(12,14) → grows to "baz qux".
     // Results (0,6) and (8,14) are disjoint — no merge.
     assert_state!(
         "-[f]>oo bar -[b]>az qux\n",
         |(buf, sels)| cmd_select_next_word(&buf, sels, 1, MotionMode::Extend),
         "-[foo bar]> -[baz qux]>\n"
+    );
+}
+
+// ── extend_select word motions: shrink-on-reversal scenario ──────────────
+//
+// Walks the exact sequence a user gets pressing Ctrl+w / Ctrl+b repeatedly
+// on "a b c" with "b" selected: grow forward, shrink back to "b", cross the
+// anchor to grow backward (flipping direction), then cross back to shrink
+// forward to "b" again. "a b c\n": a=0,' '=1,b=2,' '=3,c=4,'\n'=5.
+
+#[test]
+fn word_shrink_scenario_step1_grows_forward() {
+    assert_state!(
+        "a -[b]> c\n",
+        |(buf, sels)| cmd_select_next_word(&buf, sels, 1, MotionMode::Extend),
+        "a -[b c]>\n"
+    );
+}
+
+#[test]
+fn word_shrink_scenario_step2_shrinks_to_anchor_word() {
+    // select_prev_word from head=4 (inside "c") lands back on "b" — the
+    // anchor's own word — so the selection shrinks rather than growing past it.
+    assert_state!(
+        "a -[b c]>\n",
+        |(buf, sels)| cmd_select_prev_word(&buf, sels, 1, MotionMode::Extend),
+        "a -[b]> c\n"
+    );
+}
+
+#[test]
+fn word_shrink_scenario_step3_crosses_anchor_flips_backward() {
+    // select_prev_word from head=2 (inside "b") lands on "a", behind the
+    // anchor's word — the selection grows backward, flipping direction.
+    assert_state!(
+        "a -[b]> c\n",
+        |(buf, sels)| cmd_select_prev_word(&buf, sels, 1, MotionMode::Extend),
+        "<[a b]- c\n"
+    );
+}
+
+#[test]
+fn word_shrink_scenario_step4_crosses_back_shrinks_forward() {
+    // select_next_word from head=0 (inside "a") lands back on "b" — the
+    // anchor's own word — so the selection shrinks back to "b" and re-flips
+    // to forward.
+    assert_state!(
+        "<[a b]- c\n",
+        |(buf, sels)| cmd_select_next_word(&buf, sels, 1, MotionMode::Extend),
+        "a -[b]> c\n"
+    );
+}
+
+// ── extend_select word motions: no truncation across the anchor ──────────
+//
+// Same round trip with multi-char words, to prove a word is never partially
+// cut when the motion crosses the anchor — only ever included or excluded
+// whole. "aaa bbb ccc\n": a=0..2,' '=3,b=4..6,' '=7,c=8..10,'\n'=11.
+
+#[test]
+fn word_no_truncation_grows_forward() {
+    assert_state!(
+        "aaa -[bbb]> ccc\n",
+        |(buf, sels)| cmd_select_next_word(&buf, sels, 1, MotionMode::Extend),
+        "aaa -[bbb ccc]>\n"
+    );
+}
+
+#[test]
+fn word_no_truncation_shrinks_to_unit() {
+    // Shrinks from "bbb ccc" back to just "bbb" — "ccc" is dropped whole, not
+    // trimmed to a single char.
+    assert_state!(
+        "aaa -[bbb ccc]>\n",
+        |(buf, sels)| cmd_select_prev_word(&buf, sels, 1, MotionMode::Extend),
+        "aaa -[bbb]> ccc\n"
+    );
+}
+
+#[test]
+fn word_no_truncation_crossing_anchor_keeps_word_whole() {
+    // From "bbb" alone, extend-b crosses the anchor into "aaa". The anchor's
+    // word "bbb" stays fully selected (not cut down to one char) even though
+    // the selection direction flips to backward.
+    assert_state!(
+        "aaa -[bbb]> ccc\n",
+        |(buf, sels)| cmd_select_prev_word(&buf, sels, 1, MotionMode::Extend),
+        "<[aaa bbb]- ccc\n"
+    );
+}
+
+#[test]
+fn word_no_truncation_shrink_back_after_cross() {
+    assert_state!(
+        "<[aaa bbb]- ccc\n",
+        |(buf, sels)| cmd_select_next_word(&buf, sels, 1, MotionMode::Extend),
+        "aaa -[bbb]> ccc\n"
+    );
+}
+
+#[test]
+fn extend_select_next_uppercase_word_unit_spans_punctuation() {
+    // Under `W` rules, "foo-bar" is a single WORD unit (punctuation merges
+    // with the adjacent word class). The anchor's unit is computed with the
+    // same uppercase boundary fn, so it spans the whole hyphenated word, not
+    // just "foo". "foo-bar baz\n": f=0,o=1,o=2,-=3,b=4,a=5,r=6,' '=7,b=8..10.
+    assert_state!(
+        "-[f]>oo-bar baz\n",
+        |(buf, sels)| cmd_select_next_uppercase_word(&buf, sels, 1, MotionMode::Extend),
+        "-[foo-bar baz]>\n"
+    );
+}
+
+#[test]
+fn extend_select_next_word_whitespace_anchor_is_single_position() {
+    // When the anchor sits on whitespace, its "unit" is just that one
+    // position (not a word) — growing toward the next word doesn't try to
+    // preserve or extend the whitespace run.
+    // "a   b\n": a=0,' '=1,' '=2,' '=3,b=4,'\n'=5. Anchor collapsed at idx2.
+    assert_state!(
+        "a -[ ]> b\n",
+        |(buf, sels)| cmd_select_next_word(&buf, sels, 1, MotionMode::Extend),
+        "a -[  b]>\n"
+    );
+}
+
+#[test]
+fn extend_select_prev_word_multi_cursor_shrink_causes_merge() {
+    // Two selections ("bar" and a cursor on "baz") each shrink-cross their
+    // own anchor backward toward "foo"/"bar" respectively. The results
+    // overlap ([0,6] and [4,10]), so `map`'s merge unifies them into one
+    // selection spanning "foo bar baz".
+    // "foo bar baz\n": f=0..2,' '=3,b=4..6,' '=7,b=8..10,' '=... ,z=10,'\n'=11.
+    assert_state!(
+        "foo -[bar]> -[b]>az\n",
+        |(buf, sels)| cmd_select_prev_word(&buf, sels, 1, MotionMode::Extend),
+        "<[foo bar baz]-\n"
     );
 }
 
@@ -1590,6 +1723,91 @@ fn extend_select_line_multi_cursor_merges() {
         "-[hello world\n]>-[foo\n]>bar\n",
         |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
         "-[hello world\nfoo\nbar\n]>"
+    );
+}
+
+// ── extend_select_line: shrink-on-reversal scenario ───────────────────────
+//
+// Walks the exact sequence a user gets pressing Ctrl+x / Ctrl+X repeatedly
+// on "a\nb\nc\n" with "b" selected: grow down, shrink back to "b", cross the
+// anchor to grow up (flipping direction), then cross back to shrink down to
+// "b" again. a=0,'\n'=1,b=2,'\n'=3,c=4,'\n'=5.
+
+#[test]
+fn line_shrink_scenario_step1_grows_down() {
+    assert_state!(
+        "a\n-[b\n]>c\n",
+        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
+        "a\n-[b\nc\n]>"
+    );
+}
+
+#[test]
+fn line_shrink_scenario_step2_shrinks_up_to_anchor_line() {
+    assert_state!(
+        "a\n-[b\nc\n]>",
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Extend),
+        "a\n-[b\n]>c\n"
+    );
+}
+
+#[test]
+fn line_shrink_scenario_step3_crosses_anchor_flips_backward() {
+    assert_state!(
+        "a\n-[b\n]>c\n",
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Extend),
+        "<[a\nb\n]-c\n"
+    );
+}
+
+#[test]
+fn line_shrink_scenario_step4_crosses_back_shrinks_down() {
+    assert_state!(
+        "<[a\nb\n]-c\n",
+        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
+        "a\n-[b\n]>c\n"
+    );
+}
+
+#[test]
+fn extend_select_line_backward_selection_shrinks_from_last_line() {
+    // Regression: the old clamp checked whether the selection's END sat on
+    // the trailing `\n`, which fires here even though the HEAD (the end
+    // that's actually moving) is nowhere near the last line. A head-relative
+    // clamp must let this shrink instead of no-op'ing.
+    assert_state!(
+        "<[a\nb\nc\n]-",
+        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
+        "a\n<[b\nc\n]-"
+    );
+}
+
+#[test]
+fn extend_select_line_single_line_buffer_forward_is_noop() {
+    assert_state!(
+        "-[hello\n]>",
+        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
+        "-[hello\n]>"
+    );
+}
+
+#[test]
+fn extend_select_line_single_line_buffer_backward_is_noop() {
+    assert_state!(
+        "-[hello\n]>",
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Extend),
+        "-[hello\n]>"
+    );
+}
+
+#[test]
+fn extend_select_line_crosses_empty_line() {
+    // Growing downward from line 0 into an empty line (just a bare `\n`)
+    // works via ordinary line arithmetic — no special-casing needed.
+    assert_state!(
+        "-[a\n]>\nb\n",
+        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
+        "-[a\n\n]>b\n"
     );
 }
 

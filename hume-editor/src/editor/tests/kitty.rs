@@ -188,14 +188,16 @@ fn ctrl_p_directionals_are_noop_with_single_pane() {
     }
 }
 
-/// Ctrl+b extends to the previous word via union semantics (kitty mode only).
-/// From cursor at 'w' (pos 6), select_prev_word finds "hello" (0,4).
-/// Union: min(6,0)=0, max(6,4)=6 → "hello w" forward.
+/// Ctrl+b extends to the previous word (kitty mode only). The cursor at 'w'
+/// (pos 6) sits inside "world", the anchor's own word; select_prev_word finds
+/// "hello" (0,4), behind it, so the selection grows backward to cover both
+/// words in full — flipping to a backward selection rather than truncating
+/// "world" down to just "w".
 #[test]
 fn kitty_ctrl_b_extends_prev_word() {
     let mut ed = editor_from_kitty("hello -[w]>orld\n");
     ed.handle_key(key_ctrl('b'));
-    assert_eq!(state(&ed), "-[hello w]>orld\n");
+    assert_eq!(state(&ed), "<[hello world]-\n");
 }
 
 /// Without kitty, Ctrl+h is a no-op — legacy terminals can't reliably

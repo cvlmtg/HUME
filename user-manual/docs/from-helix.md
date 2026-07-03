@@ -57,7 +57,7 @@ Enable the Helix-style bindings by loading the built-in plugin:
 
 ### Word motions
 
-- `w`, `b`: Both editors re-anchor on each press (the anchor moves with the head — it does not stay pinned at the origin). The difference is **what gets selected**: Helix selects the gap traversed (from the old position to the next word start, e.g. `Basic ` including the trailing space); HUME selects the destination word itself (from its start to its end, e.g. `forward` with no surrounding whitespace). To grow a selection across multiple words in HUME, use Extend mode (`e` then `w`), or a one-shot extend (`Ctrl+w` under the kitty protocol).
+- `w`, `b`: Both editors re-anchor on each press (the anchor moves with the head — it does not stay pinned at the origin). The difference is **what gets selected**: Helix selects the gap traversed (from the old position to the next word start, e.g. `Basic ` including the trailing space); HUME selects the destination word itself (from its start to its end, e.g. `forward` with no surrounding whitespace). To grow a selection across multiple words in HUME, use Extend mode (`e` then `w`), or a one-shot extend (`Ctrl+w` under the kitty protocol). Unlike Helix, HUME's extend is bidirectional: pressing `b`/`Ctrl+b` after growing with `w`/`Ctrl+w` shrinks the selection back word by word (and vice versa) instead of only ever growing it.
 
 ### Line selection: `x` vs Extend mode (`e`)
 
@@ -72,6 +72,8 @@ Both editors bind `x` to select the current line. The difference is depth:
 Helix's `x` is **modal** — once pressed, all subsequent `x` presses extend the selection line-wise until you cancel.
 
 HUME's `x` is **one-shot**. Each press re-anchors to the next line. To get Helix's repeat-extend behavior, enter **Extend mode** first (`e`) — in Extend mode, `x` (and every other motion) extends rather than replaces. Use `Ctrl+x` for a one-shot extend without entering the mode.
+
+Once extending, HUME's `x`/`X` are also bidirectional: after growing downward with `x`/`Ctrl+x`, pressing `X`/`Ctrl+X` shrinks the selection back up one line at a time (and vice versa), rather than only ever growing.
 
 ### Multiple selections
 
