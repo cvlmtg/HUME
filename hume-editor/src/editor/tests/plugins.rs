@@ -792,6 +792,74 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     );
 }
 
+/// A lazy plugin activated via the in-Steel `call!` path whose body tries to
+/// shadow a native command must fail cleanly — the native command survives.
+///
+/// The in-Steel path matters: `SteelCtx::new_command` carries an empty
+/// `builtin_cmd_names` set, so the Steel-side shadow guard is inert and the
+/// conflict is only caught by `host.register_command`.  The failed define must
+/// not leave `command_table`/`cmd_owners` entries that make the plugin-failure
+/// rollback unregister the native command.
+///
+/// Flip (either revert triggers this): insert into `command_table`/`cmd_owners`
+/// before `host.register_command` in `define_command_inner`, or revert
+/// `CommandRegistry::unregister` to an unconditional remove → `move-left`
+/// disappears from the registry and the assertions fire.
+#[test]
+#[cfg(not(windows))]
+fn native_command_survives_failed_shadowing_plugin() {
+    use hume_scripting::attribution::PluginId;
+
+    let (mut ed, _dir) = setup_lazy_editor(
+        // Eager command whose body triggers the lazy plugin via call! —
+        // the in-Steel activation path (empty builtin_cmd_names).
+        r#"(declare-plugin "user/tp" #:commands '("bar"))
+           (define-command! "trigger" "doc" (lambda () (call! "bar")))"#,
+        // Plugin body shadows a native command.
+        r#"(define-command! "move-left" "doc" (lambda () (+ 1 0)))"#,
+    );
+
+    type_cmd(&mut ed, ":trigger");
+
+    // Plugin must be Failed (its body errored on the shadow conflict).
+    let id = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Failed)
+        ),
+        "plugin must be Failed after shadowing attempt"
+    );
+    // The native command must survive in the registry.
+    assert!(
+        ed.state
+            .registry
+            .get_mappable("move-left")
+            .is_some_and(MappableCommand::is_native),
+        "native move-left must survive the failed plugin rollback"
+    );
+    // No orphan Steel-side entries for the native name.
+    assert!(
+        !ed.scripting
+            .as_ref()
+            .unwrap()
+            .command_table_for_test()
+            .contains_key("move-left"),
+        "command_table must not retain the rejected shadow entry"
+    );
+    assert!(
+        !ed.scripting
+            .as_ref()
+            .unwrap()
+            .cmd_owners_for_test()
+            .contains_key("move-left"),
+        "cmd_owners must not retain the rejected shadow entry"
+    );
+}
+
 // ── Phase 3b lazy plugin loading — language/filetype activations ──────────────
 
 /// `#:languages` plugin activates on first matching language set; its

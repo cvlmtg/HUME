@@ -142,16 +142,14 @@ fn define_command_inner(
         // keymap injection passes no leading args rather than blindly injecting 2.
         _ => (0, false),
     };
-    let current_owner = ctx.plugin_stack.current_owner();
-    ctx.registries.command_table.insert(name.clone(), proc);
-    ctx.registries
-        .cmd_owners
-        .insert(name.clone(), current_owner.to_string());
-    // Register inline in the editor's CommandRegistry so subsequent keypresses
-    // find SteelBacked entries immediately — no post-eval second pass.
+    // Register in the editor's CommandRegistry first — it can still reject the
+    // name (e.g. it shadows a native command the empty command-mode builtin set
+    // missed).  Only on success do command_table/cmd_owners record the command;
+    // otherwise a failed define would leave entries that the plugin-failure
+    // rollback would then "clean up" by unregistering a command it never owned.
     ctx.host
         .register_command(SteelCmdDef {
-            name,
+            name: name.clone(),
             doc,
             arity,
             is_variadic,
@@ -159,6 +157,11 @@ fn define_command_inner(
             repeatable,
         })
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
+    let current_owner = ctx.plugin_stack.current_owner();
+    ctx.registries.command_table.insert(name.clone(), proc);
+    ctx.registries
+        .cmd_owners
+        .insert(name, current_owner.to_string());
     Ok(SteelVal::Void)
 }
 
@@ -542,6 +545,46 @@ mod tests {
         assert!(
             err.to_string().contains("must not contain"),
             "expected name rejection, got: {err}"
+        );
+    }
+
+    /// When the host rejects the registration, `command_table` and `cmd_owners`
+    /// must stay clean — the host call runs *before* the table inserts.
+    ///
+    /// Fail oracle: move the inserts back above `host.register_command` → the
+    /// entries linger after the Err and both cleanliness asserts fire.  A stale
+    /// entry would later make the plugin-failure rollback unregister a command
+    /// the plugin never actually owned.
+    #[test]
+    fn define_command_host_rejection_leaves_tables_clean() {
+        fn dummy_proc(_args: &[SteelVal]) -> SteelResult {
+            Ok(SteelVal::Void)
+        }
+        let mut h = SteelCtxTestHarness::new();
+        let mut host = crate::null_host::FailingRegisterHost;
+        {
+            let mut ctx = h.ctx_init_with_host(&mut host);
+            let err = define_command(
+                &mut ctx,
+                "rejected-cmd".to_string(),
+                "doc".to_string(),
+                SteelVal::FuncV(dummy_proc),
+                false,
+                false,
+            )
+            .unwrap_err();
+            assert!(
+                err.to_string().contains("rejected by the command registry"),
+                "error must come from the host; got: {err}"
+            );
+        }
+        assert!(
+            !h.registries.command_table.contains_key("rejected-cmd"),
+            "command_table must not record a command the host rejected"
+        );
+        assert!(
+            !h.registries.cmd_owners.contains_key("rejected-cmd"),
+            "cmd_owners must not record a command the host rejected"
         );
     }
 

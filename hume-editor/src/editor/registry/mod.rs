@@ -115,9 +115,19 @@ impl CommandRegistry {
         self.commands.insert(key, Command::Mappable(cmd));
     }
 
-    /// Remove a single command by name (both mappable and typed).
+    /// Remove a single dynamic (`SteelBacked`/`Lazy`) command by name.
+    ///
+    /// Native mappables and typed commands are never removed: every caller
+    /// (Lazy-stub cleanup, failed-plugin rollback) only legitimately owns
+    /// dynamic entries, so refusing anything else keeps a buggy rollback from
+    /// deleting a built-in command for the rest of the session.
     pub(crate) fn unregister(&mut self, name: &str) {
-        self.commands.remove(name);
+        if matches!(
+            self.commands.get(name),
+            Some(Command::Mappable(mc)) if !mc.is_native()
+        ) {
+            self.commands.remove(name);
+        }
     }
 
     /// Returns `true` if `name` is registered as either a mappable or typed command.
@@ -656,6 +666,44 @@ mod tests {
         assert_eq!(
             names,
             vec!["another-steel-cmd".to_string(), "my-steel-cmd".to_string()]
+        );
+    }
+
+    /// `unregister` removes dynamic (`SteelBacked`/`Lazy`) entries but refuses
+    /// native commands — a failed-plugin rollback must never be able to delete
+    /// a built-in for the rest of the session.
+    ///
+    /// Fail oracle: revert `unregister` to an unconditional `remove` → the
+    /// `move-left` assert fires.
+    #[test]
+    fn unregister_removes_dynamic_but_not_native() {
+        use hume_scripting::attribution::PluginId;
+        let mut reg = CommandRegistry::with_defaults();
+        reg.register(MappableCommand::SteelBacked {
+            name: Cow::Owned("steel-cmd".to_string()),
+            doc: Cow::Borrowed("doc"),
+            arity: 0,
+            is_variadic: false,
+            inline_output: false,
+            repeatable: false,
+        });
+        reg.register(MappableCommand::Lazy {
+            name: Cow::Owned("lazy-cmd".to_string()),
+            plugin: PluginId::User {
+                user: "u".to_string(),
+                repo: "r".to_string(),
+            },
+        });
+
+        reg.unregister("steel-cmd");
+        reg.unregister("lazy-cmd");
+        reg.unregister("move-left"); // native — must be a no-op
+
+        assert!(reg.get_mappable("steel-cmd").is_none());
+        assert!(reg.get_mappable("lazy-cmd").is_none());
+        assert!(
+            reg.get_mappable("move-left").is_some(),
+            "unregister must refuse to remove a native command"
         );
     }
 

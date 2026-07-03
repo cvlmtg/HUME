@@ -78,6 +78,38 @@ impl SteelCtxTestHarness {
         )
     }
 
+    /// Build an init-mode `SteelCtx` over a caller-supplied host instead of the
+    /// harness's `NullHost` — for tests that need specific host behaviour
+    /// (e.g. [`crate::null_host::FailingRegisterHost`]).
+    pub(crate) fn ctx_init_with_host<'a>(
+        &'a mut self,
+        host: &'a mut dyn crate::host::EditorHost,
+    ) -> SteelCtx<'a> {
+        let Self {
+            plugin_stack,
+            registries,
+            pending_messages,
+            pending_language_regs,
+            data_dir,
+            runtime_dir,
+            interrupt_flag,
+            ..
+        } = self;
+        SteelCtx::new_init(
+            host,
+            HostBundle {
+                registries,
+                plugin_stack,
+                pending_messages,
+                pending_language_regs,
+                data_dir: data_dir.as_deref(),
+                runtime_dir: runtime_dir.as_deref(),
+                interrupt_flag: Arc::clone(interrupt_flag),
+            },
+            Default::default(),
+        )
+    }
+
     /// Build a `SteelCtx` in activation mode (`is_init = false`, plugin body context).
     pub(crate) fn ctx_activation(&mut self) -> SteelCtx<'_> {
         let Self {
