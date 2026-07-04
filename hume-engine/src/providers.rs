@@ -368,6 +368,11 @@ impl ProviderSet {
     /// Returns `true` if a provider was removed, `false` for an unknown id
     /// (a no-op, not an error — callers don't need to track what they
     /// already removed).
+    ///
+    /// No editor call site exists yet — kept as the engine primitive for the
+    /// future unregistration paths named on [`ProviderSet`] (Steel provider
+    /// registration; a gutter-visibility `:set` toggle). See ROADMAP open
+    /// questions.
     pub fn remove(&mut self, id: ProviderId) -> bool {
         let before = self.highlights.len()
             + self.gutter_columns.len()
