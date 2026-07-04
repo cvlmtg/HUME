@@ -1151,6 +1151,39 @@ mod tests {
         assert!(graphemes.iter().all(|g| g.col >= 65_000));
     }
 
+    // ── Inline-insert width clamp (B7) ──────────────────────────────────
+
+    #[test]
+    fn wide_inline_insert_width_clamps_to_255_not_wraparound() {
+        // A 300-char ASCII insert must clamp its display width to 255, not
+        // wrap around via `as u8` truncation (300 % 256 = 44 would be the
+        // buggy value).
+        let rope = Rope::from_str("x");
+        let text: &'static str = String::from_utf8(vec![b'a'; 300]).unwrap().leak();
+        let inserts = vec![InlineInsert {
+            byte_offset: 0,
+            text,
+            scope: crate::types::Scope("test"),
+        }];
+        let mut scratch = FormatScratch::new();
+        format_buffer_line(
+            &rope,
+            0,
+            4,
+            &WhitespaceConfig::default(),
+            &WrapMode::None,
+            None,
+            &inserts,
+            &mut scratch,
+        );
+        let insert_g = scratch
+            .graphemes
+            .iter()
+            .find(|g| matches!(g.content, CellContent::Virtual(_)))
+            .expect("insert grapheme present");
+        assert_eq!(insert_g.width, 255, "width clamps at 255, not 300 % 256");
+    }
+
     #[test]
     fn no_window_caller_does_not_overflow_u16_on_huge_line() {
         // Belt-and-braces: callers that pass `h_window: None` (cursor/visual-move
