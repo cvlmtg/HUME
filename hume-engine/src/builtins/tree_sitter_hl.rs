@@ -277,17 +277,17 @@ fn flatten_overlaps(
     // an overlapping interval ends while another with the same scope is still
     // active (e.g. A=[0,5), B=[3,8): at pos=5 A ends, B continues, producing
     // (3,5,B) then (5,8,B) without a merge pass).
-    if out.len() > 1 {
-        let mut i = 0;
-        while i + 1 < out.len() {
-            if out[i].2 == out[i + 1].2 && out[i].1 == out[i + 1].0 {
-                out[i].1 = out[i + 1].1;
-                out.remove(i + 1);
-            } else {
-                i += 1;
-            }
+    //
+    // `dedup_by`'s closure receives `(a, b)` where `b` is the retained
+    // predecessor; returning `true` drops `a` after folding its end into `b`.
+    out.dedup_by(|next, prev| {
+        if prev.2 == next.2 && prev.1 == next.0 {
+            prev.1 = next.1; // extend the retained segment
+            true
+        } else {
+            false
         }
-    }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -381,5 +381,13 @@ mod tests {
         let mut second = vec![(10, 12, s(1))];
         flatten_overlaps(&mut second, &mut stack, &mut events, &mut out);
         assert_eq!(out, vec![(10, 12, s(1))]);
+    }
+
+    #[test]
+    fn three_segment_chain_merges_into_one() {
+        // Same scope, three adjacent segments: [0,2)+[2,5)+[5,9) → one [0,9).
+        // Exercises the dedup_by merge pass over more than one join.
+        let got = run(vec![(0, 2, s(0)), (2, 5, s(0)), (5, 9, s(0))]);
+        assert_eq!(got, vec![(0, 9, s(0))]);
     }
 }
