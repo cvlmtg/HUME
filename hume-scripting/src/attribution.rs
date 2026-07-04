@@ -33,8 +33,9 @@ impl PluginId {
     /// - `<user>/<repo>` — third-party plugin (exactly one `/`)
     ///
     /// Segments must be non-empty, must not be `.` or `..`, and must not
-    /// contain `/`, `\`, `"`, or NUL — ensuring the components are safe to use
-    /// as filesystem path segments.  Validated by [`hume_platform::path::is_safe_segment`].
+    /// contain `/`, `\`, `"`, `:`, or NUL — ensuring the components are safe
+    /// to use as filesystem path segments.  Validated by
+    /// [`hume_platform::path::is_safe_segment`].
     ///
     /// Returns `Err(message)` for any other form.
     pub fn parse(name: &str) -> Result<Self, String> {

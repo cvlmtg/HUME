@@ -399,9 +399,12 @@ fn prefix_completions<'a>(items: impl Iterator<Item = &'a str>, prefix: &str) ->
 /// values are dynamic (`language`, `theme`) or free-form (numbers,
 /// `statusline`) — those are handled in [`SetCompleter::complete`].
 fn static_value_candidates(key: &str) -> Option<&'static [&'static str]> {
+    // Bool keys are derived from `define_settings!`'s `parser: bool` — not
+    // hand-listed — so a new bool setting gets value completion for free.
+    if crate::settings::is_bool_setting(key) {
+        return Some(&["true", "false"]);
+    }
     Some(match key {
-        "mouse-enabled" | "mouse-select" | "popup-border" | "pane-dividers"
-        | "auto-pairs-enabled" => &["true", "false"],
         "tab-style" => TabStyle::VALUES,
         "line-number-style" => LineNumberStyle::VALUES,
         "wrap-mode" => WrapMode::VALUES,
@@ -439,6 +442,11 @@ fn complete_set_key(scope: &str, rest: &str, span_start: usize) -> CompletionRes
 
 /// Phase 3: completing the value. Static enum/bool lists come from
 /// [`static_value_candidates`]; `language` and `theme` are dynamic.
+///
+/// Every key checks its scope before offering values — the same gate
+/// `typed_set` enforces at execution time — so e.g. `:set pane tab-style=`
+/// (tab-style isn't pane-scoped) never dangles a completion that would error
+/// on Enter.
 fn complete_set_value(
     scope: &str,
     key: &str,
@@ -446,15 +454,20 @@ fn complete_set_value(
     span_start: usize,
     ctx: &CompletionCtx<'_>,
 ) -> CompletionResult {
-    let mut candidates = if let Some(values) = static_value_candidates(key) {
+    // `language` has no `setting_scopes` entry by design (see settings.rs) —
+    // valid only for buffer scope, checked directly instead of through the
+    // generic gate below.
+    let mut candidates = if key == "language" {
+        if scope == "buffer" {
+            prefix_completions(ctx.languages.iter_names(), value_prefix)
+        } else {
+            Vec::new()
+        }
+    } else if !setting_scopes(key).contains(&scope) {
+        Vec::new()
+    } else if let Some(values) = static_value_candidates(key) {
         prefix_completions(values.iter().copied(), value_prefix)
-    } else if key == "language" && scope == "buffer" {
-        prefix_completions(ctx.languages.iter_names(), value_prefix)
-    } else if key == "theme" && setting_scopes(key).contains(&scope) {
-        // Unlike `language` above (which has no `setting_scopes` entry by
-        // design — see settings.rs), `theme` is a macro-declared key, so its
-        // scope check is derived from the same SSOT `complete_set_key` uses
-        // rather than a hand-copied `scope == "global"` literal.
+    } else if key == "theme" {
         theme_name_candidates(value_prefix)
     } else {
         Vec::new()
@@ -477,18 +490,32 @@ impl Completer for SetCompleter {
             };
         };
         let arg = up_to[arg_start..].trim_start();
-        // The token being completed starts right after the last space or '='
-        // before the cursor — robust to stray extra whitespace anywhere in
-        // the typed scope/key/value, unlike splitting on the first space only.
-        let span_start = up_to.rfind([' ', '=']).map_or(0, |i| i + 1);
 
         match arg.split_once(' ') {
-            None => complete_set_scope(arg, span_start),
+            None => {
+                // Scope token: bounded by whitespace only — no '=' can occur
+                // yet, so the last space before the cursor is always correct,
+                // robust to stray extra whitespace.
+                let span_start = up_to.rfind(' ').map_or(0, |i| i + 1);
+                complete_set_scope(arg, span_start)
+            }
             Some((scope, rest)) => {
                 let rest = rest.trim_start();
                 match rest.split_once('=') {
-                    None => complete_set_key(scope, rest, span_start),
-                    Some((key, value)) => complete_set_value(scope, key, value, span_start, ctx),
+                    None => {
+                        // Key token: same reasoning as the scope case.
+                        let span_start = up_to.rfind(' ').map_or(0, |i| i + 1);
+                        complete_set_key(scope, rest, span_start)
+                    }
+                    Some((key, value)) => {
+                        // Value token: bounded by '=' only, never by internal
+                        // whitespace — a value can legitimately contain spaces
+                        // (e.g. a theme filename stem like "my theme"), and
+                        // replacing from the last *space* would drop
+                        // everything before it instead of the whole value.
+                        let span_start = up_to.rfind('=').map_or(0, |i| i + 1);
+                        complete_set_value(scope, key, value, span_start, ctx)
+                    }
                 }
             }
         }
@@ -1178,6 +1205,32 @@ mod tests {
     fn set_completer_value_numeric_no_candidates() {
         let result = set_result("set global scrolloff=");
         assert!(result.candidates.is_empty());
+    }
+
+    #[test]
+    fn set_completer_value_static_enum_rejects_ineligible_scope() {
+        // tab-style is global/buffer-scoped, not pane-scoped — completion
+        // must not offer values for a scope the key doesn't accept, matching
+        // the error `typed_set` would give on Enter.
+        let result = set_result("set pane tab-style=");
+        assert!(result.candidates.is_empty());
+    }
+
+    #[test]
+    fn set_completer_value_static_bool_rejects_unknown_scope() {
+        let result = set_result("set bogus mouse-enabled=");
+        assert!(result.candidates.is_empty());
+    }
+
+    #[test]
+    fn set_completer_value_span_start_stops_at_equals_not_internal_space() {
+        // A value can legitimately contain spaces (e.g. a theme filename stem
+        // like "my theme"). The replacement span must start right after '=',
+        // not after the last internal space — otherwise completion would
+        // replace only the tail after the space and duplicate the rest
+        // (e.g. "set global theme=my my theme").
+        let result = set_result("set global theme=my theme");
+        assert_eq!(result.span_start, "set global theme=".len());
     }
 
     // ── SetCompleter: stray whitespace robustness ─────────────────────────────

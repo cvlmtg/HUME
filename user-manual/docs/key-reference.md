@@ -20,7 +20,7 @@
 | `PageDown` / `PageUp` | Scroll one viewport down / up |
 | `Ctrl+d` / `Ctrl+u` | Scroll half a viewport down / up |
 | `Ctrl+o` | Jump list back |
-| `Ctrl+i` / `Tab` | Jump list forward |
+| `Ctrl+i` | Jump list forward |
 | `Ctrl+6` | Switch to alternate buffer |
 | `Ctrl+h/j/k/l/w/b` | One-shot extend of the corresponding motion (kitty only) |
 
@@ -161,7 +161,6 @@ Press `Ctrl+p` then a second key:
 | Key | Action |
 |-----|--------|
 | `Ctrl+p p` | Focus next pane |
-| `Tab` | Focus next pane (kitty only) |
 | `Ctrl+p h` | Focus pane to the left |
 | `Ctrl+p j` | Focus pane below |
 | `Ctrl+p k` | Focus pane above |
@@ -169,6 +168,7 @@ Press `Ctrl+p` then a second key:
 | `Ctrl+p s` | Split the focused pane, stacking the new pane below it |
 | `Ctrl+p v` | Split the focused pane side by side |
 | `Ctrl+p c` | Close the focused pane (does nothing if it's the only pane) |
+| `Tab` | Focus next pane (kitty only) |
 
 ## Insert mode
 

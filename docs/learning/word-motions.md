@@ -4,20 +4,19 @@
 
 Three distinct patterns exist for creating selections from cursor movement:
 
-| Framework | Inner fn returns | Anchor | Typical use |
+| Pattern | Returns | Anchor | Typical use |
 |---|---|---|---|
-| `apply_motion` | a new head position | via `MotionMode` | `h/j/k/l`, paragraph, goto-line |
-| `apply_text_object` | an optional `(start, end)` range | always `start` | `iw`, `i(`, `i"` |
-| `apply_word_select` | an optional `(start, end)` range | always `word_start` | `w/b/W/B` |
+| Motion | a new cursor position | depends on Move vs Extend mode | `h/j/k/l`, paragraph, goto-line |
+| Text object | an optional selected range | always the range's start | `iw`, `i(`, `i"` |
+| Word select | an optional selected range | always the word's start | `w/b/W/B` |
 
-`apply_word_select` occupies a middle ground: its inner function returns a full
-range like a text object, but it is navigational like a motion — counting,
-crossing line boundaries, and stopping at buffer edges.
+Word select occupies a middle ground: it returns a full range like a text
+object, but it is navigational like a motion — counting, crossing line
+boundaries, and stopping at buffer edges.
 
-When the inner function returns nothing (no word in that direction), the
-iteration stops early and the current selection is preserved — a true no-op.
-`apply_motion`'s inner function always returns a position; it can never
-produce a no-op this way.
+When no word exists in that direction, the iteration stops early and the
+current selection is preserved — a true no-op. A plain motion always produces
+*some* new position; it can never produce a no-op this way.
 
 ## Kakoune, Helix, and HUME
 

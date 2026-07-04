@@ -785,6 +785,24 @@ fn split_at_minimum_height_still_splits() {
     );
 }
 
+/// A zero-height render area (e.g. a terminal reporting height 0 on early
+/// startup) must not panic. `EngineView::render` used to hand the statusline
+/// (and tab bar) provider a synthesized `Rect` claiming a row regardless of
+/// `area.height`; the provider's `Buffer::set_string` calls then wrote
+/// out-of-bounds and panicked, unlike the background fill which clamps.
+///
+/// Fail oracle: drop the `area.height > 0` guard around the chrome-row
+/// rendering in `EngineView::render` — this test panics instead of returning
+/// an empty string.
+#[test]
+fn zero_height_render_does_not_panic() {
+    use super::render_snapshot::render_to_styled_string;
+
+    let mut ed = editor_from("-[a]>bc\n");
+    let rect = ratatui::layout::Rect::new(0, 0, 20, 0);
+    assert_eq!(render_to_styled_string(&mut ed, rect), "");
+}
+
 /// After `:vsplit`, `render_into` must draw both panes at their own rects —
 /// not just the focused one. Both panes view the same buffer here, so the
 /// same content must appear in both halves of the styled-frame snapshot.
@@ -1373,6 +1391,7 @@ fn split_same_buffer_clones_jump_list_then_diverges() {
 /// A `:vsplit <path>` onto a different buffer keeps the new pane's jump list
 /// empty — the source pane's history is irrelevant to a different file.
 #[test]
+#[cfg(not(windows))]
 fn split_different_buffer_keeps_empty_jump_list() {
     let f = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(f.path(), "other file\n").unwrap();

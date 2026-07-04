@@ -43,6 +43,21 @@ fn typed_set_garbage_scope_on_real_key_errors() {
     );
 }
 
+/// `SetCompleter` tolerates a stray double space before the key (a6e5adc), so
+/// `typed_set` must accept the same input on Enter — otherwise Tab-completing
+/// through a double space produces a command line that errors.
+#[test]
+fn typed_set_tolerates_double_space_before_key() {
+    let mut ed = editor_from("-[a]>b\n");
+    let result = run_set(&mut ed, "global  tab-width=2");
+    assert!(
+        result.is_ok(),
+        "double space before key must not error: {:?}",
+        result.err().map(|e| e.message().to_owned())
+    );
+    assert_eq!(ed.state.settings.tab_width, 2);
+}
+
 // ── `:set pane wrap-mode=…` ─────────────────────────────────────────────────
 
 #[test]
@@ -162,6 +177,43 @@ fn wrap_toggle_on_zeroes_scroll_offsets() {
     ed.execute_typed("wrap", None).unwrap(); // on
     let pane = focused_pane(&ed);
     assert_eq!(pane.viewport.horizontal_offset, 0);
+    assert_eq!(pane.viewport.top_row_offset, 0);
+}
+
+/// Turning wrap *off* must also zero `top_row_offset`. Unwrapped scrolling
+/// never touches it (`ensure_cursor_visible_unwrapped` only moves `top_line`),
+/// so a sub-row offset left over from wrapped scrolling would otherwise
+/// persist and get forwarded verbatim by the renderer as `top_skip_rows`,
+/// shifting unwrapped content down by that many rows.
+#[test]
+fn wrap_toggle_off_zeroes_top_row_offset() {
+    let mut ed = editor_from("-[a]>b\n");
+    run_set(&mut ed, "pane wrap-mode=soft").expect(":set pane wrap-mode=soft failed");
+    {
+        let pane = &mut ed.view.panes[ed.state.focused_pane_id];
+        pane.viewport.top_row_offset = 3;
+    }
+    ed.execute_typed("wrap", None).unwrap(); // off
+    let pane = focused_pane(&ed);
+    assert_eq!(pane.wrap_mode, WrapMode::None);
+    assert_eq!(pane.viewport.top_row_offset, 0);
+}
+
+/// Changing the wrap style/width while already wrapping (`:set pane
+/// wrap-mode=` to a different variant) must also reset `top_row_offset` — the
+/// old sub-row offset was measured against the previous width and may no
+/// longer be a valid sub-row index for the line under the new width.
+#[test]
+fn set_pane_wrap_mode_change_while_wrapping_zeroes_top_row_offset() {
+    let mut ed = editor_from("-[a]>b\n");
+    run_set(&mut ed, "pane wrap-mode=soft:80").expect(":set pane wrap-mode=soft:80 failed");
+    {
+        let pane = &mut ed.view.panes[ed.state.focused_pane_id];
+        pane.viewport.top_row_offset = 3;
+    }
+    run_set(&mut ed, "pane wrap-mode=soft:20").expect(":set pane wrap-mode=soft:20 failed");
+    let pane = focused_pane(&ed);
+    assert_eq!(pane.wrap_mode, WrapMode::Soft { width: 20 });
     assert_eq!(pane.viewport.top_row_offset, 0);
 }
 

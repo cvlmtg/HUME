@@ -1547,6 +1547,86 @@ fn extend_select_next_uppercase_word_unit_spans_punctuation() {
     );
 }
 
+// ── extend_select word motions: count > 1 within a single press ──────────
+//
+// `apply_word_select_extend`'s loop re-derives the anchor's unit and moves
+// from the *current* head on every iteration (not just once at entry), so a
+// count > 1 press must behave exactly like pressing the same key `count`
+// times in a row — this is genuinely new code (the loop body didn't exist
+// before bidirectional extend), so it needs its own coverage beyond count=1.
+
+#[test]
+fn extend_select_next_word_count_2_grows_two_words_forward() {
+    // Each of the 2 iterations grows forward from the previous head, keeping
+    // the same anchor unit ("foo") throughout — no flip involved.
+    // "foo bar baz qux\n": f=0..2,' '=3,b=4..6,' '=7,b=8..10,' '=11,q=12..14.
+    assert_state!(
+        "-[foo]> bar baz qux\n",
+        |(buf, sels)| cmd_select_next_word(&buf, sels, 2, MotionMode::Extend),
+        "-[foo bar baz]> qux\n"
+    );
+}
+
+#[test]
+fn extend_select_next_word_count_2_flips_then_continues_forward() {
+    // Start already flipped backward over "b c" (anchor on 'c'=4, head on
+    // 'b'=2) — the shape a prior extend-b press across the anchor leaves
+    // behind. A count=2 extend-w press must, within a *single* dispatch:
+    // iteration 1 — motion from head=2 lands on "c", the anchor's own word,
+    //   so the selection collapses (flips forward) to just "c" (matches the
+    //   single-press behavior in `word_extend_after_flip_shrinks_to_new_anchor_word`);
+    // iteration 2 — motion from the new head=4 lands on "d", beyond the
+    //   anchor's word, so the selection grows forward to "c d".
+    // "a b c d e\n": a=0,' '=1,b=2,' '=3,c=4,' '=5,d=6,' '=7,e=8,'\n'=9.
+    assert_state!(
+        "a <[b c]- d e\n",
+        |(buf, sels)| cmd_select_next_word(&buf, sels, 2, MotionMode::Extend),
+        "a b -[c d]> e\n"
+    );
+}
+
+// ── extend_select word motions: anchor inside a combining grapheme cluster ─
+//
+// `anchor_unit` re-derives the anchor's word on every press from whatever
+// position the anchor currently holds — which, per `Selection::new(unit_end,
+// word_start)` in the backward-grow branch, can legitimately be the *last
+// codepoint* of a multi-codepoint grapheme cluster (not just a cluster
+// start), whenever the anchor's own word ends in a combining sequence.
+
+#[test]
+fn extend_select_next_word_anchor_ending_in_combining_cluster_stays_whole() {
+    // "café" = c,a,f,e,´(U+0301 combining acute) — the last two codepoints
+    // form one grapheme cluster. Anchor sits on the *last codepoint* of that
+    // cluster (8), which is exactly what a backward-crossing extend leaves as
+    // `unit_end` when the anchor's word ends in a combining sequence — a
+    // normal, reachable selection shape, not a contrived position.
+    //
+    // Fail oracle: read `classify_char` on the raw anchor codepoint instead
+    // of snapping to the cluster start first — the combining mark alone
+    // classifies as `Punctuation` (not `Word`), so the anchor's own word gets
+    // misread as just that trailing mark and truncated to "foo café-[´ bar]>"
+    // instead of keeping "café" whole.
+    //
+    // "foo cafe\u{0301} bar\n": f=0,o=1,o=2,' '=3,c=4,a=5,f=6,e=7,´=8,' '=9,b=10,a=11,r=12,'\n'=13.
+    assert_state!(
+        "foo <[cafe\u{0301}]- bar\n",
+        |(buf, sels)| cmd_select_next_word(&buf, sels, 1, MotionMode::Extend),
+        "foo -[cafe\u{0301} bar]>\n"
+    );
+}
+
+#[test]
+fn extend_select_prev_word_anchor_ending_in_combining_cluster_stays_whole() {
+    // Same cluster, opposite direction: anchor still on the combining mark
+    // (8), extend-b should grow backward to include "foo" while keeping
+    // "café" whole rather than treating the accent as a separate unit.
+    assert_state!(
+        "foo <[cafe\u{0301}]- bar\n",
+        |(buf, sels)| cmd_select_prev_word(&buf, sels, 1, MotionMode::Extend),
+        "<[foo cafe\u{0301}]- bar\n"
+    );
+}
+
 #[test]
 fn extend_select_next_word_whitespace_anchor_is_single_position() {
     // When the anchor sits on whitespace, its "unit" is just that one
@@ -1566,7 +1646,7 @@ fn extend_select_prev_word_multi_cursor_shrink_causes_merge() {
     // own anchor backward toward "foo"/"bar" respectively. The results
     // overlap ([0,6] and [4,10]), so `map`'s merge unifies them into one
     // selection spanning "foo bar baz".
-    // "foo bar baz\n": f=0..2,' '=3,b=4..6,' '=7,b=8..10,' '=... ,z=10,'\n'=11.
+    // "foo bar baz\n": f=0..2,' '=3,b=4..6,' '=7,b=8..10,'\n'=11.
     assert_state!(
         "foo -[bar]> -[b]>az\n",
         |(buf, sels)| cmd_select_prev_word(&buf, sels, 1, MotionMode::Extend),

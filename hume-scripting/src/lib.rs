@@ -167,7 +167,8 @@ pub struct ScriptingHost {
     runtime_dir: Option<PathBuf>,
     /// Shared interrupt flag.  Set to `true` by the watchdog to signal that
     /// `(hume/yield!)` calls should abort the running script.  Reset to
-    /// `false` after every `eval_init` call.
+    /// `false` after every eval — command dispatch, hook fires, and plugin
+    /// activation, not just `eval_init`.
     interrupt_flag: Arc<AtomicBool>,
     /// Persistent budget-enforcement thread, re-armed around every eval.
     watchdog: EvalWatchdog,
@@ -220,7 +221,8 @@ impl ScriptingHost {
     ///
     /// The returned borrows are disjoint fields of `self` (NLL field-split), so
     /// the VM can be run while the bundle is lent to the eval context. Shared
-    /// by `eval_source_raw`, `activate_plugin`, `call_steel_cmd`, and `fire_hook`.
+    /// by `eval_source_raw`, `activate_plugin_inline`, `call_steel_cmd`, and
+    /// `fire_hook`.
     pub(crate) fn steel_and_bundle(&mut self) -> (&mut Engine, &EvalWatchdog, HostBundle<'_>) {
         let Self {
             steel,

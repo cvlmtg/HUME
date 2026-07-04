@@ -101,8 +101,11 @@ pub(crate) fn prev_word_start(
 /// position of its last char.
 ///
 /// Starts at `start` (which must be the first char of a word or punct group),
-/// advances forward while `classify_char` stays in the same class, and stops
-/// when the class changes or the buffer ends.
+/// advances forward while `is_boundary` reports no boundary between the
+/// current and next class, and stops at the first boundary or the buffer end.
+/// Not always "same class": under WORD semantics (`is_uppercase_word_boundary`)
+/// Word and Punctuation are merged, so this can advance across a Word→Punct
+/// transition without stopping.
 ///
 /// This is Phase 2 of `next_word_end` run from a known starting position,
 /// without the initial skip-whitespace step.
@@ -141,8 +144,9 @@ pub(super) fn find_word_end_from(
 /// returning the position of its first char.
 ///
 /// Mirror of [`find_word_end_from`]: steps backward by grapheme boundary
-/// while `classify_char` stays in the same class, stopping at the class
-/// change or buffer start.
+/// while `is_boundary` reports no boundary between the previous and current
+/// class, stopping at the first boundary or buffer start. See
+/// [`find_word_end_from`]'s doc for why this isn't always "same class".
 pub(super) fn find_word_start_from(
     buf: &Text,
     pos: usize,
@@ -173,6 +177,17 @@ pub(super) fn anchor_unit(
     anchor: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
 ) -> (usize, usize) {
+    // `anchor` may be *any* valid selection endpoint, including the last
+    // codepoint of a multi-codepoint grapheme cluster — that's exactly what
+    // the backward-grow branch above leaves behind as the new anchor when the
+    // anchor word's own last codepoint is part of one (e.g. "café" = c,a,f,e,
+    // combining-acute). `classify_char` must see the cluster's leading
+    // codepoint: reading an internal combining mark directly classifies it as
+    // `Punctuation` (Rust's `is_alphanumeric` excludes combining marks),
+    // which misreads the anchor's own class and truncates the word down to
+    // just that trailing mark. Snap to the start of the cluster containing
+    // `anchor` first — a no-op when `anchor` already is a cluster start.
+    let anchor = prev_grapheme_boundary(buf, next_grapheme_boundary(buf, anchor));
     let cat = classify_char(buf.char_at(anchor).expect("anchor < len"));
     if cat == CharClass::Space || cat == CharClass::Eol {
         (anchor, anchor)

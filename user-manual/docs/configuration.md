@@ -40,7 +40,7 @@ Sets the global default. The value is a string, boolean, or integer. It is only 
 
 ## Global options
 
-Global-only settings: `:set global <option>=<value>` or `(set-option! "option" value)`.
+Set with `:set global <option>=<value>` or `(set-option! "option" value)`. All of these are global-only except `wrap-mode`, which also accepts a per-pane override — see its row below and [Text wrap](#text-wrap).
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -57,7 +57,7 @@ Global-only settings: `:set global <option>=<value>` or `(set-option! "option" v
 | `popup-border` | bool | `#t` | Show popup borders |
 | `syntax-highlight-max-bytes` | integer ≥ 1 | `1048576` | Max bytes for syntax highlighting |
 | `pane-dividers` | bool | `#t` | Draw a 1-cell divider between sibling panes |
-| `statusline` | `left|center|right` | see [Statusline](#statusline) | Three `\|`-separated sections, each a comma-separated list of element names (empty sections allowed), e.g. `Mode,FileName\|\|Position` |
+| `statusline` | `left` \| `center` \| `right` | see [Statusline](#statusline) | Three `\|`-separated sections, each a comma-separated list of element names (empty sections allowed), e.g. `Mode,FileName\|\|Position` |
 | `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Line wrapping for new panes. `N` is the wrap column (`0` or omitted = pane content width). See [Text wrap](#text-wrap) for per-pane overrides and the `:wrap` toggle |
 
 ## Buffer options

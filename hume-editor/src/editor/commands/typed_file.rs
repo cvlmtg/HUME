@@ -123,6 +123,10 @@ pub fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(),
     let Some((scope, rest)) = arg.split_once(' ') else {
         return Err(CommandError::new(USAGE));
     };
+    // Tolerate stray extra whitespace before the key, matching the
+    // `SetCompleter`'s tolerance (a6e5adc) — otherwise Tab can complete
+    // through a double space into a command line that errors on Enter.
+    let rest = rest.trim_start();
     let Some((key, value)) = rest.split_once('=') else {
         return Err(CommandError::new("Expected key=value"));
     };

@@ -271,9 +271,13 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
 
     // ── Jump list ────────────────────────────────────────────────────────────
     t.bind_leaf(key!(Ctrl + 'o'), cmd!("jump-backward"));
-    // Ctrl-i is traditionally Tab (0x09). Even with kitty keyboard protocol,
-    // some terminals still report Ctrl-i as Tab rather than Char('i')+CONTROL.
-    // Bind both so jump-forward works everywhere.
+    // Ctrl-i is traditionally Tab (0x09) on legacy terminals, which cannot
+    // distinguish the two — so this default trie binds both to the same
+    // command. Under the kitty keyboard protocol the two are always distinct
+    // key events, and `apply_kitty_defaults` rebinds Tab to `pane-focus-next`
+    // once the protocol is confirmed; jump-forward then stays reachable via
+    // Ctrl-i alone (see that function's doc for why Ctrl-i can be trusted to
+    // arrive as its own event under kitty).
     t.bind_leaf(key!(Ctrl + 'i'), cmd!("jump-forward"));
     t.bind_leaf(key!(Tab), cmd!("jump-forward"));
 
@@ -439,8 +443,10 @@ impl Keymap {
         // Ctrl+, removes primary.
         self.normal
             .bind_leaf(key!(Ctrl + ','), cmd!("remove-primary-selection"));
-        // Tab cycles panes. jump-forward stays reachable via Ctrl+i, which kitty
-        // delivers as a distinct key.
+        // Tab cycles panes. Disambiguating Ctrl-i from Tab (both 0x09 on
+        // legacy terminals) is precisely what the kitty protocol exists to
+        // do, so once the probe above has confirmed it, jump-forward stays
+        // reachable via Ctrl-i — see the base keymap's jump-list binds.
         self.normal.bind_leaf(key!(Tab), cmd!("pane-focus-next"));
     }
 }

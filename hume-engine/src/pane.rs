@@ -453,6 +453,11 @@ mod tests {
     fn wrap_mode_values_round_trip_through_from_str() {
         // Independent-oracle guard: every completion-offered value must
         // actually parse, so `VALUES` can't silently drift from `FromStr`.
+        // One-directional: this can't catch a variant added to `FromStr` but
+        // left out of `VALUES` (it would just silently vanish from
+        // completion) — `wrap_mode_from_str_bare_keywords` above is the
+        // closest thing to a reverse check, but it's a second
+        // hand-maintained list, not a derived one.
         for v in WrapMode::VALUES {
             assert!(
                 v.parse::<WrapMode>().is_ok(),
@@ -505,6 +510,11 @@ mod tests {
     fn whitespace_render_values_round_trip_through_from_str() {
         // Independent-oracle guard: every completion-offered value must
         // actually parse, so `VALUES` can't silently drift from `FromStr`.
+        // One-directional: this can't catch a variant added to `FromStr` but
+        // left out of `VALUES` (it would just silently vanish from
+        // completion) — `whitespace_render_from_str_all_variants` above is
+        // the closest thing to a reverse check, but it's a second
+        // hand-maintained list, not a derived one.
         for v in WhitespaceRender::VALUES {
             assert!(
                 v.parse::<WhitespaceRender>().is_ok(),

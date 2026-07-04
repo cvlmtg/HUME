@@ -20,7 +20,7 @@ HUME is under active development. Here is what's coming.
 
 **Git gutter** — diff markers in the gutter (plugin candidate).
 
-**Embedded / REPL** — run a Steel REPL inside a docked pane.
+**Embedded REPL** — run a Steel REPL inside a docked pane.
 
 **DAP debugger** — debugger adapter protocol support for interactive debugging.
 

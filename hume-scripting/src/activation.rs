@@ -15,7 +15,8 @@
 //! - Lazy keypress dispatch: `%dispatch-command` activates the owner inline on a
 //!   `command_table` miss, then retries.
 //! - Event/language activations: `activate_plugin_inline` (Rust) bounces into
-//!   `(%activate-plugin-inline id)` via `run_steel`, using its own watchdog.
+//!   `(%activate-plugin-inline id)` via `run_steel_call` — a direct function
+//!   call, not source — using the `ScriptingHost`'s one persistent watchdog.
 
 use std::collections::HashSet;
 use std::sync::Arc;

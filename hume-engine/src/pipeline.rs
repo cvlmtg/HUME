@@ -636,24 +636,32 @@ impl EngineView {
         let pane_rects = &mut ctx.pane_rects;
         let pane_area = self.pane_area(area);
 
-        // ── Render tab bar ────────────────────────────────────────────────────
-        if let Some(ref tabbar) = self.tabbar {
-            let tabbar_area = ratatui::layout::Rect {
-                y: area.y,
+        // A degenerate area (e.g. a terminal reporting height 0 during early
+        // startup, or a genuinely tiny window) has no row to draw a chrome
+        // line into — providers write text via `Buffer::set_string`, which
+        // panics on an out-of-bounds row (unlike a background fill, which
+        // clamps), so skip both chrome rows entirely rather than handing them
+        // a `Rect` claiming a row that doesn't exist.
+        if area.height > 0 {
+            // ── Render tab bar ────────────────────────────────────────────────
+            if let Some(ref tabbar) = self.tabbar {
+                let tabbar_area = ratatui::layout::Rect {
+                    y: area.y,
+                    height: 1,
+                    ..area
+                };
+                tabbar.render(tabbar_area, &self.theme, buf);
+            }
+
+            // ── Render statusline ───────────────────────────────────────────────
+            let sl_y = area.y + area.height.saturating_sub(1);
+            let sl_area = ratatui::layout::Rect {
+                y: sl_y,
                 height: 1,
                 ..area
             };
-            tabbar.render(tabbar_area, &self.theme, buf);
+            statusline.render(sl_area, &self.theme, buf);
         }
-
-        // ── Render statusline ─────────────────────────────────────────────────
-        let sl_y = area.y + area.height.saturating_sub(1);
-        let sl_area = ratatui::layout::Rect {
-            y: sl_y,
-            height: 1,
-            ..area
-        };
-        statusline.render(sl_area, &self.theme, buf);
 
         // ── Compute pane rects once; reuse for panes and overlays ─────────────
         pane_rects.clear();

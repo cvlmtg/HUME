@@ -340,6 +340,24 @@ macro_rules! define_settings {
         pub(crate) fn all_setting_keys() -> &'static [&'static str] {
             &[$($gkey,)* $($bkey,)* $($mkey,)*]
         }
+
+        // ── is_bool_setting ───────────────────────────────────────────────────
+
+        /// `true` if `key`'s value is parsed with `parser: bool` — i.e. its
+        /// only valid values are `"true"`/`"false"`. Derived from the same
+        /// per-key `parser: kind;` declaration used to dispatch parsing in
+        /// `apply_setting`, so a new bool setting is picked up automatically
+        /// by anything that queries this (e.g.
+        /// [`crate::editor::completion::SetCompleter`]'s value completion)
+        /// instead of needing a hand-copied key list. `manual_keys` never
+        /// declare a `parser:`, so this only checks global/buffer.
+        pub(crate) fn is_bool_setting(key: &str) -> bool {
+            match key {
+                $( $gkey => stringify!($gparser) == "bool", )*
+                $( $bkey => stringify!($bparser) == "bool", )*
+                _ => false,
+            }
+        }
     };
 }
 
@@ -1084,24 +1102,34 @@ mod tests {
         assert!(apply_setting(SettingScope::Text, "statusline", "||", &mut s, &mut ov).is_err());
     }
 
-    // ── all_setting_keys / setting_scopes / apply_setting cross-check ────────
-    //
-    // `manual_keys` unifies the macro-driven keys and the hand-listed extras
-    // (whitespace-*/statusline) into one token stream, so `all_setting_keys()`
-    // and `setting_scopes()` can no longer drift from *each other* by
-    // construction. These guardrails catch the remaining drift risk: a key
-    // added directly to `apply_setting`'s match without a corresponding
-    // `manual_keys`/macro entry.
-
     #[test]
-    fn all_setting_keys_have_declared_scopes() {
-        for key in all_setting_keys() {
-            assert!(
-                !setting_scopes(key).is_empty(),
-                "key '{key}' from all_setting_keys() has no declared scope in setting_scopes()"
-            );
+    fn is_bool_setting_matches_every_bool_field() {
+        for key in [
+            "mouse-enabled",
+            "mouse-select",
+            "popup-border",
+            "pane-dividers",
+            "auto-pairs-enabled",
+        ] {
+            assert!(is_bool_setting(key), "'{key}' should be a bool setting");
+        }
+        for key in ["tab-style", "wrap-mode", "scrolloff", "unknown-key"] {
+            assert!(!is_bool_setting(key), "'{key}' should not be a bool setting");
         }
     }
+
+    // ── all_setting_keys / apply_setting cross-check ─────────────────────────
+    //
+    // `all_setting_keys()` and `setting_scopes()` are both generated from the
+    // same `$gkey`/`$bkey`/`$mkey` token stream, with a non-empty `scope: […]`
+    // required by the macro's own grammar (`+` repetition) — so every key in
+    // `all_setting_keys()` having a declared scope is a structural guarantee,
+    // not something a test can catch drifting. What a test *can* catch: a key
+    // declared in `global`/`buffer`/`manual_keys` that has no matching arm in
+    // `apply_setting` (a typo in the hand-written `manual_keys` arms, since
+    // the macro-generated arms can't drift from their own key list) — falling
+    // through to `apply_setting`'s `_ => "unknown setting"` catch-all. That's
+    // what this guardrail checks.
 
     #[test]
     fn all_setting_keys_are_recognized_by_apply_setting() {

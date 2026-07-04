@@ -273,6 +273,11 @@ mod tests {
     fn line_number_style_values_round_trip_through_from_str() {
         // Independent-oracle guard: every completion-offered value must
         // actually parse, so `VALUES` can't silently drift from `FromStr`.
+        // One-directional: this can't catch a variant added to `FromStr` but
+        // left out of `VALUES` (it would just silently vanish from
+        // completion) — `line_number_style_from_str_all_variants` above is
+        // the closest thing to a reverse check, but it's a second
+        // hand-maintained list, not a derived one.
         for v in LineNumberStyle::VALUES {
             assert!(
                 v.parse::<LineNumberStyle>().is_ok(),

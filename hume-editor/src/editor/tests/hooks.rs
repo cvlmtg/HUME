@@ -95,11 +95,11 @@ fn mouse_click_in_insert_fires_on_mode_change() {
 // ── Hook cascade cap ──────────────────────────────────────────────────────────
 
 /// A handler feedback loop (an `on-language-set` handler that always flips the
-/// language between two values) must be cut off by the drain-pass cap instead
-/// of livelocking the editor.  The watchdog only bounds each individual eval,
+/// language between two values) must be cut off by the drain cap instead of
+/// livelocking the editor.  The watchdog only bounds each individual eval,
 /// not the re-drain loop.
 ///
-/// Fail oracle: remove the `MAX_HOOK_DRAIN_PASSES` cap from `drain_hooks` →
+/// Fail oracle: remove the `MAX_HOOK_DRAIN_HOOKS` cap from `drain_hooks` →
 /// this test never returns.
 #[test]
 fn hook_feedback_loop_is_cut_off_by_drain_cap() {
@@ -123,6 +123,55 @@ fn hook_feedback_loop_is_cut_off_by_drain_cap() {
     let bid = ed.focused_buffer_id();
     ed.set_buffer_language(bid, Some("aaa".to_string()));
     ed.drain_hooks(); // must return, not hang
+
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error && e.text.contains("hook cascade exceeded")),
+        "drain cap must log an Error naming the hook cascade"
+    );
+    assert!(
+        ed.state.pending_hooks.is_empty(),
+        "pending hooks must be dropped when the cap fires"
+    );
+}
+
+/// An *amplifying* handler feedback loop — one that enqueues more hooks than
+/// it received — doubles the pending batch every pass (1, 2, 4, 8, …). A cap
+/// on pass *count* lets total work explode geometrically (2^100 evals at the
+/// old 100-pass limit, never finishing); the cap must instead bound total
+/// hooks processed so this terminates quickly regardless of growth shape.
+///
+/// Each handler invocation sets the buffer's language to `"a"` then `"b"`;
+/// since the two calls always differ, both are genuine changes and both
+/// re-enqueue `OnLanguageSet` — independent of what the previous invocation
+/// left behind.
+///
+/// Fail oracle: cap `drain_hooks` on pass count instead of total hooks
+/// processed → this test times out instead of returning.
+#[test]
+fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-language-set
+             (lambda (bid lang)
+               (set-buffer-language! bid "a")
+               (set-buffer-language! bid "b")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+
+    let bid = ed.focused_buffer_id();
+    ed.set_buffer_language(bid, Some("start".to_string()));
+    ed.drain_hooks(); // must return promptly, not after 2^100 evals
 
     assert!(
         ed.state

@@ -29,6 +29,13 @@ pub struct EvalWatchdog {
     tx: Option<Sender<WatchdogMsg>>,
     ack_rx: Receiver<()>,
     thread: Option<std::thread::JoinHandle<()>>,
+    /// Caller-side mirror of the thread's armed/idle state, used only to
+    /// `debug_assert` that `arm`/`cancel` calls stay strictly paired. Checked
+    /// here — on the caller's own thread — rather than in `watchdog_loop`, so
+    /// a violation fails at the actual call site instead of unwinding the
+    /// detached watchdog thread (which would otherwise surface later as a
+    /// misleading "watchdog thread alive" panic on an unrelated `send`).
+    armed: AtomicBool,
 }
 
 enum WatchdogMsg {
@@ -49,6 +56,7 @@ impl EvalWatchdog {
             tx: Some(tx),
             ack_rx,
             thread: Some(thread),
+            armed: AtomicBool::new(false),
         }
     }
 
@@ -56,6 +64,10 @@ impl EvalWatchdog {
     /// [`Self::cancel`] arrives first.  Each `arm` must be paired with one
     /// `cancel` after the eval returns.
     pub fn arm(&self, flag: Arc<AtomicBool>, budget: Duration) {
+        debug_assert!(
+            !self.armed.swap(true, Ordering::Relaxed),
+            "EvalWatchdog::arm called while already armed — missing cancel() after the previous eval"
+        );
         self.send(WatchdogMsg::Arm {
             deadline: Instant::now() + budget,
             flag,
@@ -68,6 +80,7 @@ impl EvalWatchdog {
     /// If the budget already expired, this drains the pending state so the
     /// next `arm` starts clean.
     pub fn cancel(&self) {
+        self.armed.store(false, Ordering::Relaxed);
         self.send(WatchdogMsg::Cancel);
         self.ack_rx
             .recv()
@@ -122,13 +135,17 @@ fn watchdog_loop(rx: Receiver<WatchdogMsg>, ack_tx: Sender<()>) {
                         break;
                     }
                     // A second Arm while armed cannot happen (arm/cancel are
-                    // strictly paired by run_steel_session), but re-arming is
-                    // the sensible response if it ever does.
+                    // strictly paired by run_steel_session; `EvalWatchdog::arm`
+                    // debug_asserts this on the caller's own thread), but
+                    // re-arming is the sensible recovery if it ever does. Never
+                    // panic here: this thread is detached, so a panic wouldn't
+                    // surface at the call site — it would instead unwind this
+                    // thread and turn the *next* unrelated `send` into a
+                    // misleading "watchdog thread alive" panic.
                     Ok(WatchdogMsg::Arm {
                         deadline: d,
                         flag: f,
                     }) => {
-                        debug_assert!(false, "arm while armed — unpaired arm/cancel");
                         deadline = d;
                         flag = f;
                     }
@@ -185,6 +202,23 @@ mod tests {
             !flag.load(Ordering::Relaxed),
             "flag must remain false after cancel"
         );
+    }
+
+    /// An unpaired second `arm` (no `cancel` in between) must be caught by the
+    /// caller-side `debug_assert` in `arm` itself — on the test's own thread —
+    /// rather than silently recovering inside the detached watchdog thread.
+    ///
+    /// Fail oracle: move the assert into `watchdog_loop` (checked on the
+    /// detached thread) → this test's `#[should_panic]` never fires because
+    /// nothing on the *caller's* stack panics.
+    #[test]
+    #[should_panic(expected = "missing cancel() after the previous eval")]
+    #[cfg(debug_assertions)]
+    fn unpaired_arm_is_caught_on_callers_thread() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let dog = EvalWatchdog::new();
+        dog.arm(Arc::clone(&flag), Duration::from_secs(30));
+        dog.arm(flag, Duration::from_secs(30)); // missing cancel() — must panic here
     }
 
     /// The persistent thread survives an arm/cancel cycle and fires on a

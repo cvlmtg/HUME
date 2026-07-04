@@ -17,8 +17,12 @@ use crate::types::{ResolvedStyle, Scope, ScopeId};
 ///   where scope names are runtime strings. Owned copies are stored to avoid
 ///   leaking; the total number of distinct scopes is bounded by `u16::MAX`.
 ///
-/// Populate at construction time, then call [`Theme::bake`] before the first
-/// render. After baking, [`Theme::resolve`] is an O(1) `Vec` index.
+/// Intern scopes any time — construction, a runtime language/grammar load,
+/// mid-session plugin activation. [`Theme::bake_if_stale`], called
+/// unconditionally from `prepare_frame` every frame, re-bakes whenever new
+/// scopes were interned since the last bake, so no caller needs to bake
+/// manually after interning. After baking, [`Theme::resolve`] is an O(1)
+/// `Vec` index.
 ///
 /// Lives on [`crate::pipeline::EngineView`] so it outlives all providers.
 #[derive(Default)]

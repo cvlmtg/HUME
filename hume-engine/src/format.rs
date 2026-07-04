@@ -691,6 +691,94 @@ mod tests {
     }
 
     #[test]
+    fn soft_wrap_defers_wide_char_whole_to_next_row_when_it_would_straddle_column() {
+        // width=5: "abcd" fills cols 0..4 (current_col=4). The next grapheme
+        // '中' (CJK, display width 2) would need cols 4..6, straddling the
+        // wrap column — `maybe_wrap` checks *before* placing a grapheme, so
+        // it must defer '中' whole to the next row rather than splitting its
+        // two display cells across rows.
+        let (rows, graphemes) = do_format("abcd\u{4e2d}ef", WrapMode::Soft { width: 5 });
+        assert_eq!(rows.len(), 2, "must wrap into exactly 2 rows");
+
+        let row0 = &graphemes[rows[0].graphemes.clone()];
+        assert_eq!(row0.len(), 4, "row 0 holds only \"abcd\", not a split '中'");
+        assert_eq!(row0[3].char_offset, 3, "row 0's last grapheme is 'd'");
+
+        let row1 = &graphemes[rows[1].graphemes.clone()];
+        assert_eq!(row1.len(), 4, "'中' + its width continuation + 'e' + 'f'");
+        assert_eq!(row1[0].char_offset, 4, "row 1 starts with '中'");
+        assert_eq!(row1[0].width, 2, "'中' keeps its full display width");
+        assert_eq!(row1[0].col, 0, "'中' starts at column 0 of the new row");
+        assert!(
+            matches!(row1[1].content, CellContent::WidthContinuation),
+            "second cell of '中' stays paired with it on the same row"
+        );
+        assert_eq!(row1[2].char_offset, 5, "'e' follows on row 1");
+        assert_eq!(row1[3].char_offset, 6, "'f' follows on row 1");
+    }
+
+    #[test]
+    fn soft_wrap_defers_tab_whole_to_next_row_when_it_would_straddle_column() {
+        // tab_width=4 (do_format's fixed value). "abcd" fills cols 0..4
+        // (current_col=4, already tab-stop-aligned), so the tab needs cols
+        // 4..8 (its full 4-column expansion) — straddling wrap_width=6. Soft
+        // wrap must defer the whole tab to the next row rather than
+        // truncating its expansion mid-tab.
+        //
+        // Column 4 is chosen so the tab's expansion is congruent whether
+        // measured from its original column (4) or its post-wrap column (0)
+        // — both are tab-stop-aligned, so this test doesn't also exercise
+        // the (separate, pre-existing) stale-width-after-wrap quirk.
+        let (rows, graphemes) = do_format("abcd\tef", WrapMode::Soft { width: 6 });
+        assert_eq!(rows.len(), 2, "must wrap into exactly 2 rows");
+
+        let row0 = &graphemes[rows[0].graphemes.clone()];
+        assert_eq!(row0.len(), 4, "row 0 holds only \"abcd\"");
+
+        let row1 = &graphemes[rows[1].graphemes.clone()];
+        assert_eq!(row1.len(), 3, "tab + 'e' + 'f'");
+        assert_eq!(row1[0].col, 0, "tab starts at column 0 of the new row");
+        assert_eq!(row1[0].width, 4, "tab keeps its full 4-column expansion");
+        assert_eq!(row1[1].char_offset, 5, "'e' follows the tab");
+        assert_eq!(row1[2].char_offset, 6, "'f' follows 'e'");
+    }
+
+    #[test]
+    fn soft_wrap_exact_fit_row_keeps_eol_sentinel_on_same_row() {
+        // "abcde\n" wrapped at width 5 fits exactly (current_col reaches 5,
+        // never exceeding it mid-loop, so no content wrap triggers). The EOL
+        // sentinel emitted after the main loop bypasses `maybe_wrap` entirely
+        // (see the "End-of-line sentinel" comment), so it lands at col 5 —
+        // one column past the wrap boundary — without pushing a *wrap*
+        // continuation row for line 0. This pins that behavior: a cursor on
+        // the trailing '\n' of an exactly-full soft-wrapped row still renders
+        // on that row, not a phantom wrap row.
+        //
+        // "abcde\n" is still 2 ropey lines ("abcde\n" + a trailing empty
+        // line, same as plain "hello\n" in `eol_sentinel_emitted_on_non_empty_line`)
+        // — row 1 here is that phantom trailing line's own sentinel, not a
+        // continuation of line 0.
+        let (rows, graphemes) = do_format("abcde\n", WrapMode::Soft { width: 5 });
+        assert_eq!(rows.len(), 2, "line 0's row + the phantom trailing line");
+        assert_eq!(
+            rows[0].kind,
+            RowKind::LineStart { line_idx: 0 },
+            "line 0 must not have wrapped into a second row of its own"
+        );
+        assert_eq!(rows[1].kind, RowKind::LineStart { line_idx: 1 });
+
+        let row0 = &graphemes[rows[0].graphemes.clone()];
+        assert_eq!(row0.len(), 6, "5 content graphemes + 1 eol sentinel");
+        let sentinel = &row0[5];
+        assert!(
+            matches!(sentinel.content, CellContent::Empty),
+            "sentinel must be Empty"
+        );
+        assert_eq!(sentinel.col, 5, "sentinel sits one column past the wrap width");
+        assert_eq!(sentinel.char_offset, 5, "sentinel at the \\n char offset");
+    }
+
+    #[test]
     fn tab_expansion_advances_to_tabstop() {
         let (_, graphemes) = do_format("\t", WrapMode::None);
         assert_eq!(graphemes[0].width, 4); // tab at col 0 → 4 wide

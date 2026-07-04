@@ -7,12 +7,14 @@ use hume_scripting::{HookResult, hooks::HookId};
 
 use super::{Editor, Severity, host_impl::EditorHostImpl, ops};
 
-/// Upper bound on `drain_hooks` re-drain passes per drain boundary.
+/// Upper bound on total hooks processed per `drain_hooks` boundary.
 ///
-/// Same philosophy as the plugin-activation depth cap: unreachable in any
-/// legitimate configuration, but stops a handler feedback loop from hanging
-/// the editor forever.
-const MAX_HOOK_DRAIN_PASSES: usize = 100;
+/// Bounding *passes* instead of total work would still let an amplifying
+/// cascade (a handler that enqueues more hooks than it received) blow up the
+/// batch size geometrically pass over pass — few passes, but exponential
+/// total evals. Counting total hooks processed bounds both that shape and the
+/// constant-width ping-pong loop; unreachable in any legitimate configuration.
+const MAX_HOOK_DRAIN_HOOKS: usize = 1000;
 
 impl Editor {
     // ── Message reporting ─────────────────────────────────────────────────────
@@ -68,27 +70,30 @@ impl Editor {
     /// interactive drain boundary), and once at startup in `lib.rs` before the
     /// event loop begins. Inner hook handlers may enqueue more hooks; the outer
     /// loop re-drains until the queue is empty — capped at
-    /// [`MAX_HOOK_DRAIN_PASSES`] so a handler feedback loop (e.g. two
-    /// `on-language-set` handlers ping-ponging `set-buffer-language!` between
-    /// two values) cannot livelock the editor.  The watchdog only bounds each
-    /// individual eval, not this loop.
+    /// [`MAX_HOOK_DRAIN_HOOKS`] total hooks processed (not passes) so neither a
+    /// constant-width ping-pong loop (e.g. two `on-language-set` handlers
+    /// flipping `set-buffer-language!` between two values) nor an amplifying
+    /// cascade (a handler that enqueues more hooks than it received, doubling
+    /// the batch pass over pass) can livelock the editor.  The watchdog only
+    /// bounds each individual eval, not this loop.
     pub(crate) fn drain_hooks(&mut self) {
-        let mut passes = 0;
+        let mut total_processed = 0usize;
         while !self.state.pending_hooks.is_empty() {
-            passes += 1;
-            if passes > MAX_HOOK_DRAIN_PASSES {
-                let dropped = self.state.pending_hooks.len();
-                self.state.pending_hooks.clear();
+            let hooks = std::mem::take(&mut self.state.pending_hooks);
+            total_processed += hooks.len();
+            if total_processed > MAX_HOOK_DRAIN_HOOKS {
+                // `hooks` was just drained from `pending_hooks` above, so
+                // nothing has been re-enqueued yet — it's the entire drop.
+                let dropped = hooks.len();
                 self.report(
                     Severity::Error,
                     format!(
-                        "hook cascade exceeded {MAX_HOOK_DRAIN_PASSES} drain passes — \
+                        "hook cascade exceeded {MAX_HOOK_DRAIN_HOOKS} total drained hook(s) — \
                          dropping {dropped} pending hook(s); handler feedback loop?"
                     ),
                 );
                 return;
             }
-            let hooks = std::mem::take(&mut self.state.pending_hooks);
             for (hook_id, args) in hooks {
                 // Activate lazy event plugins first so their register-hook! calls
                 // land before the has_hook_handlers check below.
