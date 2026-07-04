@@ -227,12 +227,14 @@ pub struct WhitespaceConfig {
     pub space: WhitespaceRender,
     pub tab: WhitespaceRender,
     pub newline: WhitespaceRender,
-    /// Character to show in place of a space when rendered.
-    pub space_char: &'static str,
+    /// Character to show in place of a space when rendered. `Box<str>` (not
+    /// `&'static str`): Steel config can supply a runtime-computed glyph.
+    /// Cloned once per pane per frame (`PaneRenderSettings`) — negligible.
+    pub space_char: Box<str>,
     /// Character to show at the start of a tab expansion.
-    pub tab_char: &'static str,
+    pub tab_char: Box<str>,
     /// Character to show in place of a newline when rendered.
-    pub newline_char: &'static str,
+    pub newline_char: Box<str>,
 }
 
 impl Default for WhitespaceConfig {
@@ -241,9 +243,9 @@ impl Default for WhitespaceConfig {
             space: WhitespaceRender::None,
             tab: WhitespaceRender::None,
             newline: WhitespaceRender::None,
-            space_char: "·",
-            tab_char: "→",
-            newline_char: "⏎",
+            space_char: "·".into(),
+            tab_char: "→".into(),
+            newline_char: "⏎".into(),
         }
     }
 }
@@ -591,9 +593,9 @@ mod tests {
         assert_eq!(wc.space, WhitespaceRender::None);
         assert_eq!(wc.tab, WhitespaceRender::None);
         assert_eq!(wc.newline, WhitespaceRender::None);
-        assert_eq!(wc.space_char, "·");
-        assert_eq!(wc.tab_char, "→");
-        assert_eq!(wc.newline_char, "⏎");
+        assert_eq!(&*wc.space_char, "·");
+        assert_eq!(&*wc.tab_char, "→");
+        assert_eq!(&*wc.newline_char, "⏎");
     }
 
     fn make_pane_at_char(head_char: usize) -> Pane {

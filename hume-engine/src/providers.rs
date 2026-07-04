@@ -1,8 +1,9 @@
 use std::any::Any;
+use std::borrow::Cow;
 use std::ops::Range;
 
 use crate::builtins::line_number::{LineNumberColumn, LineNumberStyle};
-use crate::types::{EditorMode, Grapheme, RowKind, Scope, ScopeId};
+use crate::types::{EditorMode, RowKind, Scope, ScopeId};
 
 // ---------------------------------------------------------------------------
 // Provider ID
@@ -95,16 +96,22 @@ pub struct GutterCell {
 }
 
 /// What a gutter cell displays.
+///
+/// `Text` holds a `Cow` rather than `&'static str`: builtin columns (line
+/// numbers) still borrow a `'static` literal, but plugin-supplied content
+/// (Steel-configured icons, git-sign glyphs) is computed at runtime and must
+/// own its string. Gutter rendering is ~100 calls/frame, not per-grapheme, so
+/// the occasional owned allocation is negligible (unlike the per-cell hot
+/// path, which stays index-based via `CellContent`).
 #[derive(Clone, Debug)]
 pub enum GutterCellContent {
-    Static(&'static str),
-    Number(String),
+    Text(Cow<'static, str>),
     Blank,
 }
 
 impl GutterCellContent {
     pub fn from_number(n: usize) -> Self {
-        Self::Number(n.to_string())
+        Self::Text(Cow::Owned(n.to_string()))
     }
 }
 
@@ -118,8 +125,7 @@ impl GutterCell {
 
     pub fn as_str(&self) -> &str {
         match &self.content {
-            GutterCellContent::Static(s) => s,
-            GutterCellContent::Number(s) => s,
+            GutterCellContent::Text(s) => s,
             GutterCellContent::Blank => " ",
         }
     }
@@ -148,12 +154,23 @@ impl VirtualLineAnchor {
 }
 
 /// A virtual (non-buffer) display row injected by a provider.
+///
+/// Providers supply plain `text` + scoped byte-range `segments` rather than
+/// pre-built `Grapheme`s: the pipeline (`emit_virtual_row`) does the grapheme
+/// segmentation and width/col bookkeeping itself, the same as it does for
+/// real buffer lines, so providers can't get that arithmetic wrong. Virtual
+/// lines own their own layout — `text` is not subject to the buffer's wrap
+/// mode or tab width.
 pub struct VirtualLine {
     pub anchor: VirtualLineAnchor,
     pub provider_id: ProviderId,
-    /// Pre-formatted graphemes. Virtual lines own their own layout — they are
-    /// not subject to the buffer's wrap mode or tab width.
-    pub graphemes: Vec<Grapheme>,
+    pub text: String,
+    /// Byte ranges into `text`, each tagged with the `ScopeId` its graphemes
+    /// should resolve to. Bytes not covered by any segment get no scope
+    /// (`emit_virtual_row` falls back to `ui.virtual_text`). Segments must
+    /// have been interned via `ScopeRegistry` before the first render (same
+    /// contract as `HighlightSource`).
+    pub segments: Vec<(Range<usize>, ScopeId)>,
 }
 
 /// Produces virtual display rows (inline diagnostics, code lenses, git blame).
@@ -183,7 +200,7 @@ pub trait VirtualLineSource {
 pub struct InlineInsert {
     /// Byte offset within the buffer line at which to inject the text.
     pub byte_offset: usize,
-    pub text: &'static str,
+    pub text: String,
     pub scope: ScopeId,
 }
 
@@ -380,9 +397,9 @@ mod tests {
     }
 
     #[test]
-    fn gutter_cell_static_and_blank() {
+    fn gutter_cell_text_and_blank() {
         let s = GutterCell {
-            content: GutterCellContent::Static("abc"),
+            content: GutterCellContent::Text(Cow::Borrowed("abc")),
             scope: Scope("x"),
         };
         assert_eq!(s.as_str(), "abc");

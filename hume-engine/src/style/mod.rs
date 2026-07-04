@@ -364,7 +364,7 @@ fn resolve_grapheme_col(
     // decoration sharing its offset — skip forward past any `Virtual` cells.
     let mut idx = idx;
     while row_graphemes.get(idx).is_some_and(|g| {
-        g.char_offset == char_offset && matches!(g.content, crate::types::CellContent::Virtual(_))
+        g.char_offset == char_offset && matches!(g.content, crate::types::CellContent::Virtual { .. })
     }) {
         idx += 1;
     }
@@ -1040,7 +1040,7 @@ mod tests {
                 char_offset: usize::MAX,
                 col: 0,
                 width: 1,
-                content: crate::types::CellContent::Virtual("hint"),
+                content: crate::types::CellContent::Virtual { start: 0, len: 4 },
                 indent_depth: 0,
                 scope: None,
             },
@@ -1491,7 +1491,7 @@ mod tests {
         let hint_scope = registry.intern("hint");
         let inserts = vec![crate::providers::InlineInsert {
             byte_offset: 0,
-            text: "H",
+            text: "H".into(),
             scope: hint_scope,
         }];
         let mut fmt = crate::format::FormatScratch::new();
@@ -1531,7 +1531,7 @@ mod tests {
         let insert_idx = fmt
             .graphemes
             .iter()
-            .position(|g| matches!(g.content, CellContent::Virtual(_)))
+            .position(|g| matches!(g.content, CellContent::Virtual { .. }))
             .expect("insert grapheme present");
         let a_idx = fmt
             .graphemes
@@ -1568,7 +1568,7 @@ mod tests {
         let insert_scope = registry.intern("test");
         let inserts = vec![crate::providers::InlineInsert {
             byte_offset: 2,
-            text: "XY",
+            text: "XY".into(),
             scope: insert_scope,
         }];
         let mut fmt = crate::format::FormatScratch::new();
@@ -1623,7 +1623,7 @@ mod tests {
         let insert_idx = fmt
             .graphemes
             .iter()
-            .position(|g| matches!(g.content, CellContent::Virtual(_)))
+            .position(|g| matches!(g.content, CellContent::Virtual { .. }))
             .expect("insert grapheme present");
         assert_ne!(
             scratch.styles[insert_idx].fg,
@@ -1643,7 +1643,7 @@ mod tests {
         let insert_scope = registry.intern("test");
         let inserts = vec![crate::providers::InlineInsert {
             byte_offset: 0,
-            text: "Z",
+            text: "Z".into(),
             scope: insert_scope,
         }];
         let mut fmt = crate::format::FormatScratch::new();
@@ -1683,7 +1683,7 @@ mod tests {
         let insert_idx = fmt
             .graphemes
             .iter()
-            .position(|g| matches!(g.content, CellContent::Virtual(_)))
+            .position(|g| matches!(g.content, CellContent::Virtual { .. }))
             .expect("insert grapheme present");
         assert_eq!(fmt.graphemes[insert_idx].col, 0);
         assert_eq!(

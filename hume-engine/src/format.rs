@@ -27,6 +27,13 @@ pub struct FormatScratch {
     /// Pre-materialised text for the current buffer line. Written by
     /// `format_buffer_line`; read by `pipeline::render_buffer_line` as `line_str`.
     pub line_texts: String,
+    /// Per-frame arena backing `CellContent::Virtual`/`Indicator` text ranges
+    /// — inline-insert text, whitespace-indicator glyphs, and virtual-line
+    /// text, none of which can be `&'static str` (LSP hints, Steel-configured
+    /// icons). Cleared per buffer line in `FrameScratch::clear_line`, mirroring
+    /// `line_texts` — compose for that line/virtual-row always runs before
+    /// the clear.
+    pub virtual_texts: String,
 }
 
 impl FormatScratch {
@@ -36,6 +43,7 @@ impl FormatScratch {
             graphemes: Vec::with_capacity(512),
             virtual_lines: Vec::new(),
             line_texts: String::with_capacity(512),
+            virtual_texts: String::with_capacity(256),
         }
     }
 
@@ -45,6 +53,7 @@ impl FormatScratch {
         self.graphemes.clear();
         self.virtual_lines.clear();
         self.line_texts.clear();
+        self.virtual_texts.clear();
     }
 }
 
@@ -77,6 +86,7 @@ pub fn count_visual_rows(
     scratch.display_rows.clear();
     scratch.graphemes.clear();
     scratch.line_texts.clear();
+    scratch.virtual_texts.clear();
     format_buffer_line(
         rope,
         line_idx,
@@ -146,6 +156,7 @@ pub fn format_buffer_line(
     // the original `rows_out` / `graphemes_out` names without further changes.
     let rows_out = &mut scratch.display_rows;
     let graphemes_out = &mut scratch.graphemes;
+    let virtual_texts_out = &mut scratch.virtual_texts;
 
     let mut insert_idx = 0usize;
     let mut wrap = WrapState {
@@ -188,7 +199,7 @@ pub fn format_buffer_line(
                 break 'lines;
             }
             let ins = &inline_inserts[insert_idx];
-            let ins_width = unicode_display_width(ins.text).min(255) as u8;
+            let ins_width = unicode_display_width(&ins.text).min(255) as u8;
             if ins_width > 0 {
                 wrap.maybe_wrap(
                     ins_width,
@@ -203,6 +214,7 @@ pub fn format_buffer_line(
                     .as_ref()
                     .is_none_or(|w| wrap.current_col + ins_width as u16 > w.start);
                 if visible {
+                    let (start, len) = push_arena_text(virtual_texts_out, &ins.text);
                     graphemes_out.push(Grapheme {
                         byte_range: byte_offset..byte_offset, // zero-length: virtual
                         // Char offset of the real grapheme this insert precedes (not
@@ -214,7 +226,7 @@ pub fn format_buffer_line(
                         char_offset: char_pos,
                         col: wrap.current_col,
                         width: ins_width,
-                        content: CellContent::Virtual(ins.text),
+                        content: CellContent::Virtual { start, len },
                         indent_depth,
                         scope: Some(ins.scope),
                     });
@@ -253,6 +265,7 @@ pub fn format_buffer_line(
             in_leading_ws,
             had_non_ws,
             line_is_blank,
+            virtual_texts_out,
         );
 
         // ── Wrap if necessary ─────────────────────────────────────────────
@@ -342,8 +355,9 @@ pub fn format_buffer_line(
 
         // ── Emit any trailing inline inserts ────────────────────────────────
         for ins in &inline_inserts[insert_idx..] {
-            let ins_width = unicode_display_width(ins.text).min(255) as u8;
+            let ins_width = unicode_display_width(&ins.text).min(255) as u8;
             if ins_width > 0 {
+                let (start, len) = push_arena_text(virtual_texts_out, &ins.text);
                 graphemes_out.push(Grapheme {
                     byte_range: line_str.len()..line_str.len(),
                     // Same offset as the EOL sentinel above (the `\n` position) —
@@ -352,7 +366,7 @@ pub fn format_buffer_line(
                     char_offset: char_pos,
                     col: wrap.current_col,
                     width: ins_width,
-                    content: CellContent::Virtual(ins.text),
+                    content: CellContent::Virtual { start, len },
                     indent_depth,
                     scope: Some(ins.scope),
                 });
@@ -373,6 +387,7 @@ pub fn format_buffer_line(
                 line_is_blank,
             )
         {
+            let (start, len) = push_arena_text(virtual_texts_out, &whitespace.newline_char);
             graphemes_out.push(Grapheme {
                 byte_range: line_str.len()..line_str.len(),
                 // Same offset as the EOL sentinel (the `\n` position). Style-stage
@@ -382,7 +397,7 @@ pub fn format_buffer_line(
                 char_offset: char_pos,
                 col: wrap.current_col,
                 width: 1,
-                content: CellContent::Indicator(whitespace.newline_char),
+                content: CellContent::Indicator { start, len },
                 indent_depth,
                 scope: None,
             });
@@ -509,6 +524,7 @@ fn is_whitespace_grapheme(s: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Compute the display `width` and `CellContent` for one grapheme cluster.
+#[allow(clippy::too_many_arguments)]
 fn grapheme_display(
     grapheme_str: &str,
     current_col: u16,
@@ -517,6 +533,7 @@ fn grapheme_display(
     in_leading_ws: bool,
     had_non_ws: bool,
     line_is_blank: bool,
+    virtual_texts: &mut String,
 ) -> (u8, CellContent) {
     // Tab: expand to next tab stop.
     //
@@ -539,9 +556,12 @@ fn grapheme_display(
             had_non_ws,
             line_is_blank,
         ) {
-            CellContent::Indicator(whitespace.tab_char)
+            let (start, len) = push_arena_text(virtual_texts, &whitespace.tab_char);
+            CellContent::Indicator { start, len }
         } else {
-            CellContent::Indicator(" ") // tabs render as spaces when indicator is off
+            // Tabs render as spaces when the indicator is off.
+            let (start, len) = push_arena_text(virtual_texts, " ");
+            CellContent::Indicator { start, len }
         };
         return (display_width, content);
     }
@@ -554,7 +574,8 @@ fn grapheme_display(
             had_non_ws,
             line_is_blank,
         ) {
-            CellContent::Indicator(whitespace.space_char)
+            let (start, len) = push_arena_text(virtual_texts, &whitespace.space_char);
+            CellContent::Indicator { start, len }
         } else {
             CellContent::Grapheme
         };
@@ -565,6 +586,26 @@ fn grapheme_display(
     let w = unicode_display_width(grapheme_str).min(2) as u8;
     let w = w.max(1); // always at least 1 column
     (w, CellContent::Grapheme)
+}
+
+/// Push `text` into the per-frame arena (`FormatScratch::virtual_texts`),
+/// returning a `(start, len)` range cheap enough to store in a `Copy`
+/// `CellContent`. A single line's pushed text realistically never approaches
+/// the `u32`/`u16` bounds; `debug_assert` catches an overflow in tests, while
+/// release saturates rather than panicking (mirrors the `current_col`
+/// saturation pattern in `format_buffer_line`).
+pub(crate) fn push_arena_text(arena: &mut String, text: &str) -> (u32, u16) {
+    let start = arena.len();
+    arena.push_str(text);
+    debug_assert!(u32::try_from(start).is_ok(), "frame arena start exceeds u32");
+    debug_assert!(
+        u16::try_from(text.len()).is_ok(),
+        "pushed text exceeds u16 length"
+    );
+    (
+        u32::try_from(start).unwrap_or(u32::MAX),
+        u16::try_from(text.len()).unwrap_or(u16::MAX),
+    )
 }
 
 /// Returns `true` if a whitespace indicator should be rendered for this cell.
@@ -884,7 +925,7 @@ mod tests {
 
     // ── Whitespace indicators ─────────────────────────────────────────────
 
-    fn do_format_ws(text: &str, ws: WhitespaceConfig) -> (Vec<DisplayRow>, Vec<Grapheme>) {
+    fn do_format_ws(text: &str, ws: WhitespaceConfig) -> (Vec<DisplayRow>, Vec<Grapheme>, String) {
         let rope = Rope::from_str(text);
         let inserts = Vec::new();
         let mut scratch = FormatScratch::new();
@@ -900,17 +941,28 @@ mod tests {
                 &mut scratch,
             );
         }
-        (scratch.display_rows, scratch.graphemes)
+        (scratch.display_rows, scratch.graphemes, scratch.virtual_texts)
+    }
+
+    /// Slice the arena text backing an `Indicator`/`Virtual` cell — panics if
+    /// `content` isn't one of those variants (test-only helper).
+    fn cell_text<'a>(arena: &'a str, content: &CellContent) -> &'a str {
+        match content {
+            CellContent::Indicator { start, len } | CellContent::Virtual { start, len } => {
+                &arena[*start as usize..*start as usize + *len as usize]
+            }
+            other => panic!("expected Indicator or Virtual content, got {other:?}"),
+        }
     }
 
     #[test]
     fn newline_indicator_all_mode() {
         let ws = WhitespaceConfig {
             newline: crate::pane::WhitespaceRender::All,
-            newline_char: "⏎",
+            newline_char: "⏎".into(),
             ..WhitespaceConfig::default()
         };
-        let (rows, graphemes) = do_format_ws("abc\n", ws);
+        let (rows, graphemes, arena) = do_format_ws("abc\n", ws);
         // "abc\n" has 2 ropey lines: "abc\n" (line 0) and "" (line 1, trailing).
         // Line 0: 3 content graphemes + 1 eol sentinel + 1 newline indicator = 5.
         // Line 1: 1 Empty sentinel (eol sentinel for empty trailing line).
@@ -930,7 +982,7 @@ mod tests {
         assert_eq!(sentinel.col, 3);
         assert_eq!(sentinel.char_offset, 3); // char offset of the '\n'
         let nl_indicator = &row0_gs[4];
-        assert!(matches!(&nl_indicator.content, CellContent::Indicator(s) if *s == "⏎"));
+        assert_eq!(cell_text(&arena, &nl_indicator.content), "⏎");
         assert_eq!(nl_indicator.col, 3);
     }
 
@@ -940,12 +992,12 @@ mod tests {
             newline: crate::pane::WhitespaceRender::Trailing,
             ..WhitespaceConfig::default()
         };
-        let (_, graphemes) = do_format_ws("abc\n", ws);
+        let (_, graphemes, _) = do_format_ws("abc\n", ws);
         // Trailing: shows after non-ws content, so it appears.
         assert!(
             graphemes
                 .iter()
-                .any(|g| matches!(&g.content, CellContent::Indicator(_)))
+                .any(|g| matches!(&g.content, CellContent::Indicator { .. }))
         );
     }
 
@@ -956,11 +1008,11 @@ mod tests {
             newline: crate::pane::WhitespaceRender::Trailing,
             ..WhitespaceConfig::default()
         };
-        let (_, graphemes) = do_format_ws("   \n", ws);
+        let (_, graphemes, _) = do_format_ws("   \n", ws);
         assert!(
             !graphemes
                 .iter()
-                .any(|g| matches!(&g.content, CellContent::Indicator(_)))
+                .any(|g| matches!(&g.content, CellContent::Indicator { .. }))
         );
     }
 
@@ -970,11 +1022,11 @@ mod tests {
             newline: crate::pane::WhitespaceRender::None,
             ..WhitespaceConfig::default()
         };
-        let (_, graphemes) = do_format_ws("abc\n", ws);
+        let (_, graphemes, _) = do_format_ws("abc\n", ws);
         assert!(
             !graphemes
                 .iter()
-                .any(|g| matches!(&g.content, CellContent::Indicator(_)))
+                .any(|g| matches!(&g.content, CellContent::Indicator { .. }))
         );
     }
 
@@ -982,24 +1034,24 @@ mod tests {
     fn space_indicator_all_mode() {
         let ws = WhitespaceConfig {
             space: crate::pane::WhitespaceRender::All,
-            space_char: "·",
+            space_char: "·".into(),
             ..WhitespaceConfig::default()
         };
-        let (_, graphemes) = do_format_ws("a b\n", ws);
+        let (_, graphemes, arena) = do_format_ws("a b\n", ws);
         // Space at index 1 should be Indicator
         let space_g = graphemes.iter().find(|g| g.col == 1).unwrap();
-        assert!(matches!(&space_g.content, CellContent::Indicator(s) if *s == "·"));
+        assert_eq!(cell_text(&arena, &space_g.content), "·");
     }
 
     #[test]
     fn tab_indicator_all_mode() {
         let ws = WhitespaceConfig {
             tab: crate::pane::WhitespaceRender::All,
-            tab_char: "→",
+            tab_char: "→".into(),
             ..WhitespaceConfig::default()
         };
-        let (_, graphemes) = do_format_ws("\t", ws);
-        assert!(matches!(&graphemes[0].content, CellContent::Indicator(s) if *s == "→"));
+        let (_, graphemes, arena) = do_format_ws("\t", ws);
+        assert_eq!(cell_text(&arena, &graphemes[0].content), "→");
         assert_eq!(graphemes[0].width, 4);
     }
 
@@ -1179,17 +1231,17 @@ mod tests {
         let inserts = vec![
             InlineInsert {
                 byte_offset: 0,
-                text: "Z",
+                text: "Z".into(),
                 scope: crate::types::ScopeId(0),
             },
             InlineInsert {
                 byte_offset: 2,
-                text: "XY",
+                text: "XY".into(),
                 scope: crate::types::ScopeId(0),
             },
             InlineInsert {
                 byte_offset: 6,
-                text: "W",
+                text: "W".into(),
                 scope: crate::types::ScopeId(0),
             },
         ];
@@ -1226,7 +1278,7 @@ mod tests {
         // wrap around via `as u8` truncation (300 % 256 = 44 would be the
         // buggy value).
         let rope = Rope::from_str("x");
-        let text: &'static str = String::from_utf8(vec![b'a'; 300]).unwrap().leak();
+        let text = String::from_utf8(vec![b'a'; 300]).unwrap();
         let inserts = vec![InlineInsert {
             byte_offset: 0,
             text,
@@ -1246,7 +1298,7 @@ mod tests {
         let insert_g = scratch
             .graphemes
             .iter()
-            .find(|g| matches!(g.content, CellContent::Virtual(_)))
+            .find(|g| matches!(g.content, CellContent::Virtual { .. }))
             .expect("insert grapheme present");
         assert_eq!(insert_g.width, 255, "width clamps at 255, not 300 % 256");
     }

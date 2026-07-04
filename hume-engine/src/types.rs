@@ -168,20 +168,28 @@ pub struct Grapheme {
 }
 
 /// What a grapheme cell displays.
+///
+/// `Indicator` and `Virtual` reference a range in the per-frame text arena
+/// (`FormatScratch::virtual_texts`) rather than borrowing a string directly —
+/// their source text (Steel-configured whitespace glyphs, LSP inlay hints,
+/// provider-built virtual lines) is never truly `'static`, and `Grapheme`
+/// must stay `Copy` on the per-cell hot path. `(start: u32, len: u16)` keeps
+/// the variant small; a single line's arena realistically never approaches
+/// either bound (see `format::push_arena_text`).
 #[derive(Copy, Clone, Debug)]
 pub enum CellContent {
     /// A real grapheme cluster. The text is read from the rope via `byte_range`.
     /// Avoids copying grapheme strings during formatting.
     Grapheme,
     /// A substitution: whitespace indicator, tab fill character.
-    Indicator(&'static str),
+    Indicator { start: u32, len: u16 },
     /// The right-hand padding cell of a double-width character.
     WidthContinuation,
     /// Empty: tilde filler past EOF, or padding past end of line.
     Empty,
-    /// An inline virtual decoration (inlay hint, ghost text).
-    /// The string is owned by the provider and lives for the frame.
-    Virtual(&'static str),
+    /// An inline virtual decoration (inlay hint, ghost text) or a
+    /// virtual-line cell.
+    Virtual { start: u32, len: u16 },
 }
 
 // ---------------------------------------------------------------------------

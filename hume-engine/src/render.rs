@@ -171,6 +171,10 @@ fn compose_gutter(
 /// row (used to resolve `CellContent::Grapheme` byte ranges). Pass `""` for
 /// virtual/filler rows that have no backing buffer line.
 ///
+/// `virtual_texts` is the per-frame arena backing `CellContent::Indicator`/
+/// `Virtual` ranges (`FormatScratch::virtual_texts`) — same lifetime/borrow
+/// rationale as `line_str`.
+///
 /// `col_widths` must already be populated by the caller (one entry per gutter
 /// column). Passed separately from `compose_ctx` because in the fused pipeline it lives
 /// in `FrameScratch`, which cannot be bundled into `ComposeCtx` without
@@ -181,6 +185,7 @@ pub(crate) fn compose_row(
     graphemes: &[Grapheme],
     styles: &[ResolvedStyle],
     line_str: &str,
+    virtual_texts: &str,
     screen_row: u16,
     col_widths: &[u16],
     compose_ctx: &ComposeCtx,
@@ -267,7 +272,8 @@ pub(crate) fn compose_row(
                     }
                 }
             }
-            CellContent::Indicator(s) => {
+            CellContent::Indicator { start, len } => {
+                let s = resolve_arena_text(virtual_texts, *start, *len);
                 canvas.set_cell(screen_x, y, s, ratatui_style);
                 // Fill remaining tab/wide cells with spaces.
                 for extra in 1..g.width as u16 {
@@ -277,7 +283,8 @@ pub(crate) fn compose_row(
                     }
                 }
             }
-            CellContent::Virtual(s) => {
+            CellContent::Virtual { start, len } => {
+                let s = resolve_arena_text(virtual_texts, *start, *len);
                 canvas.set_cell(screen_x, y, s, ratatui_style);
             }
             CellContent::Empty => {
@@ -311,6 +318,17 @@ pub(crate) fn compose_row(
             }
         }
     }
+}
+
+/// Resolve a `(start, len)` arena range into the underlying text. Never
+/// panics — `start`/`len` are always produced by the same `push_arena_text`
+/// call that sized the arena, so an out-of-range slice should not happen, but
+/// degrading to an empty string is cheaper than a debug_assert on a hot path.
+#[inline]
+fn resolve_arena_text(arena: &str, start: u32, len: u16) -> &str {
+    let start = start as usize;
+    let end = start + len as usize;
+    arena.get(start..end).unwrap_or("")
 }
 
 /// Draw tilde filler rows from `start_screen_row` up to (but not including)
@@ -573,6 +591,7 @@ mod tests {
             &graphemes,
             &styles,
             "hi",
+            "",
             0,
             &col_widths,
             &ctx,
@@ -649,6 +668,7 @@ mod tests {
     #[allow(clippy::too_many_arguments)]
     fn do_compose_row(
         line_str: &str,
+        virtual_texts: &str,
         row: &DisplayRow,
         graphemes: &[Grapheme],
         styles: &[ResolvedStyle],
@@ -686,6 +706,7 @@ mod tests {
             graphemes,
             styles,
             line_str,
+            virtual_texts,
             0,
             &col_widths,
             &ctx,
@@ -721,7 +742,7 @@ mod tests {
         let mut viewport = ViewportState::new(20, 5);
         viewport.horizontal_offset = 2; // skip columns 0 and 1
         let buf = do_compose_row(
-            "abcde", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
+            "abcde", "", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
         );
         // With h_offset=2, screen col 0 shows 'c' (buf col 2).
         assert_eq!(
@@ -790,7 +811,7 @@ mod tests {
         let mut viewport = ViewportState::new(20, 5);
         viewport.horizontal_offset = 1;
         let buf = do_compose_row(
-            "中X", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
+            "中X", "", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
         );
         assert_eq!(
             buf.cell(ratatui::layout::Position { x: 0, y: 0 })
@@ -839,6 +860,7 @@ mod tests {
         let viewport = ViewportState::new(20, 5);
         let buf = do_compose_row(
             "        foo", // 8 spaces + "foo"
+            "",
             &rows[0],
             &graphemes,
             &styles,
@@ -906,7 +928,7 @@ mod tests {
         };
         let viewport = ViewportState::new(20, 5);
         let buf = do_compose_row(
-            "    text", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
+            "    text", "", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
         );
         assert_ne!(
             buf.cell(ratatui::layout::Position { x: 0, y: 0 })
@@ -925,7 +947,7 @@ mod tests {
             char_offset: 0,
             col: 0,
             width: 4,
-            content: CellContent::Indicator("→"),
+            content: CellContent::Indicator { start: 0, len: 3 }, // "→" is 3 bytes
             indent_depth: 0,
             scope: None,
         }];
@@ -941,7 +963,7 @@ mod tests {
         };
         let viewport = ViewportState::new(20, 5);
         let buf = do_compose_row(
-            "\t", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
+            "\t", "→", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
         );
         assert_eq!(
             buf.cell(ratatui::layout::Position { x: 0, y: 0 })
@@ -969,6 +991,57 @@ mod tests {
         );
     }
 
+    // ── Virtual/Indicator content arena (G1) ────────────────────────────
+
+    #[test]
+    fn virtual_cell_wider_than_one_column_renders_from_the_arena() {
+        // A decoration whose text is more than one byte/column ("AB", width
+        // 2) must round-trip through the arena correctly, and the following
+        // real grapheme must land at the column the insert's width shifted
+        // it to (col 2, not col 1).
+        let arena = "AB";
+        let graphemes = vec![
+            Grapheme {
+                byte_range: 0..0,
+                char_offset: usize::MAX,
+                col: 0,
+                width: 2,
+                content: CellContent::Virtual { start: 0, len: 2 },
+                indent_depth: 0,
+                scope: None,
+            },
+            simple_grapheme(2, 0, 1), // real 'c', shifted right by the insert's width
+        ];
+        let rows = [simple_row(0..2)];
+        let styles = vec![ResolvedStyle::default(); 2];
+        let visible = VisibleRange {
+            line_range: 0..1,
+            top_skip_rows: 0,
+            content_height: 5,
+            content_width: 20,
+            gutter_width: 0,
+            last_line_idx: 0,
+        };
+        let viewport = ViewportState::new(20, 5);
+        let buf = do_compose_row(
+            "c", arena, &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
+        );
+        assert_eq!(
+            buf.cell(ratatui::layout::Position { x: 0, y: 0 })
+                .unwrap()
+                .symbol(),
+            "AB",
+            "insert text resolved from the arena, not truncated to its first byte"
+        );
+        assert_eq!(
+            buf.cell(ratatui::layout::Position { x: 2, y: 0 })
+                .unwrap()
+                .symbol(),
+            "c",
+            "real grapheme shifted right by the insert's width"
+        );
+    }
+
     // ── Gutter text overflow (B8) ────────────────────────────────────────
 
     struct OverlongGutter;
@@ -978,7 +1051,9 @@ mod tests {
         }
         fn render_row(&self, _: RowKind, _: EditorMode, _: usize) -> crate::providers::GutterCell {
             crate::providers::GutterCell {
-                content: crate::providers::GutterCellContent::Static("TOOLONG"),
+                content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed(
+                    "TOOLONG",
+                )),
                 scope: crate::types::Scope("ui.linenr"),
             }
         }
@@ -1033,6 +1108,7 @@ mod tests {
             &graphemes,
             &styles,
             "X",
+            "",
             0,
             &col_widths,
             &ctx,
@@ -1109,6 +1185,7 @@ mod tests {
             &graphemes,
             &styles,
             "X",
+            "",
             0,
             &col_widths,
             &ctx,
@@ -1124,6 +1201,120 @@ mod tests {
                     .symbol(),
                 "Z",
                 "neighbouring pane's column {x} must be untouched"
+            );
+        }
+    }
+
+    /// Gutter column returning a runtime-computed `Cow::Owned` icon (the
+    /// shape a Steel-configured gutter would take, per G1's `Cow` change).
+    struct OwnedIconGutter;
+    impl GutterColumn for OwnedIconGutter {
+        fn width(&self, _: usize) -> u8 {
+            3
+        }
+        fn render_row(&self, _: RowKind, _: EditorMode, _: usize) -> crate::providers::GutterCell {
+            crate::providers::GutterCell {
+                // Built at call time (e.g. `format!`) rather than a literal —
+                // exercises the `Cow::Owned` path, not `Cow::Borrowed`.
+                content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Owned(
+                    "AB".to_string(),
+                )),
+                scope: crate::types::Scope("ui.linenr"),
+            }
+        }
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+    }
+
+    /// Same gutter column, but the `'static` literal borrowed directly — the
+    /// pre-G1 shape. Renders through the identical `compose_gutter` path;
+    /// `Cow::Owned` must produce the same output.
+    struct StaticIconGutter;
+    impl GutterColumn for StaticIconGutter {
+        fn width(&self, _: usize) -> u8 {
+            3
+        }
+        fn render_row(&self, _: RowKind, _: EditorMode, _: usize) -> crate::providers::GutterCell {
+            crate::providers::GutterCell {
+                content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed(
+                    "AB",
+                )),
+                scope: crate::types::Scope("ui.linenr"),
+            }
+        }
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+    }
+
+    #[test]
+    fn owned_gutter_icon_renders_identically_to_static_one() {
+        fn render_with(col: Box<dyn GutterColumn>) -> ratatui::buffer::Buffer {
+            let graphemes = vec![simple_grapheme(0, 0, 1)];
+            let rows = [simple_row(0..1)];
+            let styles = vec![ResolvedStyle::default()];
+            let gutter_columns: Vec<Box<dyn GutterColumn>> = vec![col];
+            let visible = VisibleRange {
+                line_range: 0..1,
+                top_skip_rows: 0,
+                content_height: 1,
+                content_width: 4,
+                gutter_width: 3,
+                last_line_idx: 0,
+            };
+            let viewport = ViewportState::new(7, 1);
+            let pane_rect = ratatui::layout::Rect {
+                x: 0,
+                y: 0,
+                width: 7,
+                height: 1,
+            };
+            let mut buf = make_test_buf(7, 1);
+            let theme = Theme::default();
+            let col_widths = vec![3u16];
+            let ctx = ComposeCtx {
+                gutter_columns: &gutter_columns,
+                visible: &visible,
+                viewport: &viewport,
+                mode: EditorMode::Normal,
+                primary_head_line: 0,
+                tab_width: 4,
+                tilde_style: ratatui::style::Style::default(),
+                indent_guide_style: ratatui::style::Style::default(),
+                pane_rect,
+                theme: &theme,
+                pane_bg: None,
+            };
+            let mut canvas = PaneCanvas::new(&mut buf, None);
+            compose_row(
+                &rows[0],
+                &graphemes,
+                &styles,
+                "X",
+                "",
+                0,
+                &col_widths,
+                &ctx,
+                &mut canvas,
+                None,
+            );
+            buf
+        }
+
+        let owned_buf = render_with(Box::new(OwnedIconGutter));
+        let static_buf = render_with(Box::new(StaticIconGutter));
+        for x in 0..7u16 {
+            assert_eq!(
+                owned_buf
+                    .cell(ratatui::layout::Position { x, y: 0 })
+                    .unwrap()
+                    .symbol(),
+                static_buf
+                    .cell(ratatui::layout::Position { x, y: 0 })
+                    .unwrap()
+                    .symbol(),
+                "column {x}: Cow::Owned must render identically to Cow::Borrowed"
             );
         }
     }
@@ -1239,6 +1430,7 @@ mod tests {
             &graphemes,
             &styles,
             "x",
+            "",
             0,
             &col_widths,
             &ctx,
@@ -1300,6 +1492,7 @@ mod tests {
             &graphemes,
             &styles,
             "x",
+            "",
             0,
             &col_widths,
             &ctx,

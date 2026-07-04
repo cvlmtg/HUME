@@ -2,9 +2,10 @@ use std::collections::HashMap;
 
 use ratatui::symbols::line;
 use slotmap::{SlotMap, new_key_type};
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::builtins::tree_sitter_hl::TreeSitterHighlighter;
-use crate::format::FormatScratch;
+use crate::format::{FormatScratch, push_arena_text, unicode_display_width};
 use crate::pane::{Pane, WhitespaceConfig, WrapMode};
 use crate::providers::{
     GutterCell, InlineInsert, StatuslineProvider, TabBarProvider, VirtualLineAnchor,
@@ -12,7 +13,7 @@ use crate::providers::{
 use crate::render::{self, ComposeCtx};
 use crate::style::StyleScratch;
 use crate::theme::{ScopeRegistry, Theme};
-use crate::types::{DisplayRow, EditorMode, ResolvedStyle, RowKind};
+use crate::types::{CellContent, DisplayRow, EditorMode, Grapheme, ResolvedStyle, RowKind};
 
 new_key_type! {
     /// Opaque handle to a buffer.
@@ -99,6 +100,7 @@ impl FrameScratch {
     pub(crate) fn clear_line(&mut self) {
         self.format.display_rows.clear();
         self.format.graphemes.clear();
+        self.format.virtual_texts.clear();
         self.style.styles.clear();
     }
 }
@@ -1136,8 +1138,10 @@ fn render_buffer_line(
         .primary_idx_in_sorted
         .and_then(|i| scratch.style.sorted_sels.get(i))
         .is_some_and(|s| s.head >= line_start_char && s.head < line_end_char);
-    // line_str borrows scratch.format.line_texts; must not clear it inside the loop.
+    // line_str/virtual_texts borrow scratch.format's arenas; must not clear them
+    // inside the loop.
     let line_str = scratch.format.line_texts.as_str();
+    let virtual_texts = scratch.format.virtual_texts.as_str();
 
     for row_idx in 0..scratch.format.display_rows.len() {
         if vc.try_skip() {
@@ -1170,6 +1174,7 @@ fn render_buffer_line(
             &scratch.format.graphemes,
             &scratch.style.styles,
             line_str,
+            virtual_texts,
             vc.screen_row,
             &scratch.col_widths,
             compose_ctx,
@@ -1182,7 +1187,13 @@ fn render_buffer_line(
     scratch.clear_line();
 }
 
-/// Emit one virtual line: push graphemes into scratch, compose, then clear.
+/// Emit one virtual line: segment its text into graphemes, push them into
+/// scratch, compose, then clear.
+///
+/// The provider hands over plain `text` + scoped byte-range `segments`
+/// (`VirtualLine`) rather than pre-built `Grapheme`s — this function does the
+/// same grapheme/width/col bookkeeping `format_buffer_line` does for real
+/// buffer lines, so providers can't get that arithmetic wrong.
 fn emit_virtual_row(
     vl_idx: usize,
     line_idx: usize,
@@ -1191,13 +1202,50 @@ fn emit_virtual_row(
     compose_ctx: &ComposeCtx,
     canvas: &mut render::PaneCanvas,
 ) {
-    // Field-split: read virtual_lines, write graphemes — different sub-struct fields.
+    // Field-split: read `virtual_lines`, write `graphemes`/`virtual_texts` —
+    // different sub-struct fields of `scratch.format`.
     let g_start = scratch.format.graphemes.len();
-    scratch
-        .format
-        .graphemes
-        .extend_from_slice(&scratch.format.virtual_lines[vl_idx].graphemes);
-    let provider_id = scratch.format.virtual_lines[vl_idx].provider_id;
+    let vl = &scratch.format.virtual_lines[vl_idx];
+    let provider_id = vl.provider_id;
+
+    // Copy the whole line's text into the shared arena once; each grapheme's
+    // `CellContent::Virtual` cell then references a sub-range of this copy.
+    let (arena_base, _) = push_arena_text(&mut scratch.format.virtual_texts, &vl.text);
+
+    let mut col: u16 = 0;
+    for (byte_offset, grapheme_str) in vl.text.grapheme_indices(true) {
+        let width = unicode_display_width(grapheme_str).clamp(1, 2) as u8;
+        let scope = vl
+            .segments
+            .iter()
+            .find(|(range, _)| range.contains(&byte_offset))
+            .map(|(_, scope)| *scope);
+        let start = arena_base.saturating_add(u32::try_from(byte_offset).unwrap_or(u32::MAX));
+        let len = u16::try_from(grapheme_str.len()).unwrap_or(u16::MAX);
+
+        scratch.format.graphemes.push(Grapheme {
+            byte_range: 0..0, // zero-length: virtual, no buffer position
+            char_offset: usize::MAX,
+            col,
+            width,
+            content: CellContent::Virtual { start, len },
+            indent_depth: 0,
+            scope,
+        });
+        col = col.saturating_add(width as u16);
+        if width == 2 {
+            // Both cells of a double-wide char stay on the same (virtual) row.
+            scratch.format.graphemes.push(Grapheme {
+                byte_range: 0..0,
+                char_offset: usize::MAX,
+                col,
+                width: 0,
+                content: CellContent::WidthContinuation,
+                indent_depth: 0,
+                scope: None,
+            });
+        }
+    }
 
     scratch.format.display_rows.push(DisplayRow {
         kind: RowKind::Virtual {
@@ -1232,6 +1280,7 @@ fn emit_virtual_row(
         &scratch.format.graphemes,
         &scratch.style.styles,
         "",
+        &scratch.format.virtual_texts,
         screen_row,
         &scratch.col_widths,
         compose_ctx,
@@ -1314,26 +1363,10 @@ mod tests {
             .push(crate::providers::VirtualLine {
                 anchor: VirtualLineAnchor::Before(0),
                 provider_id: 0,
-                graphemes: vec![
-                    crate::types::Grapheme {
-                        byte_range: 0..0,
-                        char_offset: usize::MAX,
-                        col: 0,
-                        width: 1,
-                        content: crate::types::CellContent::Virtual("H"),
-                        indent_depth: 0,
-                        scope: Some(hint_scope),
-                    },
-                    crate::types::Grapheme {
-                        byte_range: 0..0,
-                        char_offset: usize::MAX,
-                        col: 1,
-                        width: 1,
-                        content: crate::types::CellContent::Virtual("~"),
-                        indent_depth: 0,
-                        scope: None,
-                    },
-                ],
+                text: "H~".to_string(),
+                // "H" (byte 0..1) carries the scope; "~" (byte 1..2) carries
+                // none and must fall back to `ui.virtual_text`.
+                segments: vec![(0..1, hint_scope)],
             });
 
         let visible = crate::layout::VisibleRange {
@@ -1390,15 +1423,8 @@ mod tests {
                 out.push(crate::providers::VirtualLine {
                     anchor: self.anchor,
                     provider_id: 0,
-                    graphemes: vec![crate::types::Grapheme {
-                        byte_range: 0..0,
-                        char_offset: usize::MAX,
-                        col: 0,
-                        width: 1,
-                        content: crate::types::CellContent::Virtual("V"),
-                        indent_depth: 0,
-                        scope: None,
-                    }],
+                    text: "V".to_string(),
+                    segments: Vec::new(),
                 });
             }
         }
@@ -1609,7 +1635,9 @@ mod tests {
                     "ln"
                 };
                 crate::providers::GutterCell {
-                    content: crate::providers::GutterCellContent::Static(text),
+                    content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed(
+                        text,
+                    )),
                     scope: crate::types::Scope("ui.linenr"),
                 }
             }
