@@ -999,6 +999,20 @@ pub(crate) fn render_pane(
 ///
 /// Stops early if the viewport fills up. After returning, `vc.vl_cursor`
 /// points past the last consumed virtual line.
+///
+/// `top_skip_rows` (`vc.top_skip_remaining`) counts wrap rows of `top_line`
+/// only — it is computed editor-side from `format::count_visual_rows`, which
+/// has no notion of virtual lines. So a virtual row dropped here must NOT
+/// decrement that budget (unlike a skipped buffer wrap row, via `try_skip` in
+/// `render_buffer_line`): doing so would eat a skip unit meant for a wrap row,
+/// shifting the whole viewport down by one row per skipped virtual line.
+/// Consequence: a `Before(top_line)` virtual block cannot be scrolled
+/// partially off-screen — it disappears as a unit once `top_row_offset`
+/// scrolls into `top_line`. In practice `top_skip_remaining` is only ever
+/// nonzero during the very first call (`Before(top_line)`, before any of
+/// `top_line`'s own wrap rows have been consumed) — the editor clamps
+/// `top_row_offset < rows(top_line)`, so by the time `After(top_line)` runs,
+/// `render_buffer_line` has already exhausted the budget on real wrap rows.
 fn drain_virtual_lines(
     anchor: VirtualLineAnchor,
     vc: &mut ViewportCursor,
@@ -1012,7 +1026,7 @@ fn drain_virtual_lines(
     while vc.vl_cursor < scratch.format.virtual_lines.len()
         && scratch.format.virtual_lines[vc.vl_cursor].anchor == anchor
     {
-        if vc.try_skip() {
+        if vc.top_skip_remaining > 0 {
             vc.vl_cursor += 1;
             continue;
         }
@@ -1360,6 +1374,136 @@ mod tests {
             fallback_cell.fg,
             ratatui::style::Color::Blue,
             "grapheme with no scope falls back to ui.virtual_text"
+        );
+    }
+
+    // ── top_skip vs virtual lines (B5) ──────────────────────────────────
+
+    /// Emits one virtual line anchored to a fixed line index, only when that
+    /// line is in the visible range — smoke-tests the whole virtual-line path
+    /// (`ProviderSet::add_virtual_line_source` → `render_pane`) for the first
+    /// time, per the plan's note that no real `VirtualLineSource` exists yet.
+    struct FixedVirtualLineSource {
+        anchor: VirtualLineAnchor,
+    }
+
+    impl crate::providers::VirtualLineSource for FixedVirtualLineSource {
+        fn virtual_lines(
+            &self,
+            visible_lines: std::ops::Range<usize>,
+            _content_width: u16,
+            out: &mut Vec<crate::providers::VirtualLine>,
+        ) {
+            let line = match self.anchor {
+                VirtualLineAnchor::Before(n) | VirtualLineAnchor::After(n) => n,
+            };
+            if visible_lines.contains(&line) {
+                out.push(crate::providers::VirtualLine {
+                    anchor: self.anchor,
+                    provider_id: 0,
+                    graphemes: vec![crate::types::Grapheme {
+                        byte_range: 0..0,
+                        char_offset: usize::MAX,
+                        col: 0,
+                        width: 1,
+                        content: crate::types::CellContent::Virtual("V"),
+                        indent_depth: 0,
+                        scope: None,
+                    }],
+                });
+            }
+        }
+    }
+
+    /// Build a pane viewing a rope whose line 0 is "aaaabbbbcccc" — under
+    /// `WrapMode::Soft { width: 4 }` this wraps into exactly 3 rows: "aaaa",
+    /// "bbbb", "cccc" (each grapheme is 1 column, so Soft splits at the exact
+    /// column with no backtracking). `top_row_offset` controls how many of
+    /// those wrap rows are already scrolled past.
+    fn render_wrapped_pane_with_virtual_line(
+        top_row_offset: u16,
+        anchor: VirtualLineAnchor,
+    ) -> ratatui::buffer::Buffer {
+        let rope = ropey::Rope::from_str("aaaabbbbcccc\nz\n");
+        let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
+        let bid = bids.insert(());
+
+        let mut pane = Pane::new(bid, WrapMode::Soft { width: 4 });
+        pane.viewport = crate::pane::ViewportState::new(10, 6);
+        pane.viewport.top_row_offset = top_row_offset;
+        pane.providers
+            .add_virtual_line_source(Box::new(FixedVirtualLineSource { anchor }));
+
+        let theme = Theme::default();
+        let pane_rect = rect(0, 0, 10, 6);
+        let pane_ctx = PaneRenderCtx {
+            pane: &pane,
+            rope: &rope,
+            tree: None,
+            syntax: None,
+            theme: &theme,
+            rect: pane_rect,
+            settings: PaneRenderSettings {
+                mode: EditorMode::Normal,
+                wrap_mode: WrapMode::Soft { width: 4 },
+                tab_width: 4,
+                whitespace: WhitespaceConfig::default(),
+            },
+            dim: None,
+        };
+        let mut scratch = FrameScratch::new();
+        let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
+        render_pane(&pane_ctx, &mut scratch, &mut buf);
+        buf
+    }
+
+    fn cell_symbol(buf: &ratatui::buffer::Buffer, x: u16, y: u16) -> String {
+        buf.cell(ratatui::layout::Position { x, y })
+            .unwrap()
+            .symbol()
+            .to_string()
+    }
+
+    #[test]
+    fn before_virtual_line_dropped_without_stealing_skip_budget() {
+        // top_row_offset=1 skips wrap row 0 ("aaaa"). The Before(0) virtual
+        // line must be dropped too, but WITHOUT consuming another unit of the
+        // skip budget — screen row 0 must show wrap row 1 ("bbbb"), not wrap
+        // row 2 ("cccc") and not the virtual line.
+        let buf = render_wrapped_pane_with_virtual_line(1, VirtualLineAnchor::Before(0));
+        assert_eq!(cell_symbol(&buf, 0, 0), "b", "screen row 0 is wrap row 1");
+        assert_eq!(cell_symbol(&buf, 1, 0), "b");
+        assert_eq!(cell_symbol(&buf, 2, 0), "b");
+        assert_eq!(cell_symbol(&buf, 3, 0), "b");
+        assert_eq!(cell_symbol(&buf, 0, 1), "c", "screen row 1 is wrap row 2");
+    }
+
+    #[test]
+    fn before_virtual_line_renders_when_not_skipped() {
+        // top_row_offset=0: the Before(0) virtual line renders at screen row
+        // 0, pushing wrap row 0 ("aaaa") down to screen row 1.
+        let buf = render_wrapped_pane_with_virtual_line(0, VirtualLineAnchor::Before(0));
+        assert_eq!(cell_symbol(&buf, 0, 0), "V", "virtual line at screen row 0");
+        assert_eq!(
+            cell_symbol(&buf, 0, 1),
+            "a",
+            "wrap row 0 pushed to screen row 1"
+        );
+    }
+
+    #[test]
+    fn after_virtual_line_renders_below_skipped_rows() {
+        // top_row_offset=1 skips wrap row 0. The After(0) virtual line sits
+        // below all of line 0's wrap rows, which are not skipped (the budget
+        // is exhausted by wrap row 0 alone) — it must still render, after
+        // wrap rows 1 and 2.
+        let buf = render_wrapped_pane_with_virtual_line(1, VirtualLineAnchor::After(0));
+        assert_eq!(cell_symbol(&buf, 0, 0), "b", "wrap row 1");
+        assert_eq!(cell_symbol(&buf, 0, 1), "c", "wrap row 2");
+        assert_eq!(
+            cell_symbol(&buf, 0, 2),
+            "V",
+            "After(0) virtual line still renders"
         );
     }
 
