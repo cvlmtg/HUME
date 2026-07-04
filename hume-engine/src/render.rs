@@ -550,6 +550,7 @@ mod tests {
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
+            scope: None,
         }
     }
 
@@ -760,6 +761,7 @@ mod tests {
                 width: 1,
                 content: CellContent::Grapheme,
                 indent_depth: 0,
+                scope: None,
             }, // 'c' on line 1
             Grapheme {
                 byte_range: 1..2,
@@ -768,6 +770,7 @@ mod tests {
                 width: 1,
                 content: CellContent::Grapheme,
                 indent_depth: 0,
+                scope: None,
             }, // 'd' on line 1
         ];
         let rows = vec![
@@ -817,6 +820,7 @@ mod tests {
                 width: 1,
                 content: CellContent::Grapheme,
                 indent_depth: 0,
+                scope: None,
             })
             .collect();
         let rows = vec![simple_row(0..5)];
@@ -862,6 +866,7 @@ mod tests {
                 width: 1,
                 content: CellContent::Grapheme,
                 indent_depth: 2, // 8 spaces / 4 tab_width = depth 2
+                scope: None,
             })
             .collect();
         let rows = vec![DisplayRow {
@@ -915,6 +920,7 @@ mod tests {
                 width: 1,
                 content: CellContent::Grapheme,
                 indent_depth: 1,
+                scope: None,
             })
             .collect();
         let rows = vec![
@@ -965,6 +971,7 @@ mod tests {
             width: 4,
             content: CellContent::Indicator("→"),
             indent_depth: 0,
+            scope: None,
         }];
         let rows = vec![simple_row(0..1)];
         let styles = vec![ResolvedStyle::default()];

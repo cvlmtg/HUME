@@ -173,12 +173,18 @@ pub trait VirtualLineSource {
 /// An inline decoration injected at a specific byte offset within a buffer
 /// line. Participates in wrapping (unlike virtual lines). Used for inlay hints,
 /// ghost text, and inline type annotations.
+///
+/// `scope` is an already-interned [`ScopeId`], not a [`Scope`] name: providers
+/// intern their scopes at construction time (same contract as
+/// [`HighlightSource`] — see its `highlights_for_line` doc), since the
+/// per-grapheme hot path in `format_buffer_line`/`style_row` must stay
+/// index-based, never touching the raw scope-name map.
 #[derive(Clone, Debug)]
 pub struct InlineInsert {
     /// Byte offset within the buffer line at which to inject the text.
     pub byte_offset: usize,
     pub text: &'static str,
-    pub scope: Scope,
+    pub scope: ScopeId,
 }
 
 pub trait InlineDecoration {

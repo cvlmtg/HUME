@@ -183,10 +183,7 @@ pub fn format_buffer_line(
         while insert_idx < inline_inserts.len()
             && inline_inserts[insert_idx].byte_offset <= byte_offset
         {
-            if h_window
-                .as_ref()
-                .is_some_and(|w| wrap.current_col >= w.end)
-            {
+            if h_window.as_ref().is_some_and(|w| wrap.current_col >= w.end) {
                 clipped = true;
                 break 'lines;
             }
@@ -219,6 +216,7 @@ pub fn format_buffer_line(
                         width: ins_width,
                         content: CellContent::Virtual(ins.text),
                         indent_depth,
+                        scope: Some(ins.scope),
                     });
                 }
                 wrap.current_col = wrap.current_col.saturating_add(ins_width as u16);
@@ -226,10 +224,7 @@ pub fn format_buffer_line(
             insert_idx += 1;
         }
 
-        if h_window
-            .as_ref()
-            .is_some_and(|w| wrap.current_col >= w.end)
-        {
+        if h_window.as_ref().is_some_and(|w| wrap.current_col >= w.end) {
             clipped = true;
             break 'lines;
         }
@@ -290,6 +285,7 @@ pub fn format_buffer_line(
                 width,
                 content,
                 indent_depth,
+                scope: None,
             });
         }
         char_pos += char_count;
@@ -308,6 +304,7 @@ pub fn format_buffer_line(
                 width: 0, // zero — does not consume columns
                 content: CellContent::WidthContinuation,
                 indent_depth,
+                scope: None,
             });
         }
     }
@@ -334,6 +331,7 @@ pub fn format_buffer_line(
                 width: 1,
                 content: CellContent::Empty,
                 indent_depth: 0,
+                scope: None,
             });
         }
 
@@ -351,6 +349,7 @@ pub fn format_buffer_line(
                     width: ins_width,
                     content: CellContent::Virtual(ins.text),
                     indent_depth,
+                    scope: Some(ins.scope),
                 });
                 wrap.current_col = wrap.current_col.saturating_add(ins_width as u16);
             }
@@ -380,6 +379,7 @@ pub fn format_buffer_line(
                 width: 1,
                 content: CellContent::Indicator(whitespace.newline_char),
                 indent_depth,
+                scope: None,
             });
         }
     }
@@ -628,7 +628,16 @@ mod tests {
         let inserts = Vec::new();
         let mut scratch = FormatScratch::new();
         for line_idx in 0..rope.len_lines() {
-            format_buffer_line(&rope, line_idx, 4, &ws, &wrap_mode, None, &inserts, &mut scratch);
+            format_buffer_line(
+                &rope,
+                line_idx,
+                4,
+                &ws,
+                &wrap_mode,
+                None,
+                &inserts,
+                &mut scratch,
+            );
         }
         (scratch.display_rows, scratch.graphemes)
     }
@@ -838,7 +847,10 @@ mod tests {
             matches!(sentinel.content, CellContent::Empty),
             "sentinel must be Empty"
         );
-        assert_eq!(sentinel.col, 5, "sentinel sits one column past the wrap width");
+        assert_eq!(
+            sentinel.col, 5,
+            "sentinel sits one column past the wrap width"
+        );
         assert_eq!(sentinel.char_offset, 5, "sentinel at the \\n char offset");
     }
 
@@ -1175,17 +1187,17 @@ mod tests {
             InlineInsert {
                 byte_offset: 0,
                 text: "Z",
-                scope: crate::types::Scope("test"),
+                scope: crate::types::ScopeId(0),
             },
             InlineInsert {
                 byte_offset: 2,
                 text: "XY",
-                scope: crate::types::Scope("test"),
+                scope: crate::types::ScopeId(0),
             },
             InlineInsert {
                 byte_offset: 6,
                 text: "W",
-                scope: crate::types::Scope("test"),
+                scope: crate::types::ScopeId(0),
             },
         ];
         let mut scratch = FormatScratch::new();
@@ -1225,7 +1237,7 @@ mod tests {
         let inserts = vec![InlineInsert {
             byte_offset: 0,
             text,
-            scope: crate::types::Scope("test"),
+            scope: crate::types::ScopeId(0),
         }];
         let mut scratch = FormatScratch::new();
         format_buffer_line(
@@ -1268,7 +1280,8 @@ mod tests {
     fn wrapping_modes_unaffected_by_h_window_none() {
         // Regression: passing None (the only value wrapping modes ever get)
         // must reproduce the existing wrap test's output exactly.
-        let (rows, graphemes) = do_format_windowed("hello world", WrapMode::Soft { width: 7 }, None);
+        let (rows, graphemes) =
+            do_format_windowed("hello world", WrapMode::Soft { width: 7 }, None);
         let row0 = &graphemes[rows[0].graphemes.clone()];
         assert_eq!(row0.len(), 7, "soft wrap still splits mid-word at column 7");
     }

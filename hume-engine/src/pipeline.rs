@@ -1203,11 +1203,25 @@ fn emit_virtual_row(
         },
         graphemes: g_start..scratch.format.graphemes.len(),
     });
-    // Virtual rows keep default styles (the style stage skips them).
+    // Virtual rows are skipped by the style stage (no highlight tiers, no
+    // cursor/selection), but each grapheme can still carry its own `scope`
+    // (set by the `VirtualLineSource` that produced it). Resolve that scope
+    // now — `theme.default` layered with the resolved scope for `Some`, or
+    // the themed `virtual_text` fallback for graphemes with no scope of
+    // their own (matches the tilde-filler / no-decoration look).
+    scratch.style.styles.clear();
     scratch
         .style
         .styles
-        .resize(scratch.format.graphemes.len(), ResolvedStyle::default());
+        .extend(scratch.format.graphemes.iter().map(|g| {
+            match g.scope {
+                Some(id) => compose_ctx
+                    .theme
+                    .default
+                    .layer(compose_ctx.theme.resolve(id)),
+                None => compose_ctx.theme.ui.virtual_text,
+            }
+        }));
 
     let row_idx = scratch.format.display_rows.len() - 1;
     render::compose_row(
@@ -1241,6 +1255,112 @@ mod tests {
             width: w,
             height: h,
         }
+    }
+
+    // ── emit_virtual_row scope styling (B3/B4) ──────────────────────────
+
+    fn make_compose_ctx<'a>(
+        visible: &'a crate::layout::VisibleRange,
+        viewport: &'a crate::pane::ViewportState,
+        theme: &'a Theme,
+        pane_rect: Rect,
+    ) -> ComposeCtx<'a> {
+        ComposeCtx {
+            gutter_columns: &[],
+            visible,
+            viewport,
+            mode: EditorMode::Normal,
+            primary_head_line: 0,
+            tab_width: 4,
+            tilde_style: theme.ui.virtual_text.into(),
+            indent_guide_style: theme.ui.indent_guide.into(),
+            pane_rect,
+            theme,
+            pane_bg: None,
+        }
+    }
+
+    #[test]
+    fn emit_virtual_row_resolves_grapheme_scope_and_falls_back_to_virtual_text() {
+        // Two graphemes: one carries an interned scope (must resolve to that
+        // scope's fg), one carries no scope (must fall back to ui.virtual_text).
+        let mut registry = ScopeRegistry::new();
+        let hint_scope = registry.intern("hint");
+        let mut styles_map = HashMap::new();
+        styles_map.insert(
+            "hint",
+            ResolvedStyle {
+                fg: Some(ratatui::style::Color::Red),
+                ..Default::default()
+            },
+        );
+        styles_map.insert(
+            "ui.virtual",
+            ResolvedStyle {
+                fg: Some(ratatui::style::Color::Blue),
+                ..Default::default()
+            },
+        );
+        let mut theme = Theme::new(styles_map, ResolvedStyle::default());
+        theme.bake(&registry);
+
+        let mut scratch = FrameScratch::new();
+        scratch
+            .format
+            .virtual_lines
+            .push(crate::providers::VirtualLine {
+                anchor: VirtualLineAnchor::Before(0),
+                provider_id: 0,
+                graphemes: vec![
+                    crate::types::Grapheme {
+                        byte_range: 0..0,
+                        char_offset: usize::MAX,
+                        col: 0,
+                        width: 1,
+                        content: crate::types::CellContent::Virtual("H"),
+                        indent_depth: 0,
+                        scope: Some(hint_scope),
+                    },
+                    crate::types::Grapheme {
+                        byte_range: 0..0,
+                        char_offset: usize::MAX,
+                        col: 1,
+                        width: 1,
+                        content: crate::types::CellContent::Virtual("~"),
+                        indent_depth: 0,
+                        scope: None,
+                    },
+                ],
+            });
+
+        let visible = crate::layout::VisibleRange {
+            line_range: 0..1,
+            top_skip_rows: 0,
+            content_height: 5,
+            content_width: 20,
+            gutter_width: 0,
+            last_line_idx: 0,
+        };
+        let viewport = crate::pane::ViewportState::new(20, 5);
+        let pane_rect = rect(0, 0, 20, 5);
+        let compose_ctx = make_compose_ctx(&visible, &viewport, &theme, pane_rect);
+        let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
+        let mut canvas = render::PaneCanvas::new(&mut buf, None);
+
+        emit_virtual_row(0, 0, 0, &mut scratch, &compose_ctx, &mut canvas);
+
+        let scoped_cell = buf.cell(ratatui::layout::Position { x: 0, y: 0 }).unwrap();
+        assert_eq!(
+            scoped_cell.fg,
+            ratatui::style::Color::Red,
+            "grapheme with Some(scope) resolves that scope's style"
+        );
+        let fallback_cell = buf.cell(ratatui::layout::Position { x: 1, y: 0 }).unwrap();
+        assert_eq!(
+            fallback_cell.fg,
+            ratatui::style::Color::Blue,
+            "grapheme with no scope falls back to ui.virtual_text"
+        );
     }
 
     // ── split_rect ───────────────────────────────────────────────────────
@@ -1791,6 +1911,7 @@ mod tests {
                 width: 1,
                 content: crate::types::CellContent::Empty,
                 indent_depth: 0,
+                scope: None,
             });
         }
         let cap_before = s.format.graphemes.capacity();

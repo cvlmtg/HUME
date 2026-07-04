@@ -160,6 +160,11 @@ pub struct Grapheme {
     pub content: CellContent,
     /// Indent depth at this column — used for indent guide rendering.
     pub indent_depth: u8,
+    /// Scope this cell's decoration was interned with, if any. `None` for
+    /// every real buffer grapheme — their style comes from the highlight
+    /// tiers, not a per-cell scope. `Some` for inline-insert (`Virtual`)
+    /// cells and virtual-line cells that carry their own styling.
+    pub scope: Option<ScopeId>,
 }
 
 /// What a grapheme cell displays.

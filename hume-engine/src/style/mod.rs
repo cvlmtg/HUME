@@ -163,6 +163,14 @@ pub(crate) fn style_row(
         // Each theme.resolve(id) is an O(1) Vec index.
         style = hl.layer_at(g.byte_range.start, style, theme);
 
+        // Tier 2e: the cell's own scope (inline-insert decorations). Layered
+        // after syntax/search/diagnostic/bracket highlights so a decoration's
+        // scope wins over whatever highlight tier would otherwise apply at
+        // this column, but still under selection/cursor tiers below.
+        if let Some(id) = g.scope {
+            style = style.layer(theme.resolve(id));
+        }
+
         // Tier 1: selection (primary wins over secondary for style; both are highlighted)
         let in_primary_sel = scratch
             .primary_sel_span
@@ -345,7 +353,11 @@ fn resolve_grapheme_col(
     let idx = row_graphemes.partition_point(|g| g.char_offset < char_offset);
     // If char_offset falls before this row's first grapheme, the position
     // belongs to an earlier wrap segment — don't claim it for this row.
-    if idx == 0 && row_graphemes.first().is_some_and(|g| char_offset < g.char_offset) {
+    if idx == 0
+        && row_graphemes
+            .first()
+            .is_some_and(|g| char_offset < g.char_offset)
+    {
         return None;
     }
     // The cursor/selection must land on the real character, not an inline-insert
@@ -448,6 +460,7 @@ mod tests {
                 width: 1,
                 content: CellContent::Grapheme,
                 indent_depth: 0,
+                scope: None,
             })
             .collect()
     }
@@ -533,6 +546,7 @@ mod tests {
                 width: 1,
                 content: CellContent::Grapheme,
                 indent_depth: 0,
+                scope: None,
             })
             .collect::<Vec<_>>();
         // eol sentinel at char_offset=5, col=5 (the `\n` position).
@@ -543,6 +557,7 @@ mod tests {
             width: 1,
             content: CellContent::Empty,
             indent_depth: 0,
+            scope: None,
         });
         gs
     }
@@ -755,6 +770,7 @@ mod tests {
             width: 1,
             content: crate::types::CellContent::Grapheme,
             indent_depth: 0,
+            scope: None,
         };
         let g1 = Grapheme {
             byte_range: 1..2,
@@ -763,6 +779,7 @@ mod tests {
             width: 1,
             content: crate::types::CellContent::Grapheme,
             indent_depth: 0,
+            scope: None,
         };
         let g2 = Grapheme {
             byte_range: 0..1,
@@ -771,6 +788,7 @@ mod tests {
             width: 1,
             content: crate::types::CellContent::Grapheme,
             indent_depth: 0,
+            scope: None,
         };
         let g3 = Grapheme {
             byte_range: 1..2,
@@ -779,6 +797,7 @@ mod tests {
             width: 1,
             content: crate::types::CellContent::Grapheme,
             indent_depth: 0,
+            scope: None,
         };
         let graphemes = vec![g0, g1, g2, g3];
         let rows = vec![
@@ -928,6 +947,7 @@ mod tests {
                 width: 1,
                 content: crate::types::CellContent::Grapheme,
                 indent_depth: 0,
+                scope: None,
             },
             Grapheme {
                 byte_range: 0..1,
@@ -936,6 +956,7 @@ mod tests {
                 width: 1,
                 content: crate::types::CellContent::Grapheme,
                 indent_depth: 0,
+                scope: None,
             },
             Grapheme {
                 byte_range: 0..1,
@@ -944,6 +965,7 @@ mod tests {
                 width: 1,
                 content: crate::types::CellContent::Grapheme,
                 indent_depth: 0,
+                scope: None,
             },
         ];
         let rows = vec![
@@ -1011,6 +1033,7 @@ mod tests {
                 width: 1,
                 content: crate::types::CellContent::Grapheme,
                 indent_depth: 0,
+                scope: None,
             },
             Grapheme {
                 byte_range: 0..0,
@@ -1019,6 +1042,7 @@ mod tests {
                 width: 1,
                 content: crate::types::CellContent::Virtual("hint"),
                 indent_depth: 0,
+                scope: None,
             },
         ];
         let rows = vec![
@@ -1246,6 +1270,7 @@ mod tests {
                 width: 1,
                 content: CellContent::Grapheme,
                 indent_depth: 0,
+                scope: None,
             },
             Grapheme {
                 byte_range: 1..2,
@@ -1254,6 +1279,7 @@ mod tests {
                 width: 1,
                 content: CellContent::Grapheme,
                 indent_depth: 0,
+                scope: None,
             },
             Grapheme {
                 byte_range: 2..3,
@@ -1262,6 +1288,7 @@ mod tests {
                 width: 1,
                 content: CellContent::Grapheme,
                 indent_depth: 0,
+                scope: None,
             },
             Grapheme {
                 byte_range: 3..4,
@@ -1270,6 +1297,7 @@ mod tests {
                 width: 1,
                 content: CellContent::Grapheme,
                 indent_depth: 0,
+                scope: None,
             }, // wrap segment
             Grapheme {
                 byte_range: 4..5,
@@ -1278,6 +1306,7 @@ mod tests {
                 width: 1,
                 content: CellContent::Grapheme,
                 indent_depth: 0,
+                scope: None,
             },
         ];
         let rows = vec![
@@ -1347,6 +1376,7 @@ mod tests {
                 width: 1,
                 content: CellContent::Grapheme,
                 indent_depth: 0,
+                scope: None,
             },
             Grapheme {
                 byte_range: 1..2,
@@ -1355,6 +1385,7 @@ mod tests {
                 width: 1,
                 content: CellContent::Grapheme,
                 indent_depth: 0,
+                scope: None,
             },
             Grapheme {
                 byte_range: 2..3,
@@ -1363,6 +1394,7 @@ mod tests {
                 width: 1,
                 content: CellContent::Grapheme,
                 indent_depth: 0,
+                scope: None,
             },
             Grapheme {
                 byte_range: 3..4,
@@ -1371,6 +1403,7 @@ mod tests {
                 width: 1,
                 content: CellContent::Grapheme,
                 indent_depth: 0,
+                scope: None,
             },
             Grapheme {
                 byte_range: 4..5,
@@ -1379,6 +1412,7 @@ mod tests {
                 width: 1,
                 content: CellContent::Grapheme,
                 indent_depth: 0,
+                scope: None,
             },
         ];
         let rows = vec![
@@ -1445,6 +1479,77 @@ mod tests {
         );
     }
 
+    // ── Inline-insert scope styling (B3) ─────────────────────────────────
+
+    #[test]
+    fn inline_insert_scope_is_layered_but_neighbour_is_not() {
+        // Insert with an interned scope mapped to fg: Red. The insert cell's
+        // resolved style must carry that scope; the real grapheme next to it
+        // must not.
+        let rope = ropey::Rope::from_str("ab");
+        let mut registry = crate::theme::ScopeRegistry::new();
+        let hint_scope = registry.intern("hint");
+        let inserts = vec![crate::providers::InlineInsert {
+            byte_offset: 0,
+            text: "H",
+            scope: hint_scope,
+        }];
+        let mut fmt = crate::format::FormatScratch::new();
+        crate::format::format_buffer_line(
+            &rope,
+            0,
+            4,
+            &crate::pane::WhitespaceConfig::default(),
+            &crate::pane::WrapMode::None,
+            None,
+            &inserts,
+            &mut fmt,
+        );
+
+        let mut styles_map = HashMap::new();
+        styles_map.insert(
+            "hint",
+            ResolvedStyle {
+                fg: Some(ratatui::style::Color::Red),
+                ..Default::default()
+            },
+        );
+        let mut theme = Theme::new(styles_map, ResolvedStyle::default());
+        theme.bake(&registry);
+
+        let mut scratch = StyleScratch::new();
+        apply_styles(
+            &fmt.display_rows,
+            &fmt.graphemes,
+            &[],
+            EditorMode::Normal,
+            &theme,
+            &rope,
+            &mut scratch,
+        );
+
+        let insert_idx = fmt
+            .graphemes
+            .iter()
+            .position(|g| matches!(g.content, CellContent::Virtual(_)))
+            .expect("insert grapheme present");
+        let a_idx = fmt
+            .graphemes
+            .iter()
+            .position(|g| g.char_offset == 0 && matches!(g.content, CellContent::Grapheme))
+            .expect("'a' grapheme present");
+
+        assert_eq!(
+            scratch.styles[insert_idx].fg,
+            Some(ratatui::style::Color::Red),
+            "insert cell must carry its own scope's style"
+        );
+        assert_eq!(
+            scratch.styles[a_idx].fg, None,
+            "neighbouring real grapheme must not inherit the insert's scope"
+        );
+    }
+
     // ── Inline-insert char_offset partition invariant (B2) ────────────────
 
     /// Drive the real formatter with a mid-row insert, then style the result —
@@ -1459,10 +1564,12 @@ mod tests {
         // `resolve_grapheme_col` must break in favour of the real grapheme.
         // Cursor at char 2 ('c') must land at col 4, not the insert's col 2.
         let rope = ropey::Rope::from_str("abcdef");
+        let mut registry = crate::theme::ScopeRegistry::new();
+        let insert_scope = registry.intern("test");
         let inserts = vec![crate::providers::InlineInsert {
             byte_offset: 2,
             text: "XY",
-            scope: crate::types::Scope("test"),
+            scope: insert_scope,
         }];
         let mut fmt = crate::format::FormatScratch::new();
         crate::format::format_buffer_line(
@@ -1484,7 +1591,8 @@ mod tests {
                 ..Default::default()
             },
         );
-        let theme = Theme::new(styles_map, ResolvedStyle::default());
+        let mut theme = Theme::new(styles_map, ResolvedStyle::default());
+        theme.bake(&registry);
         let selections = vec![Selection { anchor: 2, head: 2 }];
         let mut scratch = StyleScratch::new();
         apply_styles(
@@ -1502,7 +1610,10 @@ mod tests {
             .iter()
             .position(|g| g.char_offset == 2 && matches!(g.content, CellContent::Grapheme))
             .expect("'c' grapheme present");
-        assert_eq!(fmt.graphemes[c_idx].col, 4, "'c' shifts right by the insert's width");
+        assert_eq!(
+            fmt.graphemes[c_idx].col, 4,
+            "'c' shifts right by the insert's width"
+        );
         assert_eq!(
             scratch.styles[c_idx].fg,
             Some(ratatui::style::Color::Red),
@@ -1528,10 +1639,12 @@ mod tests {
         // ('a','b') must start its highlighted span at 'a's col (1), not the
         // insert's col (0).
         let rope = ropey::Rope::from_str("abcdef");
+        let mut registry = crate::theme::ScopeRegistry::new();
+        let insert_scope = registry.intern("test");
         let inserts = vec![crate::providers::InlineInsert {
             byte_offset: 0,
             text: "Z",
-            scope: crate::types::Scope("test"),
+            scope: insert_scope,
         }];
         let mut fmt = crate::format::FormatScratch::new();
         crate::format::format_buffer_line(
@@ -1553,7 +1666,8 @@ mod tests {
                 ..Default::default()
             },
         );
-        let theme = Theme::new(styles_map, ResolvedStyle::default());
+        let mut theme = Theme::new(styles_map, ResolvedStyle::default());
+        theme.bake(&registry);
         let selections = vec![Selection { anchor: 0, head: 1 }]; // 'a' and 'b'
         let mut scratch = StyleScratch::new();
         apply_styles(
