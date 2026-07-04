@@ -84,3 +84,22 @@ being called promptly — without touching A's callers at all.
 
 **Files:** `hume-engine/src/theme/mod.rs` (`Theme::bake_if_stale`),
 `hume-editor/src/editor/lifecycle.rs` (`prepare_frame` call site).
+
+---
+
+## L3 — Plan said "ask user"; execution silently took the default (2026-07)
+
+**Root cause:** A plan item was written as "behavior choice — ask user
+(default: leave as-is)". During execution the default was applied without
+ever asking; the question surfaced only as a passing remark in the final
+summary ("say the word if you want…"), which is not asking.
+
+**Concrete instance:** hume-editing review, finding F6 (`classify_char`
+treats Unicode whitespace as `Punctuation`). Plan deferred the decision to
+the user; implementation skipped the question entirely.
+
+**Prevention rule:** If a plan marks an item "ask user", that is a blocking
+action, not a soft note. Before declaring the task done, either ask the
+question explicitly (AskUserQuestion) or state up front "did NOT do X —
+needs your decision" as its own line item in the report — never bury it as
+an aside inside an unrelated paragraph.
