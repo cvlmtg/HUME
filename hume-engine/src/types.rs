@@ -118,8 +118,17 @@ impl From<ResolvedStyle> for ratatui::style::Style {
         if s.modifiers.contains(Modifiers::RAPID_BLINK) {
             style = style.add_modifier(ratatui::style::Modifier::RAPID_BLINK);
         }
-        // Underline styles: ratatui supports UNDERLINED modifier + underline_color.
-        // Wavy/dotted/dashed require terminal support and may not map 1:1.
+        // Known boundary limitation (tracked, not fixed here — see
+        // ROADMAP.md open questions): Solid/Wavy/Dotted/Dashed all collapse
+        // to the same plain UNDERLINED modifier. ratatui's `Modifier`
+        // bitflags carry no underline-*shape* bits, and the crossterm
+        // backend never emits the `Undercurled`/`Underdotted`/`Underdashed`
+        // attributes crossterm itself supports — there is no injection point
+        // between this `From` impl and the terminal to express the shape.
+        // `UnderlineStyle` is kept as its own field on `ResolvedStyle` (and
+        // the theme loader keeps parsing Helix's `underline.style`) so
+        // themes and providers are already correct the day ratatui gains
+        // underline-shape support.
         match s.underline {
             UnderlineStyle::None => {}
             _ => {
