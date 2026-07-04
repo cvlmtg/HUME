@@ -99,7 +99,10 @@ pub(crate) fn screen_pos(
 ///
 /// Used to offset the terminal cursor column past line numbers and other gutter
 /// providers.
-pub(crate) fn gutter_width(gutter_columns: &[Box<dyn GutterColumn>], total_lines: usize) -> u16 {
+pub(crate) fn gutter_width<'a>(
+    gutter_columns: impl Iterator<Item = &'a dyn GutterColumn>,
+    total_lines: usize,
+) -> u16 {
     gutter_width_for_line(gutter_columns, total_lines.saturating_sub(1))
 }
 

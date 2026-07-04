@@ -597,7 +597,10 @@ fn grapheme_display(
 pub(crate) fn push_arena_text(arena: &mut String, text: &str) -> (u32, u16) {
     let start = arena.len();
     arena.push_str(text);
-    debug_assert!(u32::try_from(start).is_ok(), "frame arena start exceeds u32");
+    debug_assert!(
+        u32::try_from(start).is_ok(),
+        "frame arena start exceeds u32"
+    );
     debug_assert!(
         u16::try_from(text.len()).is_ok(),
         "pushed text exceeds u16 length"
@@ -941,7 +944,11 @@ mod tests {
                 &mut scratch,
             );
         }
-        (scratch.display_rows, scratch.graphemes, scratch.virtual_texts)
+        (
+            scratch.display_rows,
+            scratch.graphemes,
+            scratch.virtual_texts,
+        )
     }
 
     /// Slice the arena text backing an `Indicator`/`Virtual` cell — panics if

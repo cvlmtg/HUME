@@ -364,7 +364,8 @@ fn resolve_grapheme_col(
     // decoration sharing its offset — skip forward past any `Virtual` cells.
     let mut idx = idx;
     while row_graphemes.get(idx).is_some_and(|g| {
-        g.char_offset == char_offset && matches!(g.content, crate::types::CellContent::Virtual { .. })
+        g.char_offset == char_offset
+            && matches!(g.content, crate::types::CellContent::Virtual { .. })
     }) {
         idx += 1;
     }

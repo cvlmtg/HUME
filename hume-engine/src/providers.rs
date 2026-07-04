@@ -272,13 +272,18 @@ pub trait TabBarProvider {
 // ---------------------------------------------------------------------------
 
 /// Complete set of providers for a pane. Allocated once at startup.
+///
+/// Each list stores `(ProviderId, Box<dyn Trait>)` pairs rather than bare
+/// boxes so a provider can be looked up and removed later (`remove`) — e.g.
+/// a plugin unregistering a gutter column it added, or a `:set`-style toggle
+/// turning a built-in column off.
 #[derive(Default)]
 pub struct ProviderSet {
-    pub(crate) highlights: Vec<Box<dyn HighlightSource>>,
-    pub(crate) gutter_columns: Vec<Box<dyn GutterColumn>>,
-    pub(crate) virtual_lines: Vec<Box<dyn VirtualLineSource>>,
-    pub(crate) inline_decorations: Vec<Box<dyn InlineDecoration>>,
-    pub(crate) overlays: Vec<Box<dyn OverlayProvider>>,
+    pub(crate) highlights: Vec<(ProviderId, Box<dyn HighlightSource>)>,
+    pub(crate) gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)>,
+    pub(crate) virtual_lines: Vec<(ProviderId, Box<dyn VirtualLineSource>)>,
+    pub(crate) inline_decorations: Vec<(ProviderId, Box<dyn InlineDecoration>)>,
+    pub(crate) overlays: Vec<(ProviderId, Box<dyn OverlayProvider>)>,
     next_id: ProviderId,
 }
 
@@ -295,33 +300,64 @@ impl ProviderSet {
     }
 
     pub fn add_highlight_source(&mut self, p: Box<dyn HighlightSource>) -> ProviderId {
-        self.highlights.push(p);
-        self.highlights.sort_by_key(|h| h.tier());
-        self.alloc_id()
+        let id = self.alloc_id();
+        self.highlights.push((id, p));
+        // Stable sort: within a tier, registration order is preserved —
+        // later `add_highlight_source` calls layer on top of earlier ones
+        // at the same tier. Deterministic layering relies on this.
+        self.highlights.sort_by_key(|(_, h)| h.tier());
+        id
     }
 
     pub fn add_gutter_column(&mut self, p: Box<dyn GutterColumn>) -> ProviderId {
-        self.gutter_columns.push(p);
-        self.alloc_id()
+        let id = self.alloc_id();
+        self.gutter_columns.push((id, p));
+        id
     }
 
     pub fn add_virtual_line_source(&mut self, p: Box<dyn VirtualLineSource>) -> ProviderId {
-        self.virtual_lines.push(p);
-        self.alloc_id()
+        let id = self.alloc_id();
+        self.virtual_lines.push((id, p));
+        id
     }
 
     pub fn add_inline_decoration(&mut self, p: Box<dyn InlineDecoration>) -> ProviderId {
-        self.inline_decorations.push(p);
-        self.alloc_id()
+        let id = self.alloc_id();
+        self.inline_decorations.push((id, p));
+        id
     }
 
     pub fn add_overlay(&mut self, p: Box<dyn OverlayProvider>) -> ProviderId {
-        self.overlays.push(p);
-        self.alloc_id()
+        let id = self.alloc_id();
+        self.overlays.push((id, p));
+        id
     }
 
-    pub fn gutter_columns(&self) -> &[Box<dyn GutterColumn>] {
-        &self.gutter_columns
+    /// Remove the provider registered under `id`, whichever list holds it.
+    /// Returns `true` if a provider was removed, `false` for an unknown id
+    /// (a no-op, not an error — callers don't need to track what they
+    /// already removed).
+    pub fn remove(&mut self, id: ProviderId) -> bool {
+        let before = self.highlights.len()
+            + self.gutter_columns.len()
+            + self.virtual_lines.len()
+            + self.inline_decorations.len()
+            + self.overlays.len();
+        self.highlights.retain(|(pid, _)| *pid != id);
+        self.gutter_columns.retain(|(pid, _)| *pid != id);
+        self.virtual_lines.retain(|(pid, _)| *pid != id);
+        self.inline_decorations.retain(|(pid, _)| *pid != id);
+        self.overlays.retain(|(pid, _)| *pid != id);
+        let after = self.highlights.len()
+            + self.gutter_columns.len()
+            + self.virtual_lines.len()
+            + self.inline_decorations.len()
+            + self.overlays.len();
+        before != after
+    }
+
+    pub fn gutter_columns(&self) -> impl Iterator<Item = &dyn GutterColumn> {
+        self.gutter_columns.iter().map(|(_, c)| c.as_ref())
     }
 
     /// Push the resolved line-number style into the `LineNumberColumn`, if present.
@@ -329,7 +365,7 @@ impl ProviderSet {
     /// Called from `prepare_frame` each frame so `:set line-number-style` takes
     /// effect without rebuilding the provider set.
     pub fn sync_line_number_style(&mut self, style: LineNumberStyle) {
-        for col in &mut self.gutter_columns {
+        for (_, col) in &mut self.gutter_columns {
             if let Some(ln) = col.as_any_mut().downcast_mut::<LineNumberColumn>() {
                 ln.style = style;
             }
@@ -371,6 +407,22 @@ mod tests {
         }
         fn render_row(&self, _: crate::types::RowKind, _: &GutterRowCtx) -> GutterCell {
             GutterCell::blank(Scope("x"))
+        }
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+    }
+
+    /// Distinguishable from `DummyGutter` by width — used to prove `remove`
+    /// takes down the right provider and leaves the other untouched.
+    struct OtherGutter;
+
+    impl GutterColumn for OtherGutter {
+        fn width(&self, _: usize) -> u8 {
+            5
+        }
+        fn render_row(&self, _: crate::types::RowKind, _: &GutterRowCtx) -> GutterCell {
+            GutterCell::blank(Scope("y"))
         }
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
             self
@@ -428,6 +480,7 @@ mod tests {
         )));
         set.sync_line_number_style(LineNumberStyle::Relative);
         let col = set.gutter_columns[0]
+            .1
             .as_any_mut()
             .downcast_mut::<LineNumberColumn>()
             .unwrap();
@@ -480,7 +533,7 @@ mod tests {
             tier: HighlightTier::Diagnostic,
         }));
 
-        let tiers: Vec<_> = set.highlights.iter().map(|h| h.tier()).collect();
+        let tiers: Vec<_> = set.highlights.iter().map(|(_, h)| h.tier()).collect();
         assert_eq!(
             tiers,
             vec![
@@ -489,5 +542,58 @@ mod tests {
                 HighlightTier::BracketMatch,
             ]
         );
+    }
+
+    // ── Provider unregistration (G3) ─────────────────────────────────────
+
+    #[test]
+    fn remove_by_id_takes_down_only_that_provider() {
+        let mut set = ProviderSet::new();
+        let id0 = set.add_gutter_column(Box::new(DummyGutter)); // width 0
+        set.add_gutter_column(Box::new(OtherGutter)); // width 5
+
+        assert!(set.remove(id0));
+
+        let widths: Vec<u8> = set.gutter_columns().map(|c| c.width(0)).collect();
+        assert_eq!(
+            widths,
+            vec![5],
+            "only OtherGutter (width 5) remains; render order reflects it alone"
+        );
+    }
+
+    #[test]
+    fn remove_unknown_id_is_a_no_op() {
+        let mut set = ProviderSet::new();
+        set.add_gutter_column(Box::new(DummyGutter));
+
+        assert!(!set.remove(999), "unknown id must return false");
+        assert_eq!(
+            set.gutter_columns().count(),
+            1,
+            "removing an unknown id must not touch existing providers"
+        );
+    }
+
+    #[test]
+    fn remove_across_provider_types_only_touches_the_matching_list() {
+        // Ids are shared across all five lists' allocator — removing a
+        // gutter-column id must not accidentally hit a highlight source
+        // that happens to share the same numeric id space at a different
+        // index.
+        let mut set = ProviderSet::new();
+        let highlight_id = set.add_highlight_source(Box::new(DummyHighlight {
+            tier: HighlightTier::Syntax,
+        }));
+        let gutter_id = set.add_gutter_column(Box::new(DummyGutter));
+
+        assert!(set.remove(gutter_id));
+        assert_eq!(set.gutter_columns().count(), 0);
+        assert_eq!(
+            set.highlights.len(),
+            1,
+            "removing the gutter column must not touch the highlight source"
+        );
+        let _ = highlight_id;
     }
 }

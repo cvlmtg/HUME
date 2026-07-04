@@ -768,7 +768,7 @@ impl EngineView {
             let Some(pane) = self.panes.get(pane_id) else {
                 continue;
             };
-            for overlay in &pane.providers.overlays {
+            for (_, overlay) in &pane.providers.overlays {
                 if overlay.is_active() {
                     overlay.render(pane_area, &self.theme, buf);
                 }
@@ -895,7 +895,7 @@ pub(crate) fn render_pane(
         pane_ctx.rope,
         &pane_ctx.pane.viewport,
         &pane_ctx.settings.wrap_mode,
-        &pane_ctx.pane.providers.gutter_columns,
+        pane_ctx.pane.providers.gutter_columns(),
         pane_ctx.settings.tab_width,
     );
 
@@ -908,12 +908,19 @@ pub(crate) fn render_pane(
 
     // Pre-collect virtual lines from all providers; sort by anchor.
     scratch.format.virtual_lines.clear();
-    for provider in &pane_ctx.pane.providers.virtual_lines {
+    for (id, provider) in &pane_ctx.pane.providers.virtual_lines {
+        let before = scratch.format.virtual_lines.len();
         provider.virtual_lines(
             visible.line_range.clone(),
             visible.content_width,
             &mut scratch.format.virtual_lines,
         );
+        // Stamp the real provider id on every entry just added — never trust
+        // a provider's self-reported `provider_id` (it could misreport
+        // another provider's id).
+        for vl in &mut scratch.format.virtual_lines[before..] {
+            vl.provider_id = *id;
+        }
     }
     scratch
         .format
@@ -928,7 +935,7 @@ pub(crate) fn render_pane(
             .providers
             .gutter_columns
             .iter()
-            .map(|c| c.width(visible.last_line_idx) as u16),
+            .map(|(_, c)| c.width(visible.last_line_idx) as u16),
     );
 
     // Bundle per-frame constants so compose_row call sites stay concise.
@@ -1082,7 +1089,7 @@ fn render_buffer_line(
 
     // Collect and sort inline decorations for this line.
     scratch.inline_inserts.clear();
-    for provider in &pane_ctx.pane.providers.inline_decorations {
+    for (_, provider) in &pane_ctx.pane.providers.inline_decorations {
         provider.decorations_for_line(line_idx, &mut scratch.inline_inserts);
     }
     scratch.inline_inserts.sort_by_key(|i| i.byte_offset);
@@ -1525,6 +1532,108 @@ mod tests {
             cell_symbol(&buf, 0, 2),
             "V",
             "After(0) virtual line still renders"
+        );
+    }
+
+    // ── Provider id stamping (G3) ────────────────────────────────────────
+
+    /// Reports a deliberately wrong `provider_id` — the pipeline must not
+    /// trust it.
+    struct SpoofingVirtualLineSource {
+        anchor: VirtualLineAnchor,
+    }
+
+    impl crate::providers::VirtualLineSource for SpoofingVirtualLineSource {
+        fn virtual_lines(
+            &self,
+            visible_lines: std::ops::Range<usize>,
+            _content_width: u16,
+            out: &mut Vec<crate::providers::VirtualLine>,
+        ) {
+            let line = match self.anchor {
+                VirtualLineAnchor::Before(n) | VirtualLineAnchor::After(n) => n,
+            };
+            if visible_lines.contains(&line) {
+                out.push(crate::providers::VirtualLine {
+                    anchor: self.anchor,
+                    provider_id: 9999, // spoofed — must be overwritten by the pipeline
+                    text: "V".to_string(),
+                    segments: Vec::new(),
+                });
+            }
+        }
+    }
+
+    /// Renders the `RowKind::Virtual` provider_id as gutter text, so the test
+    /// can observe what actually reached `compose` after collection.
+    struct ProviderIdReportingGutter;
+
+    impl crate::providers::GutterColumn for ProviderIdReportingGutter {
+        fn width(&self, _: usize) -> u8 {
+            5
+        }
+        fn render_row(
+            &self,
+            kind: RowKind,
+            _: &crate::providers::GutterRowCtx,
+        ) -> crate::providers::GutterCell {
+            match kind {
+                RowKind::Virtual { provider_id, .. } => crate::providers::GutterCell {
+                    content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Owned(
+                        provider_id.to_string(),
+                    )),
+                    scope: crate::types::Scope("ui.linenr"),
+                },
+                _ => crate::providers::GutterCell::blank(crate::types::Scope("ui.linenr")),
+            }
+        }
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+    }
+
+    #[test]
+    fn virtual_line_provider_id_is_stamped_by_pipeline_not_self_reported() {
+        let rope = ropey::Rope::from_str("a\n");
+        let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
+        let bid = bids.insert(());
+        let mut pane = Pane::new(bid, WrapMode::None);
+        pane.viewport = crate::pane::ViewportState::new(10, 3);
+        pane.providers
+            .add_gutter_column(Box::new(ProviderIdReportingGutter));
+        let real_id = pane.providers.add_virtual_line_source(Box::new(
+            SpoofingVirtualLineSource {
+                anchor: VirtualLineAnchor::Before(0),
+            },
+        ));
+
+        let theme = Theme::default();
+        let pane_rect = rect(0, 0, 10, 3);
+        let pane_ctx = PaneRenderCtx {
+            pane: &pane,
+            rope: &rope,
+            tree: None,
+            syntax: None,
+            theme: &theme,
+            rect: pane_rect,
+            settings: PaneRenderSettings {
+                mode: EditorMode::Normal,
+                wrap_mode: WrapMode::None,
+                tab_width: 4,
+                whitespace: WhitespaceConfig::default(),
+            },
+            dim: None,
+        };
+        let mut scratch = FrameScratch::new();
+        let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
+        render_pane(&pane_ctx, &mut scratch, &mut buf);
+
+        // Gutter width 5 -> usable 4 columns; a small real_id fits comfortably.
+        let gutter_text: String = (0..4).map(|x| cell_symbol(&buf, x, 0)).collect();
+        assert_eq!(
+            gutter_text.trim(),
+            real_id.to_string(),
+            "gutter must show the pipeline-stamped id ({real_id}), not the spoofed 9999"
         );
     }
 

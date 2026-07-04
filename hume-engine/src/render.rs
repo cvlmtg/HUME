@@ -3,7 +3,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use crate::format::unicode_display_width;
 use crate::layout::VisibleRange;
 use crate::pane::ViewportState;
-use crate::providers::{GutterColumn, GutterRowCtx};
+use crate::providers::{GutterColumn, GutterRowCtx, ProviderId};
 use crate::theme::Theme;
 use crate::types::{CellContent, DisplayRow, EditorMode, Grapheme, ResolvedStyle, RowKind};
 
@@ -14,7 +14,7 @@ use crate::types::{CellContent, DisplayRow, EditorMode, Grapheme, ResolvedStyle,
 /// Per-frame constants needed by `compose_row`. Bundle these once per pane
 /// and pass them through without repeating at each call site.
 pub(crate) struct ComposeCtx<'a> {
-    pub gutter_columns: &'a [Box<dyn GutterColumn>],
+    pub gutter_columns: &'a [(ProviderId, Box<dyn GutterColumn>)],
     pub visible: &'a VisibleRange,
     pub viewport: &'a ViewportState,
     pub mode: EditorMode,
@@ -128,7 +128,8 @@ fn compose_gutter(
         rope: compose_ctx.rope,
         tree: compose_ctx.tree,
     };
-    for (col_provider, &col_width) in compose_ctx.gutter_columns.iter().zip(col_widths.iter()) {
+    for ((_, col_provider), &col_width) in compose_ctx.gutter_columns.iter().zip(col_widths.iter())
+    {
         let cell = col_provider.render_row(row_kind, &gutter_ctx);
         let text = cell.as_str();
         // GutterCell.scope is a &'static str, not an interned ScopeId — use
@@ -1069,7 +1070,11 @@ mod tests {
         fn width(&self, _: usize) -> u8 {
             4
         }
-        fn render_row(&self, _: RowKind, _: &crate::providers::GutterRowCtx) -> crate::providers::GutterCell {
+        fn render_row(
+            &self,
+            _: RowKind,
+            _: &crate::providers::GutterRowCtx,
+        ) -> crate::providers::GutterCell {
             crate::providers::GutterCell {
                 content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed(
                     "TOOLONG",
@@ -1090,7 +1095,8 @@ mod tests {
         let graphemes = vec![simple_grapheme(0, 0, 1)];
         let rows = [simple_row(0..1)];
         let styles = vec![ResolvedStyle::default()];
-        let gutter_columns: Vec<Box<dyn GutterColumn>> = vec![Box::new(OverlongGutter)];
+        let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> =
+            vec![(0, Box::new(OverlongGutter))];
         let visible = VisibleRange {
             line_range: 0..1,
             top_skip_rows: 0,
@@ -1167,7 +1173,8 @@ mod tests {
         let graphemes = vec![simple_grapheme(0, 0, 1)];
         let rows = [simple_row(0..1)];
         let styles = vec![ResolvedStyle::default()];
-        let gutter_columns: Vec<Box<dyn GutterColumn>> = vec![Box::new(OverlongGutter)];
+        let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> =
+            vec![(0, Box::new(OverlongGutter))];
         let visible = VisibleRange {
             line_range: 0..1,
             top_skip_rows: 0,
@@ -1238,7 +1245,11 @@ mod tests {
         fn width(&self, _: usize) -> u8 {
             3
         }
-        fn render_row(&self, _: RowKind, _: &crate::providers::GutterRowCtx) -> crate::providers::GutterCell {
+        fn render_row(
+            &self,
+            _: RowKind,
+            _: &crate::providers::GutterRowCtx,
+        ) -> crate::providers::GutterCell {
             crate::providers::GutterCell {
                 // Built at call time (e.g. `format!`) rather than a literal —
                 // exercises the `Cow::Owned` path, not `Cow::Borrowed`.
@@ -1261,7 +1272,11 @@ mod tests {
         fn width(&self, _: usize) -> u8 {
             3
         }
-        fn render_row(&self, _: RowKind, _: &crate::providers::GutterRowCtx) -> crate::providers::GutterCell {
+        fn render_row(
+            &self,
+            _: RowKind,
+            _: &crate::providers::GutterRowCtx,
+        ) -> crate::providers::GutterCell {
             crate::providers::GutterCell {
                 content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed(
                     "AB",
@@ -1280,7 +1295,7 @@ mod tests {
             let graphemes = vec![simple_grapheme(0, 0, 1)];
             let rows = [simple_row(0..1)];
             let styles = vec![ResolvedStyle::default()];
-            let gutter_columns: Vec<Box<dyn GutterColumn>> = vec![col];
+            let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![(0, col)];
             let visible = VisibleRange {
                 line_range: 0..1,
                 top_skip_rows: 0,
@@ -1393,7 +1408,8 @@ mod tests {
             graphemes: 0..1,
         }];
         let styles = vec![ResolvedStyle::default()];
-        let gutter_columns: Vec<Box<dyn GutterColumn>> = vec![Box::new(FirstCharGutter)];
+        let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> =
+            vec![(0, Box::new(FirstCharGutter))];
         let visible = VisibleRange {
             line_range: 0..2,
             top_skip_rows: 0,

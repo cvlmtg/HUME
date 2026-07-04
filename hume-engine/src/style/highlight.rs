@@ -1,6 +1,6 @@
 use super::StyleScratch;
 use crate::builtins::tree_sitter_hl::TreeSitterHighlighter;
-use crate::providers::{HighlightSource, HighlightTier, SourceContext};
+use crate::providers::{HighlightSource, HighlightTier, ProviderId, SourceContext};
 use crate::theme::Theme;
 use crate::types::{ResolvedStyle, ScopeId};
 
@@ -140,7 +140,7 @@ impl TierBufs {
 pub(crate) fn rebuild_tier_bufs(
     line_idx: usize,
     syntax: Option<&TreeSitterHighlighter>,
-    providers: &[Box<dyn HighlightSource>],
+    providers: &[(ProviderId, Box<dyn HighlightSource>)],
     rope: &ropey::Rope,
     tree: Option<&tree_sitter::Tree>,
     scratch: &mut StyleScratch,
@@ -159,7 +159,7 @@ pub(crate) fn rebuild_tier_bufs(
         }
         scratch.highlights.clear();
     }
-    for provider in providers {
+    for (_, provider) in providers {
         provider.highlights_for_line(line_idx, &ctx, &mut scratch.highlights);
         for &interval in scratch.highlights.iter() {
             scratch.tier_bufs.push(provider.tier(), interval);

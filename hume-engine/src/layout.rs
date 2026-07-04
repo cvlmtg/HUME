@@ -38,11 +38,17 @@ pub struct VisibleRange {
 /// Sum of all gutter column widths for the given `max_line` (0-based last line index).
 ///
 /// Pass the last line index of the entire file so gutter width is stable across scrolling.
-pub fn gutter_width_for_line(gutter_columns: &[Box<dyn GutterColumn>], max_line: usize) -> u16 {
-    gutter_columns
-        .iter()
-        .map(|c| c.width(max_line) as u16)
-        .sum()
+///
+/// Takes an iterator (rather than a slice) so callers can feed it
+/// `ProviderSet::gutter_columns()` directly — `ProviderSet` stores
+/// `(ProviderId, Box<dyn GutterColumn>)` pairs internally (to support
+/// `ProviderSet::remove`), which isn't a shape this purely-arithmetic
+/// function needs to know about.
+pub fn gutter_width_for_line<'a>(
+    gutter_columns: impl Iterator<Item = &'a dyn GutterColumn>,
+    max_line: usize,
+) -> u16 {
+    gutter_columns.map(|c| c.width(max_line) as u16).sum()
 }
 
 /// Compute the `VisibleRange` for a pane given its current state.
@@ -62,11 +68,11 @@ pub fn gutter_width_for_line(gutter_columns: &[Box<dyn GutterColumn>], max_line:
 /// short.
 ///
 /// This is purely arithmetic — no heap allocations.
-pub fn compute_viewport(
+pub fn compute_viewport<'a>(
     rope: &Rope,
     viewport: &ViewportState,
     wrap_mode: &WrapMode,
-    gutter_columns: &[Box<dyn GutterColumn>],
+    gutter_columns: impl Iterator<Item = &'a dyn GutterColumn>,
     tab_width: u8,
 ) -> VisibleRange {
     debug_assert!(
@@ -223,7 +229,7 @@ mod tests {
     fn no_wrap_basic_range() {
         let rope = Rope::from_str("line1\nline2\nline3\nline4\nline5\n");
         let viewport = ViewportState::new(80, 3);
-        let visible = compute_viewport(&rope, &viewport, &WrapMode::None, &[], 4);
+        let visible = compute_viewport(&rope, &viewport, &WrapMode::None, std::iter::empty(), 4);
         assert_eq!(visible.line_range.start, 0);
         assert!(visible.line_range.end <= 5);
         assert_eq!(visible.gutter_width, 0);
@@ -237,7 +243,7 @@ mod tests {
         // be excluded from line_range as if it were the phantom trailing line.
         let rope = Rope::from_str("only one line\n");
         let viewport = ViewportState::new(80, 50);
-        let visible = compute_viewport(&rope, &viewport, &WrapMode::None, &[], 4);
+        let visible = compute_viewport(&rope, &viewport, &WrapMode::None, std::iter::empty(), 4);
         // 2 ropey lines (content + phantom trailing); line_range excludes
         // the phantom, so it must stop at 1 despite the 50-row viewport.
         assert_eq!(visible.line_range, 0..1);
@@ -247,7 +253,13 @@ mod tests {
     fn soft_wrap_includes_lookahead() {
         let rope = Rope::from_str("a\nb\nc\nd\ne\nf\ng\n");
         let viewport = ViewportState::new(80, 3);
-        let visible = compute_viewport(&rope, &viewport, &WrapMode::Soft { width: 80 }, &[], 4);
+        let visible = compute_viewport(
+            &rope,
+            &viewport,
+            &WrapMode::Soft { width: 80 },
+            std::iter::empty(),
+            4,
+        );
         // Should have at least 3 + lookahead lines
         assert!(visible.line_range.len() >= 3);
     }

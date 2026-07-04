@@ -885,14 +885,14 @@ fn insert_mode_hides_cursor_only_in_focused_pane() {
 /// it. Uses the real `Editor::open` constructor (not the bare-pane `for_testing`
 /// harness used elsewhere in this file) so the initial pane reflects actual
 /// production setup. Independent oracle: compare the split pane's
-/// `gutter_columns().len()` against the pre-existing initial pane's, rather
+/// `gutter_columns().count()` against the pre-existing initial pane's, rather
 /// than asserting a hardcoded count that could pass even if both were wrongly
 /// empty.
 #[test]
 fn split_pane_gets_gutter_column() {
     let mut ed = Editor::open(None).unwrap();
     let pid_a = ed.state.focused_pane_id;
-    let initial_gutter_cols = ed.view.panes[pid_a].providers.gutter_columns().len();
+    let initial_gutter_cols = ed.view.panes[pid_a].providers.gutter_columns().count();
     assert!(
         initial_gutter_cols > 0,
         "sanity: the initial pane must itself have a gutter column"
@@ -902,7 +902,7 @@ fn split_pane_gets_gutter_column() {
     let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
 
     assert_eq!(
-        ed.view.panes[pid_b].providers.gutter_columns().len(),
+        ed.view.panes[pid_b].providers.gutter_columns().count(),
         initial_gutter_cols,
         "split pane must have the same gutter columns as the initial pane"
     );
