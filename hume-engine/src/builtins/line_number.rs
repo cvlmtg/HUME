@@ -20,6 +20,13 @@ pub enum LineNumberStyle {
     Hybrid,
 }
 
+impl LineNumberStyle {
+    /// The wire-format strings `FromStr` accepts — the single source
+    /// `:set buffer line-number-style=<Tab>` completion mirrors, so the two
+    /// can never drift out of sync.
+    pub const VALUES: &'static [&'static str] = &["absolute", "relative", "hybrid"];
+}
+
 impl FromStr for LineNumberStyle {
     type Err = String;
 
@@ -260,6 +267,18 @@ mod tests {
             err.contains("absolute"),
             "error should list valid values: {err}"
         );
+    }
+
+    #[test]
+    fn line_number_style_values_round_trip_through_from_str() {
+        // Independent-oracle guard: every completion-offered value must
+        // actually parse, so `VALUES` can't silently drift from `FromStr`.
+        for v in LineNumberStyle::VALUES {
+            assert!(
+                v.parse::<LineNumberStyle>().is_ok(),
+                "'{v}' should parse as LineNumberStyle"
+            );
+        }
     }
 
     #[test]

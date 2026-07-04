@@ -67,6 +67,13 @@ pub enum TabStyle {
     Soft,
 }
 
+impl TabStyle {
+    /// The wire-format strings `FromStr` accepts — the single source
+    /// `:set buffer tab-style=<Tab>` completion mirrors, so the two can never
+    /// drift out of sync.
+    pub const VALUES: &'static [&'static str] = &["hard", "soft"];
+}
+
 impl fmt::Display for TabStyle {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -148,6 +155,12 @@ macro_rules! parse_setting {
 /// - `override_only { … }` — extra `Option<T>` fields on `BufferOverrides`
 ///   only (no corresponding `EditorSettings` field); format: `field: Type;`
 ///   Resolution is handled manually in a separate `impl BufferOverrides` block.
+/// - `manual_keys { … }` — `:set` keys whose values need custom resolution
+///   (not a plain field write) and so get a hand-written `apply_setting` arm
+///   below the macro invocation; format: `"key" => [scope, scope, ...];`.
+///   This is the sole source for those keys' entries in [`setting_scopes`]
+///   and [`all_setting_keys`] — the hand-written `apply_setting` arm is the
+///   only thing that can't be generated from it.
 ///
 /// ## Parser kinds
 ///
@@ -174,6 +187,9 @@ macro_rules! define_settings {
         }
         override_only {
             $( $ooname:ident : $ootype:ty; )*
+        }
+        manual_keys {
+            $( $mkey:literal => [$($mscope:literal),+]; )*
         }
     ) => {
 
@@ -306,8 +322,7 @@ macro_rules! define_settings {
             match key {
                 $( $gkey => &[$($gscope),+], )*
                 $( $bkey => &[$($bscope),+], )*
-                "whitespace-space" | "whitespace-tab" | "whitespace-newline" => &["global", "buffer"],
-                "statusline" => &["global"],
+                $( $mkey => &[$($mscope),+], )*
                 _ => &[],
             }
         }
@@ -315,7 +330,7 @@ macro_rules! define_settings {
         // ── all_setting_keys ───────────────────────────────────────────────────
 
         /// Every setting key with a `:set` wire format — the union of the
-        /// `global`/`buffer` macro entries and the hand-listed extras
+        /// `global`/`buffer` macro entries and the `manual_keys` entries
         /// (`whitespace-*`, `statusline`). Notably **excludes** `"language"`,
         /// which has no macro entry and is surfaced only when the completer
         /// knows the scope is `"buffer"` (its sole valid scope). Used by
@@ -323,10 +338,7 @@ macro_rules! define_settings {
         /// candidates, filtered further by [`setting_scopes`] against the
         /// chosen scope.
         pub(crate) fn all_setting_keys() -> &'static [&'static str] {
-            &[$($gkey,)* $($bkey,)*
-                "whitespace-space", "whitespace-tab", "whitespace-newline",
-                "statusline",
-            ]
+            &[$($gkey,)* $($bkey,)* $($mkey,)*]
         }
     };
 }
@@ -422,6 +434,14 @@ define_settings! {
         whitespace_space:   WhitespaceRender;
         whitespace_tab:     WhitespaceRender;
         whitespace_newline: WhitespaceRender;
+    }
+    manual_keys {
+        // Sub-field patches (see apply_setting below) — not plain field writes.
+        "whitespace-space"   => ["global", "buffer"];
+        "whitespace-tab"     => ["global", "buffer"];
+        "whitespace-newline" => ["global", "buffer"];
+        // Parsed via parse_statusline, not FromStr — global-only.
+        "statusline"         => ["global"];
     }
 }
 
@@ -621,6 +641,18 @@ mod tests {
     #[test]
     fn tab_style_rejects_unknown() {
         assert!("bogus".parse::<TabStyle>().is_err());
+    }
+
+    #[test]
+    fn tab_style_values_round_trip_through_from_str() {
+        // Independent-oracle guard: every completion-offered value must
+        // actually parse, so `VALUES` can't silently drift from `FromStr`.
+        for v in TabStyle::VALUES {
+            assert!(
+                v.parse::<TabStyle>().is_ok(),
+                "'{v}' should parse as TabStyle"
+            );
+        }
     }
 
     // ── Auto-pairs resolution ─────────────────────────────────────────────────
@@ -1050,5 +1082,48 @@ mod tests {
         let mut s = EditorSettings::default();
         let mut ov = BufferOverrides::default();
         assert!(apply_setting(SettingScope::Text, "statusline", "||", &mut s, &mut ov).is_err());
+    }
+
+    // ── all_setting_keys / setting_scopes / apply_setting cross-check ────────
+    //
+    // `manual_keys` unifies the macro-driven keys and the hand-listed extras
+    // (whitespace-*/statusline) into one token stream, so `all_setting_keys()`
+    // and `setting_scopes()` can no longer drift from *each other* by
+    // construction. These guardrails catch the remaining drift risk: a key
+    // added directly to `apply_setting`'s match without a corresponding
+    // `manual_keys`/macro entry.
+
+    #[test]
+    fn all_setting_keys_have_declared_scopes() {
+        for key in all_setting_keys() {
+            assert!(
+                !setting_scopes(key).is_empty(),
+                "key '{key}' from all_setting_keys() has no declared scope in setting_scopes()"
+            );
+        }
+    }
+
+    #[test]
+    fn all_setting_keys_are_recognized_by_apply_setting() {
+        for key in all_setting_keys() {
+            let scope = match setting_scopes(key).first() {
+                Some(&"global") => SettingScope::Global,
+                Some(&"buffer") => SettingScope::Text,
+                other => panic!("key '{key}' has no usable first scope: {other:?}"),
+            };
+            let mut s = EditorSettings::default();
+            let mut ov = BufferOverrides::default();
+            // A value no parser accepts: for most keys this is rejected as an
+            // *invalid value*, not as an *unrecognized key* — either outcome
+            // is fine here, we only guard against the "unknown setting"
+            // catch-all, which would mean the key isn't wired into
+            // `apply_setting` at all.
+            if let Err(err) = apply_setting(scope, key, "\u{0}garbage\u{0}", &mut s, &mut ov) {
+                assert!(
+                    !err.contains("unknown setting"),
+                    "key '{key}' from all_setting_keys() is not recognized by apply_setting: {err}"
+                );
+            }
+        }
     }
 }

@@ -11,10 +11,13 @@
 
 use std::path::{Path, PathBuf};
 
+use hume_engine::builtins::line_number::LineNumberStyle;
+use hume_engine::pane::{WhitespaceRender, WrapMode};
+
 use crate::editor::buffer_store::BufferStore;
 use crate::editor::registry::CommandRegistry;
 use crate::editor::syntax::LanguageRegistry;
-use crate::settings::{all_setting_keys, setting_scopes};
+use crate::settings::{TabStyle, all_setting_keys, setting_scopes};
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -380,6 +383,18 @@ pub(crate) struct SetCompleter;
 /// The three `:set` scopes. `pane` exists only because `wrap-mode` declares it.
 const SET_SCOPES: &[&str] = &["global", "buffer", "pane"];
 
+/// Prefix-filter `items`, dropping an exact match (Tab on a fully-typed value
+/// is a no-op), and wrap each into a `Completion`. Caller sorts.
+fn prefix_completions<'a>(items: impl Iterator<Item = &'a str>, prefix: &str) -> Vec<Completion> {
+    items
+        .filter(|s| s.starts_with(prefix) && *s != prefix)
+        .map(|s| Completion {
+            replacement: s.to_owned(),
+            display: s.to_owned(),
+        })
+        .collect()
+}
+
 /// Static value candidates for enum/bool keys. Returns `None` for keys whose
 /// values are dynamic (`language`, `theme`) or free-form (numbers,
 /// `statusline`) — those are handled in [`SetCompleter::complete`].
@@ -387,27 +402,17 @@ fn static_value_candidates(key: &str) -> Option<&'static [&'static str]> {
     Some(match key {
         "mouse-enabled" | "mouse-select" | "popup-border" | "pane-dividers"
         | "auto-pairs-enabled" => &["true", "false"],
-        "tab-style" => &["hard", "soft"],
-        "line-number-style" => &["absolute", "relative", "hybrid"],
-        "wrap-mode" => &["none", "soft", "word", "indent"],
-        "whitespace-space" | "whitespace-tab" | "whitespace-newline" => {
-            &["none", "all", "trailing"]
-        }
+        "tab-style" => TabStyle::VALUES,
+        "line-number-style" => LineNumberStyle::VALUES,
+        "wrap-mode" => WrapMode::VALUES,
+        "whitespace-space" | "whitespace-tab" | "whitespace-newline" => WhitespaceRender::VALUES,
         _ => return None,
     })
 }
 
 /// Phase 1: completing the scope token (`global`/`buffer`/`pane`).
 fn complete_set_scope(prefix: &str, span_start: usize) -> CompletionResult {
-    let mut candidates: Vec<Completion> = SET_SCOPES
-        .iter()
-        .copied()
-        .filter(|s| s.starts_with(prefix) && *s != prefix)
-        .map(|s| Completion {
-            replacement: s.to_owned(),
-            display: s.to_owned(),
-        })
-        .collect();
+    let mut candidates = prefix_completions(SET_SCOPES.iter().copied(), prefix);
     candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
     CompletionResult {
         span_start,
@@ -417,23 +422,14 @@ fn complete_set_scope(prefix: &str, span_start: usize) -> CompletionResult {
 
 /// Phase 2: completing the key. Surface every declared key whose scopes
 /// include `scope`; `language` is the one key with no macro entry — valid
-/// only for buffer, so it's appended by hand when the scope matches.
+/// only for buffer, so it's chained in when the scope matches.
 fn complete_set_key(scope: &str, rest: &str, span_start: usize) -> CompletionResult {
-    let mut candidates: Vec<Completion> = all_setting_keys()
+    let scope_keys = all_setting_keys()
         .iter()
         .copied()
-        .filter(|k| setting_scopes(k).contains(&scope) && k.starts_with(rest) && *k != rest)
-        .map(|k| Completion {
-            replacement: k.to_owned(),
-            display: k.to_owned(),
-        })
-        .collect();
-    if scope == "buffer" && "language".starts_with(rest) && rest != "language" {
-        candidates.push(Completion {
-            replacement: "language".to_owned(),
-            display: "language".to_owned(),
-        });
-    }
+        .filter(|k| setting_scopes(k).contains(&scope));
+    let language = (scope == "buffer").then_some("language");
+    let mut candidates = prefix_completions(scope_keys.chain(language), rest);
     candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
     CompletionResult {
         span_start,
@@ -450,27 +446,19 @@ fn complete_set_value(
     span_start: usize,
     ctx: &CompletionCtx<'_>,
 ) -> CompletionResult {
-    let mut candidates: Vec<Completion> = Vec::new();
-    if let Some(values) = static_value_candidates(key) {
-        candidates.extend(values.iter().copied().filter(|v| {
-            v.starts_with(value_prefix) && *v != value_prefix
-        }).map(|v| Completion {
-            replacement: v.to_owned(),
-            display: v.to_owned(),
-        }));
+    let mut candidates = if let Some(values) = static_value_candidates(key) {
+        prefix_completions(values.iter().copied(), value_prefix)
     } else if key == "language" && scope == "buffer" {
-        candidates.extend(
-            ctx.languages
-                .iter_names()
-                .filter(|n| n.starts_with(value_prefix) && *n != value_prefix)
-                .map(|n| Completion {
-                    replacement: n.to_owned(),
-                    display: n.to_owned(),
-                }),
-        );
-    } else if key == "theme" && scope == "global" {
-        candidates.extend(theme_name_candidates(value_prefix));
-    }
+        prefix_completions(ctx.languages.iter_names(), value_prefix)
+    } else if key == "theme" && setting_scopes(key).contains(&scope) {
+        // Unlike `language` above (which has no `setting_scopes` entry by
+        // design — see settings.rs), `theme` is a macro-declared key, so its
+        // scope check is derived from the same SSOT `complete_set_key` uses
+        // rather than a hand-copied `scope == "global"` literal.
+        theme_name_candidates(value_prefix)
+    } else {
+        Vec::new()
+    };
     candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
     CompletionResult {
         span_start,
@@ -480,20 +468,30 @@ fn complete_set_value(
 
 impl Completer for SetCompleter {
     fn complete(&self, input: &str, cursor: usize, ctx: &CompletionCtx<'_>) -> CompletionResult {
-        // arg_prefix strips the command name ("set"); `arg` is
-        // `"<scope> <key>=<value>"` up to the cursor, and `arg_start` is where
-        // it begins in `input`. Two splits (` ` then `=`) pick the phase.
-        let (arg_start, arg) = arg_prefix(input, cursor);
-        let Some(space) = arg.find(' ') else {
-            return complete_set_scope(arg, arg_start);
+        let up_to = &input[..cursor.min(input.len())];
+        // Argument region begins after the command word ("set ").
+        let Some(arg_start) = up_to.find(' ').map(|i| i + 1) else {
+            return CompletionResult {
+                span_start: up_to.len(),
+                candidates: Vec::new(),
+            };
         };
-        let scope = &arg[..space];
-        let key_start = arg_start + space + 1;
-        let rest = &arg[space + 1..];
-        let Some(eq) = rest.find('=') else {
-            return complete_set_key(scope, rest, key_start);
-        };
-        complete_set_value(scope, &rest[..eq], &rest[eq + 1..], key_start + eq + 1, ctx)
+        let arg = up_to[arg_start..].trim_start();
+        // The token being completed starts right after the last space or '='
+        // before the cursor — robust to stray extra whitespace anywhere in
+        // the typed scope/key/value, unlike splitting on the first space only.
+        let span_start = up_to.rfind([' ', '=']).map_or(0, |i| i + 1);
+
+        match arg.split_once(' ') {
+            None => complete_set_scope(arg, span_start),
+            Some((scope, rest)) => {
+                let rest = rest.trim_start();
+                match rest.split_once('=') {
+                    None => complete_set_key(scope, rest, span_start),
+                    Some((key, value)) => complete_set_value(scope, key, value, span_start, ctx),
+                }
+            }
+        }
     }
 }
 
@@ -1180,6 +1178,40 @@ mod tests {
     fn set_completer_value_numeric_no_candidates() {
         let result = set_result("set global scrolloff=");
         assert!(result.candidates.is_empty());
+    }
+
+    // ── SetCompleter: stray whitespace robustness ─────────────────────────────
+    //
+    // A naive first-space split collapses the parsed scope to "" when extra
+    // whitespace appears anywhere before the key token (e.g. a double
+    // space-bar tap), silently emptying the popup. These pin the fix.
+
+    #[test]
+    fn set_completer_double_space_after_set_still_lists_buffer_keys() {
+        let result = set_result("set  buffer ");
+        let names = names_of(&result);
+        assert!(
+            names.contains(&"language"),
+            "buffer scope should resolve despite double space"
+        );
+        assert!(names.contains(&"tab-width"));
+    }
+
+    #[test]
+    fn set_completer_double_space_before_key_still_filters() {
+        let result = set_result("set global  tab");
+        let names = names_of(&result);
+        assert!(
+            !names.is_empty(),
+            "scope should resolve despite double space"
+        );
+        assert!(names.iter().all(|n| n.starts_with("tab")));
+    }
+
+    #[test]
+    fn set_completer_double_space_before_value_still_offers_bools() {
+        let result = set_result("set global  mouse-enabled=");
+        assert_eq!(names_of(&result), vec!["false", "true"]);
     }
 
     // ── SetCompleter: value phase (language from registry) ────────────────────

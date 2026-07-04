@@ -171,6 +171,16 @@ impl WrapMode {
     pub fn is_wrapping(&self) -> bool {
         !matches!(self, WrapMode::None)
     }
+
+    /// The bare-keyword wire-format strings `FromStr` accepts — the single
+    /// source `:set global wrap-mode=<Tab>` completion mirrors. `FromStr` also
+    /// accepts `soft:N`/`word:N`/`indent:N` suffix forms, which completion
+    /// intentionally doesn't offer (the user types the column count).
+    ///
+    /// Struct-variant fields (`width`) mean this can't be derived from the
+    /// enum itself — it's hand-maintained here, next to `FromStr`, so the two
+    /// stay adjacent and a round-trip test can catch drift.
+    pub const VALUES: &'static [&'static str] = &["none", "soft", "word", "indent"];
 }
 
 // ---------------------------------------------------------------------------
@@ -187,6 +197,13 @@ pub enum WhitespaceRender {
     All,
     /// Only render for trailing whitespace (before end-of-line).
     Trailing,
+}
+
+impl WhitespaceRender {
+    /// The wire-format strings `FromStr` accepts — the single source
+    /// `:set buffer whitespace-*=<Tab>` completion mirrors, so the two can
+    /// never drift out of sync.
+    pub const VALUES: &'static [&'static str] = &["none", "all", "trailing"];
 }
 
 impl FromStr for WhitespaceRender {
@@ -432,6 +449,18 @@ mod tests {
         assert!("soft:abc".parse::<WrapMode>().is_err());
     }
 
+    #[test]
+    fn wrap_mode_values_round_trip_through_from_str() {
+        // Independent-oracle guard: every completion-offered value must
+        // actually parse, so `VALUES` can't silently drift from `FromStr`.
+        for v in WrapMode::VALUES {
+            assert!(
+                v.parse::<WrapMode>().is_ok(),
+                "'{v}' should parse as WrapMode"
+            );
+        }
+    }
+
     // ── WhitespaceRender::FromStr ─────────────────────────────────────────
 
     #[test]
@@ -470,6 +499,18 @@ mod tests {
     fn whitespace_render_from_str_error() {
         let err = "always".parse::<WhitespaceRender>().unwrap_err();
         assert!(err.contains("always"), "error should contain input: {err}");
+    }
+
+    #[test]
+    fn whitespace_render_values_round_trip_through_from_str() {
+        // Independent-oracle guard: every completion-offered value must
+        // actually parse, so `VALUES` can't silently drift from `FromStr`.
+        for v in WhitespaceRender::VALUES {
+            assert!(
+                v.parse::<WhitespaceRender>().is_ok(),
+                "'{v}' should parse as WhitespaceRender"
+            );
+        }
     }
 
     #[test]
