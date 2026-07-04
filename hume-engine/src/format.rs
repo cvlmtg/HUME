@@ -268,7 +268,12 @@ pub fn format_buffer_line(
 
         // ── Track word-break position ─────────────────────────────────────
         if is_ws && !in_leading_ws {
-            wrap.last_ws_g_idx = graphemes_out.len(); // next grapheme will be after the ws
+            // `graphemes_out.len()` is the index the space itself is about to
+            // occupy (it hasn't been pushed yet — that happens below). Record
+            // one past it, so a wrap split at `last_ws_g_idx` starts the new
+            // row after the space, leaving it as the previous row's last
+            // cell instead of the continuation row's first.
+            wrap.last_ws_g_idx = graphemes_out.len() + 1;
             wrap.last_ws_was_set = true;
         }
 
@@ -737,9 +742,11 @@ mod tests {
 
     #[test]
     fn soft_and_word_differ_at_same_width() {
-        // Same input/width as above; Word backtracks to the space ("hello", 5
-        // graphemes) while Soft splits mid-word ("hello w", 7 graphemes). This
-        // is the regression guard: before the fix both produced identical output.
+        // Same input/width as above; Word backtracks to the space, keeping it
+        // as row0's last cell ("hello ", 6 graphemes — B11: the space ends
+        // the row it was seen on, not the continuation row's first cell),
+        // while Soft splits mid-word ("hello w", 7 graphemes). This is the
+        // regression guard: before the fix both produced identical output.
         let (soft_rows, soft_graphemes) = do_format("hello world", WrapMode::Soft { width: 7 });
         let (word_rows, word_graphemes) = do_format("hello world", WrapMode::Word { width: 7 });
         let soft_row0 = &soft_graphemes[soft_rows[0].graphemes.clone()];
@@ -753,8 +760,8 @@ mod tests {
         );
         assert_eq!(
             word_row0.len(),
-            5,
-            "word wrap backtracks to the space → \"hello\""
+            6,
+            "word wrap backtracks to the space, which stays on row0 → \"hello \""
         );
         assert_eq!(
             soft_row0.len(),
@@ -1008,6 +1015,27 @@ mod tests {
         // The first row must not contain 'e' or 'f'.
         let row0_graphemes = &graphemes[rows[0].graphemes.clone()];
         assert!(row0_graphemes.len() <= 5);
+    }
+
+    #[test]
+    fn word_wrap_space_ends_previous_row_not_starts_continuation() {
+        // "a b" at width 2 (B11 boundary case): 'a' fits at col0; the space
+        // fits exactly at col1 (current_col becomes 2); 'b' then overflows
+        // (2+1>2), backtracking to the space. The space (char offset 1) must
+        // end row0 ("a "), not become row1's leading cell — splitting so the
+        // new row would start with the space, rather than after it, was the
+        // bug. Independent oracle: char_offset is the input's own char index,
+        // computed by hand from "a b" (a=0, space=1, b=2), not derived from
+        // any wrap-logic internals.
+        let (rows, graphemes) = do_format("a b", WrapMode::Word { width: 2 });
+        assert_eq!(rows.len(), 2, "must wrap into exactly 2 rows");
+        let row0 = &graphemes[rows[0].graphemes.clone()];
+        let row1 = &graphemes[rows[1].graphemes.clone()];
+        assert_eq!(row0.len(), 2, "row0 is \"a \" (a + trailing space)");
+        assert_eq!(row0[0].char_offset, 0, "row0[0] is 'a'");
+        assert_eq!(row0[1].char_offset, 1, "row0[1] is the space");
+        assert_eq!(row1.len(), 1, "row1 is \"b\" only");
+        assert_eq!(row1[0].char_offset, 2, "row1[0] is 'b'");
     }
 
     #[test]
