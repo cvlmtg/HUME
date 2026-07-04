@@ -223,6 +223,17 @@ pub(crate) fn style_row(
 ///
 /// Also sets `primary_sel_span` when the primary selection (at `primary_idx` in
 /// `sorted_sels`) has a visible span on this row.
+///
+/// Rescans all of `sorted_sels` on every call — O(display_rows × selections)
+/// per frame. Intentional: realistic selection counts are single digits, so
+/// this is nil in practice. The alternative (binding the window of selections
+/// overlapping one line via two `partition_point` calls, hoisted per buffer
+/// line) requires translating `primary_idx` into window-local coordinates and
+/// threading that through `StyleScratch`'s primary-span/primary-head
+/// bookkeeping — a second index space on top of the existing
+/// head-sorted-vs-start-sorted subtlety around `pane.selections`, which has
+/// bitten this project before. Not worth it for microseconds; do not
+/// "optimize" this into the windowed form without re-deriving that trade-off.
 #[allow(clippy::too_many_arguments)]
 fn collect_selection_spans(
     line_start_char: usize,
