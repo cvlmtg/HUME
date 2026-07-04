@@ -73,6 +73,10 @@ struct TsState {
     cursor: QueryCursor,
     /// Scratch stack for the overlap flattener — retained to avoid reallocation.
     stack: Vec<(usize, ScopeId)>,
+    /// Scratch event list for the overlap flattener's sweep line — retained to
+    /// avoid reallocation (previously rebuilt every call, ~50 allocations/frame
+    /// on a full screen).
+    events: Vec<(usize, bool, ScopeId)>,
 }
 
 impl TreeSitterHighlighter {
@@ -111,6 +115,7 @@ impl TreeSitterHighlighter {
                 raw: Vec::new(),
                 cursor: QueryCursor::new(),
                 stack: Vec::new(),
+                events: Vec::new(),
             }),
         }
     }
@@ -144,6 +149,7 @@ impl TreeSitterHighlighter {
                 raw: Vec::new(),
                 cursor: QueryCursor::new(),
                 stack: Vec::new(),
+                events: Vec::new(),
             }),
         })
     }
@@ -176,6 +182,7 @@ impl HighlightSource for TreeSitterHighlighter {
             ref mut raw,
             ref mut cursor,
             ref mut stack,
+            ref mut events,
         } = *state;
         cursor.set_byte_range(line_start..line_end);
         raw.clear();
@@ -203,7 +210,7 @@ impl HighlightSource for TreeSitterHighlighter {
             }
         }
 
-        flatten_overlaps(raw, stack, out);
+        flatten_overlaps(raw, stack, events, out);
     }
 }
 
@@ -224,9 +231,11 @@ impl HighlightSource for TreeSitterHighlighter {
 fn flatten_overlaps(
     raw: &mut Vec<(usize, usize, ScopeId)>,
     stack: &mut Vec<(usize, ScopeId)>,
+    events: &mut Vec<(usize, bool, ScopeId)>,
     out: &mut Vec<(usize, usize, ScopeId)>,
 ) {
     debug_assert!(stack.is_empty());
+    debug_assert!(events.is_empty());
     if raw.is_empty() {
         return;
     }
@@ -234,7 +243,6 @@ fn flatten_overlaps(
     // Build a sorted event list: (pos, is_end, scope).
     // End events sort before start events at the same position so a closing
     // interval is popped before a new one is pushed at the same byte.
-    let mut events: Vec<(usize, bool, ScopeId)> = Vec::with_capacity(raw.len() * 2);
     for &(start, end, scope) in raw.iter() {
         events.push((start, false, scope)); // Start
         events.push((end, true, scope)); // End
@@ -244,7 +252,7 @@ fn flatten_overlaps(
     events.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
 
     let mut pos = 0usize;
-    for (event_pos, is_end, scope) in events {
+    for &(event_pos, is_end, scope) in events.iter() {
         // Emit the gap before this event using the currently active scope.
         if let Some(&(_, active_scope)) = stack.last()
             && pos < event_pos
@@ -263,6 +271,7 @@ fn flatten_overlaps(
         }
     }
     stack.clear();
+    events.clear();
 
     // Merge adjacent segments that share the same scope — they can arise when
     // an overlapping interval ends while another with the same scope is still
@@ -295,8 +304,9 @@ mod tests {
 
     fn run(mut raw: Vec<(usize, usize, ScopeId)>) -> Vec<(usize, usize, ScopeId)> {
         let mut stack = Vec::new();
+        let mut events = Vec::new();
         let mut out = Vec::new();
-        flatten_overlaps(&mut raw, &mut stack, &mut out);
+        flatten_overlaps(&mut raw, &mut stack, &mut events, &mut out);
         out
     }
 
@@ -351,5 +361,25 @@ mod tests {
         // Two captures of the same byte range: last-opened (s(1)) wins entirely.
         let got = run(vec![(0, 5, s(0)), (0, 5, s(1))]);
         assert_eq!(got, vec![(0, 5, s(1))]);
+    }
+
+    #[test]
+    fn scratch_reuse_across_calls_leaves_no_stale_events() {
+        // Regression for O1: `events`/`stack` are caller-owned scratch reused
+        // across calls (mirroring TsState in the real highlighter). A second,
+        // disjoint call through the same scratch must not see the first
+        // call's intervals leak through.
+        let mut stack = Vec::new();
+        let mut events = Vec::new();
+        let mut out = Vec::new();
+
+        let mut first = vec![(0, 3, s(0))];
+        flatten_overlaps(&mut first, &mut stack, &mut events, &mut out);
+        assert_eq!(out, vec![(0, 3, s(0))]);
+
+        out.clear();
+        let mut second = vec![(10, 12, s(1))];
+        flatten_overlaps(&mut second, &mut stack, &mut events, &mut out);
+        assert_eq!(out, vec![(10, 12, s(1))]);
     }
 }
