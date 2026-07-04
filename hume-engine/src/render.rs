@@ -132,10 +132,16 @@ fn compose_gutter(
     {
         let cell = col_provider.render_row(row_kind, &gutter_ctx);
         let text = cell.as_str();
-        // GutterCell.scope is a &'static str, not an interned ScopeId — use
-        // the slow path. Gutter rendering is ~100 calls/frame, not per-grapheme.
-        let scope_style: ratatui::style::Style =
-            compose_ctx.theme.resolve_by_name(cell.scope).into();
+        // `GutterScope::Name` is the slow by-string path (static builtins);
+        // `Id` is the fast O(1) path for providers that intern at
+        // construction (e.g. `SignSource`). Gutter rendering is ~100
+        // calls/frame either way, so the difference is negligible here.
+        let scope_style: ratatui::style::Style = match cell.scope {
+            crate::providers::GutterScope::Name(name) => {
+                compose_ctx.theme.resolve_by_name(name).into()
+            }
+            crate::providers::GutterScope::Id(id) => compose_ctx.theme.resolve(id).into(),
+        };
         // Cursorline/pane bg is the base; the gutter scope style layers on top.
         // If the scope defines its own bg, it wins; otherwise the row bg shows through.
         let style = match row_bg.or(compose_ctx.pane_bg) {
@@ -1079,7 +1085,7 @@ mod tests {
                 content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed(
                     "TOOLONG",
                 )),
-                scope: crate::types::Scope("ui.linenr"),
+                scope: crate::types::Scope("ui.linenr").into(),
             }
         }
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -1256,7 +1262,7 @@ mod tests {
                 content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Owned(
                     "AB".to_string(),
                 )),
-                scope: crate::types::Scope("ui.linenr"),
+                scope: crate::types::Scope("ui.linenr").into(),
             }
         }
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -1281,7 +1287,7 @@ mod tests {
                 content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed(
                     "AB",
                 )),
-                scope: crate::types::Scope("ui.linenr"),
+                scope: crate::types::Scope("ui.linenr").into(),
             }
         }
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -1385,7 +1391,7 @@ mod tests {
                         content: crate::providers::GutterCellContent::Text(
                             std::borrow::Cow::Owned(first_char.to_string()),
                         ),
-                        scope: crate::types::Scope("ui.linenr"),
+                        scope: crate::types::Scope("ui.linenr").into(),
                     }
                 }
                 _ => crate::providers::GutterCell::blank(crate::types::Scope("ui.linenr")),

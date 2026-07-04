@@ -116,7 +116,7 @@ impl GutterColumn for LineNumberColumn {
 
                 GutterCell {
                     content: GutterCellContent::from_number(display_num),
-                    scope,
+                    scope: scope.into(),
                 }
             }
         }
@@ -177,7 +177,10 @@ mod tests {
         // Cursor is on line 2 (0-based).
         let cell = col.render_row(RowKind::LineStart { line_idx: 2 }, &ctx(&rope, 2));
         assert_eq!(cell.as_str(), "3"); // absolute
-        assert_eq!(cell.scope, Scope("ui.linenr.selected"));
+        assert_eq!(
+            cell.scope,
+            crate::providers::GutterScope::Name(Scope("ui.linenr.selected"))
+        );
     }
 
     #[test]

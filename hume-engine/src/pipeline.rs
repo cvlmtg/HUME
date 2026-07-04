@@ -1582,7 +1582,7 @@ mod tests {
                     content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Owned(
                         provider_id.to_string(),
                     )),
-                    scope: crate::types::Scope("ui.linenr"),
+                    scope: crate::types::Scope("ui.linenr").into(),
                 },
                 _ => crate::providers::GutterCell::blank(crate::types::Scope("ui.linenr")),
             }
@@ -1752,7 +1752,7 @@ mod tests {
                     content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed(
                         text,
                     )),
-                    scope: crate::types::Scope("ui.linenr"),
+                    scope: crate::types::Scope("ui.linenr").into(),
                 }
             }
             fn as_any_mut(&mut self) -> &mut dyn std::any::Any {

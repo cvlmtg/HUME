@@ -107,7 +107,33 @@ pub trait GutterColumn {
 #[derive(Clone, Debug)]
 pub struct GutterCell {
     pub content: GutterCellContent,
-    pub scope: Scope,
+    pub scope: GutterScope,
+}
+
+/// A gutter cell's scope: either a name (`Scope`, resolved via
+/// `Theme::resolve_by_name` — the slow "by string" path static builtins like
+/// `LineNumberColumn` use) or an already-interned `ScopeId` (the fast O(1)
+/// path — same intern-at-construction contract as `HighlightSource`/
+/// `InlineInsert`, used by providers like `SignSource` that resolve their
+/// scope once up front). `compose_gutter` handles both; gutter rendering is
+/// ~100 calls/frame either way, so the by-name path's extra hash lookup is
+/// negligible — this is about contract consistency, not performance.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GutterScope {
+    Name(Scope),
+    Id(ScopeId),
+}
+
+impl From<Scope> for GutterScope {
+    fn from(s: Scope) -> Self {
+        GutterScope::Name(s)
+    }
+}
+
+impl From<ScopeId> for GutterScope {
+    fn from(id: ScopeId) -> Self {
+        GutterScope::Id(id)
+    }
 }
 
 /// What a gutter cell displays.
@@ -131,10 +157,10 @@ impl GutterCellContent {
 }
 
 impl GutterCell {
-    pub fn blank(scope: Scope) -> Self {
+    pub fn blank(scope: impl Into<GutterScope>) -> Self {
         Self {
             content: GutterCellContent::Blank,
-            scope,
+            scope: scope.into(),
         }
     }
 
@@ -434,7 +460,7 @@ mod tests {
     fn num_str(n: usize) -> String {
         GutterCell {
             content: GutterCellContent::from_number(n),
-            scope: Scope("x"),
+            scope: Scope("x").into(),
         }
         .as_str()
         .to_owned()
@@ -462,7 +488,7 @@ mod tests {
     fn gutter_cell_text_and_blank() {
         let s = GutterCell {
             content: GutterCellContent::Text(Cow::Borrowed("abc")),
-            scope: Scope("x"),
+            scope: Scope("x").into(),
         };
         assert_eq!(s.as_str(), "abc");
         let b = GutterCell::blank(Scope("x"));
