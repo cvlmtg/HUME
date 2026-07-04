@@ -5,7 +5,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
-use crate::providers::{InlineInsert, VirtualLine};
+use crate::providers::{InlineInsert, ProviderSet, VirtualLine, VirtualLineAnchor};
 use crate::types::{CellContent, DisplayRow, Grapheme, RowKind};
 
 // ---------------------------------------------------------------------------
@@ -98,6 +98,75 @@ pub fn count_visual_rows(
         scratch,
     );
     scratch.display_rows.len()
+}
+
+/// Display-row breakdown for a single buffer line: virtual rows anchored
+/// `Before` it, its own wrap/content rows, and virtual rows anchored `After`
+/// it. `total()` is the number of screen rows the line's whole visual block
+/// (virtual rows included) occupies.
+///
+/// This is the single source of truth for "how many display rows does line
+/// N occupy" once any `VirtualLineSource` exists — editor scroll/cursor math
+/// must stop counting `content` alone (via `count_visual_rows`) and use this
+/// instead, or a virtual block above/below a line throws off both scrolling
+/// and cursor placement by the number of virtual rows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RowsBreakdown {
+    pub before: usize,
+    pub content: usize,
+    pub after: usize,
+}
+
+impl RowsBreakdown {
+    /// Total screen rows this line's visual block occupies.
+    pub fn total(&self) -> usize {
+        self.before + self.content + self.after
+    }
+}
+
+/// Compute the `RowsBreakdown` for `line_idx`.
+///
+/// Queries every registered `VirtualLineSource` for `line_idx..line_idx + 1`
+/// — same per-line-lookup cost contract as `SignSource`/`VirtualLineSource`'s
+/// render-time use (cheap; no allocation-heavy work), since this now runs
+/// during scroll/cursor math too, not just render. `scratch.virtual_lines`
+/// is used as scratch storage for the query and left empty on return.
+#[allow(clippy::too_many_arguments)]
+pub fn display_rows_for_line(
+    rope: &Rope,
+    line_idx: usize,
+    tab_width: u8,
+    whitespace: &WhitespaceConfig,
+    wrap_mode: &WrapMode,
+    providers: &ProviderSet,
+    content_width: u16,
+    scratch: &mut FormatScratch,
+) -> RowsBreakdown {
+    let content = count_visual_rows(rope, line_idx, tab_width, whitespace, wrap_mode, scratch);
+
+    scratch.virtual_lines.clear();
+    for (_, provider) in &providers.virtual_lines {
+        provider.virtual_lines(line_idx..line_idx + 1, content_width, &mut scratch.virtual_lines);
+    }
+    let mut before = 0usize;
+    let mut after = 0usize;
+    for vl in &scratch.virtual_lines {
+        match vl.anchor {
+            VirtualLineAnchor::Before(n) if n == line_idx => before += 1,
+            VirtualLineAnchor::After(n) if n == line_idx => after += 1,
+            // A provider returning an anchor for a line outside the queried
+            // range would be a provider bug; ignore rather than panic (same
+            // "never trust provider output blindly" stance as G3's id stamping).
+            _ => {}
+        }
+    }
+    scratch.virtual_lines.clear();
+
+    RowsBreakdown {
+        before,
+        content,
+        after,
+    }
 }
 
 /// Format one buffer line, appending zero or more `DisplayRow`s.
@@ -1336,5 +1405,121 @@ mod tests {
             do_format_windowed("hello world", WrapMode::Soft { width: 7 }, None);
         let row0 = &graphemes[rows[0].graphemes.clone()];
         assert_eq!(row0.len(), 7, "soft wrap still splits mid-word at column 7");
+    }
+
+    // ── display_rows_for_line (G6) ───────────────────────────────────────
+
+    struct FixedAnchorSource {
+        anchor: crate::providers::VirtualLineAnchor,
+        count: usize,
+    }
+
+    impl crate::providers::VirtualLineSource for FixedAnchorSource {
+        fn virtual_lines(
+            &self,
+            visible_lines: std::ops::Range<usize>,
+            _content_width: u16,
+            out: &mut Vec<crate::providers::VirtualLine>,
+        ) {
+            let line = match self.anchor {
+                crate::providers::VirtualLineAnchor::Before(n)
+                | crate::providers::VirtualLineAnchor::After(n) => n,
+            };
+            if visible_lines.contains(&line) {
+                for _ in 0..self.count {
+                    out.push(crate::providers::VirtualLine {
+                        anchor: self.anchor,
+                        provider_id: 0,
+                        text: String::new(),
+                        segments: Vec::new(),
+                    });
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn display_rows_for_line_counts_before_and_after_virtual_rows() {
+        // Line 5 of "a\nb\nc\nd\ne\nf\n" (0-based: line 5 is "f") has 2
+        // Before rows and 1 After row from two separate providers, plus its
+        // own single content row (no wrap).
+        let rope = Rope::from_str("a\nb\nc\nd\ne\nf\n");
+        let mut providers = ProviderSet::new();
+        providers.add_virtual_line_source(Box::new(FixedAnchorSource {
+            anchor: crate::providers::VirtualLineAnchor::Before(5),
+            count: 2,
+        }));
+        providers.add_virtual_line_source(Box::new(FixedAnchorSource {
+            anchor: crate::providers::VirtualLineAnchor::After(5),
+            count: 1,
+        }));
+
+        let mut scratch = FormatScratch::new();
+        let breakdown = display_rows_for_line(
+            &rope,
+            5,
+            4,
+            &WhitespaceConfig::default(),
+            &WrapMode::None,
+            &providers,
+            80,
+            &mut scratch,
+        );
+
+        assert_eq!(breakdown.before, 2);
+        assert_eq!(breakdown.content, 1, "unwrapped single-char line is 1 row");
+        assert_eq!(breakdown.after, 1);
+        assert_eq!(breakdown.total(), 4);
+    }
+
+    #[test]
+    fn display_rows_for_line_ignores_virtual_rows_anchored_to_other_lines() {
+        // A provider anchored to line 2 must not leak into line 5's breakdown.
+        let rope = Rope::from_str("a\nb\nc\nd\ne\nf\n");
+        let mut providers = ProviderSet::new();
+        providers.add_virtual_line_source(Box::new(FixedAnchorSource {
+            anchor: crate::providers::VirtualLineAnchor::Before(2),
+            count: 3,
+        }));
+
+        let mut scratch = FormatScratch::new();
+        let breakdown = display_rows_for_line(
+            &rope,
+            5,
+            4,
+            &WhitespaceConfig::default(),
+            &WrapMode::None,
+            &providers,
+            80,
+            &mut scratch,
+        );
+
+        assert_eq!(breakdown.before, 0);
+        assert_eq!(breakdown.after, 0);
+    }
+
+    #[test]
+    fn display_rows_for_line_no_providers_is_content_only() {
+        let rope = Rope::from_str("hello\n");
+        let providers = ProviderSet::new();
+        let mut scratch = FormatScratch::new();
+        let breakdown = display_rows_for_line(
+            &rope,
+            0,
+            4,
+            &WhitespaceConfig::default(),
+            &WrapMode::None,
+            &providers,
+            80,
+            &mut scratch,
+        );
+        assert_eq!(
+            breakdown,
+            RowsBreakdown {
+                before: 0,
+                content: 1,
+                after: 0
+            }
+        );
     }
 }
