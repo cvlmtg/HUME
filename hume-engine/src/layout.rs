@@ -1,6 +1,7 @@
 use std::ops::Range;
 
 use ropey::Rope;
+use unicode_width::UnicodeWidthStr;
 
 use crate::pane::{ViewportState, WrapMode};
 use crate::providers::GutterColumn;
@@ -46,12 +47,16 @@ pub fn gutter_width_for_line(gutter_columns: &[Box<dyn GutterColumn>], max_line:
 
 /// Compute the `VisibleRange` for a pane given its current state.
 ///
+/// `tab_width` feeds the wrapping-mode line-row estimate (see
+/// `estimate_line_rows`) — it has no effect in `WrapMode::None`.
+///
 /// This is purely arithmetic — no heap allocations.
 pub fn compute_viewport(
     rope: &Rope,
     viewport: &ViewportState,
     wrap_mode: &WrapMode,
     gutter_columns: &[Box<dyn GutterColumn>],
+    tab_width: u8,
 ) -> VisibleRange {
     let total_lines = rope.len_lines();
     // 0-based index of the last line — the single source of truth for GutterColumn::width().
@@ -78,6 +83,7 @@ pub fn compute_viewport(
         content_width,
         wrap_mode,
         last_line_idx,
+        tab_width,
     );
 
     VisibleRange {
@@ -97,6 +103,7 @@ pub fn compute_viewport(
 /// `rope.len_lines() - 1`). It is used as an exclusive upper bound for the
 /// returned range because the phantom trailing line at that index must not be
 /// included.
+#[allow(clippy::too_many_arguments)]
 fn compute_line_range(
     rope: &Rope,
     top_line: usize,
@@ -105,6 +112,7 @@ fn compute_line_range(
     content_width: u16,
     wrap_mode: &WrapMode,
     last_line_idx: usize,
+    tab_width: u8,
 ) -> Range<usize> {
     // For non-wrapping mode each buffer line is exactly one display row.
     if !wrap_mode.is_wrapping() {
@@ -119,29 +127,53 @@ fn compute_line_range(
     let mut end = top_line;
 
     while end < last_line_idx && rows_needed > 0 {
-        let line_rows = estimate_line_rows(rope, end, content_width);
+        let line_rows = estimate_line_rows(rope, end, content_width, tab_width);
         rows_needed = rows_needed.saturating_sub(line_rows);
         end += 1;
     }
 
-    // Add a small look-ahead so smooth scrolling has room.
+    // Add a small look-ahead so smooth scrolling has room. Word/Indent wrap
+    // can still exceed this estimate (a short word wastes columns) — that
+    // residual error is what the look-ahead buffers against. Exact counting
+    // would mean running the formatter per line, rejected: this stage is
+    // documented as purely arithmetic, no allocations.
     const LOOKAHEAD_LINES: usize = 4;
     let end = (end + LOOKAHEAD_LINES).min(last_line_idx);
     top_line..end
 }
 
 /// Cheaply estimate how many display rows a buffer line occupies when wrapped
-/// to `content_width`. Uses character count as a proxy (ignores CJK/tabs but
-/// is fast and good enough for layout purposes — the Format stage is exact).
-fn estimate_line_rows(rope: &Rope, line_idx: usize, content_width: u16) -> usize {
+/// to `content_width`.
+///
+/// Width-aware: sums `unicode_width` display width over the line's chunks,
+/// swapping each tab's 1-column placeholder width for a full `tab_width`
+/// expansion — a deliberate upper bound, since it ignores the tab's actual
+/// column position, so it can only over-count, never under-count (safe for a
+/// look-ahead bound). Character count alone (the previous proxy) undercounts
+/// CJK (2 columns) and tabs (up to `tab_width` columns); overestimates here
+/// are harmless — the extra lines get formatted, then clipped by the Render
+/// stage.
+fn estimate_line_rows(rope: &Rope, line_idx: usize, content_width: u16, tab_width: u8) -> usize {
     if content_width == 0 {
         return 1;
     }
-    let char_count = rope.line(line_idx).len_chars();
-    if char_count == 0 {
+    let tab_width = tab_width.max(1) as usize;
+    let line = rope.line(line_idx);
+    let mut total_width = 0usize;
+    for chunk in line.chunks() {
+        let tab_count = chunk.matches('\t').count();
+        // `unicode_width` reports width 1 (not 0) for '\t' in this crate
+        // version — subtract that placeholder count back out before adding
+        // the real tab-stop expansion, so each tab contributes exactly
+        // `tab_width` columns to the estimate (a deliberate upper bound: it
+        // ignores the tab's actual column position, so it can only
+        // over-count, never under-count).
+        total_width += chunk.width() - tab_count + tab_count * tab_width;
+    }
+    if total_width == 0 {
         1
     } else {
-        char_count.div_ceil(content_width as usize)
+        total_width.div_ceil(content_width as usize).max(1)
     }
 }
 
@@ -173,7 +205,7 @@ mod tests {
     fn no_wrap_basic_range() {
         let rope = Rope::from_str("line1\nline2\nline3\nline4\nline5\n");
         let viewport = ViewportState::new(80, 3);
-        let visible = compute_viewport(&rope, &viewport, &WrapMode::None, &[]);
+        let visible = compute_viewport(&rope, &viewport, &WrapMode::None, &[], 4);
         assert_eq!(visible.line_range.start, 0);
         assert!(visible.line_range.end <= 5);
         assert_eq!(visible.gutter_width, 0);
@@ -184,7 +216,7 @@ mod tests {
     fn no_wrap_clamped_to_total_lines() {
         let rope = Rope::from_str("only one line");
         let viewport = ViewportState::new(80, 50);
-        let visible = compute_viewport(&rope, &viewport, &WrapMode::None, &[]);
+        let visible = compute_viewport(&rope, &viewport, &WrapMode::None, &[], 4);
         assert!(visible.line_range.end <= rope.len_lines());
     }
 
@@ -192,8 +224,44 @@ mod tests {
     fn soft_wrap_includes_lookahead() {
         let rope = Rope::from_str("a\nb\nc\nd\ne\nf\ng\n");
         let viewport = ViewportState::new(80, 3);
-        let visible = compute_viewport(&rope, &viewport, &WrapMode::Soft { width: 80 }, &[]);
+        let visible = compute_viewport(&rope, &viewport, &WrapMode::Soft { width: 80 }, &[], 4);
         // Should have at least 3 + lookahead lines
         assert!(visible.line_range.len() >= 3);
+    }
+
+    // ── estimate_line_rows width-awareness (B6) ─────────────────────────
+
+    #[test]
+    fn estimate_line_rows_cjk_width_aware() {
+        // 40 '中' chars, each display width 2 → true width 80. At
+        // content_width 40 that's exactly 2 rows. Char-count-only (the old
+        // proxy) would see 40 chars / 40 cols = 1 row — half the true count.
+        let text: String = "中".repeat(40);
+        let rope = Rope::from_str(&text);
+        assert_eq!(estimate_line_rows(&rope, 0, 40, 4), 2);
+    }
+
+    #[test]
+    fn estimate_line_rows_tabs_width_aware() {
+        // 10 tabs, tab_width 4 → each tab contributes a full 4-column
+        // expansion (its 1-column `unicode_width` placeholder is swapped for
+        // the real tab-stop width) → true width 40. At content_width 20
+        // that's exactly 2 rows. Char-count-only would see 10 chars / 20
+        // cols = 1 row.
+        let text = "\t".repeat(10);
+        let rope = Rope::from_str(&text);
+        assert_eq!(estimate_line_rows(&rope, 0, 20, 4), 2);
+    }
+
+    #[test]
+    fn estimate_line_rows_empty_line_is_one() {
+        let rope = Rope::from_str("");
+        assert_eq!(estimate_line_rows(&rope, 0, 40, 4), 1);
+    }
+
+    #[test]
+    fn estimate_line_rows_zero_content_width_is_one() {
+        let rope = Rope::from_str("abc");
+        assert_eq!(estimate_line_rows(&rope, 0, 0, 4), 1);
     }
 }

@@ -894,6 +894,7 @@ pub(crate) fn render_pane(
         &pane_ctx.pane.viewport,
         &pane_ctx.settings.wrap_mode,
         &pane_ctx.pane.providers.gutter_columns,
+        pane_ctx.settings.tab_width,
     );
 
     // ── Pre-render: per-frame constant setup ──────────────────────────────
@@ -1505,6 +1506,52 @@ mod tests {
             "V",
             "After(0) virtual line still renders"
         );
+    }
+
+    // ── CJK line-row estimate feeds the viewport (B6) ───────────────────
+
+    #[test]
+    fn cjk_heavy_viewport_fills_every_row_no_premature_filler() {
+        // Two lines of 20 '中' chars each (true width 40 per line). At
+        // WrapMode::Soft { width: 20 } each line wraps into exactly 2 rows,
+        // so the two lines together supply exactly 4 real rows — matching
+        // a 4-row viewport with nothing left over for tilde fillers.
+        let line: String = "中".repeat(20);
+        let rope = ropey::Rope::from_str(&format!("{line}\n{line}\n"));
+        let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
+        let bid = bids.insert(());
+
+        let mut pane = Pane::new(bid, WrapMode::Soft { width: 20 });
+        pane.viewport = crate::pane::ViewportState::new(20, 4);
+
+        let theme = Theme::default();
+        let pane_rect = rect(0, 0, 20, 4);
+        let pane_ctx = PaneRenderCtx {
+            pane: &pane,
+            rope: &rope,
+            tree: None,
+            syntax: None,
+            theme: &theme,
+            rect: pane_rect,
+            settings: PaneRenderSettings {
+                mode: EditorMode::Normal,
+                wrap_mode: WrapMode::Soft { width: 20 },
+                tab_width: 4,
+                whitespace: WhitespaceConfig::default(),
+            },
+            dim: None,
+        };
+        let mut scratch = FrameScratch::new();
+        let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
+        render_pane(&pane_ctx, &mut scratch, &mut buf);
+
+        for y in 0..4u16 {
+            let sym = cell_symbol(&buf, 0, y);
+            assert_eq!(
+                sym, "中",
+                "row {y} must be real CJK content, not a tilde filler"
+            );
+        }
     }
 
     // ── split_rect ───────────────────────────────────────────────────────
