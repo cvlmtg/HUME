@@ -50,6 +50,17 @@ pub fn gutter_width_for_line(gutter_columns: &[Box<dyn GutterColumn>], max_line:
 /// `tab_width` feeds the wrapping-mode line-row estimate (see
 /// `estimate_line_rows`) — it has no effect in `WrapMode::None`.
 ///
+/// **Precondition**: `rope` must end with a structural `\n` (the editor's
+/// buffer invariant — see project `CLAUDE.md`), except when it is empty.
+/// The phantom-trailing-line exclusion below assumes ropey's one extra
+/// reported line past `last_line_idx` is that trailing newline's empty
+/// remainder; without it, the rope's actual last content line is dropped
+/// from `line_range` entirely. Not enforced with a hard error — this
+/// crate's own unit tests build ropes without the invariant to test
+/// formatting in isolation — but checked with a `debug_assert` so a
+/// violation is caught in debug builds instead of silently rendering
+/// short.
+///
 /// This is purely arithmetic — no heap allocations.
 pub fn compute_viewport(
     rope: &Rope,
@@ -58,6 +69,12 @@ pub fn compute_viewport(
     gutter_columns: &[Box<dyn GutterColumn>],
     tab_width: u8,
 ) -> VisibleRange {
+    debug_assert!(
+        rope.len_chars() == 0 || rope.char(rope.len_chars() - 1) == '\n',
+        "compute_viewport requires a trailing '\\n' (the buffer invariant) — \
+         without it the rope's last content line is dropped from line_range"
+    );
+
     let total_lines = rope.len_lines();
     // 0-based index of the last line — the single source of truth for GutterColumn::width().
     // Using the whole-file last line (not just the visible range) keeps gutter width stable
@@ -214,10 +231,15 @@ mod tests {
 
     #[test]
     fn no_wrap_clamped_to_total_lines() {
-        let rope = Rope::from_str("only one line");
+        // Trailing '\n' per the buffer invariant (see compute_viewport's doc
+        // comment, B12) — without it the rope's one real content line would
+        // be excluded from line_range as if it were the phantom trailing line.
+        let rope = Rope::from_str("only one line\n");
         let viewport = ViewportState::new(80, 50);
         let visible = compute_viewport(&rope, &viewport, &WrapMode::None, &[], 4);
-        assert!(visible.line_range.end <= rope.len_lines());
+        // 2 ropey lines (content + phantom trailing); line_range excludes
+        // the phantom, so it must stop at 1 despite the 50-row viewport.
+        assert_eq!(visible.line_range, 0..1);
     }
 
     #[test]
