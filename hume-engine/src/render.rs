@@ -94,40 +94,31 @@ impl<'a> PaneCanvas<'a> {
     }
 }
 
-/// Render a single display row at `screen_row` into the ratatui buffer.
+/// Write one row's gutter cells (all columns) at screen row `y`.
 ///
-/// `line_str` is the pre-materialised text of the buffer line that owns this
-/// row (used to resolve `CellContent::Grapheme` byte ranges). Pass `""` for
-/// virtual/filler rows that have no backing buffer line.
+/// Shared by `compose_row` (real buffer/wrap/virtual rows) and
+/// `render_tilde_fillers` (`RowKind::Filler` rows) so a filler row's gutter
+/// is never silently blank — before this was pulled out, only `compose_row`
+/// called it, and `render_tilde_fillers` skipped the gutter loop entirely,
+/// leaving `LineNumberColumn`'s blank-for-Filler result correct only by
+/// accident (a custom column would never be consulted for filler rows).
 ///
-/// `col_widths` must already be populated by the caller (one entry per gutter
-/// column). Passed separately from `compose_ctx` because in the fused pipeline it lives
-/// in `FrameScratch`, which cannot be bundled into `ComposeCtx` without
-/// creating a conflicting borrow.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn compose_row(
-    row: &DisplayRow,
-    graphemes: &[Grapheme],
-    styles: &[ResolvedStyle],
-    line_str: &str,
-    screen_row: u16,
+/// `col_widths` must already be populated by the caller (one entry per
+/// gutter column) — see `compose_row`'s doc comment for why it isn't folded
+/// into `ComposeCtx`.
+fn compose_gutter(
+    row_kind: RowKind,
     col_widths: &[u16],
     compose_ctx: &ComposeCtx,
-    canvas: &mut PaneCanvas,
-    // Background colour to fill the entire row (gutter + content) before
-    // writing graphemes. Used for cursorline highlighting so the tint
-    // extends to the right edge even past the last character.
-    // `None` → clear to terminal default (normal rows).
     row_bg: Option<ratatui::style::Color>,
+    y: u16,
+    canvas: &mut PaneCanvas,
 ) {
-    let y = compose_ctx.pane_rect.y + screen_row;
     let right_edge = compose_ctx.pane_rect.x + compose_ctx.pane_rect.width;
-
-    // ── Gutter ────────────────────────────────────────────────────────
     let mut gutter_x = compose_ctx.pane_rect.x;
     for (col_provider, &col_width) in compose_ctx.gutter_columns.iter().zip(col_widths.iter()) {
         let cell =
-            col_provider.render_row(row.kind, compose_ctx.mode, compose_ctx.primary_head_line);
+            col_provider.render_row(row_kind, compose_ctx.mode, compose_ctx.primary_head_line);
         let text = cell.as_str();
         // GutterCell.scope is a &'static str, not an interned ScopeId — use
         // the slow path. Gutter rendering is ~100 calls/frame, not per-grapheme.
@@ -172,103 +163,127 @@ pub(crate) fn compose_row(
 
         gutter_x += col_width;
     }
+}
+
+/// Render a single display row at `screen_row` into the ratatui buffer.
+///
+/// `line_str` is the pre-materialised text of the buffer line that owns this
+/// row (used to resolve `CellContent::Grapheme` byte ranges). Pass `""` for
+/// virtual/filler rows that have no backing buffer line.
+///
+/// `col_widths` must already be populated by the caller (one entry per gutter
+/// column). Passed separately from `compose_ctx` because in the fused pipeline it lives
+/// in `FrameScratch`, which cannot be bundled into `ComposeCtx` without
+/// creating a conflicting borrow.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn compose_row(
+    row: &DisplayRow,
+    graphemes: &[Grapheme],
+    styles: &[ResolvedStyle],
+    line_str: &str,
+    screen_row: u16,
+    col_widths: &[u16],
+    compose_ctx: &ComposeCtx,
+    canvas: &mut PaneCanvas,
+    // Background colour to fill the entire row (gutter + content) before
+    // writing graphemes. Used for cursorline highlighting so the tint
+    // extends to the right edge even past the last character.
+    // `None` → clear to terminal default (normal rows).
+    row_bg: Option<ratatui::style::Color>,
+) {
+    let y = compose_ctx.pane_rect.y + screen_row;
+    let right_edge = compose_ctx.pane_rect.x + compose_ctx.pane_rect.width;
+
+    // Filler rows are rendered exclusively by `render_tilde_fillers`, never
+    // routed through here — it has its own gutter + tilde + background
+    // handling since a filler row has no backing graphemes to iterate.
+    debug_assert!(!matches!(row.kind, RowKind::Filler));
+
+    compose_gutter(row.kind, col_widths, compose_ctx, row_bg, y, canvas);
 
     // ── Content ───────────────────────────────────────────────────────
     let content_x_origin = compose_ctx.pane_rect.x + compose_ctx.visible.gutter_width;
     let h_offset = compose_ctx.viewport.horizontal_offset;
 
-    match row.kind {
-        RowKind::Filler => {
-            canvas.set_cell(content_x_origin, y, "~", compose_ctx.tilde_style);
-            match compose_ctx.pane_bg {
-                Some(bg) => canvas.fill_row_bg(content_x_origin + 1, right_edge, y, bg),
-                None => canvas.clear_row_span(content_x_origin + 1, right_edge, y),
-            }
+    // Fill trailing cells with row bg (cursorline) or pane bg, so the theme
+    // background shows past the last grapheme rather than the terminal default.
+    match row_bg.or(compose_ctx.pane_bg) {
+        Some(bg) => canvas.fill_row_bg(content_x_origin, right_edge, y, bg),
+        None => canvas.clear_row_span(content_x_origin, right_edge, y),
+    }
+
+    let row_graphemes = &graphemes[row.graphemes.start..row.graphemes.end];
+    let row_styles = &styles[row.graphemes.start..row.graphemes.end];
+
+    for (g, style) in row_graphemes.iter().zip(row_styles.iter()) {
+        // Skip WidthContinuation — already handled by the primary cell.
+        if matches!(g.content, CellContent::WidthContinuation) {
+            continue;
         }
-        _ => {
-            // Fill trailing cells with row bg (cursorline) or pane bg, so the theme
-            // background shows past the last grapheme rather than the terminal default.
-            match row_bg.or(compose_ctx.pane_bg) {
-                Some(bg) => canvas.fill_row_bg(content_x_origin, right_edge, y, bg),
-                None => canvas.clear_row_span(content_x_origin, right_edge, y),
-            }
 
-            let row_graphemes = &graphemes[row.graphemes.start..row.graphemes.end];
-            let row_styles = &styles[row.graphemes.start..row.graphemes.end];
+        // Horizontal scroll: skip cells left of the viewport.
+        if g.col + g.width as u16 <= h_offset {
+            continue;
+        }
+        // Clip cells that start before the viewport edge.
+        let visible_col = g.col.saturating_sub(h_offset);
+        let screen_x = content_x_origin + visible_col;
+        if screen_x >= right_edge {
+            break; // past right edge — done with this row
+        }
 
-            for (g, style) in row_graphemes.iter().zip(row_styles.iter()) {
-                // Skip WidthContinuation — already handled by the primary cell.
-                if matches!(g.content, CellContent::WidthContinuation) {
-                    continue;
-                }
+        let ratatui_style: ratatui::style::Style = (*style).into();
 
-                // Horizontal scroll: skip cells left of the viewport.
-                if g.col + g.width as u16 <= h_offset {
-                    continue;
-                }
-                // Clip cells that start before the viewport edge.
-                let visible_col = g.col.saturating_sub(h_offset);
-                let screen_x = content_x_origin + visible_col;
-                if screen_x >= right_edge {
-                    break; // past right edge — done with this row
-                }
-
-                let ratatui_style: ratatui::style::Style = (*style).into();
-
-                // A multi-column cell (double-width CJK grapheme, tab
-                // Indicator) whose left edge sits before `h_offset` still
-                // passes the skip check above once its right edge crosses
-                // it — but `visible_col` above already clamped to 0, so
-                // rendering the glyph there would draw its *full* width at
-                // the viewport's left edge instead of the fraction that's
-                // actually scrolled into view, shifting the row. Render
-                // spaces for the visible remainder instead (matches Helix).
-                // Impossible for width-1 cells: straddling needs
-                // `g.col < h_offset < g.col + g.width`, which has no integer
-                // solution when `g.width == 1`.
-                if g.col < h_offset {
-                    let visible_cells = g.width as u16 - (h_offset - g.col);
-                    for i in 0..visible_cells {
-                        let sx = screen_x + i;
-                        if sx < right_edge {
-                            canvas.set_cell(sx, y, " ", ratatui_style);
-                        }
-                    }
-                    continue;
-                }
-
-                match &g.content {
-                    CellContent::Grapheme => {
-                        if g.byte_range.start <= g.byte_range.end
-                            && g.byte_range.end <= line_str.len()
-                        {
-                            let text = &line_str[g.byte_range.clone()];
-                            canvas.set_cell(screen_x, y, text, ratatui_style);
-                            // For double-width chars, blank the continuation cell.
-                            if g.width >= 2 && screen_x + 1 < right_edge {
-                                canvas.set_cell(screen_x + 1, y, " ", ratatui_style);
-                            }
-                        }
-                    }
-                    CellContent::Indicator(s) => {
-                        canvas.set_cell(screen_x, y, s, ratatui_style);
-                        // Fill remaining tab/wide cells with spaces.
-                        for extra in 1..g.width as u16 {
-                            let ex = screen_x + extra;
-                            if ex < right_edge {
-                                canvas.set_cell(ex, y, " ", ratatui_style);
-                            }
-                        }
-                    }
-                    CellContent::Virtual(s) => {
-                        canvas.set_cell(screen_x, y, s, ratatui_style);
-                    }
-                    CellContent::Empty => {
-                        canvas.set_cell(screen_x, y, " ", ratatui_style);
-                    }
-                    CellContent::WidthContinuation => unreachable!(),
+        // A multi-column cell (double-width CJK grapheme, tab
+        // Indicator) whose left edge sits before `h_offset` still
+        // passes the skip check above once its right edge crosses
+        // it — but `visible_col` above already clamped to 0, so
+        // rendering the glyph there would draw its *full* width at
+        // the viewport's left edge instead of the fraction that's
+        // actually scrolled into view, shifting the row. Render
+        // spaces for the visible remainder instead (matches Helix).
+        // Impossible for width-1 cells: straddling needs
+        // `g.col < h_offset < g.col + g.width`, which has no integer
+        // solution when `g.width == 1`.
+        if g.col < h_offset {
+            let visible_cells = g.width as u16 - (h_offset - g.col);
+            for i in 0..visible_cells {
+                let sx = screen_x + i;
+                if sx < right_edge {
+                    canvas.set_cell(sx, y, " ", ratatui_style);
                 }
             }
+            continue;
+        }
+
+        match &g.content {
+            CellContent::Grapheme => {
+                if g.byte_range.start <= g.byte_range.end && g.byte_range.end <= line_str.len() {
+                    let text = &line_str[g.byte_range.clone()];
+                    canvas.set_cell(screen_x, y, text, ratatui_style);
+                    // For double-width chars, blank the continuation cell.
+                    if g.width >= 2 && screen_x + 1 < right_edge {
+                        canvas.set_cell(screen_x + 1, y, " ", ratatui_style);
+                    }
+                }
+            }
+            CellContent::Indicator(s) => {
+                canvas.set_cell(screen_x, y, s, ratatui_style);
+                // Fill remaining tab/wide cells with spaces.
+                for extra in 1..g.width as u16 {
+                    let ex = screen_x + extra;
+                    if ex < right_edge {
+                        canvas.set_cell(ex, y, " ", ratatui_style);
+                    }
+                }
+            }
+            CellContent::Virtual(s) => {
+                canvas.set_cell(screen_x, y, s, ratatui_style);
+            }
+            CellContent::Empty => {
+                canvas.set_cell(screen_x, y, " ", ratatui_style);
+            }
+            CellContent::WidthContinuation => unreachable!(),
         }
     }
 
@@ -298,102 +313,14 @@ pub(crate) fn compose_row(
     }
 }
 
-/// Write styled display rows into the ratatui buffer.
-///
-/// Order of operations:
-/// 1. For each display row (clipped to `top_skip_rows` and `content_height`):
-///    a. Write gutter cells for all columns.
-///    b. Write content cells, accounting for horizontal scroll.
-///    c. Overlay indent guides on leading-whitespace cells.
-/// 2. Tilde filler rows for empty space past EOF.
-///
-/// Overlays are composited by the caller (EngineView::render) after this
-/// function returns, by calling each `OverlayProvider::render`.
-///
-/// `compose_ctx` must be pre-constructed by the caller (same pattern as the
-/// fused pipeline). `col_widths` is a caller-supplied scratch buffer.
-// Kept for testing the non-fused path; the live pipeline uses `compose_fused`.
-#[allow(clippy::too_many_arguments, dead_code)]
-pub(crate) fn compose(
-    rows: &[DisplayRow],
-    graphemes: &[Grapheme],
-    styles: &[ResolvedStyle],
-    line_texts: &str,
-    line_text_offsets: &[usize],
-    compose_ctx: &ComposeCtx,
-    col_widths: &mut Vec<u16>,
-    canvas: &mut PaneCanvas,
-) {
-    // Skip the first `top_skip_rows` rows from the formatted output so the
-    // viewport starts partway through a wrapped line when scrolled.
-    let visible = compose_ctx.visible;
-    let skip = visible.top_skip_rows as usize;
-    let render_rows = rows.iter().skip(skip).take(visible.content_height as usize);
-
-    // Pre-compute per-column widths into the caller-supplied scratch (no alloc after warmup).
-    col_widths.clear();
-    col_widths.extend(
-        compose_ctx
-            .gutter_columns
-            .iter()
-            .map(|c| c.width(visible.last_line_idx) as u16),
-    );
-
-    let mut screen_row: u16 = 0;
-    // Current line text slice, looked up once per new line_idx.
-    let mut current_line_str: &str = "";
-    let mut current_line: Option<usize> = None;
-
-    for row in render_rows {
-        if screen_row >= compose_ctx.pane_rect.height {
-            break;
-        }
-
-        // ── Look up the pre-materialised line text for this buffer line ────
-        // The Format stage already copied the rope into `line_texts`; we just
-        // slice it here. No rope access, no allocation.
-        match row.kind.line_idx() {
-            Some(line_idx) if current_line != Some(line_idx) => {
-                current_line = Some(line_idx);
-                let rel = line_idx.saturating_sub(visible.line_range.start);
-                current_line_str = if rel < line_text_offsets.len() {
-                    let start = line_text_offsets[rel];
-                    let end = line_text_offsets
-                        .get(rel + 1)
-                        .copied()
-                        .unwrap_or(line_texts.len());
-                    &line_texts[start..end]
-                } else {
-                    ""
-                };
-            }
-            _ => {}
-        }
-
-        compose_row(
-            row,
-            graphemes,
-            styles,
-            current_line_str,
-            screen_row,
-            col_widths,
-            compose_ctx,
-            canvas,
-            None,
-        );
-        screen_row += 1;
-    }
-
-    render_tilde_fillers(screen_row, compose_ctx, canvas);
-}
-
 /// Draw tilde filler rows from `start_screen_row` up to (but not including)
 /// `visible.content_height`, clamped to `pane_rect.height`.
 ///
-/// Used by both the fused pipeline and the `compose` batch wrapper to fill any
-/// remaining vertical space after the last real content row has been rendered.
+/// Called by the fused pipeline (`render_pane`) to fill any remaining
+/// vertical space after the last real content row has been rendered.
 pub(crate) fn render_tilde_fillers(
     start_screen_row: u16,
+    col_widths: &[u16],
     compose_ctx: &ComposeCtx,
     canvas: &mut PaneCanvas,
 ) {
@@ -406,11 +333,19 @@ pub(crate) fn render_tilde_fillers(
     {
         let y = compose_ctx.pane_rect.y + screen_row;
         let right_edge = compose_ctx.pane_rect.x + compose_ctx.pane_rect.width;
-        match compose_ctx.pane_bg {
-            Some(bg) => canvas.fill_row_bg(compose_ctx.pane_rect.x, right_edge, y, bg),
-            None => canvas.clear_row_span(compose_ctx.pane_rect.x, right_edge, y),
-        }
+        compose_gutter(RowKind::Filler, col_widths, compose_ctx, None, y, canvas);
         let content_x = compose_ctx.pane_rect.x + compose_ctx.visible.gutter_width;
+        // Fill the content area's background *before* drawing the tilde:
+        // `Cell::set_style` patches rather than replaces, and `tilde_style`
+        // (from `ui.virtual_text`) carries no bg of its own in most themes —
+        // the tilde's visible background comes from this fill showing
+        // through underneath. Filling content_x.. (not content_x+1..) so the
+        // tilde's own cell gets it too; drawing the tilde after doesn't
+        // disturb it, only patches fg on top.
+        match compose_ctx.pane_bg {
+            Some(bg) => canvas.fill_row_bg(content_x, right_edge, y, bg),
+            None => canvas.clear_row_span(content_x, right_edge, y),
+        }
         canvas.set_cell(content_x, y, "~", compose_ctx.tilde_style);
         screen_row += 1;
     }
@@ -563,11 +498,9 @@ fn clear_row_span(buf: &mut ratatui::buffer::Buffer, x_start: u16, x_end: u16, y
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::format::strip_line_ending;
     use crate::pane::ViewportState;
     use crate::theme::Theme;
     use crate::types::{CellContent, DisplayRow, Grapheme, ResolvedStyle, RowKind};
-    use ropey::Rope;
 
     fn make_test_buf(w: u16, h: u16) -> ratatui::buffer::Buffer {
         ratatui::buffer::Buffer::empty(ratatui::layout::Rect {
@@ -598,28 +531,10 @@ mod tests {
         }
     }
 
-    /// Materialise all lines in `line_range` from `rope` into the flat
-    /// `line_texts` / `line_text_offsets` format that `compose` expects.
-    fn make_line_texts(rope: &Rope, line_range: std::ops::Range<usize>) -> (String, Vec<usize>) {
-        let mut texts = String::new();
-        let mut offsets: Vec<usize> = Vec::new();
-        for line_idx in line_range {
-            offsets.push(texts.len());
-            if line_idx < rope.len_lines() {
-                for chunk in rope.line(line_idx).chunks() {
-                    texts.push_str(chunk);
-                }
-                strip_line_ending(&mut texts);
-            }
-        }
-        (texts, offsets)
-    }
-
     #[test]
     fn renders_simple_text() {
-        let rope = Rope::from_str("hi\n");
         let graphemes = vec![simple_grapheme(0, 0, 1), simple_grapheme(1, 1, 1)];
-        let rows = vec![simple_row(0..2)];
+        let rows = [simple_row(0..2)];
         let styles = vec![ResolvedStyle::default(); 2];
         let visible = VisibleRange {
             line_range: 0..1,
@@ -638,8 +553,7 @@ mod tests {
         };
         let mut buf = make_test_buf(20, 5);
         let theme = Theme::default();
-        let (line_texts, line_text_offsets) = make_line_texts(&rope, visible.line_range.clone());
-        let mut col_widths = Vec::new();
+        let col_widths: Vec<u16> = Vec::new();
         let ctx = ComposeCtx {
             gutter_columns: &[],
             visible: &visible,
@@ -654,15 +568,16 @@ mod tests {
             pane_bg: None,
         };
         let mut canvas = PaneCanvas::new(&mut buf, None);
-        compose(
-            &rows,
+        compose_row(
+            &rows[0],
             &graphemes,
             &styles,
-            &line_texts,
-            &line_text_offsets,
+            "hi",
+            0,
+            &col_widths,
             &ctx,
-            &mut col_widths,
             &mut canvas,
+            None,
         );
 
         assert_eq!(
@@ -681,14 +596,12 @@ mod tests {
 
     #[test]
     fn filler_rows_have_tilde() {
-        let rope = Rope::from_str("x\n");
-        let graphemes = vec![simple_grapheme(0, 0, 1)];
-        let rows = [simple_row(0..1)];
-        let styles = vec![ResolvedStyle::default()];
+        // Only render_tilde_fillers (not compose_row) draws tildes — verify
+        // it fills every requested row from the given start row onward.
         let visible = VisibleRange {
             line_range: 0..1,
             top_skip_rows: 0,
-            content_height: 5, // 5 rows requested but only 1 line
+            content_height: 5, // 5 rows requested; caller already rendered row 0
             content_width: 20,
             gutter_width: 0,
             last_line_idx: 0,
@@ -702,8 +615,6 @@ mod tests {
         };
         let mut buf = make_test_buf(20, 5);
         let theme = Theme::default();
-        let (line_texts, line_text_offsets) = make_line_texts(&rope, visible.line_range.clone());
-        let mut col_widths = Vec::new();
         let ctx = ComposeCtx {
             gutter_columns: &[],
             visible: &visible,
@@ -718,18 +629,9 @@ mod tests {
             pane_bg: None,
         };
         let mut canvas = PaneCanvas::new(&mut buf, None);
-        compose(
-            &rows,
-            &graphemes,
-            &styles,
-            &line_texts,
-            &line_text_offsets,
-            &ctx,
-            &mut col_widths,
-            &mut canvas,
-        );
+        render_tilde_fillers(1, &[], &ctx, &mut canvas);
 
-        // Row 0 has 'x', rows 1–4 should have '~'
+        // Rows 1–4 should have '~'
         for r in 1..5u16 {
             assert_eq!(
                 buf.cell(ratatui::layout::Position { x: 0, y: r })
@@ -742,10 +644,12 @@ mod tests {
         }
     }
 
+    /// Render one row via `compose_row` directly (stage isolation — no batch
+    /// orchestration) at screen row 0 and return the buffer.
     #[allow(clippy::too_many_arguments)]
-    fn do_compose(
-        rope: &Rope,
-        rows: &[DisplayRow],
+    fn do_compose_row(
+        line_str: &str,
+        row: &DisplayRow,
         graphemes: &[Grapheme],
         styles: &[ResolvedStyle],
         visible: VisibleRange,
@@ -762,8 +666,7 @@ mod tests {
         };
         let mut buf = make_test_buf(w, h);
         let theme = Theme::default();
-        let (line_texts, line_text_offsets) = make_line_texts(rope, visible.line_range.clone());
-        let mut col_widths = Vec::new();
+        let col_widths: Vec<u16> = Vec::new();
         let ctx = ComposeCtx {
             gutter_columns: &[],
             visible: &visible,
@@ -778,84 +681,22 @@ mod tests {
             pane_bg: None,
         };
         let mut canvas = PaneCanvas::new(&mut buf, None);
-        compose(
-            rows,
+        compose_row(
+            row,
             graphemes,
             styles,
-            &line_texts,
-            &line_text_offsets,
+            line_str,
+            0,
+            &col_widths,
             &ctx,
-            &mut col_widths,
             &mut canvas,
+            None,
         );
         buf
     }
 
     #[test]
-    fn top_skip_rows_skips_first_row() {
-        let rope = Rope::from_str("ab\ncd\n");
-        // Two rows, skip the first → only "cd" appears at screen row 0.
-        let g = vec![
-            simple_grapheme(0, 0, 1), // 'a' on line 0
-            simple_grapheme(1, 1, 1), // 'b' on line 0
-            Grapheme {
-                byte_range: 0..1,
-                char_offset: 3,
-                col: 0,
-                width: 1,
-                content: CellContent::Grapheme,
-                indent_depth: 0,
-                scope: None,
-            }, // 'c' on line 1
-            Grapheme {
-                byte_range: 1..2,
-                char_offset: 4,
-                col: 1,
-                width: 1,
-                content: CellContent::Grapheme,
-                indent_depth: 0,
-                scope: None,
-            }, // 'd' on line 1
-        ];
-        let rows = vec![
-            DisplayRow {
-                kind: RowKind::LineStart { line_idx: 0 },
-                graphemes: 0..2,
-            },
-            DisplayRow {
-                kind: RowKind::LineStart { line_idx: 1 },
-                graphemes: 2..4,
-            },
-        ];
-        let styles = vec![ResolvedStyle::default(); 4];
-        let visible = VisibleRange {
-            line_range: 0..2,
-            top_skip_rows: 1, // skip row 0
-            content_height: 5,
-            content_width: 20,
-            gutter_width: 0,
-            last_line_idx: 1,
-        };
-        let viewport = ViewportState::new(20, 5);
-        let buf = do_compose(&rope, &rows, &g, &styles, visible, viewport, 4, 20, 5);
-        // With skip=1, the first rendered row should show line 1 ("cd").
-        assert_eq!(
-            buf.cell(ratatui::layout::Position { x: 0, y: 0 })
-                .unwrap()
-                .symbol(),
-            "c"
-        );
-        assert_eq!(
-            buf.cell(ratatui::layout::Position { x: 1, y: 0 })
-                .unwrap()
-                .symbol(),
-            "d"
-        );
-    }
-
-    #[test]
     fn horizontal_scroll_clips_left_columns() {
-        let rope = Rope::from_str("abcde");
         let graphemes: Vec<Grapheme> = (0..5u16)
             .map(|i| Grapheme {
                 byte_range: (i as usize)..(i as usize + 1),
@@ -867,7 +708,7 @@ mod tests {
                 scope: None,
             })
             .collect();
-        let rows = vec![simple_row(0..5)];
+        let rows = [simple_row(0..5)];
         let styles = vec![ResolvedStyle::default(); 5];
         let visible = VisibleRange {
             line_range: 0..1,
@@ -879,8 +720,8 @@ mod tests {
         };
         let mut viewport = ViewportState::new(20, 5);
         viewport.horizontal_offset = 2; // skip columns 0 and 1
-        let buf = do_compose(
-            &rope, &rows, &graphemes, &styles, visible, viewport, 4, 20, 5,
+        let buf = do_compose_row(
+            "abcde", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
         );
         // With h_offset=2, screen col 0 shows 'c' (buf col 2).
         assert_eq!(
@@ -907,7 +748,6 @@ mod tests {
         // visible cell. Before the fix, `visible_col` clamped to 0 and drew
         // the *whole* glyph at screen col 0, shifting 'X' to look like it
         // was still at col 1 instead of col 0.
-        let rope = Rope::from_str("中X");
         let graphemes = vec![
             Grapheme {
                 byte_range: 0..3,
@@ -937,7 +777,7 @@ mod tests {
                 scope: None,
             },
         ];
-        let rows = vec![simple_row(0..3)];
+        let rows = [simple_row(0..3)];
         let styles = vec![ResolvedStyle::default(); 3];
         let visible = VisibleRange {
             line_range: 0..1,
@@ -949,8 +789,8 @@ mod tests {
         };
         let mut viewport = ViewportState::new(20, 5);
         viewport.horizontal_offset = 1;
-        let buf = do_compose(
-            &rope, &rows, &graphemes, &styles, visible, viewport, 4, 20, 5,
+        let buf = do_compose_row(
+            "中X", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
         );
         assert_eq!(
             buf.cell(ratatui::layout::Position { x: 0, y: 0 })
@@ -972,7 +812,6 @@ mod tests {
     fn indent_guide_drawn_at_inner_tab_stops() {
         // A line with indent_depth=2 and tab_width=4 should show a guide at col 4.
         // (guides at k*tab_width for k in 1..depth, so k=1 => col 4)
-        let rope = Rope::from_str("        foo"); // 8 spaces + "foo"
         let graphemes: Vec<Grapheme> = (0..11u16)
             .map(|i| Grapheme {
                 byte_range: (i as usize)..(i as usize + 1),
@@ -984,7 +823,7 @@ mod tests {
                 scope: None,
             })
             .collect();
-        let rows = vec![DisplayRow {
+        let rows = [DisplayRow {
             kind: RowKind::LineStart { line_idx: 0 },
             graphemes: 0..11,
         }];
@@ -998,8 +837,16 @@ mod tests {
             last_line_idx: 0,
         };
         let viewport = ViewportState::new(20, 5);
-        let buf = do_compose(
-            &rope, &rows, &graphemes, &styles, visible, viewport, 4, 20, 5,
+        let buf = do_compose_row(
+            "        foo", // 8 spaces + "foo"
+            &rows[0],
+            &graphemes,
+            &styles,
+            visible,
+            viewport,
+            4,
+            20,
+            5,
         );
         // A guide should appear at screen col 4 (k=1, tw=4).
         assert_eq!(
@@ -1026,7 +873,10 @@ mod tests {
 
     #[test]
     fn indent_guide_not_drawn_on_wrap_rows() {
-        let rope = Rope::from_str("    text");
+        // depth=1 means no inner guides (guides at k in 1..1 — empty range)
+        // in general, but this test specifically pins that a Wrap row draws
+        // no guide even when it would otherwise qualify — so render only the
+        // Wrap row (a continuation of line 0, graphemes 4..8 of "    text").
         let graphemes: Vec<Grapheme> = (0..8u16)
             .map(|i| Grapheme {
                 byte_range: (i as usize)..(i as usize + 1),
@@ -1038,19 +888,13 @@ mod tests {
                 scope: None,
             })
             .collect();
-        let rows = vec![
-            DisplayRow {
-                kind: RowKind::LineStart { line_idx: 0 },
-                graphemes: 0..4,
+        let rows = [DisplayRow {
+            kind: RowKind::Wrap {
+                line_idx: 0,
+                wrap_row: 1,
             },
-            DisplayRow {
-                kind: RowKind::Wrap {
-                    line_idx: 0,
-                    wrap_row: 1,
-                },
-                graphemes: 4..8,
-            },
-        ];
+            graphemes: 4..8,
+        }];
         let styles = vec![ResolvedStyle::default(); 8];
         let visible = VisibleRange {
             line_range: 0..1,
@@ -1061,13 +905,11 @@ mod tests {
             last_line_idx: 0,
         };
         let viewport = ViewportState::new(20, 5);
-        let buf = do_compose(
-            &rope, &rows, &graphemes, &styles, visible, viewport, 4, 20, 5,
+        let buf = do_compose_row(
+            "    text", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
         );
-        // depth=1 means no inner guides (guides at k in 1..1 — empty range).
-        // Also verify wrap row (screen row 1) has no guide either.
         assert_ne!(
-            buf.cell(ratatui::layout::Position { x: 0, y: 1 })
+            buf.cell(ratatui::layout::Position { x: 0, y: 0 })
                 .unwrap()
                 .symbol(),
             "│"
@@ -1078,7 +920,6 @@ mod tests {
     fn indicator_content_fills_tab_width() {
         // A tab indicator with width=4 should write the indicator char at col 0
         // and spaces at cols 1-3.
-        let rope = Rope::from_str("\t");
         let graphemes = vec![Grapheme {
             byte_range: 0..1,
             char_offset: 0,
@@ -1099,8 +940,8 @@ mod tests {
             last_line_idx: 0,
         };
         let viewport = ViewportState::new(20, 5);
-        let buf = do_compose(
-            &rope, &rows, &graphemes, &styles, visible, viewport, 4, 20, 5,
+        let buf = do_compose_row(
+            "\t", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
         );
         assert_eq!(
             buf.cell(ratatui::layout::Position { x: 0, y: 0 })
@@ -1354,7 +1195,6 @@ mod tests {
     #[test]
     fn compose_row_dims_cells_inline() {
         use ratatui::style::Color;
-        let rope = Rope::from_str("x\n");
         let graphemes = vec![simple_grapheme(0, 0, 1)];
         let rows = [simple_row(0..1)];
         let styles = vec![ResolvedStyle {
@@ -1379,8 +1219,7 @@ mod tests {
         };
         let mut buf = make_test_buf(2, 1);
         let theme = Theme::default();
-        let (line_texts, line_text_offsets) = make_line_texts(&rope, visible.line_range.clone());
-        let mut col_widths = Vec::new();
+        let col_widths: Vec<u16> = Vec::new();
         let ctx = ComposeCtx {
             gutter_columns: &[],
             visible: &visible,
@@ -1395,15 +1234,16 @@ mod tests {
             pane_bg: Some(Color::Rgb(0, 0, 0)),
         };
         let mut canvas = PaneCanvas::new(&mut buf, Some((Color::Rgb(0, 0, 0), 0.5)));
-        compose(
-            &rows,
+        compose_row(
+            &rows[0],
             &graphemes,
             &styles,
-            &line_texts,
-            &line_text_offsets,
+            "x",
+            0,
+            &col_widths,
             &ctx,
-            &mut col_widths,
             &mut canvas,
+            None,
         );
         let cell = buf.cell(ratatui::layout::Position { x: 0, y: 0 }).unwrap();
         // Independent oracle: 255 lerp 0 at 0.5 ⇒ 127.5, rounds to 128.
@@ -1417,7 +1257,6 @@ mod tests {
     #[test]
     fn compose_row_non_rgb_dim_target_is_noop() {
         use ratatui::style::Color;
-        let rope = Rope::from_str("x\n");
         let graphemes = vec![simple_grapheme(0, 0, 1)];
         let rows = [simple_row(0..1)];
         let styles = vec![ResolvedStyle {
@@ -1441,8 +1280,7 @@ mod tests {
         };
         let mut buf = make_test_buf(2, 1);
         let theme = Theme::default();
-        let (line_texts, line_text_offsets) = make_line_texts(&rope, visible.line_range.clone());
-        let mut col_widths = Vec::new();
+        let col_widths: Vec<u16> = Vec::new();
         let ctx = ComposeCtx {
             gutter_columns: &[],
             visible: &visible,
@@ -1457,15 +1295,16 @@ mod tests {
             pane_bg: Some(Color::Rgb(0, 0, 0)),
         };
         let mut canvas = PaneCanvas::new(&mut buf, Some((Color::Reset, 0.5)));
-        compose(
-            &rows,
+        compose_row(
+            &rows[0],
             &graphemes,
             &styles,
-            &line_texts,
-            &line_text_offsets,
+            "x",
+            0,
+            &col_widths,
             &ctx,
-            &mut col_widths,
             &mut canvas,
+            None,
         );
         assert_eq!(
             buf.cell(ratatui::layout::Position { x: 0, y: 0 })

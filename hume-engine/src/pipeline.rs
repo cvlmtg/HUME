@@ -989,7 +989,12 @@ pub(crate) fn render_pane(
         }
     }
 
-    render::render_tilde_fillers(vc.screen_row, &compose_ctx, &mut canvas);
+    render::render_tilde_fillers(
+        vc.screen_row,
+        &scratch.col_widths,
+        &compose_ctx,
+        &mut canvas,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1063,132 +1068,115 @@ fn render_buffer_line(
 ) {
     use crate::{format, style};
 
+    // `render_pane`'s caller loop iterates `visible.line_range`, which
+    // `compute_line_range` (layout.rs) caps at `last_line_idx < rope.len_lines()`
+    // — every line reaching here is a real buffer line, never the phantom
+    // trailing line ropey reports past `last_line_idx`.
+    debug_assert!(line_idx < pane_ctx.rope.len_lines());
+
     scratch.format.line_texts.clear();
 
-    if line_idx < pane_ctx.rope.len_lines() {
-        // Collect and sort inline decorations for this line.
-        scratch.inline_inserts.clear();
-        for provider in &pane_ctx.pane.providers.inline_decorations {
-            provider.decorations_for_line(line_idx, &mut scratch.inline_inserts);
+    // Collect and sort inline decorations for this line.
+    scratch.inline_inserts.clear();
+    for provider in &pane_ctx.pane.providers.inline_decorations {
+        provider.decorations_for_line(line_idx, &mut scratch.inline_inserts);
+    }
+    scratch.inline_inserts.sort_by_key(|i| i.byte_offset);
+
+    // Clip formatting to the visible horizontal window in `WrapMode::None`
+    // — a single unwrapped line can be arbitrarily long (e.g. a minified
+    // JSON/JS file), so scanning past the right edge would cost
+    // O(line_length) per frame and, pre-clip, overflow `current_col`
+    // (`u16`) on lines wider than 65535 columns. Wrapping modes are
+    // already bounded by `wrap_width`, so they pass `None`. `H_WINDOW_SLACK`
+    // covers the tail case where a cell starting just inside the right
+    // edge (e.g. a double-width CJK glyph) still needs to be considered.
+    let h_window = (!pane_ctx.settings.wrap_mode.is_wrapping()).then(|| {
+        let h_offset = compose_ctx.viewport.horizontal_offset;
+        let end = h_offset
+            .saturating_add(compose_ctx.visible.content_width)
+            .saturating_add(H_WINDOW_SLACK);
+        h_offset..end
+    });
+
+    // Stage 2 (per line): format into scratch.format.display_rows + scratch.format.graphemes.
+    // `inline_inserts` is kept outside `scratch.format` to allow simultaneous
+    // `&scratch.inline_inserts` and `&mut scratch.format` without a borrow conflict.
+    format::format_buffer_line(
+        pane_ctx.rope,
+        line_idx,
+        pane_ctx.settings.tab_width,
+        &pane_ctx.settings.whitespace,
+        &pane_ctx.settings.wrap_mode,
+        h_window,
+        &scratch.inline_inserts,
+        &mut scratch.format,
+    );
+
+    // Stage 3 (per line): build highlight intervals for this buffer line.
+    style::rebuild_tier_bufs(
+        line_idx,
+        pane_ctx.syntax,
+        &pane_ctx.pane.providers.highlights,
+        pane_ctx.rope,
+        pane_ctx.tree,
+        &mut scratch.style,
+    );
+
+    scratch
+        .style
+        .styles
+        .resize(scratch.format.graphemes.len(), ResolvedStyle::default());
+
+    let line_start_char = pane_ctx.rope.line_to_char(line_idx);
+    let line_end_char = pane_ctx.rope.line_to_char(line_idx + 1);
+    // Cursorline highlights only the primary cursor's line.
+    let is_head_line = scratch
+        .style
+        .primary_idx_in_sorted
+        .and_then(|i| scratch.style.sorted_sels.get(i))
+        .is_some_and(|s| s.head >= line_start_char && s.head < line_end_char);
+    // line_str borrows scratch.format.line_texts; must not clear it inside the loop.
+    let line_str = scratch.format.line_texts.as_str();
+
+    for row_idx in 0..scratch.format.display_rows.len() {
+        if vc.try_skip() {
+            continue;
         }
-        scratch.inline_inserts.sort_by_key(|i| i.byte_offset);
+        if vc.is_full() {
+            break;
+        }
 
-        // Clip formatting to the visible horizontal window in `WrapMode::None`
-        // — a single unwrapped line can be arbitrarily long (e.g. a minified
-        // JSON/JS file), so scanning past the right edge would cost
-        // O(line_length) per frame and, pre-clip, overflow `current_col`
-        // (`u16`) on lines wider than 65535 columns. Wrapping modes are
-        // already bounded by `wrap_width`, so they pass `None`. `H_WINDOW_SLACK`
-        // covers the tail case where a cell starting just inside the right
-        // edge (e.g. a double-width CJK glyph) still needs to be considered.
-        let h_window = (!pane_ctx.settings.wrap_mode.is_wrapping()).then(|| {
-            let h_offset = compose_ctx.viewport.horizontal_offset;
-            let end = h_offset
-                .saturating_add(compose_ctx.visible.content_width)
-                .saturating_add(H_WINDOW_SLACK);
-            h_offset..end
-        });
-
-        // Stage 2 (per line): format into scratch.format.display_rows + scratch.format.graphemes.
-        // `inline_inserts` is kept outside `scratch.format` to allow simultaneous
-        // `&scratch.inline_inserts` and `&mut scratch.format` without a borrow conflict.
-        format::format_buffer_line(
-            pane_ctx.rope,
-            line_idx,
-            pane_ctx.settings.tab_width,
-            &pane_ctx.settings.whitespace,
-            &pane_ctx.settings.wrap_mode,
-            h_window,
-            &scratch.inline_inserts,
-            &mut scratch.format,
-        );
-
-        // Stage 3 (per line): build highlight intervals for this buffer line.
-        style::rebuild_tier_bufs(
-            line_idx,
-            pane_ctx.syntax,
-            &pane_ctx.pane.providers.highlights,
-            pane_ctx.rope,
-            pane_ctx.tree,
+        // Stage 3 (per row): resolve styles for this display row.
+        style::style_row(
+            &scratch.format.display_rows[row_idx],
+            &scratch.format.graphemes,
+            line_start_char,
+            line_end_char,
+            is_head_line,
+            pane_ctx.settings.mode,
+            pane_ctx.theme,
             &mut scratch.style,
         );
 
-        scratch
-            .style
-            .styles
-            .resize(scratch.format.graphemes.len(), ResolvedStyle::default());
-
-        let line_start_char = pane_ctx.rope.line_to_char(line_idx);
-        let line_end_char = pane_ctx.rope.line_to_char(line_idx + 1);
-        // Cursorline highlights only the primary cursor's line.
-        let is_head_line = scratch
-            .style
-            .primary_idx_in_sorted
-            .and_then(|i| scratch.style.sorted_sels.get(i))
-            .is_some_and(|s| s.head >= line_start_char && s.head < line_end_char);
-        // line_str borrows scratch.format.line_texts; must not clear it inside the loop.
-        let line_str = scratch.format.line_texts.as_str();
-
-        for row_idx in 0..scratch.format.display_rows.len() {
-            if vc.try_skip() {
-                continue;
-            }
-            if vc.is_full() {
-                break;
-            }
-
-            // Stage 3 (per row): resolve styles for this display row.
-            style::style_row(
-                &scratch.format.display_rows[row_idx],
-                &scratch.format.graphemes,
-                line_start_char,
-                line_end_char,
-                is_head_line,
-                pane_ctx.settings.mode,
-                pane_ctx.theme,
-                &mut scratch.style,
-            );
-
-            // Stage 4 (per row): write to the ratatui buffer.
-            let row_bg = if is_head_line {
-                pane_ctx.theme.ui.cursorline.bg
-            } else {
-                None
-            };
-            render::compose_row(
-                &scratch.format.display_rows[row_idx],
-                &scratch.format.graphemes,
-                &scratch.style.styles,
-                line_str,
-                vc.screen_row,
-                &scratch.col_widths,
-                compose_ctx,
-                canvas,
-                row_bg,
-            );
-            vc.screen_row += 1;
-        }
-    } else {
-        // Past EOF: emit a single Filler row.
-        scratch.format.display_rows.push(DisplayRow {
-            kind: RowKind::Filler,
-            graphemes: 0..0,
-        });
-
-        if !vc.try_skip() && !vc.is_full() {
-            render::compose_row(
-                &scratch.format.display_rows[0],
-                &scratch.format.graphemes,
-                &scratch.style.styles,
-                "",
-                vc.screen_row,
-                &scratch.col_widths,
-                compose_ctx,
-                canvas,
-                None,
-            );
-            vc.screen_row += 1;
-        }
+        // Stage 4 (per row): write to the ratatui buffer.
+        let row_bg = if is_head_line {
+            pane_ctx.theme.ui.cursorline.bg
+        } else {
+            None
+        };
+        render::compose_row(
+            &scratch.format.display_rows[row_idx],
+            &scratch.format.graphemes,
+            &scratch.style.styles,
+            line_str,
+            vc.screen_row,
+            &scratch.col_widths,
+            compose_ctx,
+            canvas,
+            row_bg,
+        );
+        vc.screen_row += 1;
     }
 
     scratch.clear_line();
@@ -1552,6 +1540,117 @@ mod tests {
                 "row {y} must be real CJK content, not a tilde filler"
             );
         }
+    }
+
+    // ── Dual compose path migration (B10) ───────────────────────────────
+
+    #[test]
+    fn scrolled_pane_renders_from_top_line_onward() {
+        // "ab\ncd\n": scrolling to top_line=1 must show "cd" at screen row 0
+        // — migrated from render.rs's old top_skip_rows_skips_first_row,
+        // which drove the deleted batch `compose()` path directly. The
+        // fused pipeline's equivalent scroll mechanism in `WrapMode::None`
+        // is `viewport.top_line`, not `top_row_offset` (which only sub-scrolls
+        // within a wrapped `top_line`'s own rows).
+        let rope = ropey::Rope::from_str("ab\ncd\n");
+        let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
+        let bid = bids.insert(());
+
+        let mut pane = Pane::new(bid, WrapMode::None);
+        pane.viewport = crate::pane::ViewportState::new(20, 5);
+        pane.viewport.top_line = 1;
+
+        let theme = Theme::default();
+        let pane_rect = rect(0, 0, 20, 5);
+        let pane_ctx = PaneRenderCtx {
+            pane: &pane,
+            rope: &rope,
+            tree: None,
+            syntax: None,
+            theme: &theme,
+            rect: pane_rect,
+            settings: PaneRenderSettings {
+                mode: EditorMode::Normal,
+                wrap_mode: WrapMode::None,
+                tab_width: 4,
+                whitespace: WhitespaceConfig::default(),
+            },
+            dim: None,
+        };
+        let mut scratch = FrameScratch::new();
+        let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
+        render_pane(&pane_ctx, &mut scratch, &mut buf);
+
+        assert_eq!(cell_symbol(&buf, 0, 0), "c");
+        assert_eq!(cell_symbol(&buf, 1, 0), "d");
+    }
+
+    #[test]
+    fn filler_row_gutter_shows_gutter_content_not_stale_blank() {
+        // Filler rows past EOF must still get their gutter column consulted
+        // — before B10's fix, only compose_row's gutter loop ran for real
+        // rows; render_tilde_fillers never called it, so a filler row's
+        // gutter area was silently blank regardless of what a custom
+        // GutterColumn would render for RowKind::Filler.
+        struct MarkerGutter;
+        impl crate::providers::GutterColumn for MarkerGutter {
+            fn width(&self, _: usize) -> u8 {
+                3
+            }
+            fn render_row(
+                &self,
+                kind: RowKind,
+                _: EditorMode,
+                _: usize,
+            ) -> crate::providers::GutterCell {
+                let text = if matches!(kind, RowKind::Filler) {
+                    "~g"
+                } else {
+                    "ln"
+                };
+                crate::providers::GutterCell {
+                    content: crate::providers::GutterCellContent::Static(text),
+                    scope: crate::types::Scope("ui.linenr"),
+                }
+            }
+            fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+                self
+            }
+        }
+
+        let rope = ropey::Rope::from_str("x\n");
+        let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
+        let bid = bids.insert(());
+
+        let mut pane = Pane::new(bid, WrapMode::None);
+        pane.viewport = crate::pane::ViewportState::new(20, 3); // 1 real row + 2 filler rows
+        pane.providers.add_gutter_column(Box::new(MarkerGutter));
+
+        let theme = Theme::default();
+        let pane_rect = rect(0, 0, 20, 3);
+        let pane_ctx = PaneRenderCtx {
+            pane: &pane,
+            rope: &rope,
+            tree: None,
+            syntax: None,
+            theme: &theme,
+            rect: pane_rect,
+            settings: PaneRenderSettings {
+                mode: EditorMode::Normal,
+                wrap_mode: WrapMode::None,
+                tab_width: 4,
+                whitespace: WhitespaceConfig::default(),
+            },
+            dim: None,
+        };
+        let mut scratch = FrameScratch::new();
+        let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
+        render_pane(&pane_ctx, &mut scratch, &mut buf);
+
+        // Row 1 is a Filler row (past the single real line) — its gutter
+        // must show the column's own Filler rendering ("~g"), not blank.
+        assert_eq!(cell_symbol(&buf, 0, 1), "~");
+        assert_eq!(cell_symbol(&buf, 1, 1), "g");
     }
 
     // ── split_rect ───────────────────────────────────────────────────────

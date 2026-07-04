@@ -868,41 +868,6 @@ mod tests {
     }
 
     #[test]
-    fn past_eof_produces_filler() {
-        // Filler rows past EOF are emitted by pipeline::render_buffer_line (else branch),
-        // not by format_buffer_line. Verify the real line formats correctly and that
-        // manually-pushed Filler rows have the expected kind.
-        let rope = Rope::from_str("a");
-        let inserts = Vec::new();
-        let mut scratch = FormatScratch::new();
-        format_buffer_line(
-            &rope,
-            0,
-            4,
-            &WhitespaceConfig::default(),
-            &WrapMode::None,
-            None,
-            &inserts,
-            &mut scratch,
-        );
-        assert_eq!(
-            scratch.display_rows[0].kind,
-            RowKind::LineStart { line_idx: 0 }
-        );
-        // Simulate the pipeline's past-EOF Filler emission.
-        let g = scratch.graphemes.len();
-        scratch.display_rows.push(DisplayRow {
-            kind: RowKind::Filler,
-            graphemes: g..g,
-        });
-        assert!(
-            scratch.display_rows[1..]
-                .iter()
-                .all(|r| r.kind == RowKind::Filler)
-        );
-    }
-
-    #[test]
     fn grapheme_cols_are_correct() {
         let (_, graphemes) = do_format("abc\n", WrapMode::None);
         assert_eq!(graphemes[0].col, 0);

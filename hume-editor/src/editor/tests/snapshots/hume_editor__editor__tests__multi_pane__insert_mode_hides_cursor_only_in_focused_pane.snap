@@ -3,6 +3,6 @@ source: hume-editor/src/editor/tests/multi_pane.rs
 expression: "render_to_styled_string(&mut ed, rect)"
 ---
 <fg=#0d0d0d,bg=#8d8d8d>a</><fg=#757575,bg=#2a2a2a>bc </><bg=#2a2a2a>     </><fg=#5bc0eb,bg=#1a1a1a>│</><fg=#c8c8d2,bg=#3a3a3a>1 </><fg=#d0d0d0,bg=#3a3a3a>abc</>
-<fg=#4d4d4d,bg=#1a1a1a>~</><bg=#1a1a1a>        </><fg=#5bc0eb,bg=#1a1a1a>│</><bg=#1a1a1a>  </><fg=#808080,bg=#1a1a1a>~</>
-<fg=#4d4d4d,bg=#1a1a1a>~</><bg=#1a1a1a>        </><fg=#5bc0eb,bg=#1a1a1a>│</><bg=#1a1a1a>  </><fg=#808080,bg=#1a1a1a>~</>
+<fg=#4d4d4d,bg=#1a1a1a>~</><bg=#1a1a1a>        </><fg=#5bc0eb,bg=#1a1a1a>│</><fg=#808080,bg=#1a1a1a>  ~</>
+<fg=#4d4d4d,bg=#1a1a1a>~</><bg=#1a1a1a>        </><fg=#5bc0eb,bg=#1a1a1a>│</><fg=#808080,bg=#1a1a1a>  ~</>
 <fg=#000000,bg=#ffffff> 1:1          │ </><fg=#00cdcd,bg=#ffffff>INS</>
