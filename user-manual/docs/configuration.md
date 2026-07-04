@@ -72,7 +72,7 @@ These options have a global default that new buffers inherit, and a per-buffer o
 | `tab-style` | `hard` \| `soft` | `hard` | What `Tab` inserts: `hard` = literal `\t`; `soft` = spaces to next tab stop |
 | `line-number-style` | `absolute` \| `relative` \| `hybrid` | `hybrid` | Line number display in the gutter |
 | `auto-pairs-enabled` | bool | `#t` | Enable auto-pair insertion |
-| `whitespace-space` | `none` \| `all` \| `trailing` | `none` | When to render space indicators |
+| `whitespace-space` | `none` \| `all` \| `trailing` | `none` | When to render space indicators. Also reveals invisible Unicode spaces (non-breaking and ideographic) with a distinct `⍽` marker |
 | `whitespace-tab` | `none` \| `all` \| `trailing` | `none` | When to render tab indicators |
 | `whitespace-newline` | `none` \| `all` \| `trailing` | `none` | When to render newline indicators |
 | `language` | string | *(auto-detected)* | Language for syntax highlighting |

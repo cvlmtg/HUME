@@ -651,6 +651,27 @@ fn grapheme_display(
         return (1, content);
     }
 
+    // Invisible Unicode spaces (NBSP, ideographic space): gated by the same
+    // `space` render mode but with a distinct glyph, so stray non-breaking
+    // spaces stand out from ordinary ones. Width comes from unicode-width
+    // (U+3000 is 2 columns), matching the regular-grapheme path so the wrap
+    // math is identical whether the indicator is on or off.
+    if grapheme_str == "\u{A0}" || grapheme_str == "\u{3000}" {
+        let w = unicode_display_width(grapheme_str).clamp(1, 2) as u8;
+        let content = if should_render_whitespace(
+            &whitespace.space,
+            in_leading_ws,
+            had_non_ws,
+            line_is_blank,
+        ) {
+            let (start, len) = push_arena_text(virtual_texts, &whitespace.nbsp_char);
+            CellContent::Indicator { start, len }
+        } else {
+            CellContent::Grapheme
+        };
+        return (w, content);
+    }
+
     // Regular grapheme: use unicode-width for display width.
     let w = unicode_display_width(grapheme_str).min(2) as u8;
     let w = w.max(1); // always at least 1 column
@@ -1117,6 +1138,36 @@ mod tests {
         // Space at index 1 should be Indicator
         let space_g = graphemes.iter().find(|g| g.col == 1).unwrap();
         assert_eq!(cell_text(&arena, &space_g.content), "·");
+    }
+
+    #[test]
+    fn nbsp_indicator_all_mode() {
+        // NBSP (U+00A0, width 1) and ideographic space (U+3000, width 2) are
+        // gated by the `space` render mode but use the distinct nbsp glyph.
+        let ws = WhitespaceConfig {
+            space: crate::pane::WhitespaceRender::All,
+            ..WhitespaceConfig::default()
+        };
+        let (_, graphemes, arena) = do_format_ws("a\u{A0}b\u{3000}c\n", ws);
+        let nbsp_g = graphemes.iter().find(|g| g.col == 1).unwrap();
+        assert_eq!(cell_text(&arena, &nbsp_g.content), "⍽");
+        assert_eq!(nbsp_g.width, 1);
+        let ideo_g = graphemes.iter().find(|g| g.col == 3).unwrap();
+        assert_eq!(cell_text(&arena, &ideo_g.content), "⍽");
+        assert_eq!(ideo_g.width, 2, "ideographic space keeps its 2-col width");
+    }
+
+    #[test]
+    fn nbsp_renders_as_itself_when_off() {
+        // With space rendering off, invisible spaces stay CellContent::Grapheme
+        // (rendered as themselves) and keep their unicode widths.
+        let (_, graphemes, _) = do_format_ws("a\u{A0}b\u{3000}c\n", WhitespaceConfig::default());
+        let nbsp_g = graphemes.iter().find(|g| g.col == 1).unwrap();
+        assert!(matches!(nbsp_g.content, CellContent::Grapheme));
+        assert_eq!(nbsp_g.width, 1);
+        let ideo_g = graphemes.iter().find(|g| g.col == 3).unwrap();
+        assert!(matches!(ideo_g.content, CellContent::Grapheme));
+        assert_eq!(ideo_g.width, 2);
     }
 
     #[test]

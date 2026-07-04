@@ -14,10 +14,15 @@ pub enum CharClass {
 }
 
 /// Classify a single character into a [`CharClass`].
+///
+/// Space covers ASCII blanks plus the two invisible Unicode spaces commonly
+/// found in real text: NBSP (U+00A0) and ideographic space (U+3000). Other
+/// Unicode whitespace (form feed, bare `\r`, …) stays `Punctuation` — rare
+/// enough that stopping on it is more useful than skipping it.
 pub fn classify_char(ch: char) -> CharClass {
     if ch == '\n' {
         CharClass::Eol
-    } else if ch == ' ' || ch == '\t' {
+    } else if matches!(ch, ' ' | '\t' | '\u{A0}' | '\u{3000}') {
         CharClass::Space
     } else if ch.is_alphanumeric() || ch == '_' {
         CharClass::Word
@@ -65,6 +70,20 @@ mod tests {
     fn classify_space_and_tab_are_space() {
         assert_eq!(classify_char(' '), CharClass::Space);
         assert_eq!(classify_char('\t'), CharClass::Space);
+    }
+
+    #[test]
+    fn classify_invisible_unicode_spaces_are_space() {
+        assert_eq!(classify_char('\u{A0}'), CharClass::Space); // NBSP
+        assert_eq!(classify_char('\u{3000}'), CharClass::Space); // ideographic space
+    }
+
+    #[test]
+    fn classify_other_unicode_whitespace_stays_punctuation() {
+        // Deliberate: form feed and bare \r are rare enough that `w` stopping
+        // on them beats silently skipping them.
+        assert_eq!(classify_char('\u{C}'), CharClass::Punctuation); // form feed
+        assert_eq!(classify_char('\r'), CharClass::Punctuation);
     }
 
     #[test]

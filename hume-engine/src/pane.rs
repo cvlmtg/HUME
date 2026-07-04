@@ -235,6 +235,11 @@ pub struct WhitespaceConfig {
     pub tab_char: Box<str>,
     /// Character to show in place of a newline when rendered.
     pub newline_char: Box<str>,
+    /// Character to show in place of an invisible Unicode space (NBSP U+00A0,
+    /// ideographic space U+3000) when rendered. Distinct from `space_char` so
+    /// stray non-breaking spaces stand out from ordinary ones. Gated by the
+    /// `space` render mode — no separate render axis.
+    pub nbsp_char: Box<str>,
 }
 
 impl Default for WhitespaceConfig {
@@ -246,6 +251,7 @@ impl Default for WhitespaceConfig {
             space_char: "·".into(),
             tab_char: "→".into(),
             newline_char: "⏎".into(),
+            nbsp_char: "⍽".into(),
         }
     }
 }
@@ -596,6 +602,7 @@ mod tests {
         assert_eq!(&*wc.space_char, "·");
         assert_eq!(&*wc.tab_char, "→");
         assert_eq!(&*wc.newline_char, "⏎");
+        assert_eq!(&*wc.nbsp_char, "⍽");
     }
 
     fn make_pane_at_char(head_char: usize) -> Pane {
