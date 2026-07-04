@@ -369,20 +369,19 @@ pub(crate) fn render_tilde_fillers(
     {
         let y = compose_ctx.pane_rect.y + screen_row;
         let right_edge = compose_ctx.pane_rect.x + compose_ctx.pane_rect.width;
+        // Gutter first — it already paints a real background (row_bg/pane_bg
+        // patched with the column's scope, see `compose_gutter`) across the
+        // whole gutter width, including column 0. The tilde below patches its
+        // fg on top of that, matching editor convention: `~` sits at the
+        // pane's left edge, ignoring/overriding the line-number gutter, never
+        // shifted into the content area.
         compose_gutter(RowKind::Filler, col_widths, compose_ctx, None, y, canvas);
         let content_x = compose_ctx.pane_rect.x + compose_ctx.visible.gutter_width;
-        // Fill the content area's background *before* drawing the tilde:
-        // `Cell::set_style` patches rather than replaces, and `tilde_style`
-        // (from `ui.virtual_text`) carries no bg of its own in most themes —
-        // the tilde's visible background comes from this fill showing
-        // through underneath. Filling content_x.. (not content_x+1..) so the
-        // tilde's own cell gets it too; drawing the tilde after doesn't
-        // disturb it, only patches fg on top.
         match compose_ctx.pane_bg {
             Some(bg) => canvas.fill_row_bg(content_x, right_edge, y, bg),
             None => canvas.clear_row_span(content_x, right_edge, y),
         }
-        canvas.set_cell(content_x, y, "~", compose_ctx.tilde_style);
+        canvas.set_cell(compose_ctx.pane_rect.x, y, "~", compose_ctx.tilde_style);
         screen_row += 1;
     }
 }
