@@ -547,6 +547,13 @@ pub struct EngineView {
 /// leaves colors untouched, 1.0 flattens them entirely to the background.
 const PANE_DIM_FACTOR: f32 = 0.5;
 
+/// Extra columns appended past `content_width` when clipping `WrapMode::None`
+/// formatting to the horizontal window (see `render_buffer_line`). Covers a
+/// cell that starts just inside the right edge but is wider than one column
+/// (a double-width CJK glyph or a wide tab stop) — without slack, such a cell
+/// would be scanned but never pushed, clipping it one column too early.
+const H_WINDOW_SLACK: u16 = 4;
+
 impl EngineView {
     pub fn new(theme: Theme) -> Self {
         let panes = SlotMap::with_key();
@@ -1051,6 +1058,22 @@ fn render_buffer_line(
         }
         scratch.inline_inserts.sort_by_key(|i| i.byte_offset);
 
+        // Clip formatting to the visible horizontal window in `WrapMode::None`
+        // — a single unwrapped line can be arbitrarily long (e.g. a minified
+        // JSON/JS file), so scanning past the right edge would cost
+        // O(line_length) per frame and, pre-clip, overflow `current_col`
+        // (`u16`) on lines wider than 65535 columns. Wrapping modes are
+        // already bounded by `wrap_width`, so they pass `None`. `H_WINDOW_SLACK`
+        // covers the tail case where a cell starting just inside the right
+        // edge (e.g. a double-width CJK glyph) still needs to be considered.
+        let h_window = (!pane_ctx.settings.wrap_mode.is_wrapping()).then(|| {
+            let h_offset = compose_ctx.viewport.horizontal_offset;
+            let end = h_offset
+                .saturating_add(compose_ctx.visible.content_width)
+                .saturating_add(H_WINDOW_SLACK);
+            h_offset..end
+        });
+
         // Stage 2 (per line): format into scratch.format.display_rows + scratch.format.graphemes.
         // `inline_inserts` is kept outside `scratch.format` to allow simultaneous
         // `&scratch.inline_inserts` and `&mut scratch.format` without a borrow conflict.
@@ -1060,6 +1083,7 @@ fn render_buffer_line(
             pane_ctx.settings.tab_width,
             &pane_ctx.settings.whitespace,
             &pane_ctx.settings.wrap_mode,
+            h_window,
             &scratch.inline_inserts,
             &mut scratch.format,
         );

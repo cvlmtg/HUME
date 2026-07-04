@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use ropey::Rope;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
@@ -81,6 +83,7 @@ pub fn count_visual_rows(
         tab_width,
         whitespace,
         wrap_mode,
+        None,
         &[],
         scratch,
     );
@@ -88,12 +91,24 @@ pub fn count_visual_rows(
 }
 
 /// Format one buffer line, appending zero or more `DisplayRow`s.
+///
+/// `h_window` clips emitted graphemes to a horizontal column range — used only
+/// by the fused render pipeline in `WrapMode::None`, where a single line can be
+/// arbitrarily long (a 1MB minified-JS line is a real case). Once the scan
+/// passes `h_window.end`, formatting stops early (bounding CPU cost to the
+/// visible prefix instead of the whole line); graphemes left of `h_window.start`
+/// are scanned (needed for tab-stop column arithmetic) but not pushed, since the
+/// compose stage would discard them anyway. Pass `None` for wrapping modes
+/// (already bounded by `wrap_width`) and for callers that need the whole line
+/// (e.g. cursor-position lookups).
+#[allow(clippy::too_many_arguments)]
 pub fn format_buffer_line(
     rope: &Rope,
     line_idx: usize,
     tab_width: u8,
     whitespace: &WhitespaceConfig,
     wrap_mode: &WrapMode,
+    h_window: Option<Range<u16>>,
     inline_inserts: &[InlineInsert],
     scratch: &mut FormatScratch,
 ) {
@@ -156,13 +171,27 @@ pub fn format_buffer_line(
     // so the style stage can resolve selection positions without rope lookups.
     let mut char_pos = rope.line_to_char(line_idx);
 
-    for (byte_offset, grapheme_str) in line_str.grapheme_indices(true) {
+    // Set when `h_window` bounds the scan and formatting stopped early because
+    // `current_col` reached the window's right edge. Everything past that
+    // point — the EOL sentinel, trailing inserts, the newline indicator — is
+    // off-screen by definition, so it is skipped rather than emitted at the
+    // wrong (clipped) column.
+    let mut clipped = false;
+
+    'lines: for (byte_offset, grapheme_str) in line_str.grapheme_indices(true) {
         // ── Inject inline inserts before this byte offset ─────────────────
         while insert_idx < inline_inserts.len()
             && inline_inserts[insert_idx].byte_offset <= byte_offset
         {
+            if h_window
+                .as_ref()
+                .is_some_and(|w| wrap.current_col >= w.end)
+            {
+                clipped = true;
+                break 'lines;
+            }
             let ins = &inline_inserts[insert_idx];
-            let ins_width = unicode_display_width(ins.text) as u8;
+            let ins_width = unicode_display_width(ins.text).min(255) as u8;
             if ins_width > 0 {
                 wrap.maybe_wrap(
                     ins_width,
@@ -173,18 +202,31 @@ pub fn format_buffer_line(
                     rows_out,
                     graphemes_out,
                 );
-                graphemes_out.push(Grapheme {
-                    byte_range: byte_offset..byte_offset, // zero-length: virtual
-                    // Inline inserts have no buffer char; use sentinel so style stage skips them.
-                    char_offset: usize::MAX,
-                    col: wrap.current_col,
-                    width: ins_width,
-                    content: CellContent::Virtual(ins.text),
-                    indent_depth,
-                });
-                wrap.current_col += ins_width as u16;
+                let visible = h_window
+                    .as_ref()
+                    .is_none_or(|w| wrap.current_col + ins_width as u16 > w.start);
+                if visible {
+                    graphemes_out.push(Grapheme {
+                        byte_range: byte_offset..byte_offset, // zero-length: virtual
+                        // Inline inserts have no buffer char; use sentinel so style stage skips them.
+                        char_offset: usize::MAX,
+                        col: wrap.current_col,
+                        width: ins_width,
+                        content: CellContent::Virtual(ins.text),
+                        indent_depth,
+                    });
+                }
+                wrap.current_col = wrap.current_col.saturating_add(ins_width as u16);
             }
             insert_idx += 1;
+        }
+
+        if h_window
+            .as_ref()
+            .is_some_and(|w| wrap.current_col >= w.end)
+        {
+            clipped = true;
+            break 'lines;
         }
 
         // ── Skip newlines (line_str is already stripped; this guards edge cases) ──
@@ -232,20 +274,25 @@ pub fn format_buffer_line(
 
         // ── Emit grapheme ─────────────────────────────────────────────────
         let char_count = grapheme_str.chars().count();
-        graphemes_out.push(Grapheme {
-            byte_range: byte_offset..byte_offset + grapheme_str.len(),
-            char_offset: char_pos,
-            col: wrap.current_col,
-            width,
-            content,
-            indent_depth,
-        });
+        let visible = h_window
+            .as_ref()
+            .is_none_or(|w| wrap.current_col + width as u16 > w.start);
+        if visible {
+            graphemes_out.push(Grapheme {
+                byte_range: byte_offset..byte_offset + grapheme_str.len(),
+                char_offset: char_pos,
+                col: wrap.current_col,
+                width,
+                content,
+                indent_depth,
+            });
+        }
         char_pos += char_count;
-        wrap.current_col += width as u16;
+        wrap.current_col = wrap.current_col.saturating_add(width as u16);
 
         // For CJK (width == 2): emit a WidthContinuation placeholder so the
         // render stage knows not to write anything to the second cell.
-        if width == 2 {
+        if width == 2 && visible {
             // Both cells of a double-wide char always stay on the same row.
             // Backing up the primary to avoid overflow is not yet implemented.
             graphemes_out.push(Grapheme {
@@ -260,64 +307,69 @@ pub fn format_buffer_line(
         }
     }
 
-    // ── End-of-line sentinel ──────────────────────────────────────────────
-    // Emit an Empty grapheme at the char offset of the trailing `\n` whenever
-    // the line has a trailing newline. This gives the cursor/selection-head a
-    // cell to land on when positioned on the newline character (e.g. after `x`
-    // selects the whole line). Without this, `char_offset_to_col` in the style
-    // stage finds no grapheme at the `\n` position and leaves the cursor
-    // invisible in block-cursor modes.
-    //
-    // For truly empty lines (just "\n") this is the only grapheme (col 0).
-    // For non-empty lines it sits one column past the last visible character.
-    if had_newline {
-        graphemes_out.push(Grapheme {
-            byte_range: line_str.len()..line_str.len(),
-            char_offset: char_pos, // char offset of the `\n`
-            col: wrap.current_col,
-            width: 1,
-            content: CellContent::Empty,
-            indent_depth: 0,
-        });
-    }
-
-    // ── Emit any trailing inline inserts ──────────────────────────────────
-    for ins in &inline_inserts[insert_idx..] {
-        let ins_width = unicode_display_width(ins.text) as u8;
-        if ins_width > 0 {
+    // ── End-of-line sentinel, trailing inserts, newline indicator ──────────
+    // Skipped entirely when the h_window scan stopped early (`clipped`): all
+    // three sit at or past the true end of line, which is off-screen by
+    // definition once the window's right edge has been passed.
+    if !clipped {
+        // Emit an Empty grapheme at the char offset of the trailing `\n` whenever
+        // the line has a trailing newline. This gives the cursor/selection-head a
+        // cell to land on when positioned on the newline character (e.g. after `x`
+        // selects the whole line). Without this, `char_offset_to_col` in the style
+        // stage finds no grapheme at the `\n` position and leaves the cursor
+        // invisible in block-cursor modes.
+        //
+        // For truly empty lines (just "\n") this is the only grapheme (col 0).
+        // For non-empty lines it sits one column past the last visible character.
+        if had_newline {
             graphemes_out.push(Grapheme {
                 byte_range: line_str.len()..line_str.len(),
-                char_offset: usize::MAX, // virtual, no buffer char
+                char_offset: char_pos, // char offset of the `\n`
                 col: wrap.current_col,
-                width: ins_width,
-                content: CellContent::Virtual(ins.text),
+                width: 1,
+                content: CellContent::Empty,
+                indent_depth: 0,
+            });
+        }
+
+        // ── Emit any trailing inline inserts ────────────────────────────────
+        for ins in &inline_inserts[insert_idx..] {
+            let ins_width = unicode_display_width(ins.text).min(255) as u8;
+            if ins_width > 0 {
+                graphemes_out.push(Grapheme {
+                    byte_range: line_str.len()..line_str.len(),
+                    char_offset: usize::MAX, // virtual, no buffer char
+                    col: wrap.current_col,
+                    width: ins_width,
+                    content: CellContent::Virtual(ins.text),
+                    indent_depth,
+                });
+                wrap.current_col = wrap.current_col.saturating_add(ins_width as u16);
+            }
+        }
+
+        // ── Newline indicator ───────────────────────────────────────────────
+        // Emitted at the end of the line (after all content and trailing inserts)
+        // on the last wrap row. `in_leading_ws` and `had_non_ws` reflect the
+        // state after iterating all graphemes, so `should_render_whitespace` sees
+        // the correct context for Trailing vs All rules.
+        if had_newline
+            && should_render_whitespace(
+                &whitespace.newline,
+                in_leading_ws,
+                had_non_ws,
+                line_is_blank,
+            )
+        {
+            graphemes_out.push(Grapheme {
+                byte_range: line_str.len()..line_str.len(),
+                char_offset: usize::MAX, // whitespace indicator, no buffer char
+                col: wrap.current_col,
+                width: 1,
+                content: CellContent::Indicator(whitespace.newline_char),
                 indent_depth,
             });
-            wrap.current_col += ins_width as u16;
         }
-    }
-
-    // ── Newline indicator ──────────────────────────────────────────────────
-    // Emitted at the end of the line (after all content and trailing inserts)
-    // on the last wrap row. `in_leading_ws` and `had_non_ws` reflect the
-    // state after iterating all graphemes, so `should_render_whitespace` sees
-    // the correct context for Trailing vs All rules.
-    if had_newline
-        && should_render_whitespace(
-            &whitespace.newline,
-            in_leading_ws,
-            had_non_ws,
-            line_is_blank,
-        )
-    {
-        graphemes_out.push(Grapheme {
-            byte_range: line_str.len()..line_str.len(),
-            char_offset: usize::MAX, // whitespace indicator, no buffer char
-            col: wrap.current_col,
-            width: 1,
-            content: CellContent::Indicator(whitespace.newline_char),
-            indent_depth,
-        });
     }
 
     // Close the last row.
@@ -564,7 +616,7 @@ mod tests {
         let inserts = Vec::new();
         let mut scratch = FormatScratch::new();
         for line_idx in 0..rope.len_lines() {
-            format_buffer_line(&rope, line_idx, 4, &ws, &wrap_mode, &inserts, &mut scratch);
+            format_buffer_line(&rope, line_idx, 4, &ws, &wrap_mode, None, &inserts, &mut scratch);
         }
         (scratch.display_rows, scratch.graphemes)
     }
@@ -805,6 +857,7 @@ mod tests {
             4,
             &WhitespaceConfig::default(),
             &WrapMode::None,
+            None,
             &inserts,
             &mut scratch,
         );
@@ -846,6 +899,7 @@ mod tests {
                 4,
                 &ws,
                 &WrapMode::None,
+                None,
                 &inserts,
                 &mut scratch,
             );
@@ -1033,5 +1087,94 @@ mod tests {
         let mut buf = "hello\r\n".to_string();
         strip_line_ending(&mut buf);
         assert_eq!(buf, "hello\r");
+    }
+
+    // ── h_window clipping (B1) ───────────────────────────────────────────
+
+    fn do_format_windowed(
+        text: &str,
+        wrap_mode: WrapMode,
+        h_window: Option<Range<u16>>,
+    ) -> (Vec<DisplayRow>, Vec<Grapheme>) {
+        let rope = Rope::from_str(text);
+        let ws = WhitespaceConfig::default();
+        let inserts = Vec::new();
+        let mut scratch = FormatScratch::new();
+        for line_idx in 0..rope.len_lines() {
+            format_buffer_line(
+                &rope,
+                line_idx,
+                4,
+                &ws,
+                &wrap_mode,
+                h_window.clone(),
+                &inserts,
+                &mut scratch,
+            );
+        }
+        (scratch.display_rows, scratch.graphemes)
+    }
+
+    #[test]
+    fn long_line_no_wrap_clips_to_window_without_panic() {
+        // 70,000 ASCII chars — without clipping this would overflow `u16`
+        // (`current_col`) long before reaching the end. With a window of
+        // [0, 80+slack) only a small prefix should be pushed.
+        let text: String = "a".repeat(70_000);
+        let (rows, graphemes) = do_format_windowed(&text, WrapMode::None, Some(0..80));
+        assert_eq!(rows.len(), 1);
+        assert!(
+            graphemes.len() <= 90,
+            "expected a small clipped prefix, got {} graphemes",
+            graphemes.len()
+        );
+        // Every emitted grapheme must fall within (or just at) the window.
+        assert!(graphemes.iter().all(|g| g.col < 90));
+    }
+
+    #[test]
+    fn long_line_no_wrap_window_scrolled_right_has_correct_cols() {
+        // Same 70,000-char ASCII line, scrolled to h_offset = 65,000. Since
+        // every char is 1 column wide, col must equal char index (independent
+        // oracle) for every grapheme actually emitted around the window.
+        let text: String = "a".repeat(70_000);
+        let (rows, graphemes) = do_format_windowed(&text, WrapMode::None, Some(65_000..65_080));
+        assert_eq!(rows.len(), 1);
+        assert!(!graphemes.is_empty(), "window should still emit graphemes");
+        for g in &graphemes {
+            assert_eq!(
+                g.col as usize, g.char_offset,
+                "pure-ASCII line: col must equal char index"
+            );
+        }
+        // Nothing before the window's left edge should appear.
+        assert!(graphemes.iter().all(|g| g.col >= 65_000));
+    }
+
+    #[test]
+    fn no_window_caller_does_not_overflow_u16_on_huge_line() {
+        // Belt-and-braces: callers that pass `h_window: None` (cursor/visual-move
+        // lookups) get no clipping at all, so a pathologically long line must
+        // still not panic via `u16` overflow in `current_col` — the accumulation
+        // saturates instead. 70,000 ASCII chars comfortably exceeds `u16::MAX`
+        // (65,535).
+        let text: String = "a".repeat(70_000);
+        let (rows, graphemes) = do_format_windowed(&text, WrapMode::None, None);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(graphemes.len(), 70_000, "no window: every char is scanned");
+        assert_eq!(
+            graphemes.last().unwrap().col,
+            u16::MAX,
+            "current_col saturates at u16::MAX rather than wrapping"
+        );
+    }
+
+    #[test]
+    fn wrapping_modes_unaffected_by_h_window_none() {
+        // Regression: passing None (the only value wrapping modes ever get)
+        // must reproduce the existing wrap test's output exactly.
+        let (rows, graphemes) = do_format_windowed("hello world", WrapMode::Soft { width: 7 }, None);
+        let row0 = &graphemes[rows[0].graphemes.clone()];
+        assert_eq!(row0.len(), 7, "soft wrap still splits mid-word at column 7");
     }
 }

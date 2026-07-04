@@ -159,6 +159,7 @@ pub(crate) fn format_row_col(
         tab_width,
         whitespace,
         wrap_mode,
+        None,
         &[],
         scratch,
     );
@@ -311,6 +312,7 @@ pub(crate) fn screen_to_char_offset(
             tab_width,
             whitespace,
             wrap_mode,
+            None,
             &[],
             scratch,
         );
@@ -379,6 +381,7 @@ fn char_at_display_col(
         tab_width,
         whitespace,
         wrap_mode,
+        None,
         &[],
         scratch,
     );

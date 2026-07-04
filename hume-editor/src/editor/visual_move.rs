@@ -109,6 +109,7 @@ fn visual_move_down_one(
             tab_width,
             whitespace,
             wrap_mode,
+            None,
             &[],
             scratch,
         );
@@ -142,6 +143,7 @@ fn visual_move_up_one(
             tab_width,
             whitespace,
             wrap_mode,
+            None,
             &[],
             scratch,
         );
