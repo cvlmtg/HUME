@@ -208,8 +208,13 @@ pub fn format_buffer_line(
                 if visible {
                     graphemes_out.push(Grapheme {
                         byte_range: byte_offset..byte_offset, // zero-length: virtual
-                        // Inline inserts have no buffer char; use sentinel so style stage skips them.
-                        char_offset: usize::MAX,
+                        // Char offset of the real grapheme this insert precedes (not
+                        // MAX): keeps the row non-decreasing in char_offset, which
+                        // `resolve_grapheme_col`'s partition_point requires. Inserts
+                        // are pushed before that grapheme, so ties resolve to the
+                        // insert first — `resolve_grapheme_col` skips forward past
+                        // `Virtual` cells to reach the real one.
+                        char_offset: char_pos,
                         col: wrap.current_col,
                         width: ins_width,
                         content: CellContent::Virtual(ins.text),
@@ -338,7 +343,10 @@ pub fn format_buffer_line(
             if ins_width > 0 {
                 graphemes_out.push(Grapheme {
                     byte_range: line_str.len()..line_str.len(),
-                    char_offset: usize::MAX, // virtual, no buffer char
+                    // Same offset as the EOL sentinel above (the `\n` position) —
+                    // there is no later real grapheme on this row for a trailing
+                    // insert to precede. Keeps char_offset non-decreasing.
+                    char_offset: char_pos,
                     col: wrap.current_col,
                     width: ins_width,
                     content: CellContent::Virtual(ins.text),
@@ -363,7 +371,11 @@ pub fn format_buffer_line(
         {
             graphemes_out.push(Grapheme {
                 byte_range: line_str.len()..line_str.len(),
-                char_offset: usize::MAX, // whitespace indicator, no buffer char
+                // Same offset as the EOL sentinel (the `\n` position). Style-stage
+                // lookups resolve to the *first* grapheme at a given offset, which
+                // is the EOL sentinel pushed earlier in this function — the
+                // indicator itself is never the cursor-cell match.
+                char_offset: char_pos,
                 col: wrap.current_col,
                 width: 1,
                 content: CellContent::Indicator(whitespace.newline_char),
@@ -1149,6 +1161,56 @@ mod tests {
         }
         // Nothing before the window's left edge should appear.
         assert!(graphemes.iter().all(|g| g.col >= 65_000));
+    }
+
+    // ── Inline-insert char_offset partition invariant (B2) ──────────────
+
+    #[test]
+    fn row_char_offsets_are_non_decreasing_with_inline_inserts() {
+        // Inserts at several offsets, including one at byte 0 (row-start) and
+        // one past the last real char (trailing). `resolve_grapheme_col`'s
+        // partition_point requires the whole row sorted by char_offset.
+        let rope = Rope::from_str("abcdef");
+        let inserts = vec![
+            InlineInsert {
+                byte_offset: 0,
+                text: "Z",
+                scope: crate::types::Scope("test"),
+            },
+            InlineInsert {
+                byte_offset: 2,
+                text: "XY",
+                scope: crate::types::Scope("test"),
+            },
+            InlineInsert {
+                byte_offset: 6,
+                text: "W",
+                scope: crate::types::Scope("test"),
+            },
+        ];
+        let mut scratch = FormatScratch::new();
+        format_buffer_line(
+            &rope,
+            0,
+            4,
+            &WhitespaceConfig::default(),
+            &WrapMode::None,
+            None,
+            &inserts,
+            &mut scratch,
+        );
+        assert!(
+            scratch
+                .graphemes
+                .windows(2)
+                .all(|w| w[0].char_offset <= w[1].char_offset),
+            "char_offset must be non-decreasing across the row: {:?}",
+            scratch
+                .graphemes
+                .iter()
+                .map(|g| g.char_offset)
+                .collect::<Vec<_>>()
+        );
     }
 
     // ── Inline-insert width clamp (B7) ──────────────────────────────────

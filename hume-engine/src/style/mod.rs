@@ -327,6 +327,11 @@ fn collect_head_cols(
 /// Returns `None` when `char_offset` is the sentinel `usize::MAX` (meaning
 /// "extend to end of row"), or when it falls before this row's first grapheme
 /// (it belongs to an earlier wrap segment and must not be claimed for this row).
+///
+/// Rows are non-decreasing in `char_offset` (inline-insert `Virtual` cells
+/// carry the offset of the real grapheme they precede, pushed just before it),
+/// so `partition_point` can land on an insert rather than the real grapheme at
+/// that offset — the loop below skips forward past any such ties.
 fn resolve_grapheme_col(
     char_offset: usize,
     graphemes: &[Grapheme],
@@ -340,13 +345,18 @@ fn resolve_grapheme_col(
     let idx = row_graphemes.partition_point(|g| g.char_offset < char_offset);
     // If char_offset falls before this row's first grapheme, the position
     // belongs to an earlier wrap segment — don't claim it for this row.
-    row_graphemes.get(idx).and_then(|g| {
-        if idx == 0 && char_offset < g.char_offset {
-            None
-        } else {
-            Some((g.col, g.width as u16))
-        }
-    })
+    if idx == 0 && row_graphemes.first().is_some_and(|g| char_offset < g.char_offset) {
+        return None;
+    }
+    // The cursor/selection must land on the real character, not an inline-insert
+    // decoration sharing its offset — skip forward past any `Virtual` cells.
+    let mut idx = idx;
+    while row_graphemes.get(idx).is_some_and(|g| {
+        g.char_offset == char_offset && matches!(g.content, crate::types::CellContent::Virtual(_))
+    }) {
+        idx += 1;
+    }
+    row_graphemes.get(idx).map(|g| (g.col, g.width as u16))
 }
 
 /// Left edge (`g.col`) of the grapheme at `char_offset` in this row.
@@ -1433,5 +1443,156 @@ mod tests {
             scratch.styles[4].bg, None,
             "wrap segment col 1 must not show selection"
         );
+    }
+
+    // ── Inline-insert char_offset partition invariant (B2) ────────────────
+
+    /// Drive the real formatter with a mid-row insert, then style the result —
+    /// end-to-end coverage that `resolve_grapheme_col`'s partition_point lands
+    /// on the real grapheme, not the insert sharing its char_offset.
+    #[test]
+    fn insert_mid_row_head_resolves_to_real_grapheme_col() {
+        // "abcdef", width-2 insert before 'c' (byte offset 2). Layout by hand:
+        // a(col0) b(col1) [insert XY](col2..4) c(col4) d(col5) e(col6) f(col7).
+        // The insert and 'c' share char_offset 2 (the insert is pushed first,
+        // at the offset of the grapheme it precedes) — the exact tie
+        // `resolve_grapheme_col` must break in favour of the real grapheme.
+        // Cursor at char 2 ('c') must land at col 4, not the insert's col 2.
+        let rope = ropey::Rope::from_str("abcdef");
+        let inserts = vec![crate::providers::InlineInsert {
+            byte_offset: 2,
+            text: "XY",
+            scope: crate::types::Scope("test"),
+        }];
+        let mut fmt = crate::format::FormatScratch::new();
+        crate::format::format_buffer_line(
+            &rope,
+            0,
+            4,
+            &crate::pane::WhitespaceConfig::default(),
+            &crate::pane::WrapMode::None,
+            None,
+            &inserts,
+            &mut fmt,
+        );
+
+        let mut styles_map = HashMap::new();
+        styles_map.insert(
+            "ui.cursor",
+            ResolvedStyle {
+                fg: Some(ratatui::style::Color::Red),
+                ..Default::default()
+            },
+        );
+        let theme = Theme::new(styles_map, ResolvedStyle::default());
+        let selections = vec![Selection { anchor: 2, head: 2 }];
+        let mut scratch = StyleScratch::new();
+        apply_styles(
+            &fmt.display_rows,
+            &fmt.graphemes,
+            &selections,
+            EditorMode::Normal,
+            &theme,
+            &rope,
+            &mut scratch,
+        );
+
+        let c_idx = fmt
+            .graphemes
+            .iter()
+            .position(|g| g.char_offset == 2 && matches!(g.content, CellContent::Grapheme))
+            .expect("'c' grapheme present");
+        assert_eq!(fmt.graphemes[c_idx].col, 4, "'c' shifts right by the insert's width");
+        assert_eq!(
+            scratch.styles[c_idx].fg,
+            Some(ratatui::style::Color::Red),
+            "cursor head must land on 'c', not the insert sharing its char_offset"
+        );
+
+        let insert_idx = fmt
+            .graphemes
+            .iter()
+            .position(|g| matches!(g.content, CellContent::Virtual(_)))
+            .expect("insert grapheme present");
+        assert_ne!(
+            scratch.styles[insert_idx].fg,
+            Some(ratatui::style::Color::Red),
+            "the insert cell itself must not receive cursor styling"
+        );
+    }
+
+    #[test]
+    fn selection_spanning_row_start_insert_begins_at_first_real_grapheme() {
+        // Insert at byte 0 — the row starts with a virtual cell at col 0,
+        // then 'a' at col 1, 'b' at col 2, etc. A selection over chars 0..1
+        // ('a','b') must start its highlighted span at 'a's col (1), not the
+        // insert's col (0).
+        let rope = ropey::Rope::from_str("abcdef");
+        let inserts = vec![crate::providers::InlineInsert {
+            byte_offset: 0,
+            text: "Z",
+            scope: crate::types::Scope("test"),
+        }];
+        let mut fmt = crate::format::FormatScratch::new();
+        crate::format::format_buffer_line(
+            &rope,
+            0,
+            4,
+            &crate::pane::WhitespaceConfig::default(),
+            &crate::pane::WrapMode::None,
+            None,
+            &inserts,
+            &mut fmt,
+        );
+
+        let mut styles_map = HashMap::new();
+        styles_map.insert(
+            "ui.selection",
+            ResolvedStyle {
+                bg: Some(ratatui::style::Color::Blue),
+                ..Default::default()
+            },
+        );
+        let theme = Theme::new(styles_map, ResolvedStyle::default());
+        let selections = vec![Selection { anchor: 0, head: 1 }]; // 'a' and 'b'
+        let mut scratch = StyleScratch::new();
+        apply_styles(
+            &fmt.display_rows,
+            &fmt.graphemes,
+            &selections,
+            EditorMode::Normal,
+            &theme,
+            &rope,
+            &mut scratch,
+        );
+
+        let insert_idx = fmt
+            .graphemes
+            .iter()
+            .position(|g| matches!(g.content, CellContent::Virtual(_)))
+            .expect("insert grapheme present");
+        assert_eq!(fmt.graphemes[insert_idx].col, 0);
+        assert_eq!(
+            scratch.styles[insert_idx].bg, None,
+            "the row-start insert cell must not be painted as part of the selection"
+        );
+
+        let a_idx = fmt
+            .graphemes
+            .iter()
+            .position(|g| g.char_offset == 0 && matches!(g.content, CellContent::Grapheme))
+            .expect("'a' grapheme present");
+        let b_idx = fmt
+            .graphemes
+            .iter()
+            .position(|g| g.char_offset == 1 && matches!(g.content, CellContent::Grapheme))
+            .expect("'b' grapheme present");
+        assert_eq!(fmt.graphemes[a_idx].col, 1);
+        assert_eq!(
+            scratch.styles[a_idx].bg,
+            Some(ratatui::style::Color::Blue),
+            "'a' is the first real grapheme — selection span must start here"
+        );
+        assert_eq!(scratch.styles[b_idx].bg, Some(ratatui::style::Color::Blue));
     }
 }
