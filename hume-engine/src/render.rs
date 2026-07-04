@@ -215,6 +215,28 @@ pub(crate) fn compose_row(
 
                 let ratatui_style: ratatui::style::Style = (*style).into();
 
+                // A multi-column cell (double-width CJK grapheme, tab
+                // Indicator) whose left edge sits before `h_offset` still
+                // passes the skip check above once its right edge crosses
+                // it — but `visible_col` above already clamped to 0, so
+                // rendering the glyph there would draw its *full* width at
+                // the viewport's left edge instead of the fraction that's
+                // actually scrolled into view, shifting the row. Render
+                // spaces for the visible remainder instead (matches Helix).
+                // Impossible for width-1 cells: straddling needs
+                // `g.col < h_offset < g.col + g.width`, which has no integer
+                // solution when `g.width == 1`.
+                if g.col < h_offset {
+                    let visible_cells = g.width as u16 - (h_offset - g.col);
+                    for i in 0..visible_cells {
+                        let sx = screen_x + i;
+                        if sx < right_edge {
+                            canvas.set_cell(sx, y, " ", ratatui_style);
+                        }
+                    }
+                    continue;
+                }
+
                 match &g.content {
                     CellContent::Grapheme => {
                         if g.byte_range.start <= g.byte_range.end
@@ -872,6 +894,77 @@ mod tests {
                 .unwrap()
                 .symbol(),
             "d"
+        );
+    }
+
+    // ── Double-width straddle at the h-scroll edge (B9) ─────────────────
+
+    #[test]
+    fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
+        // "中X": '中' is width 2 at col 0 (+ a WidthContinuation at col 1);
+        // 'X' is width 1 at col 2. With h_offset=1, '中' straddles the edge
+        // (col 0 < 1 < col 0 + width 2) — its right half is the only
+        // visible cell. Before the fix, `visible_col` clamped to 0 and drew
+        // the *whole* glyph at screen col 0, shifting 'X' to look like it
+        // was still at col 1 instead of col 0.
+        let rope = Rope::from_str("中X");
+        let graphemes = vec![
+            Grapheme {
+                byte_range: 0..3,
+                char_offset: 0,
+                col: 0,
+                width: 2,
+                content: CellContent::Grapheme,
+                indent_depth: 0,
+                scope: None,
+            },
+            Grapheme {
+                byte_range: 0..3,
+                char_offset: 0,
+                col: 2,
+                width: 0,
+                content: CellContent::WidthContinuation,
+                indent_depth: 0,
+                scope: None,
+            },
+            Grapheme {
+                byte_range: 3..4,
+                char_offset: 1,
+                col: 2,
+                width: 1,
+                content: CellContent::Grapheme,
+                indent_depth: 0,
+                scope: None,
+            },
+        ];
+        let rows = vec![simple_row(0..3)];
+        let styles = vec![ResolvedStyle::default(); 3];
+        let visible = VisibleRange {
+            line_range: 0..1,
+            top_skip_rows: 0,
+            content_height: 5,
+            content_width: 20,
+            gutter_width: 0,
+            last_line_idx: 0,
+        };
+        let mut viewport = ViewportState::new(20, 5);
+        viewport.horizontal_offset = 1;
+        let buf = do_compose(
+            &rope, &rows, &graphemes, &styles, visible, viewport, 4, 20, 5,
+        );
+        assert_eq!(
+            buf.cell(ratatui::layout::Position { x: 0, y: 0 })
+                .unwrap()
+                .symbol(),
+            " ",
+            "straddling half of '中' renders as a space, not the glyph"
+        );
+        assert_eq!(
+            buf.cell(ratatui::layout::Position { x: 1, y: 0 })
+                .unwrap()
+                .symbol(),
+            "X",
+            "'X' lands at its correct scrolled column"
         );
     }
 
