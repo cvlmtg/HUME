@@ -1,3 +1,5 @@
+use unicode_segmentation::UnicodeSegmentation;
+
 use crate::format::unicode_display_width;
 use crate::layout::VisibleRange;
 use crate::pane::ViewportState;
@@ -119,6 +121,7 @@ pub(crate) fn compose_row(
     row_bg: Option<ratatui::style::Color>,
 ) {
     let y = compose_ctx.pane_rect.y + screen_row;
+    let right_edge = compose_ctx.pane_rect.x + compose_ctx.pane_rect.width;
 
     // ── Gutter ────────────────────────────────────────────────────────
     let mut gutter_x = compose_ctx.pane_rect.x;
@@ -138,21 +141,40 @@ pub(crate) fn compose_row(
         };
 
         // Right-align within usable width, then write a trailing separator space.
+        // `usable` bounds how much of `text` may be written: a builtin column
+        // (only `LineNumberColumn` today) always fits, but a future
+        // plugin-supplied column isn't guaranteed to — `set_string` only clips
+        // to the terminal buffer, not to this column's width or the pane
+        // rect, so an overlong cell would otherwise bleed into the content
+        // area or the neighbouring pane. Truncate on grapheme-cluster
+        // boundaries (never raw chars/bytes — the project's text-boundary
+        // invariant) by accumulating display width until `usable` is
+        // exhausted.
         let usable = col_width.saturating_sub(1); // 1 col reserved as right-padding separator
-        let text_len = unicode_display_width(text) as u16;
-        let pad = usable.saturating_sub(text_len);
+        let mut truncated_len = text.len();
+        let mut text_width = 0u16;
+        for (byte_idx, g) in text.grapheme_indices(true) {
+            let w = unicode_display_width(g) as u16;
+            if text_width + w > usable {
+                truncated_len = byte_idx;
+                break;
+            }
+            text_width += w;
+        }
+        let text = &text[..truncated_len];
+        let pad = usable.saturating_sub(text_width);
         for px in 0..pad {
             canvas.set_cell(gutter_x + px, y, " ", style);
         }
         canvas.set_string(gutter_x + pad, y, text, style);
-        canvas.set_cell(gutter_x + pad + text_len, y, " ", style);
+        let sep_x = (gutter_x + pad + text_width).min(right_edge.saturating_sub(1));
+        canvas.set_cell(sep_x, y, " ", style);
 
         gutter_x += col_width;
     }
 
     // ── Content ───────────────────────────────────────────────────────
     let content_x_origin = compose_ctx.pane_rect.x + compose_ctx.visible.gutter_width;
-    let right_edge = compose_ctx.pane_rect.x + compose_ctx.pane_rect.width;
     let h_offset = compose_ctx.viewport.horizontal_offset;
 
     match row.kind {
@@ -639,7 +661,7 @@ mod tests {
     fn filler_rows_have_tilde() {
         let rope = Rope::from_str("x\n");
         let graphemes = vec![simple_grapheme(0, 0, 1)];
-        let rows = vec![simple_row(0..1)];
+        let rows = [simple_row(0..1)];
         let styles = vec![ResolvedStyle::default()];
         let visible = VisibleRange {
             line_range: 0..1,
@@ -973,7 +995,7 @@ mod tests {
             indent_depth: 0,
             scope: None,
         }];
-        let rows = vec![simple_row(0..1)];
+        let rows = [simple_row(0..1)];
         let styles = vec![ResolvedStyle::default()];
         let visible = VisibleRange {
             line_range: 0..1,
@@ -1011,6 +1033,165 @@ mod tests {
                 .symbol(),
             " "
         );
+    }
+
+    // ── Gutter text overflow (B8) ────────────────────────────────────────
+
+    struct OverlongGutter;
+    impl GutterColumn for OverlongGutter {
+        fn width(&self, _: usize) -> u8 {
+            4
+        }
+        fn render_row(&self, _: RowKind, _: EditorMode, _: usize) -> crate::providers::GutterCell {
+            crate::providers::GutterCell {
+                content: crate::providers::GutterCellContent::Static("TOOLONG"),
+                scope: crate::types::Scope("ui.linenr"),
+            }
+        }
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+    }
+
+    #[test]
+    fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
+        // Gutter column width() = 4 → usable = 3. Cell text "TOOLONG" (7
+        // cols) must truncate to "TOO", not spill "LONG" into the content
+        // area (which starts right after the gutter, at x=4).
+        let graphemes = vec![simple_grapheme(0, 0, 1)];
+        let rows = [simple_row(0..1)];
+        let styles = vec![ResolvedStyle::default()];
+        let gutter_columns: Vec<Box<dyn GutterColumn>> = vec![Box::new(OverlongGutter)];
+        let visible = VisibleRange {
+            line_range: 0..1,
+            top_skip_rows: 0,
+            content_height: 1,
+            content_width: 6,
+            gutter_width: 4,
+            last_line_idx: 0,
+        };
+        let viewport = ViewportState::new(10, 1);
+        let pane_rect = ratatui::layout::Rect {
+            x: 0,
+            y: 0,
+            width: 10,
+            height: 1,
+        };
+        let mut buf = make_test_buf(10, 1);
+        let theme = Theme::default();
+        let col_widths = vec![4u16];
+        let ctx = ComposeCtx {
+            gutter_columns: &gutter_columns,
+            visible: &visible,
+            viewport: &viewport,
+            mode: EditorMode::Normal,
+            primary_head_line: 0,
+            tab_width: 4,
+            tilde_style: ratatui::style::Style::default(),
+            indent_guide_style: ratatui::style::Style::default(),
+            pane_rect,
+            theme: &theme,
+            pane_bg: None,
+        };
+        let mut canvas = PaneCanvas::new(&mut buf, None);
+        compose_row(
+            &rows[0],
+            &graphemes,
+            &styles,
+            "X",
+            0,
+            &col_widths,
+            &ctx,
+            &mut canvas,
+            None,
+        );
+
+        let sym = |x: u16| {
+            buf.cell(ratatui::layout::Position { x, y: 0 })
+                .unwrap()
+                .symbol()
+                .to_string()
+        };
+        assert_eq!(sym(0), "T");
+        assert_eq!(sym(1), "O");
+        assert_eq!(sym(2), "O");
+        assert_eq!(sym(3), " ", "separator cell, not 'L'");
+        // Content area starts at x=4 (gutter_width). Must show the real
+        // grapheme 'X', never a straggler from "LONG".
+        assert_eq!(sym(4), "X");
+        assert_ne!(sym(4), "L");
+        assert_ne!(sym(5), "O");
+        assert_ne!(sym(6), "N");
+    }
+
+    #[test]
+    fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
+        // Same overlong-gutter setup as above, but with a narrow pane_rect
+        // (width 5 = gutter(4) + 1 content col) simulating a second pane
+        // starting immediately at x=5 in the same shared buffer. Pre-seed
+        // the whole buffer with a marker glyph so any write past this pane's
+        // own right edge is directly observable.
+        let graphemes = vec![simple_grapheme(0, 0, 1)];
+        let rows = [simple_row(0..1)];
+        let styles = vec![ResolvedStyle::default()];
+        let gutter_columns: Vec<Box<dyn GutterColumn>> = vec![Box::new(OverlongGutter)];
+        let visible = VisibleRange {
+            line_range: 0..1,
+            top_skip_rows: 0,
+            content_height: 1,
+            content_width: 1,
+            gutter_width: 4,
+            last_line_idx: 0,
+        };
+        let viewport = ViewportState::new(5, 1);
+        let pane_rect = ratatui::layout::Rect {
+            x: 0,
+            y: 0,
+            width: 5,
+            height: 1,
+        };
+        let mut buf = make_test_buf(11, 1);
+        for x in 0..11u16 {
+            set_cell(&mut buf, x, 0, "Z", ratatui::style::Style::default());
+        }
+        let theme = Theme::default();
+        let col_widths = vec![4u16];
+        let ctx = ComposeCtx {
+            gutter_columns: &gutter_columns,
+            visible: &visible,
+            viewport: &viewport,
+            mode: EditorMode::Normal,
+            primary_head_line: 0,
+            tab_width: 4,
+            tilde_style: ratatui::style::Style::default(),
+            indent_guide_style: ratatui::style::Style::default(),
+            pane_rect,
+            theme: &theme,
+            pane_bg: None,
+        };
+        let mut canvas = PaneCanvas::new(&mut buf, None);
+        compose_row(
+            &rows[0],
+            &graphemes,
+            &styles,
+            "X",
+            0,
+            &col_widths,
+            &ctx,
+            &mut canvas,
+            None,
+        );
+
+        // x=5..10 belongs to the "next pane" — must remain untouched ('Z').
+        for x in 5..11u16 {
+            assert_eq!(
+                buf.cell(ratatui::layout::Position { x, y: 0 })
+                    .unwrap()
+                    .symbol(),
+                "Z",
+                "neighbouring pane's column {x} must be untouched"
+            );
+        }
     }
 
     #[test]
@@ -1082,7 +1263,7 @@ mod tests {
         use ratatui::style::Color;
         let rope = Rope::from_str("x\n");
         let graphemes = vec![simple_grapheme(0, 0, 1)];
-        let rows = vec![simple_row(0..1)];
+        let rows = [simple_row(0..1)];
         let styles = vec![ResolvedStyle {
             fg: Some(Color::Rgb(255, 255, 255)),
             bg: Some(Color::Rgb(0, 0, 0)),
@@ -1145,7 +1326,7 @@ mod tests {
         use ratatui::style::Color;
         let rope = Rope::from_str("x\n");
         let graphemes = vec![simple_grapheme(0, 0, 1)];
-        let rows = vec![simple_row(0..1)];
+        let rows = [simple_row(0..1)];
         let styles = vec![ResolvedStyle {
             fg: Some(Color::Rgb(255, 255, 255)),
             ..Default::default()
