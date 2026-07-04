@@ -66,7 +66,14 @@ impl Transaction {
     pub fn apply(&self, buf: &Text) -> Result<(Text, SelectionSet), TransactionError> {
         let new_buf = self.changes.apply(buf)?;
         self.selection.validate(new_buf.len_chars())?;
-        Ok((new_buf, self.selection.clone()))
+        // Canonicalize before handing the set to the editor: a plugin-built
+        // Transaction can carry unsorted or overlapping selections, which
+        // downstream code only debug-asserts against. Identity on sets that
+        // are already canonical (every internally-built one), so undo/redo
+        // round-trips are unaffected.
+        let mut sels = self.selection.clone();
+        sels.merge_overlapping_in_place();
+        Ok((new_buf, sels))
     }
 
     /// The selection state recorded in this transaction.
@@ -137,6 +144,28 @@ mod tests {
             ),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn transaction_apply_canonicalizes_selections() {
+        // A plugin-built Transaction may carry overlapping/unsorted selections
+        // (constructed via from_vec_unchecked). apply must hand back a
+        // canonical set, not propagate the invariant violation.
+        let buf = Text::from("hello world");
+        let mut b = ChangeSetBuilder::new(12);
+        b.retain_rest();
+        let cs = b.finish();
+
+        let sels = SelectionSet::from_vec_unchecked(
+            vec![Selection::new(6, 9), Selection::new(0, 7)], // unsorted + overlapping
+            0,
+        );
+        let txn = Transaction::new(cs, sels);
+
+        let (_, new_sels) = txn.apply(&buf).unwrap();
+        assert_eq!(new_sels.len(), 1);
+        assert_eq!(new_sels.primary().start(), 0);
+        assert_eq!(new_sels.primary().end(), 9);
     }
 
     #[test]

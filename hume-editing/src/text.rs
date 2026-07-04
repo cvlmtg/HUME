@@ -135,6 +135,11 @@ impl Text {
     ///
     /// Edit operations that must not consume the trailing `\n` cap their
     /// `end_inclusive` at this value.
+    ///
+    /// Degenerate case: on an empty buffer (`"\n"`, one char) this returns 0,
+    /// which is the structural `\n` itself — there is no content character to
+    /// point at. Callers deleting up to this index must handle the empty
+    /// buffer first, or the delete would consume the structural newline.
     pub fn last_content_char(&self) -> usize {
         self.len_chars().saturating_sub(2)
     }

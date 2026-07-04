@@ -676,7 +676,7 @@ pub(super) fn set_primary_selection(
     let bid = focused_buffer_id(state, view);
     let idx = state.panes.state[pid][bid].selections.primary_index();
     let sels = std::mem::take(&mut state.panes.state[pid][bid].selections);
-    state.panes.state[pid][bid].selections = sels.replace(idx, new_sel).merge_overlapping();
+    state.panes.state[pid][bid].selections = sels.replace(idx, new_sel);
 }
 
 /// Enter Insert mode as a repeatable insert action.

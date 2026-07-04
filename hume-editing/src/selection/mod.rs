@@ -125,9 +125,11 @@ impl SelectionSet {
     }
 
     /// Replace the selection at `idx` with `new_sel` and return the updated
-    /// set. Panics if `idx >= len()`.
+    /// set, canonicalized (sorted, overlapping/adjacent selections merged) so
+    /// the `SelectionSet` invariants always hold. Panics if `idx >= len()`.
     pub fn replace(mut self, idx: usize, new_sel: Selection) -> Self {
         self.selections[idx] = new_sel;
+        self.merge_overlapping_in_place();
         self
     }
 
@@ -136,9 +138,9 @@ impl SelectionSet {
     /// After this call:
     /// - Selections are sorted ascending by `start()`.
     /// - No two selections overlap or touch (adjacent = same offset).
-    /// - Cursor positions (head) are preserved as best as possible: the merged
-    ///   selection keeps the head of whichever original selection had the
-    ///   greater `end()` (the "rightmost extent wins").
+    /// - A merged selection spans the union of the inputs, with head and
+    ///   anchor at the union's boundaries. Its direction follows whichever
+    ///   input had the greater `end()` (the "rightmost extent wins").
     ///
     /// The primary index is updated to point at the merged selection that
     /// contained the original primary.
@@ -216,10 +218,10 @@ impl SelectionSet {
     /// selection was the last. If `len() == 1`, returns `self` unchanged — you cannot
     /// remove the only selection. Panics if `idx >= len()`.
     pub fn remove(mut self, idx: usize) -> Self {
+        assert!(idx < self.selections.len(), "remove index out of bounds");
         if self.selections.len() <= 1 {
             return self; // can't remove the only selection — no-op
         }
-        assert!(idx < self.selections.len(), "remove index out of bounds");
         self.selections.remove(idx);
         let new_len = self.selections.len();
         self.primary = if idx < self.primary {
@@ -337,7 +339,10 @@ impl SelectionSet {
             if sel.start() <= last.end() {
                 if sel.end() > last.end() {
                     if sel.head <= sel.anchor {
-                        last.head = last.start().min(sel.head);
+                        // sel is backward: the merged head goes to the union's
+                        // start, which is last.start() (sorted by start, so
+                        // last.start() <= sel.start() == sel.head).
+                        last.head = last.start();
                         last.anchor = sel.end();
                     } else {
                         last.anchor = last.start();
@@ -557,6 +562,28 @@ mod tests {
         let set = SelectionSet::from_vec(vec![Selection::collapsed(0), Selection::collapsed(5)], 0);
         let updated = set.replace(1, Selection::collapsed(10));
         assert_eq!(updated.selections[1].head, 10);
+    }
+
+    #[test]
+    fn replace_canonicalizes_overlap() {
+        // Replacing a selection with one that overlaps its neighbour must
+        // merge them — replace may never leave the set violating invariants.
+        let set = SelectionSet::from_vec(vec![Selection::new(0, 2), Selection::new(8, 9)], 0);
+        let updated = set.replace(1, Selection::new(1, 5));
+        assert_eq!(updated.len(), 1);
+        assert_eq!(updated.primary().start(), 0);
+        assert_eq!(updated.primary().end(), 5);
+    }
+
+    #[test]
+    fn replace_canonicalizes_ordering() {
+        // Replacing the first selection with one past the second must re-sort.
+        let set = SelectionSet::from_vec(vec![Selection::collapsed(0), Selection::collapsed(5)], 1);
+        let updated = set.replace(0, Selection::collapsed(9));
+        assert_eq!(updated.selections[0].head, 5);
+        assert_eq!(updated.selections[1].head, 9);
+        // Primary was the selection at 5 — still is after the re-sort.
+        assert_eq!(updated.primary().head, 5);
     }
 
     // ── map (merge semantics) ─────────────────────────────────────────────────

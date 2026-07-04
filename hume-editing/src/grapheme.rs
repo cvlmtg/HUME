@@ -236,7 +236,8 @@ pub fn display_col_in_line(buf: &Text, line_idx: usize, char_pos: usize, tab_wid
 /// tabs jump to multiples of `tab_width` and spaces step by one, so every
 /// tab stop along the way is hit. If a grapheme would overshoot `target_col`
 /// (e.g. a tab when not aligned), the walk stops at the current position —
-/// the closest position not exceeding `target_col`.
+/// the closest position not exceeding `target_col`. The walk never leaves the
+/// line: a `target_col` beyond the line's width stops on the line's `\n`.
 pub fn char_pos_at_display_col(
     buf: &Text,
     line_idx: usize,
@@ -256,6 +257,9 @@ pub fn char_pos_at_display_col(
             break; // end of buffer
         }
         let ch = buf.char_at(pos);
+        if ch == Some('\n') {
+            break; // end of line — never walk onto the next line
+        }
         let w = if ch == Some('\t') { tw - (col % tw) } else { 1 };
         if col + w > target_col {
             break; // this grapheme would overshoot — stop here
@@ -584,5 +588,15 @@ mod tests {
         // overshooting 2. Walk stops at line_start (col 0).
         let buf = Text::from("\t\n");
         assert_eq!(char_pos_at_display_col(&buf, 0, 2, 4), 0);
+    }
+
+    #[test]
+    fn char_pos_target_beyond_line_width_stops_at_newline() {
+        // "ab\ncd\n" — line 0 is 2 columns wide. A target past that must stop
+        // on line 0's '\n' (char 2), never walk onto line 1.
+        let buf = Text::from("ab\ncd\n");
+        assert_eq!(char_pos_at_display_col(&buf, 0, 4, 4), 2);
+        // Same guard on the last content line: stops at its structural '\n'.
+        assert_eq!(char_pos_at_display_col(&buf, 1, 99, 4), 5);
     }
 }
