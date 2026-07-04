@@ -2,7 +2,7 @@ use std::any::Any;
 use std::str::FromStr;
 
 use crate::providers::{GutterCell, GutterCellContent, GutterColumn};
-use crate::types::{EditorMode, RowKind, Scope};
+use crate::types::{RowKind, Scope};
 
 // ---------------------------------------------------------------------------
 // Line number style
@@ -87,7 +87,8 @@ impl GutterColumn for LineNumberColumn {
         Self::digit_count(last_line_idx + 1).saturating_add(1)
     }
 
-    fn render_row(&self, kind: RowKind, _: EditorMode, primary_head_line: usize) -> GutterCell {
+    fn render_row(&self, kind: RowKind, ctx: &crate::providers::GutterRowCtx) -> GutterCell {
+        let primary_head_line = ctx.primary_head_line;
         match kind {
             RowKind::Filler | RowKind::Virtual { .. } | RowKind::Wrap { .. } => {
                 GutterCell::blank(Scope("ui.linenr"))
@@ -133,7 +134,19 @@ impl GutterColumn for LineNumberColumn {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::GutterRowCtx;
     use crate::types::{EditorMode, RowKind};
+
+    /// `LineNumberColumn` never reads `rope`/`tree`, so an empty rope is fine
+    /// for every test here — only `primary_head_line` varies.
+    fn ctx(rope: &ropey::Rope, primary_head_line: usize) -> GutterRowCtx<'_> {
+        GutterRowCtx {
+            mode: EditorMode::Normal,
+            primary_head_line,
+            rope,
+            tree: None,
+        }
+    }
 
     #[test]
     fn width_grows_with_line_count() {
@@ -152,15 +165,17 @@ mod tests {
     #[test]
     fn absolute_line_numbers() {
         let col = LineNumberColumn::with_style(LineNumberStyle::Absolute);
-        let cell = col.render_row(RowKind::LineStart { line_idx: 4 }, EditorMode::Normal, 0);
+        let rope = ropey::Rope::new();
+        let cell = col.render_row(RowKind::LineStart { line_idx: 4 }, &ctx(&rope, 0));
         assert_eq!(cell.as_str(), "5"); // 1-based
     }
 
     #[test]
     fn hybrid_head_line_shows_absolute() {
         let col = LineNumberColumn::with_style(LineNumberStyle::Hybrid);
+        let rope = ropey::Rope::new();
         // Cursor is on line 2 (0-based).
-        let cell = col.render_row(RowKind::LineStart { line_idx: 2 }, EditorMode::Normal, 2);
+        let cell = col.render_row(RowKind::LineStart { line_idx: 2 }, &ctx(&rope, 2));
         assert_eq!(cell.as_str(), "3"); // absolute
         assert_eq!(cell.scope, Scope("ui.linenr.selected"));
     }
@@ -168,20 +183,21 @@ mod tests {
     #[test]
     fn hybrid_non_head_line_shows_relative() {
         let col = LineNumberColumn::with_style(LineNumberStyle::Hybrid);
-        let cell = col.render_row(RowKind::LineStart { line_idx: 5 }, EditorMode::Normal, 2);
+        let rope = ropey::Rope::new();
+        let cell = col.render_row(RowKind::LineStart { line_idx: 5 }, &ctx(&rope, 2));
         assert_eq!(cell.as_str(), "3"); // |5-2| = 3
     }
 
     #[test]
     fn wrap_rows_are_blank() {
         let col = LineNumberColumn::new();
+        let rope = ropey::Rope::new();
         let cell = col.render_row(
             RowKind::Wrap {
                 line_idx: 3,
                 wrap_row: 1,
             },
-            EditorMode::Normal,
-            0,
+            &ctx(&rope, 0),
         );
         assert_eq!(cell.as_str(), " "); // blank
     }
@@ -189,13 +205,13 @@ mod tests {
     #[test]
     fn virtual_rows_are_blank() {
         let col = LineNumberColumn::new();
+        let rope = ropey::Rope::new();
         let cell = col.render_row(
             RowKind::Virtual {
                 provider_id: 0,
                 anchor_line: 0,
             },
-            EditorMode::Normal,
-            0,
+            &ctx(&rope, 0),
         );
         assert_eq!(cell.as_str(), " ");
     }
@@ -203,17 +219,19 @@ mod tests {
     #[test]
     fn relative_line_numbers() {
         let col = LineNumberColumn::with_style(LineNumberStyle::Relative);
+        let rope = ropey::Rope::new();
         // Cursor at line 5 (0-based). Line 3 is distance 2, line 8 is distance 3.
-        let cell = col.render_row(RowKind::LineStart { line_idx: 3 }, EditorMode::Normal, 5);
+        let cell = col.render_row(RowKind::LineStart { line_idx: 3 }, &ctx(&rope, 5));
         assert_eq!(cell.as_str(), "2");
-        let cell = col.render_row(RowKind::LineStart { line_idx: 8 }, EditorMode::Normal, 5);
+        let cell = col.render_row(RowKind::LineStart { line_idx: 8 }, &ctx(&rope, 5));
         assert_eq!(cell.as_str(), "3");
     }
 
     #[test]
     fn relative_head_line_shows_zero() {
         let col = LineNumberColumn::with_style(LineNumberStyle::Relative);
-        let cell = col.render_row(RowKind::LineStart { line_idx: 5 }, EditorMode::Normal, 5);
+        let rope = ropey::Rope::new();
+        let cell = col.render_row(RowKind::LineStart { line_idx: 5 }, &ctx(&rope, 5));
         assert_eq!(cell.as_str(), "0");
     }
 
@@ -221,7 +239,8 @@ mod tests {
     fn hybrid_line_below_head_shows_relative() {
         // Cursor at line 5, render line 2 (below in the file, higher index than cursor).
         let col = LineNumberColumn::with_style(LineNumberStyle::Hybrid);
-        let cell = col.render_row(RowKind::LineStart { line_idx: 2 }, EditorMode::Normal, 5);
+        let rope = ropey::Rope::new();
+        let cell = col.render_row(RowKind::LineStart { line_idx: 2 }, &ctx(&rope, 5));
         assert_eq!(cell.as_str(), "3"); // |2-5| = 3
     }
 
@@ -294,13 +313,13 @@ mod tests {
     #[test]
     fn large_line_number_renders_correctly() {
         let col = LineNumberColumn::with_style(LineNumberStyle::Absolute);
+        let rope = ropey::Rope::new();
         // line_idx = 9_999_998 → display = 9_999_999 (1-based)
         let cell = col.render_row(
             RowKind::LineStart {
                 line_idx: 9_999_998,
             },
-            EditorMode::Normal,
-            0,
+            &ctx(&rope, 0),
         );
         assert_eq!(cell.as_str(), "9999999");
     }

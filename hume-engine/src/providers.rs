@@ -73,6 +73,21 @@ pub trait HighlightSource {
 // Gutter column
 // ---------------------------------------------------------------------------
 
+/// Context passed to `GutterColumn::render_row` for buffer/syntax access.
+///
+/// A dedicated struct rather than reusing `SourceContext`: that one carries
+/// `line_start_byte`, a per-line-lookup most gutters don't need, and gutter
+/// rendering (~100 calls/frame) should stay cheap to build. Providers that
+/// need e.g. `line_to_byte` call it themselves — this struct does not
+/// precompute per-line data.
+pub struct GutterRowCtx<'a> {
+    pub mode: EditorMode,
+    pub primary_head_line: usize,
+    pub rope: &'a ropey::Rope,
+    /// tree-sitter parse tree, if one has been built.
+    pub tree: Option<&'a tree_sitter::Tree>,
+}
+
 /// A single column in the gutter (line numbers, git signs, diagnostics, etc.).
 pub trait GutterColumn {
     /// Display width of this column in terminal cells.
@@ -81,7 +96,7 @@ pub trait GutterColumn {
     fn width(&self, last_line_idx: usize) -> u8;
 
     /// Produce content for one display row.
-    fn render_row(&self, kind: RowKind, mode: EditorMode, primary_head_line: usize) -> GutterCell;
+    fn render_row(&self, kind: RowKind, ctx: &GutterRowCtx) -> GutterCell;
 
     /// Downcast support for per-frame config sync (e.g. updating `LineNumberStyle`).
     ///
@@ -354,12 +369,7 @@ mod tests {
         fn width(&self, _: usize) -> u8 {
             0
         }
-        fn render_row(
-            &self,
-            _: crate::types::RowKind,
-            _: crate::types::EditorMode,
-            _: usize,
-        ) -> GutterCell {
+        fn render_row(&self, _: crate::types::RowKind, _: &GutterRowCtx) -> GutterCell {
             GutterCell::blank(Scope("x"))
         }
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {

@@ -3,7 +3,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use crate::format::unicode_display_width;
 use crate::layout::VisibleRange;
 use crate::pane::ViewportState;
-use crate::providers::GutterColumn;
+use crate::providers::{GutterColumn, GutterRowCtx};
 use crate::theme::Theme;
 use crate::types::{CellContent, DisplayRow, EditorMode, Grapheme, ResolvedStyle, RowKind};
 
@@ -29,6 +29,12 @@ pub(crate) struct ComposeCtx<'a> {
     /// Background colour from `ui.background`, threaded to every row so trailing
     /// cells and gutter cells use the theme bg rather than the terminal default.
     pub pane_bg: Option<ratatui::style::Color>,
+    /// Buffer rope, passed to `GutterColumn::render_row` via `GutterRowCtx`
+    /// so gutter providers (git-signs, diagnostics) can query buffer content
+    /// without pre-owning it.
+    pub rope: &'a ropey::Rope,
+    /// tree-sitter parse tree, if one has been built.
+    pub tree: Option<&'a tree_sitter::Tree>,
 }
 
 /// The pane's drawing surface — every cell write for a pane goes through here.
@@ -116,9 +122,14 @@ fn compose_gutter(
 ) {
     let right_edge = compose_ctx.pane_rect.x + compose_ctx.pane_rect.width;
     let mut gutter_x = compose_ctx.pane_rect.x;
+    let gutter_ctx = GutterRowCtx {
+        mode: compose_ctx.mode,
+        primary_head_line: compose_ctx.primary_head_line,
+        rope: compose_ctx.rope,
+        tree: compose_ctx.tree,
+    };
     for (col_provider, &col_width) in compose_ctx.gutter_columns.iter().zip(col_widths.iter()) {
-        let cell =
-            col_provider.render_row(row_kind, compose_ctx.mode, compose_ctx.primary_head_line);
+        let cell = col_provider.render_row(row_kind, &gutter_ctx);
         let text = cell.as_str();
         // GutterCell.scope is a &'static str, not an interned ScopeId — use
         // the slow path. Gutter rendering is ~100 calls/frame, not per-grapheme.
@@ -572,6 +583,7 @@ mod tests {
         let mut buf = make_test_buf(20, 5);
         let theme = Theme::default();
         let col_widths: Vec<u16> = Vec::new();
+        let rope = ropey::Rope::new();
         let ctx = ComposeCtx {
             gutter_columns: &[],
             visible: &visible,
@@ -584,6 +596,8 @@ mod tests {
             pane_rect,
             theme: &theme,
             pane_bg: None,
+            rope: &rope,
+            tree: None,
         };
         let mut canvas = PaneCanvas::new(&mut buf, None);
         compose_row(
@@ -634,6 +648,7 @@ mod tests {
         };
         let mut buf = make_test_buf(20, 5);
         let theme = Theme::default();
+        let rope = ropey::Rope::new();
         let ctx = ComposeCtx {
             gutter_columns: &[],
             visible: &visible,
@@ -646,6 +661,8 @@ mod tests {
             pane_rect,
             theme: &theme,
             pane_bg: None,
+            rope: &rope,
+            tree: None,
         };
         let mut canvas = PaneCanvas::new(&mut buf, None);
         render_tilde_fillers(1, &[], &ctx, &mut canvas);
@@ -687,6 +704,7 @@ mod tests {
         let mut buf = make_test_buf(w, h);
         let theme = Theme::default();
         let col_widths: Vec<u16> = Vec::new();
+        let rope = ropey::Rope::new();
         let ctx = ComposeCtx {
             gutter_columns: &[],
             visible: &visible,
@@ -699,6 +717,8 @@ mod tests {
             pane_rect,
             theme: &theme,
             pane_bg: None,
+            rope: &rope,
+            tree: None,
         };
         let mut canvas = PaneCanvas::new(&mut buf, None);
         compose_row(
@@ -1049,7 +1069,7 @@ mod tests {
         fn width(&self, _: usize) -> u8 {
             4
         }
-        fn render_row(&self, _: RowKind, _: EditorMode, _: usize) -> crate::providers::GutterCell {
+        fn render_row(&self, _: RowKind, _: &crate::providers::GutterRowCtx) -> crate::providers::GutterCell {
             crate::providers::GutterCell {
                 content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed(
                     "TOOLONG",
@@ -1089,6 +1109,7 @@ mod tests {
         let mut buf = make_test_buf(10, 1);
         let theme = Theme::default();
         let col_widths = vec![4u16];
+        let rope = ropey::Rope::new();
         let ctx = ComposeCtx {
             gutter_columns: &gutter_columns,
             visible: &visible,
@@ -1101,6 +1122,8 @@ mod tests {
             pane_rect,
             theme: &theme,
             pane_bg: None,
+            rope: &rope,
+            tree: None,
         };
         let mut canvas = PaneCanvas::new(&mut buf, None);
         compose_row(
@@ -1166,6 +1189,7 @@ mod tests {
         }
         let theme = Theme::default();
         let col_widths = vec![4u16];
+        let rope = ropey::Rope::new();
         let ctx = ComposeCtx {
             gutter_columns: &gutter_columns,
             visible: &visible,
@@ -1178,6 +1202,8 @@ mod tests {
             pane_rect,
             theme: &theme,
             pane_bg: None,
+            rope: &rope,
+            tree: None,
         };
         let mut canvas = PaneCanvas::new(&mut buf, None);
         compose_row(
@@ -1205,14 +1231,14 @@ mod tests {
         }
     }
 
-    /// Gutter column returning a runtime-computed `Cow::Owned` icon (the
-    /// shape a Steel-configured gutter would take, per G1's `Cow` change).
+    /// Gutter column returning a runtime-computed `Cow::Owned` icon — the
+    /// shape a Steel-configured gutter icon would take.
     struct OwnedIconGutter;
     impl GutterColumn for OwnedIconGutter {
         fn width(&self, _: usize) -> u8 {
             3
         }
-        fn render_row(&self, _: RowKind, _: EditorMode, _: usize) -> crate::providers::GutterCell {
+        fn render_row(&self, _: RowKind, _: &crate::providers::GutterRowCtx) -> crate::providers::GutterCell {
             crate::providers::GutterCell {
                 // Built at call time (e.g. `format!`) rather than a literal —
                 // exercises the `Cow::Owned` path, not `Cow::Borrowed`.
@@ -1227,15 +1253,15 @@ mod tests {
         }
     }
 
-    /// Same gutter column, but the `'static` literal borrowed directly — the
-    /// pre-G1 shape. Renders through the identical `compose_gutter` path;
-    /// `Cow::Owned` must produce the same output.
+    /// Same gutter column, but the `'static` literal is borrowed directly
+    /// (`Cow::Borrowed`). Renders through the identical `compose_gutter`
+    /// path; `Cow::Owned` must produce the same output.
     struct StaticIconGutter;
     impl GutterColumn for StaticIconGutter {
         fn width(&self, _: usize) -> u8 {
             3
         }
-        fn render_row(&self, _: RowKind, _: EditorMode, _: usize) -> crate::providers::GutterCell {
+        fn render_row(&self, _: RowKind, _: &crate::providers::GutterRowCtx) -> crate::providers::GutterCell {
             crate::providers::GutterCell {
                 content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed(
                     "AB",
@@ -1273,6 +1299,7 @@ mod tests {
             let mut buf = make_test_buf(7, 1);
             let theme = Theme::default();
             let col_widths = vec![3u16];
+            let rope = ropey::Rope::new();
             let ctx = ComposeCtx {
                 gutter_columns: &gutter_columns,
                 visible: &visible,
@@ -1285,6 +1312,8 @@ mod tests {
                 pane_rect,
                 theme: &theme,
                 pane_bg: None,
+                rope: &rope,
+                tree: None,
             };
             let mut canvas = PaneCanvas::new(&mut buf, None);
             compose_row(
@@ -1317,6 +1346,107 @@ mod tests {
                 "column {x}: Cow::Owned must render identically to Cow::Borrowed"
             );
         }
+    }
+
+    // ── GutterColumn gets buffer context (G2) ───────────────────────────
+
+    /// Gutter column that reads the first character of the row's own buffer
+    /// line straight out of `ctx.rope` — exercises the `GutterRowCtx`
+    /// plumbing end to end through `compose_gutter`.
+    struct FirstCharGutter;
+    impl GutterColumn for FirstCharGutter {
+        fn width(&self, _: usize) -> u8 {
+            2
+        }
+        fn render_row(
+            &self,
+            kind: RowKind,
+            ctx: &crate::providers::GutterRowCtx,
+        ) -> crate::providers::GutterCell {
+            match kind {
+                RowKind::LineStart { line_idx } => {
+                    let first_char = ctx.rope.line(line_idx).chars().next().unwrap_or(' ');
+                    crate::providers::GutterCell {
+                        content: crate::providers::GutterCellContent::Text(
+                            std::borrow::Cow::Owned(first_char.to_string()),
+                        ),
+                        scope: crate::types::Scope("ui.linenr"),
+                    }
+                }
+                _ => crate::providers::GutterCell::blank(crate::types::Scope("ui.linenr")),
+            }
+        }
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+    }
+
+    #[test]
+    fn gutter_column_reads_rope_via_ctx() {
+        // "apple\nbanana\n": rendering the row for line 1 must show 'b' —
+        // proving the column reached the buffer through `GutterRowCtx.rope`,
+        // not some pre-owned/stale copy.
+        let rope = ropey::Rope::from_str("apple\nbanana\n");
+        let graphemes = vec![simple_grapheme(0, 0, 1)];
+        let rows = [DisplayRow {
+            kind: RowKind::LineStart { line_idx: 1 },
+            graphemes: 0..1,
+        }];
+        let styles = vec![ResolvedStyle::default()];
+        let gutter_columns: Vec<Box<dyn GutterColumn>> = vec![Box::new(FirstCharGutter)];
+        let visible = VisibleRange {
+            line_range: 0..2,
+            top_skip_rows: 0,
+            content_height: 2,
+            content_width: 10,
+            gutter_width: 2,
+            last_line_idx: 1,
+        };
+        let viewport = ViewportState::new(12, 2);
+        let pane_rect = ratatui::layout::Rect {
+            x: 0,
+            y: 0,
+            width: 12,
+            height: 2,
+        };
+        let mut buf = make_test_buf(12, 2);
+        let theme = Theme::default();
+        let col_widths = vec![2u16];
+        let ctx = ComposeCtx {
+            gutter_columns: &gutter_columns,
+            visible: &visible,
+            viewport: &viewport,
+            mode: EditorMode::Normal,
+            primary_head_line: 0,
+            tab_width: 4,
+            tilde_style: ratatui::style::Style::default(),
+            indent_guide_style: ratatui::style::Style::default(),
+            pane_rect,
+            theme: &theme,
+            pane_bg: None,
+            rope: &rope,
+            tree: None,
+        };
+        let mut canvas = PaneCanvas::new(&mut buf, None);
+        compose_row(
+            &rows[0],
+            &graphemes,
+            &styles,
+            "X",
+            "",
+            0,
+            &col_widths,
+            &ctx,
+            &mut canvas,
+            None,
+        );
+        assert_eq!(
+            buf.cell(ratatui::layout::Position { x: 0, y: 0 })
+                .unwrap()
+                .symbol(),
+            "b",
+            "gutter column resolved 'banana' (line 1) via ctx.rope"
+        );
     }
 
     #[test]
@@ -1411,6 +1541,7 @@ mod tests {
         let mut buf = make_test_buf(2, 1);
         let theme = Theme::default();
         let col_widths: Vec<u16> = Vec::new();
+        let rope = ropey::Rope::new();
         let ctx = ComposeCtx {
             gutter_columns: &[],
             visible: &visible,
@@ -1423,6 +1554,8 @@ mod tests {
             pane_rect,
             theme: &theme,
             pane_bg: Some(Color::Rgb(0, 0, 0)),
+            rope: &rope,
+            tree: None,
         };
         let mut canvas = PaneCanvas::new(&mut buf, Some((Color::Rgb(0, 0, 0), 0.5)));
         compose_row(
@@ -1473,6 +1606,7 @@ mod tests {
         let mut buf = make_test_buf(2, 1);
         let theme = Theme::default();
         let col_widths: Vec<u16> = Vec::new();
+        let rope = ropey::Rope::new();
         let ctx = ComposeCtx {
             gutter_columns: &[],
             visible: &visible,
@@ -1485,6 +1619,8 @@ mod tests {
             pane_rect,
             theme: &theme,
             pane_bg: Some(Color::Rgb(0, 0, 0)),
+            rope: &rope,
+            tree: None,
         };
         let mut canvas = PaneCanvas::new(&mut buf, Some((Color::Reset, 0.5)));
         compose_row(

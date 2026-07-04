@@ -203,14 +203,15 @@ mod tests {
     use super::*;
     use crate::providers::GutterCell;
     use crate::providers::GutterColumn;
-    use crate::types::{EditorMode, RowKind, Scope};
+    use crate::providers::GutterRowCtx;
+    use crate::types::{RowKind, Scope};
 
     struct _NoGutter;
     impl GutterColumn for _NoGutter {
         fn width(&self, _: usize) -> u8 {
             0
         }
-        fn render_row(&self, _: RowKind, _: EditorMode, _: usize) -> GutterCell {
+        fn render_row(&self, _: RowKind, _: &GutterRowCtx) -> GutterCell {
             GutterCell::blank(Scope("ui.linenr"))
         }
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {

@@ -944,6 +944,8 @@ pub(crate) fn render_pane(
         pane_rect: pane_ctx.rect,
         theme: pane_ctx.theme,
         pane_bg: pane_ctx.theme.ui.background.bg,
+        rope: pane_ctx.rope,
+        tree: pane_ctx.tree,
     };
     let mut canvas = render::PaneCanvas::new(buf, pane_ctx.dim);
 
@@ -1316,6 +1318,7 @@ mod tests {
         viewport: &'a crate::pane::ViewportState,
         theme: &'a Theme,
         pane_rect: Rect,
+        rope: &'a ropey::Rope,
     ) -> ComposeCtx<'a> {
         ComposeCtx {
             gutter_columns: &[],
@@ -1329,6 +1332,8 @@ mod tests {
             pane_rect,
             theme,
             pane_bg: None,
+            rope,
+            tree: None,
         }
     }
 
@@ -1379,7 +1384,8 @@ mod tests {
         };
         let viewport = crate::pane::ViewportState::new(20, 5);
         let pane_rect = rect(0, 0, 20, 5);
-        let compose_ctx = make_compose_ctx(&visible, &viewport, &theme, pane_rect);
+        let rope = ropey::Rope::new();
+        let compose_ctx = make_compose_ctx(&visible, &viewport, &theme, pane_rect, &rope);
         let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
         let mut canvas = render::PaneCanvas::new(&mut buf, None);
 
@@ -1626,8 +1632,7 @@ mod tests {
             fn render_row(
                 &self,
                 kind: RowKind,
-                _: EditorMode,
-                _: usize,
+                _: &crate::providers::GutterRowCtx,
             ) -> crate::providers::GutterCell {
                 let text = if matches!(kind, RowKind::Filler) {
                     "~g"
