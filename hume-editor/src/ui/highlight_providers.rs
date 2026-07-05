@@ -18,6 +18,18 @@ use hume_engine::types::ScopeId;
 /// written once per frame and read during the engine's per-line render loop.
 pub(crate) type HighlightRanges = Arc<RwLock<Vec<(usize, usize, usize)>>>;
 
+/// The pair of highlight buffers every pane owns.
+///
+/// Each pane gets its own `bracket`/`search` Arcs (never shared across panes —
+/// see `build_pane`), so `update_highlight_providers` can compute one pane's
+/// matches from that pane's own buffer and viewport without bleeding into any
+/// other pane's rendering.
+#[derive(Default)]
+pub(crate) struct PaneHighlights {
+    pub(crate) bracket: HighlightRanges,
+    pub(crate) search: HighlightRanges,
+}
+
 /// Highlights a set of byte ranges, all sharing the same scope and tier.
 ///
 /// Data is `(line_idx, byte_start, byte_end)` in line-relative byte offsets.

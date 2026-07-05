@@ -132,17 +132,19 @@ pub(crate) struct PaneTransient {
 
 // ── PaneView ──────────────────────────────────────────────────────────────────
 
-/// Groups the three per-pane maps that live on [`super::EditorState`].
+/// Groups the four per-pane maps that live on [`super::EditorState`].
 ///
 /// Bundles `state` (per-(pane,buffer) selections/groups), `transient` (search/select
-/// snapshots), and `jumps` (cursor history) so `EditorState` exposes one field
-/// instead of three. The map types and keying are unchanged; NLL still allows
-/// simultaneous mutable borrows of different fields (e.g. `panes.state` and
-/// `panes.jumps` in `ops::switch_pane_with_jump`).
+/// snapshots), `jumps` (cursor history), and `highlights` (per-pane bracket/search
+/// highlight buffers) so `EditorState` exposes one field instead of four. The map
+/// types and keying are unchanged; NLL still allows simultaneous mutable borrows
+/// of different fields (e.g. `panes.state` and `panes.jumps` in
+/// `ops::switch_pane_with_jump`).
 pub(crate) struct PaneView {
     pub(crate) state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     pub(crate) transient: SecondaryMap<PaneId, PaneTransient>,
     pub(crate) jumps: SecondaryMap<PaneId, super::jump_list::JumpList>,
+    pub(crate) highlights: SecondaryMap<PaneId, crate::ui::highlight_providers::PaneHighlights>,
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

@@ -260,6 +260,7 @@ impl Editor {
             match self.state.keymap.extend.walk(&seq) {
                 WalkResult::Leaf(cmd) => {
                     self.state.pending_keys.clear();
+                    self.state.pending_ctrl_extend = false;
                     let count = self.state.count.take().unwrap_or(1);
                     self.state.explicit_count = false;
                     self.execute_keymap_command(cmd.name.clone(), count, false, vec![]);
@@ -271,6 +272,8 @@ impl Editor {
                     return;
                 }
                 WalkResult::WaitChar(wc) => {
+                    self.state.pending_keys.clear();
+                    self.state.pending_ctrl_extend = false;
                     self.state.wait_char = Some(wc);
                     return;
                 }

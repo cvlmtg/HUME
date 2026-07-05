@@ -329,13 +329,6 @@ pub(crate) struct EditorState {
     /// after each command. The unified firing path — `fire_hook_silent` pushes
     /// here; no hook fires inline during command execution.
     pub(super) pending_hooks: Vec<(hume_scripting::hooks::HookId, Vec<steel::rvals::SteelVal>)>,
-    /// Shared bracket match highlight data: `(line_idx, byte_start, byte_end)`.
-    /// Read by every pane's `SharedHighlighter` provider; reachable here (not on
-    /// `Editor`) so the free `commands::open_pane` can build a new pane's provider
-    /// set without needing a full `&mut Editor`.
-    pub(crate) bracket_hl_data: crate::ui::highlight_providers::HighlightRanges,
-    /// Shared search match highlight data: same shape as `bracket_hl_data`.
-    pub(crate) search_hl_data: crate::ui::highlight_providers::HighlightRanges,
     /// Shared completion-popup view: written by `prepare_frame`, read by provider.
     pub(crate) completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>>,
 }
@@ -617,7 +610,7 @@ impl Editor {
         let name = cmd.name().clone();
 
         // BEFORE
-        commands::step_paste_commit(&mut self.state, meta.defers_paste_commit);
+        commands::step_paste_commit(&mut self.state, &self.view, meta.defers_paste_commit);
         // Pre-stamp last_command — inner dispatches via `call!` override it.
         commands::step_stamp_last_command(&mut self.state, name.clone(), meta.stamps_last_command);
         let char_arg = self.state.pending_char;
@@ -995,10 +988,14 @@ impl Editor {
                     jumps.insert(pane_id, self::jump_list::JumpList::new(jump_list_capacity));
                     let mut transient = SecondaryMap::new();
                     transient.insert(pane_id, pane_state::PaneTransient::default());
+                    // No highlights entry: this pane is built via `Pane::new` directly
+                    // (not `build_pane`), so it has no `SharedHighlighter` providers to
+                    // feed — `update_highlight_providers` skips panes with no entry.
                     PaneView {
                         state: pane_buf_state,
                         transient,
                         jumps,
+                        highlights: SecondaryMap::new(),
                     }
                 },
                 history: self::minibuf_history::HistoryStore::new(history_capacity),
@@ -1014,8 +1011,6 @@ impl Editor {
                 languages: syntax::LanguageRegistry::new(),
                 cwd: std::env::temp_dir(),
                 pending_hooks: Vec::new(),
-                bracket_hl_data: Arc::new(RwLock::new(Vec::new())),
-                search_hl_data: Arc::new(RwLock::new(Vec::new())),
                 completion_view: Arc::new(RwLock::new(None)),
             },
             view: engine_view,

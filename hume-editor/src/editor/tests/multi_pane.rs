@@ -1419,3 +1419,118 @@ fn split_different_buffer_keeps_empty_jump_list() {
         "different-buffer split starts with an empty jump list"
     );
 }
+
+// ── Per-pane highlight isolation ────────────────────────────────────────────
+//
+// `update_highlight_providers` used to write into two globally-shared Arcs
+// (`bracket_hl_data`/`search_hl_data`) read by every pane's `SharedHighlighter`,
+// computed only from the *focused* buffer/viewport. A pane viewing a different
+// buffer (or the same buffer scrolled elsewhere) rendered the focused pane's
+// highlight bytes onto its own unrelated text. These tests lock the fix:
+// each pane now owns its own highlight buffers (`PaneHighlights`), computed
+// from that pane's own buffer and viewport.
+
+/// A search match in the focused pane's buffer must never appear in a
+/// different pane viewing an unrelated buffer.
+///
+/// Uses `Editor::open` (not the bare-pane `for_testing` harness) so both
+/// panes get real `SharedHighlighter` providers wired via `build_pane` — the
+/// bug only reproduces when a pane actually has highlight-reading providers.
+#[test]
+#[cfg(not(windows))]
+fn cross_buffer_search_highlight_does_not_bleed_into_other_pane() {
+    let f = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(f.path(), "other file\n").unwrap();
+    let path = f.path().to_path_buf();
+    let _tmp_path = f.into_temp_path();
+
+    let mut ed = Editor::open(None).unwrap();
+    let pid_a = ed.state.focused_pane_id;
+
+    // Distinguishing content + an active search on buffer A.
+    ed.feed_key(key('i'));
+    for ch in "foo bar foo".chars() {
+        ed.feed_key(key(ch));
+    }
+    ed.feed_key(key_esc());
+    ed = ed.with_search_regex("foo");
+
+    // Open a different buffer in a new pane. `:vsplit <path>` moves focus to
+    // the new pane; the search stays on buffer A, which is no longer focused.
+    ed.execute_typed("vsplit", Some(path.to_str().unwrap()))
+        .unwrap();
+    let pid_b = ed.state.focused_pane_id;
+    assert_ne!(pid_a, pid_b, "sanity: split created a second pane");
+    assert_ne!(
+        ed.view.panes[pid_b].buffer_id,
+        ed.view.panes[pid_a].buffer_id,
+        "sanity: new pane views a different buffer"
+    );
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.prepare_frame(80, 25, &mut ctx);
+
+    let a_matches = ed.state.panes.highlights[pid_a]
+        .search
+        .read()
+        .unwrap()
+        .clone();
+    assert!(
+        !a_matches.is_empty(),
+        "sanity: pane A's own search highlights must be populated"
+    );
+
+    let b_matches = ed.state.panes.highlights[pid_b]
+        .search
+        .read()
+        .unwrap()
+        .clone();
+    assert!(
+        b_matches.is_empty(),
+        "pane B (different buffer, no search of its own) must not show pane A's matches, got {b_matches:?}"
+    );
+}
+
+/// A search match that spans a `\n` must produce one highlight span per line
+/// it touches, each clipped to that line's own content — not a single span
+/// computed by converting the match's absolute end offset through whichever
+/// line the *start* happened to be on (which, before the fix, produced a
+/// corrupt or inverted span whenever a match crossed a line boundary).
+///
+/// Independent oracle: byte offsets are hand-computed from the known ASCII
+/// content ("abc\ndef\n"), not derived by calling the code under test.
+#[test]
+fn multiline_search_match_splits_into_per_line_highlight_spans() {
+    let mut ed = Editor::open(None).unwrap();
+    let pid = ed.state.focused_pane_id;
+
+    ed.feed_key(key('i'));
+    for ch in "abc".chars() {
+        ed.feed_key(key(ch));
+    }
+    ed.feed_key(key_enter());
+    for ch in "def".chars() {
+        ed.feed_key(key(ch));
+    }
+    ed.feed_key(key_esc());
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "abc\ndef\n",
+        "sanity: buffer content"
+    );
+
+    // Matches "c\ndef": char 2 ('c') through char 6 ('f'), crossing the
+    // line-0/line-1 boundary at the '\n' (char 3).
+    ed = ed.with_search_regex("c\ndef");
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.prepare_frame(80, 25, &mut ctx);
+
+    let matches = ed.state.panes.highlights[pid].search.read().unwrap().clone();
+    assert_eq!(
+        matches,
+        vec![(0, 2, 3), (1, 0, 3)],
+        "line 0 gets 'c' clipped before its own '\\n' (byte 2..3); \
+         line 1 gets 'def' from its own start (byte 0..3)"
+    );
+}

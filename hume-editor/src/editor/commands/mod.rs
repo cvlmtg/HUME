@@ -67,31 +67,39 @@ impl EditorState {
         }
     }
 
-    /// Commit the open paste session on every pane/buffer pair that has one.
+    /// Commit the open paste session on the focused (pane, buffer) pair, if any.
     ///
     /// Records exactly one history revision for the entire paste + all cycles.
-    /// Called by `execute.rs` before any non-`[`/`]` dispatch so the session
-    /// is committed before undo, motions, or the next `p`/`P`.
-    pub(super) fn commit_paste_session(&mut self) {
-        use hume_engine::pipeline::PaneId;
-        let open: Vec<(PaneId, BufferId)> = self
-            .panes
-            .state
-            .iter()
-            .flat_map(|(pid, inner)| {
+    /// Called before any non-`[`/`]` dispatch so the session is committed
+    /// before undo, motions, or the next `p`/`P`.
+    ///
+    /// Invariant: an open paste session can only exist on the focused (pane,
+    /// buffer) pair — sessions are opened only there (`open_paste_session_and_apply`),
+    /// every focus/buffer switch dispatches through this same commit step first,
+    /// mouse handlers never open or switch during a session, and buffer close
+    /// clears `paste_group` explicitly. The debug assert below fails fast if that
+    /// invariant is ever violated instead of silently leaving a stray session open.
+    pub(super) fn commit_paste_session(&mut self, view: &EngineView) {
+        let focused = self.focused_pane_id;
+        let buf = focused_buffer_id(self, view);
+
+        debug_assert!(
+            self.panes.state.iter().all(|(pid, inner)| {
                 inner
                     .iter()
-                    .filter(|(_, pbs)| pbs.paste_group.is_some())
-                    .map(move |(bid, _)| (pid, bid))
-            })
-            .collect();
-        for (pid, bid) in open {
-            let post_sels = self.panes.state[pid][bid].selections.clone();
-            let pbs = &mut self.panes.state[pid][bid];
-            self.buffers
-                .get_mut(bid)
-                .commit_edit_group(&mut pbs.paste_group, post_sels);
+                    .all(|(bid, pbs)| (pid, bid) == (focused, buf) || pbs.paste_group.is_none())
+            }),
+            "an open paste session exists outside the focused (pane, buffer) pair",
+        );
+
+        if self.panes.state[focused][buf].paste_group.is_none() {
+            return;
         }
+        let post_sels = self.panes.state[focused][buf].selections.clone();
+        let pbs = &mut self.panes.state[focused][buf];
+        self.buffers
+            .get_mut(buf)
+            .commit_edit_group(&mut pbs.paste_group, post_sels);
     }
 }
 
@@ -175,9 +183,9 @@ pub(super) fn run_native_body(
 // ── Shared steps (used by both native and Steel dispatch paths) ──────────────
 
 /// Commit paste session unless the command defers it (ring-cycle pastes).
-pub(super) fn step_paste_commit(state: &mut EditorState, defers: bool) {
+pub(super) fn step_paste_commit(state: &mut EditorState, view: &EngineView, defers: bool) {
     if !defers {
-        state.commit_paste_session();
+        state.commit_paste_session(view);
     }
 }
 
@@ -378,7 +386,7 @@ pub(super) fn run_dispatch_pipeline(
     );
 
     // BEFORE
-    step_paste_commit(state, meta.defers_paste_commit);
+    step_paste_commit(state, view, meta.defers_paste_commit);
     let pre_jump = step_capture_pre_jump(state, view, &meta);
     let char_arg = state.pending_char;
     let pre_recipe = step_snapshot_recipe(state, meta.repeatable);
@@ -474,11 +482,12 @@ pub(super) fn open_pane(
     buffer_id: BufferId,
 ) -> PaneId {
     // Every pane gets the same providers (gutter + bracket/search highlight +
-    // completion overlay) as the initial pane — see `build_pane`.
-    let pane = crate::ui::build_pane(
+    // completion overlay) as the initial pane — see `build_pane`. Each pane's
+    // bracket/search Arcs are freshly allocated here, never shared with any
+    // other pane (see `PaneHighlights`), so per-pane highlight data can never
+    // bleed across panes.
+    let (pane, highlights) = crate::ui::build_pane(
         &mut view.registry,
-        &state.bracket_hl_data,
-        &state.search_hl_data,
         &state.completion_view,
         state.settings.wrap_mode,
         buffer_id,
@@ -491,18 +500,20 @@ pub(super) fn open_pane(
         pid,
         super::jump_list::JumpList::new(state.settings.jump_list_capacity),
     );
+    state.panes.highlights.insert(pid, highlights);
     pid
 }
 
 /// Remove every per-pane state map entry for `pid` (`panes`, per-buffer
-/// state, transient state, jump list) — the inverse of `open_pane`'s
-/// seeding. Shared by `close_focused_pane` and `split_pane_onto`'s
-/// failure-rollback path.
+/// state, transient state, jump list, highlight buffers) — the inverse of
+/// `open_pane`'s seeding. Shared by `close_focused_pane` and
+/// `split_pane_onto`'s failure-rollback path.
 fn drop_pane_state(state: &mut EditorState, view: &mut EngineView, pid: PaneId) {
     view.panes.remove(pid);
     state.panes.state.remove(pid);
     state.panes.transient.remove(pid);
     state.panes.jumps.remove(pid);
+    state.panes.highlights.remove(pid);
 }
 
 /// Close the focused pane: prune it from the layout tree, move focus to the

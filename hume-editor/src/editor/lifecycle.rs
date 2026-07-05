@@ -13,6 +13,7 @@ use super::search_state::SearchCursor;
 use super::search_state::{SearchMatches, SearchPattern};
 use crate::editor::search_ops;
 use crate::ops::pair::find_bracket_pair;
+use hume_editing::lines::line_end_exclusive;
 use hume_platform::terminal::Term;
 
 use super::{Editor, Mode};
@@ -86,12 +87,9 @@ impl Editor {
         let theme = crate::ui::theme::build_default_theme();
         let mut engine_view = EngineView::new(theme);
 
-        // Shared highlight/completion data, written once per frame and read by
-        // every pane's providers (see `build_pane`).
-        let bracket_hl_data: crate::ui::highlight_providers::HighlightRanges =
-            Arc::new(RwLock::new(Vec::new()));
-        let search_hl_data: crate::ui::highlight_providers::HighlightRanges =
-            Arc::new(RwLock::new(Vec::new()));
+        // Shared completion-popup data, written once per frame and read by
+        // every pane's providers (see `build_pane`). Highlight data is per-pane
+        // (see `PaneHighlights`) — allocated fresh inside `build_pane`.
         let completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>> =
             Arc::new(RwLock::new(None));
 
@@ -102,10 +100,8 @@ impl Editor {
 
         // Build the initial pane. Every later split-created pane goes through
         // the same `build_pane` (see `commands::open_pane`).
-        let pane = build_pane(
+        let (pane, highlights) = build_pane(
             &mut engine_view.registry,
-            &bracket_hl_data,
-            &search_hl_data,
             &completion_view,
             settings.wrap_mode,
             buffer_id,
@@ -162,10 +158,13 @@ impl Editor {
                     jumps.insert(pane_id, super::jump_list::JumpList::new(jump_list_capacity));
                     let mut transient = SecondaryMap::new();
                     transient.insert(pane_id, PaneTransient::default());
+                    let mut pane_highlights = SecondaryMap::new();
+                    pane_highlights.insert(pane_id, highlights);
                     PaneView {
                         state: pane_buf_state,
                         transient,
                         jumps,
+                        highlights: pane_highlights,
                     }
                 },
                 history: super::minibuf_history::HistoryStore::new(history_capacity),
@@ -182,8 +181,6 @@ impl Editor {
                 languages: crate::editor::syntax::LanguageRegistry::new(),
                 cwd: std::env::current_dir().unwrap_or_default(),
                 pending_hooks: Vec::new(),
-                bracket_hl_data,
-                search_hl_data,
                 completion_view,
             },
             view: engine_view,
@@ -597,6 +594,7 @@ impl Editor {
 
     // ── Engine accessors ──────────────────────────────────────────────────────
 
+    #[cfg(test)]
     pub(crate) fn viewport(&self) -> &hume_engine::pane::ViewportState {
         &self.view.panes[self.state.focused_pane_id].viewport
     }
@@ -645,68 +643,99 @@ impl Editor {
         );
     }
 
-    /// Write per-frame highlight data to the shared `Arc<RwLock<...>>` buffers
-    /// read by `BracketMatchHighlighter` and `SearchMatchHighlighter`.
+    /// Write per-frame highlight data to every pane's own `Arc<RwLock<...>>`
+    /// buffers, read by that pane's `SharedHighlighter` providers.
     ///
     /// Called once per frame, after scroll is resolved and before `term.draw`.
-    /// Bracket matching is suppressed in Insert mode.
+    /// Bracket matching is suppressed in Insert mode. Each pane's search
+    /// highlights are computed from **that pane's own buffer and viewport** —
+    /// panes never share highlight data (see [`crate::ui::highlight_providers::PaneHighlights`]),
+    /// so a pane viewing a different buffer, or the same buffer scrolled
+    /// elsewhere, never inherits another pane's matches.
     pub(super) fn update_highlight_providers(&mut self) {
-        let buf = self.doc().text();
+        let in_insert = self.state.mode() == EditorMode::Insert;
 
-        // Visible line range — skip matches outside the viewport (search matches
-        // are sorted by document order, so we can break early past the bottom).
-        let top_line = self.viewport().top_line;
-        let bot_line = top_line + self.viewport().height as usize;
+        // Snapshot (pane, buffer) pairs up front: the loop body mutates
+        // `self.state.buffers` (refreshing the search-match cache), which would
+        // otherwise conflict with an active borrow of `self.view.panes`.
+        let panes: Vec<(PaneId, BufferId)> = self
+            .view
+            .panes
+            .iter()
+            .map(|(pid, pane)| (pid, pane.buffer_id))
+            .collect();
 
-        // ── Search match highlights ───────────────────────────────────────────
-        {
-            let mut data = self
+        // ── Search match highlights — one pane at a time ─────────────────────
+        for &(pid, bid) in &panes {
+            // Clone the Arc (not the data) so the write lock and the buffer
+            // refresh below don't hold a borrow of `self.state.panes`.
+            let Some(search_arc) = self
                 .state
-                .search_hl_data
-                .write()
-                .expect("RwLock not poisoned");
+                .panes
+                .highlights
+                .get(pid)
+                .map(|h| Arc::clone(&h.search))
+            else {
+                continue;
+            };
+            let mut data = search_arc.write().expect("RwLock not poisoned");
             data.clear();
             // Hidden in Insert mode — matches aren't actionable while typing and
             // clutter the view. Same pattern as bracket match highlights below.
-            if self.state.mode() != EditorMode::Insert {
-                // Matches are sorted by document order. Binary-search to the first
-                // match that starts at or after `top_line` to skip pre-viewport entries.
-                let top_char = buf.line_to_char(top_line.min(buf.len_lines().saturating_sub(1)));
-                let matches = &self
-                    .state
-                    .buffers
-                    .get(self.focused_buffer_id())
-                    .search_matches
-                    .matches;
-                let first = matches.partition_point(|&(start, _)| start < top_char);
-                for &(start, end_incl) in &matches[first..] {
-                    let (line, byte_start) = char_to_line_byte(buf, start);
-                    if line > bot_line {
-                        break;
-                    }
-                    // end_incl is inclusive char offset; +1 makes it exclusive in chars,
-                    // then convert to byte.
-                    let end_char = (end_incl + 1).min(buf.len_chars());
-                    let (_, byte_end) = char_to_line_byte(buf, end_char);
-                    data.push((line, byte_start, byte_end));
+            if in_insert {
+                continue;
+            }
+
+            // Keep this buffer's match cache current regardless of focus — a
+            // non-focused pane's buffer may carry its own active search
+            // pattern that the focused-pane-only `sync_search_cache` never
+            // refreshes. No-op when the cache already matches this revision.
+            search_ops::update_buffer_matches(&mut self.state.buffers, bid);
+
+            let buf = self.state.buffers.get(bid);
+            let text = buf.text();
+            let vp = &self.view.panes[pid].viewport;
+            let top_line = vp.top_line;
+            let bot_line = top_line + vp.height as usize;
+
+            // Matches are sorted by document order. Binary-search to the first
+            // match that starts at or after this pane's `top_line`.
+            let top_char = text.line_to_char(top_line.min(text.len_lines().saturating_sub(1)));
+            let matches = &buf.search_matches.matches;
+            let first = matches.partition_point(|&(start, _)| start < top_char);
+            for &(start, end_incl) in &matches[first..] {
+                let start_line = text.char_to_line(start);
+                if start_line > bot_line {
+                    break;
                 }
+                // end_incl is inclusive char offset; +1 makes it exclusive.
+                let end_char = (end_incl + 1).min(text.len_chars());
+                push_match_highlight_lines(text, start, end_char, &mut data);
             }
         }
 
-        // ── Bracket match highlight ───────────────────────────────────────────
-        {
-            let mut data = self
+        // ── Bracket match highlight — cursor concept, focused pane only ──────
+        // Clear every pane first: a bracket match lingers only on whichever
+        // pane last had focus, so moving focus away must blank the old one.
+        for &(pid, _) in &panes {
+            if let Some(h) = self.state.panes.highlights.get(pid) {
+                h.bracket.write().expect("RwLock not poisoned").clear();
+            }
+        }
+        if !in_insert {
+            let focused = self.state.focused_pane_id;
+            if let Some(bracket_arc) = self
                 .state
-                .bracket_hl_data
-                .write()
-                .expect("RwLock not poisoned");
-            data.clear();
-            if self.state.mode() != EditorMode::Insert {
-                let head = self.state.panes.state[self.state.focused_pane_id]
-                    [self.focused_buffer_id()]
-                .selections
-                .primary()
-                .head();
+                .panes
+                .highlights
+                .get(focused)
+                .map(|h| Arc::clone(&h.bracket))
+            {
+                let buf = self.doc().text();
+                let head = self.state.panes.state[focused][self.focused_buffer_id()]
+                    .selections
+                    .primary()
+                    .head();
                 if let Some(ch) = buf.char_at(head) {
                     let pair = match ch {
                         '(' | ')' => Some(('(', ')')),
@@ -722,7 +751,10 @@ impl Editor {
                         let (line, byte) = char_to_line_byte(buf, match_pos);
                         // Single-char match: byte_end = byte + utf8 length of the char.
                         let ch_len = buf.char_at(match_pos).map(|c| c.len_utf8()).unwrap_or(1);
-                        data.push((line, byte, byte + ch_len));
+                        bracket_arc
+                            .write()
+                            .expect("RwLock not poisoned")
+                            .push((line, byte, byte + ch_len));
                     }
                 }
             }
@@ -842,4 +874,41 @@ pub(super) fn char_to_line_byte(buf: &hume_editing::text::Text, char_pos: usize)
     let line_start_byte = buf.char_to_byte(buf.line_to_char(line));
     let byte = buf.char_to_byte(char_pos).saturating_sub(line_start_byte);
     (line, byte)
+}
+
+/// Push one `(line, byte_start, byte_end)` triple per line the
+/// `[start, end_char_excl)` char range touches.
+///
+/// A single-line match produces one triple, byte-identical to converting
+/// `start`/`end_char_excl` directly with [`char_to_line_byte`]. A match that
+/// crosses one or more `\n`s produces one triple per touched line, each
+/// clipped to that line's own content (up to but excluding its trailing
+/// `\n`). The clip point is deliberately the `\n` char's own position, not
+/// `line_end_exclusive` — the latter is the *next* line's start, and
+/// converting it with `char_to_line_byte` would resolve to the wrong line
+/// (byte 0 of the line after), producing an inverted or nonsensical span.
+fn push_match_highlight_lines(
+    buf: &hume_editing::text::Text,
+    start: usize,
+    end_char_excl: usize,
+    data: &mut Vec<(usize, usize, usize)>,
+) {
+    if start >= end_char_excl {
+        return;
+    }
+    let last_char = end_char_excl - 1;
+    let start_line = buf.char_to_line(start);
+    let end_line = buf.char_to_line(last_char);
+
+    for line in start_line..=end_line {
+        // Every content line ends with a '\n' — HUME buffers always end with
+        // a structural trailing '\n', so this position always exists and
+        // still belongs to `line` in ropey's line model.
+        let line_newline = line_end_exclusive(buf, line) - 1;
+        let seg_start = start.max(buf.line_to_char(line));
+        let seg_end = end_char_excl.min(line_newline);
+        let (_, byte_start) = char_to_line_byte(buf, seg_start);
+        let (_, byte_end) = char_to_line_byte(buf, seg_end);
+        data.push((line, byte_start, byte_end));
+    }
 }

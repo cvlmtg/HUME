@@ -12,11 +12,17 @@ use hume_engine::providers::{HighlightTier, ProviderSet};
 use hume_engine::theme::ScopeRegistry;
 
 use completion_overlay::CompletionOverlay;
-use highlight_providers::{HighlightRanges, SharedHighlighter};
+use highlight_providers::{PaneHighlights, SharedHighlighter};
 
 /// Build a new pane viewing `buffer_id`: a line-number gutter, the
 /// bracket-match / search-match highlight sources, the completion popup
 /// overlay, and `wrap_mode` seeded from the caller's current settings.
+///
+/// Returns the pane together with its freshly-allocated [`PaneHighlights`] —
+/// every pane gets its own bracket/search highlight buffers (never shared with
+/// any other pane), so each pane's highlights are computed from that pane's
+/// own buffer and viewport. The caller stores the returned `PaneHighlights` in
+/// `EditorState.panes.highlights` keyed by the new pane's id.
 ///
 /// The gutter column is added with its default style — `prepare_frame` syncs
 /// the buffer-resolved `line-number-style` into every pane's gutter before
@@ -33,33 +39,34 @@ use highlight_providers::{HighlightRanges, SharedHighlighter};
 /// `ProviderSet` (no gutter column at all).
 pub(crate) fn build_pane(
     registry: &mut ScopeRegistry,
-    bracket_hl_data: &HighlightRanges,
-    search_hl_data: &HighlightRanges,
     completion_view: &Arc<RwLock<Option<completion_overlay::CompletionView>>>,
     wrap_mode: WrapMode,
     buffer_id: BufferId,
-) -> Pane {
+) -> (Pane, PaneHighlights) {
     let bracket_scope = registry.intern("ui.cursor.match");
     let search_scope = registry.intern("ui.selection.search");
+
+    let highlights = PaneHighlights::default();
 
     let mut providers = ProviderSet::new();
     providers.add_gutter_column(Box::new(LineNumberColumn::default()));
     providers.add_highlight_source(Box::new(SharedHighlighter {
         scope: bracket_scope,
         tier: HighlightTier::BracketMatch,
-        data: Arc::clone(bracket_hl_data),
+        data: Arc::clone(&highlights.bracket),
     }));
     providers.add_highlight_source(Box::new(SharedHighlighter {
         scope: search_scope,
         tier: HighlightTier::SearchMatch,
-        data: Arc::clone(search_hl_data),
+        data: Arc::clone(&highlights.search),
     }));
     providers.add_overlay(Box::new(CompletionOverlay {
         data: Arc::clone(completion_view),
     }));
 
-    Pane {
+    let pane = Pane {
         providers,
         ..Pane::new(buffer_id, wrap_mode)
-    }
+    };
+    (pane, highlights)
 }

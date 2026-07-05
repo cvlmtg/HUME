@@ -2527,3 +2527,67 @@ fn minibuffer_arity_rule_errors_on_arity_2() {
         "arity rule must log a user-facing error"
     );
 }
+
+// ── Extend-trie WaitChar sequence cleanup ─────────────────────────────────────
+
+/// A multi-key wait-char sequence bound in sticky-Extend mode must clear
+/// `pending_keys` (and `pending_ctrl_extend`) once the sequence resolves —
+/// mirroring what the normal-trie `WaitChar` arm already does. Before the fix,
+/// the Extend-trie arm left the prefix key (`g`) sitting in `pending_keys`,
+/// so the very next ordinary keystroke walked the trie as `[g, <key>]`
+/// instead of `[<key>]` alone — silently swallowing it.
+#[test]
+fn extend_trie_wait_char_sequence_clears_pending_keys() {
+    use crate::editor::keymap::{BindMode, WaitCharPending};
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.state.mode = Mode::Extend;
+
+    // Two-key wait-char sequence: `g` (prefix) then `r` (wait-char leaf).
+    ed.state.keymap.extend.bind_wait_char_sequence(
+        &[key('g'), key('r')],
+        WaitCharPending {
+            cmd_name: "find-forward".into(),
+            ctrl_extend: false,
+        },
+    );
+    // A plain leaf on `x`, distinct from the `g`-prefixed sequence, so a
+    // leftover `g` prefix would make this unreachable (NoMatch) instead of
+    // executing it.
+    ed.state.keymap.bind_user_with_extend(
+        BindMode::Extend,
+        &[key('x')],
+        "delete-char-forward".into(),
+        false,
+    );
+
+    ed.handle_key(key('g'));
+    assert_eq!(
+        ed.state.pending_keys,
+        vec![key('g')],
+        "sanity: 'g' commits as an interior prefix key"
+    );
+
+    ed.handle_key(key('r'));
+    assert!(
+        ed.state.pending_keys.is_empty(),
+        "the completed wait-char sequence must clear pending_keys"
+    );
+    assert!(
+        ed.state.wait_char.is_some(),
+        "sanity: the sequence armed wait_char"
+    );
+
+    // Consume the wait-char argument (any key) — dispatches "find-forward".
+    ed.handle_key(key('z'));
+    assert!(ed.state.wait_char.is_none());
+
+    // With pending_keys correctly cleared, this reaches the `x` leaf and
+    // deletes the char under the cursor.
+    ed.handle_key(key('x'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "ello\n",
+        "'x' must delete the char under the cursor, not get swallowed by a stale 'g' prefix"
+    );
+}
