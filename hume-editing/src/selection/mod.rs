@@ -4,7 +4,7 @@ pub mod testing;
 
 pub use single::{Selection, is_selection_linewise};
 
-use crate::changeset::{Assoc, ChangeSet};
+use crate::changeset::{Assoc, ChangeSet, PosMapCursor};
 use crate::error::ValidationError;
 use crate::text::Text;
 
@@ -376,7 +376,7 @@ impl SelectionSet {
     /// Propagate a `ChangeSet` through all selections in place.
     ///
     /// This is the non-acting-pane propagation primitive. For each selection:
-    /// - Maps `anchor` and `head` through `cs.map_pos(_, Assoc::After)`.
+    /// - Maps `anchor` and `head` through the changeset.
     /// - Resets `horiz` to `None` if the edit touched the head's pre-edit line
     ///   (the display column is stale when the line's content changed).
     /// - After all selections are mapped, calls `merge_overlapping_in_place` so
@@ -385,13 +385,65 @@ impl SelectionSet {
     ///
     /// `buf_pre` must be the buffer text **before** the edit — the pre-edit line
     /// map is needed to identify which line each head resided on before mapping.
+    ///
+    /// Runs in O(selections + ops) rather than O(selections × ops): selections
+    /// are sorted and non-overlapping, so both the line-touch check and the
+    /// position mapping walk their respective changeset data with a single
+    /// forward-only cursor shared across all selections, instead of
+    /// re-scanning the whole changeset per selection.
     pub fn translate_in_place(&mut self, cs: &ChangeSet, buf_pre: &Text) {
+        let edits = cs.edited_old_ranges();
+        let mut edit_idx = 0usize;
+        let mut mapper = PosMapCursor::new(cs.ops());
+
         for sel in &mut self.selections {
             let pre_line = buf_pre.char_to_line(sel.head);
-            sel.anchor = cs.map_pos(sel.anchor, Assoc::After);
-            sel.head = cs.map_pos(sel.head, Assoc::After);
-            if cs.touches_line(buf_pre, pre_line) {
+            let line_start = buf_pre.line_to_char(pre_line);
+            let line_end = if pre_line + 1 < buf_pre.len_lines() {
+                buf_pre.line_to_char(pre_line + 1)
+            } else {
+                buf_pre.len_chars()
+            };
+
+            // Drop edits that end entirely before this line — heads (and thus
+            // pre-edit lines) strictly increase across selections in a sorted,
+            // non-overlapping SelectionSet, so a dropped edit can never touch
+            // this or any later selection's line. A point range (Insert) at
+            // exactly `line_start` still counts as touching, so it uses a
+            // strict `<` rather than `<=`.
+            while edit_idx < edits.len() {
+                let (start, end) = edits[edit_idx];
+                let fully_before = if start == end {
+                    end < line_start
+                } else {
+                    end <= line_start
+                };
+                if fully_before {
+                    edit_idx += 1;
+                } else {
+                    break;
+                }
+            }
+            // The first remaining edit (if any) touches this line iff it
+            // starts before `line_end` — anything surviving the skip above
+            // already ends at or after `line_start`, so `start < line_end`
+            // alone implies overlap (proof: for a range, that's exactly the
+            // half-open overlap test; for a point, `start == end` already
+            // means `line_start <= start` from the skip, so `start < line_end`
+            // gives `line_start <= start < line_end`).
+            if edit_idx < edits.len() && edits[edit_idx].0 < line_end {
                 sel.horiz = None;
+            }
+
+            let forward = sel.anchor <= sel.head;
+            let lo = mapper.map(sel.start(), Assoc::After);
+            let hi = mapper.map(sel.end(), Assoc::After);
+            if forward {
+                sel.anchor = lo;
+                sel.head = hi;
+            } else {
+                sel.anchor = hi;
+                sel.head = lo;
             }
         }
         if self.selections.len() > 1 {
@@ -405,6 +457,7 @@ impl SelectionSet {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::changeset::ChangeSetBuilder;
     use pretty_assertions::assert_eq;
 
     // ── SelectionSet ──────────────────────────────────────────────────────────
@@ -872,5 +925,132 @@ mod tests {
         // head = buf_len - 1 is the largest valid position
         let set = SelectionSet::single(Selection::collapsed(4));
         assert!(set.validate(5).is_ok());
+    }
+
+    // ── translate_in_place ────────────────────────────────────────────────────
+
+    #[test]
+    fn translate_in_place_remaps_positions_and_resets_horiz_only_on_touched_lines() {
+        // "aaa\nbbb\nccc\n" (12 chars): line0 = aaa\n [0,4), line1 = bbb\n [4,8),
+        // line2 = ccc\n [8,12).
+        let buf_pre = Text::from("aaa\nbbb\nccc");
+
+        // sel0: collapsed at 1, on the untouched line0.
+        // sel1: range (5,6), fully inside the edited span on line1.
+        // sel2: collapsed at 9, on the untouched line2.
+        let sel0 = Selection::with_horiz(1, 1, 5);
+        let sel1 = Selection::with_horiz(5, 6, 9); // forward: anchor <= head
+        let sel2 = Selection::with_horiz(9, 9, 7);
+        let mut set = SelectionSet::from_vec(vec![sel0, sel1, sel2], 0);
+
+        // Replace "bbb" (positions 4..7) with "XY" — net -1 char, entirely
+        // within line1.
+        let mut b = ChangeSetBuilder::new(12);
+        b.retain(4);
+        b.delete(3);
+        b.insert("XY");
+        b.retain_rest();
+        let cs = b.finish();
+
+        set.translate_in_place(&cs, &buf_pre);
+
+        assert_eq!(set.len(), 3, "no selection should merge here");
+
+        // sel0: untouched line, position unchanged, horiz preserved.
+        let s0 = set.iter_sorted().next().unwrap();
+        assert_eq!((s0.anchor(), s0.head()), (1, 1));
+        assert_eq!(s0.horiz(), Some(5));
+
+        // sel1: collapses onto the replacement point (old positions 5,6 both
+        // fell inside the deleted "bbb"), direction preserved, horiz reset
+        // because its line was edited.
+        let s1 = set.iter_sorted().nth(1).unwrap();
+        assert_eq!((s1.anchor(), s1.head()), (4, 4));
+        assert_eq!(s1.horiz(), None);
+
+        // sel2: untouched line, shifted back by 1 (net delta of the replace),
+        // horiz preserved.
+        let s2 = set.iter_sorted().nth(2).unwrap();
+        assert_eq!((s2.anchor(), s2.head()), (8, 8));
+        assert_eq!(s2.horiz(), Some(7));
+    }
+
+    #[test]
+    fn translate_in_place_insert_exactly_at_line_start_touches_that_line() {
+        // "aa\nbb\n" (6 chars): line0 = "aa\n" [0,3), line1 = "bb\n" [3,6).
+        // Insert("X") at old position 3 — exactly line1's start — is a point
+        // range [3,3). It must count as touching line1 (matching the
+        // pre-batch `touches_line` behavior: `old >= line_start`), not line0.
+        let buf_pre = Text::from("aa\nbb");
+        let sel0 = Selection::with_horiz(1, 1, 5); // head=1, on line0
+        let sel1 = Selection::with_horiz(4, 4, 9); // head=4, on line1
+        let mut set = SelectionSet::from_vec(vec![sel0, sel1], 0);
+
+        let mut b = ChangeSetBuilder::new(6);
+        b.retain(3);
+        b.insert("X");
+        b.retain_rest();
+        let cs = b.finish();
+
+        set.translate_in_place(&cs, &buf_pre);
+
+        let s0 = set.iter_sorted().next().unwrap();
+        assert_eq!(
+            s0.horiz(),
+            Some(5),
+            "line0 wasn't touched — insert lands after it"
+        );
+        let s1 = set.iter_sorted().nth(1).unwrap();
+        assert_eq!(
+            s1.horiz(),
+            None,
+            "line1 touched — insert lands exactly at its start"
+        );
+    }
+
+    #[test]
+    fn translate_in_place_backward_selection_keeps_direction() {
+        // "abcde\n" (6 chars). A backward selection (anchor=4, head=1) sits
+        // entirely after the edit; verify anchor/head land on the correct
+        // (shifted) ends rather than being swapped.
+        let buf_pre = Text::from("abcde");
+        let sel = Selection::new(4, 1); // backward: head < anchor
+        let mut set = SelectionSet::single(sel);
+
+        // Insert "XX" at position 0 — shifts everything after it by 2.
+        let mut b = ChangeSetBuilder::new(6);
+        b.insert("XX");
+        b.retain_rest();
+        let cs = b.finish();
+
+        set.translate_in_place(&cs, &buf_pre);
+
+        let s = set.primary();
+        assert_eq!(s.anchor(), 6); // was 4, shifted by 2
+        assert_eq!(s.head(), 3); // was 1, shifted by 2
+        assert!(s.head() < s.anchor(), "must stay backward");
+    }
+
+    #[test]
+    fn translate_in_place_merges_selections_collapsed_onto_same_point() {
+        // "abcdef\n" (7 chars). Two collapsed selections inside a deletion
+        // that removes the entire content ("abcdef") both collapse to
+        // position 0 and must merge into a single selection.
+        let buf_pre = Text::from("abcdef");
+        let sel0 = Selection::with_horiz(1, 1, 3);
+        let sel1 = Selection::with_horiz(4, 4, 8);
+        let mut set = SelectionSet::from_vec(vec![sel0, sel1], 0);
+
+        let mut b = ChangeSetBuilder::new(7);
+        b.delete(6); // remove "abcdef"
+        b.retain_rest(); // keep the structural trailing \n
+        let cs = b.finish();
+
+        set.translate_in_place(&cs, &buf_pre);
+
+        assert_eq!(set.len(), 1, "both selections collapse onto the same point");
+        let s = set.primary();
+        assert_eq!((s.anchor(), s.head()), (0, 0));
+        assert_eq!(s.horiz(), None, "merged selection's line was edited");
     }
 }

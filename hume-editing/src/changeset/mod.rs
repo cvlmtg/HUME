@@ -38,11 +38,11 @@ pub enum Operation {
 ///           After  → 5  (cursor moves past the inserted text)
 /// ```
 ///
-/// `Assoc` is only relevant when calling `map_pos` to re-anchor positions
-/// that were not produced by the edit itself (e.g. external bookmarks or LSP
-/// diagnostic ranges). Edit operations compute result positions directly from
-/// the builder, and undo/redo restores selections from the stored inverse
-/// transaction — neither path calls `map_pos`.
+/// `Assoc` is only relevant when re-anchoring positions that were not
+/// produced by the edit itself (e.g. external bookmarks or LSP diagnostic
+/// ranges) via [`PosMapCursor`]. Edit operations compute result positions
+/// directly from the builder, and undo/redo restores selections from the
+/// stored inverse transaction — neither path needs position mapping.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Assoc {
     /// Stay before inserted text ("sticky left").
@@ -154,6 +154,74 @@ fn advance_op(
     remainder.or_else(|| iter.next())
 }
 
+// ── Position mapping cursor ──────────────────────────────────────────────────
+
+/// A resumable, monotone version of [`ChangeSet::map_pos`] for batch queries.
+///
+/// Each `map()` call must receive `pos` values in non-decreasing order across
+/// the cursor's lifetime — it never revisits an earlier op, so a caller
+/// walking `n` sorted positions through one cursor pays O(ops + n) total
+/// instead of O(ops × n) for `n` fresh `map_pos` calls. Same amortized-cursor
+/// shape as `IntervalCursor` in `hume_engine::style::highlight`.
+pub(crate) struct PosMapCursor<'a> {
+    ops: &'a [Operation],
+    idx: usize,
+    old: usize,
+    new: usize,
+}
+
+impl<'a> PosMapCursor<'a> {
+    pub(crate) fn new(ops: &'a [Operation]) -> Self {
+        Self {
+            ops,
+            idx: 0,
+            old: 0,
+            new: 0,
+        }
+    }
+
+    /// Map `pos` from old-doc to new-doc space. `pos` must be `>=` every
+    /// position passed to a prior call on this cursor — see struct docs.
+    ///
+    /// Body mirrors [`ChangeSet::map_pos`] exactly; the only difference is
+    /// that the walk resumes from `(idx, old, new)` instead of restarting at
+    /// op 0, since ops fully behind a past query can never matter again.
+    pub(crate) fn map(&mut self, pos: usize, assoc: Assoc) -> usize {
+        while self.idx < self.ops.len() {
+            match &self.ops[self.idx] {
+                Operation::Retain(n) => {
+                    if pos < self.old + n {
+                        return self.new + (pos - self.old);
+                    }
+                    self.old += n;
+                    self.new += n;
+                    self.idx += 1;
+                }
+                Operation::Delete(n) => {
+                    if pos < self.old + n {
+                        return self.new;
+                    }
+                    self.old += n;
+                    self.idx += 1;
+                }
+                Operation::Insert(s) => {
+                    let len = s.chars().count();
+                    if pos == self.old {
+                        return match assoc {
+                            #[cfg(test)]
+                            Assoc::Before => self.new,
+                            Assoc::After => self.new + len,
+                        };
+                    }
+                    self.new += len;
+                    self.idx += 1;
+                }
+            }
+        }
+        self.new + (pos - self.old)
+    }
+}
+
 // ── ChangeSet impl ───────────────────────────────────────────────────────────
 
 impl ChangeSet {
@@ -250,116 +318,71 @@ impl ChangeSet {
 
     // ── map_pos ──────────────────────────────────────────────────────────────
 
-    /// Map a char position from the old document to the new document.
+    /// Map a single char position from the old document to the new document.
     ///
     /// `assoc` controls what happens when `pos` falls exactly at an insertion
     /// point: `Before` keeps the position before the inserted text, `After`
-    /// moves it past. This is how cursor placement after edits is determined.
+    /// moves it past.
     ///
     /// Positions inside a deleted region collapse to the start of the deletion
     /// in the new document (the only sensible choice — the character is gone).
     ///
+    /// One-shot convenience over [`PosMapCursor`] — batch callers mapping
+    /// several sorted positions through the same changeset (e.g.
+    /// `SelectionSet::translate_in_place`) should use `PosMapCursor` directly
+    /// instead, so the walk isn't restarted from op 0 for every position.
+    /// No production caller needs a single one-off mapping yet — this exists
+    /// as the independent, hand-derived-expected-value oracle that pins
+    /// `PosMapCursor`'s per-query semantics in tests.
+    ///
     /// # Panics
     /// Panics (debug) if `pos > self.len_before`.
+    #[cfg(test)]
     pub(crate) fn map_pos(&self, pos: usize, assoc: Assoc) -> usize {
         debug_assert!(
             pos <= self.len_before,
             "map_pos: pos {pos} exceeds len_before {}",
             self.len_before,
         );
-
-        let mut old = 0usize; // consumed in old doc
-        let mut new = 0usize; // produced in new doc
-
-        for op in &self.ops {
-            match op {
-                Operation::Retain(n) => {
-                    // Retain maps old[old..old+n] → new[new..new+n] (1:1).
-                    // If pos falls inside this block, it maps proportionally.
-                    if pos < old + n {
-                        return new + (pos - old);
-                    }
-                    old += n;
-                    new += n;
-                }
-                Operation::Delete(n) => {
-                    // Delete removes old[old..old+n]. Any position inside
-                    // the deleted range collapses to `new` (the start of
-                    // whatever follows the deletion in the new doc).
-                    if pos < old + n {
-                        return new;
-                    }
-                    old += n;
-                    // new doesn't advance — deleted chars vanish.
-                }
-                Operation::Insert(s) => {
-                    let len = s.chars().count();
-                    // Insert doesn't consume old chars. If the old cursor
-                    // is exactly at this insertion point, Assoc decides
-                    // which side the position lands on.
-                    if pos == old {
-                        return match assoc {
-                            #[cfg(test)]
-                            Assoc::Before => new,
-                            Assoc::After => new + len,
-                        };
-                    }
-                    // pos > old: the insertion is before our position.
-                    // Advance new and continue scanning.
-                    new += len;
-                }
-            }
-        }
-
-        // Past all ops — pos is at or beyond the end of the old doc.
-        new + (pos - old)
+        PosMapCursor::new(&self.ops).map(pos, assoc)
     }
 
-    // ── touches_line ─────────────────────────────────────────────────────────
+    // ── edited_old_ranges ────────────────────────────────────────────────────
 
-    /// Returns `true` if any `Delete` or `Insert` operation in this changeset
-    /// overlaps the char range `[line_start, line_end)` of `line` in the
-    /// pre-edit buffer.
+    /// Old-doc `(start, end)` spans touched by this changeset's edits, sorted
+    /// ascending and merged where adjacent/overlapping.
     ///
-    /// Used by `SelectionSet::translate_in_place` to decide whether to reset
-    /// `horiz` (sticky display column) on non-acting pane selections whose
-    /// head resided on the edited line.
+    /// `Delete(n)` contributes `[old, old+n)`; `Insert` contributes the point
+    /// range `[old, old)` — it touches only the exact offset it lands at,
+    /// since it doesn't consume any old-doc chars. A point can merge into a
+    /// preceding range when it sits exactly at that range's end (e.g. an
+    /// Insert immediately following a Delete at the same position).
     ///
-    /// `buf_pre` must be the buffer text *before* the edit (the same snapshot
-    /// passed to `translate_in_place`).
-    pub(crate) fn touches_line(&self, buf_pre: &crate::text::Text, line: usize) -> bool {
-        let line_start = buf_pre.line_to_char(line);
-        let line_end = if line + 1 < buf_pre.len_lines() {
-            buf_pre.line_to_char(line + 1)
-        } else {
-            buf_pre.len_chars()
-        };
-
+    /// Used by `SelectionSet::translate_in_place` — one O(ops) walk here lets
+    /// the caller check every selection's line against these ranges with a
+    /// single forward-only cursor, instead of re-walking `self.ops` per
+    /// selection.
+    pub(crate) fn edited_old_ranges(&self) -> Vec<(usize, usize)> {
+        let mut ranges: Vec<(usize, usize)> = Vec::new();
         let mut old = 0usize;
         for op in &self.ops {
             match op {
-                Operation::Retain(n) => {
-                    old += n;
-                }
+                Operation::Retain(n) => old += n,
                 Operation::Delete(n) => {
-                    let del_start = old;
-                    let del_end = old + n;
-                    if del_start < line_end && del_end > line_start {
-                        return true;
+                    let (start, end) = (old, old + n);
+                    match ranges.last_mut() {
+                        Some(last) if start <= last.1 => last.1 = last.1.max(end),
+                        _ => ranges.push((start, end)),
                     }
                     old += n;
                 }
-                Operation::Insert(_) => {
-                    // Insert at `old` — touches the line if the insertion
-                    // point falls within [line_start, line_end).
-                    if old >= line_start && old < line_end {
-                        return true;
-                    }
-                    // old doesn't advance for Insert.
-                }
+                Operation::Insert(_) => match ranges.last_mut() {
+                    Some(last) if old <= last.1 => last.1 = last.1.max(old),
+                    _ => ranges.push((old, old)),
+                },
             }
         }
-        false
+        ranges
     }
 
     // ── invert ───────────────────────────────────────────────────────────────

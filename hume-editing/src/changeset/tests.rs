@@ -381,6 +381,111 @@ fn map_pos_eof() {
     assert_eq!(cs.map_pos(3, Assoc::After), 5);
 }
 
+// ── PosMapCursor tests ───────────────────────────────────────────────────
+
+/// Batch queries through one `PosMapCursor` must equal a fresh `map_pos` call
+/// per position. `map_pos`'s per-query semantics are independently pinned by
+/// the hand-derived-expected-value tests above; agreement with those here
+/// confirms the cursor's state-resumption doesn't drift from single-shot
+/// mapping.
+#[test]
+fn pos_map_cursor_matches_map_pos_for_ascending_queries() {
+    // "helloworld\n" = 11 chars: h0 e1 l2 l3 o4 w5 o6 r7 l8 d9 \n10.
+    // Replace "llo" (2..5) with "LLO!", delete "wor" (5..8), retain "ld\n".
+    let mut b = ChangeSetBuilder::new(11);
+    b.retain(2);
+    b.delete(3);
+    b.insert("LLO!");
+    b.delete(3);
+    b.retain_rest();
+    let cs = b.finish();
+
+    // Ascending with repeats (collapsed-selection-shaped) and one query
+    // exactly at len_before (EOF).
+    let queries = [0usize, 0, 1, 2, 2, 3, 4, 5, 7, 8, 9, 10, 11];
+    let mut cursor = PosMapCursor::new(cs.ops());
+    for &pos in &queries {
+        assert_eq!(
+            cursor.map(pos, Assoc::After),
+            cs.map_pos(pos, Assoc::After),
+            "cursor diverged from map_pos at pos={pos}"
+        );
+    }
+}
+
+#[test]
+fn pos_map_cursor_handles_repeated_pos_with_both_assocs() {
+    // Retain(3), Insert("XX"), Retain(2). Query pos=3 twice through one
+    // cursor — once per Assoc — to confirm the first (Before) call doesn't
+    // advance state past the insert before the second (After) query at the
+    // same position.
+    let mut b = ChangeSetBuilder::new(5);
+    b.retain(3);
+    b.insert("XX");
+    b.retain_rest();
+    let cs = b.finish();
+
+    let mut cursor = PosMapCursor::new(cs.ops());
+    assert_eq!(cursor.map(3, Assoc::Before), cs.map_pos(3, Assoc::Before));
+    assert_eq!(cursor.map(3, Assoc::After), cs.map_pos(3, Assoc::After));
+    assert_eq!(cursor.map(4, Assoc::After), cs.map_pos(4, Assoc::After));
+}
+
+// ── edited_old_ranges tests ──────────────────────────────────────────────
+
+#[test]
+fn edited_old_ranges_identity_is_empty() {
+    let mut b = ChangeSetBuilder::new(5);
+    b.retain_rest();
+    let cs = b.finish();
+    assert_eq!(cs.edited_old_ranges(), Vec::<(usize, usize)>::new());
+}
+
+#[test]
+fn edited_old_ranges_single_delete() {
+    let mut b = ChangeSetBuilder::new(10);
+    b.retain(2);
+    b.delete(3);
+    b.retain_rest();
+    let cs = b.finish();
+    assert_eq!(cs.edited_old_ranges(), vec![(2, 5)]);
+}
+
+#[test]
+fn edited_old_ranges_insert_is_a_point() {
+    let mut b = ChangeSetBuilder::new(5);
+    b.retain(3);
+    b.insert("XX");
+    b.retain_rest();
+    let cs = b.finish();
+    assert_eq!(cs.edited_old_ranges(), vec![(3, 3)]);
+}
+
+#[test]
+fn edited_old_ranges_merges_delete_then_insert_at_same_point() {
+    // Delete(3), Insert("XY"), Retain(2) — a "replace" pattern. The insert
+    // sits exactly at the delete's end (old=3 for both) and must merge into
+    // one range rather than producing a separate zero-length entry.
+    let mut b = ChangeSetBuilder::new(5);
+    b.delete(3);
+    b.insert("XY");
+    b.retain_rest();
+    let cs = b.finish();
+    assert_eq!(cs.edited_old_ranges(), vec![(0, 3)]);
+}
+
+#[test]
+fn edited_old_ranges_keeps_disjoint_edits_separate() {
+    // Two deletes separated by a retain gap must stay as two ranges.
+    let mut b = ChangeSetBuilder::new(12);
+    b.delete(2); // [0,2)
+    b.retain(4); // gap
+    b.delete(3); // [6,9)
+    b.retain_rest();
+    let cs = b.finish();
+    assert_eq!(cs.edited_old_ranges(), vec![(0, 2), (6, 9)]);
+}
+
 // ── invert tests ─────────────────────────────────────────────────────────
 
 #[test]
