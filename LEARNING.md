@@ -46,7 +46,7 @@ How rendering, dispatch, and the engine/editor boundary are structured.
 ### Languages & syntax
 
 How buffers learn their language, and how tree-sitter grammars produce
-syntax highlighting.
+syntax highlighting — including embedded languages via injections.
 
 | Topic | File |
 |-------|------|

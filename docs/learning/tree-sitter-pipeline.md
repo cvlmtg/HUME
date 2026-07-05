@@ -31,15 +31,19 @@ When a grammar is installed and registered, HUME loads two things together:
    and semantic meaning: it matches patterns in the tree and assigns named
    captures to them.
 
-These two are kept together — a grammar bundle — because the query is compiled
-against the `Language` pointer inside the shared library. They share a
-lifetime: you cannot use a query compiled for one version of a grammar with
+A grammar whose language embeds others carries an optional third piece: an
+**injection query**, which marks regions of the tree as belonging to a
+different language (see [Injections](#injections-embedded-languages) below).
+
+These pieces are kept together — a grammar bundle — because the queries are
+compiled against the `Language` pointer inside the shared library. They share
+a lifetime: you cannot use a query compiled for one version of a grammar with
 a parser from a different version.
 
-The compiled query is shared across every buffer of that language. Whether
-ten files or a hundred are open, there is exactly one `Arc<Query>` for Rust,
-one for Python, and so on. Parsing produces a distinct syntax tree per
-buffer; the query used to walk those trees is the same object.
+The compiled queries are shared across every buffer of that language. Whether
+ten files or a hundred are open, there is exactly one compiled highlight query
+for Rust, one for Python, and so on. Parsing produces distinct syntax trees
+per buffer; the queries used to walk those trees are the same objects.
 
 ## Highlight queries
 
@@ -61,6 +65,58 @@ At query-compilation time, capture names are interned into the editor's scope
 registry. The scope registry is the vocabulary of token types that themes
 speak. A theme maps scope names to colors; a query maps AST patterns to scope
 names; together they map parse trees to styled text.
+
+## Injections: embedded languages
+
+One document often contains more than one language. A Markdown file has
+fenced code blocks in Rust or Python; an HTML page has `<script>` tags full
+of JavaScript; a Rust doc comment contains Markdown. The Markdown grammar
+knows *where* a fenced block is, but it cannot parse Rust — its tree just
+says "here is a code block whose info string reads `rust`."
+
+**Injection queries** bridge that gap. Like a highlight query, an injection
+query is a `.scm` file of patterns compiled against the host grammar — but
+instead of assigning colors, its captures say "this node's text is another
+language: parse it with that language's grammar." The embedded language is
+sometimes named right in the query (a fixed choice like Markdown's inline
+grammar) and sometimes read out of the document itself (the ` ```rust ` info
+string of a fence).
+
+### Layers
+
+With injections, a buffer no longer holds one syntax tree. It holds a **root
+tree** (the buffer's own language) plus a set of **injected layers**: each
+layer is a full parse of another grammar, restricted to the byte ranges the
+injection query marked. Layers can nest — a Markdown fence containing Rust
+containing a doc comment containing Markdown again — so injection resolution
+runs recursively, with a small depth cap to keep pathological documents from
+recursing forever.
+
+Two wrinkles make layers more interesting than "a tree per region":
+
+- **Combined layers.** Some embedded languages are scattered across the
+  document in many small spans that only make sense parsed *together*.
+  Markdown's inline grammar (bold, italic, inline code) is the canonical
+  case: every paragraph contributes a span, and they are parsed as one layer
+  covering many disjoint ranges rather than one layer per paragraph.
+- **Depth priority.** Where layers overlap, the *deeper* layer's highlighting
+  wins. Inside a Rust fence, Rust's `@keyword` beats whatever Markdown would
+  have said about those bytes — the most specific parse of a region is the
+  one the user should see.
+
+Missing grammars degrade gracefully: if a fence names a language whose
+grammar isn't installed, that region simply keeps the host language's
+highlighting. Nothing errors; installing the grammar later lights it up.
+
+### Incremental root, full-parse layers
+
+Edits update the root tree incrementally, as before. Injected layers are
+re-resolved and re-parsed from scratch after each root parse instead. This is
+a deliberate trade-off: matching up "which layer from the previous parse is
+the same layer now" across arbitrary edits is complex and error-prone, while
+the regions themselves (a code fence, a script tag) are typically small
+enough that a full parse is cheap. The expensive parse — the whole buffer —
+stays incremental; the small ones are recomputed.
 
 ## Plum: the grammar manager
 
@@ -89,11 +145,17 @@ place where the list of supported grammars is maintained.
 
 When you run `:plum-install-grammar`, plum:
 
-1. Clones the grammar repository at the pinned revision.
-2. Fetches the matching highlight query from Helix's pinned runtime and writes
-   it to the editor's data directory.
-3. Compiles the C source to a shared library, also in the data directory.
-4. Calls `register-grammar!` to load the shared library and the query into
+1. Installs any **dependency grammars** first. Some grammars are incomplete
+   without a companion: Markdown's emphasis and inline code live in a separate
+   inline grammar that Markdown's injection query expects to find. Plum knows
+   these pairings and installs the companion transparently.
+2. Clones the grammar repository at the pinned revision.
+3. Fetches the matching highlight query from Helix's pinned runtime and writes
+   it to the editor's data directory. The injection query is fetched the same
+   way, but best-effort: most languages embed nothing and have no injection
+   query, so its absence is normal, not an error.
+4. Compiles the C source to a shared library, also in the data directory.
+5. Calls `register-grammar!` to load the shared library and the queries into
    the running editor. A grammar whose tree-sitter ABI version is incompatible
    with the editor is rejected here with a clear error rather than crashing
    the parse worker later.
@@ -148,8 +210,9 @@ Putting it all together, here is what happens when you open `main.rs`:
 
 4. **Syntax setup** — if a grammar bundle is attached to the Rust config, a
    parse request is queued to the background parse worker. Parsing happens
-   off the main thread; when the worker responds, the buffer's syntax tree is
-   installed and the highlighter is wired up. A size gate prevents very large
+   off the main thread: the worker parses the root tree, then resolves any
+   injections and parses those layers too, and the finished set is installed
+   on the buffer with the highlighter wired up. A size gate prevents very large
    files from being parsed at all — the default cap is one mebibyte, and it is
    enforced not just at open but mid-session: a buffer that grows past the cap
    has its syntax detached, and one that later shrinks back under the cap is
@@ -163,12 +226,15 @@ Putting it all together, here is what happens when you open `main.rs`:
    to be set, so `on-buffer-open` handlers can safely branch on language.
 
 7. **Render** — when the buffer is drawn, the renderer's style stage reads
-   the stored syntax tree (once available) and walks it with the shared query
-   to produce per-grapheme style spans. Those spans are resolved against the
-   active theme to produce the final colors.
+   the stored syntax trees (once available) — the root tree plus any injected
+   layers — and walks each with its language's shared query to produce
+   per-grapheme style spans, deeper layers winning where they overlap. Those
+   spans are resolved against the active theme to produce the final colors.
 
-The parse tree lives on the buffer and is updated incrementally on each edit.
-The query and the theme are shared resources read during every render pass.
-Incremental updates are baked once per frame before the renderer runs, so the
-tree the renderer reads is always coordinate-aligned with the buffer text on
-screen even while a fresh reparse is still in flight on the background worker.
+The parse trees live on the buffer: the root tree is updated incrementally on
+each edit, while injected layers are re-parsed in full after each root parse.
+The queries and the theme are shared resources read during every render pass.
+Incremental updates are baked once per frame before the renderer runs — into
+every layer's tree, not just the root — so the trees the renderer reads are
+always coordinate-aligned with the buffer text on screen even while a fresh
+reparse is still in flight on the background worker.

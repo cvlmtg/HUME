@@ -31,12 +31,6 @@ To install several grammars at once — skipping any already compiled — call i
 
 After the first install, launching HUME just loads the compiled grammars silently; there's nothing more to do.
 
-## Embedded languages
-
-Some languages embed others — a fenced code block in Markdown, or Markdown's own bold, italic, and inline-code spans. HUME resolves these automatically once the grammars involved are installed, with no extra configuration.
-
-For Markdown, `:plum-install-grammar` installs Markdown itself and the grammar its emphasis and inline-code spans need. A fenced ` ```rust ` block then highlights as Rust as soon as the Rust grammar is installed too — install it for whichever languages you paste into fences.
-
 ### Re-install
 
 ```
@@ -44,6 +38,12 @@ For Markdown, `:plum-install-grammar` installs Markdown itself and the grammar i
 ```
 
 Re-downloads the grammar source and recompiles it. Use it after updating HUME, or to recover from a broken compile. The old source is purged first.
+
+## Embedded languages
+
+Some languages embed others — a fenced code block in Markdown, or Markdown's own bold, italic, and inline-code spans. HUME resolves these automatically once the grammars involved are installed, with no extra configuration.
+
+For Markdown, `:plum-install-grammar` installs Markdown itself and the grammar its emphasis and inline-code spans need. A fenced ` ```rust ` block then highlights as Rust as soon as the Rust grammar is installed too — install it for whichever languages you paste into fences.
 
 ## When detection gets it wrong
 
