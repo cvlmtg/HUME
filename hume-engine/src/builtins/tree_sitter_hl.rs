@@ -176,6 +176,17 @@ impl TreeSitterHighlighter {
 /// over its parent's, regardless of collection order. `raw`/`stack`/`events`
 /// are caller-owned scratch (see [`StyleScratch`](crate::style::StyleScratch)),
 /// cleared on entry.
+///
+/// Deliberate non-optimization: every line re-runs the query from the tree
+/// root (clipped by `set_byte_range`, so cost is O(tree depth + line
+/// content)) rather than batching one query per viewport. Per-line keeps
+/// this a pure function of `(tree, rope, line)` — batching, even hidden
+/// behind this same signature, would add a fill-before-read protocol that
+/// every caller inherits. Starting the query below the root is not an
+/// option either — patterns rooted at ancestor nodes silently stop
+/// matching. Revisit bar and fix order: see "Syntax highlight query
+/// granularity" in ROADMAP.md (pre-bucketed viewport query first, span
+/// cache second).
 pub fn layer_highlights_for_line(
     layers: &SyntaxLayers,
     line_idx: usize,
