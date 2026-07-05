@@ -56,7 +56,9 @@ branches internally:
 
 - **Move** mode: the anchor collapses to the new cursor position (a fresh
   one-character selection).
-- **Extend** mode: the anchor stays fixed, only the head moves.
+- **Extend** mode: the anchor stays fixed, only the head moves — so the same
+  parameter produces a grow or a shrink depending on which way the head moves
+  relative to the anchor, with no separate command needed for either.
 
 This means adding a new motion requires **one function and one registration**
 — the extend variant comes for free from the parameter.

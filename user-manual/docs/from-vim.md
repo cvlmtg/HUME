@@ -18,7 +18,7 @@ In HUME, the order is reversed: you **select first, then act**. `w` selects the 
 |----------|----------------|
 | Normal | Normal |
 | Insert | Insert |
-| Visual | Extend mode (`e`) or any motion that grows the selection |
+| Visual | Extend mode (`e`) or any motion that grows or shrinks the selection |
 | Visual Line | Extend mode + line motions |
 | Visual Block | HUME has no rectangular selection. Use `C` to spawn column-aligned multi-cursors (one per line below), then edit — this approximates column editing without a true visual block. |
 | Command-line | Command line (`:`) |
@@ -27,7 +27,7 @@ In HUME, the order is reversed: you **select first, then act**. `w` selects the 
 
 ### Extend mode vs Visual mode
 
-Vim's Visual mode is entered once and stays until you act. HUME's Extend mode is similar — press `e` to enter it, and every motion extends the selection until you act or press `Esc`.
+Vim's Visual mode is entered once and stays until you act. HUME's Extend mode is similar — press `e` to enter it, and every motion extends the selection until you act or press `Esc`. Motions run backward too: moving back toward where you started shrinks the selection, much like shrinking a Visual selection by moving back in Vim.
 
 ### Registers
 

@@ -3,8 +3,11 @@
 In most text editors, "move the cursor" and "extend the selection" are handled
 by separate key bindings — arrow keys move, Shift+arrow extends. In HUME, the
 two behaviours are the same command with a different mode parameter. This is
-why `h` can both move the cursor (normal use) and grow a selection (in extend
-mode) without needing a separate `"extend-left"` command.
+why `h` can both move the cursor (normal use) and grow or shrink a selection
+(in extend mode) without needing a separate `"extend-left"` command — since
+only the head moves while the anchor stays fixed, moving away from the anchor
+grows the selection and moving back toward it shrinks it. Grow and shrink are
+the same mechanism, not two separate features.
 
 ## A concrete walkthrough
 
@@ -36,14 +39,16 @@ Extend → anchor = 2 (unchanged), head = 3
 ```
 
 The selection grew from `'l'` to cover both `'l'` characters — the anchor
-stayed put.
+stayed put. Pressing `h` from here would move the head back toward the anchor,
+shrinking the selection instead of growing it — the same computation, just
+walked in the other direction.
 
 ## The two modes
 
 | Mode | Anchor | Head | Typical use |
 |------|--------|------|-------------|
 | `Move`   | `new_head`   | `new_head` | Plain cursor move — `h`, `j`, `k`, `l` |
-| `Extend` | `old_anchor` | `new_head` | Grow selection — sticky extend mode (toggled by `e`), one-shot Ctrl+letter on kitty-capable terminals |
+| `Extend` | `old_anchor` | `new_head` | Grow or shrink selection — sticky extend mode (toggled by `e`), one-shot Ctrl+letter on kitty-capable terminals |
 
 `Move` always produces a collapsed single-character selection (anchor == head).
 `Extend` keeps the existing anchor, only moving the head.
@@ -68,8 +73,10 @@ Extend → anchor = old_anchor, head = new_head (anchor stays, head moves)
 ```
 
 A few anchor-manipulation commands sit beside this framework without being a
-new mode. `o` (and `Ctrl+e`) flip which end of the selection is the head and
-which is the anchor — useful once an extend has overshot, so you can walk the
-other end back into place. `Ctrl+;` collapses the selection onto its anchor,
-discarding the head. Neither invents a separate command for the moved pair;
-both reuse the same positions the existing selection already carries.
+new mode. Overshooting a target can be corrected by simply walking the head
+back — the same motion, reversed, shrinks it back down. `o` (and `Ctrl+e`)
+instead flip which end of the selection is the head and which is the anchor,
+which is what you want when you'd rather grow or shrink from the *other* end.
+`Ctrl+;` collapses the selection onto its anchor, discarding the head. None of
+these invent a separate command for the moved pair; all reuse the same
+positions the existing selection already carries.

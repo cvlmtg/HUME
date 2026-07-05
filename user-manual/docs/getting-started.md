@@ -37,13 +37,13 @@ The three modes you will use most:
 |------|-------------|--------------|
 | Normal | `Esc` from anywhere | Navigate and issue commands |
 | Insert | `i`, `a`, `o`, `c` from Normal mode | Type text |
-| Extend | `e` from Normal mode | Grow selections |
+| Extend | `e` from Normal mode | Grow and shrink selections |
 
 You spend most of your time in Normal. Drop into Insert only to type, then `Esc` back. See [Modes](modes.md) for the full list, including command-line, search, and select modes.
 
 ## Motions
 
-Motions move the cursor or change the current selection — `w` to the next word, `f` followed by a character to jump to it on the line, `g g` to the first line. Motions are how you navigate, and in Extend mode they are also how you grow a selection.
+Motions move the cursor or change the current selection — `w` to the next word, `f` followed by a character to jump to it on the line, `g g` to the first line. Motions are how you navigate, and in Extend mode they are also how you grow or shrink a selection.
 
 See [Moving Around](moving-around.md) for the full set.
 

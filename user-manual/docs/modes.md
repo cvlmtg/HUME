@@ -18,7 +18,7 @@ Enter Insert mode with `i`, `a`, `o`, `O`, `I`, or `A`. See [Editing](editing.md
 
 ## Extend mode
 
-Extend mode works like Normal mode, but every motion *extends* the current selection instead of replacing it. Use it to build up a multi-character or multi-line selection before acting on it.
+Extend mode works like Normal mode, but every motion *extends* the current selection instead of replacing it. Use it to build up a multi-character or multi-line selection before acting on it. Motions also run in reverse: moving back toward where you started shrinks the selection instead of growing it.
 
 **Enter:** `e` (toggles; status bar shows `EXT`)
 

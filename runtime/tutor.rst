@@ -273,8 +273,9 @@ Exercise
 
 Navigate onto the first line of the exercise, press ``x`` to select
 it, then press ``Ctrl+x`` twice to extend to all three lines.
-Observe the selection spans all three lines. Now press ``X`` multiple
-times and see what happens.
+Observe the selection spans all three lines. Now press ``X`` twice —
+the selection shrinks back up one line at a time instead of growing
+further. The opposite key reverses direction.
 
 import os
 import sys
@@ -296,13 +297,20 @@ Selection-consuming edits — delete, change, paste, replace — exit
 Extend mode automatically and return you to Normal. Yank (``y``) keeps
 you in Extend mode so you can extend further before acting.
 
+Motions run backward too: moving toward where you started shrinks the
+selection instead of growing it. ``w``/``b`` and ``x``/``X`` shrink one
+whole word or line at a time, and the word or line you started on
+always stays selected — pressing past it flips the selection to grow
+in the other direction instead of cutting it off partway.
+
 Exercise
 ~~~~~~~~
 
 Press ``e`` to enter Extend mode, then press ``w`` several times to
 grow the selection across multiple words. Observe the span, then
-press ``;`` to collapse it — you land back in Normal mode
-automatically:
+press ``b`` a few times to shrink it back down word by word, watching
+it contract to the word you started on. Press ``;`` to collapse it —
+you land back in Normal mode automatically:
 
 The build finished in under two seconds on the CI server.
 
@@ -395,8 +403,9 @@ Flipping moves the cursor to the other end of the selection without
 changing what is selected. This matters because ``;`` collapses to the
 cursor's end, and the next plain motion starts from there — flip first
 when you want to keep the opposite end.
-You can also shrink the selection using ``h``/``l``/``t``/``f`` and
-flipping the selection to select the end you want to expand or shrink.
+Shrinking from the cursor's end is just a backward motion, as in
+Lesson 2.2. Flip first when you want to grow or shrink from the other
+end instead.
 
 Exercise
 ~~~~~~~~
@@ -1413,6 +1422,13 @@ buffer's language. You can type the whole command, or type a prefix like
 ``:plum-i`` and press ``Tab`` to autocomplete it — keep pressing ``Tab`` to
 cycle through the matches. Press ``Enter`` to run it, then wait for the
 grammar to finish installing.
+
+This needs ``git``, ``curl``, the ``tree-sitter`` CLI, and a C compiler on
+your system. How you install them depends on your operating system: on
+macOS, Homebrew (``brew install git curl tree-sitter``) covers all four,
+with a C compiler coming from Xcode's Command Line Tools; on Linux, your
+distribution's package manager (``apt``, ``dnf``, ``pacman``, ...) provides
+them; on Windows, reach for ``winget``, ``Scoop``, or WSL.
 
 When it's done, this tutor is syntax highlighted: it is a reStructuredText
 document, and you just installed the grammar that colours it.

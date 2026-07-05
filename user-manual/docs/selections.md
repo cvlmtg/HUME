@@ -10,11 +10,11 @@ A selection has two ends: the **anchor** and the **head**. The head is the movin
 
 ### Extend mode
 
-Press `e` to enter Extend mode. In Extend mode, every motion grows the selection instead of moving it. Press `e` again or `Esc` to return to Normal. The status bar shows `EXT` while Extend mode is active.
+Press `e` to enter Extend mode. In Extend mode, every motion grows the selection instead of moving it — and moving back toward where you started shrinks it again, since only the moving end travels while the anchor stays put. Press `e` again or `Esc` to return to Normal. The status bar shows `EXT` while Extend mode is active.
 
 You can also do a one-shot extend without entering Extend mode: under the kitty keyboard protocol, `Ctrl+h`/`Ctrl+j`/`Ctrl+k`/`Ctrl+l`/`Ctrl+w`/`Ctrl+b` run the corresponding motion with extend on for that single keypress. (`Ctrl+x` / `Ctrl+X` likewise extend line selection on any terminal.)
 
-`w`/`b` and `x`/`X` extend in both directions: pressing the opposite key shrinks the selection back down, one word or one line at a time, rather than only ever growing it. The word or line where you started stays fully selected no matter which way you shrink or grow from there — crossing back past your starting point flips the selection's direction instead of cutting it off partway.
+`w`/`b` and `x`/`X` additionally shrink in whole units: pressing the opposite key shrinks the selection back down one word or one line at a time, rather than one character at a time. The word or line where you started stays fully selected no matter which way you shrink or grow from there — crossing back past your starting point flips the selection's direction instead of cutting it off partway.
 
 ### Text objects
 
