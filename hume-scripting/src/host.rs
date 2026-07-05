@@ -102,6 +102,7 @@ pub trait EditorHost {
         grammar_path: &Path,
         symbol: &str,
         highlights_path: &Path,
+        injections_path: Option<&Path>,
     ) -> Result<(), String>;
     fn has_grammar(&self, language: &str) -> bool;
 

@@ -26,6 +26,7 @@ pub struct SteelCmdDef {
 
 /// Language identity registration queued during `eval_init` and flushed by
 /// `Editor::flush_pending_language_regs` after each `eval_init` boundary.
+#[derive(Debug)]
 pub enum PendingLanguageReg {
     Identity {
         name: String,
@@ -38,6 +39,7 @@ pub enum PendingLanguageReg {
         grammar_path: std::path::PathBuf,
         symbol: String,
         highlights_path: std::path::PathBuf,
+        injections_path: Option<std::path::PathBuf>,
     },
 }
 

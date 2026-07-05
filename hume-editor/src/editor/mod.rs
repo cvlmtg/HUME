@@ -44,6 +44,7 @@ mod commands;
 pub(crate) mod completion;
 pub(crate) mod cursor;
 pub(crate) mod doc_ops;
+pub(crate) mod injections;
 pub(crate) mod jump_list;
 pub mod keymap;
 #[cfg(test)]

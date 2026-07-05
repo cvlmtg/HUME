@@ -53,14 +53,61 @@
 (define (plum/grammar-highlights-path name)
   (path-join (plum/grammar-source-dir name) "highlights.scm"))
 
+(define (plum/grammar-injections-path name)
+  (path-join (plum/grammar-source-dir name) "injections.scm"))
+
 ;;; Helix commit pin, read once at plugin load.
 (define *plum-helix-pin*
   (call-with-input-file (path-join (runtime-dir) "scheme" "helix-pin.scm") read))
 
-;;; URL for the Helix-pinned highlights query for `name`.
-(define (plum/helix-query-url name)
+;;; URL for the Helix-pinned query file `filename` (e.g. "highlights.scm",
+;;; "injections.scm") for `name`.
+(define (plum/helix-query-url name filename)
   (string-append "https://raw.githubusercontent.com/helix-editor/helix/"
-                 *plum-helix-pin* "/runtime/queries/" name "/highlights.scm"))
+                 *plum-helix-pin* "/runtime/queries/" name "/" filename))
+
+;; ── Injection dependencies ────────────────────────────────────────────────────
+
+;;; Hash: name → (dep-name ...). Grammars whose injections only resolve if
+;;; another grammar is also compiled and attached — e.g. markdown's
+;;; `(inline)` injection resolves to the language "markdown.inline" (the
+;;; same name as its languages.scm identity and its grammar-sources.scm /
+;;; Helix query-directory key — no renaming needed), so without that
+;;; grammar compiled and attached, bold/italic/inline-code never highlight
+;;; even though markdown itself installed cleanly.
+(define *plum-grammar-deps*
+  (hash "markdown" (list "markdown.inline")))
+
+(define (plum/grammar-deps name)
+  (if (hash-contains? *plum-grammar-deps* name)
+      (hash-ref *plum-grammar-deps* name)
+      '()))
+
+;;; Install any not-yet-compiled dependency grammars for `name` before `name`
+;;; itself installs. Runs before the main install steps so a fresh
+;;; `:plum-install-grammar` on a markdown buffer transparently pulls in
+;;; markdown_inline too — the user never needs to know it exists.
+(define (plum/install-grammar-deps! name)
+  (for-each
+    (lambda (dep)
+      (unless (plum/grammar-installed? dep)
+        (log! 'info (string-append "PLUM: installing dependency " dep " for " name))
+        (plum/install-grammar dep)))
+    (plum/grammar-deps name)))
+
+;;; Fetch `name`'s injections.scm to its declared path, tolerating a missing
+;;; file (most grammars have none) — a 404 makes `curl-fetch` raise, which
+;;; would otherwise abort the whole grammar install for no reason. Returns
+;;; the path on success, `#f` if there is no injections query to fetch.
+(define (plum/try-fetch-injections! name)
+  (let ((path (plum/grammar-injections-path name)))
+    (with-handler
+      (lambda (err)
+        (log! 'trace (string-append "PLUM: no injections.scm for " name " (" (to-string err) ")"))
+        #f)
+      (begin
+        (curl-fetch (plum/helix-query-url name "injections.scm") path)
+        path))))
 
 ;; ── Grammar discovery ─────────────────────────────────────────────────────────
 
@@ -103,8 +150,10 @@
 ;; ── Install pipeline ──────────────────────────────────────────────────────────
 
 ;;; Install a single grammar from its declared source:
+;;;   0. plum/install-grammar-deps! — install any dependency grammars first
 ;;;   1. git-clone-rev  — blobless clone at pinned rev
 ;;;   2. curl-fetch     — download Helix highlights query
+;;;   2b. plum/try-fetch-injections! — download Helix injections query, if any
 ;;;   3. compile-grammar! — tree-sitter build → shared lib
 ;;;   4. register-grammar! — attach to language in this session
 (define (plum/install-grammar name)
@@ -118,10 +167,11 @@
                         (path-join src-dir subpath)))
          (out-path (grammar-output-path name))
          (hl-path  (plum/grammar-highlights-path name)))
+    (plum/install-grammar-deps! name)
     (git-clone-rev url src-dir rev)
-    (curl-fetch (plum/helix-query-url name) hl-path)
+    (curl-fetch (plum/helix-query-url name "highlights.scm") hl-path)
     (compile-grammar! build-dir out-path)
-    (register-grammar! name out-path symbol hl-path)))
+    (register-grammar! name out-path symbol hl-path (plum/try-fetch-injections! name))))
 
 ;; ── Startup grammar registration ─────────────────────────────────────────────
 
@@ -134,9 +184,10 @@
     (lambda (name)
       (let ((out  (grammar-output-path name))
             (hl   (plum/grammar-highlights-path name))
+            (inj  (plum/grammar-injections-path name))
             (sym  (plum/grammar-source-symbol name)))
         (when (and (plum/grammar-installed? name) (path-exists? hl))
-          (register-grammar! name out sym hl))))
+          (register-grammar! name out sym hl (if (path-exists? inj) inj #f)))))
     (hash-keys->list *plum-grammar-sources*)))
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────

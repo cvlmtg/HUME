@@ -31,6 +31,12 @@ To install several grammars at once — skipping any already compiled — call i
 
 After the first install, launching HUME just loads the compiled grammars silently; there's nothing more to do.
 
+## Embedded languages
+
+Some languages embed others — a fenced code block in Markdown, or Markdown's own bold, italic, and inline-code spans. HUME resolves these automatically once the grammars involved are installed, with no extra configuration.
+
+For Markdown, `:plum-install-grammar` installs Markdown itself and the grammar its emphasis and inline-code spans need. A fenced ` ```rust ` block then highlights as Rust as soon as the Rust grammar is installed too — install it for whichever languages you paste into fences.
+
 ### Re-install
 
 ```
@@ -80,6 +86,18 @@ The fields are, in order:
 - the C symbol that library exposes (each grammar's repo documents this)
 - a highlight query file.
 
+If `my-lang` embeds other languages (like Markdown's fenced code blocks), add a fifth argument pointing at its injections query:
+
+```scheme
+(register-grammar! "my-lang"
+  "/path/to/my_grammar.so"
+  "tree_sitter_my_lang"
+  "/path/to/highlights.scm"
+  "/path/to/injections.scm")
+```
+
+Omit it for a language with nothing embedded.
+
 ## Manage installed grammars
 
 ```
@@ -113,3 +131,5 @@ See [Configuration](configuration.md) for the full settings reference.
 **Detection picks the wrong language.** Override with `:set buffer language=<name>`, or add the file pattern to your `init.scm` with `define-language!`.
 
 **Colors look wrong after a HUME update.** The mirrored catalog may have moved. Run `:plum-cleanup-grammars`, then `:plum-install-grammar` again.
+
+**A fenced code block doesn't highlight, but Markdown emphasis does.** The fenced language's own grammar isn't installed — Markdown's bold/italic/inline-code always come with the Markdown grammar itself, but a fence's language (` ```rust `, ` ```python `, …) is a separate grammar. Open a scratch file in that language (e.g. a `.rs` file for a ` ```rust ` fence) and run `:plum-install-grammar` there too.

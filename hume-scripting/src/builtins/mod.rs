@@ -301,7 +301,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
     // Language identity and grammar builtins
     steel.register_fn_with_ctx(HUME_CTX, "%define-language!", syntax::define_language);
-    steel.register_fn_with_ctx(HUME_CTX, "register-grammar!", syntax::register_grammar);
+    steel.register_fn_with_ctx(HUME_CTX, "%register-grammar!", syntax::register_grammar);
     steel.register_fn_with_ctx(
         HUME_CTX,
         "language-has-grammar?",

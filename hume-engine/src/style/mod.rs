@@ -21,6 +21,12 @@ pub struct StyleScratch {
     pub highlights: Vec<(usize, usize, ScopeId)>,
     /// Sorted highlight intervals split by tier; built once per buffer line.
     pub tier_bufs: TierBufs,
+    /// Scratch for the tree-sitter syntax-layer flattener. Owned here (not on
+    /// `TreeSitterHighlighter`) because one flatten pass merges captures from
+    /// every syntax layer covering a line, not just one highlighter's own.
+    pub ts_raw: Vec<(usize, usize, ScopeId, u8)>,
+    pub ts_stack: Vec<(u8, u32, ScopeId)>,
+    pub ts_events: Vec<(usize, bool, u32, ScopeId, u8)>,
     /// Selection column spans for the current row (all selections, including primary).
     pub sel_spans: Vec<(u16, u16)>,
     /// Display columns of each selection head on the current row (all selections, including primary).
@@ -47,6 +53,9 @@ impl StyleScratch {
             styles: Vec::with_capacity(512),
             highlights: Vec::with_capacity(256),
             tier_bufs: TierBufs::default(),
+            ts_raw: Vec::new(),
+            ts_stack: Vec::new(),
+            ts_events: Vec::new(),
             sel_spans: Vec::new(),
             head_cols: Vec::new(),
             sorted_sels: Vec::new(),
@@ -442,7 +451,7 @@ mod tests {
             };
             if current_line != Some(line_idx) {
                 current_line = Some(line_idx);
-                rebuild_tier_bufs(line_idx, None, &[], rope, None, scratch);
+                rebuild_tier_bufs(line_idx, None, &[], rope, scratch);
             }
             let line_start_char = rope.line_to_char(line_idx);
             let line_end_char = rope.line_to_char(line_idx + 1);

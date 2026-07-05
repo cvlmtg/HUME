@@ -181,6 +181,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         grammar_path: &Path,
         symbol: &str,
         highlights_path: &Path,
+        injections_path: Option<&Path>,
     ) -> Result<(), String> {
         self.state
             .languages
@@ -189,6 +190,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
                 grammar_path,
                 symbol,
                 highlights_path,
+                injections_path,
                 &mut self.view.registry,
             )
             .map_err(|e| format!("register-grammar! '{name}': {e}"))?;
@@ -374,6 +376,7 @@ mod tests {
                 Path::new("/no/such/lib.dylib"),
                 "rust_language",
                 Path::new("/no/such/highlights.scm"),
+                None,
             )
             .unwrap_err();
         assert!(

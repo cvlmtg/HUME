@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Query, QueryCursor};
 
-use crate::providers::{HighlightSource, HighlightTier, SourceContext};
+use crate::syntax_layers::{SyntaxLayers, layer_covers_line};
 use crate::theme::ScopeRegistry;
 use crate::types::{Scope, ScopeId};
 
@@ -36,47 +36,29 @@ impl<'a> tree_sitter::TextProvider<&'a [u8]> for RopeProvider<'a> {
 // TreeSitterHighlighter
 // ---------------------------------------------------------------------------
 
-/// Built-in highlight provider that drives tree-sitter highlight queries.
+/// Built-in highlighter that drives one language's compiled tree-sitter
+/// highlight query against a parse tree.
 ///
-/// # Usage
-///
-/// 1. Create with `TreeSitterHighlighter::new(language, query_source)`.
-/// 2. After each re-parse, write the new tree to `SharedBuffer`.  Pass it via
-///    `SourceContext` at render time — it is not stored here.
-/// 3. Register with `ProviderSet::add_highlight_source`.
+/// One instance is shared (via `Arc`) across every buffer of a given
+/// language and every syntax layer using that language — capture names are
+/// interned once, at construction. `collect_line_spans` is the sole entry
+/// point; `layer_highlights_for_line` (below) drives it per buffer line,
+/// merging captures across all of a buffer's syntax layers before flattening
+/// overlaps.
 ///
 /// # Byte offsets
 ///
-/// tree-sitter returns *absolute* byte offsets within the full file. The
-/// provider converts them to *line-relative* offsets (as required by the
-/// `HighlightSource` contract) using `ctx.line_start_byte`.
-///
-/// # Overlapping captures
-///
-/// Individual parse-tree nodes are nested or disjoint, but captures from
-/// *different* query patterns can produce partially-overlapping spans after
-/// line clipping.  `highlights_for_line` uses a sweep-line algorithm that
-/// tolerates any overlap and always emits sorted, non-overlapping output where
-/// the **last-started** capture wins at every byte.
+/// tree-sitter returns *absolute* byte offsets within the full file.
+/// `collect_line_spans` converts them to *line-relative* offsets.
 pub struct TreeSitterHighlighter {
     query: Arc<Query>,
     /// Maps tree-sitter capture index → interned scope id (None = ignored).
     capture_scopes: Vec<Option<ScopeId>>,
-    /// Mutable state: must stay in sync with the rope/buffer.
-    state: Mutex<TsState>,
-}
-
-struct TsState {
-    /// Scratch buffer for raw captures — retained across calls to avoid reallocation.
-    raw: Vec<(usize, usize, ScopeId)>,
-    /// Reused query cursor — tree-sitter recommends reuse to amortise its internal allocation.
-    cursor: QueryCursor,
-    /// Scratch stack for the overlap flattener — retained to avoid reallocation.
-    stack: Vec<(usize, ScopeId)>,
-    /// Scratch event list for the overlap flattener's sweep line — retained to
-    /// avoid reallocation (previously rebuilt every call, ~50 allocations/frame
-    /// on a full screen).
-    events: Vec<(usize, bool, ScopeId)>,
+    /// Reused query cursor — tree-sitter recommends reuse to amortise its
+    /// internal allocation. `Mutex` because renders run through a shared
+    /// `&TreeSitterHighlighter`; never contended in practice (rendering is
+    /// single-threaded and layers are queried sequentially).
+    cursor: Mutex<QueryCursor>,
 }
 
 impl TreeSitterHighlighter {
@@ -111,12 +93,7 @@ impl TreeSitterHighlighter {
         Self {
             query,
             capture_scopes,
-            state: Mutex::new(TsState {
-                raw: Vec::new(),
-                cursor: QueryCursor::new(),
-                stack: Vec::new(),
-                events: Vec::new(),
-            }),
+            cursor: Mutex::new(QueryCursor::new()),
         }
     }
 
@@ -145,50 +122,28 @@ impl TreeSitterHighlighter {
         Ok(Self {
             query,
             capture_scopes,
-            state: Mutex::new(TsState {
-                raw: Vec::new(),
-                cursor: QueryCursor::new(),
-                stack: Vec::new(),
-                events: Vec::new(),
-            }),
+            cursor: Mutex::new(QueryCursor::new()),
         })
     }
-}
 
-impl HighlightSource for TreeSitterHighlighter {
-    fn tier(&self) -> HighlightTier {
-        HighlightTier::Syntax
-    }
-
-    fn highlights_for_line(
+    /// Append this layer's raw (line-relative) capture intervals for
+    /// `line_idx` into `raw`, tagged with `depth` for `flatten_overlaps`'s
+    /// depth-first priority. Does not flatten overlaps — the caller merges
+    /// captures from every layer covering the line before flattening once.
+    pub(crate) fn collect_line_spans(
         &self,
-        line_idx: usize,
-        ctx: &SourceContext,
-        out: &mut Vec<(usize, usize, ScopeId)>,
+        tree: &tree_sitter::Tree,
+        rope: &ropey::Rope,
+        line_start: usize,
+        line_end: usize,
+        depth: u8,
+        raw: &mut Vec<(usize, usize, ScopeId, u8)>,
     ) {
-        let Some(tree) = ctx.tree else { return };
-        let mut state = self.state.lock().expect("highlight state lock poisoned");
-
-        // Compute the absolute byte range for this line.
-        let line_start = ctx.line_start_byte;
-        let line_end = if line_idx + 1 < ctx.rope.len_lines() {
-            ctx.rope.line_to_byte(line_idx + 1)
-        } else {
-            ctx.rope.len_bytes()
-        };
-
-        // Destructure into split borrows so the compiler sees all fields as disjoint.
-        let TsState {
-            ref mut raw,
-            ref mut cursor,
-            ref mut stack,
-            ref mut events,
-        } = *state;
+        let mut cursor = self.cursor.lock().expect("query cursor lock poisoned");
         cursor.set_byte_range(line_start..line_end);
-        raw.clear();
 
         let root = tree.root_node();
-        let mut matches = cursor.matches(&self.query, root, RopeProvider(ctx.rope));
+        let mut matches = cursor.matches(&self.query, root, RopeProvider(rope));
         while let Some(m) = matches.next() {
             for cap in m.captures {
                 let Some(scope) = self
@@ -205,13 +160,53 @@ impl HighlightSource for TreeSitterHighlighter {
                 let rel_start = abs_start.saturating_sub(line_start);
                 let rel_end = abs_end.saturating_sub(line_start);
                 if rel_start < rel_end {
-                    raw.push((rel_start, rel_end, scope));
+                    raw.push((rel_start, rel_end, scope, depth));
                 }
             }
         }
-
-        flatten_overlaps(raw, stack, events, out);
     }
+}
+
+/// Build sorted, non-overlapping highlight spans for `line_idx` across every
+/// syntax layer that covers it, for consumption by [`crate::style::rebuild_tier_bufs`].
+///
+/// Collects each covering layer's raw captures (tagged with the layer's
+/// depth) then flattens once — `flatten_overlaps` resolves overlaps by
+/// deepest-layer-wins, so a nested injection's captures always take priority
+/// over its parent's, regardless of collection order. `raw`/`stack`/`events`
+/// are caller-owned scratch (see [`StyleScratch`](crate::style::StyleScratch)),
+/// cleared on entry.
+pub fn layer_highlights_for_line(
+    layers: &SyntaxLayers,
+    line_idx: usize,
+    rope: &ropey::Rope,
+    raw: &mut Vec<(usize, usize, ScopeId, u8)>,
+    stack: &mut Vec<(u8, u32, ScopeId)>,
+    events: &mut Vec<(usize, bool, u32, ScopeId, u8)>,
+    out: &mut Vec<(usize, usize, ScopeId)>,
+) {
+    let line_start = rope.line_to_byte(line_idx);
+    let line_end = if line_idx + 1 < rope.len_lines() {
+        rope.line_to_byte(line_idx + 1)
+    } else {
+        rope.len_bytes()
+    };
+
+    raw.clear();
+    for layer in &layers.layers {
+        if layer_covers_line(layer, line_start, line_end) {
+            layer.highlighter.collect_line_spans(
+                &layer.tree,
+                rope,
+                line_start,
+                line_end,
+                layer.depth,
+                raw,
+            );
+        }
+    }
+
+    flatten_overlaps(raw, stack, events, out);
 }
 
 // ---------------------------------------------------------------------------
@@ -221,17 +216,23 @@ impl HighlightSource for TreeSitterHighlighter {
 /// Flatten capture intervals into sorted, non-overlapping output.
 ///
 /// Uses a sweep-line over start/end events so partial overlaps (which can
-/// arise when captures from different query patterns are line-clipped) are
-/// handled correctly.  `raw` is drained; `stack` and `events` are scratch
-/// storage cleared on entry.  Non-overlapping, sorted intervals are appended
-/// to `out`.
+/// arise when captures from different query patterns are line-clipped, or
+/// when a nested injection's range overlaps its parent layer's) are handled
+/// correctly.  `raw` is drained; `stack` and `events` are scratch storage
+/// cleared on entry.  Non-overlapping, sorted intervals are appended to `out`.
 ///
-/// When intervals overlap, the **last-opened** (most recently started) scope
-/// wins at any given byte, matching tree-sitter's own priority model.
+/// Priority is **deepest layer wins**, then **last-opened** (most recently
+/// started) within the same depth, matching tree-sitter's own priority model
+/// generalized across injection layers. `stack` is kept sorted ascending by
+/// `(depth, seq)` at all times — insertion happens at the correct sorted
+/// position rather than always at the end — so `stack.last()` is always the
+/// highest-priority active interval regardless of collection order (a nested
+/// injection's captures can be collected before or after its parent's; only
+/// `depth` determines priority, never collection order).
 fn flatten_overlaps(
-    raw: &mut Vec<(usize, usize, ScopeId)>,
-    stack: &mut Vec<(usize, ScopeId)>,
-    events: &mut Vec<(usize, bool, ScopeId)>,
+    raw: &mut Vec<(usize, usize, ScopeId, u8)>,
+    stack: &mut Vec<(u8, u32, ScopeId)>,
+    events: &mut Vec<(usize, bool, u32, ScopeId, u8)>,
     out: &mut Vec<(usize, usize, ScopeId)>,
 ) {
     debug_assert!(stack.is_empty());
@@ -240,21 +241,27 @@ fn flatten_overlaps(
         return;
     }
 
-    // Build a sorted event list: (pos, is_end, scope).
+    // Build a sorted event list: (pos, is_end, seq, scope, depth). `seq` is
+    // the interval's index in `raw` — unique per interval, used to pop the
+    // exact matching stack entry (never ambiguous, unlike matching by scope
+    // value when two active intervals share a scope).
     // End events sort before start events at the same position so a closing
     // interval is popped before a new one is pushed at the same byte.
-    for &(start, end, scope) in raw.iter() {
-        events.push((start, false, scope)); // Start
-        events.push((end, true, scope)); // End
+    for (seq, &(start, end, scope, depth)) in raw.iter().enumerate() {
+        let seq = seq as u32;
+        events.push((start, false, seq, scope, depth)); // Start
+        events.push((end, true, seq, scope, depth)); // End
     }
     raw.clear();
-    // Sort: by position, ends before starts at the same position.
+    // Sort purely by (pos, ends-before-starts) — priority among
+    // simultaneously active intervals is resolved by the sorted-stack
+    // insertion below, not by event processing order.
     events.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
 
     let mut pos = 0usize;
-    for &(event_pos, is_end, scope) in events.iter() {
+    for &(event_pos, is_end, seq, scope, depth) in events.iter() {
         // Emit the gap before this event using the currently active scope.
-        if let Some(&(_, active_scope)) = stack.last()
+        if let Some(&(_, _, active_scope)) = stack.last()
             && pos < event_pos
         {
             out.push((pos, event_pos, active_scope));
@@ -262,12 +269,14 @@ fn flatten_overlaps(
         pos = event_pos;
 
         if is_end {
-            // Pop this scope from the active set (find by value, last occurrence).
-            if let Some(idx) = stack.iter().rposition(|&(_, s)| s == scope) {
+            if let Some(idx) = stack.iter().position(|&(d, s, _)| d == depth && s == seq) {
                 stack.remove(idx);
             }
         } else {
-            stack.push((event_pos, scope));
+            // Insert in ascending (depth, seq) order so `stack.last()` stays
+            // the highest-priority active interval regardless of arrival order.
+            let insert_at = stack.partition_point(|&(d, s, _)| (d, s) < (depth, seq));
+            stack.insert(insert_at, (depth, seq, scope));
         }
     }
     stack.clear();
@@ -302,7 +311,14 @@ mod tests {
         ScopeId(n)
     }
 
-    fn run(mut raw: Vec<(usize, usize, ScopeId)>) -> Vec<(usize, usize, ScopeId)> {
+    /// Run `flatten_overlaps` with every interval at depth 0 (single-layer,
+    /// the pre-injection behavior) — `d()` below builds multi-depth input
+    /// for the depth-priority tests.
+    fn run(raw: Vec<(usize, usize, ScopeId)>) -> Vec<(usize, usize, ScopeId)> {
+        run_d(raw.into_iter().map(|(a, b, c)| (a, b, c, 0)).collect())
+    }
+
+    fn run_d(mut raw: Vec<(usize, usize, ScopeId, u8)>) -> Vec<(usize, usize, ScopeId)> {
         let mut stack = Vec::new();
         let mut events = Vec::new();
         let mut out = Vec::new();
@@ -364,6 +380,18 @@ mod tests {
     }
 
     #[test]
+    fn same_start_three_way_tie_resolves_by_seq() {
+        // Three captures share a start byte with distinct ends and distinct
+        // scopes. The highest-seq (last-captured) interval must win at byte
+        // 0; as it and the middle one end, each remaining interval takes over
+        // in seq order. `sort_unstable_by` does not guarantee tie order by
+        // API contract — the explicit `seq` field makes this deterministic
+        // rather than an accident of the current sort implementation.
+        let got = run(vec![(0, 5, s(0)), (0, 8, s(1)), (0, 6, s(2))]);
+        assert_eq!(got, vec![(0, 6, s(2)), (6, 8, s(1))]);
+    }
+
+    #[test]
     fn scratch_reuse_across_calls_leaves_no_stale_events() {
         // Regression for O1: `events`/`stack` are caller-owned scratch reused
         // across calls (mirroring TsState in the real highlighter). A second,
@@ -373,12 +401,12 @@ mod tests {
         let mut events = Vec::new();
         let mut out = Vec::new();
 
-        let mut first = vec![(0, 3, s(0))];
+        let mut first = vec![(0, 3, s(0), 0)];
         flatten_overlaps(&mut first, &mut stack, &mut events, &mut out);
         assert_eq!(out, vec![(0, 3, s(0))]);
 
         out.clear();
-        let mut second = vec![(10, 12, s(1))];
+        let mut second = vec![(10, 12, s(1), 0)];
         flatten_overlaps(&mut second, &mut stack, &mut events, &mut out);
         assert_eq!(out, vec![(10, 12, s(1))]);
     }
@@ -389,5 +417,28 @@ mod tests {
         // Exercises the dedup_by merge pass over more than one join.
         let got = run(vec![(0, 2, s(0)), (2, 5, s(0)), (5, 9, s(0))]);
         assert_eq!(got, vec![(0, 9, s(0))]);
+    }
+
+    // ── Depth priority (multi-layer / injections) ────────────────────────────
+
+    #[test]
+    fn deeper_layer_wins_regardless_of_collection_order() {
+        // A depth-0 (root) span [0,10) fully contains a depth-2 (nested
+        // injection) span [3,7) — collected in REVERSE depth order (the
+        // depth-2 entry pushed into `raw` before the depth-0 one), simulating
+        // a nested injection gathered ahead of its shallower parent. The
+        // deeper span must still win its region regardless of collection order.
+        let got = run_d(vec![(3, 7, s(2), 2), (0, 10, s(0), 0)]);
+        assert_eq!(got, vec![(0, 3, s(0)), (3, 7, s(2)), (7, 10, s(0))]);
+    }
+
+    #[test]
+    fn shallower_layer_started_later_still_loses_to_deeper() {
+        // Depth-1 span [0,10) started AFTER (higher seq) a depth-3 span
+        // [2,5) in collection order — plain seq-order priority (pre-depth-
+        // aware flattening) would have picked the depth-1 span at [2,5)
+        // since it has the higher seq; depth must win instead.
+        let got = run_d(vec![(2, 5, s(3), 3), (0, 10, s(1), 1)]);
+        assert_eq!(got, vec![(0, 2, s(1)), (2, 5, s(3)), (5, 10, s(1))]);
     }
 }

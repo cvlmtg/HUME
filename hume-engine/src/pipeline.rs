@@ -4,7 +4,6 @@ use ratatui::symbols::line;
 use slotmap::{SlotMap, new_key_type};
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::builtins::tree_sitter_hl::TreeSitterHighlighter;
 use crate::format::{FormatScratch, push_arena_text, unicode_display_width};
 use crate::pane::{Pane, WhitespaceConfig, WrapMode};
 use crate::providers::{
@@ -12,6 +11,7 @@ use crate::providers::{
 };
 use crate::render::{self, ComposeCtx};
 use crate::style::StyleScratch;
+use crate::syntax_layers::SyntaxLayers;
 use crate::theme::{ScopeRegistry, Theme};
 use crate::types::{CellContent, DisplayRow, EditorMode, Grapheme, ResolvedStyle, RowKind};
 
@@ -28,23 +28,25 @@ new_key_type! {
 
 /// State shared across all panes that view the same file.
 ///
-/// The rope and the syntax highlighter are intentionally absent — they live in
-/// the editor's `Document` / `BufferSyntax` respectively, and are injected into
-/// `EngineView::render()` via the `get_rope` / `get_syntax` closures at render
-/// time. Keeping them here would couple the engine to editor-domain types and
-/// require per-frame clones to stay in sync.
+/// The rope is intentionally absent — it lives in the editor's `Document`
+/// and is injected into `EngineView::render()` via the `get_rope` closure at
+/// render time. Keeping it here would couple the engine to editor-domain
+/// types and require per-frame clones to stay in sync. The syntax layers
+/// (parse trees + shared highlighters) are engine-owned, since both halves
+/// are already engine types — see [`crate::syntax_layers`].
 pub struct SharedBuffer {
-    /// Incremental tree-sitter parse tree, rebuilt on each edit.
+    /// Tree-sitter syntax layers (root grammar + embedded-language
+    /// injections), rebuilt on each edit.
     ///
-    /// Written by the parse worker (`install_parse_done`) and baked each frame
-    /// by `bake_pending_edits`. `None` until the first parse result arrives.
+    /// Written by the parse worker's install path and baked each frame by
+    /// `bake_pending_edits`. `None` until the first parse result arrives.
     /// The renderer tolerates `None` — it just renders without highlights.
-    pub tree: Option<tree_sitter::Tree>,
+    pub syntax: Option<crate::syntax_layers::SyntaxLayers>,
 }
 
 impl SharedBuffer {
     pub fn new() -> Self {
-        Self { tree: None }
+        Self { syntax: None }
     }
 }
 
@@ -627,12 +629,11 @@ impl EngineView {
     /// either way — dimming is the focus cue, the seam glyph is a separate
     /// cosmetic choice.
     #[allow(clippy::too_many_arguments)]
-    pub fn render<'rope, 'syn>(
+    pub fn render<'rope>(
         &self,
         area: ratatui::layout::Rect,
         buf: &mut ratatui::buffer::Buffer,
         get_rope: impl Fn(BufferId) -> Option<&'rope ropey::Rope>,
-        get_syntax: impl Fn(BufferId) -> Option<&'syn TreeSitterHighlighter>,
         get_pane_settings: impl Fn(PaneId) -> PaneRenderSettings,
         statusline: &dyn StatuslineProvider,
         focused_pane_id: PaneId,
@@ -693,8 +694,7 @@ impl EngineView {
             let pane_ctx = PaneRenderCtx {
                 pane,
                 rope,
-                tree: buffer.tree.as_ref(),
-                syntax: get_syntax(pane.buffer_id),
+                syntax: buffer.syntax.as_ref(),
                 theme: &self.theme,
                 rect,
                 settings: get_pane_settings(pane_id),
@@ -814,10 +814,9 @@ pub(crate) struct PaneRenderCtx<'a> {
     pub pane: &'a Pane,
     /// Rope borrowed from the caller's `Document` for this frame only.
     pub rope: &'a ropey::Rope,
-    /// Tree-sitter parse tree from `SharedBuffer`, if available.
-    pub tree: Option<&'a tree_sitter::Tree>,
-    /// Tree-sitter syntax highlighter from `SharedBuffer`, if language is configured.
-    pub syntax: Option<&'a TreeSitterHighlighter>,
+    /// Tree-sitter syntax layers from `SharedBuffer`, if a language with a
+    /// grammar is configured.
+    pub syntax: Option<&'a SyntaxLayers>,
     pub theme: &'a Theme,
     pub rect: ratatui::layout::Rect,
     pub settings: PaneRenderSettings,
@@ -950,7 +949,7 @@ pub(crate) fn render_pane(
         theme: pane_ctx.theme,
         pane_bg: pane_ctx.theme.ui.background.bg,
         rope: pane_ctx.rope,
-        tree: pane_ctx.tree,
+        tree: pane_ctx.syntax.and_then(SyntaxLayers::root_tree),
     };
     let mut canvas = render::PaneCanvas::new(buf, pane_ctx.dim);
 
@@ -1128,7 +1127,6 @@ fn render_buffer_line(
         pane_ctx.syntax,
         &pane_ctx.pane.providers.highlights,
         pane_ctx.rope,
-        pane_ctx.tree,
         &mut scratch.style,
     );
 
@@ -1465,7 +1463,6 @@ mod tests {
         let pane_ctx = PaneRenderCtx {
             pane: &pane,
             rope: &rope,
-            tree: None,
             syntax: None,
             theme: &theme,
             rect: pane_rect,
@@ -1610,7 +1607,6 @@ mod tests {
         let pane_ctx = PaneRenderCtx {
             pane: &pane,
             rope: &rope,
-            tree: None,
             syntax: None,
             theme: &theme,
             rect: pane_rect,
@@ -1656,7 +1652,6 @@ mod tests {
         let pane_ctx = PaneRenderCtx {
             pane: &pane,
             rope: &rope,
-            tree: None,
             syntax: None,
             theme: &theme,
             rect: pane_rect,
@@ -1704,7 +1699,6 @@ mod tests {
         let pane_ctx = PaneRenderCtx {
             pane: &pane,
             rope: &rope,
-            tree: None,
             syntax: None,
             theme: &theme,
             rect: pane_rect,
@@ -1771,7 +1765,6 @@ mod tests {
         let pane_ctx = PaneRenderCtx {
             pane: &pane,
             rope: &rope,
-            tree: None,
             syntax: None,
             theme: &theme,
             rect: pane_rect,

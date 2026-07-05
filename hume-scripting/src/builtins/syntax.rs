@@ -26,6 +26,15 @@ fn path_arg(val: SteelVal, ctx_name: &str) -> Result<PathBuf, SteelErr> {
     }
 }
 
+/// A path argument that may be `#f` (absent).
+fn optional_path_arg(val: SteelVal, ctx_name: &str) -> Result<Option<PathBuf>, SteelErr> {
+    match val {
+        SteelVal::BoolV(false) => Ok(None),
+        SteelVal::StringV(s) => Ok(Some(PathBuf::from(s.as_str()))),
+        _ => steel::stop!(TypeMismatch => "{}: expected a string path or #f", ctx_name),
+    }
+}
+
 /// `(%define-language! name extensions globs shebangs)` — init-only.
 ///
 /// All three list args must be lists of strings. Pushes a `PendingLanguageReg::Identity`
@@ -59,7 +68,10 @@ pub(crate) fn define_language(
     Ok(SteelVal::Void)
 }
 
-/// `(register-grammar! name grammar-path symbol highlights-path)` — init or command.
+/// `(%register-grammar! name grammar-path symbol highlights-path injections-path)`
+/// — init or command. `injections-path` is a string or `#f`. The Scheme-side
+/// `register-grammar!` macro (`prelude.scm`) supplies `#f` when the caller
+/// omits it.
 ///
 /// - **Init mode**: queues a `PendingLanguageReg::Grammar`; applied after
 ///   `eval_init` completes via `apply_pending_language_regs`.
@@ -71,11 +83,13 @@ pub(crate) fn register_grammar(
     grammar_path: SteelVal,
     symbol: SteelVal,
     highlights_path: SteelVal,
+    injections_path: SteelVal,
 ) -> SteelResult {
     let name = string_arg(name, "register-grammar! name")?;
     let grammar_path = path_arg(grammar_path, "register-grammar! grammar-path")?;
     let symbol = string_arg(symbol, "register-grammar! symbol")?;
     let highlights_path = path_arg(highlights_path, "register-grammar! highlights-path")?;
+    let injections_path = optional_path_arg(injections_path, "register-grammar! injections-path")?;
 
     if ctx.is_init {
         ctx.pending_language_regs.push(PendingLanguageReg::Grammar {
@@ -83,6 +97,7 @@ pub(crate) fn register_grammar(
             grammar_path,
             symbol,
             highlights_path,
+            injections_path,
         });
         return Ok(SteelVal::Void);
     }
@@ -91,7 +106,13 @@ pub(crate) fn register_grammar(
     // The host (`EditorHostImpl::attach_grammar`) owns the `register-grammar! '<name>':`
     // prefix; just lift its String error into a SteelErr without re-prefixing.
     ctx.host
-        .attach_grammar(&name, &grammar_path, &symbol, &highlights_path)
+        .attach_grammar(
+            &name,
+            &grammar_path,
+            &symbol,
+            &highlights_path,
+            injections_path.as_deref(),
+        )
         .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
     ctx.pending_grammar_sweeps.push(name);
     Ok(SteelVal::Void)
@@ -230,6 +251,7 @@ mod tests {
                 str_val("/tmp/rust.so"),
                 str_val("tree_sitter_rust"),
                 str_val("/tmp/highlights.scm"),
+                steel::rvals::SteelVal::BoolV(false),
             );
             assert!(result.is_ok(), "register-grammar! in init must succeed");
         }
@@ -256,6 +278,7 @@ mod tests {
                 str_val("/tmp/rust.so"),
                 str_val("tree_sitter_rust"),
                 str_val("/tmp/highlights.scm"),
+                steel::rvals::SteelVal::BoolV(false),
             );
             // NullHost.attach_grammar returns Err.
             assert!(
@@ -268,6 +291,37 @@ mod tests {
             h.pending_language_regs.is_empty(),
             "command mode must not queue pending regs"
         );
+    }
+
+    /// A string (not `#f`) in the 5th position must reach
+    /// `PendingLanguageReg::Grammar.injections_path` as `Some`.
+    ///
+    /// Flip: if `optional_path_arg` ignored the string branch, this would be
+    /// `None` — same as the `#f` case in the tests above.
+    #[test]
+    fn register_grammar_with_injections_path_populates_pending_reg() {
+        let mut h = SteelCtxTestHarness::new();
+        {
+            let mut ctx = h.ctx_init();
+            let result = register_grammar(
+                &mut ctx,
+                str_val("markdown"),
+                str_val("/tmp/markdown.so"),
+                str_val("tree_sitter_markdown"),
+                str_val("/tmp/highlights.scm"),
+                str_val("/tmp/injections.scm"),
+            );
+            assert!(result.is_ok());
+        }
+        match &h.pending_language_regs[0] {
+            PendingLanguageReg::Grammar {
+                injections_path, ..
+            } => assert_eq!(
+                injections_path.as_deref(),
+                Some(std::path::Path::new("/tmp/injections.scm")),
+            ),
+            other => panic!("expected a Grammar entry, got: {other:?}"),
+        }
     }
 
     // ── language-has-grammar? ─────────────────────────────────────────────────

@@ -8,13 +8,21 @@ use hume_engine::builtins::tree_sitter_hl::TreeSitterHighlighter;
 use hume_engine::grammar::LoadedGrammar;
 use hume_engine::theme::ScopeRegistry;
 
+use super::injections::InjectionsQuery;
+
 // ── GrammarBundle ─────────────────────────────────────────────────────────────
 
 /// Tree-sitter grammar + precompiled highlight query, shared across all buffers
 /// of a given language.
 pub(crate) struct GrammarBundle {
     pub(crate) grammar: LoadedGrammar,
-    pub(crate) query: Arc<tree_sitter::Query>,
+    /// Shared highlighter wrapping the compiled highlight query — one per
+    /// language, not one per buffer (capture names are interned once at
+    /// attach time).
+    pub(crate) highlighter: Arc<TreeSitterHighlighter>,
+    /// Compiled `injections.scm`, if the grammar has one. `None` means this
+    /// language never injects embedded languages.
+    pub(crate) injections: Option<InjectionsQuery>,
 }
 
 // ── LanguageConfig ────────────────────────────────────────────────────────────
@@ -41,31 +49,29 @@ pub(crate) struct LanguageConfig {
 /// tracks the grammar identity (for keepalive and grammar-swap detection via
 /// `Arc::ptr_eq`) and the most recently installed tree generation.
 ///
-/// The highlighter lives here (not in `SharedBuffer`) so there is a single
-/// `Option<BufferSyntax>` attachment flag: `Some` means syntax is wired up,
-/// `None` means it is not.  Moving it to the engine side would require the
-/// engine crate to depend on editor-domain types (`LanguageConfig`), which
-/// would invert the crate layering.  The renderer receives the highlighter via
-/// the `get_syntax` closure injected into `EngineView::render`, parallel to
-/// `get_rope`.
+/// The parsed trees and highlighters live engine-side, in
+/// `SharedBuffer.syntax: Option<SyntaxLayers>` — both are already engine
+/// types, so there's no crate-layering reason to keep them here. This struct
+/// is the editor-domain half: a single `Option<BufferSyntax>` attachment
+/// flag (`Some` means syntax is wired up), the dlopen'd-grammar keepalive
+/// Arcs, and generation bookkeeping for incremental parsing.
 pub(crate) struct BufferSyntax {
-    /// Keepalive: holds the Arc so the dlopen'd grammar is not unloaded while
-    /// this buffer is syntax-attached.
+    /// Keepalive: holds the Arc so the dlopen'd root grammar is not unloaded
+    /// while this buffer is syntax-attached.
     pub(crate) lang: Arc<LanguageConfig>,
-    /// Compiled highlight query + capture-name mapping for this buffer's language.
-    ///
-    /// Owned here; panes receive a reference via the `get_syntax` closure passed
-    /// to `EngineView::render` — no cloning, no shared ownership needed.
-    pub(crate) highlighter: TreeSitterHighlighter,
+    /// Keepalive for every injected layer's grammar (Phase 3+). Empty until
+    /// injection support lands — only the root layer exists today.
+    pub(crate) layer_langs: Vec<Arc<LanguageConfig>>,
     /// `text_gen` of the most recently installed tree.  When this equals
     /// `Buffer.text_gen`, the installed tree is up to date.
     pub(crate) parsed_gen: u64,
-    /// Text generation whose coordinates the committed `sbuf.tree` currently
-    /// describes.  Advanced each time pending edits are baked into the committed
-    /// tree in `reparse_stale_buffers`, and on each precise parse install in
-    /// `apply_parse_outcome`.  Separate from `parsed_gen` because edits can
-    /// outpace the worker: `tree_gen` advances every frame (on bake), while
-    /// `parsed_gen` advances only when the worker delivers a result.
+    /// Text generation whose coordinates the committed `sbuf.syntax` layers
+    /// currently describe.  Advanced each time pending edits are baked into
+    /// the committed layers in `reparse_stale_buffers`, and on each precise
+    /// parse install in `apply_parse_outcome`.  Separate from `parsed_gen`
+    /// because edits can outpace the worker: `tree_gen` advances every frame
+    /// (on bake), while `parsed_gen` advances only when the worker delivers a
+    /// result.
     pub(crate) tree_gen: u64,
     /// Edits recorded since the last bake or installed tree, in order.
     ///
@@ -78,10 +84,10 @@ pub(crate) struct BufferSyntax {
 }
 
 impl BufferSyntax {
-    pub(crate) fn new(lang: Arc<LanguageConfig>, highlighter: TreeSitterHighlighter) -> Self {
+    pub(crate) fn new(lang: Arc<LanguageConfig>) -> Self {
         Self {
             lang,
-            highlighter,
+            layer_langs: Vec::new(),
             parsed_gen: 0,
             tree_gen: 0,
             pending_edits: Vec::new(),
@@ -103,6 +109,10 @@ pub(crate) struct LanguageRegistry {
     shebang_to_name: HashMap<String, String>,
     /// Registration order for glob priority: later entries win on overlap.
     lang_order: Vec<String>,
+    /// Grammared languages only (`grammar.is_some()`), rebuilt on every attach
+    /// and remove. Handed to the parse worker so it can resolve an injected
+    /// language name to its grammar without touching main-thread state.
+    grammar_snapshot: Arc<HashMap<String, Arc<LanguageConfig>>>,
 }
 
 #[derive(Debug)]
@@ -115,6 +125,10 @@ pub(crate) enum RegisterError {
     HighlightsRead(std::io::Error),
     /// Failed to compile the highlights query.
     QueryBuild(tree_sitter::QueryError),
+    /// Failed to read the injections query file.
+    InjectionsRead(std::io::Error),
+    /// Failed to compile the injections query.
+    InjectionsQueryBuild(tree_sitter::QueryError),
     /// Grammar ABI version is outside the range the bundled tree-sitter
     /// library supports.  Recompile the grammar with a compatible generator.
     AbiIncompatible {
@@ -131,6 +145,8 @@ impl std::fmt::Display for RegisterError {
             Self::GrammarLoad(e) => write!(f, "grammar load failed: {e:?}"),
             Self::HighlightsRead(e) => write!(f, "highlights.scm read failed: {e}"),
             Self::QueryBuild(e) => write!(f, "highlight query compilation failed: {e}"),
+            Self::InjectionsRead(e) => write!(f, "injections.scm read failed: {e}"),
+            Self::InjectionsQueryBuild(e) => write!(f, "injections query compilation failed: {e}"),
             Self::AbiIncompatible {
                 name,
                 abi,
@@ -152,6 +168,7 @@ impl Default for LanguageRegistry {
             glob_lang_names: Vec::new(),
             shebang_to_name: HashMap::new(),
             lang_order: Vec::new(),
+            grammar_snapshot: Arc::new(HashMap::new()),
         }
     }
 }
@@ -288,14 +305,21 @@ impl LanguageRegistry {
         self.lang_order = new_order;
         self.compiled_globs = compiled;
         self.glob_lang_names = names;
+        self.rebuild_grammar_snapshot();
         Some(config)
     }
 
     /// Attach a tree-sitter grammar to a language.
     ///
-    /// Reads the highlights query file, compiles it, interns all capture names
-    /// into `scope_reg`, then replaces the `Arc<LanguageConfig>` in the registry
-    /// so all subsequent `by_name`/`by_extension` lookups see the grammar.
+    /// Reads the highlights query file, compiles it, builds the shared
+    /// highlighter (interning its capture names into `scope_reg`), optionally
+    /// reads and compiles `injections_path` if given, then replaces the
+    /// `Arc<LanguageConfig>` in the registry so all subsequent
+    /// `by_name`/`by_extension` lookups see the grammar.
+    ///
+    /// A broken `injections.scm` fails the whole attach, same as a broken
+    /// `highlights.scm` — both come from the same trusted pinned source, so
+    /// there is no separate soft-degrade path.
     ///
     /// Auto-registers the identity (no extensions/globs/shebangs) if the language
     /// name is not already known.
@@ -305,6 +329,7 @@ impl LanguageRegistry {
         grammar_path: &Path,
         symbol: &str,
         highlights_path: &Path,
+        injections_path: Option<&Path>,
         scope_reg: &mut ScopeRegistry,
     ) -> Result<Arc<LanguageConfig>, RegisterError> {
         let grammar =
@@ -325,28 +350,58 @@ impl LanguageRegistry {
             tree_sitter::Query::new(grammar.language(), &highlights_src)
                 .map_err(RegisterError::QueryBuild)?,
         );
-        for name_str in query.capture_names() {
-            scope_reg.intern_runtime(name_str);
-        }
+        let highlighter = Arc::new(TreeSitterHighlighter::from_shared_query(query, scope_reg));
+        let injections = injections_path
+            .map(|path| {
+                let src = std::fs::read_to_string(path).map_err(RegisterError::InjectionsRead)?;
+                let query = Arc::new(
+                    tree_sitter::Query::new(grammar.language(), &src)
+                        .map_err(RegisterError::InjectionsQueryBuild)?,
+                );
+                Ok::<_, RegisterError>(InjectionsQuery::new(query))
+            })
+            .transpose()?;
         let existing = self.by_name.get(name);
         let new_config = Arc::new(LanguageConfig {
             name: name.to_owned(),
             extensions: existing.map_or_else(Vec::new, |c| c.extensions.clone()),
             globs: existing.map_or_else(Vec::new, |c| c.globs.clone()),
             shebangs: existing.map_or_else(Vec::new, |c| c.shebangs.clone()),
-            grammar: Some(GrammarBundle { grammar, query }),
+            grammar: Some(GrammarBundle {
+                grammar,
+                highlighter,
+                injections,
+            }),
         });
         self.by_name
             .insert(name.to_owned(), Arc::clone(&new_config));
         for ext in &new_config.extensions {
             self.by_ext.insert(ext.clone(), Arc::clone(&new_config));
         }
+        self.rebuild_grammar_snapshot();
         Ok(new_config)
     }
 
     /// Returns `true` if `name` has an attached tree-sitter grammar.
     pub(crate) fn has_grammar(&self, name: &str) -> bool {
         self.by_name.get(name).is_some_and(|c| c.grammar.is_some())
+    }
+
+    /// Snapshot of grammared languages (`grammar.is_some()`), keyed by name.
+    /// Handed to the parse worker so it can resolve injection language names
+    /// without touching main-thread state.
+    pub(crate) fn grammar_snapshot(&self) -> Arc<HashMap<String, Arc<LanguageConfig>>> {
+        Arc::clone(&self.grammar_snapshot)
+    }
+
+    fn rebuild_grammar_snapshot(&mut self) {
+        self.grammar_snapshot = Arc::new(
+            self.by_name
+                .iter()
+                .filter(|(_, c)| c.grammar.is_some())
+                .map(|(name, c)| (name.clone(), Arc::clone(c)))
+                .collect(),
+        );
     }
 
     fn build_globs(
@@ -527,12 +582,14 @@ impl Editor {
                     grammar_path,
                     symbol,
                     highlights_path,
+                    injections_path,
                 } => {
                     match self.state.languages.attach_grammar(
                         &name,
                         &grammar_path,
                         &symbol,
                         &highlights_path,
+                        injections_path.as_deref(),
                         &mut self.view.registry,
                     ) {
                         Ok(_) => grammar_sweeps.push(name),
@@ -569,6 +626,120 @@ mod tests {
     use std::path::Path;
 
     use super::{LanguageRegistry, detect_language};
+    use crate::editor::tests::{grammar_parser_path, grammar_query_path};
+    use hume_engine::theme::ScopeRegistry;
+
+    /// Write `src` to a temp file and return its path (kept alive via the
+    /// returned `TempDir`).
+    fn write_temp_scm(src: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("injections.scm");
+        std::fs::write(&path, src).unwrap();
+        (dir, path)
+    }
+
+    #[test]
+    fn attach_grammar_with_valid_injections_populates_bundle() {
+        let parser_path = grammar_parser_path("rust");
+        if !parser_path.exists() {
+            return; // fixture not fetched — scripts/fetch-test-grammars.sh
+        }
+        let hl_path = grammar_query_path("rust");
+        let (_dir, inj_path) =
+            write_temp_scm(r#"((_) @injection.content (#set! injection.language "markdown"))"#);
+
+        let mut reg = LanguageRegistry::new();
+        let mut scope_reg = ScopeRegistry::new();
+        let config = reg
+            .attach_grammar(
+                "rust",
+                &parser_path,
+                "tree_sitter_rust",
+                &hl_path,
+                Some(&inj_path),
+                &mut scope_reg,
+            )
+            .expect("attach with valid injections must succeed");
+
+        let bundle = config.grammar.as_ref().expect("grammar attached");
+        let injections = bundle
+            .injections
+            .as_ref()
+            .expect("injections query must be populated");
+        assert!(
+            injections.content_capture.is_some(),
+            "injection.content capture must be found"
+        );
+        assert_eq!(injections.patterns.len(), 1);
+        assert_eq!(
+            injections.patterns[0].language.as_deref(),
+            Some("markdown"),
+            "static #set! injection.language must be captured"
+        );
+    }
+
+    #[test]
+    fn attach_grammar_without_injections_path_leaves_injections_none() {
+        let parser_path = grammar_parser_path("rust");
+        if !parser_path.exists() {
+            return;
+        }
+        let hl_path = grammar_query_path("rust");
+
+        let mut reg = LanguageRegistry::new();
+        let mut scope_reg = ScopeRegistry::new();
+        let config = reg
+            .attach_grammar(
+                "rust",
+                &parser_path,
+                "tree_sitter_rust",
+                &hl_path,
+                None,
+                &mut scope_reg,
+            )
+            .expect("attach without injections must succeed");
+
+        assert!(
+            config.grammar.as_ref().unwrap().injections.is_none(),
+            "no injections_path given → injections must stay None"
+        );
+    }
+
+    /// A broken injections.scm hard-fails the whole attach — same as a broken
+    /// highlights.scm — rather than degrading to a warning. Both files come
+    /// from the same trusted pinned source, so there is no separate soft-fail
+    /// path.
+    #[test]
+    fn attach_grammar_with_broken_injections_fails_whole_attach() {
+        let parser_path = grammar_parser_path("rust");
+        if !parser_path.exists() {
+            return;
+        }
+        let hl_path = grammar_query_path("rust");
+        let (_dir, inj_path) = write_temp_scm("(this is not valid tree-sitter query syntax");
+
+        let mut reg = LanguageRegistry::new();
+        let mut scope_reg = ScopeRegistry::new();
+        let result = reg.attach_grammar(
+            "rust",
+            &parser_path,
+            "tree_sitter_rust",
+            &hl_path,
+            Some(&inj_path),
+            &mut scope_reg,
+        );
+        let Err(err) = result else {
+            panic!("broken injections.scm must fail the attach");
+        };
+        assert!(
+            matches!(err, super::RegisterError::InjectionsQueryBuild(_)),
+            "broken injections.scm must surface as InjectionsQueryBuild, got: {err:?}"
+        );
+        assert!(
+            reg.by_name("rust").is_none(),
+            "a failed attach must not leave a partial LanguageConfig behind"
+        );
+    }
 
     #[test]
     fn language_registry_by_ext_lookup_empty() {

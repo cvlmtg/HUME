@@ -156,6 +156,7 @@ impl EditorHost for MockHost {
         _grammar_path: &std::path::Path,
         _symbol: &str,
         _highlights_path: &std::path::Path,
+        _injections_path: Option<&std::path::Path>,
     ) -> Result<(), String> {
         self.grammars.insert(name.to_owned());
         Ok(())

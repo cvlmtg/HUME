@@ -149,14 +149,15 @@ pub(crate) fn close_buffer(
 
 // ── clear_engine_tree ────────────────────────────────────────────────────────
 
-/// Drop the engine-side parse tree for buffer `id`.
+/// Drop the engine-side syntax layers for buffer `id`.
 ///
-/// The highlighter now lives in `BufferSyntax` on the state side — clearing
-/// it is the caller's responsibility (e.g. set `state.buffers[id].syntax = None`
-/// or let `setup_buffer_syntax` do it). This function only clears the tree
-/// so the stale parse result is not used by the renderer or incremental baking.
+/// The `BufferSyntax` state-side attachment (grammar keepalive, gen tracking)
+/// is the caller's responsibility to clear (e.g. set `state.buffers[id].syntax
+/// = None` or let `setup_buffer_syntax` do it). This function only clears the
+/// engine-side layers so the stale parse result is not used by the renderer
+/// or incremental baking.
 pub(crate) fn clear_engine_tree(ev: &mut EngineView, id: BufferId) {
-    ev.buffers[id].tree = None;
+    ev.buffers[id].syntax = None;
 }
 
 // ── replace_buffer_in_place ───────────────────────────────────────────────────

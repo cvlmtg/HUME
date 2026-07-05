@@ -74,3 +74,15 @@
      (%define-language! name exts globs '()))
     ((_ name exts globs shebangs)
      (%define-language! name exts globs shebangs))))
+
+;; (register-grammar! name grammar-path symbol highlights-path [injections-path])
+;;
+;; Attach a tree-sitter grammar to a language. `injections-path` defaults to
+;; `#f` (no embedded-language support) when omitted. Delegates to
+;; %register-grammar! (a Rust builtin).
+(define-syntax register-grammar!
+  (syntax-rules ()
+    ((_ name grammar-path symbol highlights-path)
+     (%register-grammar! name grammar-path symbol highlights-path #f))
+    ((_ name grammar-path symbol highlights-path injections-path)
+     (%register-grammar! name grammar-path symbol highlights-path injections-path))))

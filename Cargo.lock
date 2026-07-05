@@ -1077,6 +1077,7 @@ dependencies = [
  "ropey",
  "slotmap",
  "steel-core",
+ "streaming-iterator",
  "tempfile",
  "tree-sitter",
  "unicode-segmentation",

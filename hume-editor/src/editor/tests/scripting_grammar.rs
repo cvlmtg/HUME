@@ -92,6 +92,7 @@ fn attach_then_set_language_attaches_syntax() {
             &parser,
             "tree_sitter_json",
             &hl,
+            None,
             &mut ed.view.registry,
         )
         .unwrap();
@@ -102,7 +103,7 @@ fn attach_then_set_language_attaches_syntax() {
         "syntax must be set after attach"
     );
     assert!(
-        ed.view.buffers[bid].tree.is_some(),
+        ed.view.buffers[bid].syntax.is_some(),
         "engine tree must be set"
     );
 }
@@ -124,6 +125,7 @@ fn clear_language_detaches_syntax_keeps_identity() {
             &parser,
             "tree_sitter_json",
             &hl,
+            None,
             &mut ed.view.registry,
         )
         .unwrap();
@@ -135,7 +137,10 @@ fn clear_language_detaches_syntax_keeps_identity() {
         ed.state.buffers.get(bid).syntax.is_none(),
         "syntax must be cleared on language=None"
     );
-    assert!(ed.view.buffers[bid].tree.is_none(), "tree must be cleared");
+    assert!(
+        ed.view.buffers[bid].syntax.is_none(),
+        "tree must be cleared"
+    );
     // Identity survives detach — grammar is gone, language definition is not.
     assert!(
         ed.state.languages.by_name("json").is_some(),
@@ -167,6 +172,7 @@ fn sweep_attaches_syntax_on_matching_language() {
             &parser,
             "tree_sitter_json",
             &hl,
+            None,
             &mut ed.view.registry,
         )
         .unwrap();
@@ -206,6 +212,7 @@ fn sweep_no_op_for_nonmatching_language() {
             &parser,
             "tree_sitter_json",
             &hl,
+            None,
             &mut ed.view.registry,
         )
         .unwrap();
@@ -233,6 +240,7 @@ fn reparse_advances_parsed_gen_after_edit() {
             &parser,
             "tree_sitter_json",
             &hl,
+            None,
             &mut ed.view.registry,
         )
         .unwrap();
@@ -319,6 +327,7 @@ fn reparse_detaches_when_buffer_exceeds_max_bytes() {
             &parser,
             "tree_sitter_json",
             &hl,
+            None,
             &mut ed.view.registry,
         )
         .unwrap();
@@ -356,16 +365,16 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
     let (parser, hl) = grammar_fixture("json");
     let tmp = tempfile::tempdir().unwrap();
     let init_path = tmp.path().join("init.scm");
-    // Embed absolute paths directly — safe on macOS/Linux (no backslashes).
-    std::fs::write(
-        &init_path,
-        format!(
-            r#"(define-command! "attach-json" "Attach JSON grammar" (lambda () (register-grammar! "json" "{}" "tree_sitter_json" "{}")))"#,
-            parser.display(),
-            hl.display(),
-        ),
-    )
-    .unwrap();
+    // `register-grammar!` is a prelude.scm macro (like `define-language!`) —
+    // prepend the real prelude source so it's in scope, since this test evals
+    // `init_path` directly rather than through the full `init_scripting` path.
+    let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
+    let body = format!(
+        r#"(define-command! "attach-json" "Attach JSON grammar" (lambda () (register-grammar! "json" "{}" "tree_sitter_json" "{}")))"#,
+        parser.display(),
+        hl.display(),
+    );
+    std::fs::write(&init_path, prelude_src + "\n" + &body).unwrap();
 
     let mut host = ScriptingHost::new();
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
@@ -427,6 +436,7 @@ fn language_has_grammar_false_for_identity_only_true_after_attach() {
             &parser,
             "tree_sitter_json",
             &hl,
+            None,
             &mut ed.view.registry,
         )
         .unwrap();
@@ -460,13 +470,14 @@ fn replace_buffer_in_place_clears_engine_syntax_state() {
             &parser,
             "tree_sitter_json",
             &hl,
+            None,
             &mut ed.view.registry,
         )
         .unwrap();
     ed.set_buffer_language(bid, Some("json".to_owned()));
     ed.reparse_stale_buffers();
     assert!(
-        ed.view.buffers[bid].tree.is_some(),
+        ed.view.buffers[bid].syntax.is_some(),
         "tree must be set before replace"
     );
     assert!(
@@ -480,7 +491,7 @@ fn replace_buffer_in_place_clears_engine_syntax_state() {
     ed.replace_buffer_in_place(bid, Buffer::scratch());
 
     assert!(
-        ed.view.buffers[bid].tree.is_none(),
+        ed.view.buffers[bid].syntax.is_none(),
         "stale tree must be cleared on replace"
     );
     assert!(
@@ -514,6 +525,7 @@ fn reparse_reattaches_after_shrink_under_cap() {
             &parser,
             "tree_sitter_json",
             &hl,
+            None,
             &mut ed.view.registry,
         )
         .unwrap();
@@ -587,6 +599,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
             &parser,
             "tree_sitter_json",
             &hl,
+            None,
             &mut ed.view.registry,
         )
         .unwrap();
@@ -598,7 +611,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
         "syntax must be attached before reload"
     );
     assert!(
-        ed.view.buffers[bid].tree.is_some(),
+        ed.view.buffers[bid].syntax.is_some(),
         "tree must be installed before reload"
     );
 
@@ -623,8 +636,9 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
         "highlighter must survive reload"
     );
     let tree = ed.view.buffers[bid]
-        .tree
+        .syntax
         .as_ref()
+        .and_then(hume_engine::syntax_layers::SyntaxLayers::root_tree)
         .expect("engine tree must be re-installed after reload");
     assert_eq!(
         tree.root_node().end_byte(),
@@ -657,6 +671,7 @@ fn parse_worker_result_is_async_then_installed() {
             &parser,
             "tree_sitter_json",
             &hl,
+            None,
             &mut ed.view.registry,
         )
         .unwrap();
@@ -730,6 +745,7 @@ fn grammar_swap_clears_stale_in_flight() {
             &parser_json,
             "tree_sitter_json",
             &hl_json,
+            None,
             &mut ed.view.registry,
         )
         .unwrap();
@@ -744,6 +760,7 @@ fn grammar_swap_clears_stale_in_flight() {
             &parser_rust,
             "tree_sitter_rust",
             &hl_rust,
+            None,
             &mut ed.view.registry,
         )
         .unwrap();
@@ -765,7 +782,7 @@ fn grammar_swap_clears_stale_in_flight() {
         "buffer must be parsed with rust grammar after swap"
     );
     assert!(
-        ed.view.buffers[bid].tree.is_some(),
+        ed.view.buffers[bid].syntax.is_some(),
         "rust parse must produce a tree"
     );
 }
@@ -804,10 +821,11 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
     std::fs::copy(&hl, &hl_dest).unwrap();
 
     let init_path = tmp.path().join("init.scm");
-    std::fs::write(
-        &init_path,
-        format!(
-            r#"
+    // `register-grammar!` is a prelude.scm macro — prepend the real prelude
+    // source so it's in scope (see `register_grammar_command_mode_attaches_and_sweeps`).
+    let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
+    let body = format!(
+        r#"
 (define hl-path "{hl}")
 
 (define (grammar-installed? name)
@@ -823,10 +841,9 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
 (do-register! (list "json" "phantom"))
 (call! "plum-ensure-grammars")
         "#,
-            hl = hl_dest.display(),
-        ),
-    )
-    .unwrap();
+        hl = hl_dest.display(),
+    );
+    std::fs::write(&init_path, prelude_src + &body).unwrap();
 
     let mut host = ScriptingHost::new();
     host.set_data_dir(data_dir.clone());
@@ -1079,7 +1096,7 @@ fn catalog_parsing_extracts_json_pins() {
 /// to the default style — proving the assertion is not a zero-effect check.
 #[test]
 fn rust_function_highlight_snapshot() {
-    use hume_engine::providers::{HighlightSource, SourceContext};
+    use hume_engine::builtins::tree_sitter_hl::layer_highlights_for_line;
 
     let (parser, hl) = grammar_fixture("rust");
     // Cursor on the trailing `\n` so no token cell is reverse-video in the snapshot.
@@ -1098,6 +1115,7 @@ fn rust_function_highlight_snapshot() {
             &parser,
             "tree_sitter_rust",
             &hl,
+            None,
             &mut ed.view.registry,
         )
         .expect("attach rust grammar");
@@ -1113,23 +1131,24 @@ fn rust_function_highlight_snapshot() {
     // Runs the highlight pipeline directly so the test fails even if the snapshot
     // renderer masks absent colours behind cursor/selection background.
     {
-        let hl_src = &ed
-            .state
-            .buffers
-            .get(bid)
+        let layers = ed.view.buffers[bid]
             .syntax
             .as_ref()
-            .expect("BufferSyntax must be set")
-            .highlighter;
+            .expect("engine syntax layers must be installed");
         let rope = ed.state.buffers.get(bid).text().rope();
-        let line_start_byte = rope.line_to_byte(1);
-        let ctx = SourceContext {
-            rope,
-            tree: ed.view.buffers[bid].tree.as_ref(),
-            line_start_byte,
-        };
+        let mut raw = Vec::new();
+        let mut stack = Vec::new();
+        let mut events = Vec::new();
         let mut spans = Vec::new();
-        hl_src.highlights_for_line(1, &ctx, &mut spans);
+        layer_highlights_for_line(
+            layers,
+            1,
+            rope,
+            &mut raw,
+            &mut stack,
+            &mut events,
+            &mut spans,
+        );
         assert!(
             !spans.is_empty(),
             "line 1 must emit at least one highlight span"
@@ -1239,7 +1258,7 @@ fn initial_buffer_parse_is_in_flight_by_end_of_init_scripting() {
          detected from the buffer's path via the end-of-init detect loop)"
     );
     assert!(
-        ed.view.buffers[bid].tree.is_none(),
+        ed.view.buffers[bid].syntax.is_none(),
         "tree must not be installed yet — only posted; drained on the next \
          reparse_stale_buffers call (matches the run loop's first iteration)"
     );
@@ -1247,7 +1266,7 @@ fn initial_buffer_parse_is_in_flight_by_end_of_init_scripting() {
     ed.reparse_stale_buffers();
 
     assert!(
-        ed.view.buffers[bid].tree.is_some(),
+        ed.view.buffers[bid].syntax.is_some(),
         "tree must be installed after exactly one reparse_stale_buffers call \
          following init_scripting"
     );

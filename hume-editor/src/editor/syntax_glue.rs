@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use hume_engine::builtins::tree_sitter_hl::TreeSitterHighlighter;
 use hume_engine::pipeline::BufferId;
+use hume_engine::syntax_layers::{SyntaxLayer, SyntaxLayers};
 
 use super::buffer::Buffer;
 use super::parse_worker::{ParseDone, ParseOutcome, ParseRequest};
@@ -134,7 +134,7 @@ impl Editor {
     /// the buffer exceeds `syntax-highlight-max-bytes`.
     pub(super) fn setup_buffer_syntax(&mut self, bid: BufferId) {
         // Clear existing syntax state unconditionally.
-        self.view.buffers[bid].tree = None;
+        self.view.buffers[bid].syntax = None;
         self.state.buffers.get_mut(bid).syntax = None;
         // Must clear before posting the fresh request: is_in_flight() matches on
         // text_gen alone, so a stale entry (different Arc<LanguageConfig> after a
@@ -159,25 +159,11 @@ impl Editor {
             return;
         }
 
-        // Build highlighter from shared query (capture names already interned at
-        // attach_grammar time — intern_runtime deduplicates).
-        let query = Arc::clone(
-            &lang_config
-                .grammar
-                .as_ref()
-                .expect("grammar.is_some() checked at match guard above")
-                .query,
-        );
-        let highlighter = TreeSitterHighlighter::from_shared_query(query, &mut self.view.registry);
-
         let text_gen = self.state.buffers.get(bid).text_gen;
 
-        // Store the highlighter in BufferSyntax (state side). The engine tree
-        // stays None until the backend responds; the renderer receives the
-        // highlighter via the get_syntax closure injected into EngineView::render.
-        self.view.buffers[bid].tree = None;
-        self.state.buffers.get_mut(bid).syntax =
-            Some(BufferSyntax::new(Arc::clone(&lang_config), highlighter));
+        // The engine-side layers stay None until the backend responds; the
+        // renderer reads them straight from `SharedBuffer.syntax`.
+        self.state.buffers.get_mut(bid).syntax = Some(BufferSyntax::new(Arc::clone(&lang_config)));
 
         // Empty buffers need no parse — mark up to date so reparse_stale_buffers
         // skips them until the first edit arrives.
@@ -206,6 +192,7 @@ impl Editor {
             lang: lang_config,
             text,
             old_tree: None,
+            langs: self.state.languages.grammar_snapshot(),
         });
     }
 
@@ -260,13 +247,44 @@ impl Editor {
         }
 
         match outcome {
-            ParseOutcome::Ok(tree) => {
-                self.view.buffers[bid].tree = Some(tree);
+            ParseOutcome::Ok(parsed) => {
+                let root_highlighter = Arc::clone(
+                    &lang
+                        .grammar
+                        .as_ref()
+                        .expect("grammar.is_some() verified at setup_buffer_syntax")
+                        .highlighter,
+                );
+                let mut layer_langs = Vec::with_capacity(parsed.injected.len());
+                let mut layers = Vec::with_capacity(1 + parsed.injected.len());
+                layers.push(SyntaxLayer {
+                    tree: parsed.root,
+                    highlighter: root_highlighter,
+                    ranges: Vec::new(),
+                    depth: 0,
+                });
+                for injected in parsed.injected {
+                    // Defensive: the bundle backing an injected layer's
+                    // language could vanish between the worker resolving it
+                    // and this install (e.g. a concurrent grammar removal).
+                    let Some(bundle) = injected.lang.grammar.as_ref() else {
+                        continue;
+                    };
+                    layer_langs.push(Arc::clone(&injected.lang));
+                    layers.push(SyntaxLayer {
+                        tree: injected.tree,
+                        highlighter: Arc::clone(&bundle.highlighter),
+                        ranges: injected.ranges,
+                        depth: injected.depth,
+                    });
+                }
+                self.view.buffers[bid].syntax = Some(SyntaxLayers { layers });
                 // Drain pending edits baked into the installed tree, and
                 // advance tree_gen to match the newly installed precise tree.
                 if let Some(syn) = self.state.buffers.get_mut(bid).syntax.as_mut() {
                     syn.pending_edits.retain(|(g, _)| *g > text_gen);
                     syn.tree_gen = text_gen;
+                    syn.layer_langs = layer_langs;
                 }
             }
             ParseOutcome::ParseFailed => {
@@ -328,7 +346,7 @@ impl Editor {
 
             // Detach if grown past cap.
             if buf.syntax.is_some() && byte_len > max_bytes {
-                self.view.buffers[bid].tree = None;
+                self.view.buffers[bid].syntax = None;
                 self.state.buffers.get_mut(bid).syntax = None;
                 self.parse_worker.remove_in_flight(bid);
                 continue;
@@ -389,7 +407,11 @@ impl Editor {
                     .expect("syntax is_some guaranteed above")
                     .tree_gen;
                 if tree_gen == text_gen {
-                    self.view.buffers[bid].tree.clone()
+                    self.view.buffers[bid]
+                        .syntax
+                        .as_ref()
+                        .and_then(SyntaxLayers::root_tree)
+                        .cloned()
                 } else {
                     None
                 }
@@ -412,6 +434,7 @@ impl Editor {
                 lang,
                 text,
                 old_tree,
+                langs: self.state.languages.grammar_snapshot(),
             });
         }
     }
@@ -435,7 +458,7 @@ impl Editor {
         let tree_gen = buf_syntax.tree_gen;
         let has_pending = !buf_syntax.pending_edits.is_empty();
 
-        if !has_pending || self.view.buffers[bid].tree.is_none() {
+        if !has_pending || self.view.buffers[bid].syntax.is_none() {
             return;
         }
 
@@ -447,16 +470,36 @@ impl Editor {
             .as_ref()
             .expect("syntax checked above")
             .pending_edits;
-        let chain_ok = pending[0].0 == tree_gen + 1 && pending.last().unwrap().0 == text_gen;
+        // A gap of 2+ between consecutive gens means a mutation bypassed
+        // `record_pending_edits` (bumped text_gen without recording an
+        // InputEdit) between two recorded edits — the endpoints alone would
+        // pass, baking an incomplete edit set into the tree.
+        let chain_ok = pending[0].0 == tree_gen + 1
+            && pending.last().unwrap().0 == text_gen
+            && pending.windows(2).all(|w| w[1].0 - w[0].0 <= 1);
 
         if chain_ok {
             let edits: Vec<_> = pending.iter().map(|(_, e)| *e).collect();
-            let tree = self.view.buffers[bid]
-                .tree
+            // Edits apply to every layer's tree — `InputEdit` coordinates are
+            // absolute buffer bytes, valid for the root layer and any
+            // injected layer alike.
+            let layers = &mut self.view.buffers[bid]
+                .syntax
                 .as_mut()
-                .expect("tree checked above");
-            for edit in &edits {
-                tree.edit(edit);
+                .expect("syntax checked above")
+                .layers;
+            for layer in layers.iter_mut() {
+                for edit in &edits {
+                    layer.tree.edit(edit);
+                }
+                // The tree's own included ranges shift in-place on `edit()`,
+                // but `layer.ranges` is a separate cached copy (consulted by
+                // `layer_covers_line` for line-intersection tests) that must
+                // be refreshed to match. The root layer's ranges are always
+                // empty (whole-buffer) and need no refresh.
+                if layer.depth > 0 {
+                    layer.ranges = layer.tree.included_ranges();
+                }
             }
             let syn = self
                 .state
@@ -506,6 +549,12 @@ impl Editor {
 
     /// Called when one or more grammars are attached. Re-runs `setup_buffer_syntax`
     /// on every open buffer whose language is in `names`.
+    /// Re-runs `setup_buffer_syntax` on every open buffer whose language is
+    /// in `names`, **or** whose currently-attached root grammar has an
+    /// injections query — a newly attached grammar (e.g. rust) may complete
+    /// injection sites in an already-open buffer of a different language
+    /// (e.g. markdown fenced code blocks) without that buffer's own language
+    /// ever appearing in `names`.
     pub(super) fn sweep_buffers_for_grammars(&mut self, names: Vec<String>) {
         if names.is_empty() {
             return;
@@ -515,9 +564,17 @@ impl Editor {
             .buffers
             .iter()
             .filter(|(_, buf)| {
-                buf.language
+                let matches_name = buf
+                    .language
                     .as_deref()
-                    .is_some_and(|lang| names.iter().any(|n| n == lang))
+                    .is_some_and(|lang| names.iter().any(|n| n == lang));
+                let root_has_injections = buf.syntax.as_ref().is_some_and(|syn| {
+                    syn.lang
+                        .grammar
+                        .as_ref()
+                        .is_some_and(|b| b.injections.is_some())
+                });
+                matches_name || root_has_injections
             })
             .map(|(bid, _)| bid)
             .collect();
@@ -533,6 +590,113 @@ impl Editor {
 mod tests {
     use super::{input_edits_from_changeset, new_end_point};
     use hume_editing::changeset::ChangeSetBuilder;
+
+    // ── bake_pending_edits chain-contiguity ──────────────────────────────────
+
+    fn zero_edit() -> tree_sitter::InputEdit {
+        tree_sitter::InputEdit {
+            start_byte: 0,
+            old_end_byte: 0,
+            new_end_byte: 0,
+            start_position: tree_sitter::Point { row: 0, column: 0 },
+            old_end_position: tree_sitter::Point { row: 0, column: 0 },
+            new_end_position: tree_sitter::Point { row: 0, column: 0 },
+        }
+    }
+
+    /// Set up a JSON-attached editor with the initial parse installed and
+    /// `pending_edits` empty. Returns the editor, buffer id, and the
+    /// post-initial-parse generation. Skips (returns `None`) if the JSON
+    /// grammar fixture has not been fetched.
+    fn baked_json_editor() -> Option<(crate::editor::Editor, hume_engine::pipeline::BufferId, u64)>
+    {
+        use crate::editor::Editor;
+        use crate::editor::buffer::Buffer;
+        use crate::editor::tests::{grammar_parser_path, grammar_query_path};
+        use hume_editing::selection::SelectionSet;
+        use hume_editing::text::Text;
+
+        let parser_path = grammar_parser_path("json");
+        if !parser_path.exists() {
+            return None;
+        }
+        let hl_path = grammar_query_path("json");
+        let buf = Buffer::new(Text::from("{}\n"), SelectionSet::default());
+        let mut ed = Editor::for_testing(buf);
+        let bid = ed.focused_buffer_id();
+        ed.state
+            .languages
+            .attach_grammar(
+                "json",
+                &parser_path,
+                "tree_sitter_json",
+                &hl_path,
+                None,
+                &mut ed.view.registry,
+            )
+            .expect("attach json grammar");
+        ed.set_buffer_language(bid, Some("json".to_owned()));
+        ed.reparse_stale_buffers(); // drains the initial full parse
+        let gen0 = ed.state.buffers.get(bid).text_gen;
+        Some((ed, bid, gen0))
+    }
+
+    /// A mid-chain gap (a mutation bumped `text_gen` without recording an
+    /// `InputEdit` between two recorded edits) must be rejected even though
+    /// the chain's endpoints match `tree_gen + 1 ..= text_gen`. Pre-fix, the
+    /// endpoint-only check would bake an incomplete edit set into the tree
+    /// and advance `tree_gen` as if the tree were correct.
+    #[test]
+    fn bake_pending_edits_rejects_mid_chain_gap() {
+        let Some((mut ed, bid, gen0)) = baked_json_editor() else {
+            return; // fixture not fetched — scripts/fetch-test-grammars.sh
+        };
+
+        // Fabricate a broken chain: recorded gens gen0+1 and gen0+3 (a gap at
+        // gen0+2), with matching endpoints against tree_gen(=gen0)+1..=text_gen.
+        {
+            let syn = ed.state.buffers.get_mut(bid).syntax.as_mut().unwrap();
+            syn.pending_edits = vec![(gen0 + 1, zero_edit()), (gen0 + 3, zero_edit())];
+        }
+        ed.state.buffers.get_mut(bid).text_gen = gen0 + 3;
+
+        ed.bake_pending_edits(bid, gen0 + 3);
+
+        let syn = ed.state.buffers.get(bid).syntax.as_ref().unwrap();
+        assert_eq!(
+            syn.tree_gen, gen0,
+            "gapped chain must be rejected — tree_gen must NOT advance"
+        );
+        assert!(
+            syn.pending_edits.is_empty(),
+            "broken chain must still clear pending_edits so the caller falls back to a full reparse"
+        );
+    }
+
+    /// Flip of the above: a genuinely contiguous chain (no gap) must still
+    /// bake and advance `tree_gen` as before.
+    #[test]
+    fn bake_pending_edits_accepts_contiguous_chain() {
+        let Some((mut ed, bid, gen0)) = baked_json_editor() else {
+            return; // fixture not fetched
+        };
+
+        {
+            let syn = ed.state.buffers.get_mut(bid).syntax.as_mut().unwrap();
+            syn.pending_edits = vec![(gen0 + 1, zero_edit()), (gen0 + 2, zero_edit())];
+        }
+        ed.state.buffers.get_mut(bid).text_gen = gen0 + 2;
+
+        ed.bake_pending_edits(bid, gen0 + 2);
+
+        let syn = ed.state.buffers.get(bid).syntax.as_ref().unwrap();
+        assert_eq!(
+            syn.tree_gen,
+            gen0 + 2,
+            "contiguous chain must still bake and advance tree_gen"
+        );
+        assert!(syn.pending_edits.is_empty());
+    }
 
     #[test]
     fn pure_insert_at_start() {

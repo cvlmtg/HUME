@@ -14,6 +14,7 @@ hume-scripting = { path = "../hume-scripting" }
 hume-editing = { path = "../hume-editing" }
 globset = "0.4"
 tree-sitter = "0.26.8"
+streaming-iterator = "0.1"
 slotmap = "1"
 steel-core = "0.8.2"
 ropey.workspace = true

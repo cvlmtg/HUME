@@ -1,9 +1,44 @@
 use std::path::PathBuf;
 
-use hume_engine::builtins::tree_sitter_hl::TreeSitterHighlighter;
+use std::sync::Arc;
+
+use hume_engine::builtins::tree_sitter_hl::{TreeSitterHighlighter, layer_highlights_for_line};
 use hume_engine::grammar::LoadedGrammar;
-use hume_engine::providers::{HighlightSource, SourceContext};
+use hume_engine::syntax_layers::{SyntaxLayer, SyntaxLayers};
 use hume_engine::theme::ScopeRegistry;
+
+/// Wrap a single parsed tree + highlighter into a one-layer `SyntaxLayers`
+/// (the root layer, whole-buffer `ranges`) and run the real per-line
+/// highlight collection path used by the renderer.
+fn highlights_for_line(
+    tree: tree_sitter::Tree,
+    highlighter: TreeSitterHighlighter,
+    rope: &ropey::Rope,
+    line_idx: usize,
+) -> Vec<(usize, usize, hume_engine::types::ScopeId)> {
+    let layers = SyntaxLayers {
+        layers: vec![SyntaxLayer {
+            tree,
+            highlighter: Arc::new(highlighter),
+            ranges: vec![],
+            depth: 0,
+        }],
+    };
+    let mut raw = Vec::new();
+    let mut stack = Vec::new();
+    let mut events = Vec::new();
+    let mut out = Vec::new();
+    layer_highlights_for_line(
+        &layers,
+        line_idx,
+        rope,
+        &mut raw,
+        &mut stack,
+        &mut events,
+        &mut out,
+    );
+    out
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -130,13 +165,7 @@ fn highlights_emit_keyword_event() {
         TreeSitterHighlighter::new(grammar.language(), &highlights_source, &mut scope_reg)
             .expect("highlighter creation should succeed");
 
-    let ctx = SourceContext {
-        rope: &rope,
-        tree: Some(&tree),
-        line_start_byte: 0,
-    };
-    let mut out = Vec::new();
-    highlighter.highlights_for_line(0, &ctx, &mut out);
+    let out = highlights_for_line(tree, highlighter, &rope, 0);
 
     assert!(
         !out.is_empty(),
@@ -172,14 +201,7 @@ fn highlights_for_line_correct_on_nonzero_line() {
         TreeSitterHighlighter::new(grammar.language(), &highlights_source, &mut scope_reg)
             .expect("highlighter");
 
-    let line_start_byte = rope.line_to_byte(1);
-    let ctx = SourceContext {
-        rope: &rope,
-        tree: Some(&tree),
-        line_start_byte,
-    };
-    let mut out = Vec::new();
-    highlighter.highlights_for_line(1, &ctx, &mut out);
+    let out = highlights_for_line(tree, highlighter, &rope, 1);
 
     assert!(!out.is_empty(), "line 1 should emit highlight events");
     // `let` starts at line-relative offset 0, ends at 3.
@@ -214,13 +236,7 @@ fn highlight_overlap_shorter_wins_at_shared_start() {
     let highlighter = TreeSitterHighlighter::new(grammar.language(), query_src, &mut scope_reg)
         .expect("highlighter creation should succeed");
 
-    let ctx = SourceContext {
-        rope: &rope,
-        tree: Some(&tree),
-        line_start_byte: 0,
-    };
-    let mut out = Vec::new();
-    highlighter.highlights_for_line(0, &ctx, &mut out);
+    let out = highlights_for_line(tree, highlighter, &rope, 0);
 
     assert!(out.len() >= 2, "expected at least 2 spans; got: {out:?}");
     let keyword_span = out
@@ -260,13 +276,7 @@ fn highlight_overlap_fully_contained_is_dropped() {
     let highlighter = TreeSitterHighlighter::new(grammar.language(), query_src, &mut scope_reg)
         .expect("highlighter creation should succeed");
 
-    let ctx = SourceContext {
-        rope: &rope,
-        tree: Some(&tree),
-        line_start_byte: 0,
-    };
-    let mut out = Vec::new();
-    highlighter.highlights_for_line(0, &ctx, &mut out);
+    let out = highlights_for_line(tree, highlighter, &rope, 0);
 
     let string_spans: Vec<_> = out.iter().filter(|&&(s, e, _)| s == 0 && e == 7).collect();
     assert_eq!(

@@ -8,6 +8,7 @@ use std::thread;
 
 use hume_engine::pipeline::BufferId;
 
+use super::injections::resolve_and_parse_injections;
 use super::syntax::LanguageConfig;
 use hume_editing::text::Text;
 
@@ -19,6 +20,11 @@ const _: fn() = || {
     _assert_send::<ParseDone>();
     _assert_send::<ParseOutcome>();
 };
+
+/// Nesting cap for recursive injections (root = depth 0). Covers the deepest
+/// realistic case — markdown → rust → rustdoc comment → markdown — without
+/// letting a pathological grammar recurse unboundedly.
+pub(super) const MAX_INJECTION_DEPTH: u8 = 3;
 
 // ── Messages ──────────────────────────────────────────────────────────────────
 
@@ -35,15 +41,36 @@ pub(super) struct ParseRequest {
     /// incremental re-parsing.  `None` for a full reparse (first parse, grammar
     /// swap, or broken edit chain).
     pub(super) old_tree: Option<tree_sitter::Tree>,
+    /// Snapshot of every grammared language, for resolving an injected
+    /// language name (e.g. a fenced code block's info string) to its grammar
+    /// without touching main-thread state from the worker.
+    pub(super) langs: Arc<HashMap<String, Arc<LanguageConfig>>>,
 }
 
 pub(super) enum ParseOutcome {
-    /// Parse succeeded.  Carries the fresh tree; byte text is read from the
-    /// live rope at render time via `RopeProvider` in the engine highlighter.
-    Ok(tree_sitter::Tree),
+    /// Root parse succeeded.  Carries the root tree plus every embedded-language
+    /// layer resolved from it; byte text is read from the live rope at render
+    /// time via `RopeProvider` in the engine highlighter.
+    Ok(ParsedLayers),
     /// `Parser::parse` returned `None` (transient; currently unreachable without
     /// a cancellation / timeout).  Syntax stays attached; the next frame retries.
     ParseFailed,
+}
+
+/// The root parse tree plus every injected layer resolved from it.
+pub(super) struct ParsedLayers {
+    pub(super) root: tree_sitter::Tree,
+    pub(super) injected: Vec<ParsedInjection>,
+}
+
+/// One resolved and parsed injection layer.
+pub(super) struct ParsedInjection {
+    /// Keepalive + identity for the injected layer's grammar.
+    pub(super) lang: Arc<LanguageConfig>,
+    pub(super) tree: tree_sitter::Tree,
+    /// Absolute byte ranges this layer was parsed over, sorted by start.
+    pub(super) ranges: Vec<tree_sitter::Range>,
+    pub(super) depth: u8,
 }
 
 pub(super) struct ParseDone {
@@ -81,58 +108,75 @@ fn coalesce_one(batch: &mut HashMap<BufferId, ParseRequest>, req: ParseRequest) 
 
 // ── Shared parse logic ────────────────────────────────────────────────────────
 
+/// Parse `rope` with `parser` (already configured: language + included
+/// ranges), honoring `cancel`. Feeds the rope via a chunked callback — avoids
+/// a full `Vec<u8>` allocation. `chunk_at_byte` returns a &str slice directly
+/// into the rope's immutable B-tree nodes.
+///
+/// Shared by the root parse and every injected-layer parse — injected layers
+/// always pass `old_tree: None` (Phase 3 decision: only the root is
+/// incremental; injected regions are typically small enough that a full
+/// parse is cheap and avoids tracking per-layer identity across edits).
+pub(super) fn run_parse(
+    parser: &mut tree_sitter::Parser,
+    rope: &ropey::Rope,
+    old_tree: Option<&tree_sitter::Tree>,
+    cancel: &AtomicBool,
+) -> Option<tree_sitter::Tree> {
+    use std::ops::ControlFlow;
+    let mut progress = |_state: &tree_sitter::ParseState| -> ControlFlow<()> {
+        if cancel.load(Ordering::Relaxed) {
+            ControlFlow::Break(())
+        } else {
+            ControlFlow::Continue(())
+        }
+    };
+    let options = tree_sitter::ParseOptions::new().progress_callback(&mut progress);
+    let len_bytes = rope.len_bytes();
+    parser.parse_with_options(
+        &mut |byte_offset, _| {
+            if byte_offset >= len_bytes {
+                return b"" as &[u8];
+            }
+            let (chunk, chunk_byte_start, _, _) = rope.chunk_at_byte(byte_offset);
+            &chunk.as_bytes()[byte_offset - chunk_byte_start..]
+        },
+        old_tree,
+        Some(options),
+    )
+}
+
 /// Execute a parse request synchronously, returning the finished `ParseDone`.
 /// Used by both `WorkerState` and `InlineParseBackend` (the latter in tests).
-fn do_parse(
-    parser: &mut tree_sitter::Parser,
-    current_lang: &mut Option<Arc<LanguageConfig>>,
-    req: ParseRequest,
-    cancel: &AtomicBool,
-) -> ParseDone {
-    let language_changed = current_lang
-        .as_ref()
-        .is_none_or(|cur| !Arc::ptr_eq(cur, &req.lang));
+///
+/// Always calls `set_language` and resets `included_ranges` to whole-buffer
+/// before the root parse — layer parsing switches languages and ranges
+/// constantly, so a "current language" cache (as a single-tree parser had)
+/// would just thrash on every request.
+fn do_parse(parser: &mut tree_sitter::Parser, req: ParseRequest, cancel: &AtomicBool) -> ParseDone {
+    let bundle = req.lang.grammar.as_ref().expect(
+        "grammar must be Some — setup_buffer_syntax verifies grammar.is_some() before posting",
+    );
+    parser
+        .set_language(bundle.grammar.language())
+        .expect("ABI verified at grammar registration time in attach_grammar");
+    parser
+        .set_included_ranges(&[])
+        .expect("empty ranges are always valid — whole-buffer parse");
 
-    if language_changed {
-        let bundle = req.lang.grammar.as_ref().expect(
-            "grammar must be Some — setup_buffer_syntax verifies grammar.is_some() before posting",
-        );
-        parser
-            .set_language(bundle.grammar.language())
-            .expect("ABI verified at grammar registration time in attach_grammar");
-        *current_lang = Some(Arc::clone(&req.lang));
-    }
-
-    let outcome = {
-        use std::ops::ControlFlow;
-        let mut progress = |_state: &tree_sitter::ParseState| -> ControlFlow<()> {
-            if cancel.load(Ordering::Relaxed) {
-                ControlFlow::Break(())
-            } else {
-                ControlFlow::Continue(())
-            }
-        };
-        let options = tree_sitter::ParseOptions::new().progress_callback(&mut progress);
-        // Feed the rope via chunked callback — avoids the full Vec<u8> allocation
-        // on the main thread.  `chunk_at_byte` returns a &str slice directly into
-        // the rope's immutable B-tree nodes (lifetime tied to `req.text`).
-        let rope = req.text.rope();
-        let len_bytes = rope.len_bytes();
-        let result = parser.parse_with_options(
-            &mut |byte_offset, _| {
-                if byte_offset >= len_bytes {
-                    return b"" as &[u8];
-                }
-                let (chunk, chunk_byte_start, _, _) = rope.chunk_at_byte(byte_offset);
-                &chunk.as_bytes()[byte_offset - chunk_byte_start..]
-            },
-            req.old_tree.as_ref(),
-            Some(options),
-        );
-        match result {
-            Some(tree) => ParseOutcome::Ok(tree),
-            None => ParseOutcome::ParseFailed,
+    let rope = req.text.rope();
+    let outcome = match run_parse(parser, rope, req.old_tree.as_ref(), cancel) {
+        Some(root) => {
+            let injected =
+                resolve_and_parse_injections(parser, &root, &req.lang, rope, &req.langs, cancel, 1);
+            // Reset so a later request reusing this parser for a *different*
+            // buffer's root parse isn't scoped to the last layer's ranges.
+            parser
+                .set_included_ranges(&[])
+                .expect("empty ranges are always valid — whole-buffer parse");
+            ParseOutcome::Ok(ParsedLayers { root, injected })
         }
+        None => ParseOutcome::ParseFailed,
     };
 
     ParseDone {
@@ -149,7 +193,6 @@ struct WorkerState {
     rx: mpsc::Receiver<ParseRequest>,
     tx: mpsc::Sender<ParseDone>,
     parser: tree_sitter::Parser,
-    current_lang: Option<Arc<LanguageConfig>>,
     cancel: Arc<AtomicBool>,
 }
 
@@ -177,7 +220,7 @@ impl WorkerState {
             };
 
             for (_, req) in batch {
-                let done = do_parse(&mut self.parser, &mut self.current_lang, req, &self.cancel);
+                let done = do_parse(&mut self.parser, req, &self.cancel);
                 if self.tx.send(done).is_err() {
                     return;
                 }
@@ -256,7 +299,6 @@ impl ThreadedParseBackend {
             rx: rx_req,
             tx: tx_done,
             parser: tree_sitter::Parser::new(),
-            current_lang: None,
             cancel: Arc::clone(&cancel),
         };
 
@@ -369,7 +411,6 @@ impl Drop for ThreadedParseBackend {
 #[cfg(test)]
 pub(super) struct InlineParseBackend {
     parser: tree_sitter::Parser,
-    current_lang: Option<Arc<LanguageConfig>>,
     done: std::collections::VecDeque<ParseDone>,
 }
 
@@ -378,7 +419,6 @@ impl InlineParseBackend {
     pub(super) fn new() -> Self {
         Self {
             parser: tree_sitter::Parser::new(),
-            current_lang: None,
             done: std::collections::VecDeque::new(),
         }
     }
@@ -388,7 +428,7 @@ impl InlineParseBackend {
 impl ParseBackend for InlineParseBackend {
     fn post(&mut self, req: ParseRequest) {
         let no_cancel = AtomicBool::new(false);
-        let done = do_parse(&mut self.parser, &mut self.current_lang, req, &no_cancel);
+        let done = do_parse(&mut self.parser, req, &no_cancel);
         self.done.push_back(done);
     }
 
@@ -425,8 +465,12 @@ mod tests {
 
     use slotmap::SlotMap;
 
+    use std::collections::HashMap;
+
+    use hume_engine::builtins::tree_sitter_hl::TreeSitterHighlighter;
     use hume_engine::grammar::LoadedGrammar;
     use hume_engine::pipeline::BufferId;
+    use hume_engine::theme::ScopeRegistry;
 
     use super::ParseBackend as _;
     use super::{
@@ -445,18 +489,31 @@ mod tests {
         }
         let grammar = LoadedGrammar::open(&path, symbol).expect("load grammar");
         let query = Arc::new(tree_sitter::Query::new(grammar.language(), "").expect("empty query"));
+        let mut registry = ScopeRegistry::new();
+        let highlighter = Arc::new(TreeSitterHighlighter::from_shared_query(
+            query,
+            &mut registry,
+        ));
         Arc::new(LanguageConfig {
             name: name.to_owned(),
             extensions: vec![],
             globs: vec![],
             shebangs: vec![],
-            grammar: Some(GrammarBundle { grammar, query }),
+            grammar: Some(GrammarBundle {
+                grammar,
+                highlighter,
+                injections: None,
+            }),
         })
     }
 
     fn fresh_bid() -> BufferId {
         let mut sm: SlotMap<BufferId, ()> = SlotMap::with_key();
         sm.insert(())
+    }
+
+    fn empty_langs() -> Arc<HashMap<String, Arc<LanguageConfig>>> {
+        Arc::new(HashMap::new())
     }
 
     // ── coalesce_one (pure) ───────────────────────────────────────────────────
@@ -477,6 +534,7 @@ mod tests {
                 lang: Arc::clone(&lang),
                 text: Text::from("bb\n"),
                 old_tree: None,
+                langs: empty_langs(),
             },
         );
         // Gen 1 must not overwrite gen 2.
@@ -488,6 +546,7 @@ mod tests {
                 lang: Arc::clone(&lang),
                 text: Text::from("a\n"),
                 old_tree: None,
+                langs: empty_langs(),
             },
         );
         assert_eq!(
@@ -509,6 +568,7 @@ mod tests {
                 lang: Arc::clone(&lang),
                 text: Text::from("ccc\n"),
                 old_tree: None,
+                langs: empty_langs(),
             },
         );
         assert_eq!(batch[&bid].text_gen, 3, "higher-gen request must win");
@@ -523,6 +583,7 @@ mod tests {
                 lang: Arc::clone(&lang),
                 text: Text::from("REPLACED\n"),
                 old_tree: None,
+                langs: empty_langs(),
             },
         );
         assert_eq!(
@@ -549,6 +610,7 @@ mod tests {
                 lang: Arc::clone(&lang_a),
                 text: Text::from("{}\n"),
                 old_tree: None,
+                langs: empty_langs(),
             },
         );
         // lang_b at the same gen — grammar swap on a quiescent buffer.
@@ -560,6 +622,7 @@ mod tests {
                 lang: Arc::clone(&lang_b),
                 text: Text::from("fn f(){}\n"),
                 old_tree: None,
+                langs: empty_langs(),
             },
         );
         // The new lang must win.
@@ -582,6 +645,7 @@ mod tests {
                 lang: Arc::clone(&lang_b),
                 text: Text::from("REPLACED\n"),
                 old_tree: None,
+                langs: empty_langs(),
             },
         );
         assert_eq!(
@@ -619,6 +683,7 @@ mod tests {
             lang: Arc::clone(&json_lang),
             text: Text::from("{\"x\": 1}\n"),
             old_tree: None,
+            langs: empty_langs(),
         });
         // Ensure json parse is done before sending rust, so the worker must
         // switch language on the second request.
@@ -638,6 +703,7 @@ mod tests {
             lang: Arc::clone(&rust_lang),
             text: Text::from("fn main() {}\n"),
             old_tree: None,
+            langs: empty_langs(),
         });
         let done2 = worker
             .rx_done

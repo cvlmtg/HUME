@@ -440,13 +440,6 @@ impl Editor {
             area,
             buf,
             |bid| self.state.buffers.try_get(bid).map(|b| b.text().rope()),
-            |bid| {
-                self.state
-                    .buffers
-                    .try_get(bid)
-                    .and_then(|b| b.syntax.as_ref())
-                    .map(|s| &s.highlighter)
-            },
             |pid| self.resolve_pane_settings(pid).0,
             &statusline,
             self.state.focused_pane_id,

@@ -25,25 +25,33 @@ esac
 
 compile_grammar() {
   local name="$1"
-  local target="$2"
-  local out="$target/parser.$EXT"
+  local src_dir="$2"
+  local out_dir="$3"
+  local out="$out_dir/parser.$EXT"
 
-  if [[ -f "$out" && "$out" -nt "$target/src/parser.c" ]]; then
+  if [[ -f "$out" && "$out" -nt "$src_dir/src/parser.c" ]]; then
     echo "  $name: up to date ($out)"
     return
   fi
 
   echo "  $name: compiling..."
-  tree-sitter build -o "$out" "$target"
+  mkdir -p "$out_dir"
+  tree-sitter build -o "$out" "$src_dir"
   echo "  $name: built $out"
 }
 
+# Grammar-sources.scm entries are 5-tuples: (name url rev symbol subpath).
+# `subpath` is the directory within the cloned repo holding the grammar's
+# `src/` — most grammars ship at the repo root (subpath == repo basename),
+# but monorepos like tree-sitter-markdown hold multiple grammars
+# (tree-sitter-markdown, tree-sitter-markdown-inline) as subdirectories of
+# one clone.
 fetch_grammar() {
   local name="$1"
-  # Derive URL and revision from the shipped grammar catalog.
-  local repo rev
+  local repo rev subpath
   repo=$(awk -F'"' -v n="$name" '$2==n {print $4; exit}' "$GRAMMAR_SOURCES")
   rev=$(awk -F'"' -v n="$name" '$2==n {print $6; exit}' "$GRAMMAR_SOURCES")
+  subpath=$(awk -F'"' -v n="$name" '$2==n {print $10; exit}' "$GRAMMAR_SOURCES")
 
   if [[ -z "$repo" || -z "$rev" ]]; then
     echo "error: grammar '$name' not found in $GRAMMAR_SOURCES" >&2
@@ -65,10 +73,40 @@ fetch_grammar() {
       git -C "$target" checkout --quiet --force "$rev"
     fi
   fi
-  compile_grammar "$name" "$target"
+
+  local src_dir="$target"
+  if [[ -n "$subpath" ]]; then
+    src_dir="$target/$subpath"
+  fi
+  compile_grammar "$name" "$src_dir" "$target"
+}
+
+# Fetch the *Helix-maintained* injections.scm for `name` — distinct from
+# (and can differ from!) the grammar's own bundled queries/injections.scm.
+# PLUM installs the Helix version, so injection tests need it too — a test
+# fixture built from the grammar-bundled file instead would validate a
+# query PLUM never actually installs. Best-effort: not every grammar has one.
+HELIX_PIN="$(grep -v '^;' "$REPO_ROOT/runtime/scheme/helix-pin.scm" | tr -d '"[:space:]')"
+fetch_helix_injections() {
+  local name="$1"
+  local out="$FIXTURES/$name/helix-injections.scm"
+  if [[ -f "$out" ]]; then
+    echo "  $name: helix-injections.scm up to date"
+    return
+  fi
+  local url="https://raw.githubusercontent.com/helix-editor/helix/$HELIX_PIN/runtime/queries/$name/injections.scm"
+  if curl -fsSL -o "$out" "$url"; then
+    echo "  $name: fetched helix-injections.scm"
+  else
+    rm -f "$out"
+    echo "  $name: no injections.scm on Helix (skipped)"
+  fi
 }
 
 echo "Fetching tree-sitter grammar fixtures..."
 fetch_grammar "rust"
 fetch_grammar "json"
+fetch_grammar "markdown"
+fetch_grammar "markdown.inline"
+fetch_helix_injections "markdown"
 echo "Done."

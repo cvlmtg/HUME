@@ -87,6 +87,7 @@ impl EditorHost for NullHost {
         _gp: &Path,
         _sym: &str,
         _hl: &Path,
+        _inj: Option<&Path>,
     ) -> Result<(), String> {
         Err("NullHost: attach_grammar not available".into())
     }
@@ -199,8 +200,9 @@ impl EditorHost for FailingRegisterHost {
         gp: &Path,
         sym: &str,
         hl: &Path,
+        inj: Option<&Path>,
     ) -> Result<(), String> {
-        NullHost.attach_grammar(name, gp, sym, hl)
+        NullHost.attach_grammar(name, gp, sym, hl, inj)
     }
     fn has_grammar(&self, language: &str) -> bool {
         NullHost.has_grammar(language)

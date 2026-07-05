@@ -38,6 +38,7 @@ fn json_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
             &parser_path,
             "tree_sitter_json",
             &hl_path,
+            None,
             &mut ed.view.registry,
         )
         .expect("attach json grammar");
@@ -71,7 +72,7 @@ fn first_parse_full_reparse_no_pending() {
         syn.pending_edits.is_empty(),
         "no pending edits after first parse"
     );
-    assert!(ed.view.buffers[bid].tree.is_some(), "tree installed");
+    assert!(ed.view.buffers[bid].syntax.is_some(), "tree installed");
 }
 
 #[test]
@@ -116,7 +117,7 @@ fn reparse_after_edit_drains_pending() {
         syn.parsed_gen, gen_after_edit,
         "parsed_gen matches text_gen after edit"
     );
-    assert!(ed.view.buffers[bid].tree.is_some());
+    assert!(ed.view.buffers[bid].syntax.is_some());
 }
 
 #[test]
@@ -177,8 +178,9 @@ fn incremental_tree_matches_full_reparse() {
     reparse_edit(&mut ed);
 
     let incremental_sexp = ed.view.buffers[bid]
-        .tree
+        .syntax
         .as_ref()
+        .and_then(hume_engine::syntax_layers::SyntaxLayers::root_tree)
         .unwrap()
         .root_node()
         .to_sexp();
@@ -248,8 +250,9 @@ fn bake_aligns_committed_tree_before_precise_install() {
     // Committed tree must be coordinate-aligned: root end_byte == new text length.
     // Pre-fix: root end_byte == old_byte_len (stale coords → highlight column shift).
     let root_end = ed.view.buffers[bid]
-        .tree
+        .syntax
         .as_ref()
+        .and_then(hume_engine::syntax_layers::SyntaxLayers::root_tree)
         .unwrap()
         .root_node()
         .end_byte();
@@ -306,8 +309,9 @@ fn bake_handles_multi_edit_chain_in_one_shot() {
     );
 
     let root_end = ed.view.buffers[bid]
-        .tree
+        .syntax
         .as_ref()
+        .and_then(hume_engine::syntax_layers::SyntaxLayers::root_tree)
         .unwrap()
         .root_node()
         .end_byte();
@@ -350,6 +354,7 @@ fn grammar_swap_clears_pending_and_full_reparses() {
             &parser_path,
             "tree_sitter_json",
             &hl_path,
+            None,
             &mut ed.view.registry,
         )
         .expect("re-attach");
@@ -365,7 +370,7 @@ fn grammar_swap_clears_pending_and_full_reparses() {
     // Full reparse succeeds (setup_buffer_syntax already posted it).
     ed.reparse_stale_buffers();
     assert!(
-        ed.view.buffers[bid].tree.is_some(),
+        ed.view.buffers[bid].syntax.is_some(),
         "tree must be present after re-attach"
     );
 }

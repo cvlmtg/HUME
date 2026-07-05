@@ -1,6 +1,7 @@
 use super::StyleScratch;
-use crate::builtins::tree_sitter_hl::TreeSitterHighlighter;
+use crate::builtins::tree_sitter_hl::layer_highlights_for_line;
 use crate::providers::{HighlightSource, HighlightTier, ProviderId, SourceContext};
+use crate::syntax_layers::SyntaxLayers;
 use crate::theme::Theme;
 use crate::types::{ResolvedStyle, ScopeId};
 
@@ -118,31 +119,38 @@ impl TierBufs {
 /// Must be called once per buffer line before calling [`super::style_row`] for
 /// that line's display rows. Clears and re-fills `tier_bufs` and `raw_highlights`.
 ///
-/// `syntax` is the buffer-level tree-sitter highlighter (if a language is
-/// configured). It runs first into the `Syntax` tier bucket before any
-/// per-pane provider-based sources.
+/// `syntax` is the buffer's tree-sitter syntax layers (if a language is
+/// configured). Every layer covering this line is merged into the `Syntax`
+/// tier bucket before any per-pane provider-based sources.
 pub(crate) fn rebuild_tier_bufs(
     line_idx: usize,
-    syntax: Option<&TreeSitterHighlighter>,
+    syntax: Option<&SyntaxLayers>,
     providers: &[(ProviderId, Box<dyn HighlightSource>)],
     rope: &ropey::Rope,
-    tree: Option<&tree_sitter::Tree>,
     scratch: &mut StyleScratch,
 ) {
     scratch.tier_bufs.clear();
     scratch.highlights.clear();
-    let ctx = SourceContext {
-        rope,
-        tree,
-        line_start_byte: rope.line_to_byte(line_idx),
-    };
-    if let Some(hl) = syntax {
-        hl.highlights_for_line(line_idx, &ctx, &mut scratch.highlights);
+    if let Some(layers) = syntax {
+        layer_highlights_for_line(
+            layers,
+            line_idx,
+            rope,
+            &mut scratch.ts_raw,
+            &mut scratch.ts_stack,
+            &mut scratch.ts_events,
+            &mut scratch.highlights,
+        );
         for &interval in scratch.highlights.iter() {
             scratch.tier_bufs.push(HighlightTier::Syntax, interval);
         }
         scratch.highlights.clear();
     }
+    let ctx = SourceContext {
+        rope,
+        tree: syntax.and_then(SyntaxLayers::root_tree),
+        line_start_byte: rope.line_to_byte(line_idx),
+    };
     for (_, provider) in providers {
         provider.highlights_for_line(line_idx, &ctx, &mut scratch.highlights);
         for &interval in scratch.highlights.iter() {
