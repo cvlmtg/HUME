@@ -8,8 +8,8 @@ use std::thread;
 
 use hume_engine::pipeline::BufferId;
 
-use super::injections::resolve_and_parse_injections;
-use super::syntax::LanguageConfig;
+use crate::injections::resolve_and_parse_injections;
+use crate::registry::LanguageConfig;
 use hume_editing::text::Text;
 
 // Compile-time Send assertions — tree_sitter::Tree is Send+Sync;
@@ -24,30 +24,30 @@ const _: fn() = || {
 /// Nesting cap for recursive injections (root = depth 0). Covers the deepest
 /// realistic case — markdown → rust → rustdoc comment → markdown — without
 /// letting a pathological grammar recurse unboundedly.
-pub(super) const MAX_INJECTION_DEPTH: u8 = 3;
+pub(crate) const MAX_INJECTION_DEPTH: u8 = 3;
 
 // ── Messages ──────────────────────────────────────────────────────────────────
 
-pub(super) struct ParseRequest {
-    pub(super) bid: BufferId,
-    pub(super) text_gen: u64,
+pub struct ParseRequest {
+    pub bid: BufferId,
+    pub text_gen: u64,
     /// Keepalive: holds the Arc so the dlopen'd grammar is not unloaded while
     /// the worker holds this request.
-    pub(super) lang: Arc<LanguageConfig>,
+    pub lang: Arc<LanguageConfig>,
     /// O(1) rope clone (structural sharing) — serialised to bytes on the worker
     /// thread only when the parse succeeds, avoiding the main-thread allocation.
-    pub(super) text: Text,
+    pub text: Text,
     /// Previous parse tree with all pending `InputEdit`s applied, enabling
     /// incremental re-parsing.  `None` for a full reparse (first parse, grammar
     /// swap, or broken edit chain).
-    pub(super) old_tree: Option<tree_sitter::Tree>,
+    pub old_tree: Option<tree_sitter::Tree>,
     /// Snapshot of every grammared language, for resolving an injected
     /// language name (e.g. a fenced code block's info string) to its grammar
     /// without touching main-thread state from the worker.
-    pub(super) langs: Arc<HashMap<String, Arc<LanguageConfig>>>,
+    pub langs: Arc<HashMap<String, Arc<LanguageConfig>>>,
 }
 
-pub(super) enum ParseOutcome {
+pub enum ParseOutcome {
     /// Root parse succeeded.  Carries the root tree plus every embedded-language
     /// layer resolved from it; byte text is read from the live rope at render
     /// time via `RopeProvider` in the engine highlighter.
@@ -58,28 +58,28 @@ pub(super) enum ParseOutcome {
 }
 
 /// The root parse tree plus every injected layer resolved from it.
-pub(super) struct ParsedLayers {
-    pub(super) root: tree_sitter::Tree,
-    pub(super) injected: Vec<ParsedInjection>,
+pub struct ParsedLayers {
+    pub root: tree_sitter::Tree,
+    pub injected: Vec<ParsedInjection>,
 }
 
 /// One resolved and parsed injection layer.
-pub(super) struct ParsedInjection {
+pub struct ParsedInjection {
     /// Keepalive + identity for the injected layer's grammar.
-    pub(super) lang: Arc<LanguageConfig>,
-    pub(super) tree: tree_sitter::Tree,
+    pub lang: Arc<LanguageConfig>,
+    pub tree: tree_sitter::Tree,
     /// Absolute byte ranges this layer was parsed over, sorted by start.
-    pub(super) ranges: Vec<tree_sitter::Range>,
-    pub(super) depth: u8,
+    pub ranges: Vec<tree_sitter::Range>,
+    pub depth: u8,
 }
 
-pub(super) struct ParseDone {
-    pub(super) bid: BufferId,
-    pub(super) text_gen: u64,
+pub struct ParseDone {
+    pub bid: BufferId,
+    pub text_gen: u64,
     /// Identity token — compared via `Arc::ptr_eq` on the main thread to detect
     /// grammar swaps that occurred while the request was in flight.
-    pub(super) lang: Arc<LanguageConfig>,
-    pub(super) outcome: ParseOutcome,
+    pub lang: Arc<LanguageConfig>,
+    pub outcome: ParseOutcome,
 }
 
 // ── Coalescing helper ─────────────────────────────────────────────────────────
@@ -117,7 +117,7 @@ fn coalesce_one(batch: &mut HashMap<BufferId, ParseRequest>, req: ParseRequest) 
 /// always pass `old_tree: None` (Phase 3 decision: only the root is
 /// incremental; injected regions are typically small enough that a full
 /// parse is cheap and avoids tracking per-layer identity across edits).
-pub(super) fn run_parse(
+pub(crate) fn run_parse(
     parser: &mut tree_sitter::Parser,
     rope: &ropey::Rope,
     old_tree: Option<&tree_sitter::Tree>,
@@ -232,7 +232,7 @@ impl WorkerState {
 
 /// Abstraction over the parse backend so tests can inject a synchronous
 /// implementation that avoids threads and blocking.
-pub(super) trait ParseBackend {
+pub trait ParseBackend {
     fn post(&mut self, req: ParseRequest);
 
     /// Drain all available parse results.  Must be called before
@@ -274,7 +274,7 @@ struct InFlight {
 
 // ── ThreadedParseBackend (production) ─────────────────────────────────────────
 
-pub(super) struct ThreadedParseBackend {
+pub struct ThreadedParseBackend {
     /// `None` after `Drop` closes the channel to signal the worker.
     tx_req: Option<mpsc::Sender<ParseRequest>>,
     rx_done: mpsc::Receiver<ParseDone>,
@@ -285,7 +285,7 @@ pub(super) struct ThreadedParseBackend {
 }
 
 impl ThreadedParseBackend {
-    pub(super) fn new() -> Self {
+    pub fn new() -> Self {
         let (tx_req, rx_req) = mpsc::channel::<ParseRequest>();
         let (tx_done, rx_done) = mpsc::channel::<ParseDone>();
         let cancel = Arc::new(AtomicBool::new(false));
@@ -310,6 +310,12 @@ impl ThreadedParseBackend {
             cancel,
             thread: Some(thread),
         }
+    }
+}
+
+impl Default for ThreadedParseBackend {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -398,20 +404,22 @@ impl Drop for ThreadedParseBackend {
     }
 }
 
-// ── InlineParseBackend (tests only) ──────────────────────────────────────────
+// ── InlineParseBackend (synchronous backend for tests) ────────────────────────
 
 /// Synchronous parse backend for tests.  `post` runs the parse immediately and
 /// queues the result; `drain_done` flushes the queue.  No threads, no channels,
 /// no waiting — tests call `reparse_stale_buffers` instead of blocking helpers.
-#[cfg(test)]
-pub(super) struct InlineParseBackend {
+///
+/// `pub` (not `#[cfg(test)]`): used from hume-editor's own test suite across
+/// the crate boundary, and as the default backend before a real editor swaps
+/// in `ThreadedParseBackend`.
+pub struct InlineParseBackend {
     parser: tree_sitter::Parser,
     done: std::collections::VecDeque<ParseDone>,
 }
 
-#[cfg(test)]
 impl InlineParseBackend {
-    pub(super) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             parser: tree_sitter::Parser::new(),
             done: std::collections::VecDeque::new(),
@@ -419,7 +427,12 @@ impl InlineParseBackend {
     }
 }
 
-#[cfg(test)]
+impl Default for InlineParseBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ParseBackend for InlineParseBackend {
     fn post(&mut self, req: ParseRequest) {
         let no_cancel = AtomicBool::new(false);
@@ -471,8 +484,8 @@ mod tests {
     use super::{
         LanguageConfig, ParseOutcome, ParseRequest, Text, ThreadedParseBackend, coalesce_one,
     };
-    use crate::editor::syntax::GrammarBundle;
-    use crate::editor::tests::grammar_parser_path;
+    use crate::registry::GrammarBundle;
+    use crate::test_support::grammar_parser_path;
 
     fn make_lang(name: &str, symbol: &str) -> Arc<LanguageConfig> {
         let path = grammar_parser_path(name);

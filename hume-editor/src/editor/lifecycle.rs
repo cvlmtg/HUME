@@ -178,7 +178,7 @@ impl Editor {
                 skip_macro_record: false,
                 is_replaying: false,
                 mouse_drag_anchor: None,
-                languages: crate::editor::syntax::LanguageRegistry::new(),
+                languages: hume_treesitter::registry::LanguageRegistry::new(),
                 cwd: std::env::current_dir().unwrap_or_default(),
                 pending_hooks: Vec::new(),
                 completion_view,
@@ -187,7 +187,7 @@ impl Editor {
             kitty_enabled: false,
             scripting: None,
             builtin_cmd_names: std::collections::HashSet::new(),
-            parse_worker: Box::new(crate::editor::parse_worker::ThreadedParseBackend::new()),
+            parse_worker: Box::new(hume_treesitter::parse_worker::ThreadedParseBackend::new()),
             parse_worker_disconnect_logged: false,
         })
     }

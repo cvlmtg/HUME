@@ -1,5 +1,5 @@
 [workspace]
-members = ["hume-engine", "hume-editor", "hume-platform", "hume-scripting", "hume-editing"]
+members = ["hume-engine", "hume-editor", "hume-platform", "hume-scripting", "hume-editing", "hume-treesitter"]
 resolver = "2"
 
 [profile.dev]

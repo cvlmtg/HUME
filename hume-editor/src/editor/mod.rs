@@ -27,6 +27,10 @@ use crate::ops::motion::FindKind;
 use crate::ops::register::{KillRing, RegisterSet};
 use crate::settings::EditorSettings;
 use hume_editing::selection::SelectionSet;
+#[cfg(test)]
+use hume_treesitter::parse_worker::InlineParseBackend;
+use hume_treesitter::parse_worker::ParseBackend;
+use hume_treesitter::registry::LanguageRegistry;
 
 use self::keymap::{Keymap, WaitCharPending};
 
@@ -34,7 +38,6 @@ mod buffer_ops;
 pub(crate) mod error;
 pub(crate) mod host_impl;
 mod lifecycle;
-mod parse_worker;
 mod scripting_setup;
 
 pub(crate) mod buffer;
@@ -44,7 +47,6 @@ mod commands;
 pub(crate) mod completion;
 pub(crate) mod cursor;
 pub(crate) mod doc_ops;
-pub(crate) mod injections;
 pub(crate) mod jump_list;
 pub mod keymap;
 #[cfg(test)]
@@ -322,7 +324,7 @@ pub(crate) struct EditorState {
     /// Anchor char offset set on mouse-left-down when `mouse_select` is enabled.
     pub(super) mouse_drag_anchor: Option<usize>,
     /// Registry of configured language identities.
-    pub(super) languages: syntax::LanguageRegistry,
+    pub(super) languages: LanguageRegistry,
     /// Current working directory. Set at startup; updated by `:cd`.
     pub(super) cwd: PathBuf,
     /// Hooks enqueued during command dispatch, drained by `Editor::drain_hooks`
@@ -424,7 +426,7 @@ pub(crate) struct Editor {
     /// Snapshot of Rust-builtin command names taken at end of `init_scripting`.
     pub(super) builtin_cmd_names: std::collections::HashSet<String>,
     /// Parse backend: threaded in production, synchronous-inline in tests.
-    parse_worker: Box<dyn parse_worker::ParseBackend>,
+    parse_worker: Box<dyn ParseBackend>,
     /// Whether the one-shot "parse worker disconnected" message has been logged.
     parse_worker_disconnect_logged: bool,
 }
@@ -1008,7 +1010,7 @@ impl Editor {
                 skip_macro_record: false,
                 is_replaying: false,
                 mouse_drag_anchor: None,
-                languages: syntax::LanguageRegistry::new(),
+                languages: LanguageRegistry::new(),
                 cwd: std::env::temp_dir(),
                 pending_hooks: Vec::new(),
                 completion_view: Arc::new(RwLock::new(None)),
@@ -1017,7 +1019,7 @@ impl Editor {
             kitty_enabled: false,
             scripting: None,
             builtin_cmd_names: std::collections::HashSet::new(),
-            parse_worker: Box::new(parse_worker::InlineParseBackend::new()),
+            parse_worker: Box::new(InlineParseBackend::new()),
             parse_worker_disconnect_logged: false,
         }
     }

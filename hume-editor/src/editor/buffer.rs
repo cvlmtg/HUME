@@ -3,13 +3,13 @@ use std::path::{Path, PathBuf};
 
 use super::search_state::{SearchMatches, SearchPattern};
 use crate::editor::pane_state::EditGroup;
-use crate::editor::syntax::BufferSyntax;
 use crate::settings::BufferOverrides;
 use hume_editing::changeset::{ChangeSet, changesets_from_line_diff};
 use hume_editing::history::{History, RevisionId};
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
 use hume_platform::io::FileMeta;
+use hume_treesitter::registry::BufferSyntax;
 
 // ── Buffer ────────────────────────────────────────────────────────────────────
 

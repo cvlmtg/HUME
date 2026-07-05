@@ -170,7 +170,7 @@ impl Completer for SetCompleter {
 mod tests {
     use super::super::testing::*;
     use super::*;
-    use crate::editor::syntax::LanguageRegistry;
+    use hume_treesitter::registry::LanguageRegistry;
 
     // ── SetCompleter: scope phase ─────────────────────────────────────────────
 

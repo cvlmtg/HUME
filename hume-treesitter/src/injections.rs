@@ -4,8 +4,10 @@ use std::sync::atomic::AtomicBool;
 
 use streaming_iterator::StreamingIterator;
 
-use super::parse_worker::{MAX_INJECTION_DEPTH, ParsedInjection, run_parse};
-use super::syntax::LanguageConfig;
+use hume_engine::builtins::tree_sitter_hl::RopeProvider;
+
+use crate::parse_worker::{MAX_INJECTION_DEPTH, ParsedInjection, run_parse};
+use crate::registry::LanguageConfig;
 
 // ── InjectionsQuery ────────────────────────────────────────────────────────────
 
@@ -15,33 +17,33 @@ use super::syntax::LanguageConfig;
 ///
 /// Built once per grammar attach (in `attach_grammar`), shared across every
 /// buffer of that language via `Arc`, mirroring `GrammarBundle.query`.
-pub(crate) struct InjectionsQuery {
-    pub(crate) query: Arc<tree_sitter::Query>,
+pub struct InjectionsQuery {
+    pub query: Arc<tree_sitter::Query>,
     /// Capture index for `@injection.content`, if the query defines it.
-    pub(crate) content_capture: Option<u32>,
+    pub content_capture: Option<u32>,
     /// Capture index for `@injection.language`, if the query defines it.
-    pub(crate) language_capture: Option<u32>,
+    pub language_capture: Option<u32>,
     /// Index-aligned with `query.pattern_count()`.
-    pub(crate) patterns: Vec<PatternConfig>,
+    pub patterns: Vec<PatternConfig>,
 }
 
 /// Per-pattern `#set!` properties from an `injections.scm` query.
-pub(crate) struct PatternConfig {
+pub struct PatternConfig {
     /// Static `#set! injection.language "x"` — used when the pattern has no
     /// `@injection.language` capture (e.g. doc-comment content).
-    pub(crate) language: Option<String>,
+    pub language: Option<String>,
     /// `#set! injection.combined` — all matches of this pattern in one buffer
     /// parse as a single layer with multiple included ranges (required by
     /// `markdown.inline`, whose grammar expects the whole document's inline
     /// spans as one tree).
-    pub(crate) combined: bool,
+    pub combined: bool,
     /// `#set! injection.include-unnamed-children` — by default, a content
     /// node's *unnamed* (anonymous/punctuation) children are cut out of the
     /// injected range; this property includes them instead, so the full
     /// node span is injected untouched. Named children are never cut out —
     /// they're meaningful grammar constructs, not delimiters — only unnamed
     /// ones (parens, commas, markers) are excluded by default.
-    pub(crate) include_unnamed_children: bool,
+    pub include_unnamed_children: bool,
 }
 
 impl InjectionsQuery {
@@ -49,7 +51,7 @@ impl InjectionsQuery {
     /// properties (Helix queries carry extras like `injection.filename`) are
     /// silently ignored — only the standard tree-sitter injection convention
     /// is interpreted.
-    pub(crate) fn new(query: Arc<tree_sitter::Query>) -> Self {
+    pub fn new(query: Arc<tree_sitter::Query>) -> Self {
         let content_capture = query.capture_index_for_name("injection.content");
         let language_capture = query.capture_index_for_name("injection.language");
         let patterns = (0..query.pattern_count())
@@ -84,23 +86,6 @@ impl InjectionsQuery {
 }
 
 // ── Injection resolution (worker thread) ──────────────────────────────────────
-
-/// Feeds rope chunks to tree-sitter query matching as a `TextProvider`.
-/// Duplicated from the engine's private `RopeProvider` — small enough that
-/// sharing it isn't worth new cross-crate public API.
-struct RopeProvider<'a>(&'a ropey::Rope);
-
-impl<'a> tree_sitter::TextProvider<&'a [u8]> for RopeProvider<'a> {
-    type I = std::iter::Map<ropey::iter::Chunks<'a>, fn(&str) -> &[u8]>;
-
-    fn text(&mut self, node: tree_sitter::Node) -> Self::I {
-        let slice = self
-            .0
-            .get_byte_slice(node.start_byte()..node.end_byte())
-            .unwrap_or_else(|| self.0.byte_slice(0..0));
-        slice.chunks().map(str::as_bytes)
-    }
-}
 
 /// Byte ranges for `node`'s injectable content. When `include_unnamed_children`
 /// is false (the default), the node's *unnamed* (anonymous — punctuation,
@@ -190,7 +175,7 @@ struct InjectionGroup {
 /// injections). Runs on the parse worker thread — `parser` is reused across
 /// layers (language + included-ranges are reconfigured for each); `cancel`
 /// is checked by the same progress callback as the root parse.
-pub(super) fn resolve_and_parse_injections(
+pub(crate) fn resolve_and_parse_injections(
     parser: &mut tree_sitter::Parser,
     tree: &tree_sitter::Tree,
     lang: &LanguageConfig,
@@ -321,8 +306,8 @@ mod tests {
     use hume_engine::theme::ScopeRegistry;
 
     use super::*;
-    use crate::editor::syntax::GrammarBundle;
-    use crate::editor::tests::{grammar_injections_path, grammar_parser_path, grammar_query_path};
+    use crate::registry::GrammarBundle;
+    use crate::test_support::{grammar_injections_path, grammar_parser_path, grammar_query_path};
 
     /// Load a real grammar fixture with an optional custom injections source
     /// (overriding whatever `injections.scm` the fixture ships, if any) —

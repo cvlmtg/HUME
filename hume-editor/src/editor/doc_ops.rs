@@ -17,8 +17,21 @@ use crate::editor::pane_state::PaneBufferState;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
+use hume_treesitter::edits::record_pending_edits;
 
-use super::syntax_glue;
+/// No-op when `buf_id` has no grammar attached (`syntax` is `None`).
+/// Called immediately after every text mutation.
+fn record_syntax_edits(
+    buffers: &mut BufferStore,
+    buf_id: BufferId,
+    text_gen: u64,
+    cs: &ChangeSet,
+    rope_pre: &ropey::Rope,
+) {
+    if let Some(syn) = buffers.get_mut(buf_id).syntax.as_mut() {
+        record_pending_edits(syn, text_gen, cs, rope_pre);
+    }
+}
 
 /// Apply an ungrouped edit to the focused buffer and propagate the resulting
 /// `ChangeSet` to all other panes viewing the same buffer.
@@ -45,7 +58,7 @@ pub(crate) fn apply_doc_edit(
     pane_state[focused_pane_id][buf_id].selections = new_sels;
     propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &buf_pre);
     let text_gen = buffers.get(buf_id).text_gen;
-    syntax_glue::record_pending_edits(buffers.get_mut(buf_id), text_gen, &cs, &rope_pre);
+    record_syntax_edits(buffers, buf_id, text_gen, &cs, &rope_pre);
 }
 
 /// Apply a grouped edit (inside an insert session) to the focused buffer.
@@ -74,7 +87,7 @@ pub(crate) fn apply_doc_edit_grouped(
     pbs.selections = new_sels;
     propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &buf_pre);
     let text_gen = buffers.get(buf_id).text_gen;
-    syntax_glue::record_pending_edits(buffers.get_mut(buf_id), text_gen, &cs, &rope_pre);
+    record_syntax_edits(buffers, buf_id, text_gen, &cs, &rope_pre);
 }
 
 /// Re-paste from the paste-session snapshot into the focused buffer, replacing
@@ -109,12 +122,7 @@ pub(crate) fn apply_doc_edit_regrouped(
         &buf_pre,
     );
     let text_gen = buffers.get(buf_id).text_gen;
-    syntax_glue::record_pending_edits(
-        buffers.get_mut(buf_id),
-        text_gen,
-        &propagation_cs,
-        &rope_pre,
-    );
+    record_syntax_edits(buffers, buf_id, text_gen, &propagation_cs, &rope_pre);
 }
 
 /// Apply undo to the focused buffer and propagate the inverse `ChangeSet` to
@@ -137,7 +145,7 @@ pub(crate) fn apply_doc_undo(
         pane_state[focused_pane_id][buf_id].selections = new_sels;
         propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &buf_pre);
         let text_gen = buffers.get(buf_id).text_gen;
-        syntax_glue::record_pending_edits(buffers.get_mut(buf_id), text_gen, &cs, &rope_pre);
+        record_syntax_edits(buffers, buf_id, text_gen, &cs, &rope_pre);
     }
 }
 
@@ -158,7 +166,7 @@ pub(crate) fn apply_doc_redo(
         pane_state[focused_pane_id][buf_id].selections = new_sels;
         propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &buf_pre);
         let text_gen = buffers.get(buf_id).text_gen;
-        syntax_glue::record_pending_edits(buffers.get_mut(buf_id), text_gen, &cs, &rope_pre);
+        record_syntax_edits(buffers, buf_id, text_gen, &cs, &rope_pre);
     }
 }
 

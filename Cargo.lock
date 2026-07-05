@@ -1069,6 +1069,7 @@ dependencies = [
  "hume-engine",
  "hume-platform",
  "hume-scripting",
+ "hume-treesitter",
  "insta",
  "pretty_assertions",
  "proptest",
@@ -1077,7 +1078,6 @@ dependencies = [
  "ropey",
  "slotmap",
  "steel-core",
- "streaming-iterator",
  "tempfile",
  "tree-sitter",
  "unicode-segmentation",
@@ -1125,6 +1125,20 @@ dependencies = [
  "slotmap",
  "steel-core",
  "tempfile",
+]
+
+[[package]]
+name = "hume-treesitter"
+version = "0.1.0"
+dependencies = [
+ "globset",
+ "hume-editing",
+ "hume-engine",
+ "ropey",
+ "slotmap",
+ "streaming-iterator",
+ "tempfile",
+ "tree-sitter",
 ]
 
 [[package]]

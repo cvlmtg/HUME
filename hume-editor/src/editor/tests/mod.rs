@@ -381,20 +381,12 @@ pub(crate) fn grammar_query_path(name: &str) -> PathBuf {
     grammar_fixture_root(name).join("queries/highlights.scm")
 }
 
-/// Absolute path to the injections query file for `name`, if the grammar
-/// fixture ships one (`None` for grammars without embedded-language support).
-pub(crate) fn grammar_injections_path(name: &str) -> Option<PathBuf> {
-    let path = grammar_fixture_root(name).join("queries/injections.scm");
-    path.exists().then_some(path)
-}
-
 /// Absolute path to the *Helix-maintained* injections query for `name`,
 /// fetched by `scripts/fetch-test-grammars.sh` from the pinned Helix commit —
 /// distinct from (and can differ from!) the grammar's own bundled
 /// `queries/injections.scm`. PLUM installs the Helix version, so tests
-/// validating what PLUM actually ships should use this, not
-/// `grammar_injections_path`. `None` if the fetch script found no Helix
-/// injections query for `name` (most grammars have none).
+/// validating what PLUM actually ships should use this. `None` if the fetch
+/// script found no Helix injections query for `name` (most grammars have none).
 pub(crate) fn helix_injections_path(name: &str) -> Option<PathBuf> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()

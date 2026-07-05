@@ -113,7 +113,7 @@ mod tests {
     use super::*;
     use crate::editor::buffer_store::BufferStore;
     use crate::editor::registry::CommandRegistry;
-    use crate::editor::syntax::LanguageRegistry;
+    use hume_treesitter::registry::LanguageRegistry;
 
     #[test]
     fn path_completer_lists_directory() {

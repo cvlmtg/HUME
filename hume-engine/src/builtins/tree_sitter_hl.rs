@@ -18,7 +18,10 @@ use crate::types::{Scope, ScopeId};
 /// live rope at render time (the editor bakes the tree before each render).
 /// `get_byte_slice` returns `None` on an out-of-range request, so a misaligned
 /// range degrades to empty text rather than panicking.
-struct RopeProvider<'a>(&'a ropey::Rope);
+///
+/// `pub` so other tree-sitter-driven query matching (e.g. injection
+/// resolution in `hume-treesitter`) can reuse it instead of duplicating.
+pub struct RopeProvider<'a>(pub &'a ropey::Rope);
 
 impl<'a> tree_sitter::TextProvider<&'a [u8]> for RopeProvider<'a> {
     type I = std::iter::Map<ropey::iter::Chunks<'a>, fn(&str) -> &[u8]>;

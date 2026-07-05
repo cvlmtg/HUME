@@ -188,7 +188,7 @@ impl Editor {
         self.builtin_cmd_names = builtin_names.clone();
         // Reset the language registry so `:reload-config` gets a fresh set
         // of registrations from languages.scm rather than accumulating duplicates.
-        self.state.languages = crate::editor::syntax::LanguageRegistry::new();
+        self.state.languages = hume_treesitter::registry::LanguageRegistry::new();
         // Load runtime/scheme/prelude.scm before init.scm so its macros
         // (bind-keys! etc.) are available to init.scm and plugin modules.
         // Missing prelude is a silent no-op (optional sugar); a prelude that

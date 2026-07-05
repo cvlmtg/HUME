@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::ops::edit::{
     delete_char_backward, delete_char_forward, delete_selection, insert_char, paste_after,

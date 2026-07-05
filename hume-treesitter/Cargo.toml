@@ -1,0 +1,22 @@
+[package]
+name = "hume-treesitter"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+hume-engine = { path = "../hume-engine" }
+hume-editing = { path = "../hume-editing" }
+globset = "0.4"
+tree-sitter = "0.26.8"
+streaming-iterator = "0.1"
+ropey.workspace = true
+
+[dev-dependencies]
+slotmap = "1"
+tempfile = "3"
+
+[features]
+# Exposes test-only registry methods (register_identity, remove) to
+# consumers' own test code — hume-editor's tests build LanguageRegistry
+# fixtures via this crate, so #[cfg(test)] alone (crate-local) isn't enough.
+test-util = []

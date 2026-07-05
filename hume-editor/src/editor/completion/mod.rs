@@ -13,7 +13,7 @@ use std::path::Path;
 
 use crate::editor::buffer_store::BufferStore;
 use crate::editor::registry::CommandRegistry;
-use crate::editor::syntax::LanguageRegistry;
+use hume_treesitter::registry::LanguageRegistry;
 
 mod path;
 mod set;
