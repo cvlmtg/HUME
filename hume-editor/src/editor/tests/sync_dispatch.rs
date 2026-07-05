@@ -2217,3 +2217,52 @@ fn keymap_dispatch_arity_over_2_reports_error() {
         "dispatch of arity-3 command via keymap must report a user-facing error"
     );
 }
+
+/// The Steel dispatch path must *consume* `pending_char`, exactly like the
+/// native wait-char consumers do via `.take()`.  A stale `Some(ch)` left
+/// behind would make every later `(pending-char)` call — and every later
+/// repeatable command's `char_arg` stamp — see a garbage character.
+///
+/// Fail oracle: revert `.take()` to a plain read in `Editor::dispatch` — the
+/// second dispatch still sees `Some('x')`, moves the cursor again, and the
+/// final assertion fails.
+#[test]
+fn steel_dispatch_consumes_pending_char() {
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let names: Vec<String> = ed
+        .state
+        .registry
+        .native_mappable_names()
+        .map(str::to_owned)
+        .collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut host = ScriptingHost::new();
+    host.register_command_names(&name_refs);
+    let mut init_host = live_host!(ed);
+    host.eval_source_returning_defs(
+        // Moves the cursor only when a pending char is visible to the body.
+        r#"(define-command! "probe-char" ""
+             (lambda () (if (pending-char) (call! "move-right" 1) (+ 1 0))))"#
+            .to_owned(),
+        Default::default(),
+        &mut init_host,
+    )
+    .expect("define-command! must succeed");
+    ed.scripting = Some(host);
+
+    // Simulate a WaitChar keymap node having stored the argument char.
+    ed.state.pending_char = Some('x');
+    ed.execute_keymap_command("probe-char".into(), 1, false, vec![]);
+
+    let cursor = live_host!(ed).cursor_char_index().expect("cursor read");
+    assert_eq!(cursor, 1, "body must see the pending char and move right");
+    assert!(
+        ed.state.pending_char.is_none(),
+        "dispatch must consume pending_char"
+    );
+
+    // A later dispatch without a fresh WaitChar must see #f, not the stale 'x'.
+    ed.execute_keymap_command("probe-char".into(), 1, false, vec![]);
+    let cursor = live_host!(ed).cursor_char_index().expect("cursor read");
+    assert_eq!(cursor, 1, "stale pending_char must not leak into later dispatch");
+}

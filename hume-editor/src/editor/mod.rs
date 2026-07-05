@@ -613,7 +613,7 @@ impl Editor {
         commands::step_paste_commit(&mut self.state, &self.view, meta.defers_paste_commit);
         // Pre-stamp last_command — inner dispatches via `call!` override it.
         commands::step_stamp_last_command(&mut self.state, name.clone(), meta.stamps_last_command);
-        let char_arg = self.state.pending_char;
+        let char_arg = self.state.pending_char.take();
         // Always snapshot the recipe before the body — inner dispatches via `call!`
         // overwrite selection_recipe during the body, so the snapshot must be taken
         // before they run (the native path uses step_snapshot_recipe, which gates on
