@@ -1009,16 +1009,17 @@ fn install_real_json_grammar_e2e() {
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     let init_path = tmp.path().join("init.scm");
+    // `register-grammar!` is a prelude.scm macro — prepend the real prelude
+    // source so it's in scope (see `register_grammar_command_mode_attaches_and_sweeps`).
     // Command name must not contain digits: parse_typed_command stops the name
     // scan at the first non-[A-Za-z_-] char (Vim convention — digits are args).
-    std::fs::write(
-        &init_path,
-        format!(
-            r#"(define-command! "attach-json" "attach json grammar" (lambda () (register-grammar! "json" "{}" "tree_sitter_json" "{}")))"#,
-            out_path.display(),
-            hl_path.display(),
-        ),
-    ).unwrap();
+    let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
+    let body = format!(
+        r#"(define-command! "attach-json" "attach json grammar" (lambda () (register-grammar! "json" "{}" "tree_sitter_json" "{}")))"#,
+        out_path.display(),
+        hl_path.display(),
+    );
+    std::fs::write(&init_path, prelude_src + &body).unwrap();
 
     let mut host = ScriptingHost::new();
     host.set_data_dir(data_dir);
