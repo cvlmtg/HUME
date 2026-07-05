@@ -13,7 +13,7 @@
 //! cluster.
 //!
 //! `no_raw_char_stepping_in_motion_code` recursively scans `src/ops/`,
-//! `src/auto_pairs.rs`, and `hume-editing/src/lines.rs` + `hume-editing/src/word.rs`
+//! `hume-editing/src/lines.rs` + `hume-editing/src/word.rs`
 //! for the forbidden patterns.
 //!
 //! **Opt-out**: annotate a line with `// grapheme-safe: <reason>` where
@@ -93,7 +93,6 @@ mod tests {
         let workspace_root = root.parent().expect("workspace root");
         let mut paths: Vec<std::path::PathBuf> = Vec::new();
         collect_source_rs(&root.join("src/ops"), &mut paths);
-        paths.push(root.join("src/auto_pairs.rs"));
         // lines.rs and word.rs live in the editing crate — scan them from there.
         // (helpers.rs was split into these two modules.)
         paths.push(workspace_root.join("hume-editing/src/lines.rs"));

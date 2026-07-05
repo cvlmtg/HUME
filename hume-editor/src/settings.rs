@@ -47,7 +47,7 @@ use std::str::FromStr;
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
 
-use crate::auto_pairs::Pair;
+use crate::ops::auto_pairs::Pair;
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 
 // ── TabStyle ──────────────────────────────────────────────────────────────────

@@ -1,3 +1,4 @@
+pub(crate) mod auto_pairs;
 pub(crate) mod edit;
 pub(crate) mod motion;
 pub(crate) mod pair;
