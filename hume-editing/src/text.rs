@@ -205,6 +205,19 @@ impl Text {
         Some(self.rope.char(char_idx))
     }
 
+    /// A cursor over chars starting at `pos`, for scanning a contiguous range
+    /// without re-paying ropey's O(log n) tree descent on every step (unlike
+    /// repeated `char_at` calls in a loop). See [`CharCursor`].
+    ///
+    /// # Panics
+    /// Panics if `pos > self.len_chars()`.
+    pub fn chars_at(&self, pos: usize) -> CharCursor<'_> {
+        CharCursor {
+            iter: self.rope.chars_at(pos),
+            pos,
+        }
+    }
+
     /// Convert a byte offset to a char (Unicode scalar value) offset.
     ///
     /// Used to convert regex match byte offsets (from `regex-cursor`) back to
@@ -278,6 +291,50 @@ impl Text {
             rope,
             line_ending: self.line_ending,
         }
+    }
+}
+
+/// A char-level cursor for scanning a contiguous range of a [`Text`] without
+/// re-paying ropey's O(log n) tree descent on every step. Each `next()` /
+/// `prev()` call is amortized O(1) after the initial O(log n) seek in
+/// [`Text::chars_at`] — an O(span × log n) loop of `char_at(i)` calls becomes
+/// O(log n + span).
+///
+/// **Char-level, not grapheme-level** — intended for ASCII delimiter scanning
+/// (brackets, quotes, argument commas), same exposure class as `char_at`.
+/// Motion and selection logic must keep using `grapheme.rs` boundary helpers;
+/// a multi-codepoint cluster (e.g. `e` + U+0301) is yielded here as two
+/// separate chars, just like two `char_at` calls would see it.
+pub struct CharCursor<'a> {
+    iter: ropey::iter::Chars<'a>,
+    /// Char index of the position the cursor currently sits at — the index
+    /// `next()` would yield and `prev()` would land on.
+    pos: usize,
+}
+
+impl Iterator for CharCursor<'_> {
+    type Item = (usize, char);
+
+    /// Yield the char at the cursor position, then advance forward.
+    fn next(&mut self) -> Option<(usize, char)> {
+        let ch = self.iter.next()?;
+        let pos = self.pos;
+        self.pos += 1;
+        Some((pos, ch))
+    }
+}
+
+impl CharCursor<'_> {
+    /// Step back and yield the char just before the cursor position.
+    ///
+    /// Not a [`DoubleEndedIterator`](std::iter::DoubleEndedIterator) impl —
+    /// that trait means "consume from the far end of the same forward
+    /// sequence," not "walk backward from here," which is what callers
+    /// (bracket-pair scans) actually need.
+    pub fn prev(&mut self) -> Option<(usize, char)> {
+        let ch = self.iter.prev()?;
+        self.pos -= 1;
+        Some((self.pos, ch))
     }
 }
 
@@ -571,5 +628,64 @@ mod tests {
         // buf: 'e'(0) U+0301(1) 'h'(2) 'e'(3) ... '\n'(7) = 8 chars.
         let new = buf.remove(0..2); // remove the 'e' + combining accent
         assert_eq!(new.to_string(), "hello\n");
+    }
+
+    // ── CharCursor ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn char_cursor_forward_from_start() {
+        // "hello\n": h0 e1 l2 l3 o4 \n5.
+        let buf = Text::from("hello");
+        let got: Vec<(usize, char)> = buf.chars_at(0).collect();
+        assert_eq!(
+            got,
+            vec![(0, 'h'), (1, 'e'), (2, 'l'), (3, 'l'), (4, 'o'), (5, '\n')]
+        );
+    }
+
+    #[test]
+    fn char_cursor_forward_from_middle() {
+        let buf = Text::from("hello");
+        let got: Vec<(usize, char)> = buf.chars_at(2).collect();
+        assert_eq!(got, vec![(2, 'l'), (3, 'l'), (4, 'o'), (5, '\n')]);
+    }
+
+    #[test]
+    fn char_cursor_prev_walks_back_to_start_then_none() {
+        let buf = Text::from("hello");
+        let mut c = buf.chars_at(4); // positioned before 'o'
+        assert_eq!(c.prev(), Some((3, 'l')));
+        assert_eq!(c.prev(), Some((2, 'l')));
+        assert_eq!(c.prev(), Some((1, 'e')));
+        assert_eq!(c.prev(), Some((0, 'h')));
+        assert_eq!(c.prev(), None);
+    }
+
+    #[test]
+    fn char_cursor_interleaved_next_prev_round_trips() {
+        let buf = Text::from("hello");
+        let mut c = buf.chars_at(2);
+        assert_eq!(c.next(), Some((2, 'l'))); // cursor now at 3
+        assert_eq!(c.prev(), Some((2, 'l'))); // back to 2 — same value
+        assert_eq!(c.next(), Some((2, 'l'))); // forward again — still consistent
+    }
+
+    #[test]
+    fn char_cursor_at_eof() {
+        let buf = Text::from("hello");
+        let len = buf.len_chars();
+        let mut at_eof = buf.chars_at(len);
+        assert_eq!(at_eof.next(), None);
+        assert_eq!(at_eof.prev(), Some((len - 1, '\n')));
+    }
+
+    #[test]
+    fn char_cursor_yields_codepoints_not_grapheme_clusters() {
+        // "caf" + e + U+0301 (combining acute, 2 codepoints) + structural \n:
+        // c0 a1 f2 e3 U+0301(4) \n(5). The combining mark must come back as
+        // its own char, not merged with 'e' — CharCursor is char-level.
+        let buf = Text::from("caf\u{0065}\u{0301}");
+        let got: Vec<(usize, char)> = buf.chars_at(3).collect();
+        assert_eq!(got, vec![(3, 'e'), (4, '\u{0301}'), (5, '\n')]);
     }
 }

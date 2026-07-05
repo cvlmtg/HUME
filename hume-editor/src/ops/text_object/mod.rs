@@ -554,20 +554,21 @@ fn find_comma_segments(buf: &Text, open_pos: usize, close_pos: usize) -> Vec<(us
     let mut segments = Vec::new();
     let mut seg_start = content_start;
     let mut depth = 0usize;
-    let mut i = content_start;
 
-    while i <= content_end {
-        match buf.char_at(i) {
-            Some('(' | '[' | '{') => depth += 1,
-            Some(')' | ']' | '}') => depth = depth.saturating_sub(1),
-            Some(',') if depth == 0 => {
+    for (i, ch) in buf
+        .chars_at(content_start)
+        .take(content_end - content_start + 1)
+    {
+        match ch {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
                 // i - 1 >= seg_start - 1; safe since seg_start >= content_start >= 1.
                 segments.push((seg_start, i - 1));
                 seg_start = i + 1;
             }
             _ => {}
         }
-        i += 1; // ASCII bracket/comma scanning — allowed per CLAUDE.md
     }
 
     // Final segment: everything after the last comma, or the whole content if no commas.

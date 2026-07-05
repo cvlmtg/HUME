@@ -15,23 +15,18 @@ use hume_editing::text::Text;
 /// `depth` is the pre-loaded nesting depth (pass 0 when starting fresh).
 pub(crate) fn scan_left_for_open(buf: &Text, pos: usize, open: char, close: char) -> Option<usize> {
     let mut depth = 0usize;
-    let mut i = pos;
-    loop {
-        if i == 0 {
-            return None;
-        }
-        i -= 1;
-        match buf.char_at(i) {
-            Some(ch) if ch == close => depth += 1,
-            Some(ch) if ch == open => {
-                if depth == 0 {
-                    return Some(i);
-                }
-                depth -= 1;
+    let mut cursor = buf.chars_at(pos);
+    while let Some((i, ch)) = cursor.prev() {
+        if ch == close {
+            depth += 1;
+        } else if ch == open {
+            if depth == 0 {
+                return Some(i);
             }
-            _ => {}
+            depth -= 1;
         }
     }
+    None
 }
 
 /// Scan right from `pos` (exclusive) to find an unmatched `close` bracket.
@@ -42,20 +37,15 @@ pub(crate) fn scan_right_for_close(
     close: char,
 ) -> Option<usize> {
     let mut depth = 0usize;
-    let len = buf.len_chars();
-    let mut i = pos;
-    while i < len {
-        match buf.char_at(i) {
-            Some(ch) if ch == open => depth += 1,
-            Some(ch) if ch == close => {
-                if depth == 0 {
-                    return Some(i);
-                }
-                depth -= 1;
+    for (i, ch) in buf.chars_at(pos) {
+        if ch == open {
+            depth += 1;
+        } else if ch == close {
+            if depth == 0 {
+                return Some(i);
             }
-            _ => {}
+            depth -= 1;
         }
-        i += 1;
     }
     None
 }
@@ -110,8 +100,8 @@ pub(crate) fn find_quote_pair(buf: &Text, pos: usize, quote: char) -> Option<(us
     // Single pass: track the opening quote position; on every second hit we
     // have a complete pair and can test whether `pos` falls inside it.
     let mut open: Option<usize> = None;
-    for i in line_start..line_end {
-        if buf.char_at(i) == Some(quote) {
+    for (i, ch) in buf.chars_at(line_start).take(line_end - line_start) {
+        if ch == quote {
             match open {
                 None => open = Some(i), // odd occurrence → opening quote
                 Some(open_pos) => {
