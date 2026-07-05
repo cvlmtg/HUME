@@ -80,13 +80,6 @@ fn markdown_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
     (ed, bid)
 }
 
-/// One InlineParseBackend post→drain round trip (post enqueues synchronously,
-/// drain installs it — same two-call pattern as `incremental_parse.rs`).
-fn reparse_edit(ed: &mut Editor) {
-    ed.reparse_stale_buffers();
-    ed.reparse_stale_buffers();
-}
-
 #[test]
 fn markdown_buffer_installs_root_plus_injected_layers() {
     if !fixtures_present() {
@@ -217,31 +210,47 @@ fn stale_gen_discards_whole_layer_set() {
         return;
     }
     let (mut ed, bid) = markdown_editor("```rust\nfn f() {}\n```\n");
-    let layers_before = ed.view.buffers[bid].syntax.as_ref().unwrap().layers.len();
+    let gen0 = ed.state.buffers.get(bid).text_gen;
 
-    // Post a reparse, then edit again before the queued result is drained —
-    // the stale result (for the pre-edit text_gen) must be discarded whole
-    // (root + every injected layer), not partially applied.
-    ed.reparse_stale_buffers(); // posts request for current text_gen
+    // Construct a genuinely stale result: edit, let one reparse call post the
+    // request (InlineParseBackend executes it and queues the result without
+    // draining it), then edit *again* before the next drain — the queued
+    // result now describes a superseded generation and must be discarded
+    // whole (root + every injected layer), not partially applied.
     ed.feed_key(key('i'));
     ed.feed_key(key('z'));
     ed.feed_key(key_esc());
-    let text_gen_after_edit = ed.state.buffers.get(bid).text_gen;
+    let gen1 = ed.state.buffers.get(bid).text_gen;
+    ed.reparse_stale_buffers(); // bakes, posts request for gen1; result queued
 
-    ed.reparse_stale_buffers(); // drains the now-stale result; must discard
+    ed.feed_key(key('i'));
+    ed.feed_key(key('y'));
+    ed.feed_key(key_esc());
+    let gen2 = ed.state.buffers.get(bid).text_gen;
+    assert!(
+        gen2 > gen1,
+        "premise: second edit must supersede the request"
+    );
+
+    ed.reparse_stale_buffers(); // drains the stale gen1 result; must discard
 
     let syn = ed.state.buffers.get(bid).syntax.as_ref().unwrap();
-    assert_ne!(
-        syn.parsed_gen, text_gen_after_edit,
-        "stale result must not advance parsed_gen to the post-edit generation"
+    assert_eq!(
+        syn.parsed_gen, gen0,
+        "stale result must be discarded whole — parsed_gen must stay at the \
+         initial install, not advance to the stale request's generation"
     );
-    // The engine-side layer count is unaffected by the discard (old layers,
-    // if any, remain until a matching-gen result arrives).
-    reparse_edit(&mut ed);
-    let layers_after = ed.view.buffers[bid].syntax.as_ref().unwrap().layers.len();
+
+    // Recovery: the gen2 request (posted by the draining call above) installs
+    // the full fresh layer set on the next drain.
+    ed.reparse_stale_buffers();
+    let syn = ed.state.buffers.get(bid).syntax.as_ref().unwrap();
+    assert_eq!(syn.parsed_gen, gen2, "fresh result must install");
+    let layers = &ed.view.buffers[bid].syntax.as_ref().unwrap().layers;
     assert!(
-        layers_after >= 1 && layers_before >= 1,
-        "layer set must remain installed across the discard-then-reparse cycle"
+        layers.len() >= 2,
+        "recovered layer set must include the rust fence layer, got {} layer(s)",
+        layers.len()
     );
 }
 

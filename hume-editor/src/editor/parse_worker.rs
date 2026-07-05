@@ -169,11 +169,6 @@ fn do_parse(parser: &mut tree_sitter::Parser, req: ParseRequest, cancel: &Atomic
         Some(root) => {
             let injected =
                 resolve_and_parse_injections(parser, &root, &req.lang, rope, &req.langs, cancel, 1);
-            // Reset so a later request reusing this parser for a *different*
-            // buffer's root parse isn't scoped to the last layer's ranges.
-            parser
-                .set_included_ranges(&[])
-                .expect("empty ranges are always valid — whole-buffer parse");
             ParseOutcome::Ok(ParsedLayers { root, injected })
         }
         None => ParseOutcome::ParseFailed,

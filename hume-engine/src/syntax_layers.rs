@@ -37,9 +37,13 @@ impl SyntaxLayers {
 /// True if `layer` was parsed over the byte range `[line_start, line_end)`.
 /// The root layer (empty `ranges`) always covers every line.
 pub(crate) fn layer_covers_line(layer: &SyntaxLayer, line_start: usize, line_end: usize) -> bool {
-    layer.ranges.is_empty()
-        || layer
-            .ranges
-            .iter()
-            .any(|r| r.start_byte < line_end && line_start < r.end_byte)
+    if layer.ranges.is_empty() {
+        return true;
+    }
+    // `ranges` is sorted by start and non-overlapping, so end bytes ascend
+    // too — the only candidate for intersection is the last range starting
+    // before `line_end`. Binary search keeps this O(log n) per line even for
+    // combined layers with one range per paragraph (markdown.inline).
+    let idx = layer.ranges.partition_point(|r| r.start_byte < line_end);
+    idx > 0 && line_start < layer.ranges[idx - 1].end_byte
 }

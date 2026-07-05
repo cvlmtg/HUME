@@ -252,7 +252,16 @@ pub(super) fn resolve_and_parse_injections(
         }
     }
 
-    for group in non_combined.into_iter().chain(combined.into_values()) {
+    // HashMap iteration order is arbitrary — sort combined groups by their
+    // (pattern_index, language) key so layer order (and thus same-depth `seq`
+    // priority in `flatten_overlaps`) is stable across parses.
+    let mut combined: Vec<_> = combined.into_iter().collect();
+    combined.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
+
+    for group in non_combined
+        .into_iter()
+        .chain(combined.into_iter().map(|(_, g)| g))
+    {
         // Unknown or grammarless injection language — skip silently. No
         // lazy install: the user opts into grammars explicitly via PLUM.
         let Some(child_lang) = langs.get(&group.language) else {

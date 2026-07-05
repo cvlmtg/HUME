@@ -547,10 +547,9 @@ impl Editor {
         }
     }
 
-    /// Called when one or more grammars are attached. Re-runs `setup_buffer_syntax`
-    /// on every open buffer whose language is in `names`.
-    /// Re-runs `setup_buffer_syntax` on every open buffer whose language is
-    /// in `names`, **or** whose currently-attached root grammar has an
+    /// Called when one or more grammars are attached. Re-runs
+    /// `setup_buffer_syntax` on every open buffer whose language is in
+    /// `names`, **or** whose currently-attached root grammar has an
     /// injections query — a newly attached grammar (e.g. rust) may complete
     /// injection sites in an already-open buffer of a different language
     /// (e.g. markdown fenced code blocks) without that buffer's own language

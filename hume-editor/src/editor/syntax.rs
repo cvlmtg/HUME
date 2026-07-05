@@ -59,8 +59,9 @@ pub(crate) struct BufferSyntax {
     /// Keepalive: holds the Arc so the dlopen'd root grammar is not unloaded
     /// while this buffer is syntax-attached.
     pub(crate) lang: Arc<LanguageConfig>,
-    /// Keepalive for every injected layer's grammar (Phase 3+). Empty until
-    /// injection support lands — only the root layer exists today.
+    /// Keepalive for every injected layer's grammar, so a dlopen'd grammar
+    /// backing an injected layer is not unloaded while its tree is installed.
+    /// Rebuilt on each parse install in `apply_parse_outcome`.
     pub(crate) layer_langs: Vec<Arc<LanguageConfig>>,
     /// `text_gen` of the most recently installed tree.  When this equals
     /// `Buffer.text_gen`, the installed tree is up to date.

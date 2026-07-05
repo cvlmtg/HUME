@@ -86,7 +86,7 @@
 ;;; Install any not-yet-compiled dependency grammars for `name` before `name`
 ;;; itself installs. Runs before the main install steps so a fresh
 ;;; `:plum-install-grammar` on a markdown buffer transparently pulls in
-;;; markdown_inline too — the user never needs to know it exists.
+;;; markdown.inline too — the user never needs to know it exists.
 (define (plum/install-grammar-deps! name)
   (for-each
     (lambda (dep)
