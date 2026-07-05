@@ -1,7 +1,7 @@
 use hume_engine::pipeline::BufferId;
 
 use super::super::Editor;
-use super::super::{Severity, ops};
+use super::super::{Severity, theme};
 use crate::editor::error::CommandError;
 
 // ── Typed file commands ───────────────────────────────────────────────────────
@@ -226,7 +226,7 @@ fn apply_set_side_effects(ed: &mut Editor, key: &str, result: &Result<(), String
             .history
             .set_capacity(ed.state.settings.history_capacity),
         "theme" if !ed.state.settings.theme.is_empty() => {
-            ops::load_theme_by_name(
+            theme::load_theme_by_name(
                 &mut ed.view,
                 &mut ed.state.message_log,
                 &mut ed.state.status_msg,

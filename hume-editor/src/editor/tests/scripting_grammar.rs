@@ -487,7 +487,7 @@ fn replace_buffer_in_place_clears_engine_syntax_state() {
 
     // Replace with a scratch buffer (no path, language=None). detect_and_set_language
     // returns None → set_buffer_language no-ops; the engine-side clear in
-    // ops::replace_buffer_in_place is the load-bearing cleanup here.
+    // buffer::lifecycle::replace_buffer_in_place is the load-bearing cleanup here.
     ed.replace_buffer_in_place(bid, Buffer::scratch());
 
     assert!(

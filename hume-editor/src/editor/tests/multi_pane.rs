@@ -49,7 +49,7 @@ fn d1_selections_are_pane_owned() {
 /// each pane has its own `SearchCursor` in `pane_state`.
 #[test]
 fn d4a_search_pattern_is_per_buffer() {
-    use crate::editor::search_state::SearchCursor;
+    use crate::editor::search::SearchCursor;
 
     let mut ed = editor_from("-[f]>oo foo foo\n");
     let bid = ed.focused_buffer_id();
@@ -437,7 +437,7 @@ fn ensure_seeds_new_entry_with_initial_sels() {
     // Open a second buffer; the focused pane has never viewed it.
     let doc2 = Buffer::scratch();
     let expected_sels = doc2.initial_sels();
-    let bid2 = crate::editor::ops::open_buffer(
+    let bid2 = crate::editor::buffer::lifecycle::open_buffer(
         &mut ed.view,
         &mut ed.state.buffers,
         &mut ed.state.panes.state,

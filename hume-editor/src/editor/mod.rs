@@ -11,13 +11,13 @@ use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 #[cfg(test)]
 use hume_engine::pipeline::{LayoutTree, SharedBuffer};
 #[cfg(test)]
-use search_state::SearchPattern;
+use search::SearchPattern;
 #[cfg(test)]
 use slotmap::SecondaryMap;
 
 use self::registry::{CommandRegistry, MappableCommand};
 use crate::editor::buffer::Buffer;
-use crate::editor::buffer_store::BufferStore;
+use crate::editor::buffer::store::BufferStore;
 #[cfg(test)]
 use crate::editor::pane_state::PaneBufferState;
 #[cfg(test)]
@@ -34,14 +34,12 @@ use hume_treesitter::registry::LanguageRegistry;
 
 use self::keymap::{Keymap, WaitCharPending};
 
-mod buffer_ops;
 pub(crate) mod error;
 pub(crate) mod host_impl;
 mod lifecycle;
 mod scripting_setup;
 
 pub(crate) mod buffer;
-pub(crate) mod buffer_store;
 mod clipboard;
 mod commands;
 pub(crate) mod completion;
@@ -54,20 +52,17 @@ mod lints;
 mod mappings;
 mod message_log;
 mod minibuf;
-pub(crate) mod minibuf_history;
 mod mouse;
-pub(crate) mod ops;
 pub(crate) mod pane_state;
 pub(crate) mod register_ops;
 mod registry;
 pub(super) mod scroll;
-pub(crate) mod search_ops;
-pub(crate) mod search_state;
+pub(crate) mod search;
 pub(crate) mod syntax;
-mod syntax_glue;
+mod theme;
 mod visual_move;
 
-pub(crate) use search_state::{SearchDirection, SearchState};
+pub(crate) use search::{SearchDirection, SearchState};
 
 // Re-export module-level helpers so sibling submodules can call `super::foo()`.
 use scripting_setup::theme_search_paths;
@@ -282,7 +277,7 @@ pub(crate) struct EditorState {
     /// Per-pane maps: (pane,buffer) selections/groups, transient mode snapshots, jump history.
     pub(super) panes: PaneView,
     /// Bounded, in-memory history for `:`, `/`, and `?` prompts.
-    pub(super) history: self::minibuf_history::HistoryStore,
+    pub(super) history: self::minibuf::history::HistoryStore,
     /// Set by the inline-output dispatch arm to trigger a full ratatui repaint.
     pub(crate) force_full_redraw: bool,
     /// Reusable scratch buffer for format operations in visual-line movement.
@@ -1000,7 +995,7 @@ impl Editor {
                         highlights: SecondaryMap::new(),
                     }
                 },
-                history: self::minibuf_history::HistoryStore::new(history_capacity),
+                history: self::minibuf::history::HistoryStore::new(history_capacity),
                 focused_pane_id: pane_id,
                 motion_format_scratch: hume_engine::format::FormatScratch::new(),
                 visual_move_target_cols: Vec::new(),

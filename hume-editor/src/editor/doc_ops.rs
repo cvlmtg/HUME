@@ -12,7 +12,7 @@ use slotmap::SecondaryMap;
 
 use hume_engine::pipeline::{BufferId, PaneId};
 
-use crate::editor::buffer_store::BufferStore;
+use crate::editor::buffer::store::BufferStore;
 use crate::editor::pane_state::PaneBufferState;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;

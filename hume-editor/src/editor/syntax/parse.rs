@@ -5,7 +5,7 @@ use hume_engine::syntax_layers::{SyntaxLayer, SyntaxLayers};
 use hume_treesitter::parse_worker::{ParseDone, ParseOutcome, ParseRequest};
 use hume_treesitter::registry::{BufferSyntax, LanguageConfig};
 
-use super::{Editor, Severity};
+use crate::editor::{Editor, Severity};
 
 impl Editor {
     /// Attach the tree-sitter highlighter for `bid`.
@@ -13,7 +13,7 @@ impl Editor {
     /// Idempotent: always clears existing syntax state before attempting setup.
     /// No-ops when the buffer has no language, the language has no grammar, or
     /// the buffer exceeds `syntax-highlight-max-bytes`.
-    pub(super) fn setup_buffer_syntax(&mut self, bid: BufferId) {
+    pub(in crate::editor) fn setup_buffer_syntax(&mut self, bid: BufferId) {
         // Clear existing syntax state unconditionally.
         self.view.buffers[bid].syntax = None;
         self.state.buffers.get_mut(bid).syntax = None;
@@ -193,7 +193,7 @@ impl Editor {
     /// Non-blocking: drains any completed backend results, then for each stale
     /// buffer bakes pending edits into the committed tree (keeping the renderer
     /// coordinate-aligned every frame) and submits an incremental reparse request.
-    pub(super) fn reparse_stale_buffers(&mut self) {
+    pub(in crate::editor) fn reparse_stale_buffers(&mut self) {
         // Drain phase: runs even when disconnected — buffered results produced
         // before the worker exited are still valid and should land.
         let dones = self.parse_worker.drain_done();
@@ -419,7 +419,7 @@ impl Editor {
 
     fn surface_parse_worker_disconnect(&mut self) {
         if !self.parse_worker_disconnect_logged {
-            use super::Severity;
+            use crate::editor::Severity;
             self.state.message_log.push(
                 Severity::Error,
                 "parse worker disconnected — syntax highlighting suspended".to_owned(),
@@ -435,7 +435,7 @@ impl Editor {
     /// injection sites in an already-open buffer of a different language
     /// (e.g. markdown fenced code blocks) without that buffer's own language
     /// ever appearing in `names`.
-    pub(super) fn sweep_buffers_for_grammars(&mut self, names: Vec<String>) {
+    pub(in crate::editor) fn sweep_buffers_for_grammars(&mut self, names: Vec<String>) {
         if names.is_empty() {
             return;
         }

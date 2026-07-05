@@ -2,7 +2,7 @@ use crossterm::event::KeyEvent;
 
 use super::super::commands::typed_goto_line;
 use super::super::minibuf::MiniBufferEvent;
-use super::super::minibuf_history::{HistoryDir, HistoryKind};
+use super::super::minibuf::history::{HistoryDir, HistoryKind};
 use super::super::registry::MappableCommand;
 use super::super::{Editor, Mode, Severity};
 use crate::editor::error::CommandError;

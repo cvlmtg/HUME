@@ -1,3 +1,5 @@
+pub(crate) mod history;
+
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 

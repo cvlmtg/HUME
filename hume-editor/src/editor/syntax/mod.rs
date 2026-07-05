@@ -5,6 +5,8 @@
 //! `hume_treesitter::registry` — this module only owns what's specific to a
 //! live `Editor` (message log, hooks, plugin activation).
 
+mod parse;
+
 use hume_engine::pipeline::BufferId;
 use hume_treesitter::registry::detect_language;
 use steel::rvals::IntoSteelVal as _;

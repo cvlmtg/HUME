@@ -5,9 +5,9 @@ use crossterm::event::KeyEvent;
 use super::super::commands::search_sel;
 use super::super::jump_list::JumpEntry;
 use super::super::minibuf::MiniBufferEvent;
-use super::super::minibuf_history::{HistoryDir, HistoryStore};
-use super::super::search_state::SearchPattern;
-use super::super::{Editor, Mode, SearchDirection, search_ops};
+use super::super::minibuf::history::{HistoryDir, HistoryStore};
+use super::super::search::SearchPattern;
+use super::super::{Editor, Mode, SearchDirection, search};
 use crate::ops::search::{compile_search_regex, find_next_match};
 
 impl Editor {
@@ -52,7 +52,7 @@ impl Editor {
                 // stay in Search mode. A second Backspace (BackspaceOnEmpty) dismisses.
                 self.restore_search_snapshot();
                 let bid = self.focused_buffer_id();
-                search_ops::clear_buffer_search(
+                search::ops::clear_buffer_search(
                     &mut self.state.buffers,
                     &mut self.state.panes.state,
                     bid,
@@ -106,7 +106,7 @@ impl Editor {
             self.set_current_selections(sels);
         }
         let bid = self.focused_buffer_id();
-        search_ops::clear_buffer_search(&mut self.state.buffers, &mut self.state.panes.state, bid);
+        search::ops::clear_buffer_search(&mut self.state.buffers, &mut self.state.panes.state, bid);
         self.set_mode(Mode::Normal);
         self.close_minibuf();
     }
@@ -124,7 +124,7 @@ impl Editor {
         let Some(regex) = compile_search_regex(&pattern) else {
             // Invalid regex in progress — clear pattern so highlights disappear.
             let bid = self.focused_buffer_id();
-            search_ops::clear_buffer_search(
+            search::ops::clear_buffer_search(
                 &mut self.state.buffers,
                 &mut self.state.panes.state,
                 bid,

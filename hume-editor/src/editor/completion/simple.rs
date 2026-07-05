@@ -249,7 +249,7 @@ mod tests {
             aliases: &[],
             fun: noop,
         });
-        let store = crate::editor::buffer_store::BufferStore::new();
+        let store = crate::editor::buffer::store::BufferStore::new();
         let dir = tempfile::tempdir().unwrap();
         let ctx = ctx(&reg, &store, dir.path());
         // "n" has byte-length 1; "ï" at bytes 2-3 means name[..1] would panic.

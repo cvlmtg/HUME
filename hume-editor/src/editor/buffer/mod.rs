@@ -1,7 +1,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use super::search_state::{SearchMatches, SearchPattern};
+use super::search::{SearchMatches, SearchPattern};
 use crate::editor::pane_state::EditGroup;
 use crate::settings::BufferOverrides;
 use hume_editing::changeset::{ChangeSet, changesets_from_line_diff};
@@ -9,6 +9,10 @@ use hume_editing::history::{History, RevisionId};
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
 use hume_platform::io::FileMeta;
+
+mod file_open;
+pub(crate) mod lifecycle;
+pub(crate) mod store;
 use hume_treesitter::registry::BufferSyntax;
 
 // ── Buffer ────────────────────────────────────────────────────────────────────
@@ -250,7 +254,7 @@ impl Buffer {
     ///
     /// This is the history-preserving reload path used by `:e!`. Unlike
     /// [`set_view_content`](Self::set_view_content) (which resets history) or
-    /// the full `Buffer` swap performed by `ops::replace_buffer_in_place`
+    /// the full `Buffer` swap performed by `lifecycle::replace_buffer_in_place`
     /// (which discards history), this treats the reload as an ordinary edit:
     /// `u` after `:e!` shows the pre-reload buffer with its full prior undo
     /// tree intact beneath, and `Ctrl-r` re-applies the reload.

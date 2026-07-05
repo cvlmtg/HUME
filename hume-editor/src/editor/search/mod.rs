@@ -9,6 +9,8 @@
 //! started from Extend mode. Everything else (regex, matches, match count)
 //! lives in the per-buffer / per-pane tier.
 
+pub(crate) mod ops;
+
 use std::sync::Arc;
 
 use hume_editing::history::RevisionId;

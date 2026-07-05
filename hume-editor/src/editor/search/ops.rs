@@ -18,8 +18,8 @@ use slotmap::SecondaryMap;
 
 use hume_engine::pipeline::{BufferId, PaneId};
 
-use super::search_state::{SearchCursor, SearchMatches};
-use crate::editor::buffer_store::BufferStore;
+use super::{SearchCursor, SearchMatches};
+use crate::editor::buffer::store::BufferStore;
 use crate::editor::pane_state::PaneBufferState;
 use crate::ops::search::{find_all_matches, search_match_info};
 

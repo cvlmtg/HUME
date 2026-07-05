@@ -111,7 +111,7 @@ impl Completer for PathCompleter {
 mod tests {
     use super::super::testing::*;
     use super::*;
-    use crate::editor::buffer_store::BufferStore;
+    use crate::editor::buffer::store::BufferStore;
     use crate::editor::registry::CommandRegistry;
     use hume_treesitter::registry::LanguageRegistry;
 

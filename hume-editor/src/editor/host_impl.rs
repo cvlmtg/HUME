@@ -64,7 +64,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String> {
         let canonical = hume_platform::fs::canonicalize(path)
             .map_err(|e| format!("open-buffer!: {}: {e}", path.display()))?;
-        let (bid, _) = crate::editor::ops::open_or_dedup(
+        let (bid, _) = crate::editor::buffer::lifecycle::open_or_dedup(
             self.view,
             &mut self.state.buffers,
             &mut self.state.panes.state,
@@ -78,7 +78,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         if self.state.buffers.try_get(id).is_none() {
             return Err(format!("close-buffer!: buffer {id:?} does not exist"));
         }
-        Ok(crate::editor::ops::close_buffer(
+        Ok(crate::editor::buffer::lifecycle::close_buffer(
             self.view,
             &mut self.state.buffers,
             &mut self.state.panes.state,
@@ -88,7 +88,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         ))
     }
     fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String> {
-        crate::editor::ops::switch_to_buffer_with_jump(
+        crate::editor::buffer::lifecycle::switch_to_buffer_with_jump(
             self.view,
             &self.state.buffers,
             &mut self.state.panes.state,

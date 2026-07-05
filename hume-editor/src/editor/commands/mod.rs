@@ -31,7 +31,7 @@ use super::doc_ops;
 use super::jump_list::JumpEntry;
 use super::pane_state::PaneTransient;
 use super::registry::CmdMeta;
-use super::search_state::SearchPattern;
+use super::search::SearchPattern;
 use super::{EditorState, InsertSession, Mode, RegisterPrefix, RepeatableAction, SelectionStep};
 use super::{Severity, register_ops};
 use crate::editor::error::CommandError;
@@ -729,7 +729,13 @@ pub(super) fn switch_to_buffer_without_jump(
     target: BufferId,
 ) {
     let pid = state.focused_pane_id;
-    super::ops::switch_pane_to_buffer(view, &state.buffers, &mut state.panes.state, pid, target);
+    super::buffer::lifecycle::switch_pane_to_buffer(
+        view,
+        &state.buffers,
+        &mut state.panes.state,
+        pid,
+        target,
+    );
 }
 
 /// Replace the focused pane's selections for the current buffer.

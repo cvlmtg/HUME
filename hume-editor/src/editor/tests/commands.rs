@@ -2387,7 +2387,7 @@ fn bundled_themes_load_and_resolve() {
 #[test]
 fn load_theme_by_name_fails_gracefully() {
     let mut ed = editor_from("-[a]>b\n");
-    let ok = crate::editor::ops::load_theme_by_name(
+    let ok = crate::editor::theme::load_theme_by_name(
         &mut ed.view,
         &mut ed.state.message_log,
         &mut ed.state.status_msg,

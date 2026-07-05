@@ -8,10 +8,10 @@ use hume_engine::pane::{Pane, WhitespaceConfig, WrapMode};
 use hume_engine::pipeline::{BufferId, EngineView, PaneId, PaneRenderSettings, RenderContext};
 use hume_engine::types::EditorMode;
 
-use super::search_state::SearchCursor;
+use super::search::SearchCursor;
 #[cfg(test)]
-use super::search_state::{SearchMatches, SearchPattern};
-use crate::editor::search_ops;
+use super::search::{SearchMatches, SearchPattern};
+use crate::editor::search;
 use crate::ops::pair::find_bracket_pair;
 use hume_editing::lines::line_end_exclusive;
 use hume_platform::terminal::Term;
@@ -57,7 +57,7 @@ impl Editor {
         use super::message_log::MessageLog;
         use super::registry::CommandRegistry;
         use crate::editor::buffer::Buffer;
-        use crate::editor::buffer_store::BufferStore;
+        use crate::editor::buffer::store::BufferStore;
         use crate::editor::pane_state::{PaneBufferState, PaneTransient, PaneView};
         use crate::ops::register::{KillRing, RegisterSet};
         use crate::settings::EditorSettings;
@@ -152,7 +152,7 @@ impl Editor {
                 insert_session: None,
                 explicit_count: false,
                 pending_ctrl_extend: false,
-                search: super::search_state::SearchState::default(),
+                search: super::search::SearchState::default(),
                 panes: {
                     let mut jumps = SecondaryMap::new();
                     jumps.insert(pane_id, super::jump_list::JumpList::new(jump_list_capacity));
@@ -167,7 +167,7 @@ impl Editor {
                         highlights: pane_highlights,
                     }
                 },
-                history: super::minibuf_history::HistoryStore::new(history_capacity),
+                history: super::minibuf::history::HistoryStore::new(history_capacity),
                 focused_pane_id: pane_id,
                 motion_format_scratch: hume_engine::format::FormatScratch::new(),
                 visual_move_target_cols: Vec::new(),
@@ -635,7 +635,7 @@ impl Editor {
     pub(super) fn sync_search_cache(&mut self) {
         let pid = self.state.focused_pane_id;
         let bid = self.focused_buffer_id();
-        search_ops::sync_search_cache(
+        search::ops::sync_search_cache(
             &mut self.state.buffers,
             &mut self.state.panes.state,
             pid,
@@ -690,7 +690,7 @@ impl Editor {
             // non-focused pane's buffer may carry its own active search
             // pattern that the focused-pane-only `sync_search_cache` never
             // refreshes. No-op when the cache already matches this revision.
-            search_ops::update_buffer_matches(&mut self.state.buffers, bid);
+            search::ops::update_buffer_matches(&mut self.state.buffers, bid);
 
             let buf = self.state.buffers.get(bid);
             let text = buf.text();

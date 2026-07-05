@@ -19,9 +19,9 @@
 use hume_engine::pipeline::{BufferId, PaneId};
 use slotmap::SecondaryMap;
 
-use super::search_state::SearchCursor;
+use super::search::SearchCursor;
 use crate::editor::buffer::Buffer;
-use crate::editor::buffer_store::BufferStore;
+use crate::editor::buffer::store::BufferStore;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
@@ -139,7 +139,7 @@ pub(crate) struct PaneTransient {
 /// highlight buffers) so `EditorState` exposes one field instead of four. The map
 /// types and keying are unchanged; NLL still allows simultaneous mutable borrows
 /// of different fields (e.g. `panes.state` and `panes.jumps` in
-/// `ops::switch_pane_with_jump`).
+/// `buffer::lifecycle::switch_to_buffer_with_jump`).
 pub(crate) struct PaneView {
     pub(crate) state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     pub(crate) transient: SecondaryMap<PaneId, PaneTransient>,

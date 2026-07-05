@@ -7,7 +7,8 @@ use crate::editor::buffer::Buffer;
 use hume_scripting::SteelBufferId;
 use hume_scripting::hooks::HookId;
 
-use super::{Editor, Severity, ops};
+use super::lifecycle;
+use crate::editor::{Editor, Severity};
 
 impl Editor {
     // ── Working directory ─────────────────────────────────────────────────────
@@ -17,7 +18,7 @@ impl Editor {
     /// Canonicalizes `path`, rejects non-directories, then updates both
     /// `self.state.cwd` and the process cwd so that relative paths in `:e` and
     /// subprocesses resolve consistently.
-    pub(super) fn set_cwd(&mut self, path: &std::path::Path) -> io::Result<PathBuf> {
+    pub(in crate::editor) fn set_cwd(&mut self, path: &std::path::Path) -> io::Result<PathBuf> {
         let canonical = hume_platform::fs::canonicalize(path)?;
         if !canonical.is_dir() {
             return Err(io::Error::new(
@@ -34,7 +35,7 @@ impl Editor {
 
     /// Dedup-open a canonicalized path: returns `(id, false)` if already open,
     /// `(id, true)` if newly opened (including `OnBufferOpen` hook fire).
-    pub(super) fn open_or_dedup(
+    pub(in crate::editor) fn open_or_dedup(
         &mut self,
         canonical: &std::path::Path,
     ) -> std::io::Result<(BufferId, bool)> {
@@ -61,7 +62,10 @@ impl Editor {
     /// path) → `canonicalize` → `open_or_dedup` → `set_display_path` if new.
     /// Errors propagate as raw `io::Error`; callers format with whichever path
     /// string suits their reporting.
-    pub(super) fn resolve_open_path(&mut self, path_str: &str) -> io::Result<(BufferId, bool)> {
+    pub(in crate::editor) fn resolve_open_path(
+        &mut self,
+        path_str: &str,
+    ) -> io::Result<(BufferId, bool)> {
         let expanded = hume_platform::path::expand(path_str);
         let path = std::path::Path::new(expanded.as_ref());
         let display = hume_platform::path::absolute_unresolved(path, &self.state.cwd);
@@ -84,7 +88,7 @@ impl Editor {
     /// Allocate a new buffer slot (engine + BufferStore), seed the focused pane's
     /// per-buffer state (`state.panes.state`), and return the allocated `BufferId`.
     pub(crate) fn open_buffer(&mut self, doc: Buffer) -> BufferId {
-        let bid = ops::open_buffer(
+        let bid = lifecycle::open_buffer(
             &mut self.view,
             &mut self.state.buffers,
             &mut self.state.panes.state,
@@ -103,7 +107,7 @@ impl Editor {
     ///   MRU replacement, then free the slot.
     /// - Only buffer: replace in-place with a fresh scratch buffer.
     pub(crate) fn close_buffer(&mut self, id: BufferId) {
-        ops::close_buffer(
+        lifecycle::close_buffer(
             &mut self.view,
             &mut self.state.buffers,
             &mut self.state.panes.state,
@@ -228,7 +232,7 @@ impl Editor {
         // `text_gen`, so `reparse_stale_buffers` will post a fresh full parse on the
         // next tick. `detect_and_set_language` handles a genuine language change
         // (shebang/extension), re-running setup via `set_buffer_language` itself.
-        ops::clear_engine_tree(&mut self.view, id);
+        lifecycle::clear_engine_tree(&mut self.view, id);
         self.detect_and_set_language(id);
 
         // ── Phase 3: reseed per-pane selections / edit groups / scroll ───────
@@ -266,16 +270,16 @@ impl Editor {
     /// History-discarding whole-`Buffer` swap. The `:e!` reload path now uses
     /// [`reload_buffer_in_place`](Self::reload_buffer_in_place) (history-preserving)
     /// instead; this wrapper survives for tests that exercise the
-    /// `ops::replace_buffer_in_place` reset path (scratch-swap on last-buffer
+    /// `lifecycle::replace_buffer_in_place` reset path (scratch-swap on last-buffer
     /// close, read-only-view refresh invariants). The prod non-test callers go
-    /// through `ops::replace_buffer_in_place` directly (`close_buffer`'s
+    /// through `lifecycle::replace_buffer_in_place` directly (`close_buffer`'s
     /// last-buffer branch).
     ///
     /// Caller contract: `new_doc.search_pattern` must be `None` (enforced by
     /// debug_assert — `Buffer::from_file` satisfies this by construction).
     #[cfg(test)]
     pub(crate) fn replace_buffer_in_place(&mut self, id: BufferId, new_doc: Buffer) {
-        ops::replace_buffer_in_place(
+        lifecycle::replace_buffer_in_place(
             &mut self.view,
             &mut self.state.buffers,
             &mut self.state.panes.state,
@@ -292,7 +296,7 @@ impl Editor {
     /// Redirect the focused pane to `target` without recording a jump.
     pub(crate) fn switch_to_buffer_without_jump(&mut self, target: BufferId) {
         let pid = self.state.focused_pane_id;
-        ops::switch_pane_to_buffer(
+        lifecycle::switch_pane_to_buffer(
             &mut self.view,
             &self.state.buffers,
             &mut self.state.panes.state,
@@ -308,7 +312,7 @@ impl Editor {
     /// must succeed before calling this — `push()` truncates forward history.
     pub(crate) fn switch_to_buffer_with_jump(&mut self, target: BufferId) {
         let current = self.focused_buffer_id();
-        ops::switch_to_buffer_with_jump(
+        lifecycle::switch_to_buffer_with_jump(
             &mut self.view,
             &self.state.buffers,
             &mut self.state.panes.state,

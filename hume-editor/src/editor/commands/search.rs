@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use super::super::search_state::SearchPattern;
+use super::super::search::SearchPattern;
 use crate::ops::MotionMode;
 use crate::ops::register::SEARCH_REGISTER;
 use crate::ops::search::{
@@ -228,7 +228,7 @@ pub fn cmd_clear_search(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let bid = focused_buffer_id(state, view);
-    super::super::search_ops::clear_buffer_search(&mut state.buffers, &mut state.panes.state, bid);
+    super::super::search::ops::clear_buffer_search(&mut state.buffers, &mut state.panes.state, bid);
     Ok(())
 }
 

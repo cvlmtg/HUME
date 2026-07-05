@@ -5,7 +5,7 @@ use hume_engine::pipeline::BufferId;
 use hume_scripting::SteelBufferId;
 use hume_scripting::{HookResult, hooks::HookId};
 
-use super::{Editor, Severity, host_impl::EditorHostImpl, ops};
+use super::{Editor, Severity, host_impl::EditorHostImpl, theme};
 
 /// Upper bound on total hooks processed per `drain_hooks` boundary.
 ///
@@ -295,7 +295,7 @@ impl Editor {
         }
         // Load theme set by (set-option! 'theme "…") in init.scm.
         if !self.state.settings.theme.is_empty() {
-            ops::load_theme_by_name(
+            theme::load_theme_by_name(
                 &mut self.view,
                 &mut self.state.message_log,
                 &mut self.state.status_msg,
@@ -370,7 +370,7 @@ pub(crate) fn log_level_to_severity(level: hume_scripting::LogLevel) -> Severity
 /// Ordered list of directories to search for theme TOML files.
 ///
 /// Config themes (user-defined) are listed before runtime themes (bundled) so
-/// that user overrides shadow built-in ones. Both `ops::load_theme_by_name`
+/// that user overrides shadow built-in ones. Both `theme::load_theme_by_name`
 /// and [`ThemeCompleter`] use this list as the single source of truth.
 pub(super) fn theme_search_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
