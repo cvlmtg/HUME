@@ -172,6 +172,7 @@
 - **Cached `size: u64` on `FileMeta` + `FileSize` statusline element**.
 - **Streaming load for huge files**: chunked `Rope::from_reader` replacing single blocking `fs::read_to_string`.
 - **LSP support** (Rust transport + Steel behavior layer): completions, diagnostics, hover, go-to-definition, rename.
+  - Position remapping through edits (diagnostic ranges, bookmarks, any stored positions) must use the batch primitive from day one: widen `ChangeSet`'s `PosMapCursor` (`hume-editing/src/changeset/mod.rs`) from `pub(crate)` to `pub` and map sorted position lists through one cursor — never per-position one-shot mapping, which reintroduces the O(positions × ops) cost that `translate_in_place` was migrated off.
 - **Virtual lines / decoration layer** (inline diagnostics, ghost text, code lenses, inlay hints): depends on LSP.
 - **Unified decoration system**: single `Decoration` trait replacing the current separate provider traits (`GutterColumn`, `HighlightSource`, `VirtualLineSource`, `InlineDecoration`, `OverlayProvider`). Post-LSP, once the decoration surface is stable.
 - **Steel builtin to register custom completers**: plugin-side `Completer` implementations dispatched by command name; core does prefix matching only (fuzzy scoring is a plugin concern).
