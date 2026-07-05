@@ -12,8 +12,10 @@ use crate::ops::motion::{
 };
 use crate::ops::selection_cmd::{cmd_collapse_selection_to_anchor, cmd_collapse_selection_to_head};
 
-use super::super::{EditorState, MiniBuffer, Mode, PendingRepeat, doc_ops};
-use super::{begin_insert_session, end_insert_session, focused_buffer_id};
+use super::super::{EditorState, MiniBuffer, Mode, PendingRepeat};
+use super::{
+    apply_focused_edit_grouped, apply_focused_motion, begin_insert_session, end_insert_session,
+};
 use crate::editor::error::CommandError;
 
 // ── Mode transitions ──────────────────────────────────────────────────────────
@@ -24,15 +26,9 @@ pub fn cmd_insert_before(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = state.focused_pane_id;
-    let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(
-        &state.buffers,
-        &mut state.panes.state,
-        focused,
-        buf,
-        |_b, sels| sels.map(|s| Selection::collapsed(s.start())),
-    );
+    apply_focused_motion(state, view, |_b, sels| {
+        sels.map(|s| Selection::collapsed(s.start()))
+    });
     begin_insert_session(state, view);
     Ok(())
 }
@@ -43,15 +39,9 @@ pub fn cmd_insert_after(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = state.focused_pane_id;
-    let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(
-        &state.buffers,
-        &mut state.panes.state,
-        focused,
-        buf,
-        |b, s| cmd_move_right(b, s, 1, MotionMode::Move),
-    );
+    apply_focused_motion(state, view, |b, s| {
+        cmd_move_right(b, s, 1, MotionMode::Move)
+    });
     begin_insert_session(state, view);
     Ok(())
 }
@@ -62,15 +52,9 @@ pub fn cmd_insert_at_line_start(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = state.focused_pane_id;
-    let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(
-        &state.buffers,
-        &mut state.panes.state,
-        focused,
-        buf,
-        |b, s| cmd_goto_first_nonblank(b, s, 1, MotionMode::Move),
-    );
+    apply_focused_motion(state, view, |b, s| {
+        cmd_goto_first_nonblank(b, s, 1, MotionMode::Move)
+    });
     begin_insert_session(state, view);
     Ok(())
 }
@@ -81,31 +65,23 @@ pub fn cmd_insert_at_line_end(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = state.focused_pane_id;
-    let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(
-        &state.buffers,
-        &mut state.panes.state,
-        focused,
-        buf,
-        |b, s| {
-            // Move to line content-end, then step right onto the \n slot — unless the
-            // line is empty, in which case line-end is already the \n and stepping past
-            // it would land on the next line.
-            let max = b.len_chars() - 1;
-            let at_end = cmd_goto_line_end(b, s, 1, MotionMode::Move);
-            at_end.map(|sel| {
-                let pos = if sel.ends_on_newline(b) {
-                    // Empty line — cursor is on the \n; inserting here equals `i`.
-                    sel.head()
-                } else {
-                    // Non-empty line — advance one grapheme onto the trailing \n slot.
-                    next_grapheme_boundary(b, sel.head()).min(max)
-                };
-                Selection::collapsed(pos)
-            })
-        },
-    );
+    apply_focused_motion(state, view, |b, s| {
+        // Move to line content-end, then step right onto the \n slot — unless the
+        // line is empty, in which case line-end is already the \n and stepping past
+        // it would land on the next line.
+        let max = b.len_chars() - 1;
+        let at_end = cmd_goto_line_end(b, s, 1, MotionMode::Move);
+        at_end.map(|sel| {
+            let pos = if sel.ends_on_newline(b) {
+                // Empty line — cursor is on the \n; inserting here equals `i`.
+                sel.head()
+            } else {
+                // Non-empty line — advance one grapheme onto the trailing \n slot.
+                next_grapheme_boundary(b, sel.head()).min(max)
+            };
+            Selection::collapsed(pos)
+        })
+    });
     begin_insert_session(state, view);
     state.mark_insert_step_back();
     Ok(())
@@ -119,15 +95,9 @@ pub fn cmd_insert_at_selection_start(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = state.focused_pane_id;
-    let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(
-        &state.buffers,
-        &mut state.panes.state,
-        focused,
-        buf,
-        |_b, sels| sels.map(|sel| Selection::collapsed(sel.start())),
-    );
+    apply_focused_motion(state, view, |_b, sels| {
+        sels.map(|sel| Selection::collapsed(sel.start()))
+    });
     begin_insert_session(state, view);
     Ok(())
 }
@@ -148,26 +118,18 @@ pub fn cmd_insert_at_selection_end(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = state.focused_pane_id;
-    let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(
-        &state.buffers,
-        &mut state.panes.state,
-        focused,
-        buf,
-        |b, sels| {
-            // len_chars() - 1 is safe: the buffer invariant guarantees at least one char.
-            let max = b.len_chars() - 1;
-            sels.map(|sel| {
-                let pos = if sel.ends_on_newline(b) {
-                    sel.end() // selection ends on '\n' — insert before it, not past it
-                } else {
-                    next_grapheme_boundary(b, sel.end())
-                };
-                Selection::collapsed(pos.min(max))
-            })
-        },
-    );
+    apply_focused_motion(state, view, |b, sels| {
+        // len_chars() - 1 is safe: the buffer invariant guarantees at least one char.
+        let max = b.len_chars() - 1;
+        sels.map(|sel| {
+            let pos = if sel.ends_on_newline(b) {
+                sel.end() // selection ends on '\n' — insert before it, not past it
+            } else {
+                next_grapheme_boundary(b, sel.end())
+            };
+            Selection::collapsed(pos.min(max))
+        })
+    });
     begin_insert_session(state, view);
     state.mark_insert_step_back();
     Ok(())
@@ -184,24 +146,12 @@ pub fn cmd_open_line_below(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = state.focused_pane_id;
-    let buf = focused_buffer_id(state, view);
     begin_insert_session(state, view);
     state.mark_insert_step_back();
-    doc_ops::apply_doc_motion(
-        &state.buffers,
-        &mut state.panes.state,
-        focused,
-        buf,
-        |b, s| cmd_goto_line_newline(b, s, 1, MotionMode::Move),
-    );
-    doc_ops::apply_doc_edit_grouped(
-        &mut state.buffers,
-        &mut state.panes.state,
-        focused,
-        buf,
-        |b, s| insert_char(b, s, '\n'),
-    );
+    apply_focused_motion(state, view, |b, s| {
+        cmd_goto_line_newline(b, s, 1, MotionMode::Move)
+    });
+    apply_focused_edit_grouped(state, view, |b, s| insert_char(b, s, '\n'));
     Ok(())
 }
 
@@ -212,31 +162,13 @@ pub fn cmd_open_line_above(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = state.focused_pane_id;
-    let buf = focused_buffer_id(state, view);
     begin_insert_session(state, view);
     state.mark_insert_step_back();
-    doc_ops::apply_doc_motion(
-        &state.buffers,
-        &mut state.panes.state,
-        focused,
-        buf,
-        |b, s| cmd_goto_line_start(b, s, 1, MotionMode::Move),
-    );
-    doc_ops::apply_doc_edit_grouped(
-        &mut state.buffers,
-        &mut state.panes.state,
-        focused,
-        buf,
-        |b, s| insert_char(b, s, '\n'),
-    );
-    doc_ops::apply_doc_motion(
-        &state.buffers,
-        &mut state.panes.state,
-        focused,
-        buf,
-        |b, s| cmd_move_left(b, s, 1, MotionMode::Move),
-    );
+    apply_focused_motion(state, view, |b, s| {
+        cmd_goto_line_start(b, s, 1, MotionMode::Move)
+    });
+    apply_focused_edit_grouped(state, view, |b, s| insert_char(b, s, '\n'));
+    apply_focused_motion(state, view, |b, s| cmd_move_left(b, s, 1, MotionMode::Move));
     Ok(())
 }
 
@@ -290,18 +222,10 @@ pub fn cmd_toggle_extend(
 fn do_collapse_and_exit_extend(
     state: &mut EditorState,
     view: &mut EngineView,
-    collapse: impl Fn(&Text, SelectionSet) -> SelectionSet,
+    collapse: impl FnOnce(&Text, SelectionSet) -> SelectionSet,
 ) {
     state.set_mode(EditorMode::Normal);
-    let focused = state.focused_pane_id;
-    let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(
-        &state.buffers,
-        &mut state.panes.state,
-        focused,
-        buf,
-        collapse,
-    );
+    apply_focused_motion(state, view, collapse);
 }
 
 /// Collapse each selection to its cursor (head) and exit extend mode.

@@ -4,11 +4,11 @@ use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
 use hume_engine::pipeline::EngineView;
 
-use super::super::{EditorState, FindChar, doc_ops};
+use super::super::{EditorState, FindChar};
 use crate::editor::error::CommandError;
 use crate::ops::motion::FindKind;
 
-use super::focused_buffer_id;
+use super::apply_focused_motion;
 
 // ── Find / till character ─────────────────────────────────────────────────────
 
@@ -21,15 +21,7 @@ fn find_char(
     find_fn: fn(&Text, SelectionSet, MotionMode, usize, char, FindKind) -> SelectionSet,
 ) {
     if let Some(ch) = state.pending_char.take() {
-        let focused = state.focused_pane_id;
-        let buf = focused_buffer_id(state, view);
-        doc_ops::apply_doc_motion(
-            &state.buffers,
-            &mut state.panes.state,
-            focused,
-            buf,
-            |b, s| find_fn(b, s, mode, count, ch, kind),
-        );
+        apply_focused_motion(state, view, |b, s| find_fn(b, s, mode, count, ch, kind));
         state.last_find = Some(FindChar { ch, kind });
     }
 }
@@ -109,15 +101,7 @@ fn repeat_find(
     find_fn: fn(&Text, SelectionSet, MotionMode, usize, char, FindKind) -> SelectionSet,
 ) {
     if let Some(FindChar { ch, kind }) = state.last_find {
-        let focused = state.focused_pane_id;
-        let buf = focused_buffer_id(state, view);
-        doc_ops::apply_doc_motion(
-            &state.buffers,
-            &mut state.panes.state,
-            focused,
-            buf,
-            |b, s| find_fn(b, s, mode, count, ch, kind),
-        );
+        apply_focused_motion(state, view, |b, s| find_fn(b, s, mode, count, ch, kind));
     }
 }
 

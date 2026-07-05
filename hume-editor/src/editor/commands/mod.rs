@@ -17,7 +17,9 @@ pub(super) const DEFAULT_THEME_LABEL: &str = "default (built-in)";
 
 use std::borrow::Cow;
 
+use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::text::Text;
 use hume_engine::pipeline::{BufferId, Direction, EngineView, PaneId};
 use slotmap::SecondaryMap;
 
@@ -53,6 +55,15 @@ impl EditorState {
             register_ops::write_register(&mut self.registers, &mut self.clipboard, name, values)
         {
             self.report(Severity::Warning, w);
+        }
+    }
+
+    /// Route a kill (`d`/`c`) yank: bare default and `"k` both go to the kill
+    /// ring; any other explicit register prefix routes through `write_register`.
+    pub(super) fn route_kill(&mut self, yanked: Vec<String>) {
+        match self.take_register_prefix() {
+            None | Some(crate::ops::register::KILL_RING_REGISTER) => self.kill_ring.push(yanked),
+            Some(reg) => self.write_register(reg, yanked),
         }
     }
 
@@ -395,6 +406,60 @@ pub(super) fn doc<'a>(state: &'a EditorState, view: &EngineView) -> &'a Buffer {
     state.buffers.get(focused_buffer_id(state, view))
 }
 
+/// Apply a motion to the focused (pane, buffer) pair.
+///
+/// Thin wrapper around [`doc_ops::apply_doc_motion`] that resolves the
+/// focused pane/buffer so call sites don't repeat that lookup.
+pub(super) fn apply_focused_motion(
+    state: &mut EditorState,
+    view: &EngineView,
+    f: impl FnOnce(&Text, SelectionSet) -> SelectionSet,
+) {
+    let focused = state.focused_pane_id;
+    let buf = focused_buffer_id(state, view);
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, f);
+}
+
+/// Apply an edit to the focused (pane, buffer) pair.
+///
+/// Thin wrapper around [`doc_ops::apply_doc_edit`]; see [`apply_focused_motion`].
+pub(super) fn apply_focused_edit(
+    state: &mut EditorState,
+    view: &EngineView,
+    cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
+) {
+    let focused = state.focused_pane_id;
+    let buf = focused_buffer_id(state, view);
+    doc_ops::apply_doc_edit(
+        &mut state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf,
+        cmd,
+    );
+}
+
+/// Apply a grouped edit (inside an open insert/paste session) to the focused
+/// (pane, buffer) pair.
+///
+/// Thin wrapper around [`doc_ops::apply_doc_edit_grouped`]; see
+/// [`apply_focused_motion`].
+pub(super) fn apply_focused_edit_grouped(
+    state: &mut EditorState,
+    view: &EngineView,
+    cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
+) {
+    let focused = state.focused_pane_id;
+    let buf = focused_buffer_id(state, view);
+    doc_ops::apply_doc_edit_grouped(
+        &mut state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf,
+        cmd,
+    );
+}
+
 // ── Pane creation / splitting ─────────────────────────────────────────────────
 
 /// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its id.
@@ -723,26 +788,18 @@ pub(super) fn end_insert_session(state: &mut EditorState, view: &EngineView) {
         action.insert_keys = session.keystrokes;
     }
     if step_back {
-        let focused = state.focused_pane_id;
-        let buf = focused_buffer_id(state, view);
-        doc_ops::apply_doc_motion(
-            &state.buffers,
-            &mut state.panes.state,
-            focused,
-            buf,
-            |b, sels| {
-                sels.map(|sel| {
-                    let head = sel.head();
-                    let line_start = b.line_to_char(b.char_to_line(head));
-                    let new_head = if head > line_start {
-                        hume_editing::grapheme::prev_grapheme_boundary(b, head)
-                    } else {
-                        head
-                    };
-                    hume_editing::selection::Selection::collapsed(new_head)
-                })
-            },
-        );
+        apply_focused_motion(state, view, |b, sels| {
+            sels.map(|sel| {
+                let head = sel.head();
+                let line_start = b.line_to_char(b.char_to_line(head));
+                let new_head = if head > line_start {
+                    hume_editing::grapheme::prev_grapheme_boundary(b, head)
+                } else {
+                    head
+                };
+                hume_editing::selection::Selection::collapsed(new_head)
+            })
+        });
     }
     state.set_mode(Mode::Normal);
 }

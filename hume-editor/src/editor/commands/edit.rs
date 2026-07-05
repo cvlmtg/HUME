@@ -12,7 +12,9 @@ use crate::ops::surround::wrap_each_selection;
 use hume_editing::selection::Selection;
 
 use super::super::{EditorState, Severity, doc_ops, register_ops};
-use super::{begin_insert_session, focused_buffer_id};
+use super::{
+    apply_focused_edit, apply_focused_edit_grouped, begin_insert_session, focused_buffer_id,
+};
 use crate::editor::error::CommandError;
 /// Commands that keep Smart-p in "ring" mode: bare `p`/`P` reads the ring
 /// head when `last_command` is one of these; otherwise reads the clipboard.
@@ -37,19 +39,8 @@ pub fn cmd_delete(
         super::doc(state, view).text(),
         super::current_selections(state, view),
     );
-    let focused = state.focused_pane_id;
-    let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_edit(
-        &mut state.buffers,
-        &mut state.panes.state,
-        focused,
-        buf,
-        delete_selection,
-    );
-    match state.take_register_prefix() {
-        None | Some(KILL_RING_REGISTER) => state.kill_ring.push(yanked),
-        Some(reg) => state.write_register(reg, yanked),
-    }
+    apply_focused_edit(state, view, delete_selection);
+    state.route_kill(yanked);
     Ok(())
 }
 
@@ -77,20 +68,9 @@ pub fn cmd_change(
             })
             .collect::<Vec<_>>()
     };
-    let focused = state.focused_pane_id;
-    let buf = focused_buffer_id(state, view);
     begin_insert_session(state, view);
-    doc_ops::apply_doc_edit_grouped(
-        &mut state.buffers,
-        &mut state.panes.state,
-        focused,
-        buf,
-        delete_selection_content,
-    );
-    match state.take_register_prefix() {
-        None | Some(KILL_RING_REGISTER) => state.kill_ring.push(yanked),
-        Some(reg) => state.write_register(reg, yanked),
-    }
+    apply_focused_edit_grouped(state, view, delete_selection_content);
+    state.route_kill(yanked);
     Ok(())
 }
 
@@ -396,15 +376,7 @@ pub fn cmd_replace(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     if let Some(ch) = state.pending_char.take() {
-        let focused = state.focused_pane_id;
-        let buf = focused_buffer_id(state, view);
-        doc_ops::apply_doc_edit(
-            &mut state.buffers,
-            &mut state.panes.state,
-            focused,
-            buf,
-            |b, s| replace_selections(b, s, ch),
-        );
+        apply_focused_edit(state, view, |b, s| replace_selections(b, s, ch));
     }
     Ok(())
 }
@@ -416,15 +388,7 @@ pub fn cmd_join_lines_select_spaces(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = state.focused_pane_id;
-    let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_edit(
-        &mut state.buffers,
-        &mut state.panes.state,
-        focused,
-        buf,
-        join_lines_select_spaces,
-    );
+    apply_focused_edit(state, view, join_lines_select_spaces);
     Ok(())
 }
 
@@ -435,15 +399,7 @@ pub fn cmd_align_selections(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = state.focused_pane_id;
-    let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_edit(
-        &mut state.buffers,
-        &mut state.panes.state,
-        focused,
-        buf,
-        align_selections,
-    );
+    apply_focused_edit(state, view, align_selections);
     Ok(())
 }
 
@@ -465,14 +421,6 @@ pub fn cmd_surround_add(
         .find(|p| p.open == ch || p.close == ch)
         .map(|p| (p.open, p.close))
         .unwrap_or((ch, ch));
-    let focused = state.focused_pane_id;
-    let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_edit(
-        &mut state.buffers,
-        &mut state.panes.state,
-        focused,
-        buf,
-        |b, s| wrap_each_selection(b, s, open, close),
-    );
+    apply_focused_edit(state, view, |b, s| wrap_each_selection(b, s, open, close));
     Ok(())
 }

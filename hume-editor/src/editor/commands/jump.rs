@@ -22,6 +22,25 @@ pub fn cmd_quit(
 
 // ── Jump list navigation ─────────────────────────────────────────────────────
 
+/// Shared tail for `cmd_jump_backward`/`cmd_jump_forward`: switch buffer (if
+/// the jump target lives elsewhere) and restore its selections. No-op if the
+/// jump list had nothing in that direction.
+fn apply_jump_nav(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    nav: Option<(
+        hume_engine::pipeline::BufferId,
+        hume_editing::selection::SelectionSet,
+    )>,
+) {
+    if let Some((target_buf, sels)) = nav {
+        if target_buf != focused_buffer_id(state, view) {
+            switch_to_buffer_without_jump(state, view, target_buf);
+        }
+        set_current_selections(state, view, sels);
+    }
+}
+
 pub fn cmd_jump_backward(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -33,12 +52,7 @@ pub fn cmd_jump_backward(
     let nav = state.panes.jumps[pid]
         .backward(current)
         .map(|e| (e.buffer_id, e.selections.clone()));
-    if let Some((target_buf, sels)) = nav {
-        if target_buf != focused_buffer_id(state, view) {
-            switch_to_buffer_without_jump(state, view, target_buf);
-        }
-        set_current_selections(state, view, sels);
-    }
+    apply_jump_nav(state, view, nav);
     Ok(())
 }
 
@@ -52,12 +66,7 @@ pub fn cmd_jump_forward(
     let nav = state.panes.jumps[pid]
         .forward()
         .map(|e| (e.buffer_id, e.selections.clone()));
-    if let Some((target_buf, sels)) = nav {
-        if target_buf != focused_buffer_id(state, view) {
-            switch_to_buffer_without_jump(state, view, target_buf);
-        }
-        set_current_selections(state, view, sels);
-    }
+    apply_jump_nav(state, view, nav);
     Ok(())
 }
 

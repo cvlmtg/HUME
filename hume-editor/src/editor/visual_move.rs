@@ -17,7 +17,7 @@ use hume_engine::pane::{WhitespaceConfig, WrapMode};
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::CellContent;
 
-use super::commands::{focused_buffer_id, focused_format_context};
+use super::commands::{apply_focused_motion, focused_buffer_id, focused_format_context};
 use super::{EditorState, doc_ops};
 use crate::editor::error::CommandError;
 
@@ -166,24 +166,8 @@ pub(super) fn apply_visual_vertical(
     let (wrap_mode, tab_width, whitespace) = focused_format_context(state, view);
 
     if !wrap_mode.is_wrapping() {
-        let focused = state.focused_pane_id;
-        let buf = focused_buffer_id(state, view);
-        match down {
-            true => doc_ops::apply_doc_motion(
-                &state.buffers,
-                &mut state.panes.state,
-                focused,
-                buf,
-                |b, s| cmd_move_down(b, s, count, mode),
-            ),
-            false => doc_ops::apply_doc_motion(
-                &state.buffers,
-                &mut state.panes.state,
-                focused,
-                buf,
-                |b, s| cmd_move_up(b, s, count, mode),
-            ),
-        }
+        let motion = if down { cmd_move_down } else { cmd_move_up };
+        apply_focused_motion(state, view, |b, s| motion(b, s, count, mode));
         return;
     }
 
@@ -193,6 +177,9 @@ pub(super) fn apply_visual_vertical(
     let target_cols = &mut state.visual_move_target_cols;
     target_cols.clear();
 
+    // Not `apply_focused_motion`: the closure below also captures `scratch`
+    // and `target_cols`, disjoint fields of `state` that must be borrowed
+    // separately from `state.buffers`/`state.panes.state` here.
     doc_ops::apply_doc_motion(
         &state.buffers,
         &mut state.panes.state,
@@ -336,15 +323,9 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     let (wrap_mode, tab_width, whitespace) = focused_format_context(state, view);
 
     if !wrap_mode.is_wrapping() {
-        let focused = state.focused_pane_id;
-        let buf_id = focused_buffer_id(state, view);
-        doc_ops::apply_doc_motion(
-            &state.buffers,
-            &mut state.panes.state,
-            focused,
-            buf_id,
-            |buf, sels| cmd_select_word_nearest_on_line(buf, sels, 0, mode),
-        );
+        apply_focused_motion(state, view, |buf, sels| {
+            cmd_select_word_nearest_on_line(buf, sels, 0, mode)
+        });
         return Ok(());
     }
 
@@ -352,6 +333,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     let buf_id = focused_buffer_id(state, view);
     let scratch = &mut state.motion_format_scratch;
 
+    // Not `apply_focused_motion`: the closure below also captures `scratch`.
     doc_ops::apply_doc_motion(
         &state.buffers,
         &mut state.panes.state,
