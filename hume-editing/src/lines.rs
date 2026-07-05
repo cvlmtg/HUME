@@ -89,6 +89,15 @@ pub fn snap_to_grapheme_boundary(buf: &Text, line_start: usize, target: usize) -
     }
 }
 
+/// Returns `true` if `line` is an empty line — either zero chars or exactly
+/// one newline. Whitespace-only lines are NOT empty (matching Helix semantics).
+pub fn is_empty_line(buf: &Text, line: usize) -> bool {
+    let start = buf.line_to_char(line);
+    let end = line_end_exclusive(buf, line);
+    // Zero chars (last line of an empty buffer) or exactly one '\n'.
+    end == start || (end == start + 1 && buf.char_at(start) == Some('\n'))
+}
+
 /// The last char offset a cursor can land on for `line`.
 ///
 /// Returns the last non-`\n` char on the line, or the `\n` itself when the
@@ -110,6 +119,26 @@ pub fn line_content_end(buf: &Text, line: usize) -> usize {
         }
     } else {
         prev_grapheme_boundary(buf, end_excl) // last line with no trailing newline
+    }
+}
+
+/// Place the cursor at `col` chars from the start of `line`, clamping to the
+/// last content character and snapping to a grapheme boundary.
+///
+/// Shared by vertical motions (`move_down_inner`/`move_up_inner`, which land
+/// on an adjacent buffer line) and vertical selection copy (which lands on a
+/// line an arbitrary number of lines away) — both want "column N of line L,
+/// clamped and grapheme-snapped."
+pub fn place_column(buf: &Text, line: usize, col: usize) -> usize {
+    let line_start = buf.line_to_char(line);
+    let end_excl = line_end_exclusive(buf, line);
+    let target = line_start + col;
+
+    if target >= end_excl {
+        // Column overshoots — clamp to the last content char on the line.
+        line_content_end(buf, line)
+    } else {
+        snap_to_grapheme_boundary(buf, line_start, target)
     }
 }
 
@@ -299,5 +328,50 @@ mod tests {
         let (buf, _) = parse_state("-[e]>\u{0301}\n");
         // The combining char is at char index 1. target=1 is inside the cluster.
         assert_eq!(snap_to_grapheme_boundary(&buf, 0, 1), 0);
+    }
+
+    // ── is_empty_line ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn is_empty_line_true_for_bare_newline() {
+        // "a\n\nb\n" — line 1 is just "\n".
+        let (buf, _) = parse_state("-[a]>\n\nb\n");
+        assert!(is_empty_line(&buf, 1));
+    }
+
+    #[test]
+    fn is_empty_line_false_for_content_line() {
+        let (buf, _) = parse_state("-[h]>ello\n");
+        assert!(!is_empty_line(&buf, 0));
+    }
+
+    #[test]
+    fn is_empty_line_false_for_whitespace_only_line() {
+        // "   \n" — whitespace-only is NOT empty (Helix semantics).
+        let (buf, _) = parse_state("-[ ]>  \n");
+        assert!(!is_empty_line(&buf, 0));
+    }
+
+    // ── place_column ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn place_column_within_line() {
+        // "hello\nworld\n" — col 2 of line 1 lands on 'r' (offset 8).
+        let (buf, _) = parse_state("-[h]>ello\nworld\n");
+        assert_eq!(place_column(&buf, 1, 2), 8);
+    }
+
+    #[test]
+    fn place_column_overshoot_clamps_to_line_content_end() {
+        // "hi\nhello\n" — line 0 only has 2 real chars; col 10 clamps to 'i' (offset 1).
+        let (buf, _) = parse_state("-[h]>i\nhello\n");
+        assert_eq!(place_column(&buf, 0, 10), 1);
+    }
+
+    #[test]
+    fn place_column_on_empty_line_lands_on_newline() {
+        // "a\n\nb\n" — line 1 is empty; any column lands on its '\n' (offset 2).
+        let (buf, _) = parse_state("-[a]>\n\nb\n");
+        assert_eq!(place_column(&buf, 1, 3), 2);
     }
 }

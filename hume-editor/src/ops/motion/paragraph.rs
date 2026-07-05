@@ -1,16 +1,5 @@
-use hume_editing::lines::line_end_exclusive;
+use hume_editing::lines::is_empty_line;
 use hume_editing::text::Text;
-
-// ── Paragraph motion helpers ─────────────────────────────────────────────────
-
-/// Returns `true` if `line` is an empty line — either zero chars or exactly
-/// one newline. Whitespace-only lines are NOT empty (matching Helix semantics).
-pub(super) fn is_empty_line(buf: &Text, line: usize) -> bool {
-    let start = buf.line_to_char(line);
-    let end = line_end_exclusive(buf, line);
-    // Zero chars (last line of an empty buffer) or exactly one '\n'.
-    end == start || (end == start + 1 && buf.char_at(start) == Some('\n'))
-}
 
 // ── Paragraph motions (inner) ─────────────────────────────────────────────────
 

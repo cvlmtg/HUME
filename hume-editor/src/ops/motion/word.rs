@@ -362,11 +362,34 @@ pub(super) fn apply_word_select_extend(
     result
 }
 
-/// Select or extend to the next word (`w`): branches on `mode`.
-///
-/// `Move` — re-anchors on each press (fresh forward selection spanning the word).
-/// `Extend` — grows toward the next word, or shrinks back toward it if a
-/// prior press already extended past it (see [`apply_word_select_extend`]).
+type IsBoundary = fn(CharClass, CharClass) -> bool;
+type SelectWord = fn(&Text, usize, IsBoundary) -> Option<(usize, usize)>;
+
+/// Shared dispatch for the four word-select commands below: branches on
+/// `mode` (fresh re-anchor for `Move`, grow/shrink for `Extend` — see
+/// [`apply_word_select`]/[`apply_word_select_extend`]), parameterized by
+/// direction (`select_word`: [`select_next_word`] or [`select_prev_word`])
+/// and word class (`is_boundary`: [`is_word_boundary`] or
+/// [`is_uppercase_word_boundary`]).
+fn word_select_cmd(
+    buf: &Text,
+    sels: SelectionSet,
+    count: usize,
+    mode: MotionMode,
+    is_boundary: IsBoundary,
+    select_word: SelectWord,
+) -> SelectionSet {
+    match mode {
+        MotionMode::Move => {
+            apply_word_select(buf, sels, count, |b, pos| select_word(b, pos, is_boundary))
+        }
+        MotionMode::Extend => apply_word_select_extend(buf, sels, count, is_boundary, |b, pos| {
+            select_word(b, pos, is_boundary)
+        }),
+    }
+}
+
+/// Select or extend to the next word (`w`).
 #[allow(non_snake_case)]
 pub(crate) fn cmd_select_next_word(
     buf: &Text,
@@ -374,16 +397,7 @@ pub(crate) fn cmd_select_next_word(
     count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
-    match mode {
-        MotionMode::Move => apply_word_select(buf, sels, count, |b, pos| {
-            select_next_word(b, pos, is_word_boundary)
-        }),
-        MotionMode::Extend => {
-            apply_word_select_extend(buf, sels, count, is_word_boundary, |b, pos| {
-                select_next_word(b, pos, is_word_boundary)
-            })
-        }
-    }
+    word_select_cmd(buf, sels, count, mode, is_word_boundary, select_next_word)
 }
 
 /// Select or extend to the next WORD (`W`): like `w` but treats word+punct as one class.
@@ -394,19 +408,17 @@ pub(crate) fn cmd_select_next_uppercase_word(
     count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
-    match mode {
-        MotionMode::Move => apply_word_select(buf, sels, count, |b, pos| {
-            select_next_word(b, pos, is_uppercase_word_boundary)
-        }),
-        MotionMode::Extend => {
-            apply_word_select_extend(buf, sels, count, is_uppercase_word_boundary, |b, pos| {
-                select_next_word(b, pos, is_uppercase_word_boundary)
-            })
-        }
-    }
+    word_select_cmd(
+        buf,
+        sels,
+        count,
+        mode,
+        is_uppercase_word_boundary,
+        select_next_word,
+    )
 }
 
-/// Select or extend to the previous word (`b`): branches on `mode`.
+/// Select or extend to the previous word (`b`).
 #[allow(non_snake_case)]
 pub(crate) fn cmd_select_prev_word(
     buf: &Text,
@@ -414,16 +426,7 @@ pub(crate) fn cmd_select_prev_word(
     count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
-    match mode {
-        MotionMode::Move => apply_word_select(buf, sels, count, |b, pos| {
-            select_prev_word(b, pos, is_word_boundary)
-        }),
-        MotionMode::Extend => {
-            apply_word_select_extend(buf, sels, count, is_word_boundary, |b, pos| {
-                select_prev_word(b, pos, is_word_boundary)
-            })
-        }
-    }
+    word_select_cmd(buf, sels, count, mode, is_word_boundary, select_prev_word)
 }
 
 /// Select or extend to the previous WORD (`B`): like `b` but treats word+punct as one class.
@@ -434,14 +437,12 @@ pub(crate) fn cmd_select_prev_uppercase_word(
     count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
-    match mode {
-        MotionMode::Move => apply_word_select(buf, sels, count, |b, pos| {
-            select_prev_word(b, pos, is_uppercase_word_boundary)
-        }),
-        MotionMode::Extend => {
-            apply_word_select_extend(buf, sels, count, is_uppercase_word_boundary, |b, pos| {
-                select_prev_word(b, pos, is_uppercase_word_boundary)
-            })
-        }
-    }
+    word_select_cmd(
+        buf,
+        sels,
+        count,
+        mode,
+        is_uppercase_word_boundary,
+        select_prev_word,
+    )
 }

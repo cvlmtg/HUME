@@ -1,5 +1,5 @@
 use hume_editing::grapheme::next_grapheme_boundary;
-use hume_editing::lines::{line_content_end, line_end_exclusive, snap_to_grapheme_boundary};
+use hume_editing::lines::{line_content_end, line_end_exclusive, place_column};
 use hume_editing::text::Text;
 
 // ── Line motions (inner) ──────────────────────────────────────────────────────
@@ -71,24 +71,15 @@ pub(super) fn move_down_inner(buf: &Text, head: usize, preferred_col: Option<usi
     }
 
     let col = preferred_col.unwrap_or_else(|| head - buf.line_to_char(line));
-    let target_start = buf.line_to_char(line + 1);
 
     // The phantom trailing line (produced by the structural trailing \n) has
-    // target_start == len_chars(). Moving into it would place the cursor past
-    // all characters — stay put instead.
-    if target_start >= buf.len_chars() {
+    // line_to_char(line + 1) == len_chars(). Moving into it would place the
+    // cursor past all characters — stay put instead.
+    if buf.line_to_char(line + 1) >= buf.len_chars() {
         return head;
     }
 
-    let target_end = line_end_exclusive(buf, line + 1);
-    let target = target_start + col;
-
-    if target >= target_end {
-        // Column overshoots the target line — clamp to last char.
-        goto_line_end(buf, target_start)
-    } else {
-        snap_to_grapheme_boundary(buf, target_start, target)
-    }
+    place_column(buf, line + 1, col)
 }
 
 /// Move the cursor up one line, preserving the char-offset column.
@@ -101,13 +92,5 @@ pub(super) fn move_up_inner(buf: &Text, head: usize, preferred_col: Option<usize
     }
 
     let col = preferred_col.unwrap_or_else(|| head - buf.line_to_char(line));
-    let target_start = buf.line_to_char(line - 1);
-    let target_end = line_end_exclusive(buf, line - 1);
-    let target = target_start + col;
-
-    if target >= target_end {
-        goto_line_end(buf, target_start)
-    } else {
-        snap_to_grapheme_boundary(buf, target_start, target)
-    }
+    place_column(buf, line - 1, col)
 }

@@ -1,5 +1,5 @@
 use crate::ops::MotionMode;
-use hume_editing::lines::{line_content_end, line_end_exclusive, snap_to_grapheme_boundary};
+use hume_editing::lines::place_column;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
 
@@ -96,21 +96,6 @@ fn column_on_shifted_line(buf: &Text, pos: usize, pos_line: usize, delta: isize)
     let col = pos - buf.line_to_char(pos_line);
     let target_line = (pos_line as isize + delta) as usize;
     place_column(buf, target_line, col)
-}
-
-/// Place the cursor at `col` chars from the start of `line`, clamping to the
-/// last content character and snapping to a grapheme boundary.
-fn place_column(buf: &Text, line: usize, col: usize) -> usize {
-    let line_start = buf.line_to_char(line);
-    let end_excl = line_end_exclusive(buf, line);
-    let target = line_start + col;
-
-    if target >= end_excl {
-        // Column overshoots — clamp to the last content char on the line.
-        line_content_end(buf, line)
-    } else {
-        snap_to_grapheme_boundary(buf, line_start, target)
-    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

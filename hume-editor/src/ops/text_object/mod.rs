@@ -1,7 +1,7 @@
 use super::MotionMode;
 use super::pair::{find_bracket_pair, find_quote_pair};
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
-use hume_editing::lines::{line_content_end, line_end_exclusive};
+use hume_editing::lines::{is_empty_line, line_content_end, line_end_exclusive};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
 use hume_editing::word::{CharClass, classify_char, is_uppercase_word_boundary, is_word_boundary};
@@ -100,15 +100,14 @@ fn apply_text_object_by_mode(
 /// Returns `None` for lines that contain only a newline (no content to select).
 fn inner_line(buf: &Text, pos: usize) -> Option<(usize, usize)> {
     let line = buf.char_to_line(pos);
+    if is_empty_line(buf, line) {
+        return None; // empty line — no selectable content
+    }
     let line_start = buf.line_to_char(line);
     // line_content_end returns the grapheme cluster *start* of the last
     // non-newline grapheme (uses prev_grapheme_boundary internally, so
-    // combining clusters are handled correctly). For empty lines it returns
-    // line_start (the '\n' itself).
+    // combining clusters are handled correctly).
     let content_start = line_content_end(buf, line);
-    if content_start == line_start && buf.char_at(line_start) == Some('\n') {
-        return None; // empty line — no selectable content
-    }
     // Convert grapheme start → last codepoint of that cluster, so the
     // selection includes all combining marks (same convention as inner_word).
     let end_inclusive = next_grapheme_boundary(buf, content_start).saturating_sub(1);
@@ -212,79 +211,49 @@ fn around_word_impl(
     pos: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
 ) -> Option<(usize, usize)> {
-    let (mut start, mut end) = inner_word_impl(buf, pos, is_boundary)?;
+    let (start, end) = inner_word_impl(buf, pos, is_boundary)?;
     let class = classify_char(buf.char_at(pos)?);
 
-    // `next_pos` is the start of the grapheme cluster immediately after the
-    // inner word. Since `end` is the last *char* of the last grapheme (as
-    // returned by inner_word_impl), next_grapheme_boundary(end) gives the
-    // first char of the following grapheme — equivalent to end + 1 for ASCII
-    // but correct for multi-codepoint graphemes (e.g. e + combining accent).
-    //
-    // Similarly, `prev_start` is the start of the grapheme cluster immediately
-    // before the inner word. Since `start` is always a grapheme-start position,
-    // prev_grapheme_boundary(start) gives the start of the preceding grapheme —
-    // equivalent to start - 1 for ASCII but safe for combining sequences.
-
-    if class == CharClass::Space || class == CharClass::Eol {
-        // The cursor is on whitespace. Extend to include the following word.
-        // If there's no following word (e.g., at line end), include the
-        // preceding word instead.
-        let next_pos = next_grapheme_boundary(buf, end);
-        if next_pos < buf.len_chars() {
-            let next_class = classify_char(buf.char_at(next_pos)?);
-            if next_class != CharClass::Space && next_class != CharClass::Eol {
-                // Walk right to end of that word.
-                let (_, word_end) = inner_word_impl(buf, next_pos, is_boundary)?;
-                end = word_end;
-            } else if start > 0 {
-                // Try preceding word.
-                let prev_start = prev_grapheme_boundary(buf, start);
-                let prev_class = classify_char(buf.char_at(prev_start)?);
-                if prev_class != CharClass::Space && prev_class != CharClass::Eol {
-                    let (word_start, _) = inner_word_impl(buf, prev_start, is_boundary)?;
-                    start = word_start;
-                }
-            }
-        } else if start > 0 {
-            let prev_start = prev_grapheme_boundary(buf, start);
-            let prev_class = classify_char(buf.char_at(prev_start)?);
-            if prev_class != CharClass::Space && prev_class != CharClass::Eol {
-                let (word_start, _) = inner_word_impl(buf, prev_start, is_boundary)?;
-                start = word_start;
-            }
-        }
+    // On whitespace: extend to the adjacent real word (forward, or backward
+    // if at line end). On a real word: extend to adjacent whitespace
+    // (trailing, or leading if there's none trailing) — the two rules share
+    // the same "try forward, else try backward" shape, just with the target
+    // class flipped.
+    let wants: fn(CharClass) -> bool = if class == CharClass::Space || class == CharClass::Eol {
+        |c| c != CharClass::Space && c != CharClass::Eol
     } else {
-        // Real word. Try to include trailing whitespace first.
-        let next_pos = next_grapheme_boundary(buf, end);
-        if next_pos < buf.len_chars() {
-            let next_class = classify_char(buf.char_at(next_pos)?);
-            if next_class == CharClass::Space {
-                // Walk right while whitespace.
-                let (_, space_end) = inner_word_impl(buf, next_pos, is_boundary)?;
-                end = space_end;
-            } else {
-                // No trailing space (next is Eol or another word) —
-                // include leading whitespace instead.
-                if start > 0 {
-                    let prev_start = prev_grapheme_boundary(buf, start);
-                    let prev_class = classify_char(buf.char_at(prev_start)?);
-                    if prev_class == CharClass::Space {
-                        let (space_start, _) = inner_word_impl(buf, prev_start, is_boundary)?;
-                        start = space_start;
-                    }
-                }
-            }
-        } else if start > 0 {
-            let prev_start = prev_grapheme_boundary(buf, start);
-            let prev_class = classify_char(buf.char_at(prev_start)?);
-            if prev_class == CharClass::Space {
-                let (space_start, _) = inner_word_impl(buf, prev_start, is_boundary)?;
-                start = space_start;
-            }
+        |c| c == CharClass::Space
+    };
+    extend_to_adjacent_run(buf, start, end, wants, is_boundary)
+}
+
+/// Grow `(start, end)` to include the adjacent grapheme run matching `wants`:
+/// the run right after `end` if it qualifies, else the run right before
+/// `start`. Neither side extending is not a failure — the original range is
+/// returned unchanged.
+///
+/// `next_pos`/`prev_start` are grapheme-boundary steps (not `±1`) so combining
+/// sequences (e.g. e + combining accent) are handled correctly; see
+/// `next_grapheme_boundary`/`prev_grapheme_boundary`.
+fn extend_to_adjacent_run(
+    buf: &Text,
+    start: usize,
+    end: usize,
+    wants: impl Fn(CharClass) -> bool,
+    is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
+) -> Option<(usize, usize)> {
+    let next_pos = next_grapheme_boundary(buf, end);
+    if next_pos < buf.len_chars() && wants(classify_char(buf.char_at(next_pos)?)) {
+        let (_, new_end) = inner_word_impl(buf, next_pos, is_boundary)?;
+        return Some((start, new_end));
+    }
+    if start > 0 {
+        let prev_start = prev_grapheme_boundary(buf, start);
+        if wants(classify_char(buf.char_at(prev_start)?)) {
+            let (new_start, _) = inner_word_impl(buf, prev_start, is_boundary)?;
+            return Some((new_start, end));
         }
     }
-
     Some((start, end))
 }
 
@@ -470,13 +439,19 @@ pub(crate) fn cmd_around_uppercase_word(
 
 // ── Brackets ───────────────────────────────────────────────────────────────────
 
-fn inner_bracket(buf: &Text, pos: usize, open: char, close: char) -> Option<(usize, usize)> {
-    let (open_pos, close_pos) = find_bracket_pair(buf, pos, open, close)?;
-    // Empty brackets: no valid inner range in the inclusive selection model.
-    if open_pos + 1 > close_pos - 1 || close_pos == 0 {
+/// Shrink a `(open, close)` delimiter pair to its inner range, or `None` if
+/// the pair is empty (no inner content in the inclusive selection model).
+/// Shared by [`inner_bracket`] and [`inner_quote`].
+fn inner_of_pair(open: usize, close: usize) -> Option<(usize, usize)> {
+    if open + 1 > close - 1 || close == 0 {
         return None;
     }
-    Some((open_pos + 1, close_pos - 1))
+    Some((open + 1, close - 1))
+}
+
+fn inner_bracket(buf: &Text, pos: usize, open: char, close: char) -> Option<(usize, usize)> {
+    let (open_pos, close_pos) = find_bracket_pair(buf, pos, open, close)?;
+    inner_of_pair(open_pos, close_pos)
 }
 
 fn around_bracket(buf: &Text, pos: usize, open: char, close: char) -> Option<(usize, usize)> {
@@ -517,11 +492,7 @@ bracket_cmds!(cmd_inner_angle, cmd_around_angle, '<', '>');
 
 fn inner_quote(buf: &Text, pos: usize, quote: char) -> Option<(usize, usize)> {
     let (open, close) = find_quote_pair(buf, pos, quote)?;
-    // Empty quotes: no inner range.
-    if open + 1 > close - 1 || close == 0 {
-        return None;
-    }
-    Some((open + 1, close - 1))
+    inner_of_pair(open, close)
 }
 
 fn around_quote(buf: &Text, pos: usize, quote: char) -> Option<(usize, usize)> {
