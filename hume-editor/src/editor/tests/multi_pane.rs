@@ -1462,8 +1462,7 @@ fn cross_buffer_search_highlight_does_not_bleed_into_other_pane() {
     let pid_b = ed.state.focused_pane_id;
     assert_ne!(pid_a, pid_b, "sanity: split created a second pane");
     assert_ne!(
-        ed.view.panes[pid_b].buffer_id,
-        ed.view.panes[pid_a].buffer_id,
+        ed.view.panes[pid_b].buffer_id, ed.view.panes[pid_a].buffer_id,
         "sanity: new pane views a different buffer"
     );
 
@@ -1526,7 +1525,11 @@ fn multiline_search_match_splits_into_per_line_highlight_spans() {
     let mut ctx = hume_engine::pipeline::RenderContext::new();
     ed.prepare_frame(80, 25, &mut ctx);
 
-    let matches = ed.state.panes.highlights[pid].search.read().unwrap().clone();
+    let matches = ed.state.panes.highlights[pid]
+        .search
+        .read()
+        .unwrap()
+        .clone();
     assert_eq!(
         matches,
         vec![(0, 2, 3), (1, 0, 3)],

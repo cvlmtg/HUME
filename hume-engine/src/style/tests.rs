@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::theme::Theme;
 use crate::types::{CellContent, DisplayRow, Grapheme, ResolvedStyle, RowKind, Selection};

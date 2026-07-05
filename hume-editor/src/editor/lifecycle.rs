@@ -751,10 +751,11 @@ impl Editor {
                         let (line, byte) = char_to_line_byte(buf, match_pos);
                         // Single-char match: byte_end = byte + utf8 length of the char.
                         let ch_len = buf.char_at(match_pos).map(|c| c.len_utf8()).unwrap_or(1);
-                        bracket_arc
-                            .write()
-                            .expect("RwLock not poisoned")
-                            .push((line, byte, byte + ch_len));
+                        bracket_arc.write().expect("RwLock not poisoned").push((
+                            line,
+                            byte,
+                            byte + ch_len,
+                        ));
                     }
                 }
             }

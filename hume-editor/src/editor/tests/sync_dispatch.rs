@@ -2264,5 +2264,8 @@ fn steel_dispatch_consumes_pending_char() {
     // A later dispatch without a fresh WaitChar must see #f, not the stale 'x'.
     ed.execute_keymap_command("probe-char".into(), 1, false, vec![]);
     let cursor = live_host!(ed).cursor_char_index().expect("cursor read");
-    assert_eq!(cursor, 1, "stale pending_char must not leak into later dispatch");
+    assert_eq!(
+        cursor, 1,
+        "stale pending_char must not leak into later dispatch"
+    );
 }
