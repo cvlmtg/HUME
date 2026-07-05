@@ -1,9 +1,13 @@
 //! Terminal lifecycle management.
 //!
-//! Entry point is [`init`]: enables raw mode, enters the alternate screen,
-//! probes for kitty keyboard protocol support, and returns a ratatui
-//! [`Term`] ready to render. [`restore`] reverses all of that and must be
-//! called before the process exits.
+//! Entry point is [`init`]: enables raw mode, enters the alternate screen, and
+//! returns a ratatui [`Term`] ready to render. [`restore`] reverses all of
+//! that and must be called before the process exits.
+//!
+//! [`probe_kitty`] is a separate step, called *before* [`init`]. It runs on
+//! the normal screen (raw mode only, no alt-screen) so the caller can finish
+//! scripting initialisation — which installs kitty-only default keybinds
+//! before user `bind-key!` calls run — while the shell is still visible.
 //!
 //! Also provides cursor shape/colour control, DEC 2026 synchronized-update
 //! framing, and the inline-subprocess-output flow
@@ -65,9 +69,40 @@ fn disable_mouse(out: &mut Stdout) -> io::Result<()> {
 
 // ── Public terminal lifecycle API ─────────────────────────────────────────────
 
+/// Probe for kitty keyboard protocol support on the normal screen.
+///
+/// Enables raw mode (required to read the terminal's reply to the probe
+/// query), runs the probe, then disables raw mode again before returning —
+/// callers get a cooked terminal back on every path, since scripting
+/// initialisation (which may spawn subprocesses, e.g. grammar installs) runs
+/// on the normal screen between this call and [`init`].
+///
+/// Probe failures (channel errors, not mere timeouts) are surfaced to the
+/// user as a one-line stderr hint: kitty support degrades to "off" but the
+/// editor still starts. A plain timeout reports `Ok(false)` upstream.
+pub fn probe_kitty() -> io::Result<bool> {
+    enable_raw_mode()?;
+    let kitty_enabled = match crate::probe_kitty_support() {
+        Ok(v) => v,
+        Err(e) => {
+            // Disable raw mode so the hint prints with normal line discipline
+            // (no staircase) before we report it.
+            let _ = disable_raw_mode();
+            eprintln!("hume: kitty keyboard probe failed: {e}");
+            return Ok(false);
+        }
+    };
+    disable_raw_mode()?;
+    Ok(kitty_enabled)
+}
+
 /// Switch the terminal into raw mode + alternate screen and create a ratatui
-/// `Terminal`. Also probes for kitty keyboard protocol support and enables it
-/// if available.
+/// `Terminal`.
+///
+/// `kitty_enabled` is the result of a prior [`probe_kitty`] call. When `true`,
+/// the caller should filter `KeyEventKind::Release` events from the event
+/// loop and may enable Ctrl-modified key bindings that require the enhanced
+/// protocol.
 ///
 /// Mouse tracking is enabled selectively:
 /// - `mouse_enabled` enables normal tracking (button press/release + scroll,
@@ -77,30 +112,11 @@ fn disable_mouse(out: &mut Stdout) -> io::Result<()> {
 /// - `mouse_select` additionally enables button-event tracking (`\x1b[?1002h`),
 ///   which sends drag events so the editor can create editor selections on drag.
 ///
-/// Returns `(Term, kitty_enabled)`. When `kitty_enabled` is `true`, the caller
-/// should filter `KeyEventKind::Release` events from the event loop and may
-/// enable Ctrl-modified key bindings that require the enhanced protocol.
-///
 /// Call [`restore`] (or let the panic hook do it) before the process exits so
 /// the user's shell is left in a usable state.
-pub fn init(mouse_enabled: bool, mouse_select: bool) -> io::Result<(Term, bool)> {
+pub fn init(mouse_enabled: bool, mouse_select: bool, kitty_enabled: bool) -> io::Result<Term> {
     enable_raw_mode()?;
     let mut out = stdout();
-
-    // Probe failures (channel errors, not mere timeouts) are surfaced to the
-    // user as a one-line stderr hint: kitty support degrades to "off" but the
-    // editor still starts. A plain timeout reports `Ok(false)` upstream.
-    let kitty_enabled = match crate::probe_kitty_support() {
-        Ok(v) => v,
-        Err(e) => {
-            // Disable raw mode so the hint prints with normal line discipline
-            // (no staircase) and is visible before the alternate screen hides it.
-            let _ = disable_raw_mode();
-            eprintln!("hume: kitty keyboard probe failed: {e}");
-            enable_raw_mode()?;
-            false
-        }
-    };
 
     // Enter alternate screen before pushing kitty flags.  Some terminals
     // (WezTerm, kitty) maintain a per-screen keyboard stack; the push must
@@ -133,7 +149,7 @@ pub fn init(mouse_enabled: bool, mouse_select: bool) -> io::Result<(Term, bool)>
         64 * 1024,
         out,
     )))?;
-    Ok((term, kitty_enabled))
+    Ok(term)
 }
 
 /// Undo everything [`init`] did: pop the kitty keyboard flags (harmless no-op

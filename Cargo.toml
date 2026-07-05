@@ -15,6 +15,25 @@ opt-level = 3
 [profile.dev.package.regex-cursor]
 opt-level = 3
 
+# Steel stack: Engine::new drops ~120 ms → ~107 ms in dev builds.
+[profile.dev.package.steel-core]
+opt-level = 3
+
+[profile.dev.package.steel-parser]
+opt-level = 3
+
+[profile.dev.package.steel-gen]
+opt-level = 3
+
+[profile.dev.package.steel-quickscope]
+opt-level = 3
+
+[profile.dev.package.im-rc]
+opt-level = 3
+
+[profile.dev.package.lasso]
+opt-level = 3
+
 [profile.release]
 lto = true
 strip = true

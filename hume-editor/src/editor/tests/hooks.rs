@@ -192,8 +192,8 @@ fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
 /// `drain_hooks()` before the event loop or they silently defer.
 ///
 /// This covers the `lib.rs::run()` path: `init_scripting` + `open_extra_files`
-/// enqueue `OnBufferOpen`/`OnLanguageSet` hooks; the explicit `drain_hooks()`
-/// after startup is what fires them.
+/// enqueue `OnBufferOpen`/`OnLanguageSet` hooks (before the terminal is even
+/// initialized); the explicit `drain_hooks()` after startup is what fires them.
 ///
 /// Fail oracle: remove `editor.drain_hooks()` from `lib.rs::run()` — hooks
 /// silently defer. This test catches the missing-drain regression.

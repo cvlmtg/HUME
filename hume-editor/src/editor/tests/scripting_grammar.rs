@@ -1149,3 +1149,119 @@ fn rust_function_highlight_snapshot() {
     let rect = ratatui::layout::Rect::new(0, 0, 30, 8);
     insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
 }
+
+// ---------------------------------------------------------------------------
+// Startup ordering invariant
+// ---------------------------------------------------------------------------
+
+/// Helper: write a temp-runtime `scheme/prelude.scm` (copied verbatim from the
+/// real runtime — it's self-contained and defines the `define-language!`
+/// macro) plus a caller-supplied `scheme/languages.scm`, point
+/// `HUME_RUNTIME`/`XDG_CONFIG_HOME`/`XDG_DATA_HOME` at temp dirs, give the
+/// editor's buffer a path so extension-based detection fires, and run
+/// `init_scripting`. Caller must keep the returned `TempDir`s alive.
+#[cfg(not(windows))]
+fn setup_editor_with_languages_scm(
+    languages_scm: &str,
+    file_name: &str,
+) -> (Editor, Vec<tempfile::TempDir>) {
+    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let config_tmp = tempfile::tempdir().unwrap();
+    let runtime_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = tempfile::tempdir().unwrap();
+
+    let hume_config = config_tmp.path().join("hume");
+    std::fs::create_dir_all(&hume_config).unwrap();
+    std::fs::write(hume_config.join("init.scm"), "").unwrap();
+
+    let scheme_dir = runtime_tmp.path().join("scheme");
+    std::fs::create_dir_all(&scheme_dir).unwrap();
+    let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
+    std::fs::write(scheme_dir.join("prelude.scm"), prelude_src).unwrap();
+    std::fs::write(scheme_dir.join("languages.scm"), languages_scm).unwrap();
+
+    let mut ed = editor_from("-[{]>\"x\": 1}\n");
+    let bid = ed.focused_buffer_id();
+    ed.state
+        .buffers
+        .get_mut(bid)
+        .set_path(Some(PathBuf::from(file_name)));
+
+    unsafe {
+        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
+        std::env::set_var("HUME_RUNTIME", runtime_tmp.path());
+        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
+    }
+
+    ed.init_scripting();
+
+    unsafe {
+        std::env::remove_var("XDG_CONFIG_HOME");
+        std::env::remove_var("HUME_RUNTIME");
+        std::env::remove_var("XDG_DATA_HOME");
+    }
+
+    (ed, vec![config_tmp, runtime_tmp, data_tmp])
+}
+
+/// Locks the startup invariant the `run()` reorder (`hume-editor/src/lib.rs`)
+/// leans on: by the time `init_scripting` returns, the initial (already-open)
+/// buffer's language has been detected from its path and its tree-sitter
+/// parse has been posted to the background worker — so the run loop's first
+/// frame is highlighted at most one poll later, never long after a b/w flash.
+///
+/// The detection + parse-post happens via the existing end-of-init
+/// `detect_and_set_language` loop in `scripting_setup.rs` — this test does
+/// not depend on, and does not require, any early-kickoff variant (an
+/// early-detection-pass approach was considered and deliberately rejected;
+/// see the ROADMAP decisions table).
+///
+/// Flip: comment out that end-of-init loop — `syntax` stays `None` after
+/// `init_scripting` and the first assertion fails.
+#[test]
+#[cfg(not(windows))]
+fn initial_buffer_parse_is_in_flight_by_end_of_init_scripting() {
+    let (parser, hl) = grammar_fixture("json");
+    let languages_scm = format!(
+        "(define-language! \"json\" '(\"json\"))\n\
+         (register-grammar! \"json\" \"{}\" \"tree_sitter_json\" \"{}\")\n",
+        parser.display(),
+        hl.display(),
+    );
+
+    let (mut ed, _dirs) = setup_editor_with_languages_scm(&languages_scm, "test.json");
+    let bid = ed.focused_buffer_id();
+
+    assert!(
+        ed.state.buffers.get(bid).syntax.is_some(),
+        "highlighter must be attached by the end of init_scripting (language \
+         detected from the buffer's path via the end-of-init detect loop)"
+    );
+    assert!(
+        ed.view.buffers[bid].tree.is_none(),
+        "tree must not be installed yet — only posted; drained on the next \
+         reparse_stale_buffers call (matches the run loop's first iteration)"
+    );
+
+    ed.reparse_stale_buffers();
+
+    assert!(
+        ed.view.buffers[bid].tree.is_some(),
+        "tree must be installed after exactly one reparse_stale_buffers call \
+         following init_scripting"
+    );
+    let parsed_gen = ed
+        .state
+        .buffers
+        .get(bid)
+        .syntax
+        .as_ref()
+        .unwrap()
+        .parsed_gen;
+    assert_eq!(
+        parsed_gen,
+        ed.state.buffers.get(bid).text_gen,
+        "parsed_gen must catch up to text_gen after the drain"
+    );
+}

@@ -65,9 +65,26 @@ pub fn run_keys(
 
 /// Start the editor.
 ///
-/// Initialises the terminal, runs the event loop, and restores the terminal
-/// on exit. The `TerminalGuard` ensures restore runs on every exit path:
-/// clean return, `?`-propagated error, and panic unwinding.
+/// Scripting initialisation (Steel VM boot + `init.scm`, ~150-200 ms) runs
+/// *before* the terminal enters raw mode / the alternate screen, so the
+/// user's shell stays visible during that window instead of an unthemed
+/// editor frame — the first frame the alt-screen ever shows is fully themed
+/// and (at most one poll later) syntax-highlighted. The kitty protocol is
+/// still probed first (on the normal screen, via `probe_kitty`) and applied
+/// via `set_kitty_support` before `init_scripting`, so the kitty-only default
+/// keybinds install before any user `bind-key!` call in `init.scm` can
+/// override them.
+///
+/// One accepted side effect: keys typed into the terminal during the
+/// pre-alt-screen window echo to the shell (normal line discipline) and are
+/// not seen by the editor; any left in the input buffer are read once raw
+/// mode / the alt-screen are entered.
+///
+/// The `TerminalGuard` ensures restore runs on every exit path: clean
+/// return, `?`-propagated error, and panic unwinding — including a panic
+/// during `init_scripting`, before the terminal was ever touched (`restore`
+/// is a harmless no-op on a terminal that was never put into raw mode / the
+/// alternate screen).
 pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     if let Err(e) = hume_platform::install_signal_handlers() {
         // Non-fatal: SIGTERM/SIGHUP will leak terminal state, but the editor
@@ -86,14 +103,8 @@ pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error
     let mut guard = hume_platform::terminal::TerminalGuard::new();
 
     let mut editor = editor::Editor::open(first)?;
-    let (mut term, kitty_enabled) = hume_platform::terminal::init(
-        editor.state.settings.mouse_enabled,
-        editor.state.settings.mouse_select,
-    )?;
+    let kitty_enabled = hume_platform::terminal::probe_kitty()?;
     editor.set_kitty_support(kitty_enabled);
-    // Paint the buffer with default settings immediately so the user sees the
-    // editor chrome while Steel initialises, rather than a blank alt-screen.
-    editor.draw_once(&mut term)?;
     editor.init_scripting();
     // Open remaining paths after scripting init so OnBufferOpen hooks fire.
     editor.open_extra_files(rest);
@@ -102,6 +113,11 @@ pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error
     // drain here they would silently defer to the first keypress.
     editor.drain_hooks();
 
+    let mut term = hume_platform::terminal::init(
+        editor.state.settings.mouse_enabled,
+        editor.state.settings.mouse_select,
+        kitty_enabled,
+    )?;
     let result = editor.run(&mut term);
 
     // Explicit restore on the happy path so IO errors propagate to the caller.

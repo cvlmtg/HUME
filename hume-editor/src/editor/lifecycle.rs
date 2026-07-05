@@ -426,8 +426,7 @@ impl Editor {
     }
 
     /// Render one frame into `buf`. Single home for the rope / syntax /
-    /// pane-settings closures shared by the event loop, `draw_once`, and
-    /// `render_to_buf`.
+    /// pane-settings closures shared by the event loop and `render_to_buf`.
     fn render_into(
         &self,
         area: ratatui::layout::Rect,
@@ -454,23 +453,6 @@ impl Editor {
             self.state.settings.pane_dividers,
             ctx,
         );
-    }
-
-    /// Paint one frame immediately — called before `init_scripting` so the
-    /// editor chrome is visible during Steel engine init instead of a blank
-    /// alt-screen.  Skips the cursor-position overlay (only live inside the
-    /// event loop) but renders the full buffer view and statusline.
-    pub(crate) fn draw_once(&mut self, term: &mut Term) -> io::Result<()> {
-        let mut ctx = RenderContext::new();
-        let size = term.size()?;
-        self.prepare_frame(size.width, size.height, &mut ctx);
-
-        let _ = hume_platform::terminal::begin_synchronized_update();
-        term.draw(|frame| {
-            self.render_into(frame.area(), frame.buffer_mut(), &mut ctx);
-        })?;
-        let _ = hume_platform::terminal::end_synchronized_update();
-        Ok(())
     }
 
     /// Render the current frame into a ratatui `Buffer` without a live terminal.
