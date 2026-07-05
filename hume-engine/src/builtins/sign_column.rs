@@ -217,7 +217,11 @@ mod tests {
 
         let rope = ropey::Rope::new();
         let cell = col.render_row(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
-        assert_eq!(cell.as_str(), "+", "with the priority-10 sign gone, 5 shows");
+        assert_eq!(
+            cell.as_str(),
+            "+",
+            "with the priority-10 sign gone, 5 shows"
+        );
     }
 
     #[test]

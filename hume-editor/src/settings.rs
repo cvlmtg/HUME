@@ -1114,7 +1114,10 @@ mod tests {
             assert!(is_bool_setting(key), "'{key}' should be a bool setting");
         }
         for key in ["tab-style", "wrap-mode", "scrolloff", "unknown-key"] {
-            assert!(!is_bool_setting(key), "'{key}' should not be a bool setting");
+            assert!(
+                !is_bool_setting(key),
+                "'{key}' should not be a bool setting"
+            );
         }
     }
 

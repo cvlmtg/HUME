@@ -446,7 +446,9 @@ fn tab_completes_set_global_theme_value() {
             unsafe { std::env::remove_var("HUME_RUNTIME") }
         }
     }
-    let lock = super::HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let dir = tempfile::tempdir().expect("tempdir");
     // Two themes so the popup opens (a single candidate completes silently).
     let themes_dir = dir.path().join("themes");
@@ -454,7 +456,10 @@ fn tab_completes_set_global_theme_value() {
     std::fs::write(themes_dir.join("zorro.toml"), b"").unwrap();
     std::fs::write(themes_dir.join("alpha.toml"), b"").unwrap();
     unsafe { std::env::set_var("HUME_RUNTIME", dir.path()) }
-    let _guard = HumeRuntimeOnly { _dir: dir, _lock: lock };
+    let _guard = HumeRuntimeOnly {
+        _dir: dir,
+        _lock: lock,
+    };
 
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
@@ -468,12 +473,19 @@ fn tab_completes_set_global_theme_value() {
         .completion
         .as_ref()
         .expect("theme value should open a popup (>=2 candidates)");
-    let names: Vec<&str> = state.candidates.iter().map(|c| c.replacement.as_str()).collect();
+    let names: Vec<&str> = state
+        .candidates
+        .iter()
+        .map(|c| c.replacement.as_str())
+        .collect();
     assert!(
         names.contains(&"zorro"),
         "theme candidate missing: {names:?}"
     );
-    assert!(names.contains(&"alpha"), "theme candidate missing: {names:?}");
+    assert!(
+        names.contains(&"alpha"),
+        "theme candidate missing: {names:?}"
+    );
 }
 
 /// `:set ` with no further input opens the scope popup (>=2 candidates), so

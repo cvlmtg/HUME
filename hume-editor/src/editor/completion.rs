@@ -1115,14 +1115,20 @@ mod tests {
         assert_eq!(result.span_start, 11);
         let names = names_of(&result);
         assert!(!names.is_empty());
-        assert!(names.contains(&"scrolloff"), "global-only key should appear");
-        assert!(names.contains(&"tab-width"), "global+buffer key should appear");
-        assert!(names.contains(&"wrap-mode"), "global+pane key should appear");
-        assert!(names.contains(&"statusline"), "hand-listed global key");
         assert!(
-            !names.contains(&"language"),
-            "language has no global scope"
+            names.contains(&"scrolloff"),
+            "global-only key should appear"
         );
+        assert!(
+            names.contains(&"tab-width"),
+            "global+buffer key should appear"
+        );
+        assert!(
+            names.contains(&"wrap-mode"),
+            "global+pane key should appear"
+        );
+        assert!(names.contains(&"statusline"), "hand-listed global key");
+        assert!(!names.contains(&"language"), "language has no global scope");
     }
 
     #[test]
@@ -1273,12 +1279,8 @@ mod tests {
     fn set_completer_value_language_from_registry() {
         let (reg, store, dir) = make_ctx_parts();
         let mut langs = LanguageRegistry::new();
-        langs
-            .register_identity("rust", &["rs"], &[], &[])
-            .unwrap();
-        langs
-            .register_identity("ruby", &["rb"], &[], &[])
-            .unwrap();
+        langs.register_identity("rust", &["rs"], &[], &[]).unwrap();
+        langs.register_identity("ruby", &["rb"], &[], &[]).unwrap();
         let ctx = ctx_with(&reg, &store, dir.path(), &langs);
         let result = SetCompleter.complete("set buffer language=", 21, &ctx);
         let names = names_of(&result);
@@ -1293,9 +1295,7 @@ mod tests {
         // language names under a non-buffer scope.
         let (reg, store, dir) = make_ctx_parts();
         let mut langs = LanguageRegistry::new();
-        langs
-            .register_identity("rust", &["rs"], &[], &[])
-            .unwrap();
+        langs.register_identity("rust", &["rs"], &[], &[]).unwrap();
         let ctx = ctx_with(&reg, &store, dir.path(), &langs);
         let result = SetCompleter.complete("set global language=", 21, &ctx);
         assert!(result.candidates.is_empty());
@@ -1305,12 +1305,8 @@ mod tests {
     fn set_completer_value_language_prefix_filters() {
         let (reg, store, dir) = make_ctx_parts();
         let mut langs = LanguageRegistry::new();
-        langs
-            .register_identity("rust", &["rs"], &[], &[])
-            .unwrap();
-        langs
-            .register_identity("ruby", &["rb"], &[], &[])
-            .unwrap();
+        langs.register_identity("rust", &["rs"], &[], &[]).unwrap();
+        langs.register_identity("ruby", &["rb"], &[], &[]).unwrap();
         let ctx = ctx_with(&reg, &store, dir.path(), &langs);
         let result = SetCompleter.complete("set buffer language=ru", 22, &ctx);
         let names = names_of(&result);
@@ -1325,9 +1321,7 @@ mod tests {
         let (reg, store, dir) = make_ctx_parts();
         let mut langs = LanguageRegistry::new();
         langs.register_identity("ru", &[], &[], &[]).unwrap();
-        langs
-            .register_identity("rust", &["rs"], &[], &[])
-            .unwrap();
+        langs.register_identity("rust", &["rs"], &[], &[]).unwrap();
         let ctx = ctx_with(&reg, &store, dir.path(), &langs);
         let result = SetCompleter.complete("set buffer language=ru", 22, &ctx);
         let names = names_of(&result);
