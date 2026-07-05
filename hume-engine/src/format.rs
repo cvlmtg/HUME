@@ -49,10 +49,20 @@ impl FormatScratch {
 
     /// Reset all buffers to empty, retaining allocated capacity.
     pub fn clear(&mut self) {
-        self.display_rows.clear();
-        self.graphemes.clear();
+        self.clear_line_bufs();
         self.virtual_lines.clear();
         self.line_texts.clear();
+    }
+
+    /// Reset the per-buffer-line fields shared with [`FrameScratch::clear_line`]
+    /// (`display_rows`, `graphemes`, `virtual_texts`).
+    ///
+    /// Excludes `line_texts`: the fused render pipeline clears it at its own
+    /// point (right before appending that line's text), decoupled from
+    /// `clear_line`'s cadence — see `line_texts`'s field doc.
+    pub fn clear_line_bufs(&mut self) {
+        self.display_rows.clear();
+        self.graphemes.clear();
         self.virtual_texts.clear();
     }
 }
@@ -83,10 +93,8 @@ pub fn count_visual_rows(
     wrap_mode: &WrapMode,
     scratch: &mut FormatScratch,
 ) -> usize {
-    scratch.display_rows.clear();
-    scratch.graphemes.clear();
+    scratch.clear_line_bufs();
     scratch.line_texts.clear();
-    scratch.virtual_texts.clear();
     format_buffer_line(
         rope,
         line_idx,
@@ -146,7 +154,11 @@ pub fn display_rows_for_line(
 
     scratch.virtual_lines.clear();
     for (_, provider) in &providers.virtual_lines {
-        provider.virtual_lines(line_idx..line_idx + 1, content_width, &mut scratch.virtual_lines);
+        provider.virtual_lines(
+            line_idx..line_idx + 1,
+            content_width,
+            &mut scratch.virtual_lines,
+        );
     }
     let mut before = 0usize;
     let mut after = 0usize;

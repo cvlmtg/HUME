@@ -32,6 +32,7 @@ use std::path::PathBuf;
 use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::{IntoSteelVal, SteelVal};
 
+use super::conv_err;
 use super::one_string;
 use super::sandbox::{
     canonical_ancestor_join, has_dotdot, is_under_grammars_sandbox, is_under_read_sandbox,
@@ -40,6 +41,26 @@ use super::sandbox::{
 
 // ── data-dir / runtime-dir ───────────────────────────────────────────────────
 
+/// Shared body for `(data-dir)`/`(runtime-dir)`: both take no args and return
+/// `dir()`'s display-form path as a string, or `#f` if `dir()` is `None`.
+fn dir_builtin(
+    args: &[SteelVal],
+    name: &'static str,
+    dir: impl FnOnce() -> Option<PathBuf>,
+) -> Result<SteelVal, SteelErr> {
+    if !args.is_empty() {
+        steel::stop!(ArityMismatch => "{name} expects 0 args, got {}", args.len());
+    }
+    match dir() {
+        Some(p) => p
+            .to_string_lossy()
+            .as_ref()
+            .into_steelval()
+            .map_err(conv_err),
+        None => Ok(SteelVal::BoolV(false)),
+    }
+}
+
 /// `(data-dir)` — returns the HUME data directory as a string, or `#f` if
 /// HOME/APPDATA is unset.
 ///
@@ -47,17 +68,7 @@ use super::sandbox::{
 /// Windows) so Scheme plugins can safely join segments with `(path-join …)`
 /// or, if necessary, plain string concatenation.
 pub(crate) fn data_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
-    if !args.is_empty() {
-        steel::stop!(ArityMismatch => "data-dir expects 0 args, got {}", args.len());
-    }
-    match super::sandbox::data_dir_display() {
-        Some(p) => p
-            .to_string_lossy()
-            .as_ref()
-            .into_steelval()
-            .map_err(|e| SteelErr::new(ErrorKind::ConversionError, e.to_string())),
-        None => Ok(SteelVal::BoolV(false)),
-    }
+    dir_builtin(args, "data-dir", super::sandbox::data_dir_display)
 }
 
 /// `(runtime-dir)` — returns the HUME runtime directory as a string, or `#f`
@@ -66,17 +77,7 @@ pub(crate) fn data_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 /// The returned path is the display form (no `\\?\` extended-length prefix on
 /// Windows).
 pub(crate) fn runtime_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
-    if !args.is_empty() {
-        steel::stop!(ArityMismatch => "runtime-dir expects 0 args, got {}", args.len());
-    }
-    match super::sandbox::runtime_dir_display() {
-        Some(p) => p
-            .to_string_lossy()
-            .as_ref()
-            .into_steelval()
-            .map_err(|e| SteelErr::new(ErrorKind::ConversionError, e.to_string())),
-        None => Ok(SteelVal::BoolV(false)),
-    }
+    dir_builtin(args, "runtime-dir", super::sandbox::runtime_dir_display)
 }
 
 // ── path-join ─────────────────────────────────────────────────────────────────
@@ -106,7 +107,7 @@ pub(crate) fn path_join(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
         .to_string_lossy()
         .as_ref()
         .into_steelval()
-        .map_err(|e| SteelErr::new(ErrorKind::ConversionError, e.to_string()))
+        .map_err(conv_err)
 }
 
 // ── path-exists? ─────────────────────────────────────────────────────────────
@@ -144,6 +145,25 @@ pub(crate) fn path_exists(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     Ok(SteelVal::BoolV(exists))
 }
 
+// ── canonicalize helper (list-dir / delete-dir / delete-file) ────────────────
+
+/// Canonicalize `raw` for a sandbox check, treating `NotFound` as `Ok(None)`
+/// rather than an error. Shared by `list-dir`, `delete-dir`, and
+/// `delete-file` — each maps `None` to its own idempotent no-op result. Any
+/// other canonicalize failure hard-fails (see module doc: never fall back to
+/// the unresolved path). `path-exists?` doesn't use this — its `NotFound` arm
+/// needs the ancestor-join fallback to still run the sandbox check.
+fn canonicalize_or_notfound(op: &str, raw: &str) -> Result<Option<PathBuf>, SteelErr> {
+    match hume_platform::fs::canonicalize(&PathBuf::from(raw)) {
+        Ok(c) => Ok(Some(c)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(SteelErr::new(
+            ErrorKind::Generic,
+            format!("{op}: cannot resolve path '{raw}': {e}"),
+        )),
+    }
+}
+
 // ── list-dir ─────────────────────────────────────────────────────────────────
 
 /// `(list-dir path)` — return a sorted list of entry *names* (not full paths)
@@ -153,23 +173,8 @@ pub(crate) fn path_exists(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 /// Sandboxed to `<data>/plugins/` and `<runtime>/plugins/`.
 pub(crate) fn list_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     let raw = one_string(args, "list-dir")?;
-    let path = PathBuf::from(&raw);
-
-    // Canonicalize directly; treat NotFound as an empty-list result.
-    // Avoids the TOCTOU window between a pre-flight .exists() and canonicalize.
-    let canonical = match hume_platform::fs::canonicalize(&path) {
-        Ok(c) => c,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Vec::<SteelVal>::new()
-                .into_steelval()
-                .map_err(|e| SteelErr::new(ErrorKind::ConversionError, e.to_string()));
-        }
-        Err(e) => {
-            return Err(SteelErr::new(
-                ErrorKind::Generic,
-                format!("list-dir: cannot canonicalize '{raw}': {e}"),
-            ));
-        }
+    let Some(canonical) = canonicalize_or_notfound("list-dir", &raw)? else {
+        return Vec::<SteelVal>::new().into_steelval().map_err(conv_err);
     };
 
     if !is_under_read_sandbox(&canonical) {
@@ -177,9 +182,7 @@ pub(crate) fn list_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     }
 
     if !canonical.is_dir() {
-        return Vec::<SteelVal>::new()
-            .into_steelval()
-            .map_err(|e| SteelErr::new(ErrorKind::ConversionError, e.to_string()));
+        return Vec::<SteelVal>::new().into_steelval().map_err(conv_err);
     }
 
     let mut names: Vec<String> = hume_platform::fs::read_dir(&canonical)
@@ -199,8 +202,7 @@ pub(crate) fn list_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
         .map(|s| SteelVal::StringV(s.into()))
         .collect();
 
-    vals.into_steelval()
-        .map_err(|e| SteelErr::new(ErrorKind::ConversionError, e.to_string()))
+    vals.into_steelval().map_err(conv_err)
 }
 
 // ── make-dir ─────────────────────────────────────────────────────────────────
@@ -255,19 +257,8 @@ pub(crate) fn make_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 /// Returns `#<void>` (including when `path` does not exist — idempotent).
 pub(crate) fn delete_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     let raw = one_string(args, "delete-dir")?;
-    let path = PathBuf::from(&raw);
-
-    // Canonicalize directly; treat NotFound as a no-op (idempotent).
-    // Hard-fail on any other error — avoids TOCTOU between .exists() and canonicalize.
-    let canonical = match hume_platform::fs::canonicalize(&path) {
-        Ok(c) => c,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(SteelVal::Void),
-        Err(e) => {
-            return Err(SteelErr::new(
-                ErrorKind::Generic,
-                format!("delete-dir: cannot resolve path '{raw}': {e}"),
-            ));
-        }
+    let Some(canonical) = canonicalize_or_notfound("delete-dir", &raw)? else {
+        return Ok(SteelVal::Void); // idempotent — nothing to delete
     };
 
     if !is_under_write_sandbox(&canonical) {
@@ -293,17 +284,8 @@ pub(crate) fn delete_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 /// path does not exist.  Rejects directories — use `delete-dir` for those.
 pub(crate) fn delete_file(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     let raw = one_string(args, "delete-file")?;
-    let path = PathBuf::from(&raw);
-
-    let canonical = match hume_platform::fs::canonicalize(&path) {
-        Ok(c) => c,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(SteelVal::Void),
-        Err(e) => {
-            return Err(SteelErr::new(
-                ErrorKind::Generic,
-                format!("delete-file: cannot resolve path '{raw}': {e}"),
-            ));
-        }
+    let Some(canonical) = canonicalize_or_notfound("delete-file", &raw)? else {
+        return Ok(SteelVal::Void); // idempotent — nothing to delete
     };
 
     if !is_under_grammars_sandbox(&canonical) {

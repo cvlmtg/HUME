@@ -41,6 +41,11 @@ macro_rules! require_cmd_ctx {
 }
 pub(crate) use require_cmd_ctx;
 
+/// Map an `IntoSteelVal` conversion failure to a Steel `ConversionError`.
+pub(crate) fn conv_err(e: impl std::fmt::Display) -> SteelErr {
+    SteelErr::new(steel::rerrs::ErrorKind::ConversionError, e.to_string())
+}
+
 /// Extract a `Vec<String>` from a Steel list value.
 ///
 /// Returns a typed error if the value is not a `ListV` or if any element is not

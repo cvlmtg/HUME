@@ -38,26 +38,32 @@ impl<'a> IntervalCursor<'a> {
 
 // ── Highlight stack ────────────────────────────────────────────────────────────
 
+/// Number of [`HighlightTier`] variants — the tier arrays in [`HighlightStack`]
+/// and [`TierBufs`] are indexed by `tier as usize`, so this must track the
+/// enum exactly (see `HighlightTier`'s doc for the discriminant assignments).
+const TIER_COUNT: usize = 4;
+
 /// Aggregated highlight intervals for one buffer line, one cursor per tier.
 /// Built once before iterating graphemes, queried per grapheme in O(1) amortised.
+///
+/// Indexed by `HighlightTier as usize`, so iterating `tiers` in order visits
+/// tiers from lowest to highest layering priority (see [`HighlightTier`]).
 pub(super) struct HighlightStack<'a> {
-    syntax: IntervalCursor<'a>,
-    search: IntervalCursor<'a>,
-    diagnostic: IntervalCursor<'a>,
-    bracket: IntervalCursor<'a>,
+    tiers: [IntervalCursor<'a>; TIER_COUNT],
 }
 
 impl<'a> HighlightStack<'a> {
     pub(super) fn new(tiers: &'a TierBufs) -> Self {
         Self {
-            syntax: IntervalCursor::new(&tiers.syntax),
-            search: IntervalCursor::new(&tiers.search),
-            diagnostic: IntervalCursor::new(&tiers.diagnostic),
-            bracket: IntervalCursor::new(&tiers.bracket),
+            tiers: tiers
+                .0
+                .each_ref()
+                .map(|intervals| IntervalCursor::new(intervals)),
         }
     }
 
-    /// Layer all active highlight tiers at `byte_offset` into `base`.
+    /// Layer all active highlight tiers at `byte_offset` into `base`, lowest
+    /// priority first (`Syntax`) through highest (`BracketMatch`).
     ///
     /// Each `theme.resolve(id)` call is an O(1) `Vec` index into the baked
     /// style array — no hashing on the per-grapheme hot path.
@@ -67,21 +73,10 @@ impl<'a> HighlightStack<'a> {
         mut base: ResolvedStyle,
         theme: &Theme,
     ) -> ResolvedStyle {
-        // Syntax (lowest)
-        if let Some(id) = self.syntax.scope_at(byte_offset) {
-            base = base.layer(theme.resolve(id));
-        }
-        // Search match
-        if let Some(id) = self.search.scope_at(byte_offset) {
-            base = base.layer(theme.resolve(id));
-        }
-        // Diagnostic
-        if let Some(id) = self.diagnostic.scope_at(byte_offset) {
-            base = base.layer(theme.resolve(id));
-        }
-        // Bracket match (highest highlight)
-        if let Some(id) = self.bracket.scope_at(byte_offset) {
-            base = base.layer(theme.resolve(id));
+        for cursor in &mut self.tiers {
+            if let Some(id) = cursor.scope_at(byte_offset) {
+                base = base.layer(theme.resolve(id));
+            }
         }
         base
     }
@@ -94,36 +89,25 @@ impl<'a> HighlightStack<'a> {
 ///
 /// Each interval is `(byte_start, byte_end, ScopeId)` — the `ScopeId` maps to
 /// a pre-baked [`ResolvedStyle`] via an O(1) `Vec` index in [`Theme::resolve`].
+/// Indexed by `HighlightTier as usize`; see [`HighlightStack`].
 #[derive(Default)]
-pub struct TierBufs {
-    syntax: Vec<(usize, usize, ScopeId)>,
-    search: Vec<(usize, usize, ScopeId)>,
-    diagnostic: Vec<(usize, usize, ScopeId)>,
-    bracket: Vec<(usize, usize, ScopeId)>,
-}
+pub struct TierBufs([Vec<(usize, usize, ScopeId)>; TIER_COUNT]);
 
 impl TierBufs {
     pub fn clear(&mut self) {
-        self.syntax.clear();
-        self.search.clear();
-        self.diagnostic.clear();
-        self.bracket.clear();
-    }
-
-    fn push(&mut self, tier: HighlightTier, interval: (usize, usize, ScopeId)) {
-        match tier {
-            HighlightTier::Syntax => self.syntax.push(interval),
-            HighlightTier::SearchMatch => self.search.push(interval),
-            HighlightTier::Diagnostic => self.diagnostic.push(interval),
-            HighlightTier::BracketMatch => self.bracket.push(interval),
+        for buf in &mut self.0 {
+            buf.clear();
         }
     }
 
+    fn push(&mut self, tier: HighlightTier, interval: (usize, usize, ScopeId)) {
+        self.0[tier as usize].push(interval);
+    }
+
     fn sort_all(&mut self) {
-        self.syntax.sort_by_key(|i| i.0);
-        self.search.sort_by_key(|i| i.0);
-        self.diagnostic.sort_by_key(|i| i.0);
-        self.bracket.sort_by_key(|i| i.0);
+        for buf in &mut self.0 {
+            buf.sort_by_key(|i| i.0);
+        }
     }
 }
 

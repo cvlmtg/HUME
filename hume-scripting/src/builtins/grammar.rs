@@ -40,7 +40,7 @@ pub(crate) fn grammar_output_path(_ctx: &mut SteelCtx, name: String) -> Result<S
     path.to_string_lossy()
         .as_ref()
         .into_steelval()
-        .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::ConversionError, e.to_string()))
+        .map_err(super::conv_err)
 }
 
 /// `(compile-grammar! src out)` — compile the tree-sitter grammar source at

@@ -98,9 +98,7 @@ impl FrameScratch {
 
     /// Reset only the per-line buffers reused between buffer lines in the fused pipeline.
     pub(crate) fn clear_line(&mut self) {
-        self.format.display_rows.clear();
-        self.format.graphemes.clear();
-        self.format.virtual_texts.clear();
+        self.format.clear_line_bufs();
         self.style.styles.clear();
     }
 }
@@ -1601,11 +1599,11 @@ mod tests {
         pane.viewport = crate::pane::ViewportState::new(10, 3);
         pane.providers
             .add_gutter_column(Box::new(ProviderIdReportingGutter));
-        let real_id = pane.providers.add_virtual_line_source(Box::new(
-            SpoofingVirtualLineSource {
+        let real_id = pane
+            .providers
+            .add_virtual_line_source(Box::new(SpoofingVirtualLineSource {
                 anchor: VirtualLineAnchor::Before(0),
-            },
-        ));
+            }));
 
         let theme = Theme::default();
         let pane_rect = rect(0, 0, 10, 3);
