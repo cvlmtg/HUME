@@ -194,6 +194,12 @@ impl EditorHost for MockHost {
     fn current_line_number(&self) -> Option<usize> {
         None
     }
+    fn current_selections(&self) -> Option<Vec<(usize, usize, bool)>> {
+        None
+    }
+    fn char_index_to_line(&self, _idx: usize) -> Option<usize> {
+        None
+    }
 }
 
 fn to_editor_bind_mode(mode: BindMode) -> hume::KeymapBindMode {

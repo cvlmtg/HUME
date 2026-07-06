@@ -120,6 +120,12 @@ impl EditorHost for NullHost {
     fn current_line_number(&self) -> Option<usize> {
         None
     }
+    fn current_selections(&self) -> Option<Vec<(usize, usize, bool)>> {
+        None
+    }
+    fn char_index_to_line(&self, _idx: usize) -> Option<usize> {
+        None
+    }
 }
 
 /// Like [`NullHost`] but `register_command` fails.
@@ -233,5 +239,11 @@ impl EditorHost for FailingRegisterHost {
     }
     fn current_line_number(&self) -> Option<usize> {
         NullHost.current_line_number()
+    }
+    fn current_selections(&self) -> Option<Vec<(usize, usize, bool)>> {
+        NullHost.current_selections()
+    }
+    fn char_index_to_line(&self, idx: usize) -> Option<usize> {
+        NullHost.char_index_to_line(idx)
     }
 }

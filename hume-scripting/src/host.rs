@@ -171,4 +171,19 @@ pub trait EditorHost {
     /// Returns `None` when the focused (pane, buffer) has no seeded pane state
     /// (stale or never-focused ids).
     fn current_line_number(&self) -> Option<usize>;
+
+    /// All selections in the focused buffer as `(anchor, head, primary)` triples —
+    /// raw 0-indexed char offsets, inclusive model (anchor == head is a 1-char
+    /// selection), direction preserved (anchor > head for backward selections),
+    /// sorted by selection start, with exactly one triple flagged primary.
+    ///
+    /// Returns `None` when the focused (pane, buffer) has no seeded pane state.
+    fn current_selections(&self) -> Option<Vec<(usize, usize, bool)>>;
+
+    /// 1-indexed line number containing the 0-indexed char offset `idx` in the
+    /// focused buffer.
+    ///
+    /// Returns `None` when the focused (pane, buffer) has no seeded pane state
+    /// or when `idx` is out of range (> `len_chars()`).
+    fn char_index_to_line(&self, idx: usize) -> Option<usize>;
 }

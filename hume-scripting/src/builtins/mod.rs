@@ -298,6 +298,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
         "current-line-number",
         buffers::current_line_number,
     );
+    steel.register_fn_with_ctx(HUME_CTX, "current-selections", buffers::current_selections);
+    steel.register_fn_with_ctx(HUME_CTX, "char-index->line", buffers::char_index_to_line);
 
     // Multi-buffer mutating builtins
     steel.register_fn_with_ctx(HUME_CTX, "open-buffer!", buffers::open_buffer);

@@ -239,6 +239,53 @@ pub(crate) fn current_line_number(ctx: &mut SteelCtx) -> SteelResult {
     }
 }
 
+/// `(current-selections)` → list of `(anchor head primary?)` per selection —
+/// raw 0-indexed inclusive char offsets, direction preserved (anchor > head
+/// when backward), sorted by selection start, exactly one `primary?` = `#t` —
+/// or `#f` when the focused (pane, buffer) has no seeded pane state.
+pub(crate) fn current_selections(ctx: &mut SteelCtx) -> SteelResult {
+    require_cmd_ctx!(ctx, "current-selections");
+    match ctx.host.current_selections() {
+        Some(sels) => {
+            let list: Vec<SteelVal> = sels
+                .into_iter()
+                .map(|(anchor, head, primary)| {
+                    vec![
+                        SteelVal::IntV(anchor as isize),
+                        SteelVal::IntV(head as isize),
+                        SteelVal::BoolV(primary),
+                    ]
+                    .into_steelval()
+                    .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
+                })
+                .collect::<Result<_, _>>()?;
+            list.into_steelval()
+                .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
+        }
+        None => Ok(SteelVal::BoolV(false)),
+    }
+}
+
+/// `(char-index->line idx)` → 1-indexed line number containing 0-indexed char
+/// offset `idx`, or `#f` when the focused (pane, buffer) has no seeded pane
+/// state or `idx` is out of range (> buffer length in chars).
+pub(crate) fn char_index_to_line(ctx: &mut SteelCtx, idx: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "char-index->line");
+    let idx = match idx {
+        SteelVal::IntV(n) if n >= 0 => n as usize,
+        _ => {
+            return Err(SteelErr::new(
+                ErrorKind::TypeMismatch,
+                "char-index->line: expected non-negative integer".into(),
+            ));
+        }
+    };
+    match ctx.host.char_index_to_line(idx) {
+        Some(line) => Ok(SteelVal::IntV(line as isize)),
+        None => Ok(SteelVal::BoolV(false)),
+    }
+}
+
 /// `(set-buffer-language! bid lang-or-#f)` — deferred; applied after the eval returns.
 pub(crate) fn set_buffer_language_steel(
     ctx: &mut SteelCtx,
@@ -371,6 +418,22 @@ mod tests {
         assert!(current_line_number(&mut ctx).is_err());
     }
 
+    /// `current-selections` is blocked in init mode.
+    #[test]
+    fn current_selections_blocked_in_init_mode() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        assert!(current_selections(&mut ctx).is_err());
+    }
+
+    /// `char-index->line` is blocked in init mode.
+    #[test]
+    fn char_index_to_line_blocked_in_init_mode() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        assert!(char_index_to_line(&mut ctx, SteelVal::IntV(0)).is_err());
+    }
+
     // ── Type errors (wrong arg type) ──────────────────────────────────────────
 
     /// `buffer-path` rejects a non-BufferId argument.
@@ -406,6 +469,28 @@ mod tests {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
         let result = buffer_dirty(&mut ctx, SteelVal::BoolV(true));
+        assert!(result.is_err());
+    }
+
+    /// `char-index->line` rejects a non-integer and a negative integer argument.
+    ///
+    /// Fail oracle: remove the `n >= 0` guard → `IntV(-1)` would be accepted and
+    /// cast to a huge `usize`, silently corrupting the lookup instead of erroring.
+    #[test]
+    fn char_index_to_line_wrong_type_errors() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = char_index_to_line(&mut ctx, SteelVal::StringV("not-an-int".into()));
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("expected non-negative integer")
+        );
+
+        let mut ctx = h.ctx();
+        let result = char_index_to_line(&mut ctx, SteelVal::IntV(-1));
         assert!(result.is_err());
     }
 
@@ -470,6 +555,24 @@ mod tests {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
         let result = current_line_number(&mut ctx);
+        assert!(matches!(result, Ok(SteelVal::BoolV(false))));
+    }
+
+    /// `current-selections` returns `#f` when the host has no pane state (NullHost).
+    #[test]
+    fn current_selections_returns_false_when_no_pane_state() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = current_selections(&mut ctx);
+        assert!(matches!(result, Ok(SteelVal::BoolV(false))));
+    }
+
+    /// `char-index->line` returns `#f` when the host has no pane state (NullHost).
+    #[test]
+    fn char_index_to_line_returns_false_when_no_pane_state() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = char_index_to_line(&mut ctx, SteelVal::IntV(0));
         assert!(matches!(result, Ok(SteelVal::BoolV(false))));
     }
 }

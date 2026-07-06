@@ -55,4 +55,14 @@ A library of helper functions for plugin authors. Load it before any plugin that
 (load-plugin "core:stdlib")
 ```
 
-Currently minimal — it grows as helpers are added.
+`(current-selections)` returns a list of selection records, one per cursor — treat each record as opaque and read it only through the accessors below, never by picking it apart directly. Character positions count from 0; line numbers count from 1, matching what the statusline shows.
+
+- `(stdlib/selection-anchor sel)` / `(stdlib/selection-head sel)` — the two ends of a selection record. The head is the end that moves — where the cursor blinks.
+- `(stdlib/selection-primary? sel)` — whether this is the primary selection (the one shown in the statusline, when there are multiple cursors).
+- `(stdlib/primary-selection sels)` — pick out the primary selection from the full list.
+- `(stdlib/single-selection? sels)` — true when there's exactly one cursor.
+- `(stdlib/all-single-char? sels)` — true when every selection covers exactly one character (no text is selected — just cursors).
+- `(stdlib/cursor-char-index sels)` — the character position of the primary cursor.
+- `(char-index->line idx)` — converts a character position (as returned by the accessors above) to its line number.
+
+All of these accept `#f` and return `#f` — you only need to check `(current-selections)` for `#f` once, wherever you call it.

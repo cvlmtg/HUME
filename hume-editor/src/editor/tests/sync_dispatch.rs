@@ -2232,3 +2232,157 @@ fn steel_dispatch_consumes_pending_char() {
         "stale pending_char must not leak into later dispatch"
     );
 }
+
+// ── current_selections / char_index_to_line ───────────────────────────────────
+
+/// `current_selections` returns all selections sorted by start, one per cursor.
+///
+/// Fail oracle: hardcoding a single-element result would pass for one cursor
+/// but fail here, where two cursors must both appear in start order.
+#[test]
+fn current_selections_sorted_multi_cursor() {
+    // "-[ab]>c -[de]>f\n" — text "abc def\n": selection 1 anchor=0 head=1,
+    // selection 2 anchor=4 head=5 (hand-counted from the annotated buffer).
+    let mut ed = editor_from("-[ab]>c -[de]>f\n");
+    let host = live_host!(ed);
+    let sels = host
+        .current_selections()
+        .expect("pane state must be seeded");
+    assert_eq!(
+        sels,
+        vec![(0, 1, true), (4, 5, false)],
+        "selections must be sorted by start, primary flagged on the first"
+    );
+}
+
+/// `current_selections` must preserve backward direction (anchor > head),
+/// never normalize it.
+///
+/// Fail oracle: normalizing to `(min, max)` would report `(0, 1, true)`
+/// instead of `(1, 0, true)`.
+#[test]
+fn current_selections_preserves_backward_direction() {
+    // "<[ab]-c\n" — backward selection: head=0, anchor=1 (hand-counted).
+    let mut ed = editor_from("<[ab]-c\n");
+    let host = live_host!(ed);
+    let sels = host
+        .current_selections()
+        .expect("pane state must be seeded");
+    assert_eq!(
+        sels,
+        vec![(1, 0, true)],
+        "backward selection must report anchor > head, not normalized"
+    );
+}
+
+/// The `primary?` flag must follow `SelectionSet`'s `primary_index`, not
+/// always the first (start-sorted) selection.
+///
+/// Fail oracle: always flagging index 0 as primary would report
+/// `(0, 0, true)` instead of `(4, 4, true)`.
+#[test]
+fn current_selections_primary_flag_follows_primary_index() {
+    use hume_editing::selection::{Selection, SelectionSet};
+
+    let mut ed = editor_from("-[a]>bcde\n");
+    ed.set_current_selections(SelectionSet::from_vec(
+        vec![Selection::collapsed(0), Selection::collapsed(4)],
+        1,
+    ));
+    let host = live_host!(ed);
+    let sels = host
+        .current_selections()
+        .expect("pane state must be seeded");
+    assert_eq!(
+        sels,
+        vec![(0, 0, false), (4, 4, true)],
+        "primary flag must follow primary_index, not selection order"
+    );
+}
+
+/// `char_index_to_line` maps a 0-indexed char offset to its 1-indexed line.
+///
+/// Independent oracle: expected lines are hand-counted from the buffer text,
+/// not derived via `char_to_line` or any shared helper.
+#[test]
+fn char_index_to_line_maps_offsets() {
+    // "ab\ncd\n" — a=0 b=1 \n=2 c=3 d=4 \n=5 (6 chars).
+    let mut ed = editor_from("-[a]>b\ncd\n");
+    let host = live_host!(ed);
+    assert_eq!(
+        host.char_index_to_line(0),
+        Some(1),
+        "offset 0 ('a') is on line 1"
+    );
+    assert_eq!(
+        host.char_index_to_line(3),
+        Some(2),
+        "offset 3 ('c') is on line 2"
+    );
+}
+
+/// `char_index_to_line` returns `None` for an offset past the buffer's length,
+/// but still succeeds at the exact boundary (`idx == len_chars()`).
+#[test]
+fn char_index_to_line_out_of_range_returns_none() {
+    // "ab\ncd\n" — 6 chars, len_chars() == 6. Every buffer ends with a
+    // structural '\n' (HUME invariant), so ropey counts a trailing virtual
+    // empty line after it: line 1 "ab\n", line 2 "cd\n", line 3 "" — idx 6
+    // (== len_chars()) sits on that third, empty line.
+    let mut ed = editor_from("-[a]>b\ncd\n");
+    let host = live_host!(ed);
+    assert_eq!(
+        host.char_index_to_line(7),
+        None,
+        "offset past len_chars() must be None"
+    );
+    assert_eq!(
+        host.char_index_to_line(6),
+        Some(3),
+        "offset exactly at len_chars() is still a valid boundary (trailing virtual line)"
+    );
+}
+
+/// End-to-end: a Steel command reads `(current-selections)` and compares it
+/// against a literal quoted list — pins the exact ints/bools/list shape that
+/// crosses the Steel boundary, not just the Rust-side tuple data.
+///
+/// Fail oracle: if the Steel-visible shape were wrong (wrong index order,
+/// wrong types), `equal?` would fail, the `unless` would fire, and `delete`
+/// would mutate the buffer — the assertion on `state(&ed)` catches that.
+#[test]
+fn current_selections_steel_roundtrip() {
+    let mut ed = editor_from("-[a]>bc\n");
+
+    let names: Vec<String> = ed
+        .state
+        .registry
+        .native_mappable_names()
+        .map(str::to_owned)
+        .collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+
+    let mut host = ScriptingHost::new();
+    host.register_command_names(&name_refs);
+
+    let mut init_host = live_host!(ed);
+    host.eval_source_returning_defs(
+        r#"(define-command! "probe-selections-roundtrip" ""
+             (lambda ()
+               (unless (equal? (current-selections) (list (list 0 0 #t)))
+                 (call! "delete" 1))))"#
+            .to_owned(),
+        Default::default(),
+        &mut init_host,
+    )
+    .expect("define-command! must succeed");
+
+    ed.scripting = Some(host);
+    ed.execute_keymap_command("probe-selections-roundtrip".into(), 1, false, vec![]);
+
+    assert_eq!(
+        state(&ed),
+        "-[a]>bc\n",
+        "buffer must be untouched: (current-selections) must equal '((0 0 #t))"
+    );
+}

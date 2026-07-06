@@ -32,6 +32,22 @@ impl<'a> EditorHostImpl<'a> {
     fn buffer(&self, id: BufferId) -> Option<&crate::editor::buffer::Buffer> {
         self.state.buffers.try_get(id)
     }
+
+    /// Seeded pane-buffer state for the focused (pane, buffer), or `None` when
+    /// unseeded (stale or never-focused ids) — the shared guard behind every
+    /// live cursor/selection read.
+    fn focused_pane_buffer_state(
+        &self,
+    ) -> Option<(BufferId, &crate::editor::pane_state::PaneBufferState)> {
+        let buf_id = crate::editor::commands::focused_buffer_id(self.state, self.view);
+        let pbs = self
+            .state
+            .panes
+            .state
+            .get(self.state.focused_pane_id)?
+            .get(buf_id)?;
+        Some((buf_id, pbs))
+    }
 }
 
 impl<'a> EditorHost for EditorHostImpl<'a> {
@@ -287,13 +303,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
 
     // ── Live cursor read ─────────────────────────────────────────────────────
     fn current_line_number(&self) -> Option<usize> {
-        let buf_id = crate::editor::commands::focused_buffer_id(self.state, self.view);
-        let pbs = self
-            .state
-            .panes
-            .state
-            .get(self.state.focused_pane_id)?
-            .get(buf_id)?;
+        let (buf_id, pbs) = self.focused_pane_buffer_state()?;
         let head = pbs.selections.primary().head();
         Some(
             self.state
@@ -304,6 +314,27 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
                 .char_to_line(head)
                 + 1,
         )
+    }
+
+    fn current_selections(&self) -> Option<Vec<(usize, usize, bool)>> {
+        let (_, pbs) = self.focused_pane_buffer_state()?;
+        let primary_index = pbs.selections.primary_index();
+        Some(
+            pbs.selections
+                .iter_sorted()
+                .enumerate()
+                .map(|(i, sel)| (sel.anchor(), sel.head(), i == primary_index))
+                .collect(),
+        )
+    }
+
+    fn char_index_to_line(&self, idx: usize) -> Option<usize> {
+        let (buf_id, _) = self.focused_pane_buffer_state()?;
+        let rope = self.state.buffers.get(buf_id).text().rope();
+        if idx > rope.len_chars() {
+            return None;
+        }
+        Some(rope.char_to_line(idx) + 1)
     }
 }
 
