@@ -7,7 +7,7 @@ HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, w
 - `README.md` — Project description
 - `docs/ROADMAP.md` — Design decisions, open questions, and milestones
 - `docs/LSP.md` — LSP design, prerequisites, and task breakdown
-- `LEARNING.md` — Concepts and Rust patterns explained as they arise
+- `docs/LEARNING.md` — Concepts and Rust patterns explained as they arise
 
 ## Architectural invariants (quick orientation)
 - **Workspace**: five crates — `hume-engine/` (rendering pipeline, pane geometry), `hume-editor/` (buffer, ops, scripting, keymaps, everything else; builds the `hume` binary), `hume-editing/` (text model, selections, grapheme utils), `hume-platform/` (terminal I/O, filesystem helpers), `hume-scripting/` (Steel scripting host).
@@ -49,7 +49,7 @@ Every piece of writing in this repo targets one of three audiences. Know which o
    - No babysitting. Assume the reader can follow a short instruction. ❌ "These are absent on a fresh setup" — say what to do, not what the reader will or won't see.
    - Describe what the editor does and how to drive it. Nothing about why it's built that way.
 
-2. **Learners / curious developers** — people who want to understand HUME's *concepts*, not its code yet. Lives in `LEARNING.md` and `docs/learning/*.md`.
+2. **Learners / curious developers** — people who want to understand HUME's *concepts*, not its code yet. Lives in `docs/LEARNING.md` and `docs/learning/*.md`.
    - High-level explanations of ideas: the text model, motions vs text objects, the undo tree, etc.
    - No source-file paths, no `editor/src/...` references, no function names. If the explanation needs them to land, it belongs in a source comment instead.
    - Code snippets are fine when they illustrate an *idea*; they should read as pseudocode-with-Rust-syntax, not as a tour of the actual implementation.
