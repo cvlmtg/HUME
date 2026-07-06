@@ -17,11 +17,11 @@
 ;; (bind-keys! mode (key cmd) ...)
 ;;
 ;; Batched (bind-key!).  Binds one or more key sequences to command names in
-;; `mode` ("normal" or "insert").  Expands to a `begin` of individual
+;; `mode` ('normal or 'insert).  Expands to a `begin` of individual
 ;; `bind-key!` calls; all restrictions of `bind-key!` apply.
 ;;
 ;; Example:
-;;   (bind-keys! "normal"
+;;   (bind-keys! 'normal
 ;;     ("g d" "goto-definition")
 ;;     ("g r" "goto-references"))
 (define-syntax bind-keys!
@@ -35,7 +35,7 @@
 ;; calling (bind-key-extend! mode key cmd) for each pair.
 ;;
 ;; Example:
-;;   (bind-keys-extend! "normal"
+;;   (bind-keys-extend! 'normal
 ;;     ("z" "select-line")
 ;;     ("Z" "select-to-end"))
 (define-syntax bind-keys-extend!
@@ -49,7 +49,7 @@
 ;; A no-op for keys that are not currently bound.
 ;;
 ;; Example:
-;;   (unbind-keys! "normal" "Q" "Z Z")
+;;   (unbind-keys! 'normal "Q" "Z Z")
 (define-syntax unbind-keys!
   (syntax-rules ()
     ((_ mode key ...)

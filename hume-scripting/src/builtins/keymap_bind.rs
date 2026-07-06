@@ -12,8 +12,13 @@ type SteelResult = Result<SteelVal, SteelErr>;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn mode_from_str(mode_str: &str, fn_name: &str) -> Result<BindMode, SteelErr> {
-    match mode_str.to_ascii_lowercase().as_str() {
+fn mode_from_symbol(mode: &SteelVal, fn_name: &str) -> Result<BindMode, SteelErr> {
+    let mode_str = match mode {
+        SteelVal::SymbolV(s) => s.to_string(),
+        _ => steel::stop!(TypeMismatch =>
+            "{fn_name}: expected a mode symbol like 'normal, got {:?}", mode),
+    };
+    match mode_str.as_str() {
         "normal" => Ok(BindMode::Normal),
         "extend" => Ok(BindMode::Extend),
         "insert" => Ok(BindMode::Insert),
@@ -30,7 +35,7 @@ enum BindKind {
 fn bind_inner(
     ctx: &mut SteelCtx,
     fn_name: &str,
-    mode_str: String,
+    mode: SteelVal,
     key_str: String,
     cmd_name: String,
     kind: BindKind,
@@ -40,7 +45,7 @@ fn bind_inner(
         steel::stop!(Generic =>
             "{fn_name}: only valid during init.scm or plugin load, not from a Steel command body");
     }
-    let mode = mode_from_str(&mode_str, fn_name)?;
+    let mode = mode_from_symbol(&mode, fn_name)?;
     let keys = parse_key_sequence(&key_str)
         .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
     match kind {
@@ -58,11 +63,11 @@ fn bind_inner(
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
-/// `(bind-key! mode key-sequence command-name)`
+/// `(bind-key! 'mode key-sequence command-name)`
 ///
 /// Binds a key sequence in the given mode to a named command.
 ///
-/// - `mode` — `"normal"`, `"extend"`, or `"insert"` (case-insensitive).
+/// - `mode` — a symbol: `'normal`, `'extend`, or `'insert`.
 /// - `key-sequence` — a string parsed by [`parse_key_sequence`].
 /// - `command-name` — the canonical command name (must be registered in
 ///   the [`CommandRegistry`] at dispatch time; not validated here).
@@ -70,14 +75,14 @@ fn bind_inner(
 /// Only valid during `init.scm` or plugin load.
 pub(crate) fn bind_key(
     ctx: &mut SteelCtx,
-    mode_str: String,
+    mode: SteelVal,
     key_str: String,
     cmd_name: String,
 ) -> SteelResult {
     bind_inner(
         ctx,
         "bind-key!",
-        mode_str,
+        mode,
         key_str,
         cmd_name,
         BindKind::Normal,
@@ -85,7 +90,7 @@ pub(crate) fn bind_key(
     )
 }
 
-/// `(bind-key-extend! mode key-sequence command-name)`
+/// `(bind-key-extend! 'mode key-sequence command-name)`
 ///
 /// Like `(bind-key! …)` but marks the binding as always-extending
 /// (`force_extend = true`). The command will extend the selection whenever
@@ -94,14 +99,14 @@ pub(crate) fn bind_key(
 /// Only valid during `init.scm` or plugin load.
 pub(crate) fn bind_key_extend(
     ctx: &mut SteelCtx,
-    mode_str: String,
+    mode: SteelVal,
     key_str: String,
     cmd_name: String,
 ) -> SteelResult {
     bind_inner(
         ctx,
         "bind-key-extend!",
-        mode_str,
+        mode,
         key_str,
         cmd_name,
         BindKind::Normal,
@@ -109,16 +114,16 @@ pub(crate) fn bind_key_extend(
     )
 }
 
-/// `(unbind-key! mode key-sequence)`
+/// `(unbind-key! 'mode key-sequence)`
 ///
 /// Removes the binding for `key-sequence` in `mode`. Silent no-op if the
 /// sequence is already unbound. Only valid during `init.scm` or plugin load.
-pub(crate) fn unbind_key(ctx: &mut SteelCtx, mode_str: String, key_str: String) -> SteelResult {
+pub(crate) fn unbind_key(ctx: &mut SteelCtx, mode: SteelVal, key_str: String) -> SteelResult {
     if !ctx.is_init && ctx.plugin_stack.is_empty() {
         steel::stop!(Generic =>
             "unbind-key!: only valid during init.scm or plugin load, not from a Steel command body");
     }
-    let mode = mode_from_str(&mode_str, "unbind-key!")?;
+    let mode = mode_from_symbol(&mode, "unbind-key!")?;
     let keys = parse_key_sequence(&key_str)
         .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
     ctx.host
@@ -127,7 +132,7 @@ pub(crate) fn unbind_key(ctx: &mut SteelCtx, mode_str: String, key_str: String) 
     Ok(SteelVal::Void)
 }
 
-/// `(bind-wait-char! mode key-sequence command-name)`
+/// `(bind-wait-char! 'mode key-sequence command-name)`
 ///
 /// Binds a key sequence to a WaitChar node so that after the user completes
 /// the sequence, the next character is stored in `pending_char` and
@@ -136,14 +141,14 @@ pub(crate) fn unbind_key(ctx: &mut SteelCtx, mode_str: String, key_str: String) 
 /// Only valid during `init.scm` or plugin load.
 pub(crate) fn bind_wait_char(
     ctx: &mut SteelCtx,
-    mode_str: String,
+    mode: SteelVal,
     key_str: String,
     cmd_name: String,
 ) -> SteelResult {
     bind_inner(
         ctx,
         "bind-wait-char!",
-        mode_str,
+        mode,
         key_str,
         cmd_name,
         BindKind::WaitChar,
@@ -165,7 +170,12 @@ mod tests {
     fn bind_key_blocked_in_command_mode() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        let result = bind_key(&mut ctx, "normal".into(), "z".into(), "move-right".into());
+        let result = bind_key(
+            &mut ctx,
+            SteelVal::SymbolV("normal".into()),
+            "z".into(),
+            "move-right".into(),
+        );
         assert!(result.is_err(), "bind-key! must error in command mode");
         let msg = result.unwrap_err().to_string();
         assert!(
@@ -179,7 +189,12 @@ mod tests {
     fn bind_key_extend_blocked_in_command_mode() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        let result = bind_key_extend(&mut ctx, "normal".into(), "z".into(), "move-right".into());
+        let result = bind_key_extend(
+            &mut ctx,
+            SteelVal::SymbolV("normal".into()),
+            "z".into(),
+            "move-right".into(),
+        );
         assert!(
             result.is_err(),
             "bind-key-extend! must error in command mode"
@@ -191,7 +206,7 @@ mod tests {
     fn unbind_key_blocked_in_command_mode() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        let result = unbind_key(&mut ctx, "normal".into(), "z".into());
+        let result = unbind_key(&mut ctx, SteelVal::SymbolV("normal".into()), "z".into());
         assert!(result.is_err(), "unbind-key! must error in command mode");
         let msg = result.unwrap_err().to_string();
         assert!(
@@ -205,7 +220,12 @@ mod tests {
     fn bind_wait_char_blocked_in_command_mode() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        let result = bind_wait_char(&mut ctx, "normal".into(), "f".into(), "wait-f".into());
+        let result = bind_wait_char(
+            &mut ctx,
+            SteelVal::SymbolV("normal".into()),
+            "f".into(),
+            "wait-f".into(),
+        );
         assert!(
             result.is_err(),
             "bind-wait-char! must error in command mode"
@@ -216,13 +236,18 @@ mod tests {
 
     /// `bind-key!` rejects an unknown mode name.
     ///
-    /// Fail oracle: remove `mode_from_str` validation → "visual" silently picks an
+    /// Fail oracle: remove `mode_from_symbol` validation → 'visual silently picks an
     /// arbitrary arm in the match and inserts into the wrong trie.
     #[test]
     fn bind_key_invalid_mode_errors() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx_init();
-        let result = bind_key(&mut ctx, "visual".into(), "z".into(), "move-right".into());
+        let result = bind_key(
+            &mut ctx,
+            SteelVal::SymbolV("visual".into()),
+            "z".into(),
+            "move-right".into(),
+        );
         assert!(result.is_err(), "bind-key! must reject unknown mode");
         let msg = result.unwrap_err().to_string();
         assert!(
@@ -236,8 +261,31 @@ mod tests {
     fn unbind_key_invalid_mode_errors() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx_init();
-        let result = unbind_key(&mut ctx, "visual".into(), "z".into());
+        let result = unbind_key(&mut ctx, SteelVal::SymbolV("visual".into()), "z".into());
         assert!(result.is_err(), "unbind-key! must reject unknown mode");
+    }
+
+    /// `bind-key!` rejects a string mode (the pre-migration convention);
+    /// mode must now be a symbol.
+    ///
+    /// Fail oracle: if `mode_from_symbol` still coerced strings, this would pass
+    /// silently instead of raising a type mismatch.
+    #[test]
+    fn bind_key_string_mode_errors() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        let result = bind_key(
+            &mut ctx,
+            SteelVal::StringV("normal".into()),
+            "z".into(),
+            "move-right".into(),
+        );
+        assert!(result.is_err(), "bind-key! must reject a string mode");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("symbol"),
+            "error must mention 'symbol'; got: {msg}"
+        );
     }
 
     // ── Key-sequence parsing ──────────────────────────────────────────────────
@@ -253,7 +301,7 @@ mod tests {
         // "<NOTAKEY>" is not a valid key name.
         let result = bind_key(
             &mut ctx,
-            "normal".into(),
+            SteelVal::SymbolV("normal".into()),
             "<NOTAKEY>".into(),
             "move-right".into(),
         );
@@ -268,7 +316,11 @@ mod tests {
     fn unbind_key_invalid_key_sequence_errors() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx_init();
-        let result = unbind_key(&mut ctx, "normal".into(), "<NOTAKEY>".into());
+        let result = unbind_key(
+            &mut ctx,
+            SteelVal::SymbolV("normal".into()),
+            "<NOTAKEY>".into(),
+        );
         assert!(
             result.is_err(),
             "unbind-key! must reject invalid key sequences"
@@ -284,7 +336,12 @@ mod tests {
     fn bind_key_init_mode_calls_host() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx_init();
-        let result = bind_key(&mut ctx, "normal".into(), "z".into(), "move-right".into());
+        let result = bind_key(
+            &mut ctx,
+            SteelVal::SymbolV("normal".into()),
+            "z".into(),
+            "move-right".into(),
+        );
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(
@@ -305,7 +362,12 @@ mod tests {
             .push(PluginId::parse("core:myplugin").unwrap());
         {
             let mut ctx = h.ctx(); // is_init=false, plugin_stack non-empty → allowed
-            let result = bind_key(&mut ctx, "normal".into(), "z".into(), "cmd".into());
+            let result = bind_key(
+                &mut ctx,
+                SteelVal::SymbolV("normal".into()),
+                "z".into(),
+                "cmd".into(),
+            );
             // Guard must pass; NullHost error is expected.
             assert!(result.is_err());
             assert!(

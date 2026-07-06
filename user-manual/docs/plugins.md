@@ -174,7 +174,7 @@ A plugin can read the `#:config` value its user passed to `load-plugin` or `decl
 ```scheme
 (define cfg (plugin-config))
 (unless (and (hash-contains? cfg "disable-binding") (hash-ref cfg "disable-binding"))
-  (bind-key! "normal" "C" "my-command"))
+  (bind-key! 'normal "C" "my-command"))
 ```
 
 Document the keys your plugin understands so users know what to pass.

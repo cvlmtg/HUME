@@ -110,12 +110,12 @@ HUME ships a theme editor — a single-file HTML tool you can open in a browser 
 ## Key bindings
 
 ```scheme
-(bind-key! "normal" "ctrl-j" "move-down")
-(bind-key! "normal" "g e" "goto-last-line")
-(unbind-key! "normal" "ctrl-j")
+(bind-key! 'normal "ctrl-j" "move-down")
+(bind-key! 'normal "g e" "goto-last-line")
+(unbind-key! 'normal "ctrl-j")
 ```
 
-`bind-key!` — binds a key in the given mode (`"normal"`, `"insert"`, `"extend"`).
+`bind-key!` — binds a key in the given mode (`'normal`, `'insert`, `'extend`).
 `unbind-key!` — removes a binding.
 
 ### Binding a key that waits for a character
@@ -123,7 +123,7 @@ HUME ships a theme editor — a single-file HTML tool you can open in a browser 
 Some commands need a character typed right after the key (find/till motions, surround). `bind-wait-char!` binds a key sequence so the *next* keypress is captured and passed to the target command instead of being looked up in the keymap:
 
 ```scheme
-(bind-wait-char! "normal" "m s" "surround-add")
+(bind-wait-char! 'normal "m s" "surround-add")
 ```
 
 Inside the target command, read the captured character with `(pending-char)` — see [Plugins](plugins.md) for the full command-writing API, including the related `(request-wait-char! cmd-name)`, which arms the same mechanism from inside an already-running command rather than from a key binding.
@@ -205,8 +205,8 @@ Hooks can trigger on language detection:
 (set-option! "tab-width" 2)
 (set-option! "scrolloff" 8)
 
-(bind-key! "normal" "ctrl-h" "select-prev-word")
-(bind-key! "normal" "ctrl-l" "select-next-word")
+(bind-key! 'normal "ctrl-h" "select-prev-word")
+(bind-key! 'normal "ctrl-l" "select-next-word")
 
 (declare-plugin "username/hume-plugin-example" #:commands '("hello"))
 ```

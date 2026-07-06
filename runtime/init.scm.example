@@ -42,7 +42,7 @@
 ;; ── Key bindings ──────────────────────────────────────────────────────────────
 ;;
 ;; (bind-key! mode key-sequence command-name)
-;;   mode          — "normal", "insert", or "extend"
+;;   mode          — 'normal, 'insert, or 'extend
 ;;   key-sequence  — space-separated tokens: "g h", "ctrl-f", "alt-x", "f1"
 ;;   command-name  — any command name visible in :commands
 ;;
@@ -62,15 +62,15 @@
 ;;   Remove multiple bindings at once.
 ;;
 ;; Example — bind several normal-mode keys in one call:
-;; (bind-keys! "normal"
+;; (bind-keys! 'normal
 ;;   ("U"          "undo")
 ;;   ("ctrl-enter" "open-below"))
 
 ;; Re-map 'U' in normal mode to undo for muscle-memory from other editors.
-;; (bind-key! "normal" "U" "undo")
+;; (bind-key! 'normal "U" "undo")
 
 ;; Open a new line below and enter insert mode with Ctrl-Enter.
-;; (bind-key! "normal" "ctrl-enter" "open-below")
+;; (bind-key! 'normal "ctrl-enter" "open-below")
 
 ;; ── Custom commands ───────────────────────────────────────────────────────────
 ;;
@@ -113,7 +113,7 @@
 ;;   (lambda ()
 ;;     (set-register-prefix! "k")
 ;;     (call! "paste-after")))
-;; (bind-key! "normal" "p" "paste-ring")
+;; (bind-key! 'normal "p" "paste-ring")
 ;;
 ;; Or load the bundled plugin for the full p/P + Ctrl+V split:
 ;;   (load-plugin "core:classic-paste")
@@ -141,8 +141,8 @@
 ;;     (call! "move-up" count extend)
 ;;     (call! "select-word-nearest-on-line" 1 extend)))
 ;;
-;; (bind-key! "normal" "j" "move-down-select-word")
-;; (bind-key! "normal" "k" "move-up-select-word")
+;; (bind-key! 'normal "j" "move-down-select-word")
+;; (bind-key! 'normal "k" "move-up-select-word")
 
 ;; ── Hooks ────────────────────────────────────────────────────────────────────
 ;;
@@ -246,4 +246,4 @@
 ;; The bind-key! below ensures pressing <space>m in Normal mode runs my-cmd,
 ;; which activates the plugin on first press.
 ;; (declare-plugin "alice/lazy-thing" #:commands '("my-cmd"))
-;; (bind-key! "normal" "<space>m" "my-cmd")
+;; (bind-key! 'normal "<space>m" "my-cmd")

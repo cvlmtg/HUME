@@ -69,7 +69,7 @@ fn bind_key_does_not_error_on_valid_input() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    h.eval_source("(bind-key! \"normal\" \"z\" \"move-right\")", &mut mock)
+    h.eval_source("(bind-key! 'normal \"z\" \"move-right\")", &mut mock)
         .unwrap();
 
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -87,7 +87,7 @@ fn bind_key_multi_key_sequence_no_error() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    h.eval_source("(bind-key! \"normal\" \"g h\" \"move-right\")", &mut mock)
+    h.eval_source("(bind-key! 'normal \"g h\" \"move-right\")", &mut mock)
         .unwrap();
 
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -107,7 +107,7 @@ fn bind_key_invalid_mode_errors() {
     let mut mock = MockHost::new();
 
     let err = h
-        .eval_source("(bind-key! \"visual\" \"f\" \"cmd\")", &mut mock)
+        .eval_source("(bind-key! 'visual \"f\" \"cmd\")", &mut mock)
         .unwrap_err();
     assert!(err.contains("mode"), "got: {err}");
 }
@@ -118,7 +118,7 @@ fn bind_key_invalid_key_sequence_errors() {
     let mut mock = MockHost::new();
 
     let err = h
-        .eval_source("(bind-key! \"normal\" \"boguskey\" \"cmd\")", &mut mock)
+        .eval_source("(bind-key! 'normal \"boguskey\" \"cmd\")", &mut mock)
         .unwrap_err();
     assert!(!err.is_empty(), "expected error for unknown key 'boguskey'");
 }
@@ -1322,7 +1322,7 @@ fn bind_key_extend_creates_force_extending_leaf() {
     let mut mock = MockHost::new();
 
     h.eval_source(
-        r#"(bind-key-extend! "normal" "z" "select-line")"#,
+        r#"(bind-key-extend! 'normal "z" "select-line")"#,
         &mut mock,
     )
     .unwrap();
@@ -1345,7 +1345,7 @@ fn bind_key_does_not_force_extend() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    h.eval_source(r#"(bind-key! "normal" "z" "select-line")"#, &mut mock)
+    h.eval_source(r#"(bind-key! 'normal "z" "select-line")"#, &mut mock)
         .unwrap();
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use hume_editor::KeymapBindMode as BindMode;
@@ -1363,7 +1363,7 @@ fn bind_key_extend_invalid_mode_errors() {
     let mut mock = MockHost::new();
 
     let err = h
-        .eval_source(r#"(bind-key-extend! "visual" "f" "cmd")"#, &mut mock)
+        .eval_source(r#"(bind-key-extend! 'visual "f" "cmd")"#, &mut mock)
         .unwrap_err();
     assert!(err.contains("mode"), "got: {err}");
 }
@@ -1385,7 +1385,7 @@ fn unbind_key_removes_default_binding() {
         "'h' must be bound by default"
     );
 
-    h.eval_source(r#"(unbind-key! "normal" "h")"#, &mut mock)
+    h.eval_source(r#"(unbind-key! 'normal "h")"#, &mut mock)
         .unwrap();
 
     assert!(
@@ -1413,7 +1413,7 @@ fn unbind_key_noop_on_already_unbound() {
         "'Q' must not be bound before unbind-key! (baseline check)"
     );
 
-    h.eval_source(r#"(unbind-key! "normal" "Q")"#, &mut mock)
+    h.eval_source(r#"(unbind-key! 'normal "Q")"#, &mut mock)
         .unwrap();
 
     // The no-op must not corrupt the keymap — 'Q' remains absent.
@@ -1431,7 +1431,7 @@ fn unbind_key_invalid_mode_errors() {
     let mut mock = MockHost::new();
 
     let err = h
-        .eval_source(r#"(unbind-key! "visual" "h")"#, &mut mock)
+        .eval_source(r#"(unbind-key! 'visual "h")"#, &mut mock)
         .unwrap_err();
     assert!(err.contains("mode"), "got: {err}");
 }
@@ -1625,7 +1625,7 @@ fn prelude_bind_keys_batch_binds_multiple() {
 
     h.eval_source(PRELUDE_MACROS, &mut mock).unwrap();
     h.eval_source(
-        r#"(bind-keys! "normal"
+        r#"(bind-keys! 'normal
              ("z z" "move-left")
              ("z l" "move-right"))"#,
         &mut mock,
@@ -1659,7 +1659,7 @@ fn prelude_bind_keys_extend_creates_force_extend_leaves() {
 
     h.eval_source(PRELUDE_MACROS, &mut mock).unwrap();
     h.eval_source(
-        r#"(bind-keys-extend! "normal"
+        r#"(bind-keys-extend! 'normal
              ("Q" "select-line")
              ("W" "select-to-end"))"#,
         &mut mock,
@@ -1710,7 +1710,7 @@ fn prelude_unbind_keys_batch_removes_bindings() {
         "'l' must be bound by default"
     );
 
-    h.eval_source(r#"(unbind-keys! "normal" "h" "l")"#, &mut mock)
+    h.eval_source(r#"(unbind-keys! 'normal "h" "l")"#, &mut mock)
         .unwrap();
 
     assert!(
@@ -1747,7 +1747,7 @@ fn prelude_eval_init_sequence_makes_macros_available_to_init_scm() {
     let mut f = std::fs::File::create(&init_path).unwrap();
     writeln!(
         f,
-        r#"(bind-keys! "normal" ("Q Q" "move-left") ("Q W" "move-right"))"#
+        r#"(bind-keys! 'normal ("Q Q" "move-left") ("Q W" "move-right"))"#
     )
     .unwrap();
 
@@ -1793,7 +1793,7 @@ fn bind_keys_without_prelude_fails_gracefully() {
 
     // bind-keys! is NOT defined — init.scm uses it directly.
     let err = h
-        .eval_source(r#"(bind-keys! "normal" ("z" "move-left"))"#, &mut mock)
+        .eval_source(r#"(bind-keys! 'normal ("z" "move-left"))"#, &mut mock)
         .unwrap_err();
 
     // Steel reports an unbound identifier or similar error; the editor survives.

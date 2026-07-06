@@ -22,15 +22,15 @@
   (lambda () (call! "goto-line-end" 1 #t) (call! "delete")))
 
 ;; ── Line start / end ──────────────────────────────────────────────────────────
-(bind-key! "normal" "0" "goto-line-start")
-(bind-key! "normal" "^" "goto-first-nonblank")
-(bind-key! "normal" "$" "goto-line-end")
+(bind-key! 'normal "0" "goto-line-start")
+(bind-key! 'normal "^" "goto-first-nonblank")
+(bind-key! 'normal "$" "goto-line-end")
 
 ;; ── Alternate buffer ──────────────────────────────────────────────────────────
 ;; Ctrl+6 is the portable form of vim's Ctrl+^ (same keycap/bytes on US
 ;; layouts). Kitty protocol delivers Char('6')+CONTROL; legacy 0x1E is not
 ;; surfaced here (falls back to `:e #`).
-(bind-key! "normal" "ctrl-6" "goto-alternate-file")
+(bind-key! 'normal "ctrl-6" "goto-alternate-file")
 
 ;; ── C / D / G ─────────────────────────────────────────────────────────────────
 ;; change-to-eol: 'smart (default) → context-sensitive C; 'on → unconditional
@@ -41,9 +41,9 @@
       (hash-ref cfg "change-to-eol")
       'smart))
 (cond
-  ((equal? change-to-eol 'on)    (bind-key! "normal" "C" "vim-change-to-eol"))
-  ((equal? change-to-eol 'smart) (bind-key! "normal" "C" "vim-change-to-eol-or-copy-line"))
+  ((equal? change-to-eol 'on)    (bind-key! 'normal "C" "vim-change-to-eol"))
+  ((equal? change-to-eol 'smart) (bind-key! 'normal "C" "vim-change-to-eol-or-copy-line"))
   ((equal? change-to-eol 'off)   (begin))
   (else (error "core:vim-keybind: change-to-eol must be 'on, 'smart, or 'off")))
-(bind-key! "normal" "D" "vim-delete-to-eol")
-(bind-key! "normal" "G" "goto-last-line")
+(bind-key! 'normal "D" "vim-delete-to-eol")
+(bind-key! 'normal "G" "goto-last-line")

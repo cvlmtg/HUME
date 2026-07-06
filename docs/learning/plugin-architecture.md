@@ -89,7 +89,7 @@ implementation.
 
 ```scheme
 (declare-plugin "alice/rust-tools" #:commands '("rust-check" "rust-fmt"))
-(bind-key! "normal" "<space>r" "rust-check")
+(bind-key! 'normal "<space>r" "rust-check")
 ; pressing <space>r the first time loads alice/rust-tools, then runs rust-check
 ```
 

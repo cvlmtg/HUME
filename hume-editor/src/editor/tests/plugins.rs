@@ -1192,7 +1192,7 @@ fn keymap_lint_warns_on_unknown_command() {
     use crate::editor::Severity;
 
     let (ed, _dirs) =
-        setup_editor_with_init_scripting(r#"(bind-key! "normal" "Q" "bogus-unknown-cmd")"#);
+        setup_editor_with_init_scripting(r#"(bind-key! 'normal "Q" "bogus-unknown-cmd")"#);
 
     assert!(
         ed.state
@@ -1497,7 +1497,7 @@ fn language_trigger_lint_silent_for_forward_defined_language() {
 fn keymap_lint_silent_for_known_command() {
     use crate::editor::Severity;
 
-    let (ed, _dirs) = setup_editor_with_init_scripting(r#"(bind-key! "normal" "Q" "move-down")"#);
+    let (ed, _dirs) = setup_editor_with_init_scripting(r#"(bind-key! 'normal "Q" "move-down")"#);
 
     assert!(
         !ed.state

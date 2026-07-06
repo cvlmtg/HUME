@@ -38,7 +38,7 @@
 
 ;; ── keybindings ──────────────────────────────────────────────────────────────
 
-(bind-wait-char! "normal" "m s" "surround-add")
-(bind-wait-char! "normal" "m d" "helix-delete-surround")
-(bind-wait-char! "normal" "m r" "helix-replace-surround")
-(unbind-key! "normal" "m w")
+(bind-wait-char! 'normal "m s" "surround-add")
+(bind-wait-char! 'normal "m d" "helix-delete-surround")
+(bind-wait-char! 'normal "m r" "helix-replace-surround")
+(unbind-key! 'normal "m w")
