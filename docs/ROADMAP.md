@@ -11,7 +11,7 @@
 | Editing model crate | **`hume-editing/` crate** | Pure bottom layer (no engine dependency) for the foundational text data model. Named `hume-editing` to avoid shadowing Rust's built-in `core`. |
 | Tree-sitter crate boundary | **`hume-treesitter/` crate**: language registry, grammar attachment, parse worker, injection resolution | These had zero real dependency on `Editor` — only two `impl Editor` glue blocks (hooks, lazy-plugin activation, message log) tied them in. Boundary: registry/parsing/injections move out; the Editor glue and the engine's render-facing half (`SyntaxLayers`, `TreeSitterHighlighter`, `LoadedGrammar`) stay put. Depends only on `hume-engine` + `hume-editing`, acyclic. |
 | `editor/` module layout | **Submodule dirs for name-clusters** (`buffer/`, `search/`, `syntax/`, `minibuf/`) | Suffix-named flat files (`buffer_store.rs`, `search_ops.rs`, `minibuf_history.rs`, `syntax_glue.rs`, …) encoded grouping in names instead of directories, and `editor/ops.rs` (buffer lifecycle) collided with the crate-level `ops/` (pure commands). Grouped into per-domain dirs; theme loading extracted to `editor/theme.rs`. Existing dirs (`commands/`, `keymap/`, `mappings/`, `registry/`, `completion/`) and `lifecycle.rs` deliberately untouched. |
-| LSP design | **See `LSP.md`** | All LSP decisions, prerequisites, and task breakdown live in `LSP.md`. |
+| LSP design | **See `LSP.md`** | All LSP decisions and shared reference live in `LSP.md` (the hub); per-task implementation cards live in `docs/lsp/step-{0..4}.md`. |
 | Syntax highlighting | **Tree-sitter** | Incremental parsing, structural understanding. Enables text objects and structural navigation beyond just colors. Production-proven (Neovim, Helix, Zed, GitHub). |
 | Key mapping | **Command-based** | Keys bind to named commands, not to other keys. No recursive/non-recursive distinction. Keymaps defined in Steel config. Supports nested keys for sequences/chords. |
 | Editing model | **Select-then-act** | Motions create selections, actions operate on them. Multiple selections from day one (`Vec<Selection>`). Selections always inclusive — `anchor == head` is a 1-char selection, never a zero-width point. |
@@ -175,7 +175,7 @@
 - **Byte-string parsing in settings**: `"10MB"` / `"512KB"` strings; companion to size-threshold setting.
 - **Cached `size: u64` on `FileMeta` + `FileSize` statusline element**.
 - **Streaming load for huge files**: chunked `Rope::from_reader` replacing single blocking `fs::read_to_string`.
-- **LSP support** — see `LSP.md` for the full design and task breakdown (includes the virtual-lines/decoration-layer work: inline diagnostics, inlay hints).
+- **LSP support** — see `LSP.md` (hub) + `docs/lsp/step-*.md` (task cards) for the full design and task breakdown (includes the virtual-lines/decoration-layer work: inline diagnostics, inlay hints).
 - **Unified decoration system**: single `Decoration` trait replacing the current separate provider traits (`GutterColumn`, `HighlightSource`, `VirtualLineSource`, `InlineDecoration`, `OverlayProvider`). Post-LSP, once the decoration surface is stable.
 - **Steel builtin to register custom completers**: plugin-side `Completer` implementations dispatched by command name; core does prefix matching only (fuzzy scoring is a plugin concern).
 - Git gutter signs (plugin candidate — keep out of core)
