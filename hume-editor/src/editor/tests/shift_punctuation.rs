@@ -46,13 +46,13 @@ fn shift_a_still_inserts_at_line_end() {
     assert_eq!(state(&ed), "hello world-[\n]>");
 }
 
-/// `$` delivered as Char('$') + SHIFT must still run goto-line-end.
+/// `}` delivered as Char('}') + SHIFT must still run next-paragraph.
 #[test]
-fn dollar_goto_line_end_when_shift_set() {
-    let mut ed = editor_from("-[h]>ello world\n");
-    ed.handle_key(key_shift('$'));
-    // goto-line-end moves head to the last char before the newline.
-    assert_eq!(state(&ed), "hello worl-[d]>\n");
+fn close_brace_next_paragraph_when_shift_set() {
+    let mut ed = editor_from("-[h]>ello\n\nworld\n");
+    ed.handle_key(key_shift('}'));
+    // next-paragraph moves head to the first char of the next paragraph.
+    assert_eq!(state(&ed), "hello\n\n-[w]>orld\n");
 }
 
 /// `?` delivered as Char('?') + SHIFT must still enter backward search.

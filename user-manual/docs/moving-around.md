@@ -128,4 +128,5 @@ HUME maintains a jump list of recent cursor positions.
 |-----|--------|
 | `Ctrl+o` | Jump to previous position |
 | `Ctrl+i` | Jump to next position |
-| `Ctrl+6` | Jump to alternate (most-recently-focused) buffer |
+
+Jumping to the alternate (most-recently-focused) buffer is available via `:e #`, or via `Ctrl+6` if you load the `core:vim-keybind` plugin.

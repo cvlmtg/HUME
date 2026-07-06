@@ -243,11 +243,10 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!('B'), cmd!("select-prev-uppercase-word"));
 
     // ── Line start / end ──────────────────────────────────────────────────────
-    t.bind_leaf(key!('0'), cmd!("goto-line-start"));
+    // `0`, `^`, and `$` are vim muscle memory, restored by the opt-in
+    // `core:vim-keybind` plugin — native equivalents are `g h` / `g s` / `g l`.
     t.bind_leaf(key!(Home), cmd!("goto-line-start"));
-    t.bind_leaf(key!('$'), cmd!("goto-line-end"));
     t.bind_leaf(key!(End), cmd!("goto-line-end"));
-    t.bind_leaf(key!('^'), cmd!("goto-first-nonblank"));
 
     // ── Paragraph motion ──────────────────────────────────────────────────────
     t.bind_leaf(key!('{'), cmd!("prev-paragraph"));
@@ -280,13 +279,6 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     // arrive as its own event under kitty).
     t.bind_leaf(key!(Ctrl + 'i'), cmd!("jump-forward"));
     t.bind_leaf(key!(Tab), cmd!("jump-forward"));
-
-    // ── Alternate buffer ─────────────────────────────────────────────────────
-    // `Ctrl+6` is the portable form of vim's `Ctrl+^`: both share a keycap on
-    // US layouts and emit identical bytes. With kitty keyboard protocol this
-    // arrives as `Char('6') + CONTROL`; legacy terminals emit 0x1E which is
-    // not surfaced here (users can fall back to `:e #`).
-    t.bind_leaf(key!(Ctrl + '6'), cmd!("goto-alternate-file"));
 
     // ── Whole-buffer selection ────────────────────────────────────────────────
     t.bind_leaf(key!('%'), cmd!("select-all"));

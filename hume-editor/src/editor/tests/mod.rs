@@ -432,5 +432,6 @@ mod sync_dispatch;
 mod tabs;
 mod tutor;
 mod view_scroll;
+mod vim_keybind;
 mod visual_move;
 mod wrap;

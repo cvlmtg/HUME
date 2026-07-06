@@ -193,5 +193,6 @@ HUME ships with several built-in plugins that are always available:
 | `core:plum` | Plugin and grammar manager (commands: `:plum-install-grammar`, `:plum-list`, etc.) |
 | `core:helix-surround` | Helix-style surround (ms = wrap, md = delete, mr = replace) |
 | `core:classic-paste` | Classic paste commands (`:classic-ring-after`, `:classic-clipboard-before`, etc.) |
+| `core:vim-keybind` | Vim muscle-memory keys: `$` `^` `0` `Ctrl+6`, plus `C` (change to end of line), `D` (delete to end of line), `G` (go to last line) |
 
-These plugins are declared in the default `init.scm` and loaded on demand.
+None of these load automatically — add `(load-plugin "core:...")` to your `init.scm` for any you want.

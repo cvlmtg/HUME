@@ -24,15 +24,11 @@ A **buffer** is an open file (or scratch text). HUME can have multiple buffers o
 | `:bd` | Close (delete) current buffer (blocked if unsaved) |
 | `:bd!` | Force close, discarding unsaved changes |
 
-`:b` accepts a name prefix, a full path, a 1-based index as shown by `:ls`, or `#` to switch to the alternate buffer (same as `Ctrl+6`). If two open files share the same name, their parent directory is shown to disambiguate.
+`:b` accepts a name prefix, a full path, a 1-based index as shown by `:ls`, or `#` to switch to the alternate buffer. If two open files share the same name, their parent directory is shown to disambiguate.
 
 ### Alternate buffer
 
-| Key | Effect |
-|-----|--------|
-| `Ctrl+6` | Switch to alternate (most-recently-focused) buffer |
-
-This works like Vim's `Ctrl+^` — toggles between the current and previous buffer.
+`:b #` (or `:e #`) toggles between the current and previous buffer — the same idea as Vim's `Ctrl+^`. If you load the `core:vim-keybind` plugin, `Ctrl+6` does the same thing without going through the command line.
 
 ## Splits and panes
 

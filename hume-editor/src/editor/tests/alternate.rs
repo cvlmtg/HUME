@@ -35,6 +35,21 @@ fn alternate_buffer_is_previous_focused() {
 }
 
 // ── Ctrl+6 / goto-alternate-file ─────────────────────────────────────────────
+//
+// Ctrl+6 is bound by the opt-in `core:vim-keybind` plugin, not the defaults —
+// each test below binds it directly to keep exercising `goto-alternate-file`
+// dispatch rather than the plugin loading machinery.
+
+/// Bind Ctrl+6 → goto-alternate-file, mirroring what `core:vim-keybind` does.
+fn bind_ctrl_6(ed: &mut Editor) {
+    use crate::editor::keymap::BindMode;
+    ed.state.keymap.bind_user_with_extend(
+        BindMode::Normal,
+        &[key_ctrl('6')],
+        "goto-alternate-file".into(),
+        false,
+    );
+}
 
 #[test]
 #[cfg(not(windows))]
@@ -42,6 +57,7 @@ fn ctrl_6_switches_to_alternate_and_is_involutive() {
     let (p1, _t1) = temp_file("file1\n");
     let (p2, _t2) = temp_file("file2\n");
     let mut ed = editor_from("-[h]>ello\n");
+    bind_ctrl_6(&mut ed);
     ed.execute_typed("e", Some(p1.to_str().unwrap())).unwrap();
     let id_a = ed.focused_buffer_id();
     ed.execute_typed("e", Some(p2.to_str().unwrap())).unwrap();
@@ -68,6 +84,7 @@ fn ctrl_6_pushes_jump_entry() {
     let (p1, _t1) = temp_file("file1\n");
     let (p2, _t2) = temp_file("file2\n");
     let mut ed = editor_from("-[h]>ello\n");
+    bind_ctrl_6(&mut ed);
     ed.execute_typed("e", Some(p1.to_str().unwrap())).unwrap();
     ed.execute_typed("e", Some(p2.to_str().unwrap())).unwrap();
     let id_before = ed.focused_buffer_id();
@@ -81,6 +98,7 @@ fn ctrl_6_pushes_jump_entry() {
 #[test]
 fn ctrl_6_warns_when_no_alternate() {
     let mut ed = editor_from("-[h]>ello\n");
+    bind_ctrl_6(&mut ed);
     let id_before = ed.focused_buffer_id();
     ed.handle_key(key_ctrl('6'));
     assert_eq!(

@@ -13,16 +13,16 @@
 | `w` | Select next word |
 | `b` | Select previous word |
 | `W` / `B` | WORD variants of `w` / `b` |
-| `0` / `Home` | Start of line (vim convenience; idiomatic form is `g h`) |
-| `$` / `End` | End of line (vim convenience; idiomatic form is `g l`) |
-| `^` | First non-blank on line (vim convenience; idiomatic form is `g s`) |
+| `Home` | Start of line (idiomatic form is `g h`) |
+| `End` | End of line (idiomatic form is `g l`) |
 | `{` / `}` | Previous / next paragraph start |
 | `PageDown` / `PageUp` | Scroll one viewport down / up |
 | `Ctrl+d` / `Ctrl+u` | Scroll half a viewport down / up |
 | `Ctrl+o` | Jump list back |
 | `Ctrl+i` | Jump list forward |
-| `Ctrl+6` | Switch to alternate buffer |
 | `Ctrl+h/j/k/l/w/b` | One-shot extend of the corresponding motion (kitty only) |
+
+`0`, `^`, `$`, and `Ctrl+6` are not bound by default — see [`core:vim-keybind`](plugins.md#bundled-core-plugins).
 
 ### Character find
 
@@ -50,7 +50,7 @@ After `f`/`F`/`t`/`T`, HUME waits for the target character.
 | `X` | Select current line (backward) |
 | `Ctrl+x` / `Ctrl+X` | Same as `x` / `X` but always extend (any terminal) |
 | `S` | Split multi-line selections on newlines |
-| `C` | Copy each selection to the line below |
+| `C` | Copy each selection to the line below (shadowed by `core:vim-keybind`'s change-to-end-of-line, if loaded) |
 | `_` | Trim leading/trailing whitespace from each selection |
 | `,` | Keep only the primary selection |
 | `Ctrl+,` | Remove primary, promote next (kitty only) |
@@ -92,6 +92,8 @@ Text objects (use the `m` prefix):
 | `U` / `Ctrl+r` | Redo |
 | `.` | Repeat last editing action |
 
+`D` (delete to end of line) and `G` (go to last line) are not bound by default — see [`core:vim-keybind`](plugins.md#bundled-core-plugins).
+
 ### Entering other modes
 
 | Key | Action |
@@ -130,7 +132,7 @@ Text objects (use the `m` prefix):
 | Key | Action |
 |-----|--------|
 | `"` + reg | Register prefix (`0`–`9`, `k`, `c`, `b`) |
-| `1`–`9` then `[0-9]*` | Numeric count prefix (`0` is a digit only inside a count; otherwise `0` is `goto-line-start`) |
+| `1`–`9` then `[0-9]*` | Numeric count prefix (`0` is a digit only inside a count; otherwise unbound unless `core:vim-keybind` is loaded) |
 
 ## Goto prefix (`g`)
 

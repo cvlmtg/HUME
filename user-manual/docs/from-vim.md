@@ -72,13 +72,14 @@ Vim uses `[count]` before commands (e.g. `3dw`). HUME also supports count prefix
 
 ### Line motion
 
-Vim's `G` (last line) has no single-key equivalent; use `g e`. Otherwise the `0` / `$` / `^` keys keep their vim meaning (start / end / first-non-blank), though HUME's idiom is the `g` prefix: `g h`, `g l`, `g s`.
+HUME's idiom for line motions is the `g` prefix: `g h` (start), `g l` (end), `g s` (first non-blank), `g e` (last line). The vim keys `0` / `$` / `^` / `G` are not bound by default — load `(load-plugin "core:vim-keybind")` in `init.scm` to get them back with their vim meaning, alongside `C` / `D` (change / delete to end of line) and `Ctrl+6` (see below).
 
-| Vim | HUME |
-|-----|------|
-| `0` / `$` / `^` | `0` / `$` / `^` (or `g h` / `g l` / `g s`) |
-| `G` | `g e` |
-| `gg` | `g g` |
+| Vim | HUME (native) | HUME (`core:vim-keybind`) |
+|-----|----------------|---------------------------|
+| `0` / `$` / `^` | `g h` / `g l` / `g s` | `0` / `$` / `^` |
+| `G` | `g e` | `G` |
+| `gg` | `g g` | `g g` |
+| `C` / `D` | `ctrl-g l c` / `ctrl-g l d` (kitty terminals only) | `C` / `D` (shadows the default `C` = copy-selection-on-next-line) |
 
 ## Commands you already know
 
@@ -95,5 +96,5 @@ Most `:` commands work as expected:
 | `:bd` | `:bd` |
 | `:cd` | `:cd` |
 | `:pwd` | `:pwd` |
-| `Ctrl+^` | `Ctrl+6` |
+| `Ctrl+^` | `:e #`, or `Ctrl+6` with `core:vim-keybind` loaded |
 | `Ctrl+o` / `Ctrl+i` | `Ctrl+o` / `Ctrl+i` |
