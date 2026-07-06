@@ -3,7 +3,7 @@
 ;;; Restores line-motion keys vim users expect, plus C/D/G composites HUME
 ;;; does not bind natively. Native equivalents remain available either way:
 ;;;   $ ^ 0    → g l / g s / g h      (goto-line-end / -first-nonblank / -start)
-;;;   Ctrl+6   → :e #                 (goto-alternate-file)
+;;;   Ctrl+6   → :b#                  (goto-alternate-file)
 ;;;   C        → ctrl-g l c           (shadows copy-selection-on-next-line)
 ;;;   D        → ctrl-g l d
 ;;;   G        → g e                  (goto-last-line)

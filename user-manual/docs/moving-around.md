@@ -42,8 +42,6 @@ The idiomatic line movements live under the `g` prefix:
 | `Home` | Start of line |
 | `End` | End of line |
 
-For vim users, `0`, `$`, and `^` are also mapped as a convenience — one keystroke instead of two — and behave the same as `g h`, `g l`, and `g s` respectively.
-
 ## Goto prefix (`g`)
 
 Press `g` followed by a second key for line jumps:
@@ -129,4 +127,4 @@ HUME maintains a jump list of recent cursor positions.
 | `Ctrl+o` | Jump to previous position |
 | `Ctrl+i` | Jump to next position |
 
-Jumping to the alternate (most-recently-focused) buffer is available via `:e #`, or via `Ctrl+6` if you load the `core:vim-keybind` plugin.
+Jumping to the alternate (most-recently-focused) buffer is available via `:e #`, or via `:b#`.

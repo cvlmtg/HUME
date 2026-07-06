@@ -96,5 +96,5 @@ Most `:` commands work as expected:
 | `:bd` | `:bd` |
 | `:cd` | `:cd` |
 | `:pwd` | `:pwd` |
-| `Ctrl+^` | `:e #`, or `Ctrl+6` with `core:vim-keybind` loaded |
+| `Ctrl+^` | `:b#`, or `Ctrl+6` with `core:vim-keybind` loaded |
 | `Ctrl+o` / `Ctrl+i` | `Ctrl+o` / `Ctrl+i` |

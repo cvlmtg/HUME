@@ -22,8 +22,6 @@
 | `Ctrl+i` | Jump list forward |
 | `Ctrl+h/j/k/l/w/b` | One-shot extend of the corresponding motion (kitty only) |
 
-`0`, `^`, `$`, and `Ctrl+6` are not bound by default — see [`core:vim-keybind`](plugins.md#bundled-core-plugins).
-
 ### Character find
 
 | Key | Action |
@@ -50,7 +48,7 @@ After `f`/`F`/`t`/`T`, HUME waits for the target character.
 | `X` | Select current line (backward) |
 | `Ctrl+x` / `Ctrl+X` | Same as `x` / `X` but always extend (any terminal) |
 | `S` | Split multi-line selections on newlines |
-| `C` | Copy each selection to the line below (shadowed by `core:vim-keybind`'s change-to-end-of-line, if loaded) |
+| `C` | Copy each selection to the line below |
 | `_` | Trim leading/trailing whitespace from each selection |
 | `,` | Keep only the primary selection |
 | `Ctrl+,` | Remove primary, promote next (kitty only) |
@@ -92,8 +90,6 @@ Text objects (use the `m` prefix):
 | `U` / `Ctrl+r` | Redo |
 | `.` | Repeat last editing action |
 
-`D` (delete to end of line) and `G` (go to last line) are not bound by default — see [`core:vim-keybind`](plugins.md#bundled-core-plugins).
-
 ### Entering other modes
 
 | Key | Action |
@@ -132,7 +128,7 @@ Text objects (use the `m` prefix):
 | Key | Action |
 |-----|--------|
 | `"` + reg | Register prefix (`0`–`9`, `k`, `c`, `b`) |
-| `1`–`9` then `[0-9]*` | Numeric count prefix (`0` is a digit only inside a count; otherwise unbound unless `core:vim-keybind` is loaded) |
+| `1`–`9` then `[0-9]*` | Numeric count prefix (`0` is a digit only inside a count; otherwise unbound) |
 
 ## Goto prefix (`g`)
 

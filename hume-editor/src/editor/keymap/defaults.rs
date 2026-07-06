@@ -243,8 +243,6 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!('B'), cmd!("select-prev-uppercase-word"));
 
     // ── Line start / end ──────────────────────────────────────────────────────
-    // `0`, `^`, and `$` are vim muscle memory, restored by the opt-in
-    // `core:vim-keybind` plugin — native equivalents are `g h` / `g s` / `g l`.
     t.bind_leaf(key!(Home), cmd!("goto-line-start"));
     t.bind_leaf(key!(End), cmd!("goto-line-end"));
 

@@ -28,7 +28,7 @@ A **buffer** is an open file (or scratch text). HUME can have multiple buffers o
 
 ### Alternate buffer
 
-`:b #` (or `:e #`) toggles between the current and previous buffer — the same idea as Vim's `Ctrl+^`. If you load the `core:vim-keybind` plugin, `Ctrl+6` does the same thing without going through the command line.
+`:b #` (or `:e #`) toggles between the current and previous buffer.
 
 ## Splits and panes
 

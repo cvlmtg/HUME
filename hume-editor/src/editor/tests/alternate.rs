@@ -47,8 +47,7 @@ fn alternate_buffer_is_previous_focused() {
     assert_eq!(ed.alternate_buffer(), Some(id_a));
 }
 
-// ── goto-alternate-file (Ctrl+6 in `core:vim-keybind`, see tests/vim_keybind.rs
-// for the plugin's key binding itself) ───────────────────────────────────────
+// ── goto-alternate-file  ───────────────────────────────────────────────────────
 
 #[test]
 #[cfg(not(windows))]
