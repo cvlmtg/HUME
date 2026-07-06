@@ -1418,10 +1418,10 @@ Syntax Highlighting
 -------------------
 
 Run ``:plum-install-grammar`` to install the grammar for the current
-buffer's language. You can type the whole command, or type a prefix like
-``:plum-i`` and press ``Tab`` to autocomplete it — keep pressing ``Tab`` to
-cycle through the matches. Press ``Enter`` to run it, then wait for the
-grammar to finish installing.
+buffer's language. You can type the whole command, or type a prefix
+like ``:plum-i`` and press ``Tab`` to autocomplete it — keep pressing
+``Tab`` to cycle through the matches. Press ``Enter`` to run it, then
+wait for the grammar to finish installing.
 
 This needs ``git``, ``curl``, the ``tree-sitter`` CLI, and a C compiler on
 your system. How you install them depends on your operating system: on

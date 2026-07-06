@@ -29,6 +29,14 @@ Open a file in the language you want highlighted, then run:
 
 When it finishes, the current buffer is highlighted immediately, and any other open buffers in the same language pick it up on the next frame.
 
+You don't need to open a file in that language first — name the grammar directly:
+
+```
+:plum-install-grammar python
+```
+
+This is the easiest way to install a grammar for a language you only use inside a fenced code block (see [Embedded languages](#embedded-languages) below), or any time switching buffers just to install a grammar is inconvenient.
+
 To install several grammars at once — skipping any already compiled — call it from your `init.scm` so it runs at startup:
 
 ```scheme
@@ -43,13 +51,13 @@ After the first install, launching HUME just loads the compiled grammars silentl
 :plum-update-grammar
 ```
 
-Re-downloads the grammar source and recompiles it. Use it after updating HUME, or to recover from a broken compile. The old source is purged first.
+Re-downloads the grammar source and recompiles it. Use it after updating HUME, or to recover from a broken compile. The old source is purged first. Like `:plum-install-grammar`, it takes an optional grammar name — `:plum-update-grammar python` re-installs Python regardless of the current buffer's language.
 
 ## Embedded languages
 
 Some languages embed others — a fenced code block in Markdown, or Markdown's own bold, italic, and inline-code spans. HUME resolves these automatically once the grammars involved are installed, with no extra configuration.
 
-For Markdown, `:plum-install-grammar` installs Markdown itself and the grammar its emphasis and inline-code spans need. A fenced ` ```rust ` block then highlights as Rust as soon as the Rust grammar is installed too — install it for whichever languages you paste into fences.
+For Markdown, `:plum-install-grammar` installs Markdown itself and the grammar its emphasis and inline-code spans need. A fenced ` ```rust ` block then highlights as Rust as soon as the Rust grammar is installed too — run `:plum-install-grammar rust` for whichever languages you paste into fences, no need to open a file in that language first.
 
 ## When detection gets it wrong
 
@@ -130,7 +138,7 @@ See [Configuration](configuration.md) for the full settings reference.
 
 ## Troubleshooting
 
-**The file opens with no colors.** No compiled grammar for the language. Run `:plum-list-grammars` and look at the **missing** line. If the language is missing, run `:plum-install-grammar`. If the language isn't *declared* at all, HUME doesn't recognize the file — set it with `:set buffer language=<name>` or define it in your `init.scm`.
+**The file opens with no colors.** No compiled grammar for the language. Run `:plum-list-grammars` and look at the **missing** line. If the language is missing, run `:plum-install-grammar <name>` (or just `:plum-install-grammar` while that buffer is focused). If the language isn't *declared* at all, HUME doesn't recognize the file — set it with `:set buffer language=<name>` or define it in your `init.scm`.
 
 **`:plum-install-grammar` fails.** The message names the missing piece. Usually a missing tool on your `PATH` — check the [prerequisites](#prerequisites). A bad source tree recovers with `:plum-update-grammar`.
 
@@ -138,4 +146,4 @@ See [Configuration](configuration.md) for the full settings reference.
 
 **Colors look wrong after a HUME update.** The mirrored catalog may have moved. Run `:plum-cleanup-grammars`, then `:plum-install-grammar` again.
 
-**A fenced code block doesn't highlight, but Markdown emphasis does.** The fenced language's own grammar isn't installed — Markdown's bold/italic/inline-code always come with the Markdown grammar itself, but a fence's language (` ```rust `, ` ```python `, …) is a separate grammar. Open a scratch file in that language (e.g. a `.rs` file for a ` ```rust ` fence) and run `:plum-install-grammar` there too.
+**A fenced code block doesn't highlight, but Markdown emphasis does.** The fenced language's own grammar isn't installed — Markdown's bold/italic/inline-code always come with the Markdown grammar itself, but a fence's language (` ```rust `, ` ```python `, …) is a separate grammar. Install it by name, e.g. `:plum-install-grammar rust` for a ` ```rust ` fence — no need to open a file in that language first.

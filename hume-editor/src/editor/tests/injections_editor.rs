@@ -259,37 +259,25 @@ fn stale_gen_discards_whole_layer_set() {
 // ---------------------------------------------------------------------------
 
 /// Load the real `core:plum` plugin (the actual `runtime/plugins/core/plum/`
-/// sources, not a synthetic copy) against an empty data dir, so
-/// `plum/register-installed-grammars!` runs its real body — including the
-/// new injections-path lookup — for every entry in the real
-/// `grammar-sources.scm` catalog. None of them are compiled in the empty
-/// data dir, so every one is skipped by the `when` guard and no network
-/// call happens; this is a pure Scheme-syntax/logic smoke test for the PLUM
-/// changes, not an installation test.
-#[test]
+/// sources, not a synthetic copy) into `ed`, pointing `HUME_RUNTIME` at the
+/// repo's real `runtime/` dir (so the real `grammar-sources.scm` catalog is
+/// used) and `XDG_DATA_HOME` at `data_dir`. Env vars are process-global —
+/// callers must hold `super::HUME_RUNTIME_MUTEX` for the test's duration.
 #[cfg(not(windows))]
-fn plum_plugin_loads_with_real_grammar_catalog() {
-    let _lock = super::HUME_RUNTIME_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-
+fn load_plum(ed: &mut Editor, data_dir: &std::path::Path) {
     let repo_runtime_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
         .join("runtime");
     let config_tmp = tempfile::tempdir().unwrap();
-    let data_tmp = tempfile::tempdir().unwrap();
-
     let hume_config = config_tmp.path().join("hume");
     std::fs::create_dir_all(&hume_config).unwrap();
     std::fs::write(hume_config.join("init.scm"), r#"(load-plugin "core:plum")"#).unwrap();
 
-    let mut ed = editor_from("-[x]>\n");
-
     unsafe {
         std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
         std::env::set_var("HUME_RUNTIME", &repo_runtime_dir);
-        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
+        std::env::set_var("XDG_DATA_HOME", data_dir);
     }
     ed.init_scripting();
     unsafe {
@@ -297,6 +285,23 @@ fn plum_plugin_loads_with_real_grammar_catalog() {
         std::env::remove_var("HUME_RUNTIME");
         std::env::remove_var("XDG_DATA_HOME");
     }
+}
+
+/// `plum/register-installed-grammars!` runs its real body — including the
+/// injections-path lookup — for every entry in the real `grammar-sources.scm`
+/// catalog. None of them are compiled in the empty data dir, so every one is
+/// skipped by the `when` guard and no network call happens; this is a pure
+/// Scheme-syntax/logic smoke test for the PLUM changes, not an installation test.
+#[test]
+#[cfg(not(windows))]
+fn plum_plugin_loads_with_real_grammar_catalog() {
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
 
     let errors: Vec<&str> = ed
         .state
@@ -308,5 +313,136 @@ fn plum_plugin_loads_with_real_grammar_catalog() {
     assert!(
         errors.is_empty(),
         "loading core:plum against the real grammar-sources.scm must not error: {errors:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// plum-install-grammar / plum-update-grammar — optional name argument
+// ---------------------------------------------------------------------------
+
+/// `:plum-install-grammar` with no argument and no buffer language must warn
+/// with the "no grammar name given" message — not the opaque install-failure
+/// this used to log when the dead `(equal? name "")` guard let a `#f` name
+/// fall through into the install pipeline.
+#[test]
+#[cfg(not(windows))]
+fn plum_install_grammar_no_arg_no_language_warns() {
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":plum-install-grammar");
+
+    let msgs: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .map(|e| e.text.as_str())
+        .collect();
+    assert!(
+        ed.state.message_log.entries().any(|e| {
+            e.severity == Severity::Warning && e.text.contains("no grammar name given")
+        }),
+        "expected 'no grammar name given' warning, got: {msgs:?}"
+    );
+}
+
+/// `:plum-install-grammar nosuchlang` — a name absent from the catalog warns
+/// with the unknown-grammar message instead of failing deep inside the
+/// install pipeline with an opaque hash-lookup error.
+#[test]
+#[cfg(not(windows))]
+fn plum_install_grammar_unknown_name_warns() {
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":plum-install-grammar nosuchlang");
+
+    let msgs: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .map(|e| e.text.as_str())
+        .collect();
+    assert!(
+        ed.state.message_log.entries().any(|e| {
+            e.severity == Severity::Warning && e.text.contains(r#"unknown grammar "nosuchlang""#)
+        }),
+        "expected unknown-grammar warning naming 'nosuchlang', got: {msgs:?}"
+    );
+}
+
+/// A typed argument wins over the current buffer's language.
+///
+/// Flip: before the arity-1 fix, `plum-install-grammar` was arity-0 so the
+/// minibuffer silently dropped `nosuchlang` and the command installed `rust`
+/// (the buffer's language) instead — verified by reverting the lambda to
+/// arity-0, which made this test fail because it actually ran a real
+/// `git-clone-rev`/`curl-fetch`/`compile-grammar!` install of `rust` instead
+/// of ever mentioning `nosuchlang`.
+#[test]
+#[cfg(not(windows))]
+fn plum_install_grammar_arg_overrides_buffer_language() {
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":set buffer language=rust");
+    type_cmd(&mut ed, ":plum-install-grammar nosuchlang");
+
+    let msgs: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .map(|e| e.text.as_str())
+        .collect();
+    assert!(
+        ed.state.message_log.entries().any(|e| {
+            e.severity == Severity::Warning && e.text.contains(r#"unknown grammar "nosuchlang""#)
+        }),
+        "typed arg must win over buffer language 'rust', got: {msgs:?}"
+    );
+}
+
+/// `:plum-update-grammar` gets the same optional-name treatment and the same
+/// unknown-grammar validation — including that validation runs before the
+/// stale-source `delete-dir` purge, so an unknown name deletes nothing.
+#[test]
+#[cfg(not(windows))]
+fn plum_update_grammar_unknown_name_warns() {
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":plum-update-grammar nosuchlang");
+
+    let msgs: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .map(|e| e.text.as_str())
+        .collect();
+    assert!(
+        ed.state.message_log.entries().any(|e| {
+            e.severity == Severity::Warning && e.text.contains(r#"unknown grammar "nosuchlang""#)
+        }),
+        "expected unknown-grammar warning naming 'nosuchlang', got: {msgs:?}"
     );
 }

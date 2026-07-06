@@ -5,7 +5,7 @@
 ;;;   plum/register-installed-grammars!    — register already-compiled grammars (passive)
 ;;;
 ;;; Commands defined here:
-;;;   :plum-install-grammar  — install grammar for the current buffer's language
+;;;   :plum-install-grammar  — install a named grammar, or the current buffer's
 ;;;   :plum-update-grammar   — re-clone and recompile (purges old source)
 ;;;   :plum-ensure-grammars  — install named grammars not yet compiled (list required)
 ;;;   :plum-list-grammars    — log installed / declared / orphan / missing
@@ -147,6 +147,20 @@
   (filter (lambda (name) (not (hash-contains? *plum-grammar-sources* name)))
           (plum/installed-grammars)))
 
+;;; Resolve the target grammar for a `:` grammar command: a string argument
+;;; wins; otherwise fall back to the current buffer's language. Returns the
+;;; name, or #f after logging a warning. `arg` is a string only when the user
+;;; typed one — the minibuffer passes the default count 1 otherwise.
+(define (plum/resolve-grammar-arg cmd arg)
+  (let ((name (if (string? arg) arg (buffer-language (current-buffer)))))
+    (cond ((not (string? name))
+           (log! 'warn (string-append cmd ": no grammar name given and current buffer has no language set"))
+           #f)
+          ((not (hash-contains? *plum-grammar-sources* name))
+           (log! 'warn (string-append cmd ": unknown grammar \"" name "\" — see :plum-list-grammars"))
+           #f)
+          (else name))))
+
 ;; ── Install pipeline ──────────────────────────────────────────────────────────
 
 ;;; Install a single grammar from its declared source:
@@ -193,35 +207,31 @@
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
 (define-command! "plum-install-grammar"
-  "Install the tree-sitter grammar for the current buffer's language."
-  (lambda ()
-    (let ((name (buffer-language (current-buffer))))
-      (if (equal? name "")
-          (log! 'warn "plum-install-grammar: current buffer has no language set")
-          (begin
-            (log! 'info (string-append "PLUM: installing grammar for " name))
-            (with-handler
-              (lambda (err)
-                (log! 'error (string-append "PLUM: install failed: " (to-string err))))
-              (plum/install-grammar name))))))
+  "Install a tree-sitter grammar by name (default: the current buffer's language)."
+  (lambda (arg)
+    (let ((name (plum/resolve-grammar-arg "plum-install-grammar" arg)))
+      (when name
+        (log! 'info (string-append "PLUM: installing grammar for " name))
+        (with-handler
+          (lambda (err)
+            (log! 'error (string-append "PLUM: install failed: " (to-string err))))
+          (plum/install-grammar name)))))
   #:inline-output #t)
 
 (define-command! "plum-update-grammar"
-  "Re-clone and recompile the grammar for the current buffer's language."
-  (lambda ()
-    (let ((name (buffer-language (current-buffer))))
-      (if (equal? name "")
-          (log! 'warn "plum-update-grammar: current buffer has no language set")
-          (begin
-            (log! 'info (string-append "PLUM: updating grammar for " name))
-            ;; Remove old source so git-clone-rev gets a clean slate.
-            (let ((src-dir (plum/grammar-source-dir name)))
-              (when (path-exists? src-dir)
-                (delete-dir src-dir)))
-            (with-handler
-              (lambda (err)
-                (log! 'error (string-append "PLUM: update failed: " (to-string err))))
-              (plum/install-grammar name))))))
+  "Re-clone and recompile a tree-sitter grammar by name (default: the current buffer's language)."
+  (lambda (arg)
+    (let ((name (plum/resolve-grammar-arg "plum-update-grammar" arg)))
+      (when name
+        (log! 'info (string-append "PLUM: updating grammar for " name))
+        ;; Remove old source so git-clone-rev gets a clean slate.
+        (let ((src-dir (plum/grammar-source-dir name)))
+          (when (path-exists? src-dir)
+            (delete-dir src-dir)))
+        (with-handler
+          (lambda (err)
+            (log! 'error (string-append "PLUM: update failed: " (to-string err))))
+          (plum/install-grammar name)))))
   #:inline-output #t)
 
 (define-command! "plum-ensure-grammars"

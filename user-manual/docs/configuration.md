@@ -186,8 +186,7 @@ The arguments, in order, are: the language name, a list of file extensions, a li
 The definition registers the language and associates it with tree-sitter grammars installed via PLUM:
 
 ```
-# open a file that triggers the my-lang language, then:
-:plum-install-grammar
+:plum-install-grammar my-lang
 ```
 
 See [Syntax Highlighting](syntax-highlighting.md) for the full grammar workflow — prerequisites, batch install, manual `register-grammar!`, and troubleshooting.

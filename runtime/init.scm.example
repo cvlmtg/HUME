@@ -217,8 +217,8 @@
 ;;   (call! "plum-ensure-grammars" '("rust" "json"))   ; install listed grammars at startup
 ;;
 ;; Grammar install pipeline (requires git, curl, tree-sitter CLI on PATH):
-;;   :plum-install-grammar  — install grammar for current buffer's language
-;;   :plum-update-grammar   — re-clone + recompile (purges old source)
+;;   :plum-install-grammar  — install grammar by name (default: current buffer's language)
+;;   :plum-update-grammar   — re-clone + recompile by name (default: current buffer's language)
 ;;   :plum-ensure-grammars  — install listed grammars not yet compiled (list required)
 ;;   :plum-list-grammars    — show installed / declared / orphan / missing
 ;;   :plum-cleanup-grammars — delete orphan compiled grammars
