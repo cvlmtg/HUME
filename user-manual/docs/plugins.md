@@ -15,6 +15,14 @@ On next launch, PLUM clones the plugin from GitHub, loads it, and makes its comm
 
 See [How plugins are loaded](#how-plugins-are-loaded) for the difference between the two verbs.
 
+If a plugin supports configuration, pass it with `#:config`:
+
+```scheme
+(load-plugin "core:vim-keybind" #:config (hash "skip-shadows" #t))
+```
+
+See [Configuring a plugin](#configuring-a-plugin) for what a plugin does with this value, and the plugin's own docs for which keys it understands.
+
 ## Plugin status
 
 ```
@@ -158,6 +166,18 @@ Available hooks and their lambda signatures:
 | `on-language-set` | A buffer's language is detected or changed | `(buffer-id lang)` — `lang` is a string or `#f` |
 
 For lazy plugins, declare the events that should trigger activation via `#:events` on `declare-plugin` instead (see [How plugins are loaded](#how-plugins-are-loaded)).
+
+### Configuring a plugin
+
+A plugin can read the `#:config` value its user passed to `load-plugin` or `declare-plugin` with `(plugin-config)`. It returns whatever was passed — typically a hash — or an empty hash if nothing was passed:
+
+```scheme
+(define cfg (plugin-config))
+(unless (and (hash-contains? cfg "skip-shadows") (hash-ref cfg "skip-shadows"))
+  (bind-key! "normal" "C" "my-command"))
+```
+
+Document the keys your plugin understands so users know what to pass.
 
 ### Sandboxed filesystem
 

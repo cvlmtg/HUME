@@ -59,7 +59,7 @@ fn ensure_top_level(ctx: &SteelCtx, verb: &str) -> Result<(), SteelErr> {
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
-/// `(%declare-plugin! name commands events languages)` — Rust primitive
+/// `(%declare-plugin! name commands events languages config)` — Rust primitive
 /// backing the Scheme-side `declare-plugin` wrapper.
 ///
 /// Top-level only: valid only at the top level of `init.scm`.  A plugin can
@@ -79,12 +79,15 @@ fn ensure_top_level(ctx: &SteelCtx, verb: &str) -> Result<(), SteelErr> {
 /// - Parses activation entry lists; converts event names to `HookId` variants.
 /// - Filters colliding command entries (logs `Severity::Error`, continues).
 /// - Registers the plugin in `LazyRegistry`.
+/// - Stores `config` (the `#:config` value, first-wins) so the body can read it
+///   back via `(plugin-config)` whenever activation eventually runs it.
 pub(crate) fn declare_plugin(
     ctx: &mut SteelCtx,
     name: String,
     commands: SteelVal,
     events: SteelVal,
     languages: SteelVal,
+    config: SteelVal,
 ) -> SteelResult {
     ensure_top_level(ctx, "declare-plugin")?;
     let plugin_id = PluginId::parse(&name).map_err(steel_parse_err)?;
@@ -103,6 +106,12 @@ pub(crate) fn declare_plugin(
         Some(_) => return Ok(SteelVal::Void), // Declared/Loading/Failed: first wins
         None => {}
     }
+
+    // First declaration wins for config too, matching the state no-op above:
+    // stored now so it is already in place by the time activation runs the body.
+    ctx.registries
+        .plugin_configs
+        .insert(plugin_id.clone(), config);
 
     // PLUM compat: declared_plugins always records every declared plugin.
     if !ctx
@@ -278,11 +287,15 @@ pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResu
     }
 }
 
-/// `(%load-plugin! "name")` — Rust primitive backing the Scheme-side
+/// `(%load-plugin! "name" config)` — Rust primitive backing the Scheme-side
 /// `load-plugin` wrapper (eager).
 ///
 /// Top-level only: valid only at the top level of `init.scm`.  A plugin can
 /// never load another plugin — see `ensure_top_level`.
+///
+/// Stores `config` (the `#:config` value) unconditionally, overriding any prior
+/// value — repeat calls are expected to replace what the body sees on next load,
+/// unlike `declare-plugin`'s first-wins.  Read back by the body via `(plugin-config)`.
 ///
 /// If the plugin is not yet declared, resolves its path and registers it now:
 /// absent on disk → silent skip + record in `declared_plugins` for PLUM to
@@ -291,9 +304,13 @@ pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResu
 /// If already declared (lazy or otherwise), queues it for activation.
 /// If already `Loaded` or `Failed`, the `activate_plugin` idempotency guard
 /// handles it as a no-op.
-pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
+pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) -> SteelResult {
     ensure_top_level(ctx, "load-plugin")?;
     let id = PluginId::parse(&name).map_err(steel_parse_err)?;
+
+    // load-plugin always overrides: unlike declare-plugin's first-wins, a repeat
+    // (re)load intentionally replaces the config the body will see next activation.
+    ctx.registries.plugin_configs.insert(id.clone(), config);
 
     // Soft error: if this plugin was already declared lazily, loading it eagerly
     // contradicts the declare.  Warn and fall through — the wrapper still activates it.
@@ -494,6 +511,30 @@ pub(crate) fn declared_plugins(ctx: &mut SteelCtx) -> SteelResult {
         .collect();
     vals.into_steelval()
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
+}
+
+/// Empty Steel hash — the `(plugin-config)` default when no config was passed.
+fn empty_config() -> SteelResult {
+    std::collections::HashMap::<String, SteelVal>::new()
+        .into_steelval()
+        .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
+}
+
+/// `(plugin-config)` — return the calling plugin's `#:config` value, or an
+/// empty hash if none was passed (or if called outside a plugin body).
+///
+/// Resolved via the top of `plugin_stack`, which is non-empty for the whole
+/// duration of a plugin body's evaluation — pushed in `begin_lazy_activation`
+/// before either `load-plugin` (eager) or a deferred lazy activation runs the
+/// `(require …)`. Both paths therefore read config identically.
+pub(crate) fn plugin_config(ctx: &mut SteelCtx) -> SteelResult {
+    let Some(id) = ctx.plugin_stack.current() else {
+        return empty_config();
+    };
+    match ctx.registries.plugin_configs.get(id) {
+        Some(cfg) => Ok(cfg.clone()),
+        None => empty_config(),
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

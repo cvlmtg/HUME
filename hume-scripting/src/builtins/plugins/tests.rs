@@ -502,3 +502,67 @@ fn begin_lazy_activation_escapes_backslashes_in_path() {
         "plugin must be Loading after %begin-lazy-activation"
     );
 }
+
+// ── #:config / (plugin-config) ────────────────────────────────────────────
+
+/// `(plugin-config)` called outside any plugin body (top-level init.scm) must
+/// return an empty hash, not error.
+///
+/// Fail oracle: if `plugin_stack.current()` were mis-read (e.g. always
+/// returning the last-ever-pushed id instead of `None` once popped), this
+/// would return a stale plugin's config instead of empty.
+#[test]
+fn plugin_config_outside_plugin_body_is_empty() {
+    use crate::{ScriptingHost, null_host::NullHost};
+    let mut host = ScriptingHost::new();
+    host.eval_source(
+        r#"(when (not (hash-empty? (plugin-config))) (error "expected empty hash"))"#,
+        &mut NullHost,
+    )
+    .expect("plugin-config outside a plugin body must be an empty hash");
+}
+
+/// `#:config` passed to `(declare-plugin …)` at declare time must be observable
+/// by the plugin body via `(plugin-config)` whenever activation eventually runs
+/// it — the general mechanism this feature relies on, exercised on the lazy
+/// path where declare and activation are separated in time.
+///
+/// Fail oracle: if `declare_plugin` didn't store `config` into
+/// `plugin_configs`, or `plugin_config` didn't resolve the right `PluginId`
+/// from `plugin_stack`, the body would observe an empty hash instead of "val"
+/// and `log!` would never record it.
+#[test]
+#[cfg(not(windows))]
+fn plugin_config_survives_lazy_declare_to_activation() {
+    use crate::{ScriptingHost, null_host::NullHost};
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let plugin_dir = dir.path().join("plugins").join("user").join("cfgtest");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(
+        plugin_dir.join("plugin.scm"),
+        br#"(log! 'info (hash-ref (plugin-config) "key"))"#,
+    )
+    .unwrap();
+
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+
+    host.eval_source(
+        r#"(declare-plugin "user/cfgtest" #:commands '("probe") #:config (hash "key" "val"))"#,
+        &mut NullHost,
+    )
+    .expect("declare-plugin with #:config must succeed");
+
+    // Activation happens later, decoupled from declare — exactly the lazy
+    // scenario the config channel must survive.
+    host.eval_source(r#"(%activate-plugin-inline "user/cfgtest")"#, &mut NullHost)
+        .expect("lazy activation must succeed");
+
+    let messages = host.peek_pending_messages();
+    assert!(
+        messages.iter().any(|(_, msg)| msg == "val"),
+        "plugin body must observe #:config passed at declare-plugin time; messages: {messages:?}"
+    );
+}

@@ -42,6 +42,7 @@ impl SteelCtxTestHarness {
                 lazy_registry: Default::default(),
                 declared_plugins: Vec::new(),
                 command_table: std::collections::HashMap::new(),
+                plugin_configs: std::collections::HashMap::new(),
             },
             pending_messages: Vec::new(),
             pending_language_regs: Vec::new(),

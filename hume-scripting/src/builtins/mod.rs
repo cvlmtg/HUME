@@ -106,16 +106,21 @@ const BOOTSTRAP: &str = r#"
 
 ; declare-plugin — plugin manifest; activation entries forwarded to %declare-plugin!.
 ; At least one activation entry (#:commands/#:events/#:languages) is required.
+; #:config is an opaque value (typically a hash) the plugin body reads back via
+; (plugin-config) whenever activation eventually runs it.
 (define (declare-plugin name #:commands  [commands  '()]
                              #:events    [events    '()]
-                             #:languages [languages '()])
-  (%declare-plugin! name commands events languages))
+                             #:languages [languages '()]
+                             #:config    [config    (hash)])
+  (%declare-plugin! name commands events languages config))
 
 ; load-plugin — eager init-context activation; delegates to the shared
 ; inline-activation helper after declaring/resolving the plugin.
 ; Valid only during init.scm / :reload-config (enforced by %load-plugin!).
-(define (load-plugin name)
-  (%load-plugin! name)
+; #:config is an opaque value (typically a hash) the plugin body reads back via
+; (plugin-config).
+(define (load-plugin name #:config [config (hash)])
+  (%load-plugin! name config)
   (%activate-plugin-inline name))
 
 ; %activate-plugin-inline — shared activation helper used by both load-plugin
@@ -217,6 +222,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
     // Plugin introspection and explicit activation
     steel.register_fn_with_ctx(HUME_CTX, "loaded-plugins", plugins::loaded_plugins);
     steel.register_fn_with_ctx(HUME_CTX, "declared-plugins", plugins::declared_plugins);
+    steel.register_fn_with_ctx(HUME_CTX, "plugin-config", plugins::plugin_config);
     steel.register_fn_with_ctx(HUME_CTX, "%load-plugin!", plugins::load_plugin);
 
     // Inline activation primitives — called from the %activate-plugin-inline

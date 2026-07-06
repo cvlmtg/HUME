@@ -28,6 +28,32 @@ might never actually call in a session costs nothing until you do.
 
 ---
 
+## Passing configuration
+
+Both verbs accept an optional `#:config` value — typically a hash — that the plugin
+body can read back for itself:
+
+```scheme
+(load-plugin "alice/my-theme" #:config (hash "variant" "dark"))
+```
+
+```scheme
+; alice/my-theme/plugin.scm
+(define cfg (plugin-config))
+(if (equal? (hash-ref cfg "variant") "dark")
+    (load-dark-palette)
+    (load-light-palette))
+```
+
+`(plugin-config)` always returns the calling plugin's own config — never another
+plugin's — and an empty hash if none was passed. This works the same way whether the
+plugin is eager (config is available the instant the body runs) or lazy (config is
+recorded at `declare-plugin` time and is still there whenever activation eventually
+happens, even much later in the session). A plugin author decides what keys their
+config hash understands and documents them for users.
+
+---
+
 ## The manifest and the body
 
 When HUME processes a `declare-plugin` call it records a *manifest* — a description of

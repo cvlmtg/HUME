@@ -14,10 +14,16 @@
 //!   `%activate-plugin-inline` (body evaluated via `hm.eval-string` inside the
 //!   running VM — no `&mut Engine` borrow needed).  Self-declares: no prior
 //!   `declare-plugin` needed.
-//! - `(declare-plugin name #:commands #:events #:languages)` — **lazy**.
+//! - `(declare-plugin name #:commands #:events #:languages #:config)` — **lazy**.
 //!   The plugin **manifest**: records a `Declared` state + activation maps in
-//!   `LazyRegistry`; body is NOT run.  At least one keyword arg is required —
-//!   a manifest with no activation entries can never be activated and hard-errors.
+//!   `LazyRegistry`; body is NOT run.  At least one of `#:commands`/`#:events`/
+//!   `#:languages` is required — a manifest with no activation entries can never
+//!   be activated and hard-errors.
+//! - `#:config` (on both `load-plugin` and `declare-plugin`) is an opaque value
+//!   (typically a hash) stored per-`PluginId`. The plugin body reads its own
+//!   config back via `(plugin-config)`, resolved from the top of `plugin_stack`
+//!   — identical for eager and lazy bodies, since both push there for the
+//!   duration of the eval.
 //! - Activation entries (command / event / language) are one-shot: the first one
 //!   exercised calls `%activate-plugin-inline` (body via `(require)`), flips state
 //!   to `Loaded`, and drops that plugin's entries from all activation maps.  The
@@ -94,7 +100,7 @@ use lazy::{LazyRegistry, PluginState};
 
 // ── ScriptingRegistries ───────────────────────────────────────────────────────
 
-/// The four persistent registry fields bundled as a unit so they can be
+/// The five persistent registry fields bundled as a unit so they can be
 /// borrowed as a single `&mut ScriptingRegistries` — disjoint from the
 /// Steel VM (`steel`) and the rest of `ScriptingHost`.
 pub(crate) struct ScriptingRegistries {
@@ -115,6 +121,11 @@ pub(crate) struct ScriptingRegistries {
     /// Populated by `define_command_inner` inline during init or plugin activation.
     /// Consulted by `%lookup-plugin-proc` in both init and command mode.
     pub(crate) command_table: std::collections::HashMap<String, SteelVal>,
+    /// Per-plugin config value passed via `#:config` on `(load-plugin …)` /
+    /// `(declare-plugin …)`. Read back by the plugin body through `(plugin-config)`,
+    /// resolved via the top of `plugin_stack` — works identically whether the
+    /// plugin activates immediately (eager) or much later (lazy).
+    pub(crate) plugin_configs: std::collections::HashMap<PluginId, SteelVal>,
 }
 
 // ── HostBundle ────────────────────────────────────────────────────────────────
@@ -197,6 +208,7 @@ impl ScriptingHost {
                 lazy_registry: LazyRegistry::default(),
                 declared_plugins: Vec::new(),
                 command_table: std::collections::HashMap::new(),
+                plugin_configs: std::collections::HashMap::new(),
             },
             plugin_stack: PluginStack::default(),
             pending_messages: Vec::new(),

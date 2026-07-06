@@ -10,6 +10,11 @@
 ;;;
 ;;; Usage in init.scm:
 ;;;   (load-plugin "core:vim-keybind")
+;;;
+;;; C is the only binding above that shadows a default (copy-selection-on-next-
+;;; line). Pass #:config with "skip-shadows" to drop just that one and keep the
+;;; native binding, e.g. because muscle memory for vim's C conflicts with it:
+;;;   (load-plugin "core:vim-keybind" #:config (hash "skip-shadows" #t))
 
 ;; Dot-repeat needs no #:repeatable here: `change`/`delete` are natively
 ;; repeatable and capture the preceding goto-line-end(extend) step via the
@@ -37,7 +42,10 @@
 
 ;; ── C / D / G ─────────────────────────────────────────────────────────────────
 ;; C shadows the default copy-selection-on-next-line binding (still reachable
-;; via `:copy-selection-on-next-line`).
-(bind-key! "normal" "C" "vim-change-to-eol")
+;; via `:copy-selection-on-next-line`). #:config (hash "skip-shadows" #t) skips
+;; just this binding so the native default stays in place.
+(define cfg (plugin-config))
+(unless (and (hash-contains? cfg "skip-shadows") (hash-ref cfg "skip-shadows"))
+  (bind-key! "normal" "C" "vim-change-to-eol"))
 (bind-key! "normal" "D" "vim-delete-to-eol")
 (bind-key! "normal" "G" "goto-last-line")

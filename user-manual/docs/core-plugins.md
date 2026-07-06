@@ -40,3 +40,9 @@ Opt-in GUI-style paste split: `p` / `P` paste the kill-ring head, `Ctrl+V` / `Ct
 ## core:vim-keybind
 
 Vim muscle-memory keys: `$`, `^`, `0`, and the alternate-file toggle, plus `C` (change to end of line), `D` (delete to end of line), and `G` (go to last line).
+
+`C` is the only one of these that replaces a default binding (`copy-selection-on-next-line`). If you'd rather keep that default and drop just `C`, pass `#:config`:
+
+```scheme
+(load-plugin "core:vim-keybind" #:config (hash "skip-shadows" #t))
+```

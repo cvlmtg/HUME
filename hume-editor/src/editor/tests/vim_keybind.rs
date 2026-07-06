@@ -25,6 +25,16 @@ const VIM_KEYBIND_PLUGIN: &str = include_str!(concat!(
 /// instead of a user data dir, and loads eagerly (no lazy stubs needed).
 #[cfg(not(windows))]
 fn setup_vim_keybind_editor(input: &str) -> (Editor, HumeRuntimeGuard, tempfile::TempDir) {
+    setup_vim_keybind_editor_with_init(input, r#"(load-plugin "core:vim-keybind")"#)
+}
+
+/// Like `setup_vim_keybind_editor`, but with a caller-supplied `init.scm` body
+/// — lets tests exercise `#:config` without hand-rolling the plugin-dir setup.
+#[cfg(not(windows))]
+fn setup_vim_keybind_editor_with_init(
+    input: &str,
+    init_source: &str,
+) -> (Editor, HumeRuntimeGuard, tempfile::TempDir) {
     let guard = HumeRuntimeGuard::new();
     let plugin_dir = guard
         .runtime
@@ -37,7 +47,7 @@ fn setup_vim_keybind_editor(input: &str) -> (Editor, HumeRuntimeGuard, tempfile:
 
     let init_dir = tempfile::tempdir().unwrap();
     let init_path = init_dir.path().join("init.scm");
-    std::fs::write(&init_path, r#"(load-plugin "core:vim-keybind")"#).unwrap();
+    std::fs::write(&init_path, init_source).unwrap();
 
     let mut ed = editor_from(input);
     let mut host = ScriptingHost::new();
@@ -131,6 +141,60 @@ fn shift_c_shadows_copy_selection_command() {
             .is_some(),
         "the shadowed command must still be registered and callable by name"
     );
+}
+
+// ── #:config "skip-shadows" ─────────────────────────────────────────────────
+
+/// `#:config (hash "skip-shadows" #t)` drops the `C` binding, restoring the
+/// native `copy-selection-on-next-line` (adds a second cursor on the next
+/// line, leaves the buffer untouched) instead of the vim change-to-eol.
+#[test]
+#[cfg(not(windows))]
+fn shift_c_with_skip_shadows_restores_copy_selection() {
+    let (mut ed, _guard, _dir) = setup_vim_keybind_editor_with_init(
+        "-[h]>ello\nworld\n",
+        r#"(load-plugin "core:vim-keybind" #:config (hash "skip-shadows" #t))"#,
+    );
+    ed.handle_key(key('C'));
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "hello\nworld\n",
+        "buffer must be unchanged — C must not edit text when skip-shadows drops the vim override"
+    );
+    assert_eq!(ed.state.mode, Mode::Normal);
+
+    let heads: Vec<usize> = ed
+        .current_selections()
+        .iter_sorted()
+        .map(|s| s.head())
+        .collect();
+    assert_eq!(
+        heads.len(),
+        2,
+        "copy-selection-on-next-line adds a second cursor"
+    );
+    assert!(heads.contains(&0), "original cursor stays at col 0 line 0");
+    assert!(heads.contains(&6), "new cursor lands at col 0 line 1");
+}
+
+/// `#:config "skip-shadows"` only affects `C` — `D` and `G` (which shadow
+/// nothing) stay bound to their vim behavior.
+#[test]
+#[cfg(not(windows))]
+fn skip_shadows_does_not_affect_non_shadowing_bindings() {
+    let (mut ed, _guard, _dir) = setup_vim_keybind_editor_with_init(
+        "-[h]>ello\nworld\n",
+        r#"(load-plugin "core:vim-keybind" #:config (hash "skip-shadows" #t))"#,
+    );
+    ed.handle_key(key('D'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "\nworld\n",
+        "D must still delete to end of line"
+    );
+    ed.handle_key(key('G'));
+    assert_eq!(state(&ed), "\n-[w]>orld\n", "G must still go to last line");
 }
 
 // ── Dot-repeat ────────────────────────────────────────────────────────────────
