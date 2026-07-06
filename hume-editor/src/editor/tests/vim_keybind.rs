@@ -19,13 +19,27 @@ const VIM_KEYBIND_PLUGIN: &str = include_str!(concat!(
     "/../runtime/plugins/core/vim-keybind/plugin.scm"
 ));
 
+// `C`'s selection-width check dispatches to `stdlib/all-single-char?` via
+// `call!`, so vim-keybind now depends on `core:stdlib` being loaded first —
+// load the real stdlib plugin file alongside it, same pattern as
+// `VIM_KEYBIND_PLUGIN` above.
+#[cfg(not(windows))]
+const STDLIB_PLUGIN: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../runtime/plugins/core/stdlib/plugin.scm"
+));
+
 /// Build an editor with `core:vim-keybind` eagerly loaded via a real
 /// `init.scm` + the real plugin file. Mirrors `setup_lazy_editor` in
 /// `tests/plugins.rs`, but uses `HUME_RUNTIME` (core plugin resolution)
 /// instead of a user data dir, and loads eagerly (no lazy stubs needed).
 #[cfg(not(windows))]
 fn setup_vim_keybind_editor(input: &str) -> (Editor, HumeRuntimeGuard, tempfile::TempDir) {
-    setup_vim_keybind_editor_with_init(input, r#"(load-plugin "core:vim-keybind")"#)
+    setup_vim_keybind_editor_with_init(
+        input,
+        r#"(load-plugin "core:stdlib")
+(load-plugin "core:vim-keybind")"#,
+    )
 }
 
 /// Like `setup_vim_keybind_editor`, but with a caller-supplied `init.scm` body
@@ -44,6 +58,15 @@ fn setup_vim_keybind_editor_with_init(
         .join("vim-keybind");
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(plugin_dir.join("plugin.scm"), VIM_KEYBIND_PLUGIN).unwrap();
+
+    let stdlib_dir = guard
+        .runtime
+        .path()
+        .join("plugins")
+        .join("core")
+        .join("stdlib");
+    std::fs::create_dir_all(&stdlib_dir).unwrap();
+    std::fs::write(stdlib_dir.join("plugin.scm"), STDLIB_PLUGIN).unwrap();
 
     let init_dir = tempfile::tempdir().unwrap();
     let init_path = init_dir.path().join("init.scm");
@@ -128,6 +151,27 @@ fn shift_c_changes_to_eol_and_enters_insert() {
     assert_eq!(ed.state.mode, Mode::Insert);
 }
 
+/// With a real (multi-char) selection already in place, `C` falls back to the
+/// shadowed `copy-selection-on-next-line` instead of changing text — vim has
+/// no bare-cursor gesture to match here, so HUME's multicursor idiom wins.
+/// Mirrors `copy_next_line_range_selection` in
+/// `hume-editor/src/ops/selection_cmd/copy.rs`: a forward selection covering
+/// "hello" is duplicated one line down with the same column span, buffer
+/// text untouched.
+#[test]
+#[cfg(not(windows))]
+fn shift_c_with_selection_copies_to_next_line() {
+    let (mut ed, _guard, _dir) = setup_vim_keybind_editor("-[hello]>\nworld\n");
+    ed.handle_key(key('C'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "hello\nworld\n",
+        "buffer must be unchanged — C must not edit text when the selection spans more than one char"
+    );
+    assert_eq!(state(&ed), "-[hello]>\n-[world]>\n");
+    assert_eq!(ed.state.mode, Mode::Normal);
+}
+
 /// `C` shadows the default `copy-selection-on-next-line` binding while the
 /// plugin is loaded — the multicursor command stays reachable by name.
 #[test]
@@ -153,7 +197,8 @@ fn shift_c_shadows_copy_selection_command() {
 fn shift_c_with_skip_shadows_restores_copy_selection() {
     let (mut ed, _guard, _dir) = setup_vim_keybind_editor_with_init(
         "-[h]>ello\nworld\n",
-        r#"(load-plugin "core:vim-keybind" #:config (hash "skip-shadows" #t))"#,
+        r#"(load-plugin "core:stdlib")
+(load-plugin "core:vim-keybind" #:config (hash "skip-shadows" #t))"#,
     );
     ed.handle_key(key('C'));
 
@@ -185,7 +230,8 @@ fn shift_c_with_skip_shadows_restores_copy_selection() {
 fn skip_shadows_does_not_affect_non_shadowing_bindings() {
     let (mut ed, _guard, _dir) = setup_vim_keybind_editor_with_init(
         "-[h]>ello\nworld\n",
-        r#"(load-plugin "core:vim-keybind" #:config (hash "skip-shadows" #t))"#,
+        r#"(load-plugin "core:stdlib")
+(load-plugin "core:vim-keybind" #:config (hash "skip-shadows" #t))"#,
     );
     ed.handle_key(key('D'));
     assert_eq!(

@@ -209,7 +209,9 @@
 ;; core:classic-paste  — opt-in GUI-style paste split:
 ;;                       p/P → kill-ring head; Ctrl+V / Ctrl+Shift+V → OS clipboard
 ;; core:vim-keybind    — vim muscle-memory keys: $ ^ 0 Ctrl+6, plus C/D/G
-;;                       (C shadows the default copy-selection-on-next-line)
+;;                       (C is change-to-EOL on a bare cursor; with a real
+;;                       selection it shadows copy-selection-on-next-line
+;;                       instead. Requires core:stdlib loaded first.)
 ;;
 ;; Load plum first so it can install plugins and grammars.
 ;; PLUM registers any already-compiled grammars on load.
@@ -229,11 +231,11 @@
 
 ;; (load-plugin "core:helix-surround")
 ;; (load-plugin "core:classic-paste")
-;; (load-plugin "core:vim-keybind")
 
-;; Helper-function library for plugin authors; load it before any plugin
-;; that depends on it.
+;; Selection-query commands for plugin authors, called via call!; load it
+;; before any plugin that calls them (core:vim-keybind's C binding does).
 ;; (load-plugin "core:stdlib")
+;; (load-plugin "core:vim-keybind")
 
 ;; Declare third-party plugins to be installed by :plum-install.
 ;; PLUM installs declared plugins and reloads the config so they activate.

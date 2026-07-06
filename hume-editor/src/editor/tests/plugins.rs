@@ -1604,23 +1604,24 @@ fn core_stdlib_plugin_loads_eagerly() {
     );
 }
 
-/// The `core:stdlib` selection helpers must compute the expected results on
-/// literal selection tuples, and pass `#f` straight through untouched.
+/// The `core:stdlib` selection-query commands must compute the expected
+/// results on literal selection-list arguments via `call!`, and pass `#f`
+/// straight through untouched — the same cross-plugin surface
+/// `core:vim-keybind` uses for its conditional `C` binding.
 ///
 /// Each assertion is a hand-written literal-tuple oracle, independent of the
-/// implementation: if any helper computes the wrong result, its `unless`
+/// implementation: if any command computes the wrong result, its `unless`
 /// fires `(error ...)`, which propagates as an `Err` — caught by the assert
 /// below, failing the test with the offending assertion name.
 ///
-/// The `load-plugin` call and the assertions run as two separate evals: Steel
-/// compiles each `eval_*` call's source as one program, so a single combined
-/// program would try to resolve `stdlib/*` as free identifiers before the
-/// runtime `load-plugin` call (in the same program) had a chance to bind
-/// them. Splitting into two sequential evals on the same engine lets the
-/// second compile step see what the first eval's `require` already bound.
+/// `stdlib`'s per-triple accessors (`selection-anchor`/`-head`/`-primary?`,
+/// `primary-selection`) are module-private composition helpers with no
+/// `(provide)` — they are intentionally not directly testable from outside
+/// the plugin's module. The three commands below exercise every accessor
+/// transitively (primary-flag selection on both ends, `#f` passthrough).
 #[test]
 #[cfg(not(windows))]
-fn core_stdlib_selection_helpers() {
+fn core_stdlib_selection_commands() {
     let guard = HumeRuntimeGuard::new();
     let plugin_dir = guard
         .runtime
@@ -1644,32 +1645,24 @@ fn core_stdlib_selection_helpers() {
     .expect("eval_init must succeed loading core:stdlib");
 
     let assertions = r#"
-(unless (equal? (stdlib/selection-anchor '(3 7 #t)) 3) (error "selection-anchor"))
-(unless (equal? (stdlib/selection-head '(3 7 #t)) 7) (error "selection-head"))
-(unless (equal? (stdlib/selection-primary? '(3 7 #t)) #t) (error "selection-primary?"))
+(unless (equal? (call! "stdlib/all-single-char?" #f) #f) (error "all-single-char? #f passthrough"))
+(unless (equal? (call! "stdlib/single-selection?" #f) #f) (error "single-selection? #f passthrough"))
+(unless (equal? (call! "stdlib/cursor-char-index" #f) #f) (error "cursor-char-index #f passthrough"))
 
-(unless (equal? (stdlib/selection-anchor #f) #f) (error "selection-anchor #f passthrough"))
-(unless (equal? (stdlib/selection-head #f) #f) (error "selection-head #f passthrough"))
-(unless (equal? (stdlib/selection-primary? #f) #f) (error "selection-primary? #f passthrough"))
-(unless (equal? (stdlib/primary-selection #f) #f) (error "primary-selection #f passthrough"))
-(unless (equal? (stdlib/single-selection? #f) #f) (error "single-selection? #f passthrough"))
-(unless (equal? (stdlib/all-single-char? #f) #f) (error "all-single-char? #f passthrough"))
-(unless (equal? (stdlib/cursor-char-index #f) #f) (error "cursor-char-index #f passthrough"))
-
-(unless (equal? (stdlib/primary-selection (list (list 0 1 #f) (list 4 5 #t))) (list 4 5 #t))
-  (error "primary-selection"))
-
-(unless (equal? (stdlib/single-selection? (list (list 0 1 #t))) #t) (error "single-selection? true"))
-(unless (equal? (stdlib/single-selection? (list (list 0 1 #t) (list 2 3 #f))) #f)
+(unless (equal? (call! "stdlib/single-selection?" (list (list 0 1 #t))) #t)
+  (error "single-selection? true"))
+(unless (equal? (call! "stdlib/single-selection?" (list (list 0 1 #t) (list 2 3 #f))) #f)
   (error "single-selection? false"))
 
-(unless (equal? (stdlib/all-single-char? (list (list 2 2 #t) (list 5 5 #f))) #t)
+(unless (equal? (call! "stdlib/all-single-char?" (list (list 2 2 #t) (list 5 5 #f))) #t)
   (error "all-single-char? true"))
-(unless (equal? (stdlib/all-single-char? (list (list 2 3 #t))) #f)
+(unless (equal? (call! "stdlib/all-single-char?" (list (list 2 3 #t))) #f)
   (error "all-single-char? false"))
+(unless (equal? (call! "stdlib/all-single-char?" (list (list 2 2 #f) (list 5 6 #t))) #f)
+  (error "all-single-char? false when only a later selection is wide"))
 
-(unless (equal? (stdlib/cursor-char-index (list (list 0 0 #f) (list 7 4 #t))) 4)
-  (error "cursor-char-index"))
+(unless (equal? (call! "stdlib/cursor-char-index" (list (list 0 0 #f) (list 7 4 #t))) 4)
+  (error "cursor-char-index picks the primary's head"))
 "#;
 
     let result = {
@@ -1678,6 +1671,6 @@ fn core_stdlib_selection_helpers() {
     };
     assert!(
         result.is_ok(),
-        "stdlib selection helper assertions must all pass: {result:?}"
+        "stdlib selection command assertions must all pass: {result:?}"
     );
 }

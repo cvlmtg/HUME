@@ -39,30 +39,28 @@ Opt-in GUI-style paste split: `p` / `P` paste the kill-ring head, `Ctrl+V` / `Ct
 
 ## core:vim-keybind
 
-Vim muscle-memory keys: `$`, `^`, `0`, and the alternate-file toggle, plus `C` (change to end of line), `D` (delete to end of line), and `G` (go to last line).
+Vim muscle-memory keys: `$`, `^`, `0`, and the alternate-file toggle, plus `C`, `D` (delete to end of line), and `G` (go to last line). Requires `core:stdlib` loaded first.
 
-`C` is the only one of these that replaces a default binding (`copy-selection-on-next-line`). If you'd rather keep that default and drop just `C`, pass `#:config`:
+`C` is context-sensitive: on a bare cursor it's vim's change to end of line; with an active (multi-char) selection it instead replaces the default binding, `copy-selection-on-next-line`, so that command stays reachable without giving up vim muscle memory for the common case. If you'd rather keep the default unconditionally and drop the vim override entirely, pass `#:config`:
 
 ```scheme
+(load-plugin "core:stdlib")
 (load-plugin "core:vim-keybind" #:config (hash "skip-shadows" #t))
 ```
 
 ## core:stdlib
 
-A library of helper functions for plugin authors. Load it before any plugin that depends on it:
+Selection-query commands for plugin authors, called like any other command via `call!`. Load it before any plugin that calls them:
 
 ```scheme
 (load-plugin "core:stdlib")
 ```
 
-`(current-selections)` returns a list of selection records, one per cursor — treat each record as opaque and read it only through the accessors below, never by picking it apart directly. Character positions count from 0; line numbers count from 1, matching what the statusline shows.
+`(current-selections)` returns a list of selection records, one per cursor — treat each record as opaque; query it only through the commands below, never by picking it apart directly. Character positions count from 0; line numbers count from 1, matching what the statusline shows.
 
-- `(stdlib/selection-anchor sel)` / `(stdlib/selection-head sel)` — the two ends of a selection record. The head is the end that moves — where the cursor blinks.
-- `(stdlib/selection-primary? sel)` — whether this is the primary selection (the one shown in the statusline, when there are multiple cursors).
-- `(stdlib/primary-selection sels)` — pick out the primary selection from the full list.
-- `(stdlib/single-selection? sels)` — true when there's exactly one cursor.
-- `(stdlib/all-single-char? sels)` — true when every selection covers exactly one character (no text is selected — just cursors).
-- `(stdlib/cursor-char-index sels)` — the character position of the primary cursor.
-- `(char-index->line idx)` — converts a character position (as returned by the accessors above) to its line number.
+- `(call! "stdlib/single-selection?" sels)` — true when there's exactly one cursor.
+- `(call! "stdlib/all-single-char?" sels)` — true when every selection covers exactly one character (no text is selected — just cursors).
+- `(call! "stdlib/cursor-char-index" sels)` — the character position of the primary cursor.
+- `(char-index->line idx)` — converts a character position (as returned above) to its line number.
 
-All of these accept `#f` and return `#f` — you only need to check `(current-selections)` for `#f` once, wherever you call it.
+All three `stdlib/*` commands accept `#f` and return `#f` — you only need to check `(current-selections)` for `#f` once, wherever you call it.
