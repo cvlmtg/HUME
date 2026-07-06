@@ -33,8 +33,17 @@
 (bind-key! "normal" "ctrl-6" "goto-alternate-file")
 
 ;; ── C / D / G ─────────────────────────────────────────────────────────────────
+;; change-to-eol: 'smart (default) → context-sensitive C; 'on → unconditional
+;; change-to-eol; 'off → leave C at HUME's default (copy-selection-on-next-line).
 (define cfg (plugin-config))
-(unless (and (hash-contains? cfg "skip-shadows") (hash-ref cfg "skip-shadows"))
-  (bind-key! "normal" "C" "vim-change-to-eol-or-copy-line"))
+(define change-to-eol
+  (if (hash-contains? cfg "change-to-eol")
+      (hash-ref cfg "change-to-eol")
+      'smart))
+(cond
+  ((equal? change-to-eol 'on)    (bind-key! "normal" "C" "vim-change-to-eol"))
+  ((equal? change-to-eol 'smart) (bind-key! "normal" "C" "vim-change-to-eol-or-copy-line"))
+  ((equal? change-to-eol 'off)   (begin))
+  (else (error "core:vim-keybind: change-to-eol must be 'on, 'smart, or 'off")))
 (bind-key! "normal" "D" "vim-delete-to-eol")
 (bind-key! "normal" "G" "goto-last-line")

@@ -32,17 +32,20 @@ memory for the common (bare-cursor) case.
 
 ## Config
 
-| Key                 | Effect                                                                 |
-|----------------------|--------------------------------------------------------------------------|
-| `"skip-shadows"`    | Skip the `C` override entirely; `copy-selection-on-next-line` stays bound unconditionally. |
+| Key                | Value     | Effect                                                                 |
+|---------------------|-----------|--------------------------------------------------------------------------|
+| `"change-to-eol"`  | `'on`     | `C` always changes to end of line, ignoring any active selection.         |
+| `"change-to-eol"`  | `'smart` (default) | `C` is context-sensitive: bare cursor changes to EOL, real selection copies to next line. |
+| `"change-to-eol"`  | `'off`    | `C` is left unbound; HUME's default `copy-selection-on-next-line` stays reachable on `C`. |
 
 ```scheme
 (load-plugin "core:stdlib")
-(load-plugin "core:vim-keybind" #:config (hash "skip-shadows" #t))
+(load-plugin "core:vim-keybind" #:config (hash "change-to-eol" 'off))
 ```
 
-Use this if vim muscle memory for `C` conflicts with your own use of
-`copy-selection-on-next-line`.
+Use `'off` if vim muscle memory for `C` conflicts with your own use of
+`copy-selection-on-next-line`. Use `'on` if you want pure vim `C` semantics
+and never rely on the multicursor copy behavior.
 
 ## How it works
 
@@ -63,5 +66,5 @@ legacy terminals emit `0x1E`, which HUME does not currently surface as this bind
 back to `:e #` on those terminals).
 
 The `#:config` read follows the standard pattern: `(plugin-config)` returns the hash passed
-at `load-plugin` time (or an empty one), checked with `hash-contains?` before `hash-ref` so a
-config-less load doesn't error.
+at `load-plugin` time (or an empty one). `"change-to-eol"` is checked with `hash-contains?`
+before `hash-ref` so a config-less load defaults to `'smart` instead of erroring.

@@ -173,7 +173,7 @@ A plugin can read the `#:config` value its user passed to `load-plugin` or `decl
 
 ```scheme
 (define cfg (plugin-config))
-(unless (and (hash-contains? cfg "skip-shadows") (hash-ref cfg "skip-shadows"))
+(unless (and (hash-contains? cfg "disable-binding") (hash-ref cfg "disable-binding"))
   (bind-key! "normal" "C" "my-command"))
 ```
 

@@ -187,25 +187,25 @@ fn shift_c_shadows_copy_selection_command() {
     );
 }
 
-// ── #:config "skip-shadows" ─────────────────────────────────────────────────
+// ── #:config "change-to-eol" ─────────────────────────────────────────────────
 
-/// `#:config (hash "skip-shadows" #t)` drops the `C` binding, restoring the
+/// `#:config (hash "change-to-eol" 'off)` drops the `C` binding, restoring the
 /// native `copy-selection-on-next-line` (adds a second cursor on the next
 /// line, leaves the buffer untouched) instead of the vim change-to-eol.
 #[test]
 #[cfg(not(windows))]
-fn shift_c_with_skip_shadows_restores_copy_selection() {
+fn shift_c_with_change_to_eol_off_restores_copy_selection() {
     let (mut ed, _guard, _dir) = setup_vim_keybind_editor_with_init(
         "-[h]>ello\nworld\n",
         r#"(load-plugin "core:stdlib")
-(load-plugin "core:vim-keybind" #:config (hash "skip-shadows" #t))"#,
+(load-plugin "core:vim-keybind" #:config (hash "change-to-eol" 'off))"#,
     );
     ed.handle_key(key('C'));
 
     assert_eq!(
         ed.doc().text().to_string(),
         "hello\nworld\n",
-        "buffer must be unchanged — C must not edit text when skip-shadows drops the vim override"
+        "buffer must be unchanged — C must not edit text when change-to-eol 'off drops the vim override"
     );
     assert_eq!(ed.state.mode, Mode::Normal);
 
@@ -223,15 +223,15 @@ fn shift_c_with_skip_shadows_restores_copy_selection() {
     assert!(heads.contains(&6), "new cursor lands at col 0 line 1");
 }
 
-/// `#:config "skip-shadows"` only affects `C` — `D` and `G` (which shadow
-/// nothing) stay bound to their vim behavior.
+/// `#:config "change-to-eol" 'off` only affects `C` — `D` and `G` (which
+/// shadow nothing) stay bound to their vim behavior.
 #[test]
 #[cfg(not(windows))]
-fn skip_shadows_does_not_affect_non_shadowing_bindings() {
+fn change_to_eol_off_does_not_affect_non_shadowing_bindings() {
     let (mut ed, _guard, _dir) = setup_vim_keybind_editor_with_init(
         "-[h]>ello\nworld\n",
         r#"(load-plugin "core:stdlib")
-(load-plugin "core:vim-keybind" #:config (hash "skip-shadows" #t))"#,
+(load-plugin "core:vim-keybind" #:config (hash "change-to-eol" 'off))"#,
     );
     ed.handle_key(key('D'));
     assert_eq!(
@@ -241,6 +241,27 @@ fn skip_shadows_does_not_affect_non_shadowing_bindings() {
     );
     ed.handle_key(key('G'));
     assert_eq!(state(&ed), "\n-[w]>orld\n", "G must still go to last line");
+}
+
+/// `#:config (hash "change-to-eol" 'on)` makes `C` change to end of line
+/// unconditionally, even with a real (multi-char) selection active — unlike
+/// the default `'smart` behavior (see `shift_c_with_selection_copies_to_next_line`),
+/// which falls back to `copy-selection-on-next-line` in that case.
+#[test]
+#[cfg(not(windows))]
+fn shift_c_with_change_to_eol_on_ignores_selection_width() {
+    let (mut ed, _guard, _dir) = setup_vim_keybind_editor_with_init(
+        "-[hello]>\nworld\n",
+        r#"(load-plugin "core:stdlib")
+(load-plugin "core:vim-keybind" #:config (hash "change-to-eol" 'on))"#,
+    );
+    ed.handle_key(key('C'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "\nworld\n",
+        "change-to-eol 'on must change to EOL even with a real selection active"
+    );
+    assert_eq!(ed.state.mode, Mode::Insert);
 }
 
 // ── Dot-repeat ────────────────────────────────────────────────────────────────
