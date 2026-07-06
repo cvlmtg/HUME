@@ -1,5 +1,18 @@
 use super::*;
+use crate::editor::host_impl::EditorHostImpl;
+use hume_scripting::host::EditorHost;
 use pretty_assertions::assert_eq;
+
+/// Build a live `EditorHostImpl` borrowing `$ed`'s state/view, for direct
+/// `run_command_sync` dispatch — bypasses the keymap entirely.
+macro_rules! host {
+    ($ed:ident) => {
+        EditorHostImpl {
+            state: &mut $ed.state,
+            view: &mut $ed.view,
+        }
+    };
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -34,73 +47,74 @@ fn alternate_buffer_is_previous_focused() {
     assert_eq!(ed.alternate_buffer(), Some(id_a));
 }
 
-// ── Ctrl+6 / goto-alternate-file ─────────────────────────────────────────────
-//
-// Ctrl+6 is bound by the opt-in `core:vim-keybind` plugin, not the defaults —
-// each test below binds it directly to keep exercising `goto-alternate-file`
-// dispatch rather than the plugin loading machinery.
-
-/// Bind Ctrl+6 → goto-alternate-file, mirroring what `core:vim-keybind` does.
-fn bind_ctrl_6(ed: &mut Editor) {
-    use crate::editor::keymap::BindMode;
-    ed.state.keymap.bind_user_with_extend(
-        BindMode::Normal,
-        &[key_ctrl('6')],
-        "goto-alternate-file".into(),
-        false,
-    );
-}
+// ── goto-alternate-file (Ctrl+6 in `core:vim-keybind`, see tests/vim_keybind.rs
+// for the plugin's key binding itself) ───────────────────────────────────────
 
 #[test]
 #[cfg(not(windows))]
-fn ctrl_6_switches_to_alternate_and_is_involutive() {
+fn goto_alternate_file_switches_to_alternate_and_is_involutive() {
     let (p1, _t1) = temp_file("file1\n");
     let (p2, _t2) = temp_file("file2\n");
     let mut ed = editor_from("-[h]>ello\n");
-    bind_ctrl_6(&mut ed);
     ed.execute_typed("e", Some(p1.to_str().unwrap())).unwrap();
     let id_a = ed.focused_buffer_id();
     ed.execute_typed("e", Some(p2.to_str().unwrap())).unwrap();
     let id_b = ed.focused_buffer_id();
 
-    ed.handle_key(key_ctrl('6'));
+    host!(ed)
+        .run_command_sync("goto-alternate-file", 1, false, None)
+        .expect("goto-alternate-file must not error");
     assert_eq!(
         ed.focused_buffer_id(),
         id_a,
-        "Ctrl+6 must switch to alternate"
+        "goto-alternate-file must switch to alternate"
     );
 
-    ed.handle_key(key_ctrl('6'));
+    host!(ed)
+        .run_command_sync("goto-alternate-file", 1, false, None)
+        .expect("goto-alternate-file must not error");
     assert_eq!(
         ed.focused_buffer_id(),
         id_b,
-        "Ctrl+6 again returns to starting buffer"
+        "goto-alternate-file again returns to starting buffer"
     );
 }
 
 #[test]
 #[cfg(not(windows))]
-fn ctrl_6_pushes_jump_entry() {
+fn goto_alternate_file_pushes_jump_entry() {
     let (p1, _t1) = temp_file("file1\n");
     let (p2, _t2) = temp_file("file2\n");
     let mut ed = editor_from("-[h]>ello\n");
-    bind_ctrl_6(&mut ed);
     ed.execute_typed("e", Some(p1.to_str().unwrap())).unwrap();
     ed.execute_typed("e", Some(p2.to_str().unwrap())).unwrap();
     let id_before = ed.focused_buffer_id();
 
-    ed.handle_key(key_ctrl('6'));
-    assert_ne!(ed.focused_buffer_id(), id_before, "Ctrl+6 changes focus");
-    ed.handle_key(key_ctrl('o'));
-    assert_eq!(ed.focused_buffer_id(), id_before, "Ctrl+O retraces Ctrl+6");
+    host!(ed)
+        .run_command_sync("goto-alternate-file", 1, false, None)
+        .expect("goto-alternate-file must not error");
+    assert_ne!(
+        ed.focused_buffer_id(),
+        id_before,
+        "goto-alternate-file changes focus"
+    );
+    host!(ed)
+        .run_command_sync("jump-backward", 1, false, None)
+        .expect("jump-backward must not error");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        id_before,
+        "jump-backward retraces goto-alternate-file"
+    );
 }
 
 #[test]
-fn ctrl_6_warns_when_no_alternate() {
+fn goto_alternate_file_warns_when_no_alternate() {
     let mut ed = editor_from("-[h]>ello\n");
-    bind_ctrl_6(&mut ed);
     let id_before = ed.focused_buffer_id();
-    ed.handle_key(key_ctrl('6'));
+    host!(ed)
+        .run_command_sync("goto-alternate-file", 1, false, None)
+        .expect("goto-alternate-file must not error");
     assert_eq!(
         ed.focused_buffer_id(),
         id_before,
