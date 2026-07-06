@@ -62,6 +62,7 @@ export default defineConfig({
         items: [
           { text: 'Configuration', link: '/configuration' },
           { text: 'Plugins', link: '/plugins' },
+          { text: 'Core Plugins', link: '/core-plugins' },
         ],
       },
       {

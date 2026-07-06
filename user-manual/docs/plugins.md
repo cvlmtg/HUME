@@ -1,8 +1,6 @@
 # Plugins
 
-HUME plugins are written in Scheme (Steel dialect) and managed by **PLUM** — the HUME **PLU**gin **M**anager, included with the editor.
-
-PLUM is not different from any other plugin, so you must load it — add `(load-plugin "core:plum")` to your `init.scm`.
+HUME plugins are written in Scheme (Steel dialect) and managed by **PLUM**, a bundled core plugin — see [Core Plugins](core-plugins.md#plum) for what it is and how to enable it.
 
 ## Installing a plugin
 
@@ -32,15 +30,6 @@ Shows all declared plugins, whether they loaded successfully, and which commands
 ```
 
 Reloads `init.scm` from scratch. Useful after editing your config without restarting the editor.
-
-## PLUM commands
-
-| Command | Effect |
-|---------|--------|
-| `:plum-install` | Install all declared plugins not yet on disk |
-| `:plum-cleanup` | Remove on-disk plugins no longer declared |
-| `:plum-update` | Pull latest in every installed third-party plugin |
-| `:plum-list` | Show declared/installed/orphan/missing plugins |
 
 ## How plugins are loaded
 
@@ -186,13 +175,4 @@ These are sandboxed to `data/plugins/`, `data/grammars/`, and `runtime/plugins/`
 
 ## Bundled core plugins
 
-HUME ships with several built-in plugins that are always available:
-
-| Name | Description |
-|------|-------------|
-| `core:plum` | Plugin and grammar manager (commands: `:plum-install-grammar`, `:plum-list`, etc.) |
-| `core:helix-surround` | Helix-style surround (ms = wrap, md = delete, mr = replace) |
-| `core:classic-paste` | Classic paste commands (`:classic-ring-after`, `:classic-clipboard-before`, etc.) |
-| `core:vim-keybind` | Vim muscle-memory keys: `$` `^` `0` `Ctrl+6`, plus `C` (change to end of line), `D` (delete to end of line), `G` (go to last line) |
-
-None of these load automatically — add `(load-plugin "core:...")` to your `init.scm` for any you want.
+HUME ships several built-in plugins — see [Core Plugins](core-plugins.md) for the full list and what each does.

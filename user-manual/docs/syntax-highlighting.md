@@ -2,7 +2,7 @@
 
 HUME colors your code with **tree-sitter** — accurate highlighting that stays correct as you type and handles partial or malformed code without choking.
 
-Highlighting is **opt-in per language**: HUME knows how to recognize many languages out of the box, but it doesn't ship pre-compiled parsers. For a language to light up, you install a **grammar** — a small package tree-sitter uses to parse that language. PLUM handles this for you.
+Highlighting is **opt-in per language**: HUME knows how to recognize many languages out of the box, but it doesn't ship pre-compiled parsers. For a language to light up, you install a **grammar** — a small package tree-sitter uses to parse that language. [PLUM](core-plugins.md#plum) handles this for you.
 
 ## Prerequisites
 

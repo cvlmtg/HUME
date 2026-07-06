@@ -74,7 +74,7 @@ Search highlights clear automatically when you press `Esc`. `:clear-search` clea
 | `:plugin-status` | `:plugins` | Show declared plugins and their load state |
 | `:reload-config` | — | Reload `init.scm` from scratch |
 
-The `:plum-*` commands (plugin and grammar installation, updates, cleanup) are provided by the bundled `core:plum` plugin — see [Plugins](plugins.md#plum-plugin-and-grammar-management) for the full list.
+The `:plum-*` commands (plugin and grammar installation, updates, cleanup) are provided by the bundled `core:plum` plugin — see [Core Plugins](core-plugins.md#plum) for the full list.
 
 ## Other
 

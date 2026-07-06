@@ -61,7 +61,7 @@ This makes HUME's config a real programming language — conditionals, loops, an
 
 ### Plugin system
 
-Helix has no built-in plugin system. HUME has **PLUM**, a plugin manager where plugins are Steel (Scheme) scripts loaded from GitHub:
+Helix has no built-in plugin system. HUME has [PLUM](core-plugins.md#plum), a plugin manager where plugins are Steel (Scheme) scripts loaded from GitHub:
 
 ```scheme
 (load-plugin "username/my-plugin")
