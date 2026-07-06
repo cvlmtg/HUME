@@ -21,7 +21,7 @@ In HUME, the order is reversed: you **select first, then act**. `w` selects the 
 | Visual | Extend mode (`e`) or any motion that grows or shrinks the selection |
 | Visual Line | Extend mode + line motions |
 | Visual Block | HUME has no rectangular selection. Use `C` to spawn column-aligned multi-cursors (one per line below), then edit — this approximates column editing without a true visual block. |
-| Command-line | Command line (`:`) |
+| Command&nbsp;line | Command line (`:`) |
 
 ## Key differences
 
