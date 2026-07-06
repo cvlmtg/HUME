@@ -285,7 +285,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-    // ── Live cursor/selection reads ──────────────────────────────────────────
+    // ── Live cursor read ─────────────────────────────────────────────────────
     fn current_line_number(&self) -> Option<usize> {
         let buf_id = crate::editor::commands::focused_buffer_id(self.state, self.view);
         let pbs = self
@@ -304,17 +304,6 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
                 .char_to_line(head)
                 + 1,
         )
-    }
-
-    fn cursor_char_index(&self) -> Option<usize> {
-        let buf_id = crate::editor::commands::focused_buffer_id(self.state, self.view);
-        let pbs = self
-            .state
-            .panes
-            .state
-            .get(self.state.focused_pane_id)?
-            .get(buf_id)?;
-        Some(pbs.selections.primary().head())
     }
 }
 

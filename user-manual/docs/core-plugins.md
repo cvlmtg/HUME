@@ -46,3 +46,13 @@ Vim muscle-memory keys: `$`, `^`, `0`, and the alternate-file toggle, plus `C` (
 ```scheme
 (load-plugin "core:vim-keybind" #:config (hash "skip-shadows" #t))
 ```
+
+## core:stdlib
+
+A library of helper functions for plugin authors. Load it before any plugin that depends on it:
+
+```scheme
+(load-plugin "core:stdlib")
+```
+
+Currently minimal — it grows as helpers are added.

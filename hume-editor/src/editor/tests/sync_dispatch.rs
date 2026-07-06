@@ -26,9 +26,7 @@ macro_rules! live_host {
 fn run_command_sync_motion_moves_cursor() {
     // "-[a]>bc\n" — cursor at position 0.
     let mut ed = editor_from("-[a]>bc\n");
-    let before = live_host!(ed)
-        .cursor_char_index()
-        .expect("cursor_char_index before");
+    assert_eq!(state(&ed), "-[a]>bc\n", "cursor must start at 0");
 
     {
         let mut host = live_host!(ed);
@@ -37,11 +35,11 @@ fn run_command_sync_motion_moves_cursor() {
             .expect("run_command_sync must not error for move-right");
     }
 
-    let after = live_host!(ed)
-        .cursor_char_index()
-        .expect("cursor_char_index after");
-    assert_eq!(before, 0, "cursor must start at 0");
-    assert_eq!(after, 1, "cursor must be at 1 after sync move-right");
+    assert_eq!(
+        state(&ed),
+        "a-[b]>c\n",
+        "cursor must be at 1 after sync move-right"
+    );
 }
 
 /// `run_command_sync` for an `EditorCmd` (the fourth native variant) must apply
@@ -57,8 +55,8 @@ fn run_command_sync_editor_cmd_runs_sync() {
     ed.execute_keymap_command("delete".into(), 1, false, vec![]);
     // Buffer is now "bc\n"; cursor should be at 0.
     assert_eq!(
-        live_host!(ed).cursor_char_index(),
-        Some(0),
+        state(&ed),
+        "-[b]>c\n",
         "pre-condition: cursor at 0 after delete"
     );
 
@@ -69,15 +67,10 @@ fn run_command_sync_editor_cmd_runs_sync() {
     }
 
     // After undo the deleted 'a' must be restored and cursor back at 0 on "abc\n".
-    let buf_text: String = ed.doc().text().rope().to_string();
     assert_eq!(
-        buf_text, "abc\n",
-        "undo via run_command_sync must restore the deleted character"
-    );
-    assert_eq!(
-        live_host!(ed).cursor_char_index(),
-        Some(0),
-        "cursor must be at 0 after undo"
+        state(&ed),
+        "-[a]>bc\n",
+        "undo via run_command_sync must restore the deleted character with cursor at 0"
     );
 }
 
@@ -88,31 +81,6 @@ fn run_command_sync_unknown_name_errors() {
     let mut host = live_host!(ed);
     let result = host.run_command_sync("no-such-command-xyzzy", 1, false, None);
     assert!(result.is_err(), "unknown command must return Err");
-}
-
-/// `cursor_char_index` must reflect the live cursor position — after a sync move
-/// the index updates, not a frozen pre-move snapshot.
-///
-/// A stub that always returned 0 would pass the pre-move check but fail after
-/// the move, so liveness is genuinely tested.
-#[test]
-fn cursor_char_index_reads_live_position() {
-    let mut ed = editor_from("-[a]>bc\n");
-    let before = live_host!(ed)
-        .cursor_char_index()
-        .expect("cursor_char_index before");
-    assert_eq!(before, 0, "cursor starts at 0");
-
-    {
-        live_host!(ed)
-            .run_command_sync("move-right", 1, false, None)
-            .unwrap();
-    }
-
-    let after = live_host!(ed)
-        .cursor_char_index()
-        .expect("cursor_char_index after");
-    assert_eq!(after, 1, "cursor_char_index must reflect the sync move");
 }
 
 /// `current_line_number` must reflect a live position change across lines.
@@ -153,12 +121,10 @@ fn run_command_sync_selection_updates_sel() {
             .expect("run_command_sync must not error for select-line");
     }
     // select-line covers the full line "abc\n" (inclusive); head lands on '\n' at position 3.
-    let head = live_host!(ed)
-        .cursor_char_index()
-        .expect("cursor_char_index after sel");
     assert_eq!(
-        head, 3,
-        "select-line head must be at position 3 ('\\n' — inclusive selection)"
+        state(&ed),
+        "-[abc\n]>",
+        "select-line must cover the full line with head on '\\n' (inclusive selection)"
     );
 }
 
@@ -264,21 +230,21 @@ fn call_bang_malformed_arg_to_native_cmd_errors_without_side_effect() {
 
 // ── Case B integration test ───────────────────────────────────────────────────
 
-/// **Case B** — a Steel function can observe the effect of `(move-right)` in
-/// the same eval via `(cursor-char-index)`.
+/// **Case B** — a Steel function can observe the effect of `(move-down)` in
+/// the same eval via `(current-line-number)`.
 ///
 /// The discriminating logic:
-/// - Start at position 0.  Call `(move-right)`.
-/// - Cursor is immediately 1, so the `(when (= (cursor-char-index) 1) ...)` arm
-///   fires and calls `(move-right)` a second time → final position 2.
+/// - Start on line 1.  Call `(move-down)`.
+/// - Cursor is immediately on line 2, so the `(when (= (current-line-number) 2) ...)`
+///   arm fires and calls `(move-down)` a second time → final line 3.
 ///
-/// Fail oracle: if dispatch defers commands → cursor lands at 1 instead of 2.
+/// Fail oracle: if dispatch defers commands → cursor lands on line 2 instead of 3.
 #[test]
 fn case_b_sync_cursor_read_reflects_motion() {
-    // "-[a]>bc\n" — cursor at position 0.
-    let mut ed = editor_from("-[a]>bc\n");
+    // "-[a]>\nb\nc\n" — cursor on line 1.
+    let mut ed = editor_from("-[a]>\nb\nc\n");
 
-    // Pre-register native command names as Steel bindings so `(move-right)` etc.
+    // Pre-register native command names as Steel bindings so `(move-down)` etc.
     // resolve at compile time.
     let names: Vec<String> = ed
         .state
@@ -299,9 +265,9 @@ fn case_b_sync_cursor_read_reflects_motion() {
     host.eval_source_returning_defs(
         r#"(define-command! "test-case-b" "Case B probe"
                  (lambda ()
-                   (move-right)
-                   (when (= (cursor-char-index) 1)
-                     (move-right))))"#
+                   (move-down)
+                   (when (= (current-line-number) 2)
+                     (move-down))))"#
             .to_owned(),
         Default::default(),
         &mut init_host,
@@ -313,11 +279,11 @@ fn case_b_sync_cursor_read_reflects_motion() {
     ed.execute_keymap_command("test-case-b".into(), 1, false, vec![]);
 
     let final_state = state(&ed);
-    // Both moves ran inside the lambda → cursor at 2, "ab-[c]>\n".
-    // Fail oracle: if dispatch defers → cursor at 1, "a-[b]>c\n".
+    // Both moves ran inside the lambda → cursor on line 3, "a\nb\n-[c]>\n".
+    // Fail oracle: if dispatch defers → cursor on line 2, "a\n-[b]>\nc\n".
     assert_eq!(
-        final_state, "ab-[c]>\n",
-        "sync dispatch: (cursor-char-index) must reflect (move-right) effect within same eval"
+        final_state, "a\nb\n-[c]>\n",
+        "sync dispatch: (current-line-number) must reflect (move-down) effect within same eval"
     );
 }
 
@@ -962,13 +928,11 @@ fn steel_unknown_cmd_warns_and_continues() {
     ed.scripting = Some(host);
     ed.execute_keymap_command("warn-test".into(), 1, false, vec![]);
 
-    let idx = live_host!(ed)
-        .cursor_char_index()
-        .expect("cursor_char_index");
     // Both move-rights run inline despite the unknown name — cursor ends at 2.
     assert_eq!(
-        idx, 2,
-        "both moves must execute despite unknown command in between; got {idx}"
+        state(&ed),
+        "ab-[c]>\n",
+        "both moves must execute despite unknown command in between"
     );
 }
 
@@ -1691,17 +1655,18 @@ fn parity_extend_exit_keypress_vs_steel() {
 /// **Core goal**: a plugin command that calls another plugin command can observe
 /// the inner command's effect via a state read in the same body.
 ///
-/// `inner-move` is applied inline (plugin funcall in the VM), so cursor=1 by
-/// the time `(cursor-char-index)` is evaluated → the `(when …)` branch fires →
-/// second move-right → cursor=2.
+/// `inner-move` is applied inline (plugin funcall in the VM), so the cursor is
+/// on line 2 by the time `(current-line-number)` is evaluated → the `(when …)`
+/// branch fires → second move-down → line 3.
 ///
 /// Fail oracle: comment out the `if proc { apply proc args }` branch in
 /// `%dispatch-command` so all commands fall through to `%call-native!` — the
-/// plugin command queues, cursor stays 0 during eval, branch does not fire → 1.
+/// plugin command queues, cursor stays on line 1 during eval, branch does not
+/// fire → line 2.
 #[test]
 fn plugin_calls_plugin_cursor_read_is_live() {
-    // "-[a]>bc\n", cursor at position 0.
-    let mut ed = editor_from("-[a]>bc\n");
+    // "-[a]>\nb\nc\n", cursor on line 1.
+    let mut ed = editor_from("-[a]>\nb\nc\n");
 
     let names: Vec<String> = ed
         .state
@@ -1717,17 +1682,17 @@ fn plugin_calls_plugin_cursor_read_is_live() {
         state: &mut ed.state,
         view: &mut ed.view,
     };
-    // inner-move: plugin command that wraps a single move-right.
+    // inner-move: plugin command that wraps a single move-down.
     // outer-cmd: calls inner-move (plugin→plugin), reads cursor, conditionally
-    //   moves right again if cursor advanced past 0.
+    //   moves down again if cursor advanced past line 1.
     host.eval_source_returning_defs(
         r#"(define-command! "inner-move" ""
-                 (lambda () (call! "move-right")))
+                 (lambda () (call! "move-down")))
                (define-command! "outer-cmd" ""
                  (lambda ()
                    (call! "inner-move")
-                   (when (> (cursor-char-index) 0)
-                     (call! "move-right"))))"#
+                   (when (> (current-line-number) 1)
+                     (call! "move-down"))))"#
             .to_owned(),
         Default::default(),
         &mut init_host,
@@ -1737,15 +1702,13 @@ fn plugin_calls_plugin_cursor_read_is_live() {
     ed.scripting = Some(host);
     ed.execute_keymap_command("outer-cmd".into(), 1, false, vec![]);
 
-    let idx = live_host!(ed)
-        .cursor_char_index()
-        .expect("cursor_char_index after outer-cmd");
-    // Inline: inner-move ran synchronously (cursor=1 during eval), branch fired → cursor=2.
-    // Deferred: inner-move queued (cursor=0 during eval), branch skipped → cursor=1.
+    // Inline: inner-move ran synchronously (line 2 during eval), branch fired → line 3.
+    // Deferred: inner-move queued (line 1 during eval), branch skipped → line 2.
     assert_eq!(
-        idx, 2,
-        "plugin→plugin inline dispatch: cursor must be 2 (branch fired on live read); \
-         got {idx} — likely deferral regression"
+        state(&ed),
+        "a\nb\n-[c]>\n",
+        "plugin→plugin inline dispatch: cursor must be on line 3 (branch fired on live read); \
+         deferral regression leaves it on line 2"
     );
 }
 
@@ -1846,12 +1809,10 @@ fn native_call_bang_at_init_top_level_warns_and_skips() {
     );
 
     // 3. The native command itself must have been skipped.
-    let idx = live_host!(ed)
-        .cursor_char_index()
-        .expect("cursor_char_index");
     assert_eq!(
-        idx, 0,
-        "cursor must not move (native command skipped during init); got {idx}"
+        state(&ed),
+        "-[a]>bc\n",
+        "cursor must not move (native command skipped during init)"
     );
 
     // 4. A warning must have been produced for the skipped command.
@@ -2162,16 +2123,15 @@ fn lazy_command_first_dispatch_forwards_extend() {
     ed.register_lazy_command_stubs(&activation_commands);
     ed.scripting = Some(host);
 
-    let before = live_host!(ed).cursor_char_index().expect("cursor before");
-
     // Dispatch with extend=true on the first (Lazy) call.
     ed.execute_keymap_command("tp-branch".into(), 1, true, vec![]);
 
-    let after = live_host!(ed).cursor_char_index().expect("cursor after");
-    // move-right advances by 1 char; move-down would change line.
+    // move-right advances by 1 char on line 1; move-down would land on line 2.
+    // (The inner (call! "move-right") dispatches without extend, so the
+    // selection moves rather than grows — extend=true only picks the branch.)
     assert_eq!(
-        after,
-        before + 1,
+        state(&ed),
+        "a-[b]>\ncd\n",
         "extend=true must forward to lambda → move-right, not move-down"
     );
 }
@@ -2254,8 +2214,11 @@ fn steel_dispatch_consumes_pending_char() {
     ed.state.pending_char = Some('x');
     ed.execute_keymap_command("probe-char".into(), 1, false, vec![]);
 
-    let cursor = live_host!(ed).cursor_char_index().expect("cursor read");
-    assert_eq!(cursor, 1, "body must see the pending char and move right");
+    assert_eq!(
+        state(&ed),
+        "a-[b]>cdef\n",
+        "body must see the pending char and move right"
+    );
     assert!(
         ed.state.pending_char.is_none(),
         "dispatch must consume pending_char"
@@ -2263,9 +2226,9 @@ fn steel_dispatch_consumes_pending_char() {
 
     // A later dispatch without a fresh WaitChar must see #f, not the stale 'x'.
     ed.execute_keymap_command("probe-char".into(), 1, false, vec![]);
-    let cursor = live_host!(ed).cursor_char_index().expect("cursor read");
     assert_eq!(
-        cursor, 1,
+        state(&ed),
+        "a-[b]>cdef\n",
         "stale pending_char must not leak into later dispatch"
     );
 }

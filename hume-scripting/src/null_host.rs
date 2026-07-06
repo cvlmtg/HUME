@@ -120,9 +120,6 @@ impl EditorHost for NullHost {
     fn current_line_number(&self) -> Option<usize> {
         None
     }
-    fn cursor_char_index(&self) -> Option<usize> {
-        None
-    }
 }
 
 /// Like [`NullHost`] but `register_command` fails.
@@ -236,8 +233,5 @@ impl EditorHost for FailingRegisterHost {
     }
     fn current_line_number(&self) -> Option<usize> {
         NullHost.current_line_number()
-    }
-    fn cursor_char_index(&self) -> Option<usize> {
-        NullHost.cursor_char_index()
     }
 }

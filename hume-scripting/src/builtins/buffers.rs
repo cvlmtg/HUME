@@ -239,18 +239,6 @@ pub(crate) fn current_line_number(ctx: &mut SteelCtx) -> SteelResult {
     }
 }
 
-/// `(cursor-char-index)` → char-index of the primary cursor head, or `#f`.
-///
-/// Reads live state — reflects any synchronous edits or motions that ran
-/// earlier in the same Steel eval.
-pub(crate) fn cursor_char_index(ctx: &mut SteelCtx) -> SteelResult {
-    require_cmd_ctx!(ctx, "cursor-char-index");
-    match ctx.host.cursor_char_index() {
-        Some(n) => Ok(SteelVal::IntV(n as isize)),
-        None => Ok(SteelVal::BoolV(false)),
-    }
-}
-
 /// `(set-buffer-language! bid lang-or-#f)` — deferred; applied after the eval returns.
 pub(crate) fn set_buffer_language_steel(
     ctx: &mut SteelCtx,
@@ -383,14 +371,6 @@ mod tests {
         assert!(current_line_number(&mut ctx).is_err());
     }
 
-    /// `cursor-char-index` is blocked in init mode.
-    #[test]
-    fn cursor_char_index_blocked_in_init_mode() {
-        let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx_init();
-        assert!(cursor_char_index(&mut ctx).is_err());
-    }
-
     // ── Type errors (wrong arg type) ──────────────────────────────────────────
 
     /// `buffer-path` rejects a non-BufferId argument.
@@ -490,15 +470,6 @@ mod tests {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
         let result = current_line_number(&mut ctx);
-        assert!(matches!(result, Ok(SteelVal::BoolV(false))));
-    }
-
-    /// `cursor-char-index` returns `#f` when the host has no cursor (NullHost).
-    #[test]
-    fn cursor_char_index_returns_false_when_no_cursor() {
-        let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        let result = cursor_char_index(&mut ctx);
         assert!(matches!(result, Ok(SteelVal::BoolV(false))));
     }
 }

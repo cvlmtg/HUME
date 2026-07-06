@@ -194,9 +194,6 @@ impl EditorHost for MockHost {
     fn current_line_number(&self) -> Option<usize> {
         None
     }
-    fn cursor_char_index(&self) -> Option<usize> {
-        None
-    }
 }
 
 fn to_editor_bind_mode(mode: BindMode) -> hume::KeymapBindMode {

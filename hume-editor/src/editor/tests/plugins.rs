@@ -1559,3 +1559,51 @@ fn lazy_stub_collision_returned_and_stub_not_registered() {
         "collision must produce an Error message"
     );
 }
+
+// ── core:stdlib — real shipped plugin ─────────────────────────────────────────
+
+#[cfg(not(windows))]
+const STDLIB_PLUGIN: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../runtime/plugins/core/stdlib/plugin.scm"
+));
+
+/// The shipped `core:stdlib` plugin must load eagerly and reach `Loaded`.
+///
+/// The file is currently comment-only; this pins that Steel accepts a
+/// forms-free `require` module, so the empty stdlib can ship before its
+/// first function lands.
+#[test]
+#[cfg(not(windows))]
+fn core_stdlib_plugin_loads_eagerly() {
+    use hume_scripting::attribution::PluginId;
+
+    let guard = HumeRuntimeGuard::new();
+    let plugin_dir = guard
+        .runtime
+        .path()
+        .join("plugins")
+        .join("core")
+        .join("stdlib");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(plugin_dir.join("plugin.scm"), STDLIB_PLUGIN).unwrap();
+
+    let init_dir = tempfile::tempdir().unwrap();
+    let init_path = init_dir.path().join("init.scm");
+    std::fs::write(&init_path, r#"(load-plugin "core:stdlib")"#).unwrap();
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init must succeed loading core:stdlib");
+
+    let id = PluginId::parse("core:stdlib").expect("valid plugin name");
+    assert_eq!(
+        host.plugin_status(&id),
+        Some(PluginStatus::Loaded),
+        "core:stdlib must be Loaded after eager load-plugin"
+    );
+}

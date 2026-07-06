@@ -292,13 +292,12 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_fn_with_ctx(HUME_CTX, "buffer-path", buffers::buffer_path);
     steel.register_fn_with_ctx(HUME_CTX, "buffer-name", buffers::buffer_name);
     steel.register_fn_with_ctx(HUME_CTX, "buffer-dirty?", buffers::buffer_dirty);
-    // Live cursor/selection reads — reflect synchronous edits in the same eval.
+    // Live cursor read — reflects synchronous edits in the same eval.
     steel.register_fn_with_ctx(
         HUME_CTX,
         "current-line-number",
         buffers::current_line_number,
     );
-    steel.register_fn_with_ctx(HUME_CTX, "cursor-char-index", buffers::cursor_char_index);
 
     // Multi-buffer mutating builtins
     steel.register_fn_with_ctx(HUME_CTX, "open-buffer!", buffers::open_buffer);

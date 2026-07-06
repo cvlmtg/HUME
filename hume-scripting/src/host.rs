@@ -165,15 +165,10 @@ pub trait EditorHost {
     /// No-op if the name is not present.
     fn unregister_command(&mut self, name: &str);
 
-    // ── Live cursor/selection reads ──────────────────────────────────────────
+    // ── Live cursor read ─────────────────────────────────────────────────────
     /// Line number (1-indexed) of the primary cursor in the focused buffer.
     ///
     /// Returns `None` when the focused (pane, buffer) has no seeded pane state
     /// (stale or never-focused ids).
     fn current_line_number(&self) -> Option<usize>;
-
-    /// Char-index of the primary cursor head in the focused buffer.
-    ///
-    /// Returns `None` under the same conditions as [`Self::current_line_number`].
-    fn cursor_char_index(&self) -> Option<usize>;
 }

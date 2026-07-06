@@ -231,6 +231,10 @@
 ;; (load-plugin "core:classic-paste")
 ;; (load-plugin "core:vim-keybind")
 
+;; Helper-function library for plugin authors; load it before any plugin
+;; that depends on it.
+;; (load-plugin "core:stdlib")
+
 ;; Declare third-party plugins to be installed by :plum-install.
 ;; PLUM installs declared plugins and reloads the config so they activate.
 ;; (load-plugin "alice/my-theme")

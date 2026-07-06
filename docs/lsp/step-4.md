@@ -125,7 +125,7 @@ Response cases (all four methods share them): null → "No definition found"; si
 (define-command! "goto-prev-diagnostic" "…" (lambda () (diag-jump -1)))
 (define-command! "diagnostics" ":diagnostics — list buffer diagnostics." (lambda () …drawer…))
 ```
-`diag-jump`: `(diagnostics-for-buffer bid)` (already sorted) → compare the cursor's char offset (existing builtin `cursor-char-index`) against each entry's `"start"` → first entry strictly after / last strictly before (wrap around, report "no diagnostics" when empty) → `(goto-location! (list bid line col))` using the entry's `"line"`/`"col"` fields (shape 2 — char-indexed, no encoding involved). Drawer rows: severity glyph + first message line.
+`diag-jump`: `(diagnostics-for-buffer bid)` (already sorted) → compare the cursor's char offset (needs a cursor-offset read — the `cursor-char-index` builtin was removed 2026-07; reintroduce it at this step, primitive + `core:stdlib` home to be decided then) against each entry's `"start"` → first entry strictly after / last strictly before (wrap around, report "no diagnostics" when empty) → `(goto-location! (list bid line col))` using the entry's `"line"`/`"col"` fields (shape 2 — char-indexed, no encoding involved). Drawer rows: severity glyph + first message line.
 
 **Tests** — next from before/inside/after a diagnostic; wraparound both directions; empty buffer message; drawer Enter jumps. Keys: `gn` / `gp` under the goto trie (free today — hub F4 decision; **not** `]d`/`[d`, paste-ring owns those leaves); confirm at F11.
 
