@@ -119,7 +119,7 @@ impl From<ResolvedStyle> for ratatui::style::Style {
             style = style.add_modifier(ratatui::style::Modifier::RAPID_BLINK);
         }
         // Known boundary limitation (tracked, not fixed here — see
-        // ROADMAP.md open questions): Solid/Wavy/Dotted/Dashed all collapse
+        // docs/ROADMAP.md open questions): Solid/Wavy/Dotted/Dashed all collapse
         // to the same plain UNDERLINED modifier. ratatui's `Modifier`
         // bitflags carry no underline-*shape* bits, and the crossterm
         // backend never emits the `Undercurled`/`Underdotted`/`Underdashed`

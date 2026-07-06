@@ -27,5 +27,5 @@ HUME is under active development. Here is what's coming.
 ---
 
 ::: info
-This roadmap reflects current plans and is subject to change. For a detailed technical breakdown, see the project's `ROADMAP.md` on GitHub.
+This roadmap reflects current plans and is subject to change. For a detailed technical breakdown, see the project's `docs/ROADMAP.md` on GitHub.
 :::
