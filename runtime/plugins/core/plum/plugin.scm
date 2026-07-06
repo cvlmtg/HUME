@@ -1,11 +1,4 @@
-;;; core:plum — HUME's plugin and grammar manager
-;;;
-;;; Manages third-party Steel plugins and tree-sitter grammars.
-;;;
-;;; Plugin commands:   :plum-install  :plum-cleanup  :plum-update  :plum-list
-;;; Grammar commands:  :plum-install-grammar  :plum-update-grammar
-;;;                    :plum-ensure-grammars  :plum-list-grammars
-;;;                    :plum-cleanup-grammars
+;;; HUME's PLUgin Manager
 
 (require "plugins.scm")
 (require "grammars.scm")

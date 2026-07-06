@@ -1,15 +1,4 @@
-;;; core:plum/grammars.scm — tree-sitter grammar installation pipeline.
-;;;
-;;; Provided procedures:
-;;;   plum/declare-grammar-source!         — declare a grammar name + source info
-;;;   plum/register-installed-grammars!    — register already-compiled grammars (passive)
-;;;
-;;; Commands defined here:
-;;;   :plum-install-grammar  — install a named grammar, or the current buffer's
-;;;   :plum-update-grammar   — re-clone and recompile (purges old source)
-;;;   :plum-ensure-grammars  — install named grammars not yet compiled (list required)
-;;;   :plum-list-grammars    — log installed / declared / orphan / missing
-;;;   :plum-cleanup-grammars — delete orphan compiled grammars
+;;; core:plum/grammars.scm
 
 (require "lib.scm")
 (provide plum/declare-grammar-source! plum/register-installed-grammars!)
@@ -68,13 +57,7 @@
 
 ;; ── Injection dependencies ────────────────────────────────────────────────────
 
-;;; Hash: name → (dep-name ...). Grammars whose injections only resolve if
-;;; another grammar is also compiled and attached — e.g. markdown's
-;;; `(inline)` injection resolves to the language "markdown.inline" (the
-;;; same name as its languages.scm identity and its grammar-sources.scm /
-;;; Helix query-directory key — no renaming needed), so without that
-;;; grammar compiled and attached, bold/italic/inline-code never highlight
-;;; even though markdown itself installed cleanly.
+;;; Hash: name → (dep-name ...). See README.md § grammar dependencies.
 (define *plum-grammar-deps*
   (hash "markdown" (list "markdown.inline")))
 
@@ -83,10 +66,7 @@
       (hash-ref *plum-grammar-deps* name)
       '()))
 
-;;; Install any not-yet-compiled dependency grammars for `name` before `name`
-;;; itself installs. Runs before the main install steps so a fresh
-;;; `:plum-install-grammar` on a markdown buffer transparently pulls in
-;;; markdown.inline too — the user never needs to know it exists.
+;;; Install any not-yet-compiled dependency grammars for `name` first.
 (define (plum/install-grammar-deps! name)
   (for-each
     (lambda (dep)
@@ -167,9 +147,9 @@
 ;;;   0. plum/install-grammar-deps! — install any dependency grammars first
 ;;;   1. git-clone-rev  — blobless clone at pinned rev
 ;;;   2. curl-fetch     — download Helix highlights query
-;;;   2b. plum/try-fetch-injections! — download Helix injections query, if any
-;;;   3. compile-grammar! — tree-sitter build → shared lib
-;;;   4. register-grammar! — attach to language in this session
+;;;   3. plum/try-fetch-injections! — download Helix injections query, if any
+;;;   4. compile-grammar! — tree-sitter build → shared lib
+;;;   5. register-grammar! — attach to language in this session
 (define (plum/install-grammar name)
   (let* ((url     (plum/grammar-source-url name))
          (rev     (plum/grammar-source-rev name))
@@ -189,10 +169,7 @@
 
 ;; ── Startup grammar registration ─────────────────────────────────────────────
 
-;;; Called at plugin load time.  For each declared grammar that is already
-;;; compiled on disk, call register-grammar! (no subprocess).  Missing grammars
-;;; are silently skipped — the user opts in to auto-install via:
-;;;   (call! "plum-ensure-grammars" '("rust" "json"))  ; in init.scm, list required
+;;; Passive: registers already-compiled grammars only, no subprocess. See README.md.
 (define (plum/register-installed-grammars!)
   (for-each
     (lambda (name)

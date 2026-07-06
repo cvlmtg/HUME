@@ -1,27 +1,10 @@
-;;; core:stdlib — library of selection-query commands for plugin authors.
-;;;
-;;; Scripting layers:
-;;;   - BOOTSTRAP (hume-scripting/src/builtins/mod.rs) — core dispatch
-;;;     primitives (call!, load-plugin, define-command!); always available.
-;;;   - prelude (runtime/scheme/prelude.scm) — convenience macros for
-;;;     init.scm; loaded at startup when the runtime dir exists.
-;;;   - core:stdlib (this plugin) — commands useful to plugin authors;
-;;;     loaded explicitly via (load-plugin "core:stdlib") in init.scm,
-;;;     before any plugin that calls its commands.
-;;;
-;;; Public API is three call!-able commands (see bottom of file):
-;;;   stdlib/all-single-char?, stdlib/single-selection?, stdlib/cursor-char-index
-;;; Cross-plugin access is call!-only — plugins do not require each other's
-;;; modules, so these are commands rather than a require-able library. The
-;;; per-triple accessors below are internal composition helpers only.
+;;; core:stdlib
 
 ;; ── Selection helpers (internal) ────────────────────────────────────────────
 ;;
-;; Operate on the list returned by `(current-selections)`: each selection is an
-;; opaque `(anchor head primary?)` triple — always go through these accessors,
-;; never `car`/`cadr`/`caddr` directly on a selection in plugin code. Every
-;; helper here passes `#f` straight through, so callers only need to check for
-;; `#f` once, at the `(current-selections)` call site.
+;; Each selection is an opaque (anchor head primary?) triple — go through
+;; these accessors, never car/cadr/caddr directly. Every helper passes #f
+;; straight through, so callers check for #f once, at the call site.
 
 ;;; Anchor (0-indexed char offset) of a single selection triple, or #f.
 (define (stdlib/selection-anchor sel)
@@ -65,12 +48,9 @@
 
 ;; ── call!-able commands (public API) ────────────────────────────────────────
 ;;
-;; Thin wrappers so other plugins can query selection state across the plugin
-;; boundary via `call!` — cross-plugin calls go through `call!` only, never
-;; `require`. Each command name and the internal Steel binding of the same
-;; name live in separate namespaces (command registry vs. module scope), so
-;; there is no collision between e.g. the command "stdlib/all-single-char?"
-;; and the function `stdlib/all-single-char?` it wraps.
+;; Command name and Steel binding of the same name live in separate
+;; namespaces (command registry vs. module scope) — no collision between the
+;; command "stdlib/all-single-char?" and the function it wraps.
 
 (define-command! "stdlib/all-single-char?"
   "#t if every selection in the given list spans a single grapheme."

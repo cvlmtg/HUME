@@ -1,4 +1,4 @@
-;;; core:plum/lib.scm — shared utilities for the PLUM plugin manager.
+;;; core:plum/lib.scm
 
 (provide plum/valid-dir-entry? plum/batch-run)
 

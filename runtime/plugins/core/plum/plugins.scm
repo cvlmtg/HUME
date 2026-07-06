@@ -1,4 +1,4 @@
-;;; core:plum/plugins.scm — plugin installation and management commands.
+;;; core:plum/plugins.scm
 
 (require "lib.scm")
 
