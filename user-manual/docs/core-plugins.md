@@ -1,12 +1,12 @@
 # Core Plugins
 
-HUME ships four plugins under the `core:` namespace. None load automatically — add `(load-plugin "core:...")` to your `init.scm` for any you want.
+HUME ships a few plugins under the `core:` namespace. None load automatically — add `(load-plugin "core:...")` to your `init.scm` for any you want.
 
 ## PLUM
 
 **PLUM** — the HUME **PLU**gin **M**anager — installs and updates third-party plugins from GitHub, and installs the tree-sitter grammars that power syntax highlighting.
 
-PLUM is not different from any other plugin, so you must load it too:
+PLUM is not different from any other plugin, so you must load it too in your `init.scm`:
 
 ```scheme
 (load-plugin "core:plum")
