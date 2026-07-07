@@ -5,7 +5,10 @@
 //! dispatch; C7–C10 add document sync, diagnostics, registration, and
 //! observability commands on top.
 
+mod registry;
+
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use hume_engine::pipeline::BufferId;
@@ -18,6 +21,7 @@ use hume_lsp::inline::InlineLspBackend;
 use super::Editor;
 use super::async_source::AsyncSource;
 use super::message_log::Severity;
+use registry::LspServerConfig;
 
 /// How often to poll while any LSP server is running, so idle-time server
 /// pushes (e.g. `publishDiagnostics` after the user stops typing) don't sit
@@ -42,6 +46,12 @@ pub(crate) struct LspState {
     clients: HashMap<ServerId, LspClient>,
     callbacks: HashMap<CallbackToken, CallbackEntry>,
     next_token: u64,
+    /// Config recorded by `register-lsp-server!`, keyed by language.
+    configs: HashMap<String, LspServerConfig>,
+    /// Running (or starting) server per (language, resolved root) — the
+    /// first buffer under a pair spawns; later buffers with the same pair
+    /// attach to the existing entry.
+    servers_by_key: HashMap<(String, PathBuf), ServerId>,
 }
 
 impl LspState {
@@ -52,6 +62,8 @@ impl LspState {
             clients: HashMap::new(),
             callbacks: HashMap::new(),
             next_token: 0,
+            configs: HashMap::new(),
+            servers_by_key: HashMap::new(),
         }
     }
 
@@ -63,6 +75,8 @@ impl LspState {
             clients: HashMap::new(),
             callbacks: HashMap::new(),
             next_token: 0,
+            configs: HashMap::new(),
+            servers_by_key: HashMap::new(),
         }
     }
 
@@ -77,6 +91,8 @@ impl LspState {
             clients: HashMap::new(),
             callbacks: HashMap::new(),
             next_token: 0,
+            configs: HashMap::new(),
+            servers_by_key: HashMap::new(),
         }
     }
 
@@ -101,6 +117,21 @@ impl LspState {
     #[cfg(test)]
     pub(crate) fn client_for_test(&mut self, server: ServerId) -> Option<&mut LspClient> {
         self.clients.get_mut(&server)
+    }
+
+    /// Number of distinct (language, root) keys currently tracked.
+    #[cfg(test)]
+    pub(crate) fn server_count_for_test(&self) -> usize {
+        self.servers_by_key.len()
+    }
+
+    /// Number of `LspClient`s ever inserted — unlike `server_count_for_test`
+    /// (keyed by (language, root), so a respawn silently overwrites the same
+    /// key), a second `backend.start` always adds a new entry here. The two
+    /// counts must stay equal for "attach, don't respawn" to actually hold.
+    #[cfg(test)]
+    pub(crate) fn client_count_for_test(&self) -> usize {
+        self.clients.len()
     }
 
     /// Disjoint-borrow accessor for tests that need to drive a client and

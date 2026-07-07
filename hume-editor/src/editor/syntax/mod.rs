@@ -44,6 +44,11 @@ impl Editor {
         self.fire_hook_silent(HookId::OnLanguageSet, &[bid_val, lang_val]);
         // Wire up (or tear down) tree-sitter highlighting for this buffer.
         self.setup_buffer_syntax(bid);
+        // Spawn-or-attach an LSP server for this buffer's (possibly new)
+        // language. Idempotent — `open_buffer`'s detect-then-fire-OnBufferOpen
+        // sequence means this and the open-path hook can both observe the
+        // same language-set.
+        self.lsp_attach_buffer(bid);
     }
 
     pub(super) fn detect_and_set_language(&mut self, bid: BufferId) {

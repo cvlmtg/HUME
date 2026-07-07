@@ -1,5 +1,6 @@
 // C6 (docs/lsp/step-1.md) — request bookkeeping + server->client dispatch,
-// exercised through the editor's LspState glue (drain_lsp).
+// exercised through the editor's LspState glue (drain_lsp). C8's server
+// registration tests live at the bottom of this file.
 
 use std::cell::RefCell;
 use std::path::Path;
@@ -8,9 +9,11 @@ use std::time::{Duration, Instant};
 
 use super::*;
 use crate::editor::lsp::LspState;
+use crate::editor::scripting_setup::make_init_host;
 use hume_lsp::backend::{LspBackend, ServerId};
 use hume_lsp::client::{LspClient, Outcome, RequestMeta};
 use hume_lsp::inline::InlineLspBackend;
+use hume_scripting::ScriptingHost;
 
 /// Wraps a scripted `InlineLspBackend` (with a server already `start`ed) into
 /// the editor's `LspState` and tracks a matching `LspClient` for it.
@@ -261,4 +264,128 @@ fn became_running_flushes_queued_messages_through_the_backend() {
         .client_for_test(sid)
         .expect("client must still be tracked after drain");
     assert_eq!(client.state, hume_lsp::client::ServerState::Running);
+}
+
+// ── C8 — server registration ────────────────────────────────────────────────
+
+fn eval_register(ed: &mut Editor, host: &mut ScriptingHost, source: &str, tmp: &std::path::Path) {
+    let init_path = tmp.join("init.scm");
+    std::fs::write(&init_path, source).unwrap();
+    {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init");
+    ed.flush_pending_lsp_server_regs(host);
+}
+
+#[test]
+fn duplicate_language_registration_is_a_loud_error() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[w]>ord\n");
+    ed.lsp = LspState::new_inline();
+    let mut host = ScriptingHost::new();
+
+    eval_register(
+        &mut ed,
+        &mut host,
+        r#"(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))"#,
+        tmp.path(),
+    );
+    eval_register(
+        &mut ed,
+        &mut host,
+        r#"(register-lsp-server! "rust" #:command "rust-analyzer-2" #:root-markers '())"#,
+        tmp.path(),
+    );
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("already registered"),
+        "second registration for the same language must log a loud error, got: {log}"
+    );
+}
+
+#[test]
+fn register_and_open_matching_file_spawns_exactly_one_server_and_second_buffer_attaches() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(tmp.path()).unwrap();
+    std::fs::write(root.join("Cargo.toml"), b"").unwrap();
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    let file1 = root.join("src/main.rs");
+    std::fs::write(&file1, b"fn main() {}\n").unwrap();
+    let file2 = root.join("src/lib.rs");
+    std::fs::write(&file2, b"// lib\n").unwrap();
+
+    let mut ed = editor_from("-[w]>ord\n");
+    ed.lsp = LspState::new_inline();
+    ed.state
+        .languages
+        .register_identity("rust", &["rs"], &[], &[])
+        .unwrap();
+    let mut host = ScriptingHost::new();
+    eval_register(
+        &mut ed,
+        &mut host,
+        r#"(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))"#,
+        tmp.path(),
+    );
+
+    ed.execute_typed("e", Some(file1.to_str().unwrap())).unwrap();
+    assert_eq!(
+        ed.lsp.server_count_for_test(),
+        1,
+        "first matching file must spawn exactly one server"
+    );
+    assert_eq!(ed.lsp.client_count_for_test(), 1);
+
+    ed.execute_typed("e", Some(file2.to_str().unwrap())).unwrap();
+    assert_eq!(
+        ed.lsp.server_count_for_test(),
+        1,
+        "second file under the same root must attach, not spawn a second server"
+    );
+    assert_eq!(
+        ed.lsp.client_count_for_test(),
+        1,
+        "attaching must not mint and insert a second LspClient — servers_by_key.len() \
+         alone can't tell attach from respawn-and-overwrite, since both leave one key"
+    );
+}
+
+#[test]
+fn opening_a_file_under_a_different_root_spawns_a_second_server() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root_a = std::fs::canonicalize(tmp.path()).unwrap().join("a");
+    let root_b = std::fs::canonicalize(tmp.path()).unwrap().join("b");
+    for root in [&root_a, &root_b] {
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("Cargo.toml"), b"").unwrap();
+        std::fs::write(root.join("src/main.rs"), b"fn main() {}\n").unwrap();
+    }
+
+    let mut ed = editor_from("-[w]>ord\n");
+    ed.lsp = LspState::new_inline();
+    ed.state
+        .languages
+        .register_identity("rust", &["rs"], &[], &[])
+        .unwrap();
+    let mut host = ScriptingHost::new();
+    eval_register(
+        &mut ed,
+        &mut host,
+        r#"(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))"#,
+        tmp.path(),
+    );
+
+    ed.execute_typed("e", Some(root_a.join("src/main.rs").to_str().unwrap()))
+        .unwrap();
+    ed.execute_typed("e", Some(root_b.join("src/main.rs").to_str().unwrap()))
+        .unwrap();
+
+    assert_eq!(
+        ed.lsp.server_count_for_test(),
+        2,
+        "a different workspace root must spawn a second, independent server"
+    );
 }

@@ -7,7 +7,7 @@ use hume_engine::pipeline::{BufferId, PaneId};
 use super::attribution::PluginStack;
 use super::host::EditorHost;
 use super::log::LogLevel;
-use super::types::{PendingLanguageReg, PendingLanguageSets};
+use super::types::{PendingLanguageReg, PendingLanguageSets, PendingLspServerReg};
 use super::{HostBundle, ScriptingRegistries};
 
 /// Context struct borrowed into the Steel engine for the duration of each eval
@@ -41,6 +41,8 @@ pub(crate) struct SteelCtx<'a> {
     pub(crate) pending_messages: &'a mut Vec<(LogLevel, String)>,
     /// Language identity registrations queued by `(define-language! …)` during init.
     pub(crate) pending_language_regs: &'a mut Vec<PendingLanguageReg>,
+    /// LSP server registrations queued by `(register-lsp-server! …)` during init.
+    pub(crate) pending_lsp_server_regs: &'a mut Vec<PendingLspServerReg>,
     /// Where PLUM installs third-party plugins (`$XDG_DATA_HOME/hume/`).
     pub(crate) data_dir: Option<&'a std::path::Path>,
     /// Where core plugins, themes, and docs live.
@@ -109,6 +111,7 @@ impl<'a> SteelCtx<'a> {
             registries: host_bundle.registries,
             pending_messages: host_bundle.pending_messages,
             pending_language_regs: host_bundle.pending_language_regs,
+            pending_lsp_server_regs: host_bundle.pending_lsp_server_regs,
             data_dir: host_bundle.data_dir,
             runtime_dir: host_bundle.runtime_dir,
             builtin_cmd_names,
@@ -164,6 +167,7 @@ impl<'a> SteelCtx<'a> {
             registries: host_bundle.registries,
             pending_messages: host_bundle.pending_messages,
             pending_language_regs: host_bundle.pending_language_regs,
+            pending_lsp_server_regs: host_bundle.pending_lsp_server_regs,
             data_dir: host_bundle.data_dir,
             runtime_dir: host_bundle.runtime_dir,
             builtin_cmd_names: std::collections::HashSet::new(),

@@ -14,6 +14,7 @@ pub(crate) mod ids;
 pub(crate) mod interrupt;
 pub(crate) mod io;
 pub(crate) mod keymap_bind;
+pub(crate) mod lsp;
 pub(crate) mod panes;
 pub(crate) mod plugins;
 pub(crate) mod sandbox;
@@ -165,6 +166,16 @@ const BOOTSTRAP: &str = r#"
                 (let ((proc2 (%lookup-plugin-proc name)))
                   (if proc2 (apply proc2 args) (%call-native! name args))))
               (%call-native! name args))))))
+
+; register-lsp-server! — queues an LSP server for spawn-on-first-open.
+; Init-only (like define-language!). init-options/settings are JSON strings
+; (or #f) until B1 lands a real JSON<->SteelVal codec.
+(define (register-lsp-server! language #:command command
+                                        #:args [args '()]
+                                        #:root-markers [root-markers '()]
+                                        #:init-options [init-options #f]
+                                        #:settings [settings #f])
+  (%register-lsp-server! language command args root-markers init-options settings))
 
 ; Variadic call! macro — desugars to %dispatch-command.
 ; Defined here (not only in prelude.scm) so it is available in every Steel engine
@@ -320,6 +331,9 @@ pub(crate) fn register_all(steel: &mut Engine) {
     // Language identity and grammar builtins
     steel.register_fn_with_ctx(HUME_CTX, "%define-language!", syntax::define_language);
     steel.register_fn_with_ctx(HUME_CTX, "%register-grammar!", syntax::register_grammar);
+
+    // LSP server registration — init-only, queued like language regs.
+    steel.register_fn_with_ctx(HUME_CTX, "%register-lsp-server!", lsp::register_lsp_server);
     steel.register_fn_with_ctx(
         HUME_CTX,
         "language-has-grammar?",

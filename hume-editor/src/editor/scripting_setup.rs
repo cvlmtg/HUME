@@ -247,6 +247,8 @@ impl Editor {
         // Second flush: picks up any (define-language! …) calls from init.scm /
         // plugins that ran during init.scm.
         self.flush_pending_language_regs(&mut host);
+        // Picks up any (register-lsp-server! …) calls from init.scm / plugins.
+        self.flush_pending_lsp_server_regs(&mut host);
         // Pick up any (set-option! "history-capacity" N) calls from init.scm.
         self.state
             .history

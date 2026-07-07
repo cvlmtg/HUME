@@ -12,7 +12,7 @@ use crate::attribution::PluginStack;
 use crate::context::SteelCtx;
 use crate::log::LogLevel;
 use crate::null_host::NullHost;
-use crate::types::PendingLanguageReg;
+use crate::types::{PendingLanguageReg, PendingLspServerReg};
 use crate::{HostBundle, ScriptingRegistries};
 
 /// Backing storage for [`SteelCtx`] in scripting-crate unit tests.
@@ -26,6 +26,7 @@ pub(crate) struct SteelCtxTestHarness {
     pub(crate) registries: ScriptingRegistries,
     pub(crate) pending_messages: Vec<(LogLevel, String)>,
     pub(crate) pending_language_regs: Vec<PendingLanguageReg>,
+    pub(crate) pending_lsp_server_regs: Vec<PendingLspServerReg>,
     pub(crate) data_dir: Option<PathBuf>,
     pub(crate) runtime_dir: Option<PathBuf>,
     pub(crate) interrupt_flag: Arc<AtomicBool>,
@@ -46,6 +47,7 @@ impl SteelCtxTestHarness {
             },
             pending_messages: Vec::new(),
             pending_language_regs: Vec::new(),
+            pending_lsp_server_regs: Vec::new(),
             data_dir: None,
             runtime_dir: None,
             interrupt_flag: Arc::new(AtomicBool::new(false)),
@@ -60,6 +62,7 @@ impl SteelCtxTestHarness {
             registries,
             pending_messages,
             pending_language_regs,
+            pending_lsp_server_regs,
             data_dir,
             runtime_dir,
             interrupt_flag,
@@ -71,6 +74,7 @@ impl SteelCtxTestHarness {
                 plugin_stack,
                 pending_messages,
                 pending_language_regs,
+                pending_lsp_server_regs,
                 data_dir: data_dir.as_deref(),
                 runtime_dir: runtime_dir.as_deref(),
                 interrupt_flag: Arc::clone(interrupt_flag),
@@ -91,6 +95,7 @@ impl SteelCtxTestHarness {
             registries,
             pending_messages,
             pending_language_regs,
+            pending_lsp_server_regs,
             data_dir,
             runtime_dir,
             interrupt_flag,
@@ -103,6 +108,7 @@ impl SteelCtxTestHarness {
                 plugin_stack,
                 pending_messages,
                 pending_language_regs,
+                pending_lsp_server_regs,
                 data_dir: data_dir.as_deref(),
                 runtime_dir: runtime_dir.as_deref(),
                 interrupt_flag: Arc::clone(interrupt_flag),
@@ -119,6 +125,7 @@ impl SteelCtxTestHarness {
             registries,
             pending_messages,
             pending_language_regs,
+            pending_lsp_server_regs,
             data_dir,
             runtime_dir,
             interrupt_flag,
@@ -130,6 +137,7 @@ impl SteelCtxTestHarness {
                 plugin_stack,
                 pending_messages,
                 pending_language_regs,
+                pending_lsp_server_regs,
                 data_dir: data_dir.as_deref(),
                 runtime_dir: runtime_dir.as_deref(),
                 interrupt_flag: Arc::clone(interrupt_flag),
@@ -146,6 +154,7 @@ impl SteelCtxTestHarness {
             registries,
             pending_messages,
             pending_language_regs,
+            pending_lsp_server_regs,
             data_dir,
             runtime_dir,
             interrupt_flag,
@@ -157,6 +166,7 @@ impl SteelCtxTestHarness {
                 plugin_stack,
                 pending_messages,
                 pending_language_regs,
+                pending_lsp_server_regs,
                 data_dir: data_dir.as_deref(),
                 runtime_dir: runtime_dir.as_deref(),
                 interrupt_flag: Arc::clone(interrupt_flag),
