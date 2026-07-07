@@ -34,6 +34,7 @@ use hume_treesitter::registry::LanguageRegistry;
 
 use self::keymap::{Keymap, WaitCharPending};
 
+mod async_source;
 pub(crate) mod error;
 pub(crate) mod host_impl;
 mod lifecycle;

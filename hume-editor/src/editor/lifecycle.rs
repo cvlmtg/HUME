@@ -326,11 +326,13 @@ impl Editor {
             let _ = hume_platform::terminal::end_synchronized_update();
 
             // ── 3. Event ──────────────────────────────────────────────────────
-            // While a parse is in flight block for at most 8 ms so that the
-            // completed tree is drained and painted without waiting for input.
-            // When no parse is pending fall through to the blocking read so we
-            // never burn CPU while the editor is idle.
-            if self.parse_worker.has_in_flight() && !event::poll(Duration::from_millis(8))? {
+            // While any async source (parse worker now; LSP/timers later) has
+            // pending work, poll with a bounded timeout so it's drained and
+            // painted without waiting for input. Idle falls through to the
+            // blocking read so we never burn CPU while the editor is at rest.
+            if let Some(timeout) = self.wake_timeout()
+                && !event::poll(timeout)?
+            {
                 continue;
             }
             match event::read()? {
@@ -560,8 +562,8 @@ impl Editor {
             );
         }
 
-        // 5. Reparse any visible buffer whose text changed since the last frame.
-        self.reparse_stale_buffers();
+        // 5. Drain completed async work (parse results now; LSP/timers later).
+        self.drain_async_sources();
 
         // 6. Sync highlight data (search matches, bracket matches) to shared
         //    Arc buffers read by the highlight providers during rendering.

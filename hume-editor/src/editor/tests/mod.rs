@@ -432,6 +432,7 @@ pub(crate) fn helix_injections_path(name: &str) -> Option<PathBuf> {
 }
 
 mod alternate;
+mod async_source;
 mod auto_pairs;
 mod buffer;
 mod buffer_store;
