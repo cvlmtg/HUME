@@ -61,6 +61,7 @@ pub(super) mod scroll;
 pub(crate) mod search;
 pub(crate) mod syntax;
 mod theme;
+mod timers;
 mod visual_move;
 
 pub(crate) use search::{SearchDirection, SearchState};
@@ -449,6 +450,9 @@ pub(crate) struct Editor {
     parse_worker: Box<dyn ParseBackend>,
     /// Whether the one-shot "parse worker disconnected" message has been logged.
     parse_worker_disconnect_logged: bool,
+    /// Nearest-deadline timer registry (P7); Steel-visible via B4's
+    /// `after`/`debounce` builtins.
+    timer_wheel: timers::TimerWheel,
     /// `true` once [`Editor::run`] has taken ownership of the terminal (the
     /// interactive event loop). Tests and headless `run_keys` dispatch
     /// commands directly and never enter `run`, so this stays `false` there —
@@ -1085,6 +1089,7 @@ impl Editor {
             builtin_cmd_names: std::collections::HashSet::new(),
             parse_worker: Box::new(InlineParseBackend::new()),
             parse_worker_disconnect_logged: false,
+            timer_wheel: timers::TimerWheel::new(),
             tui_active: false,
             #[cfg(test)]
             inline_output_entered: false,

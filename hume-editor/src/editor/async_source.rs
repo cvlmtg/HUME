@@ -31,8 +31,8 @@ impl AsyncSource for Box<dyn ParseBackend> {
 impl Editor {
     /// One place to enumerate async sources. Adding a source = one line here
     /// plus its `AsyncSource` impl.
-    fn async_sources(&self) -> [&dyn AsyncSource; 1] {
-        [&self.parse_worker]
+    fn async_sources(&self) -> [&dyn AsyncSource; 2] {
+        [&self.parse_worker, &self.timer_wheel]
     }
 
     /// `Some(timeout)` => poll with it; `None` => block on `event::read()`.
@@ -56,9 +56,11 @@ impl Editor {
     }
 
     /// Named drain phase for completed async work, called once per frame from
-    /// `prepare_frame`. New sources (LSP responses, fired timers) add their
-    /// drain call here.
+    /// `prepare_frame`. New sources (LSP responses) add their drain call here.
     pub(super) fn drain_async_sources(&mut self) {
         self.reparse_stale_buffers();
+        // Collected but not yet dispatched — B4 adds the TimerId -> Steel
+        // thunk side table that gives these ids a payload.
+        let _ = self.timer_wheel.take_due(Instant::now());
     }
 }
