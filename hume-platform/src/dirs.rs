@@ -11,7 +11,10 @@
 //! Callers decide how to handle the missing directory — PLUM disables itself,
 //! `init.scm` loading is skipped, etc. Fail-fast over silent-wrong.
 
-use std::{env, path::PathBuf};
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 
 fn env_var(key: &str) -> Option<String> {
     env::var(key).ok()
@@ -106,40 +109,49 @@ fn home_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
 
 /// Returns the runtime directory for HUME, if one can be found.
 ///
-/// Search order (STEEL.md §"Runtime directory discovery"):
-/// 1. `HUME_RUNTIME` environment variable (development escape hatch).
-/// 2. `../share/hume/` relative to the binary on Unix / macOS.
-/// 3. Same directory as the binary on Windows.
-/// 4. `./runtime` relative to cwd (dev fallback when running with `cargo run`).
+/// Search order:
+/// 1. `HUME_RUNTIME` environment variable (dev escape hatch; not existence-checked).
+/// 2. `../share/hume/` relative to the binary, Unix / macOS installed (FHS) layout.
+/// 3. `runtime/` relative to the binary — portable/archive layout (nightly zips/tarballs
+///    ship `hume(.exe)` next to a `runtime/` directory; this covers Windows, where there
+///    is no `share/` layout, and any unpacked archive run in place on Unix).
+/// 4. `./runtime` relative to cwd — dev fallback when running with `cargo run` from the
+///    workspace root.
 ///
-/// Returns `None` if no candidate path exists on disk.
+/// Every candidate except (1) is existence-checked; returns `None` if none exist.
 pub fn runtime_dir() -> Option<PathBuf> {
-    runtime_dir_with(env_var)
+    runtime_dir_with(env_var, env::current_exe().ok(), env::current_dir().ok())
 }
 
-fn runtime_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+fn runtime_dir_with(
+    env: impl Fn(&str) -> Option<String>,
+    exe: Option<PathBuf>,
+    cwd: Option<PathBuf>,
+) -> Option<PathBuf> {
     if let Some(rt) = env("HUME_RUNTIME") {
         return Some(PathBuf::from(rt));
     }
 
-    let exe = env::current_exe().ok()?;
-    let exe_dir = exe.parent()?;
-
-    #[cfg(windows)]
-    {
-        Some(exe_dir.to_path_buf())
-    }
-    #[cfg(not(windows))]
-    {
-        // Installed layout: .../bin/hume → .../share/hume/
-        let share = exe_dir.parent()?.join("share").join("hume");
-        if share.exists() {
-            return Some(share);
+    if let Some(exe_dir) = exe.as_deref().and_then(Path::parent) {
+        #[cfg(not(windows))]
+        if let Some(share) = exe_dir.parent().map(|p| p.join("share").join("hume")) {
+            if share.exists() {
+                return Some(share);
+            }
         }
-        // Dev layout: cargo run produces target/…/hume; runtime/ sits at workspace root.
-        let cwd_rt = env::current_dir().ok()?.join("runtime");
-        if cwd_rt.exists() { Some(cwd_rt) } else { None }
+        let exe_runtime = exe_dir.join("runtime");
+        if exe_runtime.exists() {
+            return Some(exe_runtime);
+        }
     }
+
+    if let Some(cwd_runtime) = cwd.map(|c| c.join("runtime")) {
+        if cwd_runtime.exists() {
+            return Some(cwd_runtime);
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -174,11 +186,90 @@ mod tests {
     fn runtime_dir_respects_hume_runtime() {
         let tmp = tempfile::tempdir().unwrap();
         let rt = tmp.path().to_string_lossy().into_owned();
-        let result = runtime_dir_with(|k| match k {
-            "HUME_RUNTIME" => Some(rt.clone()),
-            _ => None,
-        });
+        let result = runtime_dir_with(
+            |k| match k {
+                "HUME_RUNTIME" => Some(rt.clone()),
+                _ => None,
+            },
+            None,
+            None,
+        );
         assert_eq!(result, Some(tmp.path().to_path_buf()));
+    }
+
+    #[test]
+    fn runtime_dir_hume_runtime_wins_over_exe_and_cwd() {
+        let exe_tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(exe_tmp.path().join("runtime")).unwrap();
+        let cwd_tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(cwd_tmp.path().join("runtime")).unwrap();
+        let override_tmp = tempfile::tempdir().unwrap();
+        let override_str = override_tmp.path().to_string_lossy().into_owned();
+
+        let result = runtime_dir_with(
+            |k| match k {
+                "HUME_RUNTIME" => Some(override_str.clone()),
+                _ => None,
+            },
+            Some(exe_tmp.path().join("hume")),
+            Some(cwd_tmp.path().to_path_buf()),
+        );
+        assert_eq!(result, Some(override_tmp.path().to_path_buf()));
+    }
+
+    #[test]
+    fn runtime_dir_falls_back_to_exe_relative_runtime() {
+        // Portable/archive layout: hume(.exe) sits next to runtime/ (nightly zips).
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(tmp.path().join("runtime")).unwrap();
+
+        let result = runtime_dir_with(|_| None, Some(tmp.path().join("hume")), None);
+        assert_eq!(result, Some(tmp.path().join("runtime")));
+    }
+
+    #[test]
+    fn runtime_dir_falls_back_to_cwd_relative_runtime() {
+        // Dev layout: cargo run produces target/…/hume; runtime/ sits at the cwd
+        // (workspace root), unrelated to the exe path.
+        let exe_tmp = tempfile::tempdir().unwrap(); // no runtime/ next to the exe
+        let cwd_tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(cwd_tmp.path().join("runtime")).unwrap();
+
+        let result = runtime_dir_with(
+            |_| None,
+            Some(exe_tmp.path().join("hume")),
+            Some(cwd_tmp.path().to_path_buf()),
+        );
+        assert_eq!(result, Some(cwd_tmp.path().join("runtime")));
+    }
+
+    #[test]
+    fn runtime_dir_none_when_no_candidate_exists() {
+        let exe_tmp = tempfile::tempdir().unwrap();
+        let cwd_tmp = tempfile::tempdir().unwrap();
+
+        let result = runtime_dir_with(
+            |_| None,
+            Some(exe_tmp.path().join("hume")),
+            Some(cwd_tmp.path().to_path_buf()),
+        );
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn runtime_dir_prefers_installed_share_layout_over_exe_relative_runtime() {
+        // Installed FHS layout: <prefix>/bin/hume -> <prefix>/share/hume, even when an
+        // exe-relative runtime/ also happens to exist (share/ wins).
+        let prefix = tempfile::tempdir().unwrap();
+        let bin_dir = prefix.path().join("bin");
+        std::fs::create_dir(&bin_dir).unwrap();
+        std::fs::create_dir(bin_dir.join("runtime")).unwrap();
+        let share_dir = prefix.path().join("share").join("hume");
+        std::fs::create_dir_all(&share_dir).unwrap();
+
+        let result = runtime_dir_with(|_| None, Some(bin_dir.join("hume")), None);
+        assert_eq!(result, Some(share_dir));
     }
 
     #[test]
