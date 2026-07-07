@@ -9,7 +9,7 @@ mod diagnostics;
 mod registry;
 pub(crate) mod sync;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -17,6 +17,7 @@ use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::{LspBackend, ServerId, ThreadedLspBackend};
 use hume_lsp::client::{CallbackToken, ClientAction, LspClient, Outcome, RequestMeta, ServerState};
 use hume_lsp::codec::{Message, RequestId, ResponseError};
+use hume_lsp::transport::InboundEvent;
 #[cfg(test)]
 use hume_lsp::inline::InlineLspBackend;
 
@@ -304,6 +305,55 @@ impl Editor {
             for (id, meta, outcome) in completed {
                 self.dispatch_completed(id, meta, outcome);
             }
+        }
+    }
+
+    /// Graceful shutdown on quit: `begin_shutdown` (shutdown request, then
+    /// exit notification) for every Running client, then a bounded grace
+    /// window draining for their voluntary EOF, before transport-level
+    /// teardown (`backend.shutdown`, which reaps any process still alive)
+    /// regardless. Starting clients skip the protocol handshake — nothing
+    /// but `initialize` is legal to send before `initialized`, so a plain
+    /// transport kill is the only option for them.
+    ///
+    /// Events drained during the grace window are otherwise discarded — a
+    /// lingering response or stderr line has nowhere useful to go while the
+    /// editor is tearing down.
+    pub(in crate::editor) fn lsp_shutdown_all(&mut self, grace: Duration) {
+        if self.lsp.clients.is_empty() {
+            return;
+        }
+
+        let server_ids: Vec<ServerId> = self.lsp.clients.keys().copied().collect();
+        let mut awaiting_eof: HashSet<ServerId> = HashSet::new();
+        for &server_id in &server_ids {
+            let LspState {
+                clients, backend, ..
+            } = &mut self.lsp;
+            if let Some(client) = clients.get_mut(&server_id)
+                && client.state == ServerState::Running
+            {
+                client.begin_shutdown(backend.as_mut());
+                awaiting_eof.insert(server_id);
+            }
+        }
+
+        if !awaiting_eof.is_empty() {
+            let deadline = Instant::now() + grace;
+            while !awaiting_eof.is_empty() && Instant::now() < deadline {
+                for (server_id, ev) in self.lsp.backend.drain() {
+                    if matches!(ev, InboundEvent::Eof { .. }) {
+                        awaiting_eof.remove(&server_id);
+                    }
+                }
+                if !awaiting_eof.is_empty() {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            }
+        }
+
+        for server_id in server_ids {
+            self.lsp.backend.shutdown(server_id);
         }
     }
 

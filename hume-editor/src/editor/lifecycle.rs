@@ -395,6 +395,10 @@ impl Editor {
                 break;
             }
         }
+        // Give every running LSP server a chance to exit cleanly (shutdown
+        // request, then exit notification) before the process ends —
+        // ServerHandle::drop would otherwise SIGKILL them.
+        self.lsp_shutdown_all(Duration::from_millis(500));
         // Restore the user's default cursor shape and colour before returning to the shell.
         hume_platform::terminal::reset_cursor_shape()?;
         let _ = hume_platform::terminal::set_cursor_color(false); // emits reset sequence

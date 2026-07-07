@@ -276,3 +276,63 @@ fn progress_report_events_are_dropped_without_any_log_line() {
         "begin and end must log once each; report must never log — got: {entries:?}"
     );
 }
+
+// ── Fix 3 — graceful shutdown on quit ──────────────────────────────────────
+
+#[test]
+fn lsp_shutdown_all_transitions_every_running_client_to_dead() {
+    let mut ed = editor_from("-[w]>ord\n");
+    let mut backend = InlineLspBackend::new();
+    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    let mut client = LspClient::new(sid, PathBuf::from("/tmp/hume-shutdown-test"));
+    client.state = ServerState::Running;
+    ed.lsp.insert_client_for_test(client);
+
+    // Duration::ZERO means the grace-window loop's `Instant::now() < deadline`
+    // is false on first check — no sleep, no waiting for a real process.
+    ed.lsp_shutdown_all(std::time::Duration::ZERO);
+
+    let client = ed
+        .lsp
+        .client_for_test(sid)
+        .expect("the client stays tracked (only its state changes) — lsp_stop is what deregisters");
+    assert_eq!(client.state, ServerState::Dead);
+}
+
+#[test]
+fn lsp_shutdown_all_on_a_starting_client_skips_the_protocol_but_still_tears_down() {
+    // A client that never completed its handshake must not receive
+    // shutdown/exit (nothing but `initialize` is legal before `initialized`)
+    // — but it must still not be left dangling forever; the transport-level
+    // `backend.shutdown` call covers it regardless of protocol state.
+    let mut ed = editor_from("-[w]>ord\n");
+    let mut backend = InlineLspBackend::new();
+    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    ed.lsp
+        .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
+
+    ed.lsp_shutdown_all(std::time::Duration::ZERO);
+
+    let client = ed
+        .lsp
+        .client_for_test(sid)
+        .expect("still tracked, but untouched by begin_shutdown");
+    assert_eq!(
+        client.state,
+        ServerState::Starting,
+        "a Starting client's state must not change — it never got the shutdown/exit messages"
+    );
+}
+
+#[test]
+fn lsp_shutdown_all_with_no_clients_returns_immediately() {
+    let mut ed = editor_from("-[w]>ord\n");
+    let start = std::time::Instant::now();
+    ed.lsp_shutdown_all(std::time::Duration::from_secs(5));
+    assert!(
+        start.elapsed() < std::time::Duration::from_millis(50),
+        "no clients means nothing to wait for — must not block on the grace window"
+    );
+}
