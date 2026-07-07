@@ -1,11 +1,13 @@
 pub(crate) mod completion_overlay;
 pub(crate) mod highlight_providers;
+pub(crate) mod signs;
 pub mod statusline;
 pub(crate) mod theme;
 
 use std::sync::{Arc, RwLock};
 
 use hume_engine::builtins::line_number::LineNumberColumn;
+use hume_engine::builtins::sign_column::SignColumn;
 use hume_engine::pane::{Pane, WrapMode};
 use hume_engine::pipeline::BufferId;
 use hume_engine::providers::{HighlightTier, ProviderSet};
@@ -13,17 +15,18 @@ use hume_engine::theme::ScopeRegistry;
 
 use completion_overlay::CompletionOverlay;
 use highlight_providers::{PaneHighlights, ScopedHighlighter, SharedHighlighter};
+use signs::{PaneSigns, SharedSignSource};
 
-/// Build a new pane viewing `buffer_id`: a line-number gutter, the
-/// bracket-match / search-match / diagnostic / extra-highlight sources, the
-/// completion popup overlay, and `wrap_mode` seeded from the caller's current
-/// settings.
+/// Build a new pane viewing `buffer_id`: a sign column, a line-number
+/// gutter, the bracket-match / search-match / diagnostic / extra-highlight
+/// sources, the completion popup overlay, and `wrap_mode` seeded from the
+/// caller's current settings.
 ///
-/// Returns the pane together with its freshly-allocated [`PaneHighlights`] —
-/// every pane gets its own bracket/search highlight buffers (never shared with
-/// any other pane), so each pane's highlights are computed from that pane's
-/// own buffer and viewport. The caller stores the returned `PaneHighlights` in
-/// `EditorState.panes.highlights` keyed by the new pane's id.
+/// Returns the pane together with its freshly-allocated [`PaneHighlights`]
+/// and [`PaneSigns`] — every pane gets its own buffers (never shared with any
+/// other pane), so each pane's decorations are computed from that pane's own
+/// buffer and viewport. The caller stores them in `EditorState.panes.highlights`
+/// / `.signs` keyed by the new pane's id.
 ///
 /// The gutter column is added with its default style — `prepare_frame` syncs
 /// the buffer-resolved `line-number-style` into every pane's gutter before
@@ -43,13 +46,22 @@ pub(crate) fn build_pane(
     completion_view: &Arc<RwLock<Option<completion_overlay::CompletionView>>>,
     wrap_mode: WrapMode,
     buffer_id: BufferId,
-) -> (Pane, PaneHighlights) {
+) -> (Pane, PaneHighlights, PaneSigns) {
     let bracket_scope = registry.intern("ui.cursor.match");
     let search_scope = registry.intern("ui.selection.search");
 
     let highlights = PaneHighlights::default();
+    let signs = PaneSigns::default();
 
     let mut providers = ProviderSet::new();
+    let mut sign_column = SignColumn::new();
+    // Plugin signs registered after diagnostics so a plugin can override at
+    // equal priority (`SignColumn`'s tie-break: later-registered wins).
+    sign_column.add_source(Box::new(SharedSignSource::new(Arc::clone(
+        &signs.diagnostics,
+    ))));
+    sign_column.add_source(Box::new(SharedSignSource::new(Arc::clone(&signs.plugin))));
+    providers.add_gutter_column(Box::new(sign_column));
     providers.add_gutter_column(Box::new(LineNumberColumn::default()));
     providers.add_highlight_source(Box::new(SharedHighlighter {
         scope: bracket_scope,
@@ -77,5 +89,5 @@ pub(crate) fn build_pane(
         providers,
         ..Pane::new(buffer_id, wrap_mode)
     };
-    (pane, highlights)
+    (pane, highlights, signs)
 }

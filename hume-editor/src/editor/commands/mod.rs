@@ -494,12 +494,12 @@ pub(super) fn open_pane(
     view: &mut EngineView,
     buffer_id: BufferId,
 ) -> PaneId {
-    // Every pane gets the same providers (gutter + bracket/search highlight +
-    // completion overlay) as the initial pane — see `build_pane`. Each pane's
-    // bracket/search Arcs are freshly allocated here, never shared with any
-    // other pane (see `PaneHighlights`), so per-pane highlight data can never
-    // bleed across panes.
-    let (pane, highlights) = crate::ui::build_pane(
+    // Every pane gets the same providers (sign column + gutter + bracket/
+    // search/diagnostic/extra highlight + completion overlay) as the initial
+    // pane — see `build_pane`. Each pane's Arcs are freshly allocated here,
+    // never shared with any other pane (see `PaneHighlights`/`PaneSigns`), so
+    // per-pane decoration data can never bleed across panes.
+    let (pane, highlights, signs) = crate::ui::build_pane(
         &mut view.registry,
         &state.completion_view,
         state.settings.wrap_mode,
@@ -514,12 +514,13 @@ pub(super) fn open_pane(
         super::jump_list::JumpList::new(state.settings.jump_list_capacity),
     );
     state.panes.highlights.insert(pid, highlights);
+    state.panes.signs.insert(pid, signs);
     pid
 }
 
 /// Remove every per-pane state map entry for `pid` (`panes`, per-buffer
-/// state, transient state, jump list, highlight buffers) — the inverse of
-/// `open_pane`'s seeding. Shared by `close_focused_pane` and
+/// state, transient state, jump list, highlight buffers, sign buffers) — the
+/// inverse of `open_pane`'s seeding. Shared by `close_focused_pane` and
 /// `split_pane_onto`'s failure-rollback path.
 fn drop_pane_state(state: &mut EditorState, view: &mut EngineView, pid: PaneId) {
     view.panes.remove(pid);
@@ -527,6 +528,7 @@ fn drop_pane_state(state: &mut EditorState, view: &mut EngineView, pid: PaneId) 
     state.panes.transient.remove(pid);
     state.panes.jumps.remove(pid);
     state.panes.highlights.remove(pid);
+    state.panes.signs.remove(pid);
 }
 
 /// Close the focused pane: prune it from the layout tree, move focus to the

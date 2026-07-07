@@ -286,7 +286,7 @@ The bridge and primitives that make Steel the feature layer. After it, a plugin 
 Generic, Steel-scriptable widgets plus store-fed render wiring. The engine primitives mostly exist (reserved `HighlightTier::Diagnostic`, `SignColumn`/`SignSource`, `VirtualLineSource`, `InlineDecoration`, `OverlayProvider`) — LSP is their first client, not their owner. Cards: `docs/lsp/step-3.md`.
 
 - [x] **U1** — diagnostic underlines (third `SharedHighlighter`, Diagnostic tier) + extra-highlights wiring
-- [ ] **U2** — diagnostic gutter signs (first real `SignColumn` registration)
+- [x] **U2** — diagnostic gutter signs (first real `SignColumn` registration)
 - [ ] **U3** — statusline diagnostics element (Rust element over the C9 store)
 - [ ] **U4** — cursor-anchored popup widget (`show-popup!`)
 - [ ] **U5** — selection menu widget (`show-menu!`)

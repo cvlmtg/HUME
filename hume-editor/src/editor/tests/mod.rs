@@ -465,6 +465,7 @@ mod lsp_hooks;
 mod lsp_introspect;
 mod lsp_prompt;
 mod lsp_render;
+mod lsp_signs;
 mod lsp_status;
 mod lsp_sync;
 mod macros;

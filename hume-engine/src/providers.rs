@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use std::ops::Range;
 
 use crate::builtins::line_number::{LineNumberColumn, LineNumberStyle};
+use crate::builtins::sign_column::SignColumn;
 use crate::types::{EditorMode, RowKind, Scope, ScopeId};
 
 // ---------------------------------------------------------------------------
@@ -410,6 +411,18 @@ impl ProviderSet {
             }
         }
     }
+
+    /// Push a new configured width into every registered `SignColumn`, if
+    /// any. Called from `prepare_frame` each frame so the gutter can collapse
+    /// to `0` when no sign exists for the pane's current buffer and grow back
+    /// when one appears — same downcast pattern as `sync_line_number_style`.
+    pub fn sync_sign_column_width(&mut self, width: u8) {
+        for (_, col) in &mut self.gutter_columns {
+            if let Some(sc) = col.as_any_mut().downcast_mut::<SignColumn>() {
+                sc.set_width(width);
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -540,6 +553,27 @@ mod tests {
         use crate::builtins::line_number::LineNumberStyle;
         let mut set = ProviderSet::new();
         set.sync_line_number_style(LineNumberStyle::Hybrid);
+    }
+
+    #[test]
+    fn sync_sign_column_width_updates_registered_sign_columns() {
+        let mut set = ProviderSet::new();
+        set.add_gutter_column(Box::new(SignColumn::new()));
+        set.sync_sign_column_width(0);
+        let col = set.gutter_columns[0]
+            .1
+            .as_any_mut()
+            .downcast_mut::<SignColumn>()
+            .unwrap();
+        assert_eq!(col.width(0), 0);
+    }
+
+    #[test]
+    fn sync_sign_column_width_skips_non_sign_columns() {
+        let mut set = ProviderSet::new();
+        set.add_gutter_column(Box::new(DummyGutter));
+        // Should not panic — DummyGutter doesn't downcast to SignColumn.
+        set.sync_sign_column_width(0);
     }
 
     // ── ProviderSet ──────────────────────────────────────────────────────

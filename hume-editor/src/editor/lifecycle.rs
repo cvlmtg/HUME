@@ -101,7 +101,7 @@ impl Editor {
 
         // Build the initial pane. Every later split-created pane goes through
         // the same `build_pane` (see `commands::open_pane`).
-        let (pane, highlights) = build_pane(
+        let (pane, highlights, signs) = build_pane(
             &mut engine_view.registry,
             &completion_view,
             settings.wrap_mode,
@@ -163,11 +163,14 @@ impl Editor {
                     transient.insert(pane_id, PaneTransient::default());
                     let mut pane_highlights = SecondaryMap::new();
                     pane_highlights.insert(pane_id, highlights);
+                    let mut pane_signs = SecondaryMap::new();
+                    pane_signs.insert(pane_id, signs);
                     PaneView {
                         state: pane_buf_state,
                         transient,
                         jumps,
                         highlights: pane_highlights,
+                        signs: pane_signs,
                     }
                 },
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
@@ -602,6 +605,9 @@ impl Editor {
         //    highlight providers during rendering.
         self.update_highlight_providers();
 
+        // 6b. Sync gutter sign data (diagnostics + plugin signs) the same way.
+        self.update_sign_providers();
+
         // 7. Sync completion-popup view to the shared Arc for `CompletionOverlay`.
         self.sync_completion_view();
 
@@ -696,15 +702,22 @@ impl Editor {
         );
     }
 
+    /// Pane `pid`'s visible viewport as `(top_line, bottom_line)`, before any
+    /// clamping to the buffer's actual line count — the shared basis for
+    /// [`Self::visible_char_range`] and [`Self::visible_line_range`].
+    fn visible_line_bounds(&self, pid: PaneId) -> (usize, usize) {
+        let vp = &self.view.panes[pid].viewport;
+        let top_line = vp.top_line;
+        (top_line, top_line + vp.height as usize)
+    }
+
     /// The char range of `bid`'s content currently visible in pane `pid` —
     /// shared by every per-frame write side that pulls a bounded slice from a
     /// Rust-side store (diagnostics, decorations) instead of the whole buffer.
     /// HUME buffers always end with a structural `\n`, so `len_lines() >= 1`
     /// always holds.
     fn visible_char_range(&self, pid: PaneId, bid: BufferId) -> std::ops::Range<usize> {
-        let vp = &self.view.panes[pid].viewport;
-        let top_line = vp.top_line;
-        let bot_line = top_line + vp.height as usize;
+        let (top_line, bot_line) = self.visible_line_bounds(pid);
         let text = self.state.buffers.get(bid).text();
         let len_lines = text.len_lines();
         let top_char = text.line_to_char(top_line.min(len_lines - 1));
@@ -714,6 +727,15 @@ impl Editor {
             text.len_chars()
         };
         top_char..end_char
+    }
+
+    /// The line range of `bid`'s content currently visible in pane `pid`
+    /// (end-exclusive) — used by line-indexed stores (gutter signs) instead
+    /// of the char-offset stores' [`Self::visible_char_range`].
+    fn visible_line_range(&self, pid: PaneId, bid: BufferId) -> std::ops::Range<usize> {
+        let (top_line, bot_line) = self.visible_line_bounds(pid);
+        let len_lines = self.state.buffers.get(bid).text().len_lines();
+        top_line.min(len_lines - 1)..(bot_line + 1).min(len_lines)
     }
 
     /// Interned scope ids for the four diagnostic severities, in
@@ -954,6 +976,148 @@ impl Editor {
                     flatten_priority_overlaps(&mut raw, &mut data);
                 }
             }
+        }
+    }
+
+    /// Write per-frame gutter sign data (diagnostics + plugin signs) to every
+    /// pane's own `Arc<RwLock<HashMap<line, Sign>>>` buffers, read by that
+    /// pane's `SharedSignSource`s. Stays visible in Insert mode — same
+    /// reasoning as [`Self::update_highlight_providers`]'s diagnostics
+    /// section, which this runs right after.
+    pub(super) fn update_sign_providers(&mut self) {
+        use hume_engine::builtins::sign_column::Sign;
+
+        let panes: Vec<(PaneId, BufferId)> = self
+            .view
+            .panes
+            .iter()
+            .map(|(pid, pane)| (pid, pane.buffer_id))
+            .collect();
+
+        let floor = self.state.settings.lsp_diagnostics_severity_floor;
+        let diag_scopes = self.diagnostic_scopes();
+        for &(pid, bid) in &panes {
+            let Some((diag_map, plugin_map)) = self
+                .state
+                .panes
+                .signs
+                .get(pid)
+                .map(|s| (Arc::clone(&s.diagnostics), Arc::clone(&s.plugin)))
+            else {
+                continue;
+            };
+
+            let visible = self.visible_char_range(pid, bid);
+            let visible_lines = self.visible_line_range(pid, bid);
+
+            // Diagnostics: every line a diagnostic touches gets a marker;
+            // the most severe diagnostic wins when several touch one line.
+            let diag_raw: Vec<(usize, usize, DiagSeverity)> = {
+                let text = self.state.buffers.get(bid).text();
+                self.lsp
+                    .diagnostics_for_range(bid, visible.clone(), floor)
+                    .map(|d| {
+                        (
+                            text.char_to_line(d.start),
+                            text.char_to_line(d.end - 1),
+                            d.severity,
+                        )
+                    })
+                    .collect()
+            };
+            let mut diag_best: std::collections::HashMap<usize, DiagSeverity> =
+                std::collections::HashMap::new();
+            for (start_line, end_line, severity) in diag_raw {
+                for line in start_line..=end_line {
+                    if !visible_lines.contains(&line) {
+                        continue;
+                    }
+                    diag_best
+                        .entry(line)
+                        .and_modify(|best| {
+                            if severity < *best {
+                                *best = severity;
+                            }
+                        })
+                        .or_insert(severity);
+                }
+            }
+            {
+                let mut guard = diag_map.write().expect("RwLock not poisoned");
+                guard.clear();
+                for (line, severity) in diag_best {
+                    guard.insert(
+                        line,
+                        Sign {
+                            text: std::borrow::Cow::Borrowed("●"),
+                            scope: diag_scopes[severity as usize],
+                            priority: 10,
+                        },
+                    );
+                }
+            }
+
+            // Plugin signs (`set-signs!`): all sources merged, highest
+            // priority per line wins. Sorted by source name first so a tie
+            // between two different sources resolves deterministically
+            // rather than by `HashMap` iteration order.
+            let mut plugin_raw: Vec<(String, usize, String, String, i64)> = self
+                .state
+                .decorations
+                .signs_for_buffer(bid)
+                .filter(|(_, e)| visible_lines.contains(&e.line))
+                .map(|(source, e)| {
+                    (
+                        source.to_string(),
+                        e.line,
+                        e.text.clone(),
+                        e.scope.clone(),
+                        e.priority,
+                    )
+                })
+                .collect();
+            plugin_raw.sort_by(|a, b| a.0.cmp(&b.0));
+
+            let mut plugin_best: std::collections::HashMap<usize, (String, String, i64)> =
+                std::collections::HashMap::new();
+            for (_, line, text, scope, priority) in plugin_raw {
+                match plugin_best.entry(line) {
+                    std::collections::hash_map::Entry::Vacant(v) => {
+                        v.insert((text, scope, priority));
+                    }
+                    std::collections::hash_map::Entry::Occupied(mut o) => {
+                        if priority >= o.get().2 {
+                            o.insert((text, scope, priority));
+                        }
+                    }
+                }
+            }
+            {
+                let mut guard = plugin_map.write().expect("RwLock not poisoned");
+                guard.clear();
+                for (line, (text, scope_name, priority)) in plugin_best {
+                    let scope = self.runtime_scope(&scope_name);
+                    guard.insert(
+                        line,
+                        Sign {
+                            text: std::borrow::Cow::Owned(text),
+                            scope,
+                            priority: priority.clamp(i16::MIN as i64, i16::MAX as i64) as i16,
+                        },
+                    );
+                }
+            }
+
+            // Collapse the gutter to zero width when this pane has no signs
+            // at all; grow it back to the default (2) as soon as one exists.
+            let has_signs = {
+                let diag_empty = diag_map.read().expect("RwLock not poisoned").is_empty();
+                let plugin_empty = plugin_map.read().expect("RwLock not poisoned").is_empty();
+                !(diag_empty && plugin_empty)
+            };
+            self.view.panes[pid]
+                .providers
+                .sync_sign_column_width(if has_signs { 2 } else { 0 });
         }
     }
 

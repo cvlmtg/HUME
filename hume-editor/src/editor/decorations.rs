@@ -87,6 +87,21 @@ impl DecorationStores {
             .unwrap_or(&[])
     }
 
+    /// All signs for `bid`, across every source, paired with their source
+    /// name — the render write side merges them into one per-line winner.
+    /// The source name is exposed so ties (two sources, same line, same
+    /// priority) can be broken deterministically rather than by `HashMap`
+    /// iteration order.
+    pub(crate) fn signs_for_buffer(
+        &self,
+        bid: BufferId,
+    ) -> impl Iterator<Item = (&str, &SignEntry)> {
+        self.signs
+            .iter()
+            .filter(move |((_, entry_bid), _)| *entry_bid == bid)
+            .flat_map(|((source, _), entries)| entries.iter().map(move |e| (source.as_str(), e)))
+    }
+
     /// Replaces `source`'s virtual lines for `bid` wholesale.
     pub(crate) fn set_virtual_lines(
         &mut self,
