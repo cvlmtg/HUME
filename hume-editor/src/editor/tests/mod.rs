@@ -457,6 +457,7 @@ mod language;
 mod list_buffers;
 mod lsp;
 mod lsp_bridge;
+mod lsp_decorations;
 mod lsp_diagnostics;
 mod lsp_hooks;
 mod lsp_introspect;

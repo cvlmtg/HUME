@@ -45,6 +45,7 @@ mod clipboard;
 mod commands;
 pub(crate) mod completion;
 pub(crate) mod cursor;
+pub(crate) mod decorations;
 pub(crate) mod doc_ops;
 pub(crate) mod jump_list;
 pub mod keymap;
@@ -365,6 +366,9 @@ pub(crate) struct EditorState {
     /// source's set doesn't get clobbered by another's — checked as a union
     /// across all sources (B7).
     pub(super) trigger_chars: std::collections::HashMap<String, Vec<char>>,
+    /// B5's Steel-writable decoration stores (inlay hints, signs, virtual
+    /// lines, extra highlights) — Step 3's render providers read these.
+    pub(super) decorations: decorations::DecorationStores,
     /// Shared completion-popup view: written by `prepare_frame`, read by provider.
     pub(crate) completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>>,
 }
@@ -1125,6 +1129,7 @@ impl Editor {
                 pending_hooks: Vec::new(),
                 pending_steel_calls: Vec::new(),
                 trigger_chars: std::collections::HashMap::new(),
+                decorations: decorations::DecorationStores::default(),
                 completion_view: Arc::new(RwLock::new(None)),
             },
             view: engine_view,

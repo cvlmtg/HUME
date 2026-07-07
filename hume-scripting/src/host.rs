@@ -271,4 +271,53 @@ pub trait EditorHost {
     fn register_trigger_chars(&mut self, source: String, chars: Vec<char>) {
         let _ = (source, chars);
     }
+
+    // ── Decoration stores (B5; default = no-op / empty) ──────────────────────
+    /// `(set-inlay-hints! bid hints)` — replaces `bid`'s inlay hints
+    /// wholesale. Each entry is `(wire_position, text, before)`; the wire
+    /// position (raw decoded `{"line" "character"}`) is converted to a char
+    /// offset using `bid`'s attached server's negotiated encoding.
+    fn set_inlay_hints(&mut self, bid: BufferId, hints: Vec<(serde_json::Value, String, bool)>) {
+        let _ = (bid, hints);
+    }
+
+    /// `(set-signs! source bid signs)` — replaces `source`'s signs for `bid`
+    /// wholesale. Each entry is `(line, text, scope, priority)`.
+    fn set_signs(&mut self, source: String, bid: BufferId, signs: Vec<(usize, String, String, i64)>) {
+        let _ = (source, bid, signs);
+    }
+
+    /// `(set-virtual-lines! source bid lines)` — replaces `source`'s virtual
+    /// lines for `bid` wholesale. Each entry is `(line, text)`.
+    fn set_virtual_lines(&mut self, source: String, bid: BufferId, lines: Vec<(usize, String)>) {
+        let _ = (source, bid, lines);
+    }
+
+    /// `(set-extra-highlights! source bid spans)` — replaces `source`'s
+    /// extra highlights for `bid` wholesale. Each entry is `(start, end,
+    /// scope)`, char offsets.
+    fn set_extra_highlights(&mut self, source: String, bid: BufferId, spans: Vec<(usize, usize, String)>) {
+        let _ = (source, bid, spans);
+    }
+
+    /// `(diagnostics-for-buffer bid #:severity floor #:range (start end))` —
+    /// decoded `{"start" "end" "line" "col" "severity" "message" "code"
+    /// "source"}` hashmaps, filtered then capped at 1000. `severity_floor`
+    /// is `None` for "no floor" (everything); `range` is `None` for the
+    /// whole buffer.
+    fn diagnostics_for_buffer(
+        &self,
+        bid: BufferId,
+        severity_floor: Option<&str>,
+        range: Option<(usize, usize)>,
+    ) -> Vec<serde_json::Value> {
+        let _ = (bid, severity_floor, range);
+        Vec::new()
+    }
+
+    /// `(diagnostic-counts bid)` → `(errors . warnings)`.
+    fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {
+        let _ = bid;
+        (0, 0)
+    }
 }

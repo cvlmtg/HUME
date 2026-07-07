@@ -404,6 +404,79 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     fn register_trigger_chars(&mut self, source: String, chars: Vec<char>) {
         self.state.trigger_chars.insert(source, chars);
     }
+
+    // ── Decoration stores (B5) ───────────────────────────────────────────────
+    fn set_inlay_hints(&mut self, bid: BufferId, hints: Vec<(serde_json::Value, String, bool)>) {
+        let Some(lsp) = self.lsp else {
+            return;
+        };
+        let encoding = crate::editor::lsp::introspect::encoding_for_buffer(self.state, lsp, bid);
+        let Some(rope) = self.state.buffers.try_get(bid).map(|b| b.text().rope().clone()) else {
+            return;
+        };
+        let entries: Vec<crate::editor::decorations::InlayHintEntry> = hints
+            .into_iter()
+            .filter_map(|(wire_pos, text, before)| {
+                let line = wire_pos.get("line")?.as_u64()? as usize;
+                let character = wire_pos.get("character")?.as_u64()? as usize;
+                let pos = hume_editing::position_encoding::wire_to_char(&rope, line, character, encoding);
+                Some(crate::editor::decorations::InlayHintEntry { pos, text, before })
+            })
+            .collect();
+        self.state.decorations.set_inlay_hints(bid, entries);
+    }
+
+    fn set_signs(&mut self, source: String, bid: BufferId, signs: Vec<(usize, String, String, i64)>) {
+        let entries = signs
+            .into_iter()
+            .map(|(line, text, scope, priority)| crate::editor::decorations::SignEntry {
+                line,
+                text,
+                scope,
+                priority,
+            })
+            .collect();
+        self.state.decorations.set_signs(source, bid, entries);
+    }
+
+    fn set_virtual_lines(&mut self, source: String, bid: BufferId, lines: Vec<(usize, String)>) {
+        let entries = lines
+            .into_iter()
+            .map(|(line, text)| crate::editor::decorations::VirtualLineEntry { line, text })
+            .collect();
+        self.state.decorations.set_virtual_lines(source, bid, entries);
+    }
+
+    fn set_extra_highlights(&mut self, source: String, bid: BufferId, spans: Vec<(usize, usize, String)>) {
+        let entries = spans
+            .into_iter()
+            .map(|(start, end, scope)| crate::editor::decorations::ExtraHighlightEntry {
+                start,
+                end,
+                scope,
+            })
+            .collect();
+        self.state.decorations.set_extra_highlights(source, bid, entries);
+    }
+
+    fn diagnostics_for_buffer(
+        &self,
+        bid: BufferId,
+        severity_floor: Option<&str>,
+        range: Option<(usize, usize)>,
+    ) -> Vec<serde_json::Value> {
+        let Some(lsp) = self.lsp else {
+            return Vec::new();
+        };
+        crate::editor::lsp::introspect::diagnostics_for_buffer(self.state, lsp, bid, severity_floor, range)
+    }
+
+    fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {
+        let Some(lsp) = self.lsp else {
+            return (0, 0);
+        };
+        crate::editor::lsp::introspect::diagnostic_counts(lsp, bid)
+    }
 }
 
 /// Map scripting `BindMode` → editor `keymap::BindMode`.

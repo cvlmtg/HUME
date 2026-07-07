@@ -32,13 +32,8 @@ pub(crate) struct StoredDiag {
     pub(crate) start: usize,
     pub(crate) end: usize,
     pub(crate) severity: DiagSeverity,
-    // Read by future consumers (U1 hover text, U6 drawer list, C10's
-    // :lsp-status) — stored now so ingest doesn't need re-visiting later.
-    #[allow(dead_code)]
     pub(crate) message: String,
-    #[allow(dead_code)]
     pub(crate) code: Option<String>,
-    #[allow(dead_code)]
     pub(crate) source: Option<String>,
 }
 
@@ -100,8 +95,7 @@ impl DiagnosticsStore {
         self.generation += 1;
     }
 
-    /// No production caller until C10's `:lsp-status` / B5's Steel builtin.
-    #[allow(dead_code)]
+    /// Production callers: C10's `:lsp-status` and B5's `(diagnostic-counts …)`.
     pub(crate) fn counts(&self, bid: BufferId) -> (usize, usize) {
         let Some(entry) = self.by_buffer.get(&bid) else {
             return (0, 0);
@@ -120,9 +114,8 @@ impl DiagnosticsStore {
         (errors, warnings)
     }
 
-    /// No production caller until U1/U2 (underline/sign providers) or B5's
-    /// `diagnostics-for-buffer` builtin.
-    #[allow(dead_code)]
+    /// Production caller: B5's `(diagnostics-for-buffer …)`. Step 3's
+    /// underline/sign providers (U1/U2) will read from here too.
     pub(crate) fn for_range(
         &self,
         bid: BufferId,

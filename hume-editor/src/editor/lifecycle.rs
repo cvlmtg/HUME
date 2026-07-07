@@ -185,6 +185,7 @@ impl Editor {
                 pending_hooks: Vec::new(),
                 pending_steel_calls: Vec::new(),
                 trigger_chars: std::collections::HashMap::new(),
+                decorations: super::decorations::DecorationStores::default(),
                 completion_view,
             },
             view: engine_view,

@@ -260,6 +260,190 @@ fn chars_arg(val: SteelVal, ctx_name: &str) -> Result<Vec<char>, SteelErr> {
         .collect()
 }
 
+// ── B5: decoration stores + diagnostics pull ───────────────────────────────
+
+fn list_items(val: SteelVal, ctx_name: &str) -> Result<Vec<SteelVal>, SteelErr> {
+    match val {
+        SteelVal::ListV(list) => Ok(list.into_iter().collect()),
+        _ => steel::stop!(TypeMismatch => "{}: expected a list", ctx_name),
+    }
+}
+
+fn usize_arg(val: SteelVal, ctx_name: &str) -> Result<usize, SteelErr> {
+    match val {
+        SteelVal::IntV(n) if n >= 0 => Ok(n as usize),
+        _ => steel::stop!(TypeMismatch => "{}: expected a non-negative integer", ctx_name),
+    }
+}
+
+fn int_arg(val: SteelVal, ctx_name: &str) -> Result<i64, SteelErr> {
+    match val {
+        SteelVal::IntV(n) => Ok(n as i64),
+        _ => steel::stop!(TypeMismatch => "{}: expected an integer", ctx_name),
+    }
+}
+
+/// Pops exactly `n` elements off the end of `fields` in reverse (so the
+/// returned `Vec` is in original left-to-right order), erroring if the
+/// count doesn't match — the shared shape check for every setter's
+/// fixed-arity entry list.
+fn exact_fields(fields: Vec<SteelVal>, n: usize, ctx_name: &str, shape: &str) -> Result<Vec<SteelVal>, SteelErr> {
+    if fields.len() != n {
+        steel::stop!(Generic => "{}: each entry must be {}", ctx_name, shape);
+    }
+    Ok(fields)
+}
+
+/// `(set-inlay-hints! bid hints)` — `hints`: list of `(position text
+/// 'before|'after)`, `position` a wire `{"line" "character"}` hashmap.
+pub(crate) fn set_inlay_hints(ctx: &mut SteelCtx, bid: SteelVal, hints: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "set-inlay-hints!");
+    let id = bid_arg(&bid, "set-inlay-hints!")?;
+    let mut parsed = Vec::new();
+    for entry in list_items(hints, "set-inlay-hints! hints")? {
+        let fields = exact_fields(
+            list_items(entry, "set-inlay-hints! hint entry")?,
+            3,
+            "set-inlay-hints!",
+            "(position text 'before|'after)",
+        )?;
+        let mut fields = fields.into_iter();
+        let position = fields.next().expect("len checked");
+        let text = fields.next().expect("len checked");
+        let before_or_after = fields.next().expect("len checked");
+        let position_json = steel_to_json(&position)
+            .map_err(|e| super::conv_err(format!("set-inlay-hints! position: {e}")))?;
+        let text = string_arg(text, "set-inlay-hints! text")?;
+        let before = match &before_or_after {
+            SteelVal::SymbolV(s) if s.as_str() == "before" => true,
+            SteelVal::SymbolV(s) if s.as_str() == "after" => false,
+            _ => steel::stop!(Generic => "set-inlay-hints!: third element must be 'before or 'after"),
+        };
+        parsed.push((position_json, text, before));
+    }
+    ctx.host.set_inlay_hints(id, parsed);
+    Ok(SteelVal::Void)
+}
+
+/// `(set-signs! source bid signs)` — `signs`: list of `(line text scope priority)`.
+pub(crate) fn set_signs(ctx: &mut SteelCtx, source: SteelVal, bid: SteelVal, signs: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "set-signs!");
+    let source = string_arg(source, "set-signs! source")?;
+    let id = bid_arg(&bid, "set-signs!")?;
+    let mut parsed = Vec::new();
+    for entry in list_items(signs, "set-signs! signs")? {
+        let fields = exact_fields(
+            list_items(entry, "set-signs! entry")?,
+            4,
+            "set-signs!",
+            "(line text scope priority)",
+        )?;
+        let mut fields = fields.into_iter();
+        let line = usize_arg(fields.next().expect("len checked"), "set-signs! line")?;
+        let text = string_arg(fields.next().expect("len checked"), "set-signs! text")?;
+        let scope = string_arg(fields.next().expect("len checked"), "set-signs! scope")?;
+        let priority = int_arg(fields.next().expect("len checked"), "set-signs! priority")?;
+        parsed.push((line, text, scope, priority));
+    }
+    ctx.host.set_signs(source, id, parsed);
+    Ok(SteelVal::Void)
+}
+
+/// `(set-virtual-lines! source bid lines)` — `lines`: list of `(line text)`.
+pub(crate) fn set_virtual_lines(ctx: &mut SteelCtx, source: SteelVal, bid: SteelVal, lines: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "set-virtual-lines!");
+    let source = string_arg(source, "set-virtual-lines! source")?;
+    let id = bid_arg(&bid, "set-virtual-lines!")?;
+    let mut parsed = Vec::new();
+    for entry in list_items(lines, "set-virtual-lines! lines")? {
+        let fields = exact_fields(
+            list_items(entry, "set-virtual-lines! entry")?,
+            2,
+            "set-virtual-lines!",
+            "(line text)",
+        )?;
+        let mut fields = fields.into_iter();
+        let line = usize_arg(fields.next().expect("len checked"), "set-virtual-lines! line")?;
+        let text = string_arg(fields.next().expect("len checked"), "set-virtual-lines! text")?;
+        parsed.push((line, text));
+    }
+    ctx.host.set_virtual_lines(source, id, parsed);
+    Ok(SteelVal::Void)
+}
+
+/// `(set-extra-highlights! source bid spans)` — `spans`: list of `(start end scope)`.
+pub(crate) fn set_extra_highlights(ctx: &mut SteelCtx, source: SteelVal, bid: SteelVal, spans: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "set-extra-highlights!");
+    let source = string_arg(source, "set-extra-highlights! source")?;
+    let id = bid_arg(&bid, "set-extra-highlights!")?;
+    let mut parsed = Vec::new();
+    for entry in list_items(spans, "set-extra-highlights! spans")? {
+        let fields = exact_fields(
+            list_items(entry, "set-extra-highlights! entry")?,
+            3,
+            "set-extra-highlights!",
+            "(start end scope)",
+        )?;
+        let mut fields = fields.into_iter();
+        let start = usize_arg(fields.next().expect("len checked"), "set-extra-highlights! start")?;
+        let end = usize_arg(fields.next().expect("len checked"), "set-extra-highlights! end")?;
+        let scope = string_arg(fields.next().expect("len checked"), "set-extra-highlights! scope")?;
+        parsed.push((start, end, scope));
+    }
+    ctx.host.set_extra_highlights(source, id, parsed);
+    Ok(SteelVal::Void)
+}
+
+/// `(%diagnostics-for-buffer bid severity range)` — the `diagnostics-for-buffer`
+/// Scheme wrapper supplies `#:severity`/`#:range` defaults. `severity`: a
+/// symbol or `#f`. `range`: a 2-element list `(start end)` or `#f` — a
+/// dotted pair isn't usable here (steel-core 0.8.2's `Pair`/`car`/`cdr` are
+/// crate-private, so a Rust builtin can't destructure one).
+pub(crate) fn diagnostics_for_buffer(
+    ctx: &mut SteelCtx,
+    bid: SteelVal,
+    severity: SteelVal,
+    range: SteelVal,
+) -> SteelResult {
+    require_cmd_ctx!(ctx, "diagnostics-for-buffer");
+    let id = bid_arg(&bid, "diagnostics-for-buffer")?;
+    let floor = match severity {
+        SteelVal::BoolV(false) => None,
+        SteelVal::SymbolV(s) => Some(s.to_string()),
+        SteelVal::StringV(s) => Some(s.to_string()),
+        _ => steel::stop!(TypeMismatch => "diagnostics-for-buffer: #:severity expected a symbol or #f"),
+    };
+    let range = match range {
+        SteelVal::BoolV(false) => None,
+        other => {
+            let fields = exact_fields(
+                list_items(other, "diagnostics-for-buffer #:range")?,
+                2,
+                "diagnostics-for-buffer",
+                "(start end)",
+            )?;
+            let mut fields = fields.into_iter();
+            let start = usize_arg(fields.next().expect("len checked"), "diagnostics-for-buffer range start")?;
+            let end = usize_arg(fields.next().expect("len checked"), "diagnostics-for-buffer range end")?;
+            Some((start, end))
+        }
+    };
+    let entries = ctx.host.diagnostics_for_buffer(id, floor.as_deref(), range);
+    let list: Vec<SteelVal> = entries.iter().map(json_to_steel).collect();
+    Ok(SteelVal::ListV(list.into()))
+}
+
+/// `(diagnostic-counts bid)` → `(errors . warnings)` — a genuine dotted
+/// pair, built via steel-core's public `cons` (the only public pair API).
+pub(crate) fn diagnostic_counts(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "diagnostic-counts");
+    let id = bid_arg(&bid, "diagnostic-counts")?;
+    let (errors, warnings) = ctx.host.diagnostic_counts(id);
+    let mut errors_val = SteelVal::IntV(errors as isize);
+    let mut warnings_val = SteelVal::IntV(warnings as isize);
+    steel::primitives::lists::cons(&mut errors_val, &mut warnings_val)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

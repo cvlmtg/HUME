@@ -198,8 +198,11 @@ impl Editor {
                 // Same source as the didChange conversion below — remap
                 // stored diagnostics through the identical ChangeSet before
                 // it's consumed, so both consumers (C9, C7) see the exact
-                // same edit stream, including undo/redo.
+                // same edit stream, including undo/redo. B5's char-offset
+                // decoration stores (inlay hints, extra highlights) go
+                // through the same chokepoint for the same reason.
                 diagnostics.remap_through(bid, &change.cs);
+                self.state.decorations.remap_through(bid, &change.cs);
 
                 let events = changeset_to_content_changes(&change.before, &change.cs, encoding);
                 if events.is_empty() {

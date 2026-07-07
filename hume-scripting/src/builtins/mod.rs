@@ -195,6 +195,13 @@ const BOOTSTRAP: &str = r#"
         (when prev (cancel-timer! prev)))
       (set-box! pending (after ms (lambda () (apply proc args)))))))
 
+; diagnostics-for-buffer — bounded, filtered pull over the diagnostics
+; store. #:severity: a floor symbol ('error 'warning 'info 'hint), or #f for
+; no floor (everything). #:range: a (list start end) char-offset bound, or
+; #f for the whole buffer.
+(define (diagnostics-for-buffer bid #:severity [severity #f] #:range [range #f])
+  (%diagnostics-for-buffer bid severity range))
+
 ; Variadic call! macro — desugars to %dispatch-command.
 ; Defined here (not only in prelude.scm) so it is available in every Steel engine
 ; context, including test harnesses that do not load the full prelude.
@@ -376,6 +383,18 @@ pub(crate) fn register_all(steel: &mut Engine) {
         "register-trigger-chars!",
         lsp::register_trigger_chars,
     );
+
+    // B5 — decoration stores + diagnostics pull.
+    steel.register_fn_with_ctx(HUME_CTX, "set-inlay-hints!", lsp::set_inlay_hints);
+    steel.register_fn_with_ctx(HUME_CTX, "set-signs!", lsp::set_signs);
+    steel.register_fn_with_ctx(HUME_CTX, "set-virtual-lines!", lsp::set_virtual_lines);
+    steel.register_fn_with_ctx(HUME_CTX, "set-extra-highlights!", lsp::set_extra_highlights);
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "%diagnostics-for-buffer",
+        lsp::diagnostics_for_buffer,
+    );
+    steel.register_fn_with_ctx(HUME_CTX, "diagnostic-counts", lsp::diagnostic_counts);
 
     // Timers — not LSP-specific, but B4 was scoped as part of the LSP step.
     steel.register_fn_with_ctx(HUME_CTX, "after", timers::after);

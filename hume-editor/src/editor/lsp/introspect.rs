@@ -8,6 +8,7 @@ use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
 
 use super::LspState;
+use super::diagnostics::DiagSeverity;
 use crate::editor::EditorState;
 use crate::editor::pane_state::PaneBufferState;
 
@@ -140,6 +141,82 @@ pub(crate) fn position_params(state: &EditorState, lsp: &LspState, id: BufferId)
         "textDocument": {"uri": uri},
         "position": {"line": line, "character": character},
     }))
+}
+
+/// The negotiated encoding of `id`'s attached server, or UTF-16 (the spec
+/// default) if `id` has no attached server — used by B5's `set-inlay-hints!`
+/// to convert its wire positions to char offsets at set time.
+pub(crate) fn encoding_for_buffer(
+    state: &EditorState,
+    lsp: &LspState,
+    id: BufferId,
+) -> hume_editing::position_encoding::PositionEncoding {
+    state
+        .buffers
+        .try_get(id)
+        .and_then(|b| b.lsp_server)
+        .and_then(|sid| lsp.clients.get(&sid))
+        .map(|c| c.encoding)
+        .unwrap_or(hume_editing::position_encoding::PositionEncoding::Utf16)
+}
+
+/// `(diagnostics-for-buffer bid #:severity floor #:range (start end))` —
+/// decoded, filtered, capped-at-1000 (hub OQ default) hashmaps. `start`/`end`
+/// are char offsets; `line`/`col` are the char-indexed start position,
+/// ready for `goto-location!` shape 2 (F4).
+pub(crate) fn diagnostics_for_buffer(
+    state: &EditorState,
+    lsp: &LspState,
+    bid: BufferId,
+    severity_floor: Option<&str>,
+    range: Option<(usize, usize)>,
+) -> Vec<serde_json::Value> {
+    const CAP: usize = 1000;
+    let floor = match severity_floor {
+        None => DiagSeverity::Hint, // most lenient — no filtering
+        Some("error") => DiagSeverity::Error,
+        Some("warning") => DiagSeverity::Warning,
+        Some("info") => DiagSeverity::Info,
+        Some("hint") => DiagSeverity::Hint,
+        Some(_) => return Vec::new(), // unknown floor name — nothing qualifies
+    };
+    let (start, end) = range.unwrap_or((0, usize::MAX));
+    let Some(rope) = state.buffers.try_get(bid).map(|b| b.text().rope()) else {
+        return Vec::new();
+    };
+
+    lsp.diagnostics
+        .for_range(bid, start..end, floor)
+        .take(CAP)
+        .map(|d| {
+            let line = rope.char_to_line(d.start.min(rope.len_chars()));
+            let col = d.start.min(rope.len_chars()) - rope.line_to_char(line);
+            serde_json::json!({
+                "start": d.start,
+                "end": d.end,
+                "line": line,
+                "col": col,
+                "severity": severity_name(d.severity),
+                "message": d.message,
+                "code": d.code,
+                "source": d.source,
+            })
+        })
+        .collect()
+}
+
+fn severity_name(sev: DiagSeverity) -> &'static str {
+    match sev {
+        DiagSeverity::Error => "error",
+        DiagSeverity::Warning => "warning",
+        DiagSeverity::Info => "info",
+        DiagSeverity::Hint => "hint",
+    }
+}
+
+/// `(diagnostic-counts bid)` → `(errors, warnings)`.
+pub(crate) fn diagnostic_counts(lsp: &LspState, bid: BufferId) -> (usize, usize) {
+    lsp.diagnostics.counts(bid)
 }
 
 /// Ready-made `{"textDocument" {"uri"} "range" {"start" "end"}}` params from
