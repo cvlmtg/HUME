@@ -257,7 +257,7 @@ The `hume-lsp` crate plus editor glue: spawn, handshake, document sync, diagnost
 
 - [x] **C1** — crate scaffold (`hume-lsp/`, deps: `lsp-types` + serde + `hume-editing` only)
 - [x] **C2** — JSON-RPC codec (framing, message enum, id allocation/correlation)
-- [ ] **C3** — server process management (reader/writer/stderr threads, `ServerHandle`, kill-on-drop)
+- [x] **C3** — server process management (reader/writer/stderr threads, `ServerHandle`, kill-on-drop)
 - [ ] **C4** — `LspBackend` trait + `InlineLspBackend` scripted double
 - [ ] **C5** — lifecycle (initialize handshake, capability storage, shutdown, crash detection)
 - [ ] **C6** — request bookkeeping (deadlines, staleness by `text_gen`, `$/cancelRequest`, server→client request dispatch)
