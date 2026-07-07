@@ -402,6 +402,12 @@ define_settings! {
         "syntax-highlight-max-bytes" => syntax_highlight_max_bytes: usize = 1_048_576,
             scope: ["global"],
             parser: usize_nonzero;
+        // rust-analyzer's first requests during indexing are slow — 10s
+        // gives real-world servers room before the request is dropped as
+        // TimedOut (see the LSP hub's C6 card).
+        "lsp.request-timeout-ms" => lsp_request_timeout_ms: usize = 10_000,
+            scope: ["global"],
+            parser: usize_nonzero;
         // Global-only *storage*: seeds new panes' `Pane::wrap_mode` at creation
         // time (`hume-engine`'s `Pane` is the live SSOT — see
         // `commands::open_pane`). A same-buffer `:split`/`:vsplit` overrides

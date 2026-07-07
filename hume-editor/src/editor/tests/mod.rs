@@ -450,6 +450,7 @@ mod jump_list;
 mod kitty;
 mod language;
 mod list_buffers;
+mod lsp;
 mod macros;
 mod mouse;
 mod multi_pane;

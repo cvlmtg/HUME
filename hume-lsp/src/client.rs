@@ -1,7 +1,9 @@
 //! Per-server client state machine: `initialize` handshake with capability
 //! and position-encoding negotiation, graceful shutdown, crash detection.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use hume_editing::PositionEncoding;
 use lsp_types::{
@@ -36,6 +38,55 @@ pub enum ClientAction {
     BecameRunning { send: Vec<Message> },
     /// The connection died — report once; restart stays manual (hub OQ default).
     Crashed { error: Option<String> },
+    /// The server sent a request; every one must get exactly one response
+    /// (a hung server request can stall its whole pipeline). The dispatch
+    /// table lives in the editor glue (hub decision: answered in Rust,
+    /// never surfaced to Steel).
+    ServerRequest {
+        id: RequestId,
+        method: String,
+        params: serde_json::Value,
+    },
+    /// A notification this module doesn't own the meaning of (window
+    /// messages, progress, publishDiagnostics, custom methods, ...).
+    ServerNotification {
+        method: String,
+        params: serde_json::Value,
+    },
+    /// One line of stderr output, forwarded for logging.
+    Stderr(String),
+}
+
+/// Opaque handle the editor maps to a real callback; `hume-lsp` never holds
+/// editor closures (crate fence) — it only carries this token round-trip.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CallbackToken(pub u64);
+
+/// Everything but the outcome needed to route (or discard) a completed
+/// request. `token` is minted and interpreted entirely by the editor.
+#[derive(Debug, Clone)]
+pub struct RequestMeta {
+    pub method: String,
+    pub allow_stale: bool,
+    pub deadline: Instant,
+    pub token: CallbackToken,
+}
+
+#[derive(Debug)]
+pub enum Outcome {
+    Ok(serde_json::Value),
+    Err(ResponseError),
+    TimedOut,
+}
+
+/// Builds the `$/cancelRequest` notification params for `id`. Shared by
+/// `LspClient::cancel` and the editor glue's timeout path.
+pub fn cancel_request_params(id: &RequestId) -> serde_json::Value {
+    let id_value = match id {
+        RequestId::Int(n) => serde_json::Value::from(*n),
+        RequestId::Str(s) => serde_json::Value::String(s.clone()),
+    };
+    serde_json::json!({ "id": id_value })
 }
 
 /// Per-server lifecycle state: handshake, negotiated encoding, and the
@@ -52,6 +103,12 @@ pub struct LspClient {
     queued: Vec<Message>,
     initialize_id: Option<RequestId>,
     ids: IdAllocator,
+    /// Requests awaiting a response, keyed by the id we sent.
+    pending: HashMap<RequestId, RequestMeta>,
+    /// Responses matched against `pending` by `on_event`, waiting to be
+    /// pulled by `take_completed` — never delivered inline (same
+    /// drain-boundary discipline as the `InlineLspBackend` double).
+    completed: Vec<(RequestId, RequestMeta, Outcome)>,
 }
 
 impl LspClient {
@@ -65,7 +122,80 @@ impl LspClient {
             queued: Vec::new(),
             initialize_id: None,
             ids: IdAllocator::new(),
+            pending: HashMap::new(),
+            completed: Vec::new(),
         }
+    }
+
+    /// Sends a request and remembers `meta` for correlation. Requests are
+    /// position-independent from this layer's perspective — staleness by
+    /// buffer generation is tracked editor-side (the crate fence: `hume-lsp`
+    /// has no `BufferId`).
+    pub fn send_request(
+        &mut self,
+        backend: &mut dyn LspBackend,
+        method: &str,
+        params: serde_json::Value,
+        meta: RequestMeta,
+    ) -> RequestId {
+        let id = self.ids.next();
+        self.pending.insert(id.clone(), meta);
+        backend.send(
+            self.id,
+            Message::Request {
+                id: id.clone(),
+                method: method.to_string(),
+                params,
+            },
+        );
+        id
+    }
+
+    /// Best-effort cancellation: drops the pending entry (if still present)
+    /// and notifies the server. A no-op if the request already completed.
+    pub fn cancel(&mut self, backend: &mut dyn LspBackend, id: RequestId) {
+        if self.pending.remove(&id).is_some() {
+            backend.send(
+                self.id,
+                Message::Notification {
+                    method: "$/cancelRequest".to_string(),
+                    params: cancel_request_params(&id),
+                },
+            );
+        }
+    }
+
+    /// Pulls every request that finished (correlated response) or expired
+    /// (deadline reached) since the last call. Called at drain, alongside
+    /// `on_event` — deadline checks piggyback on the same cadence, no
+    /// separate timer thread. A timed-out entry gets a best-effort
+    /// `$/cancelRequest` sent here (colocated with the detection, so it's
+    /// testable without an editor in the loop).
+    pub fn take_completed(
+        &mut self,
+        backend: &mut dyn LspBackend,
+        now: Instant,
+    ) -> Vec<(RequestId, RequestMeta, Outcome)> {
+        let mut out = std::mem::take(&mut self.completed);
+        let timed_out: Vec<RequestId> = self
+            .pending
+            .iter()
+            .filter(|(_, meta)| meta.deadline <= now)
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in timed_out {
+            if let Some(meta) = self.pending.remove(&id) {
+                backend.send(
+                    self.id,
+                    Message::Notification {
+                        method: "$/cancelRequest".to_string(),
+                        params: cancel_request_params(&id),
+                    },
+                );
+                out.push((id, meta, Outcome::TimedOut));
+            }
+        }
+        out
     }
 
     /// Builds `InitializeParams` and sends the request.
@@ -103,6 +233,11 @@ impl LspClient {
     pub fn on_event(&mut self, ev: InboundEvent) -> Vec<ClientAction> {
         match ev {
             InboundEvent::Eof { error } => {
+                // Guard against reporting twice if more events trickle in
+                // after the connection is already known dead.
+                if self.state == ServerState::Crashed {
+                    return Vec::new();
+                }
                 self.state = ServerState::Crashed;
                 vec![ClientAction::Crashed { error }]
             }
@@ -112,7 +247,23 @@ impl LspClient {
                 self.initialize_id = None;
                 self.handle_initialize_response(result)
             }
-            InboundEvent::Message(_) | InboundEvent::Stderr(_) => Vec::new(),
+            InboundEvent::Message(Message::Response { id, result }) => {
+                if let Some(meta) = self.pending.remove(&id) {
+                    let outcome = match result {
+                        Ok(v) => Outcome::Ok(v),
+                        Err(e) => Outcome::Err(e),
+                    };
+                    self.completed.push((id, meta, outcome));
+                }
+                Vec::new()
+            }
+            InboundEvent::Message(Message::Request { id, method, params }) => {
+                vec![ClientAction::ServerRequest { id, method, params }]
+            }
+            InboundEvent::Message(Message::Notification { method, params }) => {
+                vec![ClientAction::ServerNotification { method, params }]
+            }
+            InboundEvent::Stderr(line) => vec![ClientAction::Stderr(line)],
         }
     }
 
@@ -454,5 +605,189 @@ mod tests {
             (_, Message::Notification { method, .. }) => assert_eq!(method, "exit"),
             other => panic!("expected the exit notification second, got {other:?}"),
         }
+    }
+
+    fn make_running_client() -> (InlineLspBackend, LspClient) {
+        let mut backend = InlineLspBackend::with_default_handshake();
+        let sid = backend.start("x", &[], std::path::Path::new(".")).unwrap();
+        let mut client = LspClient::new(sid, PathBuf::from("."));
+        client.start_handshake(&mut backend);
+        let (_id, ev) = backend.drain().into_iter().next().unwrap();
+        client.on_event(ev);
+        assert_eq!(client.state, ServerState::Running);
+        (backend, client)
+    }
+
+    #[test]
+    fn send_request_delivers_response_via_take_completed() {
+        let (mut backend, mut client) = make_running_client();
+        backend.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
+
+        let token = CallbackToken(1);
+        let meta = RequestMeta {
+            method: "textDocument/hover".to_string(),
+            allow_stale: false,
+            deadline: Instant::now() + std::time::Duration::from_secs(10),
+            token,
+        };
+        let sent_id =
+            client.send_request(&mut backend, "textDocument/hover", serde_json::Value::Null, meta);
+
+        let (_sid, ev) = backend.drain().into_iter().next().unwrap();
+        let actions = client.on_event(ev);
+        assert!(
+            actions.is_empty(),
+            "a correlated response produces no ClientAction — it's pulled via take_completed"
+        );
+
+        let completed = client.take_completed(&mut backend, Instant::now());
+        assert_eq!(completed.len(), 1);
+        let (id, meta_out, outcome) = &completed[0];
+        assert_eq!(*id, sent_id);
+        assert_eq!(meta_out.token, token);
+        match outcome {
+            Outcome::Ok(v) => assert_eq!(*v, serde_json::json!({"contents": "hi"})),
+            other => panic!("expected Ok, got {other:?}"),
+        }
+
+        // Pulled once — a second call finds nothing left.
+        assert!(client.take_completed(&mut backend, Instant::now()).is_empty());
+    }
+
+    #[test]
+    fn cancel_removes_pending_and_sends_cancel_notification() {
+        let (mut backend, mut client) = make_running_client();
+
+        let meta = RequestMeta {
+            method: "textDocument/definition".to_string(),
+            allow_stale: false,
+            deadline: Instant::now() + std::time::Duration::from_secs(10),
+            token: CallbackToken(7),
+        };
+        let id = client.send_request(
+            &mut backend,
+            "textDocument/definition",
+            serde_json::Value::Null,
+            meta,
+        );
+        client.cancel(&mut backend, id.clone());
+
+        match backend.sent.last() {
+            Some((_, Message::Notification { method, params })) => {
+                assert_eq!(method, "$/cancelRequest");
+                assert_eq!(params, &cancel_request_params(&id));
+            }
+            other => panic!("expected a $/cancelRequest notification, got {other:?}"),
+        }
+
+        // A late response for the already-cancelled id must not resurrect it.
+        backend.push_from_server(
+            client.id,
+            Message::Response {
+                id: id.clone(),
+                result: Ok(serde_json::Value::Null),
+            },
+        );
+        let (_sid, ev) = backend.drain().into_iter().next().unwrap();
+        client.on_event(ev);
+        assert!(client.take_completed(&mut backend, Instant::now()).is_empty());
+    }
+
+    #[test]
+    fn take_completed_reports_timeout_and_sends_cancel_request() {
+        let (mut backend, mut client) = make_running_client();
+        let meta = RequestMeta {
+            method: "textDocument/completion".to_string(),
+            allow_stale: false,
+            deadline: Instant::now() - std::time::Duration::from_millis(1),
+            token: CallbackToken(3),
+        };
+        let id = client.send_request(
+            &mut backend,
+            "textDocument/completion",
+            serde_json::Value::Null,
+            meta,
+        );
+
+        let completed = client.take_completed(&mut backend, Instant::now());
+        assert_eq!(completed.len(), 1);
+        let (returned_id, _meta, outcome) = &completed[0];
+        assert_eq!(*returned_id, id);
+        assert!(matches!(outcome, Outcome::TimedOut));
+
+        match backend.sent.last() {
+            Some((_, Message::Notification { method, params })) => {
+                assert_eq!(method, "$/cancelRequest");
+                assert_eq!(params, &cancel_request_params(&id));
+            }
+            other => panic!("expected a $/cancelRequest notification, got {other:?}"),
+        }
+
+        // Removed from pending — a second call must not report it again.
+        assert!(client.take_completed(&mut backend, Instant::now()).is_empty());
+    }
+
+    #[test]
+    fn server_initiated_request_becomes_a_client_action() {
+        let (mut backend, mut client) = make_running_client();
+        backend.push_from_server(
+            client.id,
+            Message::Request {
+                id: RequestId::Int(99),
+                method: "workspace/configuration".to_string(),
+                params: serde_json::json!({"items": []}),
+            },
+        );
+        let (_sid, ev) = backend.drain().into_iter().next().unwrap();
+        let actions = client.on_event(ev);
+        match &actions[..] {
+            [ClientAction::ServerRequest { id, method, .. }] => {
+                assert_eq!(*id, RequestId::Int(99));
+                assert_eq!(method, "workspace/configuration");
+            }
+            other => panic!("expected one ServerRequest action, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn server_notification_becomes_a_client_action() {
+        let (mut backend, mut client) = make_running_client();
+        backend.push_from_server(
+            client.id,
+            Message::Notification {
+                method: "textDocument/publishDiagnostics".to_string(),
+                params: serde_json::json!({"uri": "file:///a", "diagnostics": []}),
+            },
+        );
+        let (_sid, ev) = backend.drain().into_iter().next().unwrap();
+        let actions = client.on_event(ev);
+        match &actions[..] {
+            [ClientAction::ServerNotification { method, .. }] => {
+                assert_eq!(method, "textDocument/publishDiagnostics");
+            }
+            other => panic!("expected one ServerNotification action, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn stderr_event_becomes_a_client_action() {
+        let (_backend, mut client) = make_running_client();
+        let actions = client.on_event(InboundEvent::Stderr("panic: oh no".to_string()));
+        match &actions[..] {
+            [ClientAction::Stderr(line)] => assert_eq!(line, "panic: oh no"),
+            other => panic!("expected one Stderr action, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn eof_reports_crashed_only_once_even_if_fed_again() {
+        let (_backend, mut client) = make_running_client();
+        let first = client.on_event(InboundEvent::Eof { error: None });
+        assert_eq!(first.len(), 1);
+        let second = client.on_event(InboundEvent::Eof { error: None });
+        assert!(
+            second.is_empty(),
+            "a second Eof after already-Crashed must not report again"
+        );
     }
 }

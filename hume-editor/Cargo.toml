@@ -14,6 +14,7 @@ hume-scripting = { path = "../hume-scripting" }
 hume-editing = { path = "../hume-editing" }
 hume-treesitter = { path = "../hume-treesitter" }
 hume-lsp = { path = "../hume-lsp" }
+serde_json.workspace = true
 globset = "0.4"
 tree-sitter = "0.26.8"
 slotmap = "1"

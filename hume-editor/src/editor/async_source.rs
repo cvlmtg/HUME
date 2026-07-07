@@ -61,8 +61,6 @@ impl Editor {
         // Collected but not yet dispatched — B4 adds the TimerId -> Steel
         // thunk side table that gives these ids a payload.
         let _ = self.timer_wheel.take_due(Instant::now());
-        // Collected but not yet dispatched — C6 adds the CallbackToken table
-        // that routes each response to its request's callback.
-        let _ = self.lsp.backend_mut().drain();
+        self.drain_lsp();
     }
 }
