@@ -45,7 +45,7 @@ Rules for the implementing session. Follow them exactly.
 
 **Architecture: Steel on the control plane, Rust on the data plane.** The split is a *frequency cut*, not a per-feature assignment:
 
-- Runs **per user intent** (a keypress-triggered command, a server response arriving, a menu selection) → Steel. A Steel dispatch costs tens of microseconds against a 16 ms frame budget.
+- Runs **per user intent** (a keypress-triggered command, a server response arriving, a menu selection) → Steel. A Steel dispatch costs tens of nanoseconds against a 16 ms frame budget (P8 measured ~76ns/call for a registered no-op builtin, 10k calls, release build — includes Steel loop overhead, so real dispatch is at or below that).
 - Runs **per frame, per scroll row, or over unbounded collections** (rendering, diagnostic bursts, completion filtering, position math over edits) → Rust.
 
 Two structural guardrails keep the experience snappy *by construction*, not by discipline:
@@ -73,7 +73,7 @@ Steps 1–3 are ordered by dependency but Step 4 tasks unlock incrementally — 
 |----------|--------|-----------|
 | LSP architecture | **Hybrid: Steel control plane, Rust data plane** | Rust owns transport, JSON-RPC, document sync, bulk stores, and rendering. Steel owns behavior: every user-facing feature is Steel code composing Rust primitives. The boundary is frequency: per-user-intent work may be Steel; per-frame / per-scroll / unbounded-collection work must be Rust. Maximizes community extensibility without sacrificing latency. |
 | Feature delivery | **Generic LSP bridge + `core:lsp` plugin, not hardcoded Rust features** | `(lsp-request server method params callback)` / `(lsp-notify …)` / `(on-lsp-notification method handler)` make any protocol method reachable from Steel. v1 features ship as the `core:lsp` plugin using the same public surface plugins get — dogfooding guarantees the bridge is complete. Rust volume is similar to hardcoding v1 (generic infra costs more up front), but marginal feature cost afterward is a Steel file anyone can write. |
-| Bulk-data guardrail | **Bulk never crosses the boundary on recurring paths** | Diagnostics are ingested, stored, and remapped in Rust; Steel receives change *signals* and pulls bounded subsets (visible lines, top-N). Completion items live in a Rust store with a Rust per-keystroke filter; Steel orchestrates and sees the top-N. The one crossing allowed is a per-user-intent ingest (a completion response flowing through the B2 callback into `completion-begin!`) — if the P8 spike shows that's too slow at 1k items, `lsp-request` grows a flag routing the raw response straight into the store, handing Steel a handle instead of items. |
+| Bulk-data guardrail | **Bulk never crosses the boundary on recurring paths** | Diagnostics are ingested, stored, and remapped in Rust; Steel receives change *signals* and pulls bounded subsets (visible lines, top-N). Completion items live in a Rust store with a Rust per-keystroke filter; Steel orchestrates and sees the top-N. The one crossing allowed is a per-user-intent ingest (a completion response flowing through the B2 callback into `completion-begin!`) — the P8 spike measured this at 1k items: ~0.75–0.8ms JSON→SteelVal conversion + ~0.26ms for one Steel-side pass over the converted list ≈ 1ms total, well under the 2ms threshold. **Holds as designed** — `lsp-request` does not need the raw-response-routing escape hatch for v1. |
 | Render decoupling | **Data-driven decoration stores; Steel never on the render path** | Steel setters (`set-inlay-hints!`, `set-signs!`, `set-virtual-lines!`, …) write Rust-side stores; the existing engine providers (`HighlightSource`, `SignSource`, `VirtualLineSource`, `InlineDecoration`) render from them each frame with zero Steel involvement. |
 | UI widgets | **Rust-rendered, Steel-fed** | Cursor popup, selection menu, drawer list are generic Rust widgets taking content + callbacks from Steel (`show-popup!`, `show-menu!`, `show-drawer-list!`). LSP is their first client, not their owner — any plugin can use them. |
 | Symbol rename | **LSP-first, tree-sitter fallback** | `textDocument/rename` when LSP active; falls back to tree-sitter local rename via `locals.scm` — file-local only but scope-correct. Same keybinding in both cases. |
@@ -85,6 +85,8 @@ Steps 1–3 are ordered by dependency but Step 4 tasks unlock incrementally — 
 | Position encoding | **Negotiate `utf-8`, fall back to UTF-16 conversion** | LSP defaults to UTF-16 code-unit columns; 3.17's `positionEncoding` capability lets client and server agree on `utf-8`. HUME is char/grapheme-based, so both paths need conversion helpers; ropey 1.6 provides `char ↔ utf16_cu` primitives (`char_to_utf16_cu` / `utf16_cu_to_char`, unconditional — no feature flag in 1.x) for the fallback. Never assume byte == column. |
 | Timers | **Timer wheel in the event loop; `(after ms thunk)` + debounced hooks in Steel** | The loop already degrades to `poll(timeout)` when async work is pending; a nearest-deadline timer wheel bounds that timeout naturally. Required for debounced inlay-hint refresh, signature-help triggering, and completion debounce — without it, scroll- and keystroke-driven Steel work would fire unthrottled. |
 | Server→client requests | **Answered in Rust, never surfaced to Steel in v1** | JSON-RPC requires a response to every request, including server-initiated ones. C6 dispatches them: `workspace/configuration` answered from C8 settings, `workspace/applyEdit` applied via the B6 engine, `client/registerCapability` / `window/workDoneProgress/create` acknowledged and ignored, anything else gets a `MethodNotFound` error response. Steel handles notifications only (`on-lsp-notification`) — response obligations stay where timeouts can't be caused by a plugin. |
+| Diagnostics exposure granularity (P8) | **`diagnostics-for-buffer` caps at 1 000 items** | P8 measured JSON→SteelVal conversion (steel-core's built-in `IntoSteelVal for serde_json::Value`) at 100/1k/5k diagnostic-shaped items, release build: ~86µs / ~750µs / ~4.2ms. Confirms the hub's 1 000 default with comfortable margin — even the uncapped 5k case stays under 5ms for a per-user-intent pull (not a per-frame path). Filtered by the optional `#:severity` / `#:range` arguments before the cap applies. |
+| Steel completion scorer budget (P8) | **Re-rank Rust's top-N only (N = 64)** | P8 confirms this is architectural, not just a speed call: per-item conversion/iteration cost is low (~0.8–1µs/item) but completion filtering runs *per keystroke* — the hub's frequency-cut rule (recurring paths must be Rust, regardless of measured Steel throughput) means an unbounded Steel scorer would violate the guardrail even though it would be numerically affordable at 1k items. Bounded top-64 re-rank confirmed as the default. |
 
 ## Open Questions
 
@@ -92,8 +94,6 @@ Every row has a **Default** — at the gate, adopt it unless the gate's evidence
 
 | Question | Context |
 |----------|---------|
-| Diagnostics exposure granularity | Rust ingests/stores/remaps (decided). Open: exactly what Steel pulls — per-line visible subset, per-buffer summaries, full list under a size cap? The P8 spike (JSON↔SteelVal throughput at 100/1k/5k items) decides where the cap sits. **Default:** `diagnostics-for-buffer` returns at most 1 000 items, filtered by the optional `#:severity` / `#:range` arguments before the cap applies. |
-| Steel completion scorer budget | Rust does prefix/fuzzy filtering (decided; matches the existing "fuzzy scoring is a plugin concern" ROADMAP note for minibuffer). Open: the optional Steel scorer hook — score all candidates (cost unknown until P8) or re-rank Rust's top-N only? **Default:** re-rank Rust's top-N only (N = 64). |
 | Hover surface | Cursor popup vs Class B bottom drawer. Decide when U4/U6 land. **Default:** popup primary; content taller than the popup's max height (⅓ of pane height) overflows to the drawer. |
 | Snippet completions | v1 strips `${1:...}` placeholders to plain text. Confirm acceptable UX for rust-analyzer (which snippet-ifies aggressively) at F3. **Default:** strip. When full support lands (Future): placeholder *parsing* could be Steel; the insert-mode tabstop state machine with multi-cursor placeholder selections is likely Rust. |
 | Server crash policy | Manual `:lsp-restart` only, or bounded auto-restart (e.g. 3 attempts with backoff)? Revisit with real usage. Policy knob belongs to Steel either way. **Default:** manual-only. |
@@ -249,7 +249,7 @@ Workspace groundwork with no LSP-visible behavior. Cards: `docs/lsp/step-0.md`. 
 - [ ] **P5** — path ↔ `file://` URI (in `hume-lsp`)
 - [ ] **P6** — `ChangeSet` → `TextDocumentContentChangeEvent[]` (in `hume-lsp`)
 - [ ] **P7** — event-loop timer wheel
-- [ ] **P8** — boundary-cost spike (measure, then decide; updates this hub)
+- [x] **P8** — boundary-cost spike (measure, then decide; updates this hub)
 
 ## Step 1 — LSP core (Rust data plane)
 
