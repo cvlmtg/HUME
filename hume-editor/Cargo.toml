@@ -14,6 +14,7 @@ hume-scripting = { path = "../hume-scripting" }
 hume-editing = { path = "../hume-editing" }
 hume-treesitter = { path = "../hume-treesitter" }
 hume-lsp = { path = "../hume-lsp" }
+lsp-types = "0.97"
 serde_json.workspace = true
 globset = "0.4"
 tree-sitter = "0.26.8"
@@ -36,4 +37,3 @@ tempfile = "3"
 hume-scripting = { path = "../hume-scripting", features = ["test-util"] }
 hume-treesitter = { path = "../hume-treesitter", features = ["test-util"] }
 hume-lsp = { path = "../hume-lsp", features = ["test-util"] }
-lsp-types = "0.97"

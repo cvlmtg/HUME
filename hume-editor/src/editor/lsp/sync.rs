@@ -167,6 +167,12 @@ impl Editor {
                 .unwrap_or(hume_editing::PositionEncoding::Utf16);
 
             for change in pending {
+                // Same source as the didChange conversion below — remap
+                // stored diagnostics through the identical ChangeSet before
+                // it's consumed, so both consumers (C9, C7) see the exact
+                // same edit stream, including undo/redo.
+                self.lsp.diagnostics.remap_through(bid, &change.cs);
+
                 let events = changeset_to_content_changes(&change.before, &change.cs, encoding);
                 if events.is_empty() {
                     continue;

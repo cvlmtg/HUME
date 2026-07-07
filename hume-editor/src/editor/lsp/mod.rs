@@ -5,6 +5,7 @@
 //! dispatch; C7–C10 add document sync, diagnostics, registration, and
 //! observability commands on top.
 
+mod diagnostics;
 mod registry;
 pub(crate) mod sync;
 
@@ -22,6 +23,7 @@ use hume_lsp::inline::InlineLspBackend;
 use super::Editor;
 use super::async_source::AsyncSource;
 use super::message_log::Severity;
+use diagnostics::DiagnosticsStore;
 use registry::LspServerConfig;
 
 /// How often to poll while any LSP server is running, so idle-time server
@@ -53,6 +55,7 @@ pub(crate) struct LspState {
     /// first buffer under a pair spawns; later buffers with the same pair
     /// attach to the existing entry.
     servers_by_key: HashMap<(String, PathBuf), ServerId>,
+    diagnostics: DiagnosticsStore,
 }
 
 impl LspState {
@@ -65,6 +68,7 @@ impl LspState {
             next_token: 0,
             configs: HashMap::new(),
             servers_by_key: HashMap::new(),
+            diagnostics: DiagnosticsStore::default(),
         }
     }
 
@@ -78,6 +82,7 @@ impl LspState {
             next_token: 0,
             configs: HashMap::new(),
             servers_by_key: HashMap::new(),
+            diagnostics: DiagnosticsStore::default(),
         }
     }
 
@@ -94,6 +99,7 @@ impl LspState {
             next_token: 0,
             configs: HashMap::new(),
             servers_by_key: HashMap::new(),
+            diagnostics: DiagnosticsStore::default(),
         }
     }
 
@@ -133,6 +139,21 @@ impl LspState {
     #[cfg(test)]
     pub(crate) fn client_count_for_test(&self) -> usize {
         self.clients.len()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn diagnostic_counts_for_test(&self, bid: BufferId) -> (usize, usize) {
+        self.diagnostics.counts(bid)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn diagnostics_for_test(
+        &self,
+        bid: BufferId,
+    ) -> impl Iterator<Item = (usize, usize)> + '_ {
+        self.diagnostics
+            .for_range(bid, 0..usize::MAX, diagnostics::DiagSeverity::Hint)
+            .map(|d| (d.start, d.end))
     }
 
     /// Disjoint-borrow accessor for tests that need to drive a client and
@@ -212,14 +233,31 @@ impl Editor {
         self.flush_lsp_pending_changes();
 
         let events = self.lsp.backend.drain();
+        // Coalesce publishDiagnostics within this batch: keep only the last
+        // one per (server, uri) — servers burst-publish and only the newest
+        // matters. Ingested after the loop so a later action for the same
+        // (server, uri) always wins regardless of arrival order within the
+        // batch.
+        let mut diag_batch: HashMap<(ServerId, String), serde_json::Value> = HashMap::new();
         for (server_id, ev) in events {
             let actions = match self.lsp.clients.get_mut(&server_id) {
                 Some(client) => client.on_event(ev),
                 None => continue,
             };
             for action in actions {
+                if let ClientAction::ServerNotification { method, params } = &action
+                    && method == "textDocument/publishDiagnostics"
+                {
+                    if let Some(uri) = params.get("uri").and_then(|v| v.as_str()) {
+                        diag_batch.insert((server_id, uri.to_string()), params.clone());
+                    }
+                    continue;
+                }
                 self.dispatch_lsp_action(server_id, action);
             }
+        }
+        for ((server_id, _uri), params) in diag_batch {
+            self.ingest_publish_diagnostics(server_id, params);
         }
 
         let now = Instant::now();
@@ -270,15 +308,14 @@ impl Editor {
         }
     }
 
+    /// `textDocument/publishDiagnostics` never reaches here — `drain_lsp`
+    /// intercepts and coalesces it before dispatch (see the batching loop).
     fn dispatch_server_notification(&mut self, method: &str, _params: serde_json::Value) {
         match method {
             "window/logMessage" | "window/showMessage" | "$/progress" => {
                 // C10 differentiates severity per method/type; Trace keeps
                 // :messages usable in the meantime.
                 self.report(Severity::Trace, format!("lsp: {method}"));
-            }
-            "textDocument/publishDiagnostics" => {
-                // Stub until C9 ingests diagnostics.
             }
             other => {
                 self.report(
