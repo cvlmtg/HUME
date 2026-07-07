@@ -186,10 +186,14 @@ mod tests {
         let before = Instant::now();
         let id = wheel.schedule(Duration::from_millis(50));
         // `before` predates `schedule`'s own `Instant::now()` read, so the
-        // real deadline is guaranteed >= before + 50ms — querying at exactly
-        // that point must not fire yet.
+        // real deadline is >= before + 50ms — but the two reads can tie on
+        // some clocks, and `take_due`'s `<=` is deliberately inclusive (a
+        // deadline exactly at `now` must fire), so an exact `before + 50ms`
+        // query isn't safely "not yet due". Query below the guaranteed
+        // minimum deadline instead, with margin to absorb scheduling jitter
+        // between the two reads.
         assert_eq!(
-            wheel.take_due(before + Duration::from_millis(50)),
+            wheel.take_due(before + Duration::from_millis(10)),
             Vec::new()
         );
         // A point comfortably past any scheduling jitter must fire.
