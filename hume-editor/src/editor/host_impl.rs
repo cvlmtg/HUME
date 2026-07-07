@@ -411,7 +411,12 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             return;
         };
         let encoding = crate::editor::lsp::introspect::encoding_for_buffer(self.state, lsp, bid);
-        let Some(rope) = self.state.buffers.try_get(bid).map(|b| b.text().rope().clone()) else {
+        let Some(rope) = self
+            .state
+            .buffers
+            .try_get(bid)
+            .map(|b| b.text().rope().clone())
+        else {
             return;
         };
         let entries: Vec<crate::editor::decorations::InlayHintEntry> = hints
@@ -419,22 +424,30 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             .filter_map(|(wire_pos, text, before)| {
                 let line = wire_pos.get("line")?.as_u64()? as usize;
                 let character = wire_pos.get("character")?.as_u64()? as usize;
-                let pos = hume_editing::position_encoding::wire_to_char(&rope, line, character, encoding);
+                let pos =
+                    hume_editing::position_encoding::wire_to_char(&rope, line, character, encoding);
                 Some(crate::editor::decorations::InlayHintEntry { pos, text, before })
             })
             .collect();
         self.state.decorations.set_inlay_hints(bid, entries);
     }
 
-    fn set_signs(&mut self, source: String, bid: BufferId, signs: Vec<(usize, String, String, i64)>) {
+    fn set_signs(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        signs: Vec<(usize, String, String, i64)>,
+    ) {
         let entries = signs
             .into_iter()
-            .map(|(line, text, scope, priority)| crate::editor::decorations::SignEntry {
-                line,
-                text,
-                scope,
-                priority,
-            })
+            .map(
+                |(line, text, scope, priority)| crate::editor::decorations::SignEntry {
+                    line,
+                    text,
+                    scope,
+                    priority,
+                },
+            )
             .collect();
         self.state.decorations.set_signs(source, bid, entries);
     }
@@ -444,19 +457,30 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             .into_iter()
             .map(|(line, text)| crate::editor::decorations::VirtualLineEntry { line, text })
             .collect();
-        self.state.decorations.set_virtual_lines(source, bid, entries);
+        self.state
+            .decorations
+            .set_virtual_lines(source, bid, entries);
     }
 
-    fn set_extra_highlights(&mut self, source: String, bid: BufferId, spans: Vec<(usize, usize, String)>) {
+    fn set_extra_highlights(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        spans: Vec<(usize, usize, String)>,
+    ) {
         let entries = spans
             .into_iter()
-            .map(|(start, end, scope)| crate::editor::decorations::ExtraHighlightEntry {
-                start,
-                end,
-                scope,
-            })
+            .map(
+                |(start, end, scope)| crate::editor::decorations::ExtraHighlightEntry {
+                    start,
+                    end,
+                    scope,
+                },
+            )
             .collect();
-        self.state.decorations.set_extra_highlights(source, bid, entries);
+        self.state
+            .decorations
+            .set_extra_highlights(source, bid, entries);
     }
 
     fn diagnostics_for_buffer(
@@ -468,7 +492,13 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         let Some(lsp) = self.lsp else {
             return Vec::new();
         };
-        crate::editor::lsp::introspect::diagnostics_for_buffer(self.state, lsp, bid, severity_floor, range)
+        crate::editor::lsp::introspect::diagnostics_for_buffer(
+            self.state,
+            lsp,
+            bid,
+            severity_floor,
+            range,
+        )
     }
 
     fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {
@@ -476,6 +506,96 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             return (0, 0);
         };
         crate::editor::lsp::introspect::diagnostic_counts(lsp, bid)
+    }
+
+    // ── Edit + navigation primitives (B6) ────────────────────────────────────
+    fn apply_text_edits(
+        &mut self,
+        bid: BufferId,
+        edits: Vec<(usize, usize, usize, usize, String)>,
+        expect_gen: Option<u64>,
+    ) -> Result<(), String> {
+        let Some(lsp) = self.lsp else {
+            return Err("apply-text-edits!: no LSP state available".to_string());
+        };
+        let wire_edits = edits
+            .into_iter()
+            .map(|(start_line, start_char, end_line, end_char, new_text)| {
+                crate::editor::lsp::edits::WireEdit {
+                    start_line,
+                    start_char,
+                    end_line,
+                    end_char,
+                    new_text,
+                }
+            })
+            .collect();
+        crate::editor::lsp::edits::apply_text_edits(self.state, lsp, bid, wire_edits, expect_gen)
+    }
+
+    fn apply_workspace_edit(&mut self, edit: serde_json::Value) -> Result<usize, String> {
+        let Some(lsp) = self.lsp else {
+            return Err("apply-workspace-edit!: no LSP state available".to_string());
+        };
+        let we: lsp_types::WorkspaceEdit =
+            serde_json::from_value(edit).map_err(|e| format!("malformed WorkspaceEdit: {e}"))?;
+        let summary =
+            crate::editor::lsp::edits::apply_workspace_edit(self.state, self.view, lsp, we)?;
+        Ok(summary.buffers_modified)
+    }
+
+    fn goto_location_wire(
+        &mut self,
+        uri: String,
+        line: usize,
+        character: usize,
+    ) -> Result<(), String> {
+        let Some(lsp) = self.lsp else {
+            return Err("goto-location!: no LSP state available".to_string());
+        };
+        let uri: lsp_types::Uri = uri
+            .parse()
+            .map_err(|_| format!("goto-location!: bad uri {uri:?}"))?;
+        let target = crate::editor::lsp::edits::GotoTarget::Wire {
+            uri,
+            line,
+            character,
+        };
+        crate::editor::lsp::edits::goto_location(self.state, self.view, lsp, target)
+    }
+
+    fn goto_location_path(
+        &mut self,
+        path_or_uri: String,
+        line: usize,
+        col: usize,
+    ) -> Result<(), String> {
+        let Some(lsp) = self.lsp else {
+            return Err("goto-location!: no LSP state available".to_string());
+        };
+        let target = crate::editor::lsp::edits::GotoTarget::Path {
+            path_or_uri,
+            line,
+            col,
+        };
+        crate::editor::lsp::edits::goto_location(self.state, self.view, lsp, target)
+    }
+
+    fn goto_location_buffer(
+        &mut self,
+        bid: BufferId,
+        line: usize,
+        col: usize,
+    ) -> Result<(), String> {
+        let Some(lsp) = self.lsp else {
+            return Err("goto-location!: no LSP state available".to_string());
+        };
+        let target = crate::editor::lsp::edits::GotoTarget::Buffer { bid, line, col };
+        crate::editor::lsp::edits::goto_location(self.state, self.view, lsp, target)
+    }
+
+    fn selection_spans_full_line(&self, bid: BufferId) -> bool {
+        crate::editor::lsp::edits::selection_spans_full_line(self.state, bid)
     }
 }
 

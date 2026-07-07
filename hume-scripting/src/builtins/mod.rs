@@ -202,6 +202,20 @@ const BOOTSTRAP: &str = r#"
 (define (diagnostics-for-buffer bid #:severity [severity #f] #:range [range #f])
   (%diagnostics-for-buffer bid severity range))
 
+; apply-text-edits! — one undoable transaction. edits: list of ((start-line
+; start-col) (end-line end-col) text), wire positions. #:expect-generation:
+; the text_gen the edits were computed against (B2's staleness tag) — #f
+; skips the check.
+(define (apply-text-edits! bid edits #:expect-generation [gen #f])
+  (%apply-text-edits! bid edits gen))
+
+; apply-workspace-edit! — multi-file engine; reports the modified-buffer
+; count so the user can see the effect of e.g. a rename before saving.
+(define (apply-workspace-edit! wsedit)
+  (let ((n (%apply-workspace-edit! wsedit)))
+    (log! 'info (to-string n " buffers modified — :wa writes all"))
+    n))
+
 ; Variadic call! macro — desugars to %dispatch-command.
 ; Defined here (not only in prelude.scm) so it is available in every Steel engine
 ; context, including test harnesses that do not load the full prelude.
@@ -362,11 +376,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
     // Generic LSP bridge — any protocol method reachable from Steel.
     steel.register_fn_with_ctx(HUME_CTX, "%lsp-request", lsp::lsp_request);
     steel.register_fn_with_ctx(HUME_CTX, "lsp-notify", lsp::lsp_notify);
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "on-lsp-notification",
-        lsp::on_lsp_notification,
-    );
+    steel.register_fn_with_ctx(HUME_CTX, "on-lsp-notification", lsp::on_lsp_notification);
     // B3 — introspection
     steel.register_fn_with_ctx(HUME_CTX, "lsp-capabilities", lsp::lsp_capabilities);
     steel.register_fn_with_ctx(HUME_CTX, "lsp-server-status", lsp::lsp_server_status);
@@ -395,6 +405,20 @@ pub(crate) fn register_all(steel: &mut Engine) {
         lsp::diagnostics_for_buffer,
     );
     steel.register_fn_with_ctx(HUME_CTX, "diagnostic-counts", lsp::diagnostic_counts);
+
+    // B6 — edit + navigation primitives.
+    steel.register_fn_with_ctx(HUME_CTX, "%apply-text-edits!", lsp::apply_text_edits);
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "%apply-workspace-edit!",
+        lsp::apply_workspace_edit,
+    );
+    steel.register_fn_with_ctx(HUME_CTX, "goto-location!", lsp::goto_location);
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "selection-spans-full-line?",
+        lsp::selection_spans_full_line,
+    );
 
     // Timers — not LSP-specific, but B4 was scoped as part of the LSP step.
     steel.register_fn_with_ctx(HUME_CTX, "after", timers::after);

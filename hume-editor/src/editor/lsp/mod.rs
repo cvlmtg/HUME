@@ -7,6 +7,7 @@
 
 mod bridge;
 mod diagnostics;
+pub(crate) mod edits;
 pub(crate) mod introspect;
 mod registry;
 pub(crate) mod sync;
@@ -19,9 +20,9 @@ use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::{LspBackend, ServerId, ThreadedLspBackend};
 use hume_lsp::client::{CallbackToken, ClientAction, LspClient, Outcome, RequestMeta, ServerState};
 use hume_lsp::codec::{Message, RequestId, ResponseError};
-use hume_lsp::transport::InboundEvent;
 #[cfg(test)]
 use hume_lsp::inline::InlineLspBackend;
+use hume_lsp::transport::InboundEvent;
 
 use super::Editor;
 use super::async_source::AsyncSource;
@@ -381,7 +382,11 @@ impl Editor {
                 }
                 // Decode once here rather than per `(lsp-capabilities …)`
                 // call — conversion is per-server-startup, not per-call.
-                if let Some(caps) = self.lsp.clients.get(&server_id).and_then(|c| c.caps.as_ref())
+                if let Some(caps) = self
+                    .lsp
+                    .clients
+                    .get(&server_id)
+                    .and_then(|c| c.caps.as_ref())
                     && let Ok(json) = serde_json::to_value(caps)
                 {
                     self.lsp.capabilities_json.insert(server_id, json);
@@ -412,7 +417,13 @@ impl Editor {
                 );
             }
             ClientAction::ServerRequest { id, method, params } => {
-                let result = server_request_response(&method, &params);
+                // `workspace/applyEdit` needs `&mut Editor` (B6's engine) —
+                // every other request answers from the pure lookup table.
+                let result = if method == "workspace/applyEdit" {
+                    self.apply_edit_request_response(&params)
+                } else {
+                    server_request_response(&method, &params)
+                };
                 self.lsp
                     .backend
                     .send(server_id, Message::Response { id, result });
@@ -426,6 +437,38 @@ impl Editor {
                 let name = self.lsp_server_name(server_id);
                 self.report(Severity::Trace, format!("{name}: {line}"));
             }
+        }
+    }
+
+    /// Answers a server-initiated `workspace/applyEdit` request by actually
+    /// applying it — B6's engine, swapped in for C6's `applied: false`
+    /// stub. Per spec this never fails at the JSON-RPC level: a rejected or
+    /// malformed edit still gets a 200 response, just with `applied: false`.
+    pub(crate) fn apply_edit_request_response(
+        &mut self,
+        params: &serde_json::Value,
+    ) -> Result<serde_json::Value, ResponseError> {
+        let Some(edit_json) = params.get("edit").cloned() else {
+            return Ok(serde_json::json!({
+                "applied": false,
+                "failureReason": "missing edit",
+            }));
+        };
+        let we: lsp_types::WorkspaceEdit = match serde_json::from_value(edit_json) {
+            Ok(we) => we,
+            Err(e) => {
+                return Ok(serde_json::json!({
+                    "applied": false,
+                    "failureReason": format!("malformed edit: {e}"),
+                }));
+            }
+        };
+        match edits::apply_workspace_edit(&mut self.state, &mut self.view, &self.lsp, we) {
+            Ok(_summary) => Ok(serde_json::json!({ "applied": true })),
+            Err(e) => Ok(serde_json::json!({
+                "applied": false,
+                "failureReason": e,
+            })),
         }
     }
 
@@ -481,7 +524,11 @@ impl Editor {
             "$/progress" => {
                 // begin/end at Trace; per-report messages dropped entirely
                 // (OQ default) — a real progress bar is Future work.
-                match params.get("value").and_then(|v| v.get("kind")).and_then(|v| v.as_str()) {
+                match params
+                    .get("value")
+                    .and_then(|v| v.get("kind"))
+                    .and_then(|v| v.as_str())
+                {
                     Some("begin") => {
                         let title = params
                             .get("value")
@@ -601,10 +648,8 @@ fn server_request_response(
         // No settings blob exists until C8 — every item answers `null`,
         // same shape a server sees from a client with no matching config.
         "workspace/configuration" => Ok(workspace_configuration_response(params)),
-        "workspace/applyEdit" => Ok(serde_json::json!({
-            "applied": false,
-            "failureReason": "workspace edits not supported yet",
-        })),
+        // Answered separately by `apply_edit_request_response` (needs
+        // `&mut Editor`, unlike every other request this lookup answers).
         "client/registerCapability"
         | "client/unregisterCapability"
         | "window/workDoneProgress/create" => Ok(serde_json::Value::Null),
@@ -633,7 +678,8 @@ mod tests {
 
     #[test]
     fn workspace_configuration_answers_null_per_item() {
-        let params = serde_json::json!({"items": [{"section": "rust-analyzer"}, {"section": "editor"}]});
+        let params =
+            serde_json::json!({"items": [{"section": "rust-analyzer"}, {"section": "editor"}]});
         let result = server_request_response("workspace/configuration", &params).unwrap();
         assert_eq!(result, serde_json::json!([null, null]));
     }
@@ -645,13 +691,8 @@ mod tests {
         assert_eq!(result, serde_json::json!([]));
     }
 
-    #[test]
-    fn workspace_apply_edit_answers_not_supported() {
-        let result =
-            server_request_response("workspace/applyEdit", &serde_json::Value::Null).unwrap();
-        assert_eq!(result["applied"], serde_json::json!(false));
-        assert!(result["failureReason"].is_string());
-    }
+    // `workspace/applyEdit` moved to `apply_edit_request_response` (needs
+    // `&mut Editor`) — see `editor::tests::lsp_edits` for its coverage.
 
     #[test]
     fn register_and_unregister_capability_and_progress_create_answer_null() {

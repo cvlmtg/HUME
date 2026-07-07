@@ -7,7 +7,7 @@ use crate::json::{json_to_steel, steel_to_json};
 use crate::types::{PendingLspNotify, PendingLspRequest};
 use crate::{PendingLspServerReg, SteelCtx};
 
-use super::{list_to_strings, require_cmd_ctx};
+use super::{conv_err, list_to_strings, require_cmd_ctx};
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -179,13 +179,22 @@ pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
         .into_iter()
         .map(|e| {
             let mut map = steel::HashMap::new();
-            map.insert(SteelVal::StringV("language".into()), SteelVal::StringV(e.language.into()));
+            map.insert(
+                SteelVal::StringV("language".into()),
+                SteelVal::StringV(e.language.into()),
+            );
             map.insert(
                 SteelVal::StringV("root".into()),
                 SteelVal::StringV(e.root.to_string_lossy().into_owned().into()),
             );
-            map.insert(SteelVal::StringV("state".into()), SteelVal::StringV(e.state.into()));
-            map.insert(SteelVal::StringV("pending".into()), SteelVal::IntV(e.pending as isize));
+            map.insert(
+                SteelVal::StringV("state".into()),
+                SteelVal::StringV(e.state.into()),
+            );
+            map.insert(
+                SteelVal::StringV("pending".into()),
+                SteelVal::IntV(e.pending as isize),
+            );
             SteelVal::HashMapV(steel::gc::Gc::new(map).into())
         })
         .collect();
@@ -226,8 +235,12 @@ pub(crate) fn lsp_range_params(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult
 }
 
 fn bid_arg(val: &SteelVal, ctx_name: &str) -> Result<hume_engine::pipeline::BufferId, SteelErr> {
-    super::ids::downcast_buffer_id(val)
-        .ok_or_else(|| SteelErr::new(steel::rerrs::ErrorKind::TypeMismatch, format!("{ctx_name}: expected buffer-id")))
+    super::ids::downcast_buffer_id(val).ok_or_else(|| {
+        SteelErr::new(
+            steel::rerrs::ErrorKind::TypeMismatch,
+            format!("{ctx_name}: expected buffer-id"),
+        )
+    })
 }
 
 /// `(register-trigger-chars! source chars)` — `chars` is a list of 1-char
@@ -287,7 +300,12 @@ fn int_arg(val: SteelVal, ctx_name: &str) -> Result<i64, SteelErr> {
 /// returned `Vec` is in original left-to-right order), erroring if the
 /// count doesn't match — the shared shape check for every setter's
 /// fixed-arity entry list.
-fn exact_fields(fields: Vec<SteelVal>, n: usize, ctx_name: &str, shape: &str) -> Result<Vec<SteelVal>, SteelErr> {
+fn exact_fields(
+    fields: Vec<SteelVal>,
+    n: usize,
+    ctx_name: &str,
+    shape: &str,
+) -> Result<Vec<SteelVal>, SteelErr> {
     if fields.len() != n {
         steel::stop!(Generic => "{}: each entry must be {}", ctx_name, shape);
     }
@@ -317,7 +335,9 @@ pub(crate) fn set_inlay_hints(ctx: &mut SteelCtx, bid: SteelVal, hints: SteelVal
         let before = match &before_or_after {
             SteelVal::SymbolV(s) if s.as_str() == "before" => true,
             SteelVal::SymbolV(s) if s.as_str() == "after" => false,
-            _ => steel::stop!(Generic => "set-inlay-hints!: third element must be 'before or 'after"),
+            _ => {
+                steel::stop!(Generic => "set-inlay-hints!: third element must be 'before or 'after")
+            }
         };
         parsed.push((position_json, text, before));
     }
@@ -326,7 +346,12 @@ pub(crate) fn set_inlay_hints(ctx: &mut SteelCtx, bid: SteelVal, hints: SteelVal
 }
 
 /// `(set-signs! source bid signs)` — `signs`: list of `(line text scope priority)`.
-pub(crate) fn set_signs(ctx: &mut SteelCtx, source: SteelVal, bid: SteelVal, signs: SteelVal) -> SteelResult {
+pub(crate) fn set_signs(
+    ctx: &mut SteelCtx,
+    source: SteelVal,
+    bid: SteelVal,
+    signs: SteelVal,
+) -> SteelResult {
     require_cmd_ctx!(ctx, "set-signs!");
     let source = string_arg(source, "set-signs! source")?;
     let id = bid_arg(&bid, "set-signs!")?;
@@ -350,7 +375,12 @@ pub(crate) fn set_signs(ctx: &mut SteelCtx, source: SteelVal, bid: SteelVal, sig
 }
 
 /// `(set-virtual-lines! source bid lines)` — `lines`: list of `(line text)`.
-pub(crate) fn set_virtual_lines(ctx: &mut SteelCtx, source: SteelVal, bid: SteelVal, lines: SteelVal) -> SteelResult {
+pub(crate) fn set_virtual_lines(
+    ctx: &mut SteelCtx,
+    source: SteelVal,
+    bid: SteelVal,
+    lines: SteelVal,
+) -> SteelResult {
     require_cmd_ctx!(ctx, "set-virtual-lines!");
     let source = string_arg(source, "set-virtual-lines! source")?;
     let id = bid_arg(&bid, "set-virtual-lines!")?;
@@ -363,8 +393,14 @@ pub(crate) fn set_virtual_lines(ctx: &mut SteelCtx, source: SteelVal, bid: Steel
             "(line text)",
         )?;
         let mut fields = fields.into_iter();
-        let line = usize_arg(fields.next().expect("len checked"), "set-virtual-lines! line")?;
-        let text = string_arg(fields.next().expect("len checked"), "set-virtual-lines! text")?;
+        let line = usize_arg(
+            fields.next().expect("len checked"),
+            "set-virtual-lines! line",
+        )?;
+        let text = string_arg(
+            fields.next().expect("len checked"),
+            "set-virtual-lines! text",
+        )?;
         parsed.push((line, text));
     }
     ctx.host.set_virtual_lines(source, id, parsed);
@@ -372,7 +408,12 @@ pub(crate) fn set_virtual_lines(ctx: &mut SteelCtx, source: SteelVal, bid: Steel
 }
 
 /// `(set-extra-highlights! source bid spans)` — `spans`: list of `(start end scope)`.
-pub(crate) fn set_extra_highlights(ctx: &mut SteelCtx, source: SteelVal, bid: SteelVal, spans: SteelVal) -> SteelResult {
+pub(crate) fn set_extra_highlights(
+    ctx: &mut SteelCtx,
+    source: SteelVal,
+    bid: SteelVal,
+    spans: SteelVal,
+) -> SteelResult {
     require_cmd_ctx!(ctx, "set-extra-highlights!");
     let source = string_arg(source, "set-extra-highlights! source")?;
     let id = bid_arg(&bid, "set-extra-highlights!")?;
@@ -385,9 +426,18 @@ pub(crate) fn set_extra_highlights(ctx: &mut SteelCtx, source: SteelVal, bid: St
             "(start end scope)",
         )?;
         let mut fields = fields.into_iter();
-        let start = usize_arg(fields.next().expect("len checked"), "set-extra-highlights! start")?;
-        let end = usize_arg(fields.next().expect("len checked"), "set-extra-highlights! end")?;
-        let scope = string_arg(fields.next().expect("len checked"), "set-extra-highlights! scope")?;
+        let start = usize_arg(
+            fields.next().expect("len checked"),
+            "set-extra-highlights! start",
+        )?;
+        let end = usize_arg(
+            fields.next().expect("len checked"),
+            "set-extra-highlights! end",
+        )?;
+        let scope = string_arg(
+            fields.next().expect("len checked"),
+            "set-extra-highlights! scope",
+        )?;
         parsed.push((start, end, scope));
     }
     ctx.host.set_extra_highlights(source, id, parsed);
@@ -411,7 +461,9 @@ pub(crate) fn diagnostics_for_buffer(
         SteelVal::BoolV(false) => None,
         SteelVal::SymbolV(s) => Some(s.to_string()),
         SteelVal::StringV(s) => Some(s.to_string()),
-        _ => steel::stop!(TypeMismatch => "diagnostics-for-buffer: #:severity expected a symbol or #f"),
+        _ => {
+            steel::stop!(TypeMismatch => "diagnostics-for-buffer: #:severity expected a symbol or #f")
+        }
     };
     let range = match range {
         SteelVal::BoolV(false) => None,
@@ -423,8 +475,14 @@ pub(crate) fn diagnostics_for_buffer(
                 "(start end)",
             )?;
             let mut fields = fields.into_iter();
-            let start = usize_arg(fields.next().expect("len checked"), "diagnostics-for-buffer range start")?;
-            let end = usize_arg(fields.next().expect("len checked"), "diagnostics-for-buffer range end")?;
+            let start = usize_arg(
+                fields.next().expect("len checked"),
+                "diagnostics-for-buffer range start",
+            )?;
+            let end = usize_arg(
+                fields.next().expect("len checked"),
+                "diagnostics-for-buffer range end",
+            )?;
             Some((start, end))
         }
     };
@@ -442,6 +500,150 @@ pub(crate) fn diagnostic_counts(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResul
     let mut errors_val = SteelVal::IntV(errors as isize);
     let mut warnings_val = SteelVal::IntV(warnings as isize);
     steel::primitives::lists::cons(&mut errors_val, &mut warnings_val)
+}
+
+// ── B6: edit + navigation primitives ───────────────────────────────────────
+
+/// `(line col)` — a 2-element list, not a `(line . col)` dotted pair; see
+/// `set-inlay-hints!`'s analogous choice (steel-core 0.8.2's `Pair`/`car`/
+/// `cdr` are crate-private, unreachable from a Rust builtin).
+fn position_pair(val: SteelVal, ctx_name: &str) -> Result<(usize, usize), SteelErr> {
+    let fields = exact_fields(list_items(val, ctx_name)?, 2, ctx_name, "(line col)")?;
+    let mut it = fields.into_iter();
+    let line = usize_arg(it.next().expect("len checked"), ctx_name)?;
+    let col = usize_arg(it.next().expect("len checked"), ctx_name)?;
+    Ok((line, col))
+}
+
+fn optional_gen_arg(val: SteelVal) -> Result<Option<u64>, SteelErr> {
+    match val {
+        SteelVal::BoolV(false) => Ok(None),
+        SteelVal::IntV(n) if n >= 0 => Ok(Some(n as u64)),
+        _ => steel::stop!(TypeMismatch => "expect-generation must be a non-negative integer or #f"),
+    }
+}
+
+/// `(%apply-text-edits! bid edits expect-gen)` — `edits`: list of `((start-
+/// line start-col) (end-line end-col) text)`, wire positions.
+pub(crate) fn apply_text_edits(
+    ctx: &mut SteelCtx,
+    bid: SteelVal,
+    edits: SteelVal,
+    expect_gen: SteelVal,
+) -> SteelResult {
+    require_cmd_ctx!(ctx, "apply-text-edits!");
+    let id = bid_arg(&bid, "apply-text-edits!")?;
+    let expect_gen = optional_gen_arg(expect_gen)?;
+    let mut parsed = Vec::new();
+    for entry in list_items(edits, "apply-text-edits! edits")? {
+        let fields = exact_fields(
+            list_items(entry, "apply-text-edits! entry")?,
+            3,
+            "apply-text-edits!",
+            "((start-line start-col) (end-line end-col) text)",
+        )?;
+        let mut it = fields.into_iter();
+        let (start_line, start_char) =
+            position_pair(it.next().expect("len checked"), "apply-text-edits! start")?;
+        let (end_line, end_char) =
+            position_pair(it.next().expect("len checked"), "apply-text-edits! end")?;
+        let new_text = string_arg(it.next().expect("len checked"), "apply-text-edits! text")?;
+        parsed.push((start_line, start_char, end_line, end_char, new_text));
+    }
+    ctx.host
+        .apply_text_edits(id, parsed, expect_gen)
+        .map(|()| SteelVal::Void)
+        .map_err(conv_err)
+}
+
+/// `(%apply-workspace-edit! wsedit)` — `wsedit`: the decoded `WorkspaceEdit`
+/// hashmap (B1 JSON↔SteelVal shape). Returns the number of buffers modified;
+/// the `apply-workspace-edit!` Scheme wrapper reports that count.
+pub(crate) fn apply_workspace_edit(ctx: &mut SteelCtx, wsedit: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "apply-workspace-edit!");
+    let json = steel_to_json(&wsedit).map_err(conv_err)?;
+    let count = ctx.host.apply_workspace_edit(json).map_err(conv_err)?;
+    Ok(SteelVal::IntV(count as isize))
+}
+
+/// `(goto-location! loc)` — `loc` is one of two shapes, dispatched here (not
+/// in Scheme, per the card): a raw `Location`/`LocationLink` hashmap (wire
+/// position, converted using the focused buffer's server encoding — correct
+/// because the caller is that server's own response callback), or `(list
+/// target line col)` with char-indexed `line`/`col` and `target` a `bid`, a
+/// path string, or a `file://` URI string.
+pub(crate) fn goto_location(ctx: &mut SteelCtx, loc: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "goto-location!");
+    match &loc {
+        SteelVal::HashMapV(_) => {
+            let json = steel_to_json(&loc).map_err(conv_err)?;
+            let (uri, range) = if let Some(uri) = json.get("targetUri") {
+                (
+                    uri,
+                    json.get("targetSelectionRange")
+                        .or_else(|| json.get("targetRange")),
+                )
+            } else {
+                (
+                    json.get("uri")
+                        .ok_or_else(|| conv_err("goto-location!: missing uri"))?,
+                    json.get("range"),
+                )
+            };
+            let uri = uri
+                .as_str()
+                .ok_or_else(|| conv_err("goto-location!: uri must be a string"))?
+                .to_string();
+            let range = range.ok_or_else(|| conv_err("goto-location!: missing range"))?;
+            let line = range
+                .pointer("/start/line")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| conv_err("goto-location!: missing range.start.line"))?
+                as usize;
+            let character = range
+                .pointer("/start/character")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| conv_err("goto-location!: missing range.start.character"))?
+                as usize;
+            ctx.host
+                .goto_location_wire(uri, line, character)
+                .map(|()| SteelVal::Void)
+                .map_err(conv_err)
+        }
+        SteelVal::ListV(_) => {
+            let fields = exact_fields(
+                list_items(loc.clone(), "goto-location!")?,
+                3,
+                "goto-location!",
+                "(target line col)",
+            )?;
+            let mut it = fields.into_iter();
+            let target = it.next().expect("len checked");
+            let line = usize_arg(it.next().expect("len checked"), "goto-location! line")?;
+            let col = usize_arg(it.next().expect("len checked"), "goto-location! col")?;
+            if let Some(bid) = super::ids::downcast_buffer_id(&target) {
+                ctx.host
+                    .goto_location_buffer(bid, line, col)
+                    .map(|()| SteelVal::Void)
+                    .map_err(conv_err)
+            } else {
+                let s = string_arg(target, "goto-location! target")?;
+                ctx.host
+                    .goto_location_path(s, line, col)
+                    .map(|()| SteelVal::Void)
+                    .map_err(conv_err)
+            }
+        }
+        _ => steel::stop!(TypeMismatch =>
+            "goto-location!: expected a Location hashmap or (list target line col)"),
+    }
+}
+
+/// `(selection-spans-full-line? bid)`.
+pub(crate) fn selection_spans_full_line(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "selection-spans-full-line?");
+    let id = bid_arg(&bid, "selection-spans-full-line?")?;
+    Ok(SteelVal::BoolV(ctx.host.selection_spans_full_line(id)))
 }
 
 #[cfg(test)]
@@ -485,8 +687,8 @@ mod tests {
 
     #[test]
     fn decodes_steel_hashmap_blobs_to_json() {
-        use steel::gc::Gc;
         use steel::HashMap as SteelHashMap;
+        use steel::gc::Gc;
 
         let mut init_opts = SteelHashMap::new();
         init_opts.insert(SteelVal::StringV("a".into()), SteelVal::IntV(1));
@@ -535,7 +737,8 @@ mod tests {
     fn allowed_during_plugin_activation_even_though_is_init_is_false() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx_activation();
-        ctx.plugin_stack.push(crate::PluginId::Core("lsp".to_string()));
+        ctx.plugin_stack
+            .push(crate::PluginId::Core("lsp".to_string()));
         let result = register_lsp_server(
             &mut ctx,
             "rust".into_steelval().unwrap(),

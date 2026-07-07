@@ -283,7 +283,12 @@ pub trait EditorHost {
 
     /// `(set-signs! source bid signs)` — replaces `source`'s signs for `bid`
     /// wholesale. Each entry is `(line, text, scope, priority)`.
-    fn set_signs(&mut self, source: String, bid: BufferId, signs: Vec<(usize, String, String, i64)>) {
+    fn set_signs(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        signs: Vec<(usize, String, String, i64)>,
+    ) {
         let _ = (source, bid, signs);
     }
 
@@ -296,7 +301,12 @@ pub trait EditorHost {
     /// `(set-extra-highlights! source bid spans)` — replaces `source`'s
     /// extra highlights for `bid` wholesale. Each entry is `(start, end,
     /// scope)`, char offsets.
-    fn set_extra_highlights(&mut self, source: String, bid: BufferId, spans: Vec<(usize, usize, String)>) {
+    fn set_extra_highlights(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        spans: Vec<(usize, usize, String)>,
+    ) {
         let _ = (source, bid, spans);
     }
 
@@ -319,5 +329,68 @@ pub trait EditorHost {
     fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {
         let _ = bid;
         (0, 0)
+    }
+
+    // ── Edit + navigation primitives (B6; default = "not supported") ────────
+    /// `(apply-text-edits! bid edits #:expect-generation gen)` — `edits` is
+    /// `(start_line, start_char, end_line, end_char, new_text)` tuples in
+    /// wire coordinates. Applied as one undo step.
+    fn apply_text_edits(
+        &mut self,
+        bid: BufferId,
+        edits: Vec<(usize, usize, usize, usize, String)>,
+        expect_gen: Option<u64>,
+    ) -> Result<(), String> {
+        let _ = (bid, edits, expect_gen);
+        Err("apply-text-edits!: not supported by this host".to_string())
+    }
+
+    /// `(apply-workspace-edit! edit)` — `edit` is a decoded LSP
+    /// `WorkspaceEdit` JSON blob. Returns the number of buffers modified.
+    fn apply_workspace_edit(&mut self, edit: serde_json::Value) -> Result<usize, String> {
+        let _ = edit;
+        Err("apply-workspace-edit!: not supported by this host".to_string())
+    }
+
+    /// `(goto-location! target)`, raw `Location`/`LocationLink` shape —
+    /// `uri` a wire URI string, `line`/`character` wire coordinates.
+    fn goto_location_wire(
+        &mut self,
+        uri: String,
+        line: usize,
+        character: usize,
+    ) -> Result<(), String> {
+        let _ = (uri, line, character);
+        Err("goto-location!: not supported by this host".to_string())
+    }
+
+    /// `(goto-location! target)`, `(list target line col)` shape with a
+    /// path or `file://` URI string target — already char-indexed.
+    fn goto_location_path(
+        &mut self,
+        path_or_uri: String,
+        line: usize,
+        col: usize,
+    ) -> Result<(), String> {
+        let _ = (path_or_uri, line, col);
+        Err("goto-location!: not supported by this host".to_string())
+    }
+
+    /// `(goto-location! target)`, `(list target line col)` shape with a
+    /// `bid` target — already char-indexed.
+    fn goto_location_buffer(
+        &mut self,
+        bid: BufferId,
+        line: usize,
+        col: usize,
+    ) -> Result<(), String> {
+        let _ = (bid, line, col);
+        Err("goto-location!: not supported by this host".to_string())
+    }
+
+    /// `(selection-spans-full-line? bid)`.
+    fn selection_spans_full_line(&self, bid: BufferId) -> bool {
+        let _ = bid;
+        false
     }
 }
