@@ -321,7 +321,7 @@ impl Pane {
     /// (this method exists because `saved_scrolls` was once such a bug).
     pub fn inherit_view_state(&mut self, src: &Pane) {
         let Pane {
-            buffer_id: _,   // pane identity, set by the split itself
+            buffer_id: _, // pane identity, set by the split itself
             viewport,
             saved_scrolls,
             selections: _,  // engine render copy, repopulated every frame

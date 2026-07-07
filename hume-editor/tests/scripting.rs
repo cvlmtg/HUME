@@ -1364,11 +1364,8 @@ fn bind_key_extend_creates_force_extending_leaf() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    h.eval_source(
-        r#"(bind-key-extend! 'normal "z" "select-line")"#,
-        &mut mock,
-    )
-    .unwrap();
+    h.eval_source(r#"(bind-key-extend! 'normal "z" "select-line")"#, &mut mock)
+        .unwrap();
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use hume_editor::KeymapBindMode as BindMode;
     let z_key = &[KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)];

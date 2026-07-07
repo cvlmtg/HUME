@@ -794,9 +794,21 @@ mod tests {
 
     #[test]
     fn tab_display_width_normal_range() {
-        assert_eq!(tab_display_width(0, 4), 4, "tab at col 0, width 4 → full stop");
-        assert_eq!(tab_display_width(2, 4), 2, "tab at col 2, width 4 → half stop");
-        assert_eq!(tab_display_width(4, 4), 4, "tab exactly on a stop → full width");
+        assert_eq!(
+            tab_display_width(0, 4),
+            4,
+            "tab at col 0, width 4 → full stop"
+        );
+        assert_eq!(
+            tab_display_width(2, 4),
+            2,
+            "tab at col 2, width 4 → half stop"
+        );
+        assert_eq!(
+            tab_display_width(4, 4),
+            4,
+            "tab exactly on a stop → full width"
+        );
     }
 
     #[test]

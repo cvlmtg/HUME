@@ -251,7 +251,14 @@ fn apply_visual_vertical_ignores_explicit_count_when_caller_forces_visual() {
 
     let mut ed = visual_test_editor(0);
     ed.state.explicit_count = true; // simulate "a count was typed"
-    apply_visual_vertical(&mut ed.state, &mut ed.view, 1, true, MotionMode::Move, false);
+    apply_visual_vertical(
+        &mut ed.state,
+        &mut ed.view,
+        1,
+        true,
+        MotionMode::Move,
+        false,
+    );
     assert_eq!(
         ed.current_selections().primary().head(),
         76,
