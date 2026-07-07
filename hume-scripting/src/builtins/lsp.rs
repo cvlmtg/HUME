@@ -3,6 +3,7 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
+use crate::json::steel_to_json;
 use crate::{PendingLspServerReg, SteelCtx};
 
 use super::list_to_strings;
@@ -17,14 +18,15 @@ fn string_arg(val: SteelVal, ctx_name: &str) -> Result<String, SteelErr> {
     }
 }
 
-/// A string arg that may be `#f` (absent). `init-options`/`settings` travel
-/// as raw JSON text until B1 lands a real JSON<->SteelVal codec — the
-/// editor glue parses them at flush time.
-fn optional_json_string_arg(val: SteelVal, ctx_name: &str) -> Result<Option<String>, SteelErr> {
+/// A blob arg that may be `#f` (absent) or any Steel data convertible to
+/// JSON (typically a hashmap built with `(hash …)`).
+fn optional_json_arg(val: SteelVal, ctx_name: &str) -> Result<Option<serde_json::Value>, SteelErr> {
     match val {
         SteelVal::BoolV(false) => Ok(None),
-        SteelVal::StringV(s) => Ok(Some(s.to_string())),
-        _ => steel::stop!(TypeMismatch => "{}: expected a JSON string or #f", ctx_name),
+        other => match steel_to_json(&other) {
+            Ok(json) => Ok(Some(json)),
+            Err(msg) => steel::stop!(TypeMismatch => "{}: {}", ctx_name, msg),
+        },
     }
 }
 
@@ -51,8 +53,8 @@ pub(crate) fn register_lsp_server(
     let command = string_arg(command, "register-lsp-server! command")?;
     let args = list_to_strings(args_val, "register-lsp-server! args")?;
     let root_markers = list_to_strings(root_markers_val, "register-lsp-server! root-markers")?;
-    let init_options = optional_json_string_arg(init_options, "register-lsp-server! init-options")?;
-    let settings = optional_json_string_arg(settings, "register-lsp-server! settings")?;
+    let init_options = optional_json_arg(init_options, "register-lsp-server! init-options")?;
+    let settings = optional_json_arg(settings, "register-lsp-server! settings")?;
 
     ctx.pending_lsp_server_regs.push(PendingLspServerReg {
         language,
@@ -105,7 +107,15 @@ mod tests {
     }
 
     #[test]
-    fn carries_json_strings_through_untouched() {
+    fn decodes_steel_hashmap_blobs_to_json() {
+        use steel::gc::Gc;
+        use steel::HashMap as SteelHashMap;
+
+        let mut init_opts = SteelHashMap::new();
+        init_opts.insert(SteelVal::StringV("a".into()), SteelVal::IntV(1));
+        let mut settings = SteelHashMap::new();
+        settings.insert(SteelVal::StringV("b".into()), SteelVal::IntV(2));
+
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx_init();
         let result = register_lsp_server(
@@ -114,14 +124,14 @@ mod tests {
             "rust-analyzer".into_steelval().unwrap(),
             list_of(&[]),
             list_of(&[]),
-            "{\"a\":1}".into_steelval().unwrap(),
-            "{\"b\":2}".into_steelval().unwrap(),
+            SteelVal::HashMapV(Gc::new(init_opts).into()),
+            SteelVal::HashMapV(Gc::new(settings).into()),
         );
         assert!(result.is_ok());
         drop(ctx);
         let reg = &h.pending_lsp_server_regs[0];
-        assert_eq!(reg.init_options.as_deref(), Some("{\"a\":1}"));
-        assert_eq!(reg.settings.as_deref(), Some("{\"b\":2}"));
+        assert_eq!(reg.init_options, Some(serde_json::json!({"a": 1})));
+        assert_eq!(reg.settings, Some(serde_json::json!({"b": 2})));
     }
 
     /// Fail oracle: call outside init (command mode, empty plugin stack) →
@@ -162,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_init_options_type_is_a_type_mismatch_error() {
+    fn unconvertible_init_options_is_a_type_mismatch_error() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx_init();
         let result = register_lsp_server(
@@ -171,7 +181,7 @@ mod tests {
             "rust-analyzer".into_steelval().unwrap(),
             list_of(&[]),
             list_of(&[]),
-            SteelVal::IntV(1),
+            SteelVal::FuncV(|_| unreachable!()),
             SteelVal::BoolV(false),
         );
         assert!(result.is_err());

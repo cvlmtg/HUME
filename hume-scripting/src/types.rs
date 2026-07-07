@@ -46,18 +46,16 @@ pub enum PendingLanguageReg {
 /// LSP server registration queued during `eval_init` and flushed by
 /// `Editor::flush_pending_lsp_server_regs` after init.scm finishes.
 ///
-/// `init_options`/`settings` travel as raw JSON strings (or `None`) rather
-/// than decoded data — `hume-scripting` has no `serde_json` dependency;
-/// the editor glue parses them at flush time (B1 will replace this with a
-/// real JSON<->SteelVal codec).
+/// `init_options`/`settings` are decoded at the Steel boundary via
+/// [`crate::json::steel_to_json`] — Steel data structures in, real JSON out.
 #[derive(Debug)]
 pub struct PendingLspServerReg {
     pub language: String,
     pub command: String,
     pub args: Vec<String>,
     pub root_markers: Vec<String>,
-    pub init_options: Option<String>,
-    pub settings: Option<String>,
+    pub init_options: Option<serde_json::Value>,
+    pub settings: Option<serde_json::Value>,
 }
 
 /// `set-buffer-language!` calls deferred during a command or hook eval.

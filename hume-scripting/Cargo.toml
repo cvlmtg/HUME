@@ -14,4 +14,5 @@ steel-core = "0.8.2"
 crossterm = "0.29"
 slotmap = "1"
 tempfile = "3"
+serde_json.workspace = true
 

@@ -50,6 +50,7 @@ pub mod attribution;
 pub(crate) mod builtins;
 pub mod hooks;
 pub mod host;
+pub(crate) mod json;
 pub(crate) mod keys;
 pub(crate) mod lazy;
 pub mod log;

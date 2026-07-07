@@ -41,11 +41,10 @@ pub(crate) fn resolve_root(file: &Path, markers: &[String], cwd: &Path) -> PathB
 }
 
 impl Editor {
-    /// Parses and stores the JSON blobs for one registration, keyed by
-    /// language. Rejects (loudly, per the hub's OQ default) a second
-    /// registration for a language already configured. A blob that fails
-    /// to parse rejects the whole registration — fail fast rather than
-    /// silently dropping just the bad field.
+    /// Stores one registration, keyed by language. Rejects (loudly, per the
+    /// hub's OQ default) a second registration for a language already
+    /// configured. `init_options`/`settings` arrive already decoded to JSON
+    /// by `hume_scripting::json::steel_to_json` at the Steel boundary.
     fn apply_pending_lsp_server_reg(&mut self, reg: hume_scripting::PendingLspServerReg) {
         if self.lsp.configs.contains_key(&reg.language) {
             self.report(
@@ -58,24 +57,14 @@ impl Editor {
             return;
         }
 
-        let init_options = match parse_json_blob(&reg.language, "init-options", reg.init_options, self)
-        {
-            Ok(v) => v,
-            Err(()) => return,
-        };
-        let settings = match parse_json_blob(&reg.language, "settings", reg.settings, self) {
-            Ok(v) => v,
-            Err(()) => return,
-        };
-
         self.lsp.configs.insert(
             reg.language,
             LspServerConfig {
                 command: reg.command,
                 args: reg.args,
                 root_markers: reg.root_markers,
-                init_options,
-                settings,
+                init_options: reg.init_options,
+                settings: reg.settings,
             },
         );
     }
@@ -232,29 +221,6 @@ impl Editor {
             }
         }
         count
-    }
-}
-
-/// Parses one optional JSON blob, reporting and returning `Err(())` on a
-/// parse failure (the caller aborts the whole registration).
-fn parse_json_blob(
-    language: &str,
-    field: &str,
-    raw: Option<String>,
-    ed: &mut Editor,
-) -> Result<Option<serde_json::Value>, ()> {
-    match raw {
-        None => Ok(None),
-        Some(s) => match serde_json::from_str(&s) {
-            Ok(v) => Ok(Some(v)),
-            Err(e) => {
-                ed.report(
-                    Severity::Error,
-                    format!("register-lsp-server!: '{language}' {field}: invalid JSON: {e}"),
-                );
-                Err(())
-            }
-        },
     }
 }
 

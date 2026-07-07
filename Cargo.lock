@@ -1145,6 +1145,7 @@ dependencies = [
  "crossterm",
  "hume-engine",
  "hume-platform",
+ "serde_json",
  "slotmap",
  "steel-core",
  "tempfile",
