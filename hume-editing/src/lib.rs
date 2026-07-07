@@ -31,6 +31,7 @@ pub mod error;
 pub mod grapheme;
 pub mod history;
 pub mod lines;
+pub mod position_encoding;
 pub mod selection;
 pub mod text;
 pub mod transaction;
@@ -50,6 +51,7 @@ pub use lines::{
     is_line_start, leading_whitespace, leading_whitespace_end, line_content_end,
     line_end_exclusive, snap_to_grapheme_boundary,
 };
+pub use position_encoding::{PositionEncoding, char_to_wire, wire_to_char};
 pub use selection::{Selection, SelectionSet, is_selection_linewise};
 pub use text::{LineEnding, Text};
 pub use transaction::Transaction;

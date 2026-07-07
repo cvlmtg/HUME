@@ -245,7 +245,7 @@ Workspace groundwork with no LSP-visible behavior. Cards: `docs/lsp/step-0.md`. 
 - [x] **P1** — serde + serde_json workspace deps (fires the toml 0.8→1.x evaluation)
 - [x] **P2** — batch position mapping (`PosMapCursor` public API)
 - [x] **P3** — generalized event-loop wake (compose async sources behind one predicate)
-- [ ] **P4** — position encoding conversion (rope char offset ↔ LSP line/character, utf-8 + utf-16)
+- [x] **P4** — position encoding conversion (rope char offset ↔ LSP line/character, utf-8 + utf-16)
 - [ ] **P5** — path ↔ `file://` URI (in `hume-lsp`)
 - [ ] **P6** — `ChangeSet` → `TextDocumentContentChangeEvent[]` (in `hume-lsp`)
 - [x] **P7** — event-loop timer wheel
