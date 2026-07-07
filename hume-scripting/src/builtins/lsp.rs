@@ -673,6 +673,70 @@ pub(crate) fn symbol_under_cursor(ctx: &mut SteelCtx, bid: SteelVal) -> SteelRes
     Ok(SteelVal::StringV(ctx.host.symbol_under_cursor(id).into()))
 }
 
+// ── B8: completion orchestration ────────────────────────────────────────────
+
+/// `(%completion-begin! bid items incomplete)` — the `completion-begin!`
+/// Scheme wrapper supplies `#:incomplete`'s default. `items`: list of
+/// decoded `CompletionItem` hashmaps.
+pub(crate) fn completion_begin(
+    ctx: &mut SteelCtx,
+    bid: SteelVal,
+    items: SteelVal,
+    incomplete: SteelVal,
+) -> SteelResult {
+    require_cmd_ctx!(ctx, "completion-begin!");
+    let id = bid_arg(&bid, "completion-begin!")?;
+    let incomplete = match incomplete {
+        SteelVal::BoolV(b) => b,
+        _ => steel::stop!(TypeMismatch => "completion-begin!: #:incomplete expected a bool"),
+    };
+    let mut parsed = Vec::new();
+    for entry in list_items(items, "completion-begin! items")? {
+        parsed.push(steel_to_json(&entry).map_err(conv_err)?);
+    }
+    ctx.host
+        .completion_begin(id, parsed, incomplete)
+        .map(|()| SteelVal::Void)
+        .map_err(conv_err)
+}
+
+/// `(completion-update-filter! text)`.
+pub(crate) fn completion_update_filter(ctx: &mut SteelCtx, text: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "completion-update-filter!");
+    let text = string_arg(text, "completion-update-filter! text")?;
+    ctx.host
+        .completion_update_filter(text)
+        .map(|()| SteelVal::Void)
+        .map_err(conv_err)
+}
+
+/// `(completion-top n)`.
+pub(crate) fn completion_top(ctx: &mut SteelCtx, n: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "completion-top");
+    let n = usize_arg(n, "completion-top")?;
+    let items = ctx.host.completion_top(n);
+    let list: Vec<SteelVal> = items.iter().map(json_to_steel).collect();
+    Ok(SteelVal::ListV(list.into()))
+}
+
+/// `(completion-accept! idx)` — `idx` indexes the ranked/filtered list
+/// (`completion-top`'s order), not the raw response order.
+pub(crate) fn completion_accept(ctx: &mut SteelCtx, idx: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "completion-accept!");
+    let idx = usize_arg(idx, "completion-accept!")?;
+    ctx.host
+        .completion_accept(idx)
+        .map(|()| SteelVal::Void)
+        .map_err(conv_err)
+}
+
+/// `(completion-dismiss!)`.
+pub(crate) fn completion_dismiss(ctx: &mut SteelCtx) -> SteelResult {
+    require_cmd_ctx!(ctx, "completion-dismiss!");
+    ctx.host.completion_dismiss();
+    Ok(SteelVal::Void)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -187,6 +187,7 @@ impl Editor {
                 trigger_chars: std::collections::HashMap::new(),
                 decorations: super::decorations::DecorationStores::default(),
                 steel_prompt_callback: None,
+                lsp_completion: None,
                 completion_view,
             },
             view: engine_view,

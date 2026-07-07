@@ -416,4 +416,43 @@ pub trait EditorHost {
         let _ = bid;
         String::new()
     }
+
+    // ── Completion orchestration (B8; default = "not supported") ─────────────
+    /// `(completion-begin! bid items #:incomplete f)` — `items` is a list of
+    /// decoded `CompletionItem` hashmaps (JSON already converted by the
+    /// caller). Starting a session replaces any session already open.
+    fn completion_begin(
+        &mut self,
+        bid: BufferId,
+        items: Vec<serde_json::Value>,
+        incomplete: bool,
+    ) -> Result<(), String> {
+        let _ = (bid, items, incomplete);
+        Err("completion-begin!: not supported by this host".to_string())
+    }
+
+    /// `(completion-update-filter! text)` — re-ranks the open session
+    /// against `text`; Rust-side work only, safe to call every keystroke.
+    fn completion_update_filter(&mut self, text: String) -> Result<(), String> {
+        let _ = text;
+        Err("completion-update-filter!: not supported by this host".to_string())
+    }
+
+    /// `(completion-top n)` — up to `n` ranked items as hashmaps, `[]` with
+    /// no open session.
+    fn completion_top(&self, n: usize) -> Vec<serde_json::Value> {
+        let _ = n;
+        Vec::new()
+    }
+
+    /// `(completion-accept! idx)` — applies `idx`'s item (an index into the
+    /// ranked/filtered list, not the raw response order) and ends the
+    /// session, success or failure.
+    fn completion_accept(&mut self, idx: usize) -> Result<(), String> {
+        let _ = idx;
+        Err("completion-accept!: not supported by this host".to_string())
+    }
+
+    /// `(completion-dismiss!)` — clears any open session; no-op if none.
+    fn completion_dismiss(&mut self) {}
 }

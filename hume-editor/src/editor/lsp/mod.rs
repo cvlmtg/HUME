@@ -6,6 +6,7 @@
 //! observability commands on top.
 
 mod bridge;
+pub(crate) mod completion;
 mod diagnostics;
 pub(crate) mod edits;
 pub(crate) mod introspect;

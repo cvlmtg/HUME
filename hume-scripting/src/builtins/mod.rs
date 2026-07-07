@@ -222,6 +222,12 @@ const BOOTSTRAP: &str = r#"
 (define (prompt! label on-confirm #:prefill [prefill ""])
   (%prompt! label prefill on-confirm))
 
+; completion-begin! — starts a new completion session (replacing any open
+; one). items: list of decoded CompletionItem hashmaps. #:incomplete: the
+; server's isIncomplete flag, #f if the response was exhaustive.
+(define (completion-begin! bid items #:incomplete [incomplete #f])
+  (%completion-begin! bid items incomplete))
+
 ; Variadic call! macro — desugars to %dispatch-command.
 ; Defined here (not only in prelude.scm) so it is available in every Steel engine
 ; context, including test harnesses that do not load the full prelude.
@@ -429,6 +435,17 @@ pub(crate) fn register_all(steel: &mut Engine) {
     // B9 — minibuffer prompt.
     steel.register_fn_with_ctx(HUME_CTX, "%prompt!", lsp::prompt);
     steel.register_fn_with_ctx(HUME_CTX, "symbol-under-cursor", lsp::symbol_under_cursor);
+
+    // B8 — completion orchestration.
+    steel.register_fn_with_ctx(HUME_CTX, "%completion-begin!", lsp::completion_begin);
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "completion-update-filter!",
+        lsp::completion_update_filter,
+    );
+    steel.register_fn_with_ctx(HUME_CTX, "completion-top", lsp::completion_top);
+    steel.register_fn_with_ctx(HUME_CTX, "completion-accept!", lsp::completion_accept);
+    steel.register_fn_with_ctx(HUME_CTX, "completion-dismiss!", lsp::completion_dismiss);
 
     // Timers — not LSP-specific, but B4 was scoped as part of the LSP step.
     steel.register_fn_with_ctx(HUME_CTX, "after", timers::after);

@@ -375,6 +375,10 @@ pub(crate) struct EditorState {
     /// take this and push exactly one `(callback text-or-#f)` call onto
     /// `pending_steel_calls`.
     pub(super) steel_prompt_callback: Option<steel::rvals::SteelVal>,
+    /// B8's LSP completion session (distinct from `completion`, the
+    /// minibuffer tab-completion popup) — a singleton, starting a new one
+    /// replaces the old.
+    pub(super) lsp_completion: Option<lsp::completion::CompletionSession>,
     /// Shared completion-popup view: written by `prepare_frame`, read by provider.
     pub(crate) completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>>,
 }
@@ -1137,6 +1141,7 @@ impl Editor {
                 trigger_chars: std::collections::HashMap::new(),
                 decorations: decorations::DecorationStores::default(),
                 steel_prompt_callback: None,
+                lsp_completion: None,
                 completion_view: Arc::new(RwLock::new(None)),
             },
             view: engine_view,

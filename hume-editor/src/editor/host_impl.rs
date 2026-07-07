@@ -656,6 +656,56 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         };
         text.slice(start..end + 1).to_string()
     }
+
+    // ── Completion orchestration (B8) ────────────────────────────────────────
+    fn completion_begin(
+        &mut self,
+        bid: BufferId,
+        items: Vec<serde_json::Value>,
+        incomplete: bool,
+    ) -> Result<(), String> {
+        if self.state.buffers.try_get(bid).is_none() {
+            return Err("completion-begin!: no such buffer".to_string());
+        }
+        let session = crate::editor::lsp::completion::CompletionSession::begin(
+            self.state, bid, &items, incomplete,
+        );
+        self.state.lsp_completion = Some(session);
+        Ok(())
+    }
+
+    fn completion_update_filter(&mut self, text: String) -> Result<(), String> {
+        let Some(mut session) = self.state.lsp_completion.take() else {
+            return Err("completion-update-filter!: no active completion session".to_string());
+        };
+        session.update_filter(self.state, text);
+        self.state.lsp_completion = Some(session);
+        Ok(())
+    }
+
+    fn completion_top(&self, n: usize) -> Vec<serde_json::Value> {
+        self.state
+            .lsp_completion
+            .as_ref()
+            .map(|s| s.top(n))
+            .unwrap_or_default()
+    }
+
+    fn completion_accept(&mut self, idx: usize) -> Result<(), String> {
+        let Some(session) = self.state.lsp_completion.take() else {
+            return Err("completion-accept!: no active completion session".to_string());
+        };
+        let Some(lsp) = self.lsp else {
+            return Err("completion-accept!: no LSP state available".to_string());
+        };
+        // Ends the session either way — success or failure — so a rejected
+        // accept never leaves a stale session lingering.
+        session.accept(self.state, lsp, idx)
+    }
+
+    fn completion_dismiss(&mut self) {
+        self.state.lsp_completion = None;
+    }
 }
 
 /// Map scripting `BindMode` → editor `keymap::BindMode`.
