@@ -360,6 +360,15 @@ pub fn format_buffer_line(
             graphemes_out,
         );
 
+        // A tab deferred whole to a continuation row expands from its new
+        // (post-wrap) column, not the one `grapheme_display` computed it at —
+        // tab width is column-dependent, unlike every other grapheme's.
+        let width = if grapheme_str == "\t" {
+            tab_display_width(wrap.current_col, tab_width)
+        } else {
+            width
+        };
+
         // ── Track word-break position ─────────────────────────────────────
         if is_ws && !in_leading_ws {
             // `graphemes_out.len()` is the index the space itself is about to
@@ -604,6 +613,16 @@ fn is_whitespace_grapheme(s: &str) -> bool {
 // Grapheme display computation
 // ---------------------------------------------------------------------------
 
+/// Display width of a tab starting at `col`: the distance to the next tab
+/// stop. Column-dependent, so a wrap that moves a tab to a new starting
+/// column (see `format_buffer_line`'s post-`maybe_wrap` recompute) requires
+/// calling this again rather than reusing the pre-wrap width.
+fn tab_display_width(col: u16, tab_width: u8) -> u8 {
+    let tab_width = tab_width.max(1) as u16;
+    let next_stop = (col / tab_width + 1) * tab_width;
+    (next_stop - col).min(255) as u8
+}
+
 /// Compute the display `width` and `CellContent` for one grapheme cluster.
 #[allow(clippy::too_many_arguments)]
 fn grapheme_display(
@@ -628,9 +647,7 @@ fn grapheme_display(
     // mixtures may misalign a tab stop there; bounded and rare). See the doc on
     // `display_col_in_line` for the divergence rationale.
     if grapheme_str == "\t" {
-        let tab_width = tab_width.max(1) as u16;
-        let next_stop = (current_col / tab_width + 1) * tab_width;
-        let display_width = (next_stop - current_col).min(255) as u8;
+        let display_width = tab_display_width(current_col, tab_width);
         let content = if should_render_whitespace(
             &whitespace.tab,
             in_leading_ws,
@@ -954,7 +971,8 @@ mod tests {
         // Column 4 is chosen so the tab's expansion is congruent whether
         // measured from its original column (4) or its post-wrap column (0)
         // — both are tab-stop-aligned, so this test doesn't also exercise
-        // the (separate, pre-existing) stale-width-after-wrap quirk.
+        // the (separate) post-wrap width recompute; see
+        // `soft_wrap_recomputes_tab_width_at_post_wrap_column` for that case.
         let (rows, graphemes) = do_format("abcd\tef", WrapMode::Soft { width: 6 });
         assert_eq!(rows.len(), 2, "must wrap into exactly 2 rows");
 
@@ -967,6 +985,22 @@ mod tests {
         assert_eq!(row1[0].width, 4, "tab keeps its full 4-column expansion");
         assert_eq!(row1[1].char_offset, 5, "'e' follows the tab");
         assert_eq!(row1[2].char_offset, 6, "'f' follows 'e'");
+    }
+
+    #[test]
+    fn soft_wrap_recomputes_tab_width_at_post_wrap_column() {
+        // Pre-wrap col=2 ("ab"): the tab would need cols 2..4 there (width 2,
+        // its distance to the next tab stop from col 2). Deferred to a new
+        // row, it starts at col 0 instead and must expand its full 4-column
+        // tab stop — not keep the stale pre-wrap width of 2.
+        let (rows, graphemes) = do_format("ab\tc", WrapMode::Soft { width: 3 });
+        assert!(rows.len() >= 2, "tab must overflow onto a new row");
+        let row1 = &graphemes[rows[1].graphemes.clone()];
+        assert_eq!(row1[0].col, 0, "tab starts at column 0 of the new row");
+        assert_eq!(
+            row1[0].width, 4,
+            "tab must expand its full post-wrap tab stop (4), not the stale pre-wrap width (2)"
+        );
     }
 
     #[test]

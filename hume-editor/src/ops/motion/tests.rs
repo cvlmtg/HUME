@@ -1661,7 +1661,7 @@ fn select_line_from_mid_line() {
     // Cursor mid-line → select full line forward.
     assert_state!(
         "hello -[w]>orld\nfoo\n",
-        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Move),
+        |(buf, sels)| cmd_select_line(&buf, sels, 1, MotionMode::Move),
         "-[hello world\n]>foo\n"
     );
 }
@@ -1671,7 +1671,7 @@ fn select_line_already_full_line_jumps_to_next() {
     // Selection already covers full line → jump to next line.
     assert_state!(
         "-[hello world\n]>foo\n",
-        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Move),
+        |(buf, sels)| cmd_select_line(&buf, sels, 1, MotionMode::Move),
         "hello world\n-[foo\n]>"
     );
 }
@@ -1681,7 +1681,7 @@ fn select_line_clamps_at_last_line() {
     // Already on last line → no change.
     assert_state!(
         "hello\n-[foo\n]>",
-        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Move),
+        |(buf, sels)| cmd_select_line(&buf, sels, 1, MotionMode::Move),
         "hello\n-[foo\n]>"
     );
 }
@@ -1691,7 +1691,7 @@ fn select_line_backward_from_mid_line() {
     // Cursor mid-line → select full line backward (anchor=`\n`, head=start).
     assert_state!(
         "hello -[w]>orld\nfoo\n",
-        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Move),
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 1, MotionMode::Move),
         "<[hello world\n]-foo\n"
     );
 }
@@ -1701,7 +1701,7 @@ fn select_line_backward_already_at_start_jumps_to_prev() {
     // Selection already starts at line boundary → jump to previous line.
     assert_state!(
         "aaa\n<[bbb\n]-ccc\n",
-        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Move),
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 1, MotionMode::Move),
         "<[aaa\n]-bbb\nccc\n"
     );
 }
@@ -1711,7 +1711,7 @@ fn select_line_backward_clamps_at_first_line() {
     // Already on first line → no change.
     assert_state!(
         "<[hello\n]-world\n",
-        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Move),
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 1, MotionMode::Move),
         "<[hello\n]-world\n"
     );
 }
@@ -1723,7 +1723,7 @@ fn extend_select_line_accumulates_downward() {
     // Each press accumulates one more line.
     assert_state!(
         "-[hello\n]>foo\nbar\n",
-        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line(&buf, sels, 1, MotionMode::Extend),
         "-[hello\nfoo\n]>bar\n"
     );
 }
@@ -1733,7 +1733,7 @@ fn extend_select_line_clamps_at_last_line() {
     // Already at last line → no change.
     assert_state!(
         "hello\n-[foo\n]>",
-        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line(&buf, sels, 1, MotionMode::Extend),
         "hello\n-[foo\n]>"
     );
 }
@@ -1743,7 +1743,7 @@ fn extend_select_line_backward_accumulates_upward() {
     // Each press accumulates one more line upward.
     assert_state!(
         "aaa\n<[bbb\n]-ccc\n",
-        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 1, MotionMode::Extend),
         "<[aaa\nbbb\n]-ccc\n"
     );
 }
@@ -1753,7 +1753,7 @@ fn extend_select_line_backward_clamps_at_first_line() {
     // Already at first line → no change.
     assert_state!(
         "<[hello\n]-world\n",
-        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 1, MotionMode::Extend),
         "<[hello\n]-world\n"
     );
 }
@@ -1763,7 +1763,7 @@ fn extend_select_line_from_mid_line() {
     // Starting from a partial selection, the first extend covers the full line.
     assert_state!(
         "hello -[w]>orld\nfoo\n",
-        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line(&buf, sels, 1, MotionMode::Extend),
         "-[hello world\n]>foo\n"
     );
 }
@@ -1773,7 +1773,7 @@ fn extend_select_line_backward_from_mid_line() {
     // Starting from a partial selection, the first backward extend covers the full line.
     assert_state!(
         "hello -[w]>orld\nfoo\n",
-        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 1, MotionMode::Extend),
         "<[hello world\n]-foo\n"
     );
 }
@@ -1784,7 +1784,7 @@ fn select_line_empty_line() {
     // so `x` immediately jumps to the next line.
     assert_state!(
         "hello\n-[\n]>world\n",
-        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Move),
+        |(buf, sels)| cmd_select_line(&buf, sels, 1, MotionMode::Move),
         "hello\n\n-[world\n]>"
     );
 }
@@ -1794,7 +1794,7 @@ fn select_line_backward_empty_line() {
     // A bare `\n` line: cursor is at line start → `X` jumps to the previous line.
     assert_state!(
         "hello\n-[\n]>world\n",
-        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Move),
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 1, MotionMode::Move),
         "<[hello\n]-\nworld\n"
     );
 }
@@ -1805,7 +1805,7 @@ fn select_line_multi_cursor() {
     // The resulting line selections are non-overlapping and stay separate.
     assert_state!(
         "hello -[w]>orld\nfoo -[b]>ar\nbaz\n",
-        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Move),
+        |(buf, sels)| cmd_select_line(&buf, sels, 1, MotionMode::Move),
         "-[hello world\n]>-[foo bar\n]>baz\n"
     );
 }
@@ -1816,7 +1816,7 @@ fn select_line_multi_cursor_same_line_merges() {
     // which `map` (which always merges) collapses to a single selection.
     assert_state!(
         "hell-[o]> -[w]>orld\nfoo\n",
-        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Move),
+        |(buf, sels)| cmd_select_line(&buf, sels, 1, MotionMode::Move),
         "-[hello world\n]>foo\n"
     );
 }
@@ -1831,7 +1831,7 @@ fn extend_select_line_multi_cursor_merges() {
     // (0,15) and (12,19) overlap → merged to (0,19)
     assert_state!(
         "-[hello world\n]>-[foo\n]>bar\n",
-        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line(&buf, sels, 1, MotionMode::Extend),
         "-[hello world\nfoo\nbar\n]>"
     );
 }
@@ -1847,7 +1847,7 @@ fn extend_select_line_multi_cursor_merges() {
 fn line_shrink_scenario_step1_grows_down() {
     assert_state!(
         "a\n-[b\n]>c\n",
-        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line(&buf, sels, 1, MotionMode::Extend),
         "a\n-[b\nc\n]>"
     );
 }
@@ -1856,7 +1856,7 @@ fn line_shrink_scenario_step1_grows_down() {
 fn line_shrink_scenario_step2_shrinks_up_to_anchor_line() {
     assert_state!(
         "a\n-[b\nc\n]>",
-        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 1, MotionMode::Extend),
         "a\n-[b\n]>c\n"
     );
 }
@@ -1865,7 +1865,7 @@ fn line_shrink_scenario_step2_shrinks_up_to_anchor_line() {
 fn line_shrink_scenario_step3_crosses_anchor_flips_backward() {
     assert_state!(
         "a\n-[b\n]>c\n",
-        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 1, MotionMode::Extend),
         "<[a\nb\n]-c\n"
     );
 }
@@ -1874,7 +1874,7 @@ fn line_shrink_scenario_step3_crosses_anchor_flips_backward() {
 fn line_shrink_scenario_step4_crosses_back_shrinks_down() {
     assert_state!(
         "<[a\nb\n]-c\n",
-        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line(&buf, sels, 1, MotionMode::Extend),
         "a\n-[b\n]>c\n"
     );
 }
@@ -1886,7 +1886,7 @@ fn line_extend_after_flip_shrinks_to_new_anchor_line() {
     // the flip the same press clamps at the last line (no-op).
     assert_state!(
         "a\n<[b\nc\n]-",
-        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line(&buf, sels, 1, MotionMode::Extend),
         "a\nb\n-[c\n]>"
     );
 }
@@ -1898,7 +1898,7 @@ fn line_extend_backward_after_flip_grows_over_old_span() {
     // Without the flip the same press shrinks to "b\n" instead.
     assert_state!(
         "a\n<[b\nc\n]-",
-        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 1, MotionMode::Extend),
         "<[a\nb\nc\n]-"
     );
 }
@@ -1911,7 +1911,7 @@ fn extend_select_line_backward_selection_shrinks_from_last_line() {
     // clamp must let this shrink instead of no-op'ing.
     assert_state!(
         "<[a\nb\nc\n]-",
-        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line(&buf, sels, 1, MotionMode::Extend),
         "a\n<[b\nc\n]-"
     );
 }
@@ -1920,7 +1920,7 @@ fn extend_select_line_backward_selection_shrinks_from_last_line() {
 fn extend_select_line_single_line_buffer_forward_is_noop() {
     assert_state!(
         "-[hello\n]>",
-        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line(&buf, sels, 1, MotionMode::Extend),
         "-[hello\n]>"
     );
 }
@@ -1929,7 +1929,7 @@ fn extend_select_line_single_line_buffer_forward_is_noop() {
 fn extend_select_line_single_line_buffer_backward_is_noop() {
     assert_state!(
         "-[hello\n]>",
-        |(buf, sels)| cmd_select_line_backward(&buf, sels, 0, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 1, MotionMode::Extend),
         "-[hello\n]>"
     );
 }
@@ -1940,8 +1940,65 @@ fn extend_select_line_crosses_empty_line() {
     // works via ordinary line arithmetic — no special-casing needed.
     assert_state!(
         "-[a\n]>\nb\n",
-        |(buf, sels)| cmd_select_line(&buf, sels, 0, MotionMode::Extend),
+        |(buf, sels)| cmd_select_line(&buf, sels, 1, MotionMode::Extend),
         "-[a\n\n]>b\n"
+    );
+}
+
+// ── cmd_select_line / cmd_select_line_backward (count) ────────────────────
+
+#[test]
+fn select_line_move_count_three_selects_three_lines() {
+    // `3x`: the fresh single-line selection grows two more lines forward.
+    assert_state!(
+        "a\n-[b]>\nc\nd\ne\n",
+        |(buf, sels)| cmd_select_line(&buf, sels, 3, MotionMode::Move),
+        "a\n-[b\nc\nd\n]>e\n"
+    );
+}
+
+#[test]
+fn select_line_backward_move_count_three_selects_three_lines() {
+    // `3X`: the fresh single-line selection grows two more lines backward.
+    // Cursor is mid-line ("dd"'s second char), not at line start — a
+    // selection starting exactly at line start instead hits the
+    // jump-to-previous-line branch (see `select_line_backward_already_at_start_jumps_to_prev`).
+    assert_state!(
+        "a\nb\nc\nd-[d]>\ne\n",
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 3, MotionMode::Move),
+        "a\n<[b\nc\ndd\n]-e\n"
+    );
+}
+
+#[test]
+fn extend_select_line_count_three_grows_three_lines_at_once() {
+    // A single `3x`-extend call grows 3 lines in one step, equivalent to 3
+    // separate single presses (see `extend_select_line_accumulates_downward`).
+    assert_state!(
+        "-[a\n]>b\nc\nd\n",
+        |(buf, sels)| cmd_select_line(&buf, sels, 3, MotionMode::Extend),
+        "-[a\nb\nc\nd\n]>"
+    );
+}
+
+#[test]
+fn extend_select_line_backward_count_three_grows_three_lines_at_once() {
+    assert_state!(
+        "a\nb\nc\n<[d\n]-",
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, 3, MotionMode::Extend),
+        "<[a\nb\nc\nd\n]-"
+    );
+}
+
+#[test]
+fn select_line_move_count_exceeds_buffer_clamps_at_last_line() {
+    // count larger than the remaining lines clamps at the last line instead
+    // of panicking — `extend_line_span`'s existing head-relative clamp
+    // no-ops on every iteration past the buffer edge.
+    assert_state!(
+        "-[a]>\nb\nc\n",
+        |(buf, sels)| cmd_select_line(&buf, sels, 10, MotionMode::Move),
+        "-[a\nb\nc\n]>"
     );
 }
 

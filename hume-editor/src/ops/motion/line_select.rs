@@ -57,14 +57,15 @@ fn extend_line_span(buf: &Text, sel: Selection, delta: isize) -> Selection {
 ///
 /// `Move` — re-anchors: selects from line start to the trailing `\n`. If the
 /// selection already ends on a `\n`, jumps to the next line. Always produces a
-/// forward selection.
+/// forward selection. `count > 1` grows the fresh selection downward by
+/// `count - 1` more lines via [`extend_line_span`], so `3x` selects 3 lines.
 ///
-/// `Extend` — grows or shrinks toward covering one more line downward; see
-/// [`extend_line_span`].
+/// `Extend` — grows or shrinks toward covering one more line downward, `count`
+/// times; see [`extend_line_span`].
 pub(crate) fn cmd_select_line(
     buf: &Text,
     sels: SelectionSet,
-    _count: usize,
+    count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
     let result = sels.map(|sel| match mode {
@@ -79,9 +80,19 @@ pub(crate) fn cmd_select_line(
             };
             let start = buf.line_to_char(target_line);
             let end = line_end_exclusive(buf, target_line) - 1; // inclusive `\n`
-            Selection::new(start, end)
+            let mut s = Selection::new(start, end);
+            for _ in 1..count {
+                s = extend_line_span(buf, s, 1);
+            }
+            s
         }
-        MotionMode::Extend => extend_line_span(buf, sel, 1),
+        MotionMode::Extend => {
+            let mut s = sel;
+            for _ in 0..count {
+                s = extend_line_span(buf, s, 1);
+            }
+            s
+        }
     });
     result.debug_assert_valid(buf);
     result
@@ -91,13 +102,15 @@ pub(crate) fn cmd_select_line(
 ///
 /// `Move` — re-anchors: anchor on the trailing `\n`, head on line start. If the
 /// selection already starts at a line boundary, jumps to the previous line.
+/// `count > 1` grows the fresh selection upward by `count - 1` more lines via
+/// [`extend_line_span`], so `3X` selects 3 lines.
 ///
-/// `Extend` — grows or shrinks toward covering one more line upward; see
-/// [`extend_line_span`].
+/// `Extend` — grows or shrinks toward covering one more line upward, `count`
+/// times; see [`extend_line_span`].
 pub(crate) fn cmd_select_line_backward(
     buf: &Text,
     sels: SelectionSet,
-    _count: usize,
+    count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
     let result = sels.map(|sel| match mode {
@@ -111,9 +124,19 @@ pub(crate) fn cmd_select_line_backward(
             };
             let start = buf.line_to_char(target_line);
             let end = line_end_exclusive(buf, target_line) - 1; // inclusive `\n`
-            Selection::new(end, start) // backward: anchor=`\n`, head=line_start
+            let mut s = Selection::new(end, start); // backward: anchor=`\n`, head=line_start
+            for _ in 1..count {
+                s = extend_line_span(buf, s, -1);
+            }
+            s
         }
-        MotionMode::Extend => extend_line_span(buf, sel, -1),
+        MotionMode::Extend => {
+            let mut s = sel;
+            for _ in 0..count {
+                s = extend_line_span(buf, s, -1);
+            }
+            s
+        }
     });
     result.debug_assert_valid(buf);
     result

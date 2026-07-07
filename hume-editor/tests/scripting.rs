@@ -736,7 +736,10 @@ fn call_bang_forwards_multiple_args_to_lambda() {
     let msgs = h.take_pending_messages();
     let warned: Vec<&str> = msgs
         .iter()
-        .filter_map(|(_, m)| m.strip_prefix("unknown command: "))
+        .filter_map(|(_, m)| {
+            m.strip_prefix('\'')
+                .and_then(|s| s.strip_suffix("' is not a native command"))
+        })
         .collect();
     assert_eq!(
         warned,
@@ -945,7 +948,10 @@ fn register_hook_multiple_handlers_all_fire() {
     let msgs = h.take_pending_messages();
     let warned: Vec<&str> = msgs
         .iter()
-        .filter_map(|(_, m)| m.strip_prefix("unknown command: "))
+        .filter_map(|(_, m)| {
+            m.strip_prefix('\'')
+                .and_then(|s| s.strip_suffix("' is not a native command"))
+        })
         .collect();
     assert_eq!(
         warned,

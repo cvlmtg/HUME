@@ -174,8 +174,13 @@ fn define_command_inner(
 ///   validates count/extend args and runs synchronously via `run_command_sync`.
 ///   In init mode, logs a warning and skips — native commands touch buffers,
 ///   which are not available during init.scm evaluation.
-/// - **Unknown / Steel-but-not-in-table**: logs a `Warning` and returns `#void`.
-///   This covers commands not yet registered (typo, missing plugin, unknown name).
+/// - **Steel-but-not-in-table** (`Ok(false)`): logs a `Warning` naming the
+///   command and returns `#void`. Reaching this arm at all means the
+///   dispatcher's own lookup already missed the command in `command_table`,
+///   so this is a fallback message, not the common case.
+/// - **Unknown** (`Err(msg)`): the host's registry has no such command at
+///   all (typo, missing plugin). Logs the host's own error message — it
+///   already names the command — and returns `#void`.
 pub(crate) fn call_command_primitive(
     ctx: &mut SteelCtx,
     name: String,
@@ -199,8 +204,12 @@ pub(crate) fn call_command_primitive(
                 .map(|()| SteelVal::Void)
                 .map_err(|e| SteelErr::new(ErrorKind::Generic, format!("%call-native!: {e}")))
         }
-        Err(_) | Ok(false) => {
-            ctx.log(LogLevel::Warning, format!("unknown command: {name}"));
+        Ok(false) => {
+            ctx.log(LogLevel::Warning, format!("'{name}' is not a native command"));
+            Ok(SteelVal::Void)
+        }
+        Err(msg) => {
+            ctx.log(LogLevel::Warning, msg);
             Ok(SteelVal::Void)
         }
     }
@@ -335,7 +344,8 @@ mod tests {
         SteelVal::ListV(vals.into_iter().collect())
     }
 
-    /// NullHost returns `Ok(false)` for `command_is_native` → unknown path → warning logged.
+    /// NullHost returns `Ok(false)` for `command_is_native` (no registry) →
+    /// "not a native command" path → warning logged.
     #[test]
     fn call_bang_unknown_command_logs_warning() {
         let mut h = SteelCtxTestHarness::new();
