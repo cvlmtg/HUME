@@ -235,8 +235,16 @@ impl LspState {
 }
 
 impl AsyncSource for LspState {
+    /// True while a client is mid-handshake (the initialize response could
+    /// land any moment — and after that, anything queued while `Starting`
+    /// must flush promptly) or has a request in flight (the C6 card's 8ms
+    /// poll cadence, not the coarser Running-idle heartbeat below).
     fn has_pending(&self) -> bool {
         self.backend.has_pending()
+            || self
+                .clients
+                .values()
+                .any(|c| c.state == ServerState::Starting || c.pending_count() > 0)
     }
 
     fn next_deadline(&self) -> Option<Instant> {

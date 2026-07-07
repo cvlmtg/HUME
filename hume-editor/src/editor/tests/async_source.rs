@@ -130,6 +130,78 @@ fn scripted_initialize_round_trip_through_editor() {
     }
 }
 
+/// Fix 2: `LspState::has_pending` only checked the raw backend
+/// (`ThreadedLspBackend`/`InlineLspBackend` always report `false`), so a
+/// client mid-handshake or with a request in flight had no wake source at
+/// all — the response would sit undrained until the next keypress. These
+/// three tests pin the corrected condition against `wake_timeout` directly.
+mod has_pending_covers_client_state {
+    use super::*;
+    use hume_lsp::backend::LspBackend;
+    use hume_lsp::client::{CallbackToken, LspClient, RequestMeta, ServerState};
+    use hume_lsp::inline::InlineLspBackend;
+    use std::path::{Path, PathBuf};
+
+    fn wired_editor() -> (Editor, hume_lsp::backend::ServerId) {
+        let mut ed = editor_from("-[w]>ord\n");
+        let mut backend = InlineLspBackend::new();
+        let sid = backend.start("x", &[], Path::new(".")).unwrap();
+        ed.lsp = super::super::super::lsp::LspState::from_backend_for_test(Box::new(backend));
+        (ed, sid)
+    }
+
+    #[test]
+    fn wake_timeout_is_8ms_while_a_client_is_starting() {
+        // Mid-handshake, the initialize response could land any moment —
+        // without this, nothing wakes the loop until the next keypress,
+        // which would also stall anything queued behind the handshake
+        // (e.g. the fixed didOpen queueing).
+        let (mut ed, sid) = wired_editor();
+        ed.lsp
+            .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
+
+        assert_eq!(ed.wake_timeout(), Some(Duration::from_millis(8)));
+    }
+
+    #[test]
+    fn wake_timeout_is_8ms_for_a_running_client_with_a_request_in_flight() {
+        // The C6 card's 8ms poll cadence for in-flight requests, not the
+        // coarser 200ms Running-idle heartbeat.
+        let (mut ed, sid) = wired_editor();
+        let mut client = LspClient::new(sid, PathBuf::from("."));
+        client.state = ServerState::Running;
+        ed.lsp.insert_client_for_test(client);
+
+        let meta = RequestMeta {
+            method: "textDocument/hover".to_string(),
+            allow_stale: false,
+            deadline: Instant::now() + Duration::from_secs(10),
+            token: CallbackToken(0),
+        };
+        ed.lsp
+            .send_request(sid, "textDocument/hover", serde_json::Value::Null, meta);
+
+        assert_eq!(ed.wake_timeout(), Some(Duration::from_millis(8)));
+    }
+
+    #[test]
+    fn wake_timeout_for_a_running_idle_client_is_bounded_by_the_heartbeat() {
+        let (mut ed, sid) = wired_editor();
+        let mut client = LspClient::new(sid, PathBuf::from("."));
+        client.state = ServerState::Running;
+        ed.lsp.insert_client_for_test(client);
+
+        let timeout = ed
+            .wake_timeout()
+            .expect("a Running client sets the heartbeat deadline");
+        assert!(
+            timeout > Duration::from_millis(8) && timeout <= Duration::from_millis(200),
+            "a Running, idle client must be bounded by the heartbeat, not the 8ms poll \
+             ceiling, got {timeout:?}"
+        );
+    }
+}
+
 #[test]
 fn timer_wheel_end_to_end_tick_via_editor() {
     // Sleep-free: jump the query point 20ms past scheduling instead of
