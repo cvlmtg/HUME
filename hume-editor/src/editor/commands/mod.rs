@@ -610,6 +610,11 @@ pub(super) fn split_pane_onto(
         let selections = state.panes.state[old_focused][bid].selections.clone();
         state.panes.state[new_pid][bid].selections = selections;
         view.panes[new_pid].viewport = view.panes[old_focused].viewport.clone();
+        // Scroll memory for buffers visited before the split (but not yet
+        // revisited in the new pane) lives only in the source pane's map;
+        // without this clone the new pane would reset such buffers to the
+        // top on first visit instead of recalling where they were left.
+        view.panes[new_pid].saved_scrolls = view.panes[old_focused].saved_scrolls.clone();
         // A same-buffer split inherits the source pane's live wrap_mode (e.g. a
         // `:wrap` toggle) and its restore target, so a subsequent `:wrap` on the
         // new pane matches the source instead of falling back to the global seed.

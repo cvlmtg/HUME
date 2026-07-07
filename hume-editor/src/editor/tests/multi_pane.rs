@@ -1218,6 +1218,48 @@ fn split_inherits_focused_panes_selection_and_scroll() {
     );
 }
 
+/// A same-buffer split inherits the source pane's `saved_scrolls` — its
+/// memory of where it was in buffers visited *before* the split. Without
+/// this, the new pane would reset such a buffer to the top on first visit
+/// instead of recalling where the source pane last left it.
+#[test]
+fn same_buffer_split_inherits_saved_scrolls() {
+    use crate::editor::buffer::lifecycle::open_buffer;
+    use hume_engine::pane::ScrollPosition;
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let pid_a = ed.state.focused_pane_id;
+
+    // A second buffer the source pane visited (and scrolled) before the
+    // split, then switched away from — this is what populates
+    // `saved_scrolls` in real usage (see `remember_scroll`).
+    let bid2 = open_buffer(
+        &mut ed.view,
+        &mut ed.state.buffers,
+        &mut ed.state.panes.state,
+        pid_a,
+        Buffer::scratch(),
+    );
+    ed.view.panes[pid_a].saved_scrolls.insert(
+        bid2,
+        ScrollPosition {
+            top_line: 42,
+            top_row_offset: 0,
+            horizontal_offset: 0,
+        },
+    );
+
+    ed.execute_typed("split", None).unwrap();
+    let pid_b = ed.state.focused_pane_id;
+    assert_ne!(pid_a, pid_b);
+
+    assert_eq!(
+        ed.view.panes[pid_b].saved_scrolls.get(bid2),
+        ed.view.panes[pid_a].saved_scrolls.get(bid2),
+        "new pane inherits the source pane's saved_scrolls history"
+    );
+}
+
 /// `:vsplit <path>` opens a different buffer in the new pane, so it must
 /// start fresh at the buffer's initial selection rather than inheriting the
 /// source pane's (unrelated) cursor position.
