@@ -168,14 +168,21 @@ const BOOTSTRAP: &str = r#"
               (%call-native! name args))))))
 
 ; register-lsp-server! — queues an LSP server for spawn-on-first-open.
-; Init-only (like define-language!). init-options/settings are JSON strings
-; (or #f) until B1 lands a real JSON<->SteelVal codec.
+; Init-only (like define-language!). init-options/settings are any Steel
+; data (typically a hash), decoded to JSON at the boundary.
 (define (register-lsp-server! language #:command command
                                         #:args [args '()]
                                         #:root-markers [root-markers '()]
                                         #:init-options [init-options #f]
                                         #:settings [settings #f])
   (%register-lsp-server! language command args root-markers init-options settings))
+
+; lsp-request — generic LSP bridge. server: a registered language name, or
+; #f for "the focused buffer's attached server". callback: (lambda (err
+; result) …) — exactly one of err/result is non-#f. #:allow-stale skips the
+; drop-if-buffer-moved-on staleness check.
+(define (lsp-request server method params callback #:allow-stale [allow-stale #f])
+  (%lsp-request server method params callback allow-stale))
 
 ; Variadic call! macro — desugars to %dispatch-command.
 ; Defined here (not only in prelude.scm) so it is available in every Steel engine
@@ -334,6 +341,14 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
     // LSP server registration — init-only, queued like language regs.
     steel.register_fn_with_ctx(HUME_CTX, "%register-lsp-server!", lsp::register_lsp_server);
+    // Generic LSP bridge — any protocol method reachable from Steel.
+    steel.register_fn_with_ctx(HUME_CTX, "%lsp-request", lsp::lsp_request);
+    steel.register_fn_with_ctx(HUME_CTX, "lsp-notify", lsp::lsp_notify);
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "on-lsp-notification",
+        lsp::on_lsp_notification,
+    );
     steel.register_fn_with_ctx(
         HUME_CTX,
         "language-has-grammar?",

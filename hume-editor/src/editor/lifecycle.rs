@@ -183,6 +183,7 @@ impl Editor {
                 languages: hume_treesitter::registry::LanguageRegistry::new(),
                 cwd: std::env::current_dir().unwrap_or_default(),
                 pending_hooks: Vec::new(),
+                pending_steel_calls: Vec::new(),
                 completion_view,
             },
             view: engine_view,
@@ -568,8 +569,10 @@ impl Editor {
             );
         }
 
-        // 5. Drain completed async work (parse results now; LSP/timers later).
+        // 5. Drain completed async work (parse results, LSP), then evaluate
+        //    any Steel calls that work queued (LSP request/timer callbacks).
         self.drain_async_sources();
+        self.drain_pending_steel_calls();
 
         // 6. Sync highlight data (search matches, bracket matches) to shared
         //    Arc buffers read by the highlight providers during rendering.

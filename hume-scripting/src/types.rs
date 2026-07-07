@@ -1,4 +1,5 @@
 use hume_engine::pipeline::BufferId;
+use steel::rvals::SteelVal;
 
 /// A Steel command definition built by `define-command!` during init or plugin load.
 ///
@@ -62,6 +63,49 @@ pub struct PendingLspServerReg {
 /// Each entry is `(buffer_id, language_name_or_none)`.
 pub type PendingLanguageSets = Vec<(BufferId, Option<String>)>;
 
+/// `(lsp-request server method params callback #:allow-stale bool)` calls
+/// queued during a command, hook, or queued-Steel-call eval and flushed by
+/// `Editor::flush_pending_lsp_requests` right after, mirroring
+/// `pending_language_sets`'s per-eval drain (not `PendingLspServerReg`'s
+/// once-per-init-boundary queue — a request can be sent at any eval, not
+/// just init.scm's top level).
+///
+/// `server` is a registered language name, or `None` for "the focused
+/// buffer's attached server". `params` is already decoded to JSON via
+/// [`crate::json::steel_to_json`]; `callback` is the raw Steel closure,
+/// delivered `(err result)` through the queued-Steel-call mechanism once the
+/// response (or timeout) arrives.
+pub struct PendingLspRequest {
+    pub server: Option<String>,
+    pub method: String,
+    pub params: serde_json::Value,
+    pub callback: SteelVal,
+    pub allow_stale: bool,
+}
+
+// Manual (not derived): `SteelVal` has no `Debug` impl. Placeholder the
+// closure — everything else is real data, still useful in a panic message.
+impl std::fmt::Debug for PendingLspRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PendingLspRequest")
+            .field("server", &self.server)
+            .field("method", &self.method)
+            .field("params", &self.params)
+            .field("callback", &"<closure>")
+            .field("allow_stale", &self.allow_stale)
+            .finish()
+    }
+}
+
+/// `(lsp-notify server method params)` calls queued the same way as
+/// [`PendingLspRequest`], minus the callback — notifications get no response.
+#[derive(Debug)]
+pub struct PendingLspNotify {
+    pub server: Option<String>,
+    pub method: String,
+    pub params: serde_json::Value,
+}
+
 /// Result returned by [`super::ScriptingHost::call_steel_cmd`].
 #[derive(Debug)]
 pub struct SteelCmdResult {
@@ -70,11 +114,16 @@ pub struct SteelCmdResult {
     /// Language names for which `(register-grammar! …)` just attached a grammar;
     /// drained by the executor into `sweep_buffers_for_grammars`.
     pub grammar_sweeps: Vec<String>,
+    pub pending_lsp_requests: Vec<PendingLspRequest>,
+    pub pending_lsp_notifies: Vec<PendingLspNotify>,
 }
 
-/// Result returned by [`super::ScriptingHost::fire_hook`].
+/// Result returned by [`super::ScriptingHost::fire_hook`] and
+/// [`super::ScriptingHost::run_steel_calls`].
 #[derive(Debug)]
 pub struct HookResult {
     pub pending_language_sets: PendingLanguageSets,
     pub grammar_sweeps: Vec<String>,
+    pub pending_lsp_requests: Vec<PendingLspRequest>,
+    pub pending_lsp_notifies: Vec<PendingLspNotify>,
 }

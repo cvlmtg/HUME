@@ -5,6 +5,7 @@
 //! dispatch; C7–C10 add document sync, diagnostics, registration, and
 //! observability commands on top.
 
+mod bridge;
 mod diagnostics;
 mod registry;
 pub(crate) mod sync;
@@ -197,11 +198,8 @@ impl LspState {
         Some((client, backend.as_mut()))
     }
 
-    /// Mints a fresh token and files `callback` under it. No production
-    /// caller until B2's `lsp-request` Steel builtin (Step 2) — mirrors the
-    /// timer wheel's `schedule`/`cancel`, unexercised outside tests until
-    /// their own Steel surface lands.
-    #[allow(dead_code)]
+    /// Mints a fresh token and files `callback` under it. Production caller:
+    /// `bridge::send_one_lsp_request` (B2).
     pub(crate) fn register_callback(
         &mut self,
         stale_check: Option<(BufferId, u64)>,
@@ -222,7 +220,6 @@ impl LspState {
     /// Sends a request through `server`'s client, if one is registered.
     /// `None` if `server` has no tracked client (can't happen once C8
     /// lands; still must not panic).
-    #[allow(dead_code)] // no production caller until B2
     pub(crate) fn send_request(
         &mut self,
         server: ServerId,
@@ -403,6 +400,18 @@ impl Editor {
             .unwrap_or_else(|| "lsp".to_string())
     }
 
+    /// The registered language for `server_id` (the `servers_by_key` key,
+    /// not the display `command` string) — the "server name" B2/B3's Steel
+    /// surface deals in, since that's what `register-lsp-server!` and
+    /// `lsp-request`'s `server` argument both use.
+    fn lsp_server_language(&self, server_id: ServerId) -> Option<String> {
+        self.lsp
+            .servers_by_key
+            .iter()
+            .find(|&(_, &id)| id == server_id)
+            .map(|((lang, _), _)| lang.clone())
+    }
+
     /// `textDocument/publishDiagnostics` never reaches here — `drain_lsp`
     /// intercepts and coalesces it before dispatch (see the batching loop).
     fn dispatch_server_notification(
@@ -452,10 +461,26 @@ impl Editor {
                 }
             }
             other => {
-                self.report(
-                    Severity::Trace,
-                    format!("{name}: unhandled notification {other}"),
-                );
+                let handlers = self
+                    .scripting
+                    .as_ref()
+                    .map(|h| h.lsp_notification_handlers_for(other))
+                    .unwrap_or_default();
+                if handlers.is_empty() {
+                    self.report(
+                        Severity::Trace,
+                        format!("{name}: unhandled notification {other}"),
+                    );
+                    return;
+                }
+                let server_val = match self.lsp_server_language(server_id) {
+                    Some(lang) => steel::rvals::SteelVal::StringV(lang.into()),
+                    None => steel::rvals::SteelVal::BoolV(false),
+                };
+                let params_val = hume_scripting::json::json_to_steel(&params);
+                for handler in handlers {
+                    self.queue_steel_call(handler, vec![server_val.clone(), params_val.clone()]);
+                }
             }
         }
     }

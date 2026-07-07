@@ -353,6 +353,12 @@ pub(crate) struct EditorState {
     /// after each command. The unified firing path — `fire_hook_silent` pushes
     /// here; no hook fires inline during command execution.
     pub(super) pending_hooks: Vec<(hume_scripting::hooks::HookId, Vec<steel::rvals::SteelVal>)>,
+    /// Rust-side completions that must reach a *specific* Steel closure
+    /// rather than every handler for a hook id: B2's `lsp-request` callback,
+    /// B4's timer thunks, B9's prompt callback. Queued (never evaluated
+    /// inline — same discipline as `pending_hooks`) by whichever completion
+    /// fires, drained by `Editor::drain_pending_steel_calls`.
+    pub(super) pending_steel_calls: Vec<(steel::rvals::SteelVal, Vec<steel::rvals::SteelVal>)>,
     /// Shared completion-popup view: written by `prepare_frame`, read by provider.
     pub(crate) completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>>,
 }
@@ -829,11 +835,13 @@ impl Editor {
             self.state.force_full_redraw = true;
         }
 
-        let (wait_char_cmd, lang_sets, grammar_sweeps) = match result {
+        let (wait_char_cmd, lang_sets, grammar_sweeps, lsp_requests, lsp_notifies) = match result {
             Ok(r) => (
                 r.wait_char_request,
                 r.pending_language_sets,
                 r.grammar_sweeps,
+                r.pending_lsp_requests,
+                r.pending_lsp_notifies,
             ),
             Err(e) => {
                 self.report(Severity::Error, e);
@@ -842,6 +850,7 @@ impl Editor {
         };
 
         self.flush_script_messages();
+        self.flush_pending_lsp_calls(lsp_requests, lsp_notifies);
         for (bid, lang) in lang_sets {
             self.set_buffer_language(bid, lang);
         }
@@ -1085,6 +1094,7 @@ impl Editor {
                 languages: LanguageRegistry::new(),
                 cwd: std::env::temp_dir(),
                 pending_hooks: Vec::new(),
+                pending_steel_calls: Vec::new(),
                 completion_view: Arc::new(RwLock::new(None)),
             },
             view: engine_view,

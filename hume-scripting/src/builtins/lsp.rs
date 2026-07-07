@@ -4,9 +4,10 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::json::steel_to_json;
+use crate::types::{PendingLspNotify, PendingLspRequest};
 use crate::{PendingLspServerReg, SteelCtx};
 
-use super::list_to_strings;
+use super::{list_to_strings, require_cmd_ctx};
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -16,6 +17,20 @@ fn string_arg(val: SteelVal, ctx_name: &str) -> Result<String, SteelErr> {
         SteelVal::SymbolV(s) => Ok(s.to_string()),
         _ => steel::stop!(TypeMismatch => "{}: expected a string", ctx_name),
     }
+}
+
+/// A string arg that may be `#f` (absent) — `lsp-request`/`lsp-notify`'s
+/// `server` parameter: a registered language name, or "the focused buffer's
+/// attached server".
+fn optional_string_arg(val: SteelVal, ctx_name: &str) -> Result<Option<String>, SteelErr> {
+    match val {
+        SteelVal::BoolV(false) => Ok(None),
+        other => Ok(Some(string_arg(other, ctx_name)?)),
+    }
+}
+
+fn json_params(val: SteelVal, ctx_name: &str) -> Result<serde_json::Value, SteelErr> {
+    steel_to_json(&val).map_err(|e| super::conv_err(format!("{ctx_name}: {e}")))
 }
 
 /// A blob arg that may be `#f` (absent) or any Steel data convertible to
@@ -64,6 +79,83 @@ pub(crate) fn register_lsp_server(
         init_options,
         settings,
     });
+    Ok(SteelVal::Void)
+}
+
+/// `(%lsp-request server method params callback allow-stale)`. The
+/// `lsp-request` Scheme wrapper (BOOTSTRAP) supplies `#:allow-stale`'s
+/// default. Queues a `PendingLspRequest`, flushed and actually sent by
+/// `Editor::flush_pending_lsp_requests` right after this eval returns —
+/// `SteelCtx` has no route to the transport (crate fence), and queuing
+/// keeps every LSP send on one chokepoint regardless of which eval kind
+/// (command, hook, or a queued callback) triggered it.
+pub(crate) fn lsp_request(
+    ctx: &mut SteelCtx,
+    server: SteelVal,
+    method: SteelVal,
+    params: SteelVal,
+    callback: SteelVal,
+    allow_stale: SteelVal,
+) -> SteelResult {
+    require_cmd_ctx!(ctx, "lsp-request");
+    let server = optional_string_arg(server, "lsp-request server")?;
+    let method = string_arg(method, "lsp-request method")?;
+    let params = json_params(params, "lsp-request params")?;
+    let allow_stale = match allow_stale {
+        SteelVal::BoolV(b) => b,
+        _ => steel::stop!(TypeMismatch => "lsp-request: #:allow-stale expected a bool"),
+    };
+    ctx.pending_lsp_requests.push(PendingLspRequest {
+        server,
+        method,
+        params,
+        callback,
+        allow_stale,
+    });
+    Ok(SteelVal::Void)
+}
+
+/// `(lsp-notify server method params)` — fire-and-forget, no callback, no
+/// staleness tag (nothing to correlate a response against). Same queue
+/// discipline as `lsp-request`.
+pub(crate) fn lsp_notify(
+    ctx: &mut SteelCtx,
+    server: SteelVal,
+    method: SteelVal,
+    params: SteelVal,
+) -> SteelResult {
+    require_cmd_ctx!(ctx, "lsp-notify");
+    let server = optional_string_arg(server, "lsp-notify server")?;
+    let method = string_arg(method, "lsp-notify method")?;
+    let params = json_params(params, "lsp-notify params")?;
+    ctx.pending_lsp_notifies.push(PendingLspNotify {
+        server,
+        method,
+        params,
+    });
+    Ok(SteelVal::Void)
+}
+
+/// `(on-lsp-notification method handler)` — registers `handler` for every
+/// server notification of `method` that Rust doesn't already special-case
+/// (window/logMessage, window/showMessage, $/progress, publishDiagnostics).
+/// Persistent, immediate registration straight onto `ctx.registries` — same
+/// init/plugin-load gate as `register-hook!`, no per-eval queue needed since
+/// registration doesn't touch the transport.
+pub(crate) fn on_lsp_notification(
+    ctx: &mut SteelCtx,
+    method: SteelVal,
+    handler: SteelVal,
+) -> SteelResult {
+    if !ctx.is_init && ctx.plugin_stack.is_empty() {
+        steel::stop!(Generic => "on-lsp-notification: only callable during init/plugin load");
+    }
+    let method = string_arg(method, "on-lsp-notification method")?;
+    ctx.registries
+        .lsp_notification_handlers
+        .entry(method)
+        .or_default()
+        .push(handler);
     Ok(SteelVal::Void)
 }
 

@@ -7,7 +7,10 @@ use hume_engine::pipeline::{BufferId, PaneId};
 use super::attribution::PluginStack;
 use super::host::EditorHost;
 use super::log::LogLevel;
-use super::types::{PendingLanguageReg, PendingLanguageSets, PendingLspServerReg};
+use super::types::{
+    PendingLanguageReg, PendingLanguageSets, PendingLspNotify, PendingLspRequest,
+    PendingLspServerReg,
+};
 use super::{HostBundle, ScriptingRegistries};
 
 /// Context struct borrowed into the Steel engine for the duration of each eval
@@ -94,6 +97,12 @@ pub(crate) struct SteelCtx<'a> {
     /// Language names for which a grammar was just attached; flushed into
     /// `SteelCmdResult.grammar_sweeps` / `HookResult.grammar_sweeps`.
     pub(crate) pending_grammar_sweeps: Vec<String>,
+    /// `(lsp-request …)` calls queued this eval; flushed into
+    /// `SteelCmdResult`/`HookResult.pending_lsp_requests` and sent by
+    /// `Editor::flush_pending_lsp_requests` right after.
+    pub(crate) pending_lsp_requests: Vec<PendingLspRequest>,
+    /// `(lsp-notify …)` calls queued this eval; flushed the same way.
+    pub(crate) pending_lsp_notifies: Vec<PendingLspNotify>,
 }
 
 impl CustomReference for SteelCtx<'_> {}
@@ -126,6 +135,8 @@ impl<'a> SteelCtx<'a> {
             focused_buffer_id: BufferId::default(),
             live_focused_buffer_id: BufferId::default(),
             pending_grammar_sweeps: Vec::new(),
+            pending_lsp_requests: Vec::new(),
+            pending_lsp_notifies: Vec::new(),
         }
     }
 
@@ -182,6 +193,8 @@ impl<'a> SteelCtx<'a> {
             focused_buffer_id,
             live_focused_buffer_id: focused_buffer_id,
             pending_grammar_sweeps: Vec::new(),
+            pending_lsp_requests: Vec::new(),
+            pending_lsp_notifies: Vec::new(),
         }
     }
 }

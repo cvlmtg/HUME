@@ -272,7 +272,7 @@ The `hume-lsp` crate plus editor glue: spawn, handshake, document sync, diagnost
 The bridge and primitives that make Steel the feature layer. After it, a plugin can reach any LSP method and any editor surface. Cards: `docs/lsp/step-2.md`.
 
 - [x] **B1** — JSON↔SteelVal codec (null ↔ void; sized by P8)
-- [ ] **B2** — generic LSP bridge (`lsp-request` / `lsp-notify` / `on-lsp-notification`)
+- [x] **B2** — generic LSP bridge (`lsp-request` / `lsp-notify` / `on-lsp-notification`)
 - [ ] **B3** — introspection builtins (capabilities, status, generation, server-for-buffer)
 - [ ] **B4** — Steel timers (`after`, `debounce`, debounced hook variants)
 - [ ] **B5** — decoration stores + setters + diagnostics pull

@@ -25,10 +25,6 @@ use steel::HashMap as SteelHashMap;
 
 /// Converts a `serde_json::Value` into the equivalent `SteelVal`. Total —
 /// every JSON value has a representation, so this never fails.
-///
-/// First production caller is B2 (decoding LSP responses for Steel
-/// callbacks); exercised by this module's own round-trip tests until then.
-#[allow(dead_code)]
 pub fn json_to_steel(v: &serde_json::Value) -> SteelVal {
     match v {
         serde_json::Value::Null => SteelVal::Void,

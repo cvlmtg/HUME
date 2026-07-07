@@ -451,6 +451,7 @@ mod kitty;
 mod language;
 mod list_buffers;
 mod lsp;
+mod lsp_bridge;
 mod lsp_diagnostics;
 mod lsp_status;
 mod lsp_sync;

@@ -50,7 +50,7 @@ pub mod attribution;
 pub(crate) mod builtins;
 pub mod hooks;
 pub mod host;
-pub(crate) mod json;
+pub mod json;
 pub(crate) mod keys;
 pub(crate) mod lazy;
 pub mod log;
@@ -75,7 +75,10 @@ pub use hooks::HookId;
 pub use host::{BindMode, EditorHost};
 pub use keys::parse_key_stream;
 pub use log::LogLevel;
-pub use types::{HookResult, PendingLanguageReg, PendingLspServerReg, SteelCmdDef, SteelCmdResult};
+pub use types::{
+    HookResult, PendingLanguageReg, PendingLspNotify, PendingLspRequest, PendingLspServerReg,
+    SteelCmdDef, SteelCmdResult,
+};
 pub use watchdog::EvalWatchdog;
 
 // ── Internal re-exports (within-crate use) ────────────────────────────────────
@@ -127,6 +130,11 @@ pub(crate) struct ScriptingRegistries {
     /// resolved via the top of `plugin_stack` — works identically whether the
     /// plugin activates immediately (eager) or much later (lazy).
     pub(crate) plugin_configs: std::collections::HashMap<PluginId, SteelVal>,
+    /// Handlers registered by `(on-lsp-notification method handler)`, keyed
+    /// by protocol method name. Consulted by the editor's notification
+    /// dispatch for any method Rust doesn't already special-case
+    /// (window/logMessage, window/showMessage, $/progress, publishDiagnostics).
+    pub(crate) lsp_notification_handlers: std::collections::HashMap<String, Vec<SteelVal>>,
 }
 
 // ── HostBundle ────────────────────────────────────────────────────────────────
@@ -214,6 +222,7 @@ impl ScriptingHost {
                 declared_plugins: Vec::new(),
                 command_table: std::collections::HashMap::new(),
                 plugin_configs: std::collections::HashMap::new(),
+                lsp_notification_handlers: std::collections::HashMap::new(),
             },
             plugin_stack: PluginStack::default(),
             pending_messages: Vec::new(),
@@ -339,6 +348,17 @@ impl ScriptingHost {
     /// Returns `true` if no handlers are registered for `hook_id`.
     pub fn has_hook_handlers(&self, hook_id: hooks::HookId) -> bool {
         !self.registries.hooks.is_empty_for(hook_id)
+    }
+
+    /// Handlers registered for `method`, or empty if none. Cloned (Steel
+    /// closures are cheap `Gc` clones) so the editor can queue calls without
+    /// holding a borrow into `self.registries` across the queueing.
+    pub fn lsp_notification_handlers_for(&self, method: &str) -> Vec<SteelVal> {
+        self.registries
+            .lsp_notification_handlers
+            .get(method)
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// A snapshot of the command activation entries declared during init.
@@ -548,7 +568,14 @@ impl ScriptingHost {
             .map_err(|e| format!("call_steel_cmd: cannot convert args: {e}"))?;
         let call_args = vec![SteelVal::StringV(name.into()), args_list];
 
-        let (result, wait_char_request, pending_language_sets, grammar_sweeps) = {
+        let (
+            result,
+            wait_char_request,
+            pending_language_sets,
+            grammar_sweeps,
+            pending_lsp_requests,
+            pending_lsp_notifies,
+        ) = {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
             let mut steel_ctx = SteelCtx::new_command(
                 host,
@@ -571,6 +598,8 @@ impl ScriptingHost {
                 steel_ctx.wait_char_request,
                 steel_ctx.pending_language_sets,
                 steel_ctx.pending_grammar_sweeps,
+                steel_ctx.pending_lsp_requests,
+                steel_ctx.pending_lsp_notifies,
             )
         };
 
@@ -579,6 +608,8 @@ impl ScriptingHost {
             wait_char_request,
             pending_language_sets,
             grammar_sweeps,
+            pending_lsp_requests,
+            pending_lsp_notifies,
         })
     }
 
@@ -604,12 +635,20 @@ impl ScriptingHost {
             return Ok(HookResult {
                 pending_language_sets: vec![],
                 grammar_sweeps: vec![],
+                pending_lsp_requests: vec![],
+                pending_lsp_notifies: vec![],
             });
         }
 
         let budget_ms = host.steel_command_budget_ms();
 
-        let (result, pending_language_sets, grammar_sweeps) = {
+        let (
+            result,
+            pending_language_sets,
+            grammar_sweeps,
+            pending_lsp_requests,
+            pending_lsp_notifies,
+        ) = {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
             let mut steel_ctx =
                 SteelCtx::new_command(host, bundle, focused_pane_id, focused_buffer_id, None);
@@ -628,6 +667,8 @@ impl ScriptingHost {
                 result,
                 steel_ctx.pending_language_sets,
                 steel_ctx.pending_grammar_sweeps,
+                steel_ctx.pending_lsp_requests,
+                steel_ctx.pending_lsp_notifies,
             )
         };
 
@@ -635,6 +676,72 @@ impl ScriptingHost {
         Ok(HookResult {
             pending_language_sets,
             grammar_sweeps,
+            pending_lsp_requests,
+            pending_lsp_notifies,
+        })
+    }
+
+    /// Calls each `(proc, args)` pair directly, in order, inside one
+    /// `with_mut_reference` session.
+    ///
+    /// Unlike [`fire_hook`](Self::fire_hook), which looks up every handler
+    /// registered for a hook id, this delivers to a *specific* Steel closure
+    /// captured earlier by Rust — the shared mechanism behind B2's
+    /// `lsp-request` callback, B4's timer thunks, and B9's prompt callback.
+    /// Same discipline: never called from inside a completion-detection
+    /// borrow (LSP drain, timer drain, minibuffer key handling) — the caller
+    /// queues `(proc, args)` and this runs at the drain boundary. The first
+    /// error aborts the remaining calls in the batch, same as `fire_hook`.
+    pub fn run_steel_calls<'a>(
+        &'a mut self,
+        calls: Vec<(SteelVal, Vec<SteelVal>)>,
+        focused_pane_id: hume_engine::pipeline::PaneId,
+        focused_buffer_id: hume_engine::pipeline::BufferId,
+        host: &'a mut dyn EditorHost,
+    ) -> Result<HookResult, String> {
+        if calls.is_empty() {
+            return Ok(HookResult {
+                pending_language_sets: vec![],
+                grammar_sweeps: vec![],
+                pending_lsp_requests: vec![],
+                pending_lsp_notifies: vec![],
+            });
+        }
+
+        let budget_ms = host.steel_command_budget_ms();
+
+        let (
+            result,
+            pending_language_sets,
+            grammar_sweeps,
+            pending_lsp_requests,
+            pending_lsp_notifies,
+        ) = {
+            let (steel, watchdog, bundle) = self.steel_and_bundle();
+            let mut steel_ctx =
+                SteelCtx::new_command(host, bundle, focused_pane_id, focused_buffer_id, None);
+
+            let result = run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
+                for (proc, args) in calls {
+                    steel.call_function_with_args(proc, args)?;
+                }
+                Ok(())
+            });
+            (
+                result,
+                steel_ctx.pending_language_sets,
+                steel_ctx.pending_grammar_sweeps,
+                steel_ctx.pending_lsp_requests,
+                steel_ctx.pending_lsp_notifies,
+            )
+        };
+
+        result?;
+        Ok(HookResult {
+            pending_language_sets,
+            grammar_sweeps,
+            pending_lsp_requests,
+            pending_lsp_notifies,
         })
     }
 }

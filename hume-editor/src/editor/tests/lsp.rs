@@ -11,7 +11,7 @@ use super::*;
 use crate::editor::lsp::LspState;
 use crate::editor::scripting_setup::make_init_host;
 use hume_lsp::backend::{LspBackend, ServerId};
-use hume_lsp::client::{LspClient, Outcome, RequestMeta};
+use hume_lsp::client::{LspClient, Outcome, RequestMeta, ServerState};
 use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
 
@@ -19,7 +19,13 @@ use hume_scripting::ScriptingHost;
 /// the editor's `LspState` and tracks a matching `LspClient` for it.
 fn wire_client(ed: &mut Editor, backend: InlineLspBackend, sid: ServerId) {
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let client = LspClient::new(sid, PathBuf::from("."));
+    // Running, not the `Starting` default: these tests exercise request/
+    // response/staleness bookkeeping, not the handshake queue (covered by
+    // hume-lsp's own `send_request_while_starting_is_queued_then_flushed_*`
+    // test) — a Starting client queues instead of sending, which would
+    // leave every `send_request` below stuck unsent.
+    let mut client = LspClient::new(sid, PathBuf::from("."));
+    client.state = ServerState::Running;
     ed.lsp.insert_client_for_test(client);
 }
 

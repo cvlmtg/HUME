@@ -131,6 +131,14 @@ impl LspClient {
     /// position-independent from this layer's perspective — staleness by
     /// buffer generation is tracked editor-side (the crate fence: `hume-lsp`
     /// has no `BufferId`).
+    ///
+    /// Respects the same `Starting`-queue discipline as `send_or_queue`:
+    /// nothing but `initialize` is legal on the wire before `initialized`
+    /// goes out, so a request minted while still handshaking is queued and
+    /// flushed by `handle_initialize_response` alongside queued document
+    /// sync — never sent directly. `pending` gets the entry either way, so
+    /// `take_completed`'s deadline/timeout handling covers a request that's
+    /// still queued exactly like one already on the wire.
     pub fn send_request(
         &mut self,
         backend: &mut dyn LspBackend,
@@ -140,14 +148,19 @@ impl LspClient {
     ) -> RequestId {
         let id = self.ids.next();
         self.pending.insert(id.clone(), meta);
-        backend.send(
-            self.id,
-            Message::Request {
-                id: id.clone(),
-                method: method.to_string(),
-                params,
-            },
-        );
+        let msg = Message::Request {
+            id: id.clone(),
+            method: method.to_string(),
+            params,
+        };
+        match self.state {
+            ServerState::Running => backend.send(self.id, msg),
+            ServerState::Starting => self.queued.push(msg),
+            // Connection is gone or going — nothing to send; the request
+            // sits in `pending` until its deadline, then surfaces as
+            // `Outcome::TimedOut` rather than hanging silently.
+            ServerState::ShuttingDown | ServerState::Crashed | ServerState::Dead => {}
+        }
         id
     }
 
@@ -535,6 +548,69 @@ mod tests {
             }
             other => panic!("expected one BecameRunning action, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn send_request_while_starting_is_queued_then_flushed_and_still_correlates() {
+        let mut backend = InlineLspBackend::with_default_handshake();
+        backend.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
+        let sid = backend.start("x", &[], std::path::Path::new(".")).unwrap();
+        let mut client = LspClient::new(sid, PathBuf::from("."));
+
+        client.start_handshake(&mut backend);
+        let meta = RequestMeta {
+            method: "textDocument/hover".to_string(),
+            allow_stale: false,
+            deadline: Instant::now() + std::time::Duration::from_secs(10),
+            token: CallbackToken(1),
+        };
+        let sent_id =
+            client.send_request(&mut backend, "textDocument/hover", serde_json::Value::Null, meta);
+
+        // Nothing but the initialize request should be on the wire yet.
+        assert!(
+            backend
+                .sent
+                .iter()
+                .all(|(_, m)| !matches!(m, Message::Request { method, .. } if method == "textDocument/hover")),
+            "request must be queued, not sent, while Starting"
+        );
+        assert_eq!(client.pending_count(), 1, "pending entry recorded even though queued");
+
+        // Handshake completes: BecameRunning flushes the queued hover request.
+        let (_id, ev) = backend.drain().into_iter().next().unwrap();
+        let mut actions = client.on_event(ev).into_iter();
+        match actions.next() {
+            Some(ClientAction::BecameRunning { send }) => {
+                assert_eq!(send.len(), 2);
+                match &send[1] {
+                    Message::Request { id, method, .. } => {
+                        assert_eq!(*id, sent_id);
+                        assert_eq!(method, "textDocument/hover");
+                    }
+                    other => panic!("expected the queued hover request second, got {other:?}"),
+                }
+                // The real editor glue's `BecameRunning` dispatch does this
+                // exact send loop (`dispatch_lsp_action`) — replicate it so
+                // the flushed hover request actually reaches the backend.
+                for msg in send {
+                    backend.send(sid, msg);
+                }
+            }
+            other => panic!("expected one BecameRunning action, got {other:?}"),
+        }
+        assert!(actions.next().is_none());
+
+        // The response still correlates normally once actually sent.
+        let (_sid, ev) = backend
+            .drain()
+            .into_iter()
+            .find(|(_, ev)| matches!(ev, InboundEvent::Message(Message::Response { .. })))
+            .expect("hover response");
+        client.on_event(ev);
+        let completed = client.take_completed(&mut backend, Instant::now());
+        assert_eq!(completed.len(), 1);
+        assert_eq!(completed[0].0, sent_id);
     }
 
     #[test]

@@ -4,6 +4,7 @@ use hume_engine::pipeline::BufferId;
 
 use hume_scripting::SteelBufferId;
 use hume_scripting::{HookResult, hooks::HookId};
+use steel::rvals::SteelVal;
 
 use super::{Editor, Severity, host_impl::EditorHostImpl, theme};
 
@@ -120,7 +121,10 @@ impl Editor {
                     Ok(HookResult {
                         pending_language_sets,
                         grammar_sweeps,
+                        pending_lsp_requests,
+                        pending_lsp_notifies,
                     }) => {
+                        self.flush_pending_lsp_calls(pending_lsp_requests, pending_lsp_notifies);
                         for (bid, lang) in pending_language_sets {
                             self.set_buffer_language(bid, lang);
                         }
@@ -131,6 +135,59 @@ impl Editor {
                     Err(e) => self.report(Severity::Error, format!("hook error: {e}")),
                 }
             }
+        }
+    }
+
+    /// Queue `(proc, args)` for evaluation at the next drain boundary —
+    /// never called inline (LSP dispatch, timer fire, and minibuffer key
+    /// handling all detect their completion from inside a borrow that can't
+    /// re-enter Steel). Shared delivery mechanism for B2's `lsp-request`
+    /// callback, B4's timer thunks, and B9's prompt callback.
+    pub(crate) fn queue_steel_call(&mut self, proc: SteelVal, args: Vec<SteelVal>) {
+        self.state.pending_steel_calls.push((proc, args));
+    }
+
+    /// Drain `state.pending_steel_calls`, evaluating each queued call in one
+    /// Steel session. Called once per frame from `prepare_frame` — the
+    /// per-frame cadence LSP responses and timer fires already drain on, so
+    /// a completion queued this frame runs before the next render rather
+    /// than waiting for the next keystroke (unlike hooks, nothing here is
+    /// naturally re-triggering, so a single pass is enough — anything a
+    /// callback itself queues lands in next frame's drain, not this one).
+    pub(crate) fn drain_pending_steel_calls(&mut self) {
+        let calls = std::mem::take(&mut self.state.pending_steel_calls);
+        if calls.is_empty() {
+            return;
+        }
+        let pid = self.state.focused_pane_id;
+        let bid = self.focused_buffer_id();
+        let Some(host_scr) = self.scripting.as_mut() else {
+            return;
+        };
+        let result = {
+            let mut impl_host = EditorHostImpl {
+                state: &mut self.state,
+                view: &mut self.view,
+            };
+            host_scr.run_steel_calls(calls, pid, bid, &mut impl_host)
+        };
+        self.flush_script_messages();
+        match result {
+            Ok(HookResult {
+                pending_language_sets,
+                grammar_sweeps,
+                pending_lsp_requests,
+                pending_lsp_notifies,
+            }) => {
+                self.flush_pending_lsp_calls(pending_lsp_requests, pending_lsp_notifies);
+                for (bid, lang) in pending_language_sets {
+                    self.set_buffer_language(bid, lang);
+                }
+                if !grammar_sweeps.is_empty() {
+                    self.sweep_buffers_for_grammars(grammar_sweeps);
+                }
+            }
+            Err(e) => self.report(Severity::Error, format!("steel call error: {e}")),
         }
     }
 
