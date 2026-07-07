@@ -9,3 +9,9 @@ lsp-types = "0.97"
 serde.workspace = true
 serde_json.workspace = true
 ropey.workspace = true
+
+[features]
+# Exposes test-only doubles and oracles (RecordingLspBackend, the P6 string-
+# mirror oracle) to consumers' own test code — hume-editor's C7 invariant
+# test needs both. Mirrors the hume-treesitter/hume-scripting precedent.
+test-util = []

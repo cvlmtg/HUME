@@ -451,6 +451,7 @@ mod kitty;
 mod language;
 mod list_buffers;
 mod lsp;
+mod lsp_sync;
 mod macros;
 mod mouse;
 mod multi_pane;

@@ -15,11 +15,14 @@
 //! - `inline`: `InlineLspBackend`, the scripted test double (C4).
 //! - `client`: lifecycle, request bookkeeping (C5–C6).
 //! - `sync`: `ChangeSet` → `TextDocumentContentChangeEvent[]` (P6).
+//! - `test_util` (behind the `test-util` feature): cross-crate test doubles.
 
 pub mod backend;
 pub mod client;
 pub mod codec;
 pub mod inline;
 pub mod sync;
+#[cfg(any(test, feature = "test-util"))]
+pub mod test_util;
 pub mod transport;
 pub mod uri;

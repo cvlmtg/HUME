@@ -72,63 +72,68 @@ fn wire_range(rope: &Rope, start: usize, end: usize, enc: PositionEncoding) -> R
     }
 }
 
+/// Independent oracle: applies emitted events to a plain `String` using its
+/// own line/character math — no ropey, no `hume_editing::position_encoding`
+/// — so it cannot share a bug with `changeset_to_content_changes`. Exposed
+/// (behind `test-util`) so consumer crates' invariant tests (e.g.
+/// hume-editor's C7 version-sync test) can reuse it instead of re-deriving
+/// their own oracle.
+#[cfg(any(test, feature = "test-util"))]
+pub fn apply_events_to_string_mirror(
+    mut text: String,
+    events: &[TextDocumentContentChangeEvent],
+    enc: PositionEncoding,
+) -> String {
+    for event in events {
+        let range = event.range.expect("P6 always emits ranged events");
+        let start = wire_pos_to_byte(&text, range.start, enc);
+        let end = wire_pos_to_byte(&text, range.end, enc);
+        text.replace_range(start..end, &event.text);
+    }
+    text
+}
+
+/// `(line, character)` → byte offset in `text`, via plain string scanning
+/// (LF-only lines — HUME buffers never contain `\r`, it's normalized away
+/// on load; see `hume_editing::text`).
+#[cfg(any(test, feature = "test-util"))]
+pub fn wire_pos_to_byte(text: &str, pos: Position, enc: PositionEncoding) -> usize {
+    let mut line_start = 0usize;
+    for _ in 0..pos.line {
+        match text[line_start..].find('\n') {
+            Some(rel) => line_start += rel + 1,
+            None => return text.len(),
+        }
+    }
+    let line_end = text[line_start..]
+        .find('\n')
+        .map_or(text.len(), |rel| line_start + rel);
+    let line = &text[line_start..line_end];
+
+    let within_line = match enc {
+        PositionEncoding::Utf8 => (pos.character as usize).min(line.len()),
+        PositionEncoding::Utf16 => {
+            let mut units = 0u32;
+            let mut byte_off = 0usize;
+            for ch in line.chars() {
+                if units >= pos.character {
+                    break;
+                }
+                units += ch.len_utf16() as u32;
+                byte_off += ch.len_utf8();
+            }
+            byte_off
+        }
+    };
+    line_start + within_line
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use hume_editing::ChangeSetBuilder;
-
-    /// Independent oracle: applies emitted events to a plain `String` using
-    /// its own line/character math — no ropey, no `hume_editing::position_encoding`
-    /// — so it cannot share a bug with the function under test.
-    fn apply_events_to_string_mirror(
-        mut text: String,
-        events: &[TextDocumentContentChangeEvent],
-        enc: PositionEncoding,
-    ) -> String {
-        for event in events {
-            let range = event.range.expect("P6 always emits ranged events");
-            let start = wire_pos_to_byte(&text, range.start, enc);
-            let end = wire_pos_to_byte(&text, range.end, enc);
-            text.replace_range(start..end, &event.text);
-        }
-        text
-    }
-
-    /// `(line, character)` → byte offset in `text`, via plain string
-    /// scanning (LF-only lines — HUME buffers never contain `\r`, it's
-    /// normalized away on load; see `hume_editing::text`).
-    fn wire_pos_to_byte(text: &str, pos: Position, enc: PositionEncoding) -> usize {
-        let mut line_start = 0usize;
-        for _ in 0..pos.line {
-            match text[line_start..].find('\n') {
-                Some(rel) => line_start += rel + 1,
-                None => return text.len(),
-            }
-        }
-        let line_end = text[line_start..]
-            .find('\n')
-            .map_or(text.len(), |rel| line_start + rel);
-        let line = &text[line_start..line_end];
-
-        let within_line = match enc {
-            PositionEncoding::Utf8 => (pos.character as usize).min(line.len()),
-            PositionEncoding::Utf16 => {
-                let mut units = 0u32;
-                let mut byte_off = 0usize;
-                for ch in line.chars() {
-                    if units >= pos.character {
-                        break;
-                    }
-                    units += ch.len_utf16() as u32;
-                    byte_off += ch.len_utf8();
-                }
-                byte_off
-            }
-        };
-        line_start + within_line
-    }
 
     /// Build a `ChangeSet` over `before` (LF-only) and return its emitted
     /// content changes plus the string the oracle should reach.

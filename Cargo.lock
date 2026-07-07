@@ -1081,6 +1081,7 @@ dependencies = [
  "hume-scripting",
  "hume-treesitter",
  "insta",
+ "lsp-types",
  "pretty_assertions",
  "proptest",
  "ratatui",

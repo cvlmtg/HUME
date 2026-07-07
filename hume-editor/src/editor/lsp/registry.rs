@@ -98,6 +98,9 @@ impl Editor {
     /// no language, or no server is registered for that language.
     pub(in crate::editor) fn lsp_attach_buffer(&mut self, bid: BufferId) {
         let buf = self.state.buffers.get(bid);
+        if buf.lsp_server.is_some() {
+            return; // already attached — idempotent re-entry
+        }
         let Some(path) = buf.path().map(Path::to_path_buf) else {
             return;
         };
@@ -110,24 +113,30 @@ impl Editor {
 
         let root = resolve_root(&path, &config.root_markers, &self.state.cwd);
         let key = (language, root.clone());
-        if self.lsp.servers_by_key.contains_key(&key) {
-            return; // already running (or starting) — C7 handles the didOpen
-        }
 
-        match self.lsp.backend.start(&config.command, &config.args, &root) {
-            Ok(server_id) => {
-                let mut client = hume_lsp::client::LspClient::new(server_id, root);
-                client.start_handshake(self.lsp.backend.as_mut());
-                self.lsp.clients.insert(server_id, client);
-                self.lsp.servers_by_key.insert(key, server_id);
+        let server_id = if let Some(&existing) = self.lsp.servers_by_key.get(&key) {
+            existing
+        } else {
+            match self.lsp.backend.start(&config.command, &config.args, &root) {
+                Ok(server_id) => {
+                    let mut client = hume_lsp::client::LspClient::new(server_id, root);
+                    client.start_handshake(self.lsp.backend.as_mut());
+                    self.lsp.clients.insert(server_id, client);
+                    self.lsp.servers_by_key.insert(key, server_id);
+                    server_id
+                }
+                Err(e) => {
+                    self.report(
+                        Severity::Error,
+                        format!("lsp: failed to start '{}': {e}", config.command),
+                    );
+                    return;
+                }
             }
-            Err(e) => {
-                self.report(
-                    Severity::Error,
-                    format!("lsp: failed to start '{}': {e}", config.command),
-                );
-            }
-        }
+        };
+
+        self.state.buffers.get_mut(bid).lsp_server = Some(server_id);
+        self.lsp_did_open(bid);
     }
 }
 

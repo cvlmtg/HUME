@@ -35,3 +35,5 @@ insta = "1.47"
 tempfile = "3"
 hume-scripting = { path = "../hume-scripting", features = ["test-util"] }
 hume-treesitter = { path = "../hume-treesitter", features = ["test-util"] }
+hume-lsp = { path = "../hume-lsp", features = ["test-util"] }
+lsp-types = "0.97"

@@ -107,6 +107,9 @@ impl Editor {
     ///   MRU replacement, then free the slot.
     /// - Only buffer: replace in-place with a fresh scratch buffer.
     pub(crate) fn close_buffer(&mut self, id: BufferId) {
+        // Must run before the slot is freed below — it needs the buffer's
+        // path and lsp_server to build the didClose notification.
+        self.lsp_did_close(id);
         lifecycle::close_buffer(
             &mut self.view,
             &mut self.state.buffers,
@@ -226,6 +229,10 @@ impl Editor {
             .get_mut(id)
             .reload_from_text(new_text, pre_sels, post_sels);
         self.state.buffers.get_mut(id).file_meta = new_file_meta;
+        // `reload_from_text` bumped text_gen via set_text but produced no
+        // ChangeSet the LSP pending-queue mechanism can consume — send the
+        // reload as a whole-document didChange instead.
+        self.lsp_did_change_whole_document(id);
 
         // Drop the stale engine tree (it references pre-reload content). The
         // highlighter in `state.syntax` survives reload untouched; `set_text` bumped

@@ -6,6 +6,7 @@
 //! observability commands on top.
 
 mod registry;
+pub(crate) mod sync;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -208,6 +209,8 @@ impl Editor {
     /// each client's completed requests (responses + timeouts) via
     /// `take_completed` and dispatches those too.
     pub(super) fn drain_lsp(&mut self) {
+        self.flush_lsp_pending_changes();
+
         let events = self.lsp.backend.drain();
         for (server_id, ev) in events {
             let actions = match self.lsp.clients.get_mut(&server_id) {

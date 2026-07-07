@@ -272,6 +272,7 @@ fn write_buffer_by_id(
             ed.state.buffers.get_mut(bid).mark_saved();
             ed.report(write_severity(retried), write_msg(line_count, retried));
             ed.fire_hook_buffer_save(bid);
+            ed.lsp_did_save(bid);
             Ok(())
         }
         Err(e) => Err(CommandError::new(e.to_string())),
@@ -336,6 +337,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
                 ed.doc_mut().mark_saved();
                 ed.report(write_severity(retried), write_msg(line_count, retried));
                 ed.fire_hook_buffer_save(ed.focused_buffer_id());
+                ed.lsp_did_save(ed.focused_buffer_id());
                 Ok(())
             }
             Err(e) => Err(CommandError::new(e.to_string())),
