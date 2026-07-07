@@ -242,7 +242,7 @@ Test-writing rules (from `CLAUDE.md`, restated because they bite here):
 
 Workspace groundwork with no LSP-visible behavior. Cards: `docs/lsp/step-0.md`. Note P5/P6 live in `hume-lsp` and therefore follow C1 (see Implementation order).
 
-- [ ] **P1** — serde + serde_json workspace deps (fires the toml 0.8→1.x evaluation)
+- [x] **P1** — serde + serde_json workspace deps (fires the toml 0.8→1.x evaluation)
 - [ ] **P2** — batch position mapping (`PosMapCursor` public API)
 - [ ] **P3** — generalized event-loop wake (compose async sources behind one predicate)
 - [ ] **P4** — position encoding conversion (rope char offset ↔ LSP line/character, utf-8 + utf-16)
