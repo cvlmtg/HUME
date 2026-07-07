@@ -186,9 +186,9 @@ Every Steel-visible surface Steps 1–3 introduce. Cards define the semantics; t
 | `(set-signs! source bid signs)` | builtin | B5 |
 | `(set-virtual-lines! source bid lines)` | builtin | B5 |
 | `(set-extra-highlights! source bid spans)` | builtin | B5 |
-| `(diagnostics-for-buffer bid #:severity floor #:range (start . end))` | builtin | B5 |
-| `(diagnostic-counts bid)` → `(errors . warnings)` | builtin | B5 |
-| `(apply-text-edits! bid edits)` | builtin | B6 |
+| `(diagnostics-for-buffer bid #:severity floor #:range (list start end))` — a 2-elem list, not `(start . end)`: steel-core 0.8.2's `Pair`/`car`/`cdr` are crate-private, unreachable from a Rust builtin | builtin | B5 |
+| `(diagnostic-counts bid)` → `(errors . warnings)` (this direction is fine — `cons` to build a pair is public; only destructuring one from Rust isn't) | builtin | B5 |
+| `(apply-text-edits! bid edits #:expect-generation gen)` — `edits`: list of `((start-line start-col) (end-line end-col) text)`, 2-elem lists not dotted pairs (same reason as B5's `#:range`) | builtin | B6 |
 | `(apply-workspace-edit! wsedit)` | builtin | B6 |
 | `(goto-location! loc)` | builtin | B6 |
 | `(selection-spans-full-line? bid)` → bool (F8's range-format gate) | builtin | B6 |
