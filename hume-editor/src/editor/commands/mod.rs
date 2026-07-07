@@ -111,14 +111,23 @@ impl EditorState {
 ///
 /// Called by both the unified pipeline ([`run_dispatch_pipeline`]) and the
 /// dot-repeat replay path ([`Editor::replay_dot`]).
+///
+/// The single writer of `state.explicit_count`: `count` is `None` only for a
+/// bare keyboard press (no count typed), which is the only case visual-move
+/// commands (`move-down`/`move-up`) read as "move by visual row" rather than
+/// buffer line. Save/restore (not a plain set) so a Steel command's body
+/// dispatching its own native command via `call!` — which nests inside this
+/// same function while the outer call's stack frame is still live — gets its
+/// own value instead of leaking the outer command's.
 pub(super) fn run_native_body(
     state: &mut EditorState,
     view: &mut EngineView,
     cmd: MappableCommand,
-    count: usize,
+    count: Option<usize>,
     extend: bool,
 ) {
-    let count = count.max(1);
+    let prev_explicit_count = std::mem::replace(&mut state.explicit_count, count.is_some());
+    let count = count.unwrap_or(1).max(1);
     let motion_mode = if extend {
         MotionMode::Extend
     } else {
@@ -176,6 +185,7 @@ pub(super) fn run_native_body(
             unreachable!("run_native_body called on non-native command");
         }
     }
+    state.explicit_count = prev_explicit_count;
 }
 
 // ── Dispatch step functions ─────────────────────────────────────────────────
@@ -321,7 +331,7 @@ pub(super) fn step_update_recipe(
         if ctx.extend {
             state.selection_recipe.push(SelectionStep {
                 command: name.clone(),
-                count: ctx.count,
+                count: ctx.count.unwrap_or(1),
                 char_arg,
                 extend: true,
             });
@@ -329,7 +339,7 @@ pub(super) fn step_update_recipe(
             state.selection_recipe.clear();
             state.selection_recipe.push(SelectionStep {
                 command: name.clone(),
-                count: ctx.count,
+                count: ctx.count.unwrap_or(1),
                 char_arg,
                 extend: false,
             });
@@ -397,7 +407,7 @@ pub(super) fn run_dispatch_pipeline(
     // AFTER
     step_stamp_last_command(state, name.clone(), meta.stamps_last_command);
     step_record_jump(state, view, pre_jump, meta.is_jump);
-    step_stamp_repeatable(state, &name, ctx.count, char_arg, pre_recipe);
+    step_stamp_repeatable(state, &name, ctx.count.unwrap_or(1), char_arg, pre_recipe);
     step_update_recipe(state, view, &meta, &name, &ctx, char_arg);
     step_clear_extend(state, meta.clears_extend);
 }
@@ -609,18 +619,15 @@ pub(super) fn split_pane_onto(
     if bid == old_buffer_id {
         let selections = state.panes.state[old_focused][bid].selections.clone();
         state.panes.state[new_pid][bid].selections = selections;
-        view.panes[new_pid].viewport = view.panes[old_focused].viewport.clone();
-        // Scroll memory for buffers visited before the split (but not yet
-        // revisited in the new pane) lives only in the source pane's map;
-        // without this clone the new pane would reset such buffers to the
-        // top on first visit instead of recalling where they were left.
-        view.panes[new_pid].saved_scrolls = view.panes[old_focused].saved_scrolls.clone();
-        // A same-buffer split inherits the source pane's live wrap_mode (e.g. a
-        // `:wrap` toggle) and its restore target, so a subsequent `:wrap` on the
-        // new pane matches the source instead of falling back to the global seed.
-        // A `:split <path>` onto a different buffer keeps that global seed.
-        view.panes[new_pid].wrap_mode = view.panes[old_focused].wrap_mode;
-        view.panes[new_pid].saved_wrap_mode = view.panes[old_focused].saved_wrap_mode;
+        // A same-buffer split inherits the source pane's live view state
+        // (viewport, scroll memory, wrap mode) so the new pane matches where
+        // the source was instead of falling back to fresh/global seeds. A
+        // `:split <path>` onto a different buffer keeps those fresh seeds.
+        let [new_pane, old_pane] = view
+            .panes
+            .get_disjoint_mut([new_pid, old_focused])
+            .expect("new_pid and old_focused are distinct, valid pane keys");
+        new_pane.inherit_view_state(old_pane);
 
         // A same-buffer split inherits the source pane's jump history so the
         // new pane can Ctrl+O back to positions the user visited before the

@@ -129,6 +129,12 @@
 ;; The lambda declares (count extend) so numeric prefixes (3j) and Ctrl-J one-shot
 ;; extend both work automatically.
 ;;
+;; Caveat: rebinding j/k through a Steel wrapper like this always moves by
+;; buffer line, even on a bare keypress with no count — every `call!` counts
+;; as an explicit dispatch, unlike a native `j`/`k` binding, which only moves
+;; by buffer line when you type a count. To keep bare-j visual-row movement,
+;; bind the key straight to "move-down"/"move-up" instead of wrapping it.
+;;
 ;; (define-command! "move-down-select-word"
 ;;   "Move down N visual lines, then select the nearest word on that line."
 ;;   (lambda (count extend)

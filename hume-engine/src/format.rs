@@ -619,8 +619,10 @@ fn is_whitespace_grapheme(s: &str) -> bool {
 /// calling this again rather than reusing the pre-wrap width.
 fn tab_display_width(col: u16, tab_width: u8) -> u8 {
     let tab_width = tab_width.max(1) as u16;
-    let next_stop = (col / tab_width + 1) * tab_width;
-    (next_stop - col).min(255) as u8
+    let next_stop = (col / tab_width + 1).saturating_mul(tab_width);
+    // saturating: at col ≈ u16::MAX the true next stop overflows u16; clamp
+    // to a 1-wide tab instead of panicking (debug) or wrapping (release).
+    next_stop.saturating_sub(col).clamp(1, 255) as u8
 }
 
 /// Compute the display `width` and `CellContent` for one grapheme cluster.
@@ -789,6 +791,20 @@ pub(crate) fn strip_line_ending(buf: &mut String) {
 mod tests {
     use super::*;
     use crate::pane::{WhitespaceConfig, WrapMode};
+
+    #[test]
+    fn tab_display_width_normal_range() {
+        assert_eq!(tab_display_width(0, 4), 4, "tab at col 0, width 4 → full stop");
+        assert_eq!(tab_display_width(2, 4), 2, "tab at col 2, width 4 → half stop");
+        assert_eq!(tab_display_width(4, 4), 4, "tab exactly on a stop → full width");
+    }
+
+    #[test]
+    fn tab_display_width_saturates_near_u16_max() {
+        // col=65535, tab_width=4: true next stop is 65536, which overflows u16.
+        // Without the saturating_mul/clamp fix this panics in debug builds.
+        assert_eq!(tab_display_width(u16::MAX, 4), 1);
+    }
 
     fn do_format(text: &str, wrap_mode: WrapMode) -> (Vec<DisplayRow>, Vec<Grapheme>) {
         let rope = Rope::from_str(text);

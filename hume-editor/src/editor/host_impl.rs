@@ -284,7 +284,11 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             self.view,
             cmd,
             crate::editor::CmdCtx {
-                count,
+                // Scripted dispatch always counts as an explicit count, so
+                // move-down/move-up move by buffer lines here even for a bare
+                // `(call-native! "move-down")` — a script can't see the window,
+                // so visual-row movement is meaningless to it.
+                count: Some(count),
                 extend,
                 steel_args: vec![],
             },

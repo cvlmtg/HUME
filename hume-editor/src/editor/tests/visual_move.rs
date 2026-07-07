@@ -408,7 +408,7 @@ fn select_word_nearest_scopes_to_visual_subrow() {
 
     ed.execute_keymap_command(
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
-        1,
+        Some(1),
         false,
         vec![],
     );
@@ -439,7 +439,7 @@ fn select_word_nearest_no_oscillation_on_repeated_j() {
     let call_select = |ed: &mut Editor| {
         ed.execute_keymap_command(
             std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
-            1,
+            Some(1),
             false,
             vec![],
         )
@@ -465,5 +465,91 @@ fn select_word_nearest_no_oscillation_on_repeated_j() {
     assert!(
         head_after_second_select > head_after_first_select,
         "second select must advance past {head_after_first_select}; got {head_after_second_select} (oscillation)"
+    );
+}
+
+// ── Dispatch-origin count semantics ────────────────────────────────────────
+//
+// `move-down`/`move-up`'s buffer-line-vs-visual-row choice comes from
+// whether the *keymap* dispatched a typed count (`CmdCtx.count: Option<usize>`,
+// `None` only for a bare keypress). Every non-keymap origin — Steel `call!`,
+// `:move-down`, dot-repeat replay — always supplies `Some`, so those origins
+// always move by buffer line: a script can't see the window, so a visual-row
+// motion is meaningless to it.
+
+/// Scripted dispatch (`run_command_sync`, the path behind Steel's `call!`)
+/// always moves by buffer line, even with no count — unlike a bare keyboard
+/// `j`, which stops at the wrap boundary (see
+/// `visual_move_down_within_wrapped_line`, char 76).
+#[test]
+fn run_command_sync_move_down_always_moves_buffer_line() {
+    use hume_scripting::host::EditorHost;
+
+    let mut ed = visual_test_editor(0);
+    {
+        let mut host = live_host!(ed);
+        host.run_command_sync("move-down", 1, false, None)
+            .expect("run_command_sync must not error for move-down");
+    }
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        81,
+        "scripted move-down (no count) must move a full buffer line, not stop at the wrap boundary"
+    );
+}
+
+/// A Steel command's own internal `(call! "move-down")` always moves by
+/// buffer line regardless of the *outer* key's typed count — the two are
+/// dispatched separately, each through its own `run_native_body` call, so
+/// the inner one can't inherit the outer's explicitness. This also proves
+/// `state.explicit_count` is restored (not left `true`) once the whole
+/// dispatch — outer Steel command plus its nested native call — completes.
+#[test]
+fn steel_call_move_down_ignores_outer_keystrokes_count() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = visual_test_editor(0);
+
+    let names: Vec<String> = ed
+        .state
+        .registry
+        .native_mappable_names()
+        .map(str::to_owned)
+        .collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut host = ScriptingHost::new();
+    host.register_command_names(&name_refs);
+
+    let mut init_host = EditorHostImpl {
+        state: &mut ed.state,
+        view: &mut ed.view,
+    };
+    // The body passes no count to `move-down` — if it inherited the outer
+    // key's count-or-lack-thereof, this would move a visual row instead.
+    host.eval_source_returning_defs(
+        r#"(define-command! "steel-move-down" ""
+                 (lambda () (call! "move-down")))"#
+            .to_owned(),
+        Default::default(),
+        &mut init_host,
+    )
+    .expect("define-command! must succeed");
+
+    ed.scripting = Some(host);
+    // Simulates `5<key>` bound to "steel-move-down": the outer count (5) must
+    // have no bearing on the inner call's buffer-line-vs-visual-row choice.
+    ed.execute_keymap_command("steel-move-down".into(), Some(5), false, vec![]);
+
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        81,
+        "inner (call! \"move-down\") must move one buffer line, not one visual row \
+         and not the outer key's count of 5 buffer lines"
+    );
+    assert!(
+        !ed.state.explicit_count,
+        "explicit_count must be restored to its pre-dispatch value (false) after \
+         the outer Steel command and its nested native call both complete"
     );
 }

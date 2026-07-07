@@ -337,7 +337,7 @@ impl Editor {
             } else {
                 vec![]
             };
-            self.execute_keymap_command(cmd.to_owned().into(), 1, false, steel_args);
+            self.execute_keymap_command(cmd.to_owned().into(), Some(1), false, steel_args);
         } else {
             self.report(Severity::Warning, format!("Unknown command: {cmd}"));
         }

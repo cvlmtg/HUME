@@ -5,6 +5,26 @@ use hume_editing::text::Text;
 
 // ── Line selection motions ────────────────────────────────────────────────────
 
+/// Apply `step` up to `count` times, stopping early at a fixed point — every
+/// step function here is idempotent once clamped at a buffer edge, so a huge
+/// count prefix (e.g. `999999999x`) does O(lines moved) work, not O(count).
+fn repeat_motion(
+    buf: &Text,
+    sel: Selection,
+    count: usize,
+    step: impl Fn(&Text, Selection) -> Selection,
+) -> Selection {
+    let mut s = sel;
+    for _ in 0..count {
+        let next = step(buf, s);
+        if next == s {
+            break;
+        }
+        s = next;
+    }
+    s
+}
+
 /// Extend a linewise selection by one line in extend mode: branches on
 /// whether `sel` already covers whole lines.
 ///
@@ -87,20 +107,8 @@ pub(crate) fn cmd_select_line(
     mode: MotionMode,
 ) -> SelectionSet {
     let result = sels.map(|sel| match mode {
-        MotionMode::Move => {
-            let mut s = sel;
-            for _ in 0..count {
-                s = move_select_line(buf, s);
-            }
-            s
-        }
-        MotionMode::Extend => {
-            let mut s = sel;
-            for _ in 0..count {
-                s = extend_line_span(buf, s, 1);
-            }
-            s
-        }
+        MotionMode::Move => repeat_motion(buf, sel, count, move_select_line),
+        MotionMode::Extend => repeat_motion(buf, sel, count, |b, s| extend_line_span(b, s, 1)),
     });
     result.debug_assert_valid(buf);
     result
@@ -140,20 +148,8 @@ pub(crate) fn cmd_select_line_backward(
     mode: MotionMode,
 ) -> SelectionSet {
     let result = sels.map(|sel| match mode {
-        MotionMode::Move => {
-            let mut s = sel;
-            for _ in 0..count {
-                s = move_select_line_backward(buf, s);
-            }
-            s
-        }
-        MotionMode::Extend => {
-            let mut s = sel;
-            for _ in 0..count {
-                s = extend_line_span(buf, s, -1);
-            }
-            s
-        }
+        MotionMode::Move => repeat_motion(buf, sel, count, move_select_line_backward),
+        MotionMode::Extend => repeat_motion(buf, sel, count, |b, s| extend_line_span(b, s, -1)),
     });
     result.debug_assert_valid(buf);
     result

@@ -2006,6 +2006,47 @@ fn select_line_move_count_exceeds_buffer_clamps_at_last_line() {
     );
 }
 
+// A `usize::MAX` count must return instantly (proving `repeat_motion`'s
+// fixed-point early exit) rather than looping `usize::MAX` times: each of
+// these hangs forever without the early exit, since a naive `for _ in
+// 0..count` loop has no way to notice the motion already clamped.
+
+#[test]
+fn select_line_move_huge_count_clamps_instantly() {
+    assert_state!(
+        "-[a]>\nb\nc\n",
+        |(buf, sels)| cmd_select_line(&buf, sels, usize::MAX, MotionMode::Move),
+        "a\nb\n-[c\n]>"
+    );
+}
+
+#[test]
+fn select_line_backward_move_huge_count_clamps_instantly() {
+    assert_state!(
+        "a\nb\n-[c]>\n",
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, usize::MAX, MotionMode::Move),
+        "<[a\n]-b\nc\n"
+    );
+}
+
+#[test]
+fn extend_select_line_huge_count_clamps_instantly() {
+    assert_state!(
+        "-[a\n]>b\nc\n",
+        |(buf, sels)| cmd_select_line(&buf, sels, usize::MAX, MotionMode::Extend),
+        "-[a\nb\nc\n]>"
+    );
+}
+
+#[test]
+fn extend_select_line_backward_huge_count_clamps_instantly() {
+    assert_state!(
+        "a\nb\n<[c\n]-",
+        |(buf, sels)| cmd_select_line_backward(&buf, sels, usize::MAX, MotionMode::Extend),
+        "<[a\nb\nc\n]-"
+    );
+}
+
 // ── find_char_forward / find_char_backward ────────────────────────────────
 
 // Helper wrappers with fixed mode so assert_state! closures stay tidy.

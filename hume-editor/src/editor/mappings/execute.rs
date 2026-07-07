@@ -13,7 +13,7 @@ impl Editor {
     pub(in super::super) fn execute_keymap_command(
         &mut self,
         name: Cow<'static, str>,
-        count: usize,
+        count: Option<usize>,
         extend: bool,
         steel_args: Vec<steel::rvals::SteelVal>,
     ) {

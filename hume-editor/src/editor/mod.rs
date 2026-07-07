@@ -78,8 +78,13 @@ pub(crate) use message_log::Severity;
 /// [`Editor::dispatch`].
 #[derive(Debug, Clone)]
 pub(super) struct CmdCtx {
-    /// Numeric count prefix (default 1).
-    pub count: usize,
+    /// Numeric count prefix. `None` means "no count was typed" — a bare
+    /// keyboard press, which visual-move commands read as one visual row
+    /// (`state.explicit_count`, set from this by `run_native_body`).
+    /// `Some(n)` covers both an explicit user count and every non-keybind
+    /// dispatch origin (Steel `call!`, `:cmd`, insert-mode leaf), which is
+    /// why those origins always read as buffer-line motion.
+    pub count: Option<usize>,
     /// Whether this command runs in Extend mode.
     pub extend: bool,
     /// Pre-computed Steel lambda arguments (supplied by keymap trie leaf).
@@ -636,7 +641,7 @@ impl Editor {
             commands::step_stamp_repeatable(
                 &mut self.state,
                 &name,
-                ctx.count,
+                ctx.count.unwrap_or(1),
                 char_arg,
                 Some(pre_recipe),
             );
@@ -659,7 +664,7 @@ impl Editor {
         ctx: &CmdCtx,
         char_arg: Option<char>,
     ) -> bool {
-        let count = ctx.count.max(1);
+        let count = ctx.count.unwrap_or(1).max(1);
         let extend = ctx.extend;
 
         // For a Lazy stub, activate the owning plugin now so we can read
@@ -833,7 +838,7 @@ impl Editor {
                 &mut self.state,
                 &mut self.view,
                 cmd,
-                step.count,
+                Some(step.count),
                 step.extend,
             );
         }
@@ -845,7 +850,7 @@ impl Editor {
         match &edit_cmd {
             MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
                 let ctx = CmdCtx {
-                    count,
+                    count: Some(count),
                     extend: false,
                     steel_args: vec![],
                 };
@@ -869,7 +874,13 @@ impl Editor {
                 self.state.selection_recipe.clear();
             }
             _ => {
-                commands::run_native_body(&mut self.state, &mut self.view, edit_cmd, count, false);
+                commands::run_native_body(
+                    &mut self.state,
+                    &mut self.view,
+                    edit_cmd,
+                    Some(count),
+                    false,
+                );
             }
         }
 

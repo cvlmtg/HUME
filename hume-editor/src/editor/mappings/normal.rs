@@ -68,7 +68,7 @@ impl Editor {
         // becomes the argument — stored in `pending_char` for the command to read.
         if let Some(wc) = self.state.wait_char.take() {
             if let KeyCode::Char(ch) = key.code {
-                let count = self.state.count.take().unwrap_or(1);
+                let count = self.state.count.take();
                 self.state.pending_char = Some(ch);
                 // Extend resolution: sticky extend (mode == Extend) OR one-shot
                 // ctrl_extend carried into WaitCharPending from the original keypress.
@@ -262,11 +262,8 @@ impl Editor {
                 WalkResult::Leaf(cmd) => {
                     self.state.pending_keys.clear();
                     self.state.pending_ctrl_extend = false;
-                    let raw_count = self.state.count.take();
-                    self.state.explicit_count = raw_count.is_some();
-                    let count = raw_count.unwrap_or(1);
+                    let count = self.state.count.take();
                     self.execute_keymap_command(cmd.name.clone(), count, false, vec![]);
-                    self.state.explicit_count = false;
                     return;
                 }
                 WalkResult::Interior { .. } => {
@@ -404,11 +401,8 @@ impl Editor {
                         .registry
                         .get_mappable(cmd.name.as_ref())
                         .is_some_and(|r| r.is_extendable());
-                let raw_count = self.state.count.take();
-                self.state.explicit_count = raw_count.is_some();
-                let count = raw_count.unwrap_or(1);
+                let count = self.state.count.take();
                 self.execute_keymap_command(cmd.name.clone(), count, extend, vec![]);
-                self.state.explicit_count = false;
             }
             WalkResult::WaitChar(mut wc) => {
                 self.state.pending_keys.clear();

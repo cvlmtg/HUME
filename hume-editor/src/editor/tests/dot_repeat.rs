@@ -636,7 +636,7 @@ fn steel_dot_repeatable_round_trip() {
     );
 
     // Run the repeatable Steel command.
-    ed.execute_keymap_command("del-sel".into(), 1, false, vec![]);
+    ed.execute_keymap_command("del-sel".into(), Some(1), false, vec![]);
     // "foo" deleted; buffer is " bar\n".
     assert_eq!(ed.doc().text().to_string(), " bar\n", "first run");
 
@@ -688,7 +688,7 @@ fn steel_command_is_not_repeatable() {
     );
 
     // Run the Steel command — it calls (call! "delete") internally.
-    ed.execute_keymap_command("del-sel".into(), 1, false, vec![]);
+    ed.execute_keymap_command("del-sel".into(), Some(1), false, vec![]);
 
     // last_repeatable_action must still be "delete", not "del-sel".
     assert_eq!(
@@ -728,7 +728,7 @@ fn non_repeatable_steel_does_not_hijack_dot() {
     );
 
     // Run the non-repeatable Steel command.
-    ed.execute_keymap_command("noop-move".into(), 1, false, vec![]);
+    ed.execute_keymap_command("noop-move".into(), Some(1), false, vec![]);
 
     // last_repeatable_action must still be "delete".
     assert_eq!(
@@ -798,7 +798,7 @@ fn lazy_repeatable_round_trip() {
     ed.scripting = Some(host);
 
     // First dispatch: Lazy miss → plugin activates → SteelBacked runs.
-    ed.execute_keymap_command("tp-del".into(), 1, false, vec![]);
+    ed.execute_keymap_command("tp-del".into(), Some(1), false, vec![]);
     assert_eq!(ed.doc().text().to_string(), " bar\n");
 
     // The re-query must see the now-activated SteelBacked repeatable entry.

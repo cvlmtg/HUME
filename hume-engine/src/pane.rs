@@ -314,6 +314,28 @@ impl Pane {
         }
     }
 
+    /// Copy the view state a same-buffer split inherits from its source pane.
+    ///
+    /// Exhaustive destructure on purpose: adding a `Pane` field forces a
+    /// compile-time inherit-or-skip decision here instead of a silent split bug
+    /// (this method exists because `saved_scrolls` was once such a bug).
+    pub fn inherit_view_state(&mut self, src: &Pane) {
+        let Pane {
+            buffer_id: _,   // pane identity, set by the split itself
+            viewport,
+            saved_scrolls,
+            selections: _,  // engine render copy, repopulated every frame
+            primary_idx: _, // ditto
+            providers: _,   // allocated per pane in build_pane
+            wrap_mode,
+            saved_wrap_mode,
+        } = src;
+        self.viewport = viewport.clone();
+        self.saved_scrolls = saved_scrolls.clone();
+        self.wrap_mode = *wrap_mode;
+        self.saved_wrap_mode = *saved_wrap_mode;
+    }
+
     /// Width available for text after subtracting the gutter, clamped to at least 1.
     ///
     /// `total_lines` is the buffer's current line count (used to size the line-number column).
