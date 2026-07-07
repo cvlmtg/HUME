@@ -125,6 +125,10 @@ macro_rules! live_host {
             state: &mut $ed.state,
             view: &mut $ed.view,
             lsp: Some(&$ed.lsp),
+            timers: Some(crate::editor::timer_bridge::TimerHandle {
+                wheel: &mut $ed.timer_wheel,
+                thunks: &mut $ed.timer_thunks,
+            }),
         }
     }};
 }
@@ -473,6 +477,7 @@ mod shift_punctuation;
 mod surround;
 mod sync_dispatch;
 mod tabs;
+mod timers;
 mod tutor;
 mod view_scroll;
 mod vim_keybind;

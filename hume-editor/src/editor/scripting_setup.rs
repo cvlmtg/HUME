@@ -114,6 +114,10 @@ impl Editor {
                         state: &mut self.state,
                         view: &mut self.view,
                         lsp: Some(&self.lsp),
+                        timers: Some(super::timer_bridge::TimerHandle {
+                            wheel: &mut self.timer_wheel,
+                            thunks: &mut self.timer_thunks,
+                        }),
                     };
                     host_scr.fire_hook(hook_id, &args, pid, bid, &mut impl_host)
                 };
@@ -170,6 +174,10 @@ impl Editor {
                 state: &mut self.state,
                 view: &mut self.view,
                 lsp: Some(&self.lsp),
+                timers: Some(super::timer_bridge::TimerHandle {
+                    wheel: &mut self.timer_wheel,
+                    thunks: &mut self.timer_thunks,
+                }),
             };
             host_scr.run_steel_calls(calls, pid, bid, &mut impl_host)
         };

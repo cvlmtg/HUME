@@ -10,9 +10,12 @@ use std::time::{Duration, Instant};
 
 use super::async_source::AsyncSource;
 
-/// Opaque handle to a scheduled timer.
+/// Opaque handle to a scheduled timer. The inner `u64` is `pub(crate)` (not
+/// exposed via a method) so `timer_bridge.rs` can convert to/from the plain
+/// integer Steel's `(after ms thunk)` returns — this module itself stays
+/// Steel-agnostic (see the module doc).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub(crate) struct TimerId(u64);
+pub(crate) struct TimerId(pub(crate) u64);
 
 /// Min-heap of `(deadline, id)`, plus a lazily-drained cancellation set.
 ///
@@ -25,9 +28,6 @@ pub(crate) struct TimerId(u64);
 pub(crate) struct TimerWheel {
     heap: BinaryHeap<Reverse<(Instant, TimerId)>>,
     cancelled: HashSet<TimerId>,
-    // Read by `schedule` only; production build has no `schedule` caller yet
-    // (see below), so this warns dead too without the same allow.
-    #[allow(dead_code)]
     next_id: u64,
 }
 
@@ -41,11 +41,7 @@ impl TimerWheel {
     }
 
     /// Schedule a timer to fire `after` from now. Returns a handle usable
-    /// with [`Self::cancel`].
-    // No production caller until B4 (`(after ms thunk)` / `(debounce ms proc)`)
-    // wires the Steel surface; exercised directly by this module's tests
-    // until then.
-    #[allow(dead_code)]
+    /// with [`Self::cancel`]. Production caller: `timer_bridge::TimerHandle`.
     pub(crate) fn schedule(&mut self, after: Duration) -> TimerId {
         let id = TimerId(self.next_id);
         self.next_id += 1;
@@ -55,8 +51,6 @@ impl TimerWheel {
 
     /// Cancel a previously scheduled timer. A no-op if `id` already fired or
     /// was already cancelled.
-    // Same pending-caller situation as `schedule` — B4's `cancel-timer!`.
-    #[allow(dead_code)]
     pub(crate) fn cancel(&mut self, id: TimerId) {
         self.cancelled.insert(id);
     }

@@ -62,6 +62,7 @@ pub(super) mod scroll;
 pub(crate) mod search;
 pub(crate) mod syntax;
 mod theme;
+mod timer_bridge;
 mod timers;
 mod visual_move;
 
@@ -460,6 +461,9 @@ pub(crate) struct Editor {
     /// Nearest-deadline timer registry (P7); Steel-visible via B4's
     /// `after`/`debounce` builtins.
     timer_wheel: timers::TimerWheel,
+    /// `TimerId -> Steel thunk`, keeping `timers.rs` itself payload-agnostic
+    /// (B4). Entry removed on fire or cancel — never leaked.
+    timer_thunks: std::collections::HashMap<timers::TimerId, steel::rvals::SteelVal>,
     /// LSP backend + client state (C4+): threaded in production,
     /// synchronous-inline in tests, mirroring `parse_worker` above.
     lsp: lsp::LspState,
@@ -811,6 +815,10 @@ impl Editor {
                 state: &mut self.state,
                 view: &mut self.view,
                 lsp: Some(&self.lsp),
+                timers: Some(timer_bridge::TimerHandle {
+                    wheel: &mut self.timer_wheel,
+                    thunks: &mut self.timer_thunks,
+                }),
             };
             scripting.call_steel_cmd(
                 name,
@@ -1105,6 +1113,7 @@ impl Editor {
             parse_worker: Box::new(InlineParseBackend::new()),
             parse_worker_disconnect_logged: false,
             timer_wheel: timers::TimerWheel::new(),
+            timer_thunks: std::collections::HashMap::new(),
             lsp: lsp::LspState::new_inline(),
             tui_active: false,
             #[cfg(test)]

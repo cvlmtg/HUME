@@ -193,6 +193,7 @@ impl Editor {
             parse_worker: Box::new(hume_treesitter::parse_worker::ThreadedParseBackend::new()),
             parse_worker_disconnect_logged: false,
             timer_wheel: super::timers::TimerWheel::new(),
+            timer_thunks: std::collections::HashMap::new(),
             lsp: super::lsp::LspState::new_threaded(),
             tui_active: false,
             #[cfg(test)]

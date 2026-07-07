@@ -17,6 +17,7 @@ use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use crate::editor::lsp::LspState;
 use crate::editor::registry::MappableCommand;
+use crate::editor::timer_bridge::TimerHandle;
 use crate::settings::{BufferOverrides, SettingScope, apply_setting};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 use hume_scripting::host::{BindMode, EditorHost};
@@ -31,16 +32,22 @@ pub(crate) struct EditorHostImpl<'a> {
     /// everywhere else (init evals, which `require_cmd_ctx!` already blocks
     /// LSP builtins from anyway), so those sites don't need to thread it in.
     pub(crate) lsp: Option<&'a LspState>,
+    /// Same `Some`-at-three-sites shape as `lsp`, for B4's `(after …)` /
+    /// `(cancel-timer! …)` — these mutate (schedule/cancel), so `&LspState`'s
+    /// shared-borrow shape doesn't fit; `TimerHandle` bundles the two
+    /// `&mut` pieces this needs.
+    pub(crate) timers: Option<TimerHandle<'a>>,
 }
 
 impl<'a> EditorHostImpl<'a> {
-    /// Convenience constructor for the (common) case with no LSP access —
-    /// init evals, and every non-LSP test in the suite.
+    /// Convenience constructor for the (common) case with no LSP/timer
+    /// access — init evals, and every non-LSP/non-timer test in the suite.
     pub(crate) fn new(state: &'a mut EditorState, view: &'a mut EngineView) -> Self {
         Self {
             state,
             view,
             lsp: None,
+            timers: None,
         }
     }
 
@@ -376,6 +383,21 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
 
     fn lsp_range_params(&self, id: BufferId) -> Option<serde_json::Value> {
         crate::editor::lsp::introspect::range_params(self.state, self.lsp?, id)
+    }
+
+    // ── Timers (B4) ──────────────────────────────────────────────────────────
+    fn schedule_timer(&mut self, ms: u64, thunk: steel::rvals::SteelVal) -> Option<u64> {
+        Some(
+            self.timers
+                .as_mut()?
+                .schedule(std::time::Duration::from_millis(ms), thunk),
+        )
+    }
+
+    fn cancel_timer(&mut self, id: u64) {
+        if let Some(timers) = self.timers.as_mut() {
+            timers.cancel(id);
+        }
     }
 }
 

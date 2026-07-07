@@ -247,4 +247,19 @@ pub trait EditorHost {
         let _ = id;
         None
     }
+
+    // ── Timers (B4; default = no timer support) ──────────────────────────────
+    /// Schedules `thunk` — opaque to this trait, a raw Steel closure — to
+    /// fire after `ms` milliseconds. Returns the new timer id, or `None` if
+    /// this host has no timer wheel to schedule onto (test hosts).
+    fn schedule_timer(&mut self, ms: u64, thunk: steel::rvals::SteelVal) -> Option<u64> {
+        let _ = (ms, thunk);
+        None
+    }
+
+    /// Cancels a previously scheduled timer. A no-op if `id` already fired,
+    /// was already cancelled, or this host has no timer wheel.
+    fn cancel_timer(&mut self, id: u64) {
+        let _ = id;
+    }
 }

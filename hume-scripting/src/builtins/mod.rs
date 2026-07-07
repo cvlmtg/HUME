@@ -22,6 +22,7 @@ pub(crate) mod settings;
 pub(crate) mod shell;
 pub(crate) mod statusline;
 pub(crate) mod syntax;
+pub(crate) mod timers;
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
@@ -183,6 +184,16 @@ const BOOTSTRAP: &str = r#"
 ; drop-if-buffer-moved-on staleness check.
 (define (lsp-request server method params callback #:allow-stale [allow-stale #f])
   (%lsp-request server method params callback allow-stale))
+
+; debounce — trailing-edge: each call (re)schedules `proc` `ms` in the
+; future, cancelling whichever call from a previous invocation is still
+; pending. Pure Scheme over (after)/(cancel-timer!) — no Rust debouncer.
+(define (debounce ms proc)
+  (let ((pending (box #f)))
+    (lambda args
+      (let ((prev (unbox pending)))
+        (when prev (cancel-timer! prev)))
+      (set-box! pending (after ms (lambda () (apply proc args)))))))
 
 ; Variadic call! macro — desugars to %dispatch-command.
 ; Defined here (not only in prelude.scm) so it is available in every Steel engine
@@ -360,6 +371,10 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_fn_with_ctx(HUME_CTX, "lsp-position-params", lsp::lsp_position_params);
     steel.register_fn_with_ctx(HUME_CTX, "lsp-range-params", lsp::lsp_range_params);
     steel.register_fn_with_ctx(HUME_CTX, "buffer-generation", buffers::buffer_generation);
+
+    // Timers — not LSP-specific, but B4 was scoped as part of the LSP step.
+    steel.register_fn_with_ctx(HUME_CTX, "after", timers::after);
+    steel.register_fn_with_ctx(HUME_CTX, "cancel-timer!", timers::cancel_timer);
     steel.register_fn_with_ctx(
         HUME_CTX,
         "language-has-grammar?",

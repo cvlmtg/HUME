@@ -274,7 +274,7 @@ The bridge and primitives that make Steel the feature layer. After it, a plugin 
 - [x] **B1** — JSON↔SteelVal codec (null ↔ void; sized by P8)
 - [x] **B2** — generic LSP bridge (`lsp-request` / `lsp-notify` / `on-lsp-notification`)
 - [x] **B3** — introspection builtins (capabilities, status, generation, server-for-buffer)
-- [ ] **B4** — Steel timers (`after`, `debounce`, debounced hook variants)
+- [x] **B4** — Steel timers (`after`, `debounce`, debounced hook variants)
 - [ ] **B5** — decoration stores + setters + diagnostics pull
 - [ ] **B6** — edit + navigation primitives (`apply-text-edits!`, `apply-workspace-edit!`, `goto-location!`)
 - [ ] **B7** — new hooks (`on-lsp-attach`, `on-diagnostics-changed`, `on-viewport-change`, `on-trigger-char`)

@@ -58,9 +58,7 @@ impl Editor {
     /// `prepare_frame`.
     pub(super) fn drain_async_sources(&mut self) {
         self.reparse_stale_buffers();
-        // Collected but not yet dispatched — B4 adds the TimerId -> Steel
-        // thunk side table that gives these ids a payload.
-        let _ = self.timer_wheel.take_due(Instant::now());
+        self.drain_due_timers();
         self.drain_lsp();
     }
 }
