@@ -90,6 +90,7 @@ Steps 1–3 are ordered by dependency but Step 4 tasks unlock incrementally — 
 | LSP idle wake (C4) | **8ms poll while any client is Starting or has a request in flight; 200ms heartbeat while Running-idle** | `event::read()` cannot be woken externally, so a server-initiated push (e.g. `publishDiagnostics`) would sit undrained until the next keystroke if the loop blocked. `LspState::has_pending` (originally only delegated to the raw backend, which never reports true) now also checks per-client state directly: `Starting` (handshake response could land any moment, and C7's queued sends must flush promptly once it does) or a nonzero `pending_count()` (C6's 8ms cadence for in-flight requests). `next_deadline` supplies the coarser 200ms heartbeat once a client reaches Running with nothing outstanding — `LspState`'s `AsyncSource::next_deadline` reports `now + 200ms`, bounding `wake_timeout` to a ~5Hz poll; zero cost when no server is registered. Uses existing P3/P7 machinery — no new event-loop mechanism. |
 | WorkspaceEdit on unopened files (B6) | **Open-as-buffer** | Rename/code actions can touch files with no open buffer. Chose open-as-buffer (undoable, dirty, user saves via `:wa`) over a direct fs write (atomic but bypasses undo) — consistent with every other HUME mutation going through the undo tree. `apply_workspace_edit` validates every file first (opening unopened ones along the way) and only commits once all have passed, then reports `"N buffers modified — :wa writes all"` to the message log. |
 | `set-extra-highlights!` tier (U1) | **New variant `Extra` between `Syntax` and `SearchMatch`** | Plugin spans beat syntax, lose to search/diagnostics/brackets. `HighlightTier` renumbered (`Syntax=0, Extra=1, SearchMatch=2, Diagnostic=3, BracketMatch=4`), `TIER_COUNT` bumped to 5 in `hume-engine/src/style/highlight.rs`. No other renumbering needed — all existing references are by variant name. |
+| `$/progress` (U3) | **Message-log only in v1** | No spinner element added — the statusline's only new element is `Diagnostics` (error/warning counts from C9). `$/progress` continues to route to the message log per C6's existing server-notification handling; a spinner element is Future. |
 
 ## Open Questions
 
@@ -101,7 +102,6 @@ Every row has a **Default** — at the gate, adopt it unless the gate's evidence
 | Snippet completions | v1 strips `${1:...}` placeholders to plain text. Confirm acceptable UX for rust-analyzer (which snippet-ifies aggressively) at F3. **Default:** strip. When full support lands (Future): placeholder *parsing* could be Steel; the insert-mode tabstop state machine with multi-cursor placeholder selections is likely Rust. |
 | Server crash policy | Manual `:lsp-restart` only, or bounded auto-restart (e.g. 3 attempts with backoff)? Revisit with real usage. Policy knob belongs to Steel either way. **Default:** manual-only. |
 | `workspace/configuration` flow | How Steel user config reaches servers. Decide at C8. **Default:** the `register-lsp-server!` `#:settings` blob is answered verbatim to `workspace/configuration` requests and sent once as `didChangeConfiguration` after `initialized`. |
-| `$/progress` | Servers report indexing progress. Statusline spinner element vs message-log only. Decide at U3. **Default:** message-log only in v1 (begin/end messages, no per-report spam); spinner element is Future. |
 | `workspace/didChangeWatchedFiles` | Ties to the existing "File watcher" Future item in ROADMAP — LSP may be the trigger that promotes it. Not required for v1. **Default:** do not implement; do not advertise the capability. |
 | Multiple servers per language | v1: exactly one server per language. The diagnostics store keys by (server, buffer) so the door stays open. **Default:** reject a second `register-lsp-server!` for the same language with a loud error. |
 
@@ -287,7 +287,7 @@ Generic, Steel-scriptable widgets plus store-fed render wiring. The engine primi
 
 - [x] **U1** — diagnostic underlines (third `SharedHighlighter`, Diagnostic tier) + extra-highlights wiring
 - [x] **U2** — diagnostic gutter signs (first real `SignColumn` registration)
-- [ ] **U3** — statusline diagnostics element (Rust element over the C9 store)
+- [x] **U3** — statusline diagnostics element (Rust element over the C9 store)
 - [ ] **U4** — cursor-anchored popup widget (`show-popup!`)
 - [ ] **U5** — selection menu widget (`show-menu!`)
 - [ ] **U6** — Class B bottom drawer (minimal) + location list (`show-drawer-list!`)

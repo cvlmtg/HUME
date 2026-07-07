@@ -574,6 +574,14 @@ impl Editor {
         self.state.buffers.mru_excluding(self.focused_buffer_id())
     }
 
+    /// `(errors, warnings)` for `bid` from the C9 diagnostics store — the
+    /// statusline's `Diagnostics` element reads this directly (never through
+    /// Steel; `self.lsp` is private to `editor` and its descendants, so
+    /// callers outside it, like `ui::statusline`, go through this).
+    pub(crate) fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {
+        lsp::introspect::diagnostic_counts(&self.lsp, bid)
+    }
+
     /// Mutable reference to the focused buffer.
     ///
     /// Uses a split borrow — `buffers` and other fields on `Editor` are

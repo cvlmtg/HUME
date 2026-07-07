@@ -93,6 +93,12 @@ pub enum StatusElement {
     Language,
     /// Read-only indicator: `"[RO]"` when the buffer is read-only, empty otherwise.
     ReadOnly,
+    /// Diagnostic counts for the focused buffer: `"✗ 3 ⚠ 12"`, empty when
+    /// both counts are zero. Reads the C9 diagnostics store directly in
+    /// Rust — the statusline renders every frame, so this never goes
+    /// through Steel's `(diagnostic-counts …)` builtin (that one is for
+    /// plugins, not the render path).
+    Diagnostics,
 }
 
 impl fmt::Display for StatusElement {
@@ -113,6 +119,7 @@ impl fmt::Display for StatusElement {
             StatusElement::MacroRecording => "MacroRecording",
             StatusElement::Language => "Language",
             StatusElement::ReadOnly => "ReadOnly",
+            StatusElement::Diagnostics => "Diagnostics",
         })
     }
 }
@@ -137,9 +144,10 @@ impl FromStr for StatusElement {
             "MacroRecording" => Ok(StatusElement::MacroRecording),
             "Language" => Ok(StatusElement::Language),
             "ReadOnly" => Ok(StatusElement::ReadOnly),
+            "Diagnostics" => Ok(StatusElement::Diagnostics),
             _ => Err(format!(
-                "unknown element '{s}'; valid names: Cwd DirtyIndicator FilePath FileName \
-                 KittyProtocol Language LineEnding MacroRecording MiniBuf Mode Position \
+                "unknown element '{s}'; valid names: Cwd Diagnostics DirtyIndicator FilePath \
+                 FileName KittyProtocol Language LineEnding MacroRecording MiniBuf Mode Position \
                  ReadOnly SearchMatches Selections Separator"
             )),
         }
@@ -183,6 +191,7 @@ impl Default for StatusLineConfig {
             right: vec![
                 StatusElement::MacroRecording,
                 StatusElement::SearchMatches,
+                StatusElement::Diagnostics,
                 StatusElement::KittyProtocol,
                 StatusElement::Separator,
                 StatusElement::Mode,
@@ -474,7 +483,7 @@ fn render_statusline(
     // set_color_for_mode in cursor.rs). No cell-level override needed.
 }
 
-fn render_element(
+pub(crate) fn render_element(
     seg: StatusElement,
     editor: &Editor,
     colors: &EditorColors,
@@ -585,6 +594,15 @@ fn render_element(
                 ""
             };
             (Cow::Borrowed(label), colors.statusline)
+        }
+        StatusElement::Diagnostics => {
+            let (errors, warnings) = editor.diagnostic_counts(editor.focused_buffer_id());
+            let label = if errors == 0 && warnings == 0 {
+                String::new()
+            } else {
+                format!("✗ {errors} ⚠ {warnings}")
+            };
+            (Cow::Owned(label), colors.statusline)
         }
     }
 }

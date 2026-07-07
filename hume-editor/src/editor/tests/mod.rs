@@ -467,6 +467,7 @@ mod lsp_prompt;
 mod lsp_render;
 mod lsp_signs;
 mod lsp_status;
+mod lsp_statusline;
 mod lsp_sync;
 mod macros;
 mod mouse;
