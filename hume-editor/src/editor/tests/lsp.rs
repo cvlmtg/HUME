@@ -246,7 +246,7 @@ fn became_running_flushes_queued_messages_through_the_backend() {
 
     let (client, backend) = ed
         .lsp
-        .client_and_backend_for_test(sid)
+        .client_and_backend(sid)
         .expect("client inserted above");
     client.start_handshake(backend);
     client.send_or_queue(

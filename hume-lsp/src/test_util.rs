@@ -29,14 +29,20 @@ impl RecordingLspBackend {
     /// keep the handle; the backend itself is typically moved into a
     /// `Box<dyn LspBackend>` immediately.
     pub fn new() -> (Self, NotificationLog) {
+        Self::from_inline(InlineLspBackend::new())
+    }
+
+    /// Same as `new`, but pre-scripted with a canned `initialize` success
+    /// response — for tests that need the client to reach `Running` (and
+    /// therefore flush anything it queued while `Starting`) via a plain
+    /// `drain_lsp()` call.
+    pub fn with_default_handshake() -> (Self, NotificationLog) {
+        Self::from_inline(InlineLspBackend::with_default_handshake())
+    }
+
+    fn from_inline(inner: InlineLspBackend) -> (Self, NotificationLog) {
         let log = Rc::new(RefCell::new(Vec::new()));
-        (
-            Self {
-                inner: InlineLspBackend::new(),
-                log: log.clone(),
-            },
-            log,
-        )
+        (Self { inner, log: log.clone() }, log)
     }
 }
 

@@ -178,13 +178,14 @@ impl LspState {
             .map(|d| (d.start, d.end))
     }
 
-    /// Disjoint-borrow accessor for tests that need to drive a client and
-    /// its backend in the same call (e.g. `start_handshake`, which takes
-    /// both) — a plain two-method-call sequence can't do this from outside
+    /// Disjoint-borrow accessor for callers that need to drive a client and
+    /// its backend in the same call (`send_or_queue`, `start_handshake`) —
+    /// a plain two-method-call sequence can't do this from outside
     /// `LspState` since `backend_mut`/`client_for_test` each borrow the
-    /// whole struct.
-    #[cfg(test)]
-    pub(crate) fn client_and_backend_for_test(
+    /// whole struct. Production caller: every send site in `sync.rs`, so
+    /// document sync respects the Starting-queue instead of writing to the
+    /// wire directly.
+    pub(crate) fn client_and_backend(
         &mut self,
         server: ServerId,
     ) -> Option<(&mut LspClient, &mut dyn LspBackend)> {

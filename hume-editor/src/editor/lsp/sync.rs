@@ -11,6 +11,7 @@ use hume_lsp::codec::Message;
 use hume_lsp::sync::changeset_to_content_changes;
 use ropey::Rope;
 
+use super::LspState;
 use crate::editor::Editor;
 
 /// One text mutation queued for `didChange` conversion. `before` is the
@@ -28,7 +29,8 @@ impl Editor {
     /// Sends the buffer's full text as `textDocument/didOpen`. Called once,
     /// right after `lsp_attach_buffer` sets `Buffer.lsp_server` — the buffer
     /// is guaranteed to have a path at that point (unnamed buffers never
-    /// attach).
+    /// attach). Queued instead of sent if the handshake hasn't completed —
+    /// the spec forbids anything but `initialize` before `initialized`.
     pub(super) fn lsp_did_open(&mut self, bid: BufferId) {
         let buf = self.state.buffers.get(bid);
         let Some(server_id) = buf.lsp_server else {
@@ -48,8 +50,11 @@ impl Editor {
                 "text": buf.text().to_string(),
             }
         });
-        self.lsp.backend.send(
-            server_id,
+        let Some((client, backend)) = self.lsp.client_and_backend(server_id) else {
+            return;
+        };
+        client.send_or_queue(
+            backend,
             Message::Notification {
                 method: "textDocument/didOpen".to_string(),
                 params,
@@ -58,7 +63,8 @@ impl Editor {
     }
 
     /// `textDocument/didSave` — never includes text (`didSave.includeText`
-    /// is never advertised in the C5 handshake).
+    /// is never advertised in the C5 handshake). Queued while `Starting`,
+    /// same as every other send site here.
     pub(in crate::editor) fn lsp_did_save(&mut self, bid: BufferId) {
         let buf = self.state.buffers.get(bid);
         let Some(server_id) = buf.lsp_server else {
@@ -71,8 +77,11 @@ impl Editor {
             return;
         };
         let params = serde_json::json!({ "textDocument": { "uri": uri.as_str() } });
-        self.lsp.backend.send(
-            server_id,
+        let Some((client, backend)) = self.lsp.client_and_backend(server_id) else {
+            return;
+        };
+        client.send_or_queue(
+            backend,
             Message::Notification {
                 method: "textDocument/didSave".to_string(),
                 params,
@@ -82,7 +91,10 @@ impl Editor {
 
     /// `textDocument/didClose`. Must run *before* the buffer slot is freed
     /// (`Editor::close_buffer` calls this first) — it needs the buffer's
-    /// path and `lsp_server` to build the notification.
+    /// path and `lsp_server` to build the notification. Queued while
+    /// `Starting`, same as every other send site here — a queued didClose
+    /// flushes after a queued didOpen, in order, so the pair stays coherent
+    /// even if a buffer opens and closes before the handshake completes.
     pub(in crate::editor) fn lsp_did_close(&mut self, bid: BufferId) {
         let buf = self.state.buffers.get(bid);
         let Some(server_id) = buf.lsp_server else {
@@ -95,8 +107,11 @@ impl Editor {
             return;
         };
         let params = serde_json::json!({ "textDocument": { "uri": uri.as_str() } });
-        self.lsp.backend.send(
-            server_id,
+        let Some((client, backend)) = self.lsp.client_and_backend(server_id) else {
+            return;
+        };
+        client.send_or_queue(
+            backend,
             Message::Notification {
                 method: "textDocument/didClose".to_string(),
                 params,
@@ -108,6 +123,7 @@ impl Editor {
     /// paths that replace the text outright (`:e!`) rather than applying a
     /// `ChangeSet` — `Buffer::reload_from_text` computes a line-diff CS for
     /// *undo*, but the wire message here is simplest as a full-text sync.
+    /// Queued while `Starting`, same as every other send site here.
     pub(in crate::editor) fn lsp_did_change_whole_document(&mut self, bid: BufferId) {
         let buf = self.state.buffers.get(bid);
         let Some(server_id) = buf.lsp_server else {
@@ -123,8 +139,11 @@ impl Editor {
             "textDocument": { "uri": uri.as_str(), "version": buf.text_gen as i32 },
             "contentChanges": [{ "text": buf.text().to_string() }],
         });
-        self.lsp.backend.send(
-            server_id,
+        let Some((client, backend)) = self.lsp.client_and_backend(server_id) else {
+            return;
+        };
+        client.send_or_queue(
+            backend,
             Message::Notification {
                 method: "textDocument/didChange".to_string(),
                 params,
@@ -159,19 +178,28 @@ impl Editor {
             let Ok(uri) = hume_lsp::uri::path_to_uri(&path) else {
                 continue;
             };
-            let encoding = self
-                .lsp
-                .clients
-                .get(&server_id)
-                .map(|c| c.encoding)
-                .unwrap_or(hume_editing::PositionEncoding::Utf16);
+
+            // Manual field split: the loop below interleaves a diagnostics
+            // remap with a client-routed send, so `clients`/`backend`/
+            // `diagnostics` all need to be borrowed independently out of
+            // `self.lsp` rather than through method calls on the whole struct.
+            let LspState {
+                clients,
+                backend,
+                diagnostics,
+                ..
+            } = &mut self.lsp;
+            let Some(client) = clients.get_mut(&server_id) else {
+                continue; // can't happen once attached, but never send into the void
+            };
+            let encoding = client.encoding;
 
             for change in pending {
                 // Same source as the didChange conversion below — remap
                 // stored diagnostics through the identical ChangeSet before
                 // it's consumed, so both consumers (C9, C7) see the exact
                 // same edit stream, including undo/redo.
-                self.lsp.diagnostics.remap_through(bid, &change.cs);
+                diagnostics.remap_through(bid, &change.cs);
 
                 let events = changeset_to_content_changes(&change.before, &change.cs, encoding);
                 if events.is_empty() {
@@ -181,8 +209,8 @@ impl Editor {
                     "textDocument": { "uri": uri.as_str(), "version": change.version as i32 },
                     "contentChanges": events,
                 });
-                self.lsp.backend.send(
-                    server_id,
+                client.send_or_queue(
+                    backend.as_mut(),
                     Message::Notification {
                         method: "textDocument/didChange".to_string(),
                         params,
