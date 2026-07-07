@@ -1949,24 +1949,28 @@ fn extend_select_line_crosses_empty_line() {
 
 #[test]
 fn select_line_move_count_three_selects_three_lines() {
-    // `3x`: the fresh single-line selection grows two more lines forward.
+    // `3x` moves the same way three separate `x` presses would: the 1st
+    // press selects the cursor's own line ("b"), the 2nd and 3rd each jump
+    // to the next line, landing on "d" as a single-line selection — not
+    // growing a 3-line span (that's `Ctrl+3x`).
     assert_state!(
         "a\n-[b]>\nc\nd\ne\n",
         |(buf, sels)| cmd_select_line(&buf, sels, 3, MotionMode::Move),
-        "a\n-[b\nc\nd\n]>e\n"
+        "a\nb\nc\n-[d\n]>e\n"
     );
 }
 
 #[test]
 fn select_line_backward_move_count_three_selects_three_lines() {
-    // `3X`: the fresh single-line selection grows two more lines backward.
-    // Cursor is mid-line ("dd"'s second char), not at line start — a
-    // selection starting exactly at line start instead hits the
+    // `3X` moves the same way three separate `X` presses would, landing on
+    // "b" as a single-line selection — not growing a 3-line span (that's
+    // `Ctrl+3X`). Cursor is mid-line ("dd"'s second char), not at line
+    // start — a selection starting exactly at line start instead hits the
     // jump-to-previous-line branch (see `select_line_backward_already_at_start_jumps_to_prev`).
     assert_state!(
         "a\nb\nc\nd-[d]>\ne\n",
         |(buf, sels)| cmd_select_line_backward(&buf, sels, 3, MotionMode::Move),
-        "a\n<[b\nc\ndd\n]-e\n"
+        "a\n<[b\n]-c\ndd\ne\n"
     );
 }
 
@@ -1992,13 +1996,13 @@ fn extend_select_line_backward_count_three_grows_three_lines_at_once() {
 
 #[test]
 fn select_line_move_count_exceeds_buffer_clamps_at_last_line() {
-    // count larger than the remaining lines clamps at the last line instead
-    // of panicking — `extend_line_span`'s existing head-relative clamp
-    // no-ops on every iteration past the buffer edge.
+    // count larger than the remaining lines clamps at the last line: each
+    // repeated press stops advancing once there's no next line, ending on a
+    // single-line selection there — not growing to span every line.
     assert_state!(
         "-[a]>\nb\nc\n",
         |(buf, sels)| cmd_select_line(&buf, sels, 10, MotionMode::Move),
-        "-[a\nb\nc\n]>"
+        "a\nb\n-[c\n]>"
     );
 }
 
