@@ -127,7 +127,7 @@ macro_rules! live_host {
             lsp: Some(&$ed.lsp),
             timers: Some(crate::editor::timer_bridge::TimerHandle {
                 wheel: &mut $ed.timer_wheel,
-                thunks: &mut $ed.timer_thunks,
+                payloads: &mut $ed.timer_payloads,
             }),
         }
     }};
@@ -458,6 +458,7 @@ mod list_buffers;
 mod lsp;
 mod lsp_bridge;
 mod lsp_diagnostics;
+mod lsp_hooks;
 mod lsp_introspect;
 mod lsp_status;
 mod lsp_sync;

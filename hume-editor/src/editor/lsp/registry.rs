@@ -101,6 +101,11 @@ impl Editor {
         };
 
         let root = resolve_root(&path, &config.root_markers, &self.state.cwd);
+        // Cloned before `key` moves `language` in — needed below regardless
+        // of which branch actually runs (the existing-server branch never
+        // touches `key` again, but the new-server branch moves it into
+        // `servers_by_key`).
+        let language_for_hook = language.clone();
         let key = (language, root.clone());
 
         let server_id = if let Some(&existing) = self.lsp.servers_by_key.get(&key) {
@@ -129,6 +134,18 @@ impl Editor {
 
         self.state.buffers.get_mut(bid).lsp_server = Some(server_id);
         self.lsp_did_open(bid);
+        // A brand-new server is still Starting — its BecameRunning arm
+        // fires the attach hook for every buffer attached by then,
+        // including this one. Only fire here for the "attach to an
+        // already-Running server" case (second+ buffer under the same key).
+        if self
+            .lsp
+            .clients
+            .get(&server_id)
+            .is_some_and(|c| c.state == hume_lsp::client::ServerState::Running)
+        {
+            self.fire_hook_lsp_attach(bid, &language_for_hook);
+        }
     }
 
     /// Resolves `:lsp-stop [language]` / `:lsp-restart [language]`'s target

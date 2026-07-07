@@ -294,8 +294,18 @@ impl Editor {
                 self.dispatch_lsp_action(server_id, action);
             }
         }
+        // OnDiagnosticsChanged fires once per buffer this batch actually
+        // touched — a HashSet dedupes two (server, uri) entries that both
+        // resolved to the same buffer (multiple roots, same file; not a v1
+        // scenario, but cheap to get right).
+        let mut touched: HashSet<BufferId> = HashSet::new();
         for ((server_id, _uri), params) in diag_batch {
-            self.ingest_publish_diagnostics(server_id, params);
+            if let Some(bid) = self.ingest_publish_diagnostics(server_id, params) {
+                touched.insert(bid);
+            }
+        }
+        for bid in touched {
+            self.fire_hook_diagnostics_changed(bid);
         }
 
         let now = Instant::now();
@@ -376,7 +386,21 @@ impl Editor {
                 {
                     self.lsp.capabilities_json.insert(server_id, json);
                 }
-                // on-lsp-attach hook: B7 (Step 2).
+                // Fire on-lsp-attach for every buffer already attached to
+                // this server — it was Starting until now, so `lsp_attach_buffer`
+                // deliberately skipped firing it for them.
+                if let Some(lang) = introspect::server_language(&self.lsp, server_id) {
+                    let bids: Vec<BufferId> = self
+                        .state
+                        .buffers
+                        .iter()
+                        .filter(|(_, buf)| buf.lsp_server == Some(server_id))
+                        .map(|(bid, _)| bid)
+                        .collect();
+                    for bid in bids {
+                        self.fire_hook_lsp_attach(bid, &lang);
+                    }
+                }
             }
             ClientAction::Crashed { error } => {
                 self.report(

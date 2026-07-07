@@ -408,6 +408,11 @@ define_settings! {
         "lsp.request-timeout-ms" => lsp_request_timeout_ms: usize = 10_000,
             scope: ["global"],
             parser: usize_nonzero;
+        // Scroll bursts (page-down held, mouse wheel) must collapse to one
+        // OnViewportChange fire, not one per frame (B7).
+        "lsp.viewport-debounce-ms" => lsp_viewport_debounce_ms: usize = 150,
+            scope: ["global"],
+            parser: usize;
         // Global-only *storage*: seeds new panes' `Pane::wrap_mode` at creation
         // time (`hume-engine`'s `Pane` is the live SSOT — see
         // `commands::open_pane`). A same-buffer `:split`/`:vsplit` overrides

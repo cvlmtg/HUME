@@ -170,12 +170,14 @@ impl Editor {
     /// JSON — the caller kept only the last one per (server, uri) within
     /// this drain batch). Drops silently (one Trace line) when the URI
     /// doesn't resolve to an open buffer — v1 never opens a buffer just to
-    /// hold diagnostics.
+    /// hold diagnostics. Returns the buffer actually ingested into, so the
+    /// caller can fire `OnDiagnosticsChanged` (B7) once per touched buffer
+    /// — `None` on any drop path.
     pub(in crate::editor) fn ingest_publish_diagnostics(
         &mut self,
         server_id: ServerId,
         params: serde_json::Value,
-    ) {
+    ) -> Option<BufferId> {
         let parsed: PublishDiagnosticsParams = match serde_json::from_value(params) {
             Ok(p) => p,
             Err(e) => {
@@ -183,7 +185,7 @@ impl Editor {
                     Severity::Trace,
                     format!("lsp: malformed publishDiagnostics: {e}"),
                 );
-                return;
+                return None;
             }
         };
 
@@ -192,21 +194,21 @@ impl Editor {
                 Severity::Trace,
                 "lsp: publishDiagnostics with an unresolvable URI".to_string(),
             );
-            return;
+            return None;
         };
         let Ok(canonical) = path.canonicalize() else {
             self.report(
                 Severity::Trace,
                 format!("lsp: publishDiagnostics for an unknown file: {}", path.display()),
             );
-            return;
+            return None;
         };
         let Some(bid) = self.state.buffers.find_by_path(&canonical) else {
             self.report(
                 Severity::Trace,
                 format!("lsp: publishDiagnostics for an unopened buffer: {}", canonical.display()),
             );
-            return;
+            return None;
         };
 
         // A publish computed against an older version would convert its
@@ -223,7 +225,7 @@ impl Editor {
                 Severity::Trace,
                 format!("lsp: dropping publishDiagnostics for a stale version ({v})"),
             );
-            return;
+            return None;
         }
 
         let encoding = self
@@ -271,6 +273,7 @@ impl Editor {
         stored.sort_by_key(|d| d.start);
 
         self.lsp.diagnostics.replace(server_id, bid, stored);
+        Some(bid)
     }
 }
 

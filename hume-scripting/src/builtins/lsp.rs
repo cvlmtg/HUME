@@ -230,6 +230,36 @@ fn bid_arg(val: &SteelVal, ctx_name: &str) -> Result<hume_engine::pipeline::Buff
         .ok_or_else(|| SteelErr::new(steel::rerrs::ErrorKind::TypeMismatch, format!("{ctx_name}: expected buffer-id")))
 }
 
+/// `(register-trigger-chars! source chars)` — `chars` is a list of 1-char
+/// strings. Same init/plugin-load gate as `register-hook!` / `on-lsp-notification`.
+pub(crate) fn register_trigger_chars(
+    ctx: &mut SteelCtx,
+    source: SteelVal,
+    chars: SteelVal,
+) -> SteelResult {
+    if !ctx.is_init && ctx.plugin_stack.is_empty() {
+        steel::stop!(Generic => "register-trigger-chars!: only callable during init/plugin load");
+    }
+    let source = string_arg(source, "register-trigger-chars! source")?;
+    let chars = chars_arg(chars, "register-trigger-chars! chars")?;
+    ctx.host.register_trigger_chars(source, chars);
+    Ok(SteelVal::Void)
+}
+
+fn chars_arg(val: SteelVal, ctx_name: &str) -> Result<Vec<char>, SteelErr> {
+    list_to_strings(val, ctx_name)?
+        .into_iter()
+        .map(|s| {
+            let mut it = s.chars();
+            match (it.next(), it.next()) {
+                (Some(c), None) => Ok(c),
+                _ => steel::stop!(Generic =>
+                    "{}: each entry must be exactly one character, got {:?}", ctx_name, s),
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

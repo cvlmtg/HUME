@@ -371,6 +371,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_fn_with_ctx(HUME_CTX, "lsp-position-params", lsp::lsp_position_params);
     steel.register_fn_with_ctx(HUME_CTX, "lsp-range-params", lsp::lsp_range_params);
     steel.register_fn_with_ctx(HUME_CTX, "buffer-generation", buffers::buffer_generation);
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "register-trigger-chars!",
+        lsp::register_trigger_chars,
+    );
 
     // Timers — not LSP-specific, but B4 was scoped as part of the LSP step.
     steel.register_fn_with_ctx(HUME_CTX, "after", timers::after);

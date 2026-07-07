@@ -69,6 +69,10 @@ impl Editor {
                 self.state.autoindent_pending = false;
                 let (ap_enabled, ap_pairs) =
                     self.doc().overrides.auto_pairs_ref(&self.state.settings);
+                // `OnTriggerChar` (B7) only fires when `ch` actually landed in
+                // the buffer — the two skip-close branches below just move
+                // the cursor past an existing closer, inserting nothing.
+                let mut inserted = true;
                 if ap_enabled {
                     if let Some(pair) = ap_pairs.iter().find(|p| p.open == ch) {
                         let (open, close, symmetric) = (pair.open, pair.close, pair.is_symmetric());
@@ -83,6 +87,7 @@ impl Editor {
                                 buf,
                                 |b, s| cmd_move_right(b, s, 1, MotionMode::Move),
                             );
+                            inserted = false;
                         } else if self.should_auto_pair(pair, ap_pairs) {
                             // Context is clear: insert open+close or wrap selection.
                             // NLL: `ap_pairs` last used in the condition above; borrow ends here.
@@ -116,6 +121,7 @@ impl Editor {
                             buf,
                             |b, s| cmd_move_right(b, s, 1, MotionMode::Move),
                         );
+                        inserted = false;
                     } else {
                         doc_ops::apply_doc_edit_grouped(
                             &mut self.state.buffers,
@@ -133,6 +139,9 @@ impl Editor {
                         buf,
                         |b, s| insert_char(b, s, ch),
                     );
+                }
+                if inserted && self.state.is_trigger_char(ch) {
+                    self.fire_hook_trigger_char(buf, ch);
                 }
             }
 

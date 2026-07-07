@@ -184,6 +184,7 @@ impl Editor {
                 cwd: std::env::current_dir().unwrap_or_default(),
                 pending_hooks: Vec::new(),
                 pending_steel_calls: Vec::new(),
+                trigger_chars: std::collections::HashMap::new(),
                 completion_view,
             },
             view: engine_view,
@@ -193,7 +194,9 @@ impl Editor {
             parse_worker: Box::new(hume_treesitter::parse_worker::ThreadedParseBackend::new()),
             parse_worker_disconnect_logged: false,
             timer_wheel: super::timers::TimerWheel::new(),
-            timer_thunks: std::collections::HashMap::new(),
+            timer_payloads: std::collections::HashMap::new(),
+            viewport_debounce: std::collections::HashMap::new(),
+            last_viewport_key: std::collections::HashMap::new(),
             lsp: super::lsp::LspState::new_threaded(),
             tui_active: false,
             #[cfg(test)]
@@ -568,6 +571,19 @@ impl Editor {
                 &whitespace,
                 scrolloff,
             );
+
+            // B7: a real visible-range change (scroll command, cursor-follow
+            // during typing, or a resize that altered height) debounces
+            // OnViewportChange. This is bookkeeping over scroll_into_view's
+            // *result*, not part of computing what to render — the hook
+            // itself never fires from here, only the coalescer timer gets
+            // (re)armed; the actual fire happens later via the async-source
+            // drain, same as every other timer.
+            let viewport = &self.view.panes[pid].viewport;
+            let key = (viewport.top_line, viewport.height);
+            if self.last_viewport_key.insert(pid, key) != Some(key) {
+                self.debounce_viewport_change(pid);
+            }
         }
 
         // 5. Drain completed async work (parse results, LSP), then evaluate

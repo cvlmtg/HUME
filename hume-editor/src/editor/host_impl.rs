@@ -399,6 +399,11 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             timers.cancel(id);
         }
     }
+
+    // ── Trigger chars (B7) ───────────────────────────────────────────────────
+    fn register_trigger_chars(&mut self, source: String, chars: Vec<char>) {
+        self.state.trigger_chars.insert(source, chars);
+    }
 }
 
 /// Map scripting `BindMode` → editor `keymap::BindMode`.

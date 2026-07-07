@@ -53,6 +53,56 @@ impl Editor {
         self.fire_hook_silent(HookId::OnBufferSave, &[val]);
     }
 
+    /// Fire `OnLspAttach (bid server-name)` — called both when a buffer
+    /// attaches to an already-Running server (`lsp_attach_buffer`) and, for
+    /// every buffer already attached, when a Starting client reaches
+    /// Running (`dispatch_lsp_action`'s `BecameRunning` arm).
+    pub(super) fn fire_hook_lsp_attach(&mut self, bid: BufferId, server_name: &str) {
+        let bid_val = SteelBufferId::new(bid).into_steel_val();
+        let name_val = SteelVal::StringV(server_name.into());
+        self.fire_hook_silent(HookId::OnLspAttach, &[bid_val, name_val]);
+    }
+
+    /// Fire `OnDiagnosticsChanged (bid)` — payload-free signal, once per
+    /// buffer a `publishDiagnostics` drain batch actually touched
+    /// (`drain_lsp`). Handlers pull via `(diagnostics-for-buffer bid …)` (B5).
+    pub(super) fn fire_hook_diagnostics_changed(&mut self, bid: BufferId) {
+        let val = SteelBufferId::new(bid).into_steel_val();
+        self.fire_hook_silent(HookId::OnDiagnosticsChanged, &[val]);
+    }
+
+    /// Fire `OnViewportChange (bid first-line last-line)` for `pane_id` —
+    /// called only when its debounce timer actually fires (`timer_bridge`),
+    /// reading the pane's *current* bounds rather than whatever they were
+    /// when the timer was armed. A no-op if the pane closed in the meantime.
+    pub(super) fn fire_hook_viewport_change(&mut self, pane_id: hume_engine::pipeline::PaneId) {
+        let Some(pane) = self.view.panes.get(pane_id) else {
+            return;
+        };
+        let bid = pane.buffer_id;
+        let first_line = pane.viewport.top_line;
+        let total_lines = self.state.buffers.get(bid).text().len_lines();
+        let last_line = (first_line + pane.viewport.height as usize).min(total_lines.saturating_sub(1));
+        let bid_val = SteelBufferId::new(bid).into_steel_val();
+        self.fire_hook_silent(
+            HookId::OnViewportChange,
+            &[
+                bid_val,
+                SteelVal::IntV(first_line as isize),
+                SteelVal::IntV(last_line as isize),
+            ],
+        );
+    }
+
+    /// Fire `OnTriggerChar (bid char-string)` — Insert mode, after `ch` has
+    /// already been inserted into `bid` (mappings/insert.rs), and only for
+    /// a char registered via `(register-trigger-chars! source chars)`.
+    pub(super) fn fire_hook_trigger_char(&mut self, bid: BufferId, ch: char) {
+        let bid_val = SteelBufferId::new(bid).into_steel_val();
+        let ch_val = SteelVal::StringV(ch.to_string().into());
+        self.fire_hook_silent(HookId::OnTriggerChar, &[bid_val, ch_val]);
+    }
+
     /// Fire all Steel handlers for `hook_id`, passing `args` to each.
     ///
     /// Enqueue `hook_id` to fire after the current command returns.
@@ -116,7 +166,7 @@ impl Editor {
                         lsp: Some(&self.lsp),
                         timers: Some(super::timer_bridge::TimerHandle {
                             wheel: &mut self.timer_wheel,
-                            thunks: &mut self.timer_thunks,
+                            payloads: &mut self.timer_payloads,
                         }),
                     };
                     host_scr.fire_hook(hook_id, &args, pid, bid, &mut impl_host)
@@ -176,7 +226,7 @@ impl Editor {
                 lsp: Some(&self.lsp),
                 timers: Some(super::timer_bridge::TimerHandle {
                     wheel: &mut self.timer_wheel,
-                    thunks: &mut self.timer_thunks,
+                    payloads: &mut self.timer_payloads,
                 }),
             };
             host_scr.run_steel_calls(calls, pid, bid, &mut impl_host)

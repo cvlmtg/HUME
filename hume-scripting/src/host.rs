@@ -262,4 +262,13 @@ pub trait EditorHost {
     fn cancel_timer(&mut self, id: u64) {
         let _ = id;
     }
+
+    /// `(register-trigger-chars! source chars)` — registers `chars` as
+    /// `OnTriggerChar`-firing chars for `source`, replacing that source's
+    /// previous set (a plugin's own reload doesn't accumulate duplicates).
+    /// Checked as a union across every source's set. Default no-op — test
+    /// hosts have no `EditorState` to register into.
+    fn register_trigger_chars(&mut self, source: String, chars: Vec<char>) {
+        let _ = (source, chars);
+    }
 }

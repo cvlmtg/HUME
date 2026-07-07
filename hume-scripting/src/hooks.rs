@@ -29,6 +29,23 @@ pub enum HookId {
     /// entry would activate the plugin on *any* language transition, not just the
     /// ones it cares about.
     OnLanguageSet,
+    /// Fires when an LSP client reaches `Running` for a buffer attached to
+    /// it — once per already-attached buffer at that moment, and again for
+    /// any buffer that attaches later while the server stays Running.
+    /// Args: `(bid server-name)`.
+    OnLspAttach,
+    /// Fires once per drain batch that ingested at least one
+    /// `publishDiagnostics` for `bid` — payload-free signal by design; pull
+    /// via `(diagnostics-for-buffer bid …)` (B5). Args: `(bid)`.
+    OnDiagnosticsChanged,
+    /// Fires after scroll/resize resolves a pane's viewport, debounced
+    /// (`lsp.viewport-debounce-ms`) so a scroll burst fires once. Args:
+    /// `(bid first-line last-line)`.
+    OnViewportChange,
+    /// Fires in Insert mode after a registered trigger char (see
+    /// `register-trigger-chars!`) has been inserted into the buffer. Args:
+    /// `(bid char-string)`.
+    OnTriggerChar,
 }
 
 /// Single source of truth: `(HookId variant, Steel symbol name)` pairs.
@@ -38,6 +55,10 @@ const HOOKS: &[(HookId, &str)] = &[
     (HookId::OnBufferSave, "on-buffer-save"),
     (HookId::OnModeChange, "on-mode-change"),
     (HookId::OnLanguageSet, "on-language-set"),
+    (HookId::OnLspAttach, "on-lsp-attach"),
+    (HookId::OnDiagnosticsChanged, "on-diagnostics-changed"),
+    (HookId::OnViewportChange, "on-viewport-change"),
+    (HookId::OnTriggerChar, "on-trigger-char"),
 ];
 
 impl HookId {
@@ -86,5 +107,66 @@ impl HookRegistry {
     /// `true` if no handlers are registered for `hook_id` (fast early-exit path).
     pub(crate) fn is_empty_for(&self, hook_id: HookId) -> bool {
         self.handlers.get(&hook_id).is_none_or(Vec::is_empty)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Never called — its only purpose is the exhaustive `match`: adding a
+    /// `HookId` variant without extending this list is a compile error, not
+    /// a runtime `.expect()` panic the first time something fires the new
+    /// hook. Keep in lockstep with `ALL_VARIANTS` below.
+    #[allow(dead_code)]
+    fn _exhaustiveness_check(id: HookId) {
+        match id {
+            HookId::OnBufferOpen
+            | HookId::OnBufferClose
+            | HookId::OnBufferSave
+            | HookId::OnModeChange
+            | HookId::OnLanguageSet
+            | HookId::OnLspAttach
+            | HookId::OnDiagnosticsChanged
+            | HookId::OnViewportChange
+            | HookId::OnTriggerChar => {}
+        }
+    }
+
+    const ALL_VARIANTS: &[HookId] = &[
+        HookId::OnBufferOpen,
+        HookId::OnBufferClose,
+        HookId::OnBufferSave,
+        HookId::OnModeChange,
+        HookId::OnLanguageSet,
+        HookId::OnLspAttach,
+        HookId::OnDiagnosticsChanged,
+        HookId::OnViewportChange,
+        HookId::OnTriggerChar,
+    ];
+
+    /// Fail oracle: delete a HOOKS row for a variant still in `ALL_VARIANTS`
+    /// → `symbol()` panics (caught as a normal test failure here, not a
+    /// runtime surprise the first time the hook fires).
+    #[test]
+    fn every_hook_id_round_trips_through_symbol_and_from_symbol() {
+        for &id in ALL_VARIANTS {
+            let name = id.symbol();
+            assert_eq!(
+                HookId::from_symbol(name),
+                Some(id),
+                "round trip failed for {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn all_names_has_no_duplicates_and_matches_variant_count() {
+        let names: Vec<&str> = HookId::all_names().collect();
+        assert_eq!(names.len(), ALL_VARIANTS.len());
+        let mut sorted = names.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), names.len(), "HOOKS has a duplicate symbol name");
     }
 }

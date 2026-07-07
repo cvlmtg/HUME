@@ -360,6 +360,11 @@ pub(crate) struct EditorState {
     /// inline — same discipline as `pending_hooks`) by whichever completion
     /// fires, drained by `Editor::drain_pending_steel_calls`.
     pub(super) pending_steel_calls: Vec<(steel::rvals::SteelVal, Vec<steel::rvals::SteelVal>)>,
+    /// Chars that fire `OnTriggerChar` in Insert mode, keyed by the
+    /// registering `(register-trigger-chars! source chars)` source so one
+    /// source's set doesn't get clobbered by another's — checked as a union
+    /// across all sources (B7).
+    pub(super) trigger_chars: std::collections::HashMap<String, Vec<char>>,
     /// Shared completion-popup view: written by `prepare_frame`, read by provider.
     pub(crate) completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>>,
 }
@@ -369,6 +374,13 @@ impl EditorState {
 
     pub(crate) fn mode(&self) -> Mode {
         self.mode
+    }
+
+    /// `true` if `ch` was registered by any `(register-trigger-chars! source
+    /// chars)` call — the union-across-sources check `OnTriggerChar`'s fire
+    /// site (mappings/insert.rs) gates on.
+    pub(crate) fn is_trigger_char(&self, ch: char) -> bool {
+        self.trigger_chars.values().any(|chars| chars.contains(&ch))
     }
 
     /// Single write path for all mode transitions.
@@ -461,9 +473,17 @@ pub(crate) struct Editor {
     /// Nearest-deadline timer registry (P7); Steel-visible via B4's
     /// `after`/`debounce` builtins.
     timer_wheel: timers::TimerWheel,
-    /// `TimerId -> Steel thunk`, keeping `timers.rs` itself payload-agnostic
-    /// (B4). Entry removed on fire or cancel — never leaked.
-    timer_thunks: std::collections::HashMap<timers::TimerId, steel::rvals::SteelVal>,
+    /// `TimerId -> {Steel thunk, or native action}`, keeping `timers.rs`
+    /// itself payload-agnostic (B4). Entry removed on fire or cancel — never
+    /// leaked.
+    timer_payloads: std::collections::HashMap<timers::TimerId, timer_bridge::TimerPayload>,
+    /// This pane's currently-pending `OnViewportChange` debounce timer, if
+    /// any (B7) — looked up to cancel-and-replace on the next change.
+    viewport_debounce: std::collections::HashMap<hume_engine::pipeline::PaneId, timers::TimerId>,
+    /// `(top_line, height)` as of the last frame, per pane — `prepare_frame`'s
+    /// scroll step compares against this to detect a real viewport change
+    /// worth debouncing (B7), rather than firing every frame regardless.
+    last_viewport_key: std::collections::HashMap<hume_engine::pipeline::PaneId, (usize, u16)>,
     /// LSP backend + client state (C4+): threaded in production,
     /// synchronous-inline in tests, mirroring `parse_worker` above.
     lsp: lsp::LspState,
@@ -817,7 +837,7 @@ impl Editor {
                 lsp: Some(&self.lsp),
                 timers: Some(timer_bridge::TimerHandle {
                     wheel: &mut self.timer_wheel,
-                    thunks: &mut self.timer_thunks,
+                    payloads: &mut self.timer_payloads,
                 }),
             };
             scripting.call_steel_cmd(
@@ -1104,6 +1124,7 @@ impl Editor {
                 cwd: std::env::temp_dir(),
                 pending_hooks: Vec::new(),
                 pending_steel_calls: Vec::new(),
+                trigger_chars: std::collections::HashMap::new(),
                 completion_view: Arc::new(RwLock::new(None)),
             },
             view: engine_view,
@@ -1113,7 +1134,9 @@ impl Editor {
             parse_worker: Box::new(InlineParseBackend::new()),
             parse_worker_disconnect_logged: false,
             timer_wheel: timers::TimerWheel::new(),
-            timer_thunks: std::collections::HashMap::new(),
+            timer_payloads: std::collections::HashMap::new(),
+            viewport_debounce: std::collections::HashMap::new(),
+            last_viewport_key: std::collections::HashMap::new(),
             lsp: lsp::LspState::new_inline(),
             tui_active: false,
             #[cfg(test)]
