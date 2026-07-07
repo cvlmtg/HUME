@@ -467,9 +467,11 @@ impl Editor {
 
         if matches!(outcome, Outcome::TimedOut) {
             self.report(Severity::Trace, format!("lsp: {} timed out", meta.method));
-            // Dropped, not dispatched — v1 has no callback shape for a
-            // timeout outcome (hub C6 card: "timed-out -> log + drop").
-            return;
+            // Dispatched (not dropped, deviating from the hub C6 card's
+            // "timed-out -> log + drop"): a callback that never fires on
+            // timeout means a caller (e.g. B2's Steel err-mapped callback)
+            // has no way to notice and would hang silently. TimedOut still
+            // goes through the staleness check below like any other outcome.
         }
 
         if let Some((bid, text_gen)) = entry.stale_check {

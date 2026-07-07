@@ -171,7 +171,7 @@ impl Editor {
     /// this drain batch). Drops silently (one Trace line) when the URI
     /// doesn't resolve to an open buffer — v1 never opens a buffer just to
     /// hold diagnostics.
-    pub(super) fn ingest_publish_diagnostics(
+    pub(in crate::editor) fn ingest_publish_diagnostics(
         &mut self,
         server_id: ServerId,
         params: serde_json::Value,
@@ -208,6 +208,23 @@ impl Editor {
             );
             return;
         };
+
+        // A publish computed against an older version would convert its
+        // positions against text that has since moved on — the server has
+        // already received our newer didChange(s) and will republish
+        // against the current version shortly. Drop it rather than store
+        // positions that are quietly wrong until then; the existing
+        // (already-remapped) stored diagnostics keep displaying meanwhile.
+        // Absent version is always ingested (older/simpler servers omit it).
+        if let Some(v) = parsed.version
+            && v != self.state.buffers.get(bid).text_gen as i32
+        {
+            self.report(
+                Severity::Trace,
+                format!("lsp: dropping publishDiagnostics for a stale version ({v})"),
+            );
+            return;
+        }
 
         let encoding = self
             .lsp

@@ -29,6 +29,14 @@ fn publish_diagnostics_notification(
     uri: &str,
     ranges_and_severity: &[DiagFixture],
 ) -> hume_lsp::codec::Message {
+    publish_diagnostics_notification_versioned(uri, ranges_and_severity, None)
+}
+
+fn publish_diagnostics_notification_versioned(
+    uri: &str,
+    ranges_and_severity: &[DiagFixture],
+    version: Option<i32>,
+) -> hume_lsp::codec::Message {
     let diagnostics: Vec<serde_json::Value> = ranges_and_severity
         .iter()
         .map(|((sl, sc), (el, ec), sev)| {
@@ -42,9 +50,13 @@ fn publish_diagnostics_notification(
             })
         })
         .collect();
+    let mut params = serde_json::json!({ "uri": uri, "diagnostics": diagnostics });
+    if let Some(v) = version {
+        params["version"] = serde_json::json!(v);
+    }
     hume_lsp::codec::Message::Notification {
         method: "textDocument/publishDiagnostics".to_string(),
-        params: serde_json::json!({ "uri": uri, "diagnostics": diagnostics }),
+        params,
     }
 }
 
@@ -145,4 +157,93 @@ fn publish_for_an_unopened_file_is_dropped_without_spam() {
         .filter(|e| e.text.contains("publishDiagnostics"))
         .collect();
     assert_eq!(entries.len(), 1, "exactly one Trace line, never per-diagnostic spam");
+}
+
+// ── Minor B — stale-versioned publishes are dropped ────────────────────────
+
+/// Extracts the `params` payload back out of a scripted `publishDiagnostics`
+/// notification `Message`, for tests that call `ingest_publish_diagnostics`
+/// directly (needed to exercise two separate ingest calls in sequence —
+/// batch coalescing would otherwise collapse two same-drain publishes into
+/// one before ingest ever saw the first).
+fn params_of(msg: hume_lsp::codec::Message) -> serde_json::Value {
+    match msg {
+        hume_lsp::codec::Message::Notification { params, .. } => params,
+        other => panic!("expected a Notification, got {other:?}"),
+    }
+}
+
+#[test]
+fn publish_with_matching_version_is_ingested() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
+    std::fs::write(&file, "one two three four\n").unwrap();
+
+    let mut ed = editor_from("-[w]>ord\n");
+    let mut backend = InlineLspBackend::new();
+    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    let bid = open_with_client(&mut ed, &file, sid);
+    let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
+    let current_gen = ed.state.buffers.get(bid).text_gen as i32;
+
+    let params = params_of(publish_diagnostics_notification_versioned(
+        uri.as_str(),
+        &[((0, 0), (0, 3), 1)],
+        Some(current_gen),
+    ));
+    ed.ingest_publish_diagnostics(sid, params);
+
+    assert_eq!(
+        ed.lsp.diagnostic_counts_for_test(bid),
+        (1, 0),
+        "a publish whose version matches the buffer's current text_gen must be ingested"
+    );
+}
+
+#[test]
+fn publish_with_a_stale_version_is_dropped_and_does_not_disturb_stored_diagnostics() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
+    std::fs::write(&file, "one two three four\n").unwrap();
+
+    let mut ed = editor_from("-[w]>ord\n");
+    let mut backend = InlineLspBackend::new();
+    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    let bid = open_with_client(&mut ed, &file, sid);
+    let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
+    let current_gen = ed.state.buffers.get(bid).text_gen as i32;
+
+    // Seed one real (current-version) diagnostic first.
+    let seed = params_of(publish_diagnostics_notification_versioned(
+        uri.as_str(),
+        &[((0, 0), (0, 3), 1)],
+        Some(current_gen),
+    ));
+    ed.ingest_publish_diagnostics(sid, seed);
+    assert_eq!(ed.lsp.diagnostic_counts_for_test(bid), (1, 0), "seed publish must land");
+
+    // A later publish computed against a version we've already moved past
+    // (the server hasn't caught up with our own edits yet) must be dropped
+    // — not applied on top of, and not clearing, what's already stored.
+    let stale = params_of(publish_diagnostics_notification_versioned(
+        uri.as_str(),
+        &[((0, 4), (0, 7), 2), ((0, 8), (0, 13), 2)],
+        Some(current_gen - 1),
+    ));
+    ed.ingest_publish_diagnostics(sid, stale);
+
+    assert_eq!(
+        ed.lsp.diagnostic_counts_for_test(bid),
+        (1, 0),
+        "a stale-versioned publish must be dropped, leaving the prior stored diagnostics untouched"
+    );
+    let entries: Vec<_> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.text.contains("stale version"))
+        .collect();
+    assert_eq!(entries.len(), 1, "exactly one Trace line for the dropped publish");
 }

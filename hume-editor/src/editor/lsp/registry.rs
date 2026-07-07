@@ -192,7 +192,12 @@ impl Editor {
             .map(|(bid, _)| bid)
             .collect();
         for bid in bids {
-            self.state.buffers.get_mut(bid).lsp_server = None;
+            let buf = self.state.buffers.get_mut(bid);
+            buf.lsp_server = None;
+            // Any edits queued for the now-detached server must not survive
+            // to a future attach — flushed against a new server's didOpen
+            // baseline, they'd desync its document state immediately.
+            buf.lsp_pending.clear();
         }
     }
 

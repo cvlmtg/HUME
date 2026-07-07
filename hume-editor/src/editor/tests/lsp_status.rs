@@ -95,6 +95,44 @@ fn lsp_stop_with_no_matching_server_stops_nothing() {
     assert_eq!(ed.lsp_stop(None), 0);
 }
 
+/// Minor A: a queued didChange entry left over from before the stop must
+/// not survive to be flushed against a future server's didOpen baseline —
+/// it would desync that server's document state on the very first edit.
+#[test]
+fn lsp_stop_clears_the_buffer_s_pending_change_queue() {
+    let mut ed = editor_from("-[w]>ord\n");
+    let mut backend = InlineLspBackend::new();
+    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    let root = PathBuf::from("/tmp/hume-lsp-stop-pending-test");
+    ed.lsp
+        .insert_client_for_test(LspClient::new(sid, root.clone()));
+    ed.lsp
+        .insert_server_key_for_test("rust".to_string(), root, sid);
+
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
+    let mut b = hume_editing::changeset::ChangeSetBuilder::new(4);
+    b.retain(0).insert("X").retain_rest();
+    ed.state
+        .buffers
+        .get_mut(bid)
+        .lsp_pending
+        .push(crate::editor::lsp::sync::LspPendingChange {
+            cs: b.finish(),
+            before: ropey::Rope::from_str("word"),
+            version: 1,
+        });
+    assert!(!ed.state.buffers.get(bid).lsp_pending.is_empty());
+
+    ed.lsp_stop(Some("rust"));
+
+    assert!(
+        ed.state.buffers.get(bid).lsp_pending.is_empty(),
+        "a stopped buffer's pending queue must be cleared, not carried into a future attach"
+    );
+}
+
 #[test]
 fn lsp_restart_spawns_a_fresh_server_id_and_reattaches_the_buffer() {
     let tmp = tempfile::tempdir().unwrap();

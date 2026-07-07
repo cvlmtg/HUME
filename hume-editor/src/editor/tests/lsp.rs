@@ -86,18 +86,22 @@ fn callback_never_fires_for_a_request_with_no_response() {
 }
 
 #[test]
-fn timed_out_request_drops_callback_and_logs_trace() {
+fn timed_out_request_dispatches_callback_with_timed_out_outcome_and_logs_trace() {
+    // Minor C (deviates from the hub C6 card's "timed-out -> log + drop"):
+    // a callback that never fires on timeout has no way to notice — B2's
+    // Steel callbacks are `(err result)`-shaped and need this to map a
+    // timeout to `err` rather than hanging silently.
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
     let sid = backend.start("x", &[], Path::new(".")).unwrap();
     wire_client(&mut ed, backend, sid);
 
-    let fired = Rc::new(RefCell::new(false));
-    let fired_in_closure = fired.clone();
+    let result: Rc<RefCell<Vec<Outcome>>> = Rc::new(RefCell::new(Vec::new()));
+    let result_in_closure = result.clone();
     let token = ed.lsp.register_callback(
         None,
-        Box::new(move |_ed, _outcome| {
-            *fired_in_closure.borrow_mut() = true;
+        Box::new(move |_ed, outcome| {
+            result_in_closure.borrow_mut().push(outcome);
         }),
     );
     let meta = RequestMeta {
@@ -111,7 +115,13 @@ fn timed_out_request_drops_callback_and_logs_trace() {
 
     ed.drain_lsp();
 
-    assert!(!*fired.borrow(), "a timed-out request must not dispatch its callback");
+    let outcomes = result.borrow_mut();
+    assert_eq!(outcomes.len(), 1, "callback must fire exactly once");
+    assert!(
+        matches!(outcomes[0], Outcome::TimedOut),
+        "expected TimedOut, got {:?}",
+        outcomes[0]
+    );
 }
 
 #[test]
