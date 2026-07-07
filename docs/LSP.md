@@ -256,7 +256,7 @@ Workspace groundwork with no LSP-visible behavior. Cards: `docs/lsp/step-0.md`. 
 The `hume-lsp` crate plus editor glue: spawn, handshake, document sync, diagnostics in memory. After this step nothing is visible except `:lsp-status` and the message log — but the data plane is complete. Cards: `docs/lsp/step-1.md`.
 
 - [x] **C1** — crate scaffold (`hume-lsp/`, deps: `lsp-types` + serde + `hume-editing` only)
-- [ ] **C2** — JSON-RPC codec (framing, message enum, id allocation/correlation)
+- [x] **C2** — JSON-RPC codec (framing, message enum, id allocation/correlation)
 - [ ] **C3** — server process management (reader/writer/stderr threads, `ServerHandle`, kill-on-drop)
 - [ ] **C4** — `LspBackend` trait + `InlineLspBackend` scripted double
 - [ ] **C5** — lifecycle (initialize handshake, capability storage, shutdown, crash detection)
