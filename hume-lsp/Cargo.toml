@@ -1,0 +1,11 @@
+[package]
+name = "hume-lsp"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+hume-editing = { path = "../hume-editing" }
+lsp-types = "0.97"
+serde.workspace = true
+serde_json.workspace = true
+ropey.workspace = true
