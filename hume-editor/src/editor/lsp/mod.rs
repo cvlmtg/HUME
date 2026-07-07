@@ -56,6 +56,10 @@ pub(crate) struct LspState {
     /// attach to the existing entry.
     servers_by_key: HashMap<(String, PathBuf), ServerId>,
     diagnostics: DiagnosticsStore,
+    /// Display name (the registered `command`, e.g. `"rust-analyzer"`) per
+    /// server — used to prefix stderr/log lines (C10) so `:messages` reads
+    /// legibly with multiple servers running.
+    server_names: HashMap<ServerId, String>,
 }
 
 impl LspState {
@@ -69,6 +73,7 @@ impl LspState {
             configs: HashMap::new(),
             servers_by_key: HashMap::new(),
             diagnostics: DiagnosticsStore::default(),
+            server_names: HashMap::new(),
         }
     }
 
@@ -83,6 +88,7 @@ impl LspState {
             configs: HashMap::new(),
             servers_by_key: HashMap::new(),
             diagnostics: DiagnosticsStore::default(),
+            server_names: HashMap::new(),
         }
     }
 
@@ -100,6 +106,7 @@ impl LspState {
             configs: HashMap::new(),
             servers_by_key: HashMap::new(),
             diagnostics: DiagnosticsStore::default(),
+            server_names: HashMap::new(),
         }
     }
 
@@ -119,6 +126,21 @@ impl LspState {
         let id = client.id;
         self.clients.insert(id, client);
         id
+    }
+
+    #[cfg(test)]
+    pub(crate) fn insert_server_key_for_test(
+        &mut self,
+        language: String,
+        root: PathBuf,
+        server_id: ServerId,
+    ) {
+        self.servers_by_key.insert((language, root), server_id);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn insert_server_name_for_test(&mut self, server_id: ServerId, name: String) {
+        self.server_names.insert(server_id, name);
     }
 
     #[cfg(test)]
@@ -300,27 +322,80 @@ impl Editor {
                     .send(server_id, Message::Response { id, result });
             }
             ClientAction::ServerNotification { method, params } => {
-                self.dispatch_server_notification(&method, params);
+                self.dispatch_server_notification(server_id, &method, params);
             }
-            ClientAction::Stderr(_line) => {
-                // C10 formats and logs this with a server-name prefix.
+            ClientAction::Stderr(line) => {
+                // rust-analyzer logs a lot — Trace keeps :messages usable;
+                // never promote stderr to a higher severity.
+                let name = self.lsp_server_name(server_id);
+                self.report(Severity::Trace, format!("{name}: {line}"));
             }
         }
     }
 
+    /// Name used to prefix this server's log lines — the registered
+    /// `command` string, or `"lsp"` if the server was never registered
+    /// through the normal path (shouldn't happen outside tests).
+    fn lsp_server_name(&self, server_id: ServerId) -> String {
+        self.lsp
+            .server_names
+            .get(&server_id)
+            .cloned()
+            .unwrap_or_else(|| "lsp".to_string())
+    }
+
     /// `textDocument/publishDiagnostics` never reaches here — `drain_lsp`
     /// intercepts and coalesces it before dispatch (see the batching loop).
-    fn dispatch_server_notification(&mut self, method: &str, _params: serde_json::Value) {
+    fn dispatch_server_notification(
+        &mut self,
+        server_id: ServerId,
+        method: &str,
+        params: serde_json::Value,
+    ) {
+        let name = self.lsp_server_name(server_id);
         match method {
-            "window/logMessage" | "window/showMessage" | "$/progress" => {
-                // C10 differentiates severity per method/type; Trace keeps
-                // :messages usable in the meantime.
-                self.report(Severity::Trace, format!("lsp: {method}"));
+            "window/logMessage" => {
+                let text = params
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                // MessageType: 1=Error, 2=Warning, 3=Info, 4=Log.
+                let severity = match params.get("type").and_then(|v| v.as_i64()) {
+                    Some(1) => Severity::Error,
+                    Some(2) => Severity::Warning,
+                    _ => Severity::Trace, // Info/Log/malformed
+                };
+                self.report(severity, format!("{name}: {text}"));
+            }
+            "window/showMessage" => {
+                let text = params
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                self.report(Severity::Info, format!("{name}: {text}"));
+            }
+            "$/progress" => {
+                // begin/end at Trace; per-report messages dropped entirely
+                // (OQ default) — a real progress bar is Future work.
+                match params.get("value").and_then(|v| v.get("kind")).and_then(|v| v.as_str()) {
+                    Some("begin") => {
+                        let title = params
+                            .get("value")
+                            .and_then(|v| v.get("title"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("progress");
+                        self.report(Severity::Trace, format!("{name}: {title} started"));
+                    }
+                    Some("end") => {
+                        self.report(Severity::Trace, format!("{name}: progress finished"));
+                    }
+                    _ => {} // "report", or a malformed payload — never spam
+                }
             }
             other => {
                 self.report(
                     Severity::Trace,
-                    format!("lsp: unhandled notification {other}"),
+                    format!("{name}: unhandled notification {other}"),
                 );
             }
         }
@@ -346,6 +421,50 @@ impl Editor {
         }
 
         (entry.callback)(self, outcome);
+    }
+
+    /// `:lsp-status` text: one line per registered server (language, root,
+    /// lifecycle state, in-flight request count, negotiated encoding),
+    /// followed by one line per attached buffer with its diagnostic counts.
+    pub(in crate::editor) fn lsp_status_text(&self) -> String {
+        let mut servers: Vec<(&(String, PathBuf), &ServerId)> =
+            self.lsp.servers_by_key.iter().collect();
+        servers.sort_by(|a, b| a.0.cmp(b.0));
+
+        let mut lines = Vec::new();
+        if servers.is_empty() {
+            lines.push("No LSP servers registered.".to_string());
+        }
+        for ((language, root), &server_id) in servers {
+            let Some(client) = self.lsp.clients.get(&server_id) else {
+                continue;
+            };
+            lines.push(format!(
+                "{language} @ {} — {:?}, {} in flight, encoding: {:?}",
+                root.display(),
+                client.state,
+                client.pending_count(),
+                client.encoding,
+            ));
+        }
+
+        let mut buffer_lines: Vec<String> = self
+            .state
+            .buffers
+            .iter()
+            .filter_map(|(bid, buf)| {
+                buf.lsp_server.map(|_| {
+                    let (errors, warnings) = self.lsp.diagnostics.counts(bid);
+                    format!(
+                        "  {} — {errors} error(s), {warnings} warning(s)",
+                        buf.display_name()
+                    )
+                })
+            })
+            .collect();
+        lines.append(&mut buffer_lines);
+
+        lines.join("\n")
     }
 }
 

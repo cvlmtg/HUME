@@ -873,6 +873,7 @@ mod scroll;
 mod search;
 mod typed_buffer;
 mod typed_file;
+mod typed_lsp;
 mod typed_misc;
 
 pub(super) use edit::*;
@@ -883,6 +884,7 @@ pub(super) use scroll::*;
 pub(super) use search::*;
 pub(super) use typed_buffer::*;
 pub(super) use typed_file::*;
+pub(super) use typed_lsp::*;
 pub(super) use typed_misc::*;
 
 // Visual-line commands live in visual_move.rs; re-export for the registry glob.

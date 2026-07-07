@@ -265,7 +265,7 @@ The `hume-lsp` crate plus editor glue: spawn, handshake, document sync, diagnost
 - [x] **C7** — document sync glue (didOpen/didChange/didSave/didClose from `ChangeSet`s)
 - [x] **C8** — server registration (`register-lsp-server!`, root resolution, spawn-on-first-open)
 - [x] **C9** — diagnostics store (Rust-ingested, P4-converted, P2-remapped; bulk never reaches Steel)
-- [ ] **C10** — observability + lifecycle commands (`:lsp-status` / `:lsp-stop` / `:lsp-restart`, stderr → log)
+- [x] **C10** — observability + lifecycle commands (`:lsp-status` / `:lsp-stop` / `:lsp-restart`, stderr → log)
 
 ## Step 2 — Steel platform
 

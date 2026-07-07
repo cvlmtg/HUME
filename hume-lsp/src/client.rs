@@ -151,6 +151,12 @@ impl LspClient {
         id
     }
 
+    /// Requests currently awaiting a response — the "N in flight" count for
+    /// `:lsp-status` (C10) and B3's `lsp-server-status`.
+    pub fn pending_count(&self) -> usize {
+        self.pending.len()
+    }
+
     /// Best-effort cancellation: drops the pending entry (if still present)
     /// and notifies the server. A no-op if the request already completed.
     pub fn cancel(&mut self, backend: &mut dyn LspBackend, id: RequestId) {

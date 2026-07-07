@@ -1027,6 +1027,24 @@ impl CommandRegistry {
             typed_reload_config
         );
         typed_cmd!(
+            "lsp-status",
+            "Show registered LSP servers and attached buffers' diagnostic counts.",
+            &[],
+            typed_lsp_status
+        );
+        typed_cmd!(
+            "lsp-stop",
+            "Stop an LSP server: :lsp-stop [language] (default: focused buffer's server).",
+            &[],
+            typed_lsp_stop
+        );
+        typed_cmd!(
+            "lsp-restart",
+            "Restart an LSP server: :lsp-restart [language] (default: focused buffer's server).",
+            &[],
+            typed_lsp_restart
+        );
+        typed_cmd!(
             "edit",
             "Open a file or reload current file.",
             &["e"],

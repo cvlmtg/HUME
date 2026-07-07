@@ -452,6 +452,7 @@ mod language;
 mod list_buffers;
 mod lsp;
 mod lsp_diagnostics;
+mod lsp_status;
 mod lsp_sync;
 mod macros;
 mod mouse;

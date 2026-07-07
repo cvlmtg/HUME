@@ -123,6 +123,9 @@ impl Editor {
                     client.start_handshake(self.lsp.backend.as_mut());
                     self.lsp.clients.insert(server_id, client);
                     self.lsp.servers_by_key.insert(key, server_id);
+                    self.lsp
+                        .server_names
+                        .insert(server_id, config.command.clone());
                     server_id
                 }
                 Err(e) => {
@@ -137,6 +140,93 @@ impl Editor {
 
         self.state.buffers.get_mut(bid).lsp_server = Some(server_id);
         self.lsp_did_open(bid);
+    }
+
+    /// Resolves `:lsp-stop [language]` / `:lsp-restart [language]`'s target
+    /// set: every server whose key's language matches, or — with no
+    /// argument — just the focused buffer's server (if any).
+    fn lsp_targets(&self, language: Option<&str>) -> Vec<(String, PathBuf, hume_lsp::backend::ServerId)> {
+        match language {
+            Some(lang) => self
+                .lsp
+                .servers_by_key
+                .iter()
+                .filter(|((l, _), _)| l == lang)
+                .map(|((l, r), &id)| (l.clone(), r.clone(), id))
+                .collect(),
+            None => {
+                let bid = self.focused_buffer_id();
+                let Some(server_id) = self.state.buffers.get(bid).lsp_server else {
+                    return Vec::new();
+                };
+                self.lsp
+                    .servers_by_key
+                    .iter()
+                    .find(|&(_, &id)| id == server_id)
+                    .map(|((l, r), &id)| vec![(l.clone(), r.clone(), id)])
+                    .unwrap_or_default()
+            }
+        }
+    }
+
+    /// Graceful shutdown + full deregistration of one running server:
+    /// `begin_shutdown` (shutdown request, then exit — `ServerHandle::drop`
+    /// reaps the process regardless), drop the client/key/name entries, and
+    /// clear `lsp_server` on every buffer that pointed at it so a later
+    /// attach attempt (open or restart) doesn't see it as already attached.
+    fn lsp_stop_one(&mut self, language: &str, root: &Path, server_id: hume_lsp::backend::ServerId) {
+        if let Some(mut client) = self.lsp.clients.remove(&server_id) {
+            client.begin_shutdown(self.lsp.backend.as_mut());
+        }
+        self.lsp.backend.shutdown(server_id);
+        self.lsp
+            .servers_by_key
+            .remove(&(language.to_string(), root.to_path_buf()));
+        self.lsp.server_names.remove(&server_id);
+
+        let bids: Vec<BufferId> = self
+            .state
+            .buffers
+            .iter()
+            .filter(|(_, buf)| buf.lsp_server == Some(server_id))
+            .map(|(bid, _)| bid)
+            .collect();
+        for bid in bids {
+            self.state.buffers.get_mut(bid).lsp_server = None;
+        }
+    }
+
+    /// `:lsp-stop [language]`. Returns the number of servers stopped.
+    pub(in crate::editor) fn lsp_stop(&mut self, language: Option<&str>) -> usize {
+        let targets = self.lsp_targets(language);
+        let count = targets.len();
+        for (lang, root, server_id) in targets {
+            self.lsp_stop_one(&lang, &root, server_id);
+        }
+        count
+    }
+
+    /// `:lsp-restart [language]`. Stops each target server, then re-attaches
+    /// every buffer that was on it through `lsp_attach_buffer` — the exact
+    /// C8 spawn path, not a duplicate. Returns the number of servers
+    /// restarted.
+    pub(in crate::editor) fn lsp_restart(&mut self, language: Option<&str>) -> usize {
+        let targets = self.lsp_targets(language);
+        let count = targets.len();
+        for (lang, root, server_id) in targets {
+            let bids: Vec<BufferId> = self
+                .state
+                .buffers
+                .iter()
+                .filter(|(_, buf)| buf.lsp_server == Some(server_id))
+                .map(|(bid, _)| bid)
+                .collect();
+            self.lsp_stop_one(&lang, &root, server_id);
+            for bid in bids {
+                self.lsp_attach_buffer(bid);
+            }
+        }
+        count
     }
 }
 
