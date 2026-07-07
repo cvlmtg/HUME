@@ -29,6 +29,7 @@ use super::Editor;
 use super::async_source::AsyncSource;
 use super::message_log::Severity;
 use diagnostics::DiagnosticsStore;
+pub(crate) use diagnostics::{DiagSeverity, StoredDiag};
 use registry::LspServerConfig;
 
 /// How often to poll while any LSP server is running, so idle-time server
@@ -179,6 +180,19 @@ impl LspState {
     #[cfg(test)]
     pub(crate) fn diagnostic_counts_for_test(&self, bid: BufferId) -> (usize, usize) {
         self.diagnostics.counts(bid)
+    }
+
+    /// Diagnostics visible in `range` (buffer-wide char offsets) for `bid`,
+    /// at or above `floor` severity — the render write side reads this
+    /// directly (no JSON round-trip; that's
+    /// `introspect::diagnostics_for_buffer`'s job for Steel).
+    pub(crate) fn diagnostics_for_range(
+        &self,
+        bid: BufferId,
+        range: std::ops::Range<usize>,
+        floor: DiagSeverity,
+    ) -> impl Iterator<Item = &StoredDiag> {
+        self.diagnostics.for_range(bid, range, floor)
     }
 
     #[cfg(test)]

@@ -12,11 +12,12 @@ use hume_engine::providers::{HighlightTier, ProviderSet};
 use hume_engine::theme::ScopeRegistry;
 
 use completion_overlay::CompletionOverlay;
-use highlight_providers::{PaneHighlights, SharedHighlighter};
+use highlight_providers::{PaneHighlights, ScopedHighlighter, SharedHighlighter};
 
 /// Build a new pane viewing `buffer_id`: a line-number gutter, the
-/// bracket-match / search-match highlight sources, the completion popup
-/// overlay, and `wrap_mode` seeded from the caller's current settings.
+/// bracket-match / search-match / diagnostic / extra-highlight sources, the
+/// completion popup overlay, and `wrap_mode` seeded from the caller's current
+/// settings.
 ///
 /// Returns the pane together with its freshly-allocated [`PaneHighlights`] —
 /// every pane gets its own bracket/search highlight buffers (never shared with
@@ -59,6 +60,14 @@ pub(crate) fn build_pane(
         scope: search_scope,
         tier: HighlightTier::SearchMatch,
         data: Arc::clone(&highlights.search),
+    }));
+    providers.add_highlight_source(Box::new(ScopedHighlighter {
+        tier: HighlightTier::Diagnostic,
+        data: Arc::clone(&highlights.diagnostics),
+    }));
+    providers.add_highlight_source(Box::new(ScopedHighlighter {
+        tier: HighlightTier::Extra,
+        data: Arc::clone(&highlights.extra),
     }));
     providers.add_overlay(Box::new(CompletionOverlay {
         data: Arc::clone(completion_view),

@@ -47,9 +47,6 @@ pub(crate) struct VirtualLineEntry {
 }
 
 /// One `(set-extra-highlights! …)` entry: a char range styled with `scope`.
-/// `scope` has no reader until Step 3's highlight provider (U1) — `start`/
-/// `end` are exercised by `remap_through`.
-#[allow(dead_code)]
 pub(crate) struct ExtraHighlightEntry {
     pub(crate) start: usize,
     pub(crate) end: usize,
@@ -121,11 +118,27 @@ impl DecorationStores {
     }
 
     #[cfg(test)]
-    pub(crate) fn extra_highlights_for(&self, source: &str, bid: BufferId) -> &[ExtraHighlightEntry] {
+    pub(crate) fn extra_highlights_for(
+        &self,
+        source: &str,
+        bid: BufferId,
+    ) -> &[ExtraHighlightEntry] {
         self.extra_highlights
             .get(&(source.to_string(), bid))
             .map(Vec::as_slice)
             .unwrap_or(&[])
+    }
+
+    /// All extra-highlight entries for `bid`, across every source — the
+    /// render write side merges them all into one highlight-tier bucket.
+    pub(crate) fn extra_highlights_for_buffer(
+        &self,
+        bid: BufferId,
+    ) -> impl Iterator<Item = &ExtraHighlightEntry> {
+        self.extra_highlights
+            .iter()
+            .filter(move |((_, entry_bid), _)| *entry_bid == bid)
+            .flat_map(|(_, spans)| spans.iter())
     }
 
     /// Remaps `bid`'s inlay hints and extra highlights through `cs` — the

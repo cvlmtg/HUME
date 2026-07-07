@@ -45,10 +45,10 @@
 "ui.virtual.jump-label" = { fg = "bg", bg = "sand", modifiers = [ "bold" ] }
 "ui.gutter" = { bg = "bg" }
 "ui.gutter.selected" = { bg = "surface" }
-"diagnostic.error" = "red"
-"diagnostic.warning" = "sand"
-"diagnostic.info" = "blue"
-"diagnostic.hint" = "green"
+"diagnostic.error" = { fg = "red", modifiers = [ "underlined" ] }
+"diagnostic.warning" = { fg = "sand, modifiers = [ "underlined" ] }
+"diagnostic.info" = { fg = "blue", modifiers = [ "underlined" ] }
+"diagnostic.hint" = { fg = "green", modifiers = [ "underlined" ] }
 "diagnostic.deprecated" = { modifiers = [ "crossed_out" ] }
 "error" = { fg = "red" }
 "warning" = { fg = "sand" }

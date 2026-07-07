@@ -37,9 +37,12 @@ pub struct SourceContext<'a> {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum HighlightTier {
     Syntax = 0,
-    SearchMatch = 1,
-    Diagnostic = 2,
-    BracketMatch = 3,
+    /// Generic plugin-supplied spans (`set-extra-highlights!`) — beat syntax,
+    /// lose to search matches, diagnostics, and bracket matches.
+    Extra = 1,
+    SearchMatch = 2,
+    Diagnostic = 3,
+    BracketMatch = 4,
 }
 
 // ---------------------------------------------------------------------------

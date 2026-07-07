@@ -89,6 +89,7 @@ Steps 1–3 are ordered by dependency but Step 4 tasks unlock incrementally — 
 | Steel completion scorer budget (P8) | **Re-rank Rust's top-N only (N = 64)** | P8 confirms this is architectural, not just a speed call: per-item conversion/iteration cost is low (~0.8–1µs/item) but completion filtering runs *per keystroke* — the hub's frequency-cut rule (recurring paths must be Rust, regardless of measured Steel throughput) means an unbounded Steel scorer would violate the guardrail even though it would be numerically affordable at 1k items. Bounded top-64 re-rank confirmed as the default. |
 | LSP idle wake (C4) | **8ms poll while any client is Starting or has a request in flight; 200ms heartbeat while Running-idle** | `event::read()` cannot be woken externally, so a server-initiated push (e.g. `publishDiagnostics`) would sit undrained until the next keystroke if the loop blocked. `LspState::has_pending` (originally only delegated to the raw backend, which never reports true) now also checks per-client state directly: `Starting` (handshake response could land any moment, and C7's queued sends must flush promptly once it does) or a nonzero `pending_count()` (C6's 8ms cadence for in-flight requests). `next_deadline` supplies the coarser 200ms heartbeat once a client reaches Running with nothing outstanding — `LspState`'s `AsyncSource::next_deadline` reports `now + 200ms`, bounding `wake_timeout` to a ~5Hz poll; zero cost when no server is registered. Uses existing P3/P7 machinery — no new event-loop mechanism. |
 | WorkspaceEdit on unopened files (B6) | **Open-as-buffer** | Rename/code actions can touch files with no open buffer. Chose open-as-buffer (undoable, dirty, user saves via `:wa`) over a direct fs write (atomic but bypasses undo) — consistent with every other HUME mutation going through the undo tree. `apply_workspace_edit` validates every file first (opening unopened ones along the way) and only commits once all have passed, then reports `"N buffers modified — :wa writes all"` to the message log. |
+| `set-extra-highlights!` tier (U1) | **New variant `Extra` between `Syntax` and `SearchMatch`** | Plugin spans beat syntax, lose to search/diagnostics/brackets. `HighlightTier` renumbered (`Syntax=0, Extra=1, SearchMatch=2, Diagnostic=3, BracketMatch=4`), `TIER_COUNT` bumped to 5 in `hume-engine/src/style/highlight.rs`. No other renumbering needed — all existing references are by variant name. |
 
 ## Open Questions
 
@@ -103,7 +104,6 @@ Every row has a **Default** — at the gate, adopt it unless the gate's evidence
 | `$/progress` | Servers report indexing progress. Statusline spinner element vs message-log only. Decide at U3. **Default:** message-log only in v1 (begin/end messages, no per-report spam); spinner element is Future. |
 | `workspace/didChangeWatchedFiles` | Ties to the existing "File watcher" Future item in ROADMAP — LSP may be the trigger that promotes it. Not required for v1. **Default:** do not implement; do not advertise the capability. |
 | Multiple servers per language | v1: exactly one server per language. The diagnostics store keys by (server, buffer) so the door stays open. **Default:** reject a second `register-lsp-server!` for the same language with a loud error. |
-| `set-extra-highlights!` tier | Generic plugin spans need a `HighlightTier`: new variant vs reusing an existing one (Syntax / SearchMatch / Diagnostic / BracketMatch). Decide at U1 when wiring the provider. **Default:** new variant `Extra` between `Syntax` and `SearchMatch` (plugin spans beat syntax, lose to search/diagnostics/brackets); renumber discriminants and the `TIER_COUNT` arrays in `hume-engine/src/style/highlight.rs`. |
 
 ## LSP protocol primer
 
@@ -285,7 +285,7 @@ The bridge and primitives that make Steel the feature layer. After it, a plugin 
 
 Generic, Steel-scriptable widgets plus store-fed render wiring. The engine primitives mostly exist (reserved `HighlightTier::Diagnostic`, `SignColumn`/`SignSource`, `VirtualLineSource`, `InlineDecoration`, `OverlayProvider`) — LSP is their first client, not their owner. Cards: `docs/lsp/step-3.md`.
 
-- [ ] **U1** — diagnostic underlines (third `SharedHighlighter`, Diagnostic tier) + extra-highlights wiring
+- [x] **U1** — diagnostic underlines (third `SharedHighlighter`, Diagnostic tier) + extra-highlights wiring
 - [ ] **U2** — diagnostic gutter signs (first real `SignColumn` registration)
 - [ ] **U3** — statusline diagnostics element (Rust element over the C9 store)
 - [ ] **U4** — cursor-anchored popup widget (`show-popup!`)

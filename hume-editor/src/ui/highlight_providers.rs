@@ -28,6 +28,8 @@ pub(crate) type HighlightRanges = Arc<RwLock<Vec<(usize, usize, usize)>>>;
 pub(crate) struct PaneHighlights {
     pub(crate) bracket: HighlightRanges,
     pub(crate) search: HighlightRanges,
+    pub(crate) diagnostics: ScopedHighlightRanges,
+    pub(crate) extra: ScopedHighlightRanges,
 }
 
 /// Highlights a set of byte ranges, all sharing the same scope and tier.
@@ -62,6 +64,45 @@ impl HighlightSource for SharedHighlighter {
                 break;
             }
             out.push((byte_start, byte_end, self.scope));
+        }
+    }
+}
+
+/// Shared per-frame highlight data carrying a per-range scope:
+/// `(line_idx, byte_start, byte_end, scope)`, written once per frame and read
+/// during the engine's per-line render loop.
+pub(crate) type ScopedHighlightRanges = Arc<RwLock<Vec<(usize, usize, usize, ScopeId)>>>;
+
+/// Highlights a set of byte ranges at a fixed tier, each carrying its own
+/// scope (diagnostics: one scope per severity; extra highlights: one scope
+/// per plugin-supplied span). Distinct from `SharedHighlighter`, which shares
+/// a single scope across all its ranges — forcing diagnostics/extra through
+/// that shape would mean one provider per scope, which doesn't fit either
+/// caller.
+pub(crate) struct ScopedHighlighter {
+    pub(crate) tier: HighlightTier,
+    /// Shared data: `(line_idx, byte_start, byte_end, scope)` for each highlight.
+    pub(crate) data: ScopedHighlightRanges,
+}
+
+impl HighlightSource for ScopedHighlighter {
+    fn tier(&self) -> HighlightTier {
+        self.tier
+    }
+
+    fn highlights_for_line(
+        &self,
+        line_idx: usize,
+        _ctx: &SourceContext,
+        out: &mut Vec<(usize, usize, ScopeId)>,
+    ) {
+        let data = self.data.read().expect("RwLock not poisoned");
+        let start = data.partition_point(|&(l, _, _, _)| l < line_idx);
+        for &(l, byte_start, byte_end, scope) in &data[start..] {
+            if l != line_idx {
+                break;
+            }
+            out.push((byte_start, byte_end, scope));
         }
     }
 }

@@ -1,0 +1,8 @@
+---
+source: hume-editor/src/editor/tests/lsp_render.rs
+assertion_line: 325
+expression: snap
+---
+<fg=#c8c8d2,bg=#3a3a3a>1 </><fg=#cdcd00,bg=#3a3a3a,underline>ab</><fg=#ffb450,bg=#502800,underline>cde</><fg=#cdcd00,bg=#3a3a3a,underline>fgh</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#000000,bg=#ffffff> 1:9 [+][0/1] │ NOR</>

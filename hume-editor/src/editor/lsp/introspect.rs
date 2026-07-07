@@ -196,22 +196,13 @@ pub(crate) fn diagnostics_for_buffer(
                 "end": d.end,
                 "line": line,
                 "col": col,
-                "severity": severity_name(d.severity),
+                "severity": d.severity.to_string(),
                 "message": d.message,
                 "code": d.code,
                 "source": d.source,
             })
         })
         .collect()
-}
-
-fn severity_name(sev: DiagSeverity) -> &'static str {
-    match sev {
-        DiagSeverity::Error => "error",
-        DiagSeverity::Warning => "warning",
-        DiagSeverity::Info => "info",
-        DiagSeverity::Hint => "hint",
-    }
 }
 
 /// `(diagnostic-counts bid)` → `(errors, warnings)`.

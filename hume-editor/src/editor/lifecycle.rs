@@ -11,6 +11,7 @@ use hume_engine::types::EditorMode;
 use super::search::SearchCursor;
 #[cfg(test)]
 use super::search::{SearchMatches, SearchPattern};
+use crate::editor::lsp::DiagSeverity;
 use crate::editor::search;
 use crate::ops::pair::find_bracket_pair;
 use hume_editing::lines::line_end_exclusive;
@@ -189,6 +190,8 @@ impl Editor {
                 steel_prompt_callback: None,
                 lsp_completion: None,
                 completion_view,
+                diagnostic_scopes: None,
+                runtime_scope_cache: std::collections::HashMap::new(),
             },
             view: engine_view,
             kitty_enabled: false,
@@ -594,8 +597,9 @@ impl Editor {
         self.drain_async_sources();
         self.drain_pending_steel_calls();
 
-        // 6. Sync highlight data (search matches, bracket matches) to shared
-        //    Arc buffers read by the highlight providers during rendering.
+        // 6. Sync highlight data (search matches, bracket matches, diagnostic
+        //    underlines, extra highlights) to shared Arc buffers read by the
+        //    highlight providers during rendering.
         self.update_highlight_providers();
 
         // 7. Sync completion-popup view to the shared Arc for `CompletionOverlay`.
@@ -690,6 +694,56 @@ impl Editor {
             pid,
             bid,
         );
+    }
+
+    /// The char range of `bid`'s content currently visible in pane `pid` —
+    /// shared by every per-frame write side that pulls a bounded slice from a
+    /// Rust-side store (diagnostics, decorations) instead of the whole buffer.
+    /// HUME buffers always end with a structural `\n`, so `len_lines() >= 1`
+    /// always holds.
+    fn visible_char_range(&self, pid: PaneId, bid: BufferId) -> std::ops::Range<usize> {
+        let vp = &self.view.panes[pid].viewport;
+        let top_line = vp.top_line;
+        let bot_line = top_line + vp.height as usize;
+        let text = self.state.buffers.get(bid).text();
+        let len_lines = text.len_lines();
+        let top_char = text.line_to_char(top_line.min(len_lines - 1));
+        let end_char = if bot_line + 1 < len_lines {
+            text.line_to_char(bot_line + 1)
+        } else {
+            text.len_chars()
+        };
+        top_char..end_char
+    }
+
+    /// Interned scope ids for the four diagnostic severities, in
+    /// `DiagSeverity` discriminant order (`[error, warning, info, hint]`) —
+    /// resolved once and cached, since interning needs `&mut
+    /// self.view.registry` but `DiagSeverity` itself lives in `self.state`.
+    fn diagnostic_scopes(&mut self) -> [hume_engine::types::ScopeId; 4] {
+        if let Some(scopes) = self.state.diagnostic_scopes {
+            return scopes;
+        }
+        let scopes = [
+            self.view.registry.intern("diagnostic.error"),
+            self.view.registry.intern("diagnostic.warning"),
+            self.view.registry.intern("diagnostic.info"),
+            self.view.registry.intern("diagnostic.hint"),
+        ];
+        self.state.diagnostic_scopes = Some(scopes);
+        scopes
+    }
+
+    /// Interned `ScopeId` for a plugin-supplied runtime scope name (extra
+    /// highlights, signs, virtual lines), cached across frames so the same
+    /// name string is never re-interned.
+    fn runtime_scope(&mut self, name: &str) -> hume_engine::types::ScopeId {
+        if let Some(&id) = self.state.runtime_scope_cache.get(name) {
+            return id;
+        }
+        let id = self.view.registry.intern_runtime(name);
+        self.state.runtime_scope_cache.insert(name.to_string(), id);
+        id
     }
 
     /// Write per-frame highlight data to every pane's own `Arc<RwLock<...>>`
@@ -809,6 +863,98 @@ impl Editor {
                 }
             }
         }
+
+        // ── Diagnostic + extra highlights — every pane ───────────────────────
+        // Unlike search/bracket-match highlights, these stay visible in
+        // Insert mode: an error squiggle is exactly as relevant while you're
+        // editing the line it's on (most editors keep them showing).
+        {
+            let floor = self.state.settings.lsp_diagnostics_severity_floor;
+            let diag_scopes = self.diagnostic_scopes();
+            for &(pid, bid) in &panes {
+                let Some((diag_arc, extra_arc)) = self
+                    .state
+                    .panes
+                    .highlights
+                    .get(pid)
+                    .map(|h| (Arc::clone(&h.diagnostics), Arc::clone(&h.extra)))
+                else {
+                    continue;
+                };
+
+                let visible = self.visible_char_range(pid, bid);
+
+                // Collect raw diagnostic ranges first — this ends the
+                // immutable borrow of `self.lsp` before `runtime_scope`
+                // (called below for extra highlights) needs `&mut self`.
+                let diags: Vec<(usize, usize, DiagSeverity)> = self
+                    .lsp
+                    .diagnostics_for_range(bid, visible.clone(), floor)
+                    .map(|d| {
+                        (
+                            d.start.max(visible.start),
+                            d.end.min(visible.end),
+                            d.severity,
+                        )
+                    })
+                    .collect();
+
+                // Same for extra highlights: collect owned data before
+                // resolving each source's scope name to a `ScopeId`.
+                let extra_raw: Vec<(usize, usize, String)> = self
+                    .state
+                    .decorations
+                    .extra_highlights_for_buffer(bid)
+                    .filter(|e| e.start < visible.end && e.end > visible.start)
+                    .map(|e| {
+                        (
+                            e.start.max(visible.start),
+                            e.end.min(visible.end),
+                            e.scope.clone(),
+                        )
+                    })
+                    .collect();
+                let extra: Vec<(usize, usize, hume_engine::types::ScopeId)> = extra_raw
+                    .into_iter()
+                    .map(|(start, end, name)| (start, end, self.runtime_scope(&name)))
+                    .collect();
+
+                let buf = self.state.buffers.get(bid);
+                let text = buf.text();
+
+                {
+                    let mut raw = Vec::new();
+                    for (start, end, severity) in diags {
+                        // Priority = severity discriminant: Error(0) beats
+                        // Warning(1) beats Info(2) beats Hint(3) in overlaps.
+                        push_priority_highlight_lines(
+                            text,
+                            start,
+                            end,
+                            severity as u8,
+                            diag_scopes[severity as usize],
+                            &mut raw,
+                        );
+                    }
+                    let mut data = diag_arc.write().expect("RwLock not poisoned");
+                    data.clear();
+                    flatten_priority_overlaps(&mut raw, &mut data);
+                }
+
+                {
+                    let mut raw = Vec::new();
+                    for (start, end, scope) in extra {
+                        // No severity concept for plugin-supplied spans —
+                        // uniform priority; overlap ties resolve by push
+                        // order (first source registered wins).
+                        push_priority_highlight_lines(text, start, end, 0, scope, &mut raw);
+                    }
+                    let mut data = extra_arc.write().expect("RwLock not poisoned");
+                    data.clear();
+                    flatten_priority_overlaps(&mut raw, &mut data);
+                }
+            }
+        }
     }
 
     /// Write the current completion state into the shared `CompletionView` Arc
@@ -925,17 +1071,46 @@ pub(super) fn char_to_line_byte(buf: &hume_editing::text::Text, char_pos: usize)
     (line, byte)
 }
 
-/// Push one `(line, byte_start, byte_end)` triple per line the
-/// `[start, end_char_excl)` char range touches.
+/// Yield `(line, byte_start, byte_end)` for each line the *non-empty*
+/// `[start, end_char_excl)` char range touches, clipped to that line's own
+/// content (up to but excluding its trailing `\n`). Caller must check
+/// `start < end_char_excl` first.
 ///
-/// A single-line match produces one triple, byte-identical to converting
-/// `start`/`end_char_excl` directly with [`char_to_line_byte`]. A match that
-/// crosses one or more `\n`s produces one triple per touched line, each
-/// clipped to that line's own content (up to but excluding its trailing
-/// `\n`). The clip point is deliberately the `\n` char's own position, not
+/// A single-line range yields one triple, byte-identical to converting
+/// `start`/`end_char_excl` directly with [`char_to_line_byte`]. A range that
+/// crosses one or more `\n`s yields one triple per touched line. The clip
+/// point is deliberately the `\n` char's own position, not
 /// `line_end_exclusive` — the latter is the *next* line's start, and
 /// converting it with `char_to_line_byte` would resolve to the wrong line
 /// (byte 0 of the line after), producing an inverted or nonsensical span.
+///
+/// Shared by [`push_match_highlight_lines`] (search/bracket matches, one
+/// scope for the whole provider) and [`push_priority_highlight_lines`]
+/// (diagnostics/extra highlights, one scope + priority per range) — the
+/// per-line splitting math is identical, only the tuple shape pushed differs.
+fn line_segments(
+    buf: &hume_editing::text::Text,
+    start: usize,
+    end_char_excl: usize,
+) -> impl Iterator<Item = (usize, usize, usize)> + '_ {
+    let last_char = end_char_excl - 1;
+    let start_line = buf.char_to_line(start);
+    let end_line = buf.char_to_line(last_char);
+    (start_line..=end_line).map(move |line| {
+        // Every content line ends with a '\n' — HUME buffers always end with
+        // a structural trailing '\n', so this position always exists and
+        // still belongs to `line` in ropey's line model.
+        let line_newline = line_end_exclusive(buf, line) - 1;
+        let seg_start = start.max(buf.line_to_char(line));
+        let seg_end = end_char_excl.min(line_newline);
+        let (_, byte_start) = char_to_line_byte(buf, seg_start);
+        let (_, byte_end) = char_to_line_byte(buf, seg_end);
+        (line, byte_start, byte_end)
+    })
+}
+
+/// Push one `(line, byte_start, byte_end)` triple per line the
+/// `[start, end_char_excl)` char range touches. See [`line_segments`].
 fn push_match_highlight_lines(
     buf: &hume_editing::text::Text,
     start: usize,
@@ -945,19 +1120,115 @@ fn push_match_highlight_lines(
     if start >= end_char_excl {
         return;
     }
-    let last_char = end_char_excl - 1;
-    let start_line = buf.char_to_line(start);
-    let end_line = buf.char_to_line(last_char);
+    data.extend(line_segments(buf, start, end_char_excl));
+}
 
-    for line in start_line..=end_line {
-        // Every content line ends with a '\n' — HUME buffers always end with
-        // a structural trailing '\n', so this position always exists and
-        // still belongs to `line` in ropey's line model.
-        let line_newline = line_end_exclusive(buf, line) - 1;
-        let seg_start = start.max(buf.line_to_char(line));
-        let seg_end = end_char_excl.min(line_newline);
-        let (_, byte_start) = char_to_line_byte(buf, seg_start);
-        let (_, byte_end) = char_to_line_byte(buf, seg_end);
-        data.push((line, byte_start, byte_end));
+/// Push one `(line, byte_start, byte_end, priority, scope)` quintuple per
+/// line the `[start, end_char_excl)` char range touches. See
+/// [`line_segments`]; `priority` and `scope` are carried through unchanged
+/// for [`flatten_priority_overlaps`] to resolve same-line overlaps from
+/// (lower `priority` wins — see that function).
+fn push_priority_highlight_lines(
+    buf: &hume_editing::text::Text,
+    start: usize,
+    end_char_excl: usize,
+    priority: u8,
+    scope: hume_engine::types::ScopeId,
+    data: &mut Vec<(usize, usize, usize, u8, hume_engine::types::ScopeId)>,
+) {
+    if start >= end_char_excl {
+        return;
+    }
+    data.extend(
+        line_segments(buf, start, end_char_excl).map(|(l, s, e)| (l, s, e, priority, scope)),
+    );
+}
+
+/// Flattens overlapping same-line `(start, end, priority, scope)` spans
+/// (already split per-line by [`push_priority_highlight_lines`]) into the
+/// sorted, non-overlapping sequence the engine's `HighlightSource` contract
+/// requires — a single `HighlightSource`'s own output must not overlap
+/// itself (cross-tier layering, e.g. diagnostics vs. search matches, is
+/// handled automatically by the engine's per-tier `HighlightStack`; this
+/// only resolves overlaps *within* one tier, e.g. two diagnostics on the
+/// same line). Lower `priority` wins overlapping regions (ties keep
+/// whichever was pushed first) — same event-sweep shape as the engine's
+/// `flatten_overlaps` in `hume-engine/src/builtins/tree_sitter_hl.rs`
+/// (nested tree-sitter injection layers), adapted for scope-carrying
+/// diagnostic/extra-highlight spans instead of syntax layers. `raw` need
+/// not be pre-sorted; drained (left empty) on return.
+fn flatten_priority_overlaps(
+    raw: &mut Vec<(usize, usize, usize, u8, hume_engine::types::ScopeId)>,
+    out: &mut Vec<(usize, usize, usize, hume_engine::types::ScopeId)>,
+) {
+    if raw.is_empty() {
+        return;
+    }
+    raw.sort_by_key(|&(line, start, _, _, _)| (line, start));
+
+    let mut i = 0;
+    while i < raw.len() {
+        let line = raw[i].0;
+        let mut j = i;
+        while j < raw.len() && raw[j].0 == line {
+            j += 1;
+        }
+        flatten_one_line(&raw[i..j], line, out);
+        i = j;
+    }
+    raw.clear();
+}
+
+/// One line's worth of `(_, start, end, priority, scope)` spans (the `line`
+/// field is ignored — the caller already grouped by it) → flattened,
+/// non-overlapping `(line, start, end, scope)` output. See
+/// [`flatten_priority_overlaps`].
+fn flatten_one_line(
+    group: &[(usize, usize, usize, u8, hume_engine::types::ScopeId)],
+    line: usize,
+    out: &mut Vec<(usize, usize, usize, hume_engine::types::ScopeId)>,
+) {
+    if group.len() == 1 {
+        let (_, start, end, _, scope) = group[0];
+        out.push((line, start, end, scope));
+        return;
+    }
+
+    // Event sweep: (pos, is_end, seq, priority, scope). `seq` is the span's
+    // index within `group`, used to pop the exact matching stack entry.
+    // End events sort before start events at the same position so a
+    // closing span is popped before a new one at the same byte is pushed.
+    let mut events: Vec<(usize, bool, u32, u8, hume_engine::types::ScopeId)> =
+        Vec::with_capacity(group.len() * 2);
+    for (seq, &(_, start, end, priority, scope)) in group.iter().enumerate() {
+        let seq = seq as u32;
+        events.push((start, false, seq, priority, scope));
+        events.push((end, true, seq, priority, scope));
+    }
+    events.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
+
+    // Sorted ascending by (priority, seq) — the lowest-priority (highest-
+    // severity) active span is always at `stack[0]`.
+    let mut stack: Vec<(u8, u32, hume_engine::types::ScopeId)> = Vec::new();
+    let mut pos = 0usize;
+    for &(event_pos, is_end, seq, priority, scope) in &events {
+        if let Some(&(_, _, active_scope)) = stack.first()
+            && pos < event_pos
+        {
+            out.push((line, pos, event_pos, active_scope));
+        }
+        pos = event_pos;
+
+        if is_end {
+            if let Some(idx) = stack
+                .iter()
+                .position(|&(p, s, _)| p == priority && s == seq)
+            {
+                stack.remove(idx);
+            }
+        } else {
+            let insert_at = stack.partition_point(|&(p, s, _)| (p, s) < (priority, seq));
+            stack.insert(insert_at, (priority, seq, scope));
+        }
     }
 }

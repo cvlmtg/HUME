@@ -42,7 +42,7 @@ impl<'a> IntervalCursor<'a> {
 /// Number of [`HighlightTier`] variants — the tier arrays in [`HighlightStack`]
 /// and [`TierBufs`] are indexed by `tier as usize`, so this must track the
 /// enum exactly (see `HighlightTier`'s doc for the discriminant assignments).
-const TIER_COUNT: usize = 4;
+const TIER_COUNT: usize = 5;
 
 /// Aggregated highlight intervals for one buffer line, one cursor per tier.
 /// Built once before iterating graphemes, queried per grapheme in O(1) amortised.

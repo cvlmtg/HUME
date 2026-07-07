@@ -413,6 +413,11 @@ define_settings! {
         "lsp.viewport-debounce-ms" => lsp_viewport_debounce_ms: usize = 150,
             scope: ["global"],
             parser: usize;
+        // Hint = most lenient — every severity renders. Gates the diagnostic
+        // underline/extra-highlight and gutter-sign render write sides.
+        "lsp.diagnostics-severity-floor" => lsp_diagnostics_severity_floor: crate::editor::lsp::DiagSeverity = crate::editor::lsp::DiagSeverity::Hint,
+            scope: ["global"],
+            parser: from_str;
         // Global-only *storage*: seeds new panes' `Pane::wrap_mode` at creation
         // time (`hume-engine`'s `Pane` is the live SSOT — see
         // `commands::open_pane`). A same-buffer `:split`/`:vsplit` overrides

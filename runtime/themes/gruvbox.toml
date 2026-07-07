@@ -24,6 +24,12 @@
 "ui.cursor.match"     = { fg = "bright_yellow", bg = "bg1", modifiers = ["bold"] }
 "ui.selection.search" = { fg = "bright_orange",  bg = "bg1" }
 
+# ── Diagnostics ───────────────────────────────────────────────────────────────
+"diagnostic.error"   = { fg = "bright_red",    modifiers = ["underlined"] }
+"diagnostic.warning" = { fg = "bright_yellow", modifiers = ["underlined"] }
+"diagnostic.info"    = { fg = "bright_blue",   modifiers = ["underlined"] }
+"diagnostic.hint"    = { fg = "bright_green",  modifiers = ["underlined"] }
+
 # ── Whitespace ────────────────────────────────────────────────────────────────
 "ui.whitespace" = { fg = "bg3" }
 

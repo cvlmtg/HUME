@@ -381,6 +381,14 @@ pub(crate) struct EditorState {
     pub(super) lsp_completion: Option<lsp::completion::CompletionSession>,
     /// Shared completion-popup view: written by `prepare_frame`, read by provider.
     pub(crate) completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>>,
+    /// Interned scope ids for the four diagnostic severities (`diagnostic.error`
+    /// etc.), resolved lazily on first use — scope interning needs `&mut
+    /// ScopeRegistry`, which lives on `Editor::view`, not `EditorState`.
+    pub(super) diagnostic_scopes: Option<[hume_engine::types::ScopeId; 4]>,
+    /// Cache of interned `ScopeId`s for plugin-supplied scope name strings
+    /// (extra highlights, signs, virtual lines) — avoids re-interning the
+    /// same runtime name every frame.
+    pub(super) runtime_scope_cache: std::collections::HashMap<String, hume_engine::types::ScopeId>,
 }
 
 impl EditorState {
@@ -1143,6 +1151,8 @@ impl Editor {
                 steel_prompt_callback: None,
                 lsp_completion: None,
                 completion_view: Arc::new(RwLock::new(None)),
+                diagnostic_scopes: None,
+                runtime_scope_cache: std::collections::HashMap::new(),
             },
             view: engine_view,
             kitty_enabled: false,

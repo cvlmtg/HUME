@@ -20,11 +20,45 @@ use crate::editor::message_log::Severity;
 /// severe as floor" — e.g. `floor = Warning` keeps `Error` and `Warning`,
 /// drops `Info`/`Hint`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum DiagSeverity {
+pub enum DiagSeverity {
     Error,
     Warning,
     Info,
     Hint,
+}
+
+impl DiagSeverity {
+    /// The wire-format strings `FromStr` accepts — the single source
+    /// `:set global lsp.diagnostics-severity-floor=<Tab>` completion mirrors,
+    /// so the two can never drift out of sync (same convention as `TabStyle`).
+    pub const VALUES: &'static [&'static str] = &["error", "warning", "info", "hint"];
+}
+
+impl std::fmt::Display for DiagSeverity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Error => "error",
+            Self::Warning => "warning",
+            Self::Info => "info",
+            Self::Hint => "hint",
+        })
+    }
+}
+
+impl std::str::FromStr for DiagSeverity {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "error" => Ok(Self::Error),
+            "warning" => Ok(Self::Warning),
+            "info" => Ok(Self::Info),
+            "hint" => Ok(Self::Hint),
+            _ => Err(format!(
+                "invalid lsp.diagnostics-severity-floor: expected one of 'error', 'warning', 'info', 'hint', got '{s}'"
+            )),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
