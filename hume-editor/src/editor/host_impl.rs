@@ -36,17 +36,13 @@ impl<'a> EditorHostImpl<'a> {
     /// Seeded pane-buffer state for the focused (pane, buffer), or `None` when
     /// unseeded (stale or never-focused ids) — the shared guard behind every
     /// live cursor/selection read.
-    fn focused_pane_buffer_state(
-        &self,
-    ) -> Option<(BufferId, &crate::editor::pane_state::PaneBufferState)> {
+    fn focused_pane_buffer_state(&self) -> Option<&crate::editor::pane_state::PaneBufferState> {
         let buf_id = crate::editor::commands::focused_buffer_id(self.state, self.view);
-        let pbs = self
-            .state
+        self.state
             .panes
             .state
             .get(self.state.focused_pane_id)?
-            .get(buf_id)?;
-        Some((buf_id, pbs))
+            .get(buf_id)
     }
 }
 
@@ -303,12 +299,12 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
 
     // ── Live cursor read ─────────────────────────────────────────────────────
     fn current_line_number(&self) -> Option<usize> {
-        let (_, pbs) = self.focused_pane_buffer_state()?;
+        let pbs = self.focused_pane_buffer_state()?;
         self.char_index_to_line(pbs.selections.primary().head())
     }
 
     fn current_selections(&self) -> Option<Vec<(usize, usize, bool)>> {
-        let (_, pbs) = self.focused_pane_buffer_state()?;
+        let pbs = self.focused_pane_buffer_state()?;
         let primary_index = pbs.selections.primary_index();
         Some(
             pbs.selections

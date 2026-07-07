@@ -267,8 +267,8 @@ pub(crate) fn current_selections(ctx: &mut SteelCtx) -> SteelResult {
 }
 
 /// `(char-index->line idx)` → 1-indexed line number containing 0-indexed char
-/// offset `idx`, or `#f` when the focused (pane, buffer) has no seeded pane
-/// state or `idx` is out of range (> buffer length in chars).
+/// offset `idx`, or `#f` when the focused buffer id is stale (buffer no
+/// longer exists) or `idx` is out of range (> buffer length in chars).
 pub(crate) fn char_index_to_line(ctx: &mut SteelCtx, idx: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "char-index->line");
     let idx = match idx {

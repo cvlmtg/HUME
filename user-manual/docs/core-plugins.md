@@ -41,14 +41,14 @@ Opt-in GUI-style paste split: `p` / `P` paste the kill-ring head, `Ctrl+V` / `Ct
 
 Vim muscle-memory keys: `$`, `^`, `0`, and the alternate-file toggle, plus `C`, `D` (delete to end of line), and `G` (go to last line). Requires `core:stdlib` loaded first.
 
-By default (`'smart`), `C` is context-sensitive: on a bare cursor it's vim's change to end of line; with an active (multi-char) selection it instead replaces the default binding, `copy-selection-on-next-line`, so that command stays reachable without giving up vim muscle memory for the common case. Pass `#:config` to change this:
+By default (`'smart`), `C` is context-sensitive: on a bare cursor it's vim's change to end of line; with an active (multi-char) selection it instead runs the default command, `copy-selection-on-next-line`, so that command stays reachable without giving up vim muscle memory for the common case. Pass `#:config` to change this:
 
 ```scheme
 (load-plugin "core:stdlib")
 (load-plugin "core:vim-keybind" #:config (hash "change-to-eol" 'off))
 ```
 
-`'on` makes `C` always change to end of line regardless of selection; `'off` leaves `C` unbound so the default `copy-selection-on-next-line` stays in place.
+`'on` makes `C` always change to end of line regardless of selection; `'off` leaves `C` untouched, keeping the default `copy-selection-on-next-line` binding in place.
 
 ## core:stdlib
 

@@ -17,7 +17,7 @@
 ;; (bind-keys! mode (key cmd) ...)
 ;;
 ;; Batched (bind-key!).  Binds one or more key sequences to command names in
-;; `mode` ('normal or 'insert).  Expands to a `begin` of individual
+;; `mode` ('normal, 'extend, or 'insert).  Expands to a `begin` of individual
 ;; `bind-key!` calls; all restrictions of `bind-key!` apply.
 ;;
 ;; Example:

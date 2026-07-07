@@ -183,7 +183,7 @@ pub trait EditorHost {
     /// 1-indexed line number containing the 0-indexed char offset `idx` in the
     /// focused buffer.
     ///
-    /// Returns `None` when the focused (pane, buffer) has no seeded pane state
-    /// or when `idx` is out of range (> `len_chars()`).
+    /// Returns `None` when the focused buffer id is stale (buffer no longer
+    /// exists) or when `idx` is out of range (> `len_chars()`).
     fn char_index_to_line(&self, idx: usize) -> Option<usize>;
 }

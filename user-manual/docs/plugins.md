@@ -117,6 +117,17 @@ Use `(call! ...)` to dispatch other commands from within a plugin:
 
 `call!` routes through the full dispatch system — lazy activation, native Rust commands, and Steel commands are handled uniformly.
 
+### Depending on another plugin
+
+If your plugin calls another plugin's commands via `call!`, check that the other plugin is loaded before you rely on it — an unknown command name just logs a warning and no-ops rather than erroring, so a missing dependency can otherwise show up as your plugin quietly doing the wrong thing instead of a clear failure. Check with `(loaded-plugins)` at the top level of your plugin body, before anything that calls into the dependency:
+
+```scheme
+(unless (member "core:stdlib" (loaded-plugins))
+  (error "my-plugin: requires core:stdlib — load it before my-plugin"))
+```
+
+This fails loudly at load time (startup or `:reload-config`), naming exactly what's missing, instead of leaving the bug to surface later at whatever moment the dependent command actually runs.
+
 ### Pending character input
 
 Some commands need a character argument from the user (like surround operations). `(request-wait-char! cmd-name)` arms the pending-char mechanism and dispatches `cmd-name` once the user types a char; `(pending-char)` then reads that char inside the dispatched command:

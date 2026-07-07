@@ -296,6 +296,12 @@ pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResu
 /// Stores `config` (the `#:config` value) unconditionally, overriding any prior
 /// value — repeat calls are expected to replace what the body sees on next load,
 /// unlike `declare-plugin`'s first-wins.  Read back by the body via `(plugin-config)`.
+/// This also intentionally supersedes a config recorded by an earlier
+/// `declare-plugin` for the same id: a bare `(load-plugin "x")` with no
+/// `#:config` after `(declare-plugin "x" #:config h)` runs the body with the
+/// empty default, not `h` — a plugin configured by a stale or forgotten
+/// earlier declare would be more surprising than one that just follows the
+/// most recent call.
 ///
 /// If the plugin is not yet declared, resolves its path and registers it now:
 /// absent on disk → silent skip + record in `declared_plugins` for PLUM to

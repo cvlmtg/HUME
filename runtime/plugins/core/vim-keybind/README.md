@@ -5,7 +5,8 @@ natively.
 
 ## Usage
 
-Requires `core:stdlib` loaded first:
+Requires `core:stdlib` loaded first — the default `'smart` `change-to-eol` mode hard-errors at
+load time otherwise (see [Config](#config) to opt out with `'on`/`'off` instead):
 
 
 ```scheme
@@ -68,3 +69,8 @@ back to `:e #` on those terminals).
 The `#:config` read follows the standard pattern: `(plugin-config)` returns the hash passed
 at `load-plugin` time (or an empty one). `"change-to-eol"` is checked with `hash-contains?`
 before `hash-ref` so a config-less load defaults to `'smart` instead of erroring.
+
+Only `'smart` needs `core:stdlib` (`vim-change-to-eol-or-copy-line` is the only command that
+calls it); the plugin checks `(loaded-plugins)` for `"core:stdlib"` at load time and errors
+immediately if it's resolved to `'smart` without it — otherwise a missing dependency would
+only surface once at the first `C` keypress, as a wrong-branch bug instead of a load error.

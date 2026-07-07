@@ -263,6 +263,61 @@ fn shift_d_is_dot_repeatable() {
     assert_eq!(ed.doc().text().to_string(), "\n\n");
 }
 
+// ── core:stdlib dependency check ───────────────────────────────────────────────
+
+/// Loading `core:vim-keybind` with the default `'smart` `change-to-eol` but
+/// without `core:stdlib` loaded first must fail `eval_init` at load time,
+/// naming `core:stdlib` — not silently succeed and leave `C` picking the
+/// wrong branch the first time it's pressed (the failure mode before the
+/// load-time `(loaded-plugins)` check was added).
+#[test]
+#[cfg(not(windows))]
+fn smart_change_to_eol_without_stdlib_errors_at_load() {
+    let guard = HumeRuntimeGuard::new();
+    write_core_plugin(&guard, "vim-keybind", VIM_KEYBIND_PLUGIN);
+    // Deliberately no `write_core_plugin(&guard, "stdlib", ...)`.
+
+    let init_dir = tempfile::tempdir().unwrap();
+    let init_path = init_dir.path().join("init.scm");
+    std::fs::write(&init_path, r#"(load-plugin "core:vim-keybind")"#).unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let mut host = ScriptingHost::new();
+    let err = {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect_err("'smart change-to-eol without core:stdlib must fail eval_init");
+    assert!(
+        err.contains("core:stdlib"),
+        "error must name the missing dependency; got: {err}"
+    );
+}
+
+/// `'off` never calls into `core:stdlib`, so it must load fine without it.
+#[test]
+#[cfg(not(windows))]
+fn change_to_eol_off_does_not_require_stdlib() {
+    let guard = HumeRuntimeGuard::new();
+    write_core_plugin(&guard, "vim-keybind", VIM_KEYBIND_PLUGIN);
+
+    let init_dir = tempfile::tempdir().unwrap();
+    let init_path = init_dir.path().join("init.scm");
+    std::fs::write(
+        &init_path,
+        r#"(load-plugin "core:vim-keybind" #:config (hash "change-to-eol" 'off))"#,
+    )
+    .unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let mut host = ScriptingHost::new();
+    {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("'off change-to-eol must load without core:stdlib");
+}
+
 // ── Defaults no longer bind these keys without the plugin ─────────────────────
 
 #[test]

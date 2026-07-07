@@ -40,6 +40,12 @@
   (if (hash-contains? cfg "change-to-eol")
       (hash-ref cfg "change-to-eol")
       'smart))
+;; 'smart dispatches to stdlib/all-single-char? via call! at keypress time —
+;; without core:stdlib loaded, call! would just warn and fall through, so C
+;; would silently pick the wrong branch instead of failing where the mistake
+;; was made. Check now, at load time, so a missing dependency is a load error.
+(when (and (equal? change-to-eol 'smart) (not (member "core:stdlib" (loaded-plugins))))
+  (error "core:vim-keybind: 'smart change-to-eol requires core:stdlib — (load-plugin \"core:stdlib\") before (load-plugin \"core:vim-keybind\")"))
 (cond
   ((equal? change-to-eol 'on)    (bind-key! 'normal "C" "vim-change-to-eol"))
   ((equal? change-to-eol 'smart) (bind-key! 'normal "C" "vim-change-to-eol-or-copy-line"))
