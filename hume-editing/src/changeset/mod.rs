@@ -44,11 +44,10 @@ pub enum Operation {
 /// directly from the builder, and undo/redo restores selections from the
 /// stored inverse transaction — neither path needs position mapping.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Assoc {
+pub enum Assoc {
     /// Stay before inserted text ("sticky left").
     /// Use this for anchors and positions that should remain pinned to the
     /// character that was at this offset before the edit.
-    #[cfg(test)]
     Before,
     /// Move past inserted text ("sticky right").
     /// Use this for cursors that should advance past text inserted at their
@@ -163,7 +162,7 @@ fn advance_op(
 /// walking `n` sorted positions through one cursor pays O(ops + n) total
 /// instead of O(ops × n) for `n` fresh `map_pos` calls. Same amortized-cursor
 /// shape as `IntervalCursor` in `hume_engine::style::highlight`.
-pub(crate) struct PosMapCursor<'a> {
+pub struct PosMapCursor<'a> {
     ops: &'a [Operation],
     idx: usize,
     old: usize,
@@ -171,7 +170,7 @@ pub(crate) struct PosMapCursor<'a> {
 }
 
 impl<'a> PosMapCursor<'a> {
-    pub(crate) fn new(ops: &'a [Operation]) -> Self {
+    pub fn new(ops: &'a [Operation]) -> Self {
         Self {
             ops,
             idx: 0,
@@ -186,7 +185,7 @@ impl<'a> PosMapCursor<'a> {
     /// Body mirrors [`ChangeSet::map_pos`] exactly; the only difference is
     /// that the walk resumes from `(idx, old, new)` instead of restarting at
     /// op 0, since ops fully behind a past query can never matter again.
-    pub(crate) fn map(&mut self, pos: usize, assoc: Assoc) -> usize {
+    pub fn map(&mut self, pos: usize, assoc: Assoc) -> usize {
         while self.idx < self.ops.len() {
             match &self.ops[self.idx] {
                 Operation::Retain(n) => {
@@ -208,7 +207,6 @@ impl<'a> PosMapCursor<'a> {
                     let len = s.chars().count();
                     if pos == self.old {
                         return match assoc {
-                            #[cfg(test)]
                             Assoc::Before => self.new,
                             Assoc::After => self.new + len,
                         };
@@ -345,6 +343,76 @@ impl ChangeSet {
             self.len_before,
         );
         PosMapCursor::new(&self.ops).map(pos, assoc)
+    }
+
+    // ── map_positions / map_ranges ──────────────────────────────────────────
+
+    /// Map a sorted slice of positions in place, through one [`PosMapCursor`]
+    /// pass — O(ops + n) total instead of O(ops × n) for `n` fresh
+    /// [`ChangeSet::map_pos`] calls. Used by callers remapping stored
+    /// positions (diagnostics, bookmarks) through every edit.
+    ///
+    /// # Panics
+    /// Panics (debug) if `positions` is not sorted ascending, or any position
+    /// exceeds `self.len_before`.
+    pub fn map_positions(&self, positions: &mut [usize], assoc: Assoc) {
+        debug_assert!(
+            positions.windows(2).all(|w| w[0] <= w[1]),
+            "map_positions: positions must be sorted ascending"
+        );
+        let mut cursor = PosMapCursor::new(&self.ops);
+        for pos in positions.iter_mut() {
+            debug_assert!(
+                *pos <= self.len_before,
+                "map_positions: pos {pos} exceeds len_before {}",
+                self.len_before,
+            );
+            *pos = cursor.map(*pos, assoc);
+        }
+    }
+
+    /// Map `(start, end)` ranges in place, sorted by `start`. Starts map with
+    /// [`Assoc::After`] and ends with [`Assoc::Before`], so a range shrinks
+    /// (never swallows neighbouring text) when edits land exactly at its
+    /// boundaries; a range fully inside a deletion collapses to an empty
+    /// range at the deletion point (caller may then drop it).
+    ///
+    /// Two `PosMapCursor` passes — one over starts, one over ends — rather
+    /// than one interleaved pass: starts and ends are each individually
+    /// sorted but interleaved with each other, so two straightforward
+    /// O(ops + n) passes are simpler than one pass over a merged, tagged
+    /// list, at the same asymptotic cost.
+    ///
+    /// A degenerate zero-width input range sitting exactly on an insertion
+    /// boundary would otherwise invert (`Assoc::After` pushes its start past
+    /// the insertion while `Assoc::Before` holds its end back) — a final
+    /// O(n) fixup clamps `end` to `start` in that case, collapsing to an
+    /// empty range rather than producing `end < start`.
+    ///
+    /// # Panics
+    /// Panics (debug) if `ranges` is not sorted by `start`, or any input has
+    /// `end < start`.
+    pub fn map_ranges(&self, ranges: &mut [(usize, usize)]) {
+        debug_assert!(
+            ranges.windows(2).all(|w| w[0].0 <= w[1].0),
+            "map_ranges: ranges must be sorted by start"
+        );
+        debug_assert!(
+            ranges.iter().all(|&(start, end)| start <= end),
+            "map_ranges: every range must have start <= end"
+        );
+
+        let mut starts = PosMapCursor::new(&self.ops);
+        for (start, _) in ranges.iter_mut() {
+            *start = starts.map(*start, Assoc::After);
+        }
+        let mut ends = PosMapCursor::new(&self.ops);
+        for (_, end) in ranges.iter_mut() {
+            *end = ends.map(*end, Assoc::Before);
+        }
+        for (start, end) in ranges.iter_mut() {
+            *end = (*end).max(*start);
+        }
     }
 
     // ── edited_old_ranges ────────────────────────────────────────────────────

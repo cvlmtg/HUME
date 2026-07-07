@@ -431,6 +431,216 @@ fn pos_map_cursor_handles_repeated_pos_with_both_assocs() {
     assert_eq!(cursor.map(4, Assoc::After), cs.map_pos(4, Assoc::After));
 }
 
+// ── map_positions tests ───────────────────────────────────────────────────
+
+#[test]
+fn map_positions_matches_map_pos_oracle() {
+    // Same fixture as the cursor tests above: replace "llo" with "LLO!",
+    // delete "wor", retain "ld\n" — covers Retain/Delete/Insert, each with
+    // positions before/at/inside/after the op.
+    let mut b = ChangeSetBuilder::new(11);
+    b.retain(2);
+    b.delete(3);
+    b.insert("LLO!");
+    b.delete(3);
+    b.retain_rest();
+    let cs = b.finish();
+
+    let mut positions: Vec<usize> = vec![0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11];
+    let expected: Vec<usize> = positions.iter().map(|&p| cs.map_pos(p, Assoc::After)).collect();
+
+    cs.map_positions(&mut positions, Assoc::After);
+    assert_eq!(positions, expected);
+}
+
+#[test]
+fn map_positions_before_assoc_matches_oracle() {
+    let mut b = ChangeSetBuilder::new(5);
+    b.retain(3);
+    b.insert("XX");
+    b.retain_rest();
+    let cs = b.finish();
+
+    let mut positions: Vec<usize> = vec![0, 1, 2, 3, 4, 5];
+    let expected: Vec<usize> = positions.iter().map(|&p| cs.map_pos(p, Assoc::Before)).collect();
+
+    cs.map_positions(&mut positions, Assoc::Before);
+    assert_eq!(positions, expected);
+}
+
+#[test]
+fn map_positions_empty_slice_is_noop() {
+    let mut b = ChangeSetBuilder::new(5);
+    b.retain_rest();
+    let cs = b.finish();
+
+    let mut positions: Vec<usize> = vec![];
+    cs.map_positions(&mut positions, Assoc::After);
+    assert!(positions.is_empty());
+}
+
+#[test]
+#[should_panic(expected = "sorted ascending")]
+fn map_positions_unsorted_input_panics() {
+    let mut b = ChangeSetBuilder::new(5);
+    b.retain_rest();
+    let cs = b.finish();
+
+    let mut positions = vec![3, 1];
+    cs.map_positions(&mut positions, Assoc::After);
+}
+
+// ── map_ranges tests ──────────────────────────────────────────────────────
+
+#[test]
+fn map_ranges_edit_before_range_shifts_uniformly() {
+    // Insert("XX") at 0, retain rest. Edit is entirely before the range, so
+    // it shifts uniformly by +2.
+    let mut b = ChangeSetBuilder::new(11);
+    b.insert("XX");
+    b.retain_rest();
+    let cs = b.finish();
+
+    let mut ranges = vec![(5usize, 8usize)];
+    cs.map_ranges(&mut ranges);
+    assert_eq!(ranges, vec![(7, 10)]);
+}
+
+#[test]
+fn map_ranges_edit_inside_range_grows_it() {
+    // Retain(2), Insert("XX"), retain rest. The insertion point (2) is
+    // strictly inside (0,5)'s interior, so the range grows to absorb it.
+    let mut b = ChangeSetBuilder::new(11);
+    b.retain(2);
+    b.insert("XX");
+    b.retain_rest();
+    let cs = b.finish();
+
+    let mut ranges = vec![(0usize, 5usize)];
+    cs.map_ranges(&mut ranges);
+    assert_eq!(ranges, vec![(0, 7)]);
+}
+
+#[test]
+fn map_ranges_edit_spans_range_collapses_to_deletion_point() {
+    // Delete(11) — the whole document. Any old range collapses to (0, 0).
+    let mut b = ChangeSetBuilder::new(11);
+    b.delete(11);
+    let cs = b.finish();
+
+    let mut ranges = vec![(2usize, 6usize)];
+    cs.map_ranges(&mut ranges);
+    assert_eq!(ranges, vec![(0, 0)]);
+}
+
+#[test]
+fn map_ranges_edit_at_range_start_excludes_insertion() {
+    // Retain(3), Insert("XX"), retain rest. Insertion lands exactly at the
+    // range's start (3) — Assoc::After pushes the start past it, excluding
+    // the inserted text from the front of the shrunk range.
+    let mut b = ChangeSetBuilder::new(11);
+    b.retain(3);
+    b.insert("XX");
+    b.retain_rest();
+    let cs = b.finish();
+
+    let mut ranges = vec![(3usize, 7usize)];
+    cs.map_ranges(&mut ranges);
+    assert_eq!(ranges, vec![(5, 9)]);
+}
+
+#[test]
+fn map_ranges_edit_at_range_end_excludes_insertion() {
+    // Retain(7), Insert("XX"), retain rest. Insertion lands exactly at the
+    // range's end (7) — Assoc::Before holds the end back, excluding the
+    // inserted text from the back of the shrunk range.
+    let mut b = ChangeSetBuilder::new(11);
+    b.retain(7);
+    b.insert("XX");
+    b.retain_rest();
+    let cs = b.finish();
+
+    let mut ranges = vec![(3usize, 7usize)];
+    cs.map_ranges(&mut ranges);
+    assert_eq!(ranges, vec![(3, 7)]);
+}
+
+#[test]
+fn map_ranges_zero_width_at_insertion_boundary_never_inverts() {
+    // Degenerate point range exactly at an insertion offset: the start maps
+    // past the insertion (After) while the end stays put (Before) — without
+    // the fixup clamp this would invert to (5, 3).
+    let mut b = ChangeSetBuilder::new(5);
+    b.retain(3);
+    b.insert("XX");
+    b.retain_rest();
+    let cs = b.finish();
+
+    let mut ranges = vec![(3usize, 3usize)];
+    cs.map_ranges(&mut ranges);
+    assert_eq!(ranges, vec![(5, 5)]);
+    assert!(ranges.iter().all(|&(s, e)| s <= e));
+}
+
+#[test]
+fn map_ranges_multiple_disjoint_ranges_matches_map_pos_oracle() {
+    let mut b = ChangeSetBuilder::new(11);
+    b.retain(2);
+    b.delete(3);
+    b.insert("LLO!");
+    b.delete(3);
+    b.retain_rest();
+    let cs = b.finish();
+
+    let input = [(0usize, 2usize), (5usize, 8usize), (9usize, 11usize)];
+    let expected: Vec<(usize, usize)> = input
+        .iter()
+        .map(|&(s, e)| {
+            let ms = cs.map_pos(s, Assoc::After);
+            let me = cs.map_pos(e, Assoc::Before).max(ms);
+            (ms, me)
+        })
+        .collect();
+
+    let mut ranges = input.to_vec();
+    cs.map_ranges(&mut ranges);
+    assert_eq!(ranges, expected);
+    assert!(ranges.iter().all(|&(s, e)| s <= e));
+}
+
+#[test]
+fn map_ranges_empty_slice_is_noop() {
+    let mut b = ChangeSetBuilder::new(5);
+    b.retain_rest();
+    let cs = b.finish();
+
+    let mut ranges: Vec<(usize, usize)> = vec![];
+    cs.map_ranges(&mut ranges);
+    assert!(ranges.is_empty());
+}
+
+#[test]
+#[should_panic(expected = "sorted by start")]
+fn map_ranges_unsorted_input_panics() {
+    let mut b = ChangeSetBuilder::new(5);
+    b.retain_rest();
+    let cs = b.finish();
+
+    let mut ranges = vec![(3usize, 4usize), (1usize, 2usize)];
+    cs.map_ranges(&mut ranges);
+}
+
+#[test]
+#[should_panic(expected = "start <= end")]
+fn map_ranges_end_before_start_input_panics() {
+    let mut b = ChangeSetBuilder::new(5);
+    b.retain_rest();
+    let cs = b.finish();
+
+    let mut ranges = vec![(4usize, 2usize)];
+    cs.map_ranges(&mut ranges);
+}
+
 // ── edited_old_ranges tests ──────────────────────────────────────────────
 
 #[test]
