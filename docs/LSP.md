@@ -247,7 +247,7 @@ Workspace groundwork with no LSP-visible behavior. Cards: `docs/lsp/step-0.md`. 
 - [x] **P3** — generalized event-loop wake (compose async sources behind one predicate)
 - [x] **P4** — position encoding conversion (rope char offset ↔ LSP line/character, utf-8 + utf-16)
 - [x] **P5** — path ↔ `file://` URI (in `hume-lsp`)
-- [ ] **P6** — `ChangeSet` → `TextDocumentContentChangeEvent[]` (in `hume-lsp`)
+- [x] **P6** — `ChangeSet` → `TextDocumentContentChangeEvent[]` (in `hume-lsp`)
 - [x] **P7** — event-loop timer wheel
 - [x] **P8** — boundary-cost spike (measure, then decide; updates this hub)
 
