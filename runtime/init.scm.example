@@ -129,11 +129,11 @@
 ;; The lambda declares (count extend) so numeric prefixes (3j) and Ctrl-J one-shot
 ;; extend both work automatically.
 ;;
-;; Caveat: rebinding j/k through a Steel wrapper like this always moves by
-;; buffer line, even on a bare keypress with no count — every `call!` counts
-;; as an explicit dispatch, unlike a native `j`/`k` binding, which only moves
-;; by buffer line when you type a count. To keep bare-j visual-row movement,
-;; bind the key straight to "move-down"/"move-up" instead of wrapping it.
+;; Your lambda's `count` is 0 when no count was typed (a bare keypress) — the
+;; same case a native `j`/`k` binding treats as visual-row movement. Forwarding
+;; `count` straight into `(call! "move-down" count extend)`, as below, preserves
+;; that: bare `j` still moves one visual row, `3j` still moves 3 buffer lines.
+;; If your own code needs a real repeat count instead, use `(max count 1)`.
 ;;
 ;; (define-command! "move-down-select-word"
 ;;   "Move down N visual lines, then select the nearest word on that line."

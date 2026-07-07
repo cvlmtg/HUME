@@ -1092,6 +1092,43 @@ fn set_register_prefix_passed_to_dispatch() {
     );
 }
 
+/// `(call! "paste-after" 0)` must decode to `count: None` at the
+/// `run_command_sync` boundary — `0` is the Scheme spelling of "no count
+/// typed" (`parse_count_extend`), distinct from `Some(1)` even though both
+/// apply the command once.
+///
+/// Fail oracle: before this change, `parse_count_extend` clamped `0` to `1`,
+/// so `dispatched_native[0].1` would be `Some(1)`, not `None`.
+#[test]
+fn call_native_zero_count_decodes_to_none() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+
+    h.eval_source(
+        r#"(define-command! "paste-zero" ""
+             (lambda () (call! "paste-after" 0)))"#,
+        &mut mock,
+    )
+    .unwrap();
+    mock.native_names.insert("paste-after".to_string());
+    h.call_steel_cmd(
+        "paste-zero",
+        None,
+        vec![],
+        PaneId::default(),
+        BufferId::default(),
+        &mut mock,
+    )
+    .unwrap();
+    assert_eq!(mock.dispatched_native.len(), 1);
+    let (name, count, _, _) = &mock.dispatched_native[0];
+    assert_eq!(name, "paste-after");
+    assert_eq!(
+        *count, None,
+        "count 0 from Steel must decode to None, not Some(1)"
+    );
+}
+
 #[test]
 fn set_register_prefix_sticky_across_multiple_calls() {
     let mut h = host();

@@ -132,6 +132,11 @@ pub trait EditorHost {
     /// implementation self-guards, so the caller need not pre-check via
     /// `command_is_native` (though doing so avoids a wasted lookup).
     ///
+    /// `count`: `None` means "as if no count was typed" — for `move-down`/`move-up`
+    /// this selects visual-row movement instead of buffer-line movement (every other
+    /// native command treats `None` the same as `Some(1)`). `parse_count_extend`
+    /// decodes a Steel-side count of `0` to `None`.
+    ///
     /// `register` arms `state.register_prefix` before dispatch so register-aware
     /// commands (`yank`, `delete`, `paste-after`, etc.) route to the right
     /// destination. Pass `None` when no explicit register was set.
@@ -144,7 +149,7 @@ pub trait EditorHost {
     fn run_command_sync(
         &mut self,
         name: &str,
-        count: usize,
+        count: Option<usize>,
         extend: bool,
         register: Option<char>,
     ) -> Result<(), String>;

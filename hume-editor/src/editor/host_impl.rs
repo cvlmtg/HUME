@@ -259,7 +259,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     fn run_command_sync(
         &mut self,
         name: &str,
-        count: usize,
+        count: Option<usize>,
         extend: bool,
         register: Option<char>,
     ) -> Result<(), String> {
@@ -284,11 +284,11 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             self.view,
             cmd,
             crate::editor::CmdCtx {
-                // Scripted dispatch always counts as an explicit count, so
-                // move-down/move-up move by buffer lines here even for a bare
-                // `(call-native! "move-down")` — a script can't see the window,
-                // so visual-row movement is meaningless to it.
-                count: Some(count),
+                // `count` came from `parse_count_extend`, which decodes a
+                // Steel-side count of 0 to `None` — the script's way of asking
+                // for "as if no count was typed" (move-down/move-up read this
+                // as visual-row movement instead of buffer-line movement).
+                count,
                 extend,
                 steel_args: vec![],
             },

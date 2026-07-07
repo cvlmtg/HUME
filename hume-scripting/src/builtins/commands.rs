@@ -230,16 +230,31 @@ pub(crate) fn lookup_plugin_proc(ctx: &mut SteelCtx, name: String) -> SteelResul
 
 /// Parse count/extend from a native command's args list.
 ///
-/// Valid shapes: `[]` → `(1, false)`; `[n]` → `(n, false)`; `[n, bool]` → `(n, bool)`.
-/// All other shapes (e.g. a leading string, extra args) return `Err`.
+/// Valid shapes: `[]` → `(Some(1), false)`; `[n]` → `(decode(n), false)`;
+/// `[n, bool]` → `(decode(n), bool)`. All other shapes (e.g. a leading string,
+/// extra args) return `Err`.
+///
+/// `decode(0)` is `None` — the Scheme spelling of "no count typed" (a bare
+/// keypress), since Scheme has no `Option` to pass across the builtin-call
+/// boundary and `0` is otherwise unreachable as an explicit count. `None`
+/// makes `move-down`/`move-up` move by visual row instead of buffer line
+/// (see `EditorHost::run_command_sync`); every other native command treats
+/// it the same as `Some(1)`. Negative counts still clamp to `Some(1)`.
 ///
 /// Re-exported from the crate root so the editor crate can reuse it when
 /// parsing the count/extend args passed to a native command from Steel.
-pub fn parse_count_extend(args: &[SteelVal]) -> Result<(usize, bool), String> {
+pub fn parse_count_extend(args: &[SteelVal]) -> Result<(Option<usize>, bool), String> {
+    fn decode(n: isize) -> Option<usize> {
+        if n == 0 {
+            None
+        } else {
+            Some(n.max(1) as usize)
+        }
+    }
     match args {
-        [] => Ok((1, false)),
-        [SteelVal::IntV(n)] => Ok(((*n).max(1) as usize, false)),
-        [SteelVal::IntV(n), SteelVal::BoolV(ext)] => Ok(((*n).max(1) as usize, *ext)),
+        [] => Ok((Some(1), false)),
+        [SteelVal::IntV(n)] => Ok((decode(*n), false)),
+        [SteelVal::IntV(n), SteelVal::BoolV(ext)] => Ok((decode(*n), *ext)),
         _ => Err(format!(
             "native command args must be [], [count], or [count extend]; got {:?}",
             args
@@ -446,14 +461,14 @@ mod tests {
 
     #[test]
     fn parse_count_extend_empty_gives_defaults() {
-        assert_eq!(parse_count_extend(&[]).unwrap(), (1, false));
+        assert_eq!(parse_count_extend(&[]).unwrap(), (Some(1), false));
     }
 
     #[test]
     fn parse_count_extend_count_only() {
         assert_eq!(
             parse_count_extend(&[SteelVal::IntV(5)]).unwrap(),
-            (5, false)
+            (Some(5), false)
         );
     }
 
@@ -461,29 +476,35 @@ mod tests {
     fn parse_count_extend_count_and_extend() {
         assert_eq!(
             parse_count_extend(&[SteelVal::IntV(3), SteelVal::BoolV(true)]).unwrap(),
-            (3, true)
+            (Some(3), true)
         );
     }
 
-    /// Negative counts clamp to 1 — `(*n).max(1) as usize`.
+    /// Negative counts clamp to `Some(1)` — same as a native keypress count.
     #[test]
     fn parse_count_extend_negative_clamps_to_one() {
         assert_eq!(
             parse_count_extend(&[SteelVal::IntV(-7)]).unwrap(),
-            (1, false)
+            (Some(1), false)
         );
         assert_eq!(
             parse_count_extend(&[SteelVal::IntV(-1), SteelVal::BoolV(false)]).unwrap(),
-            (1, false)
+            (Some(1), false)
         );
     }
 
-    /// Zero also clamps to 1 (max(0, 1) = 1).
+    /// Zero is the Scheme spelling of "no count typed" — decodes to `None`,
+    /// not `Some(1)` (a bare keypress and an explicit count of 1 are different
+    /// dispatch origins even though both apply a command once).
     #[test]
-    fn parse_count_extend_zero_clamps_to_one() {
+    fn parse_count_extend_zero_means_no_count() {
         assert_eq!(
             parse_count_extend(&[SteelVal::IntV(0)]).unwrap(),
-            (1, false)
+            (None, false)
+        );
+        assert_eq!(
+            parse_count_extend(&[SteelVal::IntV(0), SteelVal::BoolV(true)]).unwrap(),
+            (None, true)
         );
     }
 

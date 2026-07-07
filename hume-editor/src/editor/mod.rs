@@ -80,10 +80,12 @@ pub(crate) use message_log::Severity;
 pub(super) struct CmdCtx {
     /// Numeric count prefix. `None` means "no count was typed" — a bare
     /// keyboard press, which visual-move commands read as one visual row
-    /// (`state.explicit_count`, set from this by `run_native_body`).
-    /// `Some(n)` covers both an explicit user count and every non-keybind
-    /// dispatch origin (Steel `call!`, `:cmd`, insert-mode leaf), which is
-    /// why those origins always read as buffer-line motion.
+    /// (`state.explicit_count`, set from this by `run_native_body`). Producible
+    /// by the keymap trie leaves / WaitChar arm, and also by Steel: a script
+    /// passes a count of `0` (`parse_count_extend` decodes it to `None`) to ask
+    /// for the same "as if no count was typed" behavior. `Some(n)` is every
+    /// other case — an explicit user count, a script's explicit `n`, or a
+    /// non-keybind origin's default (`:cmd`, insert-mode leaf, no-arg `call!`).
     pub count: Option<usize>,
     /// Whether this command runs in Extend mode.
     pub extend: bool,
@@ -664,7 +666,12 @@ impl Editor {
         ctx: &CmdCtx,
         char_arg: Option<char>,
     ) -> bool {
-        let count = ctx.count.unwrap_or(1).max(1);
+        // Injected into the lambda's `count` param verbatim — `0` is the Scheme
+        // spelling of `None` ("no count was typed"), so a wrapper that forwards
+        // this value straight into `(call! "move-down" count extend)` round-trips
+        // a bare keypress back to visual-row movement (`parse_count_extend`
+        // decodes `0` back to `None` on the way in).
+        let count = ctx.count.unwrap_or(0);
         let extend = ctx.extend;
 
         // For a Lazy stub, activate the owning plugin now so we can read

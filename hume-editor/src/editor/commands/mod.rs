@@ -112,13 +112,15 @@ impl EditorState {
 /// Called by both the unified pipeline ([`run_dispatch_pipeline`]) and the
 /// dot-repeat replay path ([`Editor::replay_dot`]).
 ///
-/// The single writer of `state.explicit_count`: `count` is `None` only for a
-/// bare keyboard press (no count typed), which is the only case visual-move
-/// commands (`move-down`/`move-up`) read as "move by visual row" rather than
-/// buffer line. Save/restore (not a plain set) so a Steel command's body
-/// dispatching its own native command via `call!` — which nests inside this
-/// same function while the outer call's stack frame is still live — gets its
-/// own value instead of leaking the outer command's.
+/// The single writer of `state.explicit_count`: `count` is `None` for a bare
+/// keyboard press (no count typed) or for a Steel `call!` that explicitly asked
+/// for the same treatment (a script-side count of `0`, decoded by
+/// `parse_count_extend`). Visual-move commands (`move-down`/`move-up`) read
+/// `explicit_count == false` as "move by visual row" rather than buffer line.
+/// Save/restore (not a plain set) so a Steel command's body dispatching its own
+/// native command via `call!` — which nests inside this same function while the
+/// outer call's stack frame is still live — gets its own value instead of
+/// leaking the outer command's.
 pub(super) fn run_native_body(
     state: &mut EditorState,
     view: &mut EngineView,

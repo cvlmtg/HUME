@@ -117,6 +117,8 @@ Use `(call! ...)` to dispatch other commands from within a plugin:
 
 `call!` routes through the full dispatch system — lazy activation, native Rust commands, and Steel commands are handled uniformly.
 
+When forwarding a `count` argument to another command, a count of `0` means "as if no count was typed" — this is how `move-down`/`move-up` decide between visual-row and buffer-line movement, and it lets a key-bound command that forwards its own `count` behave the same way a native keybinding would.
+
 ### Depending on another plugin
 
 If your plugin calls another plugin's commands via `call!`, check that the other plugin is loaded before you rely on it — an unknown command name just logs a warning and no-ops rather than erroring, so a missing dependency can otherwise show up as your plugin quietly doing the wrong thing instead of a clear failure. Check with `(loaded-plugins)` at the top level of your plugin body, before anything that calls into the dependency:

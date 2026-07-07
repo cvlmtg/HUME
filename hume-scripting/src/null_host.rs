@@ -107,7 +107,7 @@ impl EditorHost for NullHost {
     fn run_command_sync(
         &mut self,
         _name: &str,
-        _count: usize,
+        _count: Option<usize>,
         _extend: bool,
         _register: Option<char>,
     ) -> Result<(), String> {
@@ -222,7 +222,7 @@ impl EditorHost for FailingRegisterHost {
     fn run_command_sync(
         &mut self,
         name: &str,
-        count: usize,
+        count: Option<usize>,
         extend: bool,
         register: Option<char>,
     ) -> Result<(), String> {

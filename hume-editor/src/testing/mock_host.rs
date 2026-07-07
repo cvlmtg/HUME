@@ -29,7 +29,8 @@ pub(crate) struct MockHost {
     /// the `run_command_sync` path.
     pub(crate) native_names: std::collections::HashSet<String>,
     /// Record of every `run_command_sync` call: `(name, count, extend, register)`.
-    pub(crate) dispatched_native: Vec<(String, usize, bool, Option<char>)>,
+    /// `count` is `None` when the Steel side passed `0` ("no count typed").
+    pub(crate) dispatched_native: Vec<(String, Option<usize>, bool, Option<char>)>,
 }
 
 impl MockHost {
@@ -176,7 +177,7 @@ impl EditorHost for MockHost {
     fn run_command_sync(
         &mut self,
         name: &str,
-        count: usize,
+        count: Option<usize>,
         extend: bool,
         register: Option<char>,
     ) -> Result<(), String> {

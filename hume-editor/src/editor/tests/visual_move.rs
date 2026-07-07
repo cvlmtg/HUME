@@ -471,30 +471,33 @@ fn select_word_nearest_no_oscillation_on_repeated_j() {
 // ── Dispatch-origin count semantics ────────────────────────────────────────
 //
 // `move-down`/`move-up`'s buffer-line-vs-visual-row choice comes from
-// whether the *keymap* dispatched a typed count (`CmdCtx.count: Option<usize>`,
-// `None` only for a bare keypress). Every non-keymap origin — Steel `call!`,
-// `:move-down`, dot-repeat replay — always supplies `Some`, so those origins
-// always move by buffer line: a script can't see the window, so a visual-row
-// motion is meaningless to it.
+// `CmdCtx.count: Option<usize>` — `None` means "as if no count was typed".
+// The keymap trie leaves / WaitChar arm produce `None` for a bare keypress.
+// Steel can produce the same `None` explicitly: a script passes a count of
+// `0` (the Scheme spelling of "no count"), which `parse_count_extend` decodes
+// to `None` before it ever reaches `CmdCtx`. A no-arg `call!`/typed `:move-down`
+// still defaults to `Some(1)` (buffer line) — the script has to opt into
+// visual-row movement by name (passing `0`), it never happens implicitly.
 
-/// Scripted dispatch (`run_command_sync`, the path behind Steel's `call!`)
-/// always moves by buffer line, even with no count — unlike a bare keyboard
-/// `j`, which stops at the wrap boundary (see
-/// `visual_move_down_within_wrapped_line`, char 76).
+/// Scripted dispatch (`run_command_sync`, the path behind Steel's `call!`) with
+/// an explicit `Some(count)` moves by buffer line — unlike a bare keyboard `j`,
+/// which stops at the wrap boundary (see `visual_move_down_within_wrapped_line`,
+/// char 76). A script can pass `None` (Steel count `0`) to get visual-row
+/// movement instead — see `steel_call_move_down_zero_count_moves_visual_row`.
 #[test]
-fn run_command_sync_move_down_always_moves_buffer_line() {
+fn run_command_sync_some_count_moves_buffer_line() {
     use hume_scripting::host::EditorHost;
 
     let mut ed = visual_test_editor(0);
     {
         let mut host = live_host!(ed);
-        host.run_command_sync("move-down", 1, false, None)
+        host.run_command_sync("move-down", Some(1), false, None)
             .expect("run_command_sync must not error for move-down");
     }
     assert_eq!(
         ed.current_selections().primary().head(),
         81,
-        "scripted move-down (no count) must move a full buffer line, not stop at the wrap boundary"
+        "scripted move-down (Some(1)) must move a full buffer line, not stop at the wrap boundary"
     );
 }
 
@@ -551,5 +554,181 @@ fn steel_call_move_down_ignores_outer_keystrokes_count() {
         !ed.state.explicit_count,
         "explicit_count must be restored to its pre-dispatch value (false) after \
          the outer Steel command and its nested native call both complete"
+    );
+}
+
+/// A Steel wrapper that forwards its own `count`/`extend` params straight into
+/// `(call! "move-down" count extend)` must preserve bare-press visual-row
+/// movement: dispatching it with `None` (as a keymap trie leaf would for a
+/// bare keypress) injects `count = 0` into the lambda, which round-trips back
+/// to `None` through `parse_count_extend` — the documented
+/// `move-down-select-word`-style pattern from `init.scm.example`.
+///
+/// Fail oracle: before this change, `run_steel_command` injected
+/// `ctx.count.unwrap_or(1)`, so the lambda would see `1` and always move the
+/// buffer line (head 81), never 76.
+#[test]
+fn steel_wrapper_bare_dispatch_moves_visual_row() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = visual_test_editor(0);
+    let mut host = ScriptingHost::new();
+    let mut init_host = EditorHostImpl {
+        state: &mut ed.state,
+        view: &mut ed.view,
+    };
+    host.eval_source_returning_defs(
+        r#"(define-command! "steel-jk" ""
+                 (lambda (count extend) (call! "move-down" count extend)))"#
+            .to_owned(),
+        Default::default(),
+        &mut init_host,
+    )
+    .expect("define-command! must succeed");
+
+    ed.scripting = Some(host);
+    // Simulates a bare `<key>` bound to "steel-jk": no count was typed.
+    ed.execute_keymap_command("steel-jk".into(), None, false, vec![]);
+
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        76,
+        "bare dispatch through a forwarding Steel wrapper must move one visual \
+         row (char 76), not one buffer line (char 81)"
+    );
+}
+
+/// The same wrapper with an explicit count still moves by buffer line —
+/// forwarding preserves both behaviors, not just the visual-row one.
+///
+/// Buffer: wrapped 80-char line 0, then three short lines "b"/"c"/"d" (chars
+/// 81/83/85). From char 0, 3 buffer lines lands on 'd' (85); 3 *visual* rows
+/// (sub-row 1, then "b", then "c") would land on 'c' (83) instead — the two
+/// outcomes are distinguishable, so this pins `by_buffer_line`, not just count.
+#[test]
+fn steel_wrapper_explicit_count_moves_buffer_lines() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_editing::selection::{Selection, SelectionSet};
+    use hume_editing::text::Text;
+    use hume_scripting::ScriptingHost;
+
+    let line0: String = "a".repeat(80);
+    let content = format!("{line0}\nb\nc\nd\n");
+    let buf = Text::from(content.as_str());
+    let sels = SelectionSet::single(Selection::collapsed(0));
+    let mut ed = Editor::for_testing(Buffer::new(buf, sels));
+    ed.view.panes[ed.state.focused_pane_id].wrap_mode =
+        hume_engine::pane::WrapMode::Indent { width: 76 };
+
+    let mut host = ScriptingHost::new();
+    let mut init_host = EditorHostImpl {
+        state: &mut ed.state,
+        view: &mut ed.view,
+    };
+    host.eval_source_returning_defs(
+        r#"(define-command! "steel-jk" ""
+                 (lambda (count extend) (call! "move-down" count extend)))"#
+            .to_owned(),
+        Default::default(),
+        &mut init_host,
+    )
+    .expect("define-command! must succeed");
+
+    ed.scripting = Some(host);
+    ed.execute_keymap_command("steel-jk".into(), Some(3), false, vec![]);
+
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        85,
+        "3<key> through the forwarding wrapper must move 3 buffer lines (char \
+         85), not 3 visual rows (char 83)"
+    );
+}
+
+/// `(call! "move-down" 0)` from inside a Steel command body moves by visual
+/// row regardless of the *outer* dispatch's count — a script can ask for
+/// visual-row movement explicitly, not just by forwarding a bare keypress.
+/// Also confirms `explicit_count` is restored afterward (mirrors
+/// `steel_call_move_down_ignores_outer_keystrokes_count`).
+#[test]
+fn steel_call_move_down_zero_count_moves_visual_row() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = visual_test_editor(0);
+    let mut host = ScriptingHost::new();
+    let mut init_host = EditorHostImpl {
+        state: &mut ed.state,
+        view: &mut ed.view,
+    };
+    host.eval_source_returning_defs(
+        r#"(define-command! "steel-vis" ""
+                 (lambda () (call! "move-down" 0)))"#
+            .to_owned(),
+        Default::default(),
+        &mut init_host,
+    )
+    .expect("define-command! must succeed");
+
+    ed.scripting = Some(host);
+    // Outer count is Some(1) — irrelevant, since the body hardcodes 0.
+    ed.execute_keymap_command("steel-vis".into(), Some(1), false, vec![]);
+
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        76,
+        "(call! \"move-down\" 0) must move one visual row (char 76), not one \
+         buffer line (char 81)"
+    );
+    assert!(
+        !ed.state.explicit_count,
+        "explicit_count must be restored to its pre-dispatch value (false) \
+         after the command completes"
+    );
+}
+
+/// The bare-name wrapper generated by `register_command_names` is variadic —
+/// `(move-down 0)` (no `call!`, no wrapper lambda) must also decode `0` to
+/// visual-row movement. This exercises the generated
+/// `(lambda args (%dispatch-command "move-down" args))` binding directly,
+/// distinct from the `call!`-macro path the other tests use.
+#[test]
+fn generated_bare_name_wrapper_accepts_zero_count() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = visual_test_editor(0);
+    let names: Vec<String> = ed
+        .state
+        .registry
+        .native_mappable_names()
+        .map(str::to_owned)
+        .collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut host = ScriptingHost::new();
+    host.register_command_names(&name_refs);
+
+    let mut init_host = EditorHostImpl {
+        state: &mut ed.state,
+        view: &mut ed.view,
+    };
+    host.eval_source_returning_defs(
+        r#"(define-command! "steel-vis-direct" ""
+                 (lambda () (move-down 0)))"#
+            .to_owned(),
+        Default::default(),
+        &mut init_host,
+    )
+    .expect("define-command! must succeed");
+
+    ed.scripting = Some(host);
+    ed.execute_keymap_command("steel-vis-direct".into(), Some(1), false, vec![]);
+
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        76,
+        "(move-down 0) via the generated variadic wrapper must move one \
+         visual row (char 76), not one buffer line (char 81)"
     );
 }

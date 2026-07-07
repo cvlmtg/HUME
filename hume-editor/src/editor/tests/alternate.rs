@@ -49,7 +49,7 @@ fn goto_alternate_file_switches_to_alternate_and_is_involutive() {
     let id_b = ed.focused_buffer_id();
 
     live_host!(ed)
-        .run_command_sync("goto-alternate-file", 1, false, None)
+        .run_command_sync("goto-alternate-file", Some(1), false, None)
         .expect("goto-alternate-file must not error");
     assert_eq!(
         ed.focused_buffer_id(),
@@ -58,7 +58,7 @@ fn goto_alternate_file_switches_to_alternate_and_is_involutive() {
     );
 
     live_host!(ed)
-        .run_command_sync("goto-alternate-file", 1, false, None)
+        .run_command_sync("goto-alternate-file", Some(1), false, None)
         .expect("goto-alternate-file must not error");
     assert_eq!(
         ed.focused_buffer_id(),
@@ -78,7 +78,7 @@ fn goto_alternate_file_pushes_jump_entry() {
     let id_before = ed.focused_buffer_id();
 
     live_host!(ed)
-        .run_command_sync("goto-alternate-file", 1, false, None)
+        .run_command_sync("goto-alternate-file", Some(1), false, None)
         .expect("goto-alternate-file must not error");
     assert_ne!(
         ed.focused_buffer_id(),
@@ -86,7 +86,7 @@ fn goto_alternate_file_pushes_jump_entry() {
         "goto-alternate-file changes focus"
     );
     live_host!(ed)
-        .run_command_sync("jump-backward", 1, false, None)
+        .run_command_sync("jump-backward", Some(1), false, None)
         .expect("jump-backward must not error");
     assert_eq!(
         ed.focused_buffer_id(),
@@ -100,7 +100,7 @@ fn goto_alternate_file_warns_when_no_alternate() {
     let mut ed = editor_from("-[h]>ello\n");
     let id_before = ed.focused_buffer_id();
     live_host!(ed)
-        .run_command_sync("goto-alternate-file", 1, false, None)
+        .run_command_sync("goto-alternate-file", Some(1), false, None)
         .expect("goto-alternate-file must not error");
     assert_eq!(
         ed.focused_buffer_id(),

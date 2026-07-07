@@ -18,7 +18,7 @@ fn run_command_sync_motion_moves_cursor() {
     {
         let mut host = live_host!(ed);
         // move-right is a Motion — must dispatch synchronously.
-        host.run_command_sync("move-right", 1, false, None)
+        host.run_command_sync("move-right", Some(1), false, None)
             .expect("run_command_sync must not error for move-right");
     }
 
@@ -49,7 +49,7 @@ fn run_command_sync_editor_cmd_runs_sync() {
 
     {
         let mut host = live_host!(ed);
-        host.run_command_sync("undo", 1, false, None)
+        host.run_command_sync("undo", Some(1), false, None)
             .expect("run_command_sync must not error for undo");
     }
 
@@ -66,7 +66,7 @@ fn run_command_sync_editor_cmd_runs_sync() {
 fn run_command_sync_unknown_name_errors() {
     let mut ed = editor_from("-[a]>bc\n");
     let mut host = live_host!(ed);
-    let result = host.run_command_sync("no-such-command-xyzzy", 1, false, None);
+    let result = host.run_command_sync("no-such-command-xyzzy", Some(1), false, None);
     assert!(result.is_err(), "unknown command must return Err");
 }
 
@@ -84,7 +84,7 @@ fn current_line_number_reads_live_position() {
     // move-down crosses to line 2.
     {
         live_host!(ed)
-            .run_command_sync("move-down", 1, false, None)
+            .run_command_sync("move-down", Some(1), false, None)
             .unwrap();
     }
 
@@ -104,7 +104,7 @@ fn run_command_sync_selection_updates_sel() {
     {
         let mut host = live_host!(ed);
         // select-line is a Selection command.
-        host.run_command_sync("select-line", 1, false, None)
+        host.run_command_sync("select-line", Some(1), false, None)
             .expect("run_command_sync must not error for select-line");
     }
     // select-line covers the full line "abc\n" (inclusive); head lands on '\n' at position 3.

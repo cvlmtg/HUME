@@ -269,13 +269,18 @@ impl ScriptingHost {
 
     /// Pre-register native command names as callable Steel bindings.
     ///
-    /// For each name, evaluates `(define name (lambda () (call! "name")))`.
-    /// This makes bare `(move-left)`, `(collapse-selection)` etc. callable from
-    /// Steel without requiring `(call! "move-left")`.
+    /// For each name, evaluates `(define name (lambda args (%dispatch-command
+    /// "name" args)))`. This makes bare `(move-left)`, `(collapse-selection)`
+    /// etc. callable from Steel without requiring `(call! "move-left")` — and,
+    /// since the wrapper is variadic, also `(move-down 3)` / `(move-down 0)`
+    /// (count `0` is the Scheme spelling of "no count typed", see
+    /// `parse_count_extend`).
     ///
-    /// Uses the public `call!` macro (not the `%call!` primitive directly) so
-    /// the `call!`→`%call!` desugaring stays in one place and the `%`-prefix
-    /// private-primitive convention is respected.
+    /// Calls `%dispatch-command` directly rather than expanding the public
+    /// `call!` macro (`(call! name args...)` desugars to exactly this — see
+    /// `%dispatch-command`/`call!` in the bootstrap source) — a variadic lambda
+    /// already binds its args as the list `%dispatch-command` expects, so no
+    /// intermediate `(list ...)` call is needed.
     ///
     /// Called from `Editor::init_scripting` after `ScriptingHost::new` and
     /// **before** any `eval_init` call, so that `init.scm` and plugins can use
@@ -285,13 +290,13 @@ impl ScriptingHost {
             return;
         }
         // Build one compound source string: one define per command.
-        let mut source = String::with_capacity(names.len() * 48);
+        let mut source = String::with_capacity(names.len() * 64);
         for &name in names {
             source.push_str("(define ");
             source.push_str(name);
-            source.push_str(" (lambda () (call! \"");
+            source.push_str(" (lambda args (%dispatch-command \"");
             source.push_str(name);
-            source.push_str("\")))\n");
+            source.push_str("\" args)))\n");
         }
         self.steel
             .compile_and_run_raw_program(source)
