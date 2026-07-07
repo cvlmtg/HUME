@@ -18,7 +18,7 @@ See [How plugins are loaded](#how-plugins-are-loaded) for the difference between
 If a plugin supports configuration, pass it with `#:config`:
 
 ```scheme
-(load-plugin "core:vim-keybind" #:config (hash "skip-shadows" #t))
+(load-plugin "core:vim-keybind" #:config (hash "change-to-eol" 'off))
 ```
 
 See [Configuring a plugin](#configuring-a-plugin) for what a plugin does with this value, and the plugin's own docs for which keys it understands.

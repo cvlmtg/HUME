@@ -303,17 +303,8 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
 
     // ── Live cursor read ─────────────────────────────────────────────────────
     fn current_line_number(&self) -> Option<usize> {
-        let (buf_id, pbs) = self.focused_pane_buffer_state()?;
-        let head = pbs.selections.primary().head();
-        Some(
-            self.state
-                .buffers
-                .get(buf_id)
-                .text()
-                .rope()
-                .char_to_line(head)
-                + 1,
-        )
+        let (_, pbs) = self.focused_pane_buffer_state()?;
+        self.char_index_to_line(pbs.selections.primary().head())
     }
 
     fn current_selections(&self) -> Option<Vec<(usize, usize, bool)>> {
@@ -329,12 +320,12 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     }
 
     fn char_index_to_line(&self, idx: usize) -> Option<usize> {
-        let (buf_id, _) = self.focused_pane_buffer_state()?;
-        let rope = self.state.buffers.get(buf_id).text().rope();
-        if idx > rope.len_chars() {
+        let buf_id = crate::editor::commands::focused_buffer_id(self.state, self.view);
+        let text = self.buffer(buf_id)?.text();
+        if idx > text.len_chars() {
             return None;
         }
-        Some(rope.char_to_line(idx) + 1)
+        Some(text.char_to_line(idx) + 1)
     }
 }
 

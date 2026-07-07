@@ -1562,27 +1562,13 @@ fn lazy_stub_collision_returned_and_stub_not_registered() {
 
 // ── core:stdlib — real shipped plugin ─────────────────────────────────────────
 
+/// Stage the real shipped `core:stdlib` plugin into an isolated `HUME_RUNTIME`
+/// and eagerly load it via a real `init.scm`, returning everything the caller
+/// needs kept alive plus the host for further inspection or `eval_source`.
 #[cfg(not(windows))]
-const STDLIB_PLUGIN: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../runtime/plugins/core/stdlib/plugin.scm"
-));
-
-/// The shipped `core:stdlib` plugin must load eagerly and reach `Loaded`.
-#[test]
-#[cfg(not(windows))]
-fn core_stdlib_plugin_loads_eagerly() {
-    use hume_scripting::attribution::PluginId;
-
+fn setup_stdlib_editor() -> (Editor, ScriptingHost, HumeRuntimeGuard, tempfile::TempDir) {
     let guard = HumeRuntimeGuard::new();
-    let plugin_dir = guard
-        .runtime
-        .path()
-        .join("plugins")
-        .join("core")
-        .join("stdlib");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(plugin_dir.join("plugin.scm"), STDLIB_PLUGIN).unwrap();
+    write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
 
     let init_dir = tempfile::tempdir().unwrap();
     let init_path = init_dir.path().join("init.scm");
@@ -1595,6 +1581,17 @@ fn core_stdlib_plugin_loads_eagerly() {
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed loading core:stdlib");
+
+    (ed, host, guard, init_dir)
+}
+
+/// The shipped `core:stdlib` plugin must load eagerly and reach `Loaded`.
+#[test]
+#[cfg(not(windows))]
+fn core_stdlib_plugin_loads_eagerly() {
+    use hume_scripting::attribution::PluginId;
+
+    let (_ed, host, _guard, _init_dir) = setup_stdlib_editor();
 
     let id = PluginId::parse("core:stdlib").expect("valid plugin name");
     assert_eq!(
@@ -1622,27 +1619,7 @@ fn core_stdlib_plugin_loads_eagerly() {
 #[test]
 #[cfg(not(windows))]
 fn core_stdlib_selection_commands() {
-    let guard = HumeRuntimeGuard::new();
-    let plugin_dir = guard
-        .runtime
-        .path()
-        .join("plugins")
-        .join("core")
-        .join("stdlib");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(plugin_dir.join("plugin.scm"), STDLIB_PLUGIN).unwrap();
-
-    let init_dir = tempfile::tempdir().unwrap();
-    let init_path = init_dir.path().join("init.scm");
-    std::fs::write(&init_path, r#"(load-plugin "core:stdlib")"#).unwrap();
-
-    let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new();
-    {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    }
-    .expect("eval_init must succeed loading core:stdlib");
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
 
     let assertions = r#"
 (unless (equal? (call! "stdlib/all-single-char?" #f) #f) (error "all-single-char? #f passthrough"))

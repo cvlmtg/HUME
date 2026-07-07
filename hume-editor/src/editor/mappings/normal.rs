@@ -164,7 +164,8 @@ impl Editor {
         // ── Count prefix accumulation ─────────────────────────────────────────
         // Only accumulate when we're at the trie root (no pending sequence)
         // and no modifiers are held (Ctrl+4 is not a count digit).
-        // `0` without an existing count is the goto-line-start binding, not a digit.
+        // `0` without an existing count is not a digit — it falls through to the
+        // trie (unbound by default; core:vim-keybind binds it to goto-line-start).
         // NOTE: this runs AFTER macro_pending so that `Q1`/`q1` treat `1` as a
         // register name, not as a count digit.
         if self.state.pending_keys.is_empty() && key.modifiers == KeyModifiers::NONE {

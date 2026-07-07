@@ -7,19 +7,6 @@ use hume_scripting::host::EditorHost;
 
 // ── Unit tests: run_command_sync ──────────────────────────────────────────────
 
-/// Helper: build a full-live `EditorHostImpl` from a real editor.
-///
-/// Mirrors the construction in `execute.rs` so the host has the same shape as
-/// in production command dispatch.
-macro_rules! live_host {
-    ($ed:ident) => {{
-        EditorHostImpl {
-            state: &mut $ed.state,
-            view: &mut $ed.view,
-        }
-    }};
-}
-
 /// `run_command_sync` for a `Motion` command must immediately update the cursor
 /// position — no queue involved.
 #[test]

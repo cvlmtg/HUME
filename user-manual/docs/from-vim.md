@@ -79,7 +79,7 @@ HUME's idiom for line motions is the `g` prefix: `g h` (start), `g l` (end), `g 
 | `0` / `$` / `^` | `g h` / `g l` / `g s` | `0` / `$` / `^` |
 | `G` | `g e` | `G` |
 | `gg` | `g g` | `g g` |
-| `C` / `D` | `ctrl-g l c` / `ctrl-g l d` (kitty terminals only) | `C` (change to end of line on a bare cursor; with a selection, shadows the default `copy-selection-on-next-line` instead) / `D` |
+| `C` / `D` | `ctrl-g l c` / `ctrl-g l d` (kitty terminals only) | `C` (change to end of line on a bare cursor; with a selection, falls back to the default `copy-selection-on-next-line`) / `D` |
 
 ## Commands you already know
 

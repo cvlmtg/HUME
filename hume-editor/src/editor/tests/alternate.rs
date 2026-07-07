@@ -1,18 +1,6 @@
 use super::*;
-use crate::editor::host_impl::EditorHostImpl;
 use hume_scripting::host::EditorHost;
 use pretty_assertions::assert_eq;
-
-/// Build a live `EditorHostImpl` borrowing `$ed`'s state/view, for direct
-/// `run_command_sync` dispatch — bypasses the keymap entirely.
-macro_rules! host {
-    ($ed:ident) => {
-        EditorHostImpl {
-            state: &mut $ed.state,
-            view: &mut $ed.view,
-        }
-    };
-}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -60,7 +48,7 @@ fn goto_alternate_file_switches_to_alternate_and_is_involutive() {
     ed.execute_typed("e", Some(p2.to_str().unwrap())).unwrap();
     let id_b = ed.focused_buffer_id();
 
-    host!(ed)
+    live_host!(ed)
         .run_command_sync("goto-alternate-file", 1, false, None)
         .expect("goto-alternate-file must not error");
     assert_eq!(
@@ -69,7 +57,7 @@ fn goto_alternate_file_switches_to_alternate_and_is_involutive() {
         "goto-alternate-file must switch to alternate"
     );
 
-    host!(ed)
+    live_host!(ed)
         .run_command_sync("goto-alternate-file", 1, false, None)
         .expect("goto-alternate-file must not error");
     assert_eq!(
@@ -89,7 +77,7 @@ fn goto_alternate_file_pushes_jump_entry() {
     ed.execute_typed("e", Some(p2.to_str().unwrap())).unwrap();
     let id_before = ed.focused_buffer_id();
 
-    host!(ed)
+    live_host!(ed)
         .run_command_sync("goto-alternate-file", 1, false, None)
         .expect("goto-alternate-file must not error");
     assert_ne!(
@@ -97,7 +85,7 @@ fn goto_alternate_file_pushes_jump_entry() {
         id_before,
         "goto-alternate-file changes focus"
     );
-    host!(ed)
+    live_host!(ed)
         .run_command_sync("jump-backward", 1, false, None)
         .expect("jump-backward must not error");
     assert_eq!(
@@ -111,7 +99,7 @@ fn goto_alternate_file_pushes_jump_entry() {
 fn goto_alternate_file_warns_when_no_alternate() {
     let mut ed = editor_from("-[h]>ello\n");
     let id_before = ed.focused_buffer_id();
-    host!(ed)
+    live_host!(ed)
         .run_command_sync("goto-alternate-file", 1, false, None)
         .expect("goto-alternate-file must not error");
     assert_eq!(

@@ -40,17 +40,21 @@ body can read back for itself:
 ```scheme
 ; alice/my-theme/plugin.scm
 (define cfg (plugin-config))
-(if (equal? (hash-ref cfg "variant") "dark")
+(if (and (hash-contains? cfg "variant")
+         (equal? (hash-ref cfg "variant") "dark"))
     (load-dark-palette)
     (load-light-palette))
 ```
 
-`(plugin-config)` always returns the calling plugin's own config — never another
-plugin's — and an empty hash if none was passed. This works the same way whether the
-plugin is eager (config is available the instant the body runs) or lazy (config is
-recorded at `declare-plugin` time and is still there whenever activation eventually
-happens, even much later in the session). A plugin author decides what keys their
-config hash understands and documents them for users.
+`(plugin-config)` returns the calling plugin's own config — never another plugin's —
+while its body is being evaluated: instantly for an eager plugin, or at activation
+time for a lazy one (the value recorded at `declare-plugin` time is kept until then,
+even much later in the session). Called from anywhere else, such as inside a command
+the plugin registers, it returns an empty hash — commands run after the body has
+already finished, outside that window. Read the config once at the top of the body,
+as `cfg` does above, and capture whatever a command needs from it in a `define`. A
+plugin author decides what keys their config hash understands and documents them for
+users.
 
 ---
 

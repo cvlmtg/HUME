@@ -116,6 +116,22 @@ fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfil
     (ed, tmp_path)
 }
 
+/// Build a live `EditorHostImpl` borrowing `$ed`'s state/view, for direct
+/// command dispatch — bypasses the keymap entirely. Mirrors the construction
+/// in `execute.rs` so the host has the same shape as in production dispatch.
+macro_rules! live_host {
+    ($ed:ident) => {{
+        crate::editor::host_impl::EditorHostImpl {
+            state: &mut $ed.state,
+            view: &mut $ed.view,
+        }
+    }};
+}
+// Used via `live_host!()` through submodules' `use super::*;` — the
+// unused_imports lint doesn't track macro re-exports used only that way.
+#[allow(unused_imports)]
+pub(crate) use live_host;
+
 // ── cwd guard ─────────────────────────────────────────────────────────────────
 
 // Process cwd is global state. Any test that calls `set_current_dir` must hold
@@ -171,6 +187,24 @@ impl Drop for HumeRuntimeGuard {
             std::env::remove_var("TMPDIR");
         }
     }
+}
+
+/// The real shipped `core:stdlib` plugin source, embedded so tests exercise
+/// the actual file rather than a hand-rolled stand-in.
+#[cfg(not(windows))]
+const STDLIB_PLUGIN: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../runtime/plugins/core/stdlib/plugin.scm"
+));
+
+/// Stage a real shipped core plugin's source into `guard`'s isolated
+/// `HUME_RUNTIME/plugins/core/<name>/plugin.scm`, so `load-plugin` resolves it
+/// as a core plugin during the test.
+#[cfg(not(windows))]
+fn write_core_plugin(guard: &HumeRuntimeGuard, name: &str, source: &str) {
+    let plugin_dir = guard.runtime.path().join("plugins").join("core").join(name);
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(plugin_dir.join("plugin.scm"), source).unwrap();
 }
 
 /// Acquire the cwd lock, save the current directory, and restore it on drop.

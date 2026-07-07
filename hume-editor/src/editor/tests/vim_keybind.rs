@@ -19,58 +19,40 @@ const VIM_KEYBIND_PLUGIN: &str = include_str!(concat!(
     "/../runtime/plugins/core/vim-keybind/plugin.scm"
 ));
 
-// `C`'s selection-width check dispatches to `stdlib/all-single-char?` via
-// `call!`, so vim-keybind now depends on `core:stdlib` being loaded first —
-// load the real stdlib plugin file alongside it, same pattern as
-// `VIM_KEYBIND_PLUGIN` above.
-#[cfg(not(windows))]
-const STDLIB_PLUGIN: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../runtime/plugins/core/stdlib/plugin.scm"
-));
-
 /// Build an editor with `core:vim-keybind` eagerly loaded via a real
 /// `init.scm` + the real plugin file. Mirrors `setup_lazy_editor` in
 /// `tests/plugins.rs`, but uses `HUME_RUNTIME` (core plugin resolution)
 /// instead of a user data dir, and loads eagerly (no lazy stubs needed).
 #[cfg(not(windows))]
 fn setup_vim_keybind_editor(input: &str) -> (Editor, HumeRuntimeGuard, tempfile::TempDir) {
-    setup_vim_keybind_editor_with_init(
-        input,
-        r#"(load-plugin "core:stdlib")
-(load-plugin "core:vim-keybind")"#,
-    )
+    setup_vim_keybind_editor_with_config(input, None)
 }
 
-/// Like `setup_vim_keybind_editor`, but with a caller-supplied `init.scm` body
-/// — lets tests exercise `#:config` without hand-rolling the plugin-dir setup.
+/// Like `setup_vim_keybind_editor`, but passes `config_expr` (a Scheme
+/// expression, e.g. `(hash "change-to-eol" 'off)`) as `core:vim-keybind`'s
+/// `#:config` — lets tests exercise `#:config` without hand-rolling the
+/// plugin-dir setup or the surrounding `load-plugin` boilerplate.
 #[cfg(not(windows))]
-fn setup_vim_keybind_editor_with_init(
+fn setup_vim_keybind_editor_with_config(
     input: &str,
-    init_source: &str,
+    config_expr: Option<&str>,
 ) -> (Editor, HumeRuntimeGuard, tempfile::TempDir) {
     let guard = HumeRuntimeGuard::new();
-    let plugin_dir = guard
-        .runtime
-        .path()
-        .join("plugins")
-        .join("core")
-        .join("vim-keybind");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(plugin_dir.join("plugin.scm"), VIM_KEYBIND_PLUGIN).unwrap();
+    write_core_plugin(&guard, "vim-keybind", VIM_KEYBIND_PLUGIN);
+    // `C`'s selection-width check dispatches to `stdlib/all-single-char?` via
+    // `call!`, so vim-keybind depends on `core:stdlib` being loaded first.
+    write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
 
-    let stdlib_dir = guard
-        .runtime
-        .path()
-        .join("plugins")
-        .join("core")
-        .join("stdlib");
-    std::fs::create_dir_all(&stdlib_dir).unwrap();
-    std::fs::write(stdlib_dir.join("plugin.scm"), STDLIB_PLUGIN).unwrap();
+    let init_source = match config_expr {
+        Some(cfg) => format!(
+            "(load-plugin \"core:stdlib\")\n(load-plugin \"core:vim-keybind\" #:config {cfg})"
+        ),
+        None => "(load-plugin \"core:stdlib\")\n(load-plugin \"core:vim-keybind\")".to_string(),
+    };
 
     let init_dir = tempfile::tempdir().unwrap();
     let init_path = init_dir.path().join("init.scm");
-    std::fs::write(&init_path, init_source).unwrap();
+    std::fs::write(&init_path, &init_source).unwrap();
 
     let mut ed = editor_from(input);
     let mut host = ScriptingHost::new();
@@ -195,10 +177,9 @@ fn shift_c_shadows_copy_selection_command() {
 #[test]
 #[cfg(not(windows))]
 fn shift_c_with_change_to_eol_off_restores_copy_selection() {
-    let (mut ed, _guard, _dir) = setup_vim_keybind_editor_with_init(
+    let (mut ed, _guard, _dir) = setup_vim_keybind_editor_with_config(
         "-[h]>ello\nworld\n",
-        r#"(load-plugin "core:stdlib")
-(load-plugin "core:vim-keybind" #:config (hash "change-to-eol" 'off))"#,
+        Some(r#"(hash "change-to-eol" 'off)"#),
     );
     ed.handle_key(key('C'));
 
@@ -228,10 +209,9 @@ fn shift_c_with_change_to_eol_off_restores_copy_selection() {
 #[test]
 #[cfg(not(windows))]
 fn change_to_eol_off_does_not_affect_non_shadowing_bindings() {
-    let (mut ed, _guard, _dir) = setup_vim_keybind_editor_with_init(
+    let (mut ed, _guard, _dir) = setup_vim_keybind_editor_with_config(
         "-[h]>ello\nworld\n",
-        r#"(load-plugin "core:stdlib")
-(load-plugin "core:vim-keybind" #:config (hash "change-to-eol" 'off))"#,
+        Some(r#"(hash "change-to-eol" 'off)"#),
     );
     ed.handle_key(key('D'));
     assert_eq!(
@@ -250,10 +230,9 @@ fn change_to_eol_off_does_not_affect_non_shadowing_bindings() {
 #[test]
 #[cfg(not(windows))]
 fn shift_c_with_change_to_eol_on_ignores_selection_width() {
-    let (mut ed, _guard, _dir) = setup_vim_keybind_editor_with_init(
+    let (mut ed, _guard, _dir) = setup_vim_keybind_editor_with_config(
         "-[hello]>\nworld\n",
-        r#"(load-plugin "core:stdlib")
-(load-plugin "core:vim-keybind" #:config (hash "change-to-eol" 'on))"#,
+        Some(r#"(hash "change-to-eol" 'on)"#),
     );
     ed.handle_key(key('C'));
     assert_eq!(
