@@ -76,8 +76,8 @@ pub use host::{BindMode, EditorHost};
 pub use keys::parse_key_stream;
 pub use log::LogLevel;
 pub use types::{
-    HookResult, PendingLanguageReg, PendingLspNotify, PendingLspRequest, PendingLspServerReg,
-    SteelCmdDef, SteelCmdResult,
+    HookResult, LspServerStatusEntry, PendingLanguageReg, PendingLspNotify, PendingLspRequest,
+    PendingLspServerReg, SteelCmdDef, SteelCmdResult,
 };
 pub use watchdog::EvalWatchdog;
 

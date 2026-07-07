@@ -124,6 +124,7 @@ macro_rules! live_host {
         crate::editor::host_impl::EditorHostImpl {
             state: &mut $ed.state,
             view: &mut $ed.view,
+            lsp: Some(&$ed.lsp),
         }
     }};
 }
@@ -453,6 +454,7 @@ mod list_buffers;
 mod lsp;
 mod lsp_bridge;
 mod lsp_diagnostics;
+mod lsp_introspect;
 mod lsp_status;
 mod lsp_sync;
 mod macros;

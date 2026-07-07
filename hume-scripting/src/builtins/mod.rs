@@ -349,6 +349,17 @@ pub(crate) fn register_all(steel: &mut Engine) {
         "on-lsp-notification",
         lsp::on_lsp_notification,
     );
+    // B3 — introspection
+    steel.register_fn_with_ctx(HUME_CTX, "lsp-capabilities", lsp::lsp_capabilities);
+    steel.register_fn_with_ctx(HUME_CTX, "lsp-server-status", lsp::lsp_server_status);
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "lsp-server-for-buffer",
+        lsp::lsp_server_for_buffer,
+    );
+    steel.register_fn_with_ctx(HUME_CTX, "lsp-position-params", lsp::lsp_position_params);
+    steel.register_fn_with_ctx(HUME_CTX, "lsp-range-params", lsp::lsp_range_params);
+    steel.register_fn_with_ctx(HUME_CTX, "buffer-generation", buffers::buffer_generation);
     steel.register_fn_with_ctx(
         HUME_CTX,
         "language-has-grammar?",

@@ -59,6 +59,18 @@ pub struct PendingLspServerReg {
     pub settings: Option<serde_json::Value>,
 }
 
+/// One entry of `(lsp-server-status)` — mirrors `:lsp-status`'s data
+/// (`Editor::lsp_status_text`) in structured form for Steel.
+#[derive(Debug, Clone)]
+pub struct LspServerStatusEntry {
+    pub language: String,
+    pub root: std::path::PathBuf,
+    /// `LspClient::state`'s `Debug` spelling (`"Running"`, `"Starting"`, …) —
+    /// the trait boundary stays free of a `hume-lsp` dependency.
+    pub state: String,
+    pub pending: usize,
+}
+
 /// `set-buffer-language!` calls deferred during a command or hook eval.
 /// Each entry is `(buffer_id, language_name_or_none)`.
 pub type PendingLanguageSets = Vec<(BufferId, Option<String>)>;

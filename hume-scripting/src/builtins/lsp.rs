@@ -3,7 +3,7 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use crate::json::steel_to_json;
+use crate::json::{json_to_steel, steel_to_json};
 use crate::types::{PendingLspNotify, PendingLspRequest};
 use crate::{PendingLspServerReg, SteelCtx};
 
@@ -157,6 +157,77 @@ pub(crate) fn on_lsp_notification(
         .or_default()
         .push(handler);
     Ok(SteelVal::Void)
+}
+
+/// `(lsp-capabilities server)` → decoded `ServerCapabilities` hashmap, or
+/// `#f` if `server` doesn't resolve or hasn't finished its handshake.
+pub(crate) fn lsp_capabilities(ctx: &mut SteelCtx, server: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "lsp-capabilities");
+    let server = optional_string_arg(server, "lsp-capabilities server")?;
+    Ok(match ctx.host.lsp_capabilities(server.as_deref()) {
+        Some(json) => json_to_steel(&json),
+        None => SteelVal::BoolV(false),
+    })
+}
+
+/// `(lsp-server-status)` → list of `{"language" "root" "state" "pending"}`.
+pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
+    require_cmd_ctx!(ctx, "lsp-server-status");
+    let entries: Vec<SteelVal> = ctx
+        .host
+        .lsp_server_status()
+        .into_iter()
+        .map(|e| {
+            let mut map = steel::HashMap::new();
+            map.insert(SteelVal::StringV("language".into()), SteelVal::StringV(e.language.into()));
+            map.insert(
+                SteelVal::StringV("root".into()),
+                SteelVal::StringV(e.root.to_string_lossy().into_owned().into()),
+            );
+            map.insert(SteelVal::StringV("state".into()), SteelVal::StringV(e.state.into()));
+            map.insert(SteelVal::StringV("pending".into()), SteelVal::IntV(e.pending as isize));
+            SteelVal::HashMapV(steel::gc::Gc::new(map).into())
+        })
+        .collect();
+    Ok(SteelVal::ListV(entries.into()))
+}
+
+/// `(lsp-server-for-buffer bid)` → registered language name, or `#f`.
+pub(crate) fn lsp_server_for_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "lsp-server-for-buffer");
+    let id = bid_arg(&bid, "lsp-server-for-buffer")?;
+    Ok(match ctx.host.lsp_server_for_buffer(id) {
+        Some(lang) => SteelVal::StringV(lang.into()),
+        None => SteelVal::BoolV(false),
+    })
+}
+
+/// `(lsp-position-params bid)` → `{"textDocument" {"uri"} "position" {"line"
+/// "character"}}` from `bid`'s primary cursor head, or `#f` if unavailable
+/// (no attached server, no path, or not shown in any pane).
+pub(crate) fn lsp_position_params(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "lsp-position-params");
+    let id = bid_arg(&bid, "lsp-position-params")?;
+    Ok(match ctx.host.lsp_position_params(id) {
+        Some(json) => json_to_steel(&json),
+        None => SteelVal::BoolV(false),
+    })
+}
+
+/// `(lsp-range-params bid)` → same shape but a `"range"` from the primary
+/// selection.
+pub(crate) fn lsp_range_params(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "lsp-range-params");
+    let id = bid_arg(&bid, "lsp-range-params")?;
+    Ok(match ctx.host.lsp_range_params(id) {
+        Some(json) => json_to_steel(&json),
+        None => SteelVal::BoolV(false),
+    })
+}
+
+fn bid_arg(val: &SteelVal, ctx_name: &str) -> Result<hume_engine::pipeline::BufferId, SteelErr> {
+    super::ids::downcast_buffer_id(val)
+        .ok_or_else(|| SteelErr::new(steel::rerrs::ErrorKind::TypeMismatch, format!("{ctx_name}: expected buffer-id")))
 }
 
 #[cfg(test)]

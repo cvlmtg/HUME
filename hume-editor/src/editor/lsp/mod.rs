@@ -7,6 +7,7 @@
 
 mod bridge;
 mod diagnostics;
+pub(crate) mod introspect;
 mod registry;
 pub(crate) mod sync;
 
@@ -62,6 +63,11 @@ pub(crate) struct LspState {
     /// server — used to prefix stderr/log lines (C10) so `:messages` reads
     /// legibly with multiple servers running.
     server_names: HashMap<ServerId, String>,
+    /// Decoded `ServerCapabilities`, cached once at handshake completion
+    /// (`dispatch_lsp_action`'s `BecameRunning` arm) — B3's
+    /// `(lsp-capabilities …)` reads this rather than reconverting the typed
+    /// caps on every call.
+    capabilities_json: HashMap<ServerId, serde_json::Value>,
 }
 
 impl LspState {
@@ -76,6 +82,7 @@ impl LspState {
             servers_by_key: HashMap::new(),
             diagnostics: DiagnosticsStore::default(),
             server_names: HashMap::new(),
+            capabilities_json: HashMap::new(),
         }
     }
 
@@ -91,6 +98,7 @@ impl LspState {
             servers_by_key: HashMap::new(),
             diagnostics: DiagnosticsStore::default(),
             server_names: HashMap::new(),
+            capabilities_json: HashMap::new(),
         }
     }
 
@@ -109,6 +117,7 @@ impl LspState {
             servers_by_key: HashMap::new(),
             diagnostics: DiagnosticsStore::default(),
             server_names: HashMap::new(),
+            capabilities_json: HashMap::new(),
         }
     }
 
@@ -360,6 +369,13 @@ impl Editor {
                 for msg in send {
                     self.lsp.backend.send(server_id, msg);
                 }
+                // Decode once here rather than per `(lsp-capabilities …)`
+                // call — conversion is per-server-startup, not per-call.
+                if let Some(caps) = self.lsp.clients.get(&server_id).and_then(|c| c.caps.as_ref())
+                    && let Ok(json) = serde_json::to_value(caps)
+                {
+                    self.lsp.capabilities_json.insert(server_id, json);
+                }
                 // on-lsp-attach hook: B7 (Step 2).
             }
             ClientAction::Crashed { error } => {
@@ -405,11 +421,7 @@ impl Editor {
     /// surface deals in, since that's what `register-lsp-server!` and
     /// `lsp-request`'s `server` argument both use.
     fn lsp_server_language(&self, server_id: ServerId) -> Option<String> {
-        self.lsp
-            .servers_by_key
-            .iter()
-            .find(|&(_, &id)| id == server_id)
-            .map(|((lang, _), _)| lang.clone())
+        introspect::server_language(&self.lsp, server_id)
     }
 
     /// `textDocument/publishDiagnostics` never reaches here — `drain_lsp`

@@ -172,6 +172,7 @@ impl Editor {
             .servers_by_key
             .remove(&(language.to_string(), root.to_path_buf()));
         self.lsp.server_names.remove(&server_id);
+        self.lsp.capabilities_json.remove(&server_id);
 
         let bids: Vec<BufferId> = self
             .state

@@ -200,4 +200,51 @@ pub trait EditorHost {
     /// Returns `None` when the focused buffer id is stale (buffer no longer
     /// exists) or when `idx` is out of range (> `len_chars()`).
     fn char_index_to_line(&self, idx: usize) -> Option<usize>;
+
+    /// Steel-side staleness token for buffer `id` (its `text_gen`, bumped by
+    /// every mutation) — `None` if `id` is unknown. Not LSP-specific (any
+    /// script can compare a saved value against a live read), but the LSP
+    /// bridge's own `#:allow-stale` staleness check is what motivated it.
+    fn buffer_generation(&self, id: BufferId) -> Option<u64> {
+        let _ = id;
+        None
+    }
+
+    // ── LSP introspection (command mode; default = no LSP support) ──────────
+    /// Decoded `ServerCapabilities` for `server` (a registered language name,
+    /// or `None` for the focused buffer's attached server) — `None` if
+    /// unresolvable or the server hasn't finished its handshake yet.
+    fn lsp_capabilities(&self, server: Option<&str>) -> Option<serde_json::Value> {
+        let _ = server;
+        None
+    }
+
+    /// One entry per running (language, root) server.
+    fn lsp_server_status(&self) -> Vec<crate::types::LspServerStatusEntry> {
+        Vec::new()
+    }
+
+    /// The registered language for the server attached to buffer `id`, or
+    /// `None` if `id` is unknown or has no attached server.
+    fn lsp_server_for_buffer(&self, id: BufferId) -> Option<String> {
+        let _ = id;
+        None
+    }
+
+    /// Ready-made `{"textDocument" {"uri"} "position" {"line" "character"}}`
+    /// params for `id`'s primary cursor head, in its attached server's
+    /// negotiated encoding — `None` if `id` has no path, no attached server,
+    /// or isn't currently shown in any pane.
+    fn lsp_position_params(&self, id: BufferId) -> Option<serde_json::Value> {
+        let _ = id;
+        None
+    }
+
+    /// Same as [`lsp_position_params`](Self::lsp_position_params) but a
+    /// `{"textDocument" {"uri"} "range" {"start" "end"}}` shape from the
+    /// primary selection.
+    fn lsp_range_params(&self, id: BufferId) -> Option<serde_json::Value> {
+        let _ = id;
+        None
+    }
 }

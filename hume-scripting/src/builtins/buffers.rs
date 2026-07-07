@@ -120,6 +120,25 @@ pub(crate) fn buffer_dirty(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     Ok(SteelVal::BoolV(dirty))
 }
 
+/// `(buffer-generation bid)` → int — bumped by every mutation to `bid`.
+/// Steel-side staleness token (B3); not LSP-specific despite the motivation.
+pub(crate) fn buffer_generation(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "buffer-generation");
+    let id = downcast_buffer_id(&bid).ok_or_else(|| {
+        SteelErr::new(
+            ErrorKind::TypeMismatch,
+            "buffer-generation: expected buffer-id".into(),
+        )
+    })?;
+    let generation = ctx.host.buffer_generation(id).ok_or_else(|| {
+        SteelErr::new(
+            ErrorKind::Generic,
+            format!("buffer-generation: invalid buffer id {id:?}"),
+        )
+    })?;
+    Ok(SteelVal::IntV(generation as isize))
+}
+
 // ── Mutating builtins ─────────────────────────────────────────────────────────
 
 /// `(open-buffer! path)` → BufferId.

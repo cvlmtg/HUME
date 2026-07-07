@@ -113,6 +113,7 @@ impl Editor {
                     let mut impl_host = EditorHostImpl {
                         state: &mut self.state,
                         view: &mut self.view,
+                        lsp: Some(&self.lsp),
                     };
                     host_scr.fire_hook(hook_id, &args, pid, bid, &mut impl_host)
                 };
@@ -168,6 +169,7 @@ impl Editor {
             let mut impl_host = EditorHostImpl {
                 state: &mut self.state,
                 view: &mut self.view,
+                lsp: Some(&self.lsp),
             };
             host_scr.run_steel_calls(calls, pid, bid, &mut impl_host)
         };
@@ -412,7 +414,7 @@ pub(crate) fn make_init_host<'a>(
     state: &'a mut super::EditorState,
     view: &'a mut hume_engine::pipeline::EngineView,
 ) -> EditorHostImpl<'a> {
-    EditorHostImpl { state, view }
+    EditorHostImpl::new(state, view)
 }
 
 /// Map scripting `LogLevel` → editor `Severity`.

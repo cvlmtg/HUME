@@ -30,40 +30,11 @@ impl Editor {
     }
 
     /// Resolves `server` — a registered language name, or `None` for "the
-    /// focused buffer's attached server" — to a running `ServerId`.
-    ///
-    /// A bare language name is ambiguous when multiple workspace roots for
-    /// that language are running at once (the store is keyed by (language,
-    /// root), not language alone): this prefers the focused buffer's own
-    /// server if it matches, and otherwise errors rather than guessing.
+    /// focused buffer's attached server" — to a running `ServerId`. Shared
+    /// with B3's introspection builtins via `super::introspect::resolve_server`.
     fn resolve_lsp_server(&self, server: Option<&str>) -> Result<ServerId, String> {
-        let focused_server = || {
-            let bid = self.focused_buffer_id();
-            self.state.buffers.get(bid).lsp_server
-        };
-        match server {
-            None => focused_server()
-                .ok_or_else(|| "no LSP server attached to the current buffer".to_string()),
-            Some(name) => {
-                let matches: Vec<ServerId> = self
-                    .lsp
-                    .servers_by_key
-                    .iter()
-                    .filter(|((lang, _), _)| lang == name)
-                    .map(|(_, &sid)| sid)
-                    .collect();
-                match matches.as_slice() {
-                    [] => Err(format!("no running LSP server for language '{name}'")),
-                    [sid] => Ok(*sid),
-                    _ => focused_server().filter(|sid| matches.contains(sid)).ok_or_else(|| {
-                        format!(
-                            "multiple '{name}' servers running — pass #f to use the \
-                             current buffer's server"
-                        )
-                    }),
-                }
-            }
-        }
+        let bid = self.focused_buffer_id();
+        super::introspect::resolve_server(&self.state, &self.lsp, bid, server)
     }
 
     /// If `params` carries a `textDocument.uri` matching an open buffer,

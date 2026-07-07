@@ -531,10 +531,7 @@ fn steel_call_move_down_ignores_outer_keystrokes_count() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     // The body passes no count to `move-down` — if it inherited the outer
     // key's count-or-lack-thereof, this would move a visual row instead.
     host.eval_source_returning_defs(
@@ -581,10 +578,7 @@ fn steel_wrapper_bare_dispatch_moves_visual_row() {
 
     let mut ed = visual_test_editor(0);
     let mut host = ScriptingHost::new();
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source_returning_defs(
         r#"(define-command! "steel-jk" ""
                  (lambda (count extend) (call! "move-down" count extend)))"#
@@ -629,10 +623,7 @@ fn steel_wrapper_explicit_count_moves_buffer_lines() {
         hume_engine::pane::WrapMode::Indent { width: 76 };
 
     let mut host = ScriptingHost::new();
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source_returning_defs(
         r#"(define-command! "steel-jk" ""
                  (lambda (count extend) (call! "move-down" count extend)))"#
@@ -665,10 +656,7 @@ fn steel_call_move_down_zero_count_moves_visual_row() {
 
     let mut ed = visual_test_editor(0);
     let mut host = ScriptingHost::new();
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source_returning_defs(
         r#"(define-command! "steel-vis" ""
                  (lambda () (call! "move-down" 0)))"#
@@ -716,10 +704,7 @@ fn generated_bare_name_wrapper_accepts_zero_count() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source_returning_defs(
         r#"(define-command! "steel-vis-direct" ""
                  (lambda () (move-down 0)))"#

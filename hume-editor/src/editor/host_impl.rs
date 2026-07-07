@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
+use crate::editor::lsp::LspState;
 use crate::editor::registry::MappableCommand;
 use crate::settings::{BufferOverrides, SettingScope, apply_setting};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
@@ -25,9 +26,24 @@ use super::EditorState;
 pub(crate) struct EditorHostImpl<'a> {
     pub(crate) state: &'a mut EditorState,
     pub(crate) view: &'a mut EngineView,
+    /// `Some` only at the three call sites that can reach a B3 introspection
+    /// builtin (command dispatch, hook fire, queued-call drain) — `None`
+    /// everywhere else (init evals, which `require_cmd_ctx!` already blocks
+    /// LSP builtins from anyway), so those sites don't need to thread it in.
+    pub(crate) lsp: Option<&'a LspState>,
 }
 
 impl<'a> EditorHostImpl<'a> {
+    /// Convenience constructor for the (common) case with no LSP access —
+    /// init evals, and every non-LSP test in the suite.
+    pub(crate) fn new(state: &'a mut EditorState, view: &'a mut EngineView) -> Self {
+        Self {
+            state,
+            view,
+            lsp: None,
+        }
+    }
+
     /// Look up a buffer by id.
     fn buffer(&self, id: BufferId) -> Option<&crate::editor::buffer::Buffer> {
         self.state.buffers.try_get(id)
@@ -331,6 +347,35 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             return None;
         }
         Some(text.char_to_line(idx) + 1)
+    }
+
+    fn buffer_generation(&self, id: BufferId) -> Option<u64> {
+        Some(self.buffer(id)?.text_gen)
+    }
+
+    // ── LSP introspection (B3) ────────────────────────────────────────────────
+    fn lsp_capabilities(&self, server: Option<&str>) -> Option<serde_json::Value> {
+        let lsp = self.lsp?;
+        let bid = crate::editor::commands::focused_buffer_id(self.state, self.view);
+        crate::editor::lsp::introspect::capabilities(self.state, lsp, bid, server)
+    }
+
+    fn lsp_server_status(&self) -> Vec<hume_scripting::LspServerStatusEntry> {
+        self.lsp
+            .map(crate::editor::lsp::introspect::server_status)
+            .unwrap_or_default()
+    }
+
+    fn lsp_server_for_buffer(&self, id: BufferId) -> Option<String> {
+        crate::editor::lsp::introspect::server_for_buffer(self.state, self.lsp?, id)
+    }
+
+    fn lsp_position_params(&self, id: BufferId) -> Option<serde_json::Value> {
+        crate::editor::lsp::introspect::position_params(self.state, self.lsp?, id)
+    }
+
+    fn lsp_range_params(&self, id: BufferId) -> Option<serde_json::Value> {
+        crate::editor::lsp::introspect::range_params(self.state, self.lsp?, id)
     }
 }
 

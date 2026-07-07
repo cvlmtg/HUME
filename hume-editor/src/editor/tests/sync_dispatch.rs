@@ -137,10 +137,7 @@ fn call_bang_count_arg_dispatches_synchronously() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source_returning_defs(
         r#"(define-command! "move-right-5" "" (lambda () (call! "move-right" 5)))"#.to_owned(),
         Default::default(),
@@ -190,10 +187,7 @@ fn call_bang_malformed_arg_to_native_cmd_errors_without_side_effect() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source_returning_defs(
         r#"(define-command! "move-right-bad" "" (lambda () (call! "move-right" "garbage")))"#
             .to_owned(),
@@ -245,10 +239,7 @@ fn case_b_sync_cursor_read_reflects_motion() {
     host.register_command_names(&name_refs);
 
     // Define a command that exercises the sync-read property.
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source_returning_defs(
         r#"(define-command! "test-case-b" "Case B probe"
                  (lambda ()
@@ -309,10 +300,7 @@ fn steel_call_repeat_last_action_drains_via_handle_key() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source_returning_defs(
         r#"(define-command! "steel-dot-repeat" "Repeat last action via Steel"
                  (lambda () (call! "repeat-last-action")))"#
@@ -466,10 +454,7 @@ fn steel_call_native_respects_register_prefix() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source_returning_defs(
         // Register '0' is a valid named storage register (digit registers: 0–9).
         r#"(define-command! "yank-to-0" ""
@@ -520,10 +505,7 @@ fn steel_call_delete_sets_last_command_for_smart_p() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source_returning_defs(
         r#"(define-command! "steel-delete" ""
                  (lambda () (call! "delete")))"#
@@ -568,10 +550,7 @@ fn steel_no_dispatch_cmd_stamps_own_name() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     // "noop-cmd" dispatches no inner native — no (call! …) anywhere.
     host.eval_source_returning_defs(
         r#"(define-command! "noop-cmd" "" (lambda () (+ 1 0)))"#.to_owned(),
@@ -618,10 +597,7 @@ fn steel_call_repeatable_cmd_sets_dot_repeat() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source_returning_defs(
         r#"(define-command! "steel-delete" ""
                  (lambda () (call! "delete")))"#
@@ -679,10 +655,7 @@ fn steel_call_jump_cmd_records_jump_entry() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source_returning_defs(
         r#"(define-command! "steel-goto-end" ""
                  (lambda () (call! "goto-last-line")))"#
@@ -732,10 +705,7 @@ fn steel_call_paste_then_motion_commits_paste_session() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source_returning_defs(
         r#"(define-command! "paste-and-move" ""
                  (lambda ()
@@ -793,10 +763,7 @@ fn steel_call_source_order_native_after_steel() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source_returning_defs(
         r#"(define-command! "steel-move-right" ""
                  (lambda () (call! "move-right")))
@@ -847,10 +814,7 @@ fn steel_native_via_call_preserves_own_count() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     // noop-steel is a no-op plugin command; move-down 3 runs sync via %call-native!.
     host.eval_source_returning_defs(
         r#"(define-command! "noop-steel" "" (lambda () #t))
@@ -896,10 +860,7 @@ fn steel_unknown_cmd_warns_and_continues() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source_returning_defs(
         r#"(define-command! "warn-test" ""
                  (lambda ()
@@ -1001,10 +962,7 @@ fn steel_lambda_receives_count_and_extend() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source_returning_defs(
         r#"(define-command! "step-right" ""
              (lambda (count extend) (call! "move-right" count extend)))"#
@@ -1071,10 +1029,7 @@ fn steel_zero_arity_lambda_ignores_injection() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source_returning_defs(
         // 0-arg lambda: always moves right 1.
         r#"(define-command! "fixed-right" "" (lambda () (call! "move-right")))"#.to_owned(),
@@ -1149,10 +1104,7 @@ fn explicit_steel_args_not_overwritten_by_injection() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     // lambda(x): if x is the string "move-right", run move-right; otherwise no-op.
     host.eval_source_returning_defs(
         r#"(define-command! "echo-cmd" "" (lambda (x) (when (string? x) (call! x))))"#.to_owned(),
@@ -1222,10 +1174,7 @@ fn steel_arity_1_lambda_receives_count_only() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source_returning_defs(
         r#"(define-command! "step-count-only" ""
              (lambda (count) (call! "move-right" count)))"#
@@ -1288,10 +1237,7 @@ fn steel_call_delete_in_extend_exits_extend_mode() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source_returning_defs(
         r#"(define-command! "wrap-delete" "" (lambda () (call! "delete")))"#.to_owned(),
         Default::default(),
@@ -1354,10 +1300,7 @@ fn parity_delete_bookkeeping_keypress_vs_steel() {
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
-    let mut init_host = EditorHostImpl {
-        state: &mut ed_steel.state,
-        view: &mut ed_steel.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed_steel.state, &mut ed_steel.view);
     host.eval_source_returning_defs(
         r#"(define-command! "steel-delete" "" (lambda () (call! "delete")))"#.to_owned(),
         Default::default(),
@@ -1407,10 +1350,7 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
-    let mut init_host = EditorHostImpl {
-        state: &mut ed_steel.state,
-        view: &mut ed_steel.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed_steel.state, &mut ed_steel.view);
     host.eval_source_returning_defs(
         r#"(define-command! "steel-goto-end" "" (lambda () (call! "goto-last-line")))"#.to_owned(),
         Default::default(),
@@ -1467,10 +1407,7 @@ fn parity_steel_branch_cluster_vs_native() {
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
-    let mut init_host = EditorHostImpl {
-        state: &mut ed_steel.state,
-        view: &mut ed_steel.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed_steel.state, &mut ed_steel.view);
     host.eval_source_returning_defs(
         r#"(define-command! "steel-del" "" (lambda () (call! "delete")) #:repeatable #t)"#
             .to_owned(),
@@ -1554,10 +1491,7 @@ fn parity_steel_branch_cluster_vs_native() {
     let name_refs2: Vec<&str> = names2.iter().map(String::as_str).collect();
     let mut host2 = ScriptingHost::new();
     host2.register_command_names(&name_refs2);
-    let mut init_host2 = EditorHostImpl {
-        state: &mut ed2.state,
-        view: &mut ed2.view,
-    };
+    let mut init_host2 = EditorHostImpl::new(&mut ed2.state, &mut ed2.view);
     // The Steel command must NOT call any native command internally — any inner
     // `(call! …)` would route through `run_dispatch_pipeline` which also calls
     // `step_paste_commit`, masking a missing outer commit. A pure Steel no-op
@@ -1613,10 +1547,7 @@ fn parity_extend_exit_keypress_vs_steel() {
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
-    let mut init_host = EditorHostImpl {
-        state: &mut ed_steel.state,
-        view: &mut ed_steel.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed_steel.state, &mut ed_steel.view);
     host.eval_source_returning_defs(
         r#"(define-command! "steel-delete" "" (lambda () (call! "delete")))"#.to_owned(),
         Default::default(),
@@ -1665,10 +1596,7 @@ fn plugin_calls_plugin_cursor_read_is_live() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     // inner-move: plugin command that wraps a single move-down.
     // outer-cmd: calls inner-move (plugin→plugin), reads cursor, conditionally
     //   moves down again if cursor advanced past line 1.
@@ -1766,10 +1694,7 @@ fn native_call_bang_at_init_top_level_warns_and_skips() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     // Eval as init context: native call in the middle, set-option! after it.
     let result = host.eval_source_returning_defs(
         r#"(set-option! "history-capacity" 42)
@@ -1832,10 +1757,7 @@ fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source_returning_defs(snippet.to_owned(), Default::default(), &mut init_host)
         .expect("Steel snippet must compile and evaluate without error");
 
@@ -2142,10 +2064,7 @@ fn keymap_dispatch_arity_over_2_reports_error() {
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
-    let mut init_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-    };
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source_returning_defs(
         r#"(define-command! "three-params" "" (lambda (a b c) (+ a b c)))"#.to_owned(),
         Default::default(),

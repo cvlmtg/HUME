@@ -810,6 +810,7 @@ impl Editor {
             let mut impl_host = crate::editor::host_impl::EditorHostImpl {
                 state: &mut self.state,
                 view: &mut self.view,
+                lsp: Some(&self.lsp),
             };
             scripting.call_steel_cmd(
                 name,
