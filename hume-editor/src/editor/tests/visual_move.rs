@@ -187,17 +187,75 @@ fn visual_move_no_wrap_falls_back_to_buffer_line() {
     );
 }
 
-/// count prefix: 2j moves two visual rows.
+/// count prefix: 2j moves two BUFFER lines (the second hop is a no-op here —
+/// buffer line 2 is the phantom trailing empty line — so it lands on buffer
+/// line 1, same char offset a bare `j`,`j` would reach by two visual rows in
+/// this particular buffer; see `visual_move_down_with_explicit_count_moves_buffer_lines`
+/// for a case where the two paths diverge).
 #[test]
 fn visual_move_down_with_count() {
     let mut ed = visual_test_editor(0);
     ed.handle_key(key('2'));
     ed.handle_key(key('j'));
-    // 2j from char 0: first j → char 76 (sub-row 1), second j → char 81 (next line).
+    // 2j from char 0: first hop → char 81 (buffer line 1); second hop is a
+    // no-op (buffer line 2 is the phantom trailing line).
     assert_eq!(
         ed.current_selections().primary().head(),
         81,
-        "2j: two visual rows from sub-row 0"
+        "2j: buffer-line movement, clamped at the last real line"
+    );
+}
+
+/// A count prefix means "N buffer lines", not "N visual rows" — even while
+/// wrapping is on. `1j` skips straight to the start of buffer line 1, bypassing
+/// the sub-row-1 stop that a bare `j` (no count) lands on.
+#[test]
+fn visual_move_down_with_explicit_count_moves_buffer_lines() {
+    let mut ed = visual_test_editor(0); // sub-row 0, col 0
+    ed.handle_key(key('1'));
+    ed.handle_key(key('j'));
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        81,
+        "1j: one buffer line skips the sub-row-1 stop entirely"
+    );
+    assert!(
+        ed.current_selections().primary().horiz().is_none(),
+        "buffer-line path (preferred_col: None) doesn't set sticky visual column"
+    );
+}
+
+/// A larger explicit count also moves by buffer lines: `2j` from line 0 lands
+/// on the (only) next buffer line, not two visual rows past it.
+#[test]
+fn visual_move_up_with_explicit_count_moves_buffer_lines() {
+    let mut ed = visual_test_editor(81); // start of "short" (buffer line 1)
+    ed.handle_key(key('1'));
+    ed.handle_key(key('k'));
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        0,
+        "1k: one buffer line lands on line 0 col 0, not the last sub-row (char 76)"
+    );
+}
+
+/// Scroll commands (page/half-page) always move by display rows, regardless of
+/// `explicit_count` — the buffer-vs-visual choice is a parameter passed by the
+/// caller (`by_buffer_line`), not a global-state read inside the shared core.
+/// This guards against `apply_visual_vertical` accidentally reading
+/// `state.explicit_count` itself instead of trusting its parameter.
+#[test]
+fn apply_visual_vertical_ignores_explicit_count_when_caller_forces_visual() {
+    use crate::editor::visual_move::apply_visual_vertical;
+    use crate::ops::MotionMode;
+
+    let mut ed = visual_test_editor(0);
+    ed.state.explicit_count = true; // simulate "a count was typed"
+    apply_visual_vertical(&mut ed.state, &mut ed.view, 1, true, MotionMode::Move, false);
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        76,
+        "by_buffer_line=false must move one visual row even with explicit_count=true"
     );
 }
 

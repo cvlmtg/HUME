@@ -204,7 +204,7 @@ impl CommandRegistry {
         );
         ecmd(
             "move-down",
-            "Move cursors down one visual line.",
+            "Move cursors down one visual line (one buffer line with a count).",
             cmd_visual_move_down,
         )
         .extendable()
@@ -212,7 +212,7 @@ impl CommandRegistry {
         .reg(self);
         ecmd(
             "move-up",
-            "Move cursors up one visual line.",
+            "Move cursors up one visual line (one buffer line with a count).",
             cmd_visual_move_up,
         )
         .extendable()

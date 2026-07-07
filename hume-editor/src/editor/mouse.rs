@@ -17,7 +17,7 @@ use hume_engine::format::{FormatScratch, count_visual_rows};
 use hume_engine::pane::WrapMode;
 
 use super::cursor;
-use super::visual_move::{cmd_visual_move_down, cmd_visual_move_up};
+use super::visual_move::apply_visual_vertical;
 use crate::ops::MotionMode;
 use hume_editing::selection::{Selection, SelectionSet};
 
@@ -126,11 +126,13 @@ impl Editor {
         };
         // Only move cursors if the viewport actually moved (file may already be at top).
         if vp_before != vp_after {
-            let _ = cmd_visual_move_up(
+            apply_visual_vertical(
                 &mut self.state,
                 &mut self.view,
                 scroll_lines,
+                false,
                 MotionMode::Move,
+                false,
             );
         }
     }
@@ -170,11 +172,13 @@ impl Editor {
         };
         // Only move cursors if the viewport actually moved (file may fit entirely in the pane).
         if vp_before != vp_after {
-            let _ = cmd_visual_move_down(
+            apply_visual_vertical(
                 &mut self.state,
                 &mut self.view,
                 scroll_lines,
+                true,
                 MotionMode::Move,
+                false,
             );
         }
     }

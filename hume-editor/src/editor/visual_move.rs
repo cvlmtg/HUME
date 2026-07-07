@@ -155,17 +155,22 @@ fn visual_move_up_one(
 /// Shared core for the four visual-line movement EditorCmds.
 ///
 /// When wrapping is off every buffer line is exactly one display row, so we
-/// fall back to the pure buffer-line motions to avoid any overhead.
+/// fall back to the pure buffer-line motions to avoid any overhead. Callers
+/// that want an explicit user count to mean "N buffer lines" even while
+/// wrapping is on (`j`/`k`) pass `by_buffer_line = true`; callers where a
+/// count is inherently a display-row measure (page/half-page scroll, mouse
+/// wheel) always pass `false`.
 pub(super) fn apply_visual_vertical(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
     down: bool,
     mode: MotionMode,
+    by_buffer_line: bool,
 ) {
     let (wrap_mode, tab_width, whitespace) = focused_format_context(state, view);
 
-    if !wrap_mode.is_wrapping() {
+    if !wrap_mode.is_wrapping() || by_buffer_line {
         let motion = if down { cmd_move_down } else { cmd_move_up };
         apply_focused_motion(state, view, |b, s| motion(b, s, count, mode));
         return;
@@ -259,7 +264,10 @@ pub(super) fn cmd_visual_move_down(
     count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_visual_vertical(state, view, count, true, mode);
+    // A count typed by the user (e.g. `9j`) means "9 buffer lines" — matching
+    // relative-line-number gutters — even when soft-wrap is on.
+    let by_buffer_line = state.explicit_count;
+    apply_visual_vertical(state, view, count, true, mode, by_buffer_line);
     Ok(())
 }
 
@@ -269,7 +277,8 @@ pub(super) fn cmd_visual_move_up(
     count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_visual_vertical(state, view, count, false, mode);
+    let by_buffer_line = state.explicit_count;
+    apply_visual_vertical(state, view, count, false, mode, by_buffer_line);
     Ok(())
 }
 

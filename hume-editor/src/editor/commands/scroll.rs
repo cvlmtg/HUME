@@ -2,15 +2,16 @@ use crate::ops::MotionMode;
 use hume_engine::pipeline::EngineView;
 
 use super::super::EditorState;
-use super::super::visual_move::{cmd_visual_move_down, cmd_visual_move_up};
+use super::super::visual_move::apply_visual_vertical;
 use super::{current_selections, focused_buffer_id, focused_format_context, viewport};
 use crate::editor::error::CommandError;
 
 // ── Page / half-page scroll ───────────────────────────────────────────────────
 //
 // Uses `view.height` (or half of it) as the move count rather than the user's
-// numeric prefix. Calls the visual-move commands directly instead of going
-// through the registry to avoid a runtime string lookup.
+// numeric prefix. Calls `apply_visual_vertical` directly (not the registry, to
+// avoid a runtime string lookup; not the `cmd_visual_move_*` wrappers, since a
+// scroll count is always a display-row count, never "N buffer lines").
 
 pub fn cmd_page_down(
     state: &mut EditorState,
@@ -19,7 +20,8 @@ pub fn cmd_page_down(
     mode: MotionMode,
 ) -> Result<(), CommandError> {
     let count = viewport(state, view).height as usize;
-    cmd_visual_move_down(state, view, count, mode)
+    apply_visual_vertical(state, view, count, true, mode, false);
+    Ok(())
 }
 pub fn cmd_page_up(
     state: &mut EditorState,
@@ -28,7 +30,8 @@ pub fn cmd_page_up(
     mode: MotionMode,
 ) -> Result<(), CommandError> {
     let count = viewport(state, view).height as usize;
-    cmd_visual_move_up(state, view, count, mode)
+    apply_visual_vertical(state, view, count, false, mode, false);
+    Ok(())
 }
 pub fn cmd_half_page_down(
     state: &mut EditorState,
@@ -37,7 +40,8 @@ pub fn cmd_half_page_down(
     mode: MotionMode,
 ) -> Result<(), CommandError> {
     let count = (viewport(state, view).height as usize / 2).max(1);
-    cmd_visual_move_down(state, view, count, mode)
+    apply_visual_vertical(state, view, count, true, mode, false);
+    Ok(())
 }
 pub fn cmd_half_page_up(
     state: &mut EditorState,
@@ -46,7 +50,8 @@ pub fn cmd_half_page_up(
     mode: MotionMode,
 ) -> Result<(), CommandError> {
     let count = (viewport(state, view).height as usize / 2).max(1);
-    cmd_visual_move_up(state, view, count, mode)
+    apply_visual_vertical(state, view, count, false, mode, false);
+    Ok(())
 }
 
 // ── View-trie scroll (zz / zt / zb) ───────────────────────────────────────────

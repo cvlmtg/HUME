@@ -262,9 +262,11 @@ impl Editor {
                 WalkResult::Leaf(cmd) => {
                     self.state.pending_keys.clear();
                     self.state.pending_ctrl_extend = false;
-                    let count = self.state.count.take().unwrap_or(1);
-                    self.state.explicit_count = false;
+                    let raw_count = self.state.count.take();
+                    self.state.explicit_count = raw_count.is_some();
+                    let count = raw_count.unwrap_or(1);
                     self.execute_keymap_command(cmd.name.clone(), count, false, vec![]);
+                    self.state.explicit_count = false;
                     return;
                 }
                 WalkResult::Interior { .. } => {
