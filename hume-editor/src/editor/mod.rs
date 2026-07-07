@@ -50,6 +50,7 @@ pub(crate) mod jump_list;
 pub mod keymap;
 #[cfg(test)]
 mod lints;
+pub(crate) mod lsp;
 mod mappings;
 mod message_log;
 mod minibuf;
@@ -453,6 +454,9 @@ pub(crate) struct Editor {
     /// Nearest-deadline timer registry (P7); Steel-visible via B4's
     /// `after`/`debounce` builtins.
     timer_wheel: timers::TimerWheel,
+    /// LSP backend + client state (C4+): threaded in production,
+    /// synchronous-inline in tests, mirroring `parse_worker` above.
+    lsp: lsp::LspState,
     /// `true` once [`Editor::run`] has taken ownership of the terminal (the
     /// interactive event loop). Tests and headless `run_keys` dispatch
     /// commands directly and never enter `run`, so this stays `false` there —
@@ -1090,6 +1094,7 @@ impl Editor {
             parse_worker: Box::new(InlineParseBackend::new()),
             parse_worker_disconnect_logged: false,
             timer_wheel: timers::TimerWheel::new(),
+            lsp: lsp::LspState::new_inline(),
             tui_active: false,
             #[cfg(test)]
             inline_output_entered: false,

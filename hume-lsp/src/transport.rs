@@ -13,6 +13,7 @@ use std::thread;
 use crate::codec::{self, Message};
 
 /// One event surfaced by the reader or stderr thread.
+#[derive(Debug)]
 pub enum InboundEvent {
     Message(Message),
     /// One line of stderr output, already utf8-lossy decoded.

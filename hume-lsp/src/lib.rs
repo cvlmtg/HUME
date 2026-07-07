@@ -11,11 +11,15 @@
 //! - `uri`: path ↔ `file://` URI conversion (P5).
 //! - `codec`: JSON-RPC framing, message enum, id allocation (C2).
 //! - `transport`: server process management — reader/writer/stderr threads (C3).
-//! - `client`: the `LspBackend` trait, lifecycle, request bookkeeping (C4–C6).
+//! - `backend`: the `LspBackend` trait + `ThreadedLspBackend` (C4).
+//! - `inline`: `InlineLspBackend`, the scripted test double (C4).
+//! - `client`: lifecycle, request bookkeeping (C5–C6).
 //! - `sync`: `ChangeSet` → `TextDocumentContentChangeEvent[]` (P6).
 
+pub mod backend;
 pub mod client;
 pub mod codec;
+pub mod inline;
 pub mod sync;
 pub mod transport;
 pub mod uri;

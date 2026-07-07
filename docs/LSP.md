@@ -87,6 +87,7 @@ Steps 1–3 are ordered by dependency but Step 4 tasks unlock incrementally — 
 | Server→client requests | **Answered in Rust, never surfaced to Steel in v1** | JSON-RPC requires a response to every request, including server-initiated ones. C6 dispatches them: `workspace/configuration` answered from C8 settings, `workspace/applyEdit` applied via the B6 engine, `client/registerCapability` / `window/workDoneProgress/create` acknowledged and ignored, anything else gets a `MethodNotFound` error response. Steel handles notifications only (`on-lsp-notification`) — response obligations stay where timeouts can't be caused by a plugin. |
 | Diagnostics exposure granularity (P8) | **`diagnostics-for-buffer` caps at 1 000 items** | P8 measured JSON→SteelVal conversion (steel-core's built-in `IntoSteelVal for serde_json::Value`) at 100/1k/5k diagnostic-shaped items, release build: ~86µs / ~750µs / ~4.2ms. Confirms the hub's 1 000 default with comfortable margin — even the uncapped 5k case stays under 5ms for a per-user-intent pull (not a per-frame path). Filtered by the optional `#:severity` / `#:range` arguments before the cap applies. |
 | Steel completion scorer budget (P8) | **Re-rank Rust's top-N only (N = 64)** | P8 confirms this is architectural, not just a speed call: per-item conversion/iteration cost is low (~0.8–1µs/item) but completion filtering runs *per keystroke* — the hub's frequency-cut rule (recurring paths must be Rust, regardless of measured Steel throughput) means an unbounded Steel scorer would violate the guardrail even though it would be numerically affordable at 1k items. Bounded top-64 re-rank confirmed as the default. |
+| LSP idle wake (C4) | **Heartbeat deadline: poll at ~200ms while any server is Running** | `event::read()` cannot be woken externally, so a server-initiated push (e.g. `publishDiagnostics` arriving after the user stops typing) would sit undrained until the next keystroke if the loop blocked. `LspState`'s `AsyncSource::next_deadline` reports `now + 200ms` once C5 tracks per-client `ServerState`, bounding `wake_timeout` to a ~5Hz poll; zero cost when no server is registered. Uses existing P3/P7 machinery — no new event-loop mechanism. |
 
 ## Open Questions
 
@@ -258,7 +259,7 @@ The `hume-lsp` crate plus editor glue: spawn, handshake, document sync, diagnost
 - [x] **C1** — crate scaffold (`hume-lsp/`, deps: `lsp-types` + serde + `hume-editing` only)
 - [x] **C2** — JSON-RPC codec (framing, message enum, id allocation/correlation)
 - [x] **C3** — server process management (reader/writer/stderr threads, `ServerHandle`, kill-on-drop)
-- [ ] **C4** — `LspBackend` trait + `InlineLspBackend` scripted double
+- [x] **C4** — `LspBackend` trait + `InlineLspBackend` scripted double
 - [ ] **C5** — lifecycle (initialize handshake, capability storage, shutdown, crash detection)
 - [ ] **C6** — request bookkeeping (deadlines, staleness by `text_gen`, `$/cancelRequest`, server→client request dispatch)
 - [ ] **C7** — document sync glue (didOpen/didChange/didSave/didClose from `ChangeSet`s)

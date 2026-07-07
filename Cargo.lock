@@ -1076,6 +1076,7 @@ dependencies = [
  "globset",
  "hume-editing",
  "hume-engine",
+ "hume-lsp",
  "hume-platform",
  "hume-scripting",
  "hume-treesitter",

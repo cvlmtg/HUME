@@ -83,6 +83,54 @@ fn wake_timeout_distant_timer_bounds_without_busy_polling() {
 }
 
 #[test]
+fn lsp_backend_is_included_in_async_sources() {
+    // C4: growing async_sources() to 3 must not regress the pending/idle
+    // behavior the earlier tests pin — the freshly-constructed InlineLspBackend
+    // has nothing queued, so it must not force a poll timeout on its own.
+    let ed = editor_from("-[w]>ord\n");
+    assert_eq!(ed.wake_timeout(), None);
+}
+
+#[test]
+fn scripted_initialize_round_trip_through_editor() {
+    // C4 "Done when": a scripted initialize round-trip passes end-to-end
+    // through the editor's LspState, via the same LspBackend trait object
+    // the production ThreadedLspBackend implements.
+    use hume_lsp::codec::{Message, RequestId};
+    use hume_lsp::inline::InlineLspBackend;
+    use hume_lsp::transport::InboundEvent;
+
+    let mut ed = editor_from("-[w]>ord\n");
+    ed.lsp = super::super::lsp::LspState::from_backend_for_test(Box::new(
+        InlineLspBackend::with_default_handshake(),
+    ));
+
+    let backend = ed.lsp.backend_mut();
+    let server = backend
+        .start("rust-analyzer", &[], std::path::Path::new("."))
+        .expect("inline start never fails");
+    backend.send(
+        server,
+        Message::Request {
+            id: RequestId::Int(1),
+            method: "initialize".to_string(),
+            params: Default::default(),
+        },
+    );
+
+    let events = backend.drain();
+    assert_eq!(events.len(), 1);
+    match &events[0] {
+        (sid, InboundEvent::Message(Message::Response { id, result })) => {
+            assert_eq!(*sid, server);
+            assert_eq!(*id, RequestId::Int(1));
+            assert!(result.is_ok(), "expected the canned initialize success");
+        }
+        other => panic!("expected a Response event, got {other:?}"),
+    }
+}
+
+#[test]
 fn timer_wheel_end_to_end_tick_via_editor() {
     // Sleep-free: jump the query point 20ms past scheduling instead of
     // sleeping in the test (per the card's allowance).

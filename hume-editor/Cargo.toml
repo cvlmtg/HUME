@@ -13,6 +13,7 @@ hume-platform = { path = "../hume-platform" }
 hume-scripting = { path = "../hume-scripting" }
 hume-editing = { path = "../hume-editing" }
 hume-treesitter = { path = "../hume-treesitter" }
+hume-lsp = { path = "../hume-lsp" }
 globset = "0.4"
 tree-sitter = "0.26.8"
 slotmap = "1"
