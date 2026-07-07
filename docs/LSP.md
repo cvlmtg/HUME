@@ -279,7 +279,7 @@ The bridge and primitives that make Steel the feature layer. After it, a plugin 
 - [x] **B6** — edit + navigation primitives (`apply-text-edits!`, `apply-workspace-edit!`, `goto-location!`)
 - [x] **B7** — new hooks (`on-lsp-attach`, `on-diagnostics-changed`, `on-viewport-change`, `on-trigger-char`)
 - [ ] **B8** — completion orchestration API (Rust store + filter, Steel session driver)
-- [ ] **B9** — Steel minibuffer prompt (`prompt!` — F5 needs it; no prompt primitive exists today)
+- [x] **B9** — Steel minibuffer prompt (`prompt!` — F5 needs it; no prompt primitive exists today)
 
 ## Step 3 — UI surfaces
 

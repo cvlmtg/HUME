@@ -40,7 +40,7 @@ pub fn cmd_search_forward(
     state.history.begin_session_all();
     state.set_mode(Mode::Search);
     state.minibuf = Some(MiniBuffer {
-        prompt: '/',
+        prompt: "/".to_string(),
         input: String::new(),
         cursor: 0,
     });
@@ -63,7 +63,7 @@ pub fn cmd_search_backward(
     state.history.begin_session_all();
     state.set_mode(Mode::Search);
     state.minibuf = Some(MiniBuffer {
-        prompt: '?',
+        prompt: "?".to_string(),
         input: String::new(),
         cursor: 0,
     });
@@ -298,7 +298,7 @@ pub fn cmd_select_within(
     state.panes.transient[pid].pre_select_sels = Some(pre_sels);
     state.set_mode(Mode::Select);
     state.minibuf = Some(MiniBuffer {
-        prompt: '⫽',
+        prompt: "⫽".to_string(),
         input: String::new(),
         cursor: 0,
     });

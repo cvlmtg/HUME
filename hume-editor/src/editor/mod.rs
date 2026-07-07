@@ -369,6 +369,12 @@ pub(crate) struct EditorState {
     /// B5's Steel-writable decoration stores (inlay hints, signs, virtual
     /// lines, extra highlights) — Step 3's render providers read these.
     pub(super) decorations: decorations::DecorationStores,
+    /// B9's `(prompt! …)` callback — persists for as long as `minibuf` holds
+    /// the prompt session (unlike `pending_steel_calls`, which drains the
+    /// same frame it's pushed to). `handle_command`'s Confirm/Cancel arms
+    /// take this and push exactly one `(callback text-or-#f)` call onto
+    /// `pending_steel_calls`.
+    pub(super) steel_prompt_callback: Option<steel::rvals::SteelVal>,
     /// Shared completion-popup view: written by `prepare_frame`, read by provider.
     pub(crate) completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>>,
 }
@@ -1130,6 +1136,7 @@ impl Editor {
                 pending_steel_calls: Vec::new(),
                 trigger_chars: std::collections::HashMap::new(),
                 decorations: decorations::DecorationStores::default(),
+                steel_prompt_callback: None,
                 completion_view: Arc::new(RwLock::new(None)),
             },
             view: engine_view,

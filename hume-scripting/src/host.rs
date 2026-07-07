@@ -393,4 +393,27 @@ pub trait EditorHost {
         let _ = bid;
         false
     }
+
+    // ── Minibuffer prompt (B9; default = "not supported") ────────────────────
+    /// `(prompt! label #:prefill text on-confirm)` — opens a one-shot
+    /// Command-mode minibuffer session. `callback` fires exactly once, with
+    /// the confirmed text or `#f` on cancel — queued through the same
+    /// drained-at-frame-boundary path as every other Rust→Steel call, never
+    /// invoked inline. Errors if a minibuffer session is already open.
+    fn prompt(
+        &mut self,
+        label: String,
+        prefill: String,
+        callback: steel::rvals::SteelVal,
+    ) -> Result<(), String> {
+        let _ = (label, prefill, callback);
+        Err("prompt!: not supported by this host".to_string())
+    }
+
+    /// `(symbol-under-cursor bid)` — the word at the primary cursor head,
+    /// `""` on whitespace/punctuation.
+    fn symbol_under_cursor(&self, bid: BufferId) -> String {
+        let _ = bid;
+        String::new()
+    }
 }

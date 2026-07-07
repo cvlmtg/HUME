@@ -1,7 +1,7 @@
 pub(crate) mod history;
 
 use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_width::UnicodeWidthStr;
 
 // ── MiniBuffer ────────────────────────────────────────────────────────────────
 
@@ -12,8 +12,9 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 /// without needing separate mode variants for each prompt type.
 #[derive(Clone)]
 pub(crate) struct MiniBuffer {
-    /// The character shown before the input, e.g. `:` for commands, `/` for search.
-    pub prompt: char,
+    /// The text shown before the input: `:` for commands, `/`/`?` for search,
+    /// or a Steel prompt's `label` (`(prompt! label …)`, B9) — arbitrary length.
+    pub prompt: String,
     /// The text typed so far.
     pub input: String,
     /// Byte offset of the edit cursor within `input`. Always on a UTF-8 char boundary.
@@ -60,7 +61,7 @@ impl MiniBuffer {
     /// Add `area.x` to get the absolute screen column.
     pub(crate) fn statusline_cursor_col(&self) -> u16 {
         let pad: u16 = 1; // pad_left inserts one space before the MiniBuf span
-        let prompt_w = self.prompt.width().unwrap_or(1) as u16;
+        let prompt_w = UnicodeWidthStr::width(self.prompt.as_str()) as u16;
         let input_w = UnicodeWidthStr::width(&self.input[..self.cursor]) as u16;
         pad + prompt_w + input_w
     }

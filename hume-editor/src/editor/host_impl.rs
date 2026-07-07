@@ -597,6 +597,65 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     fn selection_spans_full_line(&self, bid: BufferId) -> bool {
         crate::editor::lsp::edits::selection_spans_full_line(self.state, bid)
     }
+
+    // ── Minibuffer prompt (B9) ────────────────────────────────────────────────
+    fn prompt(
+        &mut self,
+        label: String,
+        prefill: String,
+        callback: steel::rvals::SteelVal,
+    ) -> Result<(), String> {
+        // Not `self.state.minibuf.is_some()` — a `prompt!` called from a
+        // `:command`'s body runs while that command line's own minibuffer
+        // session is still open (it closes only after the command
+        // returns). `steel_prompt_callback` is only `Some` once a *prior*
+        // `prompt!` call has actually taken over the session.
+        if self.state.steel_prompt_callback.is_some() {
+            return Err("prompt!: a minibuffer session is already open".to_string());
+        }
+        let cursor = prefill.len();
+        self.state.minibuf = Some(crate::editor::MiniBuffer {
+            prompt: label,
+            input: prefill,
+            cursor,
+        });
+        self.state.steel_prompt_callback = Some(callback);
+        self.state.history.begin_session_all();
+        self.state.set_mode(crate::editor::Mode::Command);
+        Ok(())
+    }
+
+    fn symbol_under_cursor(&self, bid: BufferId) -> String {
+        let Some(buf) = self.state.buffers.try_get(bid) else {
+            return String::new();
+        };
+        let pid = self.state.focused_pane_id;
+        let Some(pbs) = self
+            .state
+            .panes
+            .state
+            .get(pid)
+            .and_then(|by_buf| by_buf.get(bid))
+        else {
+            return String::new();
+        };
+        let text = buf.text();
+        let head = pbs.selections.primary().head();
+        let Some(ch) = text.char_at(head) else {
+            return String::new();
+        };
+        if hume_editing::word::classify_char(ch) != hume_editing::word::CharClass::Word {
+            return String::new();
+        }
+        let Some((start, end)) = crate::ops::text_object::inner_word_impl(
+            text,
+            head,
+            hume_editing::word::is_word_boundary,
+        ) else {
+            return String::new();
+        };
+        text.slice(start..end + 1).to_string()
+    }
 }
 
 /// Map scripting `BindMode` → editor `keymap::BindMode`.

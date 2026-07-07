@@ -216,6 +216,12 @@ const BOOTSTRAP: &str = r#"
     (log! 'info (to-string n " buffers modified — :wa writes all"))
     n))
 
+; prompt! — one-shot minibuffer prompt (B9). on-confirm fires exactly once:
+; the confirmed text, or #f on Esc/cancel. No history, no completion — a
+; second prompt! while one is already open errors rather than stacking.
+(define (prompt! label on-confirm #:prefill [prefill ""])
+  (%prompt! label prefill on-confirm))
+
 ; Variadic call! macro — desugars to %dispatch-command.
 ; Defined here (not only in prelude.scm) so it is available in every Steel engine
 ; context, including test harnesses that do not load the full prelude.
@@ -419,6 +425,10 @@ pub(crate) fn register_all(steel: &mut Engine) {
         "selection-spans-full-line?",
         lsp::selection_spans_full_line,
     );
+
+    // B9 — minibuffer prompt.
+    steel.register_fn_with_ctx(HUME_CTX, "%prompt!", lsp::prompt);
+    steel.register_fn_with_ctx(HUME_CTX, "symbol-under-cursor", lsp::symbol_under_cursor);
 
     // Timers — not LSP-specific, but B4 was scoped as part of the LSP step.
     steel.register_fn_with_ctx(HUME_CTX, "after", timers::after);

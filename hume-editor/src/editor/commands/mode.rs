@@ -180,7 +180,7 @@ pub fn cmd_command_mode(
 ) -> Result<(), CommandError> {
     state.history.begin_session_all();
     state.minibuf = Some(MiniBuffer {
-        prompt: ':',
+        prompt: ":".to_string(),
         input: String::new(),
         cursor: 0,
     });

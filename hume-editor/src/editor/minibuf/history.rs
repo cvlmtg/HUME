@@ -198,11 +198,11 @@ impl HistoryStore {
 
     /// Map a minibuffer prompt character to its history kind.
     /// Returns `None` for prompts that have no associated history (e.g. `⫽`).
-    pub fn kind_for_prompt(prompt: char) -> Option<HistoryKind> {
+    pub fn kind_for_prompt(prompt: &str) -> Option<HistoryKind> {
         match prompt {
-            ':' => Some(HistoryKind::Command),
-            '/' => Some(HistoryKind::SearchForward),
-            '?' => Some(HistoryKind::SearchBackward),
+            ":" => Some(HistoryKind::Command),
+            "/" => Some(HistoryKind::SearchForward),
+            "?" => Some(HistoryKind::SearchBackward),
             _ => None,
         }
     }
@@ -421,19 +421,19 @@ mod tests {
     #[test]
     fn kind_for_prompt_maps_colon_slash_question() {
         assert_eq!(
-            HistoryStore::kind_for_prompt(':'),
+            HistoryStore::kind_for_prompt(":"),
             Some(HistoryKind::Command)
         );
         assert_eq!(
-            HistoryStore::kind_for_prompt('/'),
+            HistoryStore::kind_for_prompt("/"),
             Some(HistoryKind::SearchForward)
         );
         assert_eq!(
-            HistoryStore::kind_for_prompt('?'),
+            HistoryStore::kind_for_prompt("?"),
             Some(HistoryKind::SearchBackward)
         );
-        assert_eq!(HistoryStore::kind_for_prompt('⫽'), None);
-        assert_eq!(HistoryStore::kind_for_prompt('x'), None);
+        assert_eq!(HistoryStore::kind_for_prompt("⫽"), None);
+        assert_eq!(HistoryStore::kind_for_prompt("x"), None);
     }
 
     #[test]

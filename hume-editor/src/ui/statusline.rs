@@ -556,8 +556,8 @@ fn render_element(
         }
         StatusElement::MiniBuf => {
             if let Some(mb) = &editor.state.minibuf {
-                let mut text = String::with_capacity(2 + mb.input.len());
-                text.push(mb.prompt);
+                let mut text = String::with_capacity(mb.prompt.len() + mb.input.len());
+                text.push_str(&mb.prompt);
                 text.push_str(&mb.input);
                 (Cow::Owned(text), colors.statusline)
             } else {

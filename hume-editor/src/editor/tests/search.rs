@@ -250,7 +250,7 @@ fn select_within_enters_select_mode() {
             .is_some()
     );
     assert!(ed.state.minibuf.is_some());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().prompt, '⫽');
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().prompt, "⫽");
 }
 
 /// `s` + pattern + Enter confirms: selections become matches, mode returns to Normal.

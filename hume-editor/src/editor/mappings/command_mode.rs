@@ -15,6 +15,10 @@ impl Editor {
             Some(mb) => mb.handle_key(key),
             None => return,
         };
+        if self.state.steel_prompt_callback.is_some() {
+            self.handle_steel_prompt_event(event);
+            return;
+        }
         match event {
             MiniBufferEvent::Cancel => {
                 self.set_mode(Mode::Normal);
@@ -48,8 +52,13 @@ impl Editor {
                     self.state.history.get_mut(HistoryKind::Command).push(raw);
                 }
                 self.execute_command();
-                self.set_mode(Mode::Normal);
-                self.close_minibuf();
+                // A `:command` whose body calls `(prompt! …)` (B9) leaves a
+                // new minibuffer session open — closing it here would stomp
+                // that session before the user ever sees it.
+                if self.state.steel_prompt_callback.is_none() {
+                    self.set_mode(Mode::Normal);
+                    self.close_minibuf();
+                }
             }
             // Backspace on already-empty input: dismiss.
             MiniBufferEvent::BackspaceOnEmpty => {
@@ -83,6 +92,44 @@ impl Editor {
             }
             MiniBufferEvent::Ignored => {}
         }
+    }
+
+    /// B9: routes a Command-mode minibuffer event for a Steel `(prompt! …)`
+    /// session rather than a `:` command line — no history, no completion,
+    /// no directory-descend special case. Exactly one `(callback
+    /// text-or-#f)` call fires, on Confirm or on any of the cancel paths.
+    fn handle_steel_prompt_event(&mut self, event: MiniBufferEvent) {
+        match event {
+            MiniBufferEvent::Cancel
+            | MiniBufferEvent::ConfirmEmpty
+            | MiniBufferEvent::BackspaceOnEmpty => self.finish_steel_prompt(None),
+            MiniBufferEvent::Confirm(text) => self.finish_steel_prompt(Some(text)),
+            // Plain editing (char typed/deleted, cursor moved) is already
+            // applied by `MiniBuffer::handle_key` — nothing further to do.
+            // Tab/Up/Down are no-ops here (no completion, no history for a
+            // one-shot prompt, per the card).
+            MiniBufferEvent::Edited
+            | MiniBufferEvent::CursorMoved
+            | MiniBufferEvent::EmptiedByBackspace
+            | MiniBufferEvent::CompleteRequested { .. }
+            | MiniBufferEvent::HistoryPrev
+            | MiniBufferEvent::HistoryNext
+            | MiniBufferEvent::Ignored => {}
+        }
+    }
+
+    /// Queues exactly one `(callback text-or-#f)` call and closes the prompt.
+    fn finish_steel_prompt(&mut self, text: Option<String>) {
+        let Some(callback) = self.state.steel_prompt_callback.take() else {
+            return;
+        };
+        let arg = match text {
+            Some(s) => steel::rvals::SteelVal::StringV(s.into()),
+            None => steel::rvals::SteelVal::BoolV(false),
+        };
+        self.queue_steel_call(callback, vec![arg]);
+        self.set_mode(Mode::Normal);
+        self.close_minibuf();
     }
 
     /// Close the minibuffer and clear any active completion session.
@@ -156,7 +203,7 @@ impl Editor {
         };
 
         // Only complete command-mode minibuffers.
-        if self.state.minibuf.as_ref().map(|mb| mb.prompt) != Some(':') {
+        if self.state.minibuf.as_ref().map(|mb| mb.prompt.as_str()) != Some(":") {
             return;
         }
 

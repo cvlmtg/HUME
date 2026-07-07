@@ -28,7 +28,7 @@ fn colon_enters_command_mode_when_shift_set() {
     ed.handle_key(key_shift(':'));
     assert_eq!(ed.state.mode, Mode::Command);
     assert!(ed.state.minibuf.is_some());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().prompt, ':');
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().prompt, ":");
     assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "");
 }
 

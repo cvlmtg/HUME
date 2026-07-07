@@ -646,6 +646,33 @@ pub(crate) fn selection_spans_full_line(ctx: &mut SteelCtx, bid: SteelVal) -> St
     Ok(SteelVal::BoolV(ctx.host.selection_spans_full_line(id)))
 }
 
+// ── B9: minibuffer prompt ───────────────────────────────────────────────────
+
+/// `(%prompt! label prefill on-confirm)` — the `prompt!` Scheme wrapper
+/// supplies `#:prefill`'s default. `on-confirm` fires exactly once, later
+/// (queued, never inline) — with the confirmed text, or `#f` on cancel.
+pub(crate) fn prompt(
+    ctx: &mut SteelCtx,
+    label: SteelVal,
+    prefill: SteelVal,
+    on_confirm: SteelVal,
+) -> SteelResult {
+    require_cmd_ctx!(ctx, "prompt!");
+    let label = string_arg(label, "prompt! label")?;
+    let prefill = string_arg(prefill, "prompt! prefill")?;
+    ctx.host
+        .prompt(label, prefill, on_confirm)
+        .map(|()| SteelVal::Void)
+        .map_err(conv_err)
+}
+
+/// `(symbol-under-cursor bid)`.
+pub(crate) fn symbol_under_cursor(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "symbol-under-cursor");
+    let id = bid_arg(&bid, "symbol-under-cursor")?;
+    Ok(SteelVal::StringV(ctx.host.symbol_under_cursor(id).into()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

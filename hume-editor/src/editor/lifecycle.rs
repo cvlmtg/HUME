@@ -186,6 +186,7 @@ impl Editor {
                 pending_steel_calls: Vec::new(),
                 trigger_chars: std::collections::HashMap::new(),
                 decorations: super::decorations::DecorationStores::default(),
+                steel_prompt_callback: None,
                 completion_view,
             },
             view: engine_view,
@@ -826,7 +827,6 @@ impl Editor {
         {
             return;
         }
-        use unicode_width::UnicodeWidthChar as _;
         use unicode_width::UnicodeWidthStr as _;
         let view = self.state.completion.as_ref().map(|state| {
             let anchor_col = self
@@ -835,7 +835,7 @@ impl Editor {
                 .as_ref()
                 .map(|mb| {
                     let pad: u16 = 1;
-                    let prompt_w = mb.prompt.width().unwrap_or(1) as u16;
+                    let prompt_w = mb.prompt.width() as u16;
                     let safe_end = state.span_start.min(mb.input.len());
                     let token_col = mb.input[..safe_end].width() as u16;
                     pad + prompt_w + token_col

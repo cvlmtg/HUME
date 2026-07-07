@@ -26,7 +26,7 @@ impl Editor {
                     .state
                     .minibuf
                     .as_ref()
-                    .and_then(|m| HistoryStore::kind_for_prompt(m.prompt));
+                    .and_then(|m| HistoryStore::kind_for_prompt(&m.prompt));
                 if let Some(k) = kind {
                     self.state.history.get_mut(k).push(pattern.clone());
                 }
@@ -67,27 +67,27 @@ impl Editor {
                     .state
                     .minibuf
                     .as_ref()
-                    .and_then(|m| HistoryStore::kind_for_prompt(m.prompt))
+                    .and_then(|m| HistoryStore::kind_for_prompt(&m.prompt))
                 {
                     self.state.history.get_mut(k).demote_to_scratch();
                 }
                 self.update_live_search();
             }
             MiniBufferEvent::HistoryPrev => {
-                let Some(prompt) = self.state.minibuf.as_ref().map(|m| m.prompt) else {
+                let Some(prompt) = self.state.minibuf.as_ref().map(|m| m.prompt.clone()) else {
                     return;
                 };
-                let Some(kind) = HistoryStore::kind_for_prompt(prompt) else {
+                let Some(kind) = HistoryStore::kind_for_prompt(&prompt) else {
                     return;
                 };
                 self.recall_history(kind, HistoryDir::Prev);
                 self.update_live_search();
             }
             MiniBufferEvent::HistoryNext => {
-                let Some(prompt) = self.state.minibuf.as_ref().map(|m| m.prompt) else {
+                let Some(prompt) = self.state.minibuf.as_ref().map(|m| m.prompt.clone()) else {
                     return;
                 };
-                let Some(kind) = HistoryStore::kind_for_prompt(prompt) else {
+                let Some(kind) = HistoryStore::kind_for_prompt(&prompt) else {
                     return;
                 };
                 self.recall_history(kind, HistoryDir::Next);
