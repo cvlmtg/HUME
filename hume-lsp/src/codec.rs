@@ -81,6 +81,24 @@ impl From<serde_json::Error> for CodecError {
     }
 }
 
+/// `serde`'s default `Option<T>` deserialization treats a JSON `null` the
+/// same as the field being absent — collapsing both to `None`. `result`
+/// and `error` need to tell those apart: a response's `result` is
+/// routinely a legitimate `null` (many LSP methods succeed with no
+/// payload — `workspace/executeCommand`, `textDocument/rename` when
+/// nothing changed, …), and that must still classify as a `Response`, not
+/// `Ambiguous`. Wrapping the field in an extra `Option` (via this
+/// deserializer, invoked only when the field is present at all) keeps
+/// "absent" (`#[serde(default)]`, never invoked) and "present, value is
+/// null" (`Some(Value::Null)`) distinguishable.
+fn deserialize_present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    T::deserialize(deserializer).map(Some)
+}
+
 /// Untyped wire shape: every field optional, classified after parsing.
 #[derive(Deserialize, Serialize)]
 struct RawMessage {
@@ -90,9 +108,12 @@ struct RawMessage {
     method: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     params: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// `None` = field absent; `Some(v)` = field present (`v` may itself be
+    /// `serde_json::Value::Null`).
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_present")]
     result: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Same presence-vs-null distinction as `result`.
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_present")]
     error: Option<ResponseError>,
 }
 
@@ -298,6 +319,27 @@ mod tests {
             Message::Response { id, result } => {
                 assert_eq!(id, RequestId::Int(3));
                 assert_eq!(result.unwrap(), serde_json::json!({"capabilities": {}}));
+            }
+            other => panic!("expected Response, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn roundtrip_response_ok_with_a_null_result() {
+        // Many LSP methods legitimately succeed with a null result
+        // (workspace/executeCommand, rename-with-nothing-to-change, …).
+        // `{"id":5,"result":null}` must classify as a successful Response,
+        // not Ambiguous — serde's default `Option<Value>` deserialization
+        // collapses "field absent" and "field present as null" to the same
+        // `None`, which this codec must not do for `result`/`error`.
+        let msg = Message::Response {
+            id: RequestId::Int(5),
+            result: Ok(serde_json::Value::Null),
+        };
+        match roundtrip(msg) {
+            Message::Response { id, result } => {
+                assert_eq!(id, RequestId::Int(5));
+                assert_eq!(result.unwrap(), serde_json::Value::Null);
             }
             other => panic!("expected Response, got {other:?}"),
         }
