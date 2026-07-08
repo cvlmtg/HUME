@@ -1,0 +1,13 @@
+---
+source: hume-editor/src/editor/tests/lsp_virtual_lines.rs
+assertion_line: 101
+expression: snap
+---
+<fg=#808080,bg=#1a1a1a>1 </><fg=#d0d0d0,bg=#1a1a1a>aaa</>
+<fg=#808080,bg=#1a1a1a>  hint</>
+<fg=#c8c8d2,bg=#3a3a3a>2 </><fg=#d0d0d0,bg=#3a3a3a>bb</><fg=#000000,bg=#ffffff>b</>
+<fg=#808080,bg=#1a1a1a>1 </><fg=#d0d0d0,bg=#1a1a1a>ccc</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#000000,bg=#ffffff> 2:3 [+]                          │ NOR</>

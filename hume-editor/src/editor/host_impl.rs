@@ -452,10 +452,21 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         self.state.decorations.set_signs(source, bid, entries);
     }
 
-    fn set_virtual_lines(&mut self, source: String, bid: BufferId, lines: Vec<(usize, String)>) {
+    fn set_virtual_lines(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        lines: Vec<(usize, String, Option<String>)>,
+    ) {
         let entries = lines
             .into_iter()
-            .map(|(line, text)| crate::editor::decorations::VirtualLineEntry { line, text })
+            .map(
+                |(line, text, scope)| crate::editor::decorations::VirtualLineEntry {
+                    line,
+                    text,
+                    scope,
+                },
+            )
             .collect();
         self.state
             .decorations

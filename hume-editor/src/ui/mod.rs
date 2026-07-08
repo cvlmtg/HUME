@@ -6,6 +6,7 @@ pub(crate) mod popup;
 pub(crate) mod signs;
 pub mod statusline;
 pub(crate) mod theme;
+pub(crate) mod virtual_lines;
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -22,19 +23,21 @@ use highlight_providers::{PaneHighlights, ScopedHighlighter, SharedHighlighter};
 use inlay_hints::{InlayHintMap, InlayHintProvider};
 use popup::PopupOverlay;
 use signs::{PaneSigns, SharedSignSource};
+use virtual_lines::{PaneVirtualLines, VirtualLineMap};
 
 /// Build a new pane viewing `buffer_id`: a sign column, a line-number
 /// gutter, the bracket-match / search-match / diagnostic / extra-highlight
-/// sources, the inlay-hint decoration, the completion popup overlay, the
-/// hover-popup overlay, the selection-menu overlay, the LSP completion-menu
-/// overlay, and `wrap_mode` seeded from the caller's current settings.
+/// sources, the inlay-hint decoration, the virtual-line source, the
+/// completion popup overlay, the hover-popup overlay, the selection-menu
+/// overlay, the LSP completion-menu overlay, and `wrap_mode` seeded from the
+/// caller's current settings.
 ///
 /// Returns the pane together with its freshly-allocated [`PaneHighlights`],
-/// [`PaneSigns`], and inlay-hint map — every pane gets its own buffers
-/// (never shared with any other pane), so each pane's decorations are
-/// computed from that pane's own buffer and viewport. The caller stores
-/// them in `EditorState.panes.highlights` / `.signs` / `.inlay_hints` keyed
-/// by the new pane's id.
+/// [`PaneSigns`], inlay-hint map, and virtual-line map — every pane gets its
+/// own buffers (never shared with any other pane), so each pane's
+/// decorations are computed from that pane's own buffer and viewport. The
+/// caller stores them in `EditorState.panes.highlights` / `.signs` /
+/// `.inlay_hints` / `.virtual_lines` keyed by the new pane's id.
 ///
 /// The gutter column is added with its default style — `prepare_frame` syncs
 /// the buffer-resolved `line-number-style` into every pane's gutter before
@@ -57,13 +60,14 @@ pub(crate) fn build_pane(
     lsp_completion_view: &Arc<RwLock<Option<popup::PopupState>>>,
     wrap_mode: WrapMode,
     buffer_id: BufferId,
-) -> (Pane, PaneHighlights, PaneSigns, InlayHintMap) {
+) -> (Pane, PaneHighlights, PaneSigns, InlayHintMap, VirtualLineMap) {
     let bracket_scope = registry.intern("ui.cursor.match");
     let search_scope = registry.intern("ui.selection.search");
 
     let highlights = PaneHighlights::default();
     let signs = PaneSigns::default();
     let inlay_hint_map: InlayHintMap = Arc::new(RwLock::new(HashMap::new()));
+    let virtual_line_map: VirtualLineMap = Arc::new(RwLock::new(HashMap::new()));
 
     let mut providers = ProviderSet::new();
     let mut sign_column = SignColumn::new();
@@ -96,6 +100,9 @@ pub(crate) fn build_pane(
     providers.add_inline_decoration(Box::new(InlayHintProvider {
         data: Arc::clone(&inlay_hint_map),
     }));
+    providers.add_virtual_line_source(Box::new(PaneVirtualLines {
+        data: Arc::clone(&virtual_line_map),
+    }));
     providers.add_overlay(Box::new(CompletionOverlay {
         data: Arc::clone(completion_view),
     }));
@@ -127,5 +134,5 @@ pub(crate) fn build_pane(
         providers,
         ..Pane::new(buffer_id, wrap_mode)
     };
-    (pane, highlights, signs, inlay_hint_map)
+    (pane, highlights, signs, inlay_hint_map, virtual_line_map)
 }

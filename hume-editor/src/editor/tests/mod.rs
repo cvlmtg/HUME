@@ -474,6 +474,7 @@ mod lsp_signs;
 mod lsp_status;
 mod lsp_statusline;
 mod lsp_sync;
+mod lsp_virtual_lines;
 mod macros;
 mod mouse;
 mod multi_pane;

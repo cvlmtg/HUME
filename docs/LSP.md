@@ -184,7 +184,7 @@ Every Steel-visible surface Steps 1–3 introduce. Cards define the semantics; t
 | `(debounce ms proc)` → debounced proc | builtin (bootstrap wrapper over `after`) | B4 |
 | `(set-inlay-hints! bid hints)` | builtin | B5 |
 | `(set-signs! source bid signs)` | builtin | B5 |
-| `(set-virtual-lines! source bid lines)` | builtin | B5 |
+| `(set-virtual-lines! source bid lines)` — each entry `(line text)` or `(line text scope)`, `scope` added in U8b | builtin | B5 |
 | `(set-extra-highlights! source bid spans)` | builtin | B5 |
 | `(diagnostics-for-buffer bid #:severity floor #:range (list start end))` — a 2-elem list, not `(start . end)`: steel-core 0.8.2's `Pair`/`car`/`cdr` are crate-private, unreachable from a Rust builtin | builtin | B5 |
 | `(diagnostic-counts bid)` → `(errors . warnings)` (this direction is fine — `cons` to build a pair is public; only destructuring one from Rust isn't) | builtin | B5 |
@@ -292,7 +292,7 @@ Generic, Steel-scriptable widgets plus store-fed render wiring. The engine primi
 - [x] **U5** — selection menu widget (`show-menu!`)
 - [x] **U6** — Class B bottom drawer (minimal) + location list (`show-drawer-list!`)
 - [x] **U7** — in-buffer completion menu + dispatch (insert-mode flow over B8 + U4)
-- [ ] **U8** — inline diagnostics (`VirtualLineSource`) + the deferred scroll/cursor rewiring
+- [x] **U8** — inline diagnostics (`VirtualLineSource`) + the deferred scroll/cursor rewiring
 - [x] **U9** — inlay-hint rendering (`InlineDecoration` over B5's store)
 
 ## Step 4 — Features (Steel, `core:lsp`)

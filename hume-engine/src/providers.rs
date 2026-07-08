@@ -206,6 +206,7 @@ impl VirtualLineAnchor {
 /// real buffer lines, so providers can't get that arithmetic wrong. Virtual
 /// lines own their own layout — `text` is not subject to the buffer's wrap
 /// mode or tab width.
+#[derive(Clone)]
 pub struct VirtualLine {
     pub anchor: VirtualLineAnchor,
     pub provider_id: ProviderId,

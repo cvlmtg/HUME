@@ -293,8 +293,15 @@ pub trait EditorHost {
     }
 
     /// `(set-virtual-lines! source bid lines)` — replaces `source`'s virtual
-    /// lines for `bid` wholesale. Each entry is `(line, text)`.
-    fn set_virtual_lines(&mut self, source: String, bid: BufferId, lines: Vec<(usize, String)>) {
+    /// lines for `bid` wholesale. Each entry is `(line, text)` or `(line
+    /// text scope)` — `scope` styles the whole line (`ui.virtual` fallback
+    /// when absent).
+    fn set_virtual_lines(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        lines: Vec<(usize, String, Option<String>)>,
+    ) {
         let _ = (source, bid, lines);
     }
 

@@ -1,0 +1,13 @@
+---
+source: hume-editor/src/editor/tests/lsp_virtual_lines.rs
+assertion_line: 62
+expression: snap
+---
+<fg=#808080,bg=#1a1a1a>1 </><fg=#d0d0d0,bg=#1a1a1a>let x = 5</>
+<fg=#808080,bg=#1a1a1a>  </><fg=#cdcd00,bg=#1a1a1a,underline>^ unused variable</>
+<fg=#c8c8d2,bg=#3a3a3a>2 </><fg=#d0d0d0,bg=#3a3a3a>let y = 10</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#000000,bg=#ffffff> 2:11 [+]                         │ NOR</>

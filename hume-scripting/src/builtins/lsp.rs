@@ -366,7 +366,8 @@ pub(crate) fn set_signs(
     Ok(SteelVal::Void)
 }
 
-/// `(set-virtual-lines! source bid lines)` — `lines`: list of `(line text)`.
+/// `(set-virtual-lines! source bid lines)` — `lines`: list of `(line text)`
+/// or `(line text scope)`.
 pub(crate) fn set_virtual_lines(
     ctx: &mut SteelCtx,
     source: SteelVal,
@@ -378,12 +379,10 @@ pub(crate) fn set_virtual_lines(
     let id = bid_arg(&bid, "set-virtual-lines!")?;
     let mut parsed = Vec::new();
     for entry in list_items(lines, "set-virtual-lines! lines")? {
-        let fields = exact_fields(
-            list_items(entry, "set-virtual-lines! entry")?,
-            2,
-            "set-virtual-lines!",
-            "(line text)",
-        )?;
+        let fields = list_items(entry, "set-virtual-lines! entry")?;
+        if fields.len() != 2 && fields.len() != 3 {
+            steel::stop!(Generic => "set-virtual-lines!: each entry must be (line text) or (line text scope)");
+        }
         let mut fields = fields.into_iter();
         let line = usize_arg(
             fields.next().expect("len checked"),
@@ -393,7 +392,11 @@ pub(crate) fn set_virtual_lines(
             fields.next().expect("len checked"),
             "set-virtual-lines! text",
         )?;
-        parsed.push((line, text));
+        let scope = fields
+            .next()
+            .map(|v| string_arg(v, "set-virtual-lines! scope"))
+            .transpose()?;
+        parsed.push((line, text, scope));
     }
     ctx.host.set_virtual_lines(source, id, parsed);
     Ok(SteelVal::Void)

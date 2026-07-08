@@ -395,6 +395,10 @@ pub(crate) struct EditorState {
     /// Interned scope id for `ui.virtual.inlay-hint` (U9), resolved lazily
     /// on first use for the same reason as `diagnostic_scopes`.
     pub(super) inlay_hint_scope: Option<hume_engine::types::ScopeId>,
+    /// Interned scope id for `ui.virtual` (U8b) — the fallback for a
+    /// virtual-line entry with no explicit scope — resolved lazily on first
+    /// use for the same reason as `diagnostic_scopes`.
+    pub(super) virtual_text_fallback_scope: Option<hume_engine::types::ScopeId>,
     /// Cache of interned `ScopeId`s for plugin-supplied scope name strings
     /// (extra highlights, signs, virtual lines) — avoids re-interning the
     /// same runtime name every frame.
@@ -580,6 +584,12 @@ pub(crate) struct Editor {
     /// scroll step compares against this to detect a real viewport change
     /// worth debouncing (B7), rather than firing every frame regardless.
     last_viewport_key: std::collections::HashMap<hume_engine::pipeline::PaneId, (usize, u16)>,
+    /// `decorations.virtual_lines_generation()` as of each pane's last
+    /// mirror into its `PaneVirtualLines` Arc (U8b) — `prepare_frame`
+    /// compares against this to skip the rebuild on frames where the store
+    /// didn't change, since this runs in scroll/cursor math too, not just
+    /// render.
+    virtual_lines_synced: std::collections::HashMap<hume_engine::pipeline::PaneId, u64>,
     /// LSP backend + client state (C4+): threaded in production,
     /// synchronous-inline in tests, mirroring `parse_worker` above.
     lsp: lsp::LspState,
@@ -1215,6 +1225,7 @@ impl Editor {
                         highlights: SecondaryMap::new(),
                         signs: SecondaryMap::new(),
                         inlay_hints: SecondaryMap::new(),
+                        virtual_lines: SecondaryMap::new(),
                     }
                 },
                 history: self::minibuf::history::HistoryStore::new(history_capacity),
@@ -1240,6 +1251,7 @@ impl Editor {
                 completion_view: Arc::new(RwLock::new(None)),
                 diagnostic_scopes: None,
                 inlay_hint_scope: None,
+                virtual_text_fallback_scope: None,
                 runtime_scope_cache: std::collections::HashMap::new(),
                 popup: None,
                 popup_view: Arc::new(RwLock::new(None)),
@@ -1258,6 +1270,7 @@ impl Editor {
             timer_payloads: std::collections::HashMap::new(),
             viewport_debounce: std::collections::HashMap::new(),
             last_viewport_key: std::collections::HashMap::new(),
+            virtual_lines_synced: std::collections::HashMap::new(),
             lsp: lsp::LspState::new_inline(),
             tui_active: false,
             #[cfg(test)]

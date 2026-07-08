@@ -36,12 +36,14 @@ pub(crate) struct SignEntry {
 }
 
 /// One `(set-virtual-lines! …)` entry: a synthetic line of text rendered
-/// after buffer `line` (0-indexed). No reader until Step 3's virtual-line
-/// provider (U8).
-#[allow(dead_code)]
+/// after buffer `line` (0-indexed). `scope` styles the whole line
+/// (`ui.virtual` fallback when absent) — U9's inlay hints and this both
+/// predate a segmented-styling API, so a whole-line scope is what the
+/// landed store can express.
 pub(crate) struct VirtualLineEntry {
     pub(crate) line: usize,
     pub(crate) text: String,
+    pub(crate) scope: Option<String>,
 }
 
 /// One `(set-extra-highlights! …)` entry: a char range styled with `scope`.
@@ -57,6 +59,12 @@ pub(crate) struct DecorationStores {
     signs: HashMap<(String, BufferId), Vec<SignEntry>>,
     virtual_lines: HashMap<(String, BufferId), Vec<VirtualLineEntry>>,
     extra_highlights: HashMap<(String, BufferId), Vec<ExtraHighlightEntry>>,
+    /// Bumped by `set_virtual_lines` — the render write side (U8b) mirrors
+    /// `virtual_lines` into a per-pane Arc only when this changed since its
+    /// last sync, rather than every frame (unlike inlay hints, this runs in
+    /// scroll/cursor math too, not just render, so avoiding needless
+    /// per-frame rebuild work matters more here).
+    virtual_lines_generation: u64,
 }
 
 impl DecorationStores {
@@ -108,6 +116,27 @@ impl DecorationStores {
         lines: Vec<VirtualLineEntry>,
     ) {
         self.virtual_lines.insert((source, bid), lines);
+        self.virtual_lines_generation += 1;
+    }
+
+    /// Current generation — bumped by every `set_virtual_lines` call, across
+    /// every source/buffer. One counter for simplicity: comparing it costs
+    /// an unaffected pane one wasted equality check per frame, which is
+    /// cheaper than tracking per-buffer generations for a store this small.
+    pub(crate) fn virtual_lines_generation(&self) -> u64 {
+        self.virtual_lines_generation
+    }
+
+    /// All virtual-line entries for `bid`, across every source — the render
+    /// write side merges them all into one per-line bucket.
+    pub(crate) fn virtual_lines_for_buffer(
+        &self,
+        bid: BufferId,
+    ) -> impl Iterator<Item = &VirtualLineEntry> {
+        self.virtual_lines
+            .iter()
+            .filter(move |((_, entry_bid), _)| *entry_bid == bid)
+            .flat_map(|(_, entries)| entries.iter())
     }
 
     #[cfg(test)]

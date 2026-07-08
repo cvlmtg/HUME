@@ -147,6 +147,7 @@ pub(crate) struct PaneView {
     pub(crate) highlights: SecondaryMap<PaneId, crate::ui::highlight_providers::PaneHighlights>,
     pub(crate) signs: SecondaryMap<PaneId, crate::ui::signs::PaneSigns>,
     pub(crate) inlay_hints: SecondaryMap<PaneId, crate::ui::inlay_hints::InlayHintMap>,
+    pub(crate) virtual_lines: SecondaryMap<PaneId, crate::ui::virtual_lines::VirtualLineMap>,
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

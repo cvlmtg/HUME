@@ -116,7 +116,7 @@ impl Editor {
 
         // Build the initial pane. Every later split-created pane goes through
         // the same `build_pane` (see `commands::open_pane`).
-        let (pane, highlights, signs, inlay_hints) = build_pane(
+        let (pane, highlights, signs, inlay_hints, virtual_lines) = build_pane(
             &mut engine_view.registry,
             &completion_view,
             &popup_view,
@@ -185,6 +185,8 @@ impl Editor {
                     pane_signs.insert(pane_id, signs);
                     let mut pane_inlay_hints = SecondaryMap::new();
                     pane_inlay_hints.insert(pane_id, inlay_hints);
+                    let mut pane_virtual_lines = SecondaryMap::new();
+                    pane_virtual_lines.insert(pane_id, virtual_lines);
                     PaneView {
                         state: pane_buf_state,
                         transient,
@@ -192,6 +194,7 @@ impl Editor {
                         highlights: pane_highlights,
                         signs: pane_signs,
                         inlay_hints: pane_inlay_hints,
+                        virtual_lines: pane_virtual_lines,
                     }
                 },
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
@@ -218,6 +221,7 @@ impl Editor {
                 completion_view,
                 diagnostic_scopes: None,
                 inlay_hint_scope: None,
+                virtual_text_fallback_scope: None,
                 runtime_scope_cache: std::collections::HashMap::new(),
                 popup: None,
                 popup_view,
@@ -236,6 +240,7 @@ impl Editor {
             timer_payloads: std::collections::HashMap::new(),
             viewport_debounce: std::collections::HashMap::new(),
             last_viewport_key: std::collections::HashMap::new(),
+            virtual_lines_synced: std::collections::HashMap::new(),
             lsp: super::lsp::LspState::new_threaded(),
             tui_active: false,
             #[cfg(test)]
@@ -644,6 +649,11 @@ impl Editor {
 
         // 6c. Sync inlay-hint data (B5 store → per-pane InlineDecoration).
         self.update_inlay_hint_providers();
+
+        // 6d. Sync virtual-line data (B5 store → per-pane VirtualLineSource),
+        //     gated on a generation check — this feeds U8a's scroll/cursor
+        //     math too, not just render.
+        self.update_virtual_line_providers();
 
         // 7. Sync completion-popup view to the shared Arc for `CompletionOverlay`.
         self.sync_completion_view();
@@ -1238,6 +1248,81 @@ impl Editor {
             }
 
             *map.write().expect("RwLock not poisoned") = by_line;
+        }
+    }
+
+    /// Interned `ScopeId` for `ui.virtual` — the same theme key
+    /// `Theme::ui.virtual_text` (the struct field) resolves from — used as
+    /// the fallback scope for a virtual-line entry with no explicit
+    /// `scope`. Cached the same way as [`Self::inlay_hint_scope`].
+    fn virtual_text_fallback_scope(&mut self) -> hume_engine::types::ScopeId {
+        if let Some(id) = self.state.virtual_text_fallback_scope {
+            return id;
+        }
+        let id = self.view.registry.intern("ui.virtual");
+        self.state.virtual_text_fallback_scope = Some(id);
+        id
+    }
+
+    /// Sync per-pane virtual-line decorations (U8b) from the B5
+    /// `decorations.virtual_lines` store to each pane's `PaneVirtualLines`
+    /// Arc. Unlike inlay hints, this only rebuilds when
+    /// `decorations.virtual_lines_generation()` changed since the pane's
+    /// last sync — this feeds scroll/cursor math (U8a) every frame, not
+    /// just render, so skipping needless rebuild work matters more here.
+    /// Every entry becomes an `After(line)` virtual line — no `Before`
+    /// anchoring in v1 (matches the card: inline diagnostics render below
+    /// the line they annotate).
+    pub(super) fn update_virtual_line_providers(&mut self) {
+        use hume_engine::providers::{VirtualLine, VirtualLineAnchor};
+
+        let current_gen = self.state.decorations.virtual_lines_generation();
+        let panes: Vec<(PaneId, BufferId)> = self
+            .view
+            .panes
+            .iter()
+            .map(|(pid, pane)| (pid, pane.buffer_id))
+            .collect();
+
+        let fallback_scope = self.virtual_text_fallback_scope();
+        for &(pid, bid) in &panes {
+            if self.virtual_lines_synced.get(&pid) == Some(&current_gen) {
+                continue;
+            }
+            let Some(map) = self.state.panes.virtual_lines.get(pid).map(Arc::clone) else {
+                continue;
+            };
+
+            // Collected into an owned Vec first: `self.runtime_scope` needs
+            // `&mut self`, which can't overlap with the immutable borrow
+            // `virtual_lines_for_buffer` holds on `self.state.decorations`.
+            let entries: Vec<(usize, String, Option<String>)> = self
+                .state
+                .decorations
+                .virtual_lines_for_buffer(bid)
+                .map(|e| (e.line, e.text.clone(), e.scope.clone()))
+                .collect();
+
+            let mut by_line: std::collections::HashMap<usize, Vec<VirtualLine>> =
+                std::collections::HashMap::new();
+            for (line, text, scope_name) in entries {
+                let scope = match scope_name {
+                    Some(name) => self.runtime_scope(&name),
+                    None => fallback_scope,
+                };
+                let text_len = text.len();
+                by_line.entry(line).or_default().push(VirtualLine {
+                    anchor: VirtualLineAnchor::After(line),
+                    // Overwritten by the engine at collection time with the
+                    // registration-assigned id (see `ProviderSet::add_virtual_line_source`).
+                    provider_id: 0,
+                    text,
+                    segments: vec![(0..text_len, scope)],
+                });
+            }
+
+            *map.write().expect("RwLock not poisoned") = by_line;
+            self.virtual_lines_synced.insert(pid, current_gen);
         }
     }
 
