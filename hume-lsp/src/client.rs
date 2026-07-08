@@ -8,11 +8,12 @@ use std::time::Instant;
 use hume_editing::PositionEncoding;
 use lsp_types::{
     ClientCapabilities, ClientInfo, CodeActionClientCapabilities, CompletionClientCapabilities,
-    CompletionItemCapability, GeneralClientCapabilities, GotoCapability, HoverClientCapabilities,
-    InitializeParams, InitializeResult, InitializedParams, MarkupKind,
+    CompletionItemCapability, FailureHandlingKind, GeneralClientCapabilities, GotoCapability,
+    HoverClientCapabilities, InitializeParams, InitializeResult, InitializedParams, MarkupKind,
     PositionEncodingKind, PublishDiagnosticsClientCapabilities, RenameClientCapabilities,
-    ServerCapabilities, TextDocumentClientCapabilities, TextDocumentSyncClientCapabilities,
-    WorkspaceClientCapabilities, WorkspaceFolder,
+    ResourceOperationKind, ServerCapabilities, TextDocumentClientCapabilities,
+    TextDocumentSyncClientCapabilities, WorkspaceClientCapabilities, WorkspaceEditClientCapabilities,
+    WorkspaceFolder,
 };
 
 use crate::backend::{LspBackend, ServerId};
@@ -384,6 +385,20 @@ fn build_client_capabilities() -> ClientCapabilities {
             apply_edit: Some(true),
             configuration: Some(true),
             workspace_folders: Some(true),
+            // Every rename result (F5) is a WorkspaceEdit — some servers
+            // (rust-analyzer) refuse textDocument/rename outright without
+            // this declared, since they can't otherwise confirm the client
+            // can apply one (found via F5's manual smoke test).
+            workspace_edit: Some(WorkspaceEditClientCapabilities {
+                document_changes: Some(true),
+                resource_operations: Some(vec![
+                    ResourceOperationKind::Create,
+                    ResourceOperationKind::Rename,
+                    ResourceOperationKind::Delete,
+                ]),
+                failure_handling: Some(FailureHandlingKind::Abort),
+                ..Default::default()
+            }),
             ..Default::default()
         }),
         text_document: Some(TextDocumentClientCapabilities {
@@ -477,6 +492,21 @@ mod tests {
         let ws = caps.workspace.unwrap();
         assert_eq!(ws.apply_edit, Some(true));
         assert_eq!(ws.configuration, Some(true));
+        // F5's manual smoke test found rust-analyzer refuses
+        // textDocument/rename outright without this declared — every
+        // rename result is a WorkspaceEdit, and some servers won't attempt
+        // one unless the client has confirmed it can apply it.
+        let we = ws.workspace_edit.expect("workspace_edit capability must be declared");
+        assert_eq!(we.document_changes, Some(true));
+        assert_eq!(
+            we.resource_operations,
+            Some(vec![
+                ResourceOperationKind::Create,
+                ResourceOperationKind::Rename,
+                ResourceOperationKind::Delete,
+            ])
+        );
+        assert_eq!(we.failure_handling, Some(FailureHandlingKind::Abort));
     }
 
     #[test]
