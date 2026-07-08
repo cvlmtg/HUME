@@ -9,3 +9,4 @@
 (require "hover.scm")
 (require "goto.scm")
 (require "diagnostics.scm")
+(require "rename.scm")
