@@ -609,6 +609,36 @@ fn map_ranges_multiple_disjoint_ranges_matches_map_pos_oracle() {
 }
 
 #[test]
+fn map_ranges_nested_ranges_do_not_panic_and_match_map_pos_oracle() {
+    // Regression: (0,20) fully contains (4,15) — sorted by start (0<=4) but
+    // *not* by end (20>15), the exact shape two LSP diagnostics on the same
+    // buffer can take (an outer "note" wrapping an inner "warning", e.g.
+    // rustc's unused-import note spanning the whole `use` line around the
+    // narrower warning inside it). Before the fix, walking ends in
+    // start-order made the second query go backwards through the resumable
+    // cursor, underflowing `pos - self.old`.
+    let mut b = ChangeSetBuilder::new(20);
+    b.retain(2);
+    b.insert("XX");
+    b.retain_rest();
+    let cs = b.finish();
+
+    let input = [(0usize, 20usize), (4usize, 15usize)];
+    let expected: Vec<(usize, usize)> = input
+        .iter()
+        .map(|&(s, e)| {
+            let ms = cs.map_pos(s, Assoc::After);
+            let me = cs.map_pos(e, Assoc::Before).max(ms);
+            (ms, me)
+        })
+        .collect();
+
+    let mut ranges = input.to_vec();
+    cs.map_ranges(&mut ranges); // must not panic
+    assert_eq!(ranges, expected);
+}
+
+#[test]
 fn map_ranges_empty_slice_is_noop() {
     let mut b = ChangeSetBuilder::new(5);
     b.retain_rest();

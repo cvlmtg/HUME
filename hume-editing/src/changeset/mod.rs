@@ -383,6 +383,16 @@ impl ChangeSet {
     /// O(ops + n) passes are simpler than one pass over a merged, tagged
     /// list, at the same asymptotic cost.
     ///
+    /// Sorted-by-start does *not* imply sorted-by-end: nested ranges (one
+    /// range fully containing another — e.g. two LSP diagnostics on the
+    /// same span, an outer "note" wrapping an inner "warning") have a
+    /// start order where the ends run backwards. `PosMapCursor::map` only
+    /// walks forward, so the ends pass is driven by an index permutation
+    /// sorted by end value — not by the input order — so the cursor always
+    /// sees non-decreasing queries regardless of how starts and ends
+    /// interleave. Mapped ends are scattered back to their original slot
+    /// before the final fixup below.
+    ///
     /// A degenerate zero-width input range sitting exactly on an insertion
     /// boundary would otherwise invert (`Assoc::After` pushes its start past
     /// the insertion while `Assoc::Before` holds its end back) — a final
@@ -406,10 +416,14 @@ impl ChangeSet {
         for (start, _) in ranges.iter_mut() {
             *start = starts.map(*start, Assoc::After);
         }
+
+        let mut end_order: Vec<usize> = (0..ranges.len()).collect();
+        end_order.sort_by_key(|&i| ranges[i].1);
         let mut ends = PosMapCursor::new(&self.ops);
-        for (_, end) in ranges.iter_mut() {
-            *end = ends.map(*end, Assoc::Before);
+        for i in end_order {
+            ranges[i].1 = ends.map(ranges[i].1, Assoc::Before);
         }
+
         for (start, end) in ranges.iter_mut() {
             *end = (*end).max(*start);
         }
