@@ -7,7 +7,8 @@ use std::time::Instant;
 
 use hume_editing::PositionEncoding;
 use lsp_types::{
-    ClientCapabilities, ClientInfo, CodeActionClientCapabilities, CompletionClientCapabilities,
+    ClientCapabilities, ClientInfo, CodeActionClientCapabilities, CodeActionKind,
+    CodeActionKindLiteralSupport, CodeActionLiteralSupport, CompletionClientCapabilities,
     CompletionItemCapability, FailureHandlingKind, GeneralClientCapabilities, GotoCapability,
     HoverClientCapabilities, InitializeParams, InitializeResult, InitializedParams, MarkupKind,
     PositionEncodingKind, PublishDiagnosticsClientCapabilities, RenameClientCapabilities,
@@ -440,7 +441,31 @@ fn build_client_capabilities() -> ClientCapabilities {
             implementation: Some(GotoCapability::default()),
             formatting: Some(Default::default()),
             range_formatting: Some(Default::default()),
-            code_action: Some(CodeActionClientCapabilities::default()),
+            // F9's manual smoke test found rust-analyzer withholds
+            // diagnostic-derived quickfixes entirely without
+            // code_action_literal_support declared — the flag saying the
+            // client understands CodeAction objects, not just legacy
+            // Command[]. A byte-perfect request (correct diagnostic
+            // round-tripped verbatim, correct overlapping range) still
+            // came back empty until this was added.
+            code_action: Some(CodeActionClientCapabilities {
+                code_action_literal_support: Some(CodeActionLiteralSupport {
+                    code_action_kind: CodeActionKindLiteralSupport {
+                        value_set: vec![
+                            CodeActionKind::QUICKFIX.as_str().to_string(),
+                            CodeActionKind::REFACTOR.as_str().to_string(),
+                            CodeActionKind::REFACTOR_EXTRACT.as_str().to_string(),
+                            CodeActionKind::REFACTOR_INLINE.as_str().to_string(),
+                            CodeActionKind::REFACTOR_REWRITE.as_str().to_string(),
+                            CodeActionKind::SOURCE.as_str().to_string(),
+                            CodeActionKind::SOURCE_ORGANIZE_IMPORTS.as_str().to_string(),
+                        ],
+                    },
+                }),
+                is_preferred_support: Some(true),
+                disabled_support: Some(true),
+                ..Default::default()
+            }),
             inlay_hint: Some(Default::default()),
             ..Default::default()
         }),
@@ -523,6 +548,14 @@ mod tests {
             ])
         );
         assert_eq!(we.failure_handling, Some(FailureHandlingKind::Abort));
+        // F9's manual smoke test found rust-analyzer withholds
+        // diagnostic-derived quickfixes entirely without this declared —
+        // a byte-perfect codeAction request still came back empty.
+        let ca = td.code_action.expect("code_action capability must be declared");
+        let literal = ca.code_action_literal_support.expect("code_action_literal_support must be declared");
+        assert!(literal.code_action_kind.value_set.contains(&CodeActionKind::QUICKFIX.as_str().to_string()));
+        assert_eq!(ca.is_preferred_support, Some(true));
+        assert_eq!(ca.disabled_support, Some(true));
     }
 
     #[test]
