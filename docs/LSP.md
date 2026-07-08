@@ -310,7 +310,7 @@ Each feature is Steel code composing Steps 2–3 primitives; all are testable ag
 - [x] **F1** — hover *(B2, U4, U6)*
 - [x] **F2** — goto definition family *(B2, B6, U6)*
 - [ ] **F3** — completions *(B2, B7, B8, U7)*
-- [ ] **F4** — diagnostics navigation *(B5, B6, U6)*
+- [x] **F4** — diagnostics navigation *(B5, B6, U6)*
 - [ ] **F5** — rename *(B2, B6, B9)*
 - [x] **F6** — references *(B2, U6)*
 - [ ] **F7** — signature help *(B2, B4, B7, U4)*
