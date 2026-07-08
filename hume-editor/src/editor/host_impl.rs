@@ -657,6 +657,17 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         text.slice(start..end + 1).to_string()
     }
 
+    // ── Cursor-anchored popup (U4) ────────────────────────────────────────────
+    fn show_popup(&mut self, text: String) -> Result<(), String> {
+        self.state.popup = Some(crate::ui::popup::PopupModel { text });
+        Ok(())
+    }
+
+    fn close_popup(&mut self) -> Result<(), String> {
+        self.state.popup = None;
+        Ok(())
+    }
+
     // ── Completion orchestration (B8) ────────────────────────────────────────
     fn completion_begin(
         &mut self,

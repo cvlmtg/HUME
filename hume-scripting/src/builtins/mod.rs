@@ -23,6 +23,7 @@ pub(crate) mod shell;
 pub(crate) mod statusline;
 pub(crate) mod syntax;
 pub(crate) mod timers;
+pub(crate) mod ui;
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
@@ -69,6 +70,19 @@ pub(crate) fn list_to_strings(val: SteelVal, param: &str) -> Result<Vec<String>,
             steel::rerrs::ErrorKind::TypeMismatch,
             format!("{param}: expected a list"),
         )),
+    }
+}
+
+/// Extract a `String` from a single positional `SteelVal` argument (the
+/// calling convention `register_fn_with_ctx` builtins use — one Rust param
+/// per Steel arg, not a `&[SteelVal]` slice). Accepts both strings and
+/// symbols, since Scheme callers often pass unquoted symbol literals where a
+/// string is semantically expected.
+pub(crate) fn string_arg(val: SteelVal, ctx_name: &str) -> Result<String, SteelErr> {
+    match val {
+        SteelVal::StringV(s) => Ok(s.to_string()),
+        SteelVal::SymbolV(s) => Ok(s.to_string()),
+        _ => steel::stop!(TypeMismatch => "{}: expected a string", ctx_name),
     }
 }
 
@@ -227,6 +241,12 @@ const BOOTSTRAP: &str = r#"
 ; server's isIncomplete flag, #f if the response was exhaustive.
 (define (completion-begin! bid items #:incomplete [incomplete #f])
   (%completion-begin! bid items incomplete))
+
+; show-popup! — cursor-anchored floating text panel (U4). #:anchor is
+; reserved for future anchor kinds; 'cursor is the only value v1 accepts.
+; close-popup! needs no wrapper — no keyword defaults to supply.
+(define (show-popup! text #:anchor [anchor 'cursor])
+  (%show-popup! text anchor))
 
 ; Variadic call! macro — desugars to %dispatch-command.
 ; Defined here (not only in prelude.scm) so it is available in every Steel engine
@@ -446,6 +466,10 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_fn_with_ctx(HUME_CTX, "completion-top", lsp::completion_top);
     steel.register_fn_with_ctx(HUME_CTX, "completion-accept!", lsp::completion_accept);
     steel.register_fn_with_ctx(HUME_CTX, "completion-dismiss!", lsp::completion_dismiss);
+
+    // U4 — cursor-anchored popup widget.
+    steel.register_fn_with_ctx(HUME_CTX, "%show-popup!", ui::show_popup);
+    steel.register_fn_with_ctx(HUME_CTX, "close-popup!", ui::close_popup);
 
     // Timers — not LSP-specific, but B4 was scoped as part of the LSP step.
     steel.register_fn_with_ctx(HUME_CTX, "after", timers::after);

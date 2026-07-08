@@ -7,17 +7,9 @@ use crate::json::{json_to_steel, steel_to_json};
 use crate::types::{PendingLspNotify, PendingLspRequest};
 use crate::{PendingLspServerReg, SteelCtx};
 
-use super::{conv_err, list_to_strings, require_cmd_ctx};
+use super::{conv_err, list_to_strings, require_cmd_ctx, string_arg};
 
 type SteelResult = Result<SteelVal, SteelErr>;
-
-fn string_arg(val: SteelVal, ctx_name: &str) -> Result<String, SteelErr> {
-    match val {
-        SteelVal::StringV(s) => Ok(s.to_string()),
-        SteelVal::SymbolV(s) => Ok(s.to_string()),
-        _ => steel::stop!(TypeMismatch => "{}: expected a string", ctx_name),
-    }
-}
 
 /// A string arg that may be `#f` (absent) — `lsp-request`/`lsp-notify`'s
 /// `server` parameter: a registered language name, or "the focused buffer's

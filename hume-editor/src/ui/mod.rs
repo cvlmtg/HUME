@@ -1,5 +1,6 @@
 pub(crate) mod completion_overlay;
 pub(crate) mod highlight_providers;
+pub(crate) mod popup;
 pub(crate) mod signs;
 pub mod statusline;
 pub(crate) mod theme;
@@ -15,12 +16,13 @@ use hume_engine::theme::ScopeRegistry;
 
 use completion_overlay::CompletionOverlay;
 use highlight_providers::{PaneHighlights, ScopedHighlighter, SharedHighlighter};
+use popup::PopupOverlay;
 use signs::{PaneSigns, SharedSignSource};
 
 /// Build a new pane viewing `buffer_id`: a sign column, a line-number
 /// gutter, the bracket-match / search-match / diagnostic / extra-highlight
-/// sources, the completion popup overlay, and `wrap_mode` seeded from the
-/// caller's current settings.
+/// sources, the completion popup overlay, the hover-popup overlay, and
+/// `wrap_mode` seeded from the caller's current settings.
 ///
 /// Returns the pane together with its freshly-allocated [`PaneHighlights`]
 /// and [`PaneSigns`] — every pane gets its own buffers (never shared with any
@@ -44,6 +46,7 @@ use signs::{PaneSigns, SharedSignSource};
 pub(crate) fn build_pane(
     registry: &mut ScopeRegistry,
     completion_view: &Arc<RwLock<Option<completion_overlay::CompletionView>>>,
+    popup_view: &Arc<RwLock<Option<popup::PopupState>>>,
     wrap_mode: WrapMode,
     buffer_id: BufferId,
 ) -> (Pane, PaneHighlights, PaneSigns) {
@@ -83,6 +86,12 @@ pub(crate) fn build_pane(
     }));
     providers.add_overlay(Box::new(CompletionOverlay {
         data: Arc::clone(completion_view),
+    }));
+    // Registered after the completion overlay so a hover/signature-help
+    // popup paints on top of it (last registration wins z-order).
+    providers.add_overlay(Box::new(PopupOverlay {
+        data: Arc::clone(popup_view),
+        scope: "ui.popup",
     }));
 
     let pane = Pane {

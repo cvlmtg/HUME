@@ -88,10 +88,13 @@ impl Editor {
         let theme = crate::ui::theme::build_default_theme();
         let mut engine_view = EngineView::new(theme);
 
-        // Shared completion-popup data, written once per frame and read by
-        // every pane's providers (see `build_pane`). Highlight data is per-pane
-        // (see `PaneHighlights`) — allocated fresh inside `build_pane`.
+        // Shared completion-popup / hover-popup data, written once per frame
+        // and read by every pane's providers (see `build_pane`). Highlight
+        // data is per-pane (see `PaneHighlights`) — allocated fresh inside
+        // `build_pane`.
         let completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>> =
+            Arc::new(RwLock::new(None));
+        let popup_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>> =
             Arc::new(RwLock::new(None));
 
         // Insert a buffer — just metadata; the rope is passed at render time.
@@ -104,6 +107,7 @@ impl Editor {
         let (pane, highlights, signs) = build_pane(
             &mut engine_view.registry,
             &completion_view,
+            &popup_view,
             settings.wrap_mode,
             buffer_id,
         );
@@ -195,6 +199,8 @@ impl Editor {
                 completion_view,
                 diagnostic_scopes: None,
                 runtime_scope_cache: std::collections::HashMap::new(),
+                popup: None,
+                popup_view,
             },
             view: engine_view,
             kitty_enabled: false,
@@ -617,6 +623,12 @@ impl Editor {
         //    `pane_rect` rather than trusting a stored rect list.
         self.view.last_pane_area = pane_area;
         self.view.reserve_seam = reserve_seam;
+
+        // 9. Sync the popup-overlay view. Deliberately *after* step 8: its
+        //    geometry needs the focused pane's current-frame rect via
+        //    `EngineView::pane_rect`, which reads `last_pane_area` — calling
+        //    this any earlier would position against last frame's geometry.
+        self.sync_popup_view(ctx);
     }
 
     /// Sync every engine pane's selection mirror from the authoritative `pane_state`.
@@ -1164,6 +1176,63 @@ impl Editor {
             .completion_view
             .write()
             .expect("RwLock not poisoned") = view;
+    }
+
+    /// Write the current popup content into the shared `PopupState` Arc so
+    /// `PopupOverlay` can render it during this frame. Geometry (wrap width,
+    /// flip/clamp position) is resolved fresh every frame against the
+    /// focused pane's *current* rect — never pre-computed at `show-popup!`
+    /// call time — so a resize or scroll never leaves it stale.
+    ///
+    /// Called from `prepare_frame` after `last_pane_area` is set (step 9):
+    /// `EngineView::pane_rect` reads that field, so calling this any earlier
+    /// would position against the previous frame's geometry.
+    pub(super) fn sync_popup_view(&self, ctx: &mut RenderContext) {
+        if self.state.popup.is_none()
+            && self
+                .state
+                .popup_view
+                .read()
+                .expect("RwLock not poisoned")
+                .is_none()
+        {
+            return;
+        }
+
+        let resolved = self.state.popup.as_ref().and_then(|model| {
+            let focused = self.state.focused_pane_id;
+            let pane_rect = self.view.pane_rect(focused)?;
+            let (pane_settings, gutter_w) = self.resolve_pane_settings(focused);
+            let vp = &self.view.panes[focused].viewport;
+            let cursor_char = self.state.panes.state[focused][self.focused_buffer_id()]
+                .selections
+                .primary()
+                .head();
+            let buf = self.state.buffers.get(self.focused_buffer_id());
+            let (col, row) = super::cursor::screen_pos(
+                vp,
+                buf.text().rope(),
+                cursor_char,
+                &pane_settings.wrap_mode,
+                pane_settings.tab_width,
+                &pane_settings.whitespace,
+                ctx,
+            )?;
+            let anchor = (col + gutter_w + pane_rect.x, row + pane_rect.y);
+
+            let content_width = pane_rect.width.saturating_sub(gutter_w);
+            let max_width = crate::ui::popup::MAX_POPUP_WIDTH.min(content_width.saturating_sub(4));
+            let max_height = (pane_rect.height / 3).max(1);
+            let lines = crate::ui::popup::wrap_text(&model.text, max_width, max_height);
+            let (x, y) = crate::ui::popup::resolve_popup_geometry(&lines, anchor, pane_rect);
+            Some(crate::ui::popup::PopupState { lines, x, y })
+        });
+
+        *self
+            .state
+            .popup_view
+            .write()
+            .expect("RwLock not poisoned") = resolved;
     }
 
     /// Set the editing mode. The cursor shape reflecting the new mode will be

@@ -73,6 +73,9 @@
 "ui.menu"          = { fg = "#b4b4c8", bg = "#282832" }
 "ui.menu.selected" = { fg = "#ffffff", bg = "#50508c" }
 
+# ── Hover / signature-help popup ────────────────────────────────────────────────
+"ui.popup" = { fg = "#d0d0d0", bg = "#282832" }
+
 # ── Statusline ────────────────────────────────────────────────────────────────
 "ui.statusline"              = { fg = "statusline_fg", bg = "statusline" }
 "ui.statusline.mode.normal"  = { fg = "statusline_fg", bg = "statusline" }

@@ -389,6 +389,12 @@ pub(crate) struct EditorState {
     /// (extra highlights, signs, virtual lines) — avoids re-interning the
     /// same runtime name every frame.
     pub(super) runtime_scope_cache: std::collections::HashMap<String, hume_engine::types::ScopeId>,
+    /// `(show-popup! text)`'s raw content — resolved into a positioned
+    /// `PopupState` each frame by `Editor::sync_popup_view` (geometry needs
+    /// the focused pane's *current* rect, so it can't be pre-computed here).
+    pub(super) popup: Option<crate::ui::popup::PopupModel>,
+    /// Shared popup-overlay view: written by `prepare_frame`, read by `PopupOverlay`.
+    pub(crate) popup_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
 }
 
 impl EditorState {
@@ -1163,6 +1169,8 @@ impl Editor {
                 completion_view: Arc::new(RwLock::new(None)),
                 diagnostic_scopes: None,
                 runtime_scope_cache: std::collections::HashMap::new(),
+                popup: None,
+                popup_view: Arc::new(RwLock::new(None)),
             },
             view: engine_view,
             kitty_enabled: false,

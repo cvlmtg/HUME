@@ -288,7 +288,7 @@ Generic, Steel-scriptable widgets plus store-fed render wiring. The engine primi
 - [x] **U1** — diagnostic underlines (third `SharedHighlighter`, Diagnostic tier) + extra-highlights wiring
 - [x] **U2** — diagnostic gutter signs (first real `SignColumn` registration)
 - [x] **U3** — statusline diagnostics element (Rust element over the C9 store)
-- [ ] **U4** — cursor-anchored popup widget (`show-popup!`)
+- [x] **U4** — cursor-anchored popup widget (`show-popup!`)
 - [ ] **U5** — selection menu widget (`show-menu!`)
 - [ ] **U6** — Class B bottom drawer (minimal) + location list (`show-drawer-list!`)
 - [ ] **U7** — in-buffer completion menu + dispatch (insert-mode flow over B8 + U4)

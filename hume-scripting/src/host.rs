@@ -417,6 +417,23 @@ pub trait EditorHost {
         String::new()
     }
 
+    // ── Cursor-anchored popup (U4; default = "not supported") ────────────────
+    /// `(show-popup! text #:anchor 'cursor)` — shows `text` in a floating
+    /// panel anchored near the focused pane's cursor. Geometry (wrap width,
+    /// flip/clamp position) is resolved fresh every frame by the host, not
+    /// here — this just stores the raw content. Replaces any popup already
+    /// showing (no stacking).
+    fn show_popup(&mut self, text: String) -> Result<(), String> {
+        let _ = text;
+        Err("show-popup!: not supported by this host".to_string())
+    }
+
+    /// `(close-popup!)` — dismisses the popup. Idempotent: closing when none
+    /// is showing is not an error (only an unsupported *host* errors).
+    fn close_popup(&mut self) -> Result<(), String> {
+        Err("close-popup!: not supported by this host".to_string())
+    }
+
     // ── Completion orchestration (B8; default = "not supported") ─────────────
     /// `(completion-begin! bid items #:incomplete f)` — `items` is a list of
     /// decoded `CompletionItem` hashmaps (JSON already converted by the
