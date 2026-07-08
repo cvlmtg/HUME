@@ -21,8 +21,9 @@ use signs::{PaneSigns, SharedSignSource};
 
 /// Build a new pane viewing `buffer_id`: a sign column, a line-number
 /// gutter, the bracket-match / search-match / diagnostic / extra-highlight
-/// sources, the completion popup overlay, the hover-popup overlay, and
-/// `wrap_mode` seeded from the caller's current settings.
+/// sources, the completion popup overlay, the hover-popup overlay, the
+/// selection-menu overlay, and `wrap_mode` seeded from the caller's current
+/// settings.
 ///
 /// Returns the pane together with its freshly-allocated [`PaneHighlights`]
 /// and [`PaneSigns`] — every pane gets its own buffers (never shared with any
@@ -47,6 +48,7 @@ pub(crate) fn build_pane(
     registry: &mut ScopeRegistry,
     completion_view: &Arc<RwLock<Option<completion_overlay::CompletionView>>>,
     popup_view: &Arc<RwLock<Option<popup::PopupState>>>,
+    menu_view: &Arc<RwLock<Option<popup::PopupState>>>,
     wrap_mode: WrapMode,
     buffer_id: BufferId,
 ) -> (Pane, PaneHighlights, PaneSigns) {
@@ -92,6 +94,14 @@ pub(crate) fn build_pane(
     providers.add_overlay(Box::new(PopupOverlay {
         data: Arc::clone(popup_view),
         scope: "ui.popup",
+        selected_scope: None,
+    }));
+    // Registered last so the selection menu paints on top of a hover popup
+    // (both showing at once is unusual, but the architecture allows it).
+    providers.add_overlay(Box::new(PopupOverlay {
+        data: Arc::clone(menu_view),
+        scope: "ui.menu",
+        selected_scope: Some("ui.menu.selected"),
     }));
 
     let pane = Pane {

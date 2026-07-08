@@ -668,6 +668,33 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Ok(())
     }
 
+    // ── Selection menu (U5) ────────────────────────────────────────────────────
+    fn show_menu(
+        &mut self,
+        items: Vec<String>,
+        callback: steel::rvals::SteelVal,
+    ) -> Result<(), String> {
+        // Excludes Insert specifically, not an allowlist of Normal/Extend —
+        // a command triggered via `:name` runs while `mode()` still reports
+        // `Command` (mode reverts to Normal only after the command body
+        // returns), so an allowlist would reject the common `:`-triggered
+        // case too.
+        if self.state.mode() == hume_engine::types::EditorMode::Insert {
+            return Err("show-menu!: not available in Insert mode".to_string());
+        }
+        self.state.menu = Some(crate::ui::popup::MenuModel {
+            items,
+            selected: 0,
+            callback,
+        });
+        Ok(())
+    }
+
+    fn close_menu(&mut self) -> Result<(), String> {
+        self.state.menu = None;
+        Ok(())
+    }
+
     // ── Completion orchestration (B8) ────────────────────────────────────────
     fn completion_begin(
         &mut self,

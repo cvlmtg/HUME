@@ -96,6 +96,8 @@ impl Editor {
             Arc::new(RwLock::new(None));
         let popup_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>> =
             Arc::new(RwLock::new(None));
+        let menu_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>> =
+            Arc::new(RwLock::new(None));
 
         // Insert a buffer — just metadata; the rope is passed at render time.
         let buffer_id = engine_view.buffers.insert(SharedBuffer::new());
@@ -108,6 +110,7 @@ impl Editor {
             &mut engine_view.registry,
             &completion_view,
             &popup_view,
+            &menu_view,
             settings.wrap_mode,
             buffer_id,
         );
@@ -201,6 +204,8 @@ impl Editor {
                 runtime_scope_cache: std::collections::HashMap::new(),
                 popup: None,
                 popup_view,
+                menu: None,
+                menu_view,
             },
             view: engine_view,
             kitty_enabled: false,
@@ -624,11 +629,13 @@ impl Editor {
         self.view.last_pane_area = pane_area;
         self.view.reserve_seam = reserve_seam;
 
-        // 9. Sync the popup-overlay view. Deliberately *after* step 8: its
-        //    geometry needs the focused pane's current-frame rect via
-        //    `EngineView::pane_rect`, which reads `last_pane_area` — calling
-        //    this any earlier would position against last frame's geometry.
+        // 9. Sync the popup- and menu-overlay views. Deliberately *after*
+        //    step 8: their geometry needs the focused pane's current-frame
+        //    rect via `EngineView::pane_rect`, which reads `last_pane_area`
+        //    — calling this any earlier would position against last frame's
+        //    geometry.
         self.sync_popup_view(ctx);
+        self.sync_menu_view(ctx);
     }
 
     /// Sync every engine pane's selection mirror from the authoritative `pane_state`.
@@ -1178,6 +1185,41 @@ impl Editor {
             .expect("RwLock not poisoned") = view;
     }
 
+    /// Cursor anchor (absolute screen cell) + geometry bounds for the
+    /// focused pane, shared by [`Self::sync_popup_view`] and
+    /// [`Self::sync_menu_view`] — both widgets anchor at the same cursor
+    /// cell and clamp within the same pane rect. Returns `(anchor, pane_rect,
+    /// max_width, max_height)`; `None` when the pane has no rect yet or the
+    /// cursor isn't currently visible.
+    fn popup_anchor_and_bounds(
+        &self,
+        ctx: &mut RenderContext,
+    ) -> Option<((u16, u16), ratatui::layout::Rect, u16, u16)> {
+        let focused = self.state.focused_pane_id;
+        let pane_rect = self.view.pane_rect(focused)?;
+        let (pane_settings, gutter_w) = self.resolve_pane_settings(focused);
+        let vp = &self.view.panes[focused].viewport;
+        let cursor_char = self.state.panes.state[focused][self.focused_buffer_id()]
+            .selections
+            .primary()
+            .head();
+        let buf = self.state.buffers.get(self.focused_buffer_id());
+        let (col, row) = super::cursor::screen_pos(
+            vp,
+            buf.text().rope(),
+            cursor_char,
+            &pane_settings.wrap_mode,
+            pane_settings.tab_width,
+            &pane_settings.whitespace,
+            ctx,
+        )?;
+        let anchor = (col + gutter_w + pane_rect.x, row + pane_rect.y);
+        let content_width = pane_rect.width.saturating_sub(gutter_w);
+        let max_width = crate::ui::popup::MAX_POPUP_WIDTH.min(content_width.saturating_sub(4));
+        let max_height = (pane_rect.height / 3).max(1);
+        Some((anchor, pane_rect, max_width, max_height))
+    }
+
     /// Write the current popup content into the shared `PopupState` Arc so
     /// `PopupOverlay` can render it during this frame. Geometry (wrap width,
     /// flip/clamp position) is resolved fresh every frame against the
@@ -1200,37 +1242,67 @@ impl Editor {
         }
 
         let resolved = self.state.popup.as_ref().and_then(|model| {
-            let focused = self.state.focused_pane_id;
-            let pane_rect = self.view.pane_rect(focused)?;
-            let (pane_settings, gutter_w) = self.resolve_pane_settings(focused);
-            let vp = &self.view.panes[focused].viewport;
-            let cursor_char = self.state.panes.state[focused][self.focused_buffer_id()]
-                .selections
-                .primary()
-                .head();
-            let buf = self.state.buffers.get(self.focused_buffer_id());
-            let (col, row) = super::cursor::screen_pos(
-                vp,
-                buf.text().rope(),
-                cursor_char,
-                &pane_settings.wrap_mode,
-                pane_settings.tab_width,
-                &pane_settings.whitespace,
-                ctx,
-            )?;
-            let anchor = (col + gutter_w + pane_rect.x, row + pane_rect.y);
-
-            let content_width = pane_rect.width.saturating_sub(gutter_w);
-            let max_width = crate::ui::popup::MAX_POPUP_WIDTH.min(content_width.saturating_sub(4));
-            let max_height = (pane_rect.height / 3).max(1);
+            let (anchor, pane_rect, max_width, max_height) = self.popup_anchor_and_bounds(ctx)?;
             let lines = crate::ui::popup::wrap_text(&model.text, max_width, max_height);
             let (x, y) = crate::ui::popup::resolve_popup_geometry(&lines, anchor, pane_rect);
-            Some(crate::ui::popup::PopupState { lines, x, y })
+            Some(crate::ui::popup::PopupState {
+                lines,
+                x,
+                y,
+                selected: None,
+            })
         });
 
         *self
             .state
             .popup_view
+            .write()
+            .expect("RwLock not poisoned") = resolved;
+    }
+
+    /// Write the current menu content into the shared `PopupState` Arc so
+    /// `PopupOverlay` can render it during this frame — same geometry rules
+    /// as [`Self::sync_popup_view`], but items are shown one-per-line as-is
+    /// (no word-wrap: menu entries are short labels, not prose) and
+    /// `selected` marks the highlighted row.
+    pub(super) fn sync_menu_view(&self, ctx: &mut RenderContext) {
+        if self.state.menu.is_none()
+            && self
+                .state
+                .menu_view
+                .read()
+                .expect("RwLock not poisoned")
+                .is_none()
+        {
+            return;
+        }
+
+        let resolved = self.state.menu.as_ref().and_then(|model| {
+            let (anchor, pane_rect, _max_width, max_height) =
+                self.popup_anchor_and_bounds(ctx)?;
+            let lines: Vec<String> = model
+                .items
+                .iter()
+                .take(max_height as usize)
+                .cloned()
+                .collect();
+            let (x, y) = crate::ui::popup::resolve_popup_geometry(&lines, anchor, pane_rect);
+            let selected = if lines.is_empty() {
+                None
+            } else {
+                Some(model.selected.min(lines.len() - 1))
+            };
+            Some(crate::ui::popup::PopupState {
+                lines,
+                x,
+                y,
+                selected,
+            })
+        });
+
+        *self
+            .state
+            .menu_view
             .write()
             .expect("RwLock not poisoned") = resolved;
     }

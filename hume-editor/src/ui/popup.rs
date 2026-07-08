@@ -41,14 +41,27 @@ pub(crate) struct PopupModel {
     pub(crate) text: String,
 }
 
-/// Fully-resolved popup content and position — computed once per frame by
-/// the write side; the overlay only paints.
+/// `(show-menu! items on-select)`'s raw content — held on `EditorState`
+/// until the next frame's `sync_menu_view` resolves it into a positioned
+/// [`PopupState`] with `selected` set. `callback` fires exactly once (one
+/// per selection or dismissal), then the whole model is dropped.
+pub(crate) struct MenuModel {
+    pub(crate) items: Vec<String>,
+    pub(crate) selected: usize,
+    pub(crate) callback: steel::rvals::SteelVal,
+}
+
+/// Fully-resolved popup/menu content and position — computed once per frame
+/// by the write side; the overlay only paints.
 pub(crate) struct PopupState {
-    /// Pre-wrapped display lines (word-wrapped to the resolved max width).
+    /// Pre-wrapped display lines (word-wrapped to the resolved max width for
+    /// a plain popup; one line per item, unwrapped, for a menu).
     pub(crate) lines: Vec<String>,
     /// Top-left screen cell to paint at (already flipped/clamped).
     pub(crate) x: u16,
     pub(crate) y: u16,
+    /// The highlighted row index, for menus. `None` for a plain popup.
+    pub(crate) selected: Option<usize>,
 }
 
 /// Generic overlay that paints a `PopupState` snapshot. Used directly for
@@ -59,6 +72,9 @@ pub(crate) struct PopupOverlay {
     /// Scope resolved for the background/text fill (`ui.popup` for hover
     /// popups, `ui.menu` for menus).
     pub(crate) scope: &'static str,
+    /// Scope for the highlighted row, used when `state.selected.is_some()`
+    /// (menus only — `None` for plain popups, which never highlight a row).
+    pub(crate) selected_scope: Option<&'static str>,
 }
 
 impl OverlayProvider for PopupOverlay {
@@ -93,9 +109,24 @@ impl OverlayProvider for PopupOverlay {
         }
 
         let style = theme.resolve_by_name(Scope(self.scope)).into();
+        let selected_style = self
+            .selected_scope
+            .map(|s| theme.resolve_by_name(Scope(s)).into());
         fill_rect_bg(buf, Rect::new(state.x, state.y, width, height), style);
         for (i, line) in state.lines.iter().enumerate() {
-            buf.set_string(state.x, state.y + i as u16, line, style);
+            let row_style = if state.selected == Some(i) {
+                selected_style.unwrap_or(style)
+            } else {
+                style
+            };
+            if row_style != style {
+                fill_rect_bg(
+                    buf,
+                    Rect::new(state.x, state.y + i as u16, width, 1),
+                    row_style,
+                );
+            }
+            buf.set_string(state.x, state.y + i as u16, line, row_style);
         }
     }
 }

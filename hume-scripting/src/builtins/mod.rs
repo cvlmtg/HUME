@@ -471,6 +471,10 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_fn_with_ctx(HUME_CTX, "%show-popup!", ui::show_popup);
     steel.register_fn_with_ctx(HUME_CTX, "close-popup!", ui::close_popup);
 
+    // U5 — selection menu widget.
+    steel.register_fn_with_ctx(HUME_CTX, "show-menu!", ui::show_menu);
+    steel.register_fn_with_ctx(HUME_CTX, "close-menu!", ui::close_menu);
+
     // Timers — not LSP-specific, but B4 was scoped as part of the LSP step.
     steel.register_fn_with_ctx(HUME_CTX, "after", timers::after);
     steel.register_fn_with_ctx(HUME_CTX, "cancel-timer!", timers::cancel_timer);

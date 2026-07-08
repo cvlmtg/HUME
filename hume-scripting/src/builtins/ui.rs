@@ -10,7 +10,7 @@ use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 
-use super::{conv_err, require_cmd_ctx, string_arg};
+use super::{conv_err, list_to_strings, require_cmd_ctx, string_arg};
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -33,4 +33,21 @@ pub(crate) fn show_popup(ctx: &mut SteelCtx, text: SteelVal, anchor: SteelVal) -
 pub(crate) fn close_popup(ctx: &mut SteelCtx) -> SteelResult {
     require_cmd_ctx!(ctx, "close-popup!");
     ctx.host.close_popup().map(|()| SteelVal::Void).map_err(conv_err)
+}
+
+/// `(show-menu! items on-select)` — no keyword defaults, so this registers
+/// directly (no `%`-prefix wrapper needed).
+pub(crate) fn show_menu(ctx: &mut SteelCtx, items: SteelVal, on_select: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "show-menu!");
+    let items = list_to_strings(items, "show-menu! items")?;
+    ctx.host
+        .show_menu(items, on_select)
+        .map(|()| SteelVal::Void)
+        .map_err(conv_err)
+}
+
+/// `(close-menu!)`.
+pub(crate) fn close_menu(ctx: &mut SteelCtx) -> SteelResult {
+    require_cmd_ctx!(ctx, "close-menu!");
+    ctx.host.close_menu().map(|()| SteelVal::Void).map_err(conv_err)
 }

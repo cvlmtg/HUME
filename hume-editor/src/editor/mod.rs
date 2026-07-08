@@ -395,6 +395,14 @@ pub(crate) struct EditorState {
     pub(super) popup: Option<crate::ui::popup::PopupModel>,
     /// Shared popup-overlay view: written by `prepare_frame`, read by `PopupOverlay`.
     pub(crate) popup_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
+    /// `(show-menu! items on-select)`'s raw content, including the
+    /// not-yet-fired Steel callback — cleared by the key intercept in
+    /// `handle_key`, not by `sync_menu_view`.
+    pub(super) menu: Option<crate::ui::popup::MenuModel>,
+    /// Shared menu-overlay view: written by `prepare_frame`, read by its own
+    /// `PopupOverlay` registration (separate from the hover popup's, so both
+    /// can in principle show at once — the menu paints on top).
+    pub(crate) menu_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
 }
 
 impl EditorState {
@@ -1171,6 +1179,8 @@ impl Editor {
                 runtime_scope_cache: std::collections::HashMap::new(),
                 popup: None,
                 popup_view: Arc::new(RwLock::new(None)),
+                menu: None,
+                menu_view: Arc::new(RwLock::new(None)),
             },
             view: engine_view,
             kitty_enabled: false,

@@ -434,6 +434,31 @@ pub trait EditorHost {
         Err("close-popup!: not supported by this host".to_string())
     }
 
+    // ── Selection menu (U5; default = "not supported") ───────────────────────
+    /// `(show-menu! items on-select)` — opens a selection menu near the
+    /// cursor. `on-select` fires exactly once: the chosen index, or `#f` on
+    /// dismissal — queued, never invoked inline. Replaces any menu already
+    /// open (no stacking). Hosts should reject this from Insert mode — a
+    /// menu that can't be driven is worse than no menu (note: a command
+    /// triggered via `:name` still runs with the *previous* mode active, so
+    /// this must be an Insert-specific rejection, not a Normal/Extend-only
+    /// allowlist).
+    fn show_menu(
+        &mut self,
+        items: Vec<String>,
+        callback: steel::rvals::SteelVal,
+    ) -> Result<(), String> {
+        let _ = (items, callback);
+        Err("show-menu!: not supported by this host".to_string())
+    }
+
+    /// `(close-menu!)` — dismisses the menu *without* invoking its callback
+    /// (caller-initiated close, distinct from the key-driven dismissal paths
+    /// which do call back with `#f`).
+    fn close_menu(&mut self) -> Result<(), String> {
+        Err("close-menu!: not supported by this host".to_string())
+    }
+
     // ── Completion orchestration (B8; default = "not supported") ─────────────
     /// `(completion-begin! bid items #:incomplete f)` — `items` is a list of
     /// decoded `CompletionItem` hashmaps (JSON already converted by the

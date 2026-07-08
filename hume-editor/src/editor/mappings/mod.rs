@@ -1,4 +1,4 @@
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent};
 
 use super::{Editor, Mode};
 
@@ -37,12 +37,23 @@ impl Editor {
             }
         }
 
-        match self.state.mode() {
-            Mode::Normal | Mode::Extend => self.handle_normal(key),
-            Mode::Insert => self.handle_insert(key),
-            Mode::Command => self.handle_command(key),
-            Mode::Search => self.handle_search(key),
-            Mode::Select => self.handle_select(key),
+        // ── Selection menu intercept (U5) ─────────────────────────────────────
+        // Guarded early-return before mode dispatch, not a new `Mode` — a
+        // menu is transient chrome, not an editing mode (no `on-mode-change`,
+        // no statusline/cursor-shape changes). Normal/Extend only: menus
+        // don't open from Insert in v1.
+        let menu_consumed = self.state.menu.is_some()
+            && matches!(self.state.mode(), Mode::Normal | Mode::Extend)
+            && self.handle_menu_key(key);
+
+        if !menu_consumed {
+            match self.state.mode() {
+                Mode::Normal | Mode::Extend => self.handle_normal(key),
+                Mode::Insert => self.handle_insert(key),
+                Mode::Command => self.handle_command(key),
+                Mode::Search => self.handle_search(key),
+                Mode::Select => self.handle_select(key),
+            }
         }
 
         // ── Macro recording ───────────────────────────────────────────────────
@@ -60,6 +71,49 @@ impl Editor {
         // but the replayed command executes as a fresh dispatch with &mut Editor.
         if let Some(pending) = self.state.pending_repeat.take() {
             self.replay_dot(pending.count);
+        }
+    }
+
+    /// Handles one key while a selection menu (U5) is open. Returns `true`
+    /// if the key was fully consumed (movement, `Enter`, `Esc`) — `false` if
+    /// a stray key dismissed the menu but should still fall through to
+    /// normal dispatch this same call: a stray key both closes the menu
+    /// (with a `#f` callback) *and* executes its usual effect.
+    ///
+    /// The callback fires exactly once (one-shot `.take()` discipline) —
+    /// `queue_steel_call` never invokes it inline, matching every other
+    /// Rust→Steel callback in this codebase.
+    fn handle_menu_key(&mut self, key: KeyEvent) -> bool {
+        let Some(menu) = self.state.menu.as_mut() else {
+            return false;
+        };
+        match key.code {
+            KeyCode::Char('j') | KeyCode::Down => {
+                if menu.selected + 1 < menu.items.len() {
+                    menu.selected += 1;
+                }
+                true
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                menu.selected = menu.selected.saturating_sub(1);
+                true
+            }
+            KeyCode::Enter => {
+                let menu = self.state.menu.take().expect("checked by the caller above");
+                let idx = steel::rvals::SteelVal::IntV(menu.selected as isize);
+                self.queue_steel_call(menu.callback, vec![idx]);
+                true
+            }
+            KeyCode::Esc => {
+                let menu = self.state.menu.take().expect("checked by the caller above");
+                self.queue_steel_call(menu.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
+                true
+            }
+            _ => {
+                let menu = self.state.menu.take().expect("checked by the caller above");
+                self.queue_steel_call(menu.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
+                false
+            }
         }
     }
 }
