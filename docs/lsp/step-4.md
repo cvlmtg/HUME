@@ -35,10 +35,10 @@ lsp.respond_to("textDocument/hover", serde_json::json!({
 (define-command! "lsp-hover" "Show hover info for the symbol under the cursor."
   (lambda ()
     (guard-capability "hoverProvider"
-      (lsp-request #f "textDocument/hover" (lsp-position-params (focused-buffer))
+      (lsp-request #f "textDocument/hover" (lsp-position-params (current-buffer))
         (lambda (err res)
           (cond (err  (report-lsp-error "hover" err))
-                ((not res) (log! "No hover info"))
+                ((not res) (log! 'info "No hover info"))
                 (else (show-hover (hover-contents->text res)))))))))
 ```
 `hover-contents->text`: handle the three `contents` shapes — `MarkupContent {kind, value}`, legacy `MarkedString` (string or `{language, value}`), and arrays of the latter. v1 renders markdown **as plain text** (strip nothing, show raw — code fences read fine in a monospace popup). `show-hover`: line count ≤ popup max (U4's ⅓-height rule is enforced by the widget; count before calling) → `show-popup!`; else `show-drawer-list!`-free path — the drawer *text* mode is just a single-column list of lines with a no-op on-select. Dismiss: close on any cursor motion or mode change (register transient `on-mode-change` + motion… simplest v1: close-popup! at the top of the *next* `lsp-hover` and on `Esc` via mode-change hook — pick, document, test).
@@ -65,10 +65,10 @@ lsp.respond_to("textDocument/hover", serde_json::json!({
 ```scheme
 (define (goto-request method cap)
   (guard-capability cap
-    (lsp-request #f method (lsp-position-params (focused-buffer))
+    (lsp-request #f method (lsp-position-params (current-buffer))
       (lambda (err res) …))))
 ```
-Response cases (all four methods share them): null → "No definition found"; single `Location {uri, range}` → `goto-location!`; `Location[]` → length 1 jumps, else drawer rows `(uri->display-path, line, col, "")`; `LocationLink[]` → use `targetUri` + `targetSelectionRange.start` (prefer over `targetRange` — it's the identifier, not the whole body).
+Response cases (all four methods share them): null → "No definition found"; single `Location {uri, range}` → `goto-location!`; `Location[]` → length 1 jumps, else `lsp/show-locations!` (shared plugin-lib helper: formats one display string per entry — `show-drawer-list!` takes a flat list of pre-formatted strings, not row tuples — and keeps a parallel location vector so its `on-select` can `goto-location!` the picked entry); `LocationLink[]` → use `targetUri` + `targetSelectionRange.start` (prefer over `targetRange` — it's the identifier, not the whole body).
 
 **Tests** — each response case scripted; the drawer path selects row 2 and lands there; jump-list: after a jump, the jump-back binding returns (B6 discipline). Suggested keys: `gd` / `gD` / `gy` / `gi` (all free in the goto trie today; F11 confirms).
 
@@ -148,15 +148,16 @@ Response cases (all four methods share them): null → "No definition found"; si
 (define-command! "lsp-rename" "Rename the symbol under the cursor."
   (lambda ()
     (guard-capability "renameProvider"
-      (prompt! "Rename: " #:prefill (symbol-under-cursor)
+      (prompt! "Rename: "
         (lambda (new-name)
           (when new-name
             (lsp-request #f "textDocument/rename"
-              (hash-insert (lsp-position-params (focused-buffer)) "newName" new-name)
+              (hash-insert (lsp-position-params (current-buffer)) "newName" new-name)
               (lambda (err res)
                 (cond (err (report-lsp-error "rename" err))
-                      ((not res) (log! "Nothing to rename"))
-                      (else (apply-workspace-edit! res)))))))))))
+                      ((not res) (log! 'info "Nothing to rename"))
+                      (else (apply-workspace-edit! res)))))))
+        #:prefill (symbol-under-cursor (current-buffer))))))
 ```
 `symbol-under-cursor` is B9's builtin (word-boundary logic stays in Rust — never implement it in Scheme). Empty string → prefill empty, prompt still opens.
 
@@ -227,14 +228,14 @@ Response cases (all four methods share them): null → "No definition found"; si
 ```scheme
 (define-command! "fmt" ":fmt — format the buffer (or the selected lines) via LSP."
   (lambda ()
-    (let ((range? (selection-spans-full-line? (focused-buffer))))
+    (let ((range? (selection-spans-full-line? (current-buffer))))
       (guard-capability (if range? "documentRangeFormattingProvider" "documentFormattingProvider")
         (lsp-request #f (if range? "textDocument/rangeFormatting" "textDocument/formatting")
           (format-params range?)   ; adds FormattingOptions {tabSize, insertSpaces} from settings
           (lambda (err res)
             (cond (err (report-lsp-error "fmt" err))
-                  ((not res) (log! "Already formatted"))
-                  (else (apply-text-edits! (focused-buffer) res)))))))))
+                  ((not res) (log! 'info "Already formatted"))
+                  (else (apply-text-edits! (current-buffer) res)))))))))
 ```
 `selection-spans-full-line?` is B6's builtin (the gate decision lives in Rust line math). `FormattingOptions`: `tabSize` / `insertSpaces` read from the existing indent settings (find the setting keys via `:set` docs / `settings.rs`).
 
@@ -255,7 +256,7 @@ Response cases (all four methods share them): null → "No definition found"; si
 **Steel sketch**
 ```scheme
 (lsp-request #f "textDocument/codeAction"
-  (let ((p (lsp-range-params (focused-buffer))))
+  (let ((p (lsp-range-params (current-buffer))))
     (hash-insert p "context"
       (hash "diagnostics" (diagnostics-overlapping-range …)  ; from B5 pull
             "triggerKind" 1)))

@@ -74,6 +74,51 @@ fn on_lsp_attach_fires_for_buffers_attached_before_the_handshake_completes() {
 }
 
 #[test]
+fn register_trigger_chars_from_inside_a_hook_handler_takes_effect() {
+    // B10a: register-trigger-chars! must work from command context (not just
+    // init/plugin-load) — F3/F7 register a server's trigger characters from
+    // inside their on-lsp-attach handler, which runs as plain command
+    // context. Oracle mirrors `on_trigger_char_fires_only_for_registered_
+    // chars_in_insert_mode_after_insertion`: compare against a parallel
+    // plain editor so the assertion isolates "did the extra move-right
+    // additionally fire" from "was '.' inserted" (typing '.' changes state
+    // either way, so a bare before/after diff on `ed` alone wouldn't catch
+    // a registration that silently failed).
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let sid = wire_starting_server(&mut ed);
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(register-hook! 'on-lsp-attach (lambda (bid server-name)
+             (register-trigger-chars! "test" '("."))))
+           (register-hook! 'on-trigger-char (lambda (bid ch) (call! "move-right")))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    complete_handshake(&mut ed, sid);
+    ed.drain_hooks();
+
+    let mut plain = editor_from("-[a]>bcdef\n");
+    ed.feed_key(key('i'));
+    ed.drain_hooks();
+    plain.feed_key(key('i'));
+    ed.feed_key(key('.'));
+    ed.drain_hooks();
+    plain.feed_key(key('.'));
+    assert_ne!(
+        state(&ed),
+        state(&plain),
+        "register-trigger-chars! called from inside a hook handler (command \
+         context, not init/plugin-load) must still register the char and \
+         fire the extra move-right"
+    );
+}
+
+#[test]
 fn on_diagnostics_changed_fires_once_per_drain_batch_not_per_publish() {
     let tmp = tempfile::tempdir().unwrap();
     let file_dir = tempfile::tempdir().unwrap();

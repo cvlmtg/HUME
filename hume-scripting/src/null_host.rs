@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
 
-use crate::host::{BindMode, EditorHost};
+use crate::host::{BindMode, EditorHost, OptionValue};
 use crate::types::SteelCmdDef;
 
 pub(crate) struct NullHost;
@@ -52,6 +52,9 @@ impl EditorHost for NullHost {
     }
     fn set_global_option(&mut self, _key: &str, _value: &str) -> Result<(), String> {
         Err("NullHost: set_global_option not available".into())
+    }
+    fn get_option(&self, _key: &str, _bid: BufferId) -> Result<OptionValue, String> {
+        Err("NullHost: get_option not available".into())
     }
     fn configure_statusline(
         &mut self,
@@ -168,6 +171,9 @@ impl EditorHost for FailingRegisterHost {
     }
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
         NullHost.set_global_option(key, value)
+    }
+    fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
+        NullHost.get_option(key, bid)
     }
     fn configure_statusline(
         &mut self,

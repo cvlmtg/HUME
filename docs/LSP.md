@@ -92,6 +92,10 @@ Steps 1–3 are ordered by dependency but Step 4 tasks unlock incrementally — 
 | `set-extra-highlights!` tier (U1) | **New variant `Extra` between `Syntax` and `SearchMatch`** | Plugin spans beat syntax, lose to search/diagnostics/brackets. `HighlightTier` renumbered (`Syntax=0, Extra=1, SearchMatch=2, Diagnostic=3, BracketMatch=4`), `TIER_COUNT` bumped to 5 in `hume-engine/src/style/highlight.rs`. No other renumbering needed — all existing references are by variant name. |
 | `$/progress` (U3) | **Message-log only in v1** | No spinner element added — the statusline's only new element is `Diagnostics` (error/warning counts from C9). `$/progress` continues to route to the message log per C6's existing server-notification handling; a spinner element is Future. |
 | Hover surface (U4/U6) | **Popup primary; drawer is the overflow surface** | `show-popup!` (U4) covers the common case — its ⅓-pane-height max is the threshold. Content taller than that is the caller's problem: F1's hover handler composes both, falling back to `show-drawer-list!` (U6) when the formatted hover text would overflow the popup. Rust never chooses between them — it's a Steel-side branch on formatted content length. |
+| `register-trigger-chars!` context (B10a) | **Relaxed to any context, no init/plugin-load gate** | F3/F7 register a server's trigger characters from inside their `on-lsp-attach` handler, which runs as plain command context — the previous init-only gate made this uncallable. No feature needs init-time registration, so the gate was dropped entirely rather than widened to "init or command." |
+| Steel settings read access (B10b) | **New `(get-option key)` builtin, symmetric with `set-option!`** | F8 (`tab-width`/`tab-style` → `FormattingOptions`) and F10 (`lsp.inlay-hints` gate) both need to read a setting from Steel; no getter existed. Resolves buffer overrides against the focused buffer, `Err` on an unknown key. `hume-editor/src/settings.rs`'s `setting_value` covers every `global`/`buffer` macro-declared key (not `manual_keys` — `whitespace-*`/`statusline` have no reader yet, nothing needs one). Required adding `Display` impls to `LineNumberStyle` and `WrapMode` (mirroring `TabStyle`'s existing `FromStr`+`Display` pair) so every `from_str`-parsed setting type can round-trip through the same generic accessor. |
+| Completion accept/refilter Steel visibility (B10c) | **`on-completion-accept` + `on-completion-refilter` hooks; `StoredCompletionItem` retains the raw response item** | F3 needs `additionalTextEdits` (auto-import) and `completionItem/resolve` on accept, and a narrowing signal for `isIncomplete` re-requests — none of which existed (Rust applied only the main edit; refiltering was Rust-only). `on-completion-accept (bid item)` fires after the main edit lands, `item` the accepted item's full raw JSON; Steel applies any further edits itself. `on-completion-refilter (bid filter-text)` fires from the per-keystroke refilter path but **only while the session's `isIncomplete` flag is set** — bounded to the one case that needs it, not an unconditional per-keystroke hook (which the hub's frequency-cut rule would forbid). |
+| `lsp.inlay-hints` default (B10d) | **`false` — opt-in** | Card F10 specified off-by-default v1; the setting had shipped `true` by oversight. Flipped in `hume-editor/src/settings.rs`; existing render tests updated to opt in explicitly. |
 
 ## Open Questions
 
@@ -197,20 +201,23 @@ Every Steel-visible surface Steps 1–3 introduce. Cards define the semantics; t
 | `on-viewport-change` (debounced) | hook | B7 |
 | `on-trigger-char` (typed char ∈ registered set, Insert mode) + `(register-trigger-chars! source chars)` | hook + builtin | B7 |
 | `(completion-begin! bid items #:incomplete f)` / `(completion-update-filter! text)` / `(completion-top n)` / `(completion-accept! idx)` / `(completion-dismiss!)` | builtins | B8 |
-| `(prompt! label #:prefill text on-confirm)` | builtin | B9 |
+| `on-completion-accept` `(bid item)` — fires after `completion-accept!`'s main edit; `item` is the accepted item's raw JSON | hook | B10c |
+| `on-completion-refilter` `(bid filter-text)` — fires from the per-keystroke refilter path, only while the session's `isIncomplete` flag is set | hook | B10c |
+| `(prompt! label on-confirm #:prefill text)` — callback is positional, `#:prefill` the keyword (not the reverse) | builtin | B9 |
 | `(symbol-under-cursor bid)` → string (word at primary cursor; Rust grapheme/word logic) | builtin | B9 |
 | `(show-popup! text #:anchor 'cursor)` / `(close-popup!)` | builtin | U4 |
 | `(show-menu! items on-select)` / `(close-menu!)` | builtin | U5 |
-| `(show-drawer-list! items on-select)` / `(close-drawer!)` | builtin | U6 |
+| `(show-drawer-list! items on-select)` / `(close-drawer!)` — `items` is a flat list of pre-formatted display strings; `on-select` receives an index and may fire more than once (drawer stays open until `Esc`/`close-drawer!`, which calls it with `#f`) | builtin | U6 |
 | `:lsp-status`, `:lsp-stop`, `:lsp-restart` | typed commands | C10 |
-| Settings knobs (`lsp.request-timeout-ms`, `lsp.diagnostics-severity-floor`, `lsp.inlay-hints`, …) | via existing `:set` / `set-option!` | owning cards |
+| `(get-option key)` → the effective value (buffer override, else global), typed `bool`/`int`/`string` per the setting's parser kind; `Err` on an unknown key | builtin | B10b |
+| Settings knobs (`lsp.request-timeout-ms`, `lsp.diagnostics-severity-floor`, `lsp.inlay-hints` (default `false`), …) | via existing `:set` / `set-option!` / `get-option` | owning cards |
 
 ## Implementation order
 
 Canonical linearization — implement top to bottom. Progress is tracked by the checkboxes in the step sections below (the single tracker — tick there, not here). The only intentional deviations from numeric order: P8 needs serde (P1); P5/P6 live in `hume-lsp` so they follow C1.
 
 1. **Step 0 + Step 1 core:** P1 → P8 → P2 → P3 → P7 → P4 → C1 → P5 → P6 → C2 → C3 → C4 → C5 → C6 → C8 → C7 → C9 → C10
-2. **Step 2 (Steel platform):** B1 → B2 → B3 → B4 → B7 → B5 → B6 → B9 → B8
+2. **Step 2 (Steel platform):** B1 → B2 → B3 → B4 → B7 → B5 → B6 → B9 → B8 → B10 (Step 4 prerequisite, landed once Step 4 verification surfaced the gaps)
 3. **Step 3 (UI surfaces):** U1 → U2 → U3 → U4 → U5 → U6 → U9 → U7 → U8
 4. **Step 4 (features; each unlocks when its composition exists):** F1 → F2 → F6 → F4 → F5 → F8 → F9 → F7 → F3 → F10 → F11
 
@@ -280,6 +287,7 @@ The bridge and primitives that make Steel the feature layer. After it, a plugin 
 - [x] **B7** — new hooks (`on-lsp-attach`, `on-diagnostics-changed`, `on-viewport-change`, `on-trigger-char`)
 - [x] **B8** — completion orchestration API (Rust store + filter, Steel session driver)
 - [x] **B9** — Steel minibuffer prompt (`prompt!` — F5 needs it; no prompt primitive exists today)
+- [x] **B10** — platform addendum for Step 4 (`register-trigger-chars!` context relax, `get-option`, completion accept/refilter hooks, `lsp.inlay-hints` default)
 
 ## Step 3 — UI surfaces
 

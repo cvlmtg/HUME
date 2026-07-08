@@ -20,7 +20,7 @@ use crate::editor::registry::MappableCommand;
 use crate::editor::timer_bridge::TimerHandle;
 use crate::settings::{BufferOverrides, SettingScope, apply_setting};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
-use hume_scripting::host::{BindMode, EditorHost};
+use hume_scripting::host::{BindMode, EditorHost, OptionValue};
 
 use super::EditorState;
 
@@ -145,6 +145,11 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             &mut self.state.settings,
             &mut dummy,
         )
+    }
+    fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
+        let overrides = self.state.buffers.try_get(bid).map(|b| &b.overrides);
+        crate::settings::setting_value(key, &self.state.settings, overrides)
+            .ok_or_else(|| format!("get-option: unknown setting '{key}'"))
     }
 
     // ── Statusline ────────────────────────────────────────────────────────────

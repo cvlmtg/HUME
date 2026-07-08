@@ -46,6 +46,17 @@ pub enum HookId {
     /// `register-trigger-chars!`) has been inserted into the buffer. Args:
     /// `(bid char-string)`.
     OnTriggerChar,
+    /// Fires after `completion-accept!` applies the item's main `textEdit`
+    /// (or `insertText` fallback) — Steel handles `additionalTextEdits` and
+    /// `completionItem/resolve` from here (F3), since Rust only ever applies
+    /// the primary edit. Args: `(bid item)`, `item` the accepted
+    /// `CompletionItem`'s raw JSON decoded via `json_to_steel`.
+    OnCompletionAccept,
+    /// Fires from the Insert-mode per-keystroke refilter path, but only when
+    /// the open session's `isIncomplete` flag is set — a bounded,
+    /// user-intent-adjacent window (see B10c), not an unconditional
+    /// per-keystroke hook. Args: `(bid filter-text)`.
+    OnCompletionRefilter,
 }
 
 /// Single source of truth: `(HookId variant, Steel symbol name)` pairs.
@@ -59,6 +70,8 @@ const HOOKS: &[(HookId, &str)] = &[
     (HookId::OnDiagnosticsChanged, "on-diagnostics-changed"),
     (HookId::OnViewportChange, "on-viewport-change"),
     (HookId::OnTriggerChar, "on-trigger-char"),
+    (HookId::OnCompletionAccept, "on-completion-accept"),
+    (HookId::OnCompletionRefilter, "on-completion-refilter"),
 ];
 
 impl HookId {
@@ -129,7 +142,9 @@ mod tests {
             | HookId::OnLspAttach
             | HookId::OnDiagnosticsChanged
             | HookId::OnViewportChange
-            | HookId::OnTriggerChar => {}
+            | HookId::OnTriggerChar
+            | HookId::OnCompletionAccept
+            | HookId::OnCompletionRefilter => {}
         }
     }
 
@@ -143,6 +158,8 @@ mod tests {
         HookId::OnDiagnosticsChanged,
         HookId::OnViewportChange,
         HookId::OnTriggerChar,
+        HookId::OnCompletionAccept,
+        HookId::OnCompletionRefilter,
     ];
 
     /// Fail oracle: delete a HOOKS row for a variant still in `ALL_VARIANTS`

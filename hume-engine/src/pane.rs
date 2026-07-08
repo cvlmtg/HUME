@@ -124,6 +124,20 @@ impl FromStr for WrapMode {
     }
 }
 
+impl std::fmt::Display for WrapMode {
+    /// Canonical `kind:width` form (width always explicit, even the `0`
+    /// sentinel) — round-trips through `FromStr`, which also accepts the
+    /// bare-keyword shorthand this never emits.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::None => write!(f, "none"),
+            Self::Soft { width } => write!(f, "soft:{width}"),
+            Self::Word { width } => write!(f, "word:{width}"),
+            Self::Indent { width } => write!(f, "indent:{width}"),
+        }
+    }
+}
+
 impl WrapMode {
     /// Concrete wrap column, or `None` if wrapping is off.
     ///
@@ -496,6 +510,20 @@ mod tests {
                 v.parse::<WrapMode>().is_ok(),
                 "'{v}' should parse as WrapMode"
             );
+        }
+    }
+
+    #[test]
+    fn wrap_mode_display_round_trips_through_from_str() {
+        for mode in [
+            WrapMode::None,
+            WrapMode::Soft { width: 0 },
+            WrapMode::Soft { width: 80 },
+            WrapMode::Word { width: 40 },
+            WrapMode::Indent { width: 76 },
+        ] {
+            let rendered = mode.to_string();
+            assert_eq!(rendered.parse::<WrapMode>().unwrap(), mode);
         }
     }
 

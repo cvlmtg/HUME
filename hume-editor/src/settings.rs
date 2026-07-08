@@ -137,6 +137,35 @@ macro_rules! parse_setting {
     };
 }
 
+/// Dispatch from a parser-kind token to the `get-option`-facing
+/// [`hume_scripting::host::OptionValue`] shape. Mirrors [`parse_setting!`]'s
+/// kind table so every setting stays readable the moment it's declared —
+/// `bool` fields round-trip as `Bool`, integer-ish fields (`usize`,
+/// `usize_nonzero`, `tab_width`) as `Int`, everything else (`from_str`,
+/// `string`) via `Display`/`ToString` as `Str`. `from_str` types must
+/// therefore implement `Display` that round-trips through their own
+/// `FromStr` (see `TabStyle`, `DiagSeverity`, `LineNumberStyle`, `WrapMode`).
+macro_rules! option_value {
+    ($value:expr, bool) => {
+        hume_scripting::host::OptionValue::Bool($value)
+    };
+    ($value:expr, usize) => {
+        hume_scripting::host::OptionValue::Int($value as i64)
+    };
+    ($value:expr, usize_nonzero) => {
+        hume_scripting::host::OptionValue::Int($value as i64)
+    };
+    ($value:expr, tab_width) => {
+        hume_scripting::host::OptionValue::Int($value as i64)
+    };
+    ($value:expr, from_str) => {
+        hume_scripting::host::OptionValue::Str($value.to_string())
+    };
+    ($value:expr, string) => {
+        hume_scripting::host::OptionValue::Str($value)
+    };
+}
+
 // ── Settings definition ───────────────────────────────────────────────────────
 
 /// Generate [`EditorSettings`], [`BufferOverrides`], and [`apply_setting`]
@@ -311,6 +340,33 @@ macro_rules! define_settings {
             Ok(())
         }
 
+        // ── setting_value (get-option) ────────────────────────────────────────
+
+        /// The effective value of `key` for `(get-option key)`: `overrides`'
+        /// value if `Some` and the key is buffer-scoped, else the global
+        /// default. `None` for a key with no generic storage — covers
+        /// `manual_keys` (`whitespace-*`, `statusline`) and `"language"`,
+        /// neither of which this getter supports today (no `core:lsp`
+        /// feature reads them; add a hand-written arm here, mirroring
+        /// `apply_setting`'s manual arms, if one needs to).
+        pub fn setting_value(
+            key: &str,
+            settings: &EditorSettings,
+            overrides: Option<&BufferOverrides>,
+        ) -> Option<hume_scripting::host::OptionValue> {
+            match key {
+                $( $gkey => Some(option_value!(settings.$gname.clone(), $gparser)), )*
+                $( $bkey => {
+                    let value = match overrides {
+                        Some(o) => o.$bname(settings),
+                        None => settings.$bname.clone(),
+                    };
+                    Some(option_value!(value, $bparser))
+                } )*
+                _ => None,
+            }
+        }
+
         // ── setting_scopes ──────────────────────────────────────────────────────
 
         /// The `:set` scopes a setting accepts (`"global"`, `"buffer"`, `"pane"`),
@@ -420,7 +476,7 @@ define_settings! {
             parser: from_str;
         // Gates the inlay-hint render write side (U9) — off means the
         // `inlay_hints` store is untouched but nothing renders.
-        "lsp.inlay-hints" => lsp_inlay_hints: bool = true,
+        "lsp.inlay-hints" => lsp_inlay_hints: bool = false,
             scope: ["global"],
             parser: bool;
         // Global-only *storage*: seeds new panes' `Pane::wrap_mode` at creation
@@ -685,6 +741,78 @@ mod tests {
         let global = EditorSettings::default();
         let ov = BufferOverrides::default();
         assert_eq!(ov.tab_style(&global), global.tab_style);
+    }
+
+    // ── setting_value (get-option) ─────────────────────────────────────────
+
+    use hume_scripting::host::OptionValue;
+
+    #[test]
+    fn setting_value_bool_key_returns_bool() {
+        let global = EditorSettings::default();
+        assert_eq!(
+            setting_value("mouse-enabled", &global, None),
+            Some(OptionValue::Bool(true))
+        );
+    }
+
+    #[test]
+    fn setting_value_usize_key_returns_int() {
+        let global = EditorSettings::default();
+        assert_eq!(
+            setting_value("tab-width", &global, None),
+            Some(OptionValue::Int(4))
+        );
+    }
+
+    #[test]
+    fn setting_value_from_str_key_returns_str() {
+        let global = EditorSettings::default();
+        assert_eq!(
+            setting_value("tab-style", &global, None),
+            Some(OptionValue::Str("hard".to_string()))
+        );
+    }
+
+    #[test]
+    fn setting_value_unknown_key_returns_none() {
+        let global = EditorSettings::default();
+        assert_eq!(setting_value("nonexistent", &global, None), None);
+    }
+
+    #[test]
+    fn setting_value_buffer_override_wins_over_global() {
+        let global = EditorSettings::default();
+        let ov = BufferOverrides {
+            tab_width: Some(8),
+            ..Default::default()
+        };
+        assert_eq!(
+            setting_value("tab-width", &global, Some(&ov)),
+            Some(OptionValue::Int(8))
+        );
+    }
+
+    #[test]
+    fn setting_value_falls_back_to_global_when_no_override() {
+        let global = EditorSettings::default();
+        let ov = BufferOverrides::default();
+        assert_eq!(
+            setting_value("tab-width", &global, Some(&ov)),
+            Some(OptionValue::Int(4))
+        );
+    }
+
+    #[test]
+    fn setting_value_global_only_key_ignores_overrides_arg() {
+        // "mouse-enabled" is global-only — passing `Some(&ov)` must not
+        // change the outcome (there is no per-buffer storage for it).
+        let global = EditorSettings::default();
+        let ov = BufferOverrides::default();
+        assert_eq!(
+            setting_value("mouse-enabled", &global, Some(&ov)),
+            Some(OptionValue::Bool(true))
+        );
     }
 
     // ── TabStyle parsing ─────────────────────────────────────────────────────

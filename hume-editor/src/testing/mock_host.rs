@@ -15,7 +15,7 @@
 
 use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
-use hume_scripting::host::{BindMode, EditorHost};
+use hume_scripting::host::{BindMode, EditorHost, OptionValue};
 
 pub(crate) struct MockHost {
     pub(crate) settings: hume::settings::EditorSettings,
@@ -93,6 +93,12 @@ impl EditorHost for MockHost {
             &mut self.settings,
             &mut dummy,
         )
+    }
+    fn get_option(&self, key: &str, _bid: BufferId) -> Result<OptionValue, String> {
+        // MockHost models no buffers, so there is no per-buffer override to
+        // resolve — every key reads its global value.
+        hume::settings::setting_value(key, &self.settings, None)
+            .ok_or_else(|| format!("get-option: unknown setting '{key}'"))
     }
     fn configure_statusline(
         &mut self,

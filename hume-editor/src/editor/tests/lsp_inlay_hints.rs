@@ -29,6 +29,7 @@ fn type_text(ed: &mut Editor, text: &str) {
 #[test]
 fn after_hint_renders_dimmed_immediately_after_its_char() {
     let mut ed = Editor::open(None).unwrap();
+    ed.state.settings.lsp_inlay_hints = true; // B10d: off by default
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
     ed.state.decorations.set_inlay_hints(
@@ -49,6 +50,7 @@ fn after_hint_renders_dimmed_immediately_after_its_char() {
 #[test]
 fn before_hint_renders_immediately_before_its_char() {
     let mut ed = Editor::open(None).unwrap();
+    ed.state.settings.lsp_inlay_hints = true; // B10d: off by default
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
     ed.state.decorations.set_inlay_hints(
@@ -73,6 +75,7 @@ fn hint_after_an_emoji_lands_on_the_correct_byte_offset() {
     // byte — proving the write side converts by rope char-to-byte, not by
     // treating `pos` as already a byte count.
     let mut ed = Editor::open(None).unwrap();
+    ed.state.settings.lsp_inlay_hints = true; // B10d: off by default
     type_text(&mut ed, "🎉party");
     let bid = ed.focused_buffer_id();
     ed.state.decorations.set_inlay_hints(
@@ -97,6 +100,7 @@ fn hint_on_a_wrapped_line_pins_current_render_behavior() {
     // only pins whatever `format_buffer_line` currently does, it does not
     // assert correctness of cursor placement on this line.
     let mut ed = Editor::open(None).unwrap();
+    ed.state.settings.lsp_inlay_hints = true; // B10d: off by default
     type_text(&mut ed, "aaaaaaaaaabbbbbbbbbbccccccccccdddddddddd");
     let bid = ed.focused_buffer_id();
     ed.state.decorations.set_inlay_hints(
@@ -118,6 +122,7 @@ fn hint_on_a_wrapped_line_pins_current_render_behavior() {
 #[test]
 fn clearing_the_store_removes_the_hint_next_frame() {
     let mut ed = Editor::open(None).unwrap();
+    ed.state.settings.lsp_inlay_hints = true; // B10d: off by default
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
     ed.state.decorations.set_inlay_hints(
@@ -161,6 +166,10 @@ fn clearing_the_store_removes_the_hint_next_frame() {
 
 #[test]
 fn setting_off_renders_nothing_even_with_hints_in_the_store() {
+    // B10d: lsp.inlay-hints defaults to false, so this test turns it ON
+    // first and confirms a hint renders — otherwise the final "off" assert
+    // would pass even if the `:set … =false` call were a no-op (the
+    // zero-effect the setting already starts in).
     let mut ed = Editor::open(None).unwrap();
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
@@ -172,20 +181,27 @@ fn setting_off_renders_nothing_even_with_hints_in_the_store() {
             before: false,
         }],
     );
-    type_cmd(&mut ed, ":set global lsp.inlay-hints=false");
+    let pid = ed.state.focused_pane_id;
+    let has_hint = |ed: &mut Editor, ctx: &mut RenderContext| {
+        ed.prepare_frame(40, 8, ctx);
+        ed.state
+            .panes
+            .inlay_hints
+            .get(pid)
+            .unwrap()
+            .read()
+            .unwrap()
+            .values()
+            .any(|v| !v.is_empty())
+    };
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 8, &mut ctx);
-    let pid = ed.state.focused_pane_id;
-    let has_hint = ed
-        .state
-        .panes
-        .inlay_hints
-        .get(pid)
-        .unwrap()
-        .read()
-        .unwrap()
-        .values()
-        .any(|v| !v.is_empty());
-    assert!(!has_hint, "setting off must clear the provider map, not just skip refreshing it");
+    type_cmd(&mut ed, ":set global lsp.inlay-hints=true");
+    assert!(has_hint(&mut ed, &mut ctx), "sanity: hint renders once the setting is on");
+
+    type_cmd(&mut ed, ":set global lsp.inlay-hints=false");
+    assert!(
+        !has_hint(&mut ed, &mut ctx),
+        "setting off must clear the provider map, not just skip refreshing it"
+    );
 }

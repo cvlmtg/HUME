@@ -5,6 +5,8 @@
 
 use hume_editing::position_encoding::char_to_wire;
 use hume_engine::pipeline::BufferId;
+use hume_scripting::hooks::HookId;
+use hume_scripting::json::json_to_steel;
 
 use super::LspState;
 use super::edits::{self, WireEdit};
@@ -25,6 +27,12 @@ pub(crate) struct StoredCompletionItem {
     filter_text: String,
     insert_text: String,
     text_edit: Option<WireEdit>,
+    /// The full response item, unparsed — handed to `on-completion-accept`
+    /// (B10c) so Steel can read `additionalTextEdits`, `data` (for
+    /// `completionItem/resolve`), or any other field this store doesn't
+    /// parse, without Rust needing to grow a reader for every LSP field a
+    /// feature might eventually want.
+    raw: serde_json::Value,
 }
 
 impl StoredCompletionItem {
@@ -57,6 +65,7 @@ impl StoredCompletionItem {
             filter_text,
             insert_text,
             text_edit,
+            raw: v.clone(),
         }
     }
 
@@ -128,10 +137,9 @@ pub(crate) struct CompletionSession {
     /// doesn't allocate a fresh Vec every time.
     rank_scratch: Vec<(bool, usize, u32)>,
     filter: String,
-    /// Server's `isIncomplete` flag — no v1 reader (a future re-request-on-
-    /// narrowing feature, per the card, is the first one), stored now so
-    /// that feature doesn't need to revisit this struct.
-    #[allow(dead_code)]
+    /// Server's `isIncomplete` flag — gates `on-completion-refilter` (B10c):
+    /// the hook only fires per-keystroke while this is set, since a complete
+    /// list needs no re-request from Steel.
     incomplete: bool,
     /// Buffer generation as of the last `begin`/`update_filter` call —
     /// `accept!` rejects if the buffer changed by any other path since.
@@ -151,6 +159,16 @@ impl CompletionSession {
     /// drifts as the user types further into the token).
     pub(crate) fn anchor(&self) -> usize {
         self.anchor
+    }
+
+    /// The server's `isIncomplete` flag from the response that began this
+    /// session — gates `on-completion-refilter` (B10c).
+    pub(crate) fn incomplete(&self) -> bool {
+        self.incomplete
+    }
+
+    pub(crate) fn bid(&self) -> BufferId {
+        self.bid
     }
 
     pub(crate) fn begin(
@@ -267,6 +285,17 @@ impl CompletionSession {
             self.bid,
             vec![wire_edit],
             Some(self.generation_at_begin),
-        )
+        )?;
+
+        // B10c: fire on-completion-accept with the raw item *after* the main
+        // edit lands — Steel reads `additionalTextEdits`/`data` from `item`
+        // and applies them itself (auto-import edits, resolve-on-accept);
+        // Rust never parses those fields.
+        let bid_val = hume_scripting::SteelBufferId::new(self.bid).into_steel_val();
+        let item_val = json_to_steel(&item.raw);
+        state
+            .pending_hooks
+            .push((HookId::OnCompletionAccept, vec![bid_val, item_val]));
+        Ok(())
     }
 }

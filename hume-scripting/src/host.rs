@@ -17,6 +17,18 @@ pub enum BindMode {
     Insert,
 }
 
+/// A setting's effective value, typed just enough for `(get-option key)` to
+/// build the right `SteelVal` — `hume-scripting` has no dependency on
+/// `hume-editor`'s settings types, so the editor impl converts its own
+/// per-key parser kind (`bool`/`usize`/`from_str`/…) down to one of these
+/// three shapes at the trait boundary.
+#[derive(Debug, Clone, PartialEq)]
+pub enum OptionValue {
+    Bool(bool),
+    Int(i64),
+    Str(String),
+}
+
 /// The editor interface exposed to scripting builtins during a Steel eval.
 ///
 /// Implemented by `EditorHostImpl<'a>` in the editor crate (or `MockHost` in
@@ -70,6 +82,11 @@ pub trait EditorHost {
 
     // ── Settings (init-only; only Global scope from scripts) ─────────────────
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String>;
+    /// `(get-option key)` — the effective value of `key`: `bid`'s buffer
+    /// override if one is set, else the global default. `Err` for an
+    /// unknown key. Callable from any context (no init/plugin-load gate,
+    /// unlike `set_global_option`).
+    fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String>;
 
     // ── Statusline (init-only; editor parses names → StatusElement) ──────────
     fn configure_statusline(

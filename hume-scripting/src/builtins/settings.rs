@@ -1,9 +1,12 @@
-//! `(set-option! key value)` builtin.
+//! `(set-option! key value)` / `(get-option key)` builtins.
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
+use crate::host::OptionValue;
+
+use super::require_cmd_ctx;
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -39,6 +42,26 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
         .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
 
     Ok(SteelVal::Void)
+}
+
+/// `(get-option key)`
+///
+/// The effective value of `key`: the focused buffer's override if one is
+/// set, else the global default. Unlike `set-option!`, callable from any
+/// command-mode context — command bodies, hook handlers, timer thunks — not
+/// just init/plugin-load, since features read settings (e.g. `tab-width`,
+/// `lsp.inlay-hints`) while composing a request, not just at startup.
+pub(crate) fn get_option(ctx: &mut SteelCtx, key: String) -> SteelResult {
+    require_cmd_ctx!(ctx, "get-option");
+    let value = ctx
+        .host
+        .get_option(&key, ctx.focused_buffer_id)
+        .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
+    Ok(match value {
+        OptionValue::Bool(b) => SteelVal::BoolV(b),
+        OptionValue::Int(n) => SteelVal::IntV(n as isize),
+        OptionValue::Str(s) => SteelVal::StringV(s.into()),
+    })
 }
 
 #[cfg(test)]
@@ -124,5 +147,39 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// `get-option` is blocked during init eval (the opposite gate from
+    /// `set-option!`: it's a command-mode read, not an init-time write).
+    ///
+    /// Fail oracle: remove the `require_cmd_ctx!` guard → readable during
+    /// init, where there is no meaningful focused buffer to resolve
+    /// overrides against.
+    #[test]
+    fn get_option_blocked_in_init_mode() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        let result = get_option(&mut ctx, "tab-width".into());
+        assert!(result.is_err(), "get-option must error during init eval");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("init"), "error must mention 'init'; got: {msg}");
+    }
+
+    /// In command mode, `get-option` reaches the host (`NullHost` → Err,
+    /// proving the guard was passed and the host was called).
+    ///
+    /// Fail oracle: make the guard unconditionally reject → the error would
+    /// contain "init" instead of "NullHost".
+    #[test]
+    fn get_option_command_mode_calls_host() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = get_option(&mut ctx, "tab-width".into());
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            !msg.contains("not available during init"),
+            "must reach the host, not the guard; got: {msg}"
+        );
     }
 }

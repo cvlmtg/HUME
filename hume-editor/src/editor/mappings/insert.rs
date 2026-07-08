@@ -1,5 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use hume_editing::lines::leading_whitespace_end;
+use hume_scripting::SteelBufferId;
+use hume_scripting::hooks::HookId;
 
 use super::super::keymap::WalkResult;
 use super::super::registry::MappableCommand;
@@ -362,7 +364,15 @@ impl Editor {
         // `head < anchor` would mean a printable char somehow landed before
         // the anchor, which can't happen through this key path.
         let text = self.doc().text().slice(anchor..head).to_string();
-        session.update_filter(&self.state, text);
+        session.update_filter(&self.state, text.clone());
+        // B10c: `on-completion-refilter` fires only while the server said
+        // `isIncomplete` — a complete list needs no re-request, so a normal
+        // session stays hook-silent on every keystroke.
+        if session.incomplete() {
+            let bid_val = SteelBufferId::new(session.bid()).into_steel_val();
+            let text_val = steel::rvals::SteelVal::StringV(text.into());
+            self.fire_hook_silent(HookId::OnCompletionRefilter, &[bid_val, text_val]);
+        }
         self.state.lsp_completion = Some(session);
         self.state.lsp_completion_ui = None;
     }

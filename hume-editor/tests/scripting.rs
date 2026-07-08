@@ -62,6 +62,86 @@ fn set_option_unknown_key_errors() {
     assert!(err.contains("unknown setting"), "got: {err}");
 }
 
+// ── get-option ────────────────────────────────────────────────────────────
+
+/// `eval_source` runs top-level code as an init eval — `get-option` is
+/// command-mode only, so a bare top-level call must error the same way
+/// `current-buffer` or any other command-mode read would.
+#[test]
+fn get_option_blocked_during_init_eval() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+
+    let err = h
+        .eval_source("(get-option \"tab-width\")", &mut mock)
+        .unwrap_err();
+    assert!(err.contains("init"), "got: {err}");
+}
+
+#[test]
+fn get_option_reads_back_tab_width_as_int() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+
+    h.eval_source(
+        r#"(define-command! "check" "" (lambda ()
+             (unless (equal? (get-option "tab-width") 4)
+               (error "unexpected tab-width"))))"#,
+        &mut mock,
+    )
+    .unwrap();
+    h.call_steel_cmd("check", None, vec![], PaneId::default(), BufferId::default(), &mut mock)
+        .expect("get-option must read back the default tab-width as an int");
+}
+
+#[test]
+fn get_option_reads_back_tab_style_as_string() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+
+    h.eval_source(
+        r#"(define-command! "check" "" (lambda ()
+             (unless (equal? (get-option "tab-style") "hard")
+               (error "unexpected tab-style"))))"#,
+        &mut mock,
+    )
+    .unwrap();
+    h.call_steel_cmd("check", None, vec![], PaneId::default(), BufferId::default(), &mut mock)
+        .expect("get-option must read back the default tab-style as a string");
+}
+
+#[test]
+fn get_option_reads_back_lsp_inlay_hints_as_bool() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+
+    h.eval_source(
+        r#"(define-command! "check" "" (lambda ()
+             (unless (equal? (get-option "lsp.inlay-hints") #f)
+               (error "unexpected lsp.inlay-hints"))))"#,
+        &mut mock,
+    )
+    .unwrap();
+    h.call_steel_cmd("check", None, vec![], PaneId::default(), BufferId::default(), &mut mock)
+        .expect("get-option must read back the default lsp.inlay-hints (false, B10d) as a bool");
+}
+
+#[test]
+fn get_option_unknown_key_errors() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+
+    h.eval_source(
+        r#"(define-command! "check" "" (lambda () (get-option "nonexistent")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    let err = h
+        .call_steel_cmd("check", None, vec![], PaneId::default(), BufferId::default(), &mut mock)
+        .unwrap_err();
+    assert!(err.contains("unknown setting"), "got: {err}");
+}
+
 // ── bind-key! ─────────────────────────────────────────────────────────────
 
 #[test]

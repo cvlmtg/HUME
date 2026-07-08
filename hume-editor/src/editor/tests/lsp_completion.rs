@@ -203,6 +203,110 @@ fn a_buffer_edit_that_bypasses_update_filter_invalidates_the_session() {
     );
 }
 
+// ── B10c: on-completion-accept / on-completion-refilter ────────────────────
+
+#[test]
+fn accept_fires_on_completion_accept_with_the_raw_item_after_the_edit() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer)
+               (list (hash "label" "foobar" "insertText" "hello" "extra" "e1")))
+             (completion-update-filter! "fo")
+             (completion-accept! 0)))
+           (register-hook! 'on-completion-accept (lambda (bid item)
+             (log! 'info (hash-ref item "extra"))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.drain_hooks();
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "hellocdef\n",
+        "sanity: the main edit must apply before the hook fires"
+    );
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "e1",
+        "on-completion-accept must receive the accepted item's raw JSON, including \
+         fields (\"extra\") that StoredCompletionItem doesn't otherwise parse"
+    );
+}
+
+#[test]
+fn accept_with_no_hook_registered_still_applies_the_edit() {
+    // Fail oracle for the hook wiring: if `push` onto `pending_hooks` panicked
+    // or the accept path never returned `Ok`, this would fail even with zero
+    // handlers registered.
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer)
+               (list (hash "label" "foobar" "insertText" "hello")))
+             (completion-update-filter! "fo")
+             (completion-accept! 0)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.drain_hooks();
+    assert_eq!(ed.doc().text().to_string(), "hellocdef\n");
+}
+
+#[test]
+fn refilter_fires_on_completion_refilter_only_when_incomplete() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer)
+               (list (hash "label" "foobar" "insertText" "hello"))
+               #:incomplete #t)))
+           (register-hook! 'on-completion-refilter (lambda (bid text)
+             (log! 'info (string-append "refilter:" text))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.feed_key(key('i'));
+    ed.feed_key(key('f'));
+    ed.drain_hooks();
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "refilter:f",
+        "on-completion-refilter must fire with the new filter text while the session's \
+         isIncomplete flag is set"
+    );
+}
+
+#[test]
+fn refilter_does_not_fire_when_the_session_is_complete() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer)
+               (list (hash "label" "foobar" "insertText" "hello")))))
+           (register-hook! 'on-completion-refilter (lambda (bid text)
+             (log! 'info "should-not-fire")))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.feed_key(key('i'));
+    ed.feed_key(key('f'));
+    ed.drain_hooks();
+    assert_ne!(
+        ed.state.status_msg.clone().unwrap_or_default(),
+        "should-not-fire",
+        "on-completion-refilter must not fire for a complete (non-isIncomplete) session — \
+         it's a bounded window, not an unconditional per-keystroke hook"
+    );
+}
+
 /// Guardrail regression test (P8): a 1k-item scripted session (begin ->
 /// filter -> top -> accept) under a loose release-mode bound. `#[ignore]`
 /// by default — run explicitly with `cargo test --release -- --ignored`.

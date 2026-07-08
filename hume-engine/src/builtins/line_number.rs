@@ -42,6 +42,16 @@ impl FromStr for LineNumberStyle {
     }
 }
 
+impl std::fmt::Display for LineNumberStyle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Absolute => "absolute",
+            Self::Relative => "relative",
+            Self::Hybrid => "hybrid",
+        })
+    }
+}
+
 // ---------------------------------------------------------------------------
 // LineNumberColumn
 // ---------------------------------------------------------------------------
@@ -305,6 +315,14 @@ mod tests {
                 v.parse::<LineNumberStyle>().is_ok(),
                 "'{v}' should parse as LineNumberStyle"
             );
+        }
+    }
+
+    #[test]
+    fn line_number_style_display_round_trips_through_from_str() {
+        for v in LineNumberStyle::VALUES {
+            let parsed: LineNumberStyle = v.parse().unwrap();
+            assert_eq!(&parsed.to_string(), v);
         }
     }
 

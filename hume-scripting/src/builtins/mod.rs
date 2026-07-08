@@ -279,6 +279,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
     // Config / settings
     steel.register_fn_with_ctx(HUME_CTX, "set-option!", settings::set_option);
+    steel.register_fn_with_ctx(HUME_CTX, "get-option", settings::get_option);
     steel.register_fn_with_ctx(
         HUME_CTX,
         "configure-statusline!",
