@@ -50,6 +50,14 @@ impl RecordingLspBackend {
         (backend, log)
     }
 
+    /// Same as `new`, but also returns a shared handle to the request log —
+    /// for tests that need a fully custom `initialize` response (e.g.
+    /// specific capability fields `with_default_handshake`'s canned result
+    /// doesn't set) alongside request inspection.
+    pub fn new_with_requests() -> (Self, NotificationLog, RequestLog) {
+        Self::from_inline(InlineLspBackend::new())
+    }
+
     /// Same as `with_default_handshake`, but also returns a shared handle
     /// to the request log — for invariants that need to inspect what a
     /// command actually sent (e.g. a request's `params`), not just

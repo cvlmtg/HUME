@@ -212,7 +212,7 @@ Response cases (all four methods share them): null → "No definition found"; si
 
 **Done when** — manual: typing a call in rust-analyzer shows the signature and tracks parameters.
 
-**Traps** — register `)` via `register-trigger-chars!` too (it's a dismiss trigger, not just a request trigger) — the handler branches on the char.
+**Traps** — register `)` via `register-trigger-chars!` too (it's a dismiss trigger, not just a request trigger) — the handler branches on the char. **Known gap, live-confirmed:** with auto-pairs on (HUME's default), typing `(` after a call auto-inserts the matching `)`, so typing `)` yourself just skips over the existing one — `on-trigger-char` only fires on a genuine insertion (mappings/insert.rs), so it never fires for that keystroke. The popup still dismisses via the shared `on-mode-change` handler (leaving Insert), just not instantly on `)` in this common case. No Rust change needed to fix; not attempted in v1.
 
 **Size** — ~90 Steel + ~140 test lines.
 
