@@ -18,9 +18,7 @@ use hume_editing::changeset::{Assoc, ChangeSet};
 use hume_engine::pipeline::BufferId;
 
 /// One `(set-inlay-hints! …)` entry: `text` rendered `before` or after the
-/// char at `pos`. `text`/`before` have no reader until Step 3's inlay-hint
-/// render provider (U9) — `pos` alone is exercised by `remap_through`.
-#[allow(dead_code)]
+/// char at `pos`.
 pub(crate) struct InlayHintEntry {
     pub(crate) pos: usize,
     pub(crate) text: String,
@@ -69,7 +67,7 @@ impl DecorationStores {
         self.inlay_hints.insert(bid, hints);
     }
 
-    #[cfg(test)]
+    /// `bid`'s inlay hints, sorted by `pos` (see `set_inlay_hints`).
     pub(crate) fn inlay_hints_for(&self, bid: BufferId) -> &[InlayHintEntry] {
         self.inlay_hints.get(&bid).map(Vec::as_slice).unwrap_or(&[])
     }

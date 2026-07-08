@@ -1,11 +1,13 @@
 pub(crate) mod completion_overlay;
 pub(crate) mod drawer;
 pub(crate) mod highlight_providers;
+pub(crate) mod inlay_hints;
 pub(crate) mod popup;
 pub(crate) mod signs;
 pub mod statusline;
 pub(crate) mod theme;
 
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 use hume_engine::builtins::line_number::LineNumberColumn;
@@ -17,20 +19,22 @@ use hume_engine::theme::ScopeRegistry;
 
 use completion_overlay::CompletionOverlay;
 use highlight_providers::{PaneHighlights, ScopedHighlighter, SharedHighlighter};
+use inlay_hints::{InlayHintMap, InlayHintProvider};
 use popup::PopupOverlay;
 use signs::{PaneSigns, SharedSignSource};
 
 /// Build a new pane viewing `buffer_id`: a sign column, a line-number
 /// gutter, the bracket-match / search-match / diagnostic / extra-highlight
-/// sources, the completion popup overlay, the hover-popup overlay, the
-/// selection-menu overlay, and `wrap_mode` seeded from the caller's current
-/// settings.
+/// sources, the inlay-hint decoration, the completion popup overlay, the
+/// hover-popup overlay, the selection-menu overlay, and `wrap_mode` seeded
+/// from the caller's current settings.
 ///
-/// Returns the pane together with its freshly-allocated [`PaneHighlights`]
-/// and [`PaneSigns`] — every pane gets its own buffers (never shared with any
-/// other pane), so each pane's decorations are computed from that pane's own
-/// buffer and viewport. The caller stores them in `EditorState.panes.highlights`
-/// / `.signs` keyed by the new pane's id.
+/// Returns the pane together with its freshly-allocated [`PaneHighlights`],
+/// [`PaneSigns`], and inlay-hint map — every pane gets its own buffers
+/// (never shared with any other pane), so each pane's decorations are
+/// computed from that pane's own buffer and viewport. The caller stores
+/// them in `EditorState.panes.highlights` / `.signs` / `.inlay_hints` keyed
+/// by the new pane's id.
 ///
 /// The gutter column is added with its default style — `prepare_frame` syncs
 /// the buffer-resolved `line-number-style` into every pane's gutter before
@@ -52,12 +56,13 @@ pub(crate) fn build_pane(
     menu_view: &Arc<RwLock<Option<popup::PopupState>>>,
     wrap_mode: WrapMode,
     buffer_id: BufferId,
-) -> (Pane, PaneHighlights, PaneSigns) {
+) -> (Pane, PaneHighlights, PaneSigns, InlayHintMap) {
     let bracket_scope = registry.intern("ui.cursor.match");
     let search_scope = registry.intern("ui.selection.search");
 
     let highlights = PaneHighlights::default();
     let signs = PaneSigns::default();
+    let inlay_hint_map: InlayHintMap = Arc::new(RwLock::new(HashMap::new()));
 
     let mut providers = ProviderSet::new();
     let mut sign_column = SignColumn::new();
@@ -87,6 +92,9 @@ pub(crate) fn build_pane(
         tier: HighlightTier::Extra,
         data: Arc::clone(&highlights.extra),
     }));
+    providers.add_inline_decoration(Box::new(InlayHintProvider {
+        data: Arc::clone(&inlay_hint_map),
+    }));
     providers.add_overlay(Box::new(CompletionOverlay {
         data: Arc::clone(completion_view),
     }));
@@ -109,5 +117,5 @@ pub(crate) fn build_pane(
         providers,
         ..Pane::new(buffer_id, wrap_mode)
     };
-    (pane, highlights, signs)
+    (pane, highlights, signs, inlay_hint_map)
 }

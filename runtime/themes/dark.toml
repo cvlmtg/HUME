@@ -19,6 +19,7 @@
 
 # ── Virtual text / tilde rows ─────────────────────────────────────────────────
 "ui.virtual" = { fg = "dark_gray" }
+"ui.virtual.inlay-hint" = { fg = "dark_gray" }
 
 # ── Gutter ────────────────────────────────────────────────────────────────────
 "ui.linenr"          = { fg = "dark_gray" }

@@ -418,6 +418,11 @@ define_settings! {
         "lsp.diagnostics-severity-floor" => lsp_diagnostics_severity_floor: crate::editor::lsp::DiagSeverity = crate::editor::lsp::DiagSeverity::Hint,
             scope: ["global"],
             parser: from_str;
+        // Gates the inlay-hint render write side (U9) — off means the
+        // `inlay_hints` store is untouched but nothing renders.
+        "lsp.inlay-hints" => lsp_inlay_hints: bool = true,
+            scope: ["global"],
+            parser: bool;
         // Global-only *storage*: seeds new panes' `Pane::wrap_mode` at creation
         // time (`hume-engine`'s `Pane` is the live SSOT — see
         // `commands::open_pane`). A same-buffer `:split`/`:vsplit` overrides

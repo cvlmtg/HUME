@@ -293,7 +293,7 @@ Generic, Steel-scriptable widgets plus store-fed render wiring. The engine primi
 - [x] **U6** — Class B bottom drawer (minimal) + location list (`show-drawer-list!`)
 - [ ] **U7** — in-buffer completion menu + dispatch (insert-mode flow over B8 + U4)
 - [ ] **U8** — inline diagnostics (`VirtualLineSource`) + the deferred scroll/cursor rewiring
-- [ ] **U9** — inlay-hint rendering (`InlineDecoration` over B5's store)
+- [x] **U9** — inlay-hint rendering (`InlineDecoration` over B5's store)
 
 ## Step 4 — Features (Steel, `core:lsp`)
 

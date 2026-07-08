@@ -146,6 +146,7 @@ pub(crate) struct PaneView {
     pub(crate) jumps: SecondaryMap<PaneId, super::jump_list::JumpList>,
     pub(crate) highlights: SecondaryMap<PaneId, crate::ui::highlight_providers::PaneHighlights>,
     pub(crate) signs: SecondaryMap<PaneId, crate::ui::signs::PaneSigns>,
+    pub(crate) inlay_hints: SecondaryMap<PaneId, crate::ui::inlay_hints::InlayHintMap>,
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

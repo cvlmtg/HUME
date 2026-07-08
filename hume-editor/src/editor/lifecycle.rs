@@ -114,7 +114,7 @@ impl Editor {
 
         // Build the initial pane. Every later split-created pane goes through
         // the same `build_pane` (see `commands::open_pane`).
-        let (pane, highlights, signs) = build_pane(
+        let (pane, highlights, signs, inlay_hints) = build_pane(
             &mut engine_view.registry,
             &completion_view,
             &popup_view,
@@ -180,12 +180,15 @@ impl Editor {
                     pane_highlights.insert(pane_id, highlights);
                     let mut pane_signs = SecondaryMap::new();
                     pane_signs.insert(pane_id, signs);
+                    let mut pane_inlay_hints = SecondaryMap::new();
+                    pane_inlay_hints.insert(pane_id, inlay_hints);
                     PaneView {
                         state: pane_buf_state,
                         transient,
                         jumps,
                         highlights: pane_highlights,
                         signs: pane_signs,
+                        inlay_hints: pane_inlay_hints,
                     }
                 },
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
@@ -209,6 +212,7 @@ impl Editor {
                 lsp_completion: None,
                 completion_view,
                 diagnostic_scopes: None,
+                inlay_hint_scope: None,
                 runtime_scope_cache: std::collections::HashMap::new(),
                 popup: None,
                 popup_view,
@@ -628,6 +632,9 @@ impl Editor {
 
         // 6b. Sync gutter sign data (diagnostics + plugin signs) the same way.
         self.update_sign_providers();
+
+        // 6c. Sync inlay-hint data (B5 store → per-pane InlineDecoration).
+        self.update_inlay_hint_providers();
 
         // 7. Sync completion-popup view to the shared Arc for `CompletionOverlay`.
         self.sync_completion_view();
@@ -1148,6 +1155,79 @@ impl Editor {
             self.view.panes[pid]
                 .providers
                 .sync_sign_column_width(if has_signs { 2 } else { 0 });
+        }
+    }
+
+    /// Interned `ScopeId` for `ui.virtual.inlay-hint`, cached across frames —
+    /// every inlay hint shares this one scope (locked decision: no per-hint
+    /// styling in v1), unlike `runtime_scope`'s plugin-name-keyed cache.
+    fn inlay_hint_scope(&mut self) -> hume_engine::types::ScopeId {
+        if let Some(id) = self.state.inlay_hint_scope {
+            return id;
+        }
+        let id = self.view.registry.intern("ui.virtual.inlay-hint");
+        self.state.inlay_hint_scope = Some(id);
+        id
+    }
+
+    /// Sync per-pane inlay-hint decorations (U9) from the B5
+    /// `decorations.inlay_hints` store to each pane's `InlayHintProvider`
+    /// Arc. Gated on `lsp.inlay-hints`: when off, every pane's map is
+    /// cleared so a mid-session toggle takes effect immediately rather than
+    /// waiting for the store to next change.
+    pub(super) fn update_inlay_hint_providers(&mut self) {
+        use hume_engine::providers::InlineInsert;
+
+        let panes: Vec<(PaneId, BufferId)> = self
+            .view
+            .panes
+            .iter()
+            .map(|(pid, pane)| (pid, pane.buffer_id))
+            .collect();
+
+        if !self.state.settings.lsp_inlay_hints {
+            for &(pid, _) in &panes {
+                if let Some(map) = self.state.panes.inlay_hints.get(pid) {
+                    map.write().expect("RwLock not poisoned").clear();
+                }
+            }
+            return;
+        }
+
+        let scope = self.inlay_hint_scope();
+        for &(pid, bid) in &panes {
+            let Some(map) = self.state.panes.inlay_hints.get(pid).map(Arc::clone) else {
+                continue;
+            };
+            let visible = self.visible_char_range(pid, bid);
+            let text = self.state.buffers.get(bid).text();
+
+            let mut by_line: std::collections::HashMap<usize, Vec<InlineInsert>> =
+                std::collections::HashMap::new();
+            for entry in self.state.decorations.inlay_hints_for(bid) {
+                if !visible.contains(&entry.pos) {
+                    continue;
+                }
+                // `before`: byte offset of the char at `pos` itself, so the
+                // hint text is spliced in immediately before it. `after`:
+                // the next char boundary, so it's spliced in immediately
+                // after — `char_to_line_byte` resolves a trailing `\n`'s
+                // own position to the *same* line (ropey's line boundaries
+                // include their `\n`), so a hint at end-of-line-content
+                // never bleeds onto the following line.
+                let (line, byte_offset) = if entry.before {
+                    char_to_line_byte(text, entry.pos)
+                } else {
+                    char_to_line_byte(text, entry.pos + 1)
+                };
+                by_line.entry(line).or_default().push(InlineInsert {
+                    byte_offset,
+                    text: entry.text.clone(),
+                    scope,
+                });
+            }
+
+            *map.write().expect("RwLock not poisoned") = by_line;
         }
     }
 

@@ -385,6 +385,9 @@ pub(crate) struct EditorState {
     /// etc.), resolved lazily on first use — scope interning needs `&mut
     /// ScopeRegistry`, which lives on `Editor::view`, not `EditorState`.
     pub(super) diagnostic_scopes: Option<[hume_engine::types::ScopeId; 4]>,
+    /// Interned scope id for `ui.virtual.inlay-hint` (U9), resolved lazily
+    /// on first use for the same reason as `diagnostic_scopes`.
+    pub(super) inlay_hint_scope: Option<hume_engine::types::ScopeId>,
     /// Cache of interned `ScopeId`s for plugin-supplied scope name strings
     /// (extra highlights, signs, virtual lines) — avoids re-interning the
     /// same runtime name every frame.
@@ -1181,6 +1184,7 @@ impl Editor {
                         jumps,
                         highlights: SecondaryMap::new(),
                         signs: SecondaryMap::new(),
+                        inlay_hints: SecondaryMap::new(),
                     }
                 },
                 history: self::minibuf::history::HistoryStore::new(history_capacity),
@@ -1203,6 +1207,7 @@ impl Editor {
                 lsp_completion: None,
                 completion_view: Arc::new(RwLock::new(None)),
                 diagnostic_scopes: None,
+                inlay_hint_scope: None,
                 runtime_scope_cache: std::collections::HashMap::new(),
                 popup: None,
                 popup_view: Arc::new(RwLock::new(None)),

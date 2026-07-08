@@ -495,12 +495,12 @@ pub(super) fn open_pane(
     buffer_id: BufferId,
 ) -> PaneId {
     // Every pane gets the same providers (sign column + gutter + bracket/
-    // search/diagnostic/extra highlight + completion overlay + popup overlay
-    // + menu overlay) as the initial pane — see `build_pane`. Each pane's
-    // Arcs are freshly allocated here, never shared with any other pane (see
-    // `PaneHighlights`/`PaneSigns`), so per-pane decoration data can never
-    // bleed across panes.
-    let (pane, highlights, signs) = crate::ui::build_pane(
+    // search/diagnostic/extra highlight + inlay hints + completion overlay
+    // + popup overlay + menu overlay) as the initial pane — see
+    // `build_pane`. Each pane's Arcs are freshly allocated here, never
+    // shared with any other pane (see `PaneHighlights`/`PaneSigns`), so
+    // per-pane decoration data can never bleed across panes.
+    let (pane, highlights, signs, inlay_hints) = crate::ui::build_pane(
         &mut view.registry,
         &state.completion_view,
         &state.popup_view,
@@ -518,6 +518,7 @@ pub(super) fn open_pane(
     );
     state.panes.highlights.insert(pid, highlights);
     state.panes.signs.insert(pid, signs);
+    state.panes.inlay_hints.insert(pid, inlay_hints);
     pid
 }
 
@@ -532,6 +533,7 @@ fn drop_pane_state(state: &mut EditorState, view: &mut EngineView, pid: PaneId) 
     state.panes.jumps.remove(pid);
     state.panes.highlights.remove(pid);
     state.panes.signs.remove(pid);
+    state.panes.inlay_hints.remove(pid);
 }
 
 /// Close the focused pane: prune it from the layout tree, move focus to the

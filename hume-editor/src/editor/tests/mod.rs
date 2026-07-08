@@ -463,6 +463,7 @@ mod lsp_diagnostics;
 mod lsp_drawer;
 mod lsp_edits;
 mod lsp_hooks;
+mod lsp_inlay_hints;
 mod lsp_introspect;
 mod lsp_menu;
 mod lsp_popup;
