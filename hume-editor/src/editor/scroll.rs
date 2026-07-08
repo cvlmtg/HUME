@@ -3,8 +3,9 @@
 //! Operates on `hume_engine::pane::ViewportState` and `ropey::Rope`.
 //! Called from `Editor::run()` via `scroll::ensure_cursor_visible(...)`.
 
-use hume_engine::format::{FormatScratch, count_visual_rows};
+use hume_engine::format::{FormatScratch, display_rows_for_line};
 use hume_engine::pane::{ViewportState, WhitespaceConfig, WrapMode};
+use hume_engine::providers::ProviderSet;
 
 use super::cursor;
 
@@ -15,6 +16,11 @@ use super::cursor;
 #[allow(clippy::too_many_arguments)]
 /// Adjust `viewport.top_line` (and `top_row_offset` when wrapping) so the
 /// cursor's display row is visible with `v_margin` rows of look-ahead.
+///
+/// `providers`/`content_width` feed the wrapped path's virtual-row-aware row
+/// counting (`display_rows_for_line`) — the unwrapped path stays plain
+/// line-count arithmetic; a virtual line's effect on no-wrap vertical
+/// scrolling is out of scope here (see the U8 card).
 pub(super) fn ensure_cursor_visible(
     viewport: &mut ViewportState,
     rope: &ropey::Rope,
@@ -24,6 +30,8 @@ pub(super) fn ensure_cursor_visible(
     whitespace: &WhitespaceConfig,
     scratch: &mut FormatScratch,
     v_margin: usize,
+    providers: &ProviderSet,
+    content_width: u16,
 ) {
     if wrap_mode.is_wrapping() {
         ensure_cursor_visible_wrapped(
@@ -35,6 +43,8 @@ pub(super) fn ensure_cursor_visible(
             whitespace,
             scratch,
             v_margin,
+            providers,
+            content_width,
         );
     } else {
         let cursor_line = rope.char_to_line(cursor_char);
@@ -102,6 +112,8 @@ pub(super) fn scroll_cursor_to_row(
     whitespace: &WhitespaceConfig,
     scratch: &mut FormatScratch,
     target_row: usize,
+    providers: &ProviderSet,
+    content_width: u16,
 ) {
     let cursor_line = rope.char_to_line(cursor_char);
 
@@ -130,6 +142,8 @@ pub(super) fn scroll_cursor_to_row(
         tab_width,
         whitespace,
         scratch,
+        providers,
+        content_width,
     );
 }
 
@@ -163,6 +177,8 @@ fn ensure_cursor_visible_wrapped(
     whitespace: &WhitespaceConfig,
     scratch: &mut FormatScratch,
     v_margin: usize,
+    providers: &ProviderSet,
+    content_width: u16,
 ) {
     let cursor_line = rope.char_to_line(cursor_char);
     let height = viewport.height as usize;
@@ -196,24 +212,39 @@ fn ensure_cursor_visible_wrapped(
             tab_width,
             whitespace,
             scratch,
+            providers,
+            content_width,
         );
         return; // cursor above viewport — done
     }
 
     // ── Count display rows from scroll position to cursor ────────────────────
+    // Same before/content/after accumulation as `cursor::screen_pos` — see
+    // its doc comment for why a nonzero `skip` on the viewport's own top
+    // line means that line's `before` block (if any) has already scrolled
+    // off entirely.
     let mut display_row: usize = 0;
     for line_idx in viewport.top_line..=cursor_line {
-        let rows = count_visual_rows(rope, line_idx, tab_width, whitespace, wrap_mode, scratch);
-        let skip = if line_idx == viewport.top_line {
-            top_row
-        } else {
-            0
-        };
+        let is_top = line_idx == viewport.top_line;
+        let skip = if is_top { top_row } else { 0 };
+        let breakdown = display_rows_for_line(
+            rope,
+            line_idx,
+            tab_width,
+            whitespace,
+            wrap_mode,
+            providers,
+            content_width,
+            scratch,
+        );
+        // The viewport's own top line never shows its `before` block — see
+        // `cursor::screen_pos`'s doc comment for why.
+        let visible_before = if is_top { 0 } else { breakdown.before };
         if line_idx == cursor_line {
-            display_row += cursor_sub.saturating_sub(skip);
+            display_row += visible_before + cursor_sub.saturating_sub(skip);
             break;
         }
-        display_row += rows.saturating_sub(skip);
+        display_row += visible_before + (breakdown.content + breakdown.after).saturating_sub(skip);
         if display_row >= height {
             break;
         }
@@ -231,6 +262,8 @@ fn ensure_cursor_visible_wrapped(
             tab_width,
             whitespace,
             scratch,
+            providers,
+            content_width,
         );
         return;
     }
@@ -248,6 +281,8 @@ fn ensure_cursor_visible_wrapped(
             tab_width,
             whitespace,
             scratch,
+            providers,
+            content_width,
         );
     }
 }
@@ -263,6 +298,8 @@ fn scroll_backward_from_cursor(
     tab_width: u8,
     whitespace: &WhitespaceConfig,
     scratch: &mut FormatScratch,
+    providers: &ProviderSet,
+    content_width: u16,
 ) {
     viewport.top_line = cursor_line;
     viewport.top_row_offset = cursor_sub as u16;
@@ -273,19 +310,39 @@ fn scroll_backward_from_cursor(
             rows_above += 1;
         } else if viewport.top_line > 0 {
             viewport.top_line -= 1;
-            let rows = count_visual_rows(
+            let breakdown = display_rows_for_line(
                 rope,
                 viewport.top_line,
                 tab_width,
                 whitespace,
                 wrap_mode,
+                providers,
+                content_width,
                 scratch,
             );
-            if rows_above + rows > target_rows {
-                viewport.top_row_offset = (rows - (target_rows - rows_above)) as u16;
+            let total = breakdown.total();
+            if rows_above + total > target_rows {
+                let remaining = target_rows - rows_above;
+                // `top_row_offset` only ever indexes into this line's
+                // content (virtual rows never partially scroll). A cut
+                // point inside `after` clamps to `top_row_offset = 0`
+                // (content row 0) — showing `content + after` in full, but
+                // never a fractional `after` row. A cut point inside
+                // `before` also clamps to 0 — this line becomes the
+                // viewport's new top, and a top line never shows its own
+                // `before` block (see `cursor::screen_pos`'s doc comment),
+                // so this rounds *down* rather than overshooting into the
+                // virtual block.
+                viewport.top_row_offset = if remaining > breakdown.after
+                    && remaining <= breakdown.after + breakdown.content
+                {
+                    (breakdown.content - (remaining - breakdown.after)) as u16
+                } else {
+                    0
+                };
                 break;
             }
-            rows_above += rows;
+            rows_above += total;
         } else {
             break;
         }
@@ -312,6 +369,13 @@ mod tests {
         Rope::from_str(text)
     }
 
+    /// No `VirtualLineSource` registered — `display_rows_for_line` reduces
+    /// to `RowsBreakdown { before: 0, content, after: 0 }` for every line,
+    /// matching every test's pre-U8a expectations exactly.
+    fn no_providers() -> ProviderSet {
+        ProviderSet::new()
+    }
+
     // ── ensure_cursor_visible (no-wrap) ──────────────────────────────────────
 
     #[test]
@@ -327,6 +391,8 @@ mod tests {
             &WhitespaceConfig::default(),
             &mut FormatScratch::new(),
             3,
+            &no_providers(),
+            80,
         );
         assert_eq!(v.top_line, 0);
     }
@@ -344,6 +410,8 @@ mod tests {
             &WhitespaceConfig::default(),
             &mut FormatScratch::new(),
             3,
+            &no_providers(),
+            80,
         );
         let cursor_line = 7usize;
         assert!(cursor_line >= v.top_line);
@@ -363,6 +431,8 @@ mod tests {
             &WhitespaceConfig::default(),
             &mut FormatScratch::new(),
             3,
+            &no_providers(),
+            80,
         );
         let cursor_line = 1usize;
         assert!(cursor_line >= v.top_line);
@@ -448,6 +518,8 @@ mod tests {
             &WhitespaceConfig::default(),
             &mut FormatScratch::new(),
             2,
+            &no_providers(),
+            2,
         );
         assert_eq!(v.top_line, 1);
         assert_eq!(v.top_row_offset, 0);
@@ -468,6 +540,8 @@ mod tests {
             4,
             &WhitespaceConfig::default(),
             &mut FormatScratch::new(),
+            2,
+            &no_providers(),
             2,
         );
         assert_eq!(v.top_line, 2);
@@ -499,6 +573,8 @@ mod tests {
             &WhitespaceConfig::default(),
             &mut FormatScratch::new(),
             0,
+            &no_providers(),
+            80,
         );
         assert_eq!(v.top_line, 25, "zt places top at cursor line");
 
@@ -512,6 +588,8 @@ mod tests {
             &WhitespaceConfig::default(),
             &mut FormatScratch::new(),
             3,
+            &no_providers(),
+            80,
         );
         assert_eq!(v.top_line, 22, "scrolloff trims top inward by margin (3)");
     }
@@ -532,6 +610,8 @@ mod tests {
             &WhitespaceConfig::default(),
             &mut FormatScratch::new(),
             23,
+            &no_providers(),
+            80,
         );
         assert_eq!(v.top_line, 2, "zb places cursor on display row 23");
 
@@ -544,9 +624,92 @@ mod tests {
             &WhitespaceConfig::default(),
             &mut FormatScratch::new(),
             3,
+            &no_providers(),
+            80,
         );
         // cursor_line=25, top=2, height=24, margin=3 → cursor at row 23 = height-margin-1.
         // bottom branch fires: top_line = 25 - (24-3-1) = 25 - 20 = 5.
         assert_eq!(v.top_line, 5, "scrolloff trims top up by margin (3)");
+    }
+
+    // ── U8a: virtual-line-aware scrolling (synthetic provider) ───────────────
+
+    /// A `VirtualLineSource` double that emits exactly one `Before(line)`
+    /// virtual row when queried for `line`, and nothing for any other line.
+    struct OneBeforeLine(usize);
+
+    impl hume_engine::providers::VirtualLineSource for OneBeforeLine {
+        fn virtual_lines(
+            &self,
+            visible_lines: std::ops::Range<usize>,
+            _content_width: u16,
+            out: &mut Vec<hume_engine::providers::VirtualLine>,
+        ) {
+            if visible_lines.contains(&self.0) {
+                out.push(hume_engine::providers::VirtualLine {
+                    anchor: hume_engine::providers::VirtualLineAnchor::Before(self.0),
+                    provider_id: 0,
+                    text: "V".to_string(),
+                    segments: Vec::new(),
+                });
+            }
+        }
+    }
+
+    fn providers_with_before_line(line: usize) -> ProviderSet {
+        let mut p = ProviderSet::new();
+        p.add_virtual_line_source(Box::new(OneBeforeLine(line)));
+        p
+    }
+
+    /// A virtual row anchored between the viewport's top and the cursor
+    /// "steals" a row from the lines below it — `ensure_cursor_visible` must
+    /// still scroll far enough to bring the cursor fully into view, not just
+    /// far enough for the pre-U8a content-only row count.
+    ///
+    /// Checks the *robust* invariant (cursor lands inside the viewport,
+    /// verified through `screen_pos` the same way the render pipeline would
+    /// place the terminal cursor), not exact `top_line`/`top_row_offset`
+    /// values — landing precision exactly at a virtual block's boundary is
+    /// U8b's job once a real `VirtualLineSource` exists to test against.
+    #[test]
+    fn ensure_cursor_visible_accounts_for_a_stolen_virtual_row() {
+        let r = rope("a\nb\nc\nd\n");
+        let mut v = viewport(0, 2, 80);
+        let wrap = WrapMode::Soft { width: 80 };
+        let providers = providers_with_before_line(2);
+        let cursor_char = r.line_to_char(3);
+
+        ensure_cursor_visible(
+            &mut v,
+            &r,
+            cursor_char,
+            &wrap,
+            4,
+            &WhitespaceConfig::default(),
+            &mut FormatScratch::new(),
+            0,
+            &providers,
+            80,
+        );
+
+        let mut ctx = hume_engine::pipeline::RenderContext::new();
+        let pos = cursor::screen_pos(
+            &v,
+            &r,
+            cursor_char,
+            &wrap,
+            4,
+            &WhitespaceConfig::default(),
+            &mut ctx,
+            &providers,
+            80,
+        );
+        let (_, row) = pos.expect("cursor must be visible after ensure_cursor_visible");
+        assert!(
+            (row as usize) < v.height as usize,
+            "cursor row {row} must be inside the {}-row viewport",
+            v.height
+        );
     }
 }

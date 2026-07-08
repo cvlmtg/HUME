@@ -12,11 +12,11 @@
 //! - [`sub_row`] — which wrapped display row the primary selection head is on
 //!   (used by scroll to keep the head visible).
 
-use hume_engine::format::{FormatScratch, count_visual_rows};
+use hume_engine::format::{FormatScratch, display_rows_for_line};
 use hume_engine::layout::gutter_width_for_line;
 use hume_engine::pane::{ViewportState, WhitespaceConfig, WrapMode};
 use hume_engine::pipeline::RenderContext;
-use hume_engine::providers::GutterColumn;
+use hume_engine::providers::{GutterColumn, ProviderSet};
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -30,6 +30,7 @@ use hume_engine::providers::GutterColumn;
 ///
 /// In no-wrap mode, `col` accounts for `viewport.horizontal_offset`.
 /// In wrap mode, `col` is the column within the display row (offset 0 = left edge).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn screen_pos(
     viewport: &ViewportState,
     rope: &ropey::Rope,
@@ -38,6 +39,8 @@ pub(crate) fn screen_pos(
     tab_width: u8,
     whitespace: &WhitespaceConfig,
     ctx: &mut RenderContext,
+    providers: &ProviderSet,
+    content_width: u16,
 ) -> Option<(u16, u16)> {
     let scratch = &mut ctx.cursor_format;
     let cursor_line = rope.char_to_line(cursor_char);
@@ -61,17 +64,30 @@ pub(crate) fn screen_pos(
         let mut screen_row = 0usize;
 
         for line_idx in viewport.top_line..=cursor_line {
-            let skip = if line_idx == viewport.top_line {
-                top_row
-            } else {
-                0
-            };
+            let is_top = line_idx == viewport.top_line;
+            let skip = if is_top { top_row } else { 0 };
+            let breakdown = display_rows_for_line(
+                rope,
+                line_idx,
+                tab_width,
+                whitespace,
+                wrap_mode,
+                providers,
+                content_width,
+                scratch,
+            );
+            // `top_row_offset` only ever indexes into a line's *content* rows
+            // (virtual rows never partially scroll — see `ViewportState`'s
+            // own doc) — so the viewport's own top line never shows its
+            // `before` block: it's either fully above the viewport already
+            // (scrolled past) or the natural at-rest state simply starts
+            // this line at its content, not its virtual annotation.
+            let visible_before = if is_top { 0 } else { breakdown.before };
             if line_idx == cursor_line {
-                screen_row += cursor_sub.saturating_sub(skip);
+                screen_row += visible_before + cursor_sub.saturating_sub(skip);
                 break;
             }
-            let rows = count_visual_rows(rope, line_idx, tab_width, whitespace, wrap_mode, scratch);
-            screen_row += rows.saturating_sub(skip);
+            screen_row += visible_before + (breakdown.content + breakdown.after).saturating_sub(skip);
             if screen_row >= height {
                 return None;
             }
@@ -237,6 +253,8 @@ pub(crate) fn screen_to_char_offset(
     tab_width: u8,
     whitespace: &WhitespaceConfig,
     scratch: &mut FormatScratch,
+    providers: &ProviderSet,
+    content_width: u16,
 ) -> Option<usize> {
     // Clicks inside the gutter (line numbers etc.) do not map to text.
     if screen_x < gutter_w {
@@ -258,17 +276,39 @@ pub(crate) fn screen_to_char_offset(
         let top_row = viewport.top_row_offset as usize;
 
         for line_idx in viewport.top_line..total_lines {
-            let rows = count_visual_rows(rope, line_idx, tab_width, whitespace, wrap_mode, scratch);
-            let skip = if line_idx == viewport.top_line {
-                top_row
-            } else {
-                0
-            };
-            let visible_rows = rows.saturating_sub(skip);
+            let is_top = line_idx == viewport.top_line;
+            let skip = if is_top { top_row } else { 0 };
+            let breakdown = display_rows_for_line(
+                rope,
+                line_idx,
+                tab_width,
+                whitespace,
+                wrap_mode,
+                providers,
+                content_width,
+                scratch,
+            );
+            // Same "the viewport's own top line never shows its `before`
+            // block" reasoning as `screen_pos`.
+            let visible_before = if is_top { 0 } else { breakdown.before };
+            let content_visible = breakdown.content.saturating_sub(skip);
+            let visible_rows = visible_before + content_visible + breakdown.after;
 
             if remaining < visible_rows {
-                // This buffer line contains our target display row.
-                let target_sub = skip + remaining;
+                // A click landing in the `before`/`after` portion is on a
+                // virtual row, not buffer content — clamp to this line's
+                // first/last content sub-row. Precisely mapping such a click
+                // to its anchor line's exact position is U8b's job (needs a
+                // real `VirtualLineSource` to have anything to map from);
+                // this only needs to degrade sensibly with zero providers
+                // registered, which is always true here.
+                let target_sub = if remaining < visible_before {
+                    0
+                } else if remaining < visible_before + content_visible {
+                    skip + (remaining - visible_before)
+                } else {
+                    breakdown.content.saturating_sub(1)
+                };
                 return char_at_display_col(
                     screen_x - gutter_w,
                     target_sub,
@@ -426,6 +466,13 @@ mod tests {
         WhitespaceConfig::default()
     }
 
+    /// No `VirtualLineSource` registered — `display_rows_for_line` reduces
+    /// to content-only `RowsBreakdown`s, matching every test below's
+    /// pre-U8a expectations exactly.
+    fn no_providers() -> ProviderSet {
+        ProviderSet::new()
+    }
+
     // ── screen_to_char_offset (no-wrap) ──────────────────────────────────────
 
     /// Click on column 0 of line 0, no gutter → char 0.
@@ -435,7 +482,19 @@ mod tests {
         let rope = Rope::from_str("abc\ndef\n");
         let v = vp(0, 80, 10);
         let mut s = FormatScratch::new();
-        let got = screen_to_char_offset(0, 0, 0, &v, &rope, &WrapMode::None, 4, &ws(), &mut s);
+        let got = screen_to_char_offset(
+            0,
+            0,
+            0,
+            &v,
+            &rope,
+            &WrapMode::None,
+            4,
+            &ws(),
+            &mut s,
+            &no_providers(),
+            80,
+        );
         assert_eq!(got, Some(0));
     }
 
@@ -445,7 +504,19 @@ mod tests {
         let rope = Rope::from_str("abc\ndef\n");
         let v = vp(0, 80, 10);
         let mut s = FormatScratch::new();
-        let got = screen_to_char_offset(2, 0, 0, &v, &rope, &WrapMode::None, 4, &ws(), &mut s);
+        let got = screen_to_char_offset(
+            2,
+            0,
+            0,
+            &v,
+            &rope,
+            &WrapMode::None,
+            4,
+            &ws(),
+            &mut s,
+            &no_providers(),
+            80,
+        );
         assert_eq!(got, Some(2));
     }
 
@@ -455,7 +526,19 @@ mod tests {
         let rope = Rope::from_str("abc\ndef\n");
         let v = vp(0, 80, 10);
         let mut s = FormatScratch::new();
-        let got = screen_to_char_offset(0, 1, 0, &v, &rope, &WrapMode::None, 4, &ws(), &mut s);
+        let got = screen_to_char_offset(
+            0,
+            1,
+            0,
+            &v,
+            &rope,
+            &WrapMode::None,
+            4,
+            &ws(),
+            &mut s,
+            &no_providers(),
+            80,
+        );
         assert_eq!(got, Some(4)); // 'd' is char 4
     }
 
@@ -466,7 +549,19 @@ mod tests {
         let v = vp(0, 80, 10);
         let mut s = FormatScratch::new();
         // gutter_w = 4; click at column 2 is inside the gutter.
-        let got = screen_to_char_offset(2, 0, 4, &v, &rope, &WrapMode::None, 4, &ws(), &mut s);
+        let got = screen_to_char_offset(
+            2,
+            0,
+            4,
+            &v,
+            &rope,
+            &WrapMode::None,
+            4,
+            &ws(),
+            &mut s,
+            &no_providers(),
+            80,
+        );
         assert_eq!(got, None);
     }
 
@@ -480,7 +575,19 @@ mod tests {
         let v = vp(0, 80, 10);
         let mut s = FormatScratch::new();
         // Click at column 99, way past "hi" — lands at '\n' (char 2), the eol marker.
-        let got = screen_to_char_offset(99, 0, 0, &v, &rope, &WrapMode::None, 4, &ws(), &mut s);
+        let got = screen_to_char_offset(
+            99,
+            0,
+            0,
+            &v,
+            &rope,
+            &WrapMode::None,
+            4,
+            &ws(),
+            &mut s,
+            &no_providers(),
+            80,
+        );
         assert_eq!(got, Some(2));
     }
 
@@ -492,7 +599,19 @@ mod tests {
         let v = vp(2, 80, 10); // top_line = 2
         let mut s = FormatScratch::new();
         // Line 2 starts at char 4 ('c'). Screen row 0, col 0 → char 4.
-        let got = screen_to_char_offset(0, 0, 0, &v, &rope, &WrapMode::None, 4, &ws(), &mut s);
+        let got = screen_to_char_offset(
+            0,
+            0,
+            0,
+            &v,
+            &rope,
+            &WrapMode::None,
+            4,
+            &ws(),
+            &mut s,
+            &no_providers(),
+            80,
+        );
         assert_eq!(got, Some(4));
     }
 
@@ -504,7 +623,19 @@ mod tests {
         let mut v = vp(0, 80, 10);
         v.horizontal_offset = 2;
         let mut s = FormatScratch::new();
-        let got = screen_to_char_offset(0, 0, 0, &v, &rope, &WrapMode::None, 4, &ws(), &mut s);
+        let got = screen_to_char_offset(
+            0,
+            0,
+            0,
+            &v,
+            &rope,
+            &WrapMode::None,
+            4,
+            &ws(),
+            &mut s,
+            &no_providers(),
+            80,
+        );
         assert_eq!(got, Some(2));
     }
 
@@ -520,10 +651,34 @@ mod tests {
         let wrap = WrapMode::Soft { width: 4 };
         let mut s = FormatScratch::new();
 
-        let row0 = screen_to_char_offset(0, 0, 0, &v, &rope, &wrap, 4, &ws(), &mut s);
+        let row0 = screen_to_char_offset(
+            0,
+            0,
+            0,
+            &v,
+            &rope,
+            &wrap,
+            4,
+            &ws(),
+            &mut s,
+            &no_providers(),
+            10,
+        );
         assert_eq!(row0, Some(0));
 
-        let row1 = screen_to_char_offset(0, 1, 0, &v, &rope, &wrap, 4, &ws(), &mut s);
+        let row1 = screen_to_char_offset(
+            0,
+            1,
+            0,
+            &v,
+            &rope,
+            &wrap,
+            4,
+            &ws(),
+            &mut s,
+            &no_providers(),
+            10,
+        );
         assert_eq!(row1, Some(4));
     }
 
@@ -535,7 +690,19 @@ mod tests {
         let wrap = WrapMode::Soft { width: 4 };
         let mut s = FormatScratch::new();
 
-        let got = screen_to_char_offset(2, 1, 0, &v, &rope, &wrap, 4, &ws(), &mut s);
+        let got = screen_to_char_offset(
+            2,
+            1,
+            0,
+            &v,
+            &rope,
+            &wrap,
+            4,
+            &ws(),
+            &mut s,
+            &no_providers(),
+            10,
+        );
         assert_eq!(got, Some(6)); // 'g' is char 6
     }
 
@@ -547,7 +714,145 @@ mod tests {
         let wrap = WrapMode::Soft { width: 40 };
         let mut s = FormatScratch::new();
         // Screen row 99 is past the end — should return something in line 0.
-        let got = screen_to_char_offset(0, 99, 0, &v, &rope, &wrap, 4, &ws(), &mut s);
+        let got = screen_to_char_offset(
+            0,
+            99,
+            0,
+            &v,
+            &rope,
+            &wrap,
+            4,
+            &ws(),
+            &mut s,
+            &no_providers(),
+            80,
+        );
         assert!(got.is_some());
+    }
+
+    // ── U8a: virtual-line-aware row counting (synthetic provider) ────────────
+
+    /// A `VirtualLineSource` double that emits exactly one `Before(line)`
+    /// virtual row when queried for `line`, and nothing for any other line.
+    struct OneBeforeLine(usize);
+
+    impl hume_engine::providers::VirtualLineSource for OneBeforeLine {
+        fn virtual_lines(
+            &self,
+            visible_lines: std::ops::Range<usize>,
+            _content_width: u16,
+            out: &mut Vec<hume_engine::providers::VirtualLine>,
+        ) {
+            if visible_lines.contains(&self.0) {
+                out.push(hume_engine::providers::VirtualLine {
+                    anchor: hume_engine::providers::VirtualLineAnchor::Before(self.0),
+                    provider_id: 0,
+                    text: "V".to_string(),
+                    segments: Vec::new(),
+                });
+            }
+        }
+    }
+
+    fn providers_with_before_line(line: usize) -> ProviderSet {
+        let mut p = ProviderSet::new();
+        p.add_virtual_line_source(Box::new(OneBeforeLine(line)));
+        p
+    }
+
+    /// `screen_pos` must count a virtual-`Before` row anchored to the
+    /// cursor's own line as occupying a screen row above it — the cursor
+    /// must land one row lower than it would with zero providers.
+    ///
+    /// Uses a *wrapping* mode deliberately: virtual-row awareness is scoped
+    /// to the wrapping code path only (`WrapMode::None` stays plain
+    /// line-count arithmetic, unaware of virtual lines — see the U8 card's
+    /// scope split between the wrapping and non-wrapping paths).
+    #[test]
+    fn screen_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
+        let rope = Rope::from_str("a\nb\nc\n");
+        let v = vp(0, 80, 10);
+        let wrap = WrapMode::Soft { width: 80 };
+        let mut ctx = RenderContext::new();
+        // Cursor at char 2 = start of line 1 ('b').
+        let cursor_char = rope.line_to_char(1);
+
+        let with_none = screen_pos(
+            &v,
+            &rope,
+            cursor_char,
+            &wrap,
+            4,
+            &ws(),
+            &mut ctx,
+            &no_providers(),
+            80,
+        );
+        assert_eq!(with_none, Some((0, 1)), "sanity: no provider — cursor at row 1");
+
+        let with_virtual = screen_pos(
+            &v,
+            &rope,
+            cursor_char,
+            &wrap,
+            4,
+            &ws(),
+            &mut ctx,
+            &providers_with_before_line(1),
+            80,
+        );
+        assert_eq!(
+            with_virtual,
+            Some((0, 2)),
+            "a virtual row before line 1 must push the cursor down one more row"
+        );
+    }
+
+    /// `screen_to_char_offset` must account for a virtual row stealing a
+    /// screen row from the lines below it: with a virtual-before row
+    /// inserted above line 1, screen row 2 is line 1's own content (pushed
+    /// down by the virtual row), not line 2's — a virtual-row-unaware
+    /// implementation would misidentify this row as line 2's.
+    ///
+    /// Also covers a click that lands *on* the virtual row itself (screen
+    /// row 1): clamped to line 1's own first content sub-row (precise
+    /// anchor-line mapping is U8b's job). Uses a wrapping mode deliberately
+    /// — see `screen_pos_accounts_for_a_virtual_before_line_on_the_cursors_line`.
+    #[test]
+    fn screen_to_char_offset_accounts_for_a_stolen_virtual_row() {
+        let rope = Rope::from_str("a\nb\nc\n");
+        let v = vp(0, 80, 10);
+        let wrap = WrapMode::Soft { width: 80 };
+        let mut s = FormatScratch::new();
+        let providers = providers_with_before_line(1);
+
+        // Row layout: 0 = line 0 ('a'), 1 = virtual-before(line 1),
+        // 2 = line 1's own content ('b'), 3 = line 2 ('c').
+        let on_virtual_row = screen_to_char_offset(
+            0, 1, 0, &v, &rope, &wrap, 4, &ws(), &mut s, &providers, 80,
+        );
+        assert_eq!(
+            on_virtual_row,
+            Some(rope.line_to_char(1)),
+            "a click on the virtual row clamps to line 1's own first char"
+        );
+
+        let on_pushed_down_content = screen_to_char_offset(
+            0, 2, 0, &v, &rope, &wrap, 4, &ws(), &mut s, &providers, 80,
+        );
+        assert_eq!(
+            on_pushed_down_content,
+            Some(rope.line_to_char(1)),
+            "row 2 must resolve to line 1 (pushed down by the virtual row), not line 2"
+        );
+
+        let on_next_line = screen_to_char_offset(
+            0, 3, 0, &v, &rope, &wrap, 4, &ws(), &mut s, &providers, 80,
+        );
+        assert_eq!(
+            on_next_line,
+            Some(rope.line_to_char(2)),
+            "row 3 must resolve to line 2, correctly accounting for the stolen row"
+        );
     }
 }

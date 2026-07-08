@@ -216,6 +216,8 @@ impl Editor {
             tab_width,
             &whitespace,
             &mut self.state.motion_format_scratch,
+            &self.view.panes[self.state.focused_pane_id].providers,
+            content_width,
         )
     }
 }

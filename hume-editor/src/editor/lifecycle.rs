@@ -329,6 +329,8 @@ impl Editor {
                     .pane_rect(self.state.focused_pane_id)
                     .map(|r| (r.x, r.y))
                     .expect("focused pane must have a rect after prepare_frame");
+                let focused_pane = &self.view.panes[self.state.focused_pane_id];
+                let content_width = focused_pane.content_width(self.doc().text().len_lines());
                 super::cursor::screen_pos(
                     &vp,
                     self.doc().text().rope(),
@@ -337,6 +339,8 @@ impl Editor {
                     pane_settings_cursor.tab_width,
                     &pane_settings_cursor.whitespace,
                     &mut ctx,
+                    &focused_pane.providers,
+                    content_width,
                 )
                 .map(|(col, row)| (col + gutter_w + ox, row + oy))
             } else {
@@ -1310,6 +1314,7 @@ impl Editor {
         let (pane_settings, gutter_w) = self.resolve_pane_settings(focused);
         let vp = &self.view.panes[focused].viewport;
         let buf = self.state.buffers.get(self.focused_buffer_id());
+        let content_width = pane_rect.width.saturating_sub(gutter_w);
         let (col, row) = super::cursor::screen_pos(
             vp,
             buf.text().rope(),
@@ -1318,9 +1323,10 @@ impl Editor {
             pane_settings.tab_width,
             &pane_settings.whitespace,
             ctx,
+            &self.view.panes[focused].providers,
+            content_width,
         )?;
         let anchor = (col + gutter_w + pane_rect.x, row + pane_rect.y);
-        let content_width = pane_rect.width.saturating_sub(gutter_w);
         let max_width = crate::ui::popup::MAX_POPUP_WIDTH.min(content_width.saturating_sub(4));
         let max_height = (pane_rect.height / 3).max(1);
         Some((anchor, pane_rect, max_width, max_height))
@@ -1506,6 +1512,7 @@ pub(super) fn scroll_into_view(
     scrolloff: usize,
 ) {
     use super::scroll;
+    let content_width = pane.content_width(rope.len_lines());
     scroll::ensure_cursor_visible(
         &mut pane.viewport,
         rope,
@@ -1515,6 +1522,8 @@ pub(super) fn scroll_into_view(
         whitespace,
         scratch,
         scrolloff,
+        &pane.providers,
+        content_width,
     );
     scroll::ensure_cursor_visible_horizontal(
         &mut pane.viewport,
