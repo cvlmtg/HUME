@@ -20,11 +20,21 @@ impl Editor {
     /// queued. Shared tail for `call_steel_cmd`'s call site, `drain_hooks`,
     /// and `drain_pending_steel_calls` — the three places a `SteelCmdResult`
     /// or `HookResult` comes back with these two fields to dispatch.
+    ///
+    /// Flushes queued `didChange` notifications first: these three call
+    /// sites can run between one `prepare_frame`'s `drain_lsp` and the next
+    /// (e.g. a trigger-char hook firing right after the edit that triggered
+    /// it), so a request minted here — often positioned against the very
+    /// text that edit just produced — must not reach the wire ahead of the
+    /// didChange describing that edit.
     pub(in crate::editor) fn flush_pending_lsp_calls(
         &mut self,
         requests: Vec<PendingLspRequest>,
         notifies: Vec<PendingLspNotify>,
     ) {
+        if !requests.is_empty() || !notifies.is_empty() {
+            self.flush_lsp_pending_changes();
+        }
         self.flush_pending_lsp_requests(requests);
         self.flush_pending_lsp_notifies(notifies);
     }

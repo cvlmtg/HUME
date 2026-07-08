@@ -177,9 +177,14 @@ impl Editor {
 
     /// Graceful shutdown + full deregistration of one running server:
     /// `begin_shutdown` (shutdown request, then exit — `ServerHandle::drop`
-    /// reaps the process regardless), drop the client/key/name entries, and
-    /// clear `lsp_server` on every buffer that pointed at it so a later
-    /// attach attempt (open or restart) doesn't see it as already attached.
+    /// reaps the process regardless), drop the client/key/name/diagnostics
+    /// entries, and clear `lsp_server` on every buffer that pointed at it so
+    /// a later attach attempt (open or restart) doesn't see it as already
+    /// attached. Fires `OnDiagnosticsChanged` for every buffer whose stored
+    /// diagnostics were actually cleared, and `OnLspDetach` for every buffer
+    /// that was attached — the latter is a plugin's only signal to drop its
+    /// own buffer-scoped state derived from this server (e.g. inlay hints),
+    /// which nothing here owns well enough to clear on its behalf.
     fn lsp_stop_one(&mut self, language: &str, root: &Path, server_id: hume_lsp::backend::ServerId) {
         if let Some(mut client) = self.lsp.clients.remove(&server_id) {
             client.begin_shutdown(self.lsp.backend.as_mut());
@@ -190,6 +195,7 @@ impl Editor {
             .remove(&(language.to_string(), root.to_path_buf()));
         self.lsp.server_names.remove(&server_id);
         self.lsp.capabilities_json.remove(&server_id);
+        let diag_touched = self.lsp.diagnostics.remove_server(server_id);
 
         let bids: Vec<BufferId> = self
             .state
@@ -198,13 +204,19 @@ impl Editor {
             .filter(|(_, buf)| buf.lsp_server == Some(server_id))
             .map(|(bid, _)| bid)
             .collect();
-        for bid in bids {
+        for &bid in &bids {
             let buf = self.state.buffers.get_mut(bid);
             buf.lsp_server = None;
             // Any edits queued for the now-detached server must not survive
             // to a future attach — flushed against a new server's didOpen
             // baseline, they'd desync its document state immediately.
             buf.lsp_pending.clear();
+        }
+        for bid in diag_touched {
+            self.fire_hook_diagnostics_changed(bid);
+        }
+        for bid in bids {
+            self.fire_hook_lsp_detach(bid, language);
         }
     }
 

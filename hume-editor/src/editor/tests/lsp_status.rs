@@ -185,6 +185,81 @@ fn lsp_restart_spawns_a_fresh_server_id_and_reattaches_the_buffer() {
     );
 }
 
+/// B1 regression: without `DiagnosticsStore::remove_server`, a restarted
+/// server's fresh `ServerId` would coexist with the old (frozen, detached)
+/// server's entry for the same buffer — `replace`'s "push if no matching
+/// sid" path — doubling the count instead of replacing it.
+#[test]
+fn lsp_restart_does_not_duplicate_diagnostics_after_a_republish() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(tmp.path()).unwrap();
+    std::fs::write(root.join("Cargo.toml"), b"").unwrap();
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    let file = root.join("src/main.rs");
+    std::fs::write(&file, "fn main() {}\n").unwrap();
+
+    let mut ed = editor_from("-[w]>ord\n");
+    ed.lsp = LspState::new_inline();
+    ed.state
+        .languages
+        .register_identity("rust", &["rs"], &[], &[])
+        .unwrap();
+    let mut host = ScriptingHost::new();
+    eval_register(
+        &mut ed,
+        &mut host,
+        r#"(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))"#,
+        tmp.path(),
+    );
+
+    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
+    let bid = ed.focused_buffer_id();
+    let old_sid = ed
+        .state
+        .buffers
+        .get(bid)
+        .lsp_server
+        .expect("attached on open");
+
+    let uri = hume_lsp::uri::path_to_uri(&std::fs::canonicalize(&file).unwrap()).unwrap();
+    let current_gen = ed.state.buffers.get(bid).text_gen as i32;
+    let mut params = serde_json::json!({
+        "uri": uri.as_str(),
+        "version": current_gen,
+        "diagnostics": [{
+            "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 2}},
+            "severity": 1,
+            "message": "boom",
+        }],
+    });
+    ed.ingest_publish_diagnostics(old_sid, params.clone());
+    assert_eq!(
+        ed.lsp.diagnostic_counts_for_test(bid),
+        (1, 0),
+        "seed publish from the original server must land"
+    );
+
+    ed.lsp_restart(Some("rust"));
+    let new_sid = ed
+        .state
+        .buffers
+        .get(bid)
+        .lsp_server
+        .expect("re-attached after restart");
+    assert_ne!(old_sid, new_sid, "restart must yield a fresh ServerId");
+
+    // The fresh server republishes the same diagnostic — this must replace
+    // the old, now-detached server's entry, not stack alongside it.
+    params["version"] = serde_json::json!(ed.state.buffers.get(bid).text_gen as i32);
+    ed.ingest_publish_diagnostics(new_sid, params);
+
+    assert_eq!(
+        ed.lsp.diagnostic_counts_for_test(bid),
+        (1, 0),
+        "the old server's diagnostics must not coexist with the new server's republish"
+    );
+}
+
 #[test]
 fn stderr_action_is_logged_at_trace_with_the_server_name_prefix() {
     let mut ed = editor_from("-[w]>ord\n");

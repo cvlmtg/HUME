@@ -183,6 +183,17 @@ impl DecorationStores {
             .flat_map(|(_, spans)| spans.iter())
     }
 
+    /// Drops every entry for `bid`, across every source and every store —
+    /// called when the buffer is closed. `BufferId` is a versioned slotmap
+    /// key, so a future slot reuse can never alias with the closed buffer's
+    /// stale entries; this is a memory-leak fix, not a correctness one.
+    pub(crate) fn remove_buffer(&mut self, bid: BufferId) {
+        self.inlay_hints.remove(&bid);
+        self.signs.retain(|(_, b), _| *b != bid);
+        self.virtual_lines.retain(|(_, b), _| *b != bid);
+        self.extra_highlights.retain(|(_, b), _| *b != bid);
+    }
+
     /// Remaps `bid`'s inlay hints and extra highlights through `cs` — the
     /// same chokepoint as C9's diagnostics remap
     /// (`flush_lsp_pending_changes`), so decoration positions never drift

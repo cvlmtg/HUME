@@ -226,6 +226,43 @@ fn lsp_range_params_reflects_the_primary_selection() {
     assert!(fired, "range params must span the primary selection, half-open");
 }
 
+/// L3 regression: the wire range's `end` must land after a full grapheme
+/// cluster, never mid-cluster. `char_to_wire(rope, end_c + 1, ..)` (a raw
+/// `+ 1`) would split `é` (`e` + U+0301, two chars, one cluster) if the
+/// selection's inclusive `head` sits on the cluster's first char.
+#[test]
+fn lsp_range_params_end_lands_on_a_grapheme_boundary_not_mid_cluster() {
+    use hume_editing::selection::Selection;
+
+    let tmp = tempfile::tempdir().unwrap();
+    // "caf" + é (U+0065 U+0301, two chars) + "\n". Grapheme boundaries:
+    // 0,1,2,3,5,6 — é occupies chars 3..5. Selection anchor=0, head=3
+    // (inclusive) covers "caf" plus é's first char only.
+    let content = "caf\u{0065}\u{0301}\n";
+    let mut ed = Editor::for_testing(Buffer::new(Text::from(content), SelectionSet::default()));
+    ed.doc_mut()
+        .set_path(Some(std::path::PathBuf::from("/tmp/fake-lsp-range-grapheme.rs")));
+    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+
+    let bid = ed.focused_buffer_id();
+    let focused = ed.state.focused_pane_id;
+    ed.state.panes.state[focused][bid].selections =
+        SelectionSet::single(Selection::new(0, 3));
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(let* ((p (lsp-range-params (current-buffer)))
+                  (r (hash-ref p "range")))
+             (equal? (hash-ref (hash-ref r "end") "character") 5))"#,
+    );
+    assert!(
+        fired,
+        "end must land after the full é cluster (char 5), not mid-cluster (char 4)"
+    );
+}
+
 #[test]
 fn lsp_position_params_is_false_for_an_unattached_buffer() {
     let tmp = tempfile::tempdir().unwrap();

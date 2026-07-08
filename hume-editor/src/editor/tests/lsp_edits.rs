@@ -90,6 +90,32 @@ fn apply_text_edits_multiple_edits_same_line_apply_descending() {
     assert_eq!(ed.doc().text().to_string(), "ZbcdWf\n");
 }
 
+/// L2 regression: two inserts at the same position must land in the order
+/// the `edits` array gives them (LSP spec: array order defines apply order
+/// for same-position edits) — a descending sort followed by a whole-`Vec`
+/// `.reverse()` kept the tie in original order through the sort but then
+/// flipped it via the reverse, applying them backwards.
+#[test]
+fn apply_text_edits_same_position_inserts_apply_in_array_order() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    attach_running_utf8_server(&mut ed);
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (apply-text-edits! (current-buffer)
+               (list (list (list 0 0) (list 0 0) "1")
+                     (list (list 0 0) (list 0 0) "2")))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "12abcdef\n",
+        "\"1\" must land before \"2\", matching the edits array's own order"
+    );
+}
+
 #[test]
 fn apply_text_edits_adjacent_not_overlapping_accepted() {
     let tmp = tempfile::tempdir().unwrap();
@@ -345,6 +371,52 @@ fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
     assert!(
         ed.state.buffers.find_by_path(&ok_canonical).is_none(),
         "the valid file must not even have been opened — validation stopped at the missing file first"
+    );
+}
+
+/// L1 regression: two `documentChanges` entries for the same file (the spec
+/// doesn't forbid it — server-controlled input) must be rejected, not build
+/// a second changeset against text the first entry's already assumes and
+/// panic in `commit_changeset`'s `cs.apply(&text).expect(...)`.
+#[test]
+fn apply_workspace_edit_duplicate_entry_for_the_same_file_is_rejected_not_a_panic() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("a.txt");
+    std::fs::write(&file, "abcdef\n").unwrap();
+    let canonical = std::fs::canonicalize(&file).unwrap();
+    let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-command! "go" "" (lambda ()
+                 (apply-workspace-edit!
+                   (hash "documentChanges"
+                     (list
+                       (hash "textDocument" (hash "uri" {0:?} "version" void)
+                             "edits" (list (hash "range" (hash "start" (hash "line" 0 "character" 0)
+                                                            "end" (hash "line" 0 "character" 1))
+                                            "newText" "X")))
+                       (hash "textDocument" (hash "uri" {0:?} "version" void)
+                             "edits" (list (hash "range" (hash "start" (hash "line" 0 "character" 1)
+                                                            "end" (hash "line" 0 "character" 2))
+                                            "newText" "Y"))))))))"#,
+            uri.as_str()
+        ),
+    );
+    type_cmd(&mut ed, ":go"); // must not panic
+
+    let bid = ed
+        .state
+        .buffers
+        .find_by_path(&canonical)
+        .expect("the first entry opens the file before the duplicate is detected");
+    assert_eq!(
+        ed.state.buffers.get(bid).text().to_string(),
+        "abcdef\n",
+        "a rejected edit must leave the buffer untouched — no partial apply"
     );
 }
 

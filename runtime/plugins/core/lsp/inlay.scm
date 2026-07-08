@@ -54,3 +54,10 @@
 
 (register-hook! 'on-diagnostics-changed
   (lambda (bid) (lsp/refresh-hints bid)))
+
+;;; Once `bid` has no attached server, `lsp/refresh-hints` silently skips
+;;; (no capability to check), so stale hints from the detached server would
+;;; otherwise sit rendered forever. `on-lsp-detach` is the only signal for
+;;; this — clear explicitly rather than let them drift.
+(register-hook! 'on-lsp-detach
+  (lambda (bid server-name) (set-inlay-hints! bid '())))

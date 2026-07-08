@@ -213,7 +213,11 @@ pub(crate) fn diagnostic_counts(lsp: &LspState, bid: BufferId) -> (usize, usize)
 
 /// Ready-made `{"textDocument" {"uri"} "range" {"start" "end"}}` params from
 /// `id`'s primary selection. HUME selections are inclusive (`head` names the
-/// last included char); LSP ranges are half-open, so `end` is one char past.
+/// last included char); LSP ranges are half-open, so `end` is one grapheme
+/// cluster past — `next_grapheme_boundary`, not a raw `+ 1`, since `end_c`
+/// may be the first char of a multi-char cluster (`é` = e + U+0301, a ZWJ
+/// emoji sequence): stepping by one raw char would land the wire range
+/// mid-cluster.
 pub(crate) fn range_params(state: &EditorState, lsp: &LspState, id: BufferId) -> Option<serde_json::Value> {
     let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
     let pbs = pane_buffer_state(state, id)?;
@@ -223,9 +227,12 @@ pub(crate) fn range_params(state: &EditorState, lsp: &LspState, id: BufferId) ->
     } else {
         (sel.head(), sel.anchor())
     };
-    let rope = state.buffers.get(id).text().rope();
+    let text = state.buffers.get(id).text();
+    let end_exclusive = hume_editing::grapheme::next_grapheme_boundary(text, end_c);
+    let rope = text.rope();
     let (start_line, start_char) = hume_editing::position_encoding::char_to_wire(rope, start_c, encoding);
-    let (end_line, end_char) = hume_editing::position_encoding::char_to_wire(rope, end_c + 1, encoding);
+    let (end_line, end_char) =
+        hume_editing::position_encoding::char_to_wire(rope, end_exclusive, encoding);
     Some(serde_json::json!({
         "textDocument": {"uri": uri},
         "range": {

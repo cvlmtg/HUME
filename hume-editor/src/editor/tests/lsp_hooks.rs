@@ -73,6 +73,44 @@ fn on_lsp_attach_fires_for_buffers_attached_before_the_handshake_completes() {
     );
 }
 
+/// B1's `on-lsp-detach` — the counterpart to `on-lsp-attach`, giving a
+/// plugin its only signal to clear buffer-scoped state derived from a
+/// server that `:lsp-stop`/`:lsp-restart` just tore down.
+#[test]
+fn on_lsp_detach_fires_with_the_language_when_a_server_is_stopped() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let mut backend = InlineLspBackend::new();
+    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    ed.lsp
+        .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
+    ed.lsp
+        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(register-hook! 'on-lsp-detach (lambda (bid server-name)
+             (when (equal? server-name "rust") (call! "move-right"))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    let before = state(&ed);
+    ed.lsp_stop(Some("rust"));
+    ed.drain_hooks();
+
+    assert_ne!(
+        state(&ed),
+        before,
+        "on-lsp-detach must fire with the language once the server is stopped"
+    );
+}
+
 #[test]
 fn register_trigger_chars_from_inside_a_hook_handler_takes_effect() {
     // B10a: register-trigger-chars! must work from command context (not just

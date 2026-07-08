@@ -173,9 +173,14 @@ impl LspClient {
     }
 
     /// Best-effort cancellation: drops the pending entry (if still present)
-    /// and notifies the server. A no-op if the request already completed.
+    /// and, only once the handshake has completed, notifies the server — a
+    /// no-op if the request already completed. Nothing but `initialize` is
+    /// legal on the wire before `initialized`, so a request cancelled while
+    /// still `Starting` (its send itself still sitting in `queued`, per
+    /// `send_request`'s discipline) has never reached the server either;
+    /// there is nothing to notify, and sending would violate the handshake.
     pub fn cancel(&mut self, backend: &mut dyn LspBackend, id: RequestId) {
-        if self.pending.remove(&id).is_some() {
+        if self.pending.remove(&id).is_some() && self.state == ServerState::Running {
             backend.send(
                 self.id,
                 Message::Notification {
@@ -191,7 +196,8 @@ impl LspClient {
     /// `on_event` — deadline checks piggyback on the same cadence, no
     /// separate timer thread. A timed-out entry gets a best-effort
     /// `$/cancelRequest` sent here (colocated with the detection, so it's
-    /// testable without an editor in the loop).
+    /// testable without an editor in the loop) — only once `Running`, same
+    /// handshake-ordering reasoning as `cancel`.
     pub fn take_completed(
         &mut self,
         backend: &mut dyn LspBackend,
@@ -206,13 +212,15 @@ impl LspClient {
             .collect();
         for id in timed_out {
             if let Some(meta) = self.pending.remove(&id) {
-                backend.send(
-                    self.id,
-                    Message::Notification {
-                        method: "$/cancelRequest".to_string(),
-                        params: cancel_request_params(&id),
-                    },
-                );
+                if self.state == ServerState::Running {
+                    backend.send(
+                        self.id,
+                        Message::Notification {
+                            method: "$/cancelRequest".to_string(),
+                            params: cancel_request_params(&id),
+                        },
+                    );
+                }
                 out.push((id, meta, Outcome::TimedOut));
             }
         }
@@ -255,8 +263,13 @@ impl LspClient {
         match ev {
             InboundEvent::Eof { error } => {
                 // Guard against reporting twice if more events trickle in
-                // after the connection is already known dead.
-                if self.state == ServerState::Crashed {
+                // after the connection is already known dead — `Dead` covers
+                // a graceful `begin_shutdown` teardown racing a trailing
+                // `Eof` from the exiting process just as validly as
+                // `Crashed` covers an actual crash; either way this must not
+                // report a spurious "server crashed" on top of an orderly
+                // exit.
+                if matches!(self.state, ServerState::Crashed | ServerState::Dead) {
                     return Vec::new();
                 }
                 self.state = ServerState::Crashed;
@@ -854,6 +867,48 @@ mod tests {
         assert!(client.take_completed(&mut backend, Instant::now()).is_empty());
     }
 
+    /// Minor regression: nothing but `initialize` is legal on the wire
+    /// before `initialized` — a request cancelled or timed out while still
+    /// `Starting` must not put `$/cancelRequest` on the wire, since its own
+    /// send is still sitting in `queued`, unsent, and the server never saw
+    /// it in the first place.
+    #[test]
+    fn cancel_and_timeout_send_no_cancel_request_while_still_starting() {
+        let mut backend = InlineLspBackend::new();
+        let sid = backend.start("x", &[], std::path::Path::new(".")).unwrap();
+        let mut client = LspClient::new(sid, PathBuf::from("."));
+        assert_eq!(client.state, ServerState::Starting);
+
+        let meta = RequestMeta {
+            method: "textDocument/definition".to_string(),
+            allow_stale: false,
+            deadline: Instant::now() + std::time::Duration::from_secs(10),
+            token: CallbackToken(1),
+        };
+        let id =
+            client.send_request(&mut backend, "textDocument/definition", serde_json::Value::Null, meta);
+        client.cancel(&mut backend, id);
+        assert!(
+            backend.sent.is_empty(),
+            "cancelling while Starting must not send anything"
+        );
+
+        let meta2 = RequestMeta {
+            method: "textDocument/hover".to_string(),
+            allow_stale: false,
+            deadline: Instant::now() - std::time::Duration::from_millis(1),
+            token: CallbackToken(2),
+        };
+        client.send_request(&mut backend, "textDocument/hover", serde_json::Value::Null, meta2);
+        let completed = client.take_completed(&mut backend, Instant::now());
+        assert_eq!(completed.len(), 1);
+        assert!(matches!(completed[0].2, Outcome::TimedOut));
+        assert!(
+            backend.sent.is_empty(),
+            "a timeout while still Starting must not send $/cancelRequest either"
+        );
+    }
+
     #[test]
     fn take_completed_reports_timeout_and_sends_cancel_request() {
         let (mut backend, mut client) = make_running_client();
@@ -949,6 +1004,28 @@ mod tests {
         assert!(
             second.is_empty(),
             "a second Eof after already-Crashed must not report again"
+        );
+    }
+
+    /// Minor regression: a trailing `Eof` racing a graceful `begin_shutdown`
+    /// teardown must not report a spurious "server crashed" — `Dead` is as
+    /// valid a "connection is already known gone, on purpose" state as
+    /// `Crashed`.
+    #[test]
+    fn eof_after_a_graceful_shutdown_does_not_report_crashed() {
+        let (mut backend, mut client) = make_running_client();
+        client.begin_shutdown(&mut backend);
+        assert_eq!(client.state, ServerState::Dead);
+
+        let actions = client.on_event(InboundEvent::Eof { error: None });
+        assert!(
+            actions.is_empty(),
+            "an Eof after a graceful shutdown must not surface a Crashed action"
+        );
+        assert_eq!(
+            client.state,
+            ServerState::Dead,
+            "state must stay Dead, not flip to Crashed"
         );
     }
 }

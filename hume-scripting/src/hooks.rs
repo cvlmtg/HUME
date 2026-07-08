@@ -34,6 +34,12 @@ pub enum HookId {
     /// any buffer that attaches later while the server stays Running.
     /// Args: `(bid server-name)`.
     OnLspAttach,
+    /// Fires once per buffer detached by `:lsp-stop`/`:lsp-restart`, right
+    /// after `buf.lsp_server` is cleared — the counterpart to `OnLspAttach`,
+    /// so a plugin holding buffer-scoped state derived from that server
+    /// (e.g. inlay hints) can clear it instead of leaving it to drift with
+    /// no server left to keep it in sync. Args: `(bid server-name)`.
+    OnLspDetach,
     /// Fires once per drain batch that ingested at least one
     /// `publishDiagnostics` for `bid` — payload-free signal by design; pull
     /// via `(diagnostics-for-buffer bid …)` (B5). Args: `(bid)`.
@@ -67,6 +73,7 @@ const HOOKS: &[(HookId, &str)] = &[
     (HookId::OnModeChange, "on-mode-change"),
     (HookId::OnLanguageSet, "on-language-set"),
     (HookId::OnLspAttach, "on-lsp-attach"),
+    (HookId::OnLspDetach, "on-lsp-detach"),
     (HookId::OnDiagnosticsChanged, "on-diagnostics-changed"),
     (HookId::OnViewportChange, "on-viewport-change"),
     (HookId::OnTriggerChar, "on-trigger-char"),
@@ -140,6 +147,7 @@ mod tests {
             | HookId::OnModeChange
             | HookId::OnLanguageSet
             | HookId::OnLspAttach
+            | HookId::OnLspDetach
             | HookId::OnDiagnosticsChanged
             | HookId::OnViewportChange
             | HookId::OnTriggerChar
@@ -155,6 +163,7 @@ mod tests {
         HookId::OnModeChange,
         HookId::OnLanguageSet,
         HookId::OnLspAttach,
+        HookId::OnLspDetach,
         HookId::OnDiagnosticsChanged,
         HookId::OnViewportChange,
         HookId::OnTriggerChar,

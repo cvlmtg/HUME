@@ -1,14 +1,18 @@
 // B2 (docs/lsp/step-2.md) — generic LSP bridge: lsp-request, lsp-notify,
 // on-lsp-notification, delivered through the queued-Steel-call mechanism.
 
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use super::*;
 use crate::editor::lsp::LspState;
 use crate::editor::scripting_setup::make_init_host;
 use hume_lsp::backend::{LspBackend, ServerId};
 use hume_lsp::client::{LspClient, ServerState};
+use hume_lsp::codec::Message;
 use hume_lsp::inline::InlineLspBackend;
+use hume_lsp::transport::InboundEvent;
 use hume_scripting::ScriptingHost;
 
 /// Wires a scripted backend with a Running client attached to the focused
@@ -401,6 +405,115 @@ fn callback_error_lands_in_message_log_not_a_crash() {
     assert!(
         log.contains("steel call error"),
         "an erroring callback must be reported, not crash the editor: {log:?}"
+    );
+}
+
+/// Wraps `InlineLspBackend`, logging the method name of every `send()` call
+/// — `Request` and `Notification` alike — into one shared, arrival-ordered
+/// log. `RecordingLspBackend` (test_util) keeps requests and notifications
+/// in two separate logs, which can't answer "did the didChange reach the
+/// wire before this request" (B2's ordering bug): only a single combined
+/// log can.
+struct OrderedLogBackend {
+    inner: InlineLspBackend,
+    log: Rc<RefCell<Vec<String>>>,
+}
+
+impl OrderedLogBackend {
+    fn new() -> (Self, Rc<RefCell<Vec<String>>>) {
+        let log = Rc::new(RefCell::new(Vec::new()));
+        (
+            Self {
+                inner: InlineLspBackend::new(),
+                log: log.clone(),
+            },
+            log,
+        )
+    }
+
+    fn respond_to(&mut self, method: &str, result: serde_json::Value) {
+        self.inner.respond_to(method, result);
+    }
+}
+
+impl LspBackend for OrderedLogBackend {
+    fn start(&mut self, cmd: &str, args: &[String], root: &Path) -> std::io::Result<ServerId> {
+        self.inner.start(cmd, args, root)
+    }
+
+    fn send(&mut self, server: ServerId, msg: Message) {
+        let method = match &msg {
+            Message::Request { method, .. } => method.clone(),
+            Message::Notification { method, .. } => method.clone(),
+            Message::Response { .. } => "<response>".to_string(),
+        };
+        self.log.borrow_mut().push(method);
+        self.inner.send(server, msg);
+    }
+
+    fn drain(&mut self) -> Vec<(ServerId, InboundEvent)> {
+        self.inner.drain()
+    }
+
+    fn has_pending(&self) -> bool {
+        self.inner.has_pending()
+    }
+
+    fn shutdown(&mut self, server: ServerId) {
+        self.inner.shutdown(server);
+    }
+}
+
+/// B2 regression: a Steel command that edits the buffer (queuing an LSP
+/// `didChange`) and then immediately fires an `lsp-request` — the same
+/// shape as a trigger-char hook firing right after the edit that triggered
+/// it — must put the `didChange` on the wire *before* the request. Before
+/// the fix, `flush_pending_lsp_calls` sent the request straight away and
+/// left the queued edit sitting in `Buffer.lsp_pending` until the next
+/// frame's `prepare_frame`, so the request reached the server ahead of the
+/// edit it was computed against.
+#[test]
+#[cfg(not(windows))]
+fn didchange_reaches_the_wire_before_a_same_dispatch_request() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file_dir = tempfile::tempdir().unwrap();
+    let file = file_dir.path().join("main.rs");
+    std::fs::write(&file, "abcdef\n").unwrap();
+
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let (mut raw_backend, log) = OrderedLogBackend::new();
+    raw_backend.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
+    let sid = raw_backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(raw_backend));
+    let mut client = LspClient::new(sid, PathBuf::from("."));
+    client.state = ServerState::Running;
+    ed.lsp.insert_client_for_test(client);
+    ed.lsp
+        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
+
+    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "test-cmd" "" (lambda ()
+             (apply-text-edits! (current-buffer) (list (list (list 0 0) (list 0 0) "Z")))
+             (lsp-request #f "textDocument/hover" (hash) (lambda (err result) (begin)))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":test-cmd");
+
+    let methods = log.borrow();
+    assert_eq!(
+        methods.as_slice(),
+        ["textDocument/didChange", "textDocument/hover"],
+        "the queued edit's didChange must reach the wire before the request \
+         fired in the same dispatch, got: {methods:?}"
     );
 }
 

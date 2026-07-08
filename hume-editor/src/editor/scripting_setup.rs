@@ -63,6 +63,15 @@ impl Editor {
         self.fire_hook_silent(HookId::OnLspAttach, &[bid_val, name_val]);
     }
 
+    /// Fire `OnLspDetach (bid server-name)` — called from `lsp_stop_one` for
+    /// every buffer that was attached to the server being stopped, right
+    /// after `buf.lsp_server` is cleared.
+    pub(super) fn fire_hook_lsp_detach(&mut self, bid: BufferId, server_name: &str) {
+        let bid_val = SteelBufferId::new(bid).into_steel_val();
+        let name_val = SteelVal::StringV(server_name.into());
+        self.fire_hook_silent(HookId::OnLspDetach, &[bid_val, name_val]);
+    }
+
     /// Fire `OnDiagnosticsChanged (bid)` — payload-free signal, once per
     /// buffer a `publishDiagnostics` drain batch actually touched
     /// (`drain_lsp`). Handlers pull via `(diagnostics-for-buffer bid …)` (B5).

@@ -75,6 +75,12 @@ fn build_edit_changeset(
     }
     let encoding = introspect::encoding_for_buffer(state, lsp, bid);
     let rope = buf.text().rope();
+    // Stable ascending sort by start — two edits at the same position keep
+    // `edits`' own array order (per spec, the array's order defines the
+    // order same-position edits apply in; a descending sort followed by
+    // `.reverse()` would keep ties in *original* order through the sort but
+    // then flip that tie order via the whole-`Vec` reverse, applying them
+    // backwards).
     let mut char_edits: Vec<(usize, usize, &str)> = edits
         .iter()
         .map(|e| {
@@ -83,13 +89,12 @@ fn build_edit_changeset(
             (start, end, e.new_text.as_str())
         })
         .collect();
-    char_edits.sort_by_key(|e| std::cmp::Reverse(e.0));
+    char_edits.sort_by_key(|e| e.0);
     for w in char_edits.windows(2) {
-        if w[0].0 < w[1].1 {
+        if w[1].0 < w[0].1 {
             return Err("text edits overlap".to_string());
         }
     }
-    char_edits.reverse();
 
     let mut b = ChangeSetBuilder::new(rope.len_chars());
     for (start, end, text) in &char_edits {
@@ -231,6 +236,20 @@ pub(crate) fn apply_workspace_edit(
     for (uri, edits, version) in entries {
         let path = hume_lsp::uri::uri_to_path(&uri).map_err(|e| format!("bad uri: {e:?}"))?;
         let bid = resolve_or_open(state, view, &path)?;
+        // Each file's changeset is built against `state`'s *current* text —
+        // a second entry for the same file would build a changeset that's
+        // valid against that same original text, but `commit_changeset`
+        // applies entries one at a time against whatever the buffer holds
+        // *after* the previous commit. Position-based ops don't necessarily
+        // fail to apply against the wrong text (they can silently produce
+        // corrupted content instead of erroring) — so this must be rejected
+        // before any commit, not left to a downstream length coincidence.
+        if planned.iter().any(|(planned_bid, _)| *planned_bid == bid) {
+            return Err(format!(
+                "{}: workspace edit contains more than one entry for this file",
+                path.display()
+            ));
+        }
         let wire_edits: Vec<WireEdit> = edits.into_iter().map(text_edit_to_wire).collect();
         let expect_gen = version.map(|v| v as u64);
         let cs = build_edit_changeset(state, lsp, bid, &wire_edits, expect_gen)

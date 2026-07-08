@@ -199,6 +199,7 @@ Every Steel-visible surface Steps 1–3 introduce. Cards define the semantics; t
 | `(goto-location! loc)` | builtin | B6 |
 | `(selection-spans-full-line? bid)` → bool (F8's range-format gate) | builtin | B6 |
 | `on-lsp-attach` (server ready for buffer) | hook | B7 |
+| `on-lsp-detach` (buffer detached by `:lsp-stop`/`:lsp-restart`; args `(bid server-name)`) — a plugin's only signal to clear buffer-scoped state it derived from the now-gone server (e.g. inlay hints), since nothing keeps that state in sync once the buffer has no attached server | hook | quality pass, 2026-07-09 |
 | `on-diagnostics-changed` (signal only; pull via B5) | hook | B7 |
 | `on-viewport-change` (debounced) | hook | B7 |
 | `on-trigger-char` (typed char ∈ registered set, Insert mode) + `(register-trigger-chars! source chars)` | hook + builtin | B7 |

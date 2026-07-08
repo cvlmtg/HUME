@@ -136,6 +136,41 @@ impl DiagnosticsStore {
         self.generation += 1;
     }
 
+    /// Drops every `StoredDiag` published by `server` — called when a
+    /// server is stopped (`lsp_stop_one`) so its diagnostics don't survive
+    /// the stop (drifting silently, since `remap_through` only runs for
+    /// buffers still attached to a server) or duplicate a fresh instance's
+    /// entry after `:lsp-restart` (a new `ServerId` would otherwise coexist
+    /// with the old, frozen one via `replace`'s "push if no matching sid"
+    /// path). A buffer left with no remaining server entry is dropped from
+    /// `by_buffer` entirely, not kept as an empty `Vec`. Returns the buffers
+    /// actually touched, so the caller can fire `OnDiagnosticsChanged` for
+    /// exactly those — same "only the buffers this batch touched" discipline
+    /// as `drain_lsp`'s `publishDiagnostics` ingest.
+    pub(crate) fn remove_server(&mut self, server: ServerId) -> Vec<BufferId> {
+        let mut touched = Vec::new();
+        self.by_buffer.retain(|&bid, entry| {
+            let before = entry.len();
+            entry.retain(|(sid, _)| *sid != server);
+            if entry.len() != before {
+                touched.push(bid);
+            }
+            !entry.is_empty()
+        });
+        if !touched.is_empty() {
+            self.generation += 1;
+        }
+        touched
+    }
+
+    /// Drops every diagnostic for `bid`, across every server — called when
+    /// the buffer is closed. `BufferId` is a versioned slotmap key, so a
+    /// future slot reuse can never alias with the closed buffer's stale
+    /// entry; this is a memory-leak fix, not a correctness one.
+    pub(crate) fn remove_buffer(&mut self, bid: BufferId) {
+        self.by_buffer.remove(&bid);
+    }
+
     /// Production callers: C10's `:lsp-status` and B5's `(diagnostic-counts …)`.
     pub(crate) fn counts(&self, bid: BufferId) -> (usize, usize) {
         let Some(entry) = self.by_buffer.get(&bid) else {
@@ -325,6 +360,18 @@ mod tests {
         ev.buffers.insert(hume_engine::pipeline::SharedBuffer::new())
     }
 
+    /// Two guaranteed-distinct `BufferId`s — `make_bid()` calls each start a
+    /// fresh `EngineView` with its own slotmap, so two separate calls are
+    /// *not* guaranteed distinct (both can land on the same first-insert
+    /// key). Needed by tests that must tell "this buffer" from "some other
+    /// buffer" apart.
+    fn make_two_bids() -> (BufferId, BufferId) {
+        let mut ev = EngineView::new(Theme::default());
+        let a = ev.buffers.insert(hume_engine::pipeline::SharedBuffer::new());
+        let b = ev.buffers.insert(hume_engine::pipeline::SharedBuffer::new());
+        (a, b)
+    }
+
     fn diag(start: usize, end: usize, severity: DiagSeverity) -> StoredDiag {
         StoredDiag {
             start,
@@ -359,6 +406,63 @@ mod tests {
     fn counts_is_zero_for_an_unknown_buffer() {
         let store = DiagnosticsStore::default();
         assert_eq!(store.counts(make_bid()), (0, 0));
+    }
+
+    #[test]
+    fn remove_server_clears_that_servers_diagnostics_only() {
+        let mut store = DiagnosticsStore::default();
+        let bid = make_bid();
+        store.replace(ServerId(0), bid, vec![diag(0, 1, DiagSeverity::Error)]);
+        store.replace(ServerId(1), bid, vec![diag(2, 3, DiagSeverity::Warning)]);
+
+        let touched = store.remove_server(ServerId(0));
+        assert_eq!(touched, vec![bid]);
+        assert_eq!(store.counts(bid), (0, 1), "server 1's diagnostic must survive");
+    }
+
+    #[test]
+    fn remove_server_drops_the_buffer_entry_once_no_server_remains() {
+        let mut store = DiagnosticsStore::default();
+        let bid = make_bid();
+        store.replace(ServerId(0), bid, vec![diag(0, 1, DiagSeverity::Error)]);
+
+        store.remove_server(ServerId(0));
+        assert_eq!(store.counts(bid), (0, 0));
+        assert!(
+            store.for_range(bid, 0..100, DiagSeverity::Hint).next().is_none(),
+            "no entry should remain for a buffer with no servers left"
+        );
+    }
+
+    #[test]
+    fn remove_server_is_a_no_op_for_a_server_with_nothing_stored() {
+        let mut store = DiagnosticsStore::default();
+        let bid = make_bid();
+        store.replace(ServerId(0), bid, vec![diag(0, 1, DiagSeverity::Error)]);
+        let gen_before = store.generation;
+
+        let touched = store.remove_server(ServerId(99));
+        assert!(touched.is_empty());
+        assert_eq!(store.generation, gen_before, "no change must not bump generation");
+        assert_eq!(store.counts(bid), (1, 0), "unrelated server's diagnostics must survive");
+    }
+
+    #[test]
+    fn remove_buffer_clears_every_servers_diagnostics_for_that_buffer() {
+        let mut store = DiagnosticsStore::default();
+        let (bid, other_bid) = make_two_bids();
+        store.replace(ServerId(0), bid, vec![diag(0, 1, DiagSeverity::Error)]);
+        store.replace(ServerId(1), bid, vec![diag(2, 3, DiagSeverity::Warning)]);
+        store.replace(ServerId(0), other_bid, vec![diag(0, 1, DiagSeverity::Error)]);
+
+        store.remove_buffer(bid);
+
+        assert_eq!(store.counts(bid), (0, 0), "every server's entry for bid must be gone");
+        assert_eq!(
+            store.counts(other_bid),
+            (1, 0),
+            "an unrelated buffer's diagnostics must survive"
+        );
     }
 
     #[test]

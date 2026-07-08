@@ -110,6 +110,11 @@ impl Editor {
         // Must run before the slot is freed below — it needs the buffer's
         // path and lsp_server to build the didClose notification.
         self.lsp_did_close(id);
+        // Purely a leak fix — `id` is a versioned slotmap key, so a future
+        // reused slot can never alias with these stale entries — but there
+        // is no other chokepoint that ever frees them.
+        self.lsp.remove_buffer_diagnostics(id);
+        self.state.decorations.remove_buffer(id);
         lifecycle::close_buffer(
             &mut self.view,
             &mut self.state.buffers,

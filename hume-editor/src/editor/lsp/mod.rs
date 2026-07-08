@@ -195,6 +195,14 @@ impl LspState {
         self.diagnostics.for_range(bid, range, floor)
     }
 
+    /// Drops every diagnostic for `bid`, across every server — called from
+    /// `close_buffer`. A pure memory-leak fix: `bid` is a versioned slotmap
+    /// key, so a future reused slot can never alias with the closed
+    /// buffer's stale entries, but nothing else ever frees them.
+    pub(crate) fn remove_buffer_diagnostics(&mut self, bid: BufferId) {
+        self.diagnostics.remove_buffer(bid);
+    }
+
     #[cfg(test)]
     pub(crate) fn diagnostics_for_test(
         &self,
