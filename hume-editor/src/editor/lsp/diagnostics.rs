@@ -69,6 +69,13 @@ pub(crate) struct StoredDiag {
     pub(crate) message: String,
     pub(crate) code: Option<String>,
     pub(crate) source: Option<String>,
+    /// The original wire-shaped `Diagnostic` (F9: `textDocument/codeAction`
+    /// needs to echo this back verbatim as `context.diagnostics` — the
+    /// server's quickfixes are gated on the client showing the diagnostic
+    /// it's fixing, and rebuilding this from `start`/`end`'s char offsets
+    /// would mean Steel fabricating wire positions itself, which the
+    /// encoding-safety rule forbids).
+    pub(crate) raw: serde_json::Value,
 }
 
 #[derive(Default)]
@@ -267,6 +274,7 @@ impl Editor {
             .diagnostics
             .into_iter()
             .map(|d| {
+                let raw = serde_json::to_value(&d).unwrap_or(serde_json::Value::Null);
                 let start = wire_to_char(
                     &rope,
                     d.range.start.line as usize,
@@ -294,6 +302,7 @@ impl Editor {
                         lsp_types::NumberOrString::String(s) => s,
                     }),
                     source: d.source,
+                    raw,
                 }
             })
             .collect();
@@ -324,6 +333,7 @@ mod tests {
             message: "boom".to_string(),
             code: None,
             source: None,
+            raw: serde_json::Value::Null,
         }
     }
 

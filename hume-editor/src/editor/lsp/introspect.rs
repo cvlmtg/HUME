@@ -200,6 +200,7 @@ pub(crate) fn diagnostics_for_buffer(
                 "message": d.message,
                 "code": d.code,
                 "source": d.source,
+                "raw": d.raw,
             })
         })
         .collect()
