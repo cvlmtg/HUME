@@ -4,7 +4,7 @@
 
 Launch HUME on a file:
 
-```
+```sh
 hume path/to/file.txt
 ```
 

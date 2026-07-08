@@ -52,7 +52,7 @@ By default (`'smart`), `C` is context-sensitive: on a bare cursor it's vim's cha
 
 ## core:stdlib
 
-Selection-query commands for plugin authors, called like any other command via `call!`. Load it before any plugin that calls them:
+General-purpose standard library for plugin authors — a growing toolkit of commands any plugin might need, exposed via `call!` so cross-plugin code never has to re-derive them. Load it before any plugin that calls them:
 
 ```scheme
 (load-plugin "core:stdlib")

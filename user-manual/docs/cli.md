@@ -4,7 +4,7 @@ This page documents the `hume` command as run from a shell. For the in-editor `:
 
 ## Synopsis
 
-```
+```sh
 hume [OPTIONS] [FILE...]
 ```
 
@@ -23,7 +23,7 @@ hume [OPTIONS] [FILE...]
 | `-h`, `--help` | Print clap-derived help and exit. |
 | `-V`, `--version` | Print the HUME version (e.g. `hume 0.1.0-f460770`) and exit. The same string is available inside the editor via `:version`. |
 
-## What's intentionally not here
+## What's not here
 
 HUME has no flags for overriding the config path, log level, theme, or tutor. Configuration lives in `init.scm` (see [Configuration](configuration.md#file-locations)); the runtime directory can be redirected with the `HUME_RUNTIME` environment variable; logging is in-memory only and surfaced via `:messages` (see [Files & Buffers](files-and-buffers.md#persistence-and-safety)).
 
