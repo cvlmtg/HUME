@@ -459,6 +459,31 @@ pub trait EditorHost {
         Err("close-menu!: not supported by this host".to_string())
     }
 
+    // ── Bottom drawer (U6; default = "not supported") ────────────────────────
+    /// `(show-drawer-list! items on-select)` — opens a scrolling list in the
+    /// bottom chrome band. `items` are pre-formatted display strings; the
+    /// drawer never interprets their content — the jump (if any) is the
+    /// caller's job, typically `(goto-location! ...)` inside `on-select`.
+    /// `on-select` receives the chosen index and, unlike the popup/menu's
+    /// one-shot callback, may fire more than once: the drawer stays open
+    /// across `Enter` (Helix-style browse) until `Esc` or `close-drawer!`.
+    /// Replaces any drawer already open (no stacking).
+    fn show_drawer_list(
+        &mut self,
+        items: Vec<String>,
+        callback: steel::rvals::SteelVal,
+    ) -> Result<(), String> {
+        let _ = (items, callback);
+        Err("show-drawer-list!: not supported by this host".to_string())
+    }
+
+    /// `(close-drawer!)` — dismisses the drawer *without* invoking its
+    /// callback (caller-initiated close, distinct from `Esc`, which does
+    /// call back with `#f`).
+    fn close_drawer(&mut self) -> Result<(), String> {
+        Err("close-drawer!: not supported by this host".to_string())
+    }
+
     // ── Completion orchestration (B8; default = "not supported") ─────────────
     /// `(completion-begin! bid items #:incomplete f)` — `items` is a list of
     /// decoded `CompletionItem` hashmaps (JSON already converted by the

@@ -10,6 +10,7 @@
 "ui.menu" = { fg = "fg", bg = "surface" }
 "ui.menu.selected" = { fg = "bright_fg", bg = "plum" }
 "ui.menu.scroll" = { fg = "muted", bg = "surface" }
+"ui.drawer" = { fg = "fg", bg = "surface" }
 "ui.help" = { fg = "fg", bg = "surface" }
 "ui.selection" = { fg = "fg", bg = "bright_muted" }
 "ui.selection.primary" = { fg = "fg", bg = "plum" }

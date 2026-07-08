@@ -42,6 +42,9 @@ inherits = "dark"
 # ── Hover / signature-help popup ────────────────────────────────────────────────
 "ui.popup" = { fg = "#1a1a1a", bg = "#d8d8ec" }
 
+# ── Bottom drawer (location lists, etc.) ────────────────────────────────────────
+"ui.drawer" = { fg = "#606078", bg = "#d8d8ec" }
+
 # ── Statusline ────────────────────────────────────────────────────────────────
 "ui.statusline"              = { fg = "statusline_fg", bg = "statusline" }
 "ui.statusline.mode.normal"  = { fg = "statusline_fg", bg = "statusline" }

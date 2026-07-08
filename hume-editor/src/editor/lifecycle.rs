@@ -98,6 +98,14 @@ impl Editor {
             Arc::new(RwLock::new(None));
         let menu_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>> =
             Arc::new(RwLock::new(None));
+        // Drawer is chrome (like the tab bar/statusline), not per-pane — one
+        // instance, registered directly on `engine_view.drawer` below rather
+        // than through `build_pane`.
+        let drawer_view: Arc<RwLock<Option<crate::ui::drawer::DrawerViewState>>> =
+            Arc::new(RwLock::new(None));
+        engine_view.drawer = Some(Box::new(crate::ui::drawer::DrawerWidget {
+            data: Arc::clone(&drawer_view),
+        }));
 
         // Insert a buffer — just metadata; the rope is passed at render time.
         let buffer_id = engine_view.buffers.insert(SharedBuffer::new());
@@ -206,6 +214,8 @@ impl Editor {
                 popup_view,
                 menu: None,
                 menu_view,
+                drawer: None,
+                drawer_view,
             },
             view: engine_view,
             kitty_enabled: false,
@@ -627,6 +637,7 @@ impl Editor {
         //    recompute geometry from these via `EngineView::pane_rects`/
         //    `pane_rect` rather than trusting a stored rect list.
         self.view.last_pane_area = pane_area;
+        self.view.last_terminal_area = terminal_area;
         self.view.reserve_seam = reserve_seam;
 
         // 9. Sync the popup- and menu-overlay views. Deliberately *after*

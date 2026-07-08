@@ -302,6 +302,25 @@ pub trait TabBarProvider {
     );
 }
 
+/// Renders the bottom drawer band, directly above the statusline row.
+/// The engine reserves `height(max)` rows above the statusline when present
+/// — panes shrink exactly like a terminal resize, with no separate
+/// mechanism (`EngineView::pane_area` folds it into the same chrome-height
+/// arithmetic as the tab bar and statusline).
+pub trait DrawerProvider {
+    /// Rows to reserve this frame, given `max` (the caller's ceiling — half
+    /// the terminal height). Content-driven (e.g. `min(rows + 1, max)`), not
+    /// a fixed constant, so a short list doesn't reserve a half-screen band.
+    fn height(&self, max: u16) -> u16;
+
+    fn render(
+        &self,
+        area: ratatui::layout::Rect,
+        theme: &crate::theme::Theme,
+        buf: &mut ratatui::buffer::Buffer,
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Provider set
 // ---------------------------------------------------------------------------

@@ -1023,6 +1023,78 @@ fn remove_leaf_missing_target_is_noop() {
     assert_eq!(tree, before);
 }
 
+// ── Drawer band partition (U6) ───────────────────────────────────────
+
+/// A drawer that always reports a fixed height, regardless of `max` — lets
+/// tests probe `pane_area`'s chrome arithmetic without a real `DrawerModel`.
+struct FixedHeightDrawer(u16);
+
+impl crate::providers::DrawerProvider for FixedHeightDrawer {
+    fn height(&self, max: u16) -> u16 {
+        self.0.min(max)
+    }
+
+    fn render(&self, _area: Rect, _theme: &Theme, _buf: &mut ratatui::buffer::Buffer) {}
+}
+
+/// A no-op tab bar — only its `is_some()` presence matters to `pane_area`.
+struct NoopTabBar;
+
+impl crate::providers::TabBarProvider for NoopTabBar {
+    fn render(&self, _area: Rect, _theme: &Theme, _buf: &mut ratatui::buffer::Buffer) {}
+}
+
+#[test]
+fn pane_area_reserves_drawer_height_above_statusline() {
+    let mut view = EngineView::new(Theme::default());
+    view.drawer = Some(Box::new(FixedHeightDrawer(3)));
+
+    let area = view.pane_area(rect(0, 0, 40, 20));
+
+    // 20 rows total - 1 (statusline) - 3 (drawer) = 16 rows for panes,
+    // starting at the top (no tab bar registered).
+    assert_eq!(area.y, 0);
+    assert_eq!(area.height, 16);
+}
+
+#[test]
+fn pane_area_folds_tabbar_and_drawer_together() {
+    let mut view = EngineView::new(Theme::default());
+    view.tabbar = Some(Box::new(NoopTabBar));
+    view.drawer = Some(Box::new(FixedHeightDrawer(3)));
+
+    let area = view.pane_area(rect(0, 0, 40, 20));
+
+    // 20 - 1 (tab bar) - 1 (statusline) - 3 (drawer) = 15, offset by the
+    // tab bar's 1 row.
+    assert_eq!(area.y, 1);
+    assert_eq!(area.height, 15);
+}
+
+#[test]
+fn pane_area_drawer_height_is_capped_by_half_the_terminal_height() {
+    let mut view = EngineView::new(Theme::default());
+    // Wants 50 rows — way more than half of a 20-row terminal (max = 10).
+    view.drawer = Some(Box::new(FixedHeightDrawer(50)));
+
+    let area = view.pane_area(rect(0, 0, 40, 20));
+
+    // 20 - 1 (statusline) - 10 (capped drawer) = 9.
+    assert_eq!(area.height, 9);
+}
+
+#[test]
+fn pane_area_degenerate_when_terminal_too_small_for_chrome_plus_drawer() {
+    let mut view = EngineView::new(Theme::default());
+    view.drawer = Some(Box::new(FixedHeightDrawer(3)));
+
+    // chrome_height = 1 (statusline) + 3 (drawer, capped at height/2=1) = 2,
+    // which is NOT less than a 2-row terminal — degenerate.
+    let area = view.pane_area(rect(0, 0, 40, 2));
+
+    assert_eq!(area.height, 0);
+}
+
 // ── FrameScratch ─────────────────────────────────────────────────────
 
 #[test]

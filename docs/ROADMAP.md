@@ -173,7 +173,7 @@
 
 ### M12 — Editor chrome (planned)
 
-- **Class B chrome slot (bottom drawer)**: full-width, auto-sized, capped at ~50% terminal height. Hosts transient read-only content: `:ls`, `:messages`, LSP hover docs, notifications, command/search history pagers. Not a Pane — spans full terminal regardless of split layout. Editor-side viewport sync queries engine chrome height instead of hardcoding `-1` for statusline only.
+- **Class B chrome slot (bottom drawer)** — core landed via LSP's U6 (`docs/lsp/step-3.md`): `DrawerProvider` trait + `EngineView::pane_area` folds its height in alongside the tab bar/statusline, full-width, auto-sized (`min(rows + 1, terminal_height / 2)`), a generic `show-drawer-list!`/`close-drawer!` Steel API (pre-formatted display strings, Rust never interprets row content — the caller's `on-select` does any jump itself), and the `j`/`k`/`Enter`/`Esc` browse-while-editing key intercept (stays open across `Enter`, unlike the popup/menu). Still open: no other client has been wired to it yet — `:ls`, `:messages`, notifications, and command/search history pagers all still need their own formatting layer on top of the same primitive.
 - **File picker / fuzzy finder** (Helix-style): depends on split/pane layout. Deferred until post-splits.
 - **Class A docked panes (fixed-row-count `LayoutTree` variant)**: real panes docked to a fixed row count inside the split tree. `LayoutTree::Fixed { rows, main, dock }` alongside `Split { ratio }`. Clients: quickfix list, LSP references/diagnostics, embedded terminal/REPL, build/test runner, `:help` pager, DAP debugger views. Deferred until the first concrete client is scoped.
 

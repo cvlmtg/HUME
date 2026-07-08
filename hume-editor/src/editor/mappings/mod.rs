@@ -46,7 +46,17 @@ impl Editor {
             && matches!(self.state.mode(), Mode::Normal | Mode::Extend)
             && self.handle_menu_key(key);
 
-        if !menu_consumed {
+        // ── Bottom drawer intercept (U6) ──────────────────────────────────────
+        // Same guarded-early-return shape as the menu's, but unlike the menu
+        // a stray key neither closes the drawer nor invokes its callback —
+        // it falls through untouched, leaving the drawer open while focus
+        // stays on the pane (Helix-style browse-while-editing).
+        let drawer_consumed = !menu_consumed
+            && self.state.drawer.is_some()
+            && matches!(self.state.mode(), Mode::Normal | Mode::Extend)
+            && self.handle_drawer_key(key);
+
+        if !menu_consumed && !drawer_consumed {
             match self.state.mode() {
                 Mode::Normal | Mode::Extend => self.handle_normal(key),
                 Mode::Insert => self.handle_insert(key),
@@ -115,6 +125,76 @@ impl Editor {
                 false
             }
         }
+    }
+
+    /// Handles one key while the bottom drawer (U6) is open. Returns `true`
+    /// if the key was fully consumed (movement, `Enter`, `Esc`) — `false`
+    /// for any other key, which the drawer leaves completely untouched (no
+    /// close, no callback) so normal dispatch runs as if the drawer weren't
+    /// open at all.
+    ///
+    /// Unlike the menu, `Enter` does not close the drawer or take the
+    /// callback — it clones it and queues a call, so the drawer can fire
+    /// `on-select` repeatedly across a browse session (Helix-style: pick a
+    /// diagnostic, jump, come back, pick another).
+    fn handle_drawer_key(&mut self, key: KeyEvent) -> bool {
+        if self.state.drawer.is_none() {
+            return false;
+        }
+        match key.code {
+            KeyCode::Char('j') | KeyCode::Down => {
+                let drawer = self.state.drawer.as_mut().expect("checked above");
+                if drawer.selected + 1 < drawer.items.len() {
+                    drawer.selected += 1;
+                    self.clamp_drawer_scroll();
+                }
+                true
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                let drawer = self.state.drawer.as_mut().expect("checked above");
+                if drawer.selected > 0 {
+                    drawer.selected -= 1;
+                    self.clamp_drawer_scroll();
+                }
+                true
+            }
+            KeyCode::Enter => {
+                let drawer = self.state.drawer.as_ref().expect("checked above");
+                let idx = steel::rvals::SteelVal::IntV(drawer.selected as isize);
+                let callback = drawer.callback.clone();
+                self.queue_steel_call(callback, vec![idx]);
+                true
+            }
+            KeyCode::Esc => {
+                let drawer = self.state.drawer.take().expect("checked above");
+                self.queue_steel_call(drawer.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
+                self.state.sync_drawer_view();
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Clamps `drawer.scroll` so `drawer.selected` stays within the visible
+    /// window, then syncs the view. `max` mirrors `DrawerProvider::height`'s
+    /// own ceiling (half the last-rendered *terminal* height, not the
+    /// already-chrome-reduced pane height) so scroll math agrees with what
+    /// the engine will actually paint next frame.
+    fn clamp_drawer_scroll(&mut self) {
+        let max = self.view.last_terminal_area.height / 2;
+        let Some(drawer) = self.state.drawer.as_mut() else {
+            return;
+        };
+        let capacity = (drawer.items.len() as u16 + 1).min(max);
+        let visible_rows = capacity.saturating_sub(1) as usize;
+        if visible_rows > 0 {
+            if drawer.selected >= drawer.scroll + visible_rows {
+                drawer.scroll = drawer.selected + 1 - visible_rows;
+            } else if drawer.selected < drawer.scroll {
+                drawer.scroll = drawer.selected;
+            }
+        }
+        self.state.sync_drawer_view();
     }
 }
 

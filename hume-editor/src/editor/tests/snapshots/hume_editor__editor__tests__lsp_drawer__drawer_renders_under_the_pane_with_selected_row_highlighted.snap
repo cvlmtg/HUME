@@ -1,0 +1,15 @@
+---
+source: hume-editor/src/editor/tests/lsp_drawer.rs
+assertion_line: 222
+expression: snap
+---
+<fg=#c8c8d2,bg=#3a3a3a>1 </><fg=#d0d0d0,bg=#3a3a3a>hello</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+
+<fg=#ffffff,bg=#50508c>src/a.rs:1: unused import</>
+<fg=#b4b4c8,bg=#282832>src/b.rs:9: TODO</>
+<fg=#000000,bg=#ffffff> 1:6 [+]                          │ NOR</>

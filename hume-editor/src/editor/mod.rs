@@ -403,6 +403,14 @@ pub(crate) struct EditorState {
     /// `PopupOverlay` registration (separate from the hover popup's, so both
     /// can in principle show at once — the menu paints on top).
     pub(crate) menu_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
+    /// `(show-drawer-list! items on-select)`'s raw content, including the
+    /// callback — cleared by `Esc` or `close-drawer!`, *not* by `Enter` (the
+    /// drawer stays open across selections, unlike the popup/menu).
+    pub(super) drawer: Option<crate::ui::drawer::DrawerModel>,
+    /// Shared drawer-overlay view: written on change (open/select-move/
+    /// scroll/close) by `sync_drawer_view`, never per frame — the drawer has
+    /// no cursor-relative geometry to re-resolve every frame.
+    pub(crate) drawer_view: Arc<RwLock<Option<crate::ui::drawer::DrawerViewState>>>,
 }
 
 impl EditorState {
@@ -410,6 +418,25 @@ impl EditorState {
 
     pub(crate) fn mode(&self) -> Mode {
         self.mode
+    }
+
+    // ── Drawer (U6) ──────────────────────────────────────────────────────────
+
+    /// Mirror `self.drawer` into `self.drawer_view` for `DrawerWidget` to
+    /// read. Called directly at every drawer mutation site (open, selection
+    /// move, scroll, close) — never per frame, unlike the popup/menu's
+    /// `sync_*_view` (the drawer has no cursor-relative geometry to
+    /// re-resolve each frame).
+    pub(super) fn sync_drawer_view(&self) {
+        let resolved = self
+            .drawer
+            .as_ref()
+            .map(|d| crate::ui::drawer::DrawerViewState {
+                rows: d.items.clone(),
+                selected: d.selected,
+                scroll: d.scroll,
+            });
+        *self.drawer_view.write().expect("RwLock not poisoned") = resolved;
     }
 
     /// `true` if `ch` was registered by any `(register-trigger-chars! source
@@ -1181,6 +1208,8 @@ impl Editor {
                 popup_view: Arc::new(RwLock::new(None)),
                 menu: None,
                 menu_view: Arc::new(RwLock::new(None)),
+                drawer: None,
+                drawer_view: Arc::new(RwLock::new(None)),
             },
             view: engine_view,
             kitty_enabled: false,

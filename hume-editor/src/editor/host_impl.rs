@@ -695,6 +695,28 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Ok(())
     }
 
+    // ── Bottom drawer (U6) ──────────────────────────────────────────────────────
+    fn show_drawer_list(
+        &mut self,
+        items: Vec<String>,
+        callback: steel::rvals::SteelVal,
+    ) -> Result<(), String> {
+        self.state.drawer = Some(crate::ui::drawer::DrawerModel {
+            items,
+            selected: 0,
+            scroll: 0,
+            callback,
+        });
+        self.state.sync_drawer_view();
+        Ok(())
+    }
+
+    fn close_drawer(&mut self) -> Result<(), String> {
+        self.state.drawer = None;
+        self.state.sync_drawer_view();
+        Ok(())
+    }
+
     // ── Completion orchestration (B8) ────────────────────────────────────────
     fn completion_begin(
         &mut self,

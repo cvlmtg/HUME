@@ -4,7 +4,7 @@ use slotmap::{SlotMap, new_key_type};
 
 use crate::format::FormatScratch;
 use crate::pane::{Pane, WhitespaceConfig, WrapMode};
-use crate::providers::{GutterCell, InlineInsert, StatuslineProvider, TabBarProvider};
+use crate::providers::{DrawerProvider, GutterCell, InlineInsert, StatuslineProvider, TabBarProvider};
 use crate::style::StyleScratch;
 use crate::syntax_layers::SyntaxLayers;
 use crate::theme::{ScopeRegistry, Theme};
@@ -181,6 +181,8 @@ pub struct EngineView {
     pub registry: ScopeRegistry,
     /// Optional tab bar rendered at the top of the terminal area.
     pub tabbar: Option<Box<dyn TabBarProvider>>,
+    /// Optional bottom drawer, rendered directly above the statusline.
+    pub drawer: Option<Box<dyn DrawerProvider>>,
     /// Terminal area available to panes as of the last `prepare_frame`.
     /// Pane-focus/split commands run between frames with no terminal handle
     /// of their own, so they recompute geometry from this plus `layout`
@@ -189,6 +191,13 @@ pub struct EngineView {
     /// cache to go stale when a command mutates `layout` mid-frame. Zero
     /// area until the first `prepare_frame`.
     pub last_pane_area: ratatui::layout::Rect,
+    /// Raw terminal area (before chrome subtraction) as of the last
+    /// `prepare_frame` — the same `area` passed to `pane_area`/`render`.
+    /// Distinct from `last_pane_area`: chrome that reserves rows off a
+    /// fraction of this raw height (the drawer's `max` ceiling) needs the
+    /// *un-subtracted* figure, since `last_pane_area` already has the
+    /// drawer's own reserved rows folded out of it.
+    pub last_terminal_area: ratatui::layout::Rect,
     /// Whether pane splits reserve a 1-cell seam column/row — mirrors the
     /// `pane-dividers` setting. Set alongside `last_pane_area`; consulted by
     /// the same recompute helpers.
@@ -211,7 +220,9 @@ impl EngineView {
             theme,
             registry: ScopeRegistry::new(),
             tabbar: None,
+            drawer: None,
             last_pane_area: ratatui::layout::Rect::default(),
+            last_terminal_area: ratatui::layout::Rect::default(),
             reserve_seam: true,
         }
     }
@@ -236,13 +247,18 @@ impl EngineView {
     }
 
     /// Partition `area` into the pane-content rect, reserving a tab-bar row at
-    /// the top (if `self.tabbar` is set) and a statusline row at the bottom
-    /// (always). Single source of truth for chrome layout — `render` and the
-    /// editor's `prepare_frame` both partition through this method so pane
-    /// geometry is computed identically wherever it's needed.
+    /// the top (if `self.tabbar` is set), a drawer band directly above the
+    /// statusline (if `self.drawer` is set), and a statusline row at the
+    /// bottom (always). Single source of truth for chrome layout — `render`
+    /// and the editor's `prepare_frame` both partition through this method so
+    /// pane geometry is computed identically wherever it's needed.
     pub fn pane_area(&self, area: ratatui::layout::Rect) -> ratatui::layout::Rect {
         let tabbar_height: u16 = if self.tabbar.is_some() { 1 } else { 0 };
-        let chrome_height = tabbar_height + 1;
+        let drawer_height = self
+            .drawer
+            .as_ref()
+            .map_or(0, |d| d.height(area.height / 2));
+        let chrome_height = tabbar_height + 1 + drawer_height;
 
         if chrome_height < area.height {
             ratatui::layout::Rect {
@@ -302,6 +318,25 @@ impl EngineView {
                     ..area
                 };
                 tabbar.render(tabbar_area, &self.theme, buf);
+            }
+
+            // ── Render drawer ────────────────────────────────────────────────────
+            // Sits directly above the statusline row — derived from `area`
+            // directly (not `pane_area`), matching the tab bar/statusline's
+            // own convention: chrome claims its band even when the terminal
+            // is too small to also fit pane content (`pane_area`'s
+            // degenerate branch already collapses `height` to 0 there).
+            if let Some(ref drawer) = self.drawer {
+                let drawer_height = drawer.height(area.height / 2);
+                if drawer_height > 0 {
+                    let drawer_y = (area.y + area.height).saturating_sub(1 + drawer_height);
+                    let drawer_area = ratatui::layout::Rect {
+                        y: drawer_y.max(area.y),
+                        height: drawer_height.min(area.height.saturating_sub(1)),
+                        ..area
+                    };
+                    drawer.render(drawer_area, &self.theme, buf);
+                }
             }
 
             // ── Render statusline ───────────────────────────────────────────────

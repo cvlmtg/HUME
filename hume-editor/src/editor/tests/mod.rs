@@ -460,6 +460,7 @@ mod lsp_bridge;
 mod lsp_completion;
 mod lsp_decorations;
 mod lsp_diagnostics;
+mod lsp_drawer;
 mod lsp_edits;
 mod lsp_hooks;
 mod lsp_introspect;

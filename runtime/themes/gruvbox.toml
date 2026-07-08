@@ -40,6 +40,9 @@
 # ── Hover / signature-help popup ────────────────────────────────────────────────
 "ui.popup" = { fg = "fg2", bg = "bg2" }
 
+# ── Bottom drawer (location lists, etc.) ────────────────────────────────────────
+"ui.drawer" = { fg = "fg2", bg = "bg2" }
+
 # ── Statusline ────────────────────────────────────────────────────────────────
 "ui.statusline"              = { fg = "bg0",  bg = "fg4" }
 "ui.statusline.mode.normal"  = { fg = "bg0",  bg = "fg4" }

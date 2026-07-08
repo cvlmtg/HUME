@@ -51,3 +51,26 @@ pub(crate) fn close_menu(ctx: &mut SteelCtx) -> SteelResult {
     require_cmd_ctx!(ctx, "close-menu!");
     ctx.host.close_menu().map(|()| SteelVal::Void).map_err(conv_err)
 }
+
+/// `(show-drawer-list! items on-select)`.
+pub(crate) fn show_drawer_list(
+    ctx: &mut SteelCtx,
+    items: SteelVal,
+    on_select: SteelVal,
+) -> SteelResult {
+    require_cmd_ctx!(ctx, "show-drawer-list!");
+    let items = list_to_strings(items, "show-drawer-list! items")?;
+    ctx.host
+        .show_drawer_list(items, on_select)
+        .map(|()| SteelVal::Void)
+        .map_err(conv_err)
+}
+
+/// `(close-drawer!)`.
+pub(crate) fn close_drawer(ctx: &mut SteelCtx) -> SteelResult {
+    require_cmd_ctx!(ctx, "close-drawer!");
+    ctx.host
+        .close_drawer()
+        .map(|()| SteelVal::Void)
+        .map_err(conv_err)
+}
