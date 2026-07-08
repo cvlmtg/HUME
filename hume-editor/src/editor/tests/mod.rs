@@ -149,6 +149,21 @@ static CWD_MUTEX: Mutex<()> = Mutex::new(());
 // this mutex for its entire duration so tests do not race on the value.
 static HUME_RUNTIME_MUTEX: Mutex<()> = Mutex::new(());
 
+/// Creates a tempdir while holding `HUME_RUNTIME_MUTEX` — guarantees no
+/// concurrent `HumeRuntimeGuard` is mid-`TMPDIR`-redirect at creation time,
+/// so this directory can't land inside (and later be deleted along with)
+/// that guard's tree. Only the creation instant needs the lock: once a
+/// `TempDir` exists at its own stable path, a *later* guard's redirect
+/// can't retroactively engulf it — `TMPDIR` only affects tempdir calls made
+/// while it's set. Any test that creates its own tempdirs outside a
+/// `HumeRuntimeGuard`/`RealRuntimeGuard` (which already protect everything
+/// created during their lifetime) should use this instead of a bare
+/// `tempfile::tempdir()`.
+fn safe_tempdir() -> tempfile::TempDir {
+    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    tempfile::tempdir().expect("tempdir")
+}
+
 /// Lock `HUME_RUNTIME_MUTEX`, create isolated `runtime` and `tmp` tempdirs,
 /// set `HUME_RUNTIME` and `TMPDIR`, and restore both on drop.
 ///
@@ -506,6 +521,7 @@ mod lsp_decorations;
 mod lsp_diagnostics;
 mod lsp_drawer;
 mod lsp_edits;
+mod lsp_goto;
 mod lsp_hooks;
 mod lsp_hover;
 mod lsp_inlay_hints;

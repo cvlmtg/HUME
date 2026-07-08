@@ -102,8 +102,8 @@ fn run_hover(ed: &mut Editor) {
 #[test]
 #[cfg(not(windows))]
 fn popup_shows_the_fixture_content() {
-    let tmp = tempfile::tempdir().unwrap();
-    let file_dir = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
     let (mut ed, _guard, _sid) = setup(
         file_dir.path(),
         tmp.path(),
@@ -133,8 +133,8 @@ fn popup_shows_the_fixture_content() {
 #[test]
 #[cfg(not(windows))]
 fn null_result_logs_and_shows_no_popup() {
-    let tmp = tempfile::tempdir().unwrap();
-    let file_dir = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
     let (mut ed, _guard, _sid) = setup(
         file_dir.path(),
         tmp.path(),
@@ -159,8 +159,8 @@ fn null_result_logs_and_shows_no_popup() {
 #[test]
 #[cfg(not(windows))]
 fn error_reports_via_the_message_log() {
-    let tmp = tempfile::tempdir().unwrap();
-    let file_dir = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
     let (mut ed, _guard, _sid) = setup(
         file_dir.path(),
         tmp.path(),
@@ -185,8 +185,8 @@ fn error_reports_via_the_message_log() {
 #[test]
 #[cfg(not(windows))]
 fn tall_content_falls_back_to_the_drawer() {
-    let tmp = tempfile::tempdir().unwrap();
-    let file_dir = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
     // No on-viewport-change has fired in this test, so the popup/drawer
     // threshold falls back to 15 lines (lib.scm) — 20 lines must overflow.
     let tall = (0..20).map(|i| format!("line{i}")).collect::<Vec<_>>().join("\n");
@@ -215,8 +215,8 @@ fn capability_gate_skips_the_request_when_hover_unsupported() {
     // would go unanswered and `status_msg` would stay unset, not mention
     // "not supported"; this is a sufficient oracle without needing to
     // inspect the (trait-erased, post-boxing unreachable) sent log.
-    let tmp = tempfile::tempdir().unwrap();
-    let file_dir = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
     // No hoverProvider in the advertised capabilities.
     let (mut ed, _guard, _sid) = setup(
         file_dir.path(),
@@ -237,8 +237,8 @@ fn capability_gate_skips_the_request_when_hover_unsupported() {
 #[test]
 #[cfg(not(windows))]
 fn allow_stale_is_honored_despite_an_intervening_edit() {
-    let tmp = tempfile::tempdir().unwrap();
-    let file_dir = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
     let (mut ed, _guard, _sid) = setup(
         file_dir.path(),
         tmp.path(),

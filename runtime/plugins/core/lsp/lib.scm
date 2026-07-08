@@ -1,6 +1,7 @@
 ;;; core:lsp/lib.scm — shared helpers used by every feature file.
 
-(provide lsp/supports? lsp/guard-capability lsp/report-error lsp/visible-lines)
+(provide lsp/supports? lsp/guard-capability lsp/report-error lsp/visible-lines
+         lsp/uri->display-path lsp/show-locations!)
 
 ;; ── Capability guard ────────────────────────────────────────────────────────
 
@@ -55,3 +56,45 @@
         #f
         (let ((entry (car matches)))
           (+ 1 (- (list-ref entry 2) (list-ref entry 1)))))))
+
+;; ── Location display + drawer ───────────────────────────────────────────────
+;; A `Location` is `{uri, range}`; a `LocationLink` is `{targetUri,
+;; targetSelectionRange | targetRange, …}` — `goto-location!` (B6) accepts
+;; either raw hashmap directly and does its own dual-shape extraction; these
+;; mirror that extraction only for the human-readable display string.
+
+(define (lsp/location-uri loc)
+  (if (hash-contains? loc "uri") (hash-ref loc "uri") (hash-ref loc "targetUri")))
+
+(define (lsp/location-start loc)
+  (let ((range (if (hash-contains? loc "range")
+                    (hash-ref loc "range")
+                    (if (hash-contains? loc "targetSelectionRange")
+                        (hash-ref loc "targetSelectionRange")
+                        (hash-ref loc "targetRange")))))
+    (hash-ref range "start")))
+
+;;; "path/to/file.rs" stripped of the "file://" scheme prefix — good enough
+;;; for display, not for parsing back into a URI.
+(define (lsp/uri->display-path uri)
+  (if (and (>= (string-length uri) 7) (equal? (substring uri 0 7) "file://"))
+      (substring uri 7 (string-length uri))
+      uri))
+
+;;; "path/to/file.rs:12:5" — 1-based line/col, matching every other editor's
+;;; location display convention (the wire values are 0-based).
+(define (lsp/location-display loc)
+  (let* ((uri (lsp/location-uri loc))
+         (start (lsp/location-start loc)))
+    (string-append (lsp/uri->display-path uri) ":"
+                   (number->string (+ 1 (hash-ref start "line"))) ":"
+                   (number->string (+ 1 (hash-ref start "character"))))))
+
+;;; `locs`: a list of raw Location/LocationLink hashmaps (mixed shapes OK —
+;;; each row's own on-select jump uses the original hashmap, not a
+;;; re-derived one). Drawer rows are pre-formatted display strings (U6);
+;;; `goto-location!` handles the shape dispatch, so this never touches wire
+;;; positions itself.
+(define (lsp/show-locations! locs)
+  (show-drawer-list! (map lsp/location-display locs)
+    (lambda (idx) (when idx (goto-location! (list-ref locs idx))))))

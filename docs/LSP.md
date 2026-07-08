@@ -308,7 +308,7 @@ Generic, Steel-scriptable widgets plus store-fed render wiring. The engine primi
 Each feature is Steel code composing Steps 2–3 primitives; all are testable against the C4 double with scripted responses. **Rust changes in this step must be zero** — a needed Rust change means a missing platform primitive: stop and report. Cards: `docs/lsp/step-4.md`. (Tags omit B3 — every feature also uses its capability checks and params helpers.)
 
 - [x] **F1** — hover *(B2, U4, U6)*
-- [ ] **F2** — goto definition family *(B2, B6, U6)*
+- [x] **F2** — goto definition family *(B2, B6, U6)*
 - [ ] **F3** — completions *(B2, B7, B8, U7)*
 - [ ] **F4** — diagnostics navigation *(B5, B6, U6)*
 - [ ] **F5** — rename *(B2, B6, B9)*

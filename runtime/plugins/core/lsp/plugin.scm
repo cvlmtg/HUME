@@ -7,3 +7,4 @@
 
 (require "lib.scm")
 (require "hover.scm")
+(require "goto.scm")
