@@ -189,6 +189,9 @@ impl Editor {
             builtin_cmd_names: std::collections::HashSet::new(),
             parse_worker: Box::new(hume_treesitter::parse_worker::ThreadedParseBackend::new()),
             parse_worker_disconnect_logged: false,
+            tui_active: false,
+            #[cfg(test)]
+            inline_output_entered: false,
         })
     }
 
@@ -229,6 +232,10 @@ impl Editor {
     /// 3. Block until the next terminal event.
     /// 4. Dispatch the event.
     pub(crate) fn run(&mut self, term: &mut Term) -> io::Result<()> {
+        // Marks that this Editor now owns the terminal — dispatch's
+        // inline-output bracket (mod.rs) checks this to skip alt-screen
+        // toggling and the "press any key" block outside the event loop.
+        self.tui_active = true;
         // Render context lives here — allocated once, reused every frame.
         // It must be outside `self` so `render_into` can borrow `self`
         // immutably while `ctx` is borrowed mutably alongside it.
@@ -597,6 +604,15 @@ impl Editor {
     #[cfg(test)]
     pub(crate) fn viewport(&self) -> &hume_engine::pane::ViewportState {
         &self.view.panes[self.state.focused_pane_id].viewport
+    }
+
+    /// `true` if dispatch has ever entered the inline-output terminal
+    /// bracket (alt-screen toggle + "press any key") on this `Editor`. Off
+    /// the event loop this must stay `false` for every `#:inline-output #t`
+    /// command dispatched — see `tui_active` on `Editor`.
+    #[cfg(test)]
+    pub(crate) fn inline_output_entered(&self) -> bool {
+        self.inline_output_entered
     }
 
     pub(crate) fn viewport_mut(&mut self) -> &mut hume_engine::pane::ViewportState {

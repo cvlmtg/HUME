@@ -446,3 +446,35 @@ fn plum_update_grammar_unknown_name_warns() {
         "expected unknown-grammar warning naming 'nosuchlang', got: {msgs:?}"
     );
 }
+
+/// `plum-install-grammar` is declared `#:inline-output #t` — dispatch must
+/// only bracket it with the real terminal (alt-screen exit + "press any key
+/// to return" block) when `Editor::run` owns the terminal. Off the event
+/// loop (this test, like every other in this file, dispatches directly and
+/// never calls `run`), that bracket must be skipped entirely: otherwise
+/// dispatch blocks forever on a keypress that never comes whenever stdin
+/// happens to be a real TTY (e.g. `cargo test` run interactively), which is
+/// exactly what stalled the suite before `tui_active` was introduced.
+#[test]
+#[cfg(not(windows))]
+fn inline_output_command_does_not_enter_terminal_bracket_off_event_loop() {
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    assert!(
+        !ed.inline_output_entered(),
+        "bracket must not have fired before any inline-output command ran"
+    );
+
+    type_cmd(&mut ed, ":plum-install-grammar nosuchlang");
+
+    assert!(
+        !ed.inline_output_entered(),
+        "inline-output bracket must stay skipped when Editor::run never took the terminal"
+    );
+}

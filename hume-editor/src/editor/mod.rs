@@ -431,6 +431,19 @@ pub(crate) struct Editor {
     parse_worker: Box<dyn ParseBackend>,
     /// Whether the one-shot "parse worker disconnected" message has been logged.
     parse_worker_disconnect_logged: bool,
+    /// `true` once [`Editor::run`] has taken ownership of the terminal (the
+    /// interactive event loop). Tests and headless `run_keys` dispatch
+    /// commands directly and never enter `run`, so this stays `false` there —
+    /// dispatch uses it to skip the inline-output terminal bracket (alt-screen
+    /// toggle + "press any key to return" block) when there is no TUI to
+    /// suspend and no interactive user to press a key.
+    tui_active: bool,
+    /// Test-only seam: flips `true` when dispatch actually enters the
+    /// inline-output terminal bracket. Lets tests assert the bracket was
+    /// skipped (rather than merely that it didn't hang, which depends on
+    /// whether stdin happens to be a TTY) without capturing real terminal I/O.
+    #[cfg(test)]
+    inline_output_entered: bool,
 }
 
 // proptest requires `Debug` on strategy values; this minimal impl satisfies it.
@@ -736,8 +749,17 @@ impl Editor {
             steel_args.clone()
         };
 
-        // Alt-screen bracketing for inline-output commands.
-        if inline_output {
+        // Alt-screen bracketing for inline-output commands. Only meaningful
+        // when `Editor::run` owns the terminal — off the event loop (tests,
+        // headless `run_keys`) there is no alt-screen to leave and no
+        // interactive user to answer the "press any key" prompt, so skip the
+        // whole bracket and just run the command body below.
+        let bracket_inline_output = inline_output && self.tui_active;
+        if bracket_inline_output {
+            #[cfg(test)]
+            {
+                self.inline_output_entered = true;
+            }
             let kitty = self.kitty_enabled;
             let mouse = self.state.settings.mouse_enabled;
             if let Err(e) = hume_platform::terminal::enter_inline_output(kitty, mouse) {
@@ -762,7 +784,7 @@ impl Editor {
             )
         };
 
-        if inline_output {
+        if bracket_inline_output {
             hume_platform::terminal::print_return_prompt();
             hume_platform::terminal::wait_for_keypress();
             let kitty = self.kitty_enabled;
@@ -1034,6 +1056,9 @@ impl Editor {
             builtin_cmd_names: std::collections::HashSet::new(),
             parse_worker: Box::new(InlineParseBackend::new()),
             parse_worker_disconnect_logged: false,
+            tui_active: false,
+            #[cfg(test)]
+            inline_output_entered: false,
         }
     }
 
