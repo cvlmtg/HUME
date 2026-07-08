@@ -134,10 +134,10 @@ fn runtime_dir_with(
 
     if let Some(exe_dir) = exe.as_deref().and_then(Path::parent) {
         #[cfg(not(windows))]
-        if let Some(share) = exe_dir.parent().map(|p| p.join("share").join("hume")) {
-            if share.exists() {
-                return Some(share);
-            }
+        if let Some(share) = exe_dir.parent().map(|p| p.join("share").join("hume"))
+            && share.exists()
+        {
+            return Some(share);
         }
         let exe_runtime = exe_dir.join("runtime");
         if exe_runtime.exists() {
@@ -145,10 +145,10 @@ fn runtime_dir_with(
         }
     }
 
-    if let Some(cwd_runtime) = cwd.map(|c| c.join("runtime")) {
-        if cwd_runtime.exists() {
-            return Some(cwd_runtime);
-        }
+    if let Some(cwd_runtime) = cwd.map(|c| c.join("runtime"))
+        && cwd_runtime.exists()
+    {
+        return Some(cwd_runtime);
     }
 
     None

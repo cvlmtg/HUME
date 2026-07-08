@@ -13,6 +13,11 @@
 //! - **Inherited** (`git_clone_rev`, `git_checkout`, `curl_fetch`,
 //!   `tree_sitter_build`): subprocess output flows directly to the terminal so
 //!   the user sees live progress; returns `ExitStatus` only.
+//!
+//! Callers pass canonicalized paths (for sandbox `starts_with` checks), which
+//! on Windows carry the `\\?\` extended-length prefix. External tools like
+//! `git` and `curl` reject that prefix, so every path handed to a `Command`
+//! here is normalized via `strip_unc_prefix` first (a no-op on non-Windows).
 
 use std::io;
 use std::path::Path;
@@ -21,14 +26,17 @@ use std::process::{Command, ExitStatus, Output};
 #[cfg(unix)]
 use std::os::unix::process::CommandExt as _;
 
+use crate::path::strip_unc_prefix;
+
 /// Run `git clone -- <url> <dest>` and return captured output.
 ///
 /// The caller is responsible for validating that `dest` resolves inside the
 /// write sandbox before calling this.
 pub fn git_clone(url: &str, dest: &Path) -> io::Result<Output> {
+    let dest = strip_unc_prefix(dest.to_path_buf());
     Command::new("git")
         .args(["clone", "--", url])
-        .arg(dest)
+        .arg(&dest)
         .output()
 }
 
@@ -36,7 +44,8 @@ pub fn git_clone(url: &str, dest: &Path) -> io::Result<Output> {
 ///
 /// `dir` must already be canonicalized and sandbox-checked by the caller.
 pub fn git_pull_in(dir: &Path) -> io::Result<Output> {
-    Command::new("git").arg("pull").current_dir(dir).output()
+    let dir = strip_unc_prefix(dir.to_path_buf());
+    Command::new("git").arg("pull").current_dir(&dir).output()
 }
 
 /// Clone `url` at the specific `rev` into `dest` using inherited stdio
@@ -45,22 +54,24 @@ pub fn git_pull_in(dir: &Path) -> io::Result<Output> {
 /// Uses `--filter=blob:none` (blobless partial clone) to avoid fetching all
 /// file history.  `git_checkout` is called afterward to pin the exact revision.
 pub fn git_clone_rev(url: &str, dest: &Path, rev: &str) -> io::Result<ExitStatus> {
+    let dest = strip_unc_prefix(dest.to_path_buf());
     let status = Command::new("git")
         .args(["clone", "--filter=blob:none", "--", url])
-        .arg(dest)
+        .arg(&dest)
         .new_process_group()
         .status()?;
     if !status.success() {
         return Ok(status);
     }
-    git_checkout(dest, rev)
+    git_checkout(&dest, rev)
 }
 
 /// Run `git checkout --force <rev>` inside `dir` with inherited stdio.
 pub(crate) fn git_checkout(dir: &Path, rev: &str) -> io::Result<ExitStatus> {
+    let dir = strip_unc_prefix(dir.to_path_buf());
     Command::new("git")
         .args(["-C"])
-        .arg(dir)
+        .arg(&dir)
         .args(["checkout", "--force", "--end-of-options", rev, "--"])
         .new_process_group()
         .status()
@@ -70,9 +81,10 @@ pub(crate) fn git_checkout(dir: &Path, rev: &str) -> io::Result<ExitStatus> {
 ///
 /// `dest`'s parent directory must already exist before calling this.
 pub fn curl_fetch(url: &str, dest: &Path) -> io::Result<ExitStatus> {
+    let dest = strip_unc_prefix(dest.to_path_buf());
     Command::new("curl")
         .args(["-fsSL", "-o"])
-        .arg(dest)
+        .arg(&dest)
         .args(["--", url])
         .new_process_group()
         .status()
@@ -81,10 +93,12 @@ pub fn curl_fetch(url: &str, dest: &Path) -> io::Result<ExitStatus> {
 /// Compile a tree-sitter grammar source at `src` to a shared library at `out`
 /// using `tree-sitter build`, with inherited stdio.
 pub fn tree_sitter_build(src: &Path, out: &Path) -> io::Result<ExitStatus> {
+    let src = strip_unc_prefix(src.to_path_buf());
+    let out = strip_unc_prefix(out.to_path_buf());
     Command::new("tree-sitter")
         .args(["build", "-o"])
-        .arg(out)
-        .arg(src)
+        .arg(&out)
+        .arg(&src)
         .new_process_group()
         .status()
 }

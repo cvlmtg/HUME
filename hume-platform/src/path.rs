@@ -689,6 +689,36 @@ mod tests {
         assert_eq!(got, "/home/userx/foo");
     }
 
+    // ── strip_unc_prefix ─────────────────────────────────────────────────────
+
+    #[cfg(windows)]
+    #[test]
+    fn strip_unc_prefix_removes_verbatim_drive_prefix() {
+        let got = strip_unc_prefix(PathBuf::from(r"\\?\C:\Users\x"));
+        assert_eq!(got, PathBuf::from(r"C:\Users\x"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn strip_unc_prefix_leaves_verbatim_unc_unchanged() {
+        let got = strip_unc_prefix(PathBuf::from(r"\\?\UNC\server\share"));
+        assert_eq!(got, PathBuf::from(r"\\?\UNC\server\share"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn strip_unc_prefix_plain_path_unchanged() {
+        let got = strip_unc_prefix(PathBuf::from(r"C:\Users\x"));
+        assert_eq!(got, PathBuf::from(r"C:\Users\x"));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn strip_unc_prefix_is_noop_on_non_windows() {
+        let got = strip_unc_prefix(PathBuf::from("/tmp/foo"));
+        assert_eq!(got, PathBuf::from("/tmp/foo"));
+    }
+
     // ── has_dotdot ────────────────────────────────────────────────────────────
 
     #[test]
