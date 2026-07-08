@@ -29,6 +29,13 @@ See [Plugins](plugins.md) for how to declare and write your own.
 
 PLUM also installs and manages tree-sitter grammars. See [Syntax Highlighting](syntax-highlighting.md) for the full workflow and its `:plum-*-grammar` commands.
 
+## core:lsp
+
+Language server support: hover, go-to-definition, references, diagnostics, rename,
+formatting, code actions, signature help, completions, and inlay hints. Requires
+`core:stdlib` loaded first. See [Language Servers](lsp.md) for setup, the full commands/keys
+table, and settings.
+
 ## core:helix-surround
 
 Helix-style surround shortcuts: `ms` wraps the selection in a surrounding pair, `md` deletes a surrounding pair, `mr` replaces one.

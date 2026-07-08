@@ -103,17 +103,13 @@ Steps 1–3 are ordered by dependency but Step 4 tasks unlock incrementally — 
 | `diagnostics-for-buffer`'s `raw` field (F9 platform gap) | **Added: each entry carries the original wire `Diagnostic` JSON verbatim** | `textDocument/codeAction`'s `context.diagnostics` must echo back the *raw* diagnostics currently shown in the request range — rust-analyzer (and presumably other servers) gate diagnostic-derived quickfixes on this, treating an empty array as "the client isn't showing any diagnostics here." B5's existing char-indexed flat shape drops everything but `start`/`end`/`severity`/`message`/`code`/`source` at ingest — no wire positions, no `data`, no `tags`, no `relatedInformation`. Same precedent as B10c's raw-item retention for completion items: `StoredDiag` gained a `raw: serde_json::Value` field captured at ingest before the wire `Diagnostic` is consumed, exposed as a `"raw"` key in `diagnostics-for-buffer`'s output; `actions.scm` extracts it directly, no position math in Steel. |
 | Snippet completions (F3) | **Strip to plain text — confirmed acceptable** | `insertTextFormat == 2` items get `${n:default}` rewritten to `default` and bare `$n` dropped, before `completion-begin!`, via a small character-scanning Scheme helper (no regex builtin) — no choices, no nested placeholders, no `\$` escapes. Automated test (`snippet_item_lands_as_stripped_plain_text`, flip-checked) proves the exact for-loop-template shape (`for ${1:x} in ${2:iter} {\n    $0\n}`) strips correctly; manual rust-analyzer smoke confirmed accepted completions insert clean text with no stray `$`/`{`/`}` artifacts. Full snippet support (tabstop navigation, multi-cursor placeholder selection) stays Future — the insert-mode state machine for that is Rust, not Steel. |
 | Multi-character inline inserts render as one wide cell (F10 platform gap, not LSP-specific) | **Fixed in `hume-engine/src/format.rs`: one `Grapheme`/`Cell` per grapheme cluster of the insert text, not one cell for the whole string** | F10's manual rust-analyzer smoke test found inlay hints rendering only their first couple of characters live, the rest blank (`let x0:     = 0;` instead of `let x0: i32 = 0;`) — confirmed via raw terminal escape-sequence inspection, not a color/contrast issue. `CellContent::Virtual`'s render arm called `cell.set_symbol()` with the entire multi-character hint text on a single ratatui `Cell` while reserving `width` columns for it; ratatui writes one cell per terminal column, so the wide symbol's spillover past the first column got overwritten once the backend advanced to the next (nominally width-1) cell. This is core `hume-engine` rendering (Step 3, U9), not LSP-specific — any multi-character `InlineDecoration` insert would hit it; F10 is simply the first feature whose insert text is more than one glyph. U9's own pinned snapshots never caught it because they assert on the `Grapheme`/`Cell` buffer directly, never the real terminal byte stream a backend actually writes — only the manual smoke test exercises that path. Fixed with a rewritten regression test (`wide_inline_insert_emits_one_cell_per_grapheme_without_wraparound`) plus updated U9 snapshots; no caller-visible contract change (`InlineInsert`'s own shape is untouched). |
+| Server crash policy | **Manual `:lsp-restart [language]` only — no auto-restart** | Already shipped in C10 (`hume-editor/src/editor/commands/typed_lsp.rs`): stops then respawns through the same C8 spawn path. Revisit bounded auto-restart with real usage data; the policy knob would live in Steel either way. |
+| `workspace/configuration` flow | **`register-lsp-server!`'s `#:settings` blob answered verbatim to `workspace/configuration`, sent once as `didChangeConfiguration` after `initialized`** | Already shipped in C6/C8 (`hume-editor/src/editor/lsp/mod.rs`'s `workspace_configuration_response`, `registry.rs`). |
+| Multiple servers per language | **Reject a second `register-lsp-server!` for an already-configured language, `Severity::Error`** | Already shipped (`hume-editor/src/editor/lsp/registry.rs`'s `apply_pending_lsp_server_reg`). The diagnostics store already keys by `(server, buffer)`, so the door stays open for a future per-buffer override without a data-model change. |
 
 ## Open Questions
 
-Every row has a **Default** — at the gate, adopt it unless the gate's evidence contradicts it (rule 6 above). When a gate resolves, move the row into Decisions.
-
-| Question | Context |
-|----------|---------|
-| Server crash policy | Manual `:lsp-restart` only, or bounded auto-restart (e.g. 3 attempts with backoff)? Revisit with real usage. Policy knob belongs to Steel either way. **Default:** manual-only. |
-| `workspace/configuration` flow | How Steel user config reaches servers. Decide at C8. **Default:** the `register-lsp-server!` `#:settings` blob is answered verbatim to `workspace/configuration` requests and sent once as `didChangeConfiguration` after `initialized`. |
-| `workspace/didChangeWatchedFiles` | Ties to the existing "File watcher" Future item in ROADMAP — LSP may be the trigger that promotes it. Not required for v1. **Default:** do not implement; do not advertise the capability. |
-| Multiple servers per language | v1: exactly one server per language. The diagnostics store keys by (server, buffer) so the door stays open. **Default:** reject a second `register-lsp-server!` for the same language with a loud error. |
+None remaining as of Step 4's completion — the fourth row (`workspace/didChangeWatchedFiles`) is re-filed under [Deferred / Future](#deferred--future) below; it never had a v1 implementation to decide on, only a "not required" default. Future gates that open a new question go here, with a **Default** per rule 6 above, until resolved into Decisions.
 
 ## LSP protocol primer
 
@@ -323,7 +319,7 @@ Each feature is Steel code composing Steps 2–3 primitives; all are testable ag
 - [x] **F8** — formatting *(B2, B6)*
 - [x] **F9** — code actions *(B2, B5, B6, U5)*
 - [x] **F10** — inlay hints *(B2, B4, B5, B7, U9)*
-- [ ] **F11** — `core:lsp` packaging + docs
+- [x] **F11** — `core:lsp` packaging + docs
 
 ## Deferred / Future
 
@@ -333,5 +329,5 @@ Each feature is Steel code composing Steps 2–3 primitives; all are testable ag
 - **Code lens** — plugin-writable via B2 + B5 stores + `workspace/executeCommand`.
 - **Multiple servers per language / per buffer** — Rust routing + result merging; store already keys by server.
 - **Bounded auto-restart** for crashed servers (policy knob Steel-side).
-- **`workspace/didChangeWatchedFiles`** via a real file watcher (existing ROADMAP Future item).
+- **`workspace/didChangeWatchedFiles`** via a real file watcher (existing ROADMAP Future item) — not implemented in v1; the capability is not advertised.
 - **DAP** — entirely separate protocol; out of scope, noted only as the same platform pattern (Rust transport, Steel behavior) applied again.

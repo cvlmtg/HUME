@@ -217,6 +217,12 @@
 ;;                       (C is change-to-EOL on a bare cursor; with a real
 ;;                       selection it falls back to copy-selection-on-next-line.
 ;;                       Requires core:stdlib loaded first.)
+;; core:lsp            — language server features: hover, goto, references,
+;;                       diagnostics, rename, formatting, code actions,
+;;                       signature help, completions, inlay hints.
+;;                       Requires core:stdlib loaded first.  See
+;;                       user-manual/docs/lsp.md for the full commands/keys
+;;                       and settings tables.
 ;;
 ;; Load plum first so it can install plugins and grammars.
 ;; PLUM registers any already-compiled grammars on load.
@@ -241,6 +247,19 @@
 ;; before any plugin that calls them (core:vim-keybind's C binding does).
 ;; (load-plugin "core:stdlib")
 ;; (load-plugin "core:vim-keybind")
+
+;; Language servers: register the server, then declare or load the plugin.
+;; Declaring activates lazily on the first attach or the first LSP command;
+;; (load-plugin "core:lsp") works too if you'd rather load it eagerly.
+;;
+;; (load-plugin "core:stdlib")
+;; (register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
+;; (declare-plugin "core:lsp"
+;;   #:events '("on-lsp-attach")
+;;   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
+;;                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
+;;                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
+;;                "lsp-rename" "fmt" "lsp-code-actions" "completion-trigger"))
 
 ;; Declare third-party plugins to be installed by :plum-install.
 ;; PLUM installs declared plugins and reloads the config so they activate.

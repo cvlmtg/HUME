@@ -532,6 +532,7 @@ mod lsp_inlay_feature;
 mod lsp_inlay_hints;
 mod lsp_introspect;
 mod lsp_menu;
+mod lsp_packaging;
 mod lsp_popup;
 mod lsp_prompt;
 mod lsp_references;
