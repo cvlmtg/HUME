@@ -69,9 +69,23 @@
           (set! *sighelp-chars* chars)
           (register-trigger-chars! "lsp-sighelp" chars))))))
 
+;;; Same global-not-per-server caveat as completion.scm's `on-lsp-detach` —
+;;; `register-trigger-chars!` has no scoping narrower than the source name.
+(register-hook! 'on-lsp-detach
+  (lambda (bid server-name)
+    (set! *sighelp-chars* '())
+    (register-trigger-chars! "lsp-sighelp" '())))
+
 (register-hook! 'on-trigger-char
   (lambda (bid ch)
     (when (member ch *sighelp-chars*)
       (if (equal? ch ")")
           (close-popup!)
-          (lsp/sighelp-request bid)))))
+          ;; Unlike completion.scm's trigger path, this used to call
+          ;; lsp/sighelp-request directly with no capability guard — a
+          ;; stale trigger char left registered past detach (or a server
+          ;; that never advertised signatureHelpProvider in the first
+          ;; place) hit lsp-request's server-resolution failure and logged
+          ;; an Error on every matching keystroke instead of a polite skip.
+          (lsp/guard-capability "signatureHelpProvider"
+            (lambda () (lsp/sighelp-request bid)))))))

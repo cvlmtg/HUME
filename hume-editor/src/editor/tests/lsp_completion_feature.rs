@@ -416,6 +416,69 @@ fn refilter_on_complete_session_does_not_re_request() {
     );
 }
 
+/// Detach regression: `*completion-chars*`/`"lsp-completion"`'s trigger-char
+/// registration is global, set once at attach and (before this fix) never
+/// cleared — a trigger char left registered past `:lsp-stop` would still
+/// reach `lsp/guard-capability`, which resolves the focused buffer's own
+/// (now-detached) server and logs "not supported by server" on every
+/// matching keystroke. `on-lsp-detach` clears the registration, so the char
+/// no longer matches at all — a true no-op, not a per-keystroke log.
+#[test]
+#[cfg(not(windows))]
+fn detach_clears_completion_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, requests) = setup(&file, tmp.path(), full_completion_caps(), |_backend, _sid| {});
+
+    ed.lsp_stop(Some("rust"));
+    ed.drain_hooks(); // on-lsp-detach clears *completion-chars*
+
+    ed.feed_key(key('i'));
+    ed.drain_hooks();
+    let before = ed.state.status_msg.clone();
+    ed.feed_key(key('.'));
+    settle(&mut ed);
+
+    assert_eq!(request_count(&requests, "textDocument/completion"), 0);
+    assert_eq!(
+        ed.state.status_msg, before,
+        "a trigger char left registered past detach must be a true no-op, not a \
+         guard-capability 'not supported' status message every keystroke"
+    );
+}
+
+/// An open completion session's `items` are a snapshot already fetched from
+/// the server, not a live subscription — but leaving it open after the
+/// server stops would keep showing (and let the user accept) suggestions
+/// from a server that's no longer running for this buffer.
+#[test]
+#[cfg(not(windows))]
+fn detach_dismisses_an_open_completion_session_for_that_buffer() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), full_completion_caps(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/completion",
+            serde_json::json!([{"label": "bar", "insertText": "bar"}]),
+        );
+    });
+    ed.feed_key(key('i'));
+    ed.drain_hooks();
+    ed.feed_key(key_ctrl(' '));
+    settle(&mut ed);
+    assert!(ed.state.lsp_completion.is_some(), "sanity: a session must be open");
+
+    ed.lsp_stop(Some("rust"));
+
+    assert!(
+        ed.state.lsp_completion.is_none(),
+        "an open completion session for the detached buffer must be dismissed, \
+         not left showing stale items from a server that's no longer running"
+    );
+}
+
 #[test]
 #[cfg(not(windows))]
 fn snippet_item_lands_as_stripped_plain_text() {

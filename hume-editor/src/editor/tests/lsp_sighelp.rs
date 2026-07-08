@@ -124,6 +124,11 @@ fn popup_lines(ed: &mut Editor) -> Vec<String> {
         .unwrap_or_default()
 }
 
+#[cfg(not(windows))]
+fn request_count(requests: &RequestLog, method: &str) -> usize {
+    requests.borrow().iter().filter(|(_sid, m, _params)| m == method).count()
+}
+
 fn signature_help_response(label: &str, param_labels: &[&str], active_param: i64) -> serde_json::Value {
     serde_json::json!({
         "signatures": [{
@@ -133,6 +138,41 @@ fn signature_help_response(label: &str, param_labels: &[&str], active_param: i64
         "activeSignature": 0,
         "activeParameter": active_param,
     })
+}
+
+/// Detach regression: `*sighelp-chars*`/`"lsp-sighelp"`'s trigger-char
+/// registration is global, set once at attach and (before this fix) never
+/// cleared. Unlike completion.scm, the `on-trigger-char` handler here used
+/// to call `lsp/sighelp-request` with no `lsp/guard-capability` check at
+/// all — so a trigger char left registered past `:lsp-stop` hit
+/// `lsp-request`'s server-resolution failure and logged an Error, not a
+/// polite Info skip, on every matching keystroke. `on-lsp-detach` clears
+/// the registration and the request path is now capability-guarded too —
+/// together, a true no-op.
+#[test]
+#[cfg(not(windows))]
+fn detach_clears_sighelp_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, requests) = setup(&file, tmp.path(), |_backend, _sid| {});
+    position_after_foo(&mut ed);
+
+    ed.lsp_stop(Some("rust"));
+    ed.drain_hooks(); // on-lsp-detach clears *sighelp-chars*
+
+    ed.feed_key(key('i'));
+    ed.drain_hooks();
+    let before_log_len = ed.state.message_log.entries().count();
+    type_char_and_settle(&mut ed, '(');
+
+    assert_eq!(request_count(&requests, "textDocument/signatureHelp"), 0);
+    assert_eq!(
+        ed.state.message_log.entries().count(),
+        before_log_len,
+        "a trigger char left registered past detach must be a true no-op, not an \
+         lsp-request server-resolution Error logged every keystroke"
+    );
 }
 
 #[test]

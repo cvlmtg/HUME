@@ -212,6 +212,18 @@ impl Editor {
             // baseline, they'd desync its document state immediately.
             buf.lsp_pending.clear();
         }
+        // An open completion session's items are a snapshot already fetched
+        // from the server, not a live subscription — but leaving it open
+        // would keep showing (and let the user accept) suggestions from a
+        // server that's no longer running for this buffer.
+        if self
+            .state
+            .lsp_completion
+            .as_ref()
+            .is_some_and(|session| bids.contains(&session.bid()))
+        {
+            self.state.clear_lsp_completion();
+        }
         for bid in diag_touched {
             self.fire_hook_diagnostics_changed(bid);
         }

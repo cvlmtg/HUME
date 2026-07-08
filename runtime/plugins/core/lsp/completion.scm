@@ -111,6 +111,18 @@
           (set! *completion-chars* triggers)
           (register-trigger-chars! "lsp-completion" triggers))))))
 
+;;; `register-trigger-chars!` has no scoping narrower than the source name
+;;; ("lsp-completion") — it's global, not per-buffer/per-server, same as
+;;; `*completion-chars*` above. Clearing it here on detach is the same
+;;; "last call wins" semantics `on-lsp-attach` already has (a second
+;;; still-running server sharing this source would have its chars clobbered
+;;; the same way a second attach would clobber the first) — not a new
+;;; limitation, just symmetric with the existing one.
+(register-hook! 'on-lsp-detach
+  (lambda (bid server-name)
+    (set! *completion-chars* '())
+    (register-trigger-chars! "lsp-completion" '())))
+
 (register-hook! 'on-trigger-char
   (lambda (bid ch)
     (when (member ch *completion-chars*)
