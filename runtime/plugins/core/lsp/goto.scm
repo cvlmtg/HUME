@@ -38,3 +38,23 @@
 
 (define-command! "lsp-goto-implementation" "Go to the implementation of the symbol under the cursor."
   (lambda () (lsp/goto-request "textDocument/implementation" "implementationProvider")))
+
+;; ── F6: references ───────────────────────────────────────────────────────────
+;; Always the drawer, even for one result — "where is this used" expects a
+;; list, unlike goto's "take me there" (spec also never returns a bare
+;; Location for references, only Location[] | null, so there's no single-
+;; hashmap case to consider here).
+
+(define-command! "lsp-references" "List references to the symbol under the cursor."
+  (lambda ()
+    (lsp/guard-capability "referencesProvider"
+      (lambda ()
+        (lsp-request #f "textDocument/references"
+          (hash-insert (lsp-position-params (current-buffer))
+                       "context" (hash "includeDeclaration" #t))
+          (lambda (err res)
+            (cond
+              (err (lsp/report-error "references" err))
+              ((void? res) (log! 'info "No references found"))
+              ((null? res) (log! 'info "No references found"))
+              (else (lsp/show-locations! res)))))))))

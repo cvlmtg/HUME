@@ -529,6 +529,7 @@ mod lsp_introspect;
 mod lsp_menu;
 mod lsp_popup;
 mod lsp_prompt;
+mod lsp_references;
 mod lsp_render;
 mod lsp_signs;
 mod lsp_status;
