@@ -517,6 +517,7 @@ mod lsp;
 mod lsp_actions;
 mod lsp_bridge;
 mod lsp_completion;
+mod lsp_completion_feature;
 mod lsp_completion_menu;
 mod lsp_decorations;
 mod lsp_diagnostics;

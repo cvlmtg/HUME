@@ -1,7 +1,7 @@
 ;;; core:lsp/lib.scm — shared helpers used by every feature file.
 
 (provide lsp/supports? lsp/guard-capability lsp/report-error lsp/visible-lines
-         lsp/uri->display-path lsp/show-locations!)
+         lsp/uri->display-path lsp/show-locations! lsp/text-edit->tuple)
 
 ;; ── Capability guard ────────────────────────────────────────────────────────
 
@@ -31,6 +31,18 @@
   (log! 'error
         (string-append "lsp " what ": "
                        (if (string? err) err (hash-ref err "message")))))
+
+;;; A `TextEdit` hashmap `{range: {start, end}, newText}` -> the
+;;; `((start-line start-col) (end-line end-col) text)` tuple shape
+;;; `apply-text-edits!` expects. Shared by F3 (additionalTextEdits) and
+;;; F8 (formatting).
+(define (lsp/text-edit->tuple te)
+  (let* ((range (hash-ref te "range"))
+         (start (hash-ref range "start"))
+         (end (hash-ref range "end")))
+    (list (list (hash-ref start "line") (hash-ref start "character"))
+          (list (hash-ref end "line") (hash-ref end "character"))
+          (hash-ref te "newText"))))
 
 ;; ── Viewport tracker ────────────────────────────────────────────────────────
 ;; No pane-geometry builtin exists — on-viewport-change (B7) is the only

@@ -10,17 +10,6 @@
   (hash "tabSize" (get-option "tab-width")
         "insertSpaces" (equal? (get-option "tab-style") "soft")))
 
-;;; A `TextEdit` hashmap `{range: {start, end}, newText}` -> the
-;;; `((start-line start-col) (end-line end-col) text)` tuple shape
-;;; `apply-text-edits!` expects.
-(define (lsp/text-edit->tuple te)
-  (let* ((range (hash-ref te "range"))
-         (start (hash-ref range "start"))
-         (end (hash-ref range "end")))
-    (list (list (hash-ref start "line") (hash-ref start "character"))
-          (list (hash-ref end "line") (hash-ref end "character"))
-          (hash-ref te "newText"))))
-
 (define-command! "fmt"
   ":fmt — format the buffer via LSP, or just the selected lines if the \
 selection spans one or more complete lines."
