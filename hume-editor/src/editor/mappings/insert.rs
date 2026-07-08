@@ -16,6 +16,18 @@ impl Editor {
     // ── Insert mode ───────────────────────────────────────────────────────────
 
     pub(in super::super) fn handle_insert(&mut self, key: KeyEvent) {
+        // ── LSP completion menu intercept (U7) ────────────────────────────────
+        // Guarded early-return before the trie walk (not after) — Esc must
+        // never reach the trie's exit-insert binding while a session is
+        // open; the card says Esc dismisses the *session*, staying in
+        // Insert. Printable chars and Backspace-within-the-token are
+        // deliberately NOT fully handled here — they fall through to the
+        // normal body below, then get refiltered by the post-edit hook at
+        // the end of this function.
+        if self.state.lsp_completion.is_some() && self.handle_completion_key(key) {
+            return;
+        }
+
         // Walk the insert trie first: handles Esc, Ctrl+C, and arrow keys.
         // Regular characters (Char without CONTROL) and Backspace/Delete/Enter
         // are NOT in the insert trie — they're handled below.
@@ -235,6 +247,124 @@ impl Editor {
 
             _ => {}
         }
+
+        // Only reached for keys the completion pre-guard let fall through
+        // (printable chars, Backspace within the token) — refilter using
+        // the buffer's new anchor..cursor text now that the edit landed.
+        if self.state.lsp_completion.is_some() {
+            self.refilter_lsp_completion_after_edit(key);
+        }
+    }
+
+    // ── LSP completion menu (U7) ─────────────────────────────────────────────
+
+    /// Intercepts a key while an LSP completion session (B8) is open.
+    /// Returns `true` if fully handled (skip the rest of `handle_insert`
+    /// this call) — `false` if it should still fall through to normal
+    /// Insert-mode dispatch (printable chars always do; Backspace always
+    /// does, after this decides whether the session survives the deletion).
+    fn handle_completion_key(&mut self, key: KeyEvent) -> bool {
+        match key.code {
+            KeyCode::Tab | KeyCode::Down => {
+                self.move_completion_selection(true);
+                true
+            }
+            KeyCode::BackTab | KeyCode::Up => {
+                self.move_completion_selection(false);
+                true
+            }
+            KeyCode::Enter => {
+                self.accept_completion_selection();
+                true
+            }
+            KeyCode::Esc => {
+                self.state.clear_lsp_completion();
+                true
+            }
+            KeyCode::Backspace => {
+                let session = self
+                    .state
+                    .lsp_completion
+                    .as_ref()
+                    .expect("checked by handle_insert above");
+                // The char Backspace is about to delete is the one right
+                // before `head`. If `head` is already at (or before) the
+                // anchor, that char lies *outside* the completed token —
+                // crossing it, not just narrowing the filter.
+                let head = self.current_selections().primary().head();
+                if head <= session.anchor() {
+                    self.state.clear_lsp_completion();
+                }
+                false
+            }
+            _ => false,
+        }
+    }
+
+    /// Moves the completion menu's selection by one row, clamped to the
+    /// displayed window (`completion_top(8)` — no scrolling past it, same
+    /// as U5's selection menu).
+    fn move_completion_selection(&mut self, forward: bool) {
+        let Some(session) = self.state.lsp_completion.as_ref() else {
+            return;
+        };
+        let n = session.top(8).len();
+        if n == 0 {
+            return;
+        }
+        let ui = self
+            .state
+            .lsp_completion_ui
+            .get_or_insert(crate::editor::lsp::completion::LspCompletionUi { selected: 0 });
+        if forward {
+            if ui.selected + 1 < n {
+                ui.selected += 1;
+            }
+        } else if ui.selected > 0 {
+            ui.selected -= 1;
+        }
+    }
+
+    /// Accepts the currently-selected completion item through the same
+    /// gen-checked edit path as `completion-accept!` — the session ends
+    /// either way (success or failure), matching `EditorHostImpl`'s own
+    /// completion_accept.
+    fn accept_completion_selection(&mut self) {
+        let selected = self
+            .state
+            .lsp_completion_ui
+            .as_ref()
+            .map_or(0, |ui| ui.selected);
+        let Some(session) = self.state.lsp_completion.take() else {
+            return;
+        };
+        self.state.clear_lsp_completion();
+        if let Err(msg) = session.accept(&mut self.state, &self.lsp, selected) {
+            self.report(Severity::Error, msg);
+        }
+    }
+
+    /// Re-ranks the open completion session against the token text between
+    /// its anchor and the current cursor — called after a printable char or
+    /// Backspace has already landed in the buffer.
+    fn refilter_lsp_completion_after_edit(&mut self, key: KeyEvent) {
+        let is_char = matches!(key.code, KeyCode::Char(_)) && !key.modifiers.contains(KeyModifiers::CONTROL);
+        if !is_char && key.code != KeyCode::Backspace {
+            return;
+        }
+        let Some(mut session) = self.state.lsp_completion.take() else {
+            return;
+        };
+        let head = self.current_selections().primary().head();
+        let anchor = session.anchor();
+        // Backspace crossing the anchor already dismissed the session in
+        // `handle_completion_key`, before the edit ran — reaching here with
+        // `head < anchor` would mean a printable char somehow landed before
+        // the anchor, which can't happen through this key path.
+        let text = self.doc().text().slice(anchor..head).to_string();
+        session.update_filter(&self.state, text);
+        self.state.lsp_completion = Some(session);
+        self.state.lsp_completion_ui = None;
     }
 
     // ── Auto-pair helpers ─────────────────────────────────────────────────────

@@ -138,7 +138,21 @@ pub(crate) struct CompletionSession {
     generation_at_begin: u64,
 }
 
+/// Insert-mode UI state for an open completion session — kept separate from
+/// `CompletionSession` itself (which deliberately has no `selected`) so the
+/// session's filtering/accept logic stays free of rendering concerns.
+pub(crate) struct LspCompletionUi {
+    pub(crate) selected: usize,
+}
+
 impl CompletionSession {
+    /// Char offset where the completed token starts — the anchor U7's
+    /// completion menu positions itself at (not the live cursor, which
+    /// drifts as the user types further into the token).
+    pub(crate) fn anchor(&self) -> usize {
+        self.anchor
+    }
+
     pub(crate) fn begin(
         state: &EditorState,
         bid: BufferId,

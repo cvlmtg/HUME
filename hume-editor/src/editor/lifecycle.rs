@@ -98,6 +98,8 @@ impl Editor {
             Arc::new(RwLock::new(None));
         let menu_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>> =
             Arc::new(RwLock::new(None));
+        let lsp_completion_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>> =
+            Arc::new(RwLock::new(None));
         // Drawer is chrome (like the tab bar/statusline), not per-pane — one
         // instance, registered directly on `engine_view.drawer` below rather
         // than through `build_pane`.
@@ -119,6 +121,7 @@ impl Editor {
             &completion_view,
             &popup_view,
             &menu_view,
+            &lsp_completion_view,
             settings.wrap_mode,
             buffer_id,
         );
@@ -210,6 +213,8 @@ impl Editor {
                 decorations: super::decorations::DecorationStores::default(),
                 steel_prompt_callback: None,
                 lsp_completion: None,
+                lsp_completion_ui: None,
+                lsp_completion_view,
                 completion_view,
                 diagnostic_scopes: None,
                 inlay_hint_scope: None,
@@ -647,13 +652,14 @@ impl Editor {
         self.view.last_terminal_area = terminal_area;
         self.view.reserve_seam = reserve_seam;
 
-        // 9. Sync the popup- and menu-overlay views. Deliberately *after*
-        //    step 8: their geometry needs the focused pane's current-frame
-        //    rect via `EngineView::pane_rect`, which reads `last_pane_area`
-        //    — calling this any earlier would position against last frame's
-        //    geometry.
+        // 9. Sync the popup-, menu-, and LSP-completion-menu-overlay views.
+        //    Deliberately *after* step 8: their geometry needs the focused
+        //    pane's current-frame rect via `EngineView::pane_rect`, which
+        //    reads `last_pane_area` — calling this any earlier would
+        //    position against last frame's geometry.
         self.sync_popup_view(ctx);
         self.sync_menu_view(ctx);
+        self.sync_lsp_completion_view(ctx);
     }
 
     /// Sync every engine pane's selection mirror from the authoritative `pane_state`.
@@ -1276,29 +1282,38 @@ impl Editor {
             .expect("RwLock not poisoned") = view;
     }
 
-    /// Cursor anchor (absolute screen cell) + geometry bounds for the
-    /// focused pane, shared by [`Self::sync_popup_view`] and
-    /// [`Self::sync_menu_view`] — both widgets anchor at the same cursor
-    /// cell and clamp within the same pane rect. Returns `(anchor, pane_rect,
-    /// max_width, max_height)`; `None` when the pane has no rect yet or the
-    /// cursor isn't currently visible.
+    /// The focused pane's primary cursor position — the anchor char for
+    /// [`Self::sync_popup_view`] and [`Self::sync_menu_view`] (unlike the
+    /// LSP completion menu, U7, which anchors at the session's token-start
+    /// char instead, via a separately-computed `anchor_char`).
+    fn focused_cursor_char(&self) -> usize {
+        let pid = self.state.focused_pane_id;
+        self.state.panes.state[pid][self.focused_buffer_id()]
+            .selections
+            .primary()
+            .head()
+    }
+
+    /// Screen anchor (absolute cell) + geometry bounds for the focused
+    /// pane, given an arbitrary buffer char position — shared by
+    /// [`Self::sync_popup_view`], [`Self::sync_menu_view`], and U7's LSP
+    /// completion menu (each passes a different `anchor_char`). Returns
+    /// `(anchor, pane_rect, max_width, max_height)`; `None` when the pane
+    /// has no rect yet or `anchor_char` isn't currently visible.
     fn popup_anchor_and_bounds(
         &self,
         ctx: &mut RenderContext,
+        anchor_char: usize,
     ) -> Option<((u16, u16), ratatui::layout::Rect, u16, u16)> {
         let focused = self.state.focused_pane_id;
         let pane_rect = self.view.pane_rect(focused)?;
         let (pane_settings, gutter_w) = self.resolve_pane_settings(focused);
         let vp = &self.view.panes[focused].viewport;
-        let cursor_char = self.state.panes.state[focused][self.focused_buffer_id()]
-            .selections
-            .primary()
-            .head();
         let buf = self.state.buffers.get(self.focused_buffer_id());
         let (col, row) = super::cursor::screen_pos(
             vp,
             buf.text().rope(),
-            cursor_char,
+            anchor_char,
             &pane_settings.wrap_mode,
             pane_settings.tab_width,
             &pane_settings.whitespace,
@@ -1333,7 +1348,8 @@ impl Editor {
         }
 
         let resolved = self.state.popup.as_ref().and_then(|model| {
-            let (anchor, pane_rect, max_width, max_height) = self.popup_anchor_and_bounds(ctx)?;
+            let (anchor, pane_rect, max_width, max_height) =
+                self.popup_anchor_and_bounds(ctx, self.focused_cursor_char())?;
             let lines = crate::ui::popup::wrap_text(&model.text, max_width, max_height);
             let (x, y) = crate::ui::popup::resolve_popup_geometry(&lines, anchor, pane_rect);
             Some(crate::ui::popup::PopupState {
@@ -1370,7 +1386,7 @@ impl Editor {
 
         let resolved = self.state.menu.as_ref().and_then(|model| {
             let (anchor, pane_rect, _max_width, max_height) =
-                self.popup_anchor_and_bounds(ctx)?;
+                self.popup_anchor_and_bounds(ctx, self.focused_cursor_char())?;
             let lines: Vec<String> = model
                 .items
                 .iter()
@@ -1394,6 +1410,62 @@ impl Editor {
         *self
             .state
             .menu_view
+            .write()
+            .expect("RwLock not poisoned") = resolved;
+    }
+
+    /// Write U7's LSP completion menu into the shared `PopupState` Arc —
+    /// same widget as [`Self::sync_menu_view`] (unwrapped rows,
+    /// selected-row styling), but anchored at the completion session's
+    /// token-start char rather than the live cursor (which drifts as the
+    /// user types further into the token). Called every frame from
+    /// `prepare_frame`'s step 9, same as [`Self::sync_popup_view`]/
+    /// [`Self::sync_menu_view`] and for the same reason: it needs
+    /// `EngineView::pane_rect`, which reads `last_pane_area` — only current
+    /// after step 8 runs.
+    pub(super) fn sync_lsp_completion_view(&self, ctx: &mut RenderContext) {
+        if self.state.lsp_completion.is_none()
+            && self
+                .state
+                .lsp_completion_view
+                .read()
+                .expect("RwLock not poisoned")
+                .is_none()
+        {
+            return;
+        }
+
+        let resolved = self.state.lsp_completion.as_ref().and_then(|session| {
+            let (anchor, pane_rect, _max_width, max_height) =
+                self.popup_anchor_and_bounds(ctx, session.anchor())?;
+            let lines: Vec<String> = session
+                .top(8)
+                .iter()
+                .take(max_height as usize)
+                .map(completion_row_label)
+                .collect();
+            let (x, y) = crate::ui::popup::resolve_popup_geometry(&lines, anchor, pane_rect);
+            let selected = if lines.is_empty() {
+                None
+            } else {
+                let idx = self
+                    .state
+                    .lsp_completion_ui
+                    .as_ref()
+                    .map_or(0, |ui| ui.selected);
+                Some(idx.min(lines.len() - 1))
+            };
+            Some(crate::ui::popup::PopupState {
+                lines,
+                x,
+                y,
+                selected,
+            })
+        });
+
+        *self
+            .state
+            .lsp_completion_view
             .write()
             .expect("RwLock not poisoned") = resolved;
     }
@@ -1465,6 +1537,17 @@ pub(super) fn char_to_line_byte(buf: &hume_editing::text::Text, char_pos: usize)
     let line_start_byte = buf.char_to_byte(buf.line_to_char(line));
     let byte = buf.char_to_byte(char_pos).saturating_sub(line_start_byte);
     (line, byte)
+}
+
+/// Formats one `completion_top` row (a decoded `{label, kind, detail}`
+/// hashmap) as `"label  detail"`, uniformly styled — per-part dimming would
+/// need segment-styled rows, which no card requires.
+fn completion_row_label(item: &serde_json::Value) -> String {
+    let label = item.get("label").and_then(|v| v.as_str()).unwrap_or_default();
+    match item.get("detail").and_then(|v| v.as_str()) {
+        Some(detail) if !detail.is_empty() => format!("{label}  {detail}"),
+        _ => label.to_string(),
+    }
 }
 
 /// Yield `(line, byte_start, byte_end)` for each line the *non-empty*

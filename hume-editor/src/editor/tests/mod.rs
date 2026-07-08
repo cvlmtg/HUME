@@ -458,6 +458,7 @@ mod list_buffers;
 mod lsp;
 mod lsp_bridge;
 mod lsp_completion;
+mod lsp_completion_menu;
 mod lsp_decorations;
 mod lsp_diagnostics;
 mod lsp_drawer;

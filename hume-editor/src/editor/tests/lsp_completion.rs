@@ -180,11 +180,14 @@ fn a_buffer_edit_that_bypasses_update_filter_invalidates_the_session() {
     );
     type_cmd(&mut ed, ":begin");
 
-    // An edit that never goes through completion-update-filter! — e.g. a
-    // completely unrelated insert far from the completion anchor.
-    ed.handle_key(key('i'));
-    ed.handle_key(key('!'));
-    ed.handle_key(key_esc());
+    // An edit that never goes through completion-update-filter! — a
+    // Normal-mode edit (select-line, delete), not Insert-mode typing: U7
+    // wires Insert-mode typing to call `completion-update-filter!`
+    // automatically whenever a session is open, so raw typing is no longer
+    // a valid example of a bypassing edit. Normal mode never touches
+    // either of U7's Insert-mode hooks.
+    ed.handle_key(key('x'));
+    ed.handle_key(key('d'));
 
     let before_accept = ed.doc().text().to_string();
     type_cmd(&mut ed, ":finish");

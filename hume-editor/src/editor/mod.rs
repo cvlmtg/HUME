@@ -379,6 +379,13 @@ pub(crate) struct EditorState {
     /// minibuffer tab-completion popup) — a singleton, starting a new one
     /// replaces the old.
     pub(super) lsp_completion: Option<lsp::completion::CompletionSession>,
+    /// Insert-mode selection state for `lsp_completion` (U7) — separate from
+    /// the session itself, cleared whenever the session ends.
+    pub(super) lsp_completion_ui: Option<lsp::completion::LspCompletionUi>,
+    /// Shared view for U7's LSP completion menu — reuses U4/U5's generic
+    /// `PopupState`/`PopupOverlay` (selected-row styling, same as the
+    /// selection menu) via its own `Arc` and pane registration.
+    pub(crate) lsp_completion_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
     /// Shared completion-popup view: written by `prepare_frame`, read by provider.
     pub(crate) completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>>,
     /// Interned scope ids for the four diagnostic severities (`diagnostic.error`
@@ -442,6 +449,21 @@ impl EditorState {
         *self.drawer_view.write().expect("RwLock not poisoned") = resolved;
     }
 
+    // ── LSP completion menu (U7) ─────────────────────────────────────────────
+
+    /// Ends any open completion session and clears its menu view — shared
+    /// by `set_mode` (any exit from Insert) and `mappings/insert.rs`'s key
+    /// handling (`Esc`, a Backspace crossing the anchor, a successful/failed
+    /// accept). A no-op when no session is open.
+    pub(super) fn clear_lsp_completion(&mut self) {
+        self.lsp_completion = None;
+        self.lsp_completion_ui = None;
+        *self
+            .lsp_completion_view
+            .write()
+            .expect("RwLock not poisoned") = None;
+    }
+
     /// `true` if `ch` was registered by any `(register-trigger-chars! source
     /// chars)` call — the union-across-sources check `OnTriggerChar`'s fire
     /// site (mappings/insert.rs) gates on.
@@ -463,6 +485,14 @@ impl EditorState {
         let old = self.mode;
         if old == new {
             return;
+        }
+        // U7: any exit from Insert dismisses an open completion session —
+        // `handle_completion_key`'s own `Esc`/Enter paths never reach here
+        // (they return before the trie's `exit-insert` runs), so this
+        // catches every *other* way Insert ends (Ctrl+C, a mouse click, a
+        // Steel-triggered mode change) while a session happens to be open.
+        if old == Mode::Insert {
+            self.clear_lsp_completion();
         }
         self.mode = new;
         let old_val = mode_name(old)
@@ -1205,6 +1235,8 @@ impl Editor {
                 decorations: decorations::DecorationStores::default(),
                 steel_prompt_callback: None,
                 lsp_completion: None,
+                lsp_completion_ui: None,
+                lsp_completion_view: Arc::new(RwLock::new(None)),
                 completion_view: Arc::new(RwLock::new(None)),
                 diagnostic_scopes: None,
                 inlay_hint_scope: None,

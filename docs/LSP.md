@@ -291,7 +291,7 @@ Generic, Steel-scriptable widgets plus store-fed render wiring. The engine primi
 - [x] **U4** — cursor-anchored popup widget (`show-popup!`)
 - [x] **U5** — selection menu widget (`show-menu!`)
 - [x] **U6** — Class B bottom drawer (minimal) + location list (`show-drawer-list!`)
-- [ ] **U7** — in-buffer completion menu + dispatch (insert-mode flow over B8 + U4)
+- [x] **U7** — in-buffer completion menu + dispatch (insert-mode flow over B8 + U4)
 - [ ] **U8** — inline diagnostics (`VirtualLineSource`) + the deferred scroll/cursor rewiring
 - [x] **U9** — inlay-hint rendering (`InlineDecoration` over B5's store)
 

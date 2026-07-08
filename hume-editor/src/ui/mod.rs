@@ -26,8 +26,8 @@ use signs::{PaneSigns, SharedSignSource};
 /// Build a new pane viewing `buffer_id`: a sign column, a line-number
 /// gutter, the bracket-match / search-match / diagnostic / extra-highlight
 /// sources, the inlay-hint decoration, the completion popup overlay, the
-/// hover-popup overlay, the selection-menu overlay, and `wrap_mode` seeded
-/// from the caller's current settings.
+/// hover-popup overlay, the selection-menu overlay, the LSP completion-menu
+/// overlay, and `wrap_mode` seeded from the caller's current settings.
 ///
 /// Returns the pane together with its freshly-allocated [`PaneHighlights`],
 /// [`PaneSigns`], and inlay-hint map — every pane gets its own buffers
@@ -54,6 +54,7 @@ pub(crate) fn build_pane(
     completion_view: &Arc<RwLock<Option<completion_overlay::CompletionView>>>,
     popup_view: &Arc<RwLock<Option<popup::PopupState>>>,
     menu_view: &Arc<RwLock<Option<popup::PopupState>>>,
+    lsp_completion_view: &Arc<RwLock<Option<popup::PopupState>>>,
     wrap_mode: WrapMode,
     buffer_id: BufferId,
 ) -> (Pane, PaneHighlights, PaneSigns, InlayHintMap) {
@@ -109,6 +110,15 @@ pub(crate) fn build_pane(
     // (both showing at once is unusual, but the architecture allows it).
     providers.add_overlay(Box::new(PopupOverlay {
         data: Arc::clone(menu_view),
+        scope: "ui.menu",
+        selected_scope: Some("ui.menu.selected"),
+    }));
+    // U7's LSP completion menu — same widget shape as the selection menu
+    // (selected-row styling), registered last (highest z-order): an
+    // in-progress completion is the most action-relevant overlay when both
+    // could theoretically be visible.
+    providers.add_overlay(Box::new(PopupOverlay {
+        data: Arc::clone(lsp_completion_view),
         scope: "ui.menu",
         selected_scope: Some("ui.menu.selected"),
     }));

@@ -496,15 +496,17 @@ pub(super) fn open_pane(
 ) -> PaneId {
     // Every pane gets the same providers (sign column + gutter + bracket/
     // search/diagnostic/extra highlight + inlay hints + completion overlay
-    // + popup overlay + menu overlay) as the initial pane — see
-    // `build_pane`. Each pane's Arcs are freshly allocated here, never
-    // shared with any other pane (see `PaneHighlights`/`PaneSigns`), so
-    // per-pane decoration data can never bleed across panes.
+    // + popup overlay + menu overlay + LSP completion-menu overlay) as the
+    // initial pane — see `build_pane`. Each pane's Arcs are freshly
+    // allocated here, never shared with any other pane (see
+    // `PaneHighlights`/`PaneSigns`), so per-pane decoration data can never
+    // bleed across panes.
     let (pane, highlights, signs, inlay_hints) = crate::ui::build_pane(
         &mut view.registry,
         &state.completion_view,
         &state.popup_view,
         &state.menu_view,
+        &state.lsp_completion_view,
         state.settings.wrap_mode,
         buffer_id,
     );
