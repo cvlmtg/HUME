@@ -14,3 +14,4 @@
 (require "actions.scm")
 (require "sighelp.scm")
 (require "completion.scm")
+(require "inlay.scm")

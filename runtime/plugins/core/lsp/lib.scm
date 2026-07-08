@@ -1,7 +1,7 @@
 ;;; core:lsp/lib.scm — shared helpers used by every feature file.
 
 (provide lsp/supports? lsp/guard-capability lsp/report-error lsp/visible-lines
-         lsp/uri->display-path lsp/show-locations! lsp/text-edit->tuple)
+         lsp/uri->display-path lsp/show-locations! lsp/text-edit->tuple lsp/viewport-range)
 
 ;; ── Capability guard ────────────────────────────────────────────────────────
 
@@ -60,14 +60,20 @@
                 (filter (lambda (e) (not (buffer-id=? (list-ref e 0) bid)))
                         *lsp-viewports*)))))
 
-;;; Number of lines visible in `bid`'s pane as of the last on-viewport-change
-;;; fire, or `#f` before the first event for that buffer.
-(define (lsp/visible-lines bid)
+;;; `(first last)` visible line pair for `bid` as of the last
+;;; on-viewport-change fire, or `#f` before the first event for it.
+(define (lsp/viewport-range bid)
   (let ((matches (filter (lambda (e) (buffer-id=? (list-ref e 0) bid)) *lsp-viewports*)))
     (if (null? matches)
         #f
         (let ((entry (car matches)))
-          (+ 1 (- (list-ref entry 2) (list-ref entry 1)))))))
+          (list (list-ref entry 1) (list-ref entry 2))))))
+
+;;; Number of lines visible in `bid`'s pane as of the last on-viewport-change
+;;; fire, or `#f` before the first event for that buffer.
+(define (lsp/visible-lines bid)
+  (let ((range (lsp/viewport-range bid)))
+    (if range (+ 1 (- (cadr range) (car range))) #f)))
 
 ;; ── Location display + drawer ───────────────────────────────────────────────
 ;; A `Location` is `{uri, range}`; a `LocationLink` is `{targetUri,

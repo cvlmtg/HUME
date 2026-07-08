@@ -528,6 +528,7 @@ mod lsp_format;
 mod lsp_goto;
 mod lsp_hooks;
 mod lsp_hover;
+mod lsp_inlay_feature;
 mod lsp_inlay_hints;
 mod lsp_introspect;
 mod lsp_menu;
