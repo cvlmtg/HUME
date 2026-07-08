@@ -212,6 +212,49 @@ fn write_core_plugin(guard: &HumeRuntimeGuard, name: &str, source: &str) {
     std::fs::write(plugin_dir.join("plugin.scm"), source).unwrap();
 }
 
+/// Points `HUME_RUNTIME` at the *real*, on-disk `runtime/` directory (a
+/// sibling of the crate root, resolved once via `CARGO_MANIFEST_DIR`) for
+/// the guard's lifetime — used by multi-file core plugins (`core:lsp`,
+/// mirroring `core:plum`'s layout) so tests exercise the actual shipped
+/// files without hand-copying every one into a temp dir and keeping that
+/// list in sync as feature files are added.
+///
+/// Deliberately does **not** touch `TMPDIR`, unlike [`HumeRuntimeGuard`]:
+/// pointing at a persistent, never-deleted directory means there is nothing
+/// for a concurrent test's cleanup to race against. `HumeRuntimeGuard`'s
+/// `TMPDIR` override only protects itself from *other* `HumeRuntimeGuard`s
+/// (both take the same mutex) — it does not and cannot protect unrelated
+/// tests that call bare `tempfile::tempdir()`, since `TMPDIR` is a
+/// process-global env var every thread's allocator reads. A slow guarded
+/// test can redirect an unrelated concurrent test's `tempfile::tempdir()`
+/// into its own tree and then delete that tree out from under it on drop.
+/// Avoiding `TMPDIR` entirely sidesteps the hazard rather than narrowing it.
+#[cfg(not(windows))]
+struct RealRuntimeGuard {
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+#[cfg(not(windows))]
+impl RealRuntimeGuard {
+    fn new() -> Self {
+        let lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let real_runtime = concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime");
+        unsafe {
+            std::env::set_var("HUME_RUNTIME", real_runtime);
+        }
+        RealRuntimeGuard { _lock: lock }
+    }
+}
+
+#[cfg(not(windows))]
+impl Drop for RealRuntimeGuard {
+    fn drop(&mut self) {
+        unsafe {
+            std::env::remove_var("HUME_RUNTIME");
+        }
+    }
+}
+
 /// Acquire the cwd lock, save the current directory, and restore it on drop.
 struct CwdGuard {
     saved: PathBuf,
@@ -464,6 +507,7 @@ mod lsp_diagnostics;
 mod lsp_drawer;
 mod lsp_edits;
 mod lsp_hooks;
+mod lsp_hover;
 mod lsp_inlay_hints;
 mod lsp_introspect;
 mod lsp_menu;
