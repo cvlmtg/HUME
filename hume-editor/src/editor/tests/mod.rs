@@ -514,6 +514,7 @@ mod kitty;
 mod language;
 mod list_buffers;
 mod lsp;
+mod lsp_actions;
 mod lsp_bridge;
 mod lsp_completion;
 mod lsp_completion_menu;

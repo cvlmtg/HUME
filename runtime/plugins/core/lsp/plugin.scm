@@ -11,3 +11,4 @@
 (require "diagnostics.scm")
 (require "rename.scm")
 (require "format.scm")
+(require "actions.scm")
