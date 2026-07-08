@@ -522,6 +522,7 @@ mod lsp_diagnostics;
 mod lsp_diagnostics_nav;
 mod lsp_drawer;
 mod lsp_edits;
+mod lsp_format;
 mod lsp_goto;
 mod lsp_hooks;
 mod lsp_hover;

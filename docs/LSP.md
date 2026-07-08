@@ -315,7 +315,7 @@ Each feature is Steel code composing Steps 2–3 primitives; all are testable ag
 - [x] **F5** — rename *(B2, B6, B9)*
 - [x] **F6** — references *(B2, U6)*
 - [ ] **F7** — signature help *(B2, B4, B7, U4)*
-- [ ] **F8** — formatting *(B2, B6)*
+- [x] **F8** — formatting *(B2, B6)*
 - [ ] **F9** — code actions *(B2, B5, B6, U5)*
 - [ ] **F10** — inlay hints *(B2, B4, B5, B7, U9)*
 - [ ] **F11** — `core:lsp` packaging + docs
