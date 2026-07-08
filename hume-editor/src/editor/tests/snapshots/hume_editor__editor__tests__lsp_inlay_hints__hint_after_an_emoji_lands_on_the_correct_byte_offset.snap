@@ -1,9 +1,8 @@
 ---
 source: hume-editor/src/editor/tests/lsp_inlay_hints.rs
-assertion_line: 90
 expression: snap
 ---
-<fg=#c8c8d2,bg=#3a3a3a>1 </><fg=#d0d0d0,bg=#3a3a3a>🎉 </><fg=#808080,bg=#3a3a3a><HINT></><bg=#3a3a3a>     </><fg=#d0d0d0,bg=#3a3a3a>party</>
+<fg=#c8c8d2,bg=#3a3a3a>1 </><fg=#d0d0d0,bg=#3a3a3a>🎉 </><fg=#808080,bg=#3a3a3a><HINT></><fg=#d0d0d0,bg=#3a3a3a>party</>
 <fg=#808080,bg=#1a1a1a>~</>
 <fg=#808080,bg=#1a1a1a>~</>
 <fg=#808080,bg=#1a1a1a>~</>

@@ -297,24 +297,46 @@ pub fn format_buffer_line(
                     .as_ref()
                     .is_none_or(|w| wrap.current_col + ins_width as u16 > w.start);
                 if visible {
-                    let (start, len) = push_arena_text(virtual_texts_out, &ins.text);
-                    graphemes_out.push(Grapheme {
-                        byte_range: byte_offset..byte_offset, // zero-length: virtual
-                        // Char offset of the real grapheme this insert precedes (not
-                        // MAX): keeps the row non-decreasing in char_offset, which
-                        // `resolve_grapheme_col`'s partition_point requires. Inserts
-                        // are pushed before that grapheme, so ties resolve to the
-                        // insert first — `resolve_grapheme_col` skips forward past
-                        // `Virtual` cells to reach the real one.
-                        char_offset: char_pos,
-                        col: wrap.current_col,
-                        width: ins_width,
-                        content: CellContent::Virtual { start, len },
-                        indent_depth,
-                        scope: Some(ins.scope),
-                    });
+                    // One `Grapheme`/cell per grapheme cluster of `ins.text`,
+                    // not one wide cell for the whole string: a ratatui `Cell`
+                    // renders its `symbol` at exactly one column, so packing
+                    // a multi-character insert into a single cell leaves the
+                    // columns after the first unwritten by this insert —
+                    // whatever the compose stage puts there instead (real
+                    // buffer content) then wins when the backend paints
+                    // cell-by-cell, clobbering everything past the first
+                    // character. `CellContent::Indicator` sidesteps this by
+                    // keeping its own symbol to one glyph and space-filling
+                    // the rest; inlay-hint text has no such luxury.
+                    let (text_start, _) = push_arena_text(virtual_texts_out, &ins.text);
+                    for (g_byte_offset, g_str) in ins.text.grapheme_indices(true) {
+                        let g_width = unicode_display_width(g_str).min(255) as u8;
+                        if g_width == 0 {
+                            continue;
+                        }
+                        graphemes_out.push(Grapheme {
+                            byte_range: byte_offset..byte_offset, // zero-length: virtual
+                            // Char offset of the real grapheme this insert precedes (not
+                            // MAX): keeps the row non-decreasing in char_offset, which
+                            // `resolve_grapheme_col`'s partition_point requires. Inserts
+                            // are pushed before that grapheme, so ties resolve to the
+                            // insert first — `resolve_grapheme_col` skips forward past
+                            // `Virtual` cells to reach the real one.
+                            char_offset: char_pos,
+                            col: wrap.current_col,
+                            width: g_width,
+                            content: CellContent::Virtual {
+                                start: text_start + g_byte_offset as u32,
+                                len: g_str.len() as u16,
+                            },
+                            indent_depth,
+                            scope: Some(ins.scope),
+                        });
+                        wrap.current_col = wrap.current_col.saturating_add(g_width as u16);
+                    }
+                } else {
+                    wrap.current_col = wrap.current_col.saturating_add(ins_width as u16);
                 }
-                wrap.current_col = wrap.current_col.saturating_add(ins_width as u16);
             }
             insert_idx += 1;
         }
@@ -1508,10 +1530,12 @@ mod tests {
     // ── Inline-insert width clamp (B7) ──────────────────────────────────
 
     #[test]
-    fn wide_inline_insert_width_clamps_to_255_not_wraparound() {
-        // A 300-char ASCII insert must clamp its display width to 255, not
-        // wrap around via `as u8` truncation (300 % 256 = 44 would be the
-        // buggy value).
+    fn wide_inline_insert_emits_one_cell_per_grapheme_without_wraparound() {
+        // A 300-char ASCII insert must produce 300 width-1 virtual cells
+        // (one per grapheme — each cell can only paint one column, see the
+        // fix in the insert-injection loop) with columns advancing 0..300,
+        // not wrap around via `as u8` truncation anywhere in that count
+        // (300 % 256 = 44 would be the buggy value).
         let rope = Rope::from_str("x");
         let text = String::from_utf8(vec![b'a'; 300]).unwrap();
         let inserts = vec![InlineInsert {
@@ -1530,12 +1554,16 @@ mod tests {
             &inserts,
             &mut scratch,
         );
-        let insert_g = scratch
+        let insert_cells: Vec<&Grapheme> = scratch
             .graphemes
             .iter()
-            .find(|g| matches!(g.content, CellContent::Virtual { .. }))
-            .expect("insert grapheme present");
-        assert_eq!(insert_g.width, 255, "width clamps at 255, not 300 % 256");
+            .filter(|g| matches!(g.content, CellContent::Virtual { .. }))
+            .collect();
+        assert_eq!(insert_cells.len(), 300, "one virtual cell per grapheme");
+        assert!(insert_cells.iter().all(|g| g.width == 1));
+        let cols: Vec<u16> = insert_cells.iter().map(|g| g.col).collect();
+        let expected: Vec<u16> = (0..300).collect();
+        assert_eq!(cols, expected, "columns advance 0..300 without wraparound");
     }
 
     #[test]
