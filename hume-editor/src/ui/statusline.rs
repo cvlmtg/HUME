@@ -597,10 +597,11 @@ pub(crate) fn render_element(
         }
         StatusElement::Diagnostics => {
             let (errors, warnings) = editor.diagnostic_counts(editor.focused_buffer_id());
-            let label = if errors == 0 && warnings == 0 {
-                String::new()
-            } else {
-                format!("✗ {errors} ⚠ {warnings}")
+            let label = match (errors, warnings) {
+                (0, 0) => String::new(),
+                (e, 0) => format!("✗ {e}"),
+                (0, w) => format!("⚠ {w}"),
+                (e, w) => format!("✗ {e} ⚠ {w}"),
             };
             (Cow::Owned(label), colors.statusline)
         }

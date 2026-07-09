@@ -1,6 +1,7 @@
 // Statusline diagnostics element: `StatusElement::Diagnostics`
 // reads the diagnostics store directly (never through Steel) and renders
-// `"✗ E ⚠ W"`, collapsing to empty when both counts are zero.
+// `"✗ E ⚠ W"`, omitting either half when its count is zero and collapsing
+// to empty when both counts are zero.
 
 use std::path::Path;
 
@@ -99,6 +100,20 @@ fn diagnostics_element_renders_error_and_warning_counts() {
     let (text, _) =
         crate::ui::statusline::render_element(StatusElement::Diagnostics, &c.ed, &colors, "");
     assert_eq!(text.as_ref(), "✗ 1 ⚠ 2");
+}
+
+#[test]
+fn diagnostics_element_omits_zero_half() {
+    let c = setup("abcdefgh\n", &[&[((0, 0), (0, 1), 1)]]);
+    let colors = crate::ui::theme::EditorColors::default();
+    let (text, _) =
+        crate::ui::statusline::render_element(StatusElement::Diagnostics, &c.ed, &colors, "");
+    assert_eq!(text.as_ref(), "✗ 1");
+
+    let c = setup("abcdefgh\n", &[&[((0, 0), (0, 1), 2)]]);
+    let (text, _) =
+        crate::ui::statusline::render_element(StatusElement::Diagnostics, &c.ed, &colors, "");
+    assert_eq!(text.as_ref(), "⚠ 1");
 }
 
 #[test]
