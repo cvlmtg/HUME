@@ -270,7 +270,14 @@ pub fn no_windows_compiler_found() -> bool {
     if has_cl {
         return false;
     }
-    choose_windows_compiler(|name| if name == "cl" { has_cl } else { exe_on_path(name) }).is_none()
+    choose_windows_compiler(|name| {
+        if name == "cl" {
+            has_cl
+        } else {
+            exe_on_path(name)
+        }
+    })
+    .is_none()
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
