@@ -794,6 +794,10 @@ impl Editor {
             )
         };
 
+        // Scope the flag to the command body: reset it so a stale `true` can't
+        // outlive this dispatch and leak into a later command's `SteelCtx`.
+        self.state.dispatch_inline_output = false;
+
         if bracket_inline_output {
             hume_platform::terminal::print_return_prompt();
             hume_platform::terminal::wait_for_keypress();

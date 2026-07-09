@@ -262,7 +262,15 @@ pub fn exit_code_str(status: ExitStatus) -> String {
 /// toolchain.
 #[cfg(windows)]
 pub fn no_windows_compiler_found() -> bool {
-    !exe_on_path("cl") && choose_windows_compiler(exe_on_path).is_none()
+    // Probe `cl` once and reuse it — `choose_windows_compiler` checks `cl`
+    // first internally, so passing `exe_on_path` straight through here would
+    // spawn a second `cl --version` on top of the one `tree_sitter_build`
+    // already ran on the same failure path.
+    let has_cl = exe_on_path("cl");
+    if has_cl {
+        return false;
+    }
+    choose_windows_compiler(|name| if name == "cl" { has_cl } else { exe_on_path(name) }).is_none()
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────

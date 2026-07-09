@@ -82,11 +82,16 @@
         (else (plum/find pred? (cdr lst)))))
 
 ;;; Fetch `name`'s `filename` query to a scratch file and return its raw
-;;; content as a string.
+;;; content as a string. `curl-fetch` already cleans up its own dest file on
+;;; failure, so the only leak this guards is `read-file` itself raising (e.g.
+;;; non-UTF-8 content) after a successful download — the handler deletes the
+;;; scratch file before re-raising instead of leaving it behind.
 (define (plum/fetch-raw-query name filename)
   (let ((tmp (path-join (plum/grammar-sources-dir) (string-append "_fetch_" name "_" filename))))
     (curl-fetch (plum/helix-query-url name filename) tmp)
-    (let ((content (read-file tmp)))
+    (let ((content (with-handler
+                     (lambda (err) (delete-file tmp) (raise-error err))
+                     (read-file tmp))))
       (delete-file tmp)
       content)))
 
