@@ -969,6 +969,52 @@ fn quit_with_multiple_panes_ignores_dirty_buffer() {
     assert_eq!(ed.view.panes.len(), 1);
 }
 
+/// `viewport_debounce`/`last_viewport_key`/`virtual_lines_synced` live on
+/// `Editor` rather than `EditorState.panes`, so `drop_pane_state` can't clear
+/// them directly — `prepare_frame`'s `prune_closed_pane_caches` sweep is the
+/// only place that reclaims a closed pane's entries. Without it these three
+/// maps grow without bound over an editor session's lifetime.
+#[test]
+fn closing_a_pane_reclaims_its_entries_from_the_frame_caches() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.prepare_frame(80, 25, &mut ctx);
+
+    ed.execute_typed("split", None).unwrap();
+    let pid_b = ed.state.focused_pane_id;
+    ed.prepare_frame(80, 25, &mut ctx);
+
+    assert!(
+        ed.last_viewport_key.contains_key(&pid_b),
+        "sanity: prepare_frame populated pane B's scroll-key cache entry"
+    );
+    assert!(
+        ed.virtual_lines_synced.contains_key(&pid_b),
+        "sanity: prepare_frame populated pane B's virtual-line-sync cache entry"
+    );
+    assert!(
+        ed.viewport_debounce.contains_key(&pid_b),
+        "sanity: prepare_frame armed pane B's viewport-debounce timer"
+    );
+
+    // Closes the focused pane (B) and promotes A back to focus.
+    ed.execute_typed("quit", None).unwrap();
+    ed.prepare_frame(80, 25, &mut ctx);
+
+    assert!(
+        !ed.last_viewport_key.contains_key(&pid_b),
+        "closed pane's scroll-key entry must be reclaimed"
+    );
+    assert!(
+        !ed.virtual_lines_synced.contains_key(&pid_b),
+        "closed pane's virtual-line-sync entry must be reclaimed"
+    );
+    assert!(
+        !ed.viewport_debounce.contains_key(&pid_b),
+        "closed pane's viewport-debounce timer must be cancelled and reclaimed"
+    );
+}
+
 /// Closing one leaf of a 2×2 grid promotes the correct sibling and leaves the
 /// other three panes untouched. Independent oracle: the expected post-close
 /// shape (`Split{Leaf(A), Split{B, C}}`) is derived from how the grid was

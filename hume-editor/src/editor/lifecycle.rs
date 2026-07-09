@@ -521,6 +521,27 @@ impl Editor {
         buf
     }
 
+    /// Drop `viewport_debounce`/`last_viewport_key`/`virtual_lines_synced`
+    /// entries whose pane no longer exists in `self.view.panes`. A pending
+    /// debounce timer is cancelled outright (its `TimerPayload` no-ops via
+    /// `fire_hook_viewport_change`'s own liveness check anyway, but there is
+    /// no reason to let it sit in the wheel until it fires).
+    fn prune_closed_pane_caches(&mut self) {
+        let panes = &self.view.panes;
+        self.last_viewport_key.retain(|pid, _| panes.contains_key(*pid));
+        self.virtual_lines_synced.retain(|pid, _| panes.contains_key(*pid));
+        let wheel = &mut self.timer_wheel;
+        let payloads = &mut self.timer_payloads;
+        self.viewport_debounce.retain(|pid, id| {
+            let live = panes.contains_key(*pid);
+            if !live {
+                wheel.cancel(*id);
+                payloads.remove(id);
+            }
+            live
+        });
+    }
+
     /// Prepare the engine pane for rendering by syncing all editor-authoritative
     /// state in one place, once per frame.
     ///
@@ -536,6 +557,13 @@ impl Editor {
         terminal_height: u16,
         ctx: &mut RenderContext,
     ) {
+        // Reclaim viewport-debounce/scroll-key/virtual-line-sync cache
+        // entries for panes closed since the last frame. These three live on
+        // `Editor` rather than `EditorState.panes` (unlike `jumps`/`render`/
+        // `transient`/`state`, which `drop_pane_state` clears directly), so
+        // this per-frame sweep is where they get reclaimed instead.
+        self.prune_closed_pane_caches();
+
         // Re-bake the theme if any scope was interned since the last bake —
         // the single per-frame chokepoint that makes forgetting to bake after
         // an `intern`/`intern_runtime` call harmless (see `bake_if_stale`).
