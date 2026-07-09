@@ -219,12 +219,7 @@ impl LanguageRegistry {
         self.lang_order.retain(|n| n.as_str() != name);
         self.lang_order.push(name.to_owned());
         if let Some(old) = self.by_name.remove(name) {
-            for ext in &old.extensions {
-                self.by_ext.remove(ext.as_str());
-            }
-            for shebang in &old.shebangs {
-                self.shebang_to_name.remove(shebang.as_str());
-            }
+            self.deindex(&old);
         }
         self.by_name.insert(name.to_owned(), Arc::clone(&config));
         for ext in &config.extensions {
@@ -235,6 +230,18 @@ impl LanguageRegistry {
                 .insert(shebang.clone(), name.to_owned());
         }
         config
+    }
+
+    /// Remove `config`'s entries from the `by_ext`/`shebang_to_name` secondary
+    /// indices, leaving `by_name`/`lang_order` untouched. Shared by
+    /// `register_identity_no_rebuild`'s replace-existing branch and `remove`.
+    fn deindex(&mut self, config: &LanguageConfig) {
+        for ext in &config.extensions {
+            self.by_ext.remove(ext.as_str());
+        }
+        for shebang in &config.shebangs {
+            self.shebang_to_name.remove(shebang.as_str());
+        }
     }
 
     /// Rebuild the compiled glob set from current registry state.
@@ -287,12 +294,7 @@ impl LanguageRegistry {
     #[cfg(any(test, feature = "test-util"))]
     pub fn remove(&mut self, name: &str) -> Option<Arc<LanguageConfig>> {
         let config = self.by_name.remove(name)?;
-        for ext in &config.extensions {
-            self.by_ext.remove(ext.as_str());
-        }
-        for shebang in &config.shebangs {
-            self.shebang_to_name.remove(shebang.as_str());
-        }
+        self.deindex(&config);
         let new_order: Vec<String> = self
             .lang_order
             .iter()
