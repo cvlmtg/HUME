@@ -198,12 +198,20 @@ impl DiagnosticsStore {
         range: Range<usize>,
         floor: DiagSeverity,
     ) -> impl Iterator<Item = &StoredDiag> {
+        let (lo, hi) = (range.start, range.end);
         self.by_buffer
             .get(&bid)
             .into_iter()
             .flat_map(|entry| entry.iter())
-            .flat_map(|(_server, diags)| diags.iter())
-            .filter(move |d| d.severity <= floor && d.start < range.end && d.end > range.start)
+            .flat_map(move |(_server, diags)| {
+                // Each server's Vec is sorted by `start` (see `replace` and
+                // `remap_through`), so everything past the first `start >= hi`
+                // can't overlap `range`. `end` isn't sorted, so the lower bound
+                // still needs a full scan from the front.
+                let upper = diags.partition_point(|d| d.start < hi);
+                diags[..upper].iter()
+            })
+            .filter(move |d| d.severity <= floor && d.end > lo)
     }
 }
 
@@ -503,6 +511,27 @@ mod tests {
             .map(|d| (d.start, d.end))
             .collect();
         assert_eq!(kept, vec![(10, 15)]);
+    }
+
+    #[test]
+    fn for_range_keeps_a_diagnostic_that_starts_before_the_range_but_overlaps_it() {
+        // Regression test for the partition_point optimization in `for_range`:
+        // the inner Vec is sorted by `start`, not `end`, so a diagnostic that
+        // starts before the queried range can still overlap it and must not
+        // be dropped by the upper-bound cut.
+        let mut store = DiagnosticsStore::default();
+        let bid = make_bid();
+        store.replace(ServerId(0), bid, vec![diag(0, 10, DiagSeverity::Error)]);
+
+        let kept: Vec<(usize, usize)> = store
+            .for_range(bid, 8..18, DiagSeverity::Hint)
+            .map(|d| (d.start, d.end))
+            .collect();
+        assert_eq!(
+            kept,
+            vec![(0, 10)],
+            "a diagnostic starting before the range must survive if it overlaps"
+        );
     }
 
     #[test]
