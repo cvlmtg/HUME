@@ -241,7 +241,7 @@
     (plum/fetch-query! name "highlights.scm" hl-path)
     ;; git prints its own progress; the C compiler stays silent until it's
     ;; done or errors, which on a slow grammar reads as a hang.
-    (displayln (string-append "compiling " name "..."))
+    (displayln (string-append "Compiling grammar for " name "..."))
     (compile-grammar! build-dir out-path)
     (register-grammar! name out-path symbol hl-path (plum/try-fetch-injections! name))))
 
