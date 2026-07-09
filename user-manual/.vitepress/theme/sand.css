@@ -1,6 +1,6 @@
 /* ============================================================
-   HUME — a warm, editorial VitePress theme  (ember + plum)
-   Recreates "variant B": warm paper, ember primary, plum accent,
+   HUME — a warm, editorial VitePress theme  (sand + plum)
+   Recreates "variant B": warm paper, sand primary, plum accent,
    serif display headings, centered hero. Light + dark.
    ------------------------------------------------------------
    This file only overrides VitePress design tokens, so it keeps
@@ -24,7 +24,7 @@
   font-weight: 500;
   letter-spacing: -0.01em;
 }
-.VPHero .name { font-style: italic; }   /* the ember word in the headline */
+.VPHero .name { font-style: italic; }   /* the sand word in the headline */
 
 /* =================  LIGHT (default)  ======================== */
 :root {
@@ -44,18 +44,21 @@
   --vp-c-divider: #EBE2D5;
   --vp-c-gutter: #EBE2D5;
 
-  /* brand = EMBER (primary): links, nav/sidebar active, hero name */
-  --vp-c-brand-1: #BE4A24;
-  --vp-c-brand-2: #A23E1C;
-  --vp-c-brand-3: #C04A24;
-  --vp-c-brand-soft: rgba(192, 74, 36, 0.12);
+  /* brand = SAND (primary): links, nav/sidebar active, hero name.
+     Sand (#D4A373) is too light to pass contrast on paper, so light
+     mode uses a darkened ochre derived from it; dark mode uses sand
+     itself (see below). */
+  --vp-c-brand-1: #9A6A2E;
+  --vp-c-brand-2: #855A24;
+  --vp-c-brand-3: #A6702E;
+  --vp-c-brand-soft: rgba(154, 106, 46, 0.12);
 
   /* primary (solid) buttons — hero "Get started" */
-  --vp-button-brand-bg: #C04A24;
+  --vp-button-brand-bg: #A6702E;
   --vp-button-brand-text: #FFF7F1;
-  --vp-button-brand-hover-bg: #A23E1C;
+  --vp-button-brand-hover-bg: #855A24;
   --vp-button-brand-hover-text: #FFF7F1;
-  --vp-button-brand-active-bg: #9A3B1C;
+  --vp-button-brand-active-bg: #7A5220;
 
   /* secondary (alt) buttons — hero "Read the guide" */
   --vp-button-alt-bg: transparent;
@@ -67,73 +70,73 @@
 
   /* code */
   --vp-code-block-bg: #F6F0E7;
-  --vp-code-color: var(--vp-c-brand-1);     /* inline code = ember */
-  --vp-code-bg: rgba(192, 74, 36, 0.07);
+  --vp-code-color: var(--vp-c-brand-1);     /* inline code = sand */
+  --vp-code-bg: rgba(154, 106, 46, 0.08);
 
-  /* custom blocks:  ::: tip = ember   ·   ::: info / important = PLUM */
-  --vp-custom-block-tip-border: rgba(192, 74, 36, 0.30);
-  --vp-custom-block-tip-text: #9A3B1C;
-  --vp-custom-block-tip-bg: #F7E8E0;
-  --vp-custom-block-tip-code-bg: #F1DACE;
+  /* custom blocks:  ::: tip = sand   ·   ::: info / important = PLUM */
+  --vp-custom-block-tip-border: rgba(154, 106, 46, 0.30);
+  --vp-custom-block-tip-text: #7A5220;
+  --vp-custom-block-tip-bg: #F5EBDD;
+  --vp-custom-block-tip-code-bg: #EEE0CC;
 
-  --vp-custom-block-info-border: rgba(122, 58, 96, 0.28);
-  --vp-custom-block-info-text: #6A3153;
-  --vp-custom-block-info-bg: #F2E7EF;
+  --vp-custom-block-info-border: rgba(139, 75, 135, 0.30);
+  --vp-custom-block-info-text: #6E3A6A;
+  --vp-custom-block-info-bg: #F1E7F0;
 
-  --vp-custom-block-important-border: rgba(122, 58, 96, 0.28);
-  --vp-custom-block-important-text: #6A3153;
-  --vp-custom-block-important-bg: #F2E7EF;
+  --vp-custom-block-important-border: rgba(139, 75, 135, 0.30);
+  --vp-custom-block-important-text: #6E3A6A;
+  --vp-custom-block-important-bg: #F1E7F0;
 
-  /* hero name colour (solid ember, no gradient) */
+  /* hero name colour (solid sand ochre, no gradient) */
   --vp-home-hero-name-color: var(--vp-c-brand-1);
 }
 
-::selection { background: rgba(192, 74, 36, 0.20); }
+::selection { background: rgba(154, 106, 46, 0.18); }
 
 /* =================  DARK  =================================== */
 .dark {
-  --vp-c-bg: #16110E;
-  --vp-c-bg-alt: #1D1712;
-  --vp-c-bg-soft: #221B15;
-  --vp-c-bg-elv: #221B15;
+  --vp-c-bg: #2B1E16;
+  --vp-c-bg-alt: #33251B;
+  --vp-c-bg-soft: #3A2A1F;
+  --vp-c-bg-elv: #3A2A1F;
 
-  --vp-c-text-1: #EFE7DC;
-  --vp-c-text-2: #B2A597;
-  --vp-c-text-3: #867A6C;
+  --vp-c-text-1: #EDE4D8;
+  --vp-c-text-2: #B7A895;
+  --vp-c-text-3: #8A7A67;
 
-  --vp-c-border: #40352A;
-  --vp-c-divider: #312721;
-  --vp-c-gutter: #312721;
+  --vp-c-border: #46372A;
+  --vp-c-divider: #382A1F;
+  --vp-c-gutter: #382A1F;
 
-  --vp-c-brand-1: #E87642;
-  --vp-c-brand-2: #F0916A;
-  --vp-c-brand-3: #C0532B;
-  --vp-c-brand-soft: rgba(232, 118, 66, 0.16);
+  --vp-c-brand-1: #D4A373;
+  --vp-c-brand-2: #E0B487;
+  --vp-c-brand-3: #B0854F;
+  --vp-c-brand-soft: rgba(212, 163, 115, 0.16);
 
-  --vp-button-brand-bg: #C9582E;
-  --vp-button-brand-text: #FFF7F1;
-  --vp-button-brand-hover-bg: #E87642;
-  --vp-button-brand-hover-text: #FFF7F1;
-  --vp-button-brand-active-bg: #B14B26;
+  --vp-button-brand-bg: #B0854F;
+  --vp-button-brand-text: #2B1E16;
+  --vp-button-brand-hover-bg: #D4A373;
+  --vp-button-brand-hover-text: #2B1E16;
+  --vp-button-brand-active-bg: #9C743F;
 
-  --vp-code-block-bg: #1B1510;
+  --vp-code-block-bg: #241913;
   --vp-code-color: var(--vp-c-brand-1);
-  --vp-code-bg: rgba(232, 118, 66, 0.12);
+  --vp-code-bg: rgba(212, 163, 115, 0.12);
 
-  --vp-custom-block-tip-border: rgba(232, 118, 66, 0.32);
-  --vp-custom-block-tip-text: #F0916A;
-  --vp-custom-block-tip-bg: #2C1C12;
-  --vp-custom-block-tip-code-bg: #3A2417;
+  --vp-custom-block-tip-border: rgba(212, 163, 115, 0.32);
+  --vp-custom-block-tip-text: #E0B487;
+  --vp-custom-block-tip-bg: #35271A;
+  --vp-custom-block-tip-code-bg: #40301E;
 
-  --vp-custom-block-info-border: rgba(201, 130, 172, 0.30);
-  --vp-custom-block-info-text: #D89BBF;
-  --vp-custom-block-info-bg: #281825;
+  --vp-custom-block-info-border: rgba(200, 144, 194, 0.30);
+  --vp-custom-block-info-text: #C890C2;
+  --vp-custom-block-info-bg: #2E1F2B;
 
-  --vp-custom-block-important-border: rgba(201, 130, 172, 0.30);
-  --vp-custom-block-important-text: #D89BBF;
-  --vp-custom-block-important-bg: #281825;
+  --vp-custom-block-important-border: rgba(200, 144, 194, 0.30);
+  --vp-custom-block-important-text: #C890C2;
+  --vp-custom-block-important-bg: #2E1F2B;
 }
-.dark ::selection { background: rgba(232, 118, 66, 0.26); }
+.dark ::selection { background: rgba(212, 163, 115, 0.24); }
 
 /* ---- OPTIONAL: book-like serif body for doc pages -----------
    Uncomment to read the article column in Newsreader, the way the

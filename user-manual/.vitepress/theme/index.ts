@@ -1,4 +1,4 @@
 import DefaultTheme from 'vitepress/theme'
-import './ember.css'
+import './sand.css'
 
 export default DefaultTheme

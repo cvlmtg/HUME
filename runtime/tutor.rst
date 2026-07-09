@@ -1309,7 +1309,7 @@ file's path. For example: ``:e #`` reopens the alternate buffer.
 +----------------+---------------------------------------------------------+
 | :messages :mes | review the message and error log                        |
 +----------------+---------------------------------------------------------+
-| :theme <name>  | load a theme (dark / light / ember / gruvbox)           |
+| :theme <name>  | load a theme (dark / light / sand / gruvbox)            |
 +----------------+---------------------------------------------------------+
 | :reload-config | reload the editor configuration file without restarting |
 +----------------+---------------------------------------------------------+

@@ -53,7 +53,7 @@ Both editors share the same foundations — multiple cursors, `;` to collapse, `
 Helix uses TOML. HUME uses **Scheme** (`init.scm`). You bind keys and set options by calling Scheme functions:
 
 ```scheme
-(set-option! "theme" "ember")
+(set-option! "theme" "sand")
 (bind-key! 'normal "ctrl-j" "move-down")
 ```
 

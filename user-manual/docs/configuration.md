@@ -98,7 +98,7 @@ Accepted values:
 ## Themes
 
 ```scheme
-(set-option! "theme" "ember")
+(set-option! "theme" "sand")
 ```
 
 To see which themes are available, type `:theme ` and press `Tab`.
@@ -200,7 +200,7 @@ Hooks can trigger on language detection:
 ## Example init.scm
 
 ```scheme
-(set-option! "theme" "ember")
+(set-option! "theme" "sand")
 (set-option! "line-number-style" "absolute")
 (set-option! "tab-width" 2)
 (set-option! "scrolloff" 8)
