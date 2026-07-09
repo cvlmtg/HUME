@@ -179,9 +179,9 @@ fn lsp_restart_spawns_a_fresh_server_id_and_reattaches_the_buffer() {
         "restart must yield a fresh ServerId, not reuse the old one"
     );
     assert_eq!(
-        ed.lsp.client_count_for_test(),
+        ed.lsp.server_count_for_test(),
         1,
-        "the old client must be gone, exactly one fresh one inserted"
+        "the old server entry must be gone, exactly one fresh one inserted"
     );
 }
 
@@ -267,6 +267,8 @@ fn stderr_action_is_logged_at_trace_with_the_server_name_prefix() {
     let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     ed.lsp
+        .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
+    ed.lsp
         .insert_server_name_for_test(sid, "rust-analyzer".to_string());
 
     ed.dispatch_lsp_action(sid, ClientAction::Stderr("panic: oh no".to_string()));
@@ -284,6 +286,8 @@ fn log_message_error_type_is_reported_at_error_severity() {
     let mut backend = InlineLspBackend::new();
     let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    ed.lsp
+        .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
     ed.lsp
         .insert_server_name_for_test(sid, "rust-analyzer".to_string());
 
@@ -309,6 +313,8 @@ fn log_message_info_type_is_reported_at_trace_not_shown_as_status() {
     let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     ed.lsp
+        .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
+    ed.lsp
         .insert_server_name_for_test(sid, "rust-analyzer".to_string());
 
     ed.dispatch_lsp_action(
@@ -332,6 +338,8 @@ fn show_message_is_reported_at_info_severity() {
     let mut backend = InlineLspBackend::new();
     let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    ed.lsp
+        .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
     ed.lsp
         .insert_server_name_for_test(sid, "rust-analyzer".to_string());
 
@@ -357,6 +365,8 @@ fn progress_report_events_are_dropped_without_any_log_line() {
     let mut backend = InlineLspBackend::new();
     let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    ed.lsp
+        .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
     ed.lsp
         .insert_server_name_for_test(sid, "rust-analyzer".to_string());
 

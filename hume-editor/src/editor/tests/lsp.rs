@@ -419,19 +419,13 @@ fn register_and_open_matching_file_spawns_exactly_one_server_and_second_buffer_a
         1,
         "first matching file must spawn exactly one server"
     );
-    assert_eq!(ed.lsp.client_count_for_test(), 1);
 
     ed.execute_typed("e", Some(file2.to_str().unwrap())).unwrap();
     assert_eq!(
         ed.lsp.server_count_for_test(),
         1,
-        "second file under the same root must attach, not spawn a second server"
-    );
-    assert_eq!(
-        ed.lsp.client_count_for_test(),
-        1,
-        "attaching must not mint and insert a second LspClient — servers_by_key.len() \
-         alone can't tell attach from respawn-and-overwrite, since both leave one key"
+        "second file under the same root must attach, not spawn a second server, \
+         nor insert a second entry that silently overwrites the first"
     );
 }
 

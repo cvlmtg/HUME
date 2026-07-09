@@ -34,10 +34,10 @@ pub(super) fn resolve_server(
         }
         Some(name) => {
             let matches: Vec<ServerId> = lsp
-                .servers_by_key
+                .servers
                 .iter()
-                .filter(|((lang, _), _)| lang == name)
-                .map(|(_, &sid)| sid)
+                .filter(|(_, e)| e.language.as_deref() == Some(name))
+                .map(|(&sid, _)| sid)
                 .collect();
             match matches.as_slice() {
                 [] => Err(format!("no running LSP server for language '{name}'")),
@@ -53,13 +53,10 @@ pub(super) fn resolve_server(
     }
 }
 
-/// The registered language for `server_id` (the `servers_by_key` key, not
-/// the display `command` string) — reverse of `resolve_server`'s named path.
+/// The registered language for `server_id` — reverse of `resolve_server`'s
+/// named path.
 pub(super) fn server_language(lsp: &LspState, server_id: ServerId) -> Option<String> {
-    lsp.servers_by_key
-        .iter()
-        .find(|&(_, &id)| id == server_id)
-        .map(|((lang, _), _)| lang.clone())
+    lsp.servers.get(&server_id)?.language.clone()
 }
 
 /// Decoded `ServerCapabilities`, cached at handshake completion
@@ -72,21 +69,21 @@ pub(crate) fn capabilities(
     server: Option<&str>,
 ) -> Option<serde_json::Value> {
     let sid = resolve_server(state, lsp, focused_bid, server).ok()?;
-    lsp.capabilities_json.get(&sid).cloned()
+    lsp.servers.get(&sid)?.capabilities_json.clone()
 }
 
 /// One entry per running (language, root) server — `:lsp-status`'s data in
 /// structured form.
 pub(crate) fn server_status(lsp: &LspState) -> Vec<hume_scripting::LspServerStatusEntry> {
-    lsp.servers_by_key
-        .iter()
-        .filter_map(|((language, root), &sid)| {
-            let client = lsp.clients.get(&sid)?;
+    lsp.servers
+        .values()
+        .filter_map(|e| {
+            let language = e.language.clone()?;
             Some(hume_scripting::LspServerStatusEntry {
-                language: language.clone(),
-                root: root.clone(),
-                state: format!("{:?}", client.state),
-                pending: client.pending_count(),
+                language,
+                root: e.client.root.clone(),
+                state: format!("{:?}", e.client.state),
+                pending: e.client.pending_count(),
             })
         })
         .collect()
@@ -124,9 +121,9 @@ fn uri_and_encoding<'a>(
     let buf = state.buffers.try_get(id)?;
     let path = buf.path()?;
     let sid = buf.lsp_server?;
-    let client = lsp.clients.get(&sid)?;
+    let entry = lsp.servers.get(&sid)?;
     let uri = hume_lsp::uri::path_to_uri(path).ok()?;
-    Some((uri.as_str().to_string(), client.encoding))
+    Some((uri.as_str().to_string(), entry.client.encoding))
 }
 
 /// Ready-made `{"textDocument" {"uri"} "position" {"line" "character"}}`
@@ -155,8 +152,8 @@ pub(crate) fn encoding_for_buffer(
         .buffers
         .try_get(id)
         .and_then(|b| b.lsp_server)
-        .and_then(|sid| lsp.clients.get(&sid))
-        .map(|c| c.encoding)
+        .and_then(|sid| lsp.servers.get(&sid))
+        .map(|e| e.client.encoding)
         .unwrap_or(hume_editing::position_encoding::PositionEncoding::Utf16)
 }
 

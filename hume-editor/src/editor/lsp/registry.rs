@@ -101,25 +101,31 @@ impl Editor {
         };
 
         let root = resolve_root(&path, &config.root_markers, &self.state.cwd);
-        // Cloned before `key` moves `language` in — needed below regardless
-        // of which branch actually runs (the existing-server branch never
-        // touches `key` again, but the new-server branch moves it into
-        // `servers_by_key`).
-        let language_for_hook = language.clone();
-        let key = (language, root.clone());
 
-        let server_id = if let Some(&existing) = self.lsp.servers_by_key.get(&key) {
+        // Scan for an existing server under this (language, root) pair —
+        // `LspState.servers` is the single source of truth, so there's no
+        // separate index that could disagree with it.
+        let existing = self.lsp.servers.iter().find_map(|(&sid, entry)| {
+            (entry.language.as_deref() == Some(language.as_str()) && entry.client.root == root)
+                .then_some(sid)
+        });
+
+        let server_id = if let Some(existing) = existing {
             existing
         } else {
             match self.lsp.backend.start(&config.command, &config.args, &root) {
                 Ok(server_id) => {
                     let mut client = hume_lsp::client::LspClient::new(server_id, root);
                     client.start_handshake(self.lsp.backend.as_mut());
-                    self.lsp.clients.insert(server_id, client);
-                    self.lsp.servers_by_key.insert(key, server_id);
-                    self.lsp
-                        .server_names
-                        .insert(server_id, config.command.clone());
+                    self.lsp.servers.insert(
+                        server_id,
+                        super::ServerEntry {
+                            client,
+                            language: Some(language.clone()),
+                            name: config.command.clone(),
+                            capabilities_json: None,
+                        },
+                    );
                     server_id
                 }
                 Err(e) => {
@@ -140,48 +146,43 @@ impl Editor {
         // already-Running server" case (second+ buffer under the same key).
         if self
             .lsp
-            .clients
+            .servers
             .get(&server_id)
-            .is_some_and(|c| c.state == hume_lsp::client::ServerState::Running)
+            .is_some_and(|e| e.client.state == hume_lsp::client::ServerState::Running)
         {
-            self.fire_hook_lsp_attach(bid, &language_for_hook);
+            self.fire_hook_lsp_attach(bid, &language);
         }
     }
 
     /// Resolves `:lsp-stop [language]` / `:lsp-restart [language]`'s target
     /// set: every server whose key's language matches, or — with no
     /// argument — just the focused buffer's server (if any).
-    fn lsp_targets(&self, language: Option<&str>) -> Vec<(String, PathBuf, hume_lsp::backend::ServerId)> {
+    fn lsp_targets(&self, language: Option<&str>) -> Vec<hume_lsp::backend::ServerId> {
         match language {
             Some(lang) => self
                 .lsp
-                .servers_by_key
+                .servers
                 .iter()
-                .filter(|((l, _), _)| l == lang)
-                .map(|((l, r), &id)| (l.clone(), r.clone(), id))
+                .filter(|(_, e)| e.language.as_deref() == Some(lang))
+                .map(|(&id, _)| id)
                 .collect(),
-            None => {
-                let bid = self.focused_buffer_id();
-                let Some(server_id) = self.state.buffers.get(bid).lsp_server else {
-                    return Vec::new();
-                };
-                self.lsp
-                    .servers_by_key
-                    .iter()
-                    .find(|&(_, &id)| id == server_id)
-                    .map(|((l, r), &id)| vec![(l.clone(), r.clone(), id)])
-                    .unwrap_or_default()
-            }
+            None => self
+                .state
+                .buffers
+                .get(self.focused_buffer_id())
+                .lsp_server
+                .into_iter()
+                .collect(),
         }
     }
 
     /// Graceful shutdown + full deregistration of one running server:
     /// `begin_shutdown` (shutdown request, then exit — `ServerHandle::drop`
-    /// reaps the process regardless), drop the client/key/name/diagnostics
-    /// entries, and clear `lsp_server` on every buffer that pointed at it so
-    /// a later attach attempt (open or restart) doesn't see it as already
-    /// attached. Every request still in flight on this client is dispatched
-    /// as `TimedOut` before the client itself is dropped — otherwise a
+    /// reaps the process regardless), drop its `ServerEntry` and diagnostics,
+    /// and clear `lsp_server` on every buffer that pointed at it so a later
+    /// attach attempt (open or restart) doesn't see it as already attached.
+    /// Every request still in flight on this client is dispatched as
+    /// `TimedOut` before the client itself is dropped — otherwise a
     /// registered callback (and its `CallbackEntry`) would be orphaned
     /// along with the removed client, never firing and never freed. Fires
     /// `OnDiagnosticsChanged` for every buffer whose stored diagnostics
@@ -189,19 +190,21 @@ impl Editor {
     /// attached — the latter is a plugin's only signal to drop its own
     /// buffer-scoped state derived from this server (e.g. inlay hints),
     /// which nothing here owns well enough to clear on its behalf.
-    fn lsp_stop_one(&mut self, language: &str, root: &Path, server_id: hume_lsp::backend::ServerId) {
-        if let Some(mut client) = self.lsp.clients.remove(&server_id) {
+    fn lsp_stop_one(&mut self, server_id: hume_lsp::backend::ServerId) {
+        let mut language = String::new();
+        if let Some(entry) = self.lsp.servers.remove(&server_id) {
+            let super::ServerEntry {
+                mut client,
+                language: entry_language,
+                ..
+            } = entry;
+            language = entry_language.unwrap_or_default();
             client.begin_shutdown(self.lsp.backend.as_mut());
             for (id, meta) in client.drain_pending() {
                 self.dispatch_completed(server_id, id, meta, hume_lsp::client::Outcome::TimedOut);
             }
         }
         self.lsp.backend.shutdown(server_id);
-        self.lsp
-            .servers_by_key
-            .remove(&(language.to_string(), root.to_path_buf()));
-        self.lsp.server_names.remove(&server_id);
-        self.lsp.capabilities_json.remove(&server_id);
         let diag_touched = self.lsp.diagnostics.remove_server(server_id);
 
         let bids: Vec<BufferId> = self
@@ -235,7 +238,7 @@ impl Editor {
             self.fire_hook_diagnostics_changed(bid);
         }
         for bid in bids {
-            self.fire_hook_lsp_detach(bid, language);
+            self.fire_hook_lsp_detach(bid, &language);
         }
     }
 
@@ -243,8 +246,8 @@ impl Editor {
     pub(in crate::editor) fn lsp_stop(&mut self, language: Option<&str>) -> usize {
         let targets = self.lsp_targets(language);
         let count = targets.len();
-        for (lang, root, server_id) in targets {
-            self.lsp_stop_one(&lang, &root, server_id);
+        for server_id in targets {
+            self.lsp_stop_one(server_id);
         }
         count
     }
@@ -256,7 +259,7 @@ impl Editor {
     pub(in crate::editor) fn lsp_restart(&mut self, language: Option<&str>) -> usize {
         let targets = self.lsp_targets(language);
         let count = targets.len();
-        for (lang, root, server_id) in targets {
+        for server_id in targets {
             let bids: Vec<BufferId> = self
                 .state
                 .buffers
@@ -264,7 +267,7 @@ impl Editor {
                 .filter(|(_, buf)| buf.lsp_server == Some(server_id))
                 .map(|(bid, _)| bid)
                 .collect();
-            self.lsp_stop_one(&lang, &root, server_id);
+            self.lsp_stop_one(server_id);
             for bid in bids {
                 self.lsp_attach_buffer(bid);
             }

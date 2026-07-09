@@ -143,16 +143,16 @@ impl Editor {
             };
 
             // Manual field split: the loop below interleaves a diagnostics
-            // remap with a client-routed send, so `clients`/`backend`/
+            // remap with a client-routed send, so `servers`/`backend`/
             // `diagnostics` all need to be borrowed independently out of
             // `self.lsp` rather than through method calls on the whole struct.
             let LspState {
-                clients,
+                servers,
                 backend,
                 diagnostics,
                 ..
             } = &mut self.lsp;
-            let Some(client) = clients.get_mut(&server_id) else {
+            let Some(client) = servers.get_mut(&server_id).map(|e| &mut e.client) else {
                 continue; // can't happen once attached, but never send into the void
             };
             let encoding = client.encoding;

@@ -299,9 +299,9 @@ impl Editor {
 
         let encoding = self
             .lsp
-            .clients
+            .servers
             .get(&server_id)
-            .map(|c| c.encoding)
+            .map(|e| e.client.encoding)
             .unwrap_or(hume_editing::PositionEncoding::Utf16);
         let rope = self.state.buffers.get(bid).text().rope().clone();
 

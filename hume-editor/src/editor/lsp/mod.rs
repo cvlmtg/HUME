@@ -14,6 +14,7 @@ mod registry;
 pub(crate) mod sync;
 
 use std::collections::{HashMap, HashSet};
+#[cfg(test)]
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -52,9 +53,32 @@ struct CallbackEntry {
     stale_check: Option<(BufferId, u64)>,
 }
 
+/// Everything tracked per running (or starting) LSP server, one entry per
+/// `ServerId` — single source of truth, no separate (language, root) index:
+/// `client.root` already carries the workspace root, so an attach/resolve
+/// lookup scans `LspState.servers` (at most a handful of entries running at
+/// once) instead of maintaining a second map that could drift out of sync
+/// with this one.
+struct ServerEntry {
+    client: LspClient,
+    /// The language this server was registered under
+    /// (`register-lsp-server!`'s key) — `None` only for a client inserted
+    /// directly by a test without going through `lsp_attach_buffer`.
+    language: Option<String>,
+    /// Display name (the registered `command`, e.g. `"rust-analyzer"`) —
+    /// used to prefix stderr/log lines (C10) so `:messages` reads legibly
+    /// with multiple servers running.
+    name: String,
+    /// Decoded `ServerCapabilities`, cached once at handshake completion
+    /// (`dispatch_lsp_action`'s `BecameRunning` arm) — B3's
+    /// `(lsp-capabilities …)` reads this rather than reconverting the typed
+    /// caps on every call.
+    capabilities_json: Option<serde_json::Value>,
+}
+
 pub(crate) struct LspState {
     backend: Box<dyn LspBackend>,
-    clients: HashMap<ServerId, LspClient>,
+    servers: HashMap<ServerId, ServerEntry>,
     /// Keyed by the `(ServerId, RequestId)` pair a callback's own request
     /// was sent under — `drain_lsp` already has both in scope at dispatch
     /// time (the per-server loop, then the response/timeout's own id), so
@@ -62,20 +86,7 @@ pub(crate) struct LspState {
     callbacks: HashMap<(ServerId, RequestId), CallbackEntry>,
     /// Config recorded by `register-lsp-server!`, keyed by language.
     configs: HashMap<String, LspServerConfig>,
-    /// Running (or starting) server per (language, resolved root) — the
-    /// first buffer under a pair spawns; later buffers with the same pair
-    /// attach to the existing entry.
-    servers_by_key: HashMap<(String, PathBuf), ServerId>,
     diagnostics: DiagnosticsStore,
-    /// Display name (the registered `command`, e.g. `"rust-analyzer"`) per
-    /// server — used to prefix stderr/log lines (C10) so `:messages` reads
-    /// legibly with multiple servers running.
-    server_names: HashMap<ServerId, String>,
-    /// Decoded `ServerCapabilities`, cached once at handshake completion
-    /// (`dispatch_lsp_action`'s `BecameRunning` arm) — B3's
-    /// `(lsp-capabilities …)` reads this rather than reconverting the typed
-    /// caps on every call.
-    capabilities_json: HashMap<ServerId, serde_json::Value>,
 }
 
 impl LspState {
@@ -84,13 +95,10 @@ impl LspState {
     fn with_backend(backend: Box<dyn LspBackend>) -> Self {
         Self {
             backend,
-            clients: HashMap::new(),
+            servers: HashMap::new(),
             callbacks: HashMap::new(),
             configs: HashMap::new(),
-            servers_by_key: HashMap::new(),
             diagnostics: DiagnosticsStore::default(),
-            server_names: HashMap::new(),
-            capabilities_json: HashMap::new(),
         }
     }
 
@@ -124,14 +132,26 @@ impl LspState {
 
     /// Test-only direct client insertion; C8 adds the real registration
     /// path (`register-lsp-server!` -> spawn-on-first-open) that populates
-    /// this map in production.
+    /// this map in production. Inserted with no language — tests that need
+    /// one call `insert_server_key_for_test` next.
     #[cfg(test)]
     pub(crate) fn insert_client_for_test(&mut self, client: LspClient) -> ServerId {
         let id = client.id;
-        self.clients.insert(id, client);
+        self.servers.insert(
+            id,
+            ServerEntry {
+                client,
+                language: None,
+                name: "lsp".to_string(),
+                capabilities_json: None,
+            },
+        );
         id
     }
 
+    /// `root` must match the client's own `root` (`LspClient::new`'s
+    /// second argument) — a real attach never has these disagree, since
+    /// both come from the same `resolve_root` call.
     #[cfg(test)]
     pub(crate) fn insert_server_key_for_test(
         &mut self,
@@ -139,32 +159,35 @@ impl LspState {
         root: PathBuf,
         server_id: ServerId,
     ) {
-        self.servers_by_key.insert((language, root), server_id);
+        let entry = self
+            .servers
+            .get_mut(&server_id)
+            .expect("insert_client_for_test first");
+        assert_eq!(
+            entry.client.root, root,
+            "test key root must match the client's own root"
+        );
+        entry.language = Some(language);
     }
 
     #[cfg(test)]
     pub(crate) fn insert_server_name_for_test(&mut self, server_id: ServerId, name: String) {
-        self.server_names.insert(server_id, name);
+        if let Some(entry) = self.servers.get_mut(&server_id) {
+            entry.name = name;
+        }
     }
 
     #[cfg(test)]
     pub(crate) fn client_for_test(&mut self, server: ServerId) -> Option<&mut LspClient> {
-        self.clients.get_mut(&server)
+        self.servers.get_mut(&server).map(|e| &mut e.client)
     }
 
-    /// Number of distinct (language, root) keys currently tracked.
+    /// Number of tracked servers — one entry per `backend.start`, so a
+    /// second buffer attaching under the same (language, root) key (rather
+    /// than spawning) leaves this unchanged.
     #[cfg(test)]
     pub(crate) fn server_count_for_test(&self) -> usize {
-        self.servers_by_key.len()
-    }
-
-    /// Number of `LspClient`s ever inserted — unlike `server_count_for_test`
-    /// (keyed by (language, root), so a respawn silently overwrites the same
-    /// key), a second `backend.start` always adds a new entry here. The two
-    /// counts must stay equal for "attach, don't respawn" to actually hold.
-    #[cfg(test)]
-    pub(crate) fn client_count_for_test(&self) -> usize {
-        self.clients.len()
+        self.servers.len()
     }
 
     #[cfg(test)]
@@ -223,9 +246,9 @@ impl LspState {
         server: ServerId,
     ) -> Option<(&mut LspClient, &mut dyn LspBackend)> {
         let LspState {
-            clients, backend, ..
+            servers, backend, ..
         } = self;
-        let client = clients.get_mut(&server)?;
+        let client = &mut servers.get_mut(&server)?.client;
         Some((client, backend.as_mut()))
     }
 
@@ -260,7 +283,7 @@ impl LspState {
         params: serde_json::Value,
         meta: RequestMeta,
     ) -> Option<RequestId> {
-        let client = self.clients.get_mut(&server)?;
+        let client = &mut self.servers.get_mut(&server)?.client;
         Some(client.send_request(self.backend.as_mut(), method, params, meta))
     }
 }
@@ -272,16 +295,15 @@ impl AsyncSource for LspState {
     /// poll cadence, not the coarser Running-idle heartbeat below).
     fn has_pending(&self) -> bool {
         self.backend.has_pending()
-            || self
-                .clients
-                .values()
-                .any(|c| c.state == ServerState::Starting || c.pending_count() > 0)
+            || self.servers.values().any(|e| {
+                e.client.state == ServerState::Starting || e.client.pending_count() > 0
+            })
     }
 
     fn next_deadline(&self) -> Option<Instant> {
-        self.clients
+        self.servers
             .values()
-            .any(|c| c.state == ServerState::Running)
+            .any(|e| e.client.state == ServerState::Running)
             .then(|| Instant::now() + LSP_HEARTBEAT)
     }
 }
@@ -302,8 +324,8 @@ impl Editor {
         // batch.
         let mut diag_batch: HashMap<(ServerId, String), serde_json::Value> = HashMap::new();
         for (server_id, ev) in events {
-            let actions = match self.lsp.clients.get_mut(&server_id) {
-                Some(client) => client.on_event(ev),
+            let actions = match self.lsp.servers.get_mut(&server_id) {
+                Some(entry) => entry.client.on_event(ev),
                 None => continue,
             };
             for action in actions {
@@ -333,13 +355,13 @@ impl Editor {
         }
 
         let now = Instant::now();
-        let server_ids: Vec<ServerId> = self.lsp.clients.keys().copied().collect();
+        let server_ids: Vec<ServerId> = self.lsp.servers.keys().copied().collect();
         for server_id in server_ids {
             let LspState {
-                clients, backend, ..
+                servers, backend, ..
             } = &mut self.lsp;
-            let completed = match clients.get_mut(&server_id) {
-                Some(client) => client.take_completed(backend.as_mut(), now),
+            let completed = match servers.get_mut(&server_id) {
+                Some(entry) => entry.client.take_completed(backend.as_mut(), now),
                 None => continue,
             };
             for (id, meta, outcome) in completed {
@@ -360,20 +382,20 @@ impl Editor {
     /// lingering response or stderr line has nowhere useful to go while the
     /// editor is tearing down.
     pub(in crate::editor) fn lsp_shutdown_all(&mut self, grace: Duration) {
-        if self.lsp.clients.is_empty() {
+        if self.lsp.servers.is_empty() {
             return;
         }
 
-        let server_ids: Vec<ServerId> = self.lsp.clients.keys().copied().collect();
+        let server_ids: Vec<ServerId> = self.lsp.servers.keys().copied().collect();
         let mut awaiting_eof: HashSet<ServerId> = HashSet::new();
         for &server_id in &server_ids {
             let LspState {
-                clients, backend, ..
+                servers, backend, ..
             } = &mut self.lsp;
-            if let Some(client) = clients.get_mut(&server_id)
-                && client.state == ServerState::Running
+            if let Some(entry) = servers.get_mut(&server_id)
+                && entry.client.state == ServerState::Running
             {
-                client.begin_shutdown(backend.as_mut());
+                entry.client.begin_shutdown(backend.as_mut());
                 awaiting_eof.insert(server_id);
             }
         }
@@ -405,14 +427,16 @@ impl Editor {
                 }
                 // Decode once here rather than per `(lsp-capabilities …)`
                 // call — conversion is per-server-startup, not per-call.
-                if let Some(caps) = self
+                let json = self
                     .lsp
-                    .clients
+                    .servers
                     .get(&server_id)
-                    .and_then(|c| c.caps.as_ref())
-                    && let Ok(json) = serde_json::to_value(caps)
+                    .and_then(|e| e.client.caps.as_ref())
+                    .and_then(|caps| serde_json::to_value(caps).ok());
+                if let Some(json) = json
+                    && let Some(entry) = self.lsp.servers.get_mut(&server_id)
                 {
-                    self.lsp.capabilities_json.insert(server_id, json);
+                    entry.capabilities_json = Some(json);
                 }
                 // Fire on-lsp-attach for every buffer already attached to
                 // this server — it was Starting until now, so `lsp_attach_buffer`
@@ -500,15 +524,14 @@ impl Editor {
     /// through the normal path (shouldn't happen outside tests).
     fn lsp_server_name(&self, server_id: ServerId) -> String {
         self.lsp
-            .server_names
+            .servers
             .get(&server_id)
-            .cloned()
+            .map(|e| e.name.clone())
             .unwrap_or_else(|| "lsp".to_string())
     }
 
-    /// The registered language for `server_id` (the `servers_by_key` key,
-    /// not the display `command` string) — the "server name" B2/B3's Steel
-    /// surface deals in, since that's what `register-lsp-server!` and
+    /// The registered language for `server_id` — the "server name" B2/B3's
+    /// Steel surface deals in, since that's what `register-lsp-server!` and
     /// `lsp-request`'s `server` argument both use.
     fn lsp_server_language(&self, server_id: ServerId) -> Option<String> {
         introspect::server_language(&self.lsp, server_id)
@@ -625,21 +648,22 @@ impl Editor {
     /// lifecycle state, in-flight request count, negotiated encoding),
     /// followed by one line per attached buffer with its diagnostic counts.
     pub(in crate::editor) fn lsp_status_text(&self) -> String {
-        let mut servers: Vec<(&(String, PathBuf), &ServerId)> =
-            self.lsp.servers_by_key.iter().collect();
-        servers.sort_by(|a, b| a.0.cmp(b.0));
+        let mut servers: Vec<(&str, &LspClient)> = self
+            .lsp
+            .servers
+            .values()
+            .filter_map(|e| e.language.as_deref().map(|lang| (lang, &e.client)))
+            .collect();
+        servers.sort_by(|a, b| a.0.cmp(b.0).then_with(|| a.1.root.cmp(&b.1.root)));
 
         let mut lines = Vec::new();
         if servers.is_empty() {
             lines.push("No LSP servers registered.".to_string());
         }
-        for ((language, root), &server_id) in servers {
-            let Some(client) = self.lsp.clients.get(&server_id) else {
-                continue;
-            };
+        for (language, client) in servers {
             lines.push(format!(
                 "{language} @ {} — {:?}, {} in flight, encoding: {:?}",
-                root.display(),
+                client.root.display(),
                 client.state,
                 client.pending_count(),
                 client.encoding,
