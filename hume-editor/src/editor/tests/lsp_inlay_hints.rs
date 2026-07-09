@@ -140,9 +140,10 @@ fn clearing_the_store_removes_the_hint_next_frame() {
     let has_hint_before = ed
         .state
         .panes
-        .inlay_hints
+        .render
         .get(pid)
         .unwrap()
+        .inlay_hints
         .read()
         .unwrap()
         .values()
@@ -154,14 +155,18 @@ fn clearing_the_store_removes_the_hint_next_frame() {
     let has_hint_after = ed
         .state
         .panes
-        .inlay_hints
+        .render
         .get(pid)
         .unwrap()
+        .inlay_hints
         .read()
         .unwrap()
         .values()
         .any(|v| !v.is_empty());
-    assert!(!has_hint_after, "hint must be gone once the store is cleared");
+    assert!(
+        !has_hint_after,
+        "hint must be gone once the store is cleared"
+    );
 }
 
 #[test]
@@ -186,9 +191,10 @@ fn setting_off_renders_nothing_even_with_hints_in_the_store() {
         ed.prepare_frame(40, 8, ctx);
         ed.state
             .panes
-            .inlay_hints
+            .render
             .get(pid)
             .unwrap()
+            .inlay_hints
             .read()
             .unwrap()
             .values()
@@ -197,7 +203,10 @@ fn setting_off_renders_nothing_even_with_hints_in_the_store() {
 
     let mut ctx = RenderContext::new();
     type_cmd(&mut ed, ":set global lsp.inlay-hints=true");
-    assert!(has_hint(&mut ed, &mut ctx), "sanity: hint renders once the setting is on");
+    assert!(
+        has_hint(&mut ed, &mut ctx),
+        "sanity: hint renders once the setting is on"
+    );
 
     type_cmd(&mut ed, ":set global lsp.inlay-hints=false");
     assert!(

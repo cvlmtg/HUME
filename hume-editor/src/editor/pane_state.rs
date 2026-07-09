@@ -135,8 +135,10 @@ pub(crate) struct PaneTransient {
 /// Groups the four per-pane maps that live on [`super::EditorState`].
 ///
 /// Bundles `state` (per-(pane,buffer) selections/groups), `transient` (search/select
-/// snapshots), `jumps` (cursor history), and `highlights` (per-pane bracket/search
-/// highlight buffers) so `EditorState` exposes one field instead of four. The map
+/// snapshots), `jumps` (cursor history), and `render` (per-pane highlight/sign/
+/// inlay-hint/virtual-line handles, bundled in [`crate::ui::PaneRenderHandles`]
+/// since `build_pane` always allocates and `drop_pane_state` always drops them
+/// together) so `EditorState` exposes one field instead of four. The map
 /// types and keying are unchanged; NLL still allows simultaneous mutable borrows
 /// of different fields (e.g. `panes.state` and `panes.jumps` in
 /// `buffer::lifecycle::switch_to_buffer_with_jump`).
@@ -144,10 +146,7 @@ pub(crate) struct PaneView {
     pub(crate) state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     pub(crate) transient: SecondaryMap<PaneId, PaneTransient>,
     pub(crate) jumps: SecondaryMap<PaneId, super::jump_list::JumpList>,
-    pub(crate) highlights: SecondaryMap<PaneId, crate::ui::highlight_providers::PaneHighlights>,
-    pub(crate) signs: SecondaryMap<PaneId, crate::ui::signs::PaneSigns>,
-    pub(crate) inlay_hints: SecondaryMap<PaneId, crate::ui::inlay_hints::InlayHintMap>,
-    pub(crate) virtual_lines: SecondaryMap<PaneId, crate::ui::virtual_lines::VirtualLineMap>,
+    pub(crate) render: SecondaryMap<PaneId, crate::ui::PaneRenderHandles>,
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

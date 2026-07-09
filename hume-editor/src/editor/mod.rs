@@ -1203,7 +1203,7 @@ impl Editor {
                     jumps.insert(pane_id, self::jump_list::JumpList::new(jump_list_capacity));
                     let mut transient = SecondaryMap::new();
                     transient.insert(pane_id, pane_state::PaneTransient::default());
-                    // No highlights/signs entry: this pane is built via `Pane::new`
+                    // No render entry: this pane is built via `Pane::new`
                     // directly (not `build_pane`), so it has no `SharedHighlighter`/
                     // `SignSource` providers to feed — the write sides skip panes
                     // with no entry.
@@ -1211,10 +1211,7 @@ impl Editor {
                         state: pane_buf_state,
                         transient,
                         jumps,
-                        highlights: SecondaryMap::new(),
-                        signs: SecondaryMap::new(),
-                        inlay_hints: SecondaryMap::new(),
-                        virtual_lines: SecondaryMap::new(),
+                        render: SecondaryMap::new(),
                     }
                 },
                 history: self::minibuf::history::HistoryStore::new(history_capacity),

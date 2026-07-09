@@ -25,6 +25,19 @@ use popup::PopupOverlay;
 use signs::{PaneSigns, SharedSignSource};
 use virtual_lines::{PaneVirtualLines, VirtualLineMap};
 
+/// A pane's four render-decoration handles, allocated together by
+/// [`build_pane`] and stored as one `SecondaryMap` entry on
+/// `EditorState.panes.render` — they are always seeded and dropped as a
+/// unit (never independently), and every read site borrows the map
+/// shared, so bundling them costs nothing and removes the "added a new
+/// per-pane provider, forgot to drop it in `drop_pane_state`" bug class.
+pub(crate) struct PaneRenderHandles {
+    pub(crate) highlights: PaneHighlights,
+    pub(crate) signs: PaneSigns,
+    pub(crate) inlay_hints: InlayHintMap,
+    pub(crate) virtual_lines: VirtualLineMap,
+}
+
 /// Build a new pane viewing `buffer_id`: a sign column, a line-number
 /// gutter, the bracket-match / search-match / diagnostic / extra-highlight
 /// sources, the inlay-hint decoration, the virtual-line source, the
@@ -32,12 +45,11 @@ use virtual_lines::{PaneVirtualLines, VirtualLineMap};
 /// overlay, the LSP completion-menu overlay, and `wrap_mode` seeded from the
 /// caller's current settings.
 ///
-/// Returns the pane together with its freshly-allocated [`PaneHighlights`],
-/// [`PaneSigns`], inlay-hint map, and virtual-line map — every pane gets its
-/// own buffers (never shared with any other pane), so each pane's
-/// decorations are computed from that pane's own buffer and viewport. The
-/// caller stores them in `EditorState.panes.highlights` / `.signs` /
-/// `.inlay_hints` / `.virtual_lines` keyed by the new pane's id.
+/// Returns the pane together with its freshly-allocated [`PaneRenderHandles`]
+/// — every pane gets its own buffers (never shared with any other pane), so
+/// each pane's decorations are computed from that pane's own buffer and
+/// viewport. The caller stores them in `EditorState.panes.render` keyed by
+/// the new pane's id.
 ///
 /// The gutter column is added with its default style — `prepare_frame` syncs
 /// the buffer-resolved `line-number-style` into every pane's gutter before
@@ -60,7 +72,7 @@ pub(crate) fn build_pane(
     lsp_completion_view: &Arc<RwLock<Option<popup::PopupState>>>,
     wrap_mode: WrapMode,
     buffer_id: BufferId,
-) -> (Pane, PaneHighlights, PaneSigns, InlayHintMap, VirtualLineMap) {
+) -> (Pane, PaneRenderHandles) {
     let bracket_scope = registry.intern("ui.cursor.match");
     let search_scope = registry.intern("ui.selection.search");
 
@@ -134,5 +146,13 @@ pub(crate) fn build_pane(
         providers,
         ..Pane::new(buffer_id, wrap_mode)
     };
-    (pane, highlights, signs, inlay_hint_map, virtual_line_map)
+    (
+        pane,
+        PaneRenderHandles {
+            highlights,
+            signs,
+            inlay_hints: inlay_hint_map,
+            virtual_lines: virtual_line_map,
+        },
+    )
 }

@@ -122,14 +122,18 @@ fn clearing_the_store_removes_the_virtual_line_next_frame() {
     let has_line_before = ed
         .state
         .panes
-        .virtual_lines
+        .render
         .get(pid)
         .unwrap()
+        .virtual_lines
         .read()
         .unwrap()
         .values()
         .any(|v| !v.is_empty());
-    assert!(has_line_before, "sanity: virtual line present before clearing");
+    assert!(
+        has_line_before,
+        "sanity: virtual line present before clearing"
+    );
 
     ed.state
         .decorations
@@ -138,9 +142,10 @@ fn clearing_the_store_removes_the_virtual_line_next_frame() {
     let has_line_after = ed
         .state
         .panes
-        .virtual_lines
+        .render
         .get(pid)
         .unwrap()
+        .virtual_lines
         .read()
         .unwrap()
         .values()

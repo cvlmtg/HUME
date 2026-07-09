@@ -501,7 +501,7 @@ pub(super) fn open_pane(
     // pane's Arcs are freshly allocated here, never shared with any other
     // pane (see `PaneHighlights`/`PaneSigns`), so per-pane decoration data
     // can never bleed across panes.
-    let (pane, highlights, signs, inlay_hints, virtual_lines) = crate::ui::build_pane(
+    let (pane, render_handles) = crate::ui::build_pane(
         &mut view.registry,
         &state.completion_view,
         &state.popup_view,
@@ -518,26 +518,20 @@ pub(super) fn open_pane(
         pid,
         super::jump_list::JumpList::new(state.settings.jump_list_capacity),
     );
-    state.panes.highlights.insert(pid, highlights);
-    state.panes.signs.insert(pid, signs);
-    state.panes.inlay_hints.insert(pid, inlay_hints);
-    state.panes.virtual_lines.insert(pid, virtual_lines);
+    state.panes.render.insert(pid, render_handles);
     pid
 }
 
 /// Remove every per-pane state map entry for `pid` (`panes`, per-buffer
-/// state, transient state, jump list, highlight buffers, sign buffers) — the
-/// inverse of `open_pane`'s seeding. Shared by `close_focused_pane` and
+/// state, transient state, jump list, render handles) — the inverse of
+/// `open_pane`'s seeding. Shared by `close_focused_pane` and
 /// `split_pane_onto`'s failure-rollback path.
 fn drop_pane_state(state: &mut EditorState, view: &mut EngineView, pid: PaneId) {
     view.panes.remove(pid);
     state.panes.state.remove(pid);
     state.panes.transient.remove(pid);
     state.panes.jumps.remove(pid);
-    state.panes.highlights.remove(pid);
-    state.panes.signs.remove(pid);
-    state.panes.inlay_hints.remove(pid);
-    state.panes.virtual_lines.remove(pid);
+    state.panes.render.remove(pid);
 }
 
 /// Close the focused pane: prune it from the layout tree, move focus to the

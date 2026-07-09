@@ -116,7 +116,7 @@ impl Editor {
 
         // Build the initial pane. Every later split-created pane goes through
         // the same `build_pane` (see `commands::open_pane`).
-        let (pane, highlights, signs, inlay_hints, virtual_lines) = build_pane(
+        let (pane, render_handles) = build_pane(
             &mut engine_view.registry,
             &completion_view,
             &popup_view,
@@ -179,22 +179,13 @@ impl Editor {
                     jumps.insert(pane_id, super::jump_list::JumpList::new(jump_list_capacity));
                     let mut transient = SecondaryMap::new();
                     transient.insert(pane_id, PaneTransient::default());
-                    let mut pane_highlights = SecondaryMap::new();
-                    pane_highlights.insert(pane_id, highlights);
-                    let mut pane_signs = SecondaryMap::new();
-                    pane_signs.insert(pane_id, signs);
-                    let mut pane_inlay_hints = SecondaryMap::new();
-                    pane_inlay_hints.insert(pane_id, inlay_hints);
-                    let mut pane_virtual_lines = SecondaryMap::new();
-                    pane_virtual_lines.insert(pane_id, virtual_lines);
+                    let mut render = SecondaryMap::new();
+                    render.insert(pane_id, render_handles);
                     PaneView {
                         state: pane_buf_state,
                         transient,
                         jumps,
-                        highlights: pane_highlights,
-                        signs: pane_signs,
-                        inlay_hints: pane_inlay_hints,
-                        virtual_lines: pane_virtual_lines,
+                        render,
                     }
                 },
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
@@ -855,9 +846,9 @@ impl Editor {
             let Some(search_arc) = self
                 .state
                 .panes
-                .highlights
+                .render
                 .get(pid)
-                .map(|h| Arc::clone(&h.search))
+                .map(|r| Arc::clone(&r.highlights.search))
             else {
                 continue;
             };
@@ -901,8 +892,12 @@ impl Editor {
         // Clear every pane first: a bracket match lingers only on whichever
         // pane last had focus, so moving focus away must blank the old one.
         for &(pid, _) in &panes {
-            if let Some(h) = self.state.panes.highlights.get(pid) {
-                h.bracket.write().expect("RwLock not poisoned").clear();
+            if let Some(r) = self.state.panes.render.get(pid) {
+                r.highlights
+                    .bracket
+                    .write()
+                    .expect("RwLock not poisoned")
+                    .clear();
             }
         }
         if !in_insert {
@@ -910,9 +905,9 @@ impl Editor {
             if let Some(bracket_arc) = self
                 .state
                 .panes
-                .highlights
+                .render
                 .get(focused)
-                .map(|h| Arc::clone(&h.bracket))
+                .map(|r| Arc::clone(&r.highlights.bracket))
             {
                 let buf = self.doc().text();
                 let head = self.state.panes.state[focused][self.focused_buffer_id()]
@@ -952,13 +947,12 @@ impl Editor {
             let floor = self.state.settings.lsp_diagnostics_severity_floor;
             let diag_scopes = self.diagnostic_scopes();
             for &(pid, bid) in &panes {
-                let Some((diag_arc, extra_arc)) = self
-                    .state
-                    .panes
-                    .highlights
-                    .get(pid)
-                    .map(|h| (Arc::clone(&h.diagnostics), Arc::clone(&h.extra)))
-                else {
+                let Some((diag_arc, extra_arc)) = self.state.panes.render.get(pid).map(|r| {
+                    (
+                        Arc::clone(&r.highlights.diagnostics),
+                        Arc::clone(&r.highlights.extra),
+                    )
+                }) else {
                     continue;
                 };
 
@@ -1055,13 +1049,12 @@ impl Editor {
         let floor = self.state.settings.lsp_diagnostics_severity_floor;
         let diag_scopes = self.diagnostic_scopes();
         for &(pid, bid) in &panes {
-            let Some((diag_map, plugin_map)) = self
-                .state
-                .panes
-                .signs
-                .get(pid)
-                .map(|s| (Arc::clone(&s.diagnostics), Arc::clone(&s.plugin)))
-            else {
+            let Some((diag_map, plugin_map)) = self.state.panes.render.get(pid).map(|r| {
+                (
+                    Arc::clone(&r.signs.diagnostics),
+                    Arc::clone(&r.signs.plugin),
+                )
+            }) else {
                 continue;
             };
 
@@ -1208,8 +1201,8 @@ impl Editor {
 
         if !self.state.settings.lsp_inlay_hints {
             for &(pid, _) in &panes {
-                if let Some(map) = self.state.panes.inlay_hints.get(pid) {
-                    map.write().expect("RwLock not poisoned").clear();
+                if let Some(r) = self.state.panes.render.get(pid) {
+                    r.inlay_hints.write().expect("RwLock not poisoned").clear();
                 }
             }
             return;
@@ -1217,7 +1210,13 @@ impl Editor {
 
         let scope = self.inlay_hint_scope();
         for &(pid, bid) in &panes {
-            let Some(map) = self.state.panes.inlay_hints.get(pid).map(Arc::clone) else {
+            let Some(map) = self
+                .state
+                .panes
+                .render
+                .get(pid)
+                .map(|r| Arc::clone(&r.inlay_hints))
+            else {
                 continue;
             };
             let visible = self.visible_char_range(pid, bid);
@@ -1291,7 +1290,13 @@ impl Editor {
             if self.virtual_lines_synced.get(&pid) == Some(&current_gen) {
                 continue;
             }
-            let Some(map) = self.state.panes.virtual_lines.get(pid).map(Arc::clone) else {
+            let Some(map) = self
+                .state
+                .panes
+                .render
+                .get(pid)
+                .map(|r| Arc::clone(&r.virtual_lines))
+            else {
                 continue;
             };
 

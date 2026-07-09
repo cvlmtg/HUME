@@ -90,7 +90,8 @@ fn setup_with_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagCtx {
 }
 
 fn diag_signs(ed: &Editor, pid: PaneId) -> std::collections::HashMap<usize, Sign> {
-    ed.state.panes.signs[pid]
+    ed.state.panes.render[pid]
+        .signs
         .diagnostics
         .read()
         .unwrap()
@@ -98,7 +99,12 @@ fn diag_signs(ed: &Editor, pid: PaneId) -> std::collections::HashMap<usize, Sign
 }
 
 fn plugin_signs(ed: &Editor, pid: PaneId) -> std::collections::HashMap<usize, Sign> {
-    ed.state.panes.signs[pid].plugin.read().unwrap().clone()
+    ed.state.panes.render[pid]
+        .signs
+        .plugin
+        .read()
+        .unwrap()
+        .clone()
 }
 
 fn sign_column_width(ed: &Editor, pid: PaneId) -> u8 {

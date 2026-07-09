@@ -111,7 +111,8 @@ impl Editor {
         let bid = pane.buffer_id;
         let first_line = pane.viewport.top_line;
         let total_lines = self.state.buffers.get(bid).text().len_lines();
-        let last_line = (first_line + pane.viewport.height as usize).min(total_lines.saturating_sub(1));
+        let last_line =
+            (first_line + pane.viewport.height as usize).min(total_lines.saturating_sub(1));
         let bid_val = SteelBufferId::new(bid).into_steel_val();
         self.fire_hook_silent(
             HookId::OnViewportChange,

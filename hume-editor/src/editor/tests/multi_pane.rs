@@ -1516,7 +1516,8 @@ fn cross_buffer_search_highlight_does_not_bleed_into_other_pane() {
     let mut ctx = hume_engine::pipeline::RenderContext::new();
     ed.prepare_frame(80, 25, &mut ctx);
 
-    let a_matches = ed.state.panes.highlights[pid_a]
+    let a_matches = ed.state.panes.render[pid_a]
+        .highlights
         .search
         .read()
         .unwrap()
@@ -1526,7 +1527,8 @@ fn cross_buffer_search_highlight_does_not_bleed_into_other_pane() {
         "sanity: pane A's own search highlights must be populated"
     );
 
-    let b_matches = ed.state.panes.highlights[pid_b]
+    let b_matches = ed.state.panes.render[pid_b]
+        .highlights
         .search
         .read()
         .unwrap()
@@ -1572,7 +1574,8 @@ fn multiline_search_match_splits_into_per_line_highlight_spans() {
     let mut ctx = hume_engine::pipeline::RenderContext::new();
     ed.prepare_frame(80, 25, &mut ctx);
 
-    let matches = ed.state.panes.highlights[pid]
+    let matches = ed.state.panes.render[pid]
+        .highlights
         .search
         .read()
         .unwrap()

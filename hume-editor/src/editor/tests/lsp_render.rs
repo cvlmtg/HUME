@@ -113,7 +113,8 @@ fn setup_with_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagCtx {
 }
 
 fn diagnostics_arc(ed: &Editor, pid: PaneId) -> Vec<(usize, usize, usize, ScopeId)> {
-    ed.state.panes.highlights[pid]
+    ed.state.panes.render[pid]
+        .highlights
         .diagnostics
         .read()
         .unwrap()
@@ -121,7 +122,12 @@ fn diagnostics_arc(ed: &Editor, pid: PaneId) -> Vec<(usize, usize, usize, ScopeI
 }
 
 fn extra_arc(ed: &Editor, pid: PaneId) -> Vec<(usize, usize, usize, ScopeId)> {
-    ed.state.panes.highlights[pid].extra.read().unwrap().clone()
+    ed.state.panes.render[pid]
+        .highlights
+        .extra
+        .read()
+        .unwrap()
+        .clone()
 }
 
 fn scope(ed: &Editor, name: &str) -> ScopeId {
