@@ -460,12 +460,12 @@ define_settings! {
             parser: usize_nonzero;
         // rust-analyzer's first requests during indexing are slow — 10s
         // gives real-world servers room before the request is dropped as
-        // TimedOut (see the LSP hub's C6 card).
+        // TimedOut.
         "lsp.request-timeout-ms" => lsp_request_timeout_ms: usize = 10_000,
             scope: ["global"],
             parser: usize_nonzero;
         // Scroll bursts (page-down held, mouse wheel) must collapse to one
-        // OnViewportChange fire, not one per frame (B7).
+        // OnViewportChange fire, not one per frame.
         "lsp.viewport-debounce-ms" => lsp_viewport_debounce_ms: usize = 150,
             scope: ["global"],
             parser: usize;
@@ -474,7 +474,7 @@ define_settings! {
         "lsp.diagnostics-severity-floor" => lsp_diagnostics_severity_floor: crate::editor::lsp::DiagSeverity = crate::editor::lsp::DiagSeverity::Hint,
             scope: ["global"],
             parser: from_str;
-        // Gates the inlay-hint render write side (U9) — off means the
+        // Gates the inlay-hint render write side — off means the
         // `inlay_hints` store is untouched but nothing renders.
         "lsp.inlay-hints" => lsp_inlay_hints: bool = false,
             scope: ["global"],

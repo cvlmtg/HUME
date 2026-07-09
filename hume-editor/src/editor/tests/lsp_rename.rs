@@ -1,6 +1,6 @@
-// F5 (docs/lsp/step-4.md) — rename: `lsp-rename` composing B2 (lsp-request),
-// B3 (lsp-capabilities), B6 (apply-workspace-edit!), B9 (prompt!,
-// symbol-under-cursor). Loads the real shipped `core:lsp` plugin in place
+// Rename: `lsp-rename` composing `lsp-request`, `lsp-capabilities`,
+// `apply-workspace-edit!`, `prompt!`, `symbol-under-cursor`. Loads the real
+// shipped `core:lsp` plugin in place
 // (`RealRuntimeGuard`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not

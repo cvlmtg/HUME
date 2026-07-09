@@ -1,4 +1,4 @@
-// U4 (docs/lsp/step-3.md) — cursor-anchored popup widget: `show-popup!` /
+// Cursor-anchored popup widget: `show-popup!` /
 // `close-popup!`, and the `sync_popup_view` write side that resolves
 // geometry (wrap + flip/clamp) fresh every frame from the focused pane's
 // current rect.

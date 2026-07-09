@@ -1,4 +1,4 @@
-//! B8's completion orchestration: a Rust store holds the server's items and
+//! Completion orchestration: a Rust store holds the server's items and
 //! does the per-keystroke filter/rank; Steel drives `begin!`/
 //! `update-filter!`/`top`/`accept!`/`dismiss!`. One singleton session per
 //! editor (not per buffer) — starting a new one replaces the old.
@@ -28,7 +28,7 @@ pub(crate) struct StoredCompletionItem {
     insert_text: String,
     text_edit: Option<WireEdit>,
     /// The full response item, unparsed — handed to `on-completion-accept`
-    /// (B10c) so Steel can read `additionalTextEdits`, `data` (for
+    /// so Steel can read `additionalTextEdits`, `data` (for
     /// `completionItem/resolve`), or any other field this store doesn't
     /// parse, without Rust needing to grow a reader for every LSP field a
     /// feature might eventually want.
@@ -137,7 +137,7 @@ pub(crate) struct CompletionSession {
     /// doesn't allocate a fresh Vec every time.
     rank_scratch: Vec<(bool, usize, u32)>,
     filter: String,
-    /// Server's `isIncomplete` flag — gates `on-completion-refilter` (B10c):
+    /// Server's `isIncomplete` flag — gates `on-completion-refilter`:
     /// the hook only fires per-keystroke while this is set, since a complete
     /// list needs no re-request from Steel.
     incomplete: bool,
@@ -154,7 +154,7 @@ pub(crate) struct LspCompletionUi {
 }
 
 impl CompletionSession {
-    /// Char offset where the completed token starts — the anchor U7's
+    /// Char offset where the completed token starts — the anchor the
     /// completion menu positions itself at (not the live cursor, which
     /// drifts as the user types further into the token).
     pub(crate) fn anchor(&self) -> usize {
@@ -162,7 +162,7 @@ impl CompletionSession {
     }
 
     /// The server's `isIncomplete` flag from the response that began this
-    /// session — gates `on-completion-refilter` (B10c).
+    /// session — gates `on-completion-refilter`.
     pub(crate) fn incomplete(&self) -> bool {
         self.incomplete
     }
@@ -240,7 +240,7 @@ impl CompletionSession {
     }
 
     /// Applies `filtered[idx]`'s `textEdit` (falling back to `insertText` at
-    /// the anchor..cursor span when absent) as one undo step through B6's
+    /// the anchor..cursor span when absent) as one undo step through the edit
     /// engine, gen-checked against `generation_at_begin` — a buffer edit
     /// that bypassed `update_filter` (so never re-stamped the generation)
     /// rejects rather than applying against text the item wasn't computed
@@ -281,7 +281,7 @@ impl CompletionSession {
             Some(self.generation_at_begin),
         )?;
 
-        // B10c: fire on-completion-accept with the raw item *after* the main
+        // Fire on-completion-accept with the raw item *after* the main
         // edit lands — Steel reads `additionalTextEdits`/`data` from `item`
         // and applies them itself (auto-import edits, resolve-on-accept);
         // Rust never parses those fields.

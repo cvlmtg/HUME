@@ -1,6 +1,6 @@
-// F7 (docs/lsp/step-4.md) — signature help: trigger chars fire a debounced
-// textDocument/signatureHelp, composing B2 (lsp-request), B3
-// (lsp-capabilities), B4 (debounce), B7 (on-lsp-attach, on-trigger-char).
+// Signature help: trigger chars fire a debounced
+// textDocument/signatureHelp, composing `lsp-request`,
+// `lsp-capabilities`, debounce, `on-lsp-attach`, `on-trigger-char`.
 // Loads the real shipped `core:lsp` plugin in place (`RealRuntimeGuard`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not

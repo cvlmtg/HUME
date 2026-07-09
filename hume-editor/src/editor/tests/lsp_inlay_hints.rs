@@ -1,10 +1,10 @@
-// U9 (docs/lsp/step-3.md) — inlay-hint rendering: the `update_inlay_hint_providers`
+// Inlay-hint rendering: the `update_inlay_hint_providers`
 // write side that feeds the new `InlayHintProvider` (`InlineDecoration`) from
-// B5's `decorations.inlay_hints` store.
+// the `decorations.inlay_hints` store.
 //
 // Every test here goes through `Editor::open(None)` (not `editor_from`'s bare
 // `Pane::new`) — `InlayHintProvider` is only registered by `build_pane`, same
-// reasoning as U1's `lsp_render.rs`. Hints are injected directly via
+// reasoning as `lsp_render.rs`. Hints are injected directly via
 // `ed.state.decorations.set_inlay_hints` (bypassing `set-inlay-hints!`'s wire
 // position/UTF-16 decoding, already covered by `lsp_decorations.rs`) since
 // these tests are about the render path, not the Steel/wire boundary.
@@ -29,7 +29,7 @@ fn type_text(ed: &mut Editor, text: &str) {
 #[test]
 fn after_hint_renders_dimmed_immediately_after_its_char() {
     let mut ed = Editor::open(None).unwrap();
-    ed.state.settings.lsp_inlay_hints = true; // B10d: off by default
+    ed.state.settings.lsp_inlay_hints = true; // off by default
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
     ed.state.decorations.set_inlay_hints(
@@ -50,7 +50,7 @@ fn after_hint_renders_dimmed_immediately_after_its_char() {
 #[test]
 fn before_hint_renders_immediately_before_its_char() {
     let mut ed = Editor::open(None).unwrap();
-    ed.state.settings.lsp_inlay_hints = true; // B10d: off by default
+    ed.state.settings.lsp_inlay_hints = true; // off by default
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
     ed.state.decorations.set_inlay_hints(
@@ -75,7 +75,7 @@ fn hint_after_an_emoji_lands_on_the_correct_byte_offset() {
     // byte — proving the write side converts by rope char-to-byte, not by
     // treating `pos` as already a byte count.
     let mut ed = Editor::open(None).unwrap();
-    ed.state.settings.lsp_inlay_hints = true; // B10d: off by default
+    ed.state.settings.lsp_inlay_hints = true; // off by default
     type_text(&mut ed, "🎉party");
     let bid = ed.focused_buffer_id();
     ed.state.decorations.set_inlay_hints(
@@ -100,7 +100,7 @@ fn hint_on_a_wrapped_line_pins_current_render_behavior() {
     // only pins whatever `format_buffer_line` currently does, it does not
     // assert correctness of cursor placement on this line.
     let mut ed = Editor::open(None).unwrap();
-    ed.state.settings.lsp_inlay_hints = true; // B10d: off by default
+    ed.state.settings.lsp_inlay_hints = true; // off by default
     type_text(&mut ed, "aaaaaaaaaabbbbbbbbbbccccccccccdddddddddd");
     let bid = ed.focused_buffer_id();
     ed.state.decorations.set_inlay_hints(
@@ -122,7 +122,7 @@ fn hint_on_a_wrapped_line_pins_current_render_behavior() {
 #[test]
 fn clearing_the_store_removes_the_hint_next_frame() {
     let mut ed = Editor::open(None).unwrap();
-    ed.state.settings.lsp_inlay_hints = true; // B10d: off by default
+    ed.state.settings.lsp_inlay_hints = true; // off by default
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
     ed.state.decorations.set_inlay_hints(
@@ -166,7 +166,7 @@ fn clearing_the_store_removes_the_hint_next_frame() {
 
 #[test]
 fn setting_off_renders_nothing_even_with_hints_in_the_store() {
-    // B10d: lsp.inlay-hints defaults to false, so this test turns it ON
+    // lsp.inlay-hints defaults to false, so this test turns it ON
     // first and confirms a hint renders — otherwise the final "off" assert
     // would pass even if the `:set … =false` call were a no-op (the
     // zero-effect the setting already starts in).

@@ -2,7 +2,7 @@
 //! `parse_worker: Box<dyn ParseBackend>` in `hume-treesitter`.
 //!
 //! Transport-flavored only — no capabilities, no `text_gen`, no buffer
-//! knowledge. That client-level state lives above this trait (C5/C6).
+//! knowledge. That client-level state lives above this trait.
 
 use std::path::Path;
 
@@ -14,12 +14,12 @@ pub struct ServerId(pub u32);
 
 pub trait LspBackend {
     /// Spawn (threaded) or register (inline) a server. Handshake is the
-    /// client layer's job (C5) — this is transport-level only.
+    /// client layer's job — this is transport-level only.
     fn start(&mut self, cmd: &str, args: &[String], root: &Path) -> std::io::Result<ServerId>;
     fn send(&mut self, server: ServerId, msg: Message);
     /// All events that arrived since the last drain, in arrival order.
     fn drain(&mut self) -> Vec<(ServerId, InboundEvent)>;
-    /// Any undrained event? Feeds P3's wake predicate.
+    /// Any undrained event? Feeds the wake predicate.
     fn has_pending(&self) -> bool;
     fn shutdown(&mut self, server: ServerId);
 }
@@ -72,9 +72,8 @@ impl LspBackend for ThreadedLspBackend {
 
     /// A raw `mpsc::Receiver` can't be peeked without consuming, and this
     /// trait deliberately carries no request/response bookkeeping (that's
-    /// client-level state, C5/C6). Wake-up while servers are running is
-    /// driven by the editor-side `LspState`'s heartbeat deadline instead —
-    /// see the LSP hub's "Idle wake" decision.
+    /// client-level state). Wake-up while servers are running is
+    /// driven by the editor-side `LspState`'s heartbeat deadline instead.
     fn has_pending(&self) -> bool {
         false
     }

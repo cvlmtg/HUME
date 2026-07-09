@@ -1,4 +1,4 @@
-// B3 (docs/lsp/step-2.md) — introspection builtins: lsp-capabilities,
+// Introspection builtins: lsp-capabilities,
 // lsp-server-status, lsp-server-for-buffer, buffer-generation,
 // lsp-position-params, lsp-range-params.
 

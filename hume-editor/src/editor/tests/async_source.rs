@@ -1,5 +1,5 @@
-// P3/P7 (docs/lsp/step-0.md) — generalized event-loop wake (`wake_timeout`)
-// and the timer wheel's integration with it as a second real AsyncSource.
+// Generalized event-loop wake (`wake_timeout`) and the timer wheel's
+// integration with it as a second real AsyncSource.
 
 use std::time::{Duration, Instant};
 
@@ -54,9 +54,9 @@ fn wake_timeout_is_8ms_when_a_source_is_pending() {
 
 #[test]
 fn wake_timeout_bounded_by_nearer_timer_deadline() {
-    // P3 deferred this case ("Some(<8ms) when a nearer deadline exists")
-    // until a second real AsyncSource existed — the timer wheel is that
-    // source.
+    // The generalized wake predicate deferred this case ("Some(<8ms) when a
+    // nearer deadline exists") until a second real AsyncSource existed — the
+    // timer wheel is that source.
     let mut ed = editor_from("-[w]>ord\n");
     ed.timer_wheel.schedule(Duration::from_millis(2));
 
@@ -84,7 +84,7 @@ fn wake_timeout_distant_timer_bounds_without_busy_polling() {
 
 #[test]
 fn lsp_backend_is_included_in_async_sources() {
-    // C4: growing async_sources() to 3 must not regress the pending/idle
+    // Growing async_sources() to 3 must not regress the pending/idle
     // behavior the earlier tests pin — the freshly-constructed InlineLspBackend
     // has nothing queued, so it must not force a poll timeout on its own.
     let ed = editor_from("-[w]>ord\n");
@@ -93,7 +93,7 @@ fn lsp_backend_is_included_in_async_sources() {
 
 #[test]
 fn scripted_initialize_round_trip_through_editor() {
-    // C4 "Done when": a scripted initialize round-trip passes end-to-end
+    // A scripted initialize round-trip passes end-to-end
     // through the editor's LspState, via the same LspBackend trait object
     // the production ThreadedLspBackend implements.
     use hume_lsp::codec::{Message, RequestId};
@@ -165,7 +165,7 @@ mod has_pending_covers_client_state {
 
     #[test]
     fn wake_timeout_is_8ms_for_a_running_client_with_a_request_in_flight() {
-        // The C6 card's 8ms poll cadence for in-flight requests, not the
+        // The 8ms poll cadence for in-flight requests, not the
         // coarser 200ms Running-idle heartbeat.
         let (mut ed, sid) = wired_editor();
         let mut client = LspClient::new(sid, PathBuf::from("."));
@@ -204,7 +204,7 @@ mod has_pending_covers_client_state {
 #[test]
 fn timer_wheel_end_to_end_tick_via_editor() {
     // Sleep-free: jump the query point 20ms past scheduling instead of
-    // sleeping in the test (per the card's allowance).
+    // sleeping in the test.
     let mut ed = editor_from("-[w]>ord\n");
     let id = ed.timer_wheel.schedule(Duration::from_millis(10));
 

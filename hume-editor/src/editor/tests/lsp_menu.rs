@@ -1,4 +1,4 @@
-// U5 (docs/lsp/step-3.md) — selection menu widget: (show-menu! items
+// Selection menu widget: (show-menu! items
 // on-select) / (close-menu!), and the Normal/Extend-only key intercept in
 // `Editor::handle_key` (`handle_menu_key`).
 

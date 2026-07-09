@@ -1,5 +1,5 @@
-;;; core:lsp/rename.scm — F5: textDocument/rename. No tree-sitter fallback in
-;;; v1 (hub decision) — an unattached buffer just reports unsupported via the
+;;; core:lsp/rename.scm — textDocument/rename. No tree-sitter fallback in
+;;; v1 — an unattached buffer just reports unsupported via the
 ;;; capability guard.
 
 (require "lib.scm")

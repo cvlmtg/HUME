@@ -37,12 +37,12 @@ pub enum ClientAction {
     /// first, then anything queued while `Starting`), then fire
     /// `on-lsp-attach` for buffers already attached to this server.
     BecameRunning { send: Vec<Message> },
-    /// The connection died — report once; restart stays manual (hub OQ default).
+    /// The connection died — report once; restart stays manual.
     Crashed { error: Option<String> },
     /// The server sent a request; every one must get exactly one response
     /// (a hung server request can stall its whole pipeline). The dispatch
-    /// table lives in the editor glue (hub decision: answered in Rust,
-    /// never surfaced to Steel).
+    /// table lives in the editor glue: answered in Rust,
+    /// never surfaced to Steel.
     ServerRequest {
         id: RequestId,
         method: String,
@@ -154,7 +154,7 @@ impl LspClient {
     }
 
     /// Requests currently awaiting a response — the "N in flight" count for
-    /// `:lsp-status` (C10) and B3's `lsp-server-status`.
+    /// `:lsp-status` and `lsp-server-status`.
     pub fn pending_count(&self) -> usize {
         self.pending.len()
     }
@@ -363,7 +363,7 @@ impl LspClient {
 }
 
 #[allow(deprecated)] // root_uri/root_path are deprecated in favor of workspace_folders,
-// but rootUri compatibility is a deliberate hub decision (older servers still read it).
+// but rootUri compatibility is deliberate (older servers still read it).
 fn build_initialize_params(root: &std::path::Path) -> InitializeParams {
     let root_uri = uri::path_to_uri(root).ok();
     let workspace_folders = root_uri.clone().map(|u| {
@@ -393,10 +393,10 @@ fn build_client_capabilities() -> ClientCapabilities {
             apply_edit: Some(true),
             configuration: Some(true),
             workspace_folders: Some(true),
-            // Every rename result (F5) is a WorkspaceEdit — some servers
+            // Every rename result is a WorkspaceEdit — some servers
             // (rust-analyzer) refuse textDocument/rename outright without
             // this declared, since they can't otherwise confirm the client
-            // can apply one (found via F5's manual smoke test).
+            // can apply one (found via manual smoke testing).
             //
             // `resource_operations` must be present (non-empty) or
             // rust-analyzer refuses *every* rename outright — confirmed
@@ -433,7 +433,7 @@ fn build_client_capabilities() -> ClientCapabilities {
             }),
             completion: Some(CompletionClientCapabilities {
                 completion_item: Some(CompletionItemCapability {
-                    // v1 strips snippet placeholders to plain text (hub OQ default).
+                    // v1 strips snippet placeholders to plain text.
                     snippet_support: Some(false),
                     ..Default::default()
                 }),
@@ -448,7 +448,7 @@ fn build_client_capabilities() -> ClientCapabilities {
             implementation: Some(GotoCapability::default()),
             formatting: Some(Default::default()),
             range_formatting: Some(Default::default()),
-            // F9's manual smoke test found rust-analyzer withholds
+            // Manual smoke testing found rust-analyzer withholds
             // diagnostic-derived quickfixes entirely without
             // code_action_literal_support declared — the flag saying the
             // client understands CodeAction objects, not just legacy
@@ -502,9 +502,9 @@ mod tests {
         .unwrap()
     }
 
-    // Golden-field check on the load-bearing capability list (hub's C5 card:
-    // "capabilities are load-bearing config" — assert the exact advertised
-    // set rather than just "it builds").
+    // Golden-field check on the load-bearing capability list:
+    // capabilities are load-bearing config — assert the exact advertised
+    // set rather than just "it builds".
     #[test]
     #[allow(deprecated)] // asserting on the deliberately-still-populated compat field
     fn initialize_params_advertise_the_v1_capability_set() {
@@ -536,7 +536,7 @@ mod tests {
         let ws = caps.workspace.unwrap();
         assert_eq!(ws.apply_edit, Some(true));
         assert_eq!(ws.configuration, Some(true));
-        // F5's manual smoke test found rust-analyzer refuses
+        // Manual smoke testing found rust-analyzer refuses
         // textDocument/rename outright without this declared — every
         // rename result is a WorkspaceEdit, and some servers won't attempt
         // one unless the client has confirmed it can apply it.
@@ -544,8 +544,8 @@ mod tests {
         assert_eq!(we.document_changes, Some(true));
         // Must be present or rust-analyzer refuses every rename outright
         // (confirmed live) — HUME still can't actually apply a resource
-        // op if one arrives (edits::collect_edit_entries rejects it, B6
-        // design decision), but the alternative breaks the common case.
+        // op if one arrives (edits::collect_edit_entries rejects it by
+        // design), but the alternative breaks the common case.
         assert_eq!(
             we.resource_operations,
             Some(vec![
@@ -555,7 +555,7 @@ mod tests {
             ])
         );
         assert_eq!(we.failure_handling, Some(FailureHandlingKind::Abort));
-        // F9's manual smoke test found rust-analyzer withholds
+        // Manual smoke testing found rust-analyzer withholds
         // diagnostic-derived quickfixes entirely without this declared —
         // a byte-perfect codeAction request still came back empty.
         let ca = td.code_action.expect("code_action capability must be declared");

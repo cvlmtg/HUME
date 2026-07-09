@@ -1,4 +1,4 @@
-// B9 (docs/lsp/step-2.md) — Steel minibuffer prompt: (prompt! label
+// Steel minibuffer prompt: (prompt! label
 // on-confirm #:prefill text), (symbol-under-cursor bid).
 
 use std::path::Path;

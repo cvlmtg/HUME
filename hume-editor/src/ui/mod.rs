@@ -120,7 +120,7 @@ pub(crate) fn build_pane(
         scope: "ui.menu",
         selected_scope: Some("ui.menu.selected"),
     }));
-    // U7's LSP completion menu — same widget shape as the selection menu
+    // The LSP completion menu — same widget shape as the selection menu
     // (selected-row styling), registered last (highest z-order): an
     // in-progress completion is the most action-relevant overlay when both
     // could theoretically be visible.

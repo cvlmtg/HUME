@@ -4,17 +4,17 @@
 //! on `Editor`, `Buffer`, or anything in `hume-editor`/`hume-engine`. It
 //! speaks `BufferId`-free protocol types (`lsp_types`) plus opaque metadata
 //! the editor glue in `hume-editor/src/editor/lsp/` attaches. Depends only
-//! on `hume-editing` (for `ChangeSet` → `didChange` conversion, P6) and
-//! `lsp-types`; acyclic (see the LSP hub's *Crate boundary* decision).
+//! on `hume-editing` (for `ChangeSet` → `didChange` conversion) and
+//! `lsp-types`; acyclic.
 //!
 //! ## Modules
-//! - `uri`: path ↔ `file://` URI conversion (P5).
-//! - `codec`: JSON-RPC framing, message enum, id allocation (C2).
-//! - `transport`: server process management — reader/writer/stderr threads (C3).
-//! - `backend`: the `LspBackend` trait + `ThreadedLspBackend` (C4).
-//! - `inline`: `InlineLspBackend`, the scripted test double (C4).
-//! - `client`: lifecycle, request bookkeeping (C5–C6).
-//! - `sync`: `ChangeSet` → `TextDocumentContentChangeEvent[]` (P6).
+//! - `uri`: path ↔ `file://` URI conversion.
+//! - `codec`: JSON-RPC framing, message enum, id allocation.
+//! - `transport`: server process management — reader/writer/stderr threads.
+//! - `backend`: the `LspBackend` trait + `ThreadedLspBackend`.
+//! - `inline`: `InlineLspBackend`, the scripted test double.
+//! - `client`: lifecycle, request bookkeeping.
+//! - `sync`: `ChangeSet` → `TextDocumentContentChangeEvent[]`.
 //! - `test_util` (behind the `test-util` feature): cross-crate test doubles.
 
 pub mod backend;

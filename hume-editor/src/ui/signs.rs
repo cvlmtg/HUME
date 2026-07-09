@@ -15,8 +15,8 @@ use hume_engine::providers::GutterRowCtx;
 /// Shared per-frame sign data: one winning `Sign` per line.
 pub(crate) type SignMap = Arc<RwLock<HashMap<usize, Sign>>>;
 
-/// The pair of sign maps every pane owns: diagnostics (Rust-owned, C9) and
-/// plugin signs (B5's `set-signs!`, all sources pre-merged at write time).
+/// The pair of sign maps every pane owns: diagnostics (Rust-owned) and
+/// plugin signs (`set-signs!`, all sources pre-merged at write time).
 /// Never shared across panes — same rationale as `PaneHighlights`.
 #[derive(Default)]
 pub(crate) struct PaneSigns {

@@ -265,7 +265,7 @@ pub trait EditorHost {
         None
     }
 
-    // ── Timers (B4; default = no timer support) ──────────────────────────────
+    // ── Timers (default = no timer support) ──────────────────────────────
     /// Schedules `thunk` — opaque to this trait, a raw Steel closure — to
     /// fire after `ms` milliseconds. Returns the new timer id, or `None` if
     /// this host has no timer wheel to schedule onto (test hosts).
@@ -289,7 +289,7 @@ pub trait EditorHost {
         let _ = (source, chars);
     }
 
-    // ── Decoration stores (B5; default = no-op / empty) ──────────────────────
+    // ── Decoration stores (default = no-op / empty) ──────────────────────
     /// `(set-inlay-hints! bid hints)` — replaces `bid`'s inlay hints
     /// wholesale. Each entry is `(wire_position, text, before)`; the wire
     /// position (raw decoded `{"line" "character"}`) is converted to a char
@@ -355,7 +355,7 @@ pub trait EditorHost {
         (0, 0)
     }
 
-    // ── Edit + navigation primitives (B6; default = "not supported") ────────
+    // ── Edit + navigation primitives (default = "not supported") ────────
     /// `(apply-text-edits! bid edits #:expect-generation gen)` — `edits` is
     /// `(start_line, start_char, end_line, end_char, new_text)` tuples in
     /// wire coordinates. Applied as one undo step.
@@ -418,7 +418,7 @@ pub trait EditorHost {
         false
     }
 
-    // ── Minibuffer prompt (B9; default = "not supported") ────────────────────
+    // ── Minibuffer prompt (default = "not supported") ────────────────────
     /// `(prompt! label #:prefill text on-confirm)` — opens a one-shot
     /// Command-mode minibuffer session. `callback` fires exactly once, with
     /// the confirmed text or `#f` on cancel — queued through the same
@@ -441,7 +441,7 @@ pub trait EditorHost {
         String::new()
     }
 
-    // ── Cursor-anchored popup (U4; default = "not supported") ────────────────
+    // ── Cursor-anchored popup (default = "not supported") ────────────────
     /// `(show-popup! text #:anchor 'cursor)` — shows `text` in a floating
     /// panel anchored near the focused pane's cursor. Geometry (wrap width,
     /// flip/clamp position) is resolved fresh every frame by the host, not
@@ -458,7 +458,7 @@ pub trait EditorHost {
         Err("close-popup!: not supported by this host".to_string())
     }
 
-    // ── Selection menu (U5; default = "not supported") ───────────────────────
+    // ── Selection menu (default = "not supported") ───────────────────────
     /// `(show-menu! items on-select)` — opens a selection menu near the
     /// cursor. `on-select` fires exactly once: the chosen index, or `#f` on
     /// dismissal — queued, never invoked inline. Replaces any menu already
@@ -483,7 +483,7 @@ pub trait EditorHost {
         Err("close-menu!: not supported by this host".to_string())
     }
 
-    // ── Bottom drawer (U6; default = "not supported") ────────────────────────
+    // ── Bottom drawer (default = "not supported") ────────────────────────
     /// `(show-drawer-list! items on-select)` — opens a scrolling list in the
     /// bottom chrome band. `items` are pre-formatted display strings; the
     /// drawer never interprets their content — the jump (if any) is the
@@ -508,7 +508,7 @@ pub trait EditorHost {
         Err("close-drawer!: not supported by this host".to_string())
     }
 
-    // ── Completion orchestration (B8; default = "not supported") ─────────────
+    // ── Completion orchestration (default = "not supported") ─────────────
     /// `(completion-begin! bid items #:incomplete f)` — `items` is a list of
     /// decoded `CompletionItem` hashmaps (JSON already converted by the
     /// caller). Starting a session replaces any session already open.

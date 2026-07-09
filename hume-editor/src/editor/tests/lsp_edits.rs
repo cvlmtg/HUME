@@ -1,4 +1,4 @@
-// B6 (docs/lsp/step-2.md) — edit + navigation primitives: apply-text-edits!,
+// Edit + navigation primitives: apply-text-edits!,
 // apply-workspace-edit!, goto-location!, selection-spans-full-line?, and the
 // workspace/applyEdit server-request swap.
 

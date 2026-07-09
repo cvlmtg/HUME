@@ -1,7 +1,7 @@
-// F9 (docs/lsp/step-4.md) — code actions: `lsp-code-actions`, composing B2
-// (lsp-request), B3 (lsp-capabilities), B5 (diagnostics-for-buffer's `raw`
-// field — echoed back as context.diagnostics; servers gate diagnostic-
-// derived quickfixes on this), B6 (apply-workspace-edit!), U5 (show-menu!).
+// Code actions: `lsp-code-actions`, composing `lsp-request`,
+// `lsp-capabilities`, `diagnostics-for-buffer`'s `raw`
+// field (echoed back as context.diagnostics; servers gate diagnostic-
+// derived quickfixes on this), `apply-workspace-edit!`, `show-menu!`.
 // Loads the real shipped `core:lsp` plugin in place (`RealRuntimeGuard`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
@@ -257,11 +257,11 @@ fn context_diagnostics_echoes_the_raw_diagnostic_overlapping_the_cursor() {
     assert_eq!(diags.len(), 1, "the cursor-overlapping diagnostic must be echoed back, got: {diags:?}");
     assert_eq!(diags[0]["message"], "unused import");
     assert_eq!(diags[0]["code"], "unused_imports");
-    // Distinguishes the raw wire Diagnostic from B5's flat char-indexed
-    // shape (which also carries "message"/"code" at the top level, so the
-    // two prior asserts alone wouldn't catch passing the wrong one):
-    // only the raw shape nests its bounds under "range".
+    // Distinguishes the raw wire Diagnostic from the diagnostics store's flat
+    // char-indexed shape (which also carries "message"/"code" at the top
+    // level, so the two prior asserts alone wouldn't catch passing the wrong
+    // one): only the raw shape nests its bounds under "range".
     assert_eq!(diags[0]["range"]["start"]["line"], 0);
     assert_eq!(diags[0]["range"]["start"]["character"], 0);
-    assert!(diags[0].get("start").is_none(), "must be the raw wire Diagnostic, not B5's flat shape");
+    assert!(diags[0].get("start").is_none(), "must be the raw wire Diagnostic, not the flat shape");
 }

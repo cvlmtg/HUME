@@ -1,12 +1,11 @@
-// F10 (docs/lsp/step-4.md) — inlay hints: debounced textDocument/inlayHint
-// on viewport change and diagnostics change, composing B2 (lsp-request), B3
-// (lsp-capabilities), B4 (debounce), B5 (set-inlay-hints!), B7
-// (on-viewport-change, on-diagnostics-changed), U9 (rendering — not tested
-// here, its own pinned snapshots cover that). Named lsp_inlay_feature.rs —
-// lsp_inlay_hints.rs already covers U9's rendering of the decoration store
-// directly; this file drives the same store through the real shipped
-// plugin and a real LSP round trip. Loads the real shipped `core:lsp`
-// plugin in place (`RealRuntimeGuard`).
+// Inlay hints: debounced textDocument/inlayHint on viewport change and
+// diagnostics change, composing `lsp-request`, `lsp-capabilities`, debounce,
+// `set-inlay-hints!`, `on-viewport-change`, `on-diagnostics-changed`,
+// and rendering (not tested here, its own pinned snapshots cover that).
+// Named lsp_inlay_feature.rs — lsp_inlay_hints.rs already covers rendering
+// of the decoration store directly; this file drives the same store through
+// the real shipped plugin and a real LSP round trip. Loads the real shipped
+// `core:lsp` plugin in place (`RealRuntimeGuard`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
@@ -154,7 +153,7 @@ fn setting_off_sends_no_request() {
     let (mut ed, _guard, requests) = setup(&file, tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     });
-    // lsp_inlay_hints defaults to false (B10d) — left untouched.
+    // lsp_inlay_hints defaults to false — left untouched.
 
     fire_viewport_change(&mut ed);
     settle_after_debounce(&mut ed);

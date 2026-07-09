@@ -1,5 +1,5 @@
-// C6 (docs/lsp/step-1.md) — request bookkeeping + server->client dispatch,
-// exercised through the editor's LspState glue (drain_lsp). C8's server
+// Request bookkeeping + server->client dispatch,
+// exercised through the editor's LspState glue (drain_lsp). Server
 // registration tests live at the bottom of this file.
 
 use std::cell::RefCell;
@@ -99,8 +99,8 @@ fn callback_never_fires_for_a_request_with_no_response() {
 
 #[test]
 fn timed_out_request_dispatches_callback_with_timed_out_outcome_and_logs_trace() {
-    // Minor C (deviates from the hub C6 card's "timed-out -> log + drop"):
-    // a callback that never fires on timeout has no way to notice — B2's
+    // Deviates from "timed-out -> log + drop":
+    // a callback that never fires on timeout has no way to notice — the
     // Steel callbacks are `(err result)`-shaped and need this to map a
     // timeout to `err` rather than hanging silently.
     let mut ed = editor_from("-[w]>ord\n");
@@ -348,7 +348,7 @@ fn became_running_flushes_queued_messages_through_the_backend() {
     assert_eq!(client.state, hume_lsp::client::ServerState::Running);
 }
 
-// ── C8 — server registration ────────────────────────────────────────────────
+// ── Server registration ────────────────────────────────────────────────
 
 fn eval_register(ed: &mut Editor, host: &mut ScriptingHost, source: &str, tmp: &std::path::Path) {
     let init_path = tmp.join("init.scm");

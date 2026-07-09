@@ -1,5 +1,5 @@
-// U3 (docs/lsp/step-3.md) — statusline diagnostics element: `StatusElement::Diagnostics`
-// reads C9's diagnostics store directly (never through Steel) and renders
+// Statusline diagnostics element: `StatusElement::Diagnostics`
+// reads the diagnostics store directly (never through Steel) and renders
 // `"✗ E ⚠ W"`, collapsing to empty when both counts are zero.
 
 use std::path::Path;

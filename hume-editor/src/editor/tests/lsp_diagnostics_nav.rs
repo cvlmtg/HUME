@@ -1,6 +1,6 @@
-// F4 (docs/lsp/step-4.md) — diagnostics navigation: `goto-next-diagnostic`,
+// Diagnostics navigation: `goto-next-diagnostic`,
 // `goto-prev-diagnostic`, `:diagnostics` drawer. No LSP request — reads the
-// C9 store via B5's `diagnostics-for-buffer`. Depends on `core:stdlib`
+// diagnostics store via `diagnostics-for-buffer`. Depends on `core:stdlib`
 // (`stdlib/cursor-char-index`), loaded alongside `core:lsp` via
 // `RealRuntimeGuard` (both resolve from the real on-disk runtime/ dir).
 //

@@ -1,6 +1,6 @@
 //! Rope char offset ↔ LSP wire `(line, character)` position conversion, in
-//! both negotiated encodings (see the LSP hub's *Position encoding*
-//! decision: negotiate `utf-8`, fall back to UTF-16). `hume-editing` must
+//! both negotiated encodings (negotiate `utf-8`, fall back to UTF-16).
+//! `hume-editing` must
 //! not depend on `lsp-types`, so [`PositionEncoding`] mirrors the wire
 //! `Position`/encoding concept as a plain type; `hume-lsp` converts to/from
 //! `lsp_types::Position`.

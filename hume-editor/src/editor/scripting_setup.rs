@@ -74,7 +74,7 @@ impl Editor {
 
     /// Fire `OnDiagnosticsChanged (bid)` — payload-free signal, once per
     /// buffer a `publishDiagnostics` drain batch actually touched
-    /// (`drain_lsp`). Handlers pull via `(diagnostics-for-buffer bid …)` (B5).
+    /// (`drain_lsp`). Handlers pull via `(diagnostics-for-buffer bid …)`.
     pub(super) fn fire_hook_diagnostics_changed(&mut self, bid: BufferId) {
         let val = SteelBufferId::new(bid).into_steel_val();
         self.fire_hook_silent(HookId::OnDiagnosticsChanged, &[val]);
@@ -205,8 +205,8 @@ impl Editor {
     /// Queue `(proc, args)` for evaluation at the next drain boundary —
     /// never called inline (LSP dispatch, timer fire, and minibuffer key
     /// handling all detect their completion from inside a borrow that can't
-    /// re-enter Steel). Shared delivery mechanism for B2's `lsp-request`
-    /// callback, B4's timer thunks, and B9's prompt callback.
+    /// re-enter Steel). Shared delivery mechanism for the `lsp-request`
+    /// callback, timer thunks, and the prompt callback.
     pub(crate) fn queue_steel_call(&mut self, proc: SteelVal, args: Vec<SteelVal>) {
         self.state.pending_steel_calls.push((proc, args));
     }

@@ -1,4 +1,4 @@
-;;; core:lsp/hover.scm — F1: textDocument/hover.
+;;; core:lsp/hover.scm — textDocument/hover.
 
 (require "lib.scm")
 
@@ -21,9 +21,9 @@
 
 ;; ── Popup / drawer branch ───────────────────────────────────────────────────
 
-;;; Threshold = ⅓ of the last-known viewport height (U4's ⅓-pane-height
-;;; popup cap), falling back to 15 lines before the first on-viewport-change
-;;; event. An occasional over-tall popup just gets truncated by U4's
+;;; Threshold = ⅓ of the last-known viewport height (the popup's ⅓-pane-height
+;;; cap), falling back to 15 lines before the first on-viewport-change
+;;; event. An occasional over-tall popup just gets truncated by
 ;;; `wrap_text` — this heuristic never has to be exact.
 (define (lsp/show-hover text)
   (let* ((bid (current-buffer))
@@ -37,7 +37,7 @@
 ;; ── Dismiss ─────────────────────────────────────────────────────────────────
 ;; A stale hover popup must not linger once the user has moved on — close on
 ;; any mode change (leaving Insert, entering Command, …) in addition to the
-;; top-of-next-hover close below. Shared popup widget (U4): harmless no-op
+;; top-of-next-hover close below. Shared popup widget: harmless no-op
 ;; when nothing is open, and no other feature owns this popup yet.
 (register-hook! 'on-mode-change (lambda (old-mode new-mode) (close-popup!)))
 
@@ -52,7 +52,7 @@
           (lambda (err res)
             (cond
               (err (lsp/report-error "hover" err))
-              ;; JSON null decodes to Steel void, not #f (B1) — `res` is
+              ;; JSON null decodes to Steel void, not #f — `res` is
               ;; never the boolean #f on a successful response.
               ((void? res) (log! 'info "No hover info"))
               (else (lsp/show-hover (lsp/hover-contents->text (hash-ref res "contents"))))))

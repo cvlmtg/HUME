@@ -37,7 +37,7 @@ impl Editor {
             }
         }
 
-        // ── Selection menu intercept (U5) ─────────────────────────────────────
+        // ── Selection menu intercept ─────────────────────────────────────
         // Guarded early-return before mode dispatch, not a new `Mode` — a
         // menu is transient chrome, not an editing mode (no `on-mode-change`,
         // no statusline/cursor-shape changes). Normal/Extend only: menus
@@ -46,7 +46,7 @@ impl Editor {
             && matches!(self.state.mode(), Mode::Normal | Mode::Extend)
             && self.handle_menu_key(key);
 
-        // ── Bottom drawer intercept (U6) ──────────────────────────────────────
+        // ── Bottom drawer intercept ──────────────────────────────────────
         // Same guarded-early-return shape as the menu's, but unlike the menu
         // a stray key neither closes the drawer nor invokes its callback —
         // it falls through untouched, leaving the drawer open while focus
@@ -84,7 +84,7 @@ impl Editor {
         }
     }
 
-    /// Handles one key while a selection menu (U5) is open. Returns `true`
+    /// Handles one key while a selection menu is open. Returns `true`
     /// if the key was fully consumed (movement, `Enter`, `Esc`) — `false` if
     /// a stray key dismissed the menu but should still fall through to
     /// normal dispatch this same call: a stray key both closes the menu
@@ -127,7 +127,7 @@ impl Editor {
         }
     }
 
-    /// Handles one key while the bottom drawer (U6) is open. Returns `true`
+    /// Handles one key while the bottom drawer is open. Returns `true`
     /// if the key was fully consumed (movement, `Enter`, `Esc`) — `false`
     /// for any other key, which the drawer leaves completely untouched (no
     /// close, no callback) so normal dispatch runs as if the drawer weren't

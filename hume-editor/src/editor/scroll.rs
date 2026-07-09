@@ -20,7 +20,7 @@ use super::cursor;
 /// `providers`/`content_width` feed the wrapped path's virtual-row-aware row
 /// counting (`display_rows_for_line`) — the unwrapped path stays plain
 /// line-count arithmetic; a virtual line's effect on no-wrap vertical
-/// scrolling is out of scope here (see the U8 card).
+/// scrolling is out of scope here.
 pub(super) fn ensure_cursor_visible(
     viewport: &mut ViewportState,
     rope: &ropey::Rope,
@@ -371,7 +371,7 @@ mod tests {
 
     /// No `VirtualLineSource` registered — `display_rows_for_line` reduces
     /// to `RowsBreakdown { before: 0, content, after: 0 }` for every line,
-    /// matching every test's pre-U8a expectations exactly.
+    /// matching every test's virtual-line-unaware expectations exactly.
     fn no_providers() -> ProviderSet {
         ProviderSet::new()
     }
@@ -632,7 +632,7 @@ mod tests {
         assert_eq!(v.top_line, 5, "scrolloff trims top up by margin (3)");
     }
 
-    // ── U8a: virtual-line-aware scrolling (synthetic provider) ───────────────
+    // ── Virtual-line-aware scrolling (synthetic provider) ───────────────
 
     /// A `VirtualLineSource` double that emits exactly one `Before(line)`
     /// virtual row when queried for `line`, and nothing for any other line.
@@ -665,13 +665,13 @@ mod tests {
     /// A virtual row anchored between the viewport's top and the cursor
     /// "steals" a row from the lines below it — `ensure_cursor_visible` must
     /// still scroll far enough to bring the cursor fully into view, not just
-    /// far enough for the pre-U8a content-only row count.
+    /// far enough for the content-only row count.
     ///
     /// Checks the *robust* invariant (cursor lands inside the viewport,
     /// verified through `screen_pos` the same way the render pipeline would
     /// place the terminal cursor), not exact `top_line`/`top_row_offset`
     /// values — landing precision exactly at a virtual block's boundary is
-    /// U8b's job once a real `VirtualLineSource` exists to test against.
+    /// left untested here, deferred until a real `VirtualLineSource` exists.
     #[test]
     fn ensure_cursor_visible_accounts_for_a_stolen_virtual_row() {
         let r = rope("a\nb\nc\nd\n");

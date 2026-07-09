@@ -1,6 +1,6 @@
-;;; core:lsp/inlay.scm — F10: textDocument/inlayHint.
+;;; core:lsp/inlay.scm — textDocument/inlayHint.
 ;;;
-;;; Off by default (B10d) — `:set global lsp.inlay-hints=true` opts in.
+;;; Off by default — `:set global lsp.inlay-hints=true` opts in.
 
 (require "lib.scm")
 
@@ -14,8 +14,8 @@
 
 ;;; `InlayHint {position, label, paddingLeft?, paddingRight?}` -> the
 ;;; `(position text 'before)` shape `set-inlay-hints!` expects — `position`
-;;; passed through as the raw wire hashmap (the setter converts, B5
-;;; contract); padding becomes literal leading/trailing spaces.
+;;; passed through as the raw wire hashmap (the setter converts it);
+;;; padding becomes literal leading/trailing spaces.
 (define (lsp/hint->store-entry hint)
   (let* ((text (lsp/inlay-hint-text hint))
          (pad-left (and (hash-contains? hint "paddingLeft") (equal? (hash-ref hint "paddingLeft") #t)))

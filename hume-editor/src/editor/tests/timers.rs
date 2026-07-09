@@ -1,4 +1,4 @@
-// B4 (docs/lsp/step-2.md) — Steel timer surface: (after ms thunk),
+// Steel timer surface: (after ms thunk),
 // (cancel-timer! id), (debounce ms proc).
 
 use super::*;
@@ -121,7 +121,7 @@ fn an_erroring_thunk_lands_in_the_message_log_and_the_wheel_survives() {
 
     // First drain cycle: the erroring thunk is the only one queued, so its
     // error can't swallow anything else — isolates the "reported, not
-    // panicking" assertion from B2's "first error aborts the rest of this
+    // panicking" assertion from the "first error aborts the rest of this
     // batch" semantics (same `run_steel_calls`).
     type_cmd(&mut ed, ":boom");
     ed.drain_async_sources();

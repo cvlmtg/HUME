@@ -1,15 +1,15 @@
-//! B5's Steel-writable decoration stores: inlay hints, gutter signs, virtual
+//! Steel-writable decoration stores: inlay hints, gutter signs, virtual
 //! lines, and extra highlights. Not LSP-specific (any plugin can set them) —
-//! LSP is their first client, not their owner, matching the hub's UI
-//! decisions for Step 3's render providers (which read these fresh every
-//! frame; nothing here needs a dirty-tracking generation counter).
+//! LSP is their first client, not their owner. The render providers read
+//! these fresh every frame; nothing here needs a dirty-tracking generation
+//! counter.
 //!
 //! `inlay_hints` is keyed by `BufferId` alone (one owner per buffer, always
 //! replaced wholesale by the next `(set-inlay-hints! …)`); `signs` /
 //! `virtual_lines` / `extra_highlights` are keyed by `(source, BufferId)` so
 //! unrelated plugins' entries for the same buffer coexist. Only the
 //! char-offset stores (`inlay_hints`, `extra_highlights`) remap through
-//! edits — `signs` / `virtual_lines` are line-indexed and, per the card,
+//! edits — `signs` / `virtual_lines` are line-indexed and
 //! encoding/edit-independent for v1.
 
 use std::collections::HashMap;
@@ -26,7 +26,7 @@ pub(crate) struct InlayHintEntry {
 }
 
 /// One `(set-signs! …)` entry: a gutter marker on `line` (0-indexed). No
-/// reader until Step 3's sign-column provider (U2).
+/// reader until the sign-column provider.
 #[allow(dead_code)]
 pub(crate) struct SignEntry {
     pub(crate) line: usize,
@@ -37,7 +37,7 @@ pub(crate) struct SignEntry {
 
 /// One `(set-virtual-lines! …)` entry: a synthetic line of text rendered
 /// after buffer `line` (0-indexed). `scope` styles the whole line
-/// (`ui.virtual` fallback when absent) — U9's inlay hints and this both
+/// (`ui.virtual` fallback when absent) — inlay hints and this both
 /// predate a segmented-styling API, so a whole-line scope is what the
 /// landed store can express.
 pub(crate) struct VirtualLineEntry {
@@ -59,7 +59,7 @@ pub(crate) struct DecorationStores {
     signs: HashMap<(String, BufferId), Vec<SignEntry>>,
     virtual_lines: HashMap<(String, BufferId), Vec<VirtualLineEntry>>,
     extra_highlights: HashMap<(String, BufferId), Vec<ExtraHighlightEntry>>,
-    /// Bumped by `set_virtual_lines` — the render write side (U8b) mirrors
+    /// Bumped by `set_virtual_lines` — the render write side mirrors
     /// `virtual_lines` into a per-pane Arc only when this changed since its
     /// last sync, rather than every frame (unlike inlay hints, this runs in
     /// scroll/cursor math too, not just render, so avoiding needless
@@ -195,7 +195,7 @@ impl DecorationStores {
     }
 
     /// Remaps `bid`'s inlay hints and extra highlights through `cs` — the
-    /// same chokepoint as C9's diagnostics remap
+    /// same chokepoint as the diagnostics remap
     /// (`flush_lsp_pending_changes`), so decoration positions never drift
     /// out of sync with the diagnostics they're often paired with.
     pub(crate) fn remap_through(&mut self, bid: BufferId, cs: &ChangeSet) {

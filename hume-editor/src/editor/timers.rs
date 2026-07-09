@@ -1,7 +1,7 @@
-//! Nearest-deadline timer registry, integrated with the P3 `AsyncSource` wake
+//! Nearest-deadline timer registry, integrated with the `AsyncSource` wake
 //! logic. Rust-side machinery only — payload-agnostic on purpose: the wheel
-//! hands back opaque [`TimerId`]s, and B4 adds the `TimerId -> Steel thunk`
-//! side table that gives them meaning, keeping Steel types out of the
+//! hands back opaque [`TimerId`]s, and a side table adds the `TimerId ->
+//! Steel thunk` mapping that gives them meaning, keeping Steel types out of the
 //! editor core.
 
 use std::cmp::Reverse;
@@ -103,7 +103,7 @@ impl TimerWheel {
 impl AsyncSource for TimerWheel {
     // A distant deadline must not cause 8ms busy-polling — `next_deadline`
     // bounds the event-loop's poll timeout instead. Due-now timers are
-    // caught by `take_due` in the P3 drain phase, not by this flag.
+    // caught by `take_due` in the async-source drain phase, not by this flag.
     fn has_pending(&self) -> bool {
         false
     }

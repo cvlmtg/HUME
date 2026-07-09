@@ -1,5 +1,5 @@
-;;; core:lsp/diagnostics.scm — F4: diagnostics navigation. No LSP request —
-;;; reads the C9 store via B5's diagnostics-for-buffer. Depends on
+;;; core:lsp/diagnostics.scm — diagnostics navigation. No LSP request —
+;;; reads the diagnostics store via diagnostics-for-buffer. Depends on
 ;;; core:stdlib for cursor-char-index (see plugin.scm).
 
 (require "lib.scm")
@@ -27,7 +27,7 @@
     (if (null? after) (car diags) (car after))))
 
 ;;; Last entry whose "start" is strictly before `head`, wrapping to the last
-;;; entry overall if none qualifies. `diags` is start-ascending (C9), so the
+;;; entry overall if none qualifies. `diags` is start-ascending, so the
 ;;; last matching entry is the closest one before the cursor.
 (define (lsp/last-before diags head)
   (let ((before (filter (lambda (d) (< (hash-ref d "start") head)) diags)))

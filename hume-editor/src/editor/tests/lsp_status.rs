@@ -1,4 +1,4 @@
-// C10 (docs/lsp/step-1.md) — observability + lifecycle commands:
+// Observability + lifecycle commands:
 // :lsp-status, :lsp-stop, :lsp-restart, and stderr/log-message routing.
 
 use std::path::{Path, PathBuf};
@@ -185,7 +185,7 @@ fn lsp_restart_spawns_a_fresh_server_id_and_reattaches_the_buffer() {
     );
 }
 
-/// B1 regression: without `DiagnosticsStore::remove_server`, a restarted
+/// Regression: without `DiagnosticsStore::remove_server`, a restarted
 /// server's fresh `ServerId` would coexist with the old (frozen, detached)
 /// server's entry for the same buffer — `replace`'s "push if no matching
 /// sid" path — doubling the count instead of replacing it.

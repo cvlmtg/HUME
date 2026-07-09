@@ -15,7 +15,7 @@ use super::Editor;
 pub(crate) trait AsyncSource {
     /// Work may complete soon — poll instead of blocking on input.
     fn has_pending(&self) -> bool;
-    /// Absolute wake deadline, if this source schedules timed work (P7).
+    /// Absolute wake deadline, if this source schedules timed work.
     fn next_deadline(&self) -> Option<Instant> {
         None
     }

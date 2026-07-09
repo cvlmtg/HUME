@@ -1,7 +1,7 @@
-// U1 (docs/lsp/step-3.md) — diagnostic underlines + extra-highlights wiring:
-// the `update_highlight_providers` write side that feeds the new
-// `ScopedHighlighter` (Diagnostic/Extra tiers) from C9's diagnostics store
-// and B5's extra-highlights store.
+// Diagnostic underlines + extra-highlights wiring: the
+// `update_highlight_providers` write side that feeds the new
+// `ScopedHighlighter` (Diagnostic/Extra tiers) from the diagnostics store
+// and the extra-highlights store.
 //
 // Every test here goes through `Editor::open(None)` (not `editor_from`'s
 // bare `Pane::new`) — highlight providers are only registered by
@@ -320,8 +320,8 @@ fn search_match_beats_extra_highlight_in_overlapping_region() {
     // `bake_if_stale`) — rendering in the same frame it's first interned
     // would resolve against a not-yet-baked ScopeId (see
     // `Theme::resolve`'s debug_assert). One extra frame lets the next
-    // `bake_if_stale` catch up, matching the hub's accepted one-frame
-    // default-style flash for newly-interned runtime scopes.
+    // `bake_if_stale` catch up — a one-frame
+    // default-style flash for newly-interned runtime scopes is accepted.
     let mut ctx = RenderContext::new();
     ed.prepare_frame(20, 3, &mut ctx);
 

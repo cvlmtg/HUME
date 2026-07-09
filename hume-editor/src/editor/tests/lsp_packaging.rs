@@ -1,4 +1,4 @@
-// F11 (docs/lsp/step-4.md) — packaging: lazy `declare-plugin` activation,
+// Packaging: lazy `declare-plugin` activation,
 // the goto-trie keybindings bound in `plugin.scm`, and the commented
 // `init.scm.example` LSP block. Loads the real shipped `core:lsp` plugin
 // in place (`RealRuntimeGuard`).

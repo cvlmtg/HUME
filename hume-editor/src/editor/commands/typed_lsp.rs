@@ -1,4 +1,4 @@
-//! `:lsp-status` / `:lsp-stop` / `:lsp-restart` — C10 observability and
+//! `:lsp-status` / `:lsp-stop` / `:lsp-restart` — observability and
 //! lifecycle commands.
 
 use super::super::Editor;
@@ -41,7 +41,7 @@ pub fn typed_lsp_stop(
     Ok(())
 }
 
-/// `:lsp-restart [language]` — stop then respawn through the same C8
+/// `:lsp-restart [language]` — stop then respawn through the same
 /// attach path, re-attaching every buffer that was on the old instance.
 pub fn typed_lsp_restart(
     ed: &mut Editor,

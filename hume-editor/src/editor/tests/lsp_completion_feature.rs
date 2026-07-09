@@ -1,9 +1,8 @@
-// F3 (docs/lsp/step-4.md, amended by B10c) — the full completion flow:
-// trigger (Ctrl+Space + server trigger chars) -> textDocument/completion ->
-// completion-begin!; on-completion-accept applies additionalTextEdits or
-// resolves; on-completion-refilter re-requests while isIncomplete. Composes
-// B2, B3, B7, B8, U7. Named lsp_completion_feature.rs (not lsp_completion.rs
-// — that file already covers B8's completion-begin!/update-filter!/top/
+// The full completion flow: trigger (Ctrl+Space + server trigger chars) ->
+// textDocument/completion -> completion-begin!; on-completion-accept applies
+// additionalTextEdits or resolves; on-completion-refilter re-requests while
+// isIncomplete. Named lsp_completion_feature.rs (not lsp_completion.rs — that
+// file already covers the completion-begin!/update-filter!/top/
 // accept!/dismiss! orchestration directly; this file drives the same
 // primitives through the real shipped plugin and a real LSP round trip).
 // Loads the real shipped `core:lsp` plugin in place (`RealRuntimeGuard`).
@@ -37,7 +36,7 @@ fn write_fixture_file(file_dir: &Path) -> PathBuf {
     file
 }
 
-/// Same plugin-before-handshake ordering as F7's setup: `on-lsp-attach`'s
+/// Same plugin-before-handshake ordering as the signature-help setup: `on-lsp-attach`'s
 /// handler (registers trigger chars) must already be installed when the
 /// `Running` transition fires it, once, at attach time.
 #[cfg(not(windows))]
@@ -180,7 +179,8 @@ fn null_response_opens_no_session() {
     );
     ed.feed_key(key_esc());
 
-    // Directly exercise the session state B8 already tests against: no
+    // Directly exercise the session state the completion orchestration tests
+    // already cover: no
     // active session means accept! must error.
     let source = r#"(define-command! "try-accept" "" (lambda () (completion-accept! 0)))"#;
     let mut host = ed.scripting.take().unwrap();
@@ -252,7 +252,7 @@ fn accept_applies_main_edit_and_additional_text_edits_as_two_undo_steps() {
     assert_eq!(
         ed.doc().text().to_string(),
         "\nbarfoo\n",
-        "additionalTextEdits undo in one step (B6's apply-text-edits! transaction)"
+        "additionalTextEdits undo in one step (apply-text-edits! transaction)"
     );
     ed.handle_key(key('u'));
     assert_eq!(

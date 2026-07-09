@@ -1,4 +1,4 @@
-//! B2's generic LSP bridge: flushes `(lsp-request …)` / `(lsp-notify …)`
+//! The generic LSP bridge: flushes `(lsp-request …)` / `(lsp-notify …)`
 //! calls Steel queued this eval, resolving `server` and (for requests)
 //! wiring the callback to fire through the queued-Steel-call mechanism once
 //! a response, error, or timeout arrives.
@@ -41,14 +41,14 @@ impl Editor {
 
     /// Resolves `server` — a registered language name, or `None` for "the
     /// focused buffer's attached server" — to a running `ServerId`. Shared
-    /// with B3's introspection builtins via `super::introspect::resolve_server`.
+    /// with the introspection builtins via `super::introspect::resolve_server`.
     fn resolve_lsp_server(&self, server: Option<&str>) -> Result<ServerId, String> {
         let bid = self.focused_buffer_id();
         super::introspect::resolve_server(&self.state, &self.lsp, bid, server)
     }
 
     /// If `params` carries a `textDocument.uri` matching an open buffer,
-    /// tags the request with that buffer's current `text_gen` — C6's
+    /// tags the request with that buffer's current `text_gen` — the
     /// staleness check drops the response if the buffer has moved on by the
     /// time it lands (unless the caller passed `#:allow-stale`).
     fn stale_check_for_params(&self, params: &serde_json::Value) -> Option<(BufferId, u64)> {

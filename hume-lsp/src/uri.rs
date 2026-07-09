@@ -155,8 +155,8 @@ fn percent_encode_path(path_str: &str) -> String {
 
 /// Strip a `\\?\` verbatim prefix (but not a `\\?\UNC\` one), mirroring
 /// `hume_platform::path::strip_unc_prefix`'s convention — this crate cannot
-/// depend on `hume-platform` (see the LSP hub's *Crate boundary* decision),
-/// so the pattern is duplicated rather than imported.
+/// depend on `hume-platform`, so the pattern is duplicated rather than
+/// imported.
 #[cfg(windows)]
 fn strip_verbatim_prefix(s: &str) -> &str {
     const VERBATIM: &str = r"\\?\";

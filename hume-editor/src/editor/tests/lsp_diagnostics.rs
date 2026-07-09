@@ -1,4 +1,4 @@
-// C9 (docs/lsp/step-1.md) — diagnostics store: ingest, drain-batch
+// Diagnostics store: ingest, drain-batch
 // coalescing, and the unknown-URI drop path. Remap/counts/for_range are
 // unit-tested directly in `editor::lsp::diagnostics` (no Editor needed
 // there); this file covers the parts that need a real buffer + backend.
@@ -297,7 +297,7 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
     );
 }
 
-// ── B1 — diagnostics cleared on `:lsp-stop` ─────────────────────────────────
+// ── Diagnostics cleared on `:lsp-stop` ─────────────────────────────────
 
 /// Without `DiagnosticsStore::remove_server`, a stopped server's diagnostics
 /// stayed rendered forever (squiggles/signs keep showing) and stopped

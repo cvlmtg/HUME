@@ -1,7 +1,7 @@
-// F2 (docs/lsp/step-4.md) — goto definition family: `lsp-goto-definition` /
-// `-declaration` / `-type-definition` / `-implementation`, composing B2
-// (lsp-request), B3 (lsp-capabilities), B6 (goto-location!), U6
-// (show-drawer-list! via lib.scm's lsp/show-locations!). Loads the real
+// Goto definition family: `lsp-goto-definition` /
+// `-declaration` / `-type-definition` / `-implementation`, composing
+// `lsp-request`, `lsp-capabilities`, `goto-location!`,
+// `show-drawer-list!` (via lib.scm's lsp/show-locations!). Loads the real
 // shipped `core:lsp` plugin in place (`RealRuntimeGuard`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not

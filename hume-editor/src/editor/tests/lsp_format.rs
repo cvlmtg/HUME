@@ -1,5 +1,5 @@
-// F8 (docs/lsp/step-4.md) — formatting: `:fmt`, composing B2 (lsp-request),
-// B3 (lsp-capabilities, selection-spans-full-line?), B6 (apply-text-edits!).
+// Formatting: `:fmt`, composing `lsp-request`,
+// `lsp-capabilities`, `selection-spans-full-line?`, `apply-text-edits!`.
 // Loads the real shipped `core:lsp` plugin in place (`RealRuntimeGuard`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not

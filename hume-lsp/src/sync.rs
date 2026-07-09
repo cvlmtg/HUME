@@ -1,6 +1,6 @@
 //! `ChangeSet` → `textDocument/didChange`'s incremental
 //! `TextDocumentContentChangeEvent` list. The didChange envelope (document
-//! version, URI) is the editor glue's job (C7) — this is pure text math.
+//! version, URI) is the editor glue's job — this is pure text math.
 
 use hume_editing::{ChangeSet, Operation, PositionEncoding, char_to_wire};
 use lsp_types::{Position, Range, TextDocumentContentChangeEvent};
@@ -54,7 +54,7 @@ pub fn changeset_to_content_changes(
 }
 
 /// `[start, end)` in `rope`'s current state, converted to a wire `Range` —
-/// every position goes through P4's `char_to_wire`; ops count chars, the
+/// every position goes through `char_to_wire`; ops count chars, the
 /// wire wants code units, so there is no arithmetic shortcut even for the
 /// UTF-8 case.
 fn wire_range(rope: &Rope, start: usize, end: usize, enc: PositionEncoding) -> Range {
@@ -76,7 +76,7 @@ fn wire_range(rope: &Rope, start: usize, end: usize, enc: PositionEncoding) -> R
 /// own line/character math — no ropey, no `hume_editing::position_encoding`
 /// — so it cannot share a bug with `changeset_to_content_changes`. Exposed
 /// (behind `test-util`) so consumer crates' invariant tests (e.g.
-/// hume-editor's C7 version-sync test) can reuse it instead of re-deriving
+/// hume-editor's version-sync test) can reuse it instead of re-deriving
 /// their own oracle.
 #[cfg(any(test, feature = "test-util"))]
 pub fn apply_events_to_string_mirror(
@@ -85,7 +85,7 @@ pub fn apply_events_to_string_mirror(
     enc: PositionEncoding,
 ) -> String {
     for event in events {
-        let range = event.range.expect("P6 always emits ranged events");
+        let range = event.range.expect("always emits ranged events");
         let start = wire_pos_to_byte(&text, range.start, enc);
         let end = wire_pos_to_byte(&text, range.end, enc);
         text.replace_range(start..end, &event.text);

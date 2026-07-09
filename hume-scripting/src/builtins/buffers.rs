@@ -121,7 +121,7 @@ pub(crate) fn buffer_dirty(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
 }
 
 /// `(buffer-generation bid)` → int — bumped by every mutation to `bid`.
-/// Steel-side staleness token (B3); not LSP-specific despite the motivation.
+/// Steel-side staleness token; not LSP-specific despite the motivation.
 pub(crate) fn buffer_generation(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "buffer-generation");
     let id = downcast_buffer_id(&bid).ok_or_else(|| {

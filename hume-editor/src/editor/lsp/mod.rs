@@ -1,9 +1,8 @@
 //! Editor-side LSP state: holds the backend and per-server client state,
-//! and drains events at frame cadence. Built incrementally — C4 wires the
-//! backend + `AsyncSource` plumbing, C5 adds per-client lifecycle state,
-//! C6 (this module) adds request/callback bookkeeping and server->client
-//! dispatch; C7–C10 add document sync, diagnostics, registration, and
-//! observability commands on top.
+//! and drains events at frame cadence. Wires the backend + `AsyncSource`
+//! plumbing, per-client lifecycle state, request/callback bookkeeping and
+//! server->client dispatch (this module), document sync, diagnostics,
+//! registration, and observability commands.
 
 mod bridge;
 pub(crate) mod completion;
@@ -36,7 +35,7 @@ use registry::LspServerConfig;
 /// How often to poll while any LSP server is running, so idle-time server
 /// pushes (e.g. `publishDiagnostics` after the user stops typing) don't sit
 /// undrained until the next keypress — `event::read()` cannot be woken
-/// externally. See the LSP hub's "Idle wake" decision.
+/// externally.
 const LSP_HEARTBEAT: Duration = Duration::from_millis(200);
 
 /// A Rust closure run with a completed request's outcome. `hume-lsp` never
@@ -66,12 +65,12 @@ struct ServerEntry {
     /// directly by a test without going through `lsp_attach_buffer`.
     language: Option<String>,
     /// Display name (the registered `command`, e.g. `"rust-analyzer"`) —
-    /// used to prefix stderr/log lines (C10) so `:messages` reads legibly
+    /// used to prefix stderr/log lines so `:messages` reads legibly
     /// with multiple servers running.
     name: String,
     /// Decoded `ServerCapabilities`, cached once at handshake completion
-    /// (`dispatch_lsp_action`'s `BecameRunning` arm) — B3's
-    /// `(lsp-capabilities …)` reads this rather than reconverting the typed
+    /// (`dispatch_lsp_action`'s `BecameRunning` arm) — the
+    /// `(lsp-capabilities …)` builtin reads this rather than reconverting the typed
     /// caps on every call.
     capabilities_json: Option<serde_json::Value>,
 }
@@ -102,7 +101,7 @@ impl LspState {
         }
     }
 
-    /// Production constructor: one real server process per registration (C8).
+    /// Production constructor: one real server process per registration.
     pub(crate) fn new_threaded() -> Self {
         Self::with_backend(Box::new(ThreadedLspBackend::new()))
     }
@@ -122,7 +121,7 @@ impl LspState {
         Self::with_backend(backend)
     }
 
-    /// Reach the raw backend directly. Test-only in practice (the C4
+    /// Reach the raw backend directly. Test-only in practice (the scripted
     /// round-trip test): production code goes through `drain_lsp`'s direct
     /// field access instead.
     #[allow(dead_code)]
@@ -130,8 +129,8 @@ impl LspState {
         self.backend.as_mut()
     }
 
-    /// Test-only direct client insertion; C8 adds the real registration
-    /// path (`register-lsp-server!` -> spawn-on-first-open) that populates
+    /// Test-only direct client insertion; the real registration
+    /// path (`register-lsp-server!` -> spawn-on-first-open) populates
     /// this map in production. Inserted with no language — tests that need
     /// one call `insert_server_key_for_test` next.
     #[cfg(test)]
@@ -255,7 +254,7 @@ impl LspState {
     /// Files `callback` under an already-sent request's `(server, id)` —
     /// `drain_lsp`'s per-server loop already has both in scope at dispatch
     /// time, so no separate token needs to be minted. Production caller:
-    /// `bridge::send_one_lsp_request` (B2), called after `send_request`
+    /// `bridge::send_one_lsp_request`, called after `send_request`
     /// returns the id.
     pub(crate) fn register_callback(
         &mut self,
@@ -274,8 +273,8 @@ impl LspState {
     }
 
     /// Sends a request through `server`'s client, if one is registered.
-    /// `None` if `server` has no tracked client (can't happen once C8
-    /// lands; still must not panic).
+    /// `None` if `server` has no tracked client (can't happen with the real
+    /// registration path; still must not panic).
     pub(crate) fn send_request(
         &mut self,
         server: ServerId,
@@ -291,7 +290,7 @@ impl LspState {
 impl AsyncSource for LspState {
     /// True while a client is mid-handshake (the initialize response could
     /// land any moment — and after that, anything queued while `Starting`
-    /// must flush promptly) or has a request in flight (the C6 card's 8ms
+    /// must flush promptly) or has a request in flight (an 8ms
     /// poll cadence, not the coarser Running-idle heartbeat below).
     fn has_pending(&self) -> bool {
         self.backend.has_pending()
@@ -464,7 +463,7 @@ impl Editor {
                 );
             }
             ClientAction::ServerRequest { id, method, params } => {
-                // `workspace/applyEdit` needs `&mut Editor` (B6's engine) —
+                // `workspace/applyEdit` needs `&mut Editor` (the edit engine) —
                 // every other request answers from the pure lookup table.
                 let result = if method == "workspace/applyEdit" {
                     self.apply_edit_request_response(&params)
@@ -488,8 +487,7 @@ impl Editor {
     }
 
     /// Answers a server-initiated `workspace/applyEdit` request by actually
-    /// applying it — B6's engine, swapped in for C6's `applied: false`
-    /// stub. Per spec this never fails at the JSON-RPC level: a rejected or
+    /// applying it. Per spec this never fails at the JSON-RPC level: a rejected or
     /// malformed edit still gets a 200 response, just with `applied: false`.
     pub(crate) fn apply_edit_request_response(
         &mut self,
@@ -530,7 +528,7 @@ impl Editor {
             .unwrap_or_else(|| "lsp".to_string())
     }
 
-    /// The registered language for `server_id` — the "server name" B2/B3's
+    /// The registered language for `server_id` — the "server name" the
     /// Steel surface deals in, since that's what `register-lsp-server!` and
     /// `lsp-request`'s `server` argument both use.
     fn lsp_server_language(&self, server_id: ServerId) -> Option<String> {
@@ -627,9 +625,8 @@ impl Editor {
 
         if matches!(outcome, Outcome::TimedOut) {
             self.report(Severity::Trace, format!("lsp: {} timed out", meta.method));
-            // Dispatched (not dropped, deviating from the hub C6 card's
-            // "timed-out -> log + drop"): a callback that never fires on
-            // timeout means a caller (e.g. B2's Steel err-mapped callback)
+            // Dispatched (not dropped): a callback that never fires on
+            // timeout means a caller (e.g. a Steel err-mapped callback)
             // has no way to notice and would hang silently. TimedOut still
             // goes through the staleness check below like any other outcome.
         }
@@ -690,15 +687,15 @@ impl Editor {
     }
 }
 
-/// Answers a server-initiated request. Exhaustive by design (hub decision:
-/// answered in Rust, never surfaced to Steel) — every request gets exactly
+/// Answers a server-initiated request. Exhaustive by design (answered in
+/// Rust, never surfaced to Steel) — every request gets exactly
 /// one response, even the ones this v1 doesn't otherwise support.
 fn server_request_response(
     method: &str,
     params: &serde_json::Value,
 ) -> Result<serde_json::Value, ResponseError> {
     match method {
-        // No settings blob exists until C8 — every item answers `null`,
+        // No settings blob exists — every item answers `null`,
         // same shape a server sees from a client with no matching config.
         "workspace/configuration" => Ok(workspace_configuration_response(params)),
         // Answered separately by `apply_edit_request_response` (needs

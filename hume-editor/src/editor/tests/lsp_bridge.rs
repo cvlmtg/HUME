@@ -1,4 +1,4 @@
-// B2 (docs/lsp/step-2.md) — generic LSP bridge: lsp-request, lsp-notify,
+// Generic LSP bridge: lsp-request, lsp-notify,
 // on-lsp-notification, delivered through the queued-Steel-call mechanism.
 
 use std::cell::RefCell;
@@ -141,7 +141,7 @@ fn timeout_delivers_err_string_timeout_to_callback() {
 /// Opens a real file (so `Buffer.path()` is `Some(canonical)`), wires a
 /// scripted server, and attaches the newly-opened buffer to it. Returns the
 /// buffer id and the `file://` URI a request's `textDocument.uri` must use
-/// to hit the C6 staleness check against this buffer.
+/// to hit the staleness check against this buffer.
 #[cfg(not(windows))]
 fn setup_with_real_file(
     ed: &mut Editor,
@@ -412,7 +412,7 @@ fn callback_error_lands_in_message_log_not_a_crash() {
 /// — `Request` and `Notification` alike — into one shared, arrival-ordered
 /// log. `RecordingLspBackend` (test_util) keeps requests and notifications
 /// in two separate logs, which can't answer "did the didChange reach the
-/// wire before this request" (B2's ordering bug): only a single combined
+/// wire before this request" ordering bug: only a single combined
 /// log can.
 struct OrderedLogBackend {
     inner: InlineLspBackend,
@@ -464,7 +464,7 @@ impl LspBackend for OrderedLogBackend {
     }
 }
 
-/// B2 regression: a Steel command that edits the buffer (queuing an LSP
+/// Regression: a Steel command that edits the buffer (queuing an LSP
 /// `didChange`) and then immediately fires an `lsp-request` — the same
 /// shape as a trigger-char hook firing right after the edit that triggered
 /// it — must put the `didChange` on the wire *before* the request. Before

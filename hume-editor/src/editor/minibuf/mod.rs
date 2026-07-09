@@ -13,7 +13,7 @@ use unicode_width::UnicodeWidthStr;
 #[derive(Clone)]
 pub(crate) struct MiniBuffer {
     /// The text shown before the input: `:` for commands, `/`/`?` for search,
-    /// or a Steel prompt's `label` (`(prompt! label …)`, B9) — arbitrary length.
+    /// or a Steel prompt's `label` (`(prompt! label …)`) — arbitrary length.
     pub prompt: String,
     /// The text typed so far.
     pub input: String,

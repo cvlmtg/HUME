@@ -1,11 +1,11 @@
-;;; core:lsp/actions.scm — F9: textDocument/codeAction.
+;;; core:lsp/actions.scm — textDocument/codeAction.
 ;;;
 ;;; context.diagnostics must echo back the *raw* wire Diagnostic objects
 ;;; currently shown in the request range — servers (rust-analyzer
 ;;; confirmed) gate diagnostic-derived quickfixes ("remove unused import",
 ;;; etc.) on this, treating an empty array as "the client isn't showing
 ;;; any diagnostics here" and withholding them. `diagnostics-for-buffer`'s
-;;; `"raw"` field (B5 extension) carries these through unmodified — Steel
+;;; `"raw"` field carries these through unmodified — Steel
 ;;; never reconstructs or re-encodes a wire position itself.
 
 (require "lib.scm")

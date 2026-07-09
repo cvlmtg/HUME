@@ -1,4 +1,4 @@
-// F6 (docs/lsp/step-4.md) — references: `lsp-references`, reusing F2's
+// References: `lsp-references`, reusing the goto-definition family's
 // worker shape but always presenting the drawer (never auto-jumping even
 // for a single result). Loads the real shipped `core:lsp` plugin in place
 // (`RealRuntimeGuard`).
@@ -138,7 +138,7 @@ fn enter_jumps_and_drawer_stays_open() {
     );
     assert!(
         ed.state.drawer.is_some(),
-        "the references drawer must stay open after a jump (U6 browse behavior)"
+        "the references drawer must stay open after a jump (drawer browse behavior)"
     );
 }
 

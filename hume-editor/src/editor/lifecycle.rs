@@ -620,7 +620,7 @@ impl Editor {
                 scrolloff,
             );
 
-            // B7: a real visible-range change (scroll command, cursor-follow
+            // A real visible-range change (scroll command, cursor-follow
             // during typing, or a resize that altered height) debounces
             // OnViewportChange. This is bookkeeping over scroll_into_view's
             // *result*, not part of computing what to render — the hook
@@ -647,12 +647,12 @@ impl Editor {
         // 6b. Sync gutter sign data (diagnostics + plugin signs) the same way.
         self.update_sign_providers();
 
-        // 6c. Sync inlay-hint data (B5 store → per-pane InlineDecoration).
+        // 6c. Sync inlay-hint data (decoration store → per-pane InlineDecoration).
         self.update_inlay_hint_providers();
 
-        // 6d. Sync virtual-line data (B5 store → per-pane VirtualLineSource),
-        //     gated on a generation check — this feeds U8a's scroll/cursor
-        //     math too, not just render.
+        // 6d. Sync virtual-line data (decoration store → per-pane VirtualLineSource),
+        //     gated on a generation check — this feeds the virtual-line-aware
+        //     scroll/cursor math too, not just render.
         self.update_virtual_line_providers();
 
         // 7. Sync completion-popup view to the shared Arc for `CompletionOverlay`.
@@ -1190,7 +1190,7 @@ impl Editor {
         id
     }
 
-    /// Sync per-pane inlay-hint decorations (U9) from the B5
+    /// Sync per-pane inlay-hint decorations from the
     /// `decorations.inlay_hints` store to each pane's `InlayHintProvider`
     /// Arc. Gated on `lsp.inlay-hints`: when off, every pane's map is
     /// cleared so a mid-session toggle takes effect immediately rather than
@@ -1264,14 +1264,15 @@ impl Editor {
         id
     }
 
-    /// Sync per-pane virtual-line decorations (U8b) from the B5
+    /// Sync per-pane virtual-line decorations from the
     /// `decorations.virtual_lines` store to each pane's `PaneVirtualLines`
     /// Arc. Unlike inlay hints, this only rebuilds when
     /// `decorations.virtual_lines_generation()` changed since the pane's
-    /// last sync — this feeds scroll/cursor math (U8a) every frame, not
-    /// just render, so skipping needless rebuild work matters more here.
+    /// last sync — this feeds the virtual-line-aware scroll/cursor math
+    /// every frame, not just render, so skipping needless rebuild work
+    /// matters more here.
     /// Every entry becomes an `After(line)` virtual line — no `Before`
-    /// anchoring in v1 (matches the card: inline diagnostics render below
+    /// anchoring in v1 (inline diagnostics render below
     /// the line they annotate).
     pub(super) fn update_virtual_line_providers(&mut self) {
         use hume_engine::providers::{VirtualLine, VirtualLineAnchor};
@@ -1373,7 +1374,7 @@ impl Editor {
 
     /// The focused pane's primary cursor position — the anchor char for
     /// [`Self::sync_popup_view`] and [`Self::sync_menu_view`] (unlike the
-    /// LSP completion menu, U7, which anchors at the session's token-start
+    /// LSP completion menu, which anchors at the session's token-start
     /// char instead, via a separately-computed `anchor_char`).
     fn focused_cursor_char(&self) -> usize {
         let pid = self.state.focused_pane_id;
@@ -1385,7 +1386,7 @@ impl Editor {
 
     /// Screen anchor (absolute cell) + geometry bounds for the focused
     /// pane, given an arbitrary buffer char position — shared by
-    /// [`Self::sync_popup_view`], [`Self::sync_menu_view`], and U7's LSP
+    /// [`Self::sync_popup_view`], [`Self::sync_menu_view`], and the LSP
     /// completion menu (each passes a different `anchor_char`). Returns
     /// `(anchor, pane_rect, max_width, max_height)`; `None` when the pane
     /// has no rect yet or `anchor_char` isn't currently visible.
@@ -1505,7 +1506,7 @@ impl Editor {
             .expect("RwLock not poisoned") = resolved;
     }
 
-    /// Write U7's LSP completion menu into the shared `PopupState` Arc —
+    /// Write the LSP completion menu into the shared `PopupState` Arc —
     /// same widget as [`Self::sync_menu_view`] (unwrapped rows,
     /// selected-row styling), but anchored at the completion session's
     /// token-start char rather than the live cursor (which drifts as the

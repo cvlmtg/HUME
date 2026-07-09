@@ -18,10 +18,10 @@ impl Editor {
     // ── Insert mode ───────────────────────────────────────────────────────────
 
     pub(in super::super) fn handle_insert(&mut self, key: KeyEvent) {
-        // ── LSP completion menu intercept (U7) ────────────────────────────────
+        // ── LSP completion menu intercept ────────────────────────────────
         // Guarded early-return before the trie walk (not after) — Esc must
         // never reach the trie's exit-insert binding while a session is
-        // open; the card says Esc dismisses the *session*, staying in
+        // open; Esc dismisses the *session*, staying in
         // Insert. Printable chars and Backspace-within-the-token are
         // deliberately NOT fully handled here — they fall through to the
         // normal body below, then get refiltered by the post-edit hook at
@@ -83,7 +83,7 @@ impl Editor {
                 self.state.autoindent_pending = false;
                 let (ap_enabled, ap_pairs) =
                     self.doc().overrides.auto_pairs_ref(&self.state.settings);
-                // `OnTriggerChar` (B7) only fires when `ch` actually landed in
+                // `OnTriggerChar` only fires when `ch` actually landed in
                 // the buffer — the two skip-close branches below just move
                 // the cursor past an existing closer, inserting nothing.
                 let mut inserted = true;
@@ -258,9 +258,9 @@ impl Editor {
         }
     }
 
-    // ── LSP completion menu (U7) ─────────────────────────────────────────────
+    // ── LSP completion menu ─────────────────────────────────────────────
 
-    /// Intercepts a key while an LSP completion session (B8) is open.
+    /// Intercepts a key while an LSP completion session is open.
     /// Returns `true` if fully handled (skip the rest of `handle_insert`
     /// this call) — `false` if it should still fall through to normal
     /// Insert-mode dispatch (printable chars always do; Backspace always
@@ -305,7 +305,7 @@ impl Editor {
 
     /// Moves the completion menu's selection by one row, clamped to the
     /// displayed window (`completion_top(8)` — no scrolling past it, same
-    /// as U5's selection menu).
+    /// as the selection menu).
     fn move_completion_selection(&mut self, forward: bool) {
         let Some(session) = self.state.lsp_completion.as_ref() else {
             return;
@@ -365,7 +365,7 @@ impl Editor {
         // the anchor, which can't happen through this key path.
         let text = self.doc().text().slice(anchor..head).to_string();
         session.update_filter(&self.state, text.clone());
-        // B10c: `on-completion-refilter` fires only while the server said
+        // `on-completion-refilter` fires only while the server said
         // `isIncomplete` — a complete list needs no re-request, so a normal
         // session stays hook-silent on every keystroke.
         if session.incomplete() {

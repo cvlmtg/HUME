@@ -42,7 +42,7 @@ pub enum HookId {
     OnLspDetach,
     /// Fires once per drain batch that ingested at least one
     /// `publishDiagnostics` for `bid` — payload-free signal by design; pull
-    /// via `(diagnostics-for-buffer bid …)` (B5). Args: `(bid)`.
+    /// via `(diagnostics-for-buffer bid …)`. Args: `(bid)`.
     OnDiagnosticsChanged,
     /// Fires after scroll/resize resolves a pane's viewport, debounced
     /// (`lsp.viewport-debounce-ms`) so a scroll burst fires once. Args:
@@ -54,13 +54,13 @@ pub enum HookId {
     OnTriggerChar,
     /// Fires after `completion-accept!` applies the item's main `textEdit`
     /// (or `insertText` fallback) — Steel handles `additionalTextEdits` and
-    /// `completionItem/resolve` from here (F3), since Rust only ever applies
+    /// `completionItem/resolve` from here, since Rust only ever applies
     /// the primary edit. Args: `(bid item)`, `item` the accepted
     /// `CompletionItem`'s raw JSON decoded via `json_to_steel`.
     OnCompletionAccept,
     /// Fires from the Insert-mode per-keystroke refilter path, but only when
     /// the open session's `isIncomplete` flag is set — a bounded,
-    /// user-intent-adjacent window (see B10c), not an unconditional
+    /// user-intent-adjacent window, not an unconditional
     /// per-keystroke hook. Args: `(bid filter-text)`.
     OnCompletionRefilter,
 }

@@ -1,7 +1,7 @@
-// C7 (docs/lsp/step-1.md) — document sync glue: didOpen / didChange /
+// Document sync glue: didOpen / didChange /
 // didSave / didClose. The load-bearing test is the version-sync invariant:
 // replaying the recorded protocol stream against an independent oracle
-// (hume_lsp's P6 string-mirror, reused via the `test-util` feature) must
+// (hume_lsp's string-mirror, reused via the `test-util` feature) must
 // reproduce the buffer's real final text and text_gen exactly.
 
 use std::path::Path;

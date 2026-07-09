@@ -1,4 +1,4 @@
-// B8 (docs/lsp/step-2.md) — completion orchestration: completion-begin!,
+// Completion orchestration: completion-begin!,
 // completion-update-filter!, completion-top, completion-accept!,
 // completion-dismiss!.
 
@@ -181,11 +181,11 @@ fn a_buffer_edit_that_bypasses_update_filter_invalidates_the_session() {
     type_cmd(&mut ed, ":begin");
 
     // An edit that never goes through completion-update-filter! — a
-    // Normal-mode edit (select-line, delete), not Insert-mode typing: U7
-    // wires Insert-mode typing to call `completion-update-filter!`
+    // Normal-mode edit (select-line, delete), not Insert-mode typing:
+    // Insert-mode typing is wired to call `completion-update-filter!`
     // automatically whenever a session is open, so raw typing is no longer
     // a valid example of a bypassing edit. Normal mode never touches
-    // either of U7's Insert-mode hooks.
+    // either of the Insert-mode hooks.
     ed.handle_key(key('x'));
     ed.handle_key(key('d'));
 
@@ -203,7 +203,7 @@ fn a_buffer_edit_that_bypasses_update_filter_invalidates_the_session() {
     );
 }
 
-// ── B10c: on-completion-accept / on-completion-refilter ────────────────────
+// ── on-completion-accept / on-completion-refilter ────────────────────
 
 #[test]
 fn accept_fires_on_completion_accept_with_the_raw_item_after_the_edit() {
@@ -307,7 +307,7 @@ fn refilter_does_not_fire_when_the_session_is_complete() {
     );
 }
 
-/// Guardrail regression test (P8): a 1k-item scripted session (begin ->
+/// Guardrail regression test: a 1k-item scripted session (begin ->
 /// filter -> top -> accept) under a loose release-mode bound. `#[ignore]`
 /// by default — run explicitly with `cargo test --release -- --ignored`.
 #[test]

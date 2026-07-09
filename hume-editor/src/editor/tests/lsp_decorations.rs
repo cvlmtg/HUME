@@ -1,4 +1,4 @@
-// B5 (docs/lsp/step-2.md) — decoration stores (set-inlay-hints!,
+// Decoration stores (set-inlay-hints!,
 // set-signs!, set-virtual-lines!, set-extra-highlights!) and the
 // diagnostics pull (diagnostics-for-buffer, diagnostic-counts).
 
@@ -21,7 +21,7 @@ fn eval_with_real_host(ed: &mut Editor, host: &mut ScriptingHost, source: &str, 
 }
 
 /// Attaches the focused buffer to a `Running` scripted server (UTF-16
-/// encoding, the P4 negotiated default) — inlay hints need a resolvable
+/// encoding, the negotiated default) — inlay hints need a resolvable
 /// server to convert their wire positions.
 fn attach_running_server(ed: &mut Editor) -> ServerId {
     let mut backend = InlineLspBackend::new();

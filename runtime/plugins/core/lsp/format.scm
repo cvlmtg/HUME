@@ -1,4 +1,4 @@
-;;; core:lsp/format.scm — F8: textDocument/formatting / rangeFormatting.
+;;; core:lsp/format.scm — textDocument/formatting / rangeFormatting.
 ;;;
 ;;; Format-on-save is NOT wired by default — v1 is manual `:fmt` only. To
 ;;; opt in, uncomment:

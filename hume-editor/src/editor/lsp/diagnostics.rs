@@ -1,7 +1,7 @@
 //! Diagnostics store: `publishDiagnostics` lands here, converted to char
 //! offsets at ingest, coalesced per drain batch, remapped through every
-//! subsequent edit. Bulk never reaches Steel (hub guardrail) — Steel gets
-//! a signal + bounded pulls (B5).
+//! subsequent edit. Bulk never reaches Steel — Steel gets
+//! a signal + bounded pulls.
 
 use std::collections::HashMap;
 use std::ops::Range;
@@ -69,7 +69,7 @@ pub(crate) struct StoredDiag {
     pub(crate) message: String,
     pub(crate) code: Option<String>,
     pub(crate) source: Option<String>,
-    /// The original wire-shaped `Diagnostic` (F9: `textDocument/codeAction`
+    /// The original wire-shaped `Diagnostic` (`textDocument/codeAction`
     /// needs to echo this back verbatim as `context.diagnostics` — the
     /// server's quickfixes are gated on the client showing the diagnostic
     /// it's fixing, and rebuilding this from `start`/`end`'s char offsets
@@ -82,7 +82,7 @@ pub(crate) struct StoredDiag {
 pub(crate) struct DiagnosticsStore {
     by_buffer: HashMap<BufferId, Vec<(ServerId, Vec<StoredDiag>)>>,
     /// Bumped on every ingest or remap — cheap "did anything change" signal
-    /// for Steel-side consumers (B7's `on-diagnostics-changed`).
+    /// for Steel-side consumers (`on-diagnostics-changed`).
     pub(crate) generation: u64,
 }
 
@@ -102,7 +102,7 @@ impl DiagnosticsStore {
 
     /// Remaps every stored range for `bid` through `cs` — must be called
     /// for every `ChangeSet` applied to an attached buffer, including
-    /// undo/redo (same chokepoint as C7's `flush_lsp_pending_changes`,
+    /// undo/redo (same chokepoint as `flush_lsp_pending_changes`,
     /// consuming the same `Buffer.lsp_pending` entries — same source, both
     /// consumers). A range collapsed to empty by a covering deletion is
     /// dropped, not kept as a zero-width entry.
@@ -171,7 +171,7 @@ impl DiagnosticsStore {
         self.by_buffer.remove(&bid);
     }
 
-    /// Production callers: C10's `:lsp-status` and B5's `(diagnostic-counts …)`.
+    /// Production callers: `:lsp-status` and the `(diagnostic-counts …)` builtin.
     pub(crate) fn counts(&self, bid: BufferId) -> (usize, usize) {
         let Some(entry) = self.by_buffer.get(&bid) else {
             return (0, 0);
@@ -190,8 +190,8 @@ impl DiagnosticsStore {
         (errors, warnings)
     }
 
-    /// Production caller: B5's `(diagnostics-for-buffer …)`. Step 3's
-    /// underline/sign providers (U1/U2) will read from here too.
+    /// Production caller: the `(diagnostics-for-buffer …)` builtin. The
+    /// underline/sign providers also read from here.
     pub(crate) fn for_range(
         &self,
         bid: BufferId,
@@ -240,7 +240,7 @@ impl Editor {
     /// this drain batch). Drops silently (one Trace line) when the URI
     /// doesn't resolve to an open buffer — v1 never opens a buffer just to
     /// hold diagnostics. Returns the buffer actually ingested into, so the
-    /// caller can fire `OnDiagnosticsChanged` (B7) once per touched buffer
+    /// caller can fire `OnDiagnosticsChanged` once per touched buffer
     /// — `None` on any drop path.
     pub(in crate::editor) fn ingest_publish_diagnostics(
         &mut self,

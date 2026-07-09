@@ -1,10 +1,10 @@
-;;; core:lsp/goto.scm — F2: goto definition family; F6: references (reuses
+;;; core:lsp/goto.scm — goto definition family; references (reuses
 ;;; the same worker with context.includeDeclaration added).
 
 (require "lib.scm")
 
 ;; ── Response handling ────────────────────────────────────────────────────────
-;; Shared by all four goto-family methods (and F6's references, always-drawer
+;; Shared by all four goto-family methods (and references, always-drawer
 ;; variant below): null/empty -> "no results"; a single Location hashmap ->
 ;; jump directly; a Location[]/LocationLink[] array -> jump if it has exactly
 ;; one entry, else list them in the drawer.
@@ -39,7 +39,7 @@
 (define-command! "lsp-goto-implementation" "Go to the implementation of the symbol under the cursor."
   (lambda () (lsp/goto-request "textDocument/implementation" "implementationProvider")))
 
-;; ── F6: references ───────────────────────────────────────────────────────────
+;; ── References ───────────────────────────────────────────────────────────
 ;; Always the drawer, even for one result — "where is this used" expects a
 ;; list, unlike goto's "take me there" (spec also never returns a bare
 ;; Location for references, only Location[] | null, so there's no single-

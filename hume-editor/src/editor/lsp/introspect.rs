@@ -1,6 +1,6 @@
-//! B3's introspection surface: capabilities, server status, generation, and
+//! The introspection surface: capabilities, server status, generation, and
 //! ready-made wire-position params. All read-only — no queueing, unlike
-//! B2's request/notify (which must defer to the eval-result drain boundary
+//! request/notify (which must defer to the eval-result drain boundary
 //! because they mutate the transport). These run through `EditorHostImpl`
 //! directly since a Steel caller needs the value back inline.
 
@@ -18,8 +18,8 @@ use crate::editor::pane_state::PaneBufferState;
 /// A bare language name is ambiguous when multiple workspace roots for that
 /// language are running at once (the store is keyed by (language, root), not
 /// language alone): this prefers the focused buffer's own server if it
-/// matches, and otherwise errors rather than guessing. Shared by B2's
-/// `lsp-request`/`lsp-notify` (via `Editor::resolve_lsp_server`) and B3's
+/// matches, and otherwise errors rather than guessing. Shared by
+/// `lsp-request`/`lsp-notify` (via `Editor::resolve_lsp_server`) and
 /// `lsp-capabilities`.
 pub(super) fn resolve_server(
     state: &EditorState,
@@ -141,7 +141,7 @@ pub(crate) fn position_params(state: &EditorState, lsp: &LspState, id: BufferId)
 }
 
 /// The negotiated encoding of `id`'s attached server, or UTF-16 (the spec
-/// default) if `id` has no attached server — used by B5's `set-inlay-hints!`
+/// default) if `id` has no attached server — used by `set-inlay-hints!`
 /// to convert its wire positions to char offsets at set time.
 pub(crate) fn encoding_for_buffer(
     state: &EditorState,
@@ -158,9 +158,9 @@ pub(crate) fn encoding_for_buffer(
 }
 
 /// `(diagnostics-for-buffer bid #:severity floor #:range (start end))` —
-/// decoded, filtered, capped-at-1000 (hub OQ default) hashmaps. `start`/`end`
+/// decoded, filtered, capped-at-1000 hashmaps. `start`/`end`
 /// are char offsets; `line`/`col` are the char-indexed start position,
-/// ready for `goto-location!` shape 2 (F4).
+/// ready for `goto-location!` shape 2.
 pub(crate) fn diagnostics_for_buffer(
     state: &EditorState,
     lsp: &LspState,

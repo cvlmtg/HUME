@@ -1,5 +1,5 @@
-// F1 (docs/lsp/step-4.md) — hover: `lsp-hover` composing B2 (lsp-request),
-// B3 (lsp-capabilities), U4 (show-popup!), U6 (show-drawer-list!). Loads the
+// Hover: `lsp-hover` composing `lsp-request`, `lsp-capabilities`,
+// `show-popup!`, `show-drawer-list!`. Loads the
 // real shipped `core:lsp` plugin in place (`RealRuntimeGuard` points
 // HUME_RUNTIME at the actual on-disk runtime/ dir) so tests exercise the
 // actual code, not a hand-rolled stand-in.
@@ -31,7 +31,7 @@ fn eval_with_real_host(ed: &mut Editor, host: &mut ScriptingHost, source: &str, 
 /// whose handshake has fully completed (so `lsp-capabilities` decodes real
 /// data — a shortcut `client.state = Running` skips that, per
 /// `lsp_introspect.rs`), then loads the real shipped `core:lsp` plugin.
-/// `lsp-position-params` requires `buf.path()` to be `Some`, so every F1
+/// `lsp-position-params` requires `buf.path()` to be `Some`, so every hover
 /// test needs a real file — a bare `editor_from` buffer won't do.
 ///
 /// `configure` scripts any responses beyond `initialize` (e.g.
@@ -256,7 +256,7 @@ fn allow_stale_is_honored_despite_an_intervening_edit() {
     ed.drain_hooks();
 
     // Bump the buffer's text_gen between send and drain — without
-    // #:allow-stale this response would be dropped (B2).
+    // #:allow-stale this response would be dropped.
     ed.feed_key(key('i'));
     ed.drain_hooks();
     ed.feed_key(key('X'));

@@ -80,7 +80,7 @@ impl Editor {
     }
 
     /// `textDocument/didSave` — never includes text (`didSave.includeText`
-    /// is never advertised in the C5 handshake). Queued while `Starting`,
+    /// is never advertised in the handshake). Queued while `Starting`,
     /// same as every other send site here.
     pub(in crate::editor) fn lsp_did_save(&mut self, bid: BufferId) {
         self.send_doc_notification(bid, "textDocument/didSave", |_buf, uri| {
@@ -117,7 +117,7 @@ impl Editor {
     /// Converts and sends every pending change recorded since the last
     /// flush, one `didChange` notification per entry, in order — draining
     /// `Buffer.lsp_pending`. Called from the LSP per-frame drain
-    /// (`drain_lsp`), before a future C9 remap consumes the same entries
+    /// (`drain_lsp`), before the diagnostics remap consumes the same entries
     /// for diagnostics (same source, both consumers — the entries aren't
     /// cleared until every consumer of this drain pass has run).
     pub(super) fn flush_lsp_pending_changes(&mut self) {
@@ -160,8 +160,8 @@ impl Editor {
             for change in pending {
                 // Same source as the didChange conversion below — remap
                 // stored diagnostics through the identical ChangeSet before
-                // it's consumed, so both consumers (C9, C7) see the exact
-                // same edit stream, including undo/redo. B5's char-offset
+                // it's consumed, so both consumers see the exact
+                // same edit stream, including undo/redo. The char-offset
                 // decoration stores (inlay hints, extra highlights) go
                 // through the same chokepoint for the same reason.
                 diagnostics.remap_through(bid, &change.cs);

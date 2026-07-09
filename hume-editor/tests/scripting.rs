@@ -123,7 +123,7 @@ fn get_option_reads_back_lsp_inlay_hints_as_bool() {
     )
     .unwrap();
     h.call_steel_cmd("check", None, vec![], PaneId::default(), BufferId::default(), &mut mock)
-        .expect("get-option must read back the default lsp.inlay-hints (false, B10d) as a bool");
+        .expect("get-option must read back the default lsp.inlay-hints (false) as a bool");
 }
 
 #[test]

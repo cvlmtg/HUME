@@ -1,6 +1,6 @@
 //! Cursor-anchored popup widget (`show-popup!`) — a floating text panel used
-//! by hover (F1), signature help (F7), and (as `MenuModel`, U5) the selection
-//! menu / completion menu (U7).
+//! by hover, signature help, and (as `MenuModel`) the selection
+//! menu / completion menu.
 //!
 //! Geometry rules, shared by every caller built on this widget:
 //! - Preferred placement: below-right of the anchor cell.
@@ -8,8 +8,8 @@
 //!   and the space above is larger.
 //! - Clamp horizontally so the popup never crosses the pane's right edge.
 //! - Max width: `min(60, pane_width - 4)`. Max height: ⅓ of the pane's
-//!   height (the hub's hover-surface default threshold) — content taller
-//!   than that is the *caller's* problem (F1 overflows to the U6 drawer).
+//!   height (the hover-surface default threshold) — content taller
+//!   than that is the *caller's* problem (hover overflows to the drawer).
 //! - No border/padding options in v1 — one look, theme-scoped via
 //!   `ui.popup`.
 //!
@@ -66,7 +66,7 @@ pub(crate) struct PopupState {
 
 /// Generic overlay that paints a `PopupState` snapshot. Used directly for
 /// hover-style popups (`show-popup!`) and, via a second registration with
-/// its own `Arc`, for the selection menu (U5) and completion menu (U7).
+/// its own `Arc`, for the selection menu and completion menu.
 pub(crate) struct PopupOverlay {
     pub(crate) data: Arc<RwLock<Option<PopupState>>>,
     /// Scope resolved for the background/text fill (`ui.popup` for hover
@@ -168,7 +168,7 @@ pub(crate) fn resolve_popup_geometry(
 
 /// Word-wrap `text` (newline-separated paragraphs preserved) to `max_width`
 /// display columns, breaking on grapheme-cluster boundaries. Truncates to
-/// `max_height` lines (a taller popup is the caller's problem — F1 overflows
+/// `max_height` lines (a taller popup is the caller's problem — hover overflows
 /// to the drawer).
 pub(crate) fn wrap_text(text: &str, max_width: u16, max_height: u16) -> Vec<String> {
     use unicode_segmentation::UnicodeSegmentation;

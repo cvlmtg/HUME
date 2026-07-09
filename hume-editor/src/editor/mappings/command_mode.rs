@@ -52,7 +52,7 @@ impl Editor {
                     self.state.history.get_mut(HistoryKind::Command).push(raw);
                 }
                 self.execute_command();
-                // A `:command` whose body calls `(prompt! …)` (B9) leaves a
+                // A `:command` whose body calls `(prompt! …)` leaves a
                 // new minibuffer session open — closing it here would stomp
                 // that session before the user ever sees it.
                 if self.state.steel_prompt_callback.is_none() {
@@ -94,7 +94,7 @@ impl Editor {
         }
     }
 
-    /// B9: routes a Command-mode minibuffer event for a Steel `(prompt! …)`
+    /// Routes a Command-mode minibuffer event for a Steel `(prompt! …)`
     /// session rather than a `:` command line — no history, no completion,
     /// no directory-descend special case. Exactly one `(callback
     /// text-or-#f)` call fires, on Confirm or on any of the cancel paths.
@@ -107,7 +107,7 @@ impl Editor {
             // Plain editing (char typed/deleted, cursor moved) is already
             // applied by `MiniBuffer::handle_key` — nothing further to do.
             // Tab/Up/Down are no-ops here (no completion, no history for a
-            // one-shot prompt, per the card).
+            // one-shot prompt).
             MiniBufferEvent::Edited
             | MiniBufferEvent::CursorMoved
             | MiniBufferEvent::EmptiedByBackspace

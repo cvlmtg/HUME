@@ -1,8 +1,8 @@
-//! B6's edit + navigation primitives: `apply-text-edits!`,
+//! Edit + navigation primitives: `apply-text-edits!`,
 //! `apply-workspace-edit!`, `goto-location!`, `selection-spans-full-line?`.
 //!
 //! All state/view-only (no `&mut Editor` needed) so these are callable
-//! directly from `EditorHostImpl`, the same discipline as B5's decoration
+//! directly from `EditorHostImpl`, the same discipline as the decoration
 //! setters.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};

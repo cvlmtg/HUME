@@ -61,5 +61,4 @@ One `plugin.scm` entry `require`s a file per feature area (`hover.scm`, `goto.sc
 `completion.scm`, `inlay.scm`), plus a shared `lib.scm` (capability checks, error
 reporting, the viewport tracker, location-drawer helper). Every feature is the same
 three-line shape: send an `lsp-request`, transform the response, call a UI or store
-builtin — see `docs/LSP.md` for the full architecture and `docs/lsp/step-4.md` for each
-feature's design notes.
+builtin.

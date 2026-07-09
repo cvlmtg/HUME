@@ -13,13 +13,13 @@ pub(crate) struct LspServerConfig {
     pub(crate) command: String,
     pub(crate) args: Vec<String>,
     pub(crate) root_markers: Vec<String>,
-    /// Sent verbatim in the `initialize` request once C5's handshake gains
+    /// Sent verbatim in the `initialize` request once the handshake gains
     /// an init-options parameter.
     #[allow(dead_code)]
     pub(crate) init_options: Option<serde_json::Value>,
     /// Answered verbatim to `workspace/configuration` requests and sent as
-    /// `didChangeConfiguration` after `initialized` (hub OQ default) — needs
-    /// a server-id -> language lookup in the C6 dispatch table that doesn't
+    /// `didChangeConfiguration` after `initialized` — needs
+    /// a server-id -> language lookup in the dispatch table that doesn't
     /// exist yet; wired when a feature first needs it.
     #[allow(dead_code)]
     pub(crate) settings: Option<serde_json::Value>,
@@ -41,8 +41,8 @@ pub(crate) fn resolve_root(file: &Path, markers: &[String], cwd: &Path) -> PathB
 }
 
 impl Editor {
-    /// Stores one registration, keyed by language. Rejects (loudly, per the
-    /// hub's OQ default) a second registration for a language already
+    /// Stores one registration, keyed by language. Rejects loudly a second
+    /// registration for a language already
     /// configured. `init_options`/`settings` arrive already decoded to JSON
     /// by `hume_scripting::json::steel_to_json` at the Steel boundary.
     fn apply_pending_lsp_server_reg(&mut self, reg: hume_scripting::PendingLspServerReg) {
@@ -70,7 +70,7 @@ impl Editor {
     }
 
     /// Drain `host.pending_lsp_server_regs` and apply them. Mirrors
-    /// `flush_pending_language_regs` (C8's Rust-side twin).
+    /// `flush_pending_language_regs`'s Rust-side twin.
     pub(in crate::editor) fn flush_pending_lsp_server_regs(&mut self, host: &mut hume_scripting::ScriptingHost) {
         let regs = host.take_pending_lsp_server_regs();
         for reg in regs {
@@ -254,7 +254,7 @@ impl Editor {
 
     /// `:lsp-restart [language]`. Stops each target server, then re-attaches
     /// every buffer that was on it through `lsp_attach_buffer` — the exact
-    /// C8 spawn path, not a duplicate. Returns the number of servers
+    /// registration spawn path, not a duplicate. Returns the number of servers
     /// restarted.
     pub(in crate::editor) fn lsp_restart(&mut self, language: Option<&str>) -> usize {
         let targets = self.lsp_targets(language);

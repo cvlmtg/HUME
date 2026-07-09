@@ -356,33 +356,34 @@ pub(crate) struct EditorState {
     /// here; no hook fires inline during command execution.
     pub(super) pending_hooks: Vec<(hume_scripting::hooks::HookId, Vec<steel::rvals::SteelVal>)>,
     /// Rust-side completions that must reach a *specific* Steel closure
-    /// rather than every handler for a hook id: B2's `lsp-request` callback,
-    /// B4's timer thunks, B9's prompt callback. Queued (never evaluated
+    /// rather than every handler for a hook id: an `lsp-request` callback,
+    /// a timer thunk, a prompt callback. Queued (never evaluated
     /// inline — same discipline as `pending_hooks`) by whichever completion
     /// fires, drained by `Editor::drain_pending_steel_calls`.
     pub(super) pending_steel_calls: Vec<(steel::rvals::SteelVal, Vec<steel::rvals::SteelVal>)>,
     /// Chars that fire `OnTriggerChar` in Insert mode, keyed by the
     /// registering `(register-trigger-chars! source chars)` source so one
     /// source's set doesn't get clobbered by another's — checked as a union
-    /// across all sources (B7).
+    /// across all sources.
     pub(super) trigger_chars: std::collections::HashMap<String, Vec<char>>,
-    /// B5's Steel-writable decoration stores (inlay hints, signs, virtual
-    /// lines, extra highlights) — Step 3's render providers read these.
+    /// Steel-writable decoration stores (inlay hints, signs, virtual
+    /// lines, extra highlights) — the render providers read these.
     pub(super) decorations: decorations::DecorationStores,
-    /// B9's `(prompt! …)` callback — persists for as long as `minibuf` holds
+    /// The `(prompt! …)` callback — persists for as long as `minibuf` holds
     /// the prompt session (unlike `pending_steel_calls`, which drains the
     /// same frame it's pushed to). `handle_command`'s Confirm/Cancel arms
     /// take this and push exactly one `(callback text-or-#f)` call onto
     /// `pending_steel_calls`.
     pub(super) steel_prompt_callback: Option<steel::rvals::SteelVal>,
-    /// B8's LSP completion session (distinct from `completion`, the
+    /// The LSP completion session (distinct from `completion`, the
     /// minibuffer tab-completion popup) — a singleton, starting a new one
     /// replaces the old.
     pub(super) lsp_completion: Option<lsp::completion::CompletionSession>,
-    /// Insert-mode selection state for `lsp_completion` (U7) — separate from
+    /// Insert-mode selection state for `lsp_completion` — separate from
     /// the session itself, cleared whenever the session ends.
     pub(super) lsp_completion_ui: Option<lsp::completion::LspCompletionUi>,
-    /// Shared view for U7's LSP completion menu — reuses U4/U5's generic
+    /// Shared view for the LSP completion menu — reuses the popup/selection
+    /// menu's generic
     /// `PopupState`/`PopupOverlay` (selected-row styling, same as the
     /// selection menu) via its own `Arc` and pane registration.
     pub(crate) lsp_completion_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
@@ -392,10 +393,10 @@ pub(crate) struct EditorState {
     /// etc.), resolved lazily on first use — scope interning needs `&mut
     /// ScopeRegistry`, which lives on `Editor::view`, not `EditorState`.
     pub(super) diagnostic_scopes: Option<[hume_engine::types::ScopeId; 4]>,
-    /// Interned scope id for `ui.virtual.inlay-hint` (U9), resolved lazily
+    /// Interned scope id for `ui.virtual.inlay-hint`, resolved lazily
     /// on first use for the same reason as `diagnostic_scopes`.
     pub(super) inlay_hint_scope: Option<hume_engine::types::ScopeId>,
-    /// Interned scope id for `ui.virtual` (U8b) — the fallback for a
+    /// Interned scope id for `ui.virtual` — the fallback for a
     /// virtual-line entry with no explicit scope — resolved lazily on first
     /// use for the same reason as `diagnostic_scopes`.
     pub(super) virtual_text_fallback_scope: Option<hume_engine::types::ScopeId>,
@@ -434,7 +435,7 @@ impl EditorState {
         self.mode
     }
 
-    // ── Drawer (U6) ──────────────────────────────────────────────────────────
+    // ── Drawer ──────────────────────────────────────────────────────────
 
     /// Mirror `self.drawer` into `self.drawer_view` for `DrawerWidget` to
     /// read. Called directly at every drawer mutation site (open, selection
@@ -453,7 +454,7 @@ impl EditorState {
         *self.drawer_view.write().expect("RwLock not poisoned") = resolved;
     }
 
-    // ── LSP completion menu (U7) ─────────────────────────────────────────────
+    // ── LSP completion menu ─────────────────────────────────────────────
 
     /// Ends any open completion session and clears its menu view — shared
     /// by `set_mode` (any exit from Insert) and `mappings/insert.rs`'s key
@@ -490,7 +491,7 @@ impl EditorState {
         if old == new {
             return;
         }
-        // U7: any exit from Insert dismisses an open completion session —
+        // Any exit from Insert dismisses an open completion session —
         // `handle_completion_key`'s own `Esc`/Enter paths never reach here
         // (they return before the trie's `exit-insert` runs), so this
         // catches every *other* way Insert ends (Ctrl+C, a mouse click, a
@@ -570,27 +571,27 @@ pub(crate) struct Editor {
     parse_worker: Box<dyn ParseBackend>,
     /// Whether the one-shot "parse worker disconnected" message has been logged.
     parse_worker_disconnect_logged: bool,
-    /// Nearest-deadline timer registry (P7); Steel-visible via B4's
+    /// Nearest-deadline timer registry; Steel-visible via the
     /// `after`/`debounce` builtins.
     timer_wheel: timers::TimerWheel,
     /// `TimerId -> {Steel thunk, or native action}`, keeping `timers.rs`
-    /// itself payload-agnostic (B4). Entry removed on fire or cancel — never
+    /// itself payload-agnostic. Entry removed on fire or cancel — never
     /// leaked.
     timer_payloads: std::collections::HashMap<timers::TimerId, timer_bridge::TimerPayload>,
     /// This pane's currently-pending `OnViewportChange` debounce timer, if
-    /// any (B7) — looked up to cancel-and-replace on the next change.
+    /// any — looked up to cancel-and-replace on the next change.
     viewport_debounce: std::collections::HashMap<hume_engine::pipeline::PaneId, timers::TimerId>,
     /// `(top_line, height)` as of the last frame, per pane — `prepare_frame`'s
     /// scroll step compares against this to detect a real viewport change
-    /// worth debouncing (B7), rather than firing every frame regardless.
+    /// worth debouncing, rather than firing every frame regardless.
     last_viewport_key: std::collections::HashMap<hume_engine::pipeline::PaneId, (usize, u16)>,
     /// `decorations.virtual_lines_generation()` as of each pane's last
-    /// mirror into its `PaneVirtualLines` Arc (U8b) — `prepare_frame`
+    /// mirror into its `PaneVirtualLines` Arc — `prepare_frame`
     /// compares against this to skip the rebuild on frames where the store
     /// didn't change, since this runs in scroll/cursor math too, not just
     /// render.
     virtual_lines_synced: std::collections::HashMap<hume_engine::pipeline::PaneId, u64>,
-    /// LSP backend + client state (C4+): threaded in production,
+    /// LSP backend + client state: threaded in production,
     /// synchronous-inline in tests, mirroring `parse_worker` above.
     lsp: lsp::LspState,
     /// `true` once [`Editor::run`] has taken ownership of the terminal (the
@@ -658,7 +659,7 @@ impl Editor {
         self.state.buffers.mru_excluding(self.focused_buffer_id())
     }
 
-    /// `(errors, warnings)` for `bid` from the C9 diagnostics store — the
+    /// `(errors, warnings)` for `bid` from the diagnostics store — the
     /// statusline's `Diagnostics` element reads this directly (never through
     /// Steel; `self.lsp` is private to `editor` and its descendants, so
     /// callers outside it, like `ui::statusline`, go through this).

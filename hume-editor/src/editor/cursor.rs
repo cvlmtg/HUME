@@ -298,8 +298,8 @@ pub(crate) fn screen_to_char_offset(
                 // A click landing in the `before`/`after` portion is on a
                 // virtual row, not buffer content — clamp to this line's
                 // first/last content sub-row. Precisely mapping such a click
-                // to its anchor line's exact position is U8b's job (needs a
-                // real `VirtualLineSource` to have anything to map from);
+                // to its anchor line's exact position needs a
+                // real `VirtualLineSource` to have anything to map from;
                 // this only needs to degrade sensibly with zero providers
                 // registered, which is always true here.
                 let target_sub = if remaining < visible_before {
@@ -468,7 +468,7 @@ mod tests {
 
     /// No `VirtualLineSource` registered — `display_rows_for_line` reduces
     /// to content-only `RowsBreakdown`s, matching every test below's
-    /// pre-U8a expectations exactly.
+    /// virtual-line-unaware expectations exactly.
     fn no_providers() -> ProviderSet {
         ProviderSet::new()
     }
@@ -730,7 +730,7 @@ mod tests {
         assert!(got.is_some());
     }
 
-    // ── U8a: virtual-line-aware row counting (synthetic provider) ────────────
+    // ── Virtual-line-aware row counting (synthetic provider) ────────────
 
     /// A `VirtualLineSource` double that emits exactly one `Before(line)`
     /// virtual row when queried for `line`, and nothing for any other line.
@@ -766,8 +766,8 @@ mod tests {
     ///
     /// Uses a *wrapping* mode deliberately: virtual-row awareness is scoped
     /// to the wrapping code path only (`WrapMode::None` stays plain
-    /// line-count arithmetic, unaware of virtual lines — see the U8 card's
-    /// scope split between the wrapping and non-wrapping paths).
+    /// line-count arithmetic, unaware of virtual lines — by design, split
+    /// between the wrapping and non-wrapping paths).
     #[test]
     fn screen_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
         let rope = Rope::from_str("a\nb\nc\n");
@@ -816,7 +816,7 @@ mod tests {
     ///
     /// Also covers a click that lands *on* the virtual row itself (screen
     /// row 1): clamped to line 1's own first content sub-row (precise
-    /// anchor-line mapping is U8b's job). Uses a wrapping mode deliberately
+    /// anchor-line mapping isn't implemented yet). Uses a wrapping mode deliberately
     /// — see `screen_pos_accounts_for_a_virtual_before_line_on_the_cursors_line`.
     #[test]
     fn screen_to_char_offset_accounts_for_a_stolen_virtual_row() {

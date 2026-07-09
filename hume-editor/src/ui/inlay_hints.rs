@@ -1,5 +1,5 @@
-//! Inlay-hint rendering (U9) — a per-pane `InlineDecoration` fed from the
-//! B5 `inlay_hints` store, keyed by line so `decorations_for_line` is a
+//! Inlay-hint rendering — a per-pane `InlineDecoration` fed from the
+//! `inlay_hints` decoration store, keyed by line so `decorations_for_line` is a
 //! plain map lookup.
 
 use std::collections::HashMap;

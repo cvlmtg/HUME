@@ -686,8 +686,8 @@ impl ScriptingHost {
     ///
     /// Unlike [`fire_hook`](Self::fire_hook), which looks up every handler
     /// registered for a hook id, this delivers to a *specific* Steel closure
-    /// captured earlier by Rust — the shared mechanism behind B2's
-    /// `lsp-request` callback, B4's timer thunks, and B9's prompt callback.
+    /// captured earlier by Rust — the shared mechanism behind the
+    /// `lsp-request` callback, timer thunks, and the prompt callback.
     /// Same discipline: never called from inside a completion-detection
     /// borrow (LSP drain, timer drain, minibuffer key handling) — the caller
     /// queues `(proc, args)` and this runs at the drain boundary. The first

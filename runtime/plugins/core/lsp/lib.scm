@@ -24,7 +24,7 @@
                            (let ((name (lsp-server-for-buffer (current-buffer))))
                              (if name name "server"))))))
 
-;;; One `'error` log line for a B2 callback error — `err` is either a
+;;; One `'error` log line for a callback error — `err` is either a
 ;;; {"code" "message"} hashmap (protocol error) or a bare string
 ;;; ("timeout"/"server-crashed").
 (define (lsp/report-error what err)
@@ -34,8 +34,8 @@
 
 ;;; A `TextEdit` hashmap `{range: {start, end}, newText}` -> the
 ;;; `((start-line start-col) (end-line end-col) text)` tuple shape
-;;; `apply-text-edits!` expects. Shared by F3 (additionalTextEdits) and
-;;; F8 (formatting).
+;;; `apply-text-edits!` expects. Shared by completion (additionalTextEdits)
+;;; and formatting.
 (define (lsp/text-edit->tuple te)
   (let* ((range (hash-ref te "range"))
          (start (hash-ref range "start"))
@@ -45,7 +45,7 @@
           (hash-ref te "newText"))))
 
 ;; ── Viewport tracker ────────────────────────────────────────────────────────
-;; No pane-geometry builtin exists — on-viewport-change (B7) is the only
+;; No pane-geometry builtin exists — on-viewport-change is the only
 ;; Steel-visible viewport source. Buffer-id SteelVals are NOT `equal?` across
 ;; separate wrappings of the same underlying id (Arc-pointer equality), so
 ;; per-buffer state is an assoc-list searched with `buffer-id=?`, never a
@@ -77,7 +77,7 @@
 
 ;; ── Location display + drawer ───────────────────────────────────────────────
 ;; A `Location` is `{uri, range}`; a `LocationLink` is `{targetUri,
-;; targetSelectionRange | targetRange, …}` — `goto-location!` (B6) accepts
+;; targetSelectionRange | targetRange, …}` — `goto-location!` accepts
 ;; either raw hashmap directly and does its own dual-shape extraction; these
 ;; mirror that extraction only for the human-readable display string.
 
@@ -110,7 +110,7 @@
 
 ;;; `locs`: a list of raw Location/LocationLink hashmaps (mixed shapes OK —
 ;;; each row's own on-select jump uses the original hashmap, not a
-;;; re-derived one). Drawer rows are pre-formatted display strings (U6);
+;;; re-derived one). Drawer rows are pre-formatted display strings;
 ;;; `goto-location!` handles the shape dispatch, so this never touches wire
 ;;; positions itself.
 (define (lsp/show-locations! locs)

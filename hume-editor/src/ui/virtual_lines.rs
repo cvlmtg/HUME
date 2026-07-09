@@ -1,9 +1,9 @@
-//! Virtual-line rendering (U8b) — a per-pane `VirtualLineSource` fed from
-//! the B5 `virtual_lines` store, keyed by anchor line so `virtual_lines`
+//! Virtual-line rendering — a per-pane `VirtualLineSource` fed from
+//! the `virtual_lines` decoration store, keyed by anchor line so `virtual_lines`
 //! (the trait method) is a plain map lookup per queried line.
 //!
 //! Unlike the popup/menu widgets, this provider is consulted by *scroll and
-//! cursor math* (U8a's `display_rows_for_line`), not just rendering — so the
+//! cursor math* (`display_rows_for_line`), not just rendering — so the
 //! per-line lookup must stay cheap (a `HashMap` get + `Vec` clone-out, no
 //! per-frame allocation-heavy work).
 

@@ -218,7 +218,7 @@ const BOOTSTRAP: &str = r#"
 
 ; apply-text-edits! — one undoable transaction. edits: list of ((start-line
 ; start-col) (end-line end-col) text), wire positions. #:expect-generation:
-; the text_gen the edits were computed against (B2's staleness tag) — #f
+; the text_gen the edits were computed against (the staleness tag) — #f
 ; skips the check.
 (define (apply-text-edits! bid edits #:expect-generation [gen #f])
   (%apply-text-edits! bid edits gen))
@@ -230,7 +230,7 @@ const BOOTSTRAP: &str = r#"
     (log! 'info (to-string n " buffers modified — :wa writes all"))
     n))
 
-; prompt! — one-shot minibuffer prompt (B9). on-confirm fires exactly once:
+; prompt! — one-shot minibuffer prompt. on-confirm fires exactly once:
 ; the confirmed text, or #f on Esc/cancel. No history, no completion — a
 ; second prompt! while one is already open errors rather than stacking.
 (define (prompt! label on-confirm #:prefill [prefill ""])
@@ -242,7 +242,7 @@ const BOOTSTRAP: &str = r#"
 (define (completion-begin! bid items #:incomplete [incomplete #f])
   (%completion-begin! bid items incomplete))
 
-; show-popup! — cursor-anchored floating text panel (U4). #:anchor is
+; show-popup! — cursor-anchored floating text panel. #:anchor is
 ; reserved for future anchor kinds; 'cursor is the only value v1 accepts.
 ; close-popup! needs no wrapper — no keyword defaults to supply.
 (define (show-popup! text #:anchor [anchor 'cursor])
@@ -410,7 +410,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_fn_with_ctx(HUME_CTX, "%lsp-request", lsp::lsp_request);
     steel.register_fn_with_ctx(HUME_CTX, "lsp-notify", lsp::lsp_notify);
     steel.register_fn_with_ctx(HUME_CTX, "on-lsp-notification", lsp::on_lsp_notification);
-    // B3 — introspection
+    // Introspection
     steel.register_fn_with_ctx(HUME_CTX, "lsp-capabilities", lsp::lsp_capabilities);
     steel.register_fn_with_ctx(HUME_CTX, "lsp-server-status", lsp::lsp_server_status);
     steel.register_fn_with_ctx(
@@ -427,7 +427,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         lsp::register_trigger_chars,
     );
 
-    // B5 — decoration stores + diagnostics pull.
+    // Decoration stores + diagnostics pull.
     steel.register_fn_with_ctx(HUME_CTX, "set-inlay-hints!", lsp::set_inlay_hints);
     steel.register_fn_with_ctx(HUME_CTX, "set-signs!", lsp::set_signs);
     steel.register_fn_with_ctx(HUME_CTX, "set-virtual-lines!", lsp::set_virtual_lines);
@@ -439,7 +439,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
     );
     steel.register_fn_with_ctx(HUME_CTX, "diagnostic-counts", lsp::diagnostic_counts);
 
-    // B6 — edit + navigation primitives.
+    // Edit + navigation primitives.
     steel.register_fn_with_ctx(HUME_CTX, "%apply-text-edits!", lsp::apply_text_edits);
     steel.register_fn_with_ctx(
         HUME_CTX,
@@ -453,11 +453,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
         lsp::selection_spans_full_line,
     );
 
-    // B9 — minibuffer prompt.
+    // Minibuffer prompt.
     steel.register_fn_with_ctx(HUME_CTX, "%prompt!", lsp::prompt);
     steel.register_fn_with_ctx(HUME_CTX, "symbol-under-cursor", lsp::symbol_under_cursor);
 
-    // B8 — completion orchestration.
+    // Completion orchestration.
     steel.register_fn_with_ctx(HUME_CTX, "%completion-begin!", lsp::completion_begin);
     steel.register_fn_with_ctx(
         HUME_CTX,
@@ -468,19 +468,19 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_fn_with_ctx(HUME_CTX, "completion-accept!", lsp::completion_accept);
     steel.register_fn_with_ctx(HUME_CTX, "completion-dismiss!", lsp::completion_dismiss);
 
-    // U4 — cursor-anchored popup widget.
+    // Cursor-anchored popup widget.
     steel.register_fn_with_ctx(HUME_CTX, "%show-popup!", ui::show_popup);
     steel.register_fn_with_ctx(HUME_CTX, "close-popup!", ui::close_popup);
 
-    // U5 — selection menu widget.
+    // Selection menu widget.
     steel.register_fn_with_ctx(HUME_CTX, "show-menu!", ui::show_menu);
     steel.register_fn_with_ctx(HUME_CTX, "close-menu!", ui::close_menu);
 
-    // U6 — Class B bottom drawer.
+    // Class B bottom drawer.
     steel.register_fn_with_ctx(HUME_CTX, "show-drawer-list!", ui::show_drawer_list);
     steel.register_fn_with_ctx(HUME_CTX, "close-drawer!", ui::close_drawer);
 
-    // Timers — not LSP-specific, but B4 was scoped as part of the LSP step.
+    // Timers — not LSP-specific, but added as part of the LSP work.
     steel.register_fn_with_ctx(HUME_CTX, "after", timers::after);
     steel.register_fn_with_ctx(HUME_CTX, "cancel-timer!", timers::cancel_timer);
     steel.register_fn_with_ctx(

@@ -1,11 +1,11 @@
-// U8b (docs/lsp/step-3.md) — inline diagnostics VirtualLineSource: the
+// Inline diagnostics VirtualLineSource: the
 // `update_virtual_line_providers` write side that feeds the new
-// `PaneVirtualLines` (`VirtualLineSource`) from B5's `decorations.virtual_lines`
-// store, over U8a's virtual-row-aware scroll/cursor plumbing.
+// `PaneVirtualLines` (`VirtualLineSource`) from the `decorations.virtual_lines`
+// store, over the virtual-row-aware scroll/cursor plumbing.
 //
 // Every test here goes through `Editor::open(None)` (not `editor_from`'s
 // bare `Pane::new`) — `PaneVirtualLines` is only registered by `build_pane`,
-// same reasoning as U1's `lsp_render.rs`.
+// same reasoning as `lsp_render.rs`.
 
 use std::path::Path;
 
@@ -68,7 +68,7 @@ fn scroll_over_a_virtual_line_pushes_the_next_line_down_correctly() {
     // internals aren't reachable from this integration-style test module):
     // with a virtual line inserted after line 0, moving the cursor onto
     // line 1 ('bbb') must still show "bbb" directly below the virtual
-    // line's own row — the row-counting fix (U8a) must correctly push line
+    // line's own row — the row-counting fix must correctly push line
     // 1's content down by the one stolen row, never overlap or skip it.
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = Editor::open(None).unwrap();

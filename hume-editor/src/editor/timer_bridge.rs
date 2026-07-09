@@ -1,4 +1,4 @@
-//! B4's Steel timer surface: `(after ms thunk)` / `(cancel-timer! id)`, and
+//! The Steel timer surface: `(after ms thunk)` / `(cancel-timer! id)`, and
 //! the per-frame fire step that turns a due `TimerId` into either a queued
 //! Steel call or a native action. `timers.rs`'s `TimerWheel` stays
 //! payload-agnostic; the `TimerId -> TimerPayload` side table lives here
@@ -13,8 +13,8 @@ use steel::rvals::SteelVal;
 use super::Editor;
 use super::timers::TimerId;
 
-/// What firing a `TimerId` actually does — a Steel closure (B4's `after`) or
-/// a native Rust action (B7's viewport-change debounce, which has no Steel
+/// What firing a `TimerId` actually does — a Steel closure (the `after`
+/// builtin) or a native Rust action (the viewport-change debounce, which has no Steel
 /// closure to call: the fire site always reads the *current* visible range,
 /// not whatever it was when the timer was scheduled).
 pub(super) enum TimerPayload {
@@ -23,7 +23,7 @@ pub(super) enum TimerPayload {
 }
 
 /// Disjoint-borrow handle over `Editor`'s timer wheel + payload table,
-/// passed into `EditorHostImpl` the same way B3 passes `&LspState` — `Some`
+/// passed into `EditorHostImpl` the same way `&LspState` is passed — `Some`
 /// only at the eval call sites that can reach a Steel builtin. Fields are
 /// `pub(super)` (not a constructor) so callers build it from `&mut
 /// self.timer_wheel` / `&mut self.timer_payloads` directly — going through a
@@ -54,7 +54,7 @@ impl<'a> TimerHandle<'a> {
 impl Editor {
     /// Fires every due timer — a Steel thunk is queued (never evaluated
     /// inline; this runs from `drain_async_sources`, the per-frame
-    /// chokepoint, same discipline as B2's LSP callbacks), a viewport
+    /// chokepoint, same discipline as the LSP callbacks), a viewport
     /// debounce fires `OnViewportChange` directly with the pane's *current*
     /// bounds. An id with no matching payload (already cancelled) is
     /// silently skipped.
@@ -76,7 +76,7 @@ impl Editor {
     /// whichever timer from a previous call is still pending — a scroll
     /// burst collapses to one fire, `lsp.viewport-debounce-ms` after the
     /// burst settles. Called from `prepare_frame`'s scroll step whenever a
-    /// pane's visible range actually changed since the last frame (B7) —
+    /// pane's visible range actually changed since the last frame —
     /// never from the render math itself, just this cheap follow-up.
     pub(super) fn debounce_viewport_change(&mut self, pane_id: PaneId) {
         if let Some(old_id) = self.viewport_debounce.remove(&pane_id) {

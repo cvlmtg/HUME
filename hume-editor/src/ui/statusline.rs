@@ -94,7 +94,7 @@ pub enum StatusElement {
     /// Read-only indicator: `"[RO]"` when the buffer is read-only, empty otherwise.
     ReadOnly,
     /// Diagnostic counts for the focused buffer: `"✗ 3 ⚠ 12"`, empty when
-    /// both counts are zero. Reads the C9 diagnostics store directly in
+    /// both counts are zero. Reads the diagnostics store directly in
     /// Rust — the statusline renders every frame, so this never goes
     /// through Steel's `(diagnostic-counts …)` builtin (that one is for
     /// plugins, not the render path).

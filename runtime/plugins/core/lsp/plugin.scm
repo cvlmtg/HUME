@@ -1,8 +1,8 @@
 ;;; core:lsp — LSP features (hover, goto, completions, diagnostics, rename,
 ;;; formatting, code actions, signature help, inlay hints) composed from the
-;;; generic bridge and platform primitives (docs/LSP.md hub, Step 2/3).
+;;; generic bridge and platform primitives.
 ;;;
-;;; Depends on core:stdlib (F4's diagnostic navigation calls
+;;; Depends on core:stdlib (diagnostic navigation calls
 ;;; stdlib/cursor-char-index) — load it first.
 
 (require "lib.scm")
@@ -16,7 +16,7 @@
 (require "completion.scm")
 (require "inlay.scm")
 
-;; Default keybindings — goto trie (`g …`), free at F11's audit against
+;; Default keybindings — goto trie (`g …`), free against
 ;; keymap/defaults.rs (only g/e/h/l/s taken). No collisions to document.
 ;; `fmt`, `diagnostics`, and `completion-trigger` (already bound to
 ;; Ctrl+Space, see keymap/defaults.rs) stay typed-command/pre-bound only.

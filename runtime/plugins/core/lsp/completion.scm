@@ -1,7 +1,7 @@
-;;; core:lsp/completion.scm — F3: textDocument/completion.
+;;; core:lsp/completion.scm — textDocument/completion.
 ;;;
-;;; Stale responses are auto-cancelled/dropped by C6 — never pass
-;;; #:allow-stale here (unlike F1's hover).
+;;; Stale responses are auto-cancelled/dropped — never pass
+;;; #:allow-stale here (unlike hover).
 
 (require "lib.scm")
 
@@ -11,8 +11,7 @@
 ;; insertTextFormat == 2 (Snippet) items get rewritten to plain text before
 ;; completion-begin!. Only `${n:default}` -> "default" and bare `$n` -> ""
 ;; are handled — no choices (`${n|a,b|}`), no nested placeholders, no `\$`
-;; escapes. Confirmed acceptable at the manual rust-analyzer smoke (hub's
-;; snippet-OQ decision).
+;; escapes. Confirmed acceptable at the manual rust-analyzer smoke.
 
 (define (lsp/digit? one-char-string)
   (member one-char-string '("0" "1" "2" "3" "4" "5" "6" "7" "8" "9")))
@@ -99,7 +98,7 @@
       (lambda () (lsp/request-and-begin-completions (current-buffer))))))
 
 ;;; The char set this feature reacts to — `on-trigger-char` fires for
-;;; *every* registered source's chars (union semantics, B10a).
+;;; *every* registered source's chars (union semantics).
 (define *completion-chars* '())
 
 (register-hook! 'on-lsp-attach

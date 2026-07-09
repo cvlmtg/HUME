@@ -27,12 +27,12 @@ use super::EditorState;
 pub(crate) struct EditorHostImpl<'a> {
     pub(crate) state: &'a mut EditorState,
     pub(crate) view: &'a mut EngineView,
-    /// `Some` only at the three call sites that can reach a B3 introspection
+    /// `Some` only at the three call sites that can reach an introspection
     /// builtin (command dispatch, hook fire, queued-call drain) — `None`
     /// everywhere else (init evals, which `require_cmd_ctx!` already blocks
     /// LSP builtins from anyway), so those sites don't need to thread it in.
     pub(crate) lsp: Option<&'a LspState>,
-    /// Same `Some`-at-three-sites shape as `lsp`, for B4's `(after …)` /
+    /// Same `Some`-at-three-sites shape as `lsp`, for the `(after …)` /
     /// `(cancel-timer! …)` — these mutate (schedule/cancel), so `&LspState`'s
     /// shared-borrow shape doesn't fit; `TimerHandle` bundles the two
     /// `&mut` pieces this needs.
@@ -365,7 +365,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Some(self.buffer(id)?.text_gen)
     }
 
-    // ── LSP introspection (B3) ────────────────────────────────────────────────
+    // ── LSP introspection ────────────────────────────────────────────────
     fn lsp_capabilities(&self, server: Option<&str>) -> Option<serde_json::Value> {
         let lsp = self.lsp?;
         let bid = crate::editor::commands::focused_buffer_id(self.state, self.view);
@@ -390,7 +390,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         crate::editor::lsp::introspect::range_params(self.state, self.lsp?, id)
     }
 
-    // ── Timers (B4) ──────────────────────────────────────────────────────────
+    // ── Timers ──────────────────────────────────────────────────────────
     fn schedule_timer(&mut self, ms: u64, thunk: steel::rvals::SteelVal) -> Option<u64> {
         Some(
             self.timers
@@ -405,12 +405,12 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         }
     }
 
-    // ── Trigger chars (B7) ───────────────────────────────────────────────────
+    // ── Trigger chars ───────────────────────────────────────────────────
     fn register_trigger_chars(&mut self, source: String, chars: Vec<char>) {
         self.state.trigger_chars.insert(source, chars);
     }
 
-    // ── Decoration stores (B5) ───────────────────────────────────────────────
+    // ── Decoration stores ───────────────────────────────────────────────
     fn set_inlay_hints(&mut self, bid: BufferId, hints: Vec<(serde_json::Value, String, bool)>) {
         let Some(lsp) = self.lsp else {
             return;
@@ -524,7 +524,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         crate::editor::lsp::introspect::diagnostic_counts(lsp, bid)
     }
 
-    // ── Edit + navigation primitives (B6) ────────────────────────────────────
+    // ── Edit + navigation primitives ────────────────────────────────────
     fn apply_text_edits(
         &mut self,
         bid: BufferId,
@@ -614,7 +614,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         crate::editor::lsp::edits::selection_spans_full_line(self.state, bid)
     }
 
-    // ── Minibuffer prompt (B9) ────────────────────────────────────────────────
+    // ── Minibuffer prompt ────────────────────────────────────────────────
     fn prompt(
         &mut self,
         label: String,
@@ -673,7 +673,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         text.slice(start..end + 1).to_string()
     }
 
-    // ── Cursor-anchored popup (U4) ────────────────────────────────────────────
+    // ── Cursor-anchored popup ────────────────────────────────────────────
     fn show_popup(&mut self, text: String) -> Result<(), String> {
         self.state.popup = Some(crate::ui::popup::PopupModel { text });
         Ok(())
@@ -684,7 +684,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-    // ── Selection menu (U5) ────────────────────────────────────────────────────
+    // ── Selection menu ────────────────────────────────────────────────────
     fn show_menu(
         &mut self,
         items: Vec<String>,
@@ -711,7 +711,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-    // ── Bottom drawer (U6) ──────────────────────────────────────────────────────
+    // ── Bottom drawer ──────────────────────────────────────────────────────
     fn show_drawer_list(
         &mut self,
         items: Vec<String>,
@@ -733,7 +733,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-    // ── Completion orchestration (B8) ────────────────────────────────────────
+    // ── Completion orchestration ────────────────────────────────────────
     fn completion_begin(
         &mut self,
         bid: BufferId,

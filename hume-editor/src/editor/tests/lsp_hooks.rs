@@ -1,4 +1,4 @@
-// B7 (docs/lsp/step-2.md) — new hooks: on-lsp-attach, on-diagnostics-changed,
+// New hooks: on-lsp-attach, on-diagnostics-changed,
 // on-viewport-change (debounced), on-trigger-char + register-trigger-chars!.
 
 use std::path::{Path, PathBuf};
@@ -73,7 +73,7 @@ fn on_lsp_attach_fires_for_buffers_attached_before_the_handshake_completes() {
     );
 }
 
-/// B1's `on-lsp-detach` — the counterpart to `on-lsp-attach`, giving a
+/// `on-lsp-detach` — the counterpart to `on-lsp-attach`, giving a
 /// plugin its only signal to clear buffer-scoped state derived from a
 /// server that `:lsp-stop`/`:lsp-restart` just tore down.
 #[test]
@@ -113,8 +113,8 @@ fn on_lsp_detach_fires_with_the_language_when_a_server_is_stopped() {
 
 #[test]
 fn register_trigger_chars_from_inside_a_hook_handler_takes_effect() {
-    // B10a: register-trigger-chars! must work from command context (not just
-    // init/plugin-load) — F3/F7 register a server's trigger characters from
+    // register-trigger-chars! must work from command context (not just
+    // init/plugin-load) — hover/signature-help register a server's trigger characters from
     // inside their on-lsp-attach handler, which runs as plain command
     // context. Oracle mirrors `on_trigger_char_fires_only_for_registered_
     // chars_in_insert_mode_after_insertion`: compare against a parallel

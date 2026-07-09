@@ -1,5 +1,5 @@
 //! Deterministic scripted double for [`LspBackend`]: no process, no threads.
-//! The workhorse for every editor/Steel test from C5 onward — the LSP analog
+//! The workhorse for every editor/Steel test — the LSP analog
 //! of `hume-treesitter`'s `InlineParseBackend`.
 
 use std::collections::{HashMap, VecDeque};

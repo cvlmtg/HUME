@@ -1,8 +1,8 @@
-;;; core:lsp/sighelp.scm — F7: textDocument/signatureHelp.
+;;; core:lsp/sighelp.scm — textDocument/signatureHelp.
 ;;;
 ;;; Dismiss on mode change (leaving Insert, entering Command, …) is already
 ;;; handled by hover.scm's `on-mode-change` handler — `show-popup!`/
-;;; `close-popup!` is one shared widget (U4), so that single registration
+;;; `close-popup!` is one shared widget, so that single registration
 ;;; covers every feature using it, including this one. No separate
 ;;; registration here.
 
@@ -53,7 +53,7 @@
             (else (lsp/show-sighelp res))))))))
 
 ;;; The char set this feature reacts to — `on-trigger-char` fires for
-;;; *every* registered source's chars (union semantics, B10a), so the
+;;; *every* registered source's chars (union semantics), so the
 ;;; handler must filter to its own set rather than reacting to any char.
 (define *sighelp-chars* '())
 

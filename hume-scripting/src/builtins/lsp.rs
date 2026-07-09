@@ -237,7 +237,7 @@ fn bid_arg(val: &SteelVal, ctx_name: &str) -> Result<hume_engine::pipeline::Buff
 
 /// `(register-trigger-chars! source chars)` — `chars` is a list of 1-char
 /// strings. Callable from any context, including command bodies and hook
-/// handlers — F3/F7 register a server's trigger characters from inside an
+/// handlers — completion/signature-help register a server's trigger characters from inside an
 /// `on-lsp-attach` handler, which runs as plain command context (no
 /// `is_init`/`plugin_stack` gate applies here, unlike `register-hook!` /
 /// `on-lsp-notification`).
@@ -266,7 +266,7 @@ fn chars_arg(val: SteelVal, ctx_name: &str) -> Result<Vec<char>, SteelErr> {
         .collect()
 }
 
-// ── B5: decoration stores + diagnostics pull ───────────────────────────────
+// ── Decoration stores + diagnostics pull ───────────────────────────────
 
 fn list_items(val: SteelVal, ctx_name: &str) -> Result<Vec<SteelVal>, SteelErr> {
     match val {
@@ -496,7 +496,7 @@ pub(crate) fn diagnostic_counts(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResul
     steel::primitives::lists::cons(&mut errors_val, &mut warnings_val)
 }
 
-// ── B6: edit + navigation primitives ───────────────────────────────────────
+// ── Edit + navigation primitives ───────────────────────────────────────
 
 /// `(line col)` — a 2-element list, not a `(line . col)` dotted pair; see
 /// `set-inlay-hints!`'s analogous choice (steel-core 0.8.2's `Pair`/`car`/
@@ -551,7 +551,7 @@ pub(crate) fn apply_text_edits(
 }
 
 /// `(%apply-workspace-edit! wsedit)` — `wsedit`: the decoded `WorkspaceEdit`
-/// hashmap (B1 JSON↔SteelVal shape). Returns the number of buffers modified;
+/// hashmap (JSON↔SteelVal shape). Returns the number of buffers modified;
 /// the `apply-workspace-edit!` Scheme wrapper reports that count.
 pub(crate) fn apply_workspace_edit(ctx: &mut SteelCtx, wsedit: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "apply-workspace-edit!");
@@ -561,7 +561,7 @@ pub(crate) fn apply_workspace_edit(ctx: &mut SteelCtx, wsedit: SteelVal) -> Stee
 }
 
 /// `(goto-location! loc)` — `loc` is one of two shapes, dispatched here (not
-/// in Scheme, per the card): a raw `Location`/`LocationLink` hashmap (wire
+/// in Scheme): a raw `Location`/`LocationLink` hashmap (wire
 /// position, converted using the focused buffer's server encoding — correct
 /// because the caller is that server's own response callback), or `(list
 /// target line col)` with char-indexed `line`/`col` and `target` a `bid`, a
@@ -640,7 +640,7 @@ pub(crate) fn selection_spans_full_line(ctx: &mut SteelCtx, bid: SteelVal) -> St
     Ok(SteelVal::BoolV(ctx.host.selection_spans_full_line(id)))
 }
 
-// ── B9: minibuffer prompt ───────────────────────────────────────────────────
+// ── Minibuffer prompt ───────────────────────────────────────────────────
 
 /// `(%prompt! label prefill on-confirm)` — the `prompt!` Scheme wrapper
 /// supplies `#:prefill`'s default. `on-confirm` fires exactly once, later
@@ -667,7 +667,7 @@ pub(crate) fn symbol_under_cursor(ctx: &mut SteelCtx, bid: SteelVal) -> SteelRes
     Ok(SteelVal::StringV(ctx.host.symbol_under_cursor(id).into()))
 }
 
-// ── B8: completion orchestration ────────────────────────────────────────────
+// ── Completion orchestration ────────────────────────────────────────────
 
 /// `(%completion-begin! bid items incomplete)` — the `completion-begin!`
 /// Scheme wrapper supplies `#:incomplete`'s default. `items`: list of

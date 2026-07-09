@@ -1,6 +1,6 @@
-// U2 (docs/lsp/step-3.md) — diagnostic gutter signs: the `update_sign_providers`
+// Diagnostic gutter signs: the `update_sign_providers`
 // write side that feeds `SharedSignSource` (diagnostics + plugin `set-signs!`)
-// from C9's diagnostics store and B5's signs store, plus the sign column's
+// from the diagnostics store and the signs store, plus the sign column's
 // auto-collapsing width.
 //
 // Every test here goes through `Editor::open(None)` (not `editor_from`'s bare

@@ -1,12 +1,12 @@
-// U7 (docs/lsp/step-3.md) — in-buffer completion menu + Insert-mode dispatch:
-// the `handle_completion_key`/`refilter_lsp_completion_after_edit` guard in
+// In-buffer completion menu + Insert-mode dispatch: the
+// `handle_completion_key`/`refilter_lsp_completion_after_edit` guard in
 // `mappings/insert.rs`, and `sync_lsp_completion_view`'s write side (reusing
-// U4/U5's `PopupState`/`PopupOverlay`).
+// the popup/selection-menu widgets' `PopupState`/`PopupOverlay`).
 //
 // Sessions are constructed directly via `CompletionSession::begin` (bypassing
 // `completion-begin!`'s Steel/wire path, already covered by
 // `lsp_completion.rs`) — these tests are about the Insert-mode key routing
-// and render path, not B8's filter/rank logic.
+// and render path, not the filter/rank logic.
 
 use super::*;
 use crate::editor::lsp::completion::CompletionSession;
