@@ -92,15 +92,61 @@ pub fn curl_fetch(url: &str, dest: &Path) -> io::Result<ExitStatus> {
 
 /// Compile a tree-sitter grammar source at `src` to a shared library at `out`
 /// using `tree-sitter build`, with inherited stdio.
+///
+/// `tree-sitter build` shells out to a C compiler via the `cc` crate. On
+/// Windows that defaults to MSVC's `cl.exe`, which many machines don't have.
+/// If `cl` is missing, we point `cc` at whichever alternative compiler is on
+/// `PATH` (clang, gcc, or zig) via `CC`/`CXX` — see `choose_windows_compiler`.
 pub fn tree_sitter_build(src: &Path, out: &Path) -> io::Result<ExitStatus> {
     let src = strip_unc_prefix(src.to_path_buf());
     let out = strip_unc_prefix(out.to_path_buf());
-    Command::new("tree-sitter")
-        .args(["build", "-o"])
-        .arg(&out)
-        .arg(&src)
-        .new_process_group()
-        .status()
+    let mut cmd = Command::new("tree-sitter");
+    cmd.args(["build", "-o"]).arg(&out).arg(&src);
+
+    #[cfg(windows)]
+    if let Some((cc, cxx)) = choose_windows_compiler(exe_on_path) {
+        cmd.env("CC", cc).env("CXX", cxx);
+    }
+
+    cmd.new_process_group().status()
+}
+
+/// Whether `name` resolves to a runnable executable on `PATH`.
+///
+/// Spawns `name --version` and treats `NotFound` as absent; any other
+/// outcome (success, nonzero exit, permission error) means the executable
+/// exists. This respects `PATHEXT` on Windows without an extra dependency.
+#[cfg(windows)]
+fn exe_on_path(name: &str) -> bool {
+    match Command::new(name).arg("--version").output() {
+        Ok(_) => true,
+        Err(e) => e.kind() != io::ErrorKind::NotFound,
+    }
+}
+
+/// Pick a `(CC, CXX)` override for `tree-sitter build` on Windows.
+///
+/// Returns `None` if MSVC's `cl` is available (use the platform default) or
+/// if no known compiler is found. Otherwise returns the first available pair
+/// from an ordered candidate list. `exists` is injected so this stays a pure,
+/// unit-testable function independent of the real `PATH`.
+#[cfg(windows)]
+fn choose_windows_compiler(exists: impl Fn(&str) -> bool) -> Option<(String, String)> {
+    if exists("cl") {
+        return None;
+    }
+    if exists("clang") {
+        return Some(("clang".to_string(), "clang++".to_string()));
+    }
+    if exists("gcc") {
+        return Some(("gcc".to_string(), "g++".to_string()));
+    }
+    if exists("zig") {
+        // The `cc` crate splits CC/CXX on whitespace, so "zig cc" invokes
+        // `zig` with `cc` as its first argument (zig's built-in clang driver).
+        return Some(("zig cc".to_string(), "zig c++".to_string()));
+    }
+    None
 }
 
 /// Convert a non-successful `ExitStatus` to a human-readable string for error
@@ -110,6 +156,16 @@ pub fn exit_code_str(status: ExitStatus) -> String {
         Some(c) => format!("exit code {c}"),
         None => "killed by signal".to_string(),
     }
+}
+
+/// Whether no C compiler at all was found on `PATH` (neither `cl` nor any of
+/// the `choose_windows_compiler` fallbacks). Used to append an install hint
+/// to grammar-compile failure messages, without misattributing a real
+/// compile error (compiler present, grammar source broken) to a missing
+/// toolchain.
+#[cfg(windows)]
+pub fn no_windows_compiler_found() -> bool {
+    !exe_on_path("cl") && choose_windows_compiler(exe_on_path).is_none()
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -136,6 +192,55 @@ impl NewProcessGroup for Command {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `cl` on PATH means MSVC is usable — no override, regardless of what
+    /// else is installed.
+    #[test]
+    #[cfg(windows)]
+    fn choose_windows_compiler_prefers_msvc_when_present() {
+        let choice = choose_windows_compiler(|name| matches!(name, "cl" | "clang" | "gcc" | "zig"));
+        assert_eq!(choice, None, "cl present should mean no CC/CXX override");
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn choose_windows_compiler_falls_back_to_clang() {
+        let choice = choose_windows_compiler(|name| matches!(name, "clang" | "gcc" | "zig"));
+        assert_eq!(
+            choice,
+            Some(("clang".to_string(), "clang++".to_string())),
+            "clang should win over gcc/zig when cl is absent"
+        );
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn choose_windows_compiler_falls_back_to_gcc() {
+        let choice = choose_windows_compiler(|name| matches!(name, "gcc" | "zig"));
+        assert_eq!(
+            choice,
+            Some(("gcc".to_string(), "g++".to_string())),
+            "gcc should win over zig when cl/clang are absent"
+        );
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn choose_windows_compiler_falls_back_to_zig() {
+        let choice = choose_windows_compiler(|name| name == "zig");
+        assert_eq!(
+            choice,
+            Some(("zig cc".to_string(), "zig c++".to_string())),
+            "zig cc should be used when no other compiler is present"
+        );
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn choose_windows_compiler_none_when_nothing_present() {
+        let choice = choose_windows_compiler(|_| false);
+        assert_eq!(choice, None, "no compiler on PATH should mean no override");
+    }
 
     /// Verify that Ctrl+C (SIGINT to the child's process group) kills the
     /// child but not HUME.

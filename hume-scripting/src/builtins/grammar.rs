@@ -13,6 +13,19 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 use crate::SteelCtx;
 use crate::log::LogLevel;
 
+/// Suffix appended to a grammar-compile failure message when no C compiler
+/// was found on `PATH` — empty on non-Windows, where a compiler is either
+/// preinstalled or the platform-native error is already clear enough.
+fn windows_compiler_hint() -> String {
+    #[cfg(windows)]
+    if hume_platform::process::no_windows_compiler_found() {
+        return " — no C compiler found; install one of: MSVC Build Tools, clang, gcc, or zig, \
+                 and ensure it is on PATH"
+            .to_string();
+    }
+    String::new()
+}
+
 /// Platform-specific shared library extension for tree-sitter grammars.
 fn platform_grammar_ext() -> &'static str {
     #[cfg(target_os = "macos")]
@@ -103,6 +116,10 @@ pub(crate) fn compile_grammar(
         ),
         Err(e) => format!("compile-grammar!: cannot run tree-sitter: {e}"),
     };
+    // A failure with no compiler at all on PATH is a common, fixable cause on
+    // Windows (no MSVC Build Tools) — point the user at it instead of leaving
+    // them with a bare tree-sitter exit code.
+    let msg = format!("{msg}{}", windows_compiler_hint());
 
     if ctx.is_init {
         ctx.log(LogLevel::Warning, msg);
