@@ -107,12 +107,22 @@ fn text_edit(sl: u64, sc: u64, el: u64, ec: u64, new_text: &str) -> serde_json::
 fn whole_buffer_edit_is_one_undo_step() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), |backend, _sid| {
-        backend.respond_to(
-            "textDocument/formatting",
-            serde_json::json!([text_edit(0, 0, 3, 0, "formatted1\nformatted2\nformatted3\n")]),
-        );
-    });
+    let (mut ed, _guard) = setup(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/formatting",
+                serde_json::json!([text_edit(
+                    0,
+                    0,
+                    3,
+                    0,
+                    "formatted1\nformatted2\nformatted3\n"
+                )]),
+            );
+        },
+    );
     let before = ed.doc().text().to_string();
 
     run_fmt(&mut ed);
@@ -123,7 +133,11 @@ fn whole_buffer_edit_is_one_undo_step() {
         "the whole-buffer replacement edit must apply"
     );
     ed.handle_key(key('u'));
-    assert_eq!(ed.doc().text().to_string(), before, "a single 'u' must fully restore the pre-format text");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        before,
+        "a single 'u' must fully restore the pre-format text"
+    );
 }
 
 #[test]
@@ -132,19 +146,23 @@ fn sub_line_selection_still_formats_the_whole_buffer() {
     // Default cursor: a bare collapsed selection — never spans a full line.
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), |backend, _sid| {
-        backend.respond_to(
-            "textDocument/formatting",
-            serde_json::json!([text_edit(0, 0, 3, 0, "WHOLE_BUFFER\n")]),
-        );
-        // If the decision were wrong and a sub-line selection triggered
-        // range formatting instead, this response would apply and the
-        // assertion below would fail loudly (not silently match).
-        backend.respond_to(
-            "textDocument/rangeFormatting",
-            serde_json::json!([text_edit(0, 0, 1, 0, "WRONG_RANGE_PATH\n")]),
-        );
-    });
+    let (mut ed, _guard) = setup(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/formatting",
+                serde_json::json!([text_edit(0, 0, 3, 0, "WHOLE_BUFFER\n")]),
+            );
+            // If the decision were wrong and a sub-line selection triggered
+            // range formatting instead, this response would apply and the
+            // assertion below would fail loudly (not silently match).
+            backend.respond_to(
+                "textDocument/rangeFormatting",
+                serde_json::json!([text_edit(0, 0, 1, 0, "WRONG_RANGE_PATH\n")]),
+            );
+        },
+    );
 
     run_fmt(&mut ed);
 
@@ -156,16 +174,20 @@ fn sub_line_selection_still_formats_the_whole_buffer() {
 fn full_line_selection_sends_range_formatting() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), |backend, _sid| {
-        backend.respond_to(
-            "textDocument/rangeFormatting",
-            serde_json::json!([text_edit(0, 0, 1, 0, "RANGE_FORMATTED\n")]),
-        );
-        backend.respond_to(
-            "textDocument/formatting",
-            serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_WHOLE_BUFFER_PATH\n")]),
-        );
-    });
+    let (mut ed, _guard) = setup(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/rangeFormatting",
+                serde_json::json!([text_edit(0, 0, 1, 0, "RANGE_FORMATTED\n")]),
+            );
+            backend.respond_to(
+                "textDocument/formatting",
+                serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_WHOLE_BUFFER_PATH\n")]),
+            );
+        },
+    );
     select_full_line_1(&mut ed);
 
     run_fmt(&mut ed);
@@ -182,9 +204,13 @@ fn full_line_selection_sends_range_formatting() {
 fn null_result_reports_already_formatted() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), |backend, _sid| {
-        backend.respond_to("textDocument/formatting", serde_json::Value::Null);
-    });
+    let (mut ed, _guard) = setup(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        |backend, _sid| {
+            backend.respond_to("textDocument/formatting", serde_json::Value::Null);
+        },
+    );
 
     run_fmt(&mut ed);
 
@@ -200,14 +226,18 @@ fn null_result_reports_already_formatted() {
 fn loading_the_plugin_registers_no_save_hook() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), |backend, _sid| {
-        // If a save hook incorrectly fired :fmt, this response landing
-        // would visibly rewrite the buffer.
-        backend.respond_to(
-            "textDocument/formatting",
-            serde_json::json!([text_edit(0, 0, 3, 0, "SHOULD_NOT_APPEAR\n")]),
-        );
-    });
+    let (mut ed, _guard) = setup(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        |backend, _sid| {
+            // If a save hook incorrectly fired :fmt, this response landing
+            // would visibly rewrite the buffer.
+            backend.respond_to(
+                "textDocument/formatting",
+                serde_json::json!([text_edit(0, 0, 3, 0, "SHOULD_NOT_APPEAR\n")]),
+            );
+        },
+    );
     let before = ed.doc().text().to_string();
 
     let bid = ed.focused_buffer_id();

@@ -32,7 +32,10 @@ pub(crate) fn show_popup(ctx: &mut SteelCtx, text: SteelVal, anchor: SteelVal) -
 /// `(%close-popup!)`.
 pub(crate) fn close_popup(ctx: &mut SteelCtx) -> SteelResult {
     require_cmd_ctx!(ctx, "close-popup!");
-    ctx.host.close_popup().map(|()| SteelVal::Void).map_err(conv_err)
+    ctx.host
+        .close_popup()
+        .map(|()| SteelVal::Void)
+        .map_err(conv_err)
 }
 
 /// `(show-menu! items on-select)` — no keyword defaults, so this registers
@@ -49,7 +52,10 @@ pub(crate) fn show_menu(ctx: &mut SteelCtx, items: SteelVal, on_select: SteelVal
 /// `(close-menu!)`.
 pub(crate) fn close_menu(ctx: &mut SteelCtx) -> SteelResult {
     require_cmd_ctx!(ctx, "close-menu!");
-    ctx.host.close_menu().map(|()| SteelVal::Void).map_err(conv_err)
+    ctx.host
+        .close_menu()
+        .map(|()| SteelVal::Void)
+        .map_err(conv_err)
 }
 
 /// `(show-drawer-list! items on-select)`.

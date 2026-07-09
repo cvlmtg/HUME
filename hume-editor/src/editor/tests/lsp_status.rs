@@ -44,8 +44,14 @@ fn status_text_lists_a_running_server_with_root_and_pending_count() {
         text.contains(&root.display().to_string()),
         "must show the root: {text:?}"
     );
-    assert!(text.contains("Running"), "must show the lifecycle state: {text:?}");
-    assert!(text.contains("0 in flight"), "must show the pending count: {text:?}");
+    assert!(
+        text.contains("Running"),
+        "must show the lifecycle state: {text:?}"
+    );
+    assert!(
+        text.contains("0 in flight"),
+        "must show the pending count: {text:?}"
+    );
 }
 
 #[test]
@@ -353,10 +359,7 @@ fn show_message_is_reported_at_info_severity() {
 
     // Info severity is never pushed to the persistent log (see
     // Editor::report) — only shown as the transient status message.
-    assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("rust-analyzer: ready")
-    );
+    assert_eq!(ed.state.status_msg.as_deref(), Some("rust-analyzer: ready"));
 }
 
 #[test]

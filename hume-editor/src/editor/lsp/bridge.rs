@@ -94,7 +94,10 @@ impl Editor {
         // Send first, register second: `register_callback` keys off the id
         // `send_request` mints, so there is no window where a callback is
         // filed without a matching in-flight request to eventually resolve it.
-        let Some(id) = self.lsp.send_request(server_id, &req.method, req.params, meta) else {
+        let Some(id) = self
+            .lsp
+            .send_request(server_id, &req.method, req.params, meta)
+        else {
             self.report(
                 Severity::Error,
                 format!("lsp-request: no client tracked for '{}'", req.method),
@@ -148,9 +151,6 @@ fn outcome_to_steel(outcome: Outcome) -> (SteelVal, SteelVal) {
             let err = SteelVal::HashMapV(steel::gc::Gc::new(map).into());
             (err, SteelVal::BoolV(false))
         }
-        Outcome::TimedOut => (
-            SteelVal::StringV("timeout".into()),
-            SteelVal::BoolV(false),
-        ),
+        Outcome::TimedOut => (SteelVal::StringV("timeout".into()), SteelVal::BoolV(false)),
     }
 }

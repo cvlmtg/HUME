@@ -126,10 +126,18 @@ fn popup_lines(ed: &mut Editor) -> Vec<String> {
 
 #[cfg(not(windows))]
 fn request_count(requests: &RequestLog, method: &str) -> usize {
-    requests.borrow().iter().filter(|(_sid, m, _params)| m == method).count()
+    requests
+        .borrow()
+        .iter()
+        .filter(|(_sid, m, _params)| m == method)
+        .count()
 }
 
-fn signature_help_response(label: &str, param_labels: &[&str], active_param: i64) -> serde_json::Value {
+fn signature_help_response(
+    label: &str,
+    param_labels: &[&str],
+    active_param: i64,
+) -> serde_json::Value {
     serde_json::json!({
         "signatures": [{
             "label": label,
@@ -251,7 +259,10 @@ fn close_paren_closes_the_popup_without_a_request() {
     ed.feed_key(key('i'));
     ed.drain_hooks();
     type_char_and_settle(&mut ed, '(');
-    assert!(!popup_lines(&mut ed).is_empty(), "popup must be open before closing it");
+    assert!(
+        !popup_lines(&mut ed).is_empty(),
+        "popup must be open before closing it"
+    );
     let requests_before_close = requests.borrow().len();
 
     ed.feed_key(key(')'));
@@ -282,7 +293,10 @@ fn esc_closes_via_the_shared_mode_change_handler() {
     ed.feed_key(key('i'));
     ed.drain_hooks();
     type_char_and_settle(&mut ed, '(');
-    assert!(!popup_lines(&mut ed).is_empty(), "popup must be open before Esc");
+    assert!(
+        !popup_lines(&mut ed).is_empty(),
+        "popup must be open before Esc"
+    );
 
     ed.feed_key(key_esc());
     ed.drain_hooks();
@@ -325,7 +339,10 @@ fn rapid_trigger_chars_coalesce_to_one_request() {
         .iter()
         .filter(|(_sid, method, _params)| method == "textDocument/signatureHelp")
         .count();
-    assert_eq!(sighelp_requests, 1, "a rapid burst must collapse to exactly one request");
+    assert_eq!(
+        sighelp_requests, 1,
+        "a rapid burst must collapse to exactly one request"
+    );
 }
 
 #[test]
@@ -345,11 +362,17 @@ fn null_response_closes_the_popup() {
     ed.feed_key(key('i'));
     ed.drain_hooks();
     type_char_and_settle(&mut ed, '(');
-    assert!(!popup_lines(&mut ed).is_empty(), "popup must be open before the null response");
+    assert!(
+        !popup_lines(&mut ed).is_empty(),
+        "popup must be open before the null response"
+    );
 
     type_char_and_settle(&mut ed, ',');
 
-    assert!(popup_lines(&mut ed).is_empty(), "a null response must close the popup");
+    assert!(
+        popup_lines(&mut ed).is_empty(),
+        "a null response must close the popup"
+    );
 }
 
 #[test]
@@ -380,6 +403,9 @@ fn offset_form_parameter_label_marks_the_correct_slice() {
 
     assert_eq!(
         popup_lines(&mut ed),
-        vec!["fn foo(a: i32, longarg: i32)".to_string(), "⟨longarg: i32⟩".to_string()]
+        vec![
+            "fn foo(a: i32, longarg: i32)".to_string(),
+            "⟨longarg: i32⟩".to_string()
+        ]
     );
 }

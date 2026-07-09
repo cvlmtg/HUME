@@ -90,8 +90,15 @@ fn get_option_reads_back_tab_width_as_int() {
         &mut mock,
     )
     .unwrap();
-    h.call_steel_cmd("check", None, vec![], PaneId::default(), BufferId::default(), &mut mock)
-        .expect("get-option must read back the default tab-width as an int");
+    h.call_steel_cmd(
+        "check",
+        None,
+        vec![],
+        PaneId::default(),
+        BufferId::default(),
+        &mut mock,
+    )
+    .expect("get-option must read back the default tab-width as an int");
 }
 
 #[test]
@@ -106,8 +113,15 @@ fn get_option_reads_back_tab_style_as_string() {
         &mut mock,
     )
     .unwrap();
-    h.call_steel_cmd("check", None, vec![], PaneId::default(), BufferId::default(), &mut mock)
-        .expect("get-option must read back the default tab-style as a string");
+    h.call_steel_cmd(
+        "check",
+        None,
+        vec![],
+        PaneId::default(),
+        BufferId::default(),
+        &mut mock,
+    )
+    .expect("get-option must read back the default tab-style as a string");
 }
 
 #[test]
@@ -122,8 +136,15 @@ fn get_option_reads_back_lsp_inlay_hints_as_bool() {
         &mut mock,
     )
     .unwrap();
-    h.call_steel_cmd("check", None, vec![], PaneId::default(), BufferId::default(), &mut mock)
-        .expect("get-option must read back the default lsp.inlay-hints (false) as a bool");
+    h.call_steel_cmd(
+        "check",
+        None,
+        vec![],
+        PaneId::default(),
+        BufferId::default(),
+        &mut mock,
+    )
+    .expect("get-option must read back the default lsp.inlay-hints (false) as a bool");
 }
 
 #[test]
@@ -137,7 +158,14 @@ fn get_option_unknown_key_errors() {
     )
     .unwrap();
     let err = h
-        .call_steel_cmd("check", None, vec![], PaneId::default(), BufferId::default(), &mut mock)
+        .call_steel_cmd(
+            "check",
+            None,
+            vec![],
+            PaneId::default(),
+            BufferId::default(),
+            &mut mock,
+        )
         .unwrap_err();
     assert!(err.contains("unknown setting"), "got: {err}");
 }
@@ -1063,7 +1091,10 @@ fn register_hook_errors_in_command_mode() {
             &mut mock,
         )
         .unwrap_err();
-    assert!(err.contains("only valid during init.scm or plugin load"), "got: {err}");
+    assert!(
+        err.contains("only valid during init.scm or plugin load"),
+        "got: {err}"
+    );
 }
 
 #[test]

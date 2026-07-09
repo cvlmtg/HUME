@@ -81,7 +81,12 @@ fn setup(
 
 #[cfg(not(windows))]
 fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
-    ed.state.popup_view.read().unwrap().as_ref().map(|s| s.lines.clone())
+    ed.state
+        .popup_view
+        .read()
+        .unwrap()
+        .as_ref()
+        .map(|s| s.lines.clone())
 }
 
 #[cfg(not(windows))]
@@ -148,7 +153,10 @@ fn null_result_logs_and_shows_no_popup() {
     let mut ctx = RenderContext::new();
     ed.prepare_frame(80, 25, &mut ctx);
 
-    assert!(popup_lines(&ed).is_none(), "null hover result must not open a popup");
+    assert!(
+        popup_lines(&ed).is_none(),
+        "null hover result must not open a popup"
+    );
     let msg = ed.state.status_msg.clone().unwrap_or_default();
     assert!(
         msg.to_lowercase().contains("no hover info"),
@@ -174,7 +182,10 @@ fn error_reports_via_the_message_log() {
     let mut ctx = RenderContext::new();
     ed.prepare_frame(80, 25, &mut ctx);
 
-    assert!(popup_lines(&ed).is_none(), "a protocol error must not open a popup");
+    assert!(
+        popup_lines(&ed).is_none(),
+        "a protocol error must not open a popup"
+    );
     let msg = ed.state.status_msg.clone().unwrap_or_default();
     assert!(
         msg.to_lowercase().contains("boom"),
@@ -189,7 +200,10 @@ fn tall_content_falls_back_to_the_drawer() {
     let file_dir = safe_tempdir();
     // No on-viewport-change has fired in this test, so the popup/drawer
     // threshold falls back to 15 lines (lib.scm) — 20 lines must overflow.
-    let tall = (0..20).map(|i| format!("line{i}")).collect::<Vec<_>>().join("\n");
+    let tall = (0..20)
+        .map(|i| format!("line{i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
     let (mut ed, _guard, _sid) = setup(
         file_dir.path(),
         tmp.path(),
@@ -203,8 +217,14 @@ fn tall_content_falls_back_to_the_drawer() {
     let mut ctx = RenderContext::new();
     ed.prepare_frame(80, 25, &mut ctx);
 
-    assert!(popup_lines(&ed).is_none(), "tall content must not use the popup");
-    assert!(ed.state.drawer.is_some(), "tall content must fall back to the drawer");
+    assert!(
+        popup_lines(&ed).is_none(),
+        "tall content must not use the popup"
+    );
+    assert!(
+        ed.state.drawer.is_some(),
+        "tall content must fall back to the drawer"
+    );
 }
 
 #[test]
@@ -244,7 +264,10 @@ fn allow_stale_is_honored_despite_an_intervening_edit() {
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
         |backend, _sid| {
-            backend.respond_to("textDocument/hover", serde_json::json!({"contents": "fn main()"}));
+            backend.respond_to(
+                "textDocument/hover",
+                serde_json::json!({"contents": "fn main()"}),
+            );
         },
     );
 

@@ -30,7 +30,10 @@ fn write_fixture_file(file_dir: &Path) -> (PathBuf, String) {
     let file = file_dir.join("main.rs");
     std::fs::write(&file, "fn main() {\n    foo();\n}\n").unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap().as_str().to_string();
+    let uri = hume_lsp::uri::path_to_uri(&canonical)
+        .unwrap()
+        .as_str()
+        .to_string();
     (file, uri)
 }
 
@@ -132,7 +135,9 @@ fn enter_jumps_and_drawer_stays_open() {
     ed.drain_pending_steel_calls();
 
     assert_eq!(
-        ed.doc().text().char_to_line(ed.current_selections().primary().head()),
+        ed.doc()
+            .text()
+            .char_to_line(ed.current_selections().primary().head()),
         1,
         "Enter on row 2 must jump to that entry's line"
     );
@@ -149,7 +154,10 @@ fn single_result_still_opens_the_drawer() {
     let file_dir = safe_tempdir();
     let (file, uri) = write_fixture_file(file_dir.path());
     let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
-        backend.respond_to("textDocument/references", serde_json::json!([loc(&uri, 1, 4)]));
+        backend.respond_to(
+            "textDocument/references",
+            serde_json::json!([loc(&uri, 1, 4)]),
+        );
     });
 
     run_references(&mut ed);

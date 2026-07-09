@@ -83,9 +83,11 @@ impl Editor {
     /// is never advertised in the handshake). Queued while `Starting`,
     /// same as every other send site here.
     pub(in crate::editor) fn lsp_did_save(&mut self, bid: BufferId) {
-        self.send_doc_notification(bid, "textDocument/didSave", |_buf, uri| {
-            serde_json::json!({ "textDocument": { "uri": uri.as_str() } })
-        });
+        self.send_doc_notification(
+            bid,
+            "textDocument/didSave",
+            |_buf, uri| serde_json::json!({ "textDocument": { "uri": uri.as_str() } }),
+        );
     }
 
     /// `textDocument/didClose`. Must run *before* the buffer slot is freed
@@ -95,9 +97,11 @@ impl Editor {
     /// flushes after a queued didOpen, in order, so the pair stays coherent
     /// even if a buffer opens and closes before the handshake completes.
     pub(in crate::editor) fn lsp_did_close(&mut self, bid: BufferId) {
-        self.send_doc_notification(bid, "textDocument/didClose", |_buf, uri| {
-            serde_json::json!({ "textDocument": { "uri": uri.as_str() } })
-        });
+        self.send_doc_notification(
+            bid,
+            "textDocument/didClose",
+            |_buf, uri| serde_json::json!({ "textDocument": { "uri": uri.as_str() } }),
+        );
     }
 
     /// Whole-document `didChange` (no `range`, legal per spec) for reload

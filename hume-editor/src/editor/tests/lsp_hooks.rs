@@ -273,7 +273,11 @@ fn on_trigger_char_fires_only_for_registered_chars_in_insert_mode_after_insertio
     ed.feed_key(key('i'));
     ed.drain_hooks();
     plain.feed_key(key('i'));
-    assert_eq!(state(&ed), state(&plain), "entering Insert mode alone must not fire anything");
+    assert_eq!(
+        state(&ed),
+        state(&plain),
+        "entering Insert mode alone must not fire anything"
+    );
 
     ed.feed_key(key('x'));
     ed.drain_hooks();
@@ -314,7 +318,10 @@ fn on_trigger_char_does_not_fire_in_normal_mode() {
     let before = state(&ed);
     ed.feed_key(key('l'));
     let after_l = state(&ed);
-    assert_ne!(before, after_l, "the motion itself must still move the cursor");
+    assert_ne!(
+        before, after_l,
+        "the motion itself must still move the cursor"
+    );
 
     let mut plain = editor_from("-[.]>bcdef\n");
     plain.feed_key(key('l'));

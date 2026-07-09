@@ -33,10 +33,7 @@ pub fn typed_lsp_stop(
             "lsp: no matching server to stop".to_string(),
         );
     } else {
-        ed.report(
-            Severity::Info,
-            format!("lsp: stopped {n} server(s)"),
-        );
+        ed.report(Severity::Info, format!("lsp: stopped {n} server(s)"));
     }
     Ok(())
 }
@@ -55,10 +52,7 @@ pub fn typed_lsp_restart(
             "lsp: no matching server to restart".to_string(),
         );
     } else {
-        ed.report(
-            Severity::Info,
-            format!("lsp: restarted {n} server(s)"),
-        );
+        ed.report(Severity::Info, format!("lsp: restarted {n} server(s)"));
     }
     Ok(())
 }

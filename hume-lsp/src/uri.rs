@@ -235,13 +235,19 @@ mod tests {
     #[test]
     fn uri_to_path_drive_letter_plain_colon() {
         let uri = lsp_types::Uri::from_str("file:///C:/x").expect("parse");
-        assert_eq!(uri_to_path(&uri).expect("uri_to_path"), PathBuf::from("C:\\x"));
+        assert_eq!(
+            uri_to_path(&uri).expect("uri_to_path"),
+            PathBuf::from("C:\\x")
+        );
     }
 
     #[test]
     fn uri_to_path_drive_letter_escaped_colon() {
         let uri = lsp_types::Uri::from_str("file:///c%3A/x").expect("parse");
-        assert_eq!(uri_to_path(&uri).expect("uri_to_path"), PathBuf::from("c:\\x"));
+        assert_eq!(
+            uri_to_path(&uri).expect("uri_to_path"),
+            PathBuf::from("c:\\x")
+        );
     }
 
     #[test]

@@ -474,7 +474,11 @@ mod tests {
                 .symbol()
                 .to_string()
         };
-        assert_eq!(sym(0), "!", "the width-2 column's sign starts right at x=0, unaffected by the width-0 column ahead of it");
+        assert_eq!(
+            sym(0),
+            "!",
+            "the width-2 column's sign starts right at x=0, unaffected by the width-0 column ahead of it"
+        );
         assert_eq!(sym(1), " ", "separator cell");
         assert_eq!(sym(2), "x", "content starts exactly at gutter_width=2");
     }

@@ -37,7 +37,11 @@ fn menu_appears_with_top_items_after_begin() {
     ed.feed_key(key('i'));
     begin_session(
         &mut ed,
-        &[("foo", Some("fn")), ("foobar", None), ("food", Some("field"))],
+        &[
+            ("foo", Some("fn")),
+            ("foobar", None),
+            ("food", Some("field")),
+        ],
     );
 
     let mut ctx = RenderContext::new();
@@ -76,7 +80,10 @@ fn enter_applies_the_selected_edit_and_closes_the_session() {
 
     ed.feed_key(key_enter());
 
-    assert!(ed.state.lsp_completion.is_none(), "session must close after accept");
+    assert!(
+        ed.state.lsp_completion.is_none(),
+        "session must close after accept"
+    );
     assert!(ed.state.lsp_completion_view.read().unwrap().is_none());
     let text = ed.doc().text().to_string();
     assert_eq!(text, "foo\n", "insert_text must be applied at the anchor");
@@ -92,7 +99,10 @@ fn enter_with_no_session_inserts_a_newline_regression() {
     ed.feed_key(key_enter());
 
     let text = ed.doc().text().to_string();
-    assert_eq!(text, "a\n\n", "Enter must still insert a newline with no session");
+    assert_eq!(
+        text, "a\n\n",
+        "Enter must still insert a newline with no session"
+    );
 }
 
 // ── Esc: keeps typed text, stays in Insert ────────────────────────────────────
@@ -137,7 +147,11 @@ fn backspace_within_the_token_refilters_and_keeps_the_session_open() {
         .iter()
         .map(|v| v["label"].as_str().unwrap().to_string())
         .collect();
-    assert_eq!(top, vec!["grape"], "filter back down to \"g\" must re-match grape");
+    assert_eq!(
+        top,
+        vec!["grape"],
+        "filter back down to \"g\" must re-match grape"
+    );
 }
 
 #[test]
@@ -156,7 +170,10 @@ fn backspace_past_the_anchor_dismisses_the_session() {
         "backspace at the anchor must dismiss the session"
     );
     let text = ed.doc().text().to_string();
-    assert_eq!(text, "\n", "the backspace itself must still delete \"x\" normally");
+    assert_eq!(
+        text, "\n",
+        "the backspace itself must still delete \"x\" normally"
+    );
 }
 
 // ── Mode change dismisses ──────────────────────────────────────────────────────

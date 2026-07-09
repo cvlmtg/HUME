@@ -5,7 +5,12 @@ use super::*;
 use crate::editor::scripting_setup::make_init_host;
 use hume_scripting::ScriptingHost;
 
-fn eval_with_real_host(ed: &mut Editor, host: &mut ScriptingHost, source: &str, tmp: &std::path::Path) {
+fn eval_with_real_host(
+    ed: &mut Editor,
+    host: &mut ScriptingHost,
+    source: &str,
+    tmp: &std::path::Path,
+) {
     let init_path = tmp.join("init.scm");
     std::fs::write(&init_path, source).unwrap();
     let mut ih = make_init_host(&mut ed.state, &mut ed.view);
@@ -30,7 +35,11 @@ fn after_fires_once_past_its_deadline() {
     ed.drain_async_sources();
     ed.drain_pending_steel_calls();
 
-    assert_eq!(state(&ed), "a-[b]>cdef\n", "the thunk must fire once its 0ms deadline passes");
+    assert_eq!(
+        state(&ed),
+        "a-[b]>cdef\n",
+        "the thunk must fire once its 0ms deadline passes"
+    );
 }
 
 #[test]
@@ -50,7 +59,11 @@ fn a_timer_not_yet_due_does_not_fire() {
     ed.drain_async_sources();
     ed.drain_pending_steel_calls();
 
-    assert_eq!(state(&ed), "-[a]>bcdef\n", "a far-future timer must not fire yet");
+    assert_eq!(
+        state(&ed),
+        "-[a]>bcdef\n",
+        "a far-future timer must not fire yet"
+    );
 }
 
 #[test]

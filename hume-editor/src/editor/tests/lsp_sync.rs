@@ -104,7 +104,11 @@ fn did_open_carries_full_text_and_language_id() {
     let log = log.borrow();
     // `initialized` (handshake completion) plus the one didOpen it flushed
     // — nothing else queued yet.
-    assert_eq!(log.len(), 2, "expected [initialized, didOpen], got: {log:?}");
+    assert_eq!(
+        log.len(),
+        2,
+        "expected [initialized, didOpen], got: {log:?}"
+    );
     let (method, params) = &log[1];
     assert_eq!(method, "textDocument/didOpen");
     assert_eq!(params["textDocument"]["languageId"], "rust");

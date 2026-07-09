@@ -35,7 +35,10 @@ fn write_fixture_file(file_dir: &Path) -> (PathBuf, String) {
     let file = file_dir.join("main.rs");
     std::fs::write(&file, "fn main() {\n    foo();\n}\n").unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap().as_str().to_string();
+    let uri = hume_lsp::uri::path_to_uri(&canonical)
+        .unwrap()
+        .as_str()
+        .to_string();
     (file, uri)
 }
 
@@ -146,7 +149,9 @@ fn single_location_hashmap_jumps_directly() {
     run_goto(&mut ed, ":lsp-goto-definition");
 
     assert_eq!(
-        ed.doc().text().char_to_line(ed.current_selections().primary().head()),
+        ed.doc()
+            .text()
+            .char_to_line(ed.current_selections().primary().head()),
         1,
         "a single Location must jump directly to line 1 (0-indexed)"
     );
@@ -159,13 +164,18 @@ fn single_element_array_jumps_directly() {
     let file_dir = safe_tempdir();
     let (file, uri) = write_fixture_file(file_dir.path());
     let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
-        backend.respond_to("textDocument/definition", serde_json::json!([loc(&uri, 1, 4)]));
+        backend.respond_to(
+            "textDocument/definition",
+            serde_json::json!([loc(&uri, 1, 4)]),
+        );
     });
 
     run_goto(&mut ed, ":lsp-goto-definition");
 
     assert_eq!(
-        ed.doc().text().char_to_line(ed.current_selections().primary().head()),
+        ed.doc()
+            .text()
+            .char_to_line(ed.current_selections().primary().head()),
         1,
         "a length-1 Location[] must jump directly, not open the drawer"
     );
@@ -189,7 +199,11 @@ fn multi_element_array_opens_the_drawer_and_row_select_jumps() {
 
     let rows = {
         let guard = ed.state.drawer_view.read().unwrap();
-        guard.as_ref().expect("drawer must open for a multi-entry array").rows.clone()
+        guard
+            .as_ref()
+            .expect("drawer must open for a multi-entry array")
+            .rows
+            .clone()
     };
     assert_eq!(rows.len(), 3);
 
@@ -199,7 +213,9 @@ fn multi_element_array_opens_the_drawer_and_row_select_jumps() {
     ed.drain_pending_steel_calls();
 
     assert_eq!(
-        ed.doc().text().char_to_line(ed.current_selections().primary().head()),
+        ed.doc()
+            .text()
+            .char_to_line(ed.current_selections().primary().head()),
         1,
         "selecting row 2 in the drawer must jump to that entry's line"
     );
@@ -212,13 +228,18 @@ fn location_link_array_prefers_target_selection_range() {
     let file_dir = safe_tempdir();
     let (file, uri) = write_fixture_file(file_dir.path());
     let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
-        backend.respond_to("textDocument/definition", serde_json::json!([location_link(&uri, 1, 4)]));
+        backend.respond_to(
+            "textDocument/definition",
+            serde_json::json!([location_link(&uri, 1, 4)]),
+        );
     });
 
     run_goto(&mut ed, ":lsp-goto-definition");
 
     assert_eq!(
-        ed.doc().text().char_to_line(ed.current_selections().primary().head()),
+        ed.doc()
+            .text()
+            .char_to_line(ed.current_selections().primary().head()),
         1,
         "a single-entry LocationLink[] must jump using targetSelectionRange"
     );
@@ -236,10 +257,18 @@ fn jump_back_returns_to_the_origin_after_a_jump() {
     let before = state(&ed);
 
     run_goto(&mut ed, ":lsp-goto-definition");
-    assert_ne!(state(&ed), before, "sanity: the jump must have moved the cursor");
+    assert_ne!(
+        state(&ed),
+        before,
+        "sanity: the jump must have moved the cursor"
+    );
 
     ed.handle_key(key_ctrl('o'));
-    assert_eq!(state(&ed), before, "Ctrl+o must return to the pre-jump position");
+    assert_eq!(
+        state(&ed),
+        before,
+        "Ctrl+o must return to the pre-jump position"
+    );
 }
 
 #[test]
@@ -286,7 +315,9 @@ fn each_command_sends_its_own_method() {
         run_goto(&mut ed, &format!(":{cmd}"));
 
         assert_eq!(
-            ed.doc().text().char_to_line(ed.current_selections().primary().head()),
+            ed.doc()
+                .text()
+                .char_to_line(ed.current_selections().primary().head()),
             1,
             "{cmd} must send {method} and jump on its response"
         );

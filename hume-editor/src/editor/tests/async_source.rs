@@ -210,6 +210,8 @@ fn timer_wheel_end_to_end_tick_via_editor() {
     let mut ed = editor_from("-[w]>ord\n");
     let id = ed.timer_wheel.schedule(Duration::from_millis(10));
 
-    let due = ed.timer_wheel.take_due(Instant::now() + Duration::from_millis(20));
+    let due = ed
+        .timer_wheel
+        .take_due(Instant::now() + Duration::from_millis(20));
     assert_eq!(due, vec![id]);
 }

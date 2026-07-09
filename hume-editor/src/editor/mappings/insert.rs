@@ -350,7 +350,8 @@ impl Editor {
     /// its anchor and the current cursor — called after a printable char or
     /// Backspace has already landed in the buffer.
     fn refilter_lsp_completion_after_edit(&mut self, key: KeyEvent) {
-        let is_char = matches!(key.code, KeyCode::Char(_)) && !key.modifiers.contains(KeyModifiers::CONTROL);
+        let is_char =
+            matches!(key.code, KeyCode::Char(_)) && !key.modifiers.contains(KeyModifiers::CONTROL);
         if !is_char && key.code != KeyCode::Backspace {
             return;
         }

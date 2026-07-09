@@ -74,7 +74,10 @@ fn setup_declared(
     std::fs::write(&file, "fn main() {}\n").unwrap();
 
     let mut backend = InlineLspBackend::new();
-    backend.respond_to("initialize", serde_json::json!({"capabilities": {"hoverProvider": true}}));
+    backend.respond_to(
+        "initialize",
+        serde_json::json!({"capabilities": {"hoverProvider": true}}),
+    );
     let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
     configure(&mut backend, sid);
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
@@ -105,7 +108,12 @@ fn setup_declared(
 
 #[cfg(not(windows))]
 fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
-    ed.state.popup_view.read().unwrap().as_ref().map(|s| s.lines.clone())
+    ed.state
+        .popup_view
+        .read()
+        .unwrap()
+        .as_ref()
+        .map(|s| s.lines.clone())
 }
 
 /// Declaring `core:lsp` (not loading it) leaves it `Declared` — nothing has
@@ -144,12 +152,13 @@ fn declared_but_undispatched_plugin_is_declared_not_loaded() {
 fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup_declared(file_dir.path(), tmp.path(), DECLARE_LSP, |backend, _sid| {
-        backend.respond_to(
-            "textDocument/hover",
-            serde_json::json!({"contents": {"kind": "plaintext", "value": "fn main()"}}),
-        );
-    });
+    let (mut ed, _guard) =
+        setup_declared(file_dir.path(), tmp.path(), DECLARE_LSP, |backend, _sid| {
+            backend.respond_to(
+                "textDocument/hover",
+                serde_json::json!({"contents": {"kind": "plaintext", "value": "fn main()"}}),
+            );
+        });
 
     // Activation runs synchronously inside the command dispatch that hits
     // the lazy stub (`activate_lazy_plugin`, called from the same dispatch
@@ -193,8 +202,12 @@ fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
 fn attach_event_alone_activates_the_declared_plugin() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard) =
-        setup_declared(file_dir.path(), tmp.path(), DECLARE_LSP, |_backend, _sid| {});
+    let (mut ed, _guard) = setup_declared(
+        file_dir.path(),
+        tmp.path(),
+        DECLARE_LSP,
+        |_backend, _sid| {},
+    );
 
     let id = PluginId::parse("core:lsp").unwrap();
     assert_eq!(

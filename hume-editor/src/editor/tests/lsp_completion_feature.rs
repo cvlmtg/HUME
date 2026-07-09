@@ -49,7 +49,10 @@ fn setup(
     let guard = RealRuntimeGuard::new();
 
     let (mut backend, _notifications, requests) = RecordingLspBackend::new();
-    backend.respond_to("initialize", serde_json::json!({"capabilities": capabilities}));
+    backend.respond_to(
+        "initialize",
+        serde_json::json!({"capabilities": capabilities}),
+    );
     let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
     configure(&mut backend, sid);
 
@@ -96,7 +99,11 @@ fn settle(ed: &mut Editor) {
 
 #[cfg(not(windows))]
 fn request_count(requests: &RequestLog, method: &str) -> usize {
-    requests.borrow().iter().filter(|(_sid, m, _params)| m == method).count()
+    requests
+        .borrow()
+        .iter()
+        .filter(|(_sid, m, _params)| m == method)
+        .count()
 }
 
 #[cfg(not(windows))]
@@ -110,9 +117,14 @@ fn trigger_char_fires_the_completion_request() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, requests) = setup(&file, tmp.path(), full_completion_caps(), |backend, _sid| {
-        backend.respond_to("textDocument/completion", serde_json::json!([]));
-    });
+    let (mut ed, _guard, requests) = setup(
+        &file,
+        tmp.path(),
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to("textDocument/completion", serde_json::json!([]));
+        },
+    );
 
     ed.feed_key(key('i'));
     ed.drain_hooks();
@@ -128,9 +140,14 @@ fn ctrl_space_fires_completion_trigger() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, requests) = setup(&file, tmp.path(), full_completion_caps(), |backend, _sid| {
-        backend.respond_to("textDocument/completion", serde_json::json!([]));
-    });
+    let (mut ed, _guard, requests) = setup(
+        &file,
+        tmp.path(),
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to("textDocument/completion", serde_json::json!([]));
+        },
+    );
 
     ed.feed_key(key('i'));
     ed.drain_hooks();
@@ -146,7 +163,12 @@ fn capability_gated_no_completion_provider_sends_no_request() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, requests) = setup(&file, tmp.path(), serde_json::json!({}), |_backend, _sid| {});
+    let (mut ed, _guard, requests) = setup(
+        &file,
+        tmp.path(),
+        serde_json::json!({}),
+        |_backend, _sid| {},
+    );
 
     ed.feed_key(key('i'));
     ed.drain_hooks();
@@ -163,9 +185,14 @@ fn null_response_opens_no_session() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), full_completion_caps(), |backend, _sid| {
-        backend.respond_to("textDocument/completion", serde_json::Value::Null);
-    });
+    let (mut ed, _guard, _requests) = setup(
+        &file,
+        tmp.path(),
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to("textDocument/completion", serde_json::Value::Null);
+        },
+    );
 
     ed.feed_key(key('i'));
     ed.drain_hooks();
@@ -189,7 +216,9 @@ fn null_response_opens_no_session() {
     type_cmd(&mut ed, ":try-accept");
 
     assert!(
-        status(&ed).to_lowercase().contains("no active completion session"),
+        status(&ed)
+            .to_lowercase()
+            .contains("no active completion session"),
         "a null response must never call completion-begin!, got status {:?}",
         status(&ed)
     );
@@ -205,8 +234,12 @@ fn accept_applies_main_edit_and_additional_text_edits_as_two_undo_steps() {
     // an import lands above the cursor's line, not at the exact same spot.
     let file = file_dir.path().join("main.rs");
     std::fs::write(&file, "\nfoo\n").unwrap();
-    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), full_completion_caps(), |backend, _sid| {
-        backend.respond_to(
+    let (mut ed, _guard, _requests) = setup(
+        &file,
+        tmp.path(),
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to(
             "textDocument/completion",
             serde_json::json!([{
                 "label": "bar",
@@ -217,7 +250,8 @@ fn accept_applies_main_edit_and_additional_text_edits_as_two_undo_steps() {
                 ]
             }]),
         );
-    });
+        },
+    );
     // Char 1 is the start of "foo" on line 1 (char 0 is line 0's newline).
     let bid = ed.focused_buffer_id();
     let pid = ed.state.focused_pane_id;
@@ -228,7 +262,9 @@ fn accept_applies_main_edit_and_additional_text_edits_as_two_undo_steps() {
         .get_mut(pid)
         .and_then(|by_buf| by_buf.get_mut(bid))
         .expect("pane buffer state must exist");
-    pbs.selections = hume_editing::selection::SelectionSet::single(hume_editing::selection::Selection::collapsed(1));
+    pbs.selections = hume_editing::selection::SelectionSet::single(
+        hume_editing::selection::Selection::collapsed(1),
+    );
 
     ed.feed_key(key('i'));
     ed.drain_hooks();
@@ -268,13 +304,21 @@ fn resolve_sent_only_when_item_lacks_additional_text_edits_and_resolve_provider_
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, requests) = setup(&file, tmp.path(), full_completion_caps(), |backend, _sid| {
-        backend.respond_to(
-            "textDocument/completion",
-            serde_json::json!([{"label": "bar", "insertText": "bar"}]),
-        );
-        backend.respond_to("completionItem/resolve", serde_json::json!({"label": "bar"}));
-    });
+    let (mut ed, _guard, requests) = setup(
+        &file,
+        tmp.path(),
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([{"label": "bar", "insertText": "bar"}]),
+            );
+            backend.respond_to(
+                "completionItem/resolve",
+                serde_json::json!({"label": "bar"}),
+            );
+        },
+    );
     ed.feed_key(key('i'));
     ed.drain_hooks();
     ed.feed_key(key_ctrl(' '));
@@ -296,13 +340,18 @@ fn null_resolve_response_is_a_clean_no_op() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, requests) = setup(&file, tmp.path(), full_completion_caps(), |backend, _sid| {
-        backend.respond_to(
-            "textDocument/completion",
-            serde_json::json!([{"label": "bar", "insertText": "bar"}]),
-        );
-        backend.respond_to("completionItem/resolve", serde_json::Value::Null);
-    });
+    let (mut ed, _guard, requests) = setup(
+        &file,
+        tmp.path(),
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([{"label": "bar", "insertText": "bar"}]),
+            );
+            backend.respond_to("completionItem/resolve", serde_json::Value::Null);
+        },
+    );
     ed.feed_key(key('i'));
     ed.drain_hooks();
     ed.feed_key(key_ctrl(' '));
@@ -311,7 +360,11 @@ fn null_resolve_response_is_a_clean_no_op() {
     ed.feed_key(key_enter());
     settle(&mut ed);
 
-    assert_eq!(request_count(&requests, "completionItem/resolve"), 1, "sanity: resolve must have been sent");
+    assert_eq!(
+        request_count(&requests, "completionItem/resolve"),
+        1,
+        "sanity: resolve must have been sent"
+    );
     assert!(
         !status(&ed).to_lowercase().contains("error"),
         "a null resolve response must be a clean no-op, got status {:?}",
@@ -325,17 +378,25 @@ fn resolve_not_sent_when_the_item_already_has_additional_text_edits() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, requests) = setup(&file, tmp.path(), full_completion_caps(), |backend, _sid| {
-        backend.respond_to(
-            "textDocument/completion",
-            serde_json::json!([{
-                "label": "bar",
-                "insertText": "bar",
-                "additionalTextEdits": []
-            }]),
-        );
-        backend.respond_to("completionItem/resolve", serde_json::json!({"label": "bar"}));
-    });
+    let (mut ed, _guard, requests) = setup(
+        &file,
+        tmp.path(),
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([{
+                    "label": "bar",
+                    "insertText": "bar",
+                    "additionalTextEdits": []
+                }]),
+            );
+            backend.respond_to(
+                "completionItem/resolve",
+                serde_json::json!({"label": "bar"}),
+            );
+        },
+    );
     ed.feed_key(key('i'));
     ed.drain_hooks();
     ed.feed_key(key_ctrl(' '));
@@ -362,16 +423,21 @@ fn refilter_on_incomplete_session_re_requests() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, requests) = setup(&file, tmp.path(), full_completion_caps(), |backend, _sid| {
-        backend.respond_to(
+    let (mut ed, _guard, requests) = setup(
+        &file,
+        tmp.path(),
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to(
             "textDocument/completion",
             serde_json::json!({"isIncomplete": true, "items": [{"label": "foo", "insertText": "foo"}]}),
         );
-        backend.respond_to(
+            backend.respond_to(
             "textDocument/completion",
             serde_json::json!({"isIncomplete": true, "items": [{"label": "foobar", "insertText": "foobar"}]}),
         );
-    });
+        },
+    );
     ed.feed_key(key('i'));
     ed.drain_hooks();
     ed.feed_key(key_ctrl(' '));
@@ -394,12 +460,17 @@ fn refilter_on_complete_session_does_not_re_request() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, requests) = setup(&file, tmp.path(), full_completion_caps(), |backend, _sid| {
-        backend.respond_to(
-            "textDocument/completion",
-            serde_json::json!([{"label": "foo", "insertText": "foo"}]),
-        );
-    });
+    let (mut ed, _guard, requests) = setup(
+        &file,
+        tmp.path(),
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([{"label": "foo", "insertText": "foo"}]),
+            );
+        },
+    );
     ed.feed_key(key('i'));
     ed.drain_hooks();
     ed.feed_key(key_ctrl(' '));
@@ -429,7 +500,12 @@ fn detach_clears_completion_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, requests) = setup(&file, tmp.path(), full_completion_caps(), |_backend, _sid| {});
+    let (mut ed, _guard, requests) = setup(
+        &file,
+        tmp.path(),
+        full_completion_caps(),
+        |_backend, _sid| {},
+    );
 
     ed.lsp_stop(Some("rust"));
     ed.drain_hooks(); // on-lsp-detach clears *completion-chars*
@@ -458,17 +534,25 @@ fn detach_dismisses_an_open_completion_session_for_that_buffer() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), full_completion_caps(), |backend, _sid| {
-        backend.respond_to(
-            "textDocument/completion",
-            serde_json::json!([{"label": "bar", "insertText": "bar"}]),
-        );
-    });
+    let (mut ed, _guard, _requests) = setup(
+        &file,
+        tmp.path(),
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([{"label": "bar", "insertText": "bar"}]),
+            );
+        },
+    );
     ed.feed_key(key('i'));
     ed.drain_hooks();
     ed.feed_key(key_ctrl(' '));
     settle(&mut ed);
-    assert!(ed.state.lsp_completion.is_some(), "sanity: a session must be open");
+    assert!(
+        ed.state.lsp_completion.is_some(),
+        "sanity: a session must be open"
+    );
 
     ed.lsp_stop(Some("rust"));
 
@@ -485,16 +569,21 @@ fn snippet_item_lands_as_stripped_plain_text() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), full_completion_caps(), |backend, _sid| {
-        backend.respond_to(
-            "textDocument/completion",
-            serde_json::json!([{
-                "label": "for",
-                "insertText": "for ${1:x} in ${2:iter} {\n    $0\n}",
-                "insertTextFormat": 2
-            }]),
-        );
-    });
+    let (mut ed, _guard, _requests) = setup(
+        &file,
+        tmp.path(),
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([{
+                    "label": "for",
+                    "insertText": "for ${1:x} in ${2:iter} {\n    $0\n}",
+                    "insertTextFormat": 2
+                }]),
+            );
+        },
+    );
     ed.feed_key(key('i'));
     ed.drain_hooks();
     ed.feed_key(key_ctrl(' '));

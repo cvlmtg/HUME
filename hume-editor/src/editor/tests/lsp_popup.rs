@@ -70,7 +70,10 @@ fn close_popup_clears_the_view() {
 
     type_cmd(&mut ed, ":gone");
     ed.prepare_frame(80, 25, &mut ctx);
-    assert!(popup_view(&ed).is_none(), "must be cleared after close-popup!");
+    assert!(
+        popup_view(&ed).is_none(),
+        "must be cleared after close-popup!"
+    );
 }
 
 #[test]
@@ -128,12 +131,20 @@ fn popup_wraps_to_the_pane_width_and_anchors_below_the_cursor() {
     ed.prepare_frame(20, 25, &mut ctx);
 
     let (lines, x, y) = popup_view(&ed).unwrap();
-    assert!(lines.len() > 1, "text wider than the pane must wrap to multiple lines");
     assert!(
-        lines.iter().all(|l| unicode_width::UnicodeWidthStr::width(l.as_str()) <= 16),
+        lines.len() > 1,
+        "text wider than the pane must wrap to multiple lines"
+    );
+    assert!(
+        lines
+            .iter()
+            .all(|l| unicode_width::UnicodeWidthStr::width(l.as_str()) <= 16),
         "no line may exceed min(60, pane_width - 4): {lines:?}"
     );
-    assert!(y >= 1, "popup must anchor below the cursor row (row 0), not above it");
+    assert!(
+        y >= 1,
+        "popup must anchor below the cursor row (row 0), not above it"
+    );
     assert_eq!(x, 0, "anchor column matches the cursor's column");
 }
 

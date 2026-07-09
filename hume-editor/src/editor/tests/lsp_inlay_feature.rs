@@ -109,7 +109,11 @@ fn settle_after_debounce(ed: &mut Editor) {
 
 #[cfg(not(windows))]
 fn request_count(requests: &RequestLog, method: &str) -> usize {
-    requests.borrow().iter().filter(|(_sid, m, _params)| m == method).count()
+    requests
+        .borrow()
+        .iter()
+        .filter(|(_sid, m, _params)| m == method)
+        .count()
 }
 
 #[cfg(not(windows))]

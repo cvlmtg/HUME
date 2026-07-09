@@ -33,7 +33,10 @@ fn write_fixture_file(file_dir: &Path) -> (PathBuf, String) {
     let file = file_dir.join("main.rs");
     std::fs::write(&file, "fn main() {\n    helper();\n}\n").unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap().as_str().to_string();
+    let uri = hume_lsp::uri::path_to_uri(&canonical)
+        .unwrap()
+        .as_str()
+        .to_string();
     (file, uri)
 }
 
@@ -108,7 +111,10 @@ fn prompt_prefill_shows_the_symbol_under_cursor() {
     run_rename(&mut ed);
 
     let mb = ed.state.minibuf.as_ref().expect("prompt must be open");
-    assert_eq!(mb.input, "helper", "prefill must be the word under the cursor");
+    assert_eq!(
+        mb.input, "helper",
+        "prefill must be the word under the cursor"
+    );
 }
 
 #[test]
@@ -135,9 +141,17 @@ fn cancel_sends_no_rename_request() {
     ed.drain_lsp();
     ed.drain_pending_steel_calls();
 
-    assert_eq!(ed.doc().text().to_string(), before, "cancel must not apply any edit");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        before,
+        "cancel must not apply any edit"
+    );
     assert!(
-        !ed.state.status_msg.clone().unwrap_or_default().contains("buffers modified"),
+        !ed.state
+            .status_msg
+            .clone()
+            .unwrap_or_default()
+            .contains("buffers modified"),
         "cancel must not send the rename request at all"
     );
 }

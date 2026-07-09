@@ -70,7 +70,13 @@ impl DrawerProvider for DrawerWidget {
         // Row 0 is a blank padding row (visual gap from the pane above);
         // rows 1.. show the scroll-adjusted, visible slice of items.
         let visible_rows = area.height.saturating_sub(1) as usize;
-        for (i, item) in state.rows.iter().skip(state.scroll).take(visible_rows).enumerate() {
+        for (i, item) in state
+            .rows
+            .iter()
+            .skip(state.scroll)
+            .take(visible_rows)
+            .enumerate()
+        {
             let row_idx = state.scroll + i;
             let y = area.y + 1 + i as u16;
             let row_style = if row_idx == state.selected {

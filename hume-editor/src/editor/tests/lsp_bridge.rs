@@ -18,7 +18,10 @@ use hume_scripting::ScriptingHost;
 /// Wires a scripted backend with a Running client attached to the focused
 /// buffer, registered under language `"rust"` — enough for both `server =
 /// #f` (focused buffer) and `server = "rust"` (named) resolution.
-fn setup_with(ed: &mut Editor, configure: impl FnOnce(&mut InlineLspBackend, ServerId)) -> ServerId {
+fn setup_with(
+    ed: &mut Editor,
+    configure: impl FnOnce(&mut InlineLspBackend, ServerId),
+) -> ServerId {
     let mut backend = InlineLspBackend::new();
     let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
     configure(&mut backend, sid);
@@ -155,7 +158,10 @@ fn setup_with_real_file(
     let bid = ed.focused_buffer_id();
     ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
     let canonical = std::fs::canonicalize(&file).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap().as_str().to_string();
+    let uri = hume_lsp::uri::path_to_uri(&canonical)
+        .unwrap()
+        .as_str()
+        .to_string();
     (bid, uri)
 }
 
@@ -190,7 +196,11 @@ fn callback_fires_normally_without_an_intervening_edit() {
     ed.drain_lsp();
     ed.drain_pending_steel_calls();
 
-    assert_ne!(state(&ed), before, "callback must fire when the buffer never moved on");
+    assert_ne!(
+        state(&ed),
+        before,
+        "callback must fire when the buffer never moved on"
+    );
 }
 
 #[test]
@@ -341,7 +351,10 @@ fn callback_calling_lsp_request_does_not_reenter_synchronously() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdefgh\n");
     setup_with(&mut ed, |b, _sid| {
-        b.respond_to("textDocument/hover", serde_json::json!({"contents": "first"}));
+        b.respond_to(
+            "textDocument/hover",
+            serde_json::json!({"contents": "first"}),
+        );
         b.respond_to(
             "textDocument/definition",
             serde_json::json!({"contents": "second"}),
@@ -483,7 +496,9 @@ fn didchange_reaches_the_wire_before_a_same_dispatch_request() {
     let mut ed = editor_from("-[a]>bcdef\n");
     let (mut raw_backend, log) = OrderedLogBackend::new();
     raw_backend.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
-    let sid = raw_backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = raw_backend
+        .start("rust-analyzer", &[], Path::new("."))
+        .unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(raw_backend));
     let mut client = LspClient::new(sid, PathBuf::from("."));
     client.state = ServerState::Running;

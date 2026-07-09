@@ -15,7 +15,12 @@ pub(crate) struct InlayHintProvider {
 
 impl InlineDecoration for InlayHintProvider {
     fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<InlineInsert>) {
-        if let Some(hints) = self.data.read().expect("RwLock not poisoned").get(&line_idx) {
+        if let Some(hints) = self
+            .data
+            .read()
+            .expect("RwLock not poisoned")
+            .get(&line_idx)
+        {
             out.extend(hints.iter().cloned());
         }
     }

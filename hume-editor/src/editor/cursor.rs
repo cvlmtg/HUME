@@ -87,7 +87,8 @@ pub(crate) fn screen_pos(
                 screen_row += visible_before + cursor_sub.saturating_sub(skip);
                 break;
             }
-            screen_row += visible_before + (breakdown.content + breakdown.after).saturating_sub(skip);
+            screen_row +=
+                visible_before + (breakdown.content + breakdown.after).saturating_sub(skip);
             if screen_row >= height {
                 return None;
             }
@@ -788,7 +789,11 @@ mod tests {
             &no_providers(),
             80,
         );
-        assert_eq!(with_none, Some((0, 1)), "sanity: no provider — cursor at row 1");
+        assert_eq!(
+            with_none,
+            Some((0, 1)),
+            "sanity: no provider — cursor at row 1"
+        );
 
         let with_virtual = screen_pos(
             &v,
@@ -828,27 +833,24 @@ mod tests {
 
         // Row layout: 0 = line 0 ('a'), 1 = virtual-before(line 1),
         // 2 = line 1's own content ('b'), 3 = line 2 ('c').
-        let on_virtual_row = screen_to_char_offset(
-            0, 1, 0, &v, &rope, &wrap, 4, &ws(), &mut s, &providers, 80,
-        );
+        let on_virtual_row =
+            screen_to_char_offset(0, 1, 0, &v, &rope, &wrap, 4, &ws(), &mut s, &providers, 80);
         assert_eq!(
             on_virtual_row,
             Some(rope.line_to_char(1)),
             "a click on the virtual row clamps to line 1's own first char"
         );
 
-        let on_pushed_down_content = screen_to_char_offset(
-            0, 2, 0, &v, &rope, &wrap, 4, &ws(), &mut s, &providers, 80,
-        );
+        let on_pushed_down_content =
+            screen_to_char_offset(0, 2, 0, &v, &rope, &wrap, 4, &ws(), &mut s, &providers, 80);
         assert_eq!(
             on_pushed_down_content,
             Some(rope.line_to_char(1)),
             "row 2 must resolve to line 1 (pushed down by the virtual row), not line 2"
         );
 
-        let on_next_line = screen_to_char_offset(
-            0, 3, 0, &v, &rope, &wrap, 4, &ws(), &mut s, &providers, 80,
-        );
+        let on_next_line =
+            screen_to_char_offset(0, 3, 0, &v, &rope, &wrap, 4, &ws(), &mut s, &providers, 80);
         assert_eq!(
             on_next_line,
             Some(rope.line_to_char(2)),

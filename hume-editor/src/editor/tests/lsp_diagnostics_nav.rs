@@ -112,12 +112,20 @@ const DIAG_B: DiagFixture = ((3, 0), (3, 2), 2, "problem B");
 fn next_from_before_a_jumps_to_a() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), &[DIAG_A, DIAG_B]);
+    let (mut ed, _guard) = setup(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        &[DIAG_A, DIAG_B],
+    );
     set_cursor(&mut ed, 0);
 
     run(&mut ed, ":goto-next-diagnostic");
 
-    assert_eq!(ed.current_selections().primary().head(), 3, "must land on diagnostic A's start");
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        3,
+        "must land on diagnostic A's start"
+    );
 }
 
 #[test]
@@ -125,7 +133,11 @@ fn next_from_before_a_jumps_to_a() {
 fn next_from_as_start_of_a_jumps_to_b_not_a() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), &[DIAG_A, DIAG_B]);
+    let (mut ed, _guard) = setup(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        &[DIAG_A, DIAG_B],
+    );
     set_cursor(&mut ed, 3); // sitting exactly on A's start
 
     run(&mut ed, ":goto-next-diagnostic");
@@ -142,12 +154,20 @@ fn next_from_as_start_of_a_jumps_to_b_not_a() {
 fn next_from_after_b_wraps_to_a() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), &[DIAG_A, DIAG_B]);
+    let (mut ed, _guard) = setup(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        &[DIAG_A, DIAG_B],
+    );
     set_cursor(&mut ed, 11); // past both diagnostics
 
     run(&mut ed, ":goto-next-diagnostic");
 
-    assert_eq!(ed.current_selections().primary().head(), 3, "must wrap around to A");
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        3,
+        "must wrap around to A"
+    );
 }
 
 #[test]
@@ -155,12 +175,20 @@ fn next_from_after_b_wraps_to_a() {
 fn prev_from_after_b_jumps_to_b() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), &[DIAG_A, DIAG_B]);
+    let (mut ed, _guard) = setup(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        &[DIAG_A, DIAG_B],
+    );
     set_cursor(&mut ed, 11);
 
     run(&mut ed, ":goto-prev-diagnostic");
 
-    assert_eq!(ed.current_selections().primary().head(), 9, "must land on diagnostic B's start");
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        9,
+        "must land on diagnostic B's start"
+    );
 }
 
 #[test]
@@ -168,12 +196,20 @@ fn prev_from_after_b_jumps_to_b() {
 fn prev_from_before_a_wraps_to_b() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), &[DIAG_A, DIAG_B]);
+    let (mut ed, _guard) = setup(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        &[DIAG_A, DIAG_B],
+    );
     set_cursor(&mut ed, 0);
 
     run(&mut ed, ":goto-prev-diagnostic");
 
-    assert_eq!(ed.current_selections().primary().head(), 9, "must wrap around to B (the last entry)");
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        9,
+        "must wrap around to B (the last entry)"
+    );
 }
 
 #[test]
@@ -199,7 +235,11 @@ fn empty_buffer_reports_no_diagnostics() {
 fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), &[DIAG_A, DIAG_B]);
+    let (mut ed, _guard) = setup(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        &[DIAG_A, DIAG_B],
+    );
 
     run(&mut ed, ":diagnostics");
 
@@ -208,10 +248,19 @@ fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
         guard.as_ref().expect("drawer must open").rows.clone()
     };
     assert_eq!(rows.len(), 2);
-    assert!(rows[0].contains("problem A"), "row must include the diagnostic's message: {rows:?}");
-    assert!(rows[0].contains('✗'), "severity 1 (Error) must render as the error glyph: {rows:?}");
+    assert!(
+        rows[0].contains("problem A"),
+        "row must include the diagnostic's message: {rows:?}"
+    );
+    assert!(
+        rows[0].contains('✗'),
+        "severity 1 (Error) must render as the error glyph: {rows:?}"
+    );
     assert!(rows[1].contains("problem B"));
-    assert!(rows[1].contains('⚠'), "severity 2 (Warning) must render as the warning glyph: {rows:?}");
+    assert!(
+        rows[1].contains('⚠'),
+        "severity 2 (Warning) must render as the warning glyph: {rows:?}"
+    );
 
     ed.handle_key(key('j'));
     ed.handle_key(key_enter());

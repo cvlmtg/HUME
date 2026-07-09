@@ -294,9 +294,10 @@ impl AsyncSource for LspState {
         // promptly. A request in flight gets the same short cadence, not
         // the coarser Running-idle heartbeat below.
         let pending = self.backend.has_pending()
-            || self.servers.values().any(|e| {
-                e.client.state == ServerState::Starting || e.client.pending_count() > 0
-            });
+            || self
+                .servers
+                .values()
+                .any(|e| e.client.state == ServerState::Starting || e.client.pending_count() > 0);
         if pending {
             return Some(now + PENDING_POLL);
         }

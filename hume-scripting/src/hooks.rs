@@ -193,6 +193,10 @@ mod tests {
         let mut sorted = names.clone();
         sorted.sort_unstable();
         sorted.dedup();
-        assert_eq!(sorted.len(), names.len(), "HOOKS has a duplicate symbol name");
+        assert_eq!(
+            sorted.len(),
+            names.len(),
+            "HOOKS has a duplicate symbol name"
+        );
     }
 }

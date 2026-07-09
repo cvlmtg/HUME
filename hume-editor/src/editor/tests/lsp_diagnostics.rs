@@ -90,8 +90,18 @@ fn ingest_converts_utf16_positions_across_an_emoji() {
         .collect();
     assert_eq!(stored.len(), 1);
     let (start, end) = stored[0];
-    let text = ed.state.buffers.get(bid).text().rope().slice(start..end).to_string();
-    assert_eq!(text, "error", "UTF-16 position must land after the emoji, not one char early");
+    let text = ed
+        .state
+        .buffers
+        .get(bid)
+        .text()
+        .rope()
+        .slice(start..end)
+        .to_string();
+    assert_eq!(
+        text, "error",
+        "UTF-16 position must land after the emoji, not one char early"
+    );
 }
 
 #[test]
@@ -109,10 +119,7 @@ fn two_publishes_in_one_drain_batch_coalesce_to_the_last() {
     // newest matters.
     backend.push_from_server(
         sid,
-        publish_diagnostics_notification(
-            uri.as_str(),
-            &[((0, 0), (0, 3), 1), ((0, 4), (0, 7), 1)],
-        ),
+        publish_diagnostics_notification(uri.as_str(), &[((0, 0), (0, 3), 1), ((0, 4), (0, 7), 1)]),
     );
     backend.push_from_server(
         sid,
@@ -133,7 +140,9 @@ fn two_publishes_in_one_drain_batch_coalesce_to_the_last() {
 #[test]
 fn publish_for_an_unopened_file_is_dropped_without_spam() {
     let tmp = tempfile::tempdir().unwrap();
-    let file = std::fs::canonicalize(tmp.path()).unwrap().join("never_opened.rs");
+    let file = std::fs::canonicalize(tmp.path())
+        .unwrap()
+        .join("never_opened.rs");
     // Never written to disk / never opened — no buffer will ever match it.
 
     let mut ed = editor_from("-[w]>ord\n");
@@ -156,7 +165,11 @@ fn publish_for_an_unopened_file_is_dropped_without_spam() {
         .entries()
         .filter(|e| e.text.contains("publishDiagnostics"))
         .collect();
-    assert_eq!(entries.len(), 1, "exactly one Trace line, never per-diagnostic spam");
+    assert_eq!(
+        entries.len(),
+        1,
+        "exactly one Trace line, never per-diagnostic spam"
+    );
 }
 
 // ── Minor B — stale-versioned publishes are dropped ────────────────────────
@@ -222,7 +235,11 @@ fn publish_with_a_stale_version_is_dropped_and_does_not_disturb_stored_diagnosti
         Some(current_gen),
     ));
     ed.ingest_publish_diagnostics(sid, seed);
-    assert_eq!(ed.lsp.diagnostic_counts_for_test(bid), (1, 0), "seed publish must land");
+    assert_eq!(
+        ed.lsp.diagnostic_counts_for_test(bid),
+        (1, 0),
+        "seed publish must land"
+    );
 
     // A later publish computed against a version we've already moved past
     // (the server hasn't caught up with our own edits yet) must be dropped
@@ -245,7 +262,11 @@ fn publish_with_a_stale_version_is_dropped_and_does_not_disturb_stored_diagnosti
         .entries()
         .filter(|e| e.text.contains("stale version"))
         .collect();
-    assert_eq!(entries.len(), 1, "exactly one Trace line for the dropped publish");
+    assert_eq!(
+        entries.len(),
+        1,
+        "exactly one Trace line for the dropped publish"
+    );
 }
 
 // ── Minor — stores pruned on buffer close ───────────────────────────────────
@@ -281,8 +302,15 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
             before: true,
         }],
     );
-    assert_eq!(ed.lsp.diagnostic_counts_for_test(bid), (1, 0), "seed diagnostic must land");
-    assert!(!ed.state.decorations.inlay_hints_for(bid).is_empty(), "seed hint must land");
+    assert_eq!(
+        ed.lsp.diagnostic_counts_for_test(bid),
+        (1, 0),
+        "seed diagnostic must land"
+    );
+    assert!(
+        !ed.state.decorations.inlay_hints_for(bid).is_empty(),
+        "seed hint must land"
+    );
 
     ed.close_buffer(bid);
 
@@ -327,7 +355,11 @@ fn lsp_stop_clears_stored_diagnostics_for_the_detached_buffer() {
         Some(current_gen),
     ));
     ed.ingest_publish_diagnostics(sid, params);
-    assert_eq!(ed.lsp.diagnostic_counts_for_test(bid), (1, 0), "seed publish must land");
+    assert_eq!(
+        ed.lsp.diagnostic_counts_for_test(bid),
+        (1, 0),
+        "seed publish must land"
+    );
 
     ed.lsp_stop(Some("rust"));
 

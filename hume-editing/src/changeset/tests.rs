@@ -447,7 +447,10 @@ fn map_positions_matches_map_pos_oracle() {
     let cs = b.finish();
 
     let mut positions: Vec<usize> = vec![0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11];
-    let expected: Vec<usize> = positions.iter().map(|&p| cs.map_pos(p, Assoc::After)).collect();
+    let expected: Vec<usize> = positions
+        .iter()
+        .map(|&p| cs.map_pos(p, Assoc::After))
+        .collect();
 
     cs.map_positions(&mut positions, Assoc::After);
     assert_eq!(positions, expected);
@@ -462,7 +465,10 @@ fn map_positions_before_assoc_matches_oracle() {
     let cs = b.finish();
 
     let mut positions: Vec<usize> = vec![0, 1, 2, 3, 4, 5];
-    let expected: Vec<usize> = positions.iter().map(|&p| cs.map_pos(p, Assoc::Before)).collect();
+    let expected: Vec<usize> = positions
+        .iter()
+        .map(|&p| cs.map_pos(p, Assoc::Before))
+        .collect();
 
     cs.map_positions(&mut positions, Assoc::Before);
     assert_eq!(positions, expected);

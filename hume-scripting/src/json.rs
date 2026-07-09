@@ -19,9 +19,9 @@
 //!
 //! This is deliberately generic JSON — it knows nothing about LSP shapes.
 
+use steel::HashMap as SteelHashMap;
 use steel::gc::Gc;
 use steel::rvals::SteelVal;
-use steel::HashMap as SteelHashMap;
 
 /// Converts a `serde_json::Value` into the equivalent `SteelVal`. Total —
 /// every JSON value has a representation, so this never fails.
@@ -85,7 +85,9 @@ pub fn steel_to_json(v: &SteelVal) -> Result<serde_json::Value, String> {
                 let key = match key {
                     SteelVal::StringV(s) => s.to_string(),
                     SteelVal::SymbolV(s) => s.to_string(),
-                    other => return Err(format!("hashmap key is not a string: {}", type_name(other))),
+                    other => {
+                        return Err(format!("hashmap key is not a string: {}", type_name(other)));
+                    }
                 };
                 map.insert(key, steel_to_json(value)?);
             }
@@ -154,10 +156,7 @@ mod tests {
         round_trip(json!(3.5));
         round_trip(json!(-0.125));
 
-        assert!(matches!(
-            json_to_steel(&json!(42)),
-            SteelVal::IntV(42)
-        ));
+        assert!(matches!(json_to_steel(&json!(42)), SteelVal::IntV(42)));
         assert!(matches!(json_to_steel(&json!(1.5)), SteelVal::NumV(n) if n == 1.5));
     }
 
@@ -182,7 +181,10 @@ mod tests {
         match steel {
             SteelVal::HashMapV(hm) => {
                 let key = hm.keys().next().expect("one key");
-                assert!(matches!(key, SteelVal::StringV(_)), "expected StringV key, got {key:?}");
+                assert!(
+                    matches!(key, SteelVal::StringV(_)),
+                    "expected StringV key, got {key:?}"
+                );
             }
             other => panic!("expected HashMapV, got {other:?}"),
         }
@@ -200,7 +202,10 @@ mod tests {
     #[test]
     fn reverse_rejects_closures_naming_the_type() {
         let err = steel_to_json(&SteelVal::FuncV(|_| unreachable!())).unwrap_err();
-        assert!(err.contains("function"), "error should name the type: {err}");
+        assert!(
+            err.contains("function"),
+            "error should name the type: {err}"
+        );
     }
 
     #[test]

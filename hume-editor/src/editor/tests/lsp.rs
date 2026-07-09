@@ -94,7 +94,10 @@ fn callback_never_fires_for_a_request_with_no_response() {
 
     ed.drain_lsp();
 
-    assert!(!*fired.borrow(), "no canned response — callback must not fire");
+    assert!(
+        !*fired.borrow(),
+        "no canned response — callback must not fire"
+    );
 }
 
 #[test]
@@ -117,7 +120,12 @@ fn timed_out_request_dispatches_callback_with_timed_out_outcome_and_logs_trace()
     };
     let id = ed
         .lsp
-        .send_request(sid, "textDocument/completion", serde_json::Value::Null, meta)
+        .send_request(
+            sid,
+            "textDocument/completion",
+            serde_json::Value::Null,
+            meta,
+        )
         .expect("client tracked");
     ed.lsp.register_callback(
         sid,
@@ -147,7 +155,10 @@ fn stale_response_is_dropped_when_buffer_moved_past_text_gen() {
 
     let mut backend = InlineLspBackend::new();
     let sid = backend.start("x", &[], Path::new(".")).unwrap();
-    backend.respond_to("textDocument/hover", serde_json::json!({"contents": "stale"}));
+    backend.respond_to(
+        "textDocument/hover",
+        serde_json::json!({"contents": "stale"}),
+    );
     wire_client(&mut ed, backend, sid);
 
     let fired = Rc::new(RefCell::new(false));
@@ -413,14 +424,16 @@ fn register_and_open_matching_file_spawns_exactly_one_server_and_second_buffer_a
         tmp.path(),
     );
 
-    ed.execute_typed("e", Some(file1.to_str().unwrap())).unwrap();
+    ed.execute_typed("e", Some(file1.to_str().unwrap()))
+        .unwrap();
     assert_eq!(
         ed.lsp.server_count_for_test(),
         1,
         "first matching file must spawn exactly one server"
     );
 
-    ed.execute_typed("e", Some(file2.to_str().unwrap())).unwrap();
+    ed.execute_typed("e", Some(file2.to_str().unwrap()))
+        .unwrap();
     assert_eq!(
         ed.lsp.server_count_for_test(),
         1,

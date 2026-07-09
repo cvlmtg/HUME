@@ -14,14 +14,18 @@ type SteelResult = Result<SteelVal, SteelErr>;
 fn ms_arg(val: SteelVal, ctx_name: &str) -> Result<u64, SteelErr> {
     match val {
         SteelVal::IntV(n) if n >= 0 => Ok(n as u64),
-        _ => steel::stop!(TypeMismatch => "{}: expected a non-negative integer (milliseconds)", ctx_name),
+        _ => {
+            steel::stop!(TypeMismatch => "{}: expected a non-negative integer (milliseconds)", ctx_name)
+        }
     }
 }
 
 fn timer_id_arg(val: SteelVal, ctx_name: &str) -> Result<u64, SteelErr> {
     match val {
         SteelVal::IntV(n) if n >= 0 => Ok(n as u64),
-        _ => steel::stop!(TypeMismatch => "{}: expected a non-negative integer (timer id)", ctx_name),
+        _ => {
+            steel::stop!(TypeMismatch => "{}: expected a non-negative integer (timer id)", ctx_name)
+        }
     }
 }
 

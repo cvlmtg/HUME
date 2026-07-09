@@ -61,7 +61,10 @@ impl std::fmt::Display for CodecError {
             CodecError::BadHeader(line) => write!(f, "malformed header: {line:?}"),
             CodecError::Json(e) => write!(f, "json error: {e}"),
             CodecError::Ambiguous => {
-                write!(f, "message body is neither request, response, nor notification")
+                write!(
+                    f,
+                    "message body is neither request, response, nor notification"
+                )
             }
         }
     }
@@ -230,10 +233,7 @@ pub fn write_message(w: &mut impl Write, msg: &Message) -> std::io::Result<()> {
             result: Some(v),
             error: None,
         },
-        Message::Response {
-            id,
-            result: Err(e),
-        } => RawMessageRef {
+        Message::Response { id, result: Err(e) } => RawMessageRef {
             id: Some(id),
             method: None,
             params: None,

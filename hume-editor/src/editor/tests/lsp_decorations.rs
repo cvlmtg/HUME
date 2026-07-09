@@ -38,7 +38,9 @@ fn attach_running_server(ed: &mut Editor) -> ServerId {
     ed.state
         .buffers
         .get_mut(bid)
-        .set_path(Some(std::path::PathBuf::from("/tmp/hume-decorations-test.rs")));
+        .set_path(Some(std::path::PathBuf::from(
+            "/tmp/hume-decorations-test.rs",
+        )));
     let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
     let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
     for action in actions {
@@ -70,7 +72,10 @@ fn set_inlay_hints_converts_wire_position_using_utf16_encoding() {
 
     let hints = ed.state.decorations.inlay_hints_for(bid);
     assert_eq!(hints.len(), 1);
-    assert_eq!(hints[0].pos, 1, "wire char 2 (UTF-16) must land right after the emoji, at char index 1");
+    assert_eq!(
+        hints[0].pos, 1,
+        "wire char 2 (UTF-16) must land right after the emoji, at char index 1"
+    );
     assert_eq!(hints[0].text, "hint");
     assert!(!hints[0].before);
 }
@@ -98,7 +103,11 @@ fn set_inlay_hints_replaces_wholesale_not_appends() {
     type_cmd(&mut ed, ":arm-hints-b");
 
     let hints = ed.state.decorations.inlay_hints_for(bid);
-    assert_eq!(hints.len(), 1, "the second set-inlay-hints! must replace, not append");
+    assert_eq!(
+        hints.len(),
+        1,
+        "the second set-inlay-hints! must replace, not append"
+    );
     assert_eq!(hints[0].text, "second");
 }
 
@@ -159,10 +168,22 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
 
     let linter_signs = ed.state.decorations.signs_for("linter", bid);
     assert_eq!(linter_signs.len(), 1);
-    assert_eq!((linter_signs[0].line, linter_signs[0].text.as_str(), linter_signs[0].scope.as_str(), linter_signs[0].priority), (0, "!", "error", 10));
+    assert_eq!(
+        (
+            linter_signs[0].line,
+            linter_signs[0].text.as_str(),
+            linter_signs[0].scope.as_str(),
+            linter_signs[0].priority
+        ),
+        (0, "!", "error", 10)
+    );
 
     let vcs_signs = ed.state.decorations.signs_for("vcs", bid);
-    assert_eq!(vcs_signs.len(), 1, "different sources' signs for the same buffer must coexist");
+    assert_eq!(
+        vcs_signs.len(),
+        1,
+        "different sources' signs for the same buffer must coexist"
+    );
     assert_eq!(vcs_signs[0].text, "+");
 
     let vlines = ed.state.decorations.virtual_lines_for("linter", bid);
@@ -171,7 +192,14 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
 
     let highlights = ed.state.decorations.extra_highlights_for("linter", bid);
     assert_eq!(highlights.len(), 1);
-    assert_eq!((highlights[0].start, highlights[0].end, highlights[0].scope.as_str()), (0, 3, "unused"));
+    assert_eq!(
+        (
+            highlights[0].start,
+            highlights[0].end,
+            highlights[0].scope.as_str()
+        ),
+        (0, 3, "unused")
+    );
 
     // Replace semantics: a second set-signs! for the same source clears the first.
     type_cmd(&mut ed, ":clear-linter-signs");
@@ -257,10 +285,18 @@ fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
     ed.scripting = Some(host);
 
     type_cmd(&mut ed, ":counts");
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "1 . 1", "(errors . warnings) must be a real dotted pair");
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "1 . 1",
+        "(errors . warnings) must be a real dotted pair"
+    );
 
     type_cmd(&mut ed, ":all");
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "3", "no floor/range must return all three");
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "3",
+        "no floor/range must return all three"
+    );
 
     type_cmd(&mut ed, ":floored");
     assert_eq!(

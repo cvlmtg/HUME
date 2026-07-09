@@ -139,7 +139,11 @@ fn selection_clamps_at_the_bottom() {
     }
     ed.feed_key(key_enter());
     ed.drain_pending_steel_calls();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "2", "clamped, not wrapped");
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "2",
+        "clamped, not wrapped"
+    );
 }
 
 // ── Stray key: neither closes nor invokes, but still executes ────────────────
@@ -154,7 +158,10 @@ fn stray_key_leaves_the_drawer_open_and_uninvoked_but_still_executes() {
     ed.feed_key(key('l')); // move-right — not one of the drawer's keys
     ed.drain_pending_steel_calls();
 
-    assert!(ed.state.drawer.is_some(), "stray key must not close the drawer");
+    assert!(
+        ed.state.drawer.is_some(),
+        "stray key must not close the drawer"
+    );
     assert!(
         ed.state.status_msg.is_none(),
         "stray key must not invoke the callback"
@@ -233,7 +240,10 @@ fn enter_jump_lands_via_goto_location_and_drawer_stays_open() {
     let line = text.char_to_line(head);
     let col = head - text.line_to_char(line);
     assert_eq!((line, col), (2, 1), "cursor landed at the jump target");
-    assert!(ed.state.drawer.is_some(), "drawer stays open after the jump");
+    assert!(
+        ed.state.drawer.is_some(),
+        "drawer stays open after the jump"
+    );
 }
 
 // ── Render snapshot: drawer band under the shrunk pane grid ──────────────────

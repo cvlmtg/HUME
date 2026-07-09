@@ -32,7 +32,10 @@ fn write_fixture_file(file_dir: &Path) -> (PathBuf, String) {
     let file = file_dir.join("main.rs");
     std::fs::write(&file, "fn main() {\n    let x = 1;\n}\n").unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap().as_str().to_string();
+    let uri = hume_lsp::uri::path_to_uri(&canonical)
+        .unwrap()
+        .as_str()
+        .to_string();
     (file, uri)
 }
 
@@ -87,7 +90,11 @@ fn run_actions(ed: &mut Editor) {
 
 #[cfg(not(windows))]
 fn menu_items(ed: &Editor) -> Vec<String> {
-    ed.state.menu.as_ref().map(|m| m.items.clone()).unwrap_or_default()
+    ed.state
+        .menu
+        .as_ref()
+        .map(|m| m.items.clone())
+        .unwrap_or_default()
 }
 
 #[cfg(not(windows))]
@@ -137,13 +144,19 @@ fn titles_are_listed_in_the_menu() {
     let (mut ed, _guard, _sid, _requests) = setup(&file, tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/codeAction",
-            serde_json::json!([edit_action("Fix the thing", &uri), command_action("Run the thing")]),
+            serde_json::json!([
+                edit_action("Fix the thing", &uri),
+                command_action("Run the thing")
+            ]),
         );
     });
 
     run_actions(&mut ed);
 
-    assert_eq!(menu_items(&ed), vec!["Fix the thing".to_string(), "Run the thing".to_string()]);
+    assert_eq!(
+        menu_items(&ed),
+        vec!["Fix the thing".to_string(), "Run the thing".to_string()]
+    );
 }
 
 #[test]
@@ -153,14 +166,20 @@ fn selecting_an_edit_action_applies_it() {
     let file_dir = safe_tempdir();
     let (file, uri) = write_fixture_file(file_dir.path());
     let (mut ed, _guard, _sid, _requests) = setup(&file, tmp.path(), |backend, _sid| {
-        backend.respond_to("textDocument/codeAction", serde_json::json!([edit_action("Fix the thing", &uri)]));
+        backend.respond_to(
+            "textDocument/codeAction",
+            serde_json::json!([edit_action("Fix the thing", &uri)]),
+        );
     });
 
     run_actions(&mut ed);
     ed.handle_key(key_enter());
     ed.drain_pending_steel_calls();
 
-    assert_eq!(ed.doc().text().to_string(), "fn main() {\n    let x = 2;\n}\n");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "fn main() {\n    let x = 2;\n}\n"
+    );
 }
 
 #[test]
@@ -170,7 +189,10 @@ fn selecting_a_command_action_runs_the_full_server_loop() {
     let file_dir = safe_tempdir();
     let (file, uri) = write_fixture_file(file_dir.path());
     let (mut ed, _guard, sid, _requests) = setup(&file, tmp.path(), |backend, sid| {
-        backend.respond_to("textDocument/codeAction", serde_json::json!([command_action("Run the thing")]));
+        backend.respond_to(
+            "textDocument/codeAction",
+            serde_json::json!([command_action("Run the thing")]),
+        );
         backend.respond_to("workspace/executeCommand", serde_json::Value::Null);
         // Simulate the server's real behavior: after executing the command,
         // it pushes an unsolicited workspace/applyEdit *request* back — the
@@ -210,13 +232,20 @@ fn disabled_actions_are_filtered_out() {
     let (mut ed, _guard, _sid, _requests) = setup(&file, tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/codeAction",
-            serde_json::json!([disabled_action("Not available"), edit_action("Fix the thing", &uri)]),
+            serde_json::json!([
+                disabled_action("Not available"),
+                edit_action("Fix the thing", &uri)
+            ]),
         );
     });
 
     run_actions(&mut ed);
 
-    assert_eq!(menu_items(&ed), vec!["Fix the thing".to_string()], "disabled actions must never appear");
+    assert_eq!(
+        menu_items(&ed),
+        vec!["Fix the thing".to_string()],
+        "disabled actions must never appear"
+    );
 }
 
 #[test]
@@ -253,8 +282,14 @@ fn context_diagnostics_echoes_the_raw_diagnostic_overlapping_the_cursor() {
     run_actions(&mut ed);
 
     let params = last_request_params(&requests, "textDocument/codeAction");
-    let diags = params["context"]["diagnostics"].as_array().expect("diagnostics must be an array");
-    assert_eq!(diags.len(), 1, "the cursor-overlapping diagnostic must be echoed back, got: {diags:?}");
+    let diags = params["context"]["diagnostics"]
+        .as_array()
+        .expect("diagnostics must be an array");
+    assert_eq!(
+        diags.len(),
+        1,
+        "the cursor-overlapping diagnostic must be echoed back, got: {diags:?}"
+    );
     assert_eq!(diags[0]["message"], "unused import");
     assert_eq!(diags[0]["code"], "unused_imports");
     // Distinguishes the raw wire Diagnostic from the diagnostics store's flat
@@ -263,5 +298,8 @@ fn context_diagnostics_echoes_the_raw_diagnostic_overlapping_the_cursor() {
     // one): only the raw shape nests its bounds under "range".
     assert_eq!(diags[0]["range"]["start"]["line"], 0);
     assert_eq!(diags[0]["range"]["start"]["character"], 0);
-    assert!(diags[0].get("start").is_none(), "must be the raw wire Diagnostic, not the flat shape");
+    assert!(
+        diags[0].get("start").is_none(),
+        "must be the raw wire Diagnostic, not the flat shape"
+    );
 }

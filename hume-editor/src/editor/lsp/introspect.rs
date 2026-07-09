@@ -29,9 +29,8 @@ pub(super) fn resolve_server(
 ) -> Result<ServerId, String> {
     let focused_server = || state.buffers.get(focused_bid).lsp_server;
     match server {
-        None => {
-            focused_server().ok_or_else(|| "no LSP server attached to the current buffer".to_string())
-        }
+        None => focused_server()
+            .ok_or_else(|| "no LSP server attached to the current buffer".to_string()),
         Some(name) => {
             let matches: Vec<ServerId> = lsp
                 .servers
@@ -42,12 +41,14 @@ pub(super) fn resolve_server(
             match matches.as_slice() {
                 [] => Err(format!("no running LSP server for language '{name}'")),
                 [sid] => Ok(*sid),
-                _ => focused_server().filter(|sid| matches.contains(sid)).ok_or_else(|| {
-                    format!(
-                        "multiple '{name}' servers running — pass #f to use the \
+                _ => focused_server()
+                    .filter(|sid| matches.contains(sid))
+                    .ok_or_else(|| {
+                        format!(
+                            "multiple '{name}' servers running — pass #f to use the \
                          current buffer's server"
-                    )
-                }),
+                        )
+                    }),
             }
         }
     }
@@ -90,7 +91,11 @@ pub(crate) fn server_status(lsp: &LspState) -> Vec<hume_scripting::LspServerStat
 }
 
 /// The registered language for the server attached to buffer `id`.
-pub(crate) fn server_for_buffer(state: &EditorState, lsp: &LspState, id: BufferId) -> Option<String> {
+pub(crate) fn server_for_buffer(
+    state: &EditorState,
+    lsp: &LspState,
+    id: BufferId,
+) -> Option<String> {
     let sid = state.buffers.try_get(id)?.lsp_server?;
     server_language(lsp, sid)
 }
@@ -128,12 +133,19 @@ fn uri_and_encoding<'a>(
 
 /// Ready-made `{"textDocument" {"uri"} "position" {"line" "character"}}`
 /// params from `id`'s primary cursor head.
-pub(crate) fn position_params(state: &EditorState, lsp: &LspState, id: BufferId) -> Option<serde_json::Value> {
+pub(crate) fn position_params(
+    state: &EditorState,
+    lsp: &LspState,
+    id: BufferId,
+) -> Option<serde_json::Value> {
     let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
     let pbs = pane_buffer_state(state, id)?;
     let rope = state.buffers.get(id).text().rope();
-    let (line, character) =
-        hume_editing::position_encoding::char_to_wire(rope, pbs.selections.primary().head(), encoding);
+    let (line, character) = hume_editing::position_encoding::char_to_wire(
+        rope,
+        pbs.selections.primary().head(),
+        encoding,
+    );
     Some(serde_json::json!({
         "textDocument": {"uri": uri},
         "position": {"line": line, "character": character},
@@ -212,7 +224,11 @@ pub(crate) fn diagnostic_counts(lsp: &LspState, bid: BufferId) -> (usize, usize)
 /// may be the first char of a multi-char cluster (`é` = e + U+0301, a ZWJ
 /// emoji sequence): stepping by one raw char would land the wire range
 /// mid-cluster.
-pub(crate) fn range_params(state: &EditorState, lsp: &LspState, id: BufferId) -> Option<serde_json::Value> {
+pub(crate) fn range_params(
+    state: &EditorState,
+    lsp: &LspState,
+    id: BufferId,
+) -> Option<serde_json::Value> {
     let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
     let pbs = pane_buffer_state(state, id)?;
     let sel = pbs.selections.primary();
@@ -224,7 +240,8 @@ pub(crate) fn range_params(state: &EditorState, lsp: &LspState, id: BufferId) ->
     let text = state.buffers.get(id).text();
     let end_exclusive = hume_editing::grapheme::next_grapheme_boundary(text, end_c);
     let rope = text.rope();
-    let (start_line, start_char) = hume_editing::position_encoding::char_to_wire(rope, start_c, encoding);
+    let (start_line, start_char) =
+        hume_editing::position_encoding::char_to_wire(rope, start_c, encoding);
     let (end_line, end_char) =
         hume_editing::position_encoding::char_to_wire(rope, end_exclusive, encoding);
     Some(serde_json::json!({

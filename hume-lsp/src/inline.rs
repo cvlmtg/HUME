@@ -6,10 +6,10 @@ use std::collections::{HashMap, VecDeque};
 use std::path::Path;
 
 use lsp_types::{
-    CodeActionProviderCapability, CompletionOptions, DeclarationCapability, HoverProviderCapability,
-    ImplementationProviderCapability, InitializeResult, OneOf, PositionEncodingKind,
-    ServerCapabilities, SignatureHelpOptions, TextDocumentSyncCapability, TextDocumentSyncKind,
-    TypeDefinitionProviderCapability,
+    CodeActionProviderCapability, CompletionOptions, DeclarationCapability,
+    HoverProviderCapability, ImplementationProviderCapability, InitializeResult, OneOf,
+    PositionEncodingKind, ServerCapabilities, SignatureHelpOptions, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TypeDefinitionProviderCapability,
 };
 
 use crate::backend::{LspBackend, ServerId};
@@ -170,7 +170,10 @@ mod tests {
             (id, InboundEvent::Message(Message::Response { id: rid, result })) => {
                 assert_eq!(*id, sid);
                 assert_eq!(*rid, RequestId::Int(1));
-                assert_eq!(result.clone().unwrap(), serde_json::json!({"contents": "hi"}));
+                assert_eq!(
+                    result.clone().unwrap(),
+                    serde_json::json!({"contents": "hi"})
+                );
             }
             _ => panic!("expected a Response event"),
         }

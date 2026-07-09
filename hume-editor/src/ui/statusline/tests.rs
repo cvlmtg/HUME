@@ -189,7 +189,10 @@ fn readonly_element_empty_for_normal_buffer() {
 #[test]
 fn readonly_element_renders_ro_label() {
     use crate::editor::buffer::Buffer;
-    let buf = Buffer::read_only_view(hume_editing::text::Text::from("hello\n"), "[test]".to_string());
+    let buf = Buffer::read_only_view(
+        hume_editing::text::Text::from("hello\n"),
+        "[test]".to_string(),
+    );
     let ed = crate::editor::Editor::for_testing(buf);
     let colors = crate::ui::theme::EditorColors::default();
     let (text, _) = render_element(StatusElement::ReadOnly, &ed, &colors, "");

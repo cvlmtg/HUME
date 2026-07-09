@@ -159,7 +159,10 @@ mod tests {
         let result = get_option(&mut ctx, "tab-width".into());
         assert!(result.is_err(), "get-option must error during init eval");
         let msg = result.unwrap_err().to_string();
-        assert!(msg.contains("init"), "error must mention 'init'; got: {msg}");
+        assert!(
+            msg.contains("init"),
+            "error must mention 'init'; got: {msg}"
+        );
     }
 
     /// In command mode, `get-option` reaches the host (`NullHost` → Err,

@@ -52,7 +52,15 @@ impl RecordingLspBackend {
     fn from_inline(inner: InlineLspBackend) -> (Self, NotificationLog, RequestLog) {
         let log = Rc::new(RefCell::new(Vec::new()));
         let request_log = Rc::new(RefCell::new(Vec::new()));
-        (Self { inner, log: log.clone(), request_log: request_log.clone() }, log, request_log)
+        (
+            Self {
+                inner,
+                log: log.clone(),
+                request_log: request_log.clone(),
+            },
+            log,
+            request_log,
+        )
     }
 
     /// Pass-throughs to the wrapped `InlineLspBackend` — call before boxing
@@ -77,7 +85,9 @@ impl LspBackend for RecordingLspBackend {
                 self.log.borrow_mut().push((method.clone(), params.clone()));
             }
             Message::Request { method, params, .. } => {
-                self.request_log.borrow_mut().push((server, method.clone(), params.clone()));
+                self.request_log
+                    .borrow_mut()
+                    .push((server, method.clone(), params.clone()));
             }
             Message::Response { .. } => {}
         }

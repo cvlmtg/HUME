@@ -19,7 +19,9 @@ pub enum InboundEvent {
     /// One line of stderr output, already utf8-lossy decoded.
     Stderr(String),
     /// The reader hit EOF or a codec error — the connection is dead.
-    Eof { error: Option<String> },
+    Eof {
+        error: Option<String>,
+    },
 }
 
 /// A running server process plus its bridging threads.

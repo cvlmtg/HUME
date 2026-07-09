@@ -71,7 +71,10 @@ impl Editor {
 
     /// Drain `host.pending_lsp_server_regs` and apply them. Mirrors
     /// `flush_pending_language_regs`'s Rust-side twin.
-    pub(in crate::editor) fn flush_pending_lsp_server_regs(&mut self, host: &mut hume_scripting::ScriptingHost) {
+    pub(in crate::editor) fn flush_pending_lsp_server_regs(
+        &mut self,
+        host: &mut hume_scripting::ScriptingHost,
+    ) {
         let regs = host.take_pending_lsp_server_regs();
         for reg in regs {
             self.apply_pending_lsp_server_reg(reg);

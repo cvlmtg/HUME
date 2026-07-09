@@ -4,7 +4,9 @@ use slotmap::{SlotMap, new_key_type};
 
 use crate::format::FormatScratch;
 use crate::pane::{Pane, WhitespaceConfig, WrapMode};
-use crate::providers::{DrawerProvider, GutterCell, InlineInsert, StatuslineProvider, TabBarProvider};
+use crate::providers::{
+    DrawerProvider, GutterCell, InlineInsert, StatuslineProvider, TabBarProvider,
+};
 use crate::style::StyleScratch;
 use crate::syntax_layers::SyntaxLayers;
 use crate::theme::{ScopeRegistry, Theme};

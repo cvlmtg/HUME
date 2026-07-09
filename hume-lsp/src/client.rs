@@ -13,8 +13,8 @@ use lsp_types::{
     HoverClientCapabilities, InitializeParams, InitializeResult, InitializedParams, MarkupKind,
     PositionEncodingKind, PublishDiagnosticsClientCapabilities, RenameClientCapabilities,
     ResourceOperationKind, ServerCapabilities, TextDocumentClientCapabilities,
-    TextDocumentSyncClientCapabilities, WorkspaceClientCapabilities, WorkspaceEditClientCapabilities,
-    WorkspaceFolder,
+    TextDocumentSyncClientCapabilities, WorkspaceClientCapabilities,
+    WorkspaceEditClientCapabilities, WorkspaceFolder,
 };
 
 use crate::backend::{LspBackend, ServerId};
@@ -477,7 +477,10 @@ fn build_client_capabilities() -> ClientCapabilities {
             ..Default::default()
         }),
         general: Some(GeneralClientCapabilities {
-            position_encodings: Some(vec![PositionEncodingKind::UTF8, PositionEncodingKind::UTF16]),
+            position_encodings: Some(vec![
+                PositionEncodingKind::UTF8,
+                PositionEncodingKind::UTF16,
+            ]),
             ..Default::default()
         }),
         ..Default::default()
@@ -519,11 +522,18 @@ mod tests {
         let caps = params.capabilities;
         assert_eq!(
             caps.general.unwrap().position_encodings,
-            Some(vec![PositionEncodingKind::UTF8, PositionEncodingKind::UTF16])
+            Some(vec![
+                PositionEncodingKind::UTF8,
+                PositionEncodingKind::UTF16
+            ])
         );
         let td = caps.text_document.unwrap();
         assert_eq!(
-            td.completion.unwrap().completion_item.unwrap().snippet_support,
+            td.completion
+                .unwrap()
+                .completion_item
+                .unwrap()
+                .snippet_support,
             Some(false)
         );
         assert_eq!(
@@ -540,7 +550,9 @@ mod tests {
         // textDocument/rename outright without this declared — every
         // rename result is a WorkspaceEdit, and some servers won't attempt
         // one unless the client has confirmed it can apply it.
-        let we = ws.workspace_edit.expect("workspace_edit capability must be declared");
+        let we = ws
+            .workspace_edit
+            .expect("workspace_edit capability must be declared");
         assert_eq!(we.document_changes, Some(true));
         // Must be present or rust-analyzer refuses every rename outright
         // (confirmed live) — HUME still can't actually apply a resource
@@ -558,9 +570,18 @@ mod tests {
         // Manual smoke testing found rust-analyzer withholds
         // diagnostic-derived quickfixes entirely without this declared —
         // a byte-perfect codeAction request still came back empty.
-        let ca = td.code_action.expect("code_action capability must be declared");
-        let literal = ca.code_action_literal_support.expect("code_action_literal_support must be declared");
-        assert!(literal.code_action_kind.value_set.contains(&CodeActionKind::QUICKFIX.as_str().to_string()));
+        let ca = td
+            .code_action
+            .expect("code_action capability must be declared");
+        let literal = ca
+            .code_action_literal_support
+            .expect("code_action_literal_support must be declared");
+        assert!(
+            literal
+                .code_action_kind
+                .value_set
+                .contains(&CodeActionKind::QUICKFIX.as_str().to_string())
+        );
         assert_eq!(ca.is_preferred_support, Some(true));
         assert_eq!(ca.disabled_support, Some(true));
     }
@@ -568,7 +589,9 @@ mod tests {
     #[test]
     fn handshake_round_trip_transitions_to_running() {
         let mut backend = InlineLspBackend::with_default_handshake();
-        let sid = backend.start("rust-analyzer", &[], std::path::Path::new(".")).unwrap();
+        let sid = backend
+            .start("rust-analyzer", &[], std::path::Path::new("."))
+            .unwrap();
         let mut client = LspClient::new(sid, PathBuf::from("."));
 
         client.start_handshake(&mut backend);
@@ -649,8 +672,12 @@ mod tests {
             allow_stale: false,
             deadline: Instant::now() + std::time::Duration::from_secs(10),
         };
-        let sent_id =
-            client.send_request(&mut backend, "textDocument/hover", serde_json::Value::Null, meta);
+        let sent_id = client.send_request(
+            &mut backend,
+            "textDocument/hover",
+            serde_json::Value::Null,
+            meta,
+        );
 
         // Nothing but the initialize request should be on the wire yet.
         assert!(
@@ -660,7 +687,11 @@ mod tests {
                 .all(|(_, m)| !matches!(m, Message::Request { method, .. } if method == "textDocument/hover")),
             "request must be queued, not sent, while Starting"
         );
-        assert_eq!(client.pending_count(), 1, "pending entry recorded even though queued");
+        assert_eq!(
+            client.pending_count(),
+            1,
+            "pending entry recorded even though queued"
+        );
 
         // Handshake completes: BecameRunning flushes the queued hover request.
         let (_id, ev) = backend.drain().into_iter().next().unwrap();
@@ -701,7 +732,10 @@ mod tests {
     #[test]
     fn utf8_negotiated_when_offered() {
         let mut backend = InlineLspBackend::new();
-        backend.respond_to("initialize", canned_result(Some(PositionEncodingKind::UTF8)));
+        backend.respond_to(
+            "initialize",
+            canned_result(Some(PositionEncodingKind::UTF8)),
+        );
         let sid = backend.start("x", &[], std::path::Path::new(".")).unwrap();
         let mut client = LspClient::new(sid, PathBuf::from("."));
 
@@ -795,8 +829,12 @@ mod tests {
             allow_stale: false,
             deadline: Instant::now() + std::time::Duration::from_secs(10),
         };
-        let sent_id =
-            client.send_request(&mut backend, "textDocument/hover", serde_json::Value::Null, meta);
+        let sent_id = client.send_request(
+            &mut backend,
+            "textDocument/hover",
+            serde_json::Value::Null,
+            meta,
+        );
 
         let (_sid, ev) = backend.drain().into_iter().next().unwrap();
         let actions = client.on_event(ev);
@@ -816,7 +854,11 @@ mod tests {
         }
 
         // Pulled once — a second call finds nothing left.
-        assert!(client.take_completed(&mut backend, Instant::now()).is_empty());
+        assert!(
+            client
+                .take_completed(&mut backend, Instant::now())
+                .is_empty()
+        );
     }
 
     #[test]
@@ -854,7 +896,11 @@ mod tests {
         );
         let (_sid, ev) = backend.drain().into_iter().next().unwrap();
         client.on_event(ev);
-        assert!(client.take_completed(&mut backend, Instant::now()).is_empty());
+        assert!(
+            client
+                .take_completed(&mut backend, Instant::now())
+                .is_empty()
+        );
     }
 
     /// Minor regression: nothing but `initialize` is legal on the wire
@@ -874,8 +920,12 @@ mod tests {
             allow_stale: false,
             deadline: Instant::now() + std::time::Duration::from_secs(10),
         };
-        let id =
-            client.send_request(&mut backend, "textDocument/definition", serde_json::Value::Null, meta);
+        let id = client.send_request(
+            &mut backend,
+            "textDocument/definition",
+            serde_json::Value::Null,
+            meta,
+        );
         client.cancel(&mut backend, id);
         assert!(
             backend.sent.is_empty(),
@@ -887,7 +937,12 @@ mod tests {
             allow_stale: false,
             deadline: Instant::now() - std::time::Duration::from_millis(1),
         };
-        client.send_request(&mut backend, "textDocument/hover", serde_json::Value::Null, meta2);
+        client.send_request(
+            &mut backend,
+            "textDocument/hover",
+            serde_json::Value::Null,
+            meta2,
+        );
         let completed = client.take_completed(&mut backend, Instant::now());
         assert_eq!(completed.len(), 1);
         assert!(matches!(completed[0].2, Outcome::TimedOut));
@@ -927,7 +982,11 @@ mod tests {
         }
 
         // Removed from pending — a second call must not report it again.
-        assert!(client.take_completed(&mut backend, Instant::now()).is_empty());
+        assert!(
+            client
+                .take_completed(&mut backend, Instant::now())
+                .is_empty()
+        );
     }
 
     #[test]

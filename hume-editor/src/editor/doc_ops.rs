@@ -47,11 +47,12 @@ fn record_lsp_edits(
 ) {
     let buf = buffers.get_mut(buf_id);
     if buf.lsp_server.is_some() {
-        buf.lsp_pending.push(crate::editor::lsp::sync::LspPendingChange {
-            cs: cs.clone(),
-            before: rope_pre.clone(),
-            version: text_gen,
-        });
+        buf.lsp_pending
+            .push(crate::editor::lsp::sync::LspPendingChange {
+                cs: cs.clone(),
+                before: rope_pre.clone(),
+                version: text_gen,
+            });
     }
 }
 

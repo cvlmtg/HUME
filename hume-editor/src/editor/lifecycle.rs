@@ -546,8 +546,10 @@ impl Editor {
     /// no reason to let it sit in the wheel until it fires).
     fn prune_closed_pane_caches(&mut self) {
         let panes = &self.view.panes;
-        self.last_viewport_key.retain(|pid, _| panes.contains_key(*pid));
-        self.virtual_lines_synced.retain(|pid, _| panes.contains_key(*pid));
+        self.last_viewport_key
+            .retain(|pid, _| panes.contains_key(*pid));
+        self.virtual_lines_synced
+            .retain(|pid, _| panes.contains_key(*pid));
         let wheel = &mut self.timer_wheel;
         let payloads = &mut self.timer_payloads;
         self.viewport_debounce.retain(|pid, id| {
@@ -1504,11 +1506,7 @@ impl Editor {
             })
         });
 
-        *self
-            .state
-            .popup_view
-            .write()
-            .expect("RwLock not poisoned") = resolved;
+        *self.state.popup_view.write().expect("RwLock not poisoned") = resolved;
     }
 
     /// Write the current menu content into the shared `PopupState` Arc so
@@ -1551,11 +1549,7 @@ impl Editor {
             })
         });
 
-        *self
-            .state
-            .menu_view
-            .write()
-            .expect("RwLock not poisoned") = resolved;
+        *self.state.menu_view.write().expect("RwLock not poisoned") = resolved;
     }
 
     /// Write the LSP completion menu into the shared `PopupState` Arc —
@@ -1690,7 +1684,10 @@ pub(super) fn char_to_line_byte(buf: &hume_editing::text::Text, char_pos: usize)
 /// hashmap) as `"label  detail"`, uniformly styled — per-part dimming would
 /// need segment-styled rows, which no card requires.
 fn completion_row_label(item: &serde_json::Value) -> String {
-    let label = item.get("label").and_then(|v| v.as_str()).unwrap_or_default();
+    let label = item
+        .get("label")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
     match item.get("detail").and_then(|v| v.as_str()) {
         Some(detail) if !detail.is_empty() => format!("{label}  {detail}"),
         _ => label.to_string(),

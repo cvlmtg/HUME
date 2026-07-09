@@ -76,7 +76,11 @@ fn selection_clamps_at_the_top() {
     ed.feed_key(key('k'));
     ed.feed_key(key_enter());
     ed.drain_pending_steel_calls();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "0", "clamped at the top");
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "0",
+        "clamped at the top"
+    );
 }
 
 #[test]
@@ -123,7 +127,10 @@ fn stray_key_dismisses_the_menu_and_still_executes() {
     ed.feed_key(key('l'));
     ed.drain_pending_steel_calls();
 
-    assert!(ed.state.menu.is_none(), "the stray key must dismiss the menu");
+    assert!(
+        ed.state.menu.is_none(),
+        "the stray key must dismiss the menu"
+    );
     assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
     assert_ne!(
         ed.current_selections().primary().head(),
@@ -177,7 +184,10 @@ fn show_menu_rejected_outside_normal_extend_mode() {
         result.is_err(),
         "show-menu! must reject Insert mode — a menu that can't be driven is worse than none"
     );
-    assert!(ed.state.menu.is_none(), "must not have opened despite the error");
+    assert!(
+        ed.state.menu.is_none(),
+        "must not have opened despite the error"
+    );
 }
 
 #[test]

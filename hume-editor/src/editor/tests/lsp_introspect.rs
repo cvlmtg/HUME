@@ -73,7 +73,10 @@ fn lsp_capabilities_decodes_after_handshake() {
         tmp.path(),
         r#"(equal? (hash-ref (lsp-capabilities #f) "hoverProvider") #t)"#,
     );
-    assert!(fired, "lsp-capabilities must decode the cached ServerCapabilities");
+    assert!(
+        fired,
+        "lsp-capabilities must decode the cached ServerCapabilities"
+    );
 }
 
 #[test]
@@ -97,7 +100,10 @@ fn lsp_capabilities_is_false_before_running() {
         tmp.path(),
         r#"(equal? (lsp-capabilities #f) #f)"#,
     );
-    assert!(fired, "capabilities must be #f before the handshake completes");
+    assert!(
+        fired,
+        "capabilities must be #f before the handshake completes"
+    );
 }
 
 #[test]
@@ -115,7 +121,10 @@ fn lsp_server_status_lists_the_running_server() {
                   (equal? (hash-ref entry "state") "Running")
                   (equal? (hash-ref entry "pending") 0)))"#,
     );
-    assert!(fired, "lsp-server-status must list the running server correctly");
+    assert!(
+        fired,
+        "lsp-server-status must list the running server correctly"
+    );
 }
 
 #[test]
@@ -130,7 +139,10 @@ fn lsp_server_for_buffer_reflects_attachment() {
         tmp.path(),
         r#"(equal? (lsp-server-for-buffer (current-buffer)) "rust")"#,
     );
-    assert!(fired, "lsp-server-for-buffer must return the attached language");
+    assert!(
+        fired,
+        "lsp-server-for-buffer must return the attached language"
+    );
 }
 
 #[test]
@@ -147,15 +159,26 @@ fn buffer_generation_changes_after_an_edit() {
     ed.scripting = Some(host);
 
     type_cmd(&mut ed, ":snap");
-    let before_gen = ed.state.status_msg.clone().expect("log! set the status message");
+    let before_gen = ed
+        .state
+        .status_msg
+        .clone()
+        .expect("log! set the status message");
 
     ed.feed_key(key('i'));
     ed.feed_key(key('X'));
     ed.feed_key(key_esc());
     type_cmd(&mut ed, ":snap");
-    let after_gen = ed.state.status_msg.clone().expect("log! set the status message");
+    let after_gen = ed
+        .state
+        .status_msg
+        .clone()
+        .expect("log! set the status message");
 
-    assert_ne!(before_gen, after_gen, "buffer-generation must change after a mutation");
+    assert_ne!(
+        before_gen, after_gen,
+        "buffer-generation must change after a mutation"
+    );
 }
 
 #[test]
@@ -163,7 +186,9 @@ fn lsp_position_params_uses_the_negotiated_utf16_encoding_for_multibyte_chars() 
     let tmp = tempfile::tempdir().unwrap();
     // Buffer: "🎉" (char 0, one grapheme, 2 UTF-16 code units) then cursor on 'x' (char 1).
     let mut ed = editor_from("🎉-[x]>rest\n");
-    ed.doc_mut().set_path(Some(std::path::PathBuf::from("/tmp/fake-lsp-introspect.rs")));
+    ed.doc_mut().set_path(Some(std::path::PathBuf::from(
+        "/tmp/fake-lsp-introspect.rs",
+    )));
     attach_running_server(&mut ed, serde_json::json!({"capabilities": {}})); // UTF-16 default
 
     let fired = run_probe(
@@ -185,7 +210,9 @@ fn lsp_position_params_uses_the_negotiated_utf16_encoding_for_multibyte_chars() 
 fn lsp_position_params_uses_the_negotiated_utf8_encoding_for_multibyte_chars() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("🎉-[x]>rest\n");
-    ed.doc_mut().set_path(Some(std::path::PathBuf::from("/tmp/fake-lsp-introspect-utf8.rs")));
+    ed.doc_mut().set_path(Some(std::path::PathBuf::from(
+        "/tmp/fake-lsp-introspect-utf8.rs",
+    )));
     attach_running_server(
         &mut ed,
         serde_json::json!({"capabilities": {"positionEncoding": "utf-8"}}),
@@ -211,7 +238,9 @@ fn lsp_range_params_reflects_the_primary_selection() {
     // Selection covers "bcd" (chars 1..=3, inclusive head at 3): half-open
     // wire range must be [1, 4).
     let mut ed = editor_from("a<[bcd]-ef\n");
-    ed.doc_mut().set_path(Some(std::path::PathBuf::from("/tmp/fake-lsp-introspect-range.rs")));
+    ed.doc_mut().set_path(Some(std::path::PathBuf::from(
+        "/tmp/fake-lsp-introspect-range.rs",
+    )));
     attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
 
     let fired = run_probe(
@@ -223,7 +252,10 @@ fn lsp_range_params_reflects_the_primary_selection() {
              (and (equal? (hash-ref (hash-ref r "start") "character") 1)
                   (equal? (hash-ref (hash-ref r "end") "character") 4)))"#,
     );
-    assert!(fired, "range params must span the primary selection, half-open");
+    assert!(
+        fired,
+        "range params must span the primary selection, half-open"
+    );
 }
 
 /// L3 regression: the wire range's `end` must land after a full grapheme
@@ -240,14 +272,14 @@ fn lsp_range_params_end_lands_on_a_grapheme_boundary_not_mid_cluster() {
     // (inclusive) covers "caf" plus é's first char only.
     let content = "caf\u{0065}\u{0301}\n";
     let mut ed = Editor::for_testing(Buffer::new(Text::from(content), SelectionSet::default()));
-    ed.doc_mut()
-        .set_path(Some(std::path::PathBuf::from("/tmp/fake-lsp-range-grapheme.rs")));
+    ed.doc_mut().set_path(Some(std::path::PathBuf::from(
+        "/tmp/fake-lsp-range-grapheme.rs",
+    )));
     attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
 
     let bid = ed.focused_buffer_id();
     let focused = ed.state.focused_pane_id;
-    ed.state.panes.state[focused][bid].selections =
-        SelectionSet::single(Selection::new(0, 3));
+    ed.state.panes.state[focused][bid].selections = SelectionSet::single(Selection::new(0, 3));
 
     let fired = run_probe(
         &mut ed,

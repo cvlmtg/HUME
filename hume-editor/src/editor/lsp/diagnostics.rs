@@ -276,14 +276,20 @@ impl Editor {
         let Ok(canonical) = path.canonicalize() else {
             self.report(
                 Severity::Trace,
-                format!("lsp: publishDiagnostics for an unknown file: {}", path.display()),
+                format!(
+                    "lsp: publishDiagnostics for an unknown file: {}",
+                    path.display()
+                ),
             );
             return None;
         };
         let Some(bid) = self.state.buffers.find_by_path(&canonical) else {
             self.report(
                 Severity::Trace,
-                format!("lsp: publishDiagnostics for an unopened buffer: {}", canonical.display()),
+                format!(
+                    "lsp: publishDiagnostics for an unopened buffer: {}",
+                    canonical.display()
+                ),
             );
             return None;
         };
@@ -365,7 +371,8 @@ mod tests {
 
     fn make_bid() -> BufferId {
         let mut ev = EngineView::new(Theme::default());
-        ev.buffers.insert(hume_engine::pipeline::SharedBuffer::new())
+        ev.buffers
+            .insert(hume_engine::pipeline::SharedBuffer::new())
     }
 
     /// Two guaranteed-distinct `BufferId`s — `make_bid()` calls each start a
@@ -375,8 +382,12 @@ mod tests {
     /// buffer" apart.
     fn make_two_bids() -> (BufferId, BufferId) {
         let mut ev = EngineView::new(Theme::default());
-        let a = ev.buffers.insert(hume_engine::pipeline::SharedBuffer::new());
-        let b = ev.buffers.insert(hume_engine::pipeline::SharedBuffer::new());
+        let a = ev
+            .buffers
+            .insert(hume_engine::pipeline::SharedBuffer::new());
+        let b = ev
+            .buffers
+            .insert(hume_engine::pipeline::SharedBuffer::new());
         (a, b)
     }
 
@@ -425,7 +436,11 @@ mod tests {
 
         let touched = store.remove_server(ServerId(0));
         assert_eq!(touched, vec![bid]);
-        assert_eq!(store.counts(bid), (0, 1), "server 1's diagnostic must survive");
+        assert_eq!(
+            store.counts(bid),
+            (0, 1),
+            "server 1's diagnostic must survive"
+        );
     }
 
     #[test]
@@ -437,7 +452,10 @@ mod tests {
         store.remove_server(ServerId(0));
         assert_eq!(store.counts(bid), (0, 0));
         assert!(
-            store.for_range(bid, 0..100, DiagSeverity::Hint).next().is_none(),
+            store
+                .for_range(bid, 0..100, DiagSeverity::Hint)
+                .next()
+                .is_none(),
             "no entry should remain for a buffer with no servers left"
         );
     }
@@ -451,8 +469,15 @@ mod tests {
 
         let touched = store.remove_server(ServerId(99));
         assert!(touched.is_empty());
-        assert_eq!(store.generation, gen_before, "no change must not bump generation");
-        assert_eq!(store.counts(bid), (1, 0), "unrelated server's diagnostics must survive");
+        assert_eq!(
+            store.generation, gen_before,
+            "no change must not bump generation"
+        );
+        assert_eq!(
+            store.counts(bid),
+            (1, 0),
+            "unrelated server's diagnostics must survive"
+        );
     }
 
     #[test]
@@ -461,11 +486,19 @@ mod tests {
         let (bid, other_bid) = make_two_bids();
         store.replace(ServerId(0), bid, vec![diag(0, 1, DiagSeverity::Error)]);
         store.replace(ServerId(1), bid, vec![diag(2, 3, DiagSeverity::Warning)]);
-        store.replace(ServerId(0), other_bid, vec![diag(0, 1, DiagSeverity::Error)]);
+        store.replace(
+            ServerId(0),
+            other_bid,
+            vec![diag(0, 1, DiagSeverity::Error)],
+        );
 
         store.remove_buffer(bid);
 
-        assert_eq!(store.counts(bid), (0, 0), "every server's entry for bid must be gone");
+        assert_eq!(
+            store.counts(bid),
+            (0, 0),
+            "every server's entry for bid must be gone"
+        );
         assert_eq!(
             store.counts(other_bid),
             (1, 0),
@@ -548,7 +581,11 @@ mod tests {
             .for_range(bid, 0..100, DiagSeverity::Hint)
             .map(|d| (d.start, d.end))
             .collect();
-        assert_eq!(kept, vec![(13, 18)], "an insert before the range shifts it forward");
+        assert_eq!(
+            kept,
+            vec![(13, 18)],
+            "an insert before the range shifts it forward"
+        );
     }
 
     #[test]
@@ -582,7 +619,11 @@ mod tests {
             .for_range(bid, 0..100, DiagSeverity::Hint)
             .map(|d| (d.start, d.end))
             .collect();
-        assert_eq!(kept, vec![(10, 15)], "an insert after the range must not move it");
+        assert_eq!(
+            kept,
+            vec![(10, 15)],
+            "an insert after the range must not move it"
+        );
     }
 
     #[test]
@@ -599,7 +640,10 @@ mod tests {
             .for_range(bid, 0..100, DiagSeverity::Hint)
             .map(|d| (d.start, d.end))
             .collect();
-        assert!(kept.is_empty(), "a deletion covering the range must drop it, not zero it");
+        assert!(
+            kept.is_empty(),
+            "a deletion covering the range must drop it, not zero it"
+        );
     }
 
     #[test]
