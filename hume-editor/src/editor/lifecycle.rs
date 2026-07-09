@@ -147,6 +147,7 @@ impl Editor {
                 keymap: Keymap::default(),
                 last_find: None,
                 force_full_redraw: false,
+                dispatch_inline_output: false,
                 last_repeatable_action: None,
                 selection_recipe: Vec::new(),
                 insert_session: None,

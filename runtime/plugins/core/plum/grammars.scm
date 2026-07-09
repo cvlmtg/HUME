@@ -218,7 +218,8 @@
 ;;;   3. plum/fetch-query! — download highlights query, resolving any
 ;;;      `; inherits:` chain (see "Query inheritance resolution" above)
 ;;;   4. plum/try-fetch-injections! — download Helix injections query, if any
-;;;   5. compile-grammar! — tree-sitter build → shared lib
+;;;   5. compile-grammar! — tree-sitter build → shared lib (preceded by a
+;;;      displayln status line — the C compiler itself is silent)
 ;;;   6. register-grammar! — attach to language in this session
 (define (plum/install-grammar name)
   (let* ((url     (plum/grammar-source-url name))
@@ -238,6 +239,9 @@
     (delete-dir src-dir)
     (git-clone-rev url src-dir rev)
     (plum/fetch-query! name "highlights.scm" hl-path)
+    ;; git prints its own progress; the C compiler stays silent until it's
+    ;; done or errors, which on a slow grammar reads as a hang.
+    (displayln (string-append "compiling " name "..."))
     (compile-grammar! build-dir out-path)
     (register-grammar! name out-path symbol hl-path (plum/try-fetch-injections! name))))
 

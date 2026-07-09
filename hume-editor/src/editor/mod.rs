@@ -287,6 +287,11 @@ pub(crate) struct EditorState {
     pub(super) history: self::minibuf::history::HistoryStore,
     /// Set by the inline-output dispatch arm to trigger a full ratatui repaint.
     pub(crate) force_full_redraw: bool,
+    /// Whether the Steel command currently being dispatched is `#:inline-output`.
+    /// Set just before `call_steel_cmd`; read back through
+    /// `EditorHostImpl::is_inline_output_command` so `SteelCtx` (and the gated
+    /// `displayln` builtin) know it's safe to write to the real stdout.
+    pub(crate) dispatch_inline_output: bool,
     /// Reusable scratch buffer for format operations in visual-line movement.
     pub(super) motion_format_scratch: hume_engine::format::FormatScratch,
     /// Reusable sticky-column buffer for visual j/k movement.
@@ -769,6 +774,11 @@ impl Editor {
             hume_platform::terminal::print_running_banner(name);
         }
 
+        // Declared flag (not `bracket_inline_output`) — SteelCtx must see it
+        // even off the event loop (tests, headless `run_keys`), where no
+        // alt-screen bracket runs but the print is harmless either way.
+        self.state.dispatch_inline_output = inline_output;
+
         let result = {
             let mut impl_host = crate::editor::host_impl::EditorHostImpl {
                 state: &mut self.state,
@@ -1013,6 +1023,7 @@ impl Editor {
                 keymap: keymap::Keymap::default(),
                 last_find: None,
                 force_full_redraw: false,
+                dispatch_inline_output: false,
                 last_repeatable_action: None,
                 selection_recipe: Vec::new(),
                 pending_repeat: None,

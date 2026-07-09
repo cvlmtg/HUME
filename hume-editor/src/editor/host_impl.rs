@@ -247,6 +247,11 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         self.state.settings.steel_command_budget_ms as u64
     }
 
+    // ── Terminal safety ──────────────────────────────────────────────────────
+    fn is_inline_output_command(&self) -> bool {
+        self.state.dispatch_inline_output
+    }
+
     // ── Synchronous command dispatch ─────────────────────────────────────────
     fn command_is_native(&self, name: &str) -> Result<bool, String> {
         self.state

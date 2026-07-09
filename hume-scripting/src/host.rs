@@ -113,6 +113,15 @@ pub trait EditorHost {
     /// Steel eval budget in milliseconds for command / hook execution.
     fn steel_command_budget_ms(&self) -> u64;
 
+    // ── Terminal safety ──────────────────────────────────────────────────────
+    /// True while the command currently being dispatched is `#:inline-output`
+    /// (the alt-screen TUI is suspended for the duration of its body), meaning
+    /// raw stdout writes are safe. Defaults to `false` so hosts that never run
+    /// under the live TUI (test stubs) need no override.
+    fn is_inline_output_command(&self) -> bool {
+        false
+    }
+
     // ── Synchronous command dispatch ─────────────────────────────────────────
     /// Returns `Ok(true)` if `name` is a native (Rust-registered) command —
     /// `Motion`, `Selection`, `Edit`, or `EditorCmd` — whose only valid `call!`

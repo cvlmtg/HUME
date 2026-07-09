@@ -12,6 +12,7 @@ pub(crate) mod grammar;
 pub(crate) mod hooks;
 pub(crate) mod ids;
 pub(crate) mod interrupt;
+pub(crate) mod io;
 pub(crate) mod keymap_bind;
 pub(crate) mod panes;
 pub(crate) mod plugins;
@@ -172,6 +173,11 @@ const BOOTSTRAP: &str = r#"
   (syntax-rules ()
     ((_ name args ...)
      (%dispatch-command name (list args ...)))))
+
+; displayln — shadows steel-core's kernel.scm binding (raw, ungated stdout
+; print) with a version gated on SteelCtx::is_inline_output (see io.rs): a
+; no-op unless the alt-screen TUI is guaranteed not to own the terminal.
+(define (displayln . args) (%displayln! args))
 "#;
 
 // ── Registration ──────────────────────────────────────────────────────────────
@@ -277,6 +283,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
     // Logging — push messages to the editor message log
     steel.register_fn_with_ctx(HUME_CTX, "log!", crate::log::log_msg);
+
+    // %displayln! is the Rust leaf behind the BOOTSTRAP `displayln` shim below,
+    // which shadows steel-core's kernel.scm `displayln` (raw, ungated stdout
+    // print) with a version gated on SteelCtx::is_inline_output — see io.rs.
+    steel.register_fn_with_ctx(HUME_CTX, "%displayln!", io::displayln);
 
     // Opaque ID predicates and equality — context-free; no SteelCtx needed.
     steel.register_fn("buffer-id?", ids::is_buffer_id);

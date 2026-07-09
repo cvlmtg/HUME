@@ -77,6 +77,11 @@ pub(crate) struct SteelCtx<'a> {
     /// `!is_init || !plugin_stack.is_empty()` gate: both must be false, i.e.
     /// only the init.scm top level (is_init=true, stack empty) is allowed.
     pub(crate) is_init: bool,
+    /// True when it is safe to write directly to stdout: either during init
+    /// (before the alt-screen TUI is up) or inside an `#:inline-output` command
+    /// body (alt-screen temporarily left). See `EditorHost::is_inline_output_command`.
+    /// Gates the shadowed `displayln` builtin (`builtins::io::displayln`).
+    pub(crate) is_inline_output: bool,
     // ── Multi-buffer focus snapshot ──────────────────────────────────────────
     pub(crate) focused_pane_id: PaneId,
     pub(crate) focused_buffer_id: BufferId,
@@ -113,6 +118,7 @@ impl<'a> SteelCtx<'a> {
             pending_language_sets: Vec::new(),
             pending_char: None,
             is_init: true,
+            is_inline_output: false,
             focused_pane_id: PaneId::default(),
             focused_buffer_id: BufferId::default(),
             live_focused_buffer_id: BufferId::default(),
@@ -150,6 +156,8 @@ impl<'a> SteelCtx<'a> {
         focused_buffer_id: BufferId,
         pending_char: Option<char>,
     ) -> Self {
+        // Read before `host` is moved into the struct below.
+        let is_inline_output = host.is_inline_output_command();
         Self {
             host,
             plugin_stack: host_bundle.plugin_stack,
@@ -165,6 +173,7 @@ impl<'a> SteelCtx<'a> {
             pending_language_sets: Vec::new(),
             pending_char,
             is_init: false,
+            is_inline_output,
             focused_pane_id,
             focused_buffer_id,
             live_focused_buffer_id: focused_buffer_id,
@@ -211,6 +220,34 @@ mod tests {
         let mut h = SteelCtxTestHarness::new();
         let ctx = h.ctx_activation();
         assert!(!ctx.is_init, "new_activation must set is_init = false");
+    }
+
+    // ── Terminal safety ───────────────────────────────────────────────────────
+
+    /// `new_command` reads `is_inline_output` off the host rather than
+    /// hardcoding it — `NullHost` (default) reports `false`.
+    ///
+    /// Fail oracle: hardcode `is_inline_output: false` in `new_command` →
+    /// this assert fires even though the host says `true`.
+    #[test]
+    fn new_command_reads_inline_output_true_from_host() {
+        use crate::null_host::InlineOutputHost;
+        let mut host = InlineOutputHost;
+        let mut h = SteelCtxTestHarness::new();
+        let ctx = h.ctx_with_host(&mut host);
+        assert!(
+            ctx.is_inline_output,
+            "new_command must read is_inline_output_command() from the host"
+        );
+    }
+
+    /// The harness's default `NullHost` reports `is_inline_output_command() ==
+    /// false`, so a plain `ctx()` must carry `is_inline_output == false`.
+    #[test]
+    fn new_command_defaults_inline_output_false() {
+        let mut h = SteelCtxTestHarness::new();
+        let ctx = h.ctx();
+        assert!(!ctx.is_inline_output, "NullHost must default to false");
     }
 
     // ── Focus snapshot (new_command) ──────────────────────────────────────────
