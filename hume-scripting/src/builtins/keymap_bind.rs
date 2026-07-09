@@ -8,6 +8,8 @@ use crate::SteelCtx;
 use crate::host::BindMode;
 use crate::keys::parse_key_sequence;
 
+use super::require_config_ctx;
+
 type SteelResult = Result<SteelVal, SteelErr>;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -41,10 +43,7 @@ fn bind_inner(
     kind: BindKind,
     force_extend: bool,
 ) -> SteelResult {
-    if !ctx.is_init && ctx.plugin_stack.is_empty() {
-        steel::stop!(Generic =>
-            "{fn_name}: only valid during init.scm or plugin load, not from a Steel command body");
-    }
+    require_config_ctx!(ctx, fn_name);
     let mode = mode_from_symbol(&mode, fn_name)?;
     let keys = parse_key_sequence(&key_str)
         .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
@@ -119,10 +118,7 @@ pub(crate) fn bind_key_extend(
 /// Removes the binding for `key-sequence` in `mode`. Silent no-op if the
 /// sequence is already unbound. Only valid during `init.scm` or plugin load.
 pub(crate) fn unbind_key(ctx: &mut SteelCtx, mode: SteelVal, key_str: String) -> SteelResult {
-    if !ctx.is_init && ctx.plugin_stack.is_empty() {
-        steel::stop!(Generic =>
-            "unbind-key!: only valid during init.scm or plugin load, not from a Steel command body");
-    }
+    require_config_ctx!(ctx, "unbind-key!");
     let mode = mode_from_symbol(&mode, "unbind-key!")?;
     let keys = parse_key_sequence(&key_str)
         .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;

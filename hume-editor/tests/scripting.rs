@@ -1063,7 +1063,7 @@ fn register_hook_errors_in_command_mode() {
             &mut mock,
         )
         .unwrap_err();
-    assert!(err.contains("can only be called during init"), "got: {err}");
+    assert!(err.contains("only valid during init.scm or plugin load"), "got: {err}");
 }
 
 #[test]

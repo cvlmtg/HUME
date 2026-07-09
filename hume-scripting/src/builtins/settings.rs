@@ -6,7 +6,7 @@ use steel::rvals::SteelVal;
 use crate::SteelCtx;
 use crate::host::OptionValue;
 
-use super::require_cmd_ctx;
+use super::{require_cmd_ctx, require_config_ctx};
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -22,10 +22,7 @@ type SteelResult = Result<SteelVal, SteelErr>;
 /// Valid during `init.scm` or any plugin activation (init or runtime); raises
 /// a Steel error if called from a plain command body.
 pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> SteelResult {
-    if !ctx.is_init && ctx.plugin_stack.is_empty() {
-        steel::stop!(Generic =>
-            "set-option!: only valid during init.scm or plugin load, not from a Steel command body");
-    }
+    require_config_ctx!(ctx, "set-option!");
 
     // Accept string, bool, or integer for `value` and convert to the string
     // representation that the settings layer expects.

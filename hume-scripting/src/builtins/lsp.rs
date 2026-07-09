@@ -7,7 +7,7 @@ use crate::json::{json_to_steel, steel_to_json};
 use crate::types::{PendingLspNotify, PendingLspRequest};
 use crate::{PendingLspServerReg, SteelCtx};
 
-use super::{conv_err, list_to_strings, require_cmd_ctx, string_arg};
+use super::{conv_err, list_to_strings, require_cmd_ctx, require_config_ctx, string_arg};
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -53,9 +53,7 @@ pub(crate) fn register_lsp_server(
     init_options: SteelVal,
     settings: SteelVal,
 ) -> SteelResult {
-    if !ctx.is_init && ctx.plugin_stack.is_empty() {
-        steel::stop!(Generic => "%register-lsp-server!: only callable during init (use register-lsp-server! in init.scm or a plugin)");
-    }
+    require_config_ctx!(ctx, "%register-lsp-server!");
     let language = string_arg(language, "register-lsp-server! language")?;
     let command = string_arg(command, "register-lsp-server! command")?;
     let args = list_to_strings(args_val, "register-lsp-server! args")?;
@@ -139,9 +137,7 @@ pub(crate) fn on_lsp_notification(
     method: SteelVal,
     handler: SteelVal,
 ) -> SteelResult {
-    if !ctx.is_init && ctx.plugin_stack.is_empty() {
-        steel::stop!(Generic => "on-lsp-notification: only callable during init/plugin load");
-    }
+    require_config_ctx!(ctx, "on-lsp-notification");
     let method = string_arg(method, "on-lsp-notification method")?;
     ctx.registries
         .lsp_notification_handlers

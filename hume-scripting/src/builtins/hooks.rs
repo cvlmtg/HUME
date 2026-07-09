@@ -6,6 +6,8 @@ use steel::rvals::SteelVal;
 use crate::SteelCtx;
 use crate::hooks::HookId;
 
+use super::require_config_ctx;
+
 type SteelResult = Result<SteelVal, SteelErr>;
 
 /// `(register-hook! 'name proc)` — register `proc` as a handler for the
@@ -21,9 +23,7 @@ type SteelResult = Result<SteelVal, SteelErr>;
 /// first matching transition; the body then calls `(register-hook! 'on-language-set …)`
 /// to install a *hook* that reacts on every subsequent transition.
 pub(crate) fn register_hook(ctx: &mut SteelCtx, name: SteelVal, proc: SteelVal) -> SteelResult {
-    if !ctx.is_init && ctx.plugin_stack.is_empty() {
-        steel::stop!(Generic => "register-hook!: can only be called during init/plugin load");
-    }
+    require_config_ctx!(ctx, "register-hook!");
     let name_str = match &name {
         SteelVal::SymbolV(s) => s.to_string(),
         _ => steel::stop!(TypeMismatch => "register-hook!: expected a symbol, got {:?}", name),

@@ -30,6 +30,8 @@ use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 
+use super::require_config_ctx;
+
 type SteelResult = Result<SteelVal, SteelErr>;
 
 /// Extract a Steel list of strings into a `Vec<String>`.
@@ -76,10 +78,7 @@ pub(crate) fn configure_statusline(
     center: SteelVal,
     right: SteelVal,
 ) -> SteelResult {
-    if !ctx.is_init && ctx.plugin_stack.is_empty() {
-        steel::stop!(Generic =>
-            "configure-statusline!: only valid during init.scm or plugin load, not from a Steel command body");
-    }
+    require_config_ctx!(ctx, "configure-statusline!");
     let left = extract_string_list(&left, "left")?;
     let center = extract_string_list(&center, "center")?;
     let right = extract_string_list(&right, "right")?;

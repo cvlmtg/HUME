@@ -45,6 +45,23 @@ macro_rules! require_cmd_ctx {
 }
 pub(crate) use require_cmd_ctx;
 
+/// Return `Err` unless we're at init.scm top level or inside a plugin
+/// activation (`is_init` true, or `plugin_stack` non-empty) — the gate
+/// config builtins (`set-option!`, `bind-key!`, hook/LSP-server/language
+/// registration, …) share, permitting plugin-activation bodies but blocking
+/// plain command bodies. See `SteelCtx::is_init`'s doc for why this is a
+/// distinct, looser gate than `require_cmd_ctx!`'s.
+macro_rules! require_config_ctx {
+    ($ctx:expr, $name:expr) => {
+        if !$ctx.is_init && $ctx.plugin_stack.is_empty() {
+            steel::stop!(Generic =>
+                "{}: only valid during init.scm or plugin load, not from a Steel command body",
+                $name);
+        }
+    };
+}
+pub(crate) use require_config_ctx;
+
 /// Map an `IntoSteelVal` conversion failure to a Steel `ConversionError`.
 pub(crate) fn conv_err(e: impl std::fmt::Display) -> SteelErr {
     SteelErr::new(steel::rerrs::ErrorKind::ConversionError, e.to_string())

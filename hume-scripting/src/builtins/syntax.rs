@@ -7,7 +7,7 @@ use steel::rvals::SteelVal;
 
 use crate::{PendingLanguageReg, SteelCtx};
 
-use super::list_to_strings;
+use super::{list_to_strings, require_config_ctx};
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -47,9 +47,7 @@ pub(crate) fn define_language(
     globs_val: SteelVal,
     shebangs_val: SteelVal,
 ) -> SteelResult {
-    if !ctx.is_init && ctx.plugin_stack.is_empty() {
-        steel::stop!(Generic => "%define-language!: only callable during init (use define-language! in init.scm or a plugin)");
-    }
+    require_config_ctx!(ctx, "%define-language!");
     let name = match &name {
         SteelVal::StringV(s) => s.to_string(),
         SteelVal::SymbolV(s) => s.to_string(),

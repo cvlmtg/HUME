@@ -31,7 +31,7 @@
 use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::SteelVal;
 
-use super::require_cmd_ctx;
+use super::{require_cmd_ctx, require_config_ctx};
 use crate::SteelCtx;
 use crate::attribution::Owner;
 use crate::log::LogLevel;
@@ -87,11 +87,7 @@ fn define_command_inner(
              — shell-out commands must not participate in dot-repeat");
     }
     let builtin_name = "define-command!";
-    if !ctx.is_init && ctx.plugin_stack.is_empty() {
-        steel::stop!(Generic =>
-            "{}: only valid during init.scm or plugin load, not from a Steel command body",
-            builtin_name);
-    }
+    require_config_ctx!(ctx, builtin_name);
     if name.contains('"') || name.contains('\\') {
         steel::stop!(Generic =>
             "{}: command name '{}' must not contain '\"' or '\\'", builtin_name, name);
