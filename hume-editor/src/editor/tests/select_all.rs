@@ -90,15 +90,39 @@ fn star_on_cursor_expands_to_word() {
     assert!(ed.search_pattern().is_some());
 }
 
-/// `*` on a non-cursor selection uses the selected text literally.
+/// `*` on a partial-word selection expands to the whole word under the head —
+/// it must NOT search the literal partial text. Regression test: previously
+/// this produced `\bell\b` (from the literal "ell" substring), which can
+/// never match anything, because `\b` doesn't exist inside "hello".
 #[test]
-fn star_on_selection_uses_selected_text() {
-    let mut ed = editor_from("a-[b c]>d\n");
+fn star_on_partial_selection_expands_to_word() {
+    // "hello world\n", selection covers "ell" (head on the second 'l').
+    let mut ed = editor_from("h-[ell]>o world\n");
     ed.handle_key(key('*'));
-    // Selection unchanged (non-cursor, no expansion).
-    assert_eq!(state(&ed), "a-[b c]>d\n");
-    // Edges are both Word-class → whole-word boundaries applied.
-    assert_eq!(reg(&ed, 's'), vec![r"\bb c\b"]);
+    // Selection expands to the full word "hello", discarding the partial selection.
+    assert_eq!(state(&ed), "-[hello]> world\n");
+    assert_eq!(reg(&ed, 's'), vec![r"\bhello\b"]);
+
+    // Independent oracle: the pattern must actually match "hello" in the buffer.
+    let sp = ed.search_pattern().expect("search pattern must be set");
+    let buf = ed.doc().text();
+    let matches = crate::ops::search::find_all_matches(buf, &sp.regex);
+    assert_eq!(
+        matches,
+        vec![(0, 4)],
+        "pattern must match the word it came from"
+    );
+}
+
+/// `*` on a selection spanning multiple words searches only the word under
+/// the head, not the whole selection.
+#[test]
+fn star_on_multiword_selection_uses_word_under_head() {
+    // "hello world\n", selection covers "hello wor" (head on the 'r' of "world").
+    let mut ed = editor_from("-[hello wor]>ld\n");
+    ed.handle_key(key('*'));
+    assert_eq!(state(&ed), "hello -[world]>\n");
+    assert_eq!(reg(&ed, 's'), vec![r"\bworld\b"]);
 }
 
 /// `*` on a `\n` cursor is a noop — no word to search for.
@@ -117,22 +141,13 @@ fn star_on_trailing_newline_is_noop() {
     assert!(reg(&ed, 's').is_empty());
 }
 
-/// `*` escapes regex metacharacters in the selection.
+/// `*` escapes regex metacharacters in the word it expands to.
 #[test]
 fn star_escapes_metacharacters() {
-    let mut ed = editor_from("-[f]>oo.bar\n");
-    // Select "foo.bar" first via `v$` equivalent — use the whole line.
-    // Easier: just set up a selection covering "foo.bar".
-    let buf = hume_editing::text::Text::from("foo.bar\n");
-    let sels = hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::new(0, 6),
-    );
-    *ed.doc_mut() = crate::editor::buffer::Buffer::new(buf, sels.clone());
-    ed.set_current_selections(sels);
-
+    // "a.b\n", cursor on '.' — a 1-char Punctuation run, escaped literally.
+    let mut ed = editor_from("a-[.]>b\n");
     ed.handle_key(key('*'));
-    // Edges are both Word-class (f…r), so whole-word boundaries are applied.
-    assert_eq!(reg(&ed, 's'), vec![r"\bfoo\.bar\b"]);
+    assert_eq!(reg(&ed, 's'), vec![r"\."]);
 }
 
 /// `*` on a word matches whole words only — the `as` in `"last"` must not match.
@@ -172,21 +187,4 @@ fn star_punctuation_run_stays_literal() {
     let r = reg(&ed, 's');
     // '-' and '>' are both Punctuation — no \b boundaries should be added.
     assert_eq!(r, vec!["->"]);
-}
-
-/// `*` on an explicit selection ending in punctuation adds no word boundaries.
-#[test]
-fn star_selection_trailing_punctuation_stays_literal() {
-    // Buffer: "foo. bar\n". Select "foo." (positions 0-3 inclusive).
-    let mut ed = editor_from("-[a]>b\n");
-    let buf = hume_editing::text::Text::from("foo. bar\n");
-    let sels = hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::new(0, 3),
-    );
-    *ed.doc_mut() = crate::editor::buffer::Buffer::new(buf, sels.clone());
-    ed.set_current_selections(sels);
-
-    ed.handle_key(key('*'));
-    // Last edge is '.' (Punctuation) → literal match, no \b.
-    assert_eq!(reg(&ed, 's'), vec![r"foo\."]);
 }

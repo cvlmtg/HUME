@@ -7,7 +7,7 @@ use crate::ops::search::{
     compile_search_regex, escape_regex, find_all_matches, find_match_from_cache, find_next_match,
 };
 use crate::ops::text_object::inner_word_impl;
-use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::word::{CharClass, classify_char, is_word_boundary};
 use hume_engine::pipeline::EngineView;
@@ -316,47 +316,30 @@ pub fn cmd_use_selection_as_search(
     let buf = doc(state, view).text();
     let primary = current_selections(state, view).primary();
 
-    // If cursor (1-char selection), expand to inner word first.
-    let (text, start, end_incl, new_sel): (String, usize, usize, Option<Selection>) =
-        if primary.is_collapsed() {
-            // Noop on \n — no word to search for (matches Vim/Helix behaviour).
-            // inner_word_impl would otherwise expand the cursor to the adjacent \n
-            // run and set a useless newline regex.
-            if classify_char(buf.char_at(primary.head()).unwrap_or('\n')) == CharClass::Eol {
-                return Ok(());
-            }
-            let Some((start, end)) = inner_word_impl(buf, primary.head(), is_word_boundary) else {
-                return Ok(());
-            };
-            let word_text = buf.slice(start..end + 1).to_string();
-            (word_text, start, end, Some(Selection::new(start, end)))
-        } else {
-            let start = primary.start();
-            let end_incl = primary.end_inclusive(buf);
-            let text = buf.slice(start..end_incl + 1).to_string();
-            (text, start, end_incl, None)
-        };
-
-    if text.is_empty() {
+    // Always search the word under the head, regardless of any existing selection
+    // (matches Vim: `*` targets the word under the cursor, not the visual selection).
+    //
+    // Noop on \n — no word to search for (matches Vim/Helix behaviour). inner_word_impl
+    // would otherwise expand the cursor to the adjacent \n run and set a useless
+    // newline regex.
+    if classify_char(buf.char_at(primary.head()).unwrap_or('\n')) == CharClass::Eol {
         return Ok(());
     }
+    let Some((start, end_incl)) = inner_word_impl(buf, primary.head(), is_word_boundary) else {
+        return Ok(());
+    };
+    let text = buf.slice(start..end_incl + 1).to_string();
 
-    // Wrap in `\b…\b` when both edges are Word-class characters, matching Vim's
-    // whole-word `*` behaviour. Classifying via grapheme bases (not raw chars) keeps
-    // combining sequences (e.g. e + U+0301) correct: prev_grapheme_boundary gives
-    // the start of the final grapheme so we classify its base codepoint, not a
-    // combining mark. Punctuation runs and mixed-class selections stay literal.
+    // Wrap in `\b…\b` when the run is Word-class, matching Vim's whole-word `*`
+    // behaviour. inner_word_impl returns a uniform same-class run, so checking the
+    // first character's class is sufficient — the last character is guaranteed to
+    // share it. Punctuation runs stay literal.
     //
     // Computed here (before set_primary_selection) so the immutable `buf` borrow
     // ends before we mutably borrow state.
-    let first_class = classify_char(buf.char_at(start).unwrap_or('\n'));
-    let last_base = prev_grapheme_boundary(buf, end_incl + 1);
-    let last_class = classify_char(buf.char_at(last_base).unwrap_or('\n'));
-    let whole_word = first_class == CharClass::Word && last_class == CharClass::Word;
+    let whole_word = classify_char(buf.char_at(start).unwrap_or('\n')) == CharClass::Word;
 
-    if let Some(sel) = new_sel {
-        set_primary_selection(state, view, sel);
-    }
+    set_primary_selection(state, view, Selection::new(start, end_incl));
 
     let escaped = escape_regex(&text);
     let pattern = if whole_word {
