@@ -381,10 +381,11 @@ impl Editor {
             let _ = hume_platform::terminal::end_synchronized_update();
 
             // ── 3. Event ──────────────────────────────────────────────────────
-            // While any async source (parse worker now; LSP/timers later) has
-            // pending work, poll with a bounded timeout so it's drained and
-            // painted without waiting for input. Idle falls through to the
-            // blocking read so we never burn CPU while the editor is at rest.
+            // While any async source (parse worker, LSP backend, timer wheel)
+            // has pending work, poll with a bounded timeout so it's drained
+            // and painted without waiting for input. Idle falls through to
+            // the blocking read so we never burn CPU while the editor is at
+            // rest.
             if let Some(timeout) = self.wake_timeout()
                 && !event::poll(timeout)?
             {

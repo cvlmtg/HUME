@@ -1,7 +1,7 @@
 //! Generalized event-loop wake: composes every asynchronous work source
-//! (parse worker, LSP backend, timer wheel) behind one `has_pending` /
-//! `next_deadline` predicate so `run`'s event-poll timeout doesn't
-//! hard-code a single source.
+//! (parse worker, LSP backend, timer wheel) behind one `next_wake`
+//! predicate so `run`'s event-poll timeout doesn't hard-code a single
+//! source.
 
 use std::time::{Duration, Instant};
 
@@ -9,21 +9,22 @@ use hume_treesitter::parse_worker::ParseBackend;
 
 use super::Editor;
 
+/// Poll cadence used while a source's work may complete any moment (a parse
+/// or LSP response in flight) — not a real deadline, just a short recheck.
+pub(crate) const PENDING_POLL: Duration = Duration::from_millis(8);
+
 /// One source of asynchronous work the event loop must wake for.
 ///
 /// Implemented by the parse worker, the LSP backend, and the timer wheel.
 pub(crate) trait AsyncSource {
-    /// Work may complete soon — poll instead of blocking on input.
-    fn has_pending(&self) -> bool;
-    /// Absolute wake deadline, if this source schedules timed work.
-    fn next_deadline(&self) -> Option<Instant> {
-        None
-    }
+    /// Next instant the event loop should wake for this source, if any.
+    /// `None` means this source needs no wake — the loop may block on input.
+    fn next_wake(&self, now: Instant) -> Option<Instant>;
 }
 
 impl AsyncSource for Box<dyn ParseBackend> {
-    fn has_pending(&self) -> bool {
-        self.has_in_flight()
+    fn next_wake(&self, now: Instant) -> Option<Instant> {
+        self.has_in_flight().then(|| now + PENDING_POLL)
     }
 }
 
@@ -36,22 +37,16 @@ impl Editor {
 
     /// `Some(timeout)` => poll with it; `None` => block on `event::read()`.
     ///
-    /// `timeout` = the smaller of "8ms because some source has pending work"
-    /// and "time until the nearest scheduled deadline" — whichever bounds
-    /// apply. Idle (no source pending, no deadline scheduled) is `None`, a
-    /// genuinely blocking read, so the editor never busy-polls at rest.
+    /// `timeout` = time until the nearest source's wake instant. Idle (no
+    /// source has a wake instant) is `None`, a genuinely blocking read, so
+    /// the editor never busy-polls at rest.
     pub(crate) fn wake_timeout(&self) -> Option<Duration> {
-        let sources = self.async_sources();
-        let pending = sources.iter().any(|s| s.has_pending());
-        let deadline = sources.iter().filter_map(|s| s.next_deadline()).min();
-
-        let pending_timeout = pending.then_some(Duration::from_millis(8));
-        match (pending_timeout, deadline) {
-            (None, None) => None,
-            (Some(t), None) => Some(t),
-            (None, Some(d)) => Some(d.saturating_duration_since(Instant::now())),
-            (Some(t), Some(d)) => Some(t.min(d.saturating_duration_since(Instant::now()))),
-        }
+        let now = Instant::now();
+        self.async_sources()
+            .iter()
+            .filter_map(|s| s.next_wake(now))
+            .min()
+            .map(|wake| wake.saturating_duration_since(now))
     }
 
     /// Named drain phase for completed async work, called once per frame from

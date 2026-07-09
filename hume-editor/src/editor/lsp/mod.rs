@@ -26,7 +26,7 @@ use hume_lsp::inline::InlineLspBackend;
 use hume_lsp::transport::InboundEvent;
 
 use super::Editor;
-use super::async_source::AsyncSource;
+use super::async_source::{AsyncSource, PENDING_POLL};
 use super::message_log::Severity;
 use diagnostics::DiagnosticsStore;
 pub(crate) use diagnostics::{DiagSeverity, StoredDiag};
@@ -288,22 +288,23 @@ impl LspState {
 }
 
 impl AsyncSource for LspState {
-    /// True while a client is mid-handshake (the initialize response could
-    /// land any moment — and after that, anything queued while `Starting`
-    /// must flush promptly) or has a request in flight (an 8ms
-    /// poll cadence, not the coarser Running-idle heartbeat below).
-    fn has_pending(&self) -> bool {
-        self.backend.has_pending()
+    fn next_wake(&self, now: Instant) -> Option<Instant> {
+        // Mid-handshake, the initialize response could land any moment —
+        // and after that, anything queued while `Starting` must flush
+        // promptly. A request in flight gets the same short cadence, not
+        // the coarser Running-idle heartbeat below.
+        let pending = self.backend.has_pending()
             || self.servers.values().any(|e| {
                 e.client.state == ServerState::Starting || e.client.pending_count() > 0
-            })
-    }
+            });
+        if pending {
+            return Some(now + PENDING_POLL);
+        }
 
-    fn next_deadline(&self) -> Option<Instant> {
         self.servers
             .values()
             .any(|e| e.client.state == ServerState::Running)
-            .then(|| Instant::now() + LSP_HEARTBEAT)
+            .then(|| now + LSP_HEARTBEAT)
     }
 }
 

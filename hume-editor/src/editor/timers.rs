@@ -58,7 +58,7 @@ impl TimerWheel {
     /// The nearest still-pending deadline, ignoring cancelled entries.
     ///
     /// Immutable — a full O(heap size) scan rather than the mutating,
-    /// head-compacting walk `take_due` uses, since `AsyncSource::next_deadline`
+    /// head-compacting walk `take_due` uses, since `AsyncSource::next_wake`
     /// is queried every event-loop iteration and must not disturb timer state
     /// mid-command.
     pub(crate) fn next_deadline(&self) -> Option<Instant> {
@@ -101,14 +101,10 @@ impl TimerWheel {
 }
 
 impl AsyncSource for TimerWheel {
-    // A distant deadline must not cause 8ms busy-polling — `next_deadline`
-    // bounds the event-loop's poll timeout instead. Due-now timers are
-    // caught by `take_due` in the async-source drain phase, not by this flag.
-    fn has_pending(&self) -> bool {
-        false
-    }
-
-    fn next_deadline(&self) -> Option<Instant> {
+    // The wheel's own deadline bounds the event-loop's poll timeout — a
+    // distant timer never forces the 8ms pending-poll cadence. Due-now
+    // timers are caught by `take_due` in the async-source drain phase.
+    fn next_wake(&self, _now: Instant) -> Option<Instant> {
         TimerWheel::next_deadline(self)
     }
 }
@@ -195,14 +191,26 @@ mod tests {
     }
 
     #[test]
-    fn idle_wheel_never_reports_pending() {
-        // The wheel's AsyncSource::has_pending is always false by design — a
-        // distant deadline bounds the poll timeout instead of triggering
-        // 8ms busy-polling (see the impl above).
+    fn idle_wheel_has_no_wake() {
+        let wheel = TimerWheel::new();
+        assert_eq!(wheel.next_wake(Instant::now()), None);
+    }
+
+    #[test]
+    fn distant_timer_reports_its_own_deadline_not_a_pending_poll() {
+        // AsyncSource::next_wake must return the timer's real deadline — a
+        // distant timer must not collapse to a short poll cadence (see the
+        // impl above).
         let mut wheel = TimerWheel::new();
-        assert!(!wheel.has_pending());
+        let now = Instant::now();
         wheel.schedule(Duration::from_secs(10));
-        assert!(!wheel.has_pending());
+
+        let wake = wheel.next_wake(now).expect("a timer is scheduled");
+        assert!(
+            wake >= now + Duration::from_secs(9),
+            "expected the wheel's own ~10s deadline, got {:?} from now",
+            wake.saturating_duration_since(now)
+        );
     }
 
     #[test]

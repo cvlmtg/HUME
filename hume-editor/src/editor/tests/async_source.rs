@@ -4,6 +4,7 @@
 use std::time::{Duration, Instant};
 
 use super::*;
+use crate::editor::async_source::PENDING_POLL;
 use hume_treesitter::parse_worker::{ParseBackend, ParseDone, ParseRequest};
 
 /// A `ParseBackend` double that reports work permanently in flight, without
@@ -49,7 +50,7 @@ fn wake_timeout_is_none_when_idle() {
 fn wake_timeout_is_8ms_when_a_source_is_pending() {
     let mut ed = editor_from("-[w]>ord\n");
     ed.parse_worker = Box::new(AlwaysPendingBackend);
-    assert_eq!(ed.wake_timeout(), Some(Duration::from_millis(8)));
+    assert_eq!(ed.wake_timeout(), Some(PENDING_POLL));
 }
 
 #[test]
@@ -69,15 +70,16 @@ fn wake_timeout_bounded_by_nearer_timer_deadline() {
 
 #[test]
 fn wake_timeout_distant_timer_bounds_without_busy_polling() {
-    // A far-future deadline must neither collapse to the 8ms pending-poll
-    // ceiling (TimerWheel::has_pending is always false) nor block forever
-    // (None) — it bounds the timeout to roughly the real wait.
+    // A far-future deadline must neither collapse to the short pending-poll
+    // ceiling (the timer wheel reports its own deadline, not a fake "pending"
+    // flag) nor block forever (None) — it bounds the timeout to roughly the
+    // real wait.
     let mut ed = editor_from("-[w]>ord\n");
     ed.timer_wheel.schedule(Duration::from_secs(10));
 
     let timeout = ed.wake_timeout().expect("a timer is scheduled");
     assert!(
-        timeout > Duration::from_millis(8) && timeout <= Duration::from_secs(10),
+        timeout > PENDING_POLL && timeout <= Duration::from_secs(10),
         "a distant deadline must not trigger 8ms busy-polling, got {timeout:?}"
     );
 }
@@ -130,12 +132,12 @@ fn scripted_initialize_round_trip_through_editor() {
     }
 }
 
-/// Fix 2: `LspState::has_pending` only checked the raw backend
+/// Fix 2: `LspState::next_wake` originally only checked the raw backend
 /// (`ThreadedLspBackend`/`InlineLspBackend` always report `false`), so a
 /// client mid-handshake or with a request in flight had no wake source at
 /// all — the response would sit undrained until the next keypress. These
 /// three tests pin the corrected condition against `wake_timeout` directly.
-mod has_pending_covers_client_state {
+mod next_wake_covers_client_state {
     use super::*;
     use hume_lsp::backend::LspBackend;
     use hume_lsp::client::{LspClient, RequestMeta, ServerState};
@@ -160,7 +162,7 @@ mod has_pending_covers_client_state {
         ed.lsp
             .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
 
-        assert_eq!(ed.wake_timeout(), Some(Duration::from_millis(8)));
+        assert_eq!(ed.wake_timeout(), Some(PENDING_POLL));
     }
 
     #[test]
