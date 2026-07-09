@@ -979,14 +979,8 @@ impl Editor {
             self.state.force_full_redraw = true;
         }
 
-        let (wait_char_cmd, lang_sets, grammar_sweeps, lsp_requests, lsp_notifies) = match result {
-            Ok(r) => (
-                r.wait_char_request,
-                r.pending_language_sets,
-                r.grammar_sweeps,
-                r.pending_lsp_requests,
-                r.pending_lsp_notifies,
-            ),
+        let (wait_char_cmd, effects) = match result {
+            Ok(r) => (r.wait_char_request, r.effects),
             Err(e) => {
                 self.report(Severity::Error, e);
                 return false;
@@ -994,13 +988,7 @@ impl Editor {
         };
 
         self.flush_script_messages();
-        self.flush_pending_lsp_calls(lsp_requests, lsp_notifies);
-        for (bid, lang) in lang_sets {
-            self.set_buffer_language(bid, lang);
-        }
-        if !grammar_sweeps.is_empty() {
-            self.sweep_buffers_for_grammars(grammar_sweeps);
-        }
+        self.apply_script_effects(effects);
         if let Some(wc) = wait_char_cmd {
             self.state.wait_char = Some(crate::editor::keymap::WaitCharPending {
                 cmd_name: wc.into(),

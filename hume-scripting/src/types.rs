@@ -122,19 +122,19 @@ pub struct PendingLspNotify {
 #[derive(Debug)]
 pub struct SteelCmdResult {
     pub wait_char_request: Option<String>,
+    pub effects: HookResult,
+}
+
+/// Per-eval side effects queued by Steel builtins and drained after the eval
+/// returns — shared by [`super::ScriptingHost::call_steel_cmd`],
+/// [`super::ScriptingHost::fire_hook`], and
+/// [`super::ScriptingHost::run_steel_calls`], all of which funnel through
+/// [`super::context::SteelCtx::take_side_effects`].
+#[derive(Debug, Default)]
+pub struct HookResult {
     pub pending_language_sets: PendingLanguageSets,
     /// Language names for which `(register-grammar! …)` just attached a grammar;
     /// drained by the executor into `sweep_buffers_for_grammars`.
-    pub grammar_sweeps: Vec<String>,
-    pub pending_lsp_requests: Vec<PendingLspRequest>,
-    pub pending_lsp_notifies: Vec<PendingLspNotify>,
-}
-
-/// Result returned by [`super::ScriptingHost::fire_hook`] and
-/// [`super::ScriptingHost::run_steel_calls`].
-#[derive(Debug)]
-pub struct HookResult {
-    pub pending_language_sets: PendingLanguageSets,
     pub grammar_sweeps: Vec<String>,
     pub pending_lsp_requests: Vec<PendingLspRequest>,
     pub pending_lsp_notifies: Vec<PendingLspNotify>,

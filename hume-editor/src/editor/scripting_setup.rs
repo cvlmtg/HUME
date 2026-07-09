@@ -18,6 +18,26 @@ use super::{Editor, Severity, host_impl::EditorHostImpl, theme};
 const MAX_HOOK_DRAIN_HOOKS: usize = 1000;
 
 impl Editor {
+    /// Apply a `HookResult`'s queued side effects: send/notify any queued LSP
+    /// calls, apply deferred `set-buffer-language!` calls, and sweep buffers
+    /// for newly attached grammars. Shared tail for `call_steel_cmd`'s call
+    /// site, `drain_hooks`, and `drain_pending_steel_calls`.
+    pub(crate) fn apply_script_effects(&mut self, effects: HookResult) {
+        let HookResult {
+            pending_language_sets,
+            grammar_sweeps,
+            pending_lsp_requests,
+            pending_lsp_notifies,
+        } = effects;
+        self.flush_pending_lsp_calls(pending_lsp_requests, pending_lsp_notifies);
+        for (bid, lang) in pending_language_sets {
+            self.set_buffer_language(bid, lang);
+        }
+        if !grammar_sweeps.is_empty() {
+            self.sweep_buffers_for_grammars(grammar_sweeps);
+        }
+    }
+
     // ── Message reporting ─────────────────────────────────────────────────────
 
     /// Report a message, routing it based on severity:
@@ -182,20 +202,7 @@ impl Editor {
                 };
                 self.flush_script_messages();
                 match result {
-                    Ok(HookResult {
-                        pending_language_sets,
-                        grammar_sweeps,
-                        pending_lsp_requests,
-                        pending_lsp_notifies,
-                    }) => {
-                        self.flush_pending_lsp_calls(pending_lsp_requests, pending_lsp_notifies);
-                        for (bid, lang) in pending_language_sets {
-                            self.set_buffer_language(bid, lang);
-                        }
-                        if !grammar_sweeps.is_empty() {
-                            self.sweep_buffers_for_grammars(grammar_sweeps);
-                        }
-                    }
+                    Ok(effects) => self.apply_script_effects(effects),
                     Err(e) => self.report(Severity::Error, format!("hook error: {e}")),
                 }
             }
@@ -242,20 +249,7 @@ impl Editor {
         };
         self.flush_script_messages();
         match result {
-            Ok(HookResult {
-                pending_language_sets,
-                grammar_sweeps,
-                pending_lsp_requests,
-                pending_lsp_notifies,
-            }) => {
-                self.flush_pending_lsp_calls(pending_lsp_requests, pending_lsp_notifies);
-                for (bid, lang) in pending_language_sets {
-                    self.set_buffer_language(bid, lang);
-                }
-                if !grammar_sweeps.is_empty() {
-                    self.sweep_buffers_for_grammars(grammar_sweeps);
-                }
-            }
+            Ok(effects) => self.apply_script_effects(effects),
             Err(e) => self.report(Severity::Error, format!("steel call error: {e}")),
         }
     }

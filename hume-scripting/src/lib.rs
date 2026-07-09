@@ -568,14 +568,7 @@ impl ScriptingHost {
             .map_err(|e| format!("call_steel_cmd: cannot convert args: {e}"))?;
         let call_args = vec![SteelVal::StringV(name.into()), args_list];
 
-        let (
-            result,
-            wait_char_request,
-            pending_language_sets,
-            grammar_sweeps,
-            pending_lsp_requests,
-            pending_lsp_notifies,
-        ) = {
+        let (result, wait_char_request, effects) = {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
             let mut steel_ctx = SteelCtx::new_command(
                 host,
@@ -593,23 +586,14 @@ impl ScriptingHost {
                 call_args,
                 budget_ms,
             );
-            (
-                result,
-                steel_ctx.wait_char_request,
-                steel_ctx.pending_language_sets,
-                steel_ctx.pending_grammar_sweeps,
-                steel_ctx.pending_lsp_requests,
-                steel_ctx.pending_lsp_notifies,
-            )
+            let effects = steel_ctx.take_side_effects();
+            (result, steel_ctx.wait_char_request, effects)
         };
 
         result?;
         Ok(SteelCmdResult {
             wait_char_request,
-            pending_language_sets,
-            grammar_sweeps,
-            pending_lsp_requests,
-            pending_lsp_notifies,
+            effects,
         })
     }
 
@@ -632,23 +616,12 @@ impl ScriptingHost {
         // Collect handler procs before borrowing self mutably for the SteelCtx.
         let handler_procs: Vec<SteelVal> = self.registries.hooks.handlers_for(hook_id).to_vec();
         if handler_procs.is_empty() {
-            return Ok(HookResult {
-                pending_language_sets: vec![],
-                grammar_sweeps: vec![],
-                pending_lsp_requests: vec![],
-                pending_lsp_notifies: vec![],
-            });
+            return Ok(HookResult::default());
         }
 
         let budget_ms = host.steel_command_budget_ms();
 
-        let (
-            result,
-            pending_language_sets,
-            grammar_sweeps,
-            pending_lsp_requests,
-            pending_lsp_notifies,
-        ) = {
+        let (result, effects) = {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
             let mut steel_ctx =
                 SteelCtx::new_command(host, bundle, focused_pane_id, focused_buffer_id, None);
@@ -663,22 +636,11 @@ impl ScriptingHost {
                 }
                 Ok(())
             });
-            (
-                result,
-                steel_ctx.pending_language_sets,
-                steel_ctx.pending_grammar_sweeps,
-                steel_ctx.pending_lsp_requests,
-                steel_ctx.pending_lsp_notifies,
-            )
+            (result, steel_ctx.take_side_effects())
         };
 
         result?;
-        Ok(HookResult {
-            pending_language_sets,
-            grammar_sweeps,
-            pending_lsp_requests,
-            pending_lsp_notifies,
-        })
+        Ok(effects)
     }
 
     /// Calls each `(proc, args)` pair directly, in order, inside one
@@ -700,23 +662,12 @@ impl ScriptingHost {
         host: &'a mut dyn EditorHost,
     ) -> Result<HookResult, String> {
         if calls.is_empty() {
-            return Ok(HookResult {
-                pending_language_sets: vec![],
-                grammar_sweeps: vec![],
-                pending_lsp_requests: vec![],
-                pending_lsp_notifies: vec![],
-            });
+            return Ok(HookResult::default());
         }
 
         let budget_ms = host.steel_command_budget_ms();
 
-        let (
-            result,
-            pending_language_sets,
-            grammar_sweeps,
-            pending_lsp_requests,
-            pending_lsp_notifies,
-        ) = {
+        let (result, effects) = {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
             let mut steel_ctx =
                 SteelCtx::new_command(host, bundle, focused_pane_id, focused_buffer_id, None);
@@ -727,22 +678,11 @@ impl ScriptingHost {
                 }
                 Ok(())
             });
-            (
-                result,
-                steel_ctx.pending_language_sets,
-                steel_ctx.pending_grammar_sweeps,
-                steel_ctx.pending_lsp_requests,
-                steel_ctx.pending_lsp_notifies,
-            )
+            (result, steel_ctx.take_side_effects())
         };
 
         result?;
-        Ok(HookResult {
-            pending_language_sets,
-            grammar_sweeps,
-            pending_lsp_requests,
-            pending_lsp_notifies,
-        })
+        Ok(effects)
     }
 }
 

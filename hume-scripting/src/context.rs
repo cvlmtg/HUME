@@ -8,7 +8,7 @@ use super::attribution::PluginStack;
 use super::host::EditorHost;
 use super::log::LogLevel;
 use super::types::{
-    PendingLanguageReg, PendingLanguageSets, PendingLspNotify, PendingLspRequest,
+    HookResult, PendingLanguageReg, PendingLanguageSets, PendingLspNotify, PendingLspRequest,
     PendingLspServerReg,
 };
 use super::{HostBundle, ScriptingRegistries};
@@ -161,6 +161,19 @@ impl<'a> SteelCtx<'a> {
     /// any future severity filter is applied uniformly.
     pub(crate) fn log(&mut self, level: LogLevel, msg: String) {
         self.pending_messages.push((level, msg));
+    }
+
+    /// Drain the four per-eval side-effect accumulators into a [`HookResult`],
+    /// leaving empty `Vec`s behind. Shared tail for `call_steel_cmd`,
+    /// `fire_hook`, and `run_steel_calls` — the single place that knows which
+    /// fields make up "this eval's side effects".
+    pub(crate) fn take_side_effects(&mut self) -> HookResult {
+        HookResult {
+            pending_language_sets: std::mem::take(&mut self.pending_language_sets),
+            grammar_sweeps: std::mem::take(&mut self.pending_grammar_sweeps),
+            pending_lsp_requests: std::mem::take(&mut self.pending_lsp_requests),
+            pending_lsp_notifies: std::mem::take(&mut self.pending_lsp_notifies),
+        }
     }
 
     pub(crate) fn new_command(
