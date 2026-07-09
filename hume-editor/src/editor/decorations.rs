@@ -6,11 +6,12 @@
 //!
 //! `inlay_hints` is keyed by `BufferId` alone (one owner per buffer, always
 //! replaced wholesale by the next `(set-inlay-hints! …)`); `signs` /
-//! `virtual_lines` / `extra_highlights` are keyed by `(source, BufferId)` so
-//! unrelated plugins' entries for the same buffer coexist. Only the
-//! char-offset stores (`inlay_hints`, `extra_highlights`) remap through
-//! edits — `signs` / `virtual_lines` are line-indexed and
-//! encoding/edit-independent for v1.
+//! `virtual_lines` / `extra_highlights` are keyed by `BufferId` first, then a
+//! per-buffer `Vec<(source, entries)>` so unrelated plugins' entries for the
+//! same buffer coexist without a cross-buffer scan to find them (same shape
+//! as `DiagnosticsStore::by_buffer`). Only the char-offset stores
+//! (`inlay_hints`, `extra_highlights`) remap through edits — `signs` /
+//! `virtual_lines` are line-indexed and encoding/edit-independent for v1.
 
 use std::collections::HashMap;
 
@@ -56,9 +57,9 @@ pub(crate) struct ExtraHighlightEntry {
 #[derive(Default)]
 pub(crate) struct DecorationStores {
     inlay_hints: HashMap<BufferId, Vec<InlayHintEntry>>,
-    signs: HashMap<(String, BufferId), Vec<SignEntry>>,
-    virtual_lines: HashMap<(String, BufferId), Vec<VirtualLineEntry>>,
-    extra_highlights: HashMap<(String, BufferId), Vec<ExtraHighlightEntry>>,
+    signs: HashMap<BufferId, Vec<(String, Vec<SignEntry>)>>,
+    virtual_lines: HashMap<BufferId, Vec<(String, Vec<VirtualLineEntry>)>>,
+    extra_highlights: HashMap<BufferId, Vec<(String, Vec<ExtraHighlightEntry>)>>,
     /// Bumped by `set_virtual_lines` — the render write side mirrors
     /// `virtual_lines` into a per-pane Arc only when this changed since its
     /// last sync, rather than every frame (unlike inlay hints, this runs in
@@ -82,14 +83,19 @@ impl DecorationStores {
 
     /// Replaces `source`'s signs for `bid` wholesale.
     pub(crate) fn set_signs(&mut self, source: String, bid: BufferId, signs: Vec<SignEntry>) {
-        self.signs.insert((source, bid), signs);
+        let entry = self.signs.entry(bid).or_default();
+        match entry.iter_mut().find(|(s, _)| *s == source) {
+            Some(slot) => slot.1 = signs,
+            None => entry.push((source, signs)),
+        }
     }
 
     #[cfg(test)]
     pub(crate) fn signs_for(&self, source: &str, bid: BufferId) -> &[SignEntry] {
         self.signs
-            .get(&(source.to_string(), bid))
-            .map(Vec::as_slice)
+            .get(&bid)
+            .and_then(|entry| entry.iter().find(|(s, _)| s == source))
+            .map(|(_, v)| v.as_slice())
             .unwrap_or(&[])
     }
 
@@ -103,9 +109,10 @@ impl DecorationStores {
         bid: BufferId,
     ) -> impl Iterator<Item = (&str, &SignEntry)> {
         self.signs
-            .iter()
-            .filter(move |((_, entry_bid), _)| *entry_bid == bid)
-            .flat_map(|((source, _), entries)| entries.iter().map(move |e| (source.as_str(), e)))
+            .get(&bid)
+            .into_iter()
+            .flat_map(|entry| entry.iter())
+            .flat_map(|(source, entries)| entries.iter().map(move |e| (source.as_str(), e)))
     }
 
     /// Replaces `source`'s virtual lines for `bid` wholesale.
@@ -115,7 +122,11 @@ impl DecorationStores {
         bid: BufferId,
         lines: Vec<VirtualLineEntry>,
     ) {
-        self.virtual_lines.insert((source, bid), lines);
+        let entry = self.virtual_lines.entry(bid).or_default();
+        match entry.iter_mut().find(|(s, _)| *s == source) {
+            Some(slot) => slot.1 = lines,
+            None => entry.push((source, lines)),
+        }
         self.virtual_lines_generation += 1;
     }
 
@@ -134,16 +145,18 @@ impl DecorationStores {
         bid: BufferId,
     ) -> impl Iterator<Item = &VirtualLineEntry> {
         self.virtual_lines
-            .iter()
-            .filter(move |((_, entry_bid), _)| *entry_bid == bid)
-            .flat_map(|(_, entries)| entries.iter())
+            .get(&bid)
+            .into_iter()
+            .flat_map(|entry| entry.iter())
+            .flat_map(|(_source, entries)| entries.iter())
     }
 
     #[cfg(test)]
     pub(crate) fn virtual_lines_for(&self, source: &str, bid: BufferId) -> &[VirtualLineEntry] {
         self.virtual_lines
-            .get(&(source.to_string(), bid))
-            .map(Vec::as_slice)
+            .get(&bid)
+            .and_then(|entry| entry.iter().find(|(s, _)| s == source))
+            .map(|(_, v)| v.as_slice())
             .unwrap_or(&[])
     }
 
@@ -156,7 +169,11 @@ impl DecorationStores {
         mut spans: Vec<ExtraHighlightEntry>,
     ) {
         spans.sort_by_key(|s| s.start);
-        self.extra_highlights.insert((source, bid), spans);
+        let entry = self.extra_highlights.entry(bid).or_default();
+        match entry.iter_mut().find(|(s, _)| *s == source) {
+            Some(slot) => slot.1 = spans,
+            None => entry.push((source, spans)),
+        }
     }
 
     #[cfg(test)]
@@ -166,8 +183,9 @@ impl DecorationStores {
         bid: BufferId,
     ) -> &[ExtraHighlightEntry] {
         self.extra_highlights
-            .get(&(source.to_string(), bid))
-            .map(Vec::as_slice)
+            .get(&bid)
+            .and_then(|entry| entry.iter().find(|(s, _)| s == source))
+            .map(|(_, v)| v.as_slice())
             .unwrap_or(&[])
     }
 
@@ -178,9 +196,10 @@ impl DecorationStores {
         bid: BufferId,
     ) -> impl Iterator<Item = &ExtraHighlightEntry> {
         self.extra_highlights
-            .iter()
-            .filter(move |((_, entry_bid), _)| *entry_bid == bid)
-            .flat_map(|(_, spans)| spans.iter())
+            .get(&bid)
+            .into_iter()
+            .flat_map(|entry| entry.iter())
+            .flat_map(|(_source, spans)| spans.iter())
     }
 
     /// Drops every entry for `bid`, across every source and every store —
@@ -189,9 +208,9 @@ impl DecorationStores {
     /// stale entries; this is a memory-leak fix, not a correctness one.
     pub(crate) fn remove_buffer(&mut self, bid: BufferId) {
         self.inlay_hints.remove(&bid);
-        self.signs.retain(|(_, b), _| *b != bid);
-        self.virtual_lines.retain(|(_, b), _| *b != bid);
-        self.extra_highlights.retain(|(_, b), _| *b != bid);
+        self.signs.remove(&bid);
+        self.virtual_lines.remove(&bid);
+        self.extra_highlights.remove(&bid);
     }
 
     /// Remaps `bid`'s inlay hints and extra highlights through `cs` — the
@@ -209,8 +228,11 @@ impl DecorationStores {
             }
         }
 
-        for ((_source, entry_bid), spans) in self.extra_highlights.iter_mut() {
-            if *entry_bid != bid || spans.is_empty() {
+        let Some(entry) = self.extra_highlights.get_mut(&bid) else {
+            return;
+        };
+        for (_source, spans) in entry.iter_mut() {
+            if spans.is_empty() {
                 continue;
             }
             let mut ranges: Vec<(usize, usize)> = spans.iter().map(|s| (s.start, s.end)).collect();
@@ -228,5 +250,48 @@ impl DecorationStores {
                 }
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hume_engine::pipeline::EngineView;
+    use hume_engine::theme::Theme;
+
+    /// Two guaranteed-distinct `BufferId`s — see the identical helper in
+    /// `lsp/diagnostics.rs` for why a single `EngineView` is required.
+    fn make_two_bids() -> (BufferId, BufferId) {
+        let mut ev = EngineView::new(Theme::default());
+        let a = ev.buffers.insert(hume_engine::pipeline::SharedBuffer::new());
+        let b = ev.buffers.insert(hume_engine::pipeline::SharedBuffer::new());
+        (a, b)
+    }
+
+    fn sign(line: usize, text: &str) -> SignEntry {
+        SignEntry {
+            line,
+            text: text.to_string(),
+            scope: "error".to_string(),
+            priority: 10,
+        }
+    }
+
+    #[test]
+    fn signs_for_buffer_does_not_leak_another_buffers_entries() {
+        // Regression test for the by-BufferId restructure: a reader keyed by
+        // (source, BufferId) that regressed to scanning every buffer would
+        // still pass a single-buffer test, so this exercises two buffers
+        // under the *same* source name and asserts isolation.
+        let mut store = DecorationStores::default();
+        let (a, b) = make_two_bids();
+        store.set_signs("linter".to_string(), a, vec![sign(0, "a-sign")]);
+        store.set_signs("linter".to_string(), b, vec![sign(0, "b-sign-1"), sign(1, "b-sign-2")]);
+
+        let a_signs: Vec<&str> = store.signs_for_buffer(a).map(|(_, e)| e.text.as_str()).collect();
+        assert_eq!(a_signs, vec!["a-sign"], "only buffer a's signs must be returned for a");
+
+        let b_signs: Vec<&str> = store.signs_for_buffer(b).map(|(_, e)| e.text.as_str()).collect();
+        assert_eq!(b_signs, vec!["b-sign-1", "b-sign-2"], "only buffer b's signs must be returned for b");
     }
 }
