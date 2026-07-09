@@ -359,6 +359,6 @@ mod tests {
         let pane = rect(2, 2, 10, 10);
         let (x, y) = resolve_popup_geometry(&lines, (2, 2), pane);
         assert!(x >= pane.x && x + 5 <= pane.x + pane.width);
-        assert!(y >= pane.y && y + 1 <= pane.y + pane.height);
+        assert!(y >= pane.y && y < pane.y + pane.height);
     }
 }
