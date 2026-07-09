@@ -295,6 +295,9 @@ impl EditorHost for InlineOutputHost {
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
         NullHost.set_global_option(key, value)
     }
+    fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
+        NullHost.get_option(key, bid)
+    }
     fn configure_statusline(
         &mut self,
         l: Vec<String>,
