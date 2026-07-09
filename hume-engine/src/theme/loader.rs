@@ -90,10 +90,7 @@ fn parse_recursive(
     visited: &mut HashSet<PathBuf>,
     depth: usize,
 ) -> Result<ThemeData, ThemeError> {
-    let doc: toml::Value = source.parse().map_err(ThemeError::Parse)?;
-    let table = doc
-        .as_table()
-        .expect("toml::Value parsed from a TOML document is always a Table at root");
+    let table: toml::Table = source.parse().map_err(ThemeError::Parse)?;
 
     // ── Base from parent (if any) ────────────────────────────────────────────
     let mut palette: HashMap<String, Color> = HashMap::new();
@@ -123,7 +120,7 @@ fn parse_recursive(
     }
 
     // ── Parse scope entries ───────────────────────────────────────────────────
-    for (key, value) in table {
+    for (key, value) in &table {
         // Reserved keys — not scope entries.
         if key == "inherits" || key == "palette" {
             continue;
