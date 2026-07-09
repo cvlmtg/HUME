@@ -7,8 +7,8 @@
 //!   `plum-install-grammar` purges a stale source tree before re-cloning.
 //! - `delete-file` → `<data>/grammars/` only (narrower than the write sandbox).
 //!
-//! **Read-path operations** (`list-dir`, `path-exists?`) are additionally
-//! allowed under `<runtime>/plugins/` and `<data>/grammars/`.
+//! **Read-path operations** (`list-dir`, `path-exists?`, `read-file`) are
+//! additionally allowed under `<runtime>/plugins/` and `<data>/grammars/`.
 //!
 //! Security invariant (see `feedback_security_canonicalize`): every
 //! `canonicalize` call on an untrusted path must hard-fail via `steel::stop!`
@@ -23,9 +23,11 @@
 //! | `runtime-dir`   | `() → string \| #f`            | Runtime dir, or `#f` if absent               |
 //! | `path-exists?`  | `string → bool`                | Sandboxed read                               |
 //! | `list-dir`      | `string → list-of-string`      | Sandboxed read; returns names only           |
+//! | `read-file`     | `string → string`              | Sandboxed read (`<runtime>/plugins/`|`<data>/grammars/`) |
 //! | `make-dir`      | `string → void`                | Sandboxed write (`<data>/plugins/`|`grammars/`)|
 //! | `delete-dir`    | `string → void`                | Sandboxed write (`<data>/plugins/`|`grammars/`)|
 //! | `delete-file`   | `string → void`                | Sandboxed write to `<data>/grammars/`        |
+//! | `write-file`    | `string, string → void`        | Sandboxed write to `<data>/grammars/`        |
 
 use std::path::PathBuf;
 
@@ -38,6 +40,7 @@ use super::sandbox::{
     canonical_ancestor_join, has_dotdot, is_under_grammars_sandbox, is_under_read_sandbox,
     is_under_write_sandbox, normalize_lexical,
 };
+use super::shell::{SandboxKind, validate_new_path};
 
 // ── data-dir / runtime-dir ───────────────────────────────────────────────────
 
@@ -143,6 +146,34 @@ pub(crate) fn path_exists(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
         steel::stop!(Generic => "path-exists?: path is outside the allowed sandbox: {}", raw);
     }
     Ok(SteelVal::BoolV(exists))
+}
+
+// ── read-file ─────────────────────────────────────────────────────────────────
+
+/// `(read-file path)` — read a file's full contents as a UTF-8 string.
+///
+/// Sandboxed to `<data>/grammars/` and `<runtime>/plugins/` (the read
+/// sandbox), same as `list-dir`/`path-exists?`.
+pub(crate) fn read_file(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
+    let raw = one_string(args, "read-file")?;
+    let Some(canonical) = canonicalize_or_notfound("read-file", &raw)? else {
+        return Err(SteelErr::new(
+            ErrorKind::Generic,
+            format!("read-file: no such file: {raw}"),
+        ));
+    };
+
+    if !is_under_read_sandbox(&canonical) {
+        steel::stop!(Generic => "read-file: path is outside the allowed sandbox: {}", raw);
+    }
+
+    let content = hume_platform::fs::read_to_string(&canonical).map_err(|e| {
+        SteelErr::new(
+            ErrorKind::Generic,
+            format!("read-file: cannot read '{raw}': {e}"),
+        )
+    })?;
+    content.into_steelval().map_err(conv_err)
 }
 
 // ── canonicalize helper (list-dir / delete-dir / delete-file) ────────────────
@@ -312,6 +343,51 @@ pub(crate) fn delete_file(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
             format!("delete-file: cannot remove '{}': {e}", canonical.display()),
         )),
     }
+}
+
+// ── write-file ───────────────────────────────────────────────────────────────
+
+/// `(write-file path content)` — write `content` to `path`, creating (or
+/// overwriting) it and any missing parent directories.
+///
+/// Sandboxed to `<data>/grammars/`, same narrower scope as `delete-file` —
+/// PLUM uses this to persist Helix query files it has resolved from an
+/// `; inherits:` chain into a single file on disk.
+pub(crate) fn write_file(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
+    if args.len() != 2 {
+        steel::stop!(ArityMismatch => "write-file expects 2 args (path, content), got {}", args.len());
+    }
+    let raw = match &args[0] {
+        SteelVal::StringV(s) => s.to_string(),
+        other => steel::stop!(TypeMismatch => "write-file: path must be a string, got {:?}", other),
+    };
+    let content = match &args[1] {
+        SteelVal::StringV(s) => s.to_string(),
+        other => {
+            steel::stop!(TypeMismatch => "write-file: content must be a string, got {:?}", other)
+        }
+    };
+
+    let dest_path = validate_new_path(&PathBuf::from(&raw), "write-file", SandboxKind::Grammars)?;
+
+    // Create parent after the sandbox check so we don't mkdir outside the
+    // sandbox — mirrors curl-fetch.
+    if let Some(parent) = dest_path.parent() {
+        hume_platform::fs::create_dir_all(parent).map_err(|e| {
+            SteelErr::new(
+                ErrorKind::Generic,
+                format!("write-file: cannot create parent directory for '{raw}': {e}"),
+            )
+        })?;
+    }
+
+    hume_platform::fs::write(&dest_path, content.as_bytes()).map_err(|e| {
+        SteelErr::new(
+            ErrorKind::Generic,
+            format!("write-file: cannot write '{raw}': {e}"),
+        )
+    })?;
+    Ok(SteelVal::Void)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -602,6 +678,95 @@ mod tests {
             err.to_string().contains("grammars sandbox"),
             "expected grammars sandbox error, got: {err}"
         );
+    }
+
+    // ── read-file ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn read_file_returns_contents() {
+        let tmp = TempDir::new().unwrap();
+        let grammars = setup_grammars(&tmp);
+        let f = grammars.join("sources/highlights.scm");
+        fs::write(&f, "(identifier) @variable\n").unwrap();
+
+        let args = vec![SteelVal::StringV(f.to_string_lossy().to_string().into())];
+        let result = read_file(&args).unwrap();
+        assert!(matches!(result, SteelVal::StringV(s) if s.as_str() == "(identifier) @variable\n"));
+    }
+
+    #[test]
+    fn read_file_missing_errors() {
+        let tmp = TempDir::new().unwrap();
+        let grammars = setup_grammars(&tmp);
+        let missing = grammars
+            .join("sources/nope.scm")
+            .to_string_lossy()
+            .to_string();
+        assert!(read_file(&[SteelVal::StringV(missing.into())]).is_err());
+    }
+
+    #[test]
+    fn read_file_rejects_outside_sandbox() {
+        let tmp = TempDir::new().unwrap();
+        setup(&tmp);
+        // tmp root itself is outside both the plugins and grammars sandboxes.
+        let f = tmp.path().join("somefile");
+        fs::write(&f, b"secret").unwrap();
+        let args = vec![SteelVal::StringV(f.to_string_lossy().to_string().into())];
+        let err = read_file(&args).unwrap_err();
+        assert!(
+            err.to_string().contains("sandbox"),
+            "expected sandbox error, got: {err}"
+        );
+    }
+
+    // ── write-file ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn write_file_creates_and_overwrites() {
+        let tmp = TempDir::new().unwrap();
+        let grammars = setup_grammars(&tmp);
+        // Mirrors the real pipeline: git-clone-rev creates `sources/<name>/`
+        // before any query file gets written into it.
+        fs::create_dir_all(grammars.join("sources/tsx")).unwrap();
+        let f = grammars.join("sources/tsx/highlights.scm");
+
+        let args = vec![
+            SteelVal::StringV(f.to_string_lossy().to_string().into()),
+            SteelVal::StringV("(identifier) @variable\n".into()),
+        ];
+        assert_eq!(write_file(&args).unwrap(), SteelVal::Void);
+        assert_eq!(fs::read_to_string(&f).unwrap(), "(identifier) @variable\n");
+
+        // A shorter overwrite must not leave stale trailing bytes behind.
+        let args2 = vec![
+            SteelVal::StringV(f.to_string_lossy().to_string().into()),
+            SteelVal::StringV("x".into()),
+        ];
+        assert_eq!(write_file(&args2).unwrap(), SteelVal::Void);
+        assert_eq!(fs::read_to_string(&f).unwrap(), "x");
+    }
+
+    #[test]
+    fn write_file_rejects_outside_grammars_sandbox() {
+        let tmp = TempDir::new().unwrap();
+        let plugins = setup(&tmp);
+        let f = plugins.join("somefile").to_string_lossy().to_string();
+        let args = vec![SteelVal::StringV(f.into()), SteelVal::StringV("x".into())];
+        let err = write_file(&args).unwrap_err();
+        assert!(
+            err.to_string().contains("sandbox"),
+            "expected sandbox error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn write_file_rejects_dotdot() {
+        let tmp = TempDir::new().unwrap();
+        let grammars = setup_grammars(&tmp);
+        let bad = format!("{}/sources/../../../evil", grammars.display());
+        let args = vec![SteelVal::StringV(bad.into()), SteelVal::StringV("x".into())];
+        assert!(write_file(&args).is_err());
     }
 
     // ── Helper ───────────────────────────────────────────────────────────────

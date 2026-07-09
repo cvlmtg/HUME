@@ -544,3 +544,104 @@ fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
         "stale leftover file must be purged by the pre-clone delete-dir"
     );
 }
+
+/// `tsx`'s `highlights.scm` declares `; inherits: ecma,_typescript,_jsx`
+/// instead of writing out its own patterns — `plum/install-grammar` must
+/// resolve that chain (`plum/resolve-query` in `grammars.scm`) so the file
+/// written to disk has real capture patterns, not a dangling directive.
+///
+/// Hits the network (real git clone + tree-sitter build of the `tsx` grammar,
+/// plus curl fetches of its `highlights.scm` and its `ecma`/`_typescript`/
+/// `_jsx` query dependencies); gated like `install_real_json_grammar_e2e`.
+///
+/// Flip: reverting the `plum/fetch-query!` call sites back to plain
+/// `curl-fetch` leaves `highlights.scm` as the raw `; inherits: …` stub —
+/// the `starts_with("; inherits")` and `contains('@')` assertions below both
+/// fail on that stub (no `@capture` in a comment-only file).
+#[test]
+#[cfg(not(windows))]
+fn plum_install_grammar_resolves_helix_inherits_chain() {
+    let require_live = std::env::var("HUME_REQUIRE_LIVE_GRAMMAR_E2E")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    if !require_live {
+        eprintln!(
+            "plum_install_grammar_resolves_helix_inherits_chain: skipping \
+             (set HUME_REQUIRE_LIVE_GRAMMAR_E2E=1 to run live e2e)"
+        );
+        return;
+    }
+    use std::process::Command;
+    let has_git = Command::new("git")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    let has_curl = Command::new("curl")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    let has_ts = Command::new("tree-sitter")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if !has_git || !has_curl || !has_ts {
+        panic!(
+            "HUME_REQUIRE_LIVE_GRAMMAR_E2E=1 but git={has_git} curl={has_curl} tree-sitter={has_ts}"
+        );
+    }
+
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let data_dir = data_tmp.path().join("hume");
+
+    let buf = crate::editor::buffer::Buffer::new(
+        hume_editing::text::Text::from("const x: number = 1;\n"),
+        hume_editing::selection::SelectionSet::default(),
+    );
+    let mut ed = Editor::for_testing(buf);
+    let bid = ed.focused_buffer_id();
+    load_plum(&mut ed, data_tmp.path());
+    // Real bootstrap loads runtime/scheme/languages.scm (which declares tsx's
+    // identity) before any plugin runs; `load_plum` only loads `core:plum`,
+    // so register the identity here to match that ordering — `register-grammar!`
+    // attaches onto an existing identity, it doesn't create one.
+    ed.state
+        .languages
+        .register_identity("tsx", &["tsx"], &[], &[])
+        .unwrap();
+
+    type_cmd(&mut ed, ":plum-install-grammar tsx");
+
+    let errors: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .map(|e| format!("{:?}: {}", e.severity, e.text))
+        .collect();
+
+    let hl_path = data_dir.join("grammars/sources/tsx/highlights.scm");
+    let hl_content = std::fs::read_to_string(&hl_path).unwrap_or_else(|e| {
+        panic!("highlights.scm must exist after install; log={errors:#?}; err={e}")
+    });
+    assert!(
+        !hl_content.trim_start().starts_with("; inherits"),
+        "highlights.scm must be resolved, not left as a dangling inherits stub: {hl_content:?}"
+    );
+    assert!(
+        hl_content.contains('@'),
+        "resolved highlights.scm must contain real tree-sitter capture patterns, got: {hl_content:?}"
+    );
+
+    ed.set_buffer_language(bid, Some("tsx".to_owned()));
+    ed.reparse_stale_buffers();
+    assert!(
+        ed.state.buffers.get(bid).syntax.is_some(),
+        "syntax must attach after tsx grammar install; log={errors:#?}"
+    );
+}

@@ -41,6 +41,10 @@ pub fn read_to_string(p: &Path) -> io::Result<String> {
     fs::read_to_string(p)
 }
 
+pub fn write(p: &Path, contents: &[u8]) -> io::Result<()> {
+    fs::write(p, contents)
+}
+
 pub fn symlink_metadata(p: &Path) -> io::Result<fs::Metadata> {
     fs::symlink_metadata(p)
 }

@@ -55,6 +55,72 @@
   (string-append "https://raw.githubusercontent.com/helix-editor/helix/"
                  *plum-helix-pin* "/runtime/queries/" name "/" filename))
 
+;; ── Query inheritance resolution ──────────────────────────────────────────────
+;;
+;; A query file can declare `; inherits: dep,dep,...` instead of writing out
+;; its own patterns — a directive naming other query sources whose patterns
+;; should be spliced in. tree-sitter itself has no notion of this; a query
+;; source containing only that line compiles as a valid but empty query.
+;; `plum/resolve-query` resolves the chain before anything reaches
+;; tree-sitter: it fetches `name`'s copy of the file, and whenever it finds
+;; an `; inherits:` line, recursively fetches and prepends each named
+;; dependency's copy of the same file.
+
+;;; #t if `line`, trimmed, is an `; inherits: a,b,c` directive.
+(define (plum/inherits-line? line)
+  (starts-with? (trim line) "; inherits:"))
+
+;;; Dependency names out of a `; inherits: a,b,c` line.
+(define (plum/inherits-deps line)
+  (let ((trimmed (trim line)))
+    (map trim (split-many (trim (substring trimmed 11 (string-length trimmed))) ","))))
+
+;;; First element of `lst` satisfying `pred?`, or `#f`.
+(define (plum/find pred? lst)
+  (cond ((null? lst) #f)
+        ((pred? (car lst)) (car lst))
+        (else (plum/find pred? (cdr lst)))))
+
+;;; Fetch `name`'s `filename` query to a scratch file and return its raw
+;;; content as a string.
+(define (plum/fetch-raw-query name filename)
+  (let ((tmp (path-join (plum/grammar-sources-dir) (string-append "_fetch_" name "_" filename))))
+    (curl-fetch (plum/helix-query-url name filename) tmp)
+    (let ((content (read-file tmp)))
+      (delete-file tmp)
+      content)))
+
+;;; Fetch `name`'s `filename` query and fully resolve any `; inherits:` chain
+;;; into a single string with no dangling directives. When `tolerant?` is
+;;; true, a missing file at this level resolves to `""` instead of raising —
+;;; a dependency need not ship every query kind its inheritor asks for (e.g.
+;;; a dependency named only in `tsx`'s injections.scm inherits line may have
+;;; no injections.scm of its own). The top-level call is never tolerant — a
+;;; genuinely missing query for the grammar itself should still raise, so
+;;; callers like `plum/try-fetch-injections!` can tell the difference.
+(define (plum/resolve-query name filename tolerant?)
+  (let ((content (if tolerant?
+                      (with-handler (lambda (err) #f) (plum/fetch-raw-query name filename))
+                      (plum/fetch-raw-query name filename))))
+    (if (not content)
+        ""
+        (let* ((lines (split-many content "\n"))
+               (inherits-line (plum/find plum/inherits-line? lines)))
+          (if inherits-line
+              (string-join
+                (append
+                  (map (lambda (dep) (plum/resolve-query dep filename #t))
+                       (plum/inherits-deps inherits-line))
+                  (list (string-join (filter (lambda (l) (not (equal? l inherits-line))) lines) "\n")))
+                "\n")
+              content)))))
+
+;;; Fetch and fully resolve `name`'s `filename` query, writing the result to
+;;; `dest`. Drop-in replacement for a plain `curl-fetch` of a query file —
+;;; same 404 behaviour (raises), but also resolves `; inherits:` chains.
+(define (plum/fetch-query! name filename dest)
+  (write-file dest (plum/resolve-query name filename #f)))
+
 ;; ── Injection dependencies ────────────────────────────────────────────────────
 
 ;;; Hash: name → (dep-name ...). See README.md § grammar dependencies.
@@ -86,7 +152,7 @@
         (log! 'trace (string-append "PLUM: no injections.scm for " name " (" (to-string err) ")"))
         #f)
       (begin
-        (curl-fetch (plum/helix-query-url name "injections.scm") path)
+        (plum/fetch-query! name "injections.scm" path)
         path))))
 
 ;; ── Grammar discovery ─────────────────────────────────────────────────────────
@@ -149,7 +215,8 @@
 ;;;   0. plum/install-grammar-deps! — install any dependency grammars first
 ;;;   1. delete-dir     — purge any existing source tree
 ;;;   2. git-clone-rev  — blobless clone at pinned rev
-;;;   3. curl-fetch     — download Helix highlights query
+;;;   3. plum/fetch-query! — download highlights query, resolving any
+;;;      `; inherits:` chain (see "Query inheritance resolution" above)
 ;;;   4. plum/try-fetch-injections! — download Helix injections query, if any
 ;;;   5. compile-grammar! — tree-sitter build → shared lib
 ;;;   6. register-grammar! — attach to language in this session
@@ -170,7 +237,7 @@
     ;; delete-dir is a no-op when src-dir doesn't exist.
     (delete-dir src-dir)
     (git-clone-rev url src-dir rev)
-    (curl-fetch (plum/helix-query-url name "highlights.scm") hl-path)
+    (plum/fetch-query! name "highlights.scm" hl-path)
     (compile-grammar! build-dir out-path)
     (register-grammar! name out-path symbol hl-path (plum/try-fetch-injections! name))))
 

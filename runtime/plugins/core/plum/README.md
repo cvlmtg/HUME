@@ -68,6 +68,14 @@ one) instead of letting `curl-fetch`'s 404 abort the whole install — an unusua
 letting the failure fail silently, rather than fail fast, is correct: no query file just
 means no injection highlighting for that grammar, not a broken install.
 
+A query file can declare `; inherits: dep,dep,...` instead of writing out its own patterns —
+a directive naming other query sources whose patterns should be spliced in (the JS-family
+grammars — `js`, `jsx`, `ts`, `tsx` — share most of their patterns this way). tree-sitter has
+no notion of this, so `plum/resolve-query` resolves the chain itself: it recursively fetches
+each named dependency's copy of the same file and splices the results together before
+anything is written to disk. `plum/fetch-query!` is the drop-in replacement for a plain
+`curl-fetch` of a query file that also resolves this.
+
 ### Grammar dependencies
 
 A grammar can have injection dependencies — e.g. Markdown's `(inline)` injection only

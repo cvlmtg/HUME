@@ -335,9 +335,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_value("path-join", SteelVal::FuncV(fs::path_join));
     steel.register_value("path-exists?", SteelVal::FuncV(fs::path_exists));
     steel.register_value("list-dir", SteelVal::FuncV(fs::list_dir));
+    steel.register_value("read-file", SteelVal::FuncV(fs::read_file));
     steel.register_value("make-dir", SteelVal::FuncV(fs::make_dir));
     steel.register_value("delete-dir", SteelVal::FuncV(fs::delete_dir));
     steel.register_value("delete-file", SteelVal::FuncV(fs::delete_file));
+    steel.register_value("write-file", SteelVal::FuncV(fs::write_file));
 
     // Evaluate the Scheme bootstrap (defines `load-plugin`).
     // Runs before any user init.scm; HUME_CTX is not yet set but the
