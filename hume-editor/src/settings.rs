@@ -287,7 +287,7 @@ macro_rules! define_settings {
                     settings.whitespace.tab = value.parse()?;
                 }
                 (SettingScope::Global, "whitespace-newline") => {
-                    settings.whitespace.newline = value.parse()?;
+                    settings.whitespace.newline = parse_show_newline(value)?;
                 }
                 (SettingScope::Text, "whitespace-space") => {
                     overrides.whitespace_space = Some(value.parse()?);
@@ -296,7 +296,7 @@ macro_rules! define_settings {
                     overrides.whitespace_tab = Some(value.parse()?);
                 }
                 (SettingScope::Text, "whitespace-newline") => {
-                    overrides.whitespace_newline = Some(value.parse()?);
+                    overrides.whitespace_newline = Some(parse_show_newline(value)?);
                 }
                 // Statusline config — global-only; three sections separated by `|`,
                 // each a comma-separated list of StatusElement names (may be empty).
@@ -451,7 +451,7 @@ define_settings! {
         // for the others (tab, newline). Resolution in BufferOverrides::whitespace.
         whitespace_space:   WhitespaceRender;
         whitespace_tab:     WhitespaceRender;
-        whitespace_newline: WhitespaceRender;
+        whitespace_newline: bool;
     }
     manual_keys {
         // Sub-field patches (see apply_setting below) — not plain field writes.
@@ -487,6 +487,19 @@ fn parse_statusline(s: &str) -> Result<StatusLineConfig, String> {
         center: parse_section(parts[1])?,
         right: parse_section(parts[2])?,
     })
+}
+
+/// Parse the `whitespace-newline` wire format. Unlike `space`/`tab`, a
+/// newline is inherently always at end-of-line, so there's no meaningful
+/// "trailing" distinction — only `none`/`all`.
+fn parse_show_newline(s: &str) -> Result<bool, String> {
+    match s.to_ascii_lowercase().as_str() {
+        "none" => Ok(false),
+        "all" => Ok(true),
+        _ => Err(format!(
+            "invalid whitespace-newline '{s}': expected none or all"
+        )),
+    }
 }
 
 // ── BufferOverrides: manual accessors ─────────────────────────────────────────
@@ -873,12 +886,28 @@ mod tests {
 
     #[test]
     fn set_global_whitespace_newline() {
-        assert_eq!(
+        assert!(
             global("whitespace-newline", "all")
                 .unwrap()
                 .whitespace
                 .newline,
-            WhitespaceRender::All,
+        );
+        assert!(
+            !global("whitespace-newline", "none")
+                .unwrap()
+                .whitespace
+                .newline,
+        );
+    }
+
+    #[test]
+    fn set_global_whitespace_newline_trailing_rejected() {
+        // `trailing` is meaningless for newlines (always at end-of-line) —
+        // only `none`/`all` are accepted.
+        let err = global("whitespace-newline", "trailing").err().unwrap();
+        assert!(
+            err.contains("none or all"),
+            "expected 'none or all' in error: {err}"
         );
     }
 
@@ -958,7 +987,7 @@ mod tests {
     fn set_buffer_whitespace_newline() {
         let global = EditorSettings::default();
         let ov = buffer("whitespace-newline", "all").unwrap();
-        assert_eq!(ov.whitespace(&global).newline, WhitespaceRender::All);
+        assert!(ov.whitespace(&global).newline);
     }
 
     #[test]
@@ -971,7 +1000,7 @@ mod tests {
         let ws = ov.whitespace(&global);
         assert_eq!(ws.space, WhitespaceRender::All); // from buffer override
         assert_eq!(ws.tab, WhitespaceRender::Trailing); // inherited from global
-        assert_eq!(ws.newline, WhitespaceRender::None); // inherited from global
+        assert!(!ws.newline); // inherited from global (default: off)
     }
 
     #[test]

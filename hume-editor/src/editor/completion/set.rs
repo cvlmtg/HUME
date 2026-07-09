@@ -50,7 +50,9 @@ fn static_value_candidates(key: &str) -> Option<&'static [&'static str]> {
         "tab-style" => TabStyle::VALUES,
         "line-number-style" => LineNumberStyle::VALUES,
         "wrap-mode" => WrapMode::VALUES,
-        "whitespace-space" | "whitespace-tab" | "whitespace-newline" => WhitespaceRender::VALUES,
+        "whitespace-space" | "whitespace-tab" => WhitespaceRender::VALUES,
+        // Newline is inherently always at end-of-line — no "trailing" axis.
+        "whitespace-newline" => &["none", "all"],
         _ => return None,
     })
 }
@@ -293,6 +295,13 @@ mod tests {
     fn set_completer_value_whitespace_render() {
         let result = set_result("set buffer whitespace-space=");
         assert_eq!(names_of(&result), vec!["all", "none", "trailing"]);
+    }
+
+    #[test]
+    fn set_completer_value_whitespace_newline() {
+        // Newline has no "trailing" axis — only none/all.
+        let result = set_result("set buffer whitespace-newline=");
+        assert_eq!(names_of(&result), vec!["all", "none"]);
     }
 
     #[test]

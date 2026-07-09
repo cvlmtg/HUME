@@ -226,7 +226,10 @@ impl FromStr for WhitespaceRender {
 pub struct WhitespaceConfig {
     pub space: WhitespaceRender,
     pub tab: WhitespaceRender,
-    pub newline: WhitespaceRender,
+    /// Whether to render the newline indicator. A newline is inherently
+    /// always at end-of-line, so unlike `space`/`tab` there is no meaningful
+    /// "trailing vs all" distinction here — just on/off.
+    pub newline: bool,
     /// Character to show in place of a space when rendered. `Box<str>` (not
     /// `&'static str`): Steel config can supply a runtime-computed glyph.
     /// Cloned once per pane per frame (`PaneRenderSettings`) — negligible.
@@ -247,7 +250,7 @@ impl Default for WhitespaceConfig {
         Self {
             space: WhitespaceRender::None,
             tab: WhitespaceRender::None,
-            newline: WhitespaceRender::None,
+            newline: false,
             space_char: "·".into(),
             tab_char: "→".into(),
             newline_char: "⏎".into(),
@@ -620,7 +623,7 @@ mod tests {
         let wc = WhitespaceConfig::default();
         assert_eq!(wc.space, WhitespaceRender::None);
         assert_eq!(wc.tab, WhitespaceRender::None);
-        assert_eq!(wc.newline, WhitespaceRender::None);
+        assert!(!wc.newline);
         assert_eq!(&*wc.space_char, "·");
         assert_eq!(&*wc.tab_char, "→");
         assert_eq!(&*wc.newline_char, "⏎");

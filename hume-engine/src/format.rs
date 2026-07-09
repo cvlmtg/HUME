@@ -217,8 +217,11 @@ pub fn format_buffer_line(
 
     let line_str = &scratch.line_texts[text_start..];
 
-    // Detect whether the entire line is whitespace (used for Trailing rendering).
-    let line_is_blank = line_str.trim().is_empty();
+    // Byte offset where trailing whitespace begins. A ws grapheme is
+    // "trailing" iff its byte offset is at/after this point — this excludes
+    // leading and interior whitespace in one check. On an all-whitespace line
+    // `trim_end()` yields `""` (offset 0), so every ws char counts as trailing.
+    let trailing_ws_start = line_str.trim_end().len();
     let indent_depth = compute_indent_depth(line_str, tab_width);
 
     let wrap_width = wrap_mode.wrap_width().unwrap_or(u16::MAX); // u16::MAX = sentinel for "no wrap"
@@ -257,7 +260,6 @@ pub fn format_buffer_line(
     });
 
     let mut in_leading_ws = true;
-    let mut had_non_ws = false;
 
     // Running absolute char position within the buffer. Populated per grapheme
     // so the style stage can resolve selection positions without rope lookups.
@@ -330,12 +332,10 @@ pub fn format_buffer_line(
 
         // ── Update leading-ws flag ─────────────────────────────────────────
         let is_ws = is_whitespace_grapheme(grapheme_str);
-        if !is_ws {
-            if in_leading_ws {
-                in_leading_ws = false;
-            }
-            had_non_ws = true;
+        if !is_ws && in_leading_ws {
+            in_leading_ws = false;
         }
+        let is_trailing = byte_offset >= trailing_ws_start;
 
         // ── Compute display width and content ─────────────────────────────
         let (width, content) = grapheme_display(
@@ -343,9 +343,7 @@ pub fn format_buffer_line(
             wrap.current_col,
             tab_width,
             whitespace,
-            in_leading_ws,
-            had_non_ws,
-            line_is_blank,
+            is_trailing,
             virtual_texts_out,
         );
 
@@ -466,17 +464,9 @@ pub fn format_buffer_line(
 
         // ── Newline indicator ───────────────────────────────────────────────
         // Emitted at the end of the line (after all content and trailing inserts)
-        // on the last wrap row. `in_leading_ws` and `had_non_ws` reflect the
-        // state after iterating all graphemes, so `should_render_whitespace` sees
-        // the correct context for Trailing vs All rules.
-        if had_newline
-            && should_render_whitespace(
-                &whitespace.newline,
-                in_leading_ws,
-                had_non_ws,
-                line_is_blank,
-            )
-        {
+        // on the last wrap row. A newline is inherently always at end-of-line,
+        // so there's no "trailing vs interior" distinction here — just on/off.
+        if had_newline && whitespace.newline {
             let (start, len) = push_arena_text(virtual_texts_out, &whitespace.newline_char);
             graphemes_out.push(Grapheme {
                 byte_range: line_str.len()..line_str.len(),
@@ -626,15 +616,12 @@ fn tab_display_width(col: u16, tab_width: u8) -> u8 {
 }
 
 /// Compute the display `width` and `CellContent` for one grapheme cluster.
-#[allow(clippy::too_many_arguments)]
 fn grapheme_display(
     grapheme_str: &str,
     current_col: u16,
     tab_width: u8,
     whitespace: &WhitespaceConfig,
-    in_leading_ws: bool,
-    had_non_ws: bool,
-    line_is_blank: bool,
+    is_trailing: bool,
     virtual_texts: &mut String,
 ) -> (u8, CellContent) {
     // Tab: expand to next tab stop.
@@ -650,12 +637,7 @@ fn grapheme_display(
     // `display_col_in_line` for the divergence rationale.
     if grapheme_str == "\t" {
         let display_width = tab_display_width(current_col, tab_width);
-        let content = if should_render_whitespace(
-            &whitespace.tab,
-            in_leading_ws,
-            had_non_ws,
-            line_is_blank,
-        ) {
+        let content = if should_render_whitespace(whitespace.tab, is_trailing) {
             let (start, len) = push_arena_text(virtual_texts, &whitespace.tab_char);
             CellContent::Indicator { start, len }
         } else {
@@ -668,12 +650,7 @@ fn grapheme_display(
 
     // Space
     if grapheme_str == " " {
-        let content = if should_render_whitespace(
-            &whitespace.space,
-            in_leading_ws,
-            had_non_ws,
-            line_is_blank,
-        ) {
+        let content = if should_render_whitespace(whitespace.space, is_trailing) {
             let (start, len) = push_arena_text(virtual_texts, &whitespace.space_char);
             CellContent::Indicator { start, len }
         } else {
@@ -689,12 +666,7 @@ fn grapheme_display(
     // math is identical whether the indicator is on or off.
     if grapheme_str == "\u{A0}" || grapheme_str == "\u{3000}" {
         let w = unicode_display_width(grapheme_str).clamp(1, 2) as u8;
-        let content = if should_render_whitespace(
-            &whitespace.space,
-            in_leading_ws,
-            had_non_ws,
-            line_is_blank,
-        ) {
+        let content = if should_render_whitespace(whitespace.space, is_trailing) {
             let (start, len) = push_arena_text(virtual_texts, &whitespace.nbsp_char);
             CellContent::Indicator { start, len }
         } else {
@@ -734,20 +706,13 @@ pub(crate) fn push_arena_text(arena: &mut String, text: &str) -> (u32, u16) {
 
 /// Returns `true` if a whitespace indicator should be rendered for this cell.
 ///
-/// `in_leading_ws`: still in the line's leading whitespace (before any non-ws char).
-/// `had_non_ws`:    at least one non-ws grapheme has already been emitted.
-fn should_render_whitespace(
-    render: &WhitespaceRender,
-    in_leading_ws: bool,
-    had_non_ws: bool,
-    line_is_blank: bool,
-) -> bool {
+/// `is_trailing`: this grapheme's byte offset is at/after the start of the
+/// line's trailing whitespace run (see `trailing_ws_start` in `format_buffer_line`).
+fn should_render_whitespace(render: WhitespaceRender, is_trailing: bool) -> bool {
     match render {
         WhitespaceRender::None => false,
         WhitespaceRender::All => true,
-        // Trailing: ws that comes after content but before end-of-line.
-        // Leading whitespace and blank lines are never "trailing".
-        WhitespaceRender::Trailing => !in_leading_ws && had_non_ws && !line_is_blank,
+        WhitespaceRender::Trailing => is_trailing,
     }
 }
 
@@ -1129,7 +1094,7 @@ mod tests {
     #[test]
     fn newline_indicator_all_mode() {
         let ws = WhitespaceConfig {
-            newline: crate::pane::WhitespaceRender::All,
+            newline: true,
             newline_char: "⏎".into(),
             ..WhitespaceConfig::default()
         };
@@ -1158,13 +1123,14 @@ mod tests {
     }
 
     #[test]
-    fn newline_indicator_trailing_mode_shows_after_content() {
+    fn newline_indicator_all_mode_blank_line() {
+        // Newline is inherently always at end-of-line, so `all` shows it even
+        // on a whitespace-only line — there's no "trailing" axis to exempt it.
         let ws = WhitespaceConfig {
-            newline: crate::pane::WhitespaceRender::Trailing,
+            newline: true,
             ..WhitespaceConfig::default()
         };
-        let (_, graphemes, _) = do_format_ws("abc\n", ws);
-        // Trailing: shows after non-ws content, so it appears.
+        let (_, graphemes, _) = do_format_ws("   \n", ws);
         assert!(
             graphemes
                 .iter()
@@ -1173,24 +1139,9 @@ mod tests {
     }
 
     #[test]
-    fn newline_indicator_trailing_mode_blank_line() {
-        // Blank lines (only spaces) must NOT get a trailing newline indicator.
-        let ws = WhitespaceConfig {
-            newline: crate::pane::WhitespaceRender::Trailing,
-            ..WhitespaceConfig::default()
-        };
-        let (_, graphemes, _) = do_format_ws("   \n", ws);
-        assert!(
-            !graphemes
-                .iter()
-                .any(|g| matches!(&g.content, CellContent::Indicator { .. }))
-        );
-    }
-
-    #[test]
     fn newline_indicator_none_mode() {
         let ws = WhitespaceConfig {
-            newline: crate::pane::WhitespaceRender::None,
+            newline: false,
             ..WhitespaceConfig::default()
         };
         let (_, graphemes, _) = do_format_ws("abc\n", ws);
@@ -1254,6 +1205,89 @@ mod tests {
         let (_, graphemes, arena) = do_format_ws("\t", ws);
         assert_eq!(cell_text(&arena, &graphemes[0].content), "→");
         assert_eq!(graphemes[0].width, 4);
+    }
+
+    #[test]
+    fn space_indicator_trailing_mode_interior() {
+        // Regression test: only true trailing whitespace (nothing but
+        // whitespace follows it on the line) renders as an indicator.
+        // Leading and interior spaces must stay plain even though they come
+        // after some earlier non-ws content — the bug was classifying any ws
+        // following *some* non-ws grapheme as trailing, regardless of
+        // whether more content followed.
+        let ws = WhitespaceConfig {
+            space: crate::pane::WhitespaceRender::Trailing,
+            space_char: "·".into(),
+            ..WhitespaceConfig::default()
+        };
+        let (_, graphemes, _) = do_format_ws("  A  B  \n", ws);
+        let is_indicator = |col: u16| {
+            matches!(
+                graphemes.iter().find(|g| g.col == col).unwrap().content,
+                CellContent::Indicator { .. }
+            )
+        };
+        // Leading spaces (cols 0-1): plain.
+        assert!(!is_indicator(0));
+        assert!(!is_indicator(1));
+        // Interior spaces (cols 3-4, between 'A' and 'B'): plain.
+        assert!(!is_indicator(3));
+        assert!(!is_indicator(4));
+        // Trailing spaces (cols 6-7): indicators.
+        assert!(is_indicator(6));
+        assert!(is_indicator(7));
+    }
+
+    #[test]
+    fn space_indicator_trailing_mode_blank_line() {
+        // A whitespace-only line renders all its spaces as trailing
+        // indicators — there's no separate content to be "before".
+        let ws = WhitespaceConfig {
+            space: crate::pane::WhitespaceRender::Trailing,
+            space_char: "·".into(),
+            ..WhitespaceConfig::default()
+        };
+        let (_, graphemes, arena) = do_format_ws("   \n", ws);
+        for col in 0..3u16 {
+            let g = graphemes.iter().find(|g| g.col == col).unwrap();
+            assert_eq!(
+                cell_text(&arena, &g.content),
+                "·",
+                "col {col} should be a trailing indicator"
+            );
+        }
+    }
+
+    #[test]
+    fn tab_indicator_trailing_mode_interior() {
+        // Same interior-whitespace bug, for tabs. Both the glyph and the
+        // off-state fallback are `CellContent::Indicator` (tabs always
+        // render through the arena — see `grapheme_display`), so the glyph
+        // text itself is the only way to distinguish "shown" from "hidden".
+        let ws = WhitespaceConfig {
+            tab: crate::pane::WhitespaceRender::Trailing,
+            tab_char: "→".into(),
+            ..WhitespaceConfig::default()
+        };
+        let (_, graphemes, arena) = do_format_ws("\tA\tB\t\n", ws);
+        let glyph_at_offset = |byte_offset: usize| {
+            let g = graphemes
+                .iter()
+                .find(|g| g.byte_range.start == byte_offset)
+                .unwrap();
+            cell_text(&arena, &g.content).to_string()
+        };
+        assert_eq!(
+            glyph_at_offset(0),
+            " ",
+            "leading tab renders as plain space"
+        );
+        assert_eq!(
+            glyph_at_offset(2),
+            " ",
+            "interior tab renders as plain space"
+        );
+        assert_eq!(glyph_at_offset(4), "→", "trailing tab renders as the glyph");
     }
 
     // ── Wrap modes ────────────────────────────────────────────────────────
