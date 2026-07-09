@@ -143,13 +143,16 @@
 
 ;; ── Install pipeline ──────────────────────────────────────────────────────────
 
-;;; Install a single grammar from its declared source:
+;;; Install a single grammar from its declared source, always from a clean
+;;; slate — this doubles as the repair path for a grammar left in a failed
+;;; state (e.g. a source tree cloned but never compiled):
 ;;;   0. plum/install-grammar-deps! — install any dependency grammars first
-;;;   1. git-clone-rev  — blobless clone at pinned rev
-;;;   2. curl-fetch     — download Helix highlights query
-;;;   3. plum/try-fetch-injections! — download Helix injections query, if any
-;;;   4. compile-grammar! — tree-sitter build → shared lib
-;;;   5. register-grammar! — attach to language in this session
+;;;   1. delete-dir     — purge any existing source tree
+;;;   2. git-clone-rev  — blobless clone at pinned rev
+;;;   3. curl-fetch     — download Helix highlights query
+;;;   4. plum/try-fetch-injections! — download Helix injections query, if any
+;;;   5. compile-grammar! — tree-sitter build → shared lib
+;;;   6. register-grammar! — attach to language in this session
 (define (plum/install-grammar name)
   (let* ((url     (plum/grammar-source-url name))
          (rev     (plum/grammar-source-rev name))
@@ -162,6 +165,10 @@
          (out-path (grammar-output-path name))
          (hl-path  (plum/grammar-highlights-path name)))
     (plum/install-grammar-deps! name)
+    ;; git-clone-rev refuses a non-empty dest — clear any stale source tree
+    ;; (e.g. left behind by a prior install that failed after cloning) first.
+    ;; delete-dir is a no-op when src-dir doesn't exist.
+    (delete-dir src-dir)
     (git-clone-rev url src-dir rev)
     (curl-fetch (plum/helix-query-url name "highlights.scm") hl-path)
     (compile-grammar! build-dir out-path)
@@ -184,7 +191,7 @@
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
 (define-command! "plum-install-grammar"
-  "Install a tree-sitter grammar by name (default: the current buffer's language)."
+  "Install (or repair) a tree-sitter grammar by name, always from a clean re-clone (default: the current buffer's language)."
   (lambda (arg)
     (let ((name (plum/resolve-grammar-arg "plum-install-grammar" arg)))
       (when name
@@ -192,22 +199,6 @@
         (with-handler
           (lambda (err)
             (log! 'error (string-append "PLUM: install failed: " (to-string err))))
-          (plum/install-grammar name)))))
-  #:inline-output #t)
-
-(define-command! "plum-update-grammar"
-  "Re-clone and recompile a tree-sitter grammar by name (default: the current buffer's language)."
-  (lambda (arg)
-    (let ((name (plum/resolve-grammar-arg "plum-update-grammar" arg)))
-      (when name
-        (log! 'info (string-append "PLUM: updating grammar for " name))
-        ;; Remove old source so git-clone-rev gets a clean slate.
-        (let ((src-dir (plum/grammar-source-dir name)))
-          (when (path-exists? src-dir)
-            (delete-dir src-dir)))
-        (with-handler
-          (lambda (err)
-            (log! 'error (string-append "PLUM: update failed: " (to-string err))))
           (plum/install-grammar name)))))
   #:inline-output #t)
 

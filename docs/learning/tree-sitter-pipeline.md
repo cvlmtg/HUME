@@ -125,10 +125,9 @@ with the editor — not a separate CLI binary. The name covers two roles:
 plugin management (install, update, list, cleanup for Scheme plugins) and
 grammar management. For grammars specifically, plum provides:
 
-- **`:plum-install-grammar`** — installs a named grammar, or the current
-  buffer's language if no name is given.
-- **`:plum-update-grammar`** — re-clones and recompiles a named grammar (or
-  the current buffer's language) at the currently pinned revision.
+- **`:plum-install-grammar`** — installs (or repairs) a named grammar, or the
+  current buffer's language if no name is given, always re-cloning and
+  recompiling from a clean slate at the currently pinned revision.
 - **`:plum-ensure-grammars`** — batch-installs a list of named grammars that
   are not yet compiled. Called programmatically from `init.scm`:
   `(call! "plum-ensure-grammars" '("rust" "json"))`.

@@ -37,6 +37,8 @@ You don't need to open a file in that language first — name the grammar direct
 
 This is the easiest way to install a grammar for a language you only use inside a fenced code block (see [Embedded languages](#embedded-languages) below), or any time switching buffers just to install a grammar is inconvenient.
 
+`:plum-install-grammar` always re-downloads and recompiles from scratch, purging any old source first — so running it again is also how you recover from a broken compile or refresh a grammar after updating HUME.
+
 To install several grammars at once — skipping any already compiled — call it from your `init.scm` so it runs at startup:
 
 ```scheme
@@ -44,14 +46,6 @@ To install several grammars at once — skipping any already compiled — call i
 ```
 
 After the first install, launching HUME just loads the compiled grammars silently; there's nothing more to do.
-
-### Re-install
-
-```
-:plum-update-grammar
-```
-
-Re-downloads the grammar source and recompiles it. Use it after updating HUME, or to recover from a broken compile. The old source is purged first. Like `:plum-install-grammar`, it takes an optional grammar name — `:plum-update-grammar python` re-installs Python regardless of the current buffer's language.
 
 ## Embedded languages
 
@@ -140,7 +134,7 @@ See [Configuration](configuration.md) for the full settings reference.
 
 **The file opens with no colors.** No compiled grammar for the language. Run `:plum-list-grammars` and look at the **missing** line. If the language is missing, run `:plum-install-grammar <name>` (or just `:plum-install-grammar` while that buffer is focused). If the language isn't *declared* at all, HUME doesn't recognize the file — set it with `:set buffer language=<name>` or define it in your `init.scm`.
 
-**`:plum-install-grammar` fails.** The message names the missing piece. Usually a missing tool on your `PATH` — check the [prerequisites](#prerequisites). A bad source tree recovers with `:plum-update-grammar`.
+**`:plum-install-grammar` fails.** The message names the missing piece. Usually a missing tool on your `PATH` — check the [prerequisites](#prerequisites). A bad source tree recovers by running `:plum-install-grammar` again.
 
 **Detection picks the wrong language.** Override with `:set buffer language=<name>`, or add the file pattern to your `init.scm` with `define-language!`.
 

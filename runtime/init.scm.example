@@ -208,9 +208,8 @@
 ;;
 ;; core:plum           — plugin manager + grammar installer
 ;;                       Plugin commands: :plum-install, :plum-update, :plum-cleanup
-;;                       Grammar commands: :plum-install-grammar, :plum-update-grammar,
-;;                                         :plum-list-grammars, :plum-ensure-grammars,
-;;                                         :plum-cleanup-grammars
+;;                       Grammar commands: :plum-install-grammar, :plum-list-grammars,
+;;                                         :plum-ensure-grammars, :plum-cleanup-grammars
 ;; core:helix-surround — md/mr surround shortcuts (bind-wait-char! already set)
 ;; core:classic-paste  — opt-in GUI-style paste split:
 ;;                       p/P → kill-ring head; Ctrl+V / Ctrl+Shift+V → OS clipboard
@@ -227,8 +226,8 @@
 ;;   (call! "plum-ensure-grammars" '("rust" "json"))   ; install listed grammars at startup
 ;;
 ;; Grammar install pipeline (requires git, curl, tree-sitter CLI on PATH):
-;;   :plum-install-grammar  — install grammar by name (default: current buffer's language)
-;;   :plum-update-grammar   — re-clone + recompile by name (default: current buffer's language)
+;;   :plum-install-grammar  — install/repair grammar by name, always from a clean re-clone
+;;                            (default: current buffer's language)
 ;;   :plum-ensure-grammars  — install listed grammars not yet compiled (list required)
 ;;   :plum-list-grammars    — show installed / declared / orphan / missing
 ;;   :plum-cleanup-grammars — delete orphan compiled grammars

@@ -317,7 +317,7 @@ fn plum_plugin_loads_with_real_grammar_catalog() {
 }
 
 // ---------------------------------------------------------------------------
-// plum-install-grammar / plum-update-grammar — optional name argument
+// plum-install-grammar — optional name argument
 // ---------------------------------------------------------------------------
 
 /// `:plum-install-grammar` with no argument and no buffer language must warn
@@ -353,7 +353,9 @@ fn plum_install_grammar_no_arg_no_language_warns() {
 
 /// `:plum-install-grammar nosuchlang` — a name absent from the catalog warns
 /// with the unknown-grammar message instead of failing deep inside the
-/// install pipeline with an opaque hash-lookup error.
+/// install pipeline with an opaque hash-lookup error. This validation runs
+/// before the stale-source `delete-dir` purge in `plum/install-grammar`, so
+/// an unknown name deletes nothing.
 #[test]
 #[cfg(not(windows))]
 fn plum_install_grammar_unknown_name_warns() {
@@ -417,36 +419,6 @@ fn plum_install_grammar_arg_overrides_buffer_language() {
     );
 }
 
-/// `:plum-update-grammar` gets the same optional-name treatment and the same
-/// unknown-grammar validation — including that validation runs before the
-/// stale-source `delete-dir` purge, so an unknown name deletes nothing.
-#[test]
-#[cfg(not(windows))]
-fn plum_update_grammar_unknown_name_warns() {
-    let _lock = super::HUME_RUNTIME_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-
-    let data_tmp = tempfile::tempdir().unwrap();
-    let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
-
-    type_cmd(&mut ed, ":plum-update-grammar nosuchlang");
-
-    let msgs: Vec<&str> = ed
-        .state
-        .message_log
-        .entries()
-        .map(|e| e.text.as_str())
-        .collect();
-    assert!(
-        ed.state.message_log.entries().any(|e| {
-            e.severity == Severity::Warning && e.text.contains(r#"unknown grammar "nosuchlang""#)
-        }),
-        "expected unknown-grammar warning naming 'nosuchlang', got: {msgs:?}"
-    );
-}
-
 /// `plum-install-grammar` is declared `#:inline-output #t` — dispatch must
 /// only bracket it with the real terminal (alt-screen exit + "press any key
 /// to return" block) when `Editor::run` owns the terminal. Off the event
@@ -476,5 +448,99 @@ fn inline_output_command_does_not_enter_terminal_bracket_off_event_loop() {
     assert!(
         !ed.inline_output_entered(),
         "inline-output bracket must stay skipped when Editor::run never took the terminal"
+    );
+}
+
+/// Regression test: a grammar's source dir left non-empty by a prior failed
+/// install (clone succeeded, compile didn't) must not break
+/// `:plum-install-grammar` on the very next attempt — `plum/install-grammar`
+/// purges any existing source dir before re-cloning, so retrying "just works"
+/// on the first try instead of requiring a second attempt to clear the
+/// leftover directory as a side effect of the first attempt's own failure.
+///
+/// Hits the network (real git clone + curl fetch + tree-sitter build of the
+/// `json` grammar); gated like `install_real_json_grammar_e2e` in
+/// `scripting_grammar.rs`.
+///
+/// Flip: without the `(delete-dir src-dir)` fix in `plum/install-grammar`,
+/// `git-clone-rev` refuses to clone into this pre-seeded non-empty dir and
+/// the command logs an error instead of installing — `out_path` never
+/// appears, and this assertion fails.
+#[test]
+#[cfg(not(windows))]
+fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
+    use std::process::Command;
+
+    let require_live = std::env::var("HUME_REQUIRE_LIVE_GRAMMAR_E2E")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    if !require_live {
+        eprintln!(
+            "plum_install_grammar_recovers_from_stale_source_dir_on_first_try: skipping \
+             (set HUME_REQUIRE_LIVE_GRAMMAR_E2E=1 to run live e2e)"
+        );
+        return;
+    }
+    let has_git = Command::new("git")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    let has_curl = Command::new("curl")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    let has_ts = Command::new("tree-sitter")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if !has_git || !has_curl || !has_ts {
+        panic!(
+            "HUME_REQUIRE_LIVE_GRAMMAR_E2E=1 but git={has_git} curl={has_curl} tree-sitter={has_ts}"
+        );
+    }
+
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    // `load_plum` points XDG_DATA_HOME at data_tmp — the real data dir is
+    // XDG_DATA_HOME/hume (see sandbox.rs's init_dirs).
+    let data_dir = data_tmp.path().join("hume");
+    // Seed a stale, non-empty source dir exactly like a prior clone-succeeded/
+    // compile-failed install would leave behind — git-clone-rev refuses to
+    // clone into this without the pre-clean fix.
+    let src_dir = data_dir.join("grammars/sources/json");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::write(src_dir.join("stale.txt"), b"leftover from a failed install").unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":plum-install-grammar json");
+
+    let ext = if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    };
+    let out_path = data_dir.join("grammars").join(format!("json.{ext}"));
+    let errors: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .map(|e| format!("{:?}: {}", e.severity, e.text))
+        .collect();
+    assert!(
+        out_path.exists(),
+        "compiled json grammar must exist after install recovers from a stale \
+         source dir on the first try; log={errors:#?}"
+    );
+    assert!(
+        !src_dir.join("stale.txt").exists(),
+        "stale leftover file must be purged by the pre-clone delete-dir"
     );
 }

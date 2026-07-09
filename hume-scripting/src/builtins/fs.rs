@@ -4,7 +4,7 @@
 //! sandboxed:
 //! - `make-dir`, `delete-dir` → the write sandbox (`<data>/plugins/` or
 //!   `<data>/grammars/`); `delete-dir` on `<data>/grammars/sources/` is how
-//!   `plum-update-grammar` purges a stale source tree.
+//!   `plum-install-grammar` purges a stale source tree before re-cloning.
 //! - `delete-file` → `<data>/grammars/` only (narrower than the write sandbox).
 //!
 //! **Read-path operations** (`list-dir`, `path-exists?`) are additionally

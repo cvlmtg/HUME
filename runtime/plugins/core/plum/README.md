@@ -28,8 +28,7 @@ Grammar management:
 
 | Command                   | Effect                                                          |
 |-----------------------------|--------------------------------------------------------------------|
-| `:plum-install-grammar`    | Install a named grammar (default: current buffer's language)       |
-| `:plum-update-grammar`     | Re-clone and recompile a grammar (purges old source first)         |
+| `:plum-install-grammar`    | Install (or repair) a named grammar: purges old source, re-clones, recompiles (default: current buffer's language) |
 | `:plum-ensure-grammars`    | Install any of the given (list of) grammar names not yet compiled  |
 | `:plum-list-grammars`      | Log declared / installed / orphan / missing grammar lists           |
 | `:plum-cleanup-grammars`   | Delete compiled grammar files no longer declared                    |
