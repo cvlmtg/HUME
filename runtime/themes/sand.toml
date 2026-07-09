@@ -144,8 +144,8 @@
 "special" = { fg = "sand" }
 
 [palette]
-"bg" = "#2B1E16"
-"surface" = "#3C2C22"
+"bg" = "#140e0a"
+"surface" = "#2d211a"
 "fg" = "#EAE0D2"
 "muted" = "#907A5D"
 "sand" = "#D4A373"
