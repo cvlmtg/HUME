@@ -124,6 +124,8 @@ Text objects (use the `m` prefix):
 | `q <reg>` | Replay named register (`0`–`9`) |
 | `<count> q q` | Replay `q` `<count>` times |
 
+See [Register prefix](editing.md#register-prefix) for the full register list.
+
 ### Other
 
 | Key | Action |

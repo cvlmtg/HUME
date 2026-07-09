@@ -146,7 +146,7 @@ The status bar shows a pending indicator while waiting.
 
 ### Register prefix
 
-To make subsequent `(call! …)` invocations in a command body target a specific register, call `set-register-prefix!` with a single-character register name (`0`–`9`, `k`, `c`, `b`):
+To make subsequent `(call! …)` invocations in a command body target a specific register, call `set-register-prefix!` with a single-character register name (`0`–`9`, `k`, `c`, `b` — see [Register prefix](editing.md#register-prefix) for what each one holds):
 
 ```scheme
 (define-command! "paste-kill-ring-after"

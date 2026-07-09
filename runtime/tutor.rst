@@ -932,6 +932,21 @@ again for the third one:
 We saw a warning in the dev build, a warning in the staging run,
 and a warning in the production log.
 
+``n`` and ``N`` can also extend the selection instead of just moving it:
+``Ctrl+n`` jumps to the next match while keeping the anchor where it is,
+growing the selection to cover everything in between, and ``Ctrl+N``
+does the same backward. This is a one-shot extend — no need to enter
+Extend mode first. Requires a terminal with the kitty keyboard protocol.
+
+Exercise
+~~~~~~~~
+
+Navigate onto "risk" below and press ``*`` to search for it, then
+press ``Ctrl+n`` twice to grow the selection across all three matches,
+covering everything from the first "risk" to the last:
+
+The audit flagged risk in module A, risk in module B, and risk in module C.
+
 Exercise
 ~~~~~~~~
 
@@ -1024,6 +1039,8 @@ Summary
 | *             | search word under cursor                |
 +---------------+-----------------------------------------+
 | Ctrl+/        | search selection literally              |
++---------------+-----------------------------------------+
+| Ctrl+n / N    | extend to next / previous match         |
 +---------------+-----------------------------------------+
 | mi<d> / ma<d> | inner / around text object              |
 +---------------+-----------------------------------------+

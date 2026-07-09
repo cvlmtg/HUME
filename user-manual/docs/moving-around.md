@@ -90,12 +90,13 @@ Press `z` followed by a second key to reposition the view (the cursor itself sta
 | `?pattern` | Search backward |
 | `n` | Next match |
 | `N` | Previous match |
-| `*` | Use the primary selection as the search pattern. When the whole selection is word-class, the pattern is wrapped in word boundaries (`\b…\b`) for whole-word search; otherwise the text is searched literally. |
+| `*` | Search the whole word under the cursor, ignoring any current selection. Word-class text is wrapped in word boundaries (`\b…\b`) for a whole-word search; punctuation is searched literally. |
 | `m /` | Turn every search match in the buffer into a selection |
+| `Ctrl+/` | Use the primary selection's text, literally, as the search pattern — no word expansion, no boundaries (kitty only) |
 
 ### `m /` precondition
 
-`m /` uses the buffer's live search pattern if one is active; otherwise it falls back to the search register `s` (the last pattern submitted to `/` or `?`, or set by `*`). If neither is available it is a **silent no-op** — no error, selections unchanged. It runs from Normal or Extend mode.
+`m /` uses the buffer's live search pattern if one is active; otherwise it falls back to the search register `s` (the last pattern submitted to `/` or `?`, or set by `*`). If neither is available it is a **silent no-op** — no error, selections unchanged. It runs from Normal or Extend mode. See [Register prefix](editing.md#register-prefix) for the full list of registers.
 
 ### Regex syntax
 

@@ -14,6 +14,8 @@ Press `e` to enter Extend mode. In Extend mode, every motion grows the selection
 
 You can also do a one-shot extend without entering Extend mode: under the kitty keyboard protocol, `Ctrl+h`/`Ctrl+j`/`Ctrl+k`/`Ctrl+l`/`Ctrl+w`/`Ctrl+b` run the corresponding motion with extend on for that single keypress. (`Ctrl+x` / `Ctrl+X` likewise extend line selection on any terminal.)
 
+The same one-shot extend applies to search: `Ctrl+n` (kitty only) jumps the head to the next search match while the anchor stays put, growing the selection to cover everything from where you started through the new match — without entering Extend mode. `Ctrl+N` does the same backward, extending to the previous match.
+
 `w`/`b` and `x`/`X` additionally shrink in whole units: pressing the opposite key shrinks the selection back down one word or one line at a time, rather than one character at a time. The word or line where you started stays fully selected no matter which way you shrink or grow from there — crossing back past your starting point flips the selection's direction instead of cutting it off partway.
 
 ### Text objects

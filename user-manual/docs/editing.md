@@ -79,7 +79,14 @@ Prefix a yank, delete, change, or paste with `"` + a register name to target a s
 | `"5p` | Paste from named register 5 |
 | `"bd` | Delete to the black hole (nothing saved) |
 
-Registers addressable via `"` are: `0`–`9` (named storage, symmetric — `"5y` writes and `"5p` reads the same slot), `k` (kill-ring head), `c` (system clipboard), and `b` (black hole).
+Four kinds of register are addressable via `"`:
+
+| Register | Contents |
+|----------|----------|
+| `0`–`9` | Named storage, symmetric — `"5y` writes and `"5p` reads the same slot |
+| `k` | Kill-ring head |
+| `c` | System clipboard |
+| `b` | Black hole — writes are discarded, reads return nothing |
 
 Two further registers exist but cannot be named through the `"` prefix:
 
