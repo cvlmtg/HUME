@@ -159,52 +159,75 @@ fn choose_windows_compiler(exists: impl Fn(&str) -> bool) -> Option<WindowsCompi
 
 /// Resolve a `WindowsCompiler` to the `(CC, CXX)` values to set.
 ///
-/// `clang`/`gcc` are single executable names, so they pass straight through
-/// as `CC`/`CXX` — the `cc` crate resolves them from `PATH` like any other
-/// compiler. `zig`'s C/C++ compilers aren't standalone executables, they're
-/// invoked as `zig cc` / `zig c++`, and passing `CC="zig cc"` relies on the
-/// `cc` crate splitting the value on whitespace and re-assembling wrapper +
-/// args — behavior that has changed across `cc` crate versions and is
-/// broken in at least one still in the wild (it drops the `cc`/`c++`
-/// argument, so flags like `-O2` go straight to `zig`, which rejects them as
-/// an unknown top-level command). Sidestep this by writing a `.cmd` wrapper
-/// that hardcodes the subcommand and pointing `CC`/`CXX` at its path — a
-/// single filesystem token, no splitting involved. The wrapper also strips
-/// `--target` before forwarding to zig — see `zig_wrapper_script`.
+/// `gcc` is a single executable name, so it passes straight through as
+/// `CC`/`CXX` — the `cc` crate never adds `--target` for GNU-family
+/// compilers (cross toolchains are selected by binary name, not by flag), so
+/// there's nothing to strip.
+///
+/// `clang` and `zig` both get `.cmd` wrappers instead of a bare executable
+/// name, for two different reasons:
+///
+/// - **Both** need `--target` stripped (see `target_stripping_wrapper_script`)
+///   — the `cc` crate detects both as clang-family and force-feeds them the
+///   host's LLVM triple, which is wrong for any install not paired with
+///   MSVC.
+/// - **`zig` additionally** can't be named directly in `CC`, because its
+///   C/C++ compilers aren't standalone executables — they're invoked as
+///   `zig cc` / `zig c++`, and passing `CC="zig cc"` relies on the `cc` crate
+///   splitting the value on whitespace and re-assembling wrapper + args —
+///   behavior that has changed across `cc` crate versions and is broken in
+///   at least one still in the wild (it drops the `cc`/`c++` argument, so
+///   flags like `-O2` go straight to `zig`, which rejects them as an unknown
+///   top-level command). The wrapper sidesteps this too: `CC`/`CXX` point at
+///   a single filesystem token, no splitting involved.
 #[cfg(windows)]
 fn compiler_env_vars(compiler: WindowsCompiler) -> io::Result<(String, String)> {
     match compiler {
-        WindowsCompiler::Clang => Ok(("clang".to_string(), "clang++".to_string())),
+        WindowsCompiler::Clang => {
+            let cc = write_target_stripping_wrapper("hume-clang-cc.cmd", "clang")?;
+            let cxx = write_target_stripping_wrapper("hume-clang-cxx.cmd", "clang++")?;
+            Ok((cc, cxx))
+        }
         WindowsCompiler::Gcc => Ok(("gcc".to_string(), "g++".to_string())),
         WindowsCompiler::Zig => {
-            let cc = write_zig_wrapper("hume-zig-cc.cmd", "cc")?;
-            let cxx = write_zig_wrapper("hume-zig-cxx.cmd", "c++")?;
+            let cc = write_target_stripping_wrapper("hume-zig-cc.cmd", "zig cc")?;
+            let cxx = write_target_stripping_wrapper("hume-zig-cxx.cmd", "zig c++")?;
             Ok((cc, cxx))
         }
     }
 }
 
-/// Write a `.cmd` wrapper forwarding arguments to `zig <subcommand>` (minus
-/// any `--target`) into the system temp dir, and return its path.
+/// Write a `.cmd` wrapper forwarding arguments to `invocation` (minus any
+/// `--target`) into the system temp dir, and return its path.
 #[cfg(windows)]
-fn write_zig_wrapper(file_name: &str, subcommand: &str) -> io::Result<String> {
+fn write_target_stripping_wrapper(file_name: &str, invocation: &str) -> io::Result<String> {
     let path = std::env::temp_dir().join(file_name);
-    std::fs::write(&path, zig_wrapper_script(subcommand))?;
+    std::fs::write(&path, target_stripping_wrapper_script(invocation))?;
     Ok(path.to_string_lossy().into_owned())
 }
 
-/// Batch script body forwarding arguments to `zig <subcommand>`, with any
-/// `--target`/`-target` (and its value) stripped.
+/// Batch script body forwarding arguments to `invocation` (e.g. `"clang"` or
+/// `"zig cc"`), with any `--target`/`-target` (and its value) stripped.
 ///
-/// The `cc` crate detects `zig cc` as clang-family and injects `--target=`
-/// set to the host's LLVM triple (e.g. `x86_64-pc-windows-msvc`). `zig cc`
-/// parses `--target` as a zig target query — a 3-field `<arch>-<os>-<abi>`
-/// string, not the 4-field LLVM triple — so the `pc` vendor component reads
-/// as an unknown OS and zig rejects it. Dropping the flag lets zig fall back
-/// to its native target, which is the `-gnu` ABI when MSVC (`cl`) is absent —
-/// exactly the case this wrapper is used in.
+/// The `cc` crate treats `clang` and `zig cc` as the same compiler family and
+/// injects `--target=<host LLVM triple>` for both (e.g.
+/// `x86_64-pc-windows-msvc`), on the assumption that "clang on Windows" means
+/// the official LLVM.org build paired with MSVC. That assumption breaks two
+/// ways:
+///
+/// - `zig cc` parses `--target` as a zig target query — a 3-field
+///   `<arch>-<os>-<abi>` string, not the 4-field LLVM triple — so the `pc`
+///   vendor component reads as an unknown OS and zig rejects it outright.
+/// - A real `clang` that isn't paired with MSVC (e.g. `llvm-mingw`, MSYS2's
+///   `clang64`) parses the triple fine but has no MSVC sysroot to satisfy
+///   it, and forcing the msvc ABI overrides that install's own correct
+///   `-gnu` default.
+///
+/// Dropping the flag lets each compiler fall back to its own native target,
+/// which is the `-gnu` ABI whenever MSVC (`cl`) is absent — exactly the case
+/// these wrappers are used in.
 #[cfg(windows)]
-fn zig_wrapper_script(subcommand: &str) -> String {
+fn target_stripping_wrapper_script(invocation: &str) -> String {
     format!(
         "@echo off\r\n\
          setlocal enabledelayedexpansion\r\n\
@@ -219,7 +242,7 @@ fn zig_wrapper_script(subcommand: &str) -> String {
          shift\r\n\
          goto loop\r\n\
          :run\r\n\
-         zig {subcommand} !ARGS!\r\n"
+         {invocation} !ARGS!\r\n"
     )
 }
 
@@ -316,13 +339,14 @@ mod tests {
         assert_eq!(choice, None, "no compiler on PATH should mean no override");
     }
 
-    /// `cc`'s handling of whitespace-separated `CC` values is what broke in
-    /// the wild (see `compiler_env_vars`) — the wrapper script sidesteps it
-    /// entirely, so pin down its exact contents.
+    /// Pin down the wrapper's exact contents: the `--target` strip (needed by
+    /// both `clang` and `zig cc`, see `target_stripping_wrapper_script`) and,
+    /// for `zig`, the whitespace-splitting issue that `cc`'s handling of
+    /// `CC="zig cc"` used to hit (see `compiler_env_vars`).
     #[test]
     #[cfg(windows)]
-    fn zig_wrapper_script_forwards_args_to_subcommand() {
-        let expected_cc = "@echo off\r\n\
+    fn target_stripping_wrapper_script_forwards_args_to_invocation() {
+        let expected = "@echo off\r\n\
              setlocal enabledelayedexpansion\r\n\
              set \"ARGS=\"\r\n\
              :loop\r\n\
@@ -336,10 +360,18 @@ mod tests {
              goto loop\r\n\
              :run\r\n\
              zig cc !ARGS!\r\n";
-        assert_eq!(zig_wrapper_script("cc"), expected_cc);
+        assert_eq!(target_stripping_wrapper_script("zig cc"), expected);
         assert_eq!(
-            zig_wrapper_script("c++"),
-            expected_cc.replace("zig cc !ARGS!", "zig c++ !ARGS!")
+            target_stripping_wrapper_script("zig c++"),
+            expected.replace("zig cc !ARGS!", "zig c++ !ARGS!")
+        );
+        assert_eq!(
+            target_stripping_wrapper_script("clang"),
+            expected.replace("zig cc !ARGS!", "clang !ARGS!")
+        );
+        assert_eq!(
+            target_stripping_wrapper_script("clang++"),
+            expected.replace("zig cc !ARGS!", "clang++ !ARGS!")
         );
     }
 
