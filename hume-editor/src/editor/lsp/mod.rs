@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 
 use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::{LspBackend, ServerId, ThreadedLspBackend};
-use hume_lsp::client::{CallbackToken, ClientAction, LspClient, Outcome, RequestMeta, ServerState};
+use hume_lsp::client::{ClientAction, LspClient, Outcome, RequestMeta, ServerState};
 use hume_lsp::codec::{Message, RequestId, ResponseError};
 #[cfg(test)]
 use hume_lsp::inline::InlineLspBackend;
@@ -39,7 +39,9 @@ use registry::LspServerConfig;
 const LSP_HEARTBEAT: Duration = Duration::from_millis(200);
 
 /// A Rust closure run with a completed request's outcome. `hume-lsp` never
-/// holds this — only the opaque `CallbackToken` crosses the crate fence.
+/// holds this — it only ever sees the `(ServerId, RequestId)` pair the
+/// editor keys its callback under, which `hume-lsp` already hands back from
+/// `send_request`/`take_completed`/`drain_pending`.
 pub(crate) type LspCallback = Box<dyn FnOnce(&mut Editor, Outcome)>;
 
 struct CallbackEntry {
@@ -53,8 +55,11 @@ struct CallbackEntry {
 pub(crate) struct LspState {
     backend: Box<dyn LspBackend>,
     clients: HashMap<ServerId, LspClient>,
-    callbacks: HashMap<CallbackToken, CallbackEntry>,
-    next_token: u64,
+    /// Keyed by the `(ServerId, RequestId)` pair a callback's own request
+    /// was sent under — `drain_lsp` already has both in scope at dispatch
+    /// time (the per-server loop, then the response/timeout's own id), so
+    /// no separate token needs to be minted or round-tripped.
+    callbacks: HashMap<(ServerId, RequestId), CallbackEntry>,
     /// Config recorded by `register-lsp-server!`, keyed by language.
     configs: HashMap<String, LspServerConfig>,
     /// Running (or starting) server per (language, resolved root) — the
@@ -81,7 +86,6 @@ impl LspState {
             backend,
             clients: HashMap::new(),
             callbacks: HashMap::new(),
-            next_token: 0,
             configs: HashMap::new(),
             servers_by_key: HashMap::new(),
             diagnostics: DiagnosticsStore::default(),
@@ -168,6 +172,14 @@ impl LspState {
         self.diagnostics.counts(bid)
     }
 
+    /// Number of registered callbacks still awaiting dispatch — a leak
+    /// check: every callback must eventually be removed by `dispatch_completed`
+    /// (response, timeout, or teardown), never orphaned.
+    #[cfg(test)]
+    pub(crate) fn callback_count_for_test(&self) -> usize {
+        self.callbacks.len()
+    }
+
     /// Diagnostics visible in `range` (buffer-wide char offsets) for `bid`,
     /// at or above `floor` severity — the render write side reads this
     /// directly (no JSON round-trip; that's
@@ -217,23 +229,25 @@ impl LspState {
         Some((client, backend.as_mut()))
     }
 
-    /// Mints a fresh token and files `callback` under it. Production caller:
-    /// `bridge::send_one_lsp_request` (B2).
+    /// Files `callback` under an already-sent request's `(server, id)` —
+    /// `drain_lsp`'s per-server loop already has both in scope at dispatch
+    /// time, so no separate token needs to be minted. Production caller:
+    /// `bridge::send_one_lsp_request` (B2), called after `send_request`
+    /// returns the id.
     pub(crate) fn register_callback(
         &mut self,
+        server: ServerId,
+        id: RequestId,
         stale_check: Option<(BufferId, u64)>,
         callback: LspCallback,
-    ) -> CallbackToken {
-        let token = CallbackToken(self.next_token);
-        self.next_token += 1;
+    ) {
         self.callbacks.insert(
-            token,
+            (server, id),
             CallbackEntry {
                 callback,
                 stale_check,
             },
         );
-        token
     }
 
     /// Sends a request through `server`'s client, if one is registered.
@@ -329,7 +343,7 @@ impl Editor {
                 None => continue,
             };
             for (id, meta, outcome) in completed {
-                self.dispatch_completed(id, meta, outcome);
+                self.dispatch_completed(server_id, id, meta, outcome);
             }
         }
     }
@@ -577,8 +591,14 @@ impl Editor {
         }
     }
 
-    fn dispatch_completed(&mut self, _id: RequestId, meta: RequestMeta, outcome: Outcome) {
-        let Some(entry) = self.lsp.callbacks.remove(&meta.token) else {
+    fn dispatch_completed(
+        &mut self,
+        server_id: ServerId,
+        id: RequestId,
+        meta: RequestMeta,
+        outcome: Outcome,
+    ) {
+        let Some(entry) = self.lsp.callbacks.remove(&(server_id, id)) else {
             return;
         };
 

@@ -180,14 +180,21 @@ impl Editor {
     /// reaps the process regardless), drop the client/key/name/diagnostics
     /// entries, and clear `lsp_server` on every buffer that pointed at it so
     /// a later attach attempt (open or restart) doesn't see it as already
-    /// attached. Fires `OnDiagnosticsChanged` for every buffer whose stored
-    /// diagnostics were actually cleared, and `OnLspDetach` for every buffer
-    /// that was attached — the latter is a plugin's only signal to drop its
-    /// own buffer-scoped state derived from this server (e.g. inlay hints),
+    /// attached. Every request still in flight on this client is dispatched
+    /// as `TimedOut` before the client itself is dropped — otherwise a
+    /// registered callback (and its `CallbackEntry`) would be orphaned
+    /// along with the removed client, never firing and never freed. Fires
+    /// `OnDiagnosticsChanged` for every buffer whose stored diagnostics
+    /// were actually cleared, and `OnLspDetach` for every buffer that was
+    /// attached — the latter is a plugin's only signal to drop its own
+    /// buffer-scoped state derived from this server (e.g. inlay hints),
     /// which nothing here owns well enough to clear on its behalf.
     fn lsp_stop_one(&mut self, language: &str, root: &Path, server_id: hume_lsp::backend::ServerId) {
         if let Some(mut client) = self.lsp.clients.remove(&server_id) {
             client.begin_shutdown(self.lsp.backend.as_mut());
+            for (id, meta) in client.drain_pending() {
+                self.dispatch_completed(server_id, id, meta, hume_lsp::client::Outcome::TimedOut);
+            }
         }
         self.lsp.backend.shutdown(server_id);
         self.lsp

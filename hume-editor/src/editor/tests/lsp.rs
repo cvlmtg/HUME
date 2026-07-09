@@ -39,20 +39,23 @@ fn callback_fires_with_ok_outcome_on_response() {
 
     let result: Rc<RefCell<Option<Outcome>>> = Rc::new(RefCell::new(None));
     let result_in_closure = result.clone();
-    let token = ed.lsp.register_callback(
+    let meta = RequestMeta {
+        method: "textDocument/hover".to_string(),
+        allow_stale: false,
+        deadline: Instant::now() + Duration::from_secs(10),
+    };
+    let id = ed
+        .lsp
+        .send_request(sid, "textDocument/hover", serde_json::Value::Null, meta)
+        .expect("client tracked");
+    ed.lsp.register_callback(
+        sid,
+        id,
         None,
         Box::new(move |_ed, outcome| {
             *result_in_closure.borrow_mut() = Some(outcome);
         }),
     );
-    let meta = RequestMeta {
-        method: "textDocument/hover".to_string(),
-        allow_stale: false,
-        deadline: Instant::now() + Duration::from_secs(10),
-        token,
-    };
-    ed.lsp
-        .send_request(sid, "textDocument/hover", serde_json::Value::Null, meta);
 
     ed.drain_lsp();
 
@@ -71,20 +74,23 @@ fn callback_never_fires_for_a_request_with_no_response() {
 
     let fired = Rc::new(RefCell::new(false));
     let fired_in_closure = fired.clone();
-    let token = ed.lsp.register_callback(
+    let meta = RequestMeta {
+        method: "textDocument/hover".to_string(),
+        allow_stale: false,
+        deadline: Instant::now() + Duration::from_secs(10),
+    };
+    let id = ed
+        .lsp
+        .send_request(sid, "textDocument/hover", serde_json::Value::Null, meta)
+        .expect("client tracked");
+    ed.lsp.register_callback(
+        sid,
+        id,
         None,
         Box::new(move |_ed, _outcome| {
             *fired_in_closure.borrow_mut() = true;
         }),
     );
-    let meta = RequestMeta {
-        method: "textDocument/hover".to_string(),
-        allow_stale: false,
-        deadline: Instant::now() + Duration::from_secs(10),
-        token,
-    };
-    ed.lsp
-        .send_request(sid, "textDocument/hover", serde_json::Value::Null, meta);
 
     ed.drain_lsp();
 
@@ -104,20 +110,23 @@ fn timed_out_request_dispatches_callback_with_timed_out_outcome_and_logs_trace()
 
     let result: Rc<RefCell<Vec<Outcome>>> = Rc::new(RefCell::new(Vec::new()));
     let result_in_closure = result.clone();
-    let token = ed.lsp.register_callback(
+    let meta = RequestMeta {
+        method: "textDocument/completion".to_string(),
+        allow_stale: false,
+        deadline: Instant::now() - Duration::from_millis(1),
+    };
+    let id = ed
+        .lsp
+        .send_request(sid, "textDocument/completion", serde_json::Value::Null, meta)
+        .expect("client tracked");
+    ed.lsp.register_callback(
+        sid,
+        id,
         None,
         Box::new(move |_ed, outcome| {
             result_in_closure.borrow_mut().push(outcome);
         }),
     );
-    let meta = RequestMeta {
-        method: "textDocument/completion".to_string(),
-        allow_stale: false,
-        deadline: Instant::now() - Duration::from_millis(1),
-        token,
-    };
-    ed.lsp
-        .send_request(sid, "textDocument/completion", serde_json::Value::Null, meta);
 
     ed.drain_lsp();
 
@@ -143,20 +152,23 @@ fn stale_response_is_dropped_when_buffer_moved_past_text_gen() {
 
     let fired = Rc::new(RefCell::new(false));
     let fired_in_closure = fired.clone();
-    let token = ed.lsp.register_callback(
+    let meta = RequestMeta {
+        method: "textDocument/hover".to_string(),
+        allow_stale: false,
+        deadline: Instant::now() + Duration::from_secs(10),
+    };
+    let id = ed
+        .lsp
+        .send_request(sid, "textDocument/hover", serde_json::Value::Null, meta)
+        .expect("client tracked");
+    ed.lsp.register_callback(
+        sid,
+        id,
         Some((bid, sent_gen)),
         Box::new(move |_ed, _outcome| {
             *fired_in_closure.borrow_mut() = true;
         }),
     );
-    let meta = RequestMeta {
-        method: "textDocument/hover".to_string(),
-        allow_stale: false,
-        deadline: Instant::now() + Duration::from_secs(10),
-        token,
-    };
-    ed.lsp
-        .send_request(sid, "textDocument/hover", serde_json::Value::Null, meta);
 
     // Move the buffer's text_gen past the value the request was sent at.
     ed.step(key('d'));
@@ -182,20 +194,23 @@ fn allow_stale_delivers_despite_buffer_moving_past_text_gen() {
 
     let fired = Rc::new(RefCell::new(false));
     let fired_in_closure = fired.clone();
-    let token = ed.lsp.register_callback(
+    let meta = RequestMeta {
+        method: "textDocument/hover".to_string(),
+        allow_stale: true,
+        deadline: Instant::now() + Duration::from_secs(10),
+    };
+    let id = ed
+        .lsp
+        .send_request(sid, "textDocument/hover", serde_json::Value::Null, meta)
+        .expect("client tracked");
+    ed.lsp.register_callback(
+        sid,
+        id,
         Some((bid, sent_gen)),
         Box::new(move |_ed, _outcome| {
             *fired_in_closure.borrow_mut() = true;
         }),
     );
-    let meta = RequestMeta {
-        method: "textDocument/hover".to_string(),
-        allow_stale: true,
-        deadline: Instant::now() + Duration::from_secs(10),
-        token,
-    };
-    ed.lsp
-        .send_request(sid, "textDocument/hover", serde_json::Value::Null, meta);
 
     ed.step(key('d'));
     ed.drain_lsp();
@@ -251,6 +266,57 @@ fn server_request_action_gets_exactly_one_response() {
     // `editor::lsp::tests` against the pure `server_request_response`
     // function — that's the right altitude for table-shape assertions.
     assert!(ed.lsp.backend_mut().drain().is_empty());
+}
+
+#[test]
+fn lsp_stop_dispatches_timed_out_for_in_flight_callbacks_instead_of_orphaning_them() {
+    // Without draining a removed client's `pending` map, `:lsp-stop` dropped
+    // the `LspClient` (and its pending requests) outright — a registered
+    // callback for a request still in flight never fired, and its
+    // `CallbackEntry` leaked in `LspState.callbacks` forever.
+    let mut ed = editor_from("-[w]>ord\n");
+    let mut backend = InlineLspBackend::new();
+    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    wire_client(&mut ed, backend, sid);
+    ed.lsp
+        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
+
+    let result: Rc<RefCell<Vec<Outcome>>> = Rc::new(RefCell::new(Vec::new()));
+    let result_in_closure = result.clone();
+    let meta = RequestMeta {
+        method: "textDocument/hover".to_string(),
+        allow_stale: false,
+        deadline: Instant::now() + Duration::from_secs(10),
+    };
+    let id = ed
+        .lsp
+        .send_request(sid, "textDocument/hover", serde_json::Value::Null, meta)
+        .expect("client tracked");
+    ed.lsp.register_callback(
+        sid,
+        id,
+        None,
+        Box::new(move |_ed, outcome| {
+            result_in_closure.borrow_mut().push(outcome);
+        }),
+    );
+
+    ed.lsp_stop(Some("rust"));
+
+    {
+        let outcomes = result.borrow();
+        assert_eq!(outcomes.len(), 1, "callback must fire exactly once on stop");
+        assert!(
+            matches!(outcomes[0], Outcome::TimedOut),
+            "expected TimedOut, got {:?}",
+            outcomes[0]
+        );
+    }
+    assert_eq!(
+        ed.lsp.callback_count_for_test(),
+        0,
+        "the callback entry must not leak after being dispatched"
+    );
 }
 
 #[test]

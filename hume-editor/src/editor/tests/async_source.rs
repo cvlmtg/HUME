@@ -138,7 +138,7 @@ fn scripted_initialize_round_trip_through_editor() {
 mod has_pending_covers_client_state {
     use super::*;
     use hume_lsp::backend::LspBackend;
-    use hume_lsp::client::{CallbackToken, LspClient, RequestMeta, ServerState};
+    use hume_lsp::client::{LspClient, RequestMeta, ServerState};
     use hume_lsp::inline::InlineLspBackend;
     use std::path::{Path, PathBuf};
 
@@ -176,7 +176,6 @@ mod has_pending_covers_client_state {
             method: "textDocument/hover".to_string(),
             allow_stale: false,
             deadline: Instant::now() + Duration::from_secs(10),
-            token: CallbackToken(0),
         };
         ed.lsp
             .send_request(sid, "textDocument/hover", serde_json::Value::Null, meta);

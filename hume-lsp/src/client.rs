@@ -58,19 +58,16 @@ pub enum ClientAction {
     Stderr(String),
 }
 
-/// Opaque handle the editor maps to a real callback; `hume-lsp` never holds
-/// editor closures (crate fence) — it only carries this token round-trip.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct CallbackToken(pub u64);
-
 /// Everything but the outcome needed to route (or discard) a completed
-/// request. `token` is minted and interpreted entirely by the editor.
+/// request. `hume-lsp` never holds editor closures (crate fence) — the
+/// editor keys its own callback under the `(ServerId, RequestId)` pair
+/// this crate already hands back from `send_request`/`take_completed`/
+/// `drain_pending`, so no separate token needs to round-trip through here.
 #[derive(Debug, Clone)]
 pub struct RequestMeta {
     pub method: String,
     pub allow_stale: bool,
     pub deadline: Instant,
-    pub token: CallbackToken,
 }
 
 #[derive(Debug)]
@@ -173,6 +170,14 @@ impl LspClient {
         if self.pending.remove(&id).is_some() {
             self.send_cancel_notification(backend, &id);
         }
+    }
+
+    /// Removes and returns every still-pending request — for teardown paths
+    /// that drop the client (e.g. `:lsp-stop`) so the caller can dispatch
+    /// each as timed out rather than silently orphaning a registered
+    /// callback along with the client.
+    pub fn drain_pending(&mut self) -> Vec<(RequestId, RequestMeta)> {
+        self.pending.drain().collect()
     }
 
     /// Best-effort `$/cancelRequest` — only legal once the handshake has
@@ -643,7 +648,6 @@ mod tests {
             method: "textDocument/hover".to_string(),
             allow_stale: false,
             deadline: Instant::now() + std::time::Duration::from_secs(10),
-            token: CallbackToken(1),
         };
         let sent_id =
             client.send_request(&mut backend, "textDocument/hover", serde_json::Value::Null, meta);
@@ -786,12 +790,10 @@ mod tests {
         let (mut backend, mut client) = make_running_client();
         backend.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
 
-        let token = CallbackToken(1);
         let meta = RequestMeta {
             method: "textDocument/hover".to_string(),
             allow_stale: false,
             deadline: Instant::now() + std::time::Duration::from_secs(10),
-            token,
         };
         let sent_id =
             client.send_request(&mut backend, "textDocument/hover", serde_json::Value::Null, meta);
@@ -807,7 +809,7 @@ mod tests {
         assert_eq!(completed.len(), 1);
         let (id, meta_out, outcome) = &completed[0];
         assert_eq!(*id, sent_id);
-        assert_eq!(meta_out.token, token);
+        assert_eq!(meta_out.method, "textDocument/hover");
         match outcome {
             Outcome::Ok(v) => assert_eq!(*v, serde_json::json!({"contents": "hi"})),
             other => panic!("expected Ok, got {other:?}"),
@@ -825,7 +827,6 @@ mod tests {
             method: "textDocument/definition".to_string(),
             allow_stale: false,
             deadline: Instant::now() + std::time::Duration::from_secs(10),
-            token: CallbackToken(7),
         };
         let id = client.send_request(
             &mut backend,
@@ -872,7 +873,6 @@ mod tests {
             method: "textDocument/definition".to_string(),
             allow_stale: false,
             deadline: Instant::now() + std::time::Duration::from_secs(10),
-            token: CallbackToken(1),
         };
         let id =
             client.send_request(&mut backend, "textDocument/definition", serde_json::Value::Null, meta);
@@ -886,7 +886,6 @@ mod tests {
             method: "textDocument/hover".to_string(),
             allow_stale: false,
             deadline: Instant::now() - std::time::Duration::from_millis(1),
-            token: CallbackToken(2),
         };
         client.send_request(&mut backend, "textDocument/hover", serde_json::Value::Null, meta2);
         let completed = client.take_completed(&mut backend, Instant::now());
@@ -905,7 +904,6 @@ mod tests {
             method: "textDocument/completion".to_string(),
             allow_stale: false,
             deadline: Instant::now() - std::time::Duration::from_millis(1),
-            token: CallbackToken(3),
         };
         let id = client.send_request(
             &mut backend,

@@ -86,14 +86,23 @@ impl Editor {
             let (err, result) = outcome_to_steel(outcome);
             editor.queue_steel_call(callback, vec![err, result]);
         });
-        let token = self.lsp.register_callback(stale_check, lsp_callback);
         let meta = RequestMeta {
             method: req.method.clone(),
             allow_stale: req.allow_stale,
             deadline,
-            token,
         };
-        self.lsp.send_request(server_id, &req.method, req.params, meta);
+        // Send first, register second: `register_callback` keys off the id
+        // `send_request` mints, so there is no window where a callback is
+        // filed without a matching in-flight request to eventually resolve it.
+        let Some(id) = self.lsp.send_request(server_id, &req.method, req.params, meta) else {
+            self.report(
+                Severity::Error,
+                format!("lsp-request: no client tracked for '{}'", req.method),
+            );
+            return;
+        };
+        self.lsp
+            .register_callback(server_id, id, stale_check, lsp_callback);
     }
 
     /// Sends every queued `(lsp-notify …)` call. Same server resolution as
