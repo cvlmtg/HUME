@@ -36,6 +36,7 @@ use super::{EditorState, InsertSession, Mode, RegisterPrefix, RepeatableAction, 
 use super::{Severity, register_ops};
 use crate::editor::error::CommandError;
 use crate::ops::MotionMode;
+use crate::ops::edit::clear_blank_line_indent;
 
 // ── EditorState helpers ───────────────────────────────────────────────────────
 
@@ -662,6 +663,24 @@ pub(super) fn current_selections<'a>(
     &state.panes.state[state.focused_pane_id][bid].selections
 }
 
+/// `true` if any current selection is a collapsed cursor sitting on a blank,
+/// auto-indented line — the condition under which [`clear_blank_line_indent`]
+/// would actually change the buffer. Checked before calling it so the common
+/// case (exiting Insert mode away from a blank line) skips the edit entirely
+/// instead of running an identity one (see that function's `pub(crate)` note
+/// on [`crate::ops::edit::is_blank_indented_line`]).
+fn has_blank_line_cursor(state: &EditorState, view: &EngineView) -> bool {
+    let buf = doc(state, view).text();
+    current_selections(state, view).iter_sorted().any(|sel| {
+        sel.is_collapsed() && {
+            let line_idx = buf.char_to_line(sel.head());
+            let line_start = buf.line_to_char(line_idx);
+            let ws_end = hume_editing::lines::leading_whitespace_end(buf, line_idx);
+            crate::ops::edit::is_blank_indented_line(buf, line_start, ws_end)
+        }
+    })
+}
+
 /// The most-recently-focused buffer other than the current one.
 pub(super) fn alternate_buffer(state: &EditorState, view: &EngineView) -> Option<BufferId> {
     state.buffers.mru_excluding(focused_buffer_id(state, view))
@@ -811,6 +830,15 @@ pub(super) fn end_insert_session(state: &mut EditorState, view: &EngineView) {
         .insert_session
         .as_ref()
         .is_some_and(|s| s.step_back_on_exit);
+    // Vim autoindent parity: trim a blank auto-indented line's whitespace
+    // before committing, so leaving Insert mode on one behaves like Enter
+    // does in `insert_newline_indent`. Joins the still-open session group —
+    // not a separate undo step. Gated by `has_blank_line_cursor` so the
+    // common case (cursor not on a blank line) skips the edit rather than
+    // running an identity one on every Insert-mode exit.
+    if has_blank_line_cursor(state, view) {
+        apply_focused_edit_grouped(state, view, clear_blank_line_indent);
+    }
     commit_edit_group_current(state, view);
     if let (Some(session), Some(action)) = (
         state.insert_session.take(),

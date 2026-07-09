@@ -3,7 +3,9 @@ use hume_editing::grapheme::{
     char_pos_at_display_col, display_col_in_line, grapheme_col_in_line, next_grapheme_boundary,
     prev_grapheme_boundary,
 };
-use hume_editing::lines::{is_line_start, leading_whitespace, line_end_exclusive};
+use hume_editing::lines::{
+    is_line_start, leading_whitespace, leading_whitespace_end, line_end_exclusive,
+};
 use hume_editing::selection::{Selection, SelectionSet, is_selection_linewise};
 use hume_editing::text::Text;
 use hume_editing::word::is_word_boundary;
@@ -392,6 +394,43 @@ pub(crate) fn insert_char(
     })
 }
 
+/// Returns `true` if `line` has leading whitespace and nothing else before its
+/// structural newline — a blank, auto-indented line with no real content.
+///
+/// `ws_end` (from [`leading_whitespace_end`]) lands exactly on the line's `\n`
+/// when the line is whitespace-only: the scan only stops early on a
+/// non-whitespace char, and every line's char content ends in `\n` (buffer
+/// invariant), so a whitespace-only line is the one case where the scan runs
+/// all the way to that `\n` without finding one.
+///
+/// `pub(crate)`: also the pre-flight check gating `clear_blank_line_indent`
+/// calls, so exiting Insert mode away from a blank line doesn't run an
+/// identity edit (which would still bump `text_gen` and record a spurious
+/// pending tree-sitter edit).
+pub(crate) fn is_blank_indented_line(buf: &Text, line_start: usize, ws_end: usize) -> bool {
+    ws_end > line_start && buf.char_at(ws_end) == Some('\n')
+}
+
+/// Shared per-selection prelude for [`insert_newline_indent`] and
+/// [`clear_blank_line_indent`]: `pos`'s line info, or `None` if a prior
+/// selection's blank-line clear already consumed past `pos` (two cursors on
+/// the same whitespace-only line) — in that case the caller should land the
+/// cursor at `b.new_pos()` and emit nothing further, rather than retaining
+/// backwards past what the builder already emitted.
+fn line_context_if_unconsumed(
+    b: &ChangeSetBuilder,
+    buf: &Text,
+    pos: usize,
+) -> Option<(usize, usize, usize)> {
+    if pos < b.old_pos() {
+        return None;
+    }
+    let line_idx = buf.char_to_line(pos);
+    let line_start = buf.line_to_char(line_idx);
+    let ws_end = leading_whitespace_end(buf, line_idx);
+    Some((line_idx, line_start, ws_end))
+}
+
 /// Insert a newline followed by the current line's leading whitespace at every
 /// selection.
 ///
@@ -407,21 +446,65 @@ pub(crate) fn insert_char(
 /// - **Non-collapsed selection**: the selection is deleted first, so there is
 ///   no "original char at `start`" to land on; the cursor ends up on the
 ///   structural `\n` that the newline insert leaves at the original position.
+///
+/// **Vim autoindent parity**: if a collapsed cursor sits on a blank,
+/// auto-indented line (whitespace only, no content), that whitespace is
+/// vacated instead of retained — matching vim's "the indent is deleted again"
+/// behavior (`:help autoindent`) when leaving such a line via Enter. The
+/// indent is still copied onto the *new* line as usual.
 pub(crate) fn insert_newline_indent(
     buf: Text,
     sels: SelectionSet,
 ) -> (Text, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         let start = sel.start();
-        let line_idx = buf.char_to_line(start);
-        let indent = leading_whitespace(buf, line_idx);
-        b.retain(start - b.old_pos());
-        if !sel.is_collapsed() {
-            b.delete(sel.content_end(buf) + 1 - start);
+        let Some((line_idx, line_start, ws_end)) = line_context_if_unconsumed(b, buf, start) else {
+            new_sels.push(Selection::collapsed(b.new_pos()));
+            return;
+        };
+
+        if sel.is_collapsed() && is_blank_indented_line(buf, line_start, ws_end) {
+            b.retain(line_start - b.old_pos());
+            b.delete(ws_end - line_start);
+        } else {
+            b.retain(start - b.old_pos());
+            if !sel.is_collapsed() {
+                b.delete(sel.content_end(buf) + 1 - start);
+            }
         }
+        let indent = leading_whitespace(buf, line_idx);
         b.insert_char('\n');
         if !indent.is_empty() {
             b.insert(&indent);
+        }
+        new_sels.push(Selection::collapsed(b.new_pos()));
+    })
+}
+
+/// Clear a blank, auto-indented line's leading whitespace at every collapsed
+/// selection sitting on one — leaves the cursor on the line's structural `\n`.
+///
+/// The Esc/Ctrl+C half of vim autoindent parity: [`insert_newline_indent`]
+/// handles trimming on Enter, this handles trimming when Insert mode exits
+/// with the cursor still on a blank auto-indented line (`:help autoindent`:
+/// "type `<Esc>` ... the indent is deleted again"). Selections not on a blank
+/// line are left untouched (identity edit).
+pub(crate) fn clear_blank_line_indent(
+    buf: Text,
+    sels: SelectionSet,
+) -> (Text, SelectionSet, ChangeSet) {
+    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+        let head = sel.head();
+        let Some((_line_idx, line_start, ws_end)) = line_context_if_unconsumed(b, buf, head) else {
+            new_sels.push(Selection::collapsed(b.new_pos()));
+            return;
+        };
+
+        if sel.is_collapsed() && is_blank_indented_line(buf, line_start, ws_end) {
+            b.retain(line_start - b.old_pos());
+            b.delete(ws_end - line_start);
+        } else {
+            b.retain(head - b.old_pos());
         }
         new_sels.push(Selection::collapsed(b.new_pos()));
     })

@@ -1348,6 +1348,91 @@ fn newline_indent_replaces_multi_line_selection() {
 }
 
 #[test]
+fn newline_indent_trims_blank_line_on_second_enter() {
+    // Cursor on the structural '\n' of a blank, auto-indented line ("  \n"):
+    // vim autoindent parity — that whitespace is vacated (not carried
+    // forward) before opening a fresh indented line below it.
+    assert_state!(
+        "x\n  -[\n]>",
+        |(buf, sels)| insert_newline_indent(buf, sels),
+        "x\n\n  -[\n]>"
+    );
+}
+
+#[test]
+fn newline_indent_trims_blank_line_cursor_mid_whitespace() {
+    // Collapsed cursor anywhere within a blank line's whitespace (not just
+    // at its end) still triggers the trim — the whole line is judged blank,
+    // not just the region before the cursor.
+    assert_state!(
+        "x\n -[ ]> \n",
+        |(buf, sels)| insert_newline_indent(buf, sels),
+        "x\n\n   -[\n]>"
+    );
+}
+
+#[test]
+fn newline_indent_two_cursors_same_blank_line_merge() {
+    // Two collapsed cursors on the same whitespace-only line: the first
+    // vacates the line; the second lands at the same spot instead of
+    // retaining backwards past what the builder already consumed.
+    // `SelectionSet::from_vec` then merges the coincident cursors — no
+    // panic, no duplicate newline.
+    assert_state!(
+        "-[ ]> -[ ]>\n",
+        |(buf, sels)| insert_newline_indent(buf, sels),
+        "\n   -[\n]>"
+    );
+}
+
+// ── clear_blank_line_indent (vim autoindent parity on Insert-mode exit) ───
+
+#[test]
+fn clear_blank_line_indent_clears_whitespace_only_line() {
+    // Cursor on a blank, auto-indented line: its whitespace is cleared,
+    // cursor lands on the resulting (now truly empty) line's '\n'.
+    assert_state!(
+        "-[ ]> \n",
+        |(buf, sels)| clear_blank_line_indent(buf, sels),
+        "-[\n]>"
+    );
+}
+
+#[test]
+fn clear_blank_line_indent_no_op_on_content_line() {
+    // Cursor on a line with real content: identity edit, nothing cleared.
+    assert_state!(
+        "-[f]>oo\n",
+        |(buf, sels)| clear_blank_line_indent(buf, sels),
+        "-[f]>oo\n"
+    );
+}
+
+#[test]
+fn clear_blank_line_indent_multi_cursor_only_clears_blank_line() {
+    // One cursor on a content line, one on a blank auto-indented line: only
+    // the blank line's whitespace is cleared; the content-line cursor is an
+    // identity edit.
+    assert_state!(
+        "-[f]>oo\n -[ ]>\n",
+        |(buf, sels)| clear_blank_line_indent(buf, sels),
+        "-[f]>oo\n-[\n]>"
+    );
+}
+
+#[test]
+fn clear_blank_line_indent_two_cursors_same_line_merge() {
+    // Two cursors on the same blank line: the first clears it; the second
+    // lands at the same spot instead of retaining backwards. Selections
+    // merge into one, no panic.
+    assert_state!(
+        "-[ ]> -[ ]>\n",
+        |(buf, sels)| clear_blank_line_indent(buf, sels),
+        "-[\n]>"
+    );
+}
+
+#[test]
 fn insert_char_combining_codepoint() {
     // Inserting a bare combining accent (U+0301) before 'h'. Mechanically
     // fine — the accent is stored as its own codepoint at position 0, and
