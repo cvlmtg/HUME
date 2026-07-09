@@ -11,26 +11,30 @@ use crate::types::{ResolvedStyle, Scope, ScopeId};
 
 /// Maps scope name strings to compact [`ScopeId`] integers.
 ///
-/// Two registration paths:
+/// Two registration entry points share one map and interning path:
 /// - [`intern`] for `&'static str` — used by engine builtins and theme loaders.
 /// - [`intern_runtime`] for `&str` — used by Steel-loaded language configs
-///   where scope names are runtime strings. Owned copies are stored to avoid
-///   leaking; the total number of distinct scopes is bounded by `u16::MAX`.
+///   where scope names are runtime strings.
 ///
-/// Intern scopes any time — construction, a runtime language/grammar load,
-/// mid-session plugin activation. [`Theme::bake_if_stale`], called
-/// unconditionally from `prepare_frame` every frame, re-bakes whenever new
-/// scopes were interned since the last bake, so no caller needs to bake
-/// manually after interning. After baking, [`Theme::resolve`] is an O(1)
-/// `Vec` index.
+/// Interning is cold (construction, a runtime language/grammar load,
+/// mid-session plugin activation — never the per-grapheme render path), so a
+/// single owned-key map costs one extra allocation per newly-interned static
+/// scope over a `&'static str` fast path, in exchange for one map and one
+/// interning method instead of two. The total number of distinct scopes is
+/// bounded by `u16::MAX`.
+///
+/// [`Theme::bake_if_stale`], called unconditionally from `prepare_frame`
+/// every frame, re-bakes whenever new scopes were interned since the last
+/// bake, so no caller needs to bake manually after interning. After baking,
+/// [`Theme::resolve`] is an O(1) `Vec` index.
 ///
 /// Lives on [`crate::pipeline::EngineView`] so it outlives all providers.
 #[derive(Default)]
 pub struct ScopeRegistry {
-    /// Fast-path map for static string literals (engine builtins, theme load).
-    static_map: HashMap<&'static str, ScopeId>,
-    /// Owned-key map for runtime strings (Steel-registered language captures).
-    runtime_map: HashMap<String, ScopeId>,
+    /// Name → id. Owned keys regardless of registration path — a `&str`
+    /// lookup costs the same whether the stored key came from a `&'static`
+    /// literal or a runtime string.
+    map: HashMap<Box<str>, ScopeId>,
     /// Combined name table; index is the `ScopeId`. Both registration paths
     /// push here so `name_of` works uniformly.
     names: Vec<Box<str>>,
@@ -39,8 +43,7 @@ pub struct ScopeRegistry {
 impl ScopeRegistry {
     pub fn new() -> Self {
         Self {
-            static_map: HashMap::new(),
-            runtime_map: HashMap::new(),
+            map: HashMap::new(),
             names: Vec::new(),
         }
     }
@@ -53,47 +56,34 @@ impl ScopeRegistry {
         ScopeId(self.names.len() as u16)
     }
 
-    /// Return the [`ScopeId`] for a `&'static str` scope name, interning if new.
-    pub fn intern(&mut self, name: &'static str) -> ScopeId {
-        if let Some(&id) = self.static_map.get(name) {
-            return id;
-        }
-        // Also check the runtime map in case the same name was registered earlier
-        // via `intern_runtime` (e.g. a plugin loaded before a bake with a literal scope).
-        if let Some(&id) = self.runtime_map.get(name) {
+    /// Intern `name`, returning its existing [`ScopeId`] or allocating a new one.
+    fn intern_str(&mut self, name: &str) -> ScopeId {
+        if let Some(&id) = self.map.get(name) {
             return id;
         }
         let id = self.next_id();
-        self.names.push(Box::from(name));
-        self.static_map.insert(name, id);
+        let boxed: Box<str> = Box::from(name);
+        self.names.push(boxed.clone());
+        self.map.insert(boxed, id);
         id
+    }
+
+    /// Return the [`ScopeId`] for a `&'static str` scope name, interning if new.
+    pub fn intern(&mut self, name: &'static str) -> ScopeId {
+        self.intern_str(name)
     }
 
     /// Return the [`ScopeId`] for any `&str` scope name, interning if new.
     ///
     /// Use this for runtime-generated scope names (e.g. tree-sitter capture
-    /// names from a Steel-loaded `(register-grammar!)`). The name is owned by
-    /// the registry; no leak occurs.
+    /// names from a Steel-loaded `(register-grammar!)`).
     pub fn intern_runtime(&mut self, name: &str) -> ScopeId {
-        // Check static map first — static literals take precedence and share ids.
-        if let Some(&id) = self.static_map.get(name) {
-            return id;
-        }
-        if let Some(&id) = self.runtime_map.get(name) {
-            return id;
-        }
-        let id = self.next_id();
-        self.names.push(Box::from(name));
-        self.runtime_map.insert(name.to_owned(), id);
-        id
+        self.intern_str(name)
     }
 
     /// Look up an already-interned scope without inserting.
     pub fn get(&self, name: &str) -> Option<ScopeId> {
-        self.static_map
-            .get(name)
-            .copied()
-            .or_else(|| self.runtime_map.get(name).copied())
+        self.map.get(name).copied()
     }
 
     /// Reverse-lookup: return the name interned as `id`.
