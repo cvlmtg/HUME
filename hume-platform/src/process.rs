@@ -104,7 +104,8 @@ pub fn tree_sitter_build(src: &Path, out: &Path) -> io::Result<ExitStatus> {
     cmd.args(["build", "-o"]).arg(&out).arg(&src);
 
     #[cfg(windows)]
-    if let Some((cc, cxx)) = choose_windows_compiler(exe_on_path) {
+    if let Some(compiler) = choose_windows_compiler(exe_on_path) {
+        let (cc, cxx) = compiler_env_vars(compiler)?;
         cmd.env("CC", cc).env("CXX", cxx);
     }
 
@@ -124,29 +125,77 @@ fn exe_on_path(name: &str) -> bool {
     }
 }
 
-/// Pick a `(CC, CXX)` override for `tree-sitter build` on Windows.
+/// An alternate C/C++ compiler found on `PATH` to use in place of MSVC.
+#[cfg(windows)]
+#[derive(Debug, PartialEq, Eq)]
+enum WindowsCompiler {
+    Clang,
+    Gcc,
+    Zig,
+}
+
+/// Pick an alternate compiler for `tree-sitter build` on Windows.
 ///
 /// Returns `None` if MSVC's `cl` is available (use the platform default) or
-/// if no known compiler is found. Otherwise returns the first available pair
-/// from an ordered candidate list. `exists` is injected so this stays a pure,
-/// unit-testable function independent of the real `PATH`.
+/// if no known compiler is found. Otherwise returns the first available
+/// candidate from an ordered list. `exists` is injected so this stays a
+/// pure, unit-testable function independent of the real `PATH`.
 #[cfg(windows)]
-fn choose_windows_compiler(exists: impl Fn(&str) -> bool) -> Option<(String, String)> {
+fn choose_windows_compiler(exists: impl Fn(&str) -> bool) -> Option<WindowsCompiler> {
     if exists("cl") {
         return None;
     }
     if exists("clang") {
-        return Some(("clang".to_string(), "clang++".to_string()));
+        return Some(WindowsCompiler::Clang);
     }
     if exists("gcc") {
-        return Some(("gcc".to_string(), "g++".to_string()));
+        return Some(WindowsCompiler::Gcc);
     }
     if exists("zig") {
-        // The `cc` crate splits CC/CXX on whitespace, so "zig cc" invokes
-        // `zig` with `cc` as its first argument (zig's built-in clang driver).
-        return Some(("zig cc".to_string(), "zig c++".to_string()));
+        return Some(WindowsCompiler::Zig);
     }
     None
+}
+
+/// Resolve a `WindowsCompiler` to the `(CC, CXX)` values to set.
+///
+/// `clang`/`gcc` are single executable names, so they pass straight through
+/// as `CC`/`CXX` — the `cc` crate resolves them from `PATH` like any other
+/// compiler. `zig`'s C/C++ compilers aren't standalone executables, they're
+/// invoked as `zig cc` / `zig c++`, and passing `CC="zig cc"` relies on the
+/// `cc` crate splitting the value on whitespace and re-assembling wrapper +
+/// args — behavior that has changed across `cc` crate versions and is
+/// broken in at least one still in the wild (it drops the `cc`/`c++`
+/// argument, so flags like `-O2` go straight to `zig`, which rejects them as
+/// an unknown top-level command). Sidestep this by writing a `.cmd` wrapper
+/// that hardcodes the subcommand and pointing `CC`/`CXX` at its path — a
+/// single filesystem token, no splitting involved.
+#[cfg(windows)]
+fn compiler_env_vars(compiler: WindowsCompiler) -> io::Result<(String, String)> {
+    match compiler {
+        WindowsCompiler::Clang => Ok(("clang".to_string(), "clang++".to_string())),
+        WindowsCompiler::Gcc => Ok(("gcc".to_string(), "g++".to_string())),
+        WindowsCompiler::Zig => {
+            let cc = write_zig_wrapper("hume-zig-cc.cmd", "cc")?;
+            let cxx = write_zig_wrapper("hume-zig-cxx.cmd", "c++")?;
+            Ok((cc, cxx))
+        }
+    }
+}
+
+/// Write a `.cmd` wrapper forwarding all arguments to `zig <subcommand>`
+/// into the system temp dir, and return its path.
+#[cfg(windows)]
+fn write_zig_wrapper(file_name: &str, subcommand: &str) -> io::Result<String> {
+    let path = std::env::temp_dir().join(file_name);
+    std::fs::write(&path, zig_wrapper_script(subcommand))?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// Batch script body forwarding all arguments to `zig <subcommand>`.
+#[cfg(windows)]
+fn zig_wrapper_script(subcommand: &str) -> String {
+    format!("@echo off\r\nzig {subcommand} %*\r\n")
 }
 
 /// Convert a non-successful `ExitStatus` to a human-readable string for error
@@ -208,7 +257,7 @@ mod tests {
         let choice = choose_windows_compiler(|name| matches!(name, "clang" | "gcc" | "zig"));
         assert_eq!(
             choice,
-            Some(("clang".to_string(), "clang++".to_string())),
+            Some(WindowsCompiler::Clang),
             "clang should win over gcc/zig when cl is absent"
         );
     }
@@ -219,7 +268,7 @@ mod tests {
         let choice = choose_windows_compiler(|name| matches!(name, "gcc" | "zig"));
         assert_eq!(
             choice,
-            Some(("gcc".to_string(), "g++".to_string())),
+            Some(WindowsCompiler::Gcc),
             "gcc should win over zig when cl/clang are absent"
         );
     }
@@ -230,8 +279,8 @@ mod tests {
         let choice = choose_windows_compiler(|name| name == "zig");
         assert_eq!(
             choice,
-            Some(("zig cc".to_string(), "zig c++".to_string())),
-            "zig cc should be used when no other compiler is present"
+            Some(WindowsCompiler::Zig),
+            "zig should be used when no other compiler is present"
         );
     }
 
@@ -240,6 +289,16 @@ mod tests {
     fn choose_windows_compiler_none_when_nothing_present() {
         let choice = choose_windows_compiler(|_| false);
         assert_eq!(choice, None, "no compiler on PATH should mean no override");
+    }
+
+    /// `cc`'s handling of whitespace-separated `CC` values is what broke in
+    /// the wild (see `compiler_env_vars`) — the wrapper script sidesteps it
+    /// entirely, so pin down its exact contents.
+    #[test]
+    #[cfg(windows)]
+    fn zig_wrapper_script_forwards_args_to_subcommand() {
+        assert_eq!(zig_wrapper_script("cc"), "@echo off\r\nzig cc %*\r\n");
+        assert_eq!(zig_wrapper_script("c++"), "@echo off\r\nzig c++ %*\r\n");
     }
 
     /// Verify that Ctrl+C (SIGINT to the child's process group) kills the
