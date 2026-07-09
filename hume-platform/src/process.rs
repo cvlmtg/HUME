@@ -169,7 +169,8 @@ fn choose_windows_compiler(exists: impl Fn(&str) -> bool) -> Option<WindowsCompi
 /// argument, so flags like `-O2` go straight to `zig`, which rejects them as
 /// an unknown top-level command). Sidestep this by writing a `.cmd` wrapper
 /// that hardcodes the subcommand and pointing `CC`/`CXX` at its path — a
-/// single filesystem token, no splitting involved.
+/// single filesystem token, no splitting involved. The wrapper also strips
+/// `--target` before forwarding to zig — see `zig_wrapper_script`.
 #[cfg(windows)]
 fn compiler_env_vars(compiler: WindowsCompiler) -> io::Result<(String, String)> {
     match compiler {
@@ -183,8 +184,8 @@ fn compiler_env_vars(compiler: WindowsCompiler) -> io::Result<(String, String)> 
     }
 }
 
-/// Write a `.cmd` wrapper forwarding all arguments to `zig <subcommand>`
-/// into the system temp dir, and return its path.
+/// Write a `.cmd` wrapper forwarding arguments to `zig <subcommand>` (minus
+/// any `--target`) into the system temp dir, and return its path.
 #[cfg(windows)]
 fn write_zig_wrapper(file_name: &str, subcommand: &str) -> io::Result<String> {
     let path = std::env::temp_dir().join(file_name);
@@ -192,10 +193,34 @@ fn write_zig_wrapper(file_name: &str, subcommand: &str) -> io::Result<String> {
     Ok(path.to_string_lossy().into_owned())
 }
 
-/// Batch script body forwarding all arguments to `zig <subcommand>`.
+/// Batch script body forwarding arguments to `zig <subcommand>`, with any
+/// `--target`/`-target` (and its value) stripped.
+///
+/// The `cc` crate detects `zig cc` as clang-family and injects `--target=`
+/// set to the host's LLVM triple (e.g. `x86_64-pc-windows-msvc`). `zig cc`
+/// parses `--target` as a zig target query — a 3-field `<arch>-<os>-<abi>`
+/// string, not the 4-field LLVM triple — so the `pc` vendor component reads
+/// as an unknown OS and zig rejects it. Dropping the flag lets zig fall back
+/// to its native target, which is the `-gnu` ABI when MSVC (`cl`) is absent —
+/// exactly the case this wrapper is used in.
 #[cfg(windows)]
 fn zig_wrapper_script(subcommand: &str) -> String {
-    format!("@echo off\r\nzig {subcommand} %*\r\n")
+    format!(
+        "@echo off\r\n\
+         setlocal enabledelayedexpansion\r\n\
+         set \"ARGS=\"\r\n\
+         :loop\r\n\
+         if \"%~1\"==\"\" goto run\r\n\
+         set \"TOK=%~1\"\r\n\
+         if /i \"!TOK:~0,9!\"==\"--target=\" (shift & goto loop)\r\n\
+         if /i \"!TOK!\"==\"--target\" (shift & shift & goto loop)\r\n\
+         if /i \"!TOK!\"==\"-target\" (shift & shift & goto loop)\r\n\
+         set \"ARGS=!ARGS! %1\"\r\n\
+         shift\r\n\
+         goto loop\r\n\
+         :run\r\n\
+         zig {subcommand} !ARGS!\r\n"
+    )
 }
 
 /// Convert a non-successful `ExitStatus` to a human-readable string for error
@@ -297,8 +322,25 @@ mod tests {
     #[test]
     #[cfg(windows)]
     fn zig_wrapper_script_forwards_args_to_subcommand() {
-        assert_eq!(zig_wrapper_script("cc"), "@echo off\r\nzig cc %*\r\n");
-        assert_eq!(zig_wrapper_script("c++"), "@echo off\r\nzig c++ %*\r\n");
+        let expected_cc = "@echo off\r\n\
+             setlocal enabledelayedexpansion\r\n\
+             set \"ARGS=\"\r\n\
+             :loop\r\n\
+             if \"%~1\"==\"\" goto run\r\n\
+             set \"TOK=%~1\"\r\n\
+             if /i \"!TOK:~0,9!\"==\"--target=\" (shift & goto loop)\r\n\
+             if /i \"!TOK!\"==\"--target\" (shift & shift & goto loop)\r\n\
+             if /i \"!TOK!\"==\"-target\" (shift & shift & goto loop)\r\n\
+             set \"ARGS=!ARGS! %1\"\r\n\
+             shift\r\n\
+             goto loop\r\n\
+             :run\r\n\
+             zig cc !ARGS!\r\n";
+        assert_eq!(zig_wrapper_script("cc"), expected_cc);
+        assert_eq!(
+            zig_wrapper_script("c++"),
+            expected_cc.replace("zig cc !ARGS!", "zig c++ !ARGS!")
+        );
     }
 
     /// Verify that Ctrl+C (SIGINT to the child's process group) kills the
