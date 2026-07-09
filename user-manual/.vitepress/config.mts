@@ -40,6 +40,7 @@ export default defineConfig({
           { text: 'Moving Around', link: '/moving-around' },
           { text: 'Editing', link: '/editing' },
           { text: 'Selections', link: '/selections' },
+          { text: 'Language Servers', link: '/lsp' },
         ],
       },
       {

@@ -1,273 +1,43 @@
-;;; init.scm.example — HUME Steel configuration reference
+;;; init.scm.example — HUME Steel configuration starter
 ;;;
 ;;; Copy this file to ~/.config/hume/init.scm (or $XDG_CONFIG_HOME/hume/init.scm)
 ;;; and edit to taste.  HUME evaluates it once at startup; use :reload-config
 ;;; to apply changes without restarting.
 ;;;
-;;; Steel is a Scheme dialect — Scheme syntax applies throughout.
-;;; Run :commands to list all available built-in commands.
+;;; Steel is a Scheme dialect. Run :commands to list all built-in commands.
+;;; Full reference: user-manual/docs/configuration.md and plugins.md.
 
 ;; ── Settings ──────────────────────────────────────────────────────────────────
-;;
-;; (set-option! key value)
-;; Valid keys and their defaults:
-;;   "tab-width"          integer   4        — tab width in columns (rendering + Tab spacing)
-;;   "tab-style"          string    "hard"   — "hard" (literal \t) or "soft" (spaces to next tab stop)
-;;   "auto-pairs-enabled" bool      #t       — insert matching close delimiter
-;;   "line-number-style"  string    "hybrid" — "absolute", "relative", "hybrid"
-;;   "wrap-mode"          string    "indent" — "none", "word", "indent"
-;;   "scrolloff"          integer   3        — lines kept above/below cursor
-;;   "mouse-enabled"      bool      #t       — enable mouse support
-;;   "mouse-select"       bool      #f       — mouse drag creates a selection
+;; (set-option! key value) — see configuration.md for the full option list.
 
 (set-option! "tab-width" 2)
-;; (set-option! "tab-style" "soft")
-;; (set-option! "auto-pairs-enabled" #f)
 ;; (set-option! "line-number-style" "relative")
-
-;; ── Statusline ────────────────────────────────────────────────────────────────
-;;
-;; (configure-statusline! left center right)
-;; Each section is a list of element name strings.  Valid names:
-;;   "Mode"  "Separator"  "FileName"  "Position"  "Selections"
-;;   "DirtyIndicator"  "SearchMatches"  "MiniBuf"  "MacroRecording"
-;;   "KittyProtocol"
-;;
-;; The call below reproduces the default layout.
-(configure-statusline!
-  '("Mode" "DirtyIndicator" "Separator" "FileName")       ; left
-  '()                                                     ; center
-  '("Position" "Selections" "MiniBuf" "MacroRecording"))  ; right
+;; (set-option! "scrolloff" 8)
 
 ;; ── Key bindings ──────────────────────────────────────────────────────────────
-;;
-;; (bind-key! mode key-sequence command-name)
-;;   mode          — 'normal, 'insert, or 'extend
-;;   key-sequence  — space-separated tokens: "g h", "ctrl-f", "alt-x", "f1"
-;;   command-name  — any command name visible in :commands
-;;
-;; (bind-wait-char! mode key-sequence command-name)
-;;   Like bind-key! but the next keypress is captured as the wait-char argument.
-;;   Used for surround-style "verb + char" bindings.
-;;
-;; Ergonomic batch variants are also available:
-;;
-;; (bind-keys! mode (key cmd) ...)
-;;   Bind multiple keys at once — expands to individual bind-key! calls.
-;;
-;; (bind-keys-extend! mode (key cmd) ...)
-;;   Like bind-keys! but each leaf is a force-extend binding.
-;;
-;; (unbind-keys! mode key ...)
-;;   Remove multiple bindings at once.
-;;
-;; Example — bind several normal-mode keys in one call:
-;; (bind-keys! 'normal
-;;   ("U"          "undo")
-;;   ("ctrl-enter" "open-below"))
+;; (bind-key! mode key-sequence command-name) — see configuration.md#key-bindings.
 
-;; Re-map 'U' in normal mode to undo for muscle-memory from other editors.
 ;; (bind-key! 'normal "U" "undo")
 
-;; Open a new line below and enter insert mode with Ctrl-Enter.
-;; (bind-key! 'normal "ctrl-enter" "open-below")
-
 ;; ── Custom commands ───────────────────────────────────────────────────────────
-;;
-;; (define-command! name doc-string lambda [keyword-args...])
-;;   Register a Steel lambda as a named command.  When triggered from a key
-;;   binding, the lambda receives leading args based on how many params it
-;;   declares: 0 params → nothing; 1 param → repeat count (integer ≥ 1);
-;;   2 params → count and extend flag (#t/#f).  Ctrl+key always delivers
-;;   extend = #t.  Forward them explicitly via (call! "name" count extend).
-;;   All Steel commands participate in Ctrl+key one-shot extend automatically.
-;;
-;;   Optional keywords (pass after the lambda):
-;;     #:repeatable #t    — opt in to dot-repeat (`.`).  Use only for
-;;                          self-contained buffer edits.
-;;     #:inline-output #t — exit the alt-screen before the command runs so
-;;                          subprocess output streams live to the terminal.
-;;                          After the command finishes, press any key to return.
-;;                          Use for shell-outs (plum install, cargo fmt, etc.).
-;;   These two flags are mutually exclusive.
-;;
-;; The command becomes available as ":name" in the command bar.
-;; Use (call! "other-command") or (call! "cmd" arg1 arg2…) to invoke any
-;; command — built-in or defined by you / another plugin.  All command
-;; invocation is by name; positional args are passed as-is to the lambda.
-;; Use (log! severity message) to post messages to :messages.
-;;   severity — 'trace 'info 'warning 'error
+;; (define-command! name doc-string lambda [keyword-args...]) — see plugins.md.
 
-(define-command! "hello"
-  "Log a greeting to the message log."
-  (lambda ()
-    (log! 'info "Hello from init.scm!")))
-
-;; Rebind `p` to always paste from the kill-ring head ("kp).
-;; (set-register-prefix! name) arms a sticky register prefix for all following
-;; (call! …) calls in the body — it persists until you call set-register-prefix!
-;; again with a different register.  Valid names: "0"–"9", "k", "c", "b".
-;;
-;; (define-command! "paste-ring"
-;;   "Paste from the kill-ring head (same as \\\"kp)."
+;; (define-command! "hello"
+;;   "Log a greeting to the message log."
 ;;   (lambda ()
-;;     (set-register-prefix! "k")
-;;     (call! "paste-after")))
-;; (bind-key! 'normal "p" "paste-ring")
-;;
-;; Or load the bundled plugin for the full p/P + Ctrl+V split:
-;;   (load-plugin "core:classic-paste")
-;;
-;; Tip: multiple calls after one set-register-prefix! all inherit the same
-;; register, so you can do e.g.:
-;;   (set-register-prefix! "5")
-;;   (call! "yank")             ; yanks into register 5
-;;   (set-register-prefix! "k")
-;;   (call! "paste-after")      ; pastes from kill ring
-
-;; Move down/up N lines and immediately select the word under the new cursor position.
-;; The lambda declares (count extend) so numeric prefixes (3j) and Ctrl-J one-shot
-;; extend both work automatically.
-;;
-;; Your lambda's `count` is 0 when no count was typed (a bare keypress) — the
-;; same case a native `j`/`k` binding treats as visual-row movement. Forwarding
-;; `count` straight into `(call! "move-down" count extend)`, as below, preserves
-;; that: bare `j` still moves one visual row, `3j` still moves 3 buffer lines.
-;; If your own code needs a real repeat count instead, use `(max count 1)`.
-;;
-;; (define-command! "move-down-select-word"
-;;   "Move down N visual lines, then select the nearest word on that line."
-;;   (lambda (count extend)
-;;     (call! "move-down" count extend)
-;;     (call! "select-word-nearest-on-line" 1 extend)))
-;;
-;; (define-command! "move-up-select-word"
-;;   "Move up N visual lines, then select the nearest word on that line."
-;;   (lambda (count extend)
-;;     (call! "move-up" count extend)
-;;     (call! "select-word-nearest-on-line" 1 extend)))
-;;
-;; (bind-key! 'normal "j" "move-down-select-word")
-;; (bind-key! 'normal "k" "move-up-select-word")
-
-;; ── Hooks ────────────────────────────────────────────────────────────────────
-;;
-;; (register-hook! 'hook-name (lambda (arg ...) body...))
-;;   Register a handler that runs every time the named hook fires.
-;;   Must be called at the top level (or inside a plugin body) — not from a
-;;   command body.
-;;
-;; Available hooks and their lambda signatures:
-;;   on-buffer-open    (buffer-id)      — a buffer was opened
-;;   on-buffer-close   (buffer-id)      — a buffer was closed
-;;   on-buffer-save    (buffer-id)      — a buffer was written to disk
-;;   on-mode-change    (old new)        — editor mode changed; old/new are strings:
-;;                                        "normal", "insert", or "extend"
-;;   on-language-set   (buffer-id lang) — buffer language changed; lang is a string
-;;                                        or #f when the language was cleared
-;;
-;; Example — log every save:
-;; (register-hook! 'on-buffer-save
-;;   (lambda (buffer-id)
-;;     (log! 'info (string-append "saved buffer " (to-string buffer-id)))))
-;;
-;; Example — log mode transitions (useful for debugging key bindings):
-;; (register-hook! 'on-mode-change
-;;   (lambda (old new)
-;;     (log! 'trace (string-append old " → " new))))
-;;
-;; Example — auto-format on save when the buffer language is "rust":
-;; (register-hook! 'on-buffer-save
-;;   (lambda (buffer-id)
-;;     (when (equal? (buffer-language buffer-id) "rust")
-;;       (call! "format-buffer"))))
+;;     (log! 'info "Hello from init.scm!")))
 
 ;; ── Plugins ───────────────────────────────────────────────────────────────────
-;;
-;; The verb encodes when the plugin loads:
-;;
-;;   (load-plugin name) — eager: load now, at startup.
+;;   (load-plugin name)                    — eager: load now, at startup.
 ;;   (declare-plugin name keyword-args...) — lazy: load on first activation.
-;;
-;;   name — "core:name"   (bundled core plugin)
-;;        — "user/repo"   (third-party plugin from
-;;                         <data>/plugins/user/repo/plugin.scm)
-;;
-;;   #:commands '("cmd-name" ...)  — activate when one of these commands is first dispatched
-;;   #:events '("hook-name" ...)   — activate on first firing of a lifecycle hook
-;;   #:languages '("lang-name" ...) — activate when the buffer language first matches
-;;
-;; Declare every plugin at the top level of this file — including dependencies.
-;; See docs/learning/plugin-architecture.md for the full plugin model.
-;;
-;; :plugin-status (alias :plugins)
-;;   Open a scratch view listing every declared plugin with its current state
-;;   (declared / loading / loaded / failed) and, for declared plugins, the
-;;   activation entries still pending.  Use this to inspect lazy-load behaviour
-;;   at runtime.
-;;
-;; core:plum           — plugin manager + grammar installer
-;;                       Plugin commands: :plum-install, :plum-update, :plum-cleanup
-;;                       Grammar commands: :plum-install-grammar, :plum-list-grammars,
-;;                                         :plum-ensure-grammars, :plum-cleanup-grammars
-;; core:helix-surround — md/mr surround shortcuts (bind-wait-char! already set)
-;; core:classic-paste  — opt-in GUI-style paste split:
-;;                       p/P → kill-ring head; Ctrl+V / Ctrl+Shift+V → OS clipboard
-;; core:vim-keybind    — vim muscle-memory keys: $ ^ 0 Ctrl+6, plus C/D/G
-;;                       (C is change-to-EOL on a bare cursor; with a real
-;;                       selection it falls back to copy-selection-on-next-line.
-;;                       Requires core:stdlib loaded first.)
-;; core:lsp            — language server features: hover, goto, references,
-;;                       diagnostics, rename, formatting, code actions,
-;;                       signature help, completions, inlay hints.
-;;                       Requires core:stdlib loaded first.  See
-;;                       user-manual/docs/lsp.md for the full commands/keys
-;;                       and settings tables.
-;;
-;; Load plum first so it can install plugins and grammars.
-;; PLUM registers any already-compiled grammars on load.
-;; Install missing grammars explicitly:
-;;
-;;   (load-plugin "core:plum")
-;;   (call! "plum-ensure-grammars" '("rust" "json"))   ; install listed grammars at startup
-;;
-;; Grammar install pipeline (requires git, curl, tree-sitter CLI on PATH):
-;;   :plum-install-grammar  — install/repair grammar by name, always from a clean re-clone
-;;                            (default: current buffer's language)
-;;   :plum-ensure-grammars  — install listed grammars not yet compiled (list required)
-;;   :plum-list-grammars    — show installed / declared / orphan / missing
-;;   :plum-cleanup-grammars — delete orphan compiled grammars
+;; See plugins.md and core-plugins.md.
 
-;; (load-plugin "core:plum")
+;; (load-plugin "core:stdlib")         ; selection-query helpers other plugins need
+;; (load-plugin "core:plum")           ; plugin manager + grammar installer
 
-;; (load-plugin "core:helix-surround")
-;; (load-plugin "core:classic-paste")
-
-;; Selection-query commands for plugin authors, called via call!; load it
-;; before any plugin that calls them (core:vim-keybind's C binding does).
-;; (load-plugin "core:stdlib")
-;; (load-plugin "core:vim-keybind")
-
-;; Language servers: register the server, then declare or load the plugin.
-;; Declaring activates lazily on the first attach or the first LSP command;
-;; (load-plugin "core:lsp") works too if you'd rather load it eagerly.
-;;
-;; (load-plugin "core:stdlib")
+;; Language servers — see user-manual/docs/lsp.md for setup and per-language examples.
 ;; (register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
-;; (declare-plugin "core:lsp"
-;;   #:events '("on-lsp-attach")
-;;   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
-;;                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
-;;                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
-;;                "lsp-rename" "fmt" "lsp-code-actions" "completion-trigger"))
+;; (declare-plugin "core:lsp" #:events '("on-lsp-attach") #:commands '("lsp-hover"))
 
-;; Declare third-party plugins to be installed by :plum-install.
-;; PLUM installs declared plugins and reloads the config so they activate.
+;; Third-party plugins, installed by :plum-install:
 ;; (load-plugin "alice/my-theme")
-;; (load-plugin "bob/rust-extras")
-
-;; Example: lazy-load a plugin when "my-cmd" is first dispatched.
-;; The bind-key! below ensures pressing <space>m in Normal mode runs my-cmd,
-;; which activates the plugin on first press.
-;; (declare-plugin "alice/lazy-thing" #:commands '("my-cmd"))
-;; (bind-key! 'normal "<space>m" "my-cmd")

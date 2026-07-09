@@ -565,8 +565,8 @@ fn steel_call_move_down_ignores_outer_keystrokes_count() {
 /// `(call! "move-down" count extend)` must preserve bare-press visual-row
 /// movement: dispatching it with `None` (as a keymap trie leaf would for a
 /// bare keypress) injects `count = 0` into the lambda, which round-trips back
-/// to `None` through `parse_count_extend` — the documented
-/// `move-down-select-word`-style pattern from `init.scm.example`.
+/// to `None` through `parse_count_extend` — the count-forwarding contract
+/// documented in `plugins.md`'s "Calling other commands" section.
 ///
 /// Fail oracle: before this change, `run_steel_command` injected
 /// `ctx.count.unwrap_or(1)`, so the lambda would see `1` and always move the

@@ -5,11 +5,11 @@ diagnostics, rename, formatting, code actions, signature help, completions, and 
 
 ## Setup
 
-Install a language server on your system, then register it and load the plugin in your
-`init.scm`:
+Install a language server on your system, register it, and bring in `core:lsp` from your
+`init.scm`.
 
 ```scheme
-(load-plugin "core:stdlib")
+(load-plugin "core:stdlib")   ; core:lsp depends on it
 
 (register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
 
@@ -20,6 +20,20 @@ Install a language server on your system, then register it and load the plugin i
                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
                "lsp-rename" "fmt" "lsp-code-actions" "completion-trigger"))
 ```
+
+Declaring is recommended — it keeps startup fast, and `core:lsp` activates the first time a
+registered server attaches to a buffer or you run one of its commands directly. If you use
+LSP in every session and would rather it load from the start, swap `declare-plugin` for
+`load-plugin`:
+
+```scheme
+(load-plugin "core:lsp")
+```
+
+Opening a file whose language matches a registered server spawns it automatically (once per
+project root) and attaches.
+
+## Registering a language server
 
 `register-lsp-server!` takes:
 
@@ -32,15 +46,26 @@ Install a language server on your system, then register it and load the plugin i
 | `#:init-options` | Server-specific initialization options, as a `hash` |
 | `#:settings` | Server-specific configuration, as a `hash` — sent once at startup and answered verbatim to the server's own configuration requests |
 
-Opening a file whose language matches a registered server spawns it automatically (once per
-project root) and attaches. `core:lsp` activates the first time that happens, or the first
-time you run one of its commands directly.
-
-A second example — Python, via [pyright](https://github.com/microsoft/pyright):
+Examples for a few commonly used servers (install the server binary yourself; HUME only
+spawns it):
 
 ```scheme
+;; Rust — rust-analyzer
+(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
+
+;; Python — pyright
 (register-lsp-server! "python" #:command "pyright-langserver" #:args '("--stdio")
                                 #:root-markers '("pyproject.toml" "setup.py"))
+
+;; TypeScript / JavaScript — typescript-language-server
+(register-lsp-server! "typescript" #:command "typescript-language-server" #:args '("--stdio")
+                                    #:root-markers '("package.json" "tsconfig.json"))
+
+;; Go — gopls
+(register-lsp-server! "go" #:command "gopls" #:root-markers '("go.mod"))
+
+;; C / C++ — clangd
+(register-lsp-server! "c" #:command "clangd" #:root-markers '("compile_commands.json" ".clangd"))
 ```
 
 ## Commands and keys
