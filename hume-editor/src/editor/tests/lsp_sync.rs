@@ -39,7 +39,7 @@ fn attached_editor(tmp: &tempfile::TempDir) -> (Editor, BufferId, NotificationLo
     std::fs::write(&file, "hello world\n").unwrap();
 
     let mut ed = editor_from("-[w]>ord\n");
-    let (backend, log) = RecordingLspBackend::with_default_handshake();
+    let (backend, log, _requests) = RecordingLspBackend::with_default_handshake();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     ed.state
         .languages
@@ -126,7 +126,7 @@ fn did_open_is_queued_until_the_handshake_completes_then_flushes_in_order() {
     std::fs::write(&file, "hello world\n").unwrap();
 
     let mut ed = editor_from("-[w]>ord\n");
-    let (backend, log) = RecordingLspBackend::with_default_handshake();
+    let (backend, log, _requests) = RecordingLspBackend::with_default_handshake();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     ed.state
         .languages
@@ -160,7 +160,7 @@ fn did_open_is_queued_until_the_handshake_completes_then_flushes_in_order() {
 
 #[test]
 fn no_notifications_for_a_buffer_without_a_server() {
-    let (backend, log) = RecordingLspBackend::new();
+    let (backend, log, _requests) = RecordingLspBackend::new();
     let mut ed = editor_from("-[w]>ord\n");
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
 

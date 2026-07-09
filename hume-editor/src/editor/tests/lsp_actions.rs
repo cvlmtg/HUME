@@ -44,7 +44,7 @@ fn setup(
 ) -> (Editor, RealRuntimeGuard, ServerId, RequestLog) {
     let guard = RealRuntimeGuard::new();
 
-    let (mut backend, _notifications, requests) = RecordingLspBackend::with_default_handshake_and_requests();
+    let (mut backend, _notifications, requests) = RecordingLspBackend::with_default_handshake();
     backend.respond_to(
         "initialize",
         serde_json::json!({"capabilities": {"codeActionProvider": true}}),

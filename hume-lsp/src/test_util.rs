@@ -33,36 +33,19 @@ pub struct RecordingLspBackend {
 }
 
 impl RecordingLspBackend {
-    /// Returns the backend plus a shared handle to its notification log —
-    /// keep the handle; the backend itself is typically moved into a
-    /// `Box<dyn LspBackend>` immediately.
-    pub fn new() -> (Self, NotificationLog) {
-        let (backend, log, _requests) = Self::from_inline(InlineLspBackend::new());
-        (backend, log)
+    /// Returns the backend plus shared handles to its notification and
+    /// request logs — keep the handles; the backend itself is typically
+    /// moved into a `Box<dyn LspBackend>` immediately. Callers that only
+    /// need the notification log bind the request log to `_`.
+    pub fn new() -> (Self, NotificationLog, RequestLog) {
+        Self::from_inline(InlineLspBackend::new())
     }
 
     /// Same as `new`, but pre-scripted with a canned `initialize` success
     /// response — for tests that need the client to reach `Running` (and
     /// therefore flush anything it queued while `Starting`) via a plain
     /// `drain_lsp()` call.
-    pub fn with_default_handshake() -> (Self, NotificationLog) {
-        let (backend, log, _requests) = Self::from_inline(InlineLspBackend::with_default_handshake());
-        (backend, log)
-    }
-
-    /// Same as `new`, but also returns a shared handle to the request log —
-    /// for tests that need a fully custom `initialize` response (e.g.
-    /// specific capability fields `with_default_handshake`'s canned result
-    /// doesn't set) alongside request inspection.
-    pub fn new_with_requests() -> (Self, NotificationLog, RequestLog) {
-        Self::from_inline(InlineLspBackend::new())
-    }
-
-    /// Same as `with_default_handshake`, but also returns a shared handle
-    /// to the request log — for invariants that need to inspect what a
-    /// command actually sent (e.g. a request's `params`), not just
-    /// whether a scripted response landed.
-    pub fn with_default_handshake_and_requests() -> (Self, NotificationLog, RequestLog) {
+    pub fn with_default_handshake() -> (Self, NotificationLog, RequestLog) {
         Self::from_inline(InlineLspBackend::with_default_handshake())
     }
 

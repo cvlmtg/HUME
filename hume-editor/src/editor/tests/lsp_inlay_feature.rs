@@ -47,7 +47,7 @@ fn setup(
 ) -> (Editor, RealRuntimeGuard, RequestLog) {
     let guard = RealRuntimeGuard::new();
 
-    let (mut backend, _notifications, requests) = RecordingLspBackend::new_with_requests();
+    let (mut backend, _notifications, requests) = RecordingLspBackend::new();
     backend.respond_to(
         "initialize",
         serde_json::json!({"capabilities": {"inlayHintProvider": true}}),

@@ -49,7 +49,7 @@ fn setup(
 ) -> (Editor, RealRuntimeGuard, RequestLog) {
     let guard = RealRuntimeGuard::new();
 
-    let (mut backend, _notifications, requests) = RecordingLspBackend::new_with_requests();
+    let (mut backend, _notifications, requests) = RecordingLspBackend::new();
     backend.respond_to("initialize", serde_json::json!({"capabilities": capabilities}));
     let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
     configure(&mut backend, sid);

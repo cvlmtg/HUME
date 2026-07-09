@@ -74,43 +74,9 @@ pub(crate) struct LspState {
 }
 
 impl LspState {
-    /// Production constructor: one real server process per registration (C8).
-    pub(crate) fn new_threaded() -> Self {
-        Self {
-            backend: Box::new(ThreadedLspBackend::new()),
-            clients: HashMap::new(),
-            callbacks: HashMap::new(),
-            next_token: 0,
-            configs: HashMap::new(),
-            servers_by_key: HashMap::new(),
-            diagnostics: DiagnosticsStore::default(),
-            server_names: HashMap::new(),
-            capabilities_json: HashMap::new(),
-        }
-    }
-
-    /// Test constructor: scripted responses, no process, no threads.
-    #[cfg(test)]
-    pub(crate) fn new_inline() -> Self {
-        Self {
-            backend: Box::new(InlineLspBackend::new()),
-            clients: HashMap::new(),
-            callbacks: HashMap::new(),
-            next_token: 0,
-            configs: HashMap::new(),
-            servers_by_key: HashMap::new(),
-            diagnostics: DiagnosticsStore::default(),
-            server_names: HashMap::new(),
-            capabilities_json: HashMap::new(),
-        }
-    }
-
-    /// Test-only: swap in an already-scripted backend (e.g. one built via
-    /// `InlineLspBackend::with_default_handshake` plus extra `respond_to`
-    /// calls) — `backend_mut` only exposes the trait object, which can't
-    /// reach `InlineLspBackend`'s scripting methods.
-    #[cfg(test)]
-    pub(crate) fn from_backend_for_test(backend: Box<dyn LspBackend>) -> Self {
+    /// Shared constructor body — every entry point differs only in which
+    /// backend it plugs in.
+    fn with_backend(backend: Box<dyn LspBackend>) -> Self {
         Self {
             backend,
             clients: HashMap::new(),
@@ -122,6 +88,26 @@ impl LspState {
             server_names: HashMap::new(),
             capabilities_json: HashMap::new(),
         }
+    }
+
+    /// Production constructor: one real server process per registration (C8).
+    pub(crate) fn new_threaded() -> Self {
+        Self::with_backend(Box::new(ThreadedLspBackend::new()))
+    }
+
+    /// Test constructor: scripted responses, no process, no threads.
+    #[cfg(test)]
+    pub(crate) fn new_inline() -> Self {
+        Self::with_backend(Box::new(InlineLspBackend::new()))
+    }
+
+    /// Test-only: swap in an already-scripted backend (e.g. one built via
+    /// `InlineLspBackend::with_default_handshake` plus extra `respond_to`
+    /// calls) — `backend_mut` only exposes the trait object, which can't
+    /// reach `InlineLspBackend`'s scripting methods.
+    #[cfg(test)]
+    pub(crate) fn from_backend_for_test(backend: Box<dyn LspBackend>) -> Self {
+        Self::with_backend(backend)
     }
 
     /// Reach the raw backend directly. Test-only in practice (the C4
