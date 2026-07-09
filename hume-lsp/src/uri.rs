@@ -141,12 +141,13 @@ fn is_unreserved(b: u8) -> bool {
 /// byte-wise (not char-wise) so multi-byte UTF-8 sequences encode correctly
 /// — each of their bytes is non-unreserved and gets its own `%XX`.
 fn percent_encode_path(path_str: &str) -> String {
+    use std::fmt::Write;
     let mut out = String::with_capacity(path_str.len());
     for b in path_str.bytes() {
         if is_unreserved(b) || b == b'/' {
             out.push(b as char);
         } else {
-            out.push_str(&format!("%{b:02X}"));
+            write!(out, "%{b:02X}").expect("writing to a String cannot fail");
         }
     }
     out

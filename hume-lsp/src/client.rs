@@ -26,7 +26,6 @@ use crate::uri;
 pub enum ServerState {
     Starting,
     Running,
-    ShuttingDown,
     Crashed,
     Dead,
 }
@@ -134,11 +133,9 @@ impl LspClient {
     /// buffer generation is tracked editor-side (the crate fence: `hume-lsp`
     /// has no `BufferId`).
     ///
-    /// Respects the same `Starting`-queue discipline as `send_or_queue`:
-    /// nothing but `initialize` is legal on the wire before `initialized`
-    /// goes out, so a request minted while still handshaking is queued and
-    /// flushed by `handle_initialize_response` alongside queued document
-    /// sync — never sent directly. `pending` gets the entry either way, so
+    /// Goes through `send_or_queue`'s Starting-queue discipline. `pending`
+    /// gets the entry regardless of whether the send actually reached the
+    /// wire or was queued (or dropped, for a dead/crashed connection), so
     /// `take_completed`'s deadline/timeout handling covers a request that's
     /// still queued exactly like one already on the wire.
     pub fn send_request(
@@ -155,14 +152,7 @@ impl LspClient {
             method: method.to_string(),
             params,
         };
-        match self.state {
-            ServerState::Running => backend.send(self.id, msg),
-            ServerState::Starting => self.queued.push(msg),
-            // Connection is gone or going — nothing to send; the request
-            // sits in `pending` until its deadline, then surfaces as
-            // `Outcome::TimedOut` rather than hanging silently.
-            ServerState::ShuttingDown | ServerState::Crashed | ServerState::Dead => {}
-        }
+        self.send_or_queue(backend, msg);
         id
     }
 
@@ -180,12 +170,20 @@ impl LspClient {
     /// `send_request`'s discipline) has never reached the server either;
     /// there is nothing to notify, and sending would violate the handshake.
     pub fn cancel(&mut self, backend: &mut dyn LspBackend, id: RequestId) {
-        if self.pending.remove(&id).is_some() && self.state == ServerState::Running {
+        if self.pending.remove(&id).is_some() {
+            self.send_cancel_notification(backend, &id);
+        }
+    }
+
+    /// Best-effort `$/cancelRequest` — only legal once the handshake has
+    /// completed, same reasoning as `send_or_queue`'s Starting-queue.
+    fn send_cancel_notification(&self, backend: &mut dyn LspBackend, id: &RequestId) {
+        if self.state == ServerState::Running {
             backend.send(
                 self.id,
                 Message::Notification {
                     method: "$/cancelRequest".to_string(),
-                    params: cancel_request_params(&id),
+                    params: cancel_request_params(id),
                 },
             );
         }
@@ -212,15 +210,7 @@ impl LspClient {
             .collect();
         for id in timed_out {
             if let Some(meta) = self.pending.remove(&id) {
-                if self.state == ServerState::Running {
-                    backend.send(
-                        self.id,
-                        Message::Notification {
-                            method: "$/cancelRequest".to_string(),
-                            params: cancel_request_params(&id),
-                        },
-                    );
-                }
+                self.send_cancel_notification(backend, &id);
                 out.push((id, meta, Outcome::TimedOut));
             }
         }
@@ -254,7 +244,7 @@ impl LspClient {
         match self.state {
             ServerState::Running => backend.send(self.id, msg),
             ServerState::Starting => self.queued.push(msg),
-            ServerState::ShuttingDown | ServerState::Crashed | ServerState::Dead => {}
+            ServerState::Crashed | ServerState::Dead => {}
         }
     }
 
@@ -348,7 +338,6 @@ impl LspClient {
     /// process regardless, so this is a best-effort courtesy, not a
     /// synchronous protocol round-trip.
     pub fn begin_shutdown(&mut self, backend: &mut dyn LspBackend) {
-        self.state = ServerState::ShuttingDown;
         backend.send(
             self.id,
             Message::Request {
