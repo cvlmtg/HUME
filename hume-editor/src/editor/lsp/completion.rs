@@ -257,13 +257,7 @@ impl CompletionSession {
             .ok_or_else(|| "completion-accept!: index out of range".to_string())?;
         let item = &self.items[item_idx as usize];
         let wire_edit = match &item.text_edit {
-            Some(te) => WireEdit {
-                start_line: te.start_line,
-                start_char: te.start_char,
-                end_line: te.end_line,
-                end_char: te.end_char,
-                new_text: te.new_text.clone(),
-            },
+            Some(te) => te.clone(),
             None => {
                 let encoding = introspect::encoding_for_buffer(state, lsp, self.bid);
                 let rope = state.buffers.get(self.bid).text().rope();

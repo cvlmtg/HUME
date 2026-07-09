@@ -172,13 +172,10 @@ pub(crate) fn diagnostics_for_buffer(
     range: Option<(usize, usize)>,
 ) -> Vec<serde_json::Value> {
     const CAP: usize = 1000;
-    let floor = match severity_floor {
+    let floor = match severity_floor.map(str::parse::<DiagSeverity>) {
         None => DiagSeverity::Hint, // most lenient — no filtering
-        Some("error") => DiagSeverity::Error,
-        Some("warning") => DiagSeverity::Warning,
-        Some("info") => DiagSeverity::Info,
-        Some("hint") => DiagSeverity::Hint,
-        Some(_) => return Vec::new(), // unknown floor name — nothing qualifies
+        Some(Ok(f)) => f,
+        Some(Err(_)) => return Vec::new(), // unknown floor name — nothing qualifies
     };
     let (start, end) = range.unwrap_or((0, usize::MAX));
     let Some(rope) = state.buffers.try_get(bid).map(|b| b.text().rope()) else {

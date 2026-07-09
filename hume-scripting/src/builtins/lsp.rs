@@ -289,10 +289,8 @@ fn int_arg(val: SteelVal, ctx_name: &str) -> Result<i64, SteelErr> {
     }
 }
 
-/// Pops exactly `n` elements off the end of `fields` in reverse (so the
-/// returned `Vec` is in original left-to-right order), erroring if the
-/// count doesn't match — the shared shape check for every setter's
-/// fixed-arity entry list.
+/// Errors unless `fields` has exactly `n` elements — the shared shape check
+/// for every setter's fixed-arity entry list.
 fn exact_fields(
     fields: Vec<SteelVal>,
     n: usize,

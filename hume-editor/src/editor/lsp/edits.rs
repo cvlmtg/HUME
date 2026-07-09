@@ -19,6 +19,7 @@ use crate::editor::pane_state;
 /// One text edit in wire (line/character) coordinates — the shape every LSP
 /// response with a `range` decodes to before it reaches HUME's char-offset
 /// world.
+#[derive(Clone)]
 pub(crate) struct WireEdit {
     pub(crate) start_line: usize,
     pub(crate) start_char: usize,
@@ -47,11 +48,12 @@ fn one_of_to_text_edit(
 }
 
 /// Converts `edits` (wire positions, any order) into one composite
-/// `ChangeSet` — sorted descending to check for overlap (adjacent edits are
-/// fine; a shared boundary is not), then rebuilt ascending for
-/// `ChangeSetBuilder`, which only walks forward. Read-only, no mutation:
-/// `apply_workspace_edit`'s "validate all, then apply all" needs to build
-/// every file's changeset before committing any of them.
+/// `ChangeSet`: positions are resolved to char offsets, stable-sorted
+/// ascending by start (tie order = `edits`' own array order, per spec),
+/// checked for overlap (adjacent edits are fine; a shared boundary is not),
+/// then walked forward once to build the `ChangeSet`. Read-only, no
+/// mutation: `apply_workspace_edit`'s "validate all, then apply all" needs
+/// to build every file's changeset before committing any of them.
 fn build_edit_changeset(
     state: &EditorState,
     lsp: &LspState,
