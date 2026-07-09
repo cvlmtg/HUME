@@ -47,6 +47,11 @@ Both editors share the same foundations — multiple cursors, `;` to collapse, `
 | Trim whitespace at edges | — | `_` |
 | Select all search matches | `%` (search mode) | `m /` |
 | Select within (regex per selection) | `s` (select mode) | `s` |
+| Use selection as search pattern | `*` | `Ctrl+/` (kitty only) |
+
+Note: HUME's `*` is not the same operation as Helix's — it's Vim-style,
+searching the whole word under the cursor rather than the literal
+selection. `Ctrl+/` is HUME's equivalent of Helix's `*`.
 
 ### Configuration language
 

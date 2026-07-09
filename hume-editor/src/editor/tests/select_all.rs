@@ -188,3 +188,64 @@ fn star_punctuation_run_stays_literal() {
     // '-' and '>' are both Punctuation — no \b boundaries should be added.
     assert_eq!(r, vec!["->"]);
 }
+
+// ── Search selection (Ctrl+/) ────────────────────────────────────────────────
+
+/// `Ctrl+/` on a partial-word selection searches the literal substring —
+/// unlike `*`, it does NOT expand to the whole word, and it does NOT add
+/// word-boundary anchors. This is the point of the feature: it finds "ell"
+/// wherever it occurs, including as a substring of other words.
+#[test]
+fn search_selection_uses_literal_text() {
+    // "hello ell x\n" — selection covers "ell" inside "hello" (head on second 'l').
+    let mut ed = editor_from("h-[ell]>o ell x\n");
+    ed.handle_key(key_ctrl('/'));
+
+    // Selection is untouched (no expansion).
+    assert_eq!(state(&ed), "h-[ell]>o ell x\n");
+    // No \b anchors — literal substring pattern.
+    assert_eq!(reg(&ed, 's'), vec!["ell"]);
+
+    // Independent oracle: matches both the substring inside "hello" (1..4) and
+    // the standalone "ell" (6..9) — proving it's substring, not whole-word, search.
+    let sp = ed.search_pattern().expect("search pattern must be set");
+    let buf = ed.doc().text();
+    let matches = crate::ops::search::find_all_matches(buf, &sp.regex);
+    assert_eq!(matches, vec![(1, 3), (6, 8)]);
+}
+
+/// After `Ctrl+/`, `n` cycles to the next literal occurrence — the full
+/// "select, mark as search, jump" flow this feature exists for.
+#[test]
+fn search_selection_then_n_jumps_to_next_occurrence() {
+    // "hello ell x\n" — select "ell" inside "hello".
+    let mut ed = editor_from("h-[ell]>o ell x\n");
+    ed.handle_key(key_ctrl('/'));
+    ed.handle_key(key('n'));
+
+    // Jumps to the next "ell" — the standalone one at position 6.
+    assert_eq!(state(&ed), "hello -[ell]> x\n");
+}
+
+/// `Ctrl+/` escapes regex metacharacters in the selected text.
+#[test]
+fn search_selection_escapes_metacharacters() {
+    // "a.b axb\n" — select "a.b".
+    let mut ed = editor_from("-[a.b]> axb\n");
+    ed.handle_key(key_ctrl('/'));
+    assert_eq!(reg(&ed, 's'), vec![r"a\.b"]);
+
+    // Oracle: the escaped '.' must NOT match "axb" as a wildcard.
+    let sp = ed.search_pattern().expect("search pattern must be set");
+    let buf = ed.doc().text();
+    let matches = crate::ops::search::find_all_matches(buf, &sp.regex);
+    assert_eq!(matches, vec![(0, 2)], "escaped '.' must not match 'axb'");
+}
+
+/// `Ctrl+/` on a collapsed cursor searches just that one character literally.
+#[test]
+fn search_selection_on_collapsed_cursor_searches_char() {
+    let mut ed = editor_from("-[a]>bc abc\n");
+    ed.handle_key(key_ctrl('/'));
+    assert_eq!(reg(&ed, 's'), vec!["a"]);
+}

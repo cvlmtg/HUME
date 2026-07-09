@@ -305,9 +305,9 @@ pub fn cmd_select_within(
     Ok(())
 }
 
-// ── Use selection as search (*) ──────────────────────────────────────────────
+// ── Search word under cursor (*) ─────────────────────────────────────────────
 
-pub fn cmd_use_selection_as_search(
+pub fn cmd_search_word_under_cursor(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -347,10 +347,44 @@ pub fn cmd_use_selection_as_search(
     } else {
         escaped
     };
+    set_search_pattern(state, view, pattern)
+}
+
+// ── Search selection (Ctrl+/) ────────────────────────────────────────────────
+
+/// Use the primary selection's literal text as the search pattern — unlike
+/// `*`, no whole-word anchors and no word expansion. Selects the exact text
+/// the user already highlighted, so `n`/`N` cycle its other occurrences
+/// (Helix's `search_selection`).
+pub fn cmd_search_selection(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    _count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    let buf = doc(state, view).text();
+    let primary = current_selections(state, view).primary();
+    let text = buf
+        .slice(primary.start()..primary.end_inclusive(buf) + 1)
+        .to_string();
+
+    let pattern = escape_regex(&text);
+    set_search_pattern(state, view, pattern)
+}
+
+/// Compile `pattern`, write it to the search register, and set it as the
+/// focused buffer's active search pattern (forward direction). Shared tail
+/// of `*` and Ctrl+/ — both set the same (register, direction, pattern)
+/// triple that live search sets on confirm; the match-cache/highlights are
+/// rebuilt lazily per-frame regardless of which path set the pattern.
+fn set_search_pattern(
+    state: &mut EditorState,
+    view: &EngineView,
+    pattern: String,
+) -> Result<(), CommandError> {
     let Some(regex) = compile_search_regex(&pattern) else {
         return Ok(());
     };
-
     state
         .registers
         .write_text(SEARCH_REGISTER, vec![pattern.clone()]);

@@ -889,9 +889,15 @@ impl CommandRegistry {
         )
         .reg(self);
         ecmd(
-            "use-selection-as-search",
-            "Use primary selection text as the search pattern.",
-            cmd_use_selection_as_search,
+            "search-word-under-cursor",
+            "Search the whole word under the cursor.",
+            cmd_search_word_under_cursor,
+        )
+        .reg(self);
+        ecmd(
+            "search-selection",
+            "Use the primary selection text literally as the search pattern.",
+            cmd_search_selection,
         )
         .reg(self);
 

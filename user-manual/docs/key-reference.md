@@ -53,7 +53,7 @@ After `f`/`F`/`t`/`T`, HUME waits for the target character.
 | `,` | Keep only the primary selection |
 | `Ctrl+,` | Remove primary, promote next (kitty only) |
 | `(` / `)` | Cycle primary backward / forward |
-| `*` | Use selection as search pattern (word-boundary aware) |
+| `*` | Search the whole word under the cursor |
 
 Text objects (use the `m` prefix):
 
@@ -111,6 +111,7 @@ Text objects (use the `m` prefix):
 | `n` | Next match |
 | `N` | Previous match |
 | `s` | Select within (regex filter on each selection) |
+| `Ctrl+/` | Use the selected text literally as the search pattern (kitty only) |
 
 ### Macros
 

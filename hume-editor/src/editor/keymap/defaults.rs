@@ -340,7 +340,12 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!('n'), cmd!("search-next"));
     t.bind_leaf(key!('N'), cmd!("search-prev"));
     t.bind_leaf(key!('s'), cmd!("select-within"));
-    t.bind_leaf(key!('*'), cmd!("use-selection-as-search"));
+    t.bind_leaf(key!('*'), cmd!("search-word-under-cursor"));
+    // Select text, then Ctrl+/ turns it into the search pattern verbatim (Helix's
+    // `search_selection`), so `n`/`N` cycle its other occurrences. Kitty-only:
+    // legacy terminals encode Ctrl+/ as the control byte 0x1F, which crossterm
+    // decodes as `Ctrl+'7'` — left unbound, so the key silently no-ops there.
+    t.bind_leaf(key!(Ctrl + '/'), cmd!("search-selection"));
 
     // ── Pane prefix (Ctrl+p) ─────────────────────────────────────────────────
     // `Ctrl+p` → second key (pane navigation). Works in both kitty and legacy.
@@ -700,6 +705,17 @@ mod tests {
         assert!(
             matches!(trie.walk(&[key!(Ctrl + 'p')]), WalkResult::Interior { .. }),
             "Ctrl+p must be the pane prefix Interior node"
+        );
+        // Ctrl+/ → search-selection (kitty-only).
+        assert!(
+            matches!(trie.walk(&[key!(Ctrl + '/')]), WalkResult::Leaf(ref cmd) if cmd.name == "search-selection"),
+            "Ctrl+/ should map to search-selection"
+        );
+        // Legacy terminals encode Ctrl+/ as Ctrl+'7' (control byte 0x1F) — must
+        // stay unbound rather than accidentally aliasing to search-selection.
+        assert!(
+            matches!(trie.walk(&[key!(Ctrl + '7')]), WalkResult::NoMatch),
+            "Ctrl+7 must be unbound — Ctrl+/ is kitty-only, no legacy alias"
         );
     }
 

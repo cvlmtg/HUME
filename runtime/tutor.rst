@@ -897,10 +897,19 @@ Lesson 7 — Search and Text Objects
 +---+------------------------------------------------------------+
 | N | jump to the previous match                                 |
 +---+------------------------------------------------------------+
-| * | use the CURRENT SELECTION as the search pattern            |
+| * | search the whole word under the cursor                     |
 +---+------------------------------------------------------------+
 
 The selection lands on the match. Press ``n`` to advance.
+
++---------+----------------------------------------------------------+
+| Ctrl+/  | use the selected text, literally, as the search pattern  |
++---------+----------------------------------------------------------+
+
+Unlike ``*``, this does not expand to a whole word and adds no
+word-boundary anchors — it searches for exactly the text you selected,
+including as a substring of other words. Requires a terminal with the
+kitty keyboard protocol.
 
 Exercise
 ~~~~~~~~
@@ -916,12 +925,25 @@ brings it back.
 Exercise
 ~~~~~~~~
 
-Navigate onto the word "warning" below and press ``*`` to use it
-as the search pattern. Press ``n`` to jump to the next "warning",
-then ``n`` again for the third one:
+Navigate onto the word "warning" below and press ``*`` to search
+for it. Press ``n`` to jump to the next "warning", then ``n``
+again for the third one:
 
 We saw a warning in the dev build, a warning in the staging run,
 and a warning in the production log.
+
+Exercise
+~~~~~~~~
+
+Unlike ``*``, ``Ctrl+/`` searches any substring, not just whole
+words — useful for surveying every function that shares a prefix.
+Navigate onto the "p" of "parse_header" below, press ``Ctrl+f_`` to
+extend the selection through the underscore ("parse_"), then
+``Ctrl+/`` and ``n`` to jump through the other two:
+
+fn parse_header(input: &str) -> Header {
+fn parse_body(input: &str) -> Body {
+fn parse_footer(input: &str) -> Footer {
 
 7.2 Text Objects
 ----------------
@@ -999,7 +1021,9 @@ Summary
 +---------------+-----------------------------------------+
 | / ? n N       | search forward / backward / next / prev |
 +---------------+-----------------------------------------+
-| *             | use selection as search pattern         |
+| *             | search word under cursor                |
++---------------+-----------------------------------------+
+| Ctrl+/        | search selection literally              |
 +---------------+-----------------------------------------+
 | mi<d> / ma<d> | inner / around text object              |
 +---------------+-----------------------------------------+
