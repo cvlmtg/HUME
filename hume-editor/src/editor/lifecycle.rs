@@ -48,6 +48,24 @@ pub(super) fn write_pane_mirror(
 }
 
 impl Editor {
+    // ── Kitty keybinds ──────────────────────────────────────────────────────────
+
+    /// Apply the kitty keyboard-protocol probe result atomically: set the
+    /// runtime flag and, when enabled, install the kitty-only default keybinds
+    /// that `Keymap::default()` omits. Called once at startup after the probe
+    /// (and from headless `run_keys`, which assumes full capability) so the
+    /// binds can never diverge from the flag.
+    ///
+    /// Must run before `init_scripting`: it installs default binds via plain
+    /// `bind_leaf` overwrites, so calling it after `init.scm` has evaluated
+    /// would clobber any user `bind-key!` on the same keys.
+    pub(crate) fn set_kitty_support(&mut self, kitty_enabled: bool) {
+        self.kitty_enabled = kitty_enabled;
+        if kitty_enabled {
+            self.state.keymap.apply_kitty_defaults();
+        }
+    }
+
     /// Open a file from disk, or create a new empty scratch buffer.
     ///
     /// The cursor starts at position 0 in Normal mode. Terminal dimensions are

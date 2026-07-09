@@ -4,11 +4,24 @@ use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
 use hume_engine::pipeline::EngineView;
 
-use super::super::{EditorState, FindChar};
+use super::super::EditorState;
 use crate::editor::error::CommandError;
 use crate::ops::motion::FindKind;
 
 use super::apply_focused_motion;
+
+// ── Find/till state ───────────────────────────────────────────────────────────
+
+/// The character and kind stored by the last find/till motion.
+///
+/// Direction is NOT stored — `repeat-find-forward` and `repeat-find-backward`
+/// use absolute direction, so re-searching always means "next on the right" or
+/// "previous on the left" regardless of the original motion's direction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FindChar {
+    pub ch: char,
+    pub kind: FindKind,
+}
 
 // ── Find / till character ─────────────────────────────────────────────────────
 

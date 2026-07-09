@@ -307,7 +307,8 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         // Arm the register prefix so register-aware commands (yank, delete,
         // paste-after, …) route to the right destination.
         if let Some(r) = register {
-            self.state.register_prefix = Some(crate::editor::RegisterPrefix::Selected(r));
+            self.state.register_prefix =
+                Some(crate::editor::register_ops::RegisterPrefix::Selected(r));
         }
         // Delegate to the shared pipeline — all bookkeeping (paste session, jump
         // list, dot-repeat, last_command) lives there so the sync path is
@@ -316,7 +317,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             self.state,
             self.view,
             cmd,
-            crate::editor::CmdCtx {
+            crate::editor::dispatch::CmdCtx {
                 // `count` came from `parse_count_extend`, which decodes a
                 // Steel-side count of 0 to `None` — the script's way of asking
                 // for "as if no count was typed" (move-down/move-up read this

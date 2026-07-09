@@ -6,6 +6,8 @@
 
 use std::collections::VecDeque;
 
+use super::EditorState;
+
 // ── Severity ─────────────────────────────────────────────────────────────────
 
 /// Severity level for a message, controlling both logging and display.
@@ -172,6 +174,29 @@ impl MessageLog {
             out.push('\n');
         }
         out
+    }
+}
+
+impl EditorState {
+    // ── Status messages ───────────────────────────────────────────────────────
+
+    /// Record a status message / warning / error on this state.
+    ///
+    /// Called by EditorCmd handlers that only have `&mut EditorState` access.
+    /// The `Editor::report` method delegates here.
+    pub(super) fn report(&mut self, severity: Severity, text: String) {
+        match severity {
+            Severity::Info => {
+                self.status_msg = Some(text);
+            }
+            Severity::Warning | Severity::Error => {
+                self.message_log.push(severity, text.clone());
+                self.status_msg = Some(text);
+            }
+            Severity::Trace => {
+                self.message_log.push(severity, text);
+            }
+        }
     }
 }
 

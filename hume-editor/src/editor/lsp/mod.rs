@@ -309,6 +309,14 @@ impl AsyncSource for LspState {
 }
 
 impl Editor {
+    /// `(errors, warnings)` for `bid` from the diagnostics store — the
+    /// statusline's `Diagnostics` element reads this directly (never through
+    /// Steel; `self.lsp` is private to `editor` and its descendants, so
+    /// callers outside it, like `ui::statusline`, go through this).
+    pub(crate) fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {
+        introspect::diagnostic_counts(&self.lsp, bid)
+    }
+
     /// Per-frame drain: routes every backend event through its client's
     /// `on_event`, dispatches the resulting `ClientAction`s, then pulls
     /// each client's completed requests (responses + timeouts) via

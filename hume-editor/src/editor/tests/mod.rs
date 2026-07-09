@@ -1,15 +1,26 @@
 // Shared imports and harness helpers used by all test submodules.
 // Each submodule does `use super::*;` to access these.
 
+use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, RwLock};
 
-use crate::editor::SearchDirection;
 use crate::editor::buffer::Buffer;
+use crate::editor::buffer::store::BufferStore;
+use crate::editor::pane_state::{PaneBufferState, PaneTransient, PaneView};
+use crate::editor::search::SearchPattern;
+use crate::editor::{EditorState, SearchDirection, SearchState};
+use crate::ops::register::{KillRing, RegisterSet};
+use crate::settings::EditorSettings;
 use crate::testing::{parse_state, serialize_state};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
+use hume_engine::pane::Pane;
+use hume_engine::pipeline::{BufferId, EngineView, LayoutTree, PaneId, SharedBuffer};
+use hume_treesitter::parse_worker::InlineParseBackend;
+use hume_treesitter::registry::LanguageRegistry;
+use slotmap::SecondaryMap;
 
 use super::{Editor, Mode, Severity};
 
@@ -136,6 +147,233 @@ macro_rules! live_host {
 // unused_imports lint doesn't track macro re-exports used only that way.
 #[allow(unused_imports)]
 pub(crate) use live_host;
+
+// ── Test constructors ─────────────────────────────────────────────────────────
+
+// proptest requires `Debug` on strategy values; this minimal impl satisfies it.
+impl std::fmt::Debug for Editor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Editor(buf={:?}, mode={:?})",
+            self.doc().text().to_string(),
+            self.state.mode()
+        )
+    }
+}
+
+impl Editor {
+    /// Construct a minimal `Editor` for renderer unit tests.
+    ///
+    /// Only `doc` and `view` are meaningful — all other fields are set to
+    /// sensible defaults (Normal mode, default colors, no file path, etc.).
+    /// Use the builder methods below to override specific fields.
+    pub(crate) fn for_testing(doc: Buffer) -> Self {
+        // Minimal engine view for test contexts. Uses 80×24 with tab_width=4.
+        let theme = crate::ui::theme::build_default_theme();
+        let mut engine_view = EngineView::new(theme);
+        let buffer_id = engine_view.buffers.insert(SharedBuffer::new());
+        let settings = EditorSettings::default();
+        let jump_list_capacity = settings.jump_list_capacity;
+        let history_capacity = settings.history_capacity;
+        let pane = Pane::new(buffer_id, settings.wrap_mode);
+        let pane_id = engine_view.panes.insert(pane);
+        engine_view.layout = LayoutTree::Leaf(pane_id);
+
+        let mut buffers = BufferStore::new();
+        buffers.open(buffer_id, doc);
+
+        let mut pane_buf_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>> =
+            SecondaryMap::new();
+        pane_buf_state.insert(pane_id, SecondaryMap::new());
+        super::pane_state::ensure(&mut pane_buf_state, &buffers, pane_id, buffer_id);
+
+        Self {
+            state: EditorState {
+                buffers,
+                mode: Mode::Normal,
+                pending_keys: Vec::new(),
+                count: None,
+                wait_char: None,
+                pending_char: None,
+                registers: RegisterSet::new(),
+                kill_ring: KillRing::new(),
+                clipboard: super::clipboard::SystemClipboard::new_unavailable(),
+                register_prefix: None,
+                last_command: None,
+                last_paste: None,
+                should_quit: false,
+                minibuf: None,
+                completion: None,
+                status_msg: None,
+                summary_ttl: 0,
+                message_log: super::message_log::MessageLog::new(),
+                settings,
+                registry: super::registry::CommandRegistry::with_defaults(),
+                keymap: super::keymap::Keymap::default(),
+                last_find: None,
+                force_full_redraw: false,
+                dispatch_inline_output: false,
+                last_repeatable_action: None,
+                selection_recipe: Vec::new(),
+                pending_repeat: None,
+                insert_session: None,
+                autoindent_pending: false,
+                explicit_count: false,
+                pending_ctrl_extend: false,
+                search: SearchState::default(),
+                panes: {
+                    let mut jumps = SecondaryMap::new();
+                    jumps.insert(pane_id, super::jump_list::JumpList::new(jump_list_capacity));
+                    let mut transient = SecondaryMap::new();
+                    transient.insert(pane_id, PaneTransient::default());
+                    // No render entry: this pane is built via `Pane::new`
+                    // directly (not `build_pane`), so it has no `SharedHighlighter`/
+                    // `SignSource` providers to feed — the write sides skip panes
+                    // with no entry.
+                    PaneView {
+                        state: pane_buf_state,
+                        transient,
+                        jumps,
+                        render: SecondaryMap::new(),
+                    }
+                },
+                history: super::minibuf::history::HistoryStore::new(history_capacity),
+                focused_pane_id: pane_id,
+                motion_format_scratch: hume_engine::format::FormatScratch::new(),
+                visual_move_target_cols: Vec::new(),
+                macro_recording: None,
+                macro_pending: None,
+                replay_queue: VecDeque::new(),
+                skip_macro_record: false,
+                is_replaying: false,
+                mouse_drag_anchor: None,
+                languages: LanguageRegistry::new(),
+                cwd: std::env::temp_dir(),
+                pending_hooks: Vec::new(),
+                pending_steel_calls: Vec::new(),
+                trigger_chars: std::collections::HashMap::new(),
+                decorations: super::decorations::DecorationStores::default(),
+                steel_prompt_callback: None,
+                lsp_completion: None,
+                lsp_completion_ui: None,
+                lsp_completion_view: Arc::new(RwLock::new(None)),
+                completion_view: Arc::new(RwLock::new(None)),
+                diagnostic_scopes: None,
+                inlay_hint_scope: None,
+                virtual_text_fallback_scope: None,
+                runtime_scope_cache: std::collections::HashMap::new(),
+                popup: None,
+                popup_view: Arc::new(RwLock::new(None)),
+                menu: None,
+                menu_view: Arc::new(RwLock::new(None)),
+                drawer: None,
+                drawer_view: Arc::new(RwLock::new(None)),
+            },
+            view: engine_view,
+            kitty_enabled: false,
+            scripting: None,
+            builtin_cmd_names: std::collections::HashSet::new(),
+            parse_worker: Box::new(InlineParseBackend::new()),
+            parse_worker_disconnect_logged: false,
+            timer_wheel: super::timers::TimerWheel::new(),
+            timer_payloads: std::collections::HashMap::new(),
+            viewport_debounce: std::collections::HashMap::new(),
+            last_viewport_key: std::collections::HashMap::new(),
+            virtual_lines_synced: std::collections::HashMap::new(),
+            lsp: super::lsp::LspState::new_inline(),
+            tui_active: false,
+            #[cfg(test)]
+            inline_output_entered: false,
+        }
+    }
+
+    pub(crate) fn with_search_regex(mut self, pattern: &str) -> Self {
+        if let Ok(regex) = regex_cursor::engines::meta::Regex::new(pattern) {
+            let bid = self.focused_buffer_id();
+            self.state.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
+                regex: Arc::new(regex),
+                pattern_str: pattern.to_string(),
+            });
+        }
+        self.sync_search_cache();
+        self
+    }
+
+    // ── Pane choke-points (test-only) ─────────────────────────────────────────
+
+    /// Switch focus to `target`, seeding its per-pane maps if not yet present.
+    ///
+    /// Precondition: editor must be in Normal mode. Focus switches are only
+    /// bound in Normal mode; mode-changing commands must not switch panes.
+    pub(crate) fn switch_focused_pane(&mut self, target: PaneId) {
+        debug_assert!(
+            self.state.mode() == Mode::Normal,
+            "focus-switch must only happen in Normal mode, got {:?}",
+            self.state.mode(),
+        );
+        self.state.focused_pane_id = target;
+        if !self.state.panes.transient.contains_key(target) {
+            self.state
+                .panes
+                .transient
+                .insert(target, PaneTransient::default());
+        }
+        if !self.state.panes.jumps.contains_key(target) {
+            self.state.panes.jumps.insert(
+                target,
+                super::jump_list::JumpList::new(self.state.settings.jump_list_capacity),
+            );
+        }
+        let bid = self.focused_buffer_id();
+        super::pane_state::ensure(
+            &mut self.state.panes.state,
+            &self.state.buffers,
+            target,
+            bid,
+        );
+    }
+
+    /// Read-only accessor used by tests to inspect any pane's selections.
+    pub(crate) fn selections_for(
+        &self,
+        pane: PaneId,
+        buf: BufferId,
+    ) -> Option<&hume_editing::selection::SelectionSet> {
+        self.state
+            .panes
+            .state
+            .get(pane)
+            .and_then(|m| m.get(buf))
+            .map(|s| &s.selections)
+    }
+
+    /// Execute a typed command string (e.g. `"bd"`, `"e! path"`) programmatically.
+    ///
+    /// Parses the trailing `!` as `force=true` and splits `cmd_with_arg` on the
+    /// first space to extract the optional argument. Returns the command result.
+    pub(crate) fn execute_typed(
+        &mut self,
+        cmd_with_arg: &str,
+        extra_arg: Option<&str>,
+    ) -> Result<(), crate::editor::error::CommandError> {
+        let (cmd, force, inline_arg) =
+            super::mappings::command_mode::parse_typed_command(cmd_with_arg);
+        let arg = inline_arg.or(extra_arg);
+        if let Some(tc) = self.state.registry.get_typed(cmd) {
+            let fun = tc.fun;
+            let result = fun(self, arg, force);
+            if let Err(ref e) = result {
+                self.report(Severity::Error, e.message().to_owned());
+            }
+            result
+        } else {
+            Err(crate::editor::error::CommandError::new(format!(
+                "unknown command: {cmd}"
+            )))
+        }
+    }
+}
 
 // ── cwd guard ─────────────────────────────────────────────────────────────────
 

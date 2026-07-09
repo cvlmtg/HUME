@@ -293,3 +293,20 @@ impl CompletionSession {
         Ok(())
     }
 }
+
+impl EditorState {
+    // ── LSP completion menu ─────────────────────────────────────────────
+
+    /// Ends any open completion session and clears its menu view — shared
+    /// by `set_mode` (any exit from Insert) and `mappings/insert.rs`'s key
+    /// handling (`Esc`, a Backspace crossing the anchor, a successful/failed
+    /// accept). A no-op when no session is open.
+    pub(crate) fn clear_lsp_completion(&mut self) {
+        self.lsp_completion = None;
+        self.lsp_completion_ui = None;
+        *self
+            .lsp_completion_view
+            .write()
+            .expect("RwLock not poisoned") = None;
+    }
+}

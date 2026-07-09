@@ -13,6 +13,15 @@ use std::borrow::Cow;
 use crate::editor::clipboard::SystemClipboard;
 use crate::ops::register::{CLIPBOARD_REGISTER, RegisterSet, is_register_linewise};
 
+/// Pending state for the two-keystroke `"<reg>` register-prefix sequence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RegisterPrefix {
+    /// `"` pressed — waiting for the register-name character.
+    Awaiting,
+    /// Register name received; armed for the next yank/delete/change/paste.
+    Selected(char),
+}
+
 /// Read text from an explicitly named register.
 ///
 /// Returns `(values, warning)` where `warning` is `Some(msg)` when the OS

@@ -25,14 +25,16 @@ use slotmap::SecondaryMap;
 
 use super::registry::MappableCommand;
 
-use super::CmdCtx;
 use super::buffer::Buffer;
+use super::dispatch::CmdCtx;
 use super::doc_ops;
 use super::jump_list::JumpEntry;
 use super::pane_state::PaneTransient;
+use super::register_ops::RegisterPrefix;
 use super::registry::CmdMeta;
+use super::replay::{InsertSession, RepeatableAction, SelectionStep};
 use super::search::SearchPattern;
-use super::{EditorState, InsertSession, Mode, RegisterPrefix, RepeatableAction, SelectionStep};
+use super::{EditorState, Mode};
 use super::{Severity, register_ops};
 use crate::editor::error::CommandError;
 use crate::ops::MotionMode;

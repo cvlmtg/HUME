@@ -12,7 +12,8 @@ use crate::ops::motion::{
 };
 use crate::ops::selection_cmd::{cmd_collapse_selection_to_anchor, cmd_collapse_selection_to_head};
 
-use super::super::{EditorState, MiniBuffer, Mode, PendingRepeat};
+use super::super::replay::PendingRepeat;
+use super::super::{EditorState, MiniBuffer, Mode};
 use super::{
     apply_focused_edit_grouped, apply_focused_motion, begin_insert_session, end_insert_session,
 };

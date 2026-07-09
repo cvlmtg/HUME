@@ -19,6 +19,7 @@
 use hume_engine::pipeline::{BufferId, PaneId};
 use slotmap::SecondaryMap;
 
+use super::Editor;
 use super::search::SearchCursor;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
@@ -147,6 +148,54 @@ pub(crate) struct PaneView {
     pub(crate) transient: SecondaryMap<PaneId, PaneTransient>,
     pub(crate) jumps: SecondaryMap<PaneId, super::jump_list::JumpList>,
     pub(crate) render: SecondaryMap<PaneId, crate::ui::PaneRenderHandles>,
+}
+
+impl Editor {
+    // ── Pane-state accessors ──────────────────────────────────────────────────
+
+    /// The focused pane's wrap mode. `Pane::wrap_mode` is the SSOT (a view
+    /// property, not a document one — two panes on the same buffer may wrap
+    /// differently); this is the raw (unresolved sentinel) value.
+    pub(crate) fn focused_wrap_mode(&self) -> hume_engine::pane::WrapMode {
+        self.view.panes[self.state.focused_pane_id].wrap_mode
+    }
+
+    /// Apply `mode` as the focused pane's wrap mode — the shared path behind
+    /// both `:wrap` and `:set pane wrap-mode=…`.
+    ///
+    /// Setting a wrapping mode also updates `saved_wrap_mode` (the restore
+    /// target for a future `:wrap` toggle-on) and, on an off→on transition,
+    /// zeroes horizontal scroll (meaningless once wrapped). Setting
+    /// `WrapMode::None` stashes the pane's current wrap mode into
+    /// `saved_wrap_mode` first, preserving the toggle invariant that it's
+    /// never `None`.
+    pub(crate) fn apply_focused_wrap_mode(&mut self, mode: hume_engine::pane::WrapMode) {
+        use hume_engine::pane::WrapMode;
+        let now_wrapping = mode.is_wrapping();
+        let pane = &mut self.view.panes[self.state.focused_pane_id];
+        let was_wrapping = pane.wrap_mode.is_wrapping();
+        let mode_changed = mode != pane.wrap_mode;
+        if now_wrapping {
+            pane.wrap_mode = mode;
+            pane.saved_wrap_mode = mode;
+        } else {
+            if was_wrapping {
+                pane.saved_wrap_mode = pane.wrap_mode;
+            }
+            pane.wrap_mode = WrapMode::None;
+        }
+        // Any actual mode change invalidates the sub-row scroll state:
+        // off→on starts wrapping fresh; on→off leaves non-wrap rendering with
+        // no sub-row concept (nothing in unwrapped scrolling ever clears a
+        // stale `top_row_offset`, and the renderer forwards it verbatim as
+        // `top_skip_rows` regardless of wrap mode); on→on width/style changes
+        // can leave a sub-row offset past the new line's row count.
+        if mode_changed {
+            let vp = self.viewport_mut();
+            vp.horizontal_offset = 0;
+            vp.top_row_offset = 0;
+        }
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

@@ -1,7 +1,8 @@
 use std::borrow::Cow;
 
 use super::super::commands;
-use super::super::{CmdCtx, Editor, Severity};
+use super::super::dispatch::CmdCtx;
+use super::super::{Editor, Severity};
 use hume_editing::selection::Selection;
 
 impl Editor {

@@ -5,7 +5,9 @@ use super::super::keymap::WalkResult;
 use crate::ops::MotionMode;
 use crate::ops::register::{MACRO_REGISTER, is_valid_macro_register, is_valid_register_name};
 
-use super::super::{Editor, MacroPending, RegisterPrefix};
+use super::super::Editor;
+use super::super::register_ops::RegisterPrefix;
+use super::super::replay::MacroPending;
 use hume_engine::types::EditorMode;
 
 /// Enqueue the keys stored in `reg` into the editor's replay queue.
