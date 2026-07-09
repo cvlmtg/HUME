@@ -100,21 +100,38 @@ where
 }
 
 /// Untyped wire shape: every field optional, classified after parsing.
-#[derive(Deserialize, Serialize)]
+/// Deserialize-only — the write path uses [`RawMessageRef`] instead so
+/// serializing a message never clones `params`/`result` (a `didOpen`
+/// carries the whole document text).
+#[derive(Deserialize)]
 struct RawMessage {
-    #[serde(skip_serializing_if = "Option::is_none")]
     id: Option<RequestId>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     method: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     params: Option<serde_json::Value>,
     /// `None` = field absent; `Some(v)` = field present (`v` may itself be
     /// `serde_json::Value::Null`).
-    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_present")]
+    #[serde(default, deserialize_with = "deserialize_present")]
     result: Option<serde_json::Value>,
     /// Same presence-vs-null distinction as `result`.
-    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_present")]
+    #[serde(default, deserialize_with = "deserialize_present")]
     error: Option<ResponseError>,
+}
+
+/// Borrowed twin of [`RawMessage`] for the write path — serialization must
+/// not clone `params`/`result` (a `didOpen` carries the whole document
+/// text).
+#[derive(Serialize)]
+struct RawMessageRef<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<&'a RequestId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    method: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    params: Option<&'a serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    result: Option<&'a serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<&'a ResponseError>,
 }
 
 /// Reads headers up to the blank `\r\n` line, then exactly `Content-Length`
@@ -192,36 +209,36 @@ fn classify(raw: RawMessage) -> Result<Message, CodecError> {
 /// framing — some servers reject a bare `\n\n` terminator.
 pub fn write_message(w: &mut impl Write, msg: &Message) -> std::io::Result<()> {
     let raw = match msg {
-        Message::Request { id, method, params } => RawMessage {
-            id: Some(id.clone()),
-            method: Some(method.clone()),
-            params: Some(params.clone()),
+        Message::Request { id, method, params } => RawMessageRef {
+            id: Some(id),
+            method: Some(method),
+            params: Some(params),
             result: None,
             error: None,
         },
-        Message::Notification { method, params } => RawMessage {
+        Message::Notification { method, params } => RawMessageRef {
             id: None,
-            method: Some(method.clone()),
-            params: Some(params.clone()),
+            method: Some(method),
+            params: Some(params),
             result: None,
             error: None,
         },
-        Message::Response { id, result: Ok(v) } => RawMessage {
-            id: Some(id.clone()),
+        Message::Response { id, result: Ok(v) } => RawMessageRef {
+            id: Some(id),
             method: None,
             params: None,
-            result: Some(v.clone()),
+            result: Some(v),
             error: None,
         },
         Message::Response {
             id,
             result: Err(e),
-        } => RawMessage {
-            id: Some(id.clone()),
+        } => RawMessageRef {
+            id: Some(id),
             method: None,
             params: None,
             result: None,
-            error: Some(e.clone()),
+            error: Some(e),
         },
     };
     let body = serde_json::to_vec(&raw)
