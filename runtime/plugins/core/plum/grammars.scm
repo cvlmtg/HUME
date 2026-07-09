@@ -65,6 +65,15 @@
 ;; tree-sitter: it fetches `name`'s copy of the file, and whenever it finds
 ;; an `; inherits:` line, recursively fetches and prepends each named
 ;; dependency's copy of the same file.
+;;
+;; No deduplication: this mirrors Helix's own resolver, which concatenates
+;; without deduping. A grammar reachable by two `inherits` paths (a
+;; "diamond") would be spliced twice — harmless (tree-sitter tolerates
+;; duplicate patterns) and exactly what Helix produces. The JS/TS family
+;; (HUME's only multi-dependency `inherits` case) is a flat one-level star at
+;; the pinned Helix commit — `tsx`'s bases (`ecma`, `_typescript`, `_jsx`) are
+;; all leaves with no `inherits` line of their own — so no diamond arises
+;; today, but the resolver doesn't rely on that staying true.
 
 ;;; #t if `line`, trimmed, is an `; inherits: a,b,c` directive.
 (define (plum/inherits-line? line)
