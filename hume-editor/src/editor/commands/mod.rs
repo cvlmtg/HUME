@@ -667,17 +667,12 @@ pub(super) fn current_selections<'a>(
 /// auto-indented line — the condition under which [`clear_blank_line_indent`]
 /// would actually change the buffer. Checked before calling it so the common
 /// case (exiting Insert mode away from a blank line) skips the edit entirely
-/// instead of running an identity one (see that function's `pub(crate)` note
-/// on [`crate::ops::edit::is_blank_indented_line`]).
+/// instead of running an identity one (see
+/// [`crate::ops::edit::blank_line_ws_range`]'s doc comment).
 fn has_blank_line_cursor(state: &EditorState, view: &EngineView) -> bool {
     let buf = doc(state, view).text();
     current_selections(state, view).iter_sorted().any(|sel| {
-        sel.is_collapsed() && {
-            let line_idx = buf.char_to_line(sel.head());
-            let line_start = buf.line_to_char(line_idx);
-            let ws_end = hume_editing::lines::leading_whitespace_end(buf, line_idx);
-            crate::ops::edit::is_blank_indented_line(buf, line_start, ws_end)
-        }
+        sel.is_collapsed() && crate::ops::edit::blank_line_ws_range(buf, sel.head()).is_some()
     })
 }
 
@@ -821,6 +816,10 @@ pub(super) fn begin_insert_session(state: &mut EditorState, view: &EngineView) {
             step_back_on_exit: false,
         });
     }
+    // Outside the guard above (unlike `insert_session`) so replay — which
+    // skips session creation — still starts each replayed session with no
+    // pending auto-indent to vacate, matching a fresh interactive session.
+    state.autoindent_pending = false;
     state.set_mode(Mode::Insert);
 }
 
@@ -833,10 +832,13 @@ pub(super) fn end_insert_session(state: &mut EditorState, view: &EngineView) {
     // Vim autoindent parity: trim a blank auto-indented line's whitespace
     // before committing, so leaving Insert mode on one behaves like Enter
     // does in `insert_newline_indent`. Joins the still-open session group —
-    // not a separate undo step. Gated by `has_blank_line_cursor` so the
-    // common case (cursor not on a blank line) skips the edit rather than
-    // running an identity one on every Insert-mode exit.
-    if has_blank_line_cursor(state, view) {
+    // not a separate undo step. Gated on two conditions: `autoindent_pending`
+    // (the line's indent was auto-inserted by *this* session and nothing has
+    // been typed on it since — vim only vacates indent it created, never
+    // pre-existing or hand-typed whitespace) and `has_blank_line_cursor` (the
+    // common case, cursor not on a blank line, skips the edit rather than
+    // running an identity one on every Insert-mode exit).
+    if state.autoindent_pending && has_blank_line_cursor(state, view) {
         apply_focused_edit_grouped(state, view, clear_blank_line_indent);
     }
     commit_edit_group_current(state, view);

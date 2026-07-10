@@ -319,11 +319,14 @@ pub fn cmd_search_word_under_cursor(
     // Always search the word under the head, regardless of any existing selection
     // (matches Vim: `*` targets the word under the cursor, not the visual selection).
     //
-    // Noop on \n — no word to search for (matches Vim/Helix behaviour). inner_word_impl
+    // No-op on \n or whitespace — no word to search for. On \n, inner_word_impl
     // would otherwise expand the cursor to the adjacent \n run and set a useless
-    // newline regex.
-    if classify_char(buf.char_at(primary.head()).unwrap_or('\n')) == CharClass::Eol {
-        return Ok(());
+    // newline regex; on whitespace, it would expand to the whitespace run itself
+    // and set a bare-space pattern (Vim instead scans to the nearest word — HUME
+    // deliberately no-ops rather than adding that scan).
+    match classify_char(buf.char_at(primary.head()).unwrap_or('\n')) {
+        CharClass::Eol | CharClass::Space => return Ok(()),
+        _ => {}
     }
     let Some((start, end_incl)) = inner_word_impl(buf, primary.head(), is_word_boundary) else {
         return Ok(());
@@ -367,6 +370,16 @@ pub fn cmd_search_selection(
     let text = buf
         .slice(primary.start()..primary.end_inclusive(buf) + 1)
         .to_string();
+
+    // No-op on a bare structural newline (a collapsed cursor sitting on one) —
+    // a raw `\n` pattern would match every line end, the same "useless
+    // newline regex" `*` avoids above. A multi-char selection that merely
+    // *contains* a newline (e.g. a whole-line selection) keeps the literal
+    // semantics this command promises — only the single-newline case is
+    // guarded.
+    if text == "\n" {
+        return Ok(());
+    }
 
     let pattern = escape_regex(&text);
     set_search_pattern(state, view, pattern)

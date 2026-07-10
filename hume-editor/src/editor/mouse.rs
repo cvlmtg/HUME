@@ -54,11 +54,17 @@ impl Editor {
             return;
         }
 
+        // Move to Normal mode on click, regardless of current mode — BEFORE
+        // resolving the click's char offset. `end_insert_session` can shrink
+        // the buffer (the blank-line indent trim), so computing `click_to_char`
+        // first would resolve against a buffer length the exit is about to
+        // invalidate: the offset could land past the new end, or simply on
+        // the wrong char once positions shift.
+        if self.state.mode() == Mode::Insert {
+            self.end_insert_session();
+        }
+
         if let Some(char_off) = self.click_to_char(col, row) {
-            // Move to Normal mode on click, regardless of current mode.
-            if self.state.mode() == Mode::Insert {
-                self.end_insert_session();
-            }
             // Collapse the primary selection to the clicked position.
             let sel = Selection::collapsed(char_off);
             self.set_current_selections(SelectionSet::single(sel));

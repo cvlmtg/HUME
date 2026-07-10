@@ -151,6 +151,7 @@ impl Editor {
                 last_repeatable_action: None,
                 selection_recipe: Vec::new(),
                 insert_session: None,
+                autoindent_pending: false,
                 explicit_count: false,
                 pending_ctrl_extend: false,
                 search: super::search::SearchState::default(),

@@ -3,9 +3,7 @@ use hume_editing::grapheme::{
     char_pos_at_display_col, display_col_in_line, grapheme_col_in_line, next_grapheme_boundary,
     prev_grapheme_boundary,
 };
-use hume_editing::lines::{
-    is_line_start, leading_whitespace, leading_whitespace_end, line_end_exclusive,
-};
+use hume_editing::lines::{is_line_start, leading_whitespace_end, line_end_exclusive};
 use hume_editing::selection::{Selection, SelectionSet, is_selection_linewise};
 use hume_editing::text::Text;
 use hume_editing::word::is_word_boundary;
@@ -402,13 +400,24 @@ pub(crate) fn insert_char(
 /// non-whitespace char, and every line's char content ends in `\n` (buffer
 /// invariant), so a whitespace-only line is the one case where the scan runs
 /// all the way to that `\n` without finding one.
-///
-/// `pub(crate)`: also the pre-flight check gating `clear_blank_line_indent`
-/// calls, so exiting Insert mode away from a blank line doesn't run an
-/// identity edit (which would still bump `text_gen` and record a spurious
-/// pending tree-sitter edit).
-pub(crate) fn is_blank_indented_line(buf: &Text, line_start: usize, ws_end: usize) -> bool {
+fn is_blank_indented_line(buf: &Text, line_start: usize, ws_end: usize) -> bool {
     ws_end > line_start && buf.char_at(ws_end) == Some('\n')
+}
+
+/// `Some((line_start, ws_end))` if `pos` sits on a blank, auto-indented line
+/// (whitespace only, no content) — `None` otherwise.
+///
+/// Single source of truth for "is this cursor on a blank indented line",
+/// shared by the command-layer pre-flight check
+/// ([`crate::editor::commands::has_blank_line_cursor`], gating
+/// `clear_blank_line_indent` so exiting Insert mode away from a blank line
+/// doesn't run an identity edit — which would still bump `text_gen` and
+/// record a spurious pending tree-sitter edit) and the edit ops below.
+pub(crate) fn blank_line_ws_range(buf: &Text, pos: usize) -> Option<(usize, usize)> {
+    let line = buf.char_to_line(pos);
+    let line_start = buf.line_to_char(line);
+    let ws_end = leading_whitespace_end(buf, line);
+    is_blank_indented_line(buf, line_start, ws_end).then_some((line_start, ws_end))
 }
 
 /// Shared per-selection prelude for [`insert_newline_indent`] and
@@ -421,14 +430,44 @@ fn line_context_if_unconsumed(
     b: &ChangeSetBuilder,
     buf: &Text,
     pos: usize,
-) -> Option<(usize, usize, usize)> {
+) -> Option<(usize, usize)> {
     if pos < b.old_pos() {
         return None;
     }
     let line_idx = buf.char_to_line(pos);
     let line_start = buf.line_to_char(line_idx);
     let ws_end = leading_whitespace_end(buf, line_idx);
-    Some((line_idx, line_start, ws_end))
+    Some((line_start, ws_end))
+}
+
+/// Attempts the blank-line whitespace-vacate trim for a collapsed selection.
+///
+/// Returns `true` (and emits `retain` + `delete` into `b`) when `sel` is
+/// collapsed, its line is blank-indented, and `line_start` has not already
+/// been passed by a prior selection's edits in this pass (`line_start >=
+/// b.old_pos()`) — that last check is what fix #1 in the code review added:
+/// two cursors can land on the *same* blank line (one mid-whitespace, one on
+/// the trailing `\n`), and the first cursor's delete can advance `old_pos()`
+/// past this cursor's `line_start`, which would otherwise underflow the
+/// `retain`. When that happens, the caller falls back to its non-blank arm
+/// instead (retaining forward to its own position, which is always safe
+/// since `pos >= b.old_pos()` per [`line_context_if_unconsumed`]).
+fn try_trim_blank_line(
+    b: &mut ChangeSetBuilder,
+    buf: &Text,
+    sel: &Selection,
+    line_start: usize,
+    ws_end: usize,
+) -> bool {
+    if !sel.is_collapsed()
+        || !is_blank_indented_line(buf, line_start, ws_end)
+        || line_start < b.old_pos()
+    {
+        return false;
+    }
+    b.retain(line_start - b.old_pos());
+    b.delete(ws_end - line_start);
+    true
 }
 
 /// Insert a newline followed by the current line's leading whitespace at every
@@ -447,32 +486,37 @@ fn line_context_if_unconsumed(
 ///   no "original char at `start`" to land on; the cursor ends up on the
 ///   structural `\n` that the newline insert leaves at the original position.
 ///
-/// **Vim autoindent parity**: if a collapsed cursor sits on a blank,
-/// auto-indented line (whitespace only, no content), that whitespace is
-/// vacated instead of retained — matching vim's "the indent is deleted again"
-/// behavior (`:help autoindent`) when leaving such a line via Enter. The
-/// indent is still copied onto the *new* line as usual.
+/// **Vim autoindent parity**: if `trim_blank` is set and a collapsed cursor
+/// sits on a blank, auto-indented line (whitespace only, no content), that
+/// whitespace is vacated instead of retained — matching vim's "the indent is
+/// deleted again" behavior (`:help autoindent`) when leaving such a line via
+/// Enter. The indent is still copied onto the *new* line as usual either way.
+///
+/// `trim_blank` is `false` for the *first* Enter on a line that was already
+/// blank before this insert session touched it (nothing to vacate — that
+/// whitespace is pre-existing content, not auto-inserted indent) and `true`
+/// once the caller's own auto-indent has landed there. The caller
+/// (`handle_insert`'s `KeyCode::Enter` arm) threads `EditorState::
+/// autoindent_pending` through as this flag.
 pub(crate) fn insert_newline_indent(
     buf: Text,
     sels: SelectionSet,
+    trim_blank: bool,
 ) -> (Text, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         let start = sel.start();
-        let Some((line_idx, line_start, ws_end)) = line_context_if_unconsumed(b, buf, start) else {
+        let Some((line_start, ws_end)) = line_context_if_unconsumed(b, buf, start) else {
             new_sels.push(Selection::collapsed(b.new_pos()));
             return;
         };
 
-        if sel.is_collapsed() && is_blank_indented_line(buf, line_start, ws_end) {
-            b.retain(line_start - b.old_pos());
-            b.delete(ws_end - line_start);
-        } else {
+        if !(trim_blank && try_trim_blank_line(b, buf, sel, line_start, ws_end)) {
             b.retain(start - b.old_pos());
             if !sel.is_collapsed() {
                 b.delete(sel.content_end(buf) + 1 - start);
             }
         }
-        let indent = leading_whitespace(buf, line_idx);
+        let indent = buf.slice(line_start..ws_end).to_string();
         b.insert_char('\n');
         if !indent.is_empty() {
             b.insert(&indent);
@@ -494,19 +538,37 @@ pub(crate) fn clear_blank_line_indent(
     sels: SelectionSet,
 ) -> (Text, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
-        let head = sel.head();
-        let Some((_line_idx, line_start, ws_end)) = line_context_if_unconsumed(b, buf, head) else {
+        if sel.is_collapsed() {
+            let head = sel.head();
+            let Some((line_start, ws_end)) = line_context_if_unconsumed(b, buf, head) else {
+                new_sels.push(Selection::collapsed(b.new_pos()));
+                return;
+            };
+            if !try_trim_blank_line(b, buf, sel, line_start, ws_end) {
+                b.retain(head - b.old_pos());
+            }
             new_sels.push(Selection::collapsed(b.new_pos()));
             return;
-        };
-
-        if sel.is_collapsed() && is_blank_indented_line(buf, line_start, ws_end) {
-            b.retain(line_start - b.old_pos());
-            b.delete(ws_end - line_start);
-        } else {
-            b.retain(head - b.old_pos());
         }
-        new_sels.push(Selection::collapsed(b.new_pos()));
+
+        // Non-collapsed selections are never trimmed: identity edit that
+        // preserves anchor and head (rather than collapsing to head, a prior
+        // bug — code review fix #5). `start < b.old_pos()` can only happen if
+        // a prior collapsed cursor's blank-line trim reached into this
+        // selection's own line; fall back to landing the cursor at
+        // `new_pos()` rather than underflowing the retain.
+        let start = sel.start();
+        if start < b.old_pos() {
+            new_sels.push(Selection::collapsed(b.new_pos()));
+            return;
+        }
+        let end_incl = sel.end_inclusive(buf);
+        b.retain(start - b.old_pos());
+        let delta = b.new_pos() as isize - b.old_pos() as isize;
+        b.retain(end_incl + 1 - start);
+        let new_anchor = (sel.anchor() as isize + delta) as usize;
+        let new_head = (sel.head() as isize + delta) as usize;
+        new_sels.push(Selection::new(new_anchor, new_head));
     })
 }
 

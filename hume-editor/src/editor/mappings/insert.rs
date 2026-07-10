@@ -63,6 +63,10 @@ impl Editor {
         let buf = self.focused_buffer_id();
         match key.code {
             KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                // Typing real content cancels the "nothing typed since Enter"
+                // state that gates the blank-line indent trim on exit — see
+                // `EditorState::autoindent_pending`.
+                self.state.autoindent_pending = false;
                 let (ap_enabled, ap_pairs) =
                     self.doc().overrides.auto_pairs_ref(&self.state.settings);
                 if ap_enabled {
@@ -136,6 +140,7 @@ impl Editor {
             // Governed by the `tab-style` setting: Hard inserts a literal `\t`,
             // Soft inserts spaces to the next tab stop (width from `tab-width`).
             KeyCode::Tab => {
+                self.state.autoindent_pending = false;
                 let style = self.doc().overrides.tab_style(&self.state.settings);
                 let tw = self.doc().overrides.tab_width(&self.state.settings);
                 doc_ops::apply_doc_edit_grouped(
@@ -151,17 +156,29 @@ impl Editor {
             // Auto-indent: copy the current line's leading whitespace onto the
             // new line. No smart indent (tree-sitter indent.scm is a separate
             // roadmap milestone).
+            //
+            // `trim_blank` (vim autoindent parity): only vacate a blank
+            // line's whitespace if it was auto-inserted by *this* session's
+            // own previous Enter — never on the first Enter that lands on a
+            // pre-existing blank line. After this Enter, the new line's
+            // indent (if any) is this session's own, so the next Enter/Esc
+            // on it should trim.
             KeyCode::Enter => {
+                let trim_blank = self.state.autoindent_pending;
                 doc_ops::apply_doc_edit_grouped(
                     &mut self.state.buffers,
                     &mut self.state.panes.state,
                     focused,
                     buf,
-                    insert_newline_indent,
+                    move |b, s| insert_newline_indent(b, s, trim_blank),
                 );
+                self.state.autoindent_pending = true;
             }
 
             // ── Delete ────────────────────────────────────────────────────────
+            // Deliberately does NOT clear `autoindent_pending`: `:help
+            // autoindent` names `<BS>` (alongside CTRL-D) as the one key that
+            // doesn't cancel the "nothing typed on this line" state.
             KeyCode::Backspace => {
                 let (ap_enabled, ap_pairs) =
                     self.doc().overrides.auto_pairs_ref(&self.state.settings);
@@ -197,6 +214,7 @@ impl Editor {
                 }
             }
             KeyCode::Delete => {
+                self.state.autoindent_pending = false;
                 doc_ops::apply_doc_edit_grouped(
                     &mut self.state.buffers,
                     &mut self.state.panes.state,

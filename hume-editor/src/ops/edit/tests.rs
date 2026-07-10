@@ -1230,7 +1230,7 @@ fn newline_indent_copies_tab_indent() {
     // "\tfoo" cursor on 'f' → new line gets "\t", cursor on 'f' (new line).
     assert_state!(
         "\t-[f]>oo\n",
-        |(buf, sels)| insert_newline_indent(buf, sels),
+        |(buf, sels)| insert_newline_indent(buf, sels, true),
         "\t\n\t-[f]>oo\n"
     );
 }
@@ -1240,7 +1240,7 @@ fn newline_indent_copies_space_indent() {
     // "    bar" cursor on 'b' → new line gets "    ".
     assert_state!(
         "    -[b]>ar\n",
-        |(buf, sels)| insert_newline_indent(buf, sels),
+        |(buf, sels)| insert_newline_indent(buf, sels, true),
         "    \n    -[b]>ar\n"
     );
 }
@@ -1250,7 +1250,7 @@ fn newline_indent_no_indent_on_bare_line() {
     // "foo" cursor on 'o' (last char) → new line bare.
     assert_state!(
         "fo-[o]>\n",
-        |(buf, sels)| insert_newline_indent(buf, sels),
+        |(buf, sels)| insert_newline_indent(buf, sels, true),
         "fo\n-[o]>\n"
     );
 }
@@ -1261,7 +1261,7 @@ fn newline_indent_at_line_start_no_indent_before_cursor() {
     // is bare, original 'f' moves to new line.
     assert_state!(
         "-[f]>oo\n",
-        |(buf, sels)| insert_newline_indent(buf, sels),
+        |(buf, sels)| insert_newline_indent(buf, sels, true),
         "\n-[f]>oo\n"
     );
 }
@@ -1272,7 +1272,7 @@ fn newline_indent_mid_line_preserves_content_before_cursor() {
     // old line; new line gets indent; cursor on 'o'.
     assert_state!(
         "\tfo-[o]>\n",
-        |(buf, sels)| insert_newline_indent(buf, sels),
+        |(buf, sels)| insert_newline_indent(buf, sels, true),
         "\tfo\n\t-[o]>\n"
     );
 }
@@ -1282,7 +1282,7 @@ fn newline_indent_mixed_indent() {
     // "\t  x" cursor on 'x' → new line gets "\t  ".
     assert_state!(
         "\t  -[x]>\n",
-        |(buf, sels)| insert_newline_indent(buf, sels),
+        |(buf, sels)| insert_newline_indent(buf, sels, true),
         "\t  \n\t  -[x]>\n"
     );
 }
@@ -1293,7 +1293,7 @@ fn newline_indent_replaces_selection() {
     // Cursor lands on the structural trailing '\n' (the retained original).
     assert_state!(
         "\t-[foo]>\n",
-        |(buf, sels)| insert_newline_indent(buf, sels),
+        |(buf, sels)| insert_newline_indent(buf, sels, true),
         "\t\n\t-[\n]>"
     );
 }
@@ -1303,7 +1303,7 @@ fn newline_indent_second_line() {
     // "a\n\tb\n" cursor on 'b' (line 1, indented) → new line gets "\t".
     assert_state!(
         "a\n\t-[b]>\n",
-        |(buf, sels)| insert_newline_indent(buf, sels),
+        |(buf, sels)| insert_newline_indent(buf, sels, true),
         "a\n\t\n\t-[b]>\n"
     );
 }
@@ -1314,7 +1314,7 @@ fn newline_indent_two_cursors_different_indents() {
     // Line 0 "  a" (cursor on 'a'), line 1 "\tb" (cursor on 'b').
     assert_state!(
         "  -[a]>\n\t-[b]>\n",
-        |(buf, sels)| insert_newline_indent(buf, sels),
+        |(buf, sels)| insert_newline_indent(buf, sels, true),
         "  \n  -[a]>\n\t\n\t-[b]>\n"
     );
 }
@@ -1327,7 +1327,7 @@ fn newline_indent_cursor_on_structural_newline() {
     // `insert_char` behaviour for a cursor on the structural newline.
     assert_state!(
         "  x-[\n]>",
-        |(buf, sels)| insert_newline_indent(buf, sels),
+        |(buf, sels)| insert_newline_indent(buf, sels, true),
         "  x\n  -[\n]>"
     );
 }
@@ -1342,7 +1342,7 @@ fn newline_indent_replaces_multi_line_selection() {
     // single-line selection case.
     assert_state!(
         "\t-[ab\n\txy]>\n",
-        |(buf, sels)| insert_newline_indent(buf, sels),
+        |(buf, sels)| insert_newline_indent(buf, sels, true),
         "\t\n\t-[\n]>"
     );
 }
@@ -1354,7 +1354,7 @@ fn newline_indent_trims_blank_line_on_second_enter() {
     // forward) before opening a fresh indented line below it.
     assert_state!(
         "x\n  -[\n]>",
-        |(buf, sels)| insert_newline_indent(buf, sels),
+        |(buf, sels)| insert_newline_indent(buf, sels, true),
         "x\n\n  -[\n]>"
     );
 }
@@ -1366,8 +1366,21 @@ fn newline_indent_trims_blank_line_cursor_mid_whitespace() {
     // not just the region before the cursor.
     assert_state!(
         "x\n -[ ]> \n",
-        |(buf, sels)| insert_newline_indent(buf, sels),
+        |(buf, sels)| insert_newline_indent(buf, sels, true),
         "x\n\n   -[\n]>"
+    );
+}
+
+#[test]
+fn newline_indent_trim_blank_false_preserves_pre_existing_blank_line() {
+    // `trim_blank = false` (the first Enter on a line that was already blank
+    // before this insert session touched it — code review fix #3): the
+    // pre-existing whitespace is left alone; only the *new* line gets a
+    // copied indent, same as the non-blank-line case.
+    assert_state!(
+        "x\n  -[\n]>",
+        |(buf, sels)| insert_newline_indent(buf, sels, false),
+        "x\n  \n  -[\n]>"
     );
 }
 
@@ -1380,8 +1393,28 @@ fn newline_indent_two_cursors_same_blank_line_merge() {
     // panic, no duplicate newline.
     assert_state!(
         "-[ ]> -[ ]>\n",
-        |(buf, sels)| insert_newline_indent(buf, sels),
+        |(buf, sels)| insert_newline_indent(buf, sels, true),
         "\n   -[\n]>"
+    );
+}
+
+#[test]
+fn newline_indent_two_cursors_second_on_blank_line_newline_no_underflow() {
+    // Regression: the first cursor (head 0) trims the blank line "  \n",
+    // advancing the builder's `old_pos()` to 2 — exactly the position of
+    // the second cursor's head, which sits on the line's structural '\n'.
+    // The `pos < b.old_pos()` "already consumed" guard requires strict
+    // inequality, so `2 < 2` is false and the second cursor is NOT treated
+    // as consumed; its own `line_start` (0) is what has actually been
+    // passed. Before the fix, `try_trim_blank_line` didn't check
+    // `line_start` against `old_pos()` and computed `b.retain(0 - 2)`,
+    // underflowing. The fix falls back to the non-blank arm instead: both
+    // cursors independently run their own Enter-with-copied-indent, each
+    // landing on its own freshly opened line — no crash.
+    assert_state!(
+        "-[ ]> -[\n]>",
+        |(buf, sels)| insert_newline_indent(buf, sels, true),
+        "\n  -[\n]>  -[\n]>"
     );
 }
 
@@ -1429,6 +1462,38 @@ fn clear_blank_line_indent_two_cursors_same_line_merge() {
         "-[ ]> -[ ]>\n",
         |(buf, sels)| clear_blank_line_indent(buf, sels),
         "-[\n]>"
+    );
+}
+
+#[test]
+fn clear_blank_line_indent_second_cursor_on_blank_line_newline_no_underflow() {
+    // Same regression as `newline_indent_two_cursors_second_on_blank_line_
+    // newline_no_underflow`, for the Esc/exit-insert path: the second
+    // cursor sits exactly on the blank line's structural '\n', at a
+    // position equal to (not less than) `old_pos()` after the first
+    // cursor's trim — the "already consumed" guard's strict `<` doesn't
+    // catch it, so `try_trim_blank_line`'s own `line_start >= old_pos()`
+    // check is what prevents the underflow. Both cursors land on the same
+    // final position and merge, same as the mid-whitespace case above.
+    assert_state!(
+        "-[ ]> -[\n]>",
+        |(buf, sels)| clear_blank_line_indent(buf, sels),
+        "-[\n]>"
+    );
+}
+
+#[test]
+fn clear_blank_line_indent_preserves_non_collapsed_selection() {
+    // One collapsed cursor on a blank indented line, plus a non-collapsed
+    // selection elsewhere: the blank line is trimmed as usual, but the
+    // other selection's anchor/head must both survive — not collapse to
+    // its head, which was the prior bug (code review fix #5). "foo\n \n
+    // bar\n" (line1 is a single-space blank line); selection B covers "ar"
+    // in "bar" on line2.
+    assert_state!(
+        "foo\n-[ ]>\nb-[ar]>\n",
+        |(buf, sels)| clear_blank_line_indent(buf, sels),
+        "foo\n-[\n]>b-[ar]>\n"
     );
 }
 

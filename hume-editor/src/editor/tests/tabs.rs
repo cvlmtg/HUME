@@ -117,6 +117,80 @@ fn enter_repeated_preserves_indent() {
     assert_eq!(state(&ed), "\t\n\t\n\t-[x]>\n");
 }
 
+// ── Vim autoindent parity: trim on Insert-mode exit ───────────────────────────
+//
+// `end_insert_session` vacates a blank line's leading whitespace on Esc, but
+// only when *this* insert session auto-inserted it via Enter and nothing has
+// been typed there since (`EditorState::autoindent_pending`, code review
+// fix #3). These tests pin the three-way distinction vim makes: pre-existing
+// blank-line whitespace and hand-typed whitespace are both left alone; only
+// the session's own auto-indent gets vacated.
+
+/// Cursor lands on a blank, already-indented line that existed before this
+/// insert session touched it: `i` then immediate `Esc` must leave it as-is.
+#[test]
+fn i_esc_on_pre_existing_blank_line_does_not_trim() {
+    let mut ed = editor_from("x\n  -[\n]>");
+    ed.handle_key(key('i'));
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "x\n  -[\n]>");
+}
+
+/// Typing whitespace by hand onto an empty line, then `Esc`: vim keeps
+/// hand-typed whitespace — only auto-inserted indent is vacated.
+#[test]
+fn i_type_spaces_esc_does_not_trim_hand_typed_whitespace() {
+    let mut ed = editor_from("x\n-[\n]>");
+    ed.handle_key(key('i'));
+    ed.handle_key(key(' '));
+    ed.handle_key(key(' '));
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "x\n  -[\n]>");
+}
+
+/// Contrast with the two tests above: when Enter itself creates the blank,
+/// indented line (copying "  " from the line above), an immediate `Esc`
+/// with nothing typed DOES vacate that indent — the session's own auto-indent,
+/// not pre-existing or hand-typed content.
+#[test]
+fn enter_esc_trims_auto_inserted_blank_line() {
+    let mut ed = editor_from("  x-[\n]>");
+    ed.handle_key(key('i'));
+    ed.handle_key(key_enter());
+    assert_eq!(state(&ed), "  x\n  -[\n]>");
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "  x\n-[\n]>");
+}
+
+/// Dot-repeat replays an Enter-then-Esc insert session as a unit: the
+/// replayed Enter must also be trimmed on the replayed Esc. `autoindent_
+/// pending` lives on `EditorState` (not `InsertSession`, which is absent
+/// during replay — see its doc comment) specifically so this holds.
+#[test]
+fn dot_repeat_replays_enter_esc_trim() {
+    // Cursor starts on line 0's own trailing '\n' ("  x\n"); line 1 ("  y\n")
+    // is shaped the same way for the replay target.
+    let mut ed = editor_from("  x-[\n]>  y\n");
+
+    ed.feed_key(key('i')); // insert-at-selection-start; cursor stays put
+    ed.feed_key(key_enter()); // auto-indent creates a blank "  " line, cursor on its '\n'
+    ed.feed_key(key_esc()); // trimmed: "  x\n\n  y\n", cursor on the blank line's '\n'
+    assert_eq!(state(&ed), "  x\n-[\n]>  y\n");
+
+    // Navigate to line 2's own trailing '\n' with plain motions (not a
+    // selection-establishing command) — dot-repeat replays the ORIGINAL
+    // entry command ('i') at whatever selection exists when '.' is pressed.
+    ed.feed_key(key('j')); // down, col 0, onto "  y\n"'s first space
+    ed.feed_key(key('l')); // second space
+    ed.feed_key(key('l')); // 'y'
+    ed.feed_key(key('l')); // onto "  y\n"'s own trailing '\n'
+    ed.feed_key(key('.')); // replay: insert-at-selection-start, Enter, Esc
+
+    // Same shape as the first site: the replayed Enter's auto-indent on
+    // line 2 was trimmed by the replayed Esc.
+    assert_eq!(state(&ed), "  x\n\n  y\n-[\n]>");
+}
+
 // ── Dedent on Backspace ───────────────────────────────────────────────────────
 
 /// Backspace in leading whitespace snaps to the previous tab stop.

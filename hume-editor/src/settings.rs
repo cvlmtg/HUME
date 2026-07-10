@@ -489,6 +489,13 @@ fn parse_statusline(s: &str) -> Result<StatusLineConfig, String> {
     })
 }
 
+/// The wire-format strings [`parse_show_newline`] accepts — the single
+/// source `:set buffer whitespace-newline=<Tab>` completion mirrors (see
+/// `editor::completion::set::static_value_candidates`), so the two can never
+/// drift out of sync. Mirrors the `WhitespaceRender::VALUES` pattern
+/// (`hume-engine/src/pane.rs`) used by the sibling `space`/`tab` settings.
+pub(crate) const SHOW_NEWLINE_VALUES: &[&str] = &["none", "all"];
+
 /// Parse the `whitespace-newline` wire format. Unlike `space`/`tab`, a
 /// newline is inherently always at end-of-line, so there's no meaningful
 /// "trailing" distinction — only `none`/`all`.
@@ -909,6 +916,20 @@ mod tests {
             err.contains("none or all"),
             "expected 'none or all' in error: {err}"
         );
+    }
+
+    #[test]
+    fn show_newline_values_round_trip_through_parse_show_newline() {
+        // Independent-oracle guard, mirroring `whitespace_render_values_
+        // round_trip_through_from_str` (hume-engine/src/pane.rs): every
+        // completion-offered value must actually parse, so `SHOW_NEWLINE_
+        // VALUES` can't silently drift from `parse_show_newline`.
+        for v in SHOW_NEWLINE_VALUES {
+            assert!(
+                parse_show_newline(v).is_ok(),
+                "'{v}' should parse via parse_show_newline"
+            );
+        }
     }
 
     #[test]

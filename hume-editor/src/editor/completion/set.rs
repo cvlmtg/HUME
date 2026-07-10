@@ -2,7 +2,7 @@ use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceRender, WrapMode};
 
 use super::{Completer, Completion, CompletionCtx, CompletionResult, theme_name_candidates};
-use crate::settings::{TabStyle, all_setting_keys, setting_scopes};
+use crate::settings::{SHOW_NEWLINE_VALUES, TabStyle, all_setting_keys, setting_scopes};
 
 // ── SetCompleter ──────────────────────────────────────────────────────────────
 
@@ -51,8 +51,7 @@ fn static_value_candidates(key: &str) -> Option<&'static [&'static str]> {
         "line-number-style" => LineNumberStyle::VALUES,
         "wrap-mode" => WrapMode::VALUES,
         "whitespace-space" | "whitespace-tab" => WhitespaceRender::VALUES,
-        // Newline is inherently always at end-of-line — no "trailing" axis.
-        "whitespace-newline" => &["none", "all"],
+        "whitespace-newline" => SHOW_NEWLINE_VALUES,
         _ => return None,
     })
 }

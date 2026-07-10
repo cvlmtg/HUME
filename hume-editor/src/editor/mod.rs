@@ -311,6 +311,18 @@ pub(crate) struct EditorState {
     pub(super) pending_repeat: Option<PendingRepeat>,
     /// Active insert session, present between begin/end_insert_session.
     pub(super) insert_session: Option<InsertSession>,
+    /// `true` when the cursor's current line's indent was auto-inserted by
+    /// this insert session (an `insert_newline_indent` copy) and nothing has
+    /// been typed on it since — the condition under which exiting Insert
+    /// mode should vacate that indent (vim autoindent parity: `:help
+    /// autoindent`, "if you do not type anything on the new line except
+    /// `<BS>` ... the indent is deleted again"). Reset on session start, set
+    /// by the Enter key handler, cleared by any other content-modifying key.
+    /// Lives on `EditorState` rather than [`InsertSession`] because dot-repeat
+    /// replay re-dispatches keys through the same key handlers with no
+    /// `InsertSession` present (see `replay_dot`), so it must be visible
+    /// there too.
+    pub(super) autoindent_pending: bool,
     /// Whether the user explicitly typed a count prefix before the current command.
     pub(super) explicit_count: bool,
     /// `true` when the current multi-key sequence began with a kitty one-shot
@@ -1032,6 +1044,7 @@ impl Editor {
                 selection_recipe: Vec::new(),
                 pending_repeat: None,
                 insert_session: None,
+                autoindent_pending: false,
                 explicit_count: false,
                 pending_ctrl_extend: false,
                 search: SearchState::default(),

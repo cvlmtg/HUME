@@ -141,6 +141,22 @@ fn star_on_trailing_newline_is_noop() {
     assert!(reg(&ed, 's').is_empty());
 }
 
+/// `*` with the head on whitespace is a no-op — no word to search for.
+///
+/// Regression: without the `CharClass::Space` guard, `inner_word_impl` would
+/// expand the cursor to the adjacent whitespace run and set a bare-space
+/// search pattern, which matches every run of whitespace in the buffer.
+#[test]
+fn star_on_whitespace_is_noop() {
+    // "a b c\n", cursor on the space between 'a' and 'b'.
+    let mut ed = editor_from("a-[ ]>b c\n");
+    let before = state(&ed);
+    ed.handle_key(key('*'));
+    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(state(&ed), before);
+    assert!(reg(&ed, 's').is_empty());
+}
+
 /// `*` escapes regex metacharacters in the word it expands to.
 #[test]
 fn star_escapes_metacharacters() {
@@ -248,4 +264,20 @@ fn search_selection_on_collapsed_cursor_searches_char() {
     let mut ed = editor_from("-[a]>bc abc\n");
     ed.handle_key(key_ctrl('/'));
     assert_eq!(reg(&ed, 's'), vec!["a"]);
+}
+
+/// `Ctrl+/` on a collapsed cursor sitting on a structural `\n` is a no-op.
+///
+/// Regression: without this guard, the 1-char selection "\n" becomes the
+/// search pattern — a raw-newline regex that matches every line end,
+/// clobbering the search register with something useless (the same
+/// degenerate case `*` avoids via its `CharClass::Eol` guard).
+#[test]
+fn search_selection_on_newline_is_noop() {
+    let mut ed = editor_from("hello\n-[\n]>");
+    let before = state(&ed);
+    ed.handle_key(key_ctrl('/'));
+    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(state(&ed), before);
+    assert!(reg(&ed, 's').is_empty());
 }

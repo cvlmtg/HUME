@@ -450,6 +450,7 @@ mod kitty;
 mod language;
 mod list_buffers;
 mod macros;
+mod mouse;
 mod multi_pane;
 mod page_scroll;
 mod pane_focus;
