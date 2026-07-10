@@ -792,6 +792,7 @@ mod per_pane_jumps;
 mod plugins;
 mod render_snapshot;
 mod scripting_grammar;
+mod scripting_lsp_install;
 mod search;
 mod select_all;
 mod shift_punctuation;

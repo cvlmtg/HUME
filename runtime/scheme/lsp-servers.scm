@@ -6,10 +6,16 @@
 ;;;    (languages (lang-name root-marker…)…)
 ;;;    (command . cmd)
 ;;;    (args arg…)
-;;;    (settings (key . value)…))
+;;;    (settings entry…))
 ;;;
 ;;; Absent/empty fields are the empty tail — (args), (settings) — never #f.
-;;; All fields are fully canonicalised; no defaults are applied at read time.
+;;; A settings entry is one of:
+;;;   (key . scalar)      — string/number/bool leaf
+;;;   (key . #(elem…))    — a JSON array (#() when empty)
+;;;   (key entry…)        — a nested JSON object ((key) when empty)
+;;; The #(...) vector form is what distinguishes an empty array from an
+;;; empty object — both would render as `(key)` otherwise. All fields are
+;;; fully canonicalised; no defaults are applied at read time.
 ;;; Read via the R7RS idiom from any plugin:
 ;;;
 ;;;   (define *lsp-servers*
@@ -117,7 +123,7 @@
  ("perlnavigator" (languages ("perl")) (command . "perlnavigator") (args "--stdio") (settings))
  ("pest-language-server" (languages ("pest")) (command . "pest-language-server") (args) (settings))
  ("pkl-lsp" (languages ("pkl")) (command . "pkl-lsp") (args) (settings))
- ("pony-lsp" (languages ("ponylang" "corral.json" "lock.json")) (command . "pony-lsp") (args "--stdio") (settings (defines ) (ponypath )))
+ ("pony-lsp" (languages ("ponylang" "corral.json" "lock.json")) (command . "pony-lsp") (args "--stdio") (settings (defines . #()) (ponypath . #())))
  ("prisma-language-server" (languages ("prisma" "package.json")) (command . "prisma-language-server") (args "--stdio") (settings (prisma (enableDiagnostics . #t))))
  ("purescript-language-server" (languages ("purescript" "spago.yaml" "spago.dhall" "bower.json")) (command . "purescript-language-server") (args "--stdio") (settings))
  ("pylsp" (languages ("snakemake" "Snakefile" "config.yaml" "environment.yaml" "workflow/")) (command . "pylsp") (args) (settings))
@@ -145,7 +151,7 @@
  ("starpls" (languages ("starlark")) (command . "starpls") (args) (settings))
  ("styx" (languages ("styx")) (command . "styx") (args "lsp") (settings))
  ("svelteserver" (languages ("svelte")) (command . "svelteserver") (args "--stdio") (settings (configuration (javascript (inlayHints (enumMemberValues (enabled . #t)) (functionLikeReturnTypes (enabled . #t)) (parameterNames (enabled . "all")) (parameterTypes (enabled . #t)) (propertyDeclarationTypes (enabled . #t)) (variableTypes (enabled . #t)))) (typescript (inlayHints (enumMemberValues (enabled . #t)) (functionLikeReturnTypes (enabled . #t)) (parameterNames (enabled . "all")) (parameterTypes (enabled . #t)) (propertyDeclarationTypes (enabled . #t)) (variableTypes (enabled . #t)))))))
- ("svlangserver" (languages ("systemverilog")) (command . "svlangserver") (args) (settings (systemverilog (includeIndexing "*.{v,vh,sv,svh}" "**/*.{v,vh,sv,svh}"))))
+ ("svlangserver" (languages ("systemverilog")) (command . "svlangserver") (args) (settings (systemverilog (includeIndexing . #("*.{v,vh,sv,svh}" "**/*.{v,vh,sv,svh}")))))
  ("swipl" (languages ("prolog")) (command . "swipl") (args "-g" "use_module(library(lsp_server))" "-g" "lsp_server:main" "-t" "halt" "--" "stdio") (settings))
  ("systemd-lsp" (languages ("systemd")) (command . "systemd-lsp") (args) (settings))
  ("taplo" (languages ("toml") ("jjconfig") ("miseconfig") ("cross-config") ("git-cliff-config")) (command . "taplo") (args "lsp" "stdio") (settings))

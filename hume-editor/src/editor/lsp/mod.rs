@@ -189,6 +189,15 @@ impl LspState {
         self.configs.get(language).map(|c| c.command.clone())
     }
 
+    /// The registered `settings` JSON for `language`, or `None` if
+    /// unregistered or registered with no settings — lets tests assert the
+    /// Steel-to-JSON settings conversion without reaching into the private
+    /// `configs` map directly.
+    #[cfg(test)]
+    pub(crate) fn config_settings_for_test(&self, language: &str) -> Option<serde_json::Value> {
+        self.configs.get(language).and_then(|c| c.settings.clone())
+    }
+
     /// Number of tracked servers — one entry per `backend.start`, so a
     /// second buffer attaching under the same (language, root) key (rather
     /// than spawning) leaves this unchanged.

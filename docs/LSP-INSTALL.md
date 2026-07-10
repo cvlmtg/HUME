@@ -127,9 +127,14 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
   so the scan can never produce conflicting registrations.
 - Every entry uses one shape: an absent/empty value is the empty tail (`(args)`,
   `(settings)`), never `#f` — consumers read one encoding.
-- `settings` / `init-options` are nested alists; the plugin converts them to JSON at the
-  existing `steel_to_json` boundary. The sync script translates Helix's TOML `config.*`
-  tables.
+- `settings` / `init-options` are nested alists whose entries take one of three shapes —
+  `(key . scalar)`, `(key . #(elem…))` for a JSON array (`#()` when empty), or
+  `(key entry…)` for a nested object (`(key)` when empty). The `#(...)` vector form is
+  what disambiguates an empty array from an empty object; both would otherwise read as
+  `(key)`. The plugin converts this to a Steel hash and JSON-encodes it at the existing
+  `steel_to_json` boundary. The sync script translates Helix's TOML `config.*` tables and
+  JSON arrays into this shape (`scripts/sync_common.py`'s `sexpr_dumps`,
+  `vector_arrays=True`).
 
 **`lsp-sources.scm`** (install, from mason-pin) — per-kind record shapes:
 
@@ -321,7 +326,7 @@ files, step 2's builtin signatures).
   Windows without it). Update `LSP.md` where the new semantics invalidate it: the
   Decisions row "reject a second `register-lsp-server!`" and the Steel API index's
   init-only marking.
-- [ ] **Step 3 — PLUM `servers.scm`** (Steel, pure consumer of steps 1+2): scan-on-load
+- [x] **Step 3 — PLUM `servers.scm`** (Steel, pure consumer of steps 1+2): scan-on-load
   registration; `lsp-install` / `lsp-uninstall` / `lsp-servers` commands; receipts; orphan
   warnings; npm install path; missing-server hint; user-manual + `init.scm.example` docs.
   `grammars.scm` is the template. Marshalling gotcha: the minibuffer passes the integer

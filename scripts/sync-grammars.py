@@ -86,10 +86,16 @@ LSP_SERVERS_HEADER = """\
 ;;;    (languages (lang-name root-marker…)…)
 ;;;    (command . cmd)
 ;;;    (args arg…)
-;;;    (settings (key . value)…))
+;;;    (settings entry…))
 ;;;
 ;;; Absent/empty fields are the empty tail — (args), (settings) — never #f.
-;;; All fields are fully canonicalised; no defaults are applied at read time.
+;;; A settings entry is one of:
+;;;   (key . scalar)      — string/number/bool leaf
+;;;   (key . #(elem…))    — a JSON array (#() when empty)
+;;;   (key entry…)        — a nested JSON object ((key) when empty)
+;;; The #(...) vector form is what distinguishes an empty array from an
+;;; empty object — both would render as `(key)` otherwise. All fields are
+;;; fully canonicalised; no defaults are applied at read time.
 ;;; Read via the R7RS idiom from any plugin:
 ;;;
 ;;;   (define *lsp-servers*
@@ -351,7 +357,9 @@ def emit_lsp_servers(servers: dict[str, dict]) -> list[str]:
             for lang_tuple in s["languages"]
         )
         args_sexpr = " ".join(scheme_str(a) for a in s["args"])
-        settings_sexpr = sexpr_dumps(s["settings"]) if s["settings"] else ""
+        settings_sexpr = (
+            sexpr_dumps(s["settings"], vector_arrays=True) if s["settings"] else ""
+        )
         row = " ({} (languages {}) (command . {}) (args{}) (settings{}))".format(
             scheme_str(name),
             langs_sexpr,

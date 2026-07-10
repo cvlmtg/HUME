@@ -29,6 +29,10 @@ See [Plugins](plugins.md) for how to declare and write your own.
 
 PLUM also installs and manages tree-sitter grammars. See [Syntax Highlighting](syntax-highlighting.md) for the full workflow and its `:plum-*-grammar` commands.
 
+### Language servers
+
+PLUM also downloads and manages language servers. See [Language Servers](lsp.md#installing-servers) for the full workflow and its `:lsp-install` / `:lsp-uninstall` / `:lsp-servers` commands.
+
 ## core:lsp
 
 Language server support: hover, go-to-definition, references, diagnostics, rename,

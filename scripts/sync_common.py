@@ -31,15 +31,28 @@ def scheme_list(items: list) -> str:
     return "'(" + " ".join(scheme_str(x) for x in items) + ")"
 
 
-def sexpr_dumps(value) -> str:
+def sexpr_dumps(value, *, vector_arrays: bool = False) -> str:
     """Render a TOML/JSON-parsed value as a canonical Scheme literal.
 
     - dict -> alist: a key whose value is a scalar becomes `(key . value)`;
-      a key whose value is a dict or list becomes `(key <nested>)` (the
-      wrapping parens are added by the *caller* iterating the dict, so this
-      composes without double-wrapping). Keys are sorted for determinism.
-    - list -> its elements, each dumped and space-joined.
+      a key whose value is a dict becomes `(key <nested>)` (the wrapping
+      parens are added by the *caller* iterating the dict, so this composes
+      without double-wrapping; an empty dict becomes `(key)`, the empty
+      tail). A key whose value is a list becomes `(key elem…)` — or, when
+      `vector_arrays` is set, `(key . #(elem…))` (`#()` for an empty list).
+      Keys are sorted for determinism.
+    - list -> its elements, each dumped and space-joined (top-level only;
+      nested-in-dict lists go through the branch above).
     - str -> a quoted Scheme string; bool -> `#t`/`#f`; int/float -> literal.
+
+    `vector_arrays` exists because the two non-vector shapes above collide:
+    a dict value that's a list and a dict value that's an empty dict both
+    render as `(key elem…)`/`(key)`, so a reader can't tell a JSON array
+    from a JSON object by shape alone. Emitting arrays as `#(...)` instead
+    makes the two shapes distinct: `(key . #(...))` is always an array
+    (`#()` when empty), `(key entries…)` is always a nested object (`(key)`
+    when empty). Callers that don't need this distinction (e.g. grammar
+    source tuples, which have no nested arrays) can omit the flag.
 
     Absent/empty values are never represented here as `#f` — callers emit
     the empty tail (e.g. `(settings)`) themselves when a value is missing.
@@ -55,14 +68,19 @@ def sexpr_dumps(value) -> str:
         for k in sorted(value):
             v = value[k]
             if isinstance(v, dict):
-                parts.append(f"({k} {sexpr_dumps(v)})")
+                parts.append(f"({k} {sexpr_dumps(v, vector_arrays=vector_arrays)})")
             elif isinstance(v, list):
-                parts.append(f"({k} {' '.join(sexpr_dumps(x) for x in v)})")
+                if vector_arrays:
+                    inner = " ".join(sexpr_dumps(x, vector_arrays=vector_arrays) for x in v)
+                    parts.append(f"({k} . #({inner}))")
+                else:
+                    inner = " ".join(sexpr_dumps(x, vector_arrays=vector_arrays) for x in v)
+                    parts.append(f"({k} {inner})")
             else:
-                parts.append(f"({k} . {sexpr_dumps(v)})")
+                parts.append(f"({k} . {sexpr_dumps(v, vector_arrays=vector_arrays)})")
         return " ".join(parts)
     if isinstance(value, list):
-        return " ".join(sexpr_dumps(x) for x in value)
+        return " ".join(sexpr_dumps(x, vector_arrays=vector_arrays) for x in value)
     raise TypeError(f"sexpr_dumps: unsupported type {type(value).__name__}")
 
 
@@ -93,10 +111,12 @@ def read_sexpr(path: Path):
 
     Supports exactly the subset this pipeline emits: nested lists, quoted
     strings (`\\` and `\"` escapes), dotted pairs `(k . v)`, bare symbols,
-    `#t`/`#f`, integers, and `;` line comments. Lists become Python lists;
-    a dotted pair `(k . v)` becomes a 2-tuple `(Sym, value)`; bare symbols
-    become `Sym` instances so callers can tell them apart from quoted
-    strings.
+    `#t`/`#f`, integers, `#(...)` vector literals, and `;` line comments.
+    Lists become Python lists; a dotted pair `(k . v)` becomes a 2-tuple
+    `(Sym, value)`; bare symbols become `Sym` instances so callers can tell
+    them apart from quoted strings. A `#(...)` vector also becomes a plain
+    Python list — nothing in this pipeline needs to distinguish a vector
+    from a list once parsed back into Python, only the Scheme reader does.
     """
     text = path.read_text(encoding="utf-8")
     n = len(text)
@@ -154,6 +174,17 @@ def read_sexpr(path: Path):
         if pos >= n:
             raise ValueError(f"{path}: unexpected end of input")
         c = text[pos]
+        if c == "#" and pos + 1 < n and text[pos + 1] == "(":
+            pos += 2
+            items = []
+            while True:
+                skip_ws()
+                if pos >= n:
+                    raise ValueError(f"{path}: unterminated vector")
+                if text[pos] == ")":
+                    pos += 1
+                    return items
+                items.append(read_value())
         if c == "(":
             pos += 1
             items = []

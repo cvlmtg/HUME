@@ -5,13 +5,16 @@ diagnostics, rename, formatting, code actions, signature help, completions, and 
 
 ## Setup
 
-Install a language server on your system, register it, and bring in `core:lsp` from your
-`init.scm`.
+Bring in `core:lsp` from your `init.scm`, and make sure a server is registered for the
+languages you use. The easiest way to get one is [`:lsp-install`](#installing-servers) — run
+it once per language and PLUM downloads, registers, and reattaches automatically from then
+on. If you'd rather manage a server yourself (a local build, a version PLUM doesn't carry, or
+a `$PATH` copy you want to take precedence), register it by hand instead — see
+[Registering a language server](#registering-a-language-server).
 
 ```scheme
 (load-plugin "core:stdlib")   ; core:lsp depends on it
-
-(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
+(load-plugin "core:plum")     ; for :lsp-install
 
 (declare-plugin "core:lsp"
   #:events '("on-lsp-attach")
@@ -33,8 +36,101 @@ LSP in every session and would rather it load from the start, swap `declare-plug
 Opening a file whose language matches a registered server spawns it automatically (once per
 project root) and attaches.
 
+## Installing servers
+
+[PLUM](core-plugins.md#plum) downloads and manages language servers for you, the same way it
+handles tree-sitter grammars — no need to track down a binary or install it by hand.
+
+```scheme
+(load-plugin "core:plum")
+```
+
+### Prerequisites
+
+Installing a server shells out to a few external tools. Most are already on your system; if
+one is missing, the install tells you which one before downloading anything. Depending on the
+server:
+
+- `curl` — always, to download the release asset
+- `gzip` — for servers distributed as a single gzip-compressed binary
+- `unzip` (macOS/Linux) or `tar` (Windows) — for servers distributed as a zip archive
+- `node` and `npm` — for servers distributed as an npm package
+
+How you install these depends on your operating system:
+
+- **macOS**: [Homebrew](https://brew.sh) — `brew install curl gzip unzip node`.
+- **Linux**: use your distribution's package manager; these are usually already installed
+  except `node`/`npm`, which most distros package as `nodejs`/`npm`.
+- **Windows**: `tar` and `curl` ship with Windows 10+; `gzip` needs Git for Windows (or an
+  equivalent) on `PATH`; install `node` from [nodejs.org](https://nodejs.org) or via
+  [winget](https://learn.microsoft.com/windows/package-manager/winget/)/[Scoop](https://scoop.sh).
+
+### Install a server
+
+Open a file in the language you want a server for, then run:
+
+```
+:lsp-install
+```
+
+Or name the language directly:
+
+```
+:lsp-install rust
+```
+
+HUME downloads the pinned release, verifies its checksum, unpacks it, and registers it —
+already-open buffers of that language attach immediately, no restart needed. Running it again
+for a server that's already at the latest seeded version is a no-op.
+
+You don't need to run this ahead of time: opening a file whose language has an installable
+server but nothing registered yet shows a one-line hint — `run :lsp-install` — once per
+language per session.
+
+### See what's available
+
+```
+:lsp-servers
+```
+
+Lists every server HUME knows how to install: its languages, its seeded version, and whether
+it's installed, out of date, or not installable on your platform (and why).
+
+### Manage installed servers
+
+```
+:lsp-uninstall <name>
+```
+
+Shuts down any running client for that server, unregisters it, and removes it from disk. Use
+the server's name from `:lsp-servers`, not the language name — e.g.
+`:lsp-uninstall rust-analyzer`, not `:lsp-uninstall rust`.
+
+Reinstalling a server that's already running (e.g. to pick up an update) shuts the old client
+down first; on most platforms this completes in one step. If it doesn't (a locked file on
+Windows), the message says so — run `:lsp-install` again.
+
+### Troubleshooting
+
+**`:lsp-install` fails naming a missing tool.** Install it — see the
+[prerequisites](#prerequisites) above.
+
+**`:lsp-install` says "not installable".** Not every server HUME knows about can be
+auto-installed — some don't publish prebuilt binaries HUME can unpack, or are only available
+through a package manager not yet supported (`cargo`, `pip`, `gem`, …). Install it yourself
+and register it manually — see [Registering a language server](#registering-a-language-server)
+below.
+
+**A server on your `$PATH` isn't the one HUME runs.** `:lsp-install` always spawns the managed
+copy, even when the same command name also resolves on `$PATH` — you'll see a note about this
+after installing. Register the server manually instead if you want your `$PATH` copy to take
+precedence.
+
 ## Registering a language server
 
+Registering by hand is only needed if you're not using
+[`:lsp-install`](#installing-servers) — a locally built server, a version PLUM doesn't carry,
+or a `$PATH` copy you want to take precedence over a managed install.
 `register-lsp-server!` takes:
 
 | Argument | Meaning |
@@ -46,8 +142,7 @@ project root) and attaches.
 | `#:init-options` | Server-specific initialization options, as a `hash` |
 | `#:settings` | Server-specific configuration, as a `hash` — sent once at startup and answered verbatim to the server's own configuration requests |
 
-Examples for a few commonly used servers (install the server binary yourself; HUME only
-spawns it):
+Examples for a few commonly used servers:
 
 ```scheme
 ;; Rust — rust-analyzer
@@ -109,6 +204,9 @@ enabled.
 ```
 
 ## Managing servers
+
+Commands for a server that's already running. To install, browse the catalog, or remove a
+server from disk, see [Installing servers](#installing-servers).
 
 | Command | Effect |
 |---------|--------|

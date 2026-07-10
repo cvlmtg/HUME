@@ -33,11 +33,16 @@
 ;; See plugins.md and core-plugins.md.
 
 ;; (load-plugin "core:stdlib")         ; selection-query helpers other plugins need
-;; (load-plugin "core:plum")           ; plugin manager + grammar installer
+;; (load-plugin "core:plum")           ; plugin/grammar/language-server manager
 
 ;; Language servers — see user-manual/docs/lsp.md for setup and per-language examples.
-;; (register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
+;; With core:plum loaded, run :lsp-install (per language) to download and register a
+;; server automatically — no manual registration below needed for a seeded server.
 ;; (declare-plugin "core:lsp" #:events '("on-lsp-attach") #:commands '("lsp-hover"))
+;;
+;; A manual registration always overrides a PLUM-managed one — use it for a local
+;; build, a version PLUM doesn't carry, or to prefer a $PATH copy:
+;; (register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
 
 ;; Third-party plugins, installed by :plum-install:
 ;; (load-plugin "alice/my-theme")

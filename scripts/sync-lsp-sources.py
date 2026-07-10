@@ -7,12 +7,16 @@ runtime/scheme/lsp-servers.scm (server names Helix actually wires) through
 an explicit name-mapping table, and rewrites lsp-sources.scm with per-server
 install records (see docs/LSP-INSTALL.md).
 
-Standalone and slow by design: it downloads every selected github asset to
-compute a sha256. Run after sync-grammars.py if a helix-pin bump renamed or
-dropped any LSP servers — see scripts/sync-readme.md for the run order.
+Standalone and slow by design: on a from-scratch run it downloads every
+selected github asset to compute a sha256. A repeat run reuses the sha256
+already recorded in the checked-in lsp-sources.scm for any (repo, version,
+asset-file) combination that hasn't changed, so a routine re-sync after an
+unrelated pin bump downloads only the genuinely new or changed assets. Run
+after sync-grammars.py if a helix-pin bump renamed or dropped any LSP
+servers — see scripts/sync-readme.md for the run order.
 
 Idempotent: running twice against the same pins produces a byte-identical
-file (network fetches happen either way; only the written bytes are stable).
+file.
 """
 
 from __future__ import annotations
@@ -169,12 +173,25 @@ def strip_mason_bin_prefix(value: str) -> str:
     return _BIN_PREFIX_RE.sub("", value)
 
 
+_TEMPLATE_MAX_PASSES = 5
+
+
 def resolve_template(template: str, *, version: str, asset: dict) -> str | None:
     """Resolve {{...}} constructs against one asset entry. Returns None if the
     template references something unresolvable from static data alone (a
     `source.build.*` reference, a filter expression, a computed field not
     present in the asset) — the caller skips that one target with a report,
-    rather than aborting the whole sync."""
+    rather than aborting the whole sync.
+
+    Resolution is fixed-point, not single-pass: a `{{source.asset.*}}`
+    reference can pull in another asset field (e.g. `file`) whose own raw
+    value still contains an unresolved `{{version}}` — Mason's registry
+    nests templates this way for several packages (clangd, verible, …).
+    Re-running substitution until no `{{` remains (bounded by
+    `_TEMPLATE_MAX_PASSES` so a self-referential template can't loop
+    forever) is what lets the emitted data honor "the runtime sees literals
+    only": a `{{` surviving into the final string is caught by the
+    emit-time assertion in `main`, never shipped."""
     unresolved = False
 
     def repl(m):
@@ -196,8 +213,12 @@ def resolve_template(template: str, *, version: str, asset: dict) -> str | None:
         unresolved = True
         return ""
 
-    result = _TEMPLATE_RE.sub(repl, template)
-    return None if unresolved else result
+    result = template
+    for _ in range(_TEMPLATE_MAX_PASSES):
+        if "{{" not in result:
+            break
+        result = _TEMPLATE_RE.sub(repl, result)
+    return None if unresolved or "{{" in result else result
 
 
 def index_assets_by_mason_target(assets) -> dict:
@@ -222,6 +243,43 @@ def pick_bin_template(bin_map: dict, helix_command: str, server_name: str):
     return None
 
 
+def load_sha256_cache(path: Path) -> dict[str, str]:
+    """Return {download-url: sha256} read from the previously checked-in
+    lsp-sources.scm, so re-syncing after an unrelated pin bump doesn't
+    re-download and re-hash every unchanged github asset. Best-effort: a
+    missing or unparseable file yields an empty cache (equivalent to a
+    from-scratch run) rather than aborting the sync — the cache is a speed
+    optimization, not a correctness dependency."""
+    if not path.exists():
+        return {}
+    try:
+        data = read_sexpr(path)
+    except Exception as e:
+        print(f"  warning: could not read {path} for hash cache: {e}", file=sys.stderr)
+        return {}
+
+    cache: dict[str, str] = {}
+    for rec in data:
+        fields = {str(f[0]): f[1] for f in rec[1:] if isinstance(f, tuple)}
+        if fields.get("kind") != "github":
+            continue
+        repo = fields.get("repo")
+        version = fields.get("version")
+        targets_entry = next(
+            (f for f in rec[1:] if isinstance(f, list) and f and str(f[0]) == "targets"),
+            None,
+        )
+        if not (repo and version and targets_entry):
+            continue
+        for target_row in targets_entry[1:]:
+            if len(target_row) != 4:
+                continue
+            _hume_target, asset_file, sha256, _bin_path = target_row
+            url = f"https://github.com/{repo}/releases/download/{version}/{asset_file}"
+            cache[url] = sha256
+    return cache
+
+
 def sha256_of_url(url: str):
     """Return the sha256 of the resource at `url`, or None if it can't be
     downloaded. A download failure here means Mason's own registry data is
@@ -242,7 +300,9 @@ def sha256_of_url(url: str):
     return f"sha256:{h.hexdigest()}"
 
 
-def build_github_record(name: str, package: dict, helix_command: str, reports: dict):
+def build_github_record(
+    name: str, package: dict, helix_command: str, reports: dict, hash_cache: dict[str, str]
+):
     _kind, repo, version = parse_purl(package["source"]["id"])
     assets = package["source"].get("asset")
     if not assets:
@@ -279,11 +339,16 @@ def build_github_record(name: str, package: dict, helix_command: str, reports: d
         reports["format_census"][ext or "(raw)"] += 1
 
         url = f"https://github.com/{repo}/releases/download/{version}/{resolved_file}"
-        print(f"  hashing {name} [{hume_target}]: {resolved_file}", file=sys.stderr)
-        sha256 = sha256_of_url(url)
-        if sha256 is None:
-            reports["download_failures"].append((name, hume_target, url))
-            continue
+        cached = hash_cache.get(url)
+        if cached is not None:
+            print(f"  reusing cached sha256 for {name} [{hume_target}]: {resolved_file}", file=sys.stderr)
+            sha256 = cached
+        else:
+            print(f"  hashing {name} [{hume_target}]: {resolved_file}", file=sys.stderr)
+            sha256 = sha256_of_url(url)
+            if sha256 is None:
+                reports["download_failures"].append((name, hume_target, url))
+                continue
         targets.append((hume_target, resolved_file, sha256, resolved_bin))
 
     for hume_target in MASON_TARGET_PRIORITY:
@@ -310,6 +375,20 @@ def build_npm_record(name: str, package: dict, helix_command: str):
 
 def scheme_str_list(items) -> str:
     return " ".join(scheme_str(x) for x in items)
+
+
+def assert_no_unresolved_templates(rows: list[str]) -> None:
+    """Emit-time backstop for the design guarantee "the runtime sees
+    literals only": abort, naming every offending row, rather than write a
+    file containing a `{{...}}` template that `resolve_template` failed to
+    fully resolve (its per-target skip-with-report only covers file/bin
+    fields — this is the last line of defense over the whole row)."""
+    offenders = [row for row in rows if "{{" in row]
+    if offenders:
+        sys.exit(
+            f"error: unresolved {{{{ }}}} template(s) survived into emitted data "
+            f"({len(offenders)} row(s)):\n" + "\n".join(offenders)
+        )
 
 
 def emit_lsp_sources(records: dict) -> list[str]:
@@ -365,6 +444,9 @@ def main() -> None:
     mason_pkgs = fetch_registry(tag)
     mason_lsp = {p["name"]: p for p in mason_pkgs if "LSP" in p.get("categories", [])}
 
+    hash_cache = load_sha256_cache(LSP_SOURCES_SCM)
+    print(f"sha256 cache: {len(hash_cache)} entries loaded from prior sync", file=sys.stderr)
+
     reports = {
         "unmatched": [],
         "deprecated": [],
@@ -389,7 +471,7 @@ def main() -> None:
         helix_command = commands[helix_name]
 
         if purl_kind == "github":
-            record = build_github_record(helix_name, package, helix_command, reports)
+            record = build_github_record(helix_name, package, helix_command, reports, hash_cache)
         elif purl_kind == "npm":
             record = build_npm_record(helix_name, package, helix_command)
         else:
@@ -424,8 +506,11 @@ def main() -> None:
     for name in records:
         assert name in commands, f"invariant violated: emitted server '{name}' not in lsp-servers.scm"
 
+    source_rows = emit_lsp_sources(records)
+    assert_no_unresolved_templates(source_rows)
+
     parts = [LSP_SOURCES_HEADER.format(tag=tag)]
-    parts.append("\n".join(emit_lsp_sources(records)))
+    parts.append("\n".join(source_rows))
     parts.append("")
     write_atomic(LSP_SOURCES_SCM, "\n".join(parts))
 
