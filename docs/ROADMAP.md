@@ -173,7 +173,7 @@
 ### M12 — Editor chrome (planned)
 
 - **Class B chrome slot (bottom drawer)** — core landed via LSP's U6 (`docs/lsp/step-3.md`): `DrawerProvider` trait + `EngineView::pane_area` folds its height in alongside the tab bar/statusline, full-width, auto-sized (`min(rows + 1, terminal_height / 2)`), a generic `show-drawer-list!`/`close-drawer!` Steel API (pre-formatted display strings, Rust never interprets row content — the caller's `on-select` does any jump itself), and the `j`/`k`/`Enter`/`Esc` browse-while-editing key intercept (stays open across `Enter`, unlike the popup/menu). Still open: no other client has been wired to it yet — `:ls`, `:messages`, notifications, and command/search history pagers all still need their own formatting layer on top of the same primitive.
-- **File picker / fuzzy finder** (Helix-style): depends on split/pane layout. Deferred until post-splits.
+- **File picker / fuzzy finder** (Helix-style): full design + task breakdown in `docs/COMPLETION-PICKER.md` (Part B). Splits dependency satisfied by M10 T2; remaining gate is prioritization.
 - **Class A docked panes (fixed-row-count `LayoutTree` variant)**: real panes docked to a fixed row count inside the split tree. `LayoutTree::Fixed { rows, main, dock }` alongside `Split { ratio }`. Clients: quickfix list, LSP references/diagnostics, embedded terminal/REPL, build/test runner, `:help` pager, DAP debugger views. Deferred until the first concrete client is scoped.
 
 ### Future
@@ -188,7 +188,8 @@
 - **Streaming load for huge files**: chunked `Rope::from_reader` replacing single blocking `fs::read_to_string`.
 - **LSP support** — see `LSP.md` (hub) + `docs/lsp/step-*.md` (task cards) for the full design and task breakdown (includes the virtual-lines/decoration-layer work: inline diagnostics, inlay hints).
 - **Unified decoration system**: single `Decoration` trait replacing the current separate provider traits (`GutterColumn`, `HighlightSource`, `VirtualLineSource`, `InlineDecoration`, `OverlayProvider`). Post-LSP, once the decoration surface is stable.
-- **Steel builtin to register custom completers**: plugin-side `Completer` implementations dispatched by command name; core does prefix matching only (fuzzy scoring is a plugin concern).
+- **Steel builtin to register custom completers**: plugin-side `Completer` implementations dispatched by command name; core does prefix matching only (fuzzy scoring is a plugin concern). Note: this is the *minibuffer* system — the insert-mode scriptable-completion design lives in `docs/COMPLETION-PICKER.md` (Part A) and deliberately does not touch it.
+- **Scriptable completion sources + fuzzy pickers**: design + task breakdown in `docs/COMPLETION-PICKER.md` (Part A: multi-source insert-mode completion; Part B: generic picker foundation). Nothing blocks on current work — both parts are additive.
 - Git gutter signs (plugin candidate — keep out of core)
 - File watcher (detect external file changes, prompt to reload)
 - Documentation: Markdown guides, auto-generated command reference, in-editor `:help`
