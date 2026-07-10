@@ -1,0 +1,436 @@
+#!/usr/bin/env python3
+"""Regenerate runtime/scheme/lsp-sources.scm from mason-org/mason-registry.
+
+Reads the pinned release tag from runtime/scheme/mason-pin.scm, downloads
+that release's compiled registry.json.zip, joins it against the checked-in
+runtime/scheme/lsp-servers.scm (server names Helix actually wires) through
+an explicit name-mapping table, and rewrites lsp-sources.scm with per-server
+install records (see docs/LSP-INSTALL.md).
+
+Standalone and slow by design: it downloads every selected github asset to
+compute a sha256. Run after sync-grammars.py if a helix-pin bump renamed or
+dropped any LSP servers — see scripts/sync-readme.md for the run order.
+
+Idempotent: running twice against the same pins produces a byte-identical
+file (network fetches happen either way; only the written bytes are stable).
+"""
+
+from __future__ import annotations
+
+import collections
+import hashlib
+import io
+import json
+import re
+import sys
+import urllib.parse
+import urllib.request
+import zipfile
+from pathlib import Path
+from urllib.error import URLError
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from sync_common import read_pin, read_sexpr, scheme_str, write_atomic  # noqa: E402
+
+REPO = Path(__file__).resolve().parent.parent
+MASON_PIN_SCM = REPO / "runtime" / "scheme" / "mason-pin.scm"
+LSP_SERVERS_SCM = REPO / "runtime" / "scheme" / "lsp-servers.scm"
+LSP_SOURCES_SCM = REPO / "runtime" / "scheme" / "lsp-sources.scm"
+
+LSP_SOURCES_HEADER = """\
+;;; runtime/scheme/lsp-sources.scm — HUME bundled LSP server install catalog.
+;;;
+;;; PURE DATA. One literal sexpr — a list of per-server tagged alists, joined
+;;; to lsp-servers.scm by server name:
+;;;
+;;;   github: (name (kind . github) (version . tag) (repo . "owner/repo")
+;;;            (targets (hume-target asset-file sha256 bin-path)…))
+;;;   npm:    (name (kind . npm) (version . ver)
+;;;            (packages "name@version" extra…) (bin . script))
+;;;   stub:   (name (kind . other-kind) (version . ver))  — not installable;
+;;;           either an unsupported purl kind (golang, pypi, cargo, …) or a
+;;;           github package with no prebuilt asset (kind `github-build`,
+;;;           Mason builds it from source).
+;;;
+;;; hume-target is one of darwin-arm64, darwin-x64, linux-x64, windows-x64.
+;;; A server missing a target simply omits that row (not installable there).
+;;; All fields are fully canonicalised; no defaults are applied at read time.
+;;; Read via the R7RS idiom from any plugin:
+;;;
+;;;   (define *lsp-sources*
+;;;     (call-with-input-file
+;;;       (path-join (runtime-dir) "scheme" "lsp-sources.scm")
+;;;       read))
+;;;
+;;; A Helix server with no Mason equivalent (no HELIX_TO_MASON entry and no
+;;; identically-named Mason LSP-category package) gets no entry at all;
+;;; :lsp-install fails for it with "no install source".
+;;;
+;;; Source: mason-org/mason-registry @ {tag}
+;;; Full sync: run scripts/sync-lsp-sources.py after updating mason-pin.scm.
+;;; (Run scripts/sync-grammars.py first if helix-pin.scm also changed.)
+"""
+
+# Helix server name -> Mason package name, for the cases where the two
+# namespaces genuinely differ. Every entry below was confirmed by checking
+# that the Mason package's `bin` map contains a key exactly equal to the
+# Helix server's `command` string (see scripts/sync-readme.md) — a name
+# match alone is not enough evidence (e.g. Mason's "vetur-vls" looked like a
+# plausible match for Helix's "vuels" by name/lspconfig alias, but its bin
+# key "vls" does not match vuels's actual command "vue-language-server";
+# Mason's "vue-language-server" package is the real match).
+HELIX_TO_MASON = {
+    "actions-language-server": "gh-actions-language-server",
+    "ada-gpr-language-server": "ada-language-server",
+    "astro-ls": "astro-language-server",
+    "dhall-lsp-server": "dhall-lsp",
+    "djlsp": "django-template-lsp",
+    "docker-compose-langserver": "docker-compose-language-service",
+    "docker-langserver": "dockerfile-language-server",
+    "fsharp-ls": "fsautocomplete",
+    "graphql-language-service": "graphql-language-service-cli",
+    "helm_ls": "helm-ls",
+    "kcl-lsp": "kcl",
+    "luau": "luau-lsp",
+    "nls": "nickel-lang-lsp",
+    "ocamllsp": "ocaml-lsp",
+    "pylsp": "python-lsp-server",
+    "slangd": "slang",
+    "solc": "solidity",
+    "svelteserver": "svelte-language-server",
+    "typespec": "tsp-server",
+    "verible-verilog-ls": "verible",
+    "vhdl_ls": "rust_hdl",
+    "vlang-language-server": "v-analyzer",
+    "vscode-css-language-server": "css-lsp",
+    "vscode-html-language-server": "html-lsp",
+    "vscode-json-language-server": "json-lsp",
+    "vuels": "vue-language-server",
+    "yls": "yls-yara",
+}
+
+# hume-target -> ordered Mason target names to try, most-preferred first
+# (e.g. prefer a glibc Linux build over musl when both are offered).
+MASON_TARGET_PRIORITY = {
+    "darwin-arm64": ("darwin_arm64",),
+    "darwin-x64": ("darwin_x64",),
+    "linux-x64": ("linux_x64_gnu", "linux_x64", "linux_x64_musl"),
+    "windows-x64": ("win_x64",),
+}
+
+ARCHIVE_EXTENSIONS = (".tar.gz", ".tar.xz", ".tar.bz2", ".tgz", ".txz", ".zip", ".gz", ".xz")
+_TEMPLATE_RE = re.compile(r"\{\{\s*([^}]+?)\s*\}\}")
+_BIN_PREFIX_RE = re.compile(r"^[a-z][a-z0-9_]*:(?!//)")
+
+
+def fetch_registry(tag: str) -> list:
+    url = f"https://github.com/mason-org/mason-registry/releases/download/{tag}/registry.json.zip"
+    print(f"fetching {url}", file=sys.stderr)
+    try:
+        with urllib.request.urlopen(url, timeout=60) as r:
+            blob = r.read()
+    except URLError as e:
+        sys.exit(f"error: failed to fetch {url}: {e}")
+    with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+        with zf.open("registry.json") as f:
+            return json.loads(f.read().decode())
+
+
+def parse_purl(purl: str) -> tuple[str, str, str]:
+    """Return (kind, subject, version). subject is 'owner/repo' for github,
+    or the (percent-decoded, possibly '@scope/name') package name otherwise.
+    """
+    if not purl.startswith("pkg:"):
+        sys.exit(f"error: malformed purl (no 'pkg:' prefix): {purl}")
+    kind, _, rest = purl[4:].partition("/")
+    rest = rest.split("?", 1)[0]
+    rest = urllib.parse.unquote(rest)
+    subject, sep, version = rest.rpartition("@")
+    if not sep:
+        sys.exit(f"error: malformed purl (no @version): {purl}")
+    return kind, subject, version
+
+
+def strip_mason_subpath(file_field: str) -> str:
+    """Drop a Mason archive-subpath-extraction suffix (`file.tar.gz:libexec/`)
+    — HUME's installer extracts the whole archive and locates the binary by
+    its recorded bin-path, so only the real download filename is kept."""
+    if ":" not in file_field:
+        return file_field
+    head, _, _tail = file_field.partition(":")
+    return head if head.endswith(ARCHIVE_EXTENSIONS) else file_field
+
+
+def strip_mason_bin_prefix(value: str) -> str:
+    """Drop a Mason interpreter/wrapper-hint prefix (`exec:`, `ruby:`, …) from
+    a resolved github-kind bin path. HUME's installer chmod+x's every
+    installed binary unconditionally and does not replicate Mason's
+    interpreter-wrapper mechanics — only the underlying path is kept."""
+    return _BIN_PREFIX_RE.sub("", value)
+
+
+def resolve_template(template: str, *, version: str, asset: dict) -> str | None:
+    """Resolve {{...}} constructs against one asset entry. Returns None if the
+    template references something unresolvable from static data alone (a
+    `source.build.*` reference, a filter expression, a computed field not
+    present in the asset) — the caller skips that one target with a report,
+    rather than aborting the whole sync."""
+    unresolved = False
+
+    def repl(m):
+        nonlocal unresolved
+        expr = m.group(1).strip()
+        if expr == "version":
+            return version
+        if expr.startswith("source.asset."):
+            value = asset
+            for key in expr[len("source.asset.") :].split("."):
+                if not isinstance(value, dict) or key not in value:
+                    unresolved = True
+                    return ""
+                value = value[key]
+            if not isinstance(value, str):
+                unresolved = True
+                return ""
+            return value
+        unresolved = True
+        return ""
+
+    result = _TEMPLATE_RE.sub(repl, template)
+    return None if unresolved else result
+
+
+def index_assets_by_mason_target(assets) -> dict:
+    by_target = {}
+    for asset in assets:
+        targets = asset.get("target")
+        for t in targets if isinstance(targets, list) else [targets]:
+            by_target.setdefault(t, asset)
+    return by_target
+
+
+def pick_bin_template(bin_map: dict, helix_command: str, server_name: str):
+    if len(bin_map) == 1:
+        return next(iter(bin_map.values()))
+    if helix_command in bin_map:
+        return bin_map[helix_command]
+    print(
+        f"  skip '{server_name}': ambiguous bin map {sorted(bin_map)} — "
+        f"none match helix command '{helix_command}'",
+        file=sys.stderr,
+    )
+    return None
+
+
+def sha256_of_url(url: str):
+    """Return the sha256 of the resource at `url`, or None if it can't be
+    downloaded. A download failure here means Mason's own registry data is
+    stale or wrong for this one asset (e.g. a release tag that was since
+    deleted or renamed upstream) — the caller skips just that target rather
+    than aborting the whole sync over one broken, unrelated package."""
+    h = hashlib.sha256()
+    try:
+        with urllib.request.urlopen(url, timeout=180) as r:
+            while True:
+                chunk = r.read(1 << 16)
+                if not chunk:
+                    break
+                h.update(chunk)
+    except URLError as e:
+        print(f"  download failed, skipping target: {url}: {e}", file=sys.stderr)
+        return None
+    return f"sha256:{h.hexdigest()}"
+
+
+def build_github_record(name: str, package: dict, helix_command: str, reports: dict):
+    _kind, repo, version = parse_purl(package["source"]["id"])
+    assets = package["source"].get("asset")
+    if not assets:
+        return {"kind": "github-build", "version": version}
+
+    bin_map = package.get("bin") or {}
+    bin_template = pick_bin_template(bin_map, helix_command, name)
+    if bin_template is None:
+        return None
+
+    by_mason_target = index_assets_by_mason_target(
+        assets if isinstance(assets, list) else [assets]
+    )
+
+    targets = []
+    for hume_target, mason_targets in MASON_TARGET_PRIORITY.items():
+        asset = next((by_mason_target[t] for t in mason_targets if t in by_mason_target), None)
+        if asset is None:
+            continue
+
+        raw_file = strip_mason_subpath(asset["file"])
+        resolved_file = resolve_template(raw_file, version=version, asset=asset)
+        if resolved_file is None:
+            reports["unresolved_targets"].append((name, hume_target, "file", raw_file))
+            continue
+
+        resolved_bin = resolve_template(bin_template, version=version, asset=asset)
+        if resolved_bin is None:
+            reports["unresolved_targets"].append((name, hume_target, "bin", bin_template))
+            continue
+        resolved_bin = strip_mason_bin_prefix(resolved_bin)
+
+        ext = next((e for e in ARCHIVE_EXTENSIONS if resolved_file.endswith(e)), None)
+        reports["format_census"][ext or "(raw)"] += 1
+
+        url = f"https://github.com/{repo}/releases/download/{version}/{resolved_file}"
+        print(f"  hashing {name} [{hume_target}]: {resolved_file}", file=sys.stderr)
+        sha256 = sha256_of_url(url)
+        if sha256 is None:
+            reports["download_failures"].append((name, hume_target, url))
+            continue
+        targets.append((hume_target, resolved_file, sha256, resolved_bin))
+
+    for hume_target in MASON_TARGET_PRIORITY:
+        if hume_target not in {t[0] for t in targets}:
+            reports["missing_platform"][hume_target] += 1
+
+    return {"kind": "github", "version": version, "repo": repo, "targets": targets}
+
+
+def build_npm_record(name: str, package: dict, helix_command: str):
+    _kind, subject, version = parse_purl(package["source"]["id"])
+    extra_packages = package["source"].get("extra_packages", [])
+    bin_map = package.get("bin") or {}
+    bin_template = pick_bin_template(bin_map, helix_command, name)
+    if bin_template is None:
+        return None
+    if not bin_template.startswith("npm:"):
+        print(f"  skip '{name}': npm-kind bin template has no npm: prefix: {bin_template!r}", file=sys.stderr)
+        return None
+    script = bin_template[len("npm:") :]
+    packages = [f"{subject}@{version}"] + list(extra_packages)
+    return {"kind": "npm", "version": version, "packages": packages, "bin": script}
+
+
+def scheme_str_list(items) -> str:
+    return " ".join(scheme_str(x) for x in items)
+
+
+def emit_lsp_sources(records: dict) -> list[str]:
+    rows = []
+    for name in sorted(records):
+        r = records[name]
+        if r["kind"] == "github":
+            target_rows = " ".join(
+                "({} {} {} {})".format(
+                    t, scheme_str(f), scheme_str(sha), scheme_str(b)
+                )
+                for t, f, sha, b in r["targets"]
+            )
+            row = (
+                " ({} (kind . github) (version . {}) (repo . {}) (targets{}))".format(
+                    scheme_str(name),
+                    scheme_str(r["version"]),
+                    scheme_str(r["repo"]),
+                    f" {target_rows}" if target_rows else "",
+                )
+            )
+        elif r["kind"] == "npm":
+            row = " ({} (kind . npm) (version . {}) (packages {}) (bin . {}))".format(
+                scheme_str(name),
+                scheme_str(r["version"]),
+                scheme_str_list(r["packages"]),
+                scheme_str(r["bin"]),
+            )
+        else:
+            row = " ({} (kind . {}) (version . {}))".format(
+                scheme_str(name), r["kind"], scheme_str(r["version"])
+            )
+        rows.append(row)
+    return ["("] + rows + [")"]
+
+
+def main() -> None:
+    tag = read_pin(MASON_PIN_SCM)
+    print(f"mason-pin: {tag}", file=sys.stderr)
+
+    if not LSP_SERVERS_SCM.exists():
+        sys.exit(
+            f"error: {LSP_SERVERS_SCM} does not exist — run scripts/sync-grammars.py first"
+        )
+    servers_data = read_sexpr(LSP_SERVERS_SCM)
+    commands = {}
+    for rec in servers_data:
+        server_name = str(rec[0])
+        command = next(f[1] for f in rec[1:] if isinstance(f, tuple) and str(f[0]) == "command")
+        commands[server_name] = command
+    helix_names = sorted(commands)
+
+    mason_pkgs = fetch_registry(tag)
+    mason_lsp = {p["name"]: p for p in mason_pkgs if "LSP" in p.get("categories", [])}
+
+    reports = {
+        "unmatched": [],
+        "deprecated": [],
+        "kind_census": collections.Counter(),
+        "unresolved_targets": [],
+        "download_failures": [],
+        "missing_platform": collections.Counter(),
+        "format_census": collections.Counter(),
+    }
+
+    records = {}
+    for helix_name in helix_names:
+        mason_name = HELIX_TO_MASON.get(helix_name, helix_name)
+        package = mason_lsp.get(mason_name)
+        if package is None:
+            reports["unmatched"].append(helix_name)
+            continue
+        if "deprecation" in package:
+            reports["deprecated"].append((helix_name, mason_name, package["deprecation"]))
+
+        purl_kind, _subject, version = parse_purl(package["source"]["id"])
+        helix_command = commands[helix_name]
+
+        if purl_kind == "github":
+            record = build_github_record(helix_name, package, helix_command, reports)
+        elif purl_kind == "npm":
+            record = build_npm_record(helix_name, package, helix_command)
+        else:
+            record = {"kind": purl_kind, "version": version}
+
+        if record is None:
+            continue
+        records[helix_name] = record
+        reports["kind_census"][record["kind"]] += 1
+
+    if reports["unmatched"]:
+        print(f"unmatched helix servers ({len(reports['unmatched'])}):", file=sys.stderr)
+        for n in reports["unmatched"]:
+            print(f"  {n}", file=sys.stderr)
+    if reports["deprecated"]:
+        print(f"deprecated mason packages matched ({len(reports['deprecated'])}):", file=sys.stderr)
+        for helix_name, mason_name, dep in reports["deprecated"]:
+            print(f"  {helix_name} -> {mason_name}: {dep}", file=sys.stderr)
+    if reports["unresolved_targets"]:
+        print(f"unresolved targets ({len(reports['unresolved_targets'])}):", file=sys.stderr)
+        for name, target, field, template in reports["unresolved_targets"]:
+            print(f"  {name} [{target}] {field}: {template!r}", file=sys.stderr)
+    if reports["download_failures"]:
+        print(f"download failures, skipped ({len(reports['download_failures'])}):", file=sys.stderr)
+        for name, target, url in reports["download_failures"]:
+            print(f"  {name} [{target}]: {url}", file=sys.stderr)
+    print(f"kind census: {dict(reports['kind_census'])}", file=sys.stderr)
+    print(f"missing-platform census: {dict(reports['missing_platform'])}", file=sys.stderr)
+    print(f"asset-format census: {dict(reports['format_census'])}", file=sys.stderr)
+    print(f"parsed: {len(records)} installable server records", file=sys.stderr)
+
+    for name in records:
+        assert name in commands, f"invariant violated: emitted server '{name}' not in lsp-servers.scm"
+
+    parts = [LSP_SOURCES_HEADER.format(tag=tag)]
+    parts.append("\n".join(emit_lsp_sources(records)))
+    parts.append("")
+    write_atomic(LSP_SOURCES_SCM, "\n".join(parts))
+
+    read_sexpr(LSP_SOURCES_SCM)  # self-check: emitted file must re-parse
+
+
+if __name__ == "__main__":
+    main()

@@ -7,7 +7,7 @@ formats at runtime. Design rationale for the LSP parts: `docs/LSP-INSTALL.md`.
 | Script | Pin | Fetches | Emits |
 |---|---|---|---|
 | `sync-grammars.py` | `runtime/scheme/helix-pin.scm` | `helix-editor/helix` `languages.toml` | `languages.scm`, `grammar-sources.scm`, `lsp-servers.scm` |
-| `sync-lsp-sources.py` | `runtime/scheme/mason-pin.scm` | `mason-org/mason-registry` `registry.json` + every release asset (for sha256) | `lsp-sources.scm` |
+| `sync-lsp-sources.py` | `runtime/scheme/mason-pin.scm` | `mason-org/mason-registry` `registry.json.zip` + every release asset (for sha256) | `lsp-sources.scm` |
 
 Shared helpers (pin reading, sexpr emission, atomic writes) live in `sync_common.py`.
 
