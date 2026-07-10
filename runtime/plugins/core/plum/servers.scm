@@ -128,12 +128,6 @@
         ((and (ends-with? asset-file ".gz") (not (ends-with? asset-file ".tar.gz"))) 'gz)
         (else #f)))
 
-;;; First element of `lst` satisfying `pred?`, or `#f`.
-(define (plum/find pred? lst)
-  (cond ((null? lst) #f)
-        ((pred? (car lst)) (car lst))
-        (else (plum/find pred? (cdr lst)))))
-
 ;;; The target tuple `(hume-target asset-file sha256 bin-path)` matching the
 ;;; current platform, or `#f` if `name`'s github source has none.
 (define (plum/find-target targets)
@@ -251,7 +245,7 @@
     (verify-sha256! archive sha)
     (cond
       ((equal? fmt 'gz) (unpack-gz archive (path-join dir bin)))
-      ((equal? fmt 'zip) (unpack-zip archive dir)))
+      ((equal? fmt 'zip) (unpack-zip archive dir bin)))
     (delete-file archive)
     (unless (path-exists? (path-join dir bin))
       (error (string-append "plum/install-github!: " name

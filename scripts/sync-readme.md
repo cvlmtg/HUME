@@ -26,3 +26,14 @@ Helix server left unmatched. So after a helix bump that changes server names, ru
 
 Note: `sync-lsp-sources.py` is slow by design — it downloads every asset per
 server×platform to record checksums. `sync-grammars.py` is a single HTTP fetch.
+
+## sha256 cache and re-pushed tags
+
+`sync-lsp-sources.py` caches sha256 hashes from the previously checked-in
+`lsp-sources.scm`, keyed by (version, asset file), so a routine re-sync doesn't
+re-download unchanged assets. This means a version bump always re-hashes (safe), but
+if an upstream maintainer re-pushes a release tag with different bytes under the same
+version, the cache serves the old hash and the sync won't notice — exactly the threat
+the sha256 pin exists to catch (see `docs/LSP-INSTALL.md`'s "Integrity" note). Run
+`python3 scripts/sync-lsp-sources.py --no-cache` periodically (not just on a version
+bump) to re-hash everything and catch a re-pushed tag.

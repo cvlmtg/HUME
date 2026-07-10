@@ -1,6 +1,6 @@
 ;;; core:plum/lib.scm
 
-(provide plum/valid-dir-entry? plum/batch-run)
+(provide plum/valid-dir-entry? plum/batch-run plum/find)
 
 ;; ── Directory entry filter ────────────────────────────────────────────────────
 
@@ -8,6 +8,14 @@
 (define (plum/valid-dir-entry? name)
   (and (not (equal? name "."))
        (not (equal? name ".."))))
+
+;; ── List search ───────────────────────────────────────────────────────────────
+
+;;; First element of `lst` satisfying `pred?`, or `#f`.
+(define (plum/find pred? lst)
+  (cond ((null? lst) #f)
+        ((pred? (car lst)) (car lst))
+        (else (plum/find pred? (cdr lst)))))
 
 ;; ── Batch runner ──────────────────────────────────────────────────────────────
 

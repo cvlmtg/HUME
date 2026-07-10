@@ -433,6 +433,29 @@ fn lsp_servers_command_runs_without_error() {
         .map(|e| e.text.as_str())
         .collect();
     assert!(errors.is_empty(), ":lsp-servers must not error: {errors:?}");
+
+    // The trailing `'info` summary lands in `status_msg` (see the
+    // `lsp_uninstall_of_never_installed_server_is_silent` comment on
+    // Severity routing) — an empty command body would leave this `None`,
+    // so this pins that the catalog walk actually ran against real data.
+    let status = ed
+        .state
+        .status_msg
+        .as_deref()
+        .expect("lsp-servers must report a seeded-server count");
+    assert!(
+        status.starts_with("PLUM: ") && status.ends_with(" seeded servers"),
+        "unexpected status message: {status}"
+    );
+    let count: usize = status
+        .trim_start_matches("PLUM: ")
+        .trim_end_matches(" seeded servers")
+        .parse()
+        .unwrap_or_else(|_| panic!("status message count is not a number: {status}"));
+    assert!(
+        count > 0,
+        "expected a non-zero seeded-server count: {status}"
+    );
 }
 
 // ── Discovery hint ────────────────────────────────────────────────────────────

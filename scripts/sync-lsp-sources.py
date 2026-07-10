@@ -355,6 +355,16 @@ def build_github_record(
         if hume_target not in {t[0] for t in targets}:
             reports["missing_platform"][hume_target] += 1
 
+    if not targets:
+        # Every known target's asset was unmapped, unresolved, or failed to
+        # download — a "github" record with an empty (targets) list would
+        # claim installability that never exists on any platform. Downgrade
+        # to the same stub shape used when Mason carries no assets at all
+        # (`not assets` above): `:lsp-servers` reports it uniformly as
+        # "not installable (kind github-build) in v1".
+        reports["no_usable_targets"].append(name)
+        return {"kind": "github-build", "version": version}
+
     return {"kind": "github", "version": version, "repo": repo, "targets": targets}
 
 
@@ -426,6 +436,8 @@ def emit_lsp_sources(records: dict) -> list[str]:
 
 
 def main() -> None:
+    no_cache = "--no-cache" in sys.argv[1:]
+
     tag = read_pin(MASON_PIN_SCM)
     print(f"mason-pin: {tag}", file=sys.stderr)
 
@@ -444,8 +456,20 @@ def main() -> None:
     mason_pkgs = fetch_registry(tag)
     mason_lsp = {p["name"]: p for p in mason_pkgs if "LSP" in p.get("categories", [])}
 
-    hash_cache = load_sha256_cache(LSP_SOURCES_SCM)
-    print(f"sha256 cache: {len(hash_cache)} entries loaded from prior sync", file=sys.stderr)
+    # The cache is keyed by version+asset-file, so it cannot serve a stale
+    # hash across a version bump — but it also means a GitHub tag re-push
+    # (same version, different bytes) is never re-detected, because the
+    # cached hash short-circuits the re-download that would catch it. That
+    # is exactly the threat the sha256 pin exists to catch (see
+    # docs/LSP-INSTALL.md's "Integrity" note), so `--no-cache` bypasses the
+    # cache entirely and re-hashes every asset — use it periodically, not
+    # just on a version bump, to catch re-pushed tags.
+    hash_cache = {} if no_cache else load_sha256_cache(LSP_SOURCES_SCM)
+    print(
+        f"sha256 cache: {len(hash_cache)} entries loaded from prior sync"
+        + (" (--no-cache: re-hashing everything)" if no_cache else ""),
+        file=sys.stderr,
+    )
 
     reports = {
         "unmatched": [],
@@ -455,6 +479,7 @@ def main() -> None:
         "download_failures": [],
         "missing_platform": collections.Counter(),
         "format_census": collections.Counter(),
+        "no_usable_targets": [],
     }
 
     records = {}
@@ -498,6 +523,14 @@ def main() -> None:
         print(f"download failures, skipped ({len(reports['download_failures'])}):", file=sys.stderr)
         for name, target, url in reports["download_failures"]:
             print(f"  {name} [{target}]: {url}", file=sys.stderr)
+    if reports["no_usable_targets"]:
+        print(
+            f"github servers downgraded to stub, no usable target resolved "
+            f"({len(reports['no_usable_targets'])}):",
+            file=sys.stderr,
+        )
+        for name in reports["no_usable_targets"]:
+            print(f"  {name}", file=sys.stderr)
     print(f"kind census: {dict(reports['kind_census'])}", file=sys.stderr)
     print(f"missing-platform census: {dict(reports['missing_platform'])}", file=sys.stderr)
     print(f"asset-format census: {dict(reports['format_census'])}", file=sys.stderr)

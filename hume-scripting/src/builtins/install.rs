@@ -11,10 +11,10 @@
 //! | `hume-target`                   | `() → string \| #f`    | install-target id, or `#f`         |
 //! | `verify-sha256!`                | `string string → void` | deletes `path` on mismatch         |
 //! | `unpack-gz`                     | `string string → void` | sandboxed to `<data>/servers/`     |
-//! | `unpack-zip`                    | `string string → void` | sandboxed to `<data>/servers/`     |
+//! | `unpack-zip`                    | `string string string → void` | sandboxed to `<data>/servers/`, bin-path chmod'd |
 //! | `exe-on-path?`                  | `string → bool`        | real `PATH` scan, no spawn         |
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
@@ -24,6 +24,23 @@ use crate::log::LogLevel;
 
 use super::one_string;
 use super::shell::{SandboxKind, validate_new_path};
+
+/// Canonicalize `src` and verify it resolves inside `<data>/servers/`,
+/// shared by every builtin here whose `src` argument must already exist in
+/// that sandbox (`verify-sha256!`, `unpack-gz`, `unpack-zip`).
+fn resolve_src_in_servers_sandbox(fn_name: &str, src: &str) -> Result<PathBuf, SteelErr> {
+    let canonical = hume_platform::fs::canonicalize(&PathBuf::from(src)).map_err(|e| {
+        SteelErr::new(
+            steel::rerrs::ErrorKind::Generic,
+            format!("{fn_name}: cannot resolve src '{src}': {e}"),
+        )
+    })?;
+    if !super::sandbox::is_under_servers_sandbox(&canonical) {
+        steel::stop!(Generic =>
+            "{fn_name}: src is outside the write sandbox (<data>/servers/): {}", src);
+    }
+    Ok(canonical)
+}
 
 /// `(hume-target)` — the install-target identifier for the current platform
 /// (`"darwin-arm64"`, `"darwin-x64"`, `"linux-x64"`, `"windows-x64"`), or
@@ -51,16 +68,7 @@ pub(crate) fn verify_sha256(
     path: String,
     expected: String,
 ) -> Result<SteelVal, SteelErr> {
-    let canonical = hume_platform::fs::canonicalize(&PathBuf::from(&path)).map_err(|e| {
-        SteelErr::new(
-            steel::rerrs::ErrorKind::Generic,
-            format!("verify-sha256!: cannot resolve '{path}': {e}"),
-        )
-    })?;
-    if !super::sandbox::is_under_servers_sandbox(&canonical) {
-        steel::stop!(Generic =>
-            "verify-sha256!: path is outside the write sandbox (<data>/servers/): {}", path);
-    }
+    let canonical = resolve_src_in_servers_sandbox("verify-sha256!", &path)?;
 
     let expected_hex = expected
         .strip_prefix("sha256:")
@@ -96,16 +104,7 @@ pub(crate) fn unpack_gz(
     src: String,
     dest: String,
 ) -> Result<SteelVal, SteelErr> {
-    let canonical_src = hume_platform::fs::canonicalize(&PathBuf::from(&src)).map_err(|e| {
-        SteelErr::new(
-            steel::rerrs::ErrorKind::Generic,
-            format!("unpack-gz: cannot resolve src '{src}': {e}"),
-        )
-    })?;
-    if !super::sandbox::is_under_servers_sandbox(&canonical_src) {
-        steel::stop!(Generic =>
-            "unpack-gz: src is outside the write sandbox (<data>/servers/): {}", src);
-    }
+    let canonical_src = resolve_src_in_servers_sandbox("unpack-gz", &src)?;
     let canonical_dest =
         validate_new_path(&PathBuf::from(&dest), "unpack-gz", SandboxKind::Servers)?;
 
@@ -118,8 +117,12 @@ pub(crate) fn unpack_gz(
     Ok(SteelVal::Void)
 }
 
-/// `(unpack-zip src dest-dir)` — extract the zip archive at `src` into
-/// `dest-dir` (`unzip -o` on Unix, `tar -xf` on Windows).
+/// `(unpack-zip src dest-dir bin-path)` — extract the zip archive at `src`
+/// into `dest-dir` (`unzip -o` on Unix, `tar -xf` on Windows), then verify
+/// `bin-path` (relative to `dest-dir`) exists and — on Unix — chmod it
+/// `0o755`. Unlike `.gz` (always a bare executable, chmod'd unconditionally),
+/// zip entries carry the archive's own stored permissions and CI-built
+/// release zips routinely strip the exec bit.
 ///
 /// Zip-slip and symlink-entry protection is delegated to the system tool —
 /// the residual risk is bounded by the sha256 pin verified before unpacking
@@ -127,23 +130,20 @@ pub(crate) fn unpack_gz(
 ///
 /// `src` must resolve inside `<data>/servers/`; `dest-dir` is validated as a
 /// new path in the same sandbox and created if absent (`tar -C` requires an
-/// existing directory). On error, `dest-dir` is left as-is — a
-/// dir-without-receipt is already the interrupted-install signal the
-/// installer relies on, so cleaning up here would duplicate that mechanism.
+/// existing directory). `bin-path` must not contain `..` components. On
+/// error, `dest-dir` is left as-is — a dir-without-receipt is already the
+/// interrupted-install signal the installer relies on, so cleaning up here
+/// would duplicate that mechanism.
 pub(crate) fn unpack_zip(
     ctx: &mut SteelCtx,
     src: String,
     dest_dir: String,
+    bin_path: String,
 ) -> Result<SteelVal, SteelErr> {
-    let canonical_src = hume_platform::fs::canonicalize(&PathBuf::from(&src)).map_err(|e| {
-        SteelErr::new(
-            steel::rerrs::ErrorKind::Generic,
-            format!("unpack-zip: cannot resolve src '{src}': {e}"),
-        )
-    })?;
-    if !super::sandbox::is_under_servers_sandbox(&canonical_src) {
+    let canonical_src = resolve_src_in_servers_sandbox("unpack-zip", &src)?;
+    if super::sandbox::has_dotdot(Path::new(&bin_path)) {
         steel::stop!(Generic =>
-            "unpack-zip: src is outside the write sandbox (<data>/servers/): {}", src);
+            "unpack-zip: bin-path must not contain '..' components: {}", bin_path);
     }
     let canonical_dest = validate_new_path(
         &PathBuf::from(&dest_dir),
@@ -157,9 +157,12 @@ pub(crate) fn unpack_zip(
         )
     })?;
 
-    ctx.log(LogLevel::Trace, format!("unpack-zip: {src} → {dest_dir}"));
+    ctx.log(
+        LogLevel::Trace,
+        format!("unpack-zip: {src} → {dest_dir} (bin: {bin_path})"),
+    );
 
-    hume_platform::process::unpack_zip(&canonical_src, &canonical_dest)
+    hume_platform::process::unpack_zip(&canonical_src, &canonical_dest, Path::new(&bin_path))
         .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("unpack-zip: {e}")))?;
     Ok(SteelVal::Void)
 }
@@ -344,8 +347,13 @@ mod tests {
 
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        let err =
-            unpack_zip(&mut ctx, outside.to_string_lossy().to_string(), dest_dir).unwrap_err();
+        let err = unpack_zip(
+            &mut ctx,
+            outside.to_string_lossy().to_string(),
+            dest_dir,
+            "bin".to_string(),
+        )
+        .unwrap_err();
         assert!(
             err.to_string().contains("sandbox"),
             "expected sandbox error, got: {err}"
@@ -362,11 +370,39 @@ mod tests {
 
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        let err =
-            unpack_zip(&mut ctx, src.to_string_lossy().to_string(), bad_dest_dir).unwrap_err();
+        let err = unpack_zip(
+            &mut ctx,
+            src.to_string_lossy().to_string(),
+            bad_dest_dir,
+            "bin".to_string(),
+        )
+        .unwrap_err();
         assert!(
             err.to_string().contains("sandbox"),
             "expected sandbox error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn unpack_zip_rejects_bin_path_with_dotdot() {
+        let tmp = TempDir::new().unwrap();
+        let servers = setup(&tmp);
+        let src = servers.join("rust-analyzer.zip");
+        fs::write(&src, b"data").unwrap();
+        let dest_dir = servers.join("out-dir").to_string_lossy().to_string();
+
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let err = unpack_zip(
+            &mut ctx,
+            src.to_string_lossy().to_string(),
+            dest_dir,
+            "../evil".to_string(),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains(".."),
+            "expected dotdot-rejection error, got: {err}"
         );
     }
 

@@ -395,13 +395,24 @@ pub fn unpack_gz(src: &Path, dest: &Path) -> io::Result<()> {
 /// `unzip -o` (Unix) or `tar -xf` (Windows, via bsdtar). `dest_dir` must
 /// already exist.
 ///
+/// `bin_path` (relative to `dest_dir`) is the server binary the caller
+/// expects the archive to contain. After extraction it is verified to exist
+/// — a defense against a seeded bin-path that no longer matches the
+/// archive's layout, mirroring `unpack_gz`'s guarantee that the produced
+/// path is exactly the caller's `dest`. On Unix it is then chmod'd `0o755`:
+/// unlike `.gz` (always a bare executable), zip entries carry the archive's
+/// own stored permissions, and CI-built release zips routinely strip the
+/// exec bit.
+///
 /// Zip-slip and symlink-entry protection is delegated to the system tool
 /// (modern Info-ZIP strips `../` entries; bsdtar refuses them by default) —
 /// the residual risk is bounded by the sync-time sha256 pin verified before
 /// unpacking, so only maintainer-vetted, hash-locked assets ever reach this
 /// function.
 #[cfg(unix)]
-pub fn unpack_zip(src: &Path, dest_dir: &Path) -> io::Result<()> {
+pub fn unpack_zip(src: &Path, dest_dir: &Path, bin_path: &Path) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
     let src = strip_unc_prefix(src.to_path_buf());
     let dest_dir = strip_unc_prefix(dest_dir.to_path_buf());
     let status = Command::new("unzip")
@@ -417,13 +428,22 @@ pub fn unpack_zip(src: &Path, dest_dir: &Path) -> io::Result<()> {
             exit_code_str(status)
         )));
     }
+    let bin_full = dest_dir.join(bin_path);
+    if !bin_full.is_file() {
+        return Err(io::Error::other(format!(
+            "extracted archive is missing expected binary: {}",
+            bin_path.display()
+        )));
+    }
+    std::fs::set_permissions(&bin_full, std::fs::Permissions::from_mode(0o755))?;
     Ok(())
 }
 
 /// See the Unix `unpack_zip` doc comment — same contract, via `tar -xf`
-/// (bsdtar, built into Windows 10+) instead of `unzip`.
+/// (bsdtar, built into Windows 10+) instead of `unzip`. No chmod: Windows has
+/// no exec-bit concept.
 #[cfg(windows)]
-pub fn unpack_zip(src: &Path, dest_dir: &Path) -> io::Result<()> {
+pub fn unpack_zip(src: &Path, dest_dir: &Path, bin_path: &Path) -> io::Result<()> {
     let src = strip_unc_prefix(src.to_path_buf());
     let dest_dir = strip_unc_prefix(dest_dir.to_path_buf());
     let status = Command::new("tar")
@@ -436,6 +456,12 @@ pub fn unpack_zip(src: &Path, dest_dir: &Path) -> io::Result<()> {
         return Err(io::Error::other(format!(
             "tar -xf failed ({})",
             exit_code_str(status)
+        )));
+    }
+    if !dest_dir.join(bin_path).is_file() {
+        return Err(io::Error::other(format!(
+            "extracted archive is missing expected binary: {}",
+            bin_path.display()
         )));
     }
     Ok(())
@@ -819,10 +845,14 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
-    fn unpack_zip_round_trip() {
+    fn unpack_zip_round_trip_sets_exec_bit() {
+        use std::os::unix::fs::PermissionsExt;
+
         let dir = tempfile::tempdir().expect("tempdir");
         let src_dir = dir.path().join("src");
         std::fs::create_dir(&src_dir).expect("mkdir src");
+        // Default create mode (0o644, no exec bit) — matches what CI-built
+        // release zips routinely ship, the exact case this test guards.
         std::fs::write(src_dir.join("bin-name"), b"binary contents").expect("write fixture");
 
         let zip_path = dir.path().join("archive.zip");
@@ -836,10 +866,20 @@ mod tests {
 
         let dest_dir = dir.path().join("dest");
         std::fs::create_dir(&dest_dir).expect("mkdir dest");
-        unpack_zip(&zip_path, &dest_dir).expect("unpack_zip");
+        unpack_zip(&zip_path, &dest_dir, Path::new("bin-name")).expect("unpack_zip");
 
-        let contents = std::fs::read(dest_dir.join("bin-name")).expect("read unpacked entry");
+        let unpacked = dest_dir.join("bin-name");
+        let contents = std::fs::read(&unpacked).expect("read unpacked entry");
         assert_eq!(contents, b"binary contents");
+        let mode = std::fs::metadata(&unpacked)
+            .expect("metadata")
+            .permissions()
+            .mode();
+        assert_eq!(
+            mode & 0o777,
+            0o755,
+            "unpacked zip binary must be executable"
+        );
     }
 
     #[test]
@@ -849,7 +889,33 @@ mod tests {
         let src = dir.path().join("missing.zip");
         let dest_dir = dir.path().join("dest");
         std::fs::create_dir(&dest_dir).expect("mkdir dest");
-        assert!(unpack_zip(&src, &dest_dir).is_err());
+        assert!(unpack_zip(&src, &dest_dir, Path::new("bin-name")).is_err());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn unpack_zip_missing_expected_binary_is_error() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let src_dir = dir.path().join("src");
+        std::fs::create_dir(&src_dir).expect("mkdir src");
+        std::fs::write(src_dir.join("bin-name"), b"binary contents").expect("write fixture");
+
+        let zip_path = dir.path().join("archive.zip");
+        let zip_status = Command::new("zip")
+            .arg("-j")
+            .arg(&zip_path)
+            .arg(src_dir.join("bin-name"))
+            .status()
+            .expect("spawn zip");
+        assert!(zip_status.success());
+
+        let dest_dir = dir.path().join("dest");
+        std::fs::create_dir(&dest_dir).expect("mkdir dest");
+        let err = unpack_zip(&zip_path, &dest_dir, Path::new("wrong-name")).unwrap_err();
+        assert!(
+            err.to_string().contains("wrong-name"),
+            "expected error naming the missing binary, got: {err}"
+        );
     }
 
     // ── scan_path_for_exe (pure, injected PATH/PATHEXT — no env mutation) ────

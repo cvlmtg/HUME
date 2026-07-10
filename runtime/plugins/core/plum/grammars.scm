@@ -84,12 +84,6 @@
   (let ((trimmed (trim line)))
     (map trim (split-many (trim (substring trimmed 11 (string-length trimmed))) ","))))
 
-;;; First element of `lst` satisfying `pred?`, or `#f`.
-(define (plum/find pred? lst)
-  (cond ((null? lst) #f)
-        ((pred? (car lst)) (car lst))
-        (else (plum/find pred? (cdr lst)))))
-
 ;;; Fetch `name`'s `filename` query to a scratch file and return its raw
 ;;; content as a string. `curl-fetch` already cleans up its own dest file on
 ;;; failure, so the only leak this guards is `read-file` itself raising (e.g.
