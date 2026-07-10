@@ -135,7 +135,7 @@
 ### M8 — Theming (complete)
 - [x] Helix theme editor imported and fixed
 - [x] Hierarchical theming (Helix-compatible scopes, TOML format, `inherits`, bundled themes, `:theme`/`:theme-debug`)
-- [x] `ui.menu`/`ui.menu.selected` scopes for completion popup styling; default theme from `dark.toml`
+- [x] `ui.menu`/`ui.menu.selected` scopes for completion popup styling; default theme is `sand` (HUME's signature theme), embedded from `sand.toml` at compile time — edits to that file need a rebuild to take effect
 
 ### M9 — Syntax awareness (complete)
 - [x] Language identity (`Buffer.language`, `LanguageRegistry`, `detect_language`, `on-language-set` hook, `define-language!`)

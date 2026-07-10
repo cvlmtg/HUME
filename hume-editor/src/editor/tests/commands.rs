@@ -2358,7 +2358,7 @@ fn register_prefix_consumed_by_paste() {
 
 // ── Bundled theme loading (end-to-end wiring) ─────────────────────────────────
 
-/// Smoke-test all three bundled themes through the full loader → bake → resolve
+/// Smoke-test all bundled themes through the full loader → bake → resolve
 /// pipeline. Catches wiring regressions (bad paths, parse errors, missing palette
 /// entries) without needing a running editor.
 #[test]
@@ -2367,7 +2367,7 @@ fn bundled_themes_load_and_resolve() {
     let themes_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../runtime/themes");
     let paths = vec![themes_dir];
 
-    for name in ["dark", "light", "gruvbox"] {
+    for name in ["dark", "light", "gruvbox", "sand"] {
         let mut theme = hume_engine::theme::loader::load_theme(name, &paths)
             .unwrap_or_else(|e| panic!("bundled theme '{name}' failed to load: {e}"));
         let mut reg = hume_engine::theme::ScopeRegistry::new();

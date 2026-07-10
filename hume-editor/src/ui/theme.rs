@@ -67,15 +67,30 @@ impl EditorColors {
 // ── Engine theme builder ──────────────────────────────────────────────────────
 
 // Default theme content — single source of truth is the TOML file.
-// Scope names and palette values live in `runtime/themes/dark.toml`.
-const DEFAULT_THEME_TOML: &str = include_str!("../../../runtime/themes/dark.toml");
+// Scope names and palette values live in `runtime/themes/sand.toml`
+// (HUME's signature theme).
+const DEFAULT_THEME_TOML: &str = include_str!("../../../runtime/themes/sand.toml");
 
 /// Parse and return the default engine [`Theme`] from the embedded TOML.
 ///
-/// The content is `runtime/themes/dark.toml`, embedded at compile time via
-/// `include_str!`. Any edit to that file takes effect on the next build.
+/// The content is `runtime/themes/sand.toml`, embedded at compile time via
+/// `include_str!` — editing that file requires a rebuild to take effect.
 pub(crate) fn build_default_theme() -> hume_engine::theme::Theme {
     hume_engine::theme::loader::parse_theme(DEFAULT_THEME_TOML)
+        .expect("embedded sand.toml must parse — file is compile-time embedded")
+}
+
+/// `dark.toml`, embedded for renderer snapshot tests that assert exact
+/// colors. Those tests exercise seam/junction/dimming *rendering mechanics*,
+/// not the default theme's palette — pinning them to a stable theme means
+/// retuning `sand.toml` (the compiled-in default) never forces an unrelated
+/// snapshot re-record.
+#[cfg(test)]
+const DARK_THEME_TOML_FOR_SNAPSHOT_TESTS: &str = include_str!("../../../runtime/themes/dark.toml");
+
+#[cfg(test)]
+pub(crate) fn build_dark_theme_for_snapshot_tests() -> hume_engine::theme::Theme {
+    hume_engine::theme::loader::parse_theme(DARK_THEME_TOML_FOR_SNAPSHOT_TESTS)
         .expect("embedded dark.toml must parse — file is compile-time embedded")
 }
 
@@ -118,84 +133,51 @@ mod tests {
         hume_engine::theme::Theme::new(styles, ResolvedStyle::default())
     }
 
+    /// The embedded default theme (`sand.toml`, inlined via `include_str!` at
+    /// compile time) must match the *same* file loaded through the production
+    /// runtime loader (`load_theme`, the path `:theme <name>` uses) — not
+    /// hardcoded hex colors, which drift every time the palette is tuned and
+    /// then need manual updates here. This only breaks if the embed points at
+    /// the wrong file, the content fails to parse, or the two loaders disagree.
     #[test]
-    fn embedded_default_resolves_known_scopes() {
-        let mut theme = build_default_theme();
+    fn embedded_default_matches_sand_toml_on_disk() {
+        use std::path::PathBuf;
+
+        let mut embedded = build_default_theme();
+        let themes_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../runtime/themes");
+        let mut from_disk = hume_engine::theme::loader::load_theme("sand", &[themes_dir])
+            .expect("runtime/themes/sand.toml must load via the production theme loader");
+
         let registry = ScopeRegistry::new();
-        theme.bake(&registry);
+        embedded.bake(&registry);
+        from_disk.bake(&registry);
 
-        // Independent oracle: expected values derived directly from dark.toml palette.
-        // black = #000000, white = #ffffff, mid_gray = #8c8ca0, selection = #444478
-        let cursor_primary = theme.resolve_by_name(Scope("ui.cursor.primary"));
-        assert_eq!(
-            cursor_primary.fg,
-            Some(Color::Rgb(0x00, 0x00, 0x00)),
-            "cursor.primary fg"
-        );
-        assert_eq!(
-            cursor_primary.bg,
-            Some(Color::Rgb(0xff, 0xff, 0xff)),
-            "cursor.primary bg"
-        );
+        // Scopes exercised by the renderer's hot paths: cursor, selection,
+        // menu, statusline, pane background/seam.
+        for scope in [
+            "ui.cursor.primary",
+            "ui.cursor",
+            "ui.selection",
+            "ui.menu",
+            "ui.statusline",
+            "ui.background",
+            "ui.window",
+            "ui.window.focused",
+        ] {
+            assert_eq!(
+                embedded.resolve_by_name(Scope(scope)),
+                from_disk.resolve_by_name(Scope(scope)),
+                "embedded sand.toml disagrees with the on-disk file for scope '{scope}'"
+            );
+        }
 
-        let cursor = theme.resolve_by_name(Scope("ui.cursor"));
-        assert_eq!(cursor.fg, Some(Color::Rgb(0x00, 0x00, 0x00)), "cursor fg");
-        assert_eq!(cursor.bg, Some(Color::Rgb(0x8c, 0x8c, 0xa0)), "cursor bg");
-
-        let selection = theme.resolve_by_name(Scope("ui.selection"));
-        assert_eq!(
-            selection.bg,
-            Some(Color::Rgb(0x44, 0x44, 0x78)),
-            "selection bg"
-        );
-
-        // menu: fg = #b4b4c8, bg = #282832
-        let menu = theme.resolve_by_name(Scope("ui.menu"));
-        assert_eq!(menu.fg, Some(Color::Rgb(0xb4, 0xb4, 0xc8)), "menu fg");
-        assert_eq!(menu.bg, Some(Color::Rgb(0x28, 0x28, 0x32)), "menu bg");
-
-        // statusline: fg = black (#000000), bg = white (#ffffff)
-        let statusline = theme.resolve_by_name(Scope("ui.statusline"));
-        assert_eq!(
-            statusline.fg,
-            Some(Color::Rgb(0x00, 0x00, 0x00)),
-            "statusline fg"
-        );
-        assert_eq!(
-            statusline.bg,
-            Some(Color::Rgb(0xff, 0xff, 0xff)),
-            "statusline bg"
-        );
-
-        // `ui.text` (fg = #d0d0d0) must fold into `theme.default` — the base
-        // style every plain-text cell starts from (see `style::apply_styles`)
-        // — so unhighlighted text carries an explicit color the focus-dimming
+        // `ui.text` must fold into `theme.default` — the base style every
+        // plain-text cell starts from (see `style::apply_styles`) — so
+        // unhighlighted text carries an explicit color the focus-dimming
         // blend can act on instead of escaping it as `Color::Reset`.
         assert_eq!(
-            theme.default.fg,
-            Some(Color::Rgb(0xd0, 0xd0, 0xd0)),
-            "default fg (from ui.text)"
-        );
-
-        // Pane background/seam scopes, read via the pre-resolved `theme.ui`
-        // fields — the actual path the renderer uses (see hume-engine's
-        // pipeline::render and PANE_DIM_FACTOR blending).
-        // background: bg = #1a1a1a; window: fg = dark_gray (#808080);
-        // window.focused: fg = syn_keyword (#5bc0eb).
-        assert_eq!(
-            theme.ui.background.bg,
-            Some(Color::Rgb(0x1a, 0x1a, 0x1a)),
-            "background bg"
-        );
-        assert_eq!(
-            theme.ui.window.fg,
-            Some(Color::Rgb(0x80, 0x80, 0x80)),
-            "window fg"
-        );
-        assert_eq!(
-            theme.ui.window_focused.fg,
-            Some(Color::Rgb(0x5b, 0xc0, 0xeb)),
-            "window.focused fg"
+            embedded.default, from_disk.default,
+            "embedded sand.toml's default style (ui.text fold) disagrees with the on-disk file"
         );
     }
 

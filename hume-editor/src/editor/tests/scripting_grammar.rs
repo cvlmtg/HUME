@@ -1102,6 +1102,7 @@ fn rust_function_highlight_snapshot() {
     let (parser, hl) = grammar_fixture("rust");
     // Cursor on the trailing `\n` so no token cell is reverse-video in the snapshot.
     let mut ed = editor_from("// hi\nfn main() {\n    let x: u32 = 1;\n}-[\n]>");
+    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     ed.doc_mut().set_path(Some(PathBuf::from("test.rs")));
 
     let bid = ed.focused_buffer_id();
