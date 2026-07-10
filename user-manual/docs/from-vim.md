@@ -42,7 +42,9 @@ HUME replaces Vim's letter registers (`a`–`z`) with a small set of mnemonic si
 | `"s` | Search register — last search pattern | `"/` |
 | `"q` | Macro register (`QQ`/`qq`) | — |
 
-Note: letter registers `a`–`z` other than the special names above do not exist. All yanks and deletes go to the kill ring (`k`) and digit registers (`0`–`9`). Use `[`/`]` to cycle through kill-ring history.
+::: warning
+Letter registers `a`–`z` other than the special names above do not exist. All yanks and deletes go to the kill ring (`k`) and digit registers (`0`–`9`). Use `[`/`]` to cycle through kill-ring history.
+:::
 
 See [Register prefix](editing.md#register-prefix) for the full syntax and canonical register list.
 

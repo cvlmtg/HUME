@@ -1,5 +1,9 @@
 # Key Reference
 
+::: info
+Keys marked **kitty only** require the kitty keyboard protocol, auto-detected at startup on supported terminals — see [Terminal compatibility](installation.md#terminal-compatibility). Legacy terminal encodings cannot transmit those key combinations, so the bindings are unavailable there.
+:::
+
 ## Normal mode
 
 ### Movement

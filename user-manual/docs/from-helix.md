@@ -49,15 +49,15 @@ Both editors share the same foundations — multiple cursors, `;` to collapse, `
 | Select within (regex per selection) | `s` (select mode) | `s` |
 | Use selection as search pattern | `*` | `Ctrl+/` (kitty only) |
 
-Note: HUME's `*` is not the same operation as Helix's — it's Vim-style,
-searching the whole word under the cursor rather than the literal
-selection. `Ctrl+/` is HUME's equivalent of Helix's `*`.
+::: warning
+HUME's `*` is not the same operation as Helix's — it's Vim-style, searching the whole word under the cursor rather than the literal selection. `Ctrl+/` is HUME's equivalent of Helix's `*`.
 
 To get Helix's exact `*` back on the `*` key, rebind it to `search-selection` in your `init.scm`:
 
 ```scheme
 (bind-key! 'normal "*" "search-selection")
 ```
+:::
 
 ### Configuration language
 

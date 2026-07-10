@@ -140,6 +140,16 @@ A key string is a **whitespace-separated** list of tokens. Each token is `[modif
 
 Multi-key sequences are space-separated: `"g e"`, `"m i w"`, `"ctrl-p h"`. Examples: `"ctrl-j"`, `"shift-tab"` (becomes `BackTab`), `"ctrl-shift-left"`, `"g e"`.
 
+::: tip Binding the backslash key
+In Scheme string literals `\` is the escape character, so to bind the `\` key write it escaped — `"\\"`, not `"\"`:
+
+```scheme
+(bind-key! 'normal "\\" "my-command")
+```
+
+The same applies to the double quote: bind `"` as `"\""`.
+:::
+
 ## Statusline
 
 The statusline is fully configurable from Steel:
@@ -223,4 +233,6 @@ HUME resolves its directories per OS:
 
 Notable subpaths inside the data dir: `data/plugins/` (PLUM-managed plugin clones), `data/grammars/` and `data/grammars/sources/` (compiled and source tree-sitter grammars). Plugin sandboxed filesystem operations are restricted to `data/plugins/`, `data/grammars/`, and `runtime/plugins/` (read-only).
 
-Note: on macOS HUME follows the XDG convention (`~/.config/hume/`, `~/.local/share/hume/`) rather than `~/Library/Application Support/`.
+::: info
+On macOS HUME follows the XDG convention (`~/.config/hume/`, `~/.local/share/hume/`) rather than `~/Library/Application Support/`.
+:::

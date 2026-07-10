@@ -121,7 +121,11 @@ When forwarding a `count` argument to another command, a count of `0` means "as 
 
 ### Depending on another plugin
 
-If your plugin calls another plugin's commands via `call!`, check that the other plugin is loaded before you rely on it — an unknown command name just logs a warning and no-ops rather than erroring, so a missing dependency can otherwise show up as your plugin quietly doing the wrong thing instead of a clear failure. Check with `(loaded-plugins)` at the top level of your plugin body, before anything that calls into the dependency:
+::: warning
+`call!` with an unknown command name logs a warning and no-ops instead of erroring — a missing plugin dependency shows up as your plugin quietly doing the wrong thing rather than a clear failure.
+:::
+
+If your plugin calls another plugin's commands via `call!`, check that the other plugin is loaded before you rely on it, with `(loaded-plugins)` at the top level of your plugin body — before anything that calls into the dependency:
 
 ```scheme
 (unless (member "core:stdlib" (loaded-plugins))
