@@ -252,6 +252,7 @@ fn enter_jump_lands_via_goto_location_and_drawer_stays_open() {
 fn drawer_renders_under_the_pane_with_selected_row_highlighted() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = Editor::open(None).unwrap();
+    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     ed.feed_key(key('i'));
     for ch in "hello".chars() {
         ed.feed_key(key(ch));

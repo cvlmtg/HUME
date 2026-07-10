@@ -155,6 +155,7 @@ fn popup_never_paints_outside_the_pane_rect() {
     // within the pane rows (no bleed into the statusline row).
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = Editor::open(None).unwrap();
+    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     ed.feed_key(key('i'));
     for ch in "hello".chars() {
         ed.feed_key(key(ch));

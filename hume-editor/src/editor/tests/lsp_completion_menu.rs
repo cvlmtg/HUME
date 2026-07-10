@@ -34,6 +34,7 @@ fn begin_session(ed: &mut Editor, items: &[(&str, Option<&str>)]) {
 #[test]
 fn menu_appears_with_top_items_after_begin() {
     let mut ed = Editor::open(None).unwrap();
+    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     ed.feed_key(key('i'));
     begin_session(
         &mut ed,

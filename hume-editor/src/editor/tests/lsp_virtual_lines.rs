@@ -44,6 +44,7 @@ fn type_text(ed: &mut Editor, text: &str) {
 fn virtual_line_renders_after_its_anchor_line() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = Editor::open(None).unwrap();
+    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     type_text(&mut ed, "let x = 5\nlet y = 10");
     let bid = ed.focused_buffer_id();
     run(
@@ -72,6 +73,7 @@ fn scroll_over_a_virtual_line_pushes_the_next_line_down_correctly() {
     // 1's content down by the one stolen row, never overlap or skip it.
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = Editor::open(None).unwrap();
+    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     type_text(&mut ed, "aaa\nbbb\nccc");
     run(
         &mut ed,

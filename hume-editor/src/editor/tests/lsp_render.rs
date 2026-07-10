@@ -304,6 +304,7 @@ fn extra_highlight_scope_is_cached_not_reinterned() {
 fn search_match_beats_extra_highlight_in_overlapping_region() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = Editor::open(None).unwrap();
+    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     type_text(&mut ed, "abcdefgh");
     let mut host = ScriptingHost::new();
     // Reuses the theme's "diagnostic.warning" name as the extra highlight's
