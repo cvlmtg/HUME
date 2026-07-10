@@ -181,6 +181,14 @@ impl LspState {
         self.servers.get_mut(&server).map(|e| &mut e.client)
     }
 
+    /// The registered `command` for `language`, or `None` if unregistered —
+    /// lets tests observe last-wins replacement and unregistration without
+    /// reaching into the private `configs` map directly.
+    #[cfg(test)]
+    pub(crate) fn config_command_for_test(&self, language: &str) -> Option<String> {
+        self.configs.get(language).map(|c| c.command.clone())
+    }
+
     /// Number of tracked servers — one entry per `backend.start`, so a
     /// second buffer attaching under the same (language, root) key (rather
     /// than spawning) leaves this unchanged.

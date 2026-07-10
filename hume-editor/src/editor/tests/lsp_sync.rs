@@ -22,7 +22,7 @@ fn eval_register(ed: &mut Editor, host: &mut ScriptingHost, source: &str, tmp: &
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init");
-    ed.flush_pending_lsp_server_regs(host);
+    ed.flush_pending_lsp_server_ops(host);
 }
 
 /// Sets up an editor with a `RecordingLspBackend` (handshake pre-scripted

@@ -146,6 +146,48 @@ fn lsp_server_for_buffer_reflects_attachment() {
 }
 
 #[test]
+fn lsp_registered_for_language_reflects_registration() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '())"#,
+        tmp.path(),
+    );
+    ed.flush_pending_lsp_server_ops(&mut host);
+
+    let fired = run_probe(
+        &mut ed,
+        host,
+        tmp.path(),
+        r#"(lsp-registered-for-language? "rust")"#,
+    );
+    assert!(
+        fired,
+        "lsp-registered-for-language? must be true once the language is registered"
+    );
+}
+
+#[test]
+fn lsp_registered_for_language_is_false_when_unregistered() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(not (lsp-registered-for-language? "rust"))"#,
+    );
+    assert!(
+        fired,
+        "lsp-registered-for-language? must be false when nothing is registered"
+    );
+}
+
+#[test]
 fn buffer_generation_changes_after_an_edit() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");

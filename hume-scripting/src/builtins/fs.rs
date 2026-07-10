@@ -2,13 +2,18 @@
 //!
 //! **Write-path operations** (`make-dir`, `delete-dir`, `delete-file`) are
 //! sandboxed:
-//! - `make-dir`, `delete-dir` → the write sandbox (`<data>/plugins/` or
-//!   `<data>/grammars/`); `delete-dir` on `<data>/grammars/sources/` is how
-//!   `plum-install-grammar` purges a stale source tree before re-cloning.
-//! - `delete-file` → `<data>/grammars/` only (narrower than the write sandbox).
+//! - `make-dir`, `delete-dir` → the write sandbox (`<data>/plugins/`,
+//!   `<data>/grammars/`, or `<data>/servers/`); `delete-dir` on
+//!   `<data>/grammars/sources/` is how `plum-install-grammar` purges a stale
+//!   source tree before re-cloning, and on `<data>/servers/<name>/` is how
+//!   `:lsp-uninstall` removes an installed server.
+//! - `delete-file` → `<data>/grammars/` or `<data>/servers/` (the narrower
+//!   "install" sandbox — archive cleanup after unpacking, not the full write
+//!   sandbox).
 //!
 //! **Read-path operations** (`list-dir`, `path-exists?`, `read-file`) are
-//! additionally allowed under `<runtime>/plugins/` and `<data>/grammars/`.
+//! additionally allowed under `<runtime>/plugins/`, `<data>/grammars/`, and
+//! `<data>/servers/` (receipt scanning).
 //!
 //! Security invariant (see `feedback_security_canonicalize`): every
 //! `canonicalize` call on an untrusted path must hard-fail via `steel::stop!`
@@ -23,11 +28,11 @@
 //! | `runtime-dir`   | `() → string \| #f`            | Runtime dir, or `#f` if absent               |
 //! | `path-exists?`  | `string → bool`                | Sandboxed read                               |
 //! | `list-dir`      | `string → list-of-string`      | Sandboxed read; returns names only           |
-//! | `read-file`     | `string → string`              | Sandboxed read (`<runtime>/plugins/`|`<data>/grammars/`) |
-//! | `make-dir`      | `string → void`                | Sandboxed write (`<data>/plugins/`|`grammars/`)|
-//! | `delete-dir`    | `string → void`                | Sandboxed write (`<data>/plugins/`|`grammars/`)|
-//! | `delete-file`   | `string → void`                | Sandboxed write to `<data>/grammars/`        |
-//! | `write-file`    | `string, string → void`        | Sandboxed write to `<data>/grammars/`        |
+//! | `read-file`     | `string → string`              | Sandboxed read (`<runtime>/plugins/`|`<data>/grammars/`|`<data>/servers/`) |
+//! | `make-dir`      | `string → void`                | Sandboxed write (`<data>/plugins/`|`grammars/`|`servers/`)|
+//! | `delete-dir`    | `string → void`                | Sandboxed write (`<data>/plugins/`|`grammars/`|`servers/`)|
+//! | `delete-file`   | `string → void`                | Sandboxed write to `<data>/grammars/` or `<data>/servers/` |
+//! | `write-file`    | `string, string → void`        | Sandboxed write to `<data>/grammars/` or `<data>/servers/` |
 
 use std::path::PathBuf;
 
@@ -37,7 +42,7 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 use super::conv_err;
 use super::one_string;
 use super::sandbox::{
-    canonical_ancestor_join, has_dotdot, is_under_grammars_sandbox, is_under_read_sandbox,
+    canonical_ancestor_join, has_dotdot, is_under_install_sandbox, is_under_read_sandbox,
     is_under_write_sandbox, normalize_lexical,
 };
 use super::shell::{SandboxKind, validate_new_path};
@@ -152,8 +157,8 @@ pub(crate) fn path_exists(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 
 /// `(read-file path)` — read a file's full contents as a UTF-8 string.
 ///
-/// Sandboxed to `<data>/grammars/` and `<runtime>/plugins/` (the read
-/// sandbox), same as `list-dir`/`path-exists?`.
+/// Sandboxed to `<data>/grammars/`, `<data>/servers/`, and
+/// `<runtime>/plugins/` (the read sandbox), same as `list-dir`/`path-exists?`.
 pub(crate) fn read_file(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     let raw = one_string(args, "read-file")?;
     let Some(canonical) = canonicalize_or_notfound("read-file", &raw)? else {
@@ -240,8 +245,8 @@ pub(crate) fn list_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 
 /// `(make-dir path)` — create `path` and any missing parent directories.
 ///
-/// Sandboxed to the write sandbox (`<data>/plugins/` or `<data>/grammars/`).
-/// Rejects any path containing `..`.
+/// Sandboxed to the write sandbox (`<data>/plugins/`, `<data>/grammars/`, or
+/// `<data>/servers/`). Rejects any path containing `..`.
 pub(crate) fn make_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     let raw = one_string(args, "make-dir")?;
     let path = PathBuf::from(&raw);
@@ -263,7 +268,7 @@ pub(crate) fn make_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 
     if !is_under_write_sandbox(&effective) {
         steel::stop!(Generic =>
-            "make-dir: path is outside the write sandbox (<data>/plugins/ or <data>/grammars/): {}", raw);
+            "make-dir: path is outside the write sandbox (<data>/plugins/, <data>/grammars/, or <data>/servers/): {}", raw);
     }
 
     // Create through the sandbox-checked resolved path, not the raw input —
@@ -281,9 +286,9 @@ pub(crate) fn make_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 
 /// `(delete-dir path)` — recursively delete `path` and all its contents.
 ///
-/// Sandboxed to the write sandbox (`<data>/plugins/` or `<data>/grammars/`).
-/// `path` must exist; `canonicalize` failure is a hard error — never falls
-/// back to the raw path.
+/// Sandboxed to the write sandbox (`<data>/plugins/`, `<data>/grammars/`, or
+/// `<data>/servers/`). `path` must exist; `canonicalize` failure is a hard
+/// error — never falls back to the raw path.
 ///
 /// Returns `#<void>` (including when `path` does not exist — idempotent).
 pub(crate) fn delete_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
@@ -294,7 +299,7 @@ pub(crate) fn delete_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 
     if !is_under_write_sandbox(&canonical) {
         steel::stop!(Generic =>
-            "delete-dir: refusing to delete '{}' — outside the write sandbox (<data>/plugins/ or <data>/grammars/)",
+            "delete-dir: refusing to delete '{}' — outside the write sandbox (<data>/plugins/, <data>/grammars/, or <data>/servers/)",
             canonical.display());
     }
 
@@ -311,19 +316,20 @@ pub(crate) fn delete_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 
 /// `(delete-file path)` — delete a single file.
 ///
-/// Sandboxed to `<data>/grammars/`.  Idempotent: returns `#<void>` when the
-/// path does not exist.  Rejects directories — use `delete-dir` for those.
+/// Sandboxed to `<data>/grammars/` or `<data>/servers/` (the install
+/// sandbox).  Idempotent: returns `#<void>` when the path does not exist.
+/// Rejects directories — use `delete-dir` for those.
 pub(crate) fn delete_file(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     let raw = one_string(args, "delete-file")?;
     let Some(canonical) = canonicalize_or_notfound("delete-file", &raw)? else {
         return Ok(SteelVal::Void); // idempotent — nothing to delete
     };
 
-    if !is_under_grammars_sandbox(&canonical) {
+    if !is_under_install_sandbox(&canonical) {
         return Err(SteelErr::new(
             ErrorKind::Generic,
             format!(
-                "delete-file: refusing '{}' — outside the grammars sandbox (<data>/grammars/)",
+                "delete-file: refusing '{}' — outside the grammars/servers sandbox (<data>/grammars/ or <data>/servers/)",
                 canonical.display()
             ),
         ));
@@ -350,9 +356,10 @@ pub(crate) fn delete_file(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 /// `(write-file path content)` — write `content` to `path`, creating (or
 /// overwriting) it and any missing parent directories.
 ///
-/// Sandboxed to `<data>/grammars/`, same narrower scope as `delete-file` —
-/// PLUM uses this to persist Helix query files it has resolved from an
-/// `; inherits:` chain into a single file on disk.
+/// Sandboxed to `<data>/grammars/` or `<data>/servers/` (the install
+/// sandbox), same scope as `delete-file` — PLUM uses this to persist Helix
+/// query files it has resolved from an `; inherits:` chain into a single
+/// file on disk, and the LSP installer uses it to write install receipts.
 pub(crate) fn write_file(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     if args.len() != 2 {
         steel::stop!(ArityMismatch => "write-file expects 2 args (path, content), got {}", args.len());
@@ -368,7 +375,7 @@ pub(crate) fn write_file(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
         }
     };
 
-    let dest_path = validate_new_path(&PathBuf::from(&raw), "write-file", SandboxKind::Grammars)?;
+    let dest_path = validate_new_path(&PathBuf::from(&raw), "write-file", SandboxKind::Install)?;
 
     // Create parent after the sandbox check so we don't mkdir outside the
     // sandbox — mirrors curl-fetch.
@@ -417,6 +424,16 @@ mod tests {
         fs::create_dir_all(data_dir.join("grammars/sources")).unwrap();
         init_dirs(Some(data_dir.clone()), None);
         data_dir.join("grammars")
+    }
+
+    // `init_dirs` itself creates `<data>/servers/` (see sandbox.rs), so no
+    // manual `create_dir_all` is needed here.
+    fn setup_servers(tmp: &TempDir) -> PathBuf {
+        let data_dir = tmp.path().join("hume");
+        fs::create_dir_all(data_dir.join("plugins")).unwrap();
+        fs::create_dir_all(data_dir.join("grammars/sources")).unwrap();
+        init_dirs(Some(data_dir.clone()), None);
+        data_dir.join("servers")
     }
 
     // ── delete-dir ───────────────────────────────────────────────────────────
@@ -669,14 +686,14 @@ mod tests {
     fn delete_file_rejects_outside_grammars_sandbox() {
         let tmp = TempDir::new().unwrap();
         let plugins = setup(&tmp);
-        // A file inside plugins/ is NOT in the grammars sandbox.
+        // A file inside plugins/ is NOT in the grammars/servers install sandbox.
         let f = plugins.join("somefile");
         fs::write(&f, f.to_string_lossy().as_bytes()).unwrap();
         let args = vec![SteelVal::StringV(f.to_string_lossy().to_string().into())];
         let err = delete_file(&args).unwrap_err();
         assert!(
-            err.to_string().contains("grammars sandbox"),
-            "expected grammars sandbox error, got: {err}"
+            err.to_string().contains("grammars/servers sandbox"),
+            "expected grammars/servers sandbox error, got: {err}"
         );
     }
 
@@ -767,6 +784,105 @@ mod tests {
         let bad = format!("{}/sources/../../../evil", grammars.display());
         let args = vec![SteelVal::StringV(bad.into()), SteelVal::StringV("x".into())];
         assert!(write_file(&args).is_err());
+    }
+
+    // ── servers/ sandbox (step 2: LSP server installer) ──────────────────────
+    //
+    // Every fs builtin widened to accept `<data>/servers/` in step 2 gets one
+    // acceptance test here, plus a `setup` (plugins-only) rejection test where
+    // not already covered above.
+
+    #[test]
+    fn write_file_accepts_servers_dir() {
+        let tmp = TempDir::new().unwrap();
+        let servers = setup_servers(&tmp);
+        let f = servers.join("rust-analyzer/receipt.scm");
+        fs::create_dir_all(f.parent().unwrap()).unwrap();
+        let args = vec![
+            SteelVal::StringV(f.to_string_lossy().to_string().into()),
+            SteelVal::StringV("(name . \"rust-analyzer\")".into()),
+        ];
+        assert_eq!(write_file(&args).unwrap(), SteelVal::Void);
+        assert_eq!(
+            fs::read_to_string(&f).unwrap(),
+            "(name . \"rust-analyzer\")"
+        );
+    }
+
+    #[test]
+    fn delete_file_accepts_servers_dir() {
+        let tmp = TempDir::new().unwrap();
+        let servers = setup_servers(&tmp);
+        let f = servers.join("rust-analyzer.gz");
+        fs::create_dir_all(f.parent().unwrap()).unwrap();
+        fs::write(&f, b"fake archive").unwrap();
+        let args = vec![SteelVal::StringV(f.to_string_lossy().to_string().into())];
+        assert_eq!(delete_file(&args).unwrap(), SteelVal::Void);
+        assert!(!f.exists());
+    }
+
+    #[test]
+    fn delete_dir_accepts_servers_dir() {
+        let tmp = TempDir::new().unwrap();
+        let servers = setup_servers(&tmp);
+        let server_dir = servers.join("rust-analyzer");
+        fs::create_dir_all(&server_dir).unwrap();
+        fs::write(server_dir.join("rust-analyzer"), b"binary").unwrap();
+
+        let args = vec![SteelVal::StringV(
+            server_dir.to_string_lossy().to_string().into(),
+        )];
+        assert!(delete_dir(&args).is_ok());
+        assert!(!server_dir.exists());
+    }
+
+    #[test]
+    fn make_dir_accepts_servers_dir() {
+        let tmp = TempDir::new().unwrap();
+        let servers = setup_servers(&tmp);
+        let target = servers.join("rust-analyzer");
+        let args = vec![SteelVal::StringV(
+            target.to_string_lossy().to_string().into(),
+        )];
+        assert!(make_dir(&args).is_ok());
+        assert!(target.is_dir());
+    }
+
+    #[test]
+    fn list_dir_accepts_servers_dir() {
+        let tmp = TempDir::new().unwrap();
+        let servers = setup_servers(&tmp);
+        fs::create_dir_all(servers.join("rust-analyzer")).unwrap();
+        let args = vec![SteelVal::StringV(
+            servers.to_string_lossy().to_string().into(),
+        )];
+        let result = list_dir(&args).unwrap();
+        assert_eq!(steel_list_to_strings(result), vec!["rust-analyzer"]);
+    }
+
+    #[test]
+    fn read_file_accepts_servers_dir() {
+        let tmp = TempDir::new().unwrap();
+        let servers = setup_servers(&tmp);
+        let f = servers.join("rust-analyzer/receipt.scm");
+        fs::create_dir_all(f.parent().unwrap()).unwrap();
+        fs::write(&f, "(name . \"rust-analyzer\")").unwrap();
+        let args = vec![SteelVal::StringV(f.to_string_lossy().to_string().into())];
+        let result = read_file(&args).unwrap();
+        assert!(
+            matches!(result, SteelVal::StringV(s) if s.as_str() == "(name . \"rust-analyzer\")")
+        );
+    }
+
+    #[test]
+    fn path_exists_accepts_servers_dir() {
+        let tmp = TempDir::new().unwrap();
+        let servers = setup_servers(&tmp);
+        let existing = servers.to_string_lossy().to_string();
+        assert_eq!(
+            path_exists(&[SteelVal::StringV(existing.into())]).unwrap(),
+            SteelVal::BoolV(true)
+        );
     }
 
     // ── Helper ───────────────────────────────────────────────────────────────

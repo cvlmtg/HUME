@@ -38,7 +38,23 @@ pub struct ServerHandle {
 impl ServerHandle {
     /// Spawns the process (cwd = `root`) and its three bridging threads.
     pub fn spawn(cmd: &str, args: &[String], root: &Path) -> std::io::Result<ServerHandle> {
-        let mut child = Command::new(cmd)
+        #[cfg(windows)]
+        let mut command = if needs_cmd_shim(cmd) {
+            // npm-kind servers register a `.cmd` shim (e.g.
+            // `node_modules/.bin/typescript-language-server.cmd`), which
+            // `CreateProcess` cannot spawn directly. Args with cmd.exe
+            // metacharacters are unsupported here — registered npm-kind args
+            // are trivial (e.g. `--stdio`).
+            let mut c = Command::new("cmd");
+            c.arg("/C").arg(cmd);
+            c
+        } else {
+            Command::new(cmd)
+        };
+        #[cfg(not(windows))]
+        let mut command = Command::new(cmd);
+
+        let mut child = command
             .args(args)
             .current_dir(root)
             .stdin(Stdio::piped())
@@ -108,6 +124,17 @@ impl Drop for ServerHandle {
             let _ = t.join();
         }
     }
+}
+
+/// Whether `cmd` is a Windows `.cmd`/`.bat` shim, which `CreateProcess`
+/// cannot spawn directly and must instead be run via `cmd /C`.
+///
+/// Cfg-free and unit-testable on every platform even though it's only
+/// consulted (in `ServerHandle::spawn`) on Windows — dead on other targets.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn needs_cmd_shim(cmd: &str) -> bool {
+    let lower = cmd.to_ascii_lowercase();
+    lower.ends_with(".cmd") || lower.ends_with(".bat")
 }
 
 /// Reads frames until EOF or a codec error, forwarding each as an event.
@@ -285,5 +312,34 @@ mod tests {
 
         // Drop runs kill -> wait -> join; must return promptly, not hang.
         drop(handle);
+    }
+
+    // ── needs_cmd_shim ────────────────────────────────────────────────────────
+
+    #[test]
+    fn needs_cmd_shim_detects_cmd_extension() {
+        assert!(needs_cmd_shim("typescript-language-server.cmd"));
+    }
+
+    #[test]
+    fn needs_cmd_shim_detects_bat_extension() {
+        assert!(needs_cmd_shim("run-server.bat"));
+    }
+
+    #[test]
+    fn needs_cmd_shim_is_case_insensitive() {
+        assert!(needs_cmd_shim("SERVER.CMD"));
+        assert!(needs_cmd_shim("server.Bat"));
+    }
+
+    #[test]
+    fn needs_cmd_shim_false_for_plain_executable() {
+        assert!(!needs_cmd_shim("rust-analyzer"));
+        assert!(!needs_cmd_shim("rust-analyzer.exe"));
+    }
+
+    #[test]
+    fn needs_cmd_shim_false_for_extension_in_the_middle() {
+        assert!(!needs_cmd_shim("server.cmd.exe"));
     }
 }

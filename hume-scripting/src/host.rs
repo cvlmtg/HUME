@@ -248,6 +248,16 @@ pub trait EditorHost {
         None
     }
 
+    /// Whether `language` currently has a `register-lsp-server!` config
+    /// (registered, not necessarily attached/running) — used by the
+    /// `on-language-set` missing-server hint to distinguish "not installed"
+    /// from "still starting". Reports the state *as of the last completed
+    /// drain*: an op queued earlier in the same eval hasn't applied yet.
+    fn lsp_registered_for_language(&self, language: &str) -> bool {
+        let _ = language;
+        false
+    }
+
     /// Ready-made `{"textDocument" {"uri"} "position" {"line" "character"}}`
     /// params for `id`'s primary cursor head, in its attached server's
     /// negotiated encoding — `None` if `id` has no path, no attached server,

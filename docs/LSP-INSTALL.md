@@ -305,7 +305,7 @@ files, step 2's builtin signatures).
   inspecting the generated data plus mechanical cross-checks in the sync scripts: every
   `lsp-sources.scm` server has an `lsp-servers.scm` entry, every referenced language
   exists in `languages.scm`, and every language appears under exactly one server.
-- [ ] **Step 2 — Rust platform primitives**: last-wins `register-lsp-server!` semantics
+- [x] **Step 2 — Rust platform primitives**: last-wins `register-lsp-server!` semantics
   plus a runtime registration path (the builtin is init-only today — registrations are
   queued and flushed once after init); unregister path + client shutdown (for
   `:lsp-uninstall` and reinstall-while-running; per-language, matching the registry's
@@ -327,3 +327,34 @@ files, step 2's builtin signatures).
   `grammars.scm` is the template. Marshalling gotcha: the minibuffer passes the integer
   `1` to an arity-1 Steel command invoked with no argument — the `lsp-install` no-arg
   branch must test "argument is a string", not absence.
+
+### Required external tools
+
+sha256 verification and archive unpacking (step 2) shell out to each platform's
+canonical system tool rather than pulling in hashing/archive crates — a deliberate
+choice (see below), traded for a hard runtime dependency on these being present:
+
+| Operation | macOS | Linux | Windows |
+|---|---|---|---|
+| sha256 | `shasum -a 256` (ships with the OS) | `sha256sum` (coreutils) | `certutil -hashfile … SHA256` (built in) |
+| `.gz` decode | `gzip -dc` (ships with the OS) | `gzip -dc` (ships with the OS) | `gzip -dc` — requires Git for Windows (or equivalent) on `PATH` |
+| `.zip` extract | `unzip -o` (ships with the OS) | `unzip -o` (not always preinstalled — install the `unzip` package) | `tar -xf` (bsdtar, built into Windows 10+) |
+| npm-kind installs | `node`/`npm` on `PATH` — required regardless of platform |
+
+`git` and `curl` were already required by the grammar pipeline; this adds `unzip` on
+Linux and `gzip` on Windows as the only new hard requirements. `:lsp-install` preflights
+the specific tool an install needs (via `exe-on-path?`) before downloading anything, so a
+missing tool fails loudly naming it rather than partway through an install.
+
+**Why shell out instead of adding `sha2`/`flate2`/`zip` crate dependencies**: keeps the
+audited process-spawn surface (`hume-platform/src/process.rs`) as the only place
+`std::process::Command` is used, avoids growing the dependency tree for functionality the
+OS/toolchain already ships, and — since these tools are already required by any
+developer's `git`/build toolchain — costs no new install step in the common case.
+
+**Accepted tradeoff — zip-slip and symlink-entry protection is delegated to the system
+tool** (modern Info-ZIP strips `../` entries; bsdtar refuses them by default), rather than
+implemented in HUME. The residual risk is bounded by the sync-time sha256 pin: `unpack-zip`
+runs only after `verify-sha256!` has confirmed the archive matches the maintainer-vetted,
+hash-locked asset recorded in `lsp-sources.scm` — an attacker would need to compromise the
+pinned upstream release itself, not just something interposed at install time.

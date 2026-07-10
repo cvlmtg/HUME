@@ -77,7 +77,7 @@ pub use keys::parse_key_stream;
 pub use log::LogLevel;
 pub use types::{
     HookResult, LspServerStatusEntry, PendingLanguageReg, PendingLspNotify, PendingLspRequest,
-    PendingLspServerReg, SteelCmdDef, SteelCmdResult,
+    PendingLspServerOp, PendingLspServerReg, SteelCmdDef, SteelCmdResult,
 };
 pub use watchdog::EvalWatchdog;
 
@@ -148,7 +148,7 @@ pub(crate) struct HostBundle<'a> {
     plugin_stack: &'a mut PluginStack,
     pending_messages: &'a mut Vec<(LogLevel, String)>,
     pending_language_regs: &'a mut Vec<PendingLanguageReg>,
-    pending_lsp_server_regs: &'a mut Vec<PendingLspServerReg>,
+    pending_lsp_server_ops: &'a mut Vec<PendingLspServerOp>,
     data_dir: Option<&'a std::path::Path>,
     runtime_dir: Option<&'a std::path::Path>,
     /// Owned `Arc` clone: `new_init`/`new_command` consume it via move into
@@ -182,9 +182,12 @@ pub struct ScriptingHost {
     /// Language identity registrations queued by `(define-language! …)`.
     /// Drained by `Editor::flush_pending_language_regs` after each `eval_init` boundary.
     pending_language_regs: Vec<PendingLanguageReg>,
-    /// LSP server registrations queued by `(register-lsp-server! …)`.
-    /// Drained by `Editor::flush_pending_lsp_server_regs` after init.scm finishes.
-    pending_lsp_server_regs: Vec<PendingLspServerReg>,
+    /// LSP server registrations/unregistrations queued by
+    /// `(register-lsp-server! …)` / `(unregister-lsp-server! …)`, in call
+    /// order. Drained after every eval — see `Editor::apply_script_effects`
+    /// (runtime) and `Editor::flush_pending_lsp_server_ops` (the init.scm
+    /// boundary, which calls the same apply function).
+    pending_lsp_server_ops: Vec<PendingLspServerOp>,
     /// `$XDG_DATA_HOME/hume/` — where PLUM installs user/third-party plugins.
     data_dir: Option<PathBuf>,
     /// The runtime directory (core plugins, themes, docs), or `None` if absent.
@@ -227,7 +230,7 @@ impl ScriptingHost {
             plugin_stack: PluginStack::default(),
             pending_messages: Vec::new(),
             pending_language_regs: Vec::new(),
-            pending_lsp_server_regs: Vec::new(),
+            pending_lsp_server_ops: Vec::new(),
             data_dir,
             runtime_dir,
             interrupt_flag: Arc::new(AtomicBool::new(false)),
@@ -257,7 +260,7 @@ impl ScriptingHost {
             plugin_stack,
             pending_messages,
             pending_language_regs,
-            pending_lsp_server_regs,
+            pending_lsp_server_ops,
             data_dir,
             runtime_dir,
             interrupt_flag,
@@ -272,7 +275,7 @@ impl ScriptingHost {
                 plugin_stack,
                 pending_messages,
                 pending_language_regs,
-                pending_lsp_server_regs,
+                pending_lsp_server_ops,
                 data_dir: data_dir.as_deref(),
                 runtime_dir: runtime_dir.as_deref(),
                 interrupt_flag: Arc::clone(interrupt_flag),
@@ -340,9 +343,10 @@ impl ScriptingHost {
         std::mem::take(&mut self.pending_language_regs)
     }
 
-    /// Drain all pending LSP server registrations.
-    pub fn take_pending_lsp_server_regs(&mut self) -> Vec<PendingLspServerReg> {
-        std::mem::take(&mut self.pending_lsp_server_regs)
+    /// Drain all pending LSP server registration/unregistration ops, in
+    /// call order.
+    pub fn take_pending_lsp_server_ops(&mut self) -> Vec<PendingLspServerOp> {
+        std::mem::take(&mut self.pending_lsp_server_ops)
     }
 
     /// Returns `true` if no handlers are registered for `hook_id`.

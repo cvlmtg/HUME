@@ -44,8 +44,7 @@ pub enum PendingLanguageReg {
     },
 }
 
-/// LSP server registration queued during `eval_init` and flushed by
-/// `Editor::flush_pending_lsp_server_regs` after init.scm finishes.
+/// One `(register-lsp-server! …)` call queued for the end-of-eval drain.
 ///
 /// `init_options`/`settings` are decoded at the Steel boundary via
 /// [`crate::json::steel_to_json`] — Steel data structures in, real JSON out.
@@ -57,6 +56,19 @@ pub struct PendingLspServerReg {
     pub root_markers: Vec<String>,
     pub init_options: Option<serde_json::Value>,
     pub settings: Option<serde_json::Value>,
+}
+
+/// An LSP server registration or unregistration queued during any eval
+/// (init.scm, plugin activation, or a command/hook body) and applied — in
+/// order — by `Editor::apply_lsp_server_ops` at the end of that eval.
+///
+/// One ordered queue (not two separate `Vec`s) because a reinstall emits
+/// `Unregister` then `Register` within the same eval and that interleaving
+/// must be preserved.
+#[derive(Debug)]
+pub enum PendingLspServerOp {
+    Register(PendingLspServerReg),
+    Unregister { language: String },
 }
 
 /// One entry of `(lsp-server-status)` — mirrors `:lsp-status`'s data
@@ -77,10 +89,8 @@ pub type PendingLanguageSets = Vec<(BufferId, Option<String>)>;
 
 /// `(lsp-request server method params callback #:allow-stale bool)` calls
 /// queued during a command, hook, or queued-Steel-call eval and flushed by
-/// `Editor::flush_pending_lsp_requests` right after, mirroring
-/// `pending_language_sets`'s per-eval drain (not `PendingLspServerReg`'s
-/// once-per-init-boundary queue — a request can be sent at any eval, not
-/// just init.scm's top level).
+/// `Editor::flush_pending_lsp_requests` right after — the same per-eval
+/// drain shape `pending_language_sets` and `PendingLspServerOp` use.
 ///
 /// `server` is a registered language name, or `None` for "the focused
 /// buffer's attached server". `params` is already decoded to JSON via

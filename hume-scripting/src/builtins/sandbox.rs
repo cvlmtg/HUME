@@ -4,9 +4,10 @@
 //! `canonicalize` call on an untrusted path must hard-fail (return `None` or
 //! propagate `Err`) on any error — never fall back to the unresolved path.
 //!
-//! All three sandbox roots (`data_plugins`, `data_grammars`, `runtime_plugins`) are
-//! set to `None` when the underlying directory cannot be created or canonicalized.
-//! Sandbox checks against a `None` root fail closed.
+//! All four sandbox roots (`data_plugins`, `data_grammars`, `data_servers`,
+//! `runtime_plugins`) are set to `None` when the underlying directory cannot
+//! be created or canonicalized. Sandbox checks against a `None` root fail
+//! closed.
 //!
 //! # Public surface (within the crate)
 //!
@@ -16,6 +17,7 @@
 //! | [`with_data_plugins`]         | `shell.rs` git/curl operations    |
 //! | [`with_data_grammars`]        | `shell.rs`, `grammar.rs`          |
 //! | [`with_data_grammars_or_subpath`] | `grammar.rs`                  |
+//! | [`with_data_servers`]         | `shell.rs`, `install.rs` (LSP server installs) |
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -39,6 +41,10 @@ struct ScriptDirs {
     /// Canonical `<data>/grammars/` — sandbox root for grammar operations.
     /// `None` when `data_dir` is unavailable or directory creation fails.
     data_grammars: Option<PathBuf>,
+    /// Canonical `<data>/servers/` — sandbox root for LSP server install
+    /// operations (downloads, unpacking, npm installs, receipts).
+    /// `None` when `data_dir` is unavailable or directory creation fails.
+    data_servers: Option<PathBuf>,
     /// Canonical `<runtime>/plugins/` — allowed for read-path ops only.
     runtime_plugins: Option<PathBuf>,
 }
@@ -50,11 +56,12 @@ thread_local! {
 /// Initialize the directory TLS.  Must be called exactly once during
 /// [`crate::ScriptingHost::new`] before any builtins are invoked.
 ///
-/// Eagerly creates `<data>/plugins/`, `<data>/grammars/`, and
-/// `<data>/grammars/sources/` so grammar and plugin paths exist before any
-/// sandbox check runs.  If creation or canonicalization fails for a sandbox
-/// root, that root is set to `None` and the corresponding write operations
-/// fail closed rather than silently permitting writes to a bogus prefix.
+/// Eagerly creates `<data>/plugins/`, `<data>/grammars/`,
+/// `<data>/grammars/sources/`, and `<data>/servers/` so grammar, plugin, and
+/// server-install paths exist before any sandbox check runs.  If creation or
+/// canonicalization fails for a sandbox root, that root is set to `None` and
+/// the corresponding write operations fail closed rather than silently
+/// permitting writes to a bogus prefix.
 pub fn init_dirs(data_dir: Option<PathBuf>, runtime_dir: Option<PathBuf>) {
     // Eagerly create sandbox subdirs from the raw data_dir path before
     // canonicalizing, so a first-run (dir doesn't exist yet) gets the dirs.
@@ -73,6 +80,13 @@ pub fn init_dirs(data_dir: Option<PathBuf>, runtime_dir: Option<PathBuf>) {
         let g = d.join("grammars");
         hume_platform::fs::create_dir_all(&g.join("sources")).ok()?;
         hume_platform::fs::canonicalize(&g).ok()
+    });
+
+    // <data>/servers/
+    let data_servers = data_dir.as_ref().and_then(|d| {
+        let s = d.join("servers");
+        hume_platform::fs::create_dir_all(&s).ok()?;
+        hume_platform::fs::canonicalize(&s).ok()
     });
 
     // Canonicalize data_dir for the display form; fall back to raw path when
@@ -97,6 +111,7 @@ pub fn init_dirs(data_dir: Option<PathBuf>, runtime_dir: Option<PathBuf>) {
             runtime_dir_display,
             data_plugins,
             data_grammars,
+            data_servers,
             runtime_plugins,
         });
     });
@@ -148,6 +163,20 @@ pub(crate) fn with_data_grammars<R>(f: impl FnOnce(&Path) -> R) -> Result<R, Ste
     })
 }
 
+/// Call `f` with the canonical write-sandbox root (`<data>/servers/`).
+/// Used by `shell.rs`/`install.rs` to sandbox LSP server install operations
+/// (downloads, unpacking, npm installs, receipts).
+pub(crate) fn with_data_servers<R>(f: impl FnOnce(&Path) -> R) -> Result<R, SteelErr> {
+    with_dirs(|dirs| match dirs.data_servers.as_deref() {
+        Some(p) => Ok(f(p)),
+        None => Err(SteelErr::new(
+            ErrorKind::Generic,
+            "no data directory — HOME/APPDATA unset; server install operations unavailable"
+                .to_string(),
+        )),
+    })
+}
+
 /// Call `f` with `<data>/grammars/<seg>` where `seg` must be a safe, single
 /// path component (no `..`, no `.`, no separators).
 pub(crate) fn with_data_grammars_or_subpath<R>(
@@ -176,18 +205,38 @@ pub(crate) fn is_under_write_sandbox(canonical: &Path) -> bool {
                 .data_grammars
                 .as_deref()
                 .is_some_and(|g| canonical.starts_with(g))
+            || dirs
+                .data_servers
+                .as_deref()
+                .is_some_and(|s| canonical.starts_with(s))
     })
 }
 
 /// Returns `true` when `canonical` is inside `<data>/grammars/`.
 ///
-/// Used by `delete-file`, which has a narrower sandbox than `delete-dir`.
+/// Used by operations whose sandbox is narrower than the full write sandbox.
 pub(crate) fn is_under_grammars_sandbox(canonical: &Path) -> bool {
     with_dirs(|dirs| {
         dirs.data_grammars
             .as_deref()
             .is_some_and(|g| canonical.starts_with(g))
     })
+}
+
+/// Returns `true` when `canonical` is inside `<data>/servers/`.
+pub(crate) fn is_under_servers_sandbox(canonical: &Path) -> bool {
+    with_dirs(|dirs| {
+        dirs.data_servers
+            .as_deref()
+            .is_some_and(|s| canonical.starts_with(s))
+    })
+}
+
+/// Returns `true` when `canonical` is inside `<data>/grammars/` or
+/// `<data>/servers/` — the "install" sandbox shared by operations that touch
+/// both artifact classes (`curl-fetch`, `write-file`, `delete-file`).
+pub(crate) fn is_under_install_sandbox(canonical: &Path) -> bool {
+    is_under_grammars_sandbox(canonical) || is_under_servers_sandbox(canonical)
 }
 
 pub(crate) fn is_under_read_sandbox(canonical: &Path) -> bool {
@@ -248,6 +297,7 @@ mod tests {
         assert!(data_dir.join("plugins").is_dir());
         assert!(data_dir.join("grammars").is_dir());
         assert!(data_dir.join("grammars/sources").is_dir());
+        assert!(data_dir.join("servers").is_dir());
     }
 
     // ── canonical_ancestor_join ───────────────────────────────────────────────
@@ -289,6 +339,8 @@ mod tests {
         // Every path must be denied; fail-closed is the security invariant.
         assert!(!is_under_write_sandbox(Path::new("/any/path")));
         assert!(!is_under_grammars_sandbox(Path::new("/any/path")));
+        assert!(!is_under_servers_sandbox(Path::new("/any/path")));
+        assert!(!is_under_install_sandbox(Path::new("/any/path")));
         assert!(!is_under_read_sandbox(Path::new("/any/path")));
     }
 
@@ -302,6 +354,50 @@ mod tests {
     fn with_data_grammars_errs_when_dirs_unavailable() {
         init_dirs(None, None);
         assert!(with_data_grammars(|_| ()).is_err());
+    }
+
+    #[test]
+    fn with_data_servers_errs_when_dirs_unavailable() {
+        init_dirs(None, None);
+        assert!(with_data_servers(|_| ()).is_err());
+    }
+
+    // ── servers sandbox (new root) ────────────────────────────────────────────
+
+    #[test]
+    fn is_under_servers_sandbox_accepts_path_inside_servers_dir() {
+        let tmp = TempDir::new().unwrap();
+        let data_dir = tmp.path().join("hume");
+        init_dirs(Some(data_dir.clone()), None);
+        let inside = std::fs::canonicalize(data_dir.join("servers"))
+            .unwrap()
+            .join("rust-analyzer");
+        assert!(is_under_servers_sandbox(&inside));
+        assert!(is_under_write_sandbox(&inside));
+        assert!(is_under_install_sandbox(&inside));
+        assert!(is_under_read_sandbox(&inside));
+    }
+
+    #[test]
+    fn is_under_servers_sandbox_rejects_path_outside_servers_dir() {
+        let tmp = TempDir::new().unwrap();
+        let data_dir = tmp.path().join("hume");
+        init_dirs(Some(data_dir.clone()), None);
+        let outside = std::fs::canonicalize(data_dir.join("plugins")).unwrap();
+        assert!(!is_under_servers_sandbox(&outside));
+    }
+
+    #[test]
+    fn is_under_install_sandbox_accepts_grammars_and_servers_not_plugins() {
+        let tmp = TempDir::new().unwrap();
+        let data_dir = tmp.path().join("hume");
+        init_dirs(Some(data_dir.clone()), None);
+        let grammars = std::fs::canonicalize(data_dir.join("grammars")).unwrap();
+        let servers = std::fs::canonicalize(data_dir.join("servers")).unwrap();
+        let plugins = std::fs::canonicalize(data_dir.join("plugins")).unwrap();
+        assert!(is_under_install_sandbox(&grammars));
+        assert!(is_under_install_sandbox(&servers));
+        assert!(!is_under_install_sandbox(&plugins));
     }
 
     // ── with_data_grammars_or_subpath segment validation ─────────────────────

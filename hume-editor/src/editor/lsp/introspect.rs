@@ -100,6 +100,14 @@ pub(crate) fn server_for_buffer(
     server_language(lsp, sid)
 }
 
+/// Whether `language` currently has a `register-lsp-server!` config —
+/// registered, not necessarily attached/running. Distinguishes "no server
+/// registered" from "registered but still starting", which
+/// `server_for_buffer` (attachment, not registration) can't tell apart.
+pub(crate) fn registered_for_language(lsp: &LspState, language: &str) -> bool {
+    lsp.configs.contains_key(language)
+}
+
 /// The seeded `PaneBufferState` for `(state.focused_pane_id, id)` if seeded
 /// there, else the first pane (any) that has `id` seeded — a buffer can be
 /// open in a non-focused pane, or in no pane at all (background buffer).

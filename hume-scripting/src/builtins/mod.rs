@@ -11,6 +11,7 @@ pub(crate) mod fs;
 pub(crate) mod grammar;
 pub(crate) mod hooks;
 pub(crate) mod ids;
+pub(crate) mod install;
 pub(crate) mod interrupt;
 pub(crate) mod io;
 pub(crate) mod keymap_bind;
@@ -199,9 +200,11 @@ const BOOTSTRAP: &str = r#"
                   (if proc2 (apply proc2 args) (%call-native! name args))))
               (%call-native! name args))))))
 
-; register-lsp-server! — queues an LSP server for spawn-on-first-open.
-; Init-only (like define-language!). init-options/settings are any Steel
-; data (typically a hash), decoded to JSON at the boundary.
+; register-lsp-server! — queues a last-wins LSP server registration, applied
+; (and any already-open matching buffers attached) at the end of the current
+; eval — init.scm top level, plugin activation, or a command/hook body.
+; init-options/settings are any Steel data (typically a hash), decoded to
+; JSON at the boundary.
 (define (register-lsp-server! language #:command command
                                         #:args [args '()]
                                         #:root-markers [root-markers '()]
@@ -367,11 +370,12 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_fn_with_ctx(HUME_CTX, "pending-char", commands::pending_char);
     steel.register_fn_with_ctx(HUME_CTX, "command-plugin", commands::command_plugin);
 
-    // Shell — narrow git/curl wrappers only (no generic run-process)
+    // Shell — narrow git/curl/npm wrappers only (no generic run-process)
     steel.register_fn_with_ctx(HUME_CTX, "git-clone", shell::git_clone);
     steel.register_fn_with_ctx(HUME_CTX, "git-pull", shell::git_pull);
     steel.register_fn_with_ctx(HUME_CTX, "git-clone-rev", shell::git_clone_rev);
     steel.register_fn_with_ctx(HUME_CTX, "curl-fetch", shell::curl_fetch);
+    steel.register_fn_with_ctx(HUME_CTX, "npm-install!", shell::npm_install);
 
     // Grammar compilation
     steel.register_fn_with_ctx(
@@ -380,6 +384,14 @@ pub(crate) fn register_all(steel: &mut Engine) {
         grammar::grammar_output_path,
     );
     steel.register_fn_with_ctx(HUME_CTX, "compile-grammar!", grammar::compile_grammar);
+
+    // LSP server install pipeline — sha256 verification, archive unpacking,
+    // platform id, $PATH lookup (see docs/LSP-INSTALL.md).
+    steel.register_value("hume-target", SteelVal::FuncV(install::hume_target));
+    steel.register_fn_with_ctx(HUME_CTX, "verify-sha256!", install::verify_sha256);
+    steel.register_fn_with_ctx(HUME_CTX, "unpack-gz", install::unpack_gz);
+    steel.register_fn_with_ctx(HUME_CTX, "unpack-zip", install::unpack_zip);
+    steel.register_value("exe-on-path?", SteelVal::FuncV(install::exe_on_path));
 
     // Logging — push messages to the editor message log
     steel.register_fn_with_ctx(HUME_CTX, "log!", crate::log::log_msg);
@@ -421,8 +433,15 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_fn_with_ctx(HUME_CTX, "%define-language!", syntax::define_language);
     steel.register_fn_with_ctx(HUME_CTX, "%register-grammar!", syntax::register_grammar);
 
-    // LSP server registration — init-only, queued like language regs.
+    // LSP server registration — last-wins, queued (like language regs) and
+    // applied at the end of the current eval, from init, plugin activation,
+    // or a command/hook body.
     steel.register_fn_with_ctx(HUME_CTX, "%register-lsp-server!", lsp::register_lsp_server);
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "unregister-lsp-server!",
+        lsp::unregister_lsp_server,
+    );
     // Generic LSP bridge — any protocol method reachable from Steel.
     steel.register_fn_with_ctx(HUME_CTX, "%lsp-request", lsp::lsp_request);
     steel.register_fn_with_ctx(HUME_CTX, "lsp-notify", lsp::lsp_notify);
@@ -434,6 +453,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
         HUME_CTX,
         "lsp-server-for-buffer",
         lsp::lsp_server_for_buffer,
+    );
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "lsp-registered-for-language?",
+        lsp::lsp_registered_for_language,
     );
     steel.register_fn_with_ctx(HUME_CTX, "lsp-position-params", lsp::lsp_position_params);
     steel.register_fn_with_ctx(HUME_CTX, "lsp-range-params", lsp::lsp_range_params);

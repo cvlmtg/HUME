@@ -4,7 +4,7 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::json::{json_to_steel, steel_to_json};
-use crate::types::{PendingLspNotify, PendingLspRequest};
+use crate::types::{PendingLspNotify, PendingLspRequest, PendingLspServerOp};
 use crate::{PendingLspServerReg, SteelCtx};
 
 use super::{conv_err, list_to_strings, require_cmd_ctx, require_config_ctx, string_arg};
@@ -38,12 +38,17 @@ fn optional_json_arg(val: SteelVal, ctx_name: &str) -> Result<Option<serde_json:
 }
 
 /// `(%register-lsp-server! language command args root-markers init-options settings)`
-/// — init-only.
 ///
-/// All list args must be lists of strings. Pushes a `PendingLspServerReg`
-/// onto `ctx.pending_lsp_server_regs`; `Editor::flush_pending_lsp_server_regs`
-/// applies them once init.scm finishes (same queueing shape as
-/// `%define-language!`).
+/// Callable from init.scm, plugin activation, or a command/hook body —
+/// unlike `%define-language!`, this is not gated to init/activation-only.
+/// Queues a last-wins registration: applied at the end of the *current*
+/// eval (see `Editor::apply_lsp_server_ops`), replacing any existing
+/// registration for `language` and attaching already-open matching buffers.
+/// Within the same eval, `lsp-registered-for-language?` still reports the
+/// *pre*-eval state — the op has not applied yet.
+///
+/// All list args must be lists of strings. Pushes a
+/// `PendingLspServerOp::Register` onto `ctx.pending_lsp_server_ops`.
 pub(crate) fn register_lsp_server(
     ctx: &mut SteelCtx,
     language: SteelVal,
@@ -53,7 +58,6 @@ pub(crate) fn register_lsp_server(
     init_options: SteelVal,
     settings: SteelVal,
 ) -> SteelResult {
-    require_config_ctx!(ctx, "%register-lsp-server!");
     let language = string_arg(language, "register-lsp-server! language")?;
     let command = string_arg(command, "register-lsp-server! command")?;
     let args = list_to_strings(args_val, "register-lsp-server! args")?;
@@ -61,14 +65,36 @@ pub(crate) fn register_lsp_server(
     let init_options = optional_json_arg(init_options, "register-lsp-server! init-options")?;
     let settings = optional_json_arg(settings, "register-lsp-server! settings")?;
 
-    ctx.pending_lsp_server_regs.push(PendingLspServerReg {
-        language,
-        command,
-        args,
-        root_markers,
-        init_options,
-        settings,
-    });
+    ctx.pending_lsp_server_ops
+        .push(PendingLspServerOp::Register(PendingLspServerReg {
+            language,
+            command,
+            args,
+            root_markers,
+            init_options,
+            settings,
+        }));
+    Ok(SteelVal::Void)
+}
+
+/// `(unregister-lsp-server! language)` — queues removal of `language`'s
+/// registration and shutdown of any running clients for it, applied at the
+/// end of the current eval (see `Editor::apply_lsp_server_ops`).
+///
+/// Idempotent: unregistering a language with no registration and/or no
+/// running clients is not an error — `:lsp-uninstall` of an already-removed
+/// or never-installed server must succeed silently.
+///
+/// Applies at end-of-eval, so within the *same* eval the server process is
+/// still alive. A caller that must touch the on-disk server files after
+/// shutdown (e.g. reinstalling on Windows, where a running binary's file is
+/// locked) should do that work in a follow-up queued eval (e.g. via
+/// `(after 0 …)`), which runs strictly after this eval's drain reaps the
+/// process.
+pub(crate) fn unregister_lsp_server(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
+    let language = string_arg(language, "unregister-lsp-server! language")?;
+    ctx.pending_lsp_server_ops
+        .push(PendingLspServerOp::Unregister { language });
     Ok(SteelVal::Void)
 }
 
@@ -197,6 +223,20 @@ pub(crate) fn lsp_server_for_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelR
         Some(lang) => SteelVal::StringV(lang.into()),
         None => SteelVal::BoolV(false),
     })
+}
+
+/// `(lsp-registered-for-language? language)` → bool. Registry query for the
+/// `on-language-set` missing-server hint: distinguishes "no server
+/// registered for this language" from "registered but still starting"
+/// (`lsp-server-for-buffer` reports *attachment*, which can't make that
+/// distinction). Reports state as of the last completed drain — an op
+/// queued earlier in the same eval hasn't applied yet.
+pub(crate) fn lsp_registered_for_language(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "lsp-registered-for-language?");
+    let language = string_arg(language, "lsp-registered-for-language? language")?;
+    Ok(SteelVal::BoolV(
+        ctx.host.lsp_registered_for_language(&language),
+    ))
 }
 
 /// `(lsp-position-params bid)` → `{"textDocument" {"uri"} "position" {"line"
@@ -742,6 +782,17 @@ mod tests {
             .unwrap()
     }
 
+    /// Unwraps the single queued op as a `Register`, panicking with a message
+    /// naming the actual variant otherwise — so a misrouted `Unregister`
+    /// fails loudly instead of silently indexing the wrong data.
+    fn expect_register(h: &SteelCtxTestHarness) -> &crate::PendingLspServerReg {
+        assert_eq!(h.pending_lsp_server_ops.len(), 1);
+        match &h.pending_lsp_server_ops[0] {
+            PendingLspServerOp::Register(reg) => reg,
+            other => panic!("expected Register, got {other:?}"),
+        }
+    }
+
     #[test]
     fn queues_a_pending_registration_in_init_mode() {
         let mut h = SteelCtxTestHarness::new();
@@ -757,8 +808,7 @@ mod tests {
         );
         assert!(result.is_ok());
         drop(ctx);
-        assert_eq!(h.pending_lsp_server_regs.len(), 1);
-        let reg = &h.pending_lsp_server_regs[0];
+        let reg = expect_register(&h);
         assert_eq!(reg.language, "rust");
         assert_eq!(reg.command, "rust-analyzer");
         assert_eq!(reg.root_markers, vec!["Cargo.toml".to_string()]);
@@ -789,15 +839,16 @@ mod tests {
         );
         assert!(result.is_ok());
         drop(ctx);
-        let reg = &h.pending_lsp_server_regs[0];
+        let reg = expect_register(&h);
         assert_eq!(reg.init_options, Some(serde_json::json!({"a": 1})));
         assert_eq!(reg.settings, Some(serde_json::json!({"b": 2})));
     }
 
-    /// Fail oracle: call outside init (command mode, empty plugin stack) →
-    /// the guard must fire and nothing gets queued.
+    /// `register-lsp-server!` is no longer init/activation-only — it must
+    /// queue successfully from a plain command-mode context too, so that
+    /// `:lsp-install`'s runtime registration path works.
     #[test]
-    fn rejected_outside_init_and_plugin_activation() {
+    fn queues_a_pending_registration_from_command_mode() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
         let result = register_lsp_server(
@@ -809,9 +860,10 @@ mod tests {
             SteelVal::BoolV(false),
             SteelVal::BoolV(false),
         );
-        assert!(result.is_err());
+        assert!(result.is_ok());
         drop(ctx);
-        assert!(h.pending_lsp_server_regs.is_empty());
+        let reg = expect_register(&h);
+        assert_eq!(reg.language, "rust");
     }
 
     #[test]
@@ -846,5 +898,76 @@ mod tests {
             SteelVal::BoolV(false),
         );
         assert!(result.is_err());
+    }
+
+    // ── unregister-lsp-server! ────────────────────────────────────────────────
+
+    #[test]
+    fn unregister_queues_an_unregister_op() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = unregister_lsp_server(&mut ctx, "rust".into_steelval().unwrap());
+        assert!(result.is_ok());
+        drop(ctx);
+        assert_eq!(h.pending_lsp_server_ops.len(), 1);
+        match &h.pending_lsp_server_ops[0] {
+            PendingLspServerOp::Unregister { language } => assert_eq!(language, "rust"),
+            other => panic!("expected Unregister, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unregister_is_callable_from_init_mode_too() {
+        // Symmetric with register-lsp-server!: neither is gated to a single
+        // eval kind.
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        let result = unregister_lsp_server(&mut ctx, "rust".into_steelval().unwrap());
+        assert!(result.is_ok());
+    }
+
+    /// A reinstall eval emits unregister-then-register; the queue must
+    /// preserve that order so the apply side sees "tear down the old
+    /// registration, then install the new one" — not the reverse.
+    #[test]
+    fn register_unregister_register_ordering_is_preserved() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        register_lsp_server(
+            &mut ctx,
+            "rust".into_steelval().unwrap(),
+            "rust-analyzer".into_steelval().unwrap(),
+            list_of(&[]),
+            list_of(&[]),
+            SteelVal::BoolV(false),
+            SteelVal::BoolV(false),
+        )
+        .unwrap();
+        unregister_lsp_server(&mut ctx, "rust".into_steelval().unwrap()).unwrap();
+        register_lsp_server(
+            &mut ctx,
+            "rust".into_steelval().unwrap(),
+            "rust-analyzer".into_steelval().unwrap(),
+            list_of(&["--new-flag"]),
+            list_of(&[]),
+            SteelVal::BoolV(false),
+            SteelVal::BoolV(false),
+        )
+        .unwrap();
+        drop(ctx);
+
+        assert_eq!(h.pending_lsp_server_ops.len(), 3);
+        assert!(matches!(
+            &h.pending_lsp_server_ops[0],
+            PendingLspServerOp::Register(reg) if reg.args.is_empty()
+        ));
+        assert!(matches!(
+            &h.pending_lsp_server_ops[1],
+            PendingLspServerOp::Unregister { language } if language == "rust"
+        ));
+        assert!(matches!(
+            &h.pending_lsp_server_ops[2],
+            PendingLspServerOp::Register(reg) if reg.args == vec!["--new-flag".to_string()]
+        ));
     }
 }

@@ -383,6 +383,12 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         crate::editor::lsp::introspect::server_for_buffer(self.state, self.lsp?, id)
     }
 
+    fn lsp_registered_for_language(&self, language: &str) -> bool {
+        self.lsp.is_some_and(|lsp| {
+            crate::editor::lsp::introspect::registered_for_language(lsp, language)
+        })
+    }
+
     fn lsp_position_params(&self, id: BufferId) -> Option<serde_json::Value> {
         crate::editor::lsp::introspect::position_params(self.state, self.lsp?, id)
     }

@@ -41,21 +41,44 @@ pub(crate) fn resolve_root(file: &Path, markers: &[String], cwd: &Path) -> PathB
 }
 
 impl Editor {
-    /// Stores one registration, keyed by language. Rejects loudly a second
-    /// registration for a language already
-    /// configured. `init_options`/`settings` arrive already decoded to JSON
-    /// by `hume_scripting::json::steel_to_json` at the Steel boundary.
-    fn apply_pending_lsp_server_reg(&mut self, reg: hume_scripting::PendingLspServerReg) {
-        if self.lsp.configs.contains_key(&reg.language) {
-            self.report(
-                Severity::Error,
-                format!(
-                    "register-lsp-server!: '{}' is already registered — ignoring duplicate",
-                    reg.language
-                ),
-            );
-            return;
+    /// Applies one queued op, in order — shared by the init-boundary flush
+    /// (`flush_pending_lsp_server_ops`) and the runtime drain inside
+    /// `Editor::apply_script_effects`, so there is exactly one apply path
+    /// for LSP server registration/unregistration regardless of which eval
+    /// queued it.
+    fn apply_lsp_server_op(&mut self, op: hume_scripting::PendingLspServerOp) {
+        match op {
+            hume_scripting::PendingLspServerOp::Register(reg) => {
+                self.apply_pending_lsp_server_reg(reg);
+            }
+            hume_scripting::PendingLspServerOp::Unregister { language } => {
+                // Idempotent by construction: removing an absent key and
+                // stopping a language with no running clients are both
+                // no-ops — `:lsp-uninstall` of an orphan or never-spawned
+                // server must succeed silently.
+                self.lsp.configs.remove(&language);
+                self.lsp_stop(Some(&language));
+            }
         }
+    }
+
+    /// Last-wins insert: replaces any existing registration for the same
+    /// language (matching `define-language!`'s semantics) rather than
+    /// rejecting the second call. Running clients on the *old* config are
+    /// left alone until their next spawn — a caller that needs a fresh
+    /// spawn right away (e.g. reinstalling a server) unregisters explicitly
+    /// first, which this does not do on its own.
+    ///
+    /// After inserting, sweeps already-open buffers of this language that
+    /// aren't yet attached (`lsp_attach_buffer` is idempotent), so
+    /// registration always implies "this language's open buffers get an
+    /// LSP client" — callers never need a separate attach step.
+    ///
+    /// `init_options`/`settings` arrive already decoded to JSON by
+    /// `hume_scripting::json::steel_to_json` at the Steel boundary.
+    fn apply_pending_lsp_server_reg(&mut self, reg: hume_scripting::PendingLspServerReg) {
+        let replaced = self.lsp.configs.contains_key(&reg.language);
+        let language = reg.language.clone();
 
         self.lsp.configs.insert(
             reg.language,
@@ -67,18 +90,51 @@ impl Editor {
                 settings: reg.settings,
             },
         );
+
+        if replaced {
+            self.report(
+                Severity::Trace,
+                format!("register-lsp-server!: replaced registration for '{language}'"),
+            );
+        }
+
+        let bids: Vec<BufferId> = self
+            .state
+            .buffers
+            .iter()
+            .filter(|(_, buf)| {
+                buf.language.as_deref() == Some(language.as_str()) && buf.lsp_server.is_none()
+            })
+            .map(|(bid, _)| bid)
+            .collect();
+        for bid in bids {
+            self.lsp_attach_buffer(bid);
+        }
     }
 
-    /// Drain `host.pending_lsp_server_regs` and apply them. Mirrors
-    /// `flush_pending_language_regs`'s Rust-side twin.
-    pub(in crate::editor) fn flush_pending_lsp_server_regs(
+    /// Applies every queued op, in order. Shared tail for the init-boundary
+    /// flush (`flush_pending_lsp_server_ops`) and the runtime drain inside
+    /// `Editor::apply_script_effects`.
+    pub(in crate::editor) fn apply_lsp_server_ops(
+        &mut self,
+        ops: Vec<hume_scripting::PendingLspServerOp>,
+    ) {
+        for op in ops {
+            self.apply_lsp_server_op(op);
+        }
+    }
+
+    /// Drain `host`'s queued LSP server ops and apply them. Mirrors
+    /// `flush_pending_language_regs`'s Rust-side twin — called once, at the
+    /// end of `init.scm` (the runtime path drains through
+    /// `Editor::apply_script_effects` instead, calling the same
+    /// `apply_lsp_server_ops`).
+    pub(in crate::editor) fn flush_pending_lsp_server_ops(
         &mut self,
         host: &mut hume_scripting::ScriptingHost,
     ) {
-        let regs = host.take_pending_lsp_server_regs();
-        for reg in regs {
-            self.apply_pending_lsp_server_reg(reg);
-        }
+        let ops = host.take_pending_lsp_server_ops();
+        self.apply_lsp_server_ops(ops);
     }
 
     /// Attaches buffer `bid` to its language's registered server, spawning

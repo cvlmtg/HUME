@@ -27,6 +27,7 @@ pub mod fs;
 pub mod io;
 pub mod path;
 pub mod process;
+pub mod target;
 pub mod terminal;
 
 use std::time::{Duration, Instant};

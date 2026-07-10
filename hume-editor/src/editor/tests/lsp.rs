@@ -369,11 +369,14 @@ fn eval_register(ed: &mut Editor, host: &mut ScriptingHost, source: &str, tmp: &
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init");
-    ed.flush_pending_lsp_server_regs(host);
+    ed.flush_pending_lsp_server_ops(host);
 }
 
 #[test]
-fn duplicate_language_registration_is_a_loud_error() {
+fn second_registration_replaces_first() {
+    // Last-wins: a second register-lsp-server! for an already-registered
+    // language replaces the config rather than being rejected — matching
+    // define-language!'s semantics. No error is logged.
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[w]>ord\n");
     ed.lsp = LspState::new_inline();
@@ -394,8 +397,176 @@ fn duplicate_language_registration_is_a_loud_error() {
 
     let log = ed.state.message_log.format_for_display();
     assert!(
-        log.contains("already registered"),
-        "second registration for the same language must log a loud error, got: {log}"
+        !log.contains("already registered") && !log.contains("Error"),
+        "second registration must not be rejected as a duplicate, got log: {log}"
+    );
+    assert_eq!(
+        ed.lsp.config_command_for_test("rust").as_deref(),
+        Some("rust-analyzer-2"),
+        "second registration must win"
+    );
+}
+
+#[test]
+fn runtime_registration_attaches_already_open_buffer() {
+    // A buffer opened before its language has any registered server gets
+    // its language set (via detection) but stays unattached. Registering
+    // the server afterward must sweep it in — no separate attach step.
+    let tmp = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(tmp.path()).unwrap();
+    std::fs::write(root.join("Cargo.toml"), b"").unwrap();
+    let file = root.join("main.rs");
+    std::fs::write(&file, b"fn main() {}\n").unwrap();
+
+    let mut ed = editor_from("-[w]>ord\n");
+    ed.lsp = LspState::new_inline();
+    ed.state
+        .languages
+        .register_identity("rust", &["rs"], &[], &[])
+        .unwrap();
+    let mut host = ScriptingHost::new();
+
+    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
+    let bid = ed.focused_buffer_id();
+    assert!(
+        ed.state.buffers.get(bid).lsp_server.is_none(),
+        "buffer must be unattached before any server is registered"
+    );
+
+    eval_register(
+        &mut ed,
+        &mut host,
+        r#"(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))"#,
+        tmp.path(),
+    );
+
+    assert!(
+        ed.state.buffers.get(bid).lsp_server.is_some(),
+        "registration must sweep and attach the already-open matching buffer"
+    );
+    assert_eq!(ed.lsp.server_count_for_test(), 1);
+}
+
+#[test]
+fn unregister_stops_running_client_and_clears_config() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(tmp.path()).unwrap();
+    std::fs::write(root.join("Cargo.toml"), b"").unwrap();
+    let file = root.join("main.rs");
+    std::fs::write(&file, b"fn main() {}\n").unwrap();
+
+    let mut ed = editor_from("-[w]>ord\n");
+    ed.lsp = LspState::new_inline();
+    ed.state
+        .languages
+        .register_identity("rust", &["rs"], &[], &[])
+        .unwrap();
+    let mut host = ScriptingHost::new();
+    eval_register(
+        &mut ed,
+        &mut host,
+        r#"(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))"#,
+        tmp.path(),
+    );
+    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
+    let bid = ed.focused_buffer_id();
+    assert_eq!(ed.lsp.server_count_for_test(), 1);
+    assert!(ed.state.buffers.get(bid).lsp_server.is_some());
+
+    eval_register(
+        &mut ed,
+        &mut host,
+        r#"(unregister-lsp-server! "rust")"#,
+        tmp.path(),
+    );
+
+    assert_eq!(
+        ed.lsp.server_count_for_test(),
+        0,
+        "unregister must shut down the running client"
+    );
+    assert!(
+        ed.lsp.config_command_for_test("rust").is_none(),
+        "unregister must clear the registration"
+    );
+    assert!(
+        ed.state.buffers.get(bid).lsp_server.is_none(),
+        "the detached buffer's lsp_server must be cleared"
+    );
+}
+
+#[test]
+fn unregister_of_never_registered_language_is_silent_success() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[w]>ord\n");
+    ed.lsp = LspState::new_inline();
+    let mut host = ScriptingHost::new();
+
+    eval_register(
+        &mut ed,
+        &mut host,
+        r#"(unregister-lsp-server! "nonexistent-language")"#,
+        tmp.path(),
+    );
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        !log.to_lowercase().contains("error"),
+        "unregistering an orphan/never-registered language must not log an error, got: {log}"
+    );
+}
+
+#[test]
+fn replace_while_running_leaves_old_client_untouched() {
+    // Spec: replacing an already-registered language does NOT shut down
+    // running clients — that only happens via an explicit unregister
+    // (the reinstall path). The old client keeps running on the old config
+    // until its next spawn.
+    let tmp = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(tmp.path()).unwrap();
+    std::fs::write(root.join("Cargo.toml"), b"").unwrap();
+    let file = root.join("main.rs");
+    std::fs::write(&file, b"fn main() {}\n").unwrap();
+
+    let mut ed = editor_from("-[w]>ord\n");
+    ed.lsp = LspState::new_inline();
+    ed.state
+        .languages
+        .register_identity("rust", &["rs"], &[], &[])
+        .unwrap();
+    let mut host = ScriptingHost::new();
+    eval_register(
+        &mut ed,
+        &mut host,
+        r#"(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))"#,
+        tmp.path(),
+    );
+    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
+    let bid = ed.focused_buffer_id();
+    let original_server = ed.state.buffers.get(bid).lsp_server;
+    assert!(original_server.is_some());
+
+    eval_register(
+        &mut ed,
+        &mut host,
+        r#"(register-lsp-server! "rust" #:command "rust-analyzer-2" #:root-markers '("Cargo.toml"))"#,
+        tmp.path(),
+    );
+
+    assert_eq!(
+        ed.lsp.server_count_for_test(),
+        1,
+        "replacing a registration must not shut down the running server"
+    );
+    assert_eq!(
+        ed.state.buffers.get(bid).lsp_server,
+        original_server,
+        "the already-attached buffer must stay on its original client"
+    );
+    assert_eq!(
+        ed.lsp.config_command_for_test("rust").as_deref(),
+        Some("rust-analyzer-2"),
+        "the config itself must still reflect the replacement"
     );
 }
 

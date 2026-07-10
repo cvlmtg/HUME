@@ -18,11 +18,26 @@ use super::{Editor, Severity, host_impl::EditorHostImpl, theme};
 const MAX_HOOK_DRAIN_HOOKS: usize = 1000;
 
 impl Editor {
-    /// Apply a `HookResult`'s queued side effects: send/notify any queued LSP
+    /// Apply a `HookResult`'s queued side effects: drain any queued LSP
+    /// server registrations/unregistrations, send/notify any queued LSP
     /// calls, apply deferred `set-buffer-language!` calls, and sweep buffers
     /// for newly attached grammars. Shared tail for `call_steel_cmd`'s call
     /// site, `drain_hooks`, and `drain_pending_steel_calls`.
     pub(crate) fn apply_script_effects(&mut self, effects: HookResult) {
+        // LSP server ops drain first: `register-lsp-server!` queued earlier
+        // in this same eval must apply before the `pending_language_sets`
+        // loop below, so a `set-buffer-language!` in the same eval attaches
+        // through the new config directly rather than waiting a drain cycle.
+        // The queue is persistent on the host (unlike `HookResult`'s
+        // per-eval fields), so it's pulled with the same two-phase take
+        // `flush_script_messages` uses.
+        let lsp_server_ops = self
+            .scripting
+            .as_mut()
+            .map(|h| h.take_pending_lsp_server_ops())
+            .unwrap_or_default();
+        self.apply_lsp_server_ops(lsp_server_ops);
+
         let HookResult {
             pending_language_sets,
             grammar_sweeps,
@@ -368,8 +383,9 @@ impl Editor {
         // Second flush: picks up any (define-language! …) calls from init.scm /
         // plugins that ran during init.scm.
         self.flush_pending_language_regs(&mut host);
-        // Picks up any (register-lsp-server! …) calls from init.scm / plugins.
-        self.flush_pending_lsp_server_regs(&mut host);
+        // Picks up any (register-lsp-server! …) / (unregister-lsp-server! …)
+        // calls from init.scm / plugins.
+        self.flush_pending_lsp_server_ops(&mut host);
         // Pick up any (set-option! "history-capacity" N) calls from init.scm.
         self.state
             .history
