@@ -47,7 +47,7 @@
 "ui.gutter" = { bg = "bg" }
 "ui.gutter.selected" = { bg = "surface" }
 "diagnostic.error" = { fg = "red", modifiers = [ "underlined" ] }
-"diagnostic.warning" = { fg = "sand, modifiers = [ "underlined" ] }
+"diagnostic.warning" = { fg = "sand", modifiers = [ "underlined" ] }
 "diagnostic.info" = { fg = "blue", modifiers = [ "underlined" ] }
 "diagnostic.hint" = { fg = "green", modifiers = [ "underlined" ] }
 "diagnostic.deprecated" = { modifiers = [ "crossed_out" ] }
