@@ -272,6 +272,11 @@ fn write_buffer_by_id(
             ed.state.buffers.get_mut(bid).mark_saved();
             ed.report(write_severity(retried), write_msg(line_count, retried));
             ed.fire_hook_buffer_save(bid);
+            // Flush any didChange already queued for this buffer first — a
+            // save-triggered server action (e.g. lint-on-save) must see a
+            // document state at least as current as the file just written,
+            // not one edit behind (didSave itself carries no text).
+            ed.flush_lsp_pending_changes();
             ed.lsp_did_save(bid);
             Ok(())
         }
@@ -337,6 +342,10 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
                 ed.doc_mut().mark_saved();
                 ed.report(write_severity(retried), write_msg(line_count, retried));
                 ed.fire_hook_buffer_save(ed.focused_buffer_id());
+                // See write_buffer_by_id's matching comment: flush queued
+                // didChange first, so didSave never precedes the change it
+                // followed.
+                ed.flush_lsp_pending_changes();
                 ed.lsp_did_save(ed.focused_buffer_id());
                 Ok(())
             }

@@ -1111,14 +1111,19 @@ impl Editor {
 
             // Diagnostics: every line a diagnostic touches gets a marker;
             // the most severe diagnostic wins when several touch one line.
+            // Clamped to the buffer's last valid char (same defense the
+            // highlight path above takes against a stored diagnostic whose
+            // offsets have drifted past the current text) — `char_to_line`
+            // panics on an out-of-bounds char index.
             let diag_raw: Vec<(usize, usize, DiagSeverity)> = {
                 let text = self.state.buffers.get(bid).text();
+                let last_char = text.len_chars().saturating_sub(1);
                 self.lsp
                     .diagnostics_for_range(bid, visible.clone(), floor)
                     .map(|d| {
                         (
-                            text.char_to_line(d.start),
-                            text.char_to_line(d.end - 1),
+                            text.char_to_line(d.start.min(last_char)),
+                            text.char_to_line(d.end.saturating_sub(1).min(last_char)),
                             d.severity,
                         )
                     })

@@ -164,11 +164,19 @@ impl DiagnosticsStore {
     }
 
     /// Drops every diagnostic for `bid`, across every server — called when
-    /// the buffer is closed. `BufferId` is a versioned slotmap key, so a
-    /// future slot reuse can never alias with the closed buffer's stale
-    /// entry; this is a memory-leak fix, not a correctness one.
-    pub(crate) fn remove_buffer(&mut self, bid: BufferId) {
-        self.by_buffer.remove(&bid);
+    /// the buffer is closed (a pure memory-leak fix there: `BufferId` is a
+    /// versioned slotmap key, so a future slot reuse can never alias with
+    /// the closed buffer's stale entry) and on `:e!` reload (where it *is*
+    /// a correctness fix — offsets computed against the pre-reload text
+    /// must not survive against the new content). Returns whether anything
+    /// was actually removed, so a reload caller only fires
+    /// `OnDiagnosticsChanged` when the display actually changes.
+    pub(crate) fn remove_buffer(&mut self, bid: BufferId) -> bool {
+        let removed = self.by_buffer.remove(&bid).is_some();
+        if removed {
+            self.generation += 1;
+        }
+        removed
     }
 
     /// Production callers: `:lsp-status` and the `(diagnostic-counts …)` builtin.

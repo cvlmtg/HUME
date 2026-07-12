@@ -231,3 +231,84 @@ fn did_save_and_did_close_each_fire_once() {
         .collect();
     assert_eq!(methods, vec!["didSave", "didClose"]);
 }
+
+/// Regression: `:e!` under macro replay — an edit queued but not yet
+/// drained (`drain_replay_queue` loops `handle_event` with no `drain_lsp`
+/// between keys), immediately followed by a reload in the same window.
+/// Before the fix, the reload's whole-document `didChange` (at the new,
+/// higher version) reached the wire ahead of the still-queued incremental
+/// one (computed against the pre-reload text, at an older version) — a
+/// version regression the server can't recover from, permanently
+/// desyncing its copy of the document for the rest of the session.
+#[test]
+fn reload_flushes_pending_change_before_the_whole_document_didchange() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, bid, log) = attached_editor(&tmp);
+
+    // Queue an incremental change without draining.
+    ed.feed_key(key('d'));
+
+    let path = ed.state.buffers.get(bid).path().unwrap().to_path_buf();
+    std::fs::write(&path, "hi\n").unwrap();
+    ed.execute_typed("e!", None).unwrap();
+
+    ed.drain_lsp();
+
+    let changes: Vec<(Option<i64>, bool)> = log
+        .borrow()
+        .iter()
+        .filter(|(m, _)| m == "textDocument/didChange")
+        .map(|(_, p)| {
+            let version = p["textDocument"]["version"].as_i64();
+            let whole_document = p["contentChanges"][0].get("range").is_none();
+            (version, whole_document)
+        })
+        .collect();
+
+    assert_eq!(
+        changes.len(),
+        2,
+        "expected one incremental change (the queued edit) then one whole-document \
+         reload change, got: {changes:?}"
+    );
+    assert!(
+        !changes[0].1,
+        "the queued edit's incremental didChange must reach the wire first: {changes:?}"
+    );
+    assert!(
+        changes[1].1,
+        "the reload's whole-document didChange must reach the wire second: {changes:?}"
+    );
+    assert!(
+        changes[0].0 < changes[1].0,
+        "versions must strictly increase across the two didChange notifications: {changes:?}"
+    );
+}
+
+/// Regression: same root shape as the reload ordering test above, for `:w`
+/// — an edit queued but not yet drained, immediately followed by a save in
+/// the same window. `didSave` carries no text, so a server doing
+/// save-triggered work (e.g. lint-on-save) must see the didChange
+/// describing the just-saved content first, or it runs against a document
+/// state one edit behind what's actually on disk.
+#[test]
+fn save_flushes_pending_change_before_did_save() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _bid, log) = attached_editor(&tmp);
+
+    ed.feed_key(key('d'));
+    ed.execute_typed("w", None).unwrap();
+
+    let recorded = log.borrow();
+    let methods: Vec<&str> = recorded
+        .iter()
+        .map(|(m, _)| m.as_str())
+        .filter(|m| *m != "textDocument/didOpen" && *m != "initialized")
+        .collect();
+
+    assert_eq!(
+        methods,
+        vec!["textDocument/didChange", "textDocument/didSave"],
+        "the queued edit's didChange must reach the wire before didSave, got: {methods:?}"
+    );
+}

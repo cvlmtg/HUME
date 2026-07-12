@@ -267,3 +267,67 @@ fn two_plugin_sources_on_the_same_line_keep_the_higher_priority() {
         "priority 9 (vcs) beats priority 3 (linter)"
     );
 }
+
+/// Regression: a stored diagnostic computed against the pre-reload text can
+/// end up with offsets past the new (shorter) content — before the fix,
+/// `update_sign_providers` fed that straight into `char_to_line`, which
+/// panics on an out-of-bounds char index. `:e!` must clear diagnostics for
+/// the reloaded buffer, so this never even reaches the panicking path.
+#[test]
+fn reload_to_shorter_text_clears_stale_diagnostics_and_does_not_panic() {
+    let file_dir = tempfile::tempdir().unwrap();
+    let file = file_dir.path().join("main.rs");
+    std::fs::write(&file, "one two three four five six\n").unwrap();
+
+    let mut backend = InlineLspBackend::new();
+    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+
+    let mut ed = Editor::open(None).unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    ed.lsp
+        .insert_client_for_test(LspClient::new(sid, std::path::PathBuf::from(".")));
+    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
+
+    let canonical = std::fs::canonicalize(&file).unwrap();
+    let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
+    // Starts at 0 (so it still overlaps the post-reload visible range and
+    // isn't filtered out by `for_range` before ever reaching the
+    // panic-prone `char_to_line` call) but ends at 27 — the original
+    // (longer) content's length, far past the much shorter reloaded
+    // content's 4 chars below.
+    let params = serde_json::json!({
+        "uri": uri.as_str(),
+        "diagnostics": [{
+            "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 27}},
+            "severity": 1,
+            "message": "boom",
+        }],
+    });
+    ed.ingest_publish_diagnostics(sid, params);
+    assert_eq!(
+        ed.lsp.diagnostic_counts_for_test(bid),
+        (1, 0),
+        "seed diagnostic must land before the reload"
+    );
+
+    std::fs::write(&file, "one\n").unwrap();
+    ed.execute_typed("e!", None).unwrap();
+
+    assert_eq!(
+        ed.lsp.diagnostic_counts_for_test(bid),
+        (0, 0),
+        "reload must clear diagnostics computed against the pre-reload text"
+    );
+
+    let pid = ed.state.focused_pane_id;
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(80, 25, &mut ctx); // must not panic
+
+    let signs = diag_signs(&ed, pid);
+    assert!(
+        signs.is_empty(),
+        "no stale sign should remain after reload clears diagnostics"
+    );
+}

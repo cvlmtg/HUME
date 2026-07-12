@@ -124,7 +124,7 @@ impl Editor {
     /// (`drain_lsp`), before the diagnostics remap consumes the same entries
     /// for diagnostics (same source, both consumers — the entries aren't
     /// cleared until every consumer of this drain pass has run).
-    pub(super) fn flush_lsp_pending_changes(&mut self) {
+    pub(in crate::editor) fn flush_lsp_pending_changes(&mut self) {
         let attached_with_pending: Vec<BufferId> = self
             .state
             .buffers

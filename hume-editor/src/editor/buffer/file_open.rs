@@ -234,10 +234,28 @@ impl Editor {
             .get_mut(id)
             .reload_from_text(new_text, pre_sels, post_sels);
         self.state.buffers.get_mut(id).file_meta = new_file_meta;
+        // Flush any didChange already queued for this buffer *before* the
+        // whole-document one below — otherwise, under macro replay (an edit
+        // followed by `:e!` in the same drain window), the server would see
+        // the full reloaded text at the new version first and the queued
+        // incremental change (computed against the pre-reload text, at an
+        // *older* version) after it: a version regression the server can't
+        // recover from, permanently desyncing its copy of the document.
+        self.flush_lsp_pending_changes();
         // `reload_from_text` bumped text_gen via set_text but produced no
         // ChangeSet the LSP pending-queue mechanism can consume — send the
         // reload as a whole-document didChange instead.
         self.lsp_did_change_whole_document(id);
+        // Diagnostics and LSP-sourced decorations were computed against the
+        // pre-reload text — their char offsets are meaningless (and
+        // potentially out-of-bounds, e.g. after a shrink) against the new
+        // content. The server republishes diagnostics shortly after seeing
+        // the didChange above; nothing republishes decorations on its own,
+        // so they simply stay cleared until a plugin sets them again.
+        if self.lsp.remove_buffer_diagnostics(id) {
+            self.fire_hook_diagnostics_changed(id);
+        }
+        self.state.decorations.remove_buffer(id);
 
         // Drop the stale engine tree (it references pre-reload content). The
         // highlighter in `state.syntax` survives reload untouched; `set_text` bumped
