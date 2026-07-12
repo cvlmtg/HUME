@@ -25,7 +25,7 @@ fn begin_session(ed: &mut Editor, items: &[(&str, Option<&str>)]) {
             v
         })
         .collect();
-    let session = CompletionSession::begin(&ed.state, bid, &items_json, false);
+    let session = CompletionSession::begin(&ed.state, bid, &items_json, false).unwrap();
     ed.state.lsp_completion = Some(session);
 }
 

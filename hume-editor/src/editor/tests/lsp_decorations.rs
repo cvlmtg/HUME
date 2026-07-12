@@ -145,6 +145,62 @@ fn inlay_hints_remap_through_an_edit() {
     );
 }
 
+/// Regression: decorations are not LSP-owned — LSP is just their first
+/// client (any plugin can call `set-extra-highlights!`/`set-inlay-hints!`
+/// on any buffer). Before the fix, `record_lsp_edits` only queued a
+/// buffer's edits for the remap chokepoint when it had an attached LSP
+/// server, so a buffer with decorations but no server drifted silently out
+/// of position on every edit.
+#[test]
+fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
+    let tmp = tempfile::tempdir().unwrap();
+    // Deliberately no attach_running_server call — this buffer has no LSP
+    // server and no path, nothing but the decoration itself.
+    let mut ed = editor_from("-[x]>abcdef\n");
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "arm" "" (lambda ()
+             (set-extra-highlights! "linter" (current-buffer) (list (list 3 5 "unused")))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm");
+
+    let before: Vec<(usize, usize)> = ed
+        .state
+        .decorations
+        .extra_highlights_for_buffer(bid)
+        .map(|e| (e.start, e.end))
+        .collect();
+    assert_eq!(
+        before,
+        vec![(3, 5)],
+        "seed highlight must land before the edit"
+    );
+
+    // Insert two chars before the highlight's start.
+    ed.feed_key(key('i'));
+    ed.feed_key(key('X'));
+    ed.feed_key(key('Y'));
+    ed.feed_key(key_esc());
+    ed.drain_lsp();
+
+    let after: Vec<(usize, usize)> = ed
+        .state
+        .decorations
+        .extra_highlights_for_buffer(bid)
+        .map(|e| (e.start, e.end))
+        .collect();
+    assert_eq!(
+        after,
+        vec![(5, 7)],
+        "the highlight must remap forward by the 2 inserted chars, even with no attached LSP server"
+    );
+}
+
 #[test]
 fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_source() {
     let tmp = tempfile::tempdir().unwrap();

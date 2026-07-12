@@ -13,6 +13,7 @@ use slotmap::SecondaryMap;
 use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::editor::buffer::store::BufferStore;
+use crate::editor::decorations::DecorationStores;
 use crate::editor::pane_state::PaneBufferState;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;
@@ -33,20 +34,25 @@ fn record_syntax_edits(
     }
 }
 
-/// No-op when `buf_id` has no LSP server attached (`lsp_server` is `None`).
-/// Called immediately after every text mutation, alongside
-/// `record_syntax_edits` — same chokepoint, same "text changed, notify the
-/// machinery" shape, queued for the LSP per-frame flush
-/// (`Editor::flush_lsp_pending_changes`) instead of dispatched inline.
+/// No-op when `buf_id` has no LSP server attached and no char-offset
+/// decorations (inlay hints / extra highlights) that need to stay in sync
+/// with edits — decorations are not LSP-owned, LSP is just their first
+/// client, so a buffer with `set-extra-highlights!`/`set-inlay-hints!` data
+/// but no attached server still needs its edits queued here. Called
+/// immediately after every text mutation, alongside `record_syntax_edits` —
+/// same chokepoint, same "text changed, notify the machinery" shape, queued
+/// for the LSP per-frame flush (`Editor::flush_lsp_pending_changes`, which
+/// also does the decoration remap) instead of dispatched inline.
 fn record_lsp_edits(
     buffers: &mut BufferStore,
+    decorations: &DecorationStores,
     buf_id: BufferId,
     text_gen: u64,
     cs: &ChangeSet,
     rope_pre: &ropey::Rope,
 ) {
     let buf = buffers.get_mut(buf_id);
-    if buf.lsp_server.is_some() {
+    if buf.lsp_server.is_some() || decorations.has_any(buf_id) {
         buf.lsp_pending
             .push(crate::editor::lsp::sync::LspPendingChange {
                 cs: cs.clone(),
@@ -65,6 +71,7 @@ fn record_lsp_edits(
 /// no panic can leave the set in its default state.
 pub(crate) fn apply_doc_edit(
     buffers: &mut BufferStore,
+    decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     focused_pane_id: PaneId,
     buf_id: BufferId,
@@ -82,7 +89,7 @@ pub(crate) fn apply_doc_edit(
     propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &buf_pre);
     let text_gen = buffers.get(buf_id).text_gen;
     record_syntax_edits(buffers, buf_id, text_gen, &cs, &rope_pre);
-    record_lsp_edits(buffers, buf_id, text_gen, &cs, &rope_pre);
+    record_lsp_edits(buffers, decorations, buf_id, text_gen, &cs, &rope_pre);
 }
 
 /// Apply a grouped edit (inside an insert session) to the focused buffer.
@@ -94,6 +101,7 @@ pub(crate) fn apply_doc_edit(
 /// default state.
 pub(crate) fn apply_doc_edit_grouped(
     buffers: &mut BufferStore,
+    decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     focused_pane_id: PaneId,
     buf_id: BufferId,
@@ -112,7 +120,7 @@ pub(crate) fn apply_doc_edit_grouped(
     propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &buf_pre);
     let text_gen = buffers.get(buf_id).text_gen;
     record_syntax_edits(buffers, buf_id, text_gen, &cs, &rope_pre);
-    record_lsp_edits(buffers, buf_id, text_gen, &cs, &rope_pre);
+    record_lsp_edits(buffers, decorations, buf_id, text_gen, &cs, &rope_pre);
 }
 
 /// Re-paste from the paste-session snapshot into the focused buffer, replacing
@@ -123,6 +131,7 @@ pub(crate) fn apply_doc_edit_grouped(
 /// caller must have opened the session with `Buffer::begin_edit_group` first.
 pub(crate) fn apply_doc_edit_regrouped(
     buffers: &mut BufferStore,
+    decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     focused_pane_id: PaneId,
     buf_id: BufferId,
@@ -148,13 +157,21 @@ pub(crate) fn apply_doc_edit_regrouped(
     );
     let text_gen = buffers.get(buf_id).text_gen;
     record_syntax_edits(buffers, buf_id, text_gen, &propagation_cs, &rope_pre);
-    record_lsp_edits(buffers, buf_id, text_gen, &propagation_cs, &rope_pre);
+    record_lsp_edits(
+        buffers,
+        decorations,
+        buf_id,
+        text_gen,
+        &propagation_cs,
+        &rope_pre,
+    );
 }
 
 /// Apply undo to the focused buffer and propagate the inverse `ChangeSet` to
 /// all other panes viewing the same buffer.
 pub(crate) fn apply_doc_undo(
     buffers: &mut BufferStore,
+    decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     focused_pane_id: PaneId,
     buf_id: BufferId,
@@ -172,7 +189,7 @@ pub(crate) fn apply_doc_undo(
         propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &buf_pre);
         let text_gen = buffers.get(buf_id).text_gen;
         record_syntax_edits(buffers, buf_id, text_gen, &cs, &rope_pre);
-        record_lsp_edits(buffers, buf_id, text_gen, &cs, &rope_pre);
+        record_lsp_edits(buffers, decorations, buf_id, text_gen, &cs, &rope_pre);
     }
 }
 
@@ -180,6 +197,7 @@ pub(crate) fn apply_doc_undo(
 /// all other panes viewing the same buffer.
 pub(crate) fn apply_doc_redo(
     buffers: &mut BufferStore,
+    decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     focused_pane_id: PaneId,
     buf_id: BufferId,
@@ -194,7 +212,7 @@ pub(crate) fn apply_doc_redo(
         propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &buf_pre);
         let text_gen = buffers.get(buf_id).text_gen;
         record_syntax_edits(buffers, buf_id, text_gen, &cs, &rope_pre);
-        record_lsp_edits(buffers, buf_id, text_gen, &cs, &rope_pre);
+        record_lsp_edits(buffers, decorations, buf_id, text_gen, &cs, &rope_pre);
     }
 }
 

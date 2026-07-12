@@ -202,6 +202,20 @@ impl DecorationStores {
             .flat_map(|(_source, spans)| spans.iter())
     }
 
+    /// Whether `bid` has any char-offset decorations (inlay hints or extra
+    /// highlights — the two stores `remap_through` actually touches) that
+    /// need to stay in sync with edits. `record_lsp_edits` (`doc_ops.rs`)
+    /// uses this to queue a buffer's edits for the remap chokepoint even
+    /// with no attached LSP server — decorations are not LSP-owned, LSP is
+    /// just their first client.
+    pub(crate) fn has_any(&self, bid: BufferId) -> bool {
+        self.inlay_hints.get(&bid).is_some_and(|v| !v.is_empty())
+            || self
+                .extra_highlights
+                .get(&bid)
+                .is_some_and(|entries| entries.iter().any(|(_, spans)| !spans.is_empty()))
+    }
+
     /// Drops every entry for `bid`, across every source and every store —
     /// called when the buffer is closed. `BufferId` is a versioned slotmap
     /// key, so a future slot reuse can never alias with the closed buffer's

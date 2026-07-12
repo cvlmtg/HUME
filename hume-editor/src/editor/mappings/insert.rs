@@ -107,6 +107,7 @@ impl Editor {
                             // NLL: `ap_pairs` last used in the condition above; borrow ends here.
                             doc_ops::apply_doc_edit_grouped(
                                 &mut self.state.buffers,
+                                &self.state.decorations,
                                 &mut self.state.panes.state,
                                 focused,
                                 buf,
@@ -117,6 +118,7 @@ impl Editor {
                             // insert only the typed character.
                             doc_ops::apply_doc_edit_grouped(
                                 &mut self.state.buffers,
+                                &self.state.decorations,
                                 &mut self.state.panes.state,
                                 focused,
                                 buf,
@@ -139,6 +141,7 @@ impl Editor {
                     } else {
                         doc_ops::apply_doc_edit_grouped(
                             &mut self.state.buffers,
+                            &self.state.decorations,
                             &mut self.state.panes.state,
                             focused,
                             buf,
@@ -148,6 +151,7 @@ impl Editor {
                 } else {
                     doc_ops::apply_doc_edit_grouped(
                         &mut self.state.buffers,
+                        &self.state.decorations,
                         &mut self.state.panes.state,
                         focused,
                         buf,
@@ -168,6 +172,7 @@ impl Editor {
                 let tw = self.doc().overrides.tab_width(&self.state.settings);
                 doc_ops::apply_doc_edit_grouped(
                     &mut self.state.buffers,
+                    &self.state.decorations,
                     &mut self.state.panes.state,
                     focused,
                     buf,
@@ -190,6 +195,7 @@ impl Editor {
                 let trim_blank = self.state.autoindent_pending;
                 doc_ops::apply_doc_edit_grouped(
                     &mut self.state.buffers,
+                    &self.state.decorations,
                     &mut self.state.panes.state,
                     focused,
                     buf,
@@ -212,6 +218,7 @@ impl Editor {
                     // isn't in leading ws, the whole batch falls back.
                     doc_ops::apply_doc_edit_grouped(
                         &mut self.state.buffers,
+                        &self.state.decorations,
                         &mut self.state.panes.state,
                         focused,
                         buf,
@@ -221,6 +228,7 @@ impl Editor {
                     // NLL: `ap_pairs` last used in the condition above; borrow ends here.
                     doc_ops::apply_doc_edit_grouped(
                         &mut self.state.buffers,
+                        &self.state.decorations,
                         &mut self.state.panes.state,
                         focused,
                         buf,
@@ -229,6 +237,7 @@ impl Editor {
                 } else {
                     doc_ops::apply_doc_edit_grouped(
                         &mut self.state.buffers,
+                        &self.state.decorations,
                         &mut self.state.panes.state,
                         focused,
                         buf,
@@ -240,6 +249,7 @@ impl Editor {
                 self.state.autoindent_pending = false;
                 doc_ops::apply_doc_edit_grouped(
                     &mut self.state.buffers,
+                    &self.state.decorations,
                     &mut self.state.panes.state,
                     focused,
                     buf,

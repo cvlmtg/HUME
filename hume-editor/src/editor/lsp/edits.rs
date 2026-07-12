@@ -91,6 +91,11 @@ fn build_edit_changeset(
             (start, end, e.new_text.as_str())
         })
         .collect();
+    if let Some((start, end, _)) = char_edits.iter().find(|&&(start, end, _)| end < start) {
+        return Err(format!(
+            "text edit has a reversed range (end {end} before start {start})"
+        ));
+    }
     char_edits.sort_by_key(|e| e.0);
     for w in char_edits.windows(2) {
         if w[1].0 < w[0].1 {
@@ -124,6 +129,7 @@ fn commit_changeset(state: &mut EditorState, bid: BufferId, cs: ChangeSet) {
     );
     doc_ops::apply_doc_edit(
         &mut state.buffers,
+        &state.decorations,
         &mut state.panes.state,
         state.focused_pane_id,
         bid,
@@ -368,6 +374,14 @@ pub(crate) fn goto_location(
 ) -> Result<(), String> {
     let focused_bid = crate::editor::commands::focused_buffer_id(state, view);
     let (bid, char_pos) = resolve_goto_target(state, view, lsp, focused_bid, target)?;
+    // Every path above can legitimately return `len_chars()` (e.g. a wire
+    // line past EOF, or a char-indexed target on the trailing structural
+    // line, both clamp to that line's start = len_chars()) — but cursors
+    // must satisfy `head < len_chars()`. Clamp to the last char (the
+    // buffer's own trailing `\n`, always present and always its own
+    // grapheme boundary, so no snap is needed).
+    let len_chars = state.buffers.get(bid).text().rope().len_chars();
+    let char_pos = char_pos.min(len_chars.saturating_sub(1));
 
     let entry = crate::editor::commands::current_jump_entry(state, view);
     state.panes.jumps[state.focused_pane_id].push(entry);

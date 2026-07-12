@@ -155,6 +155,26 @@ fn apply_text_edits_overlapping_rejected() {
 }
 
 #[test]
+fn apply_text_edits_reversed_range_rejected() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    attach_running_utf8_server(&mut ed);
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (apply-text-edits! (current-buffer)
+               (list (list (list 0 3) (list 0 0) "X")))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "abcdef\n",
+        "a reversed range (end before start) must reject cleanly, not panic on underflow"
+    );
+}
+
+#[test]
 fn apply_text_edits_is_one_undo_step() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
@@ -492,6 +512,30 @@ fn goto_location_unopened_path_opens_it() {
     type_cmd(&mut ed, ":go");
     assert_eq!(ed.doc().text().to_string(), "hello\n");
     assert_eq!(ed.current_selections().primary().head(), 2);
+}
+
+#[test]
+fn goto_location_char_indexed_target_past_eof_clamps_to_the_last_char() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (goto-location! (list (current-buffer) 999 0))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    let len_chars = ed.doc().text().rope().len_chars();
+    let head = ed.current_selections().primary().head();
+    assert!(
+        head < len_chars,
+        "head must satisfy head < len_chars() — got head={head}, len_chars={len_chars}"
+    );
+    assert_eq!(
+        head,
+        len_chars - 1,
+        "a target past EOF must clamp to the buffer's last char"
+    );
 }
 
 #[test]

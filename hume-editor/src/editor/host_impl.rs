@@ -752,7 +752,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         }
         let session = crate::editor::lsp::completion::CompletionSession::begin(
             self.state, bid, &items, incomplete,
-        );
+        )?;
         self.state.lsp_completion = Some(session);
         Ok(())
     }

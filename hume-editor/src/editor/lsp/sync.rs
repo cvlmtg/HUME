@@ -3,8 +3,6 @@
 //! protocol — zero Steel involvement. Version = `Buffer.text_gen`, no
 //! second counter.
 
-use std::path::Path;
-
 use hume_editing::changeset::ChangeSet;
 use hume_engine::pipeline::BufferId;
 use hume_lsp::codec::Message;
@@ -124,27 +122,36 @@ impl Editor {
     /// (`drain_lsp`), before the diagnostics remap consumes the same entries
     /// for diagnostics (same source, both consumers — the entries aren't
     /// cleared until every consumer of this drain pass has run).
+    ///
+    /// `lsp_pending` isn't LSP-exclusive: `record_lsp_edits` (`doc_ops.rs`)
+    /// also queues entries for a buffer with no attached server but with
+    /// char-offset decorations (`set-inlay-hints!`/`set-extra-highlights!`)
+    /// that still need to track edits. This drains and remaps *every*
+    /// buffer with pending entries; sending a `didChange` is the one part
+    /// gated on actually having a server, path, and URI to send it to —
+    /// missing any of those skips the send but never skips the remap, so a
+    /// decoration-only buffer's positions don't silently drift.
     pub(in crate::editor) fn flush_lsp_pending_changes(&mut self) {
-        let attached_with_pending: Vec<BufferId> = self
+        let with_pending: Vec<BufferId> = self
             .state
             .buffers
             .iter()
-            .filter(|(_, buf)| buf.lsp_server.is_some() && !buf.lsp_pending.is_empty())
+            .filter(|(_, buf)| !buf.lsp_pending.is_empty())
             .map(|(id, _)| id)
             .collect();
 
-        for bid in attached_with_pending {
-            let buf = self.state.buffers.get_mut(bid);
-            let server_id = buf
+        for bid in with_pending {
+            let buf = self.state.buffers.get(bid);
+            // Resolved *before* taking the queue below, from the buffer's
+            // state at this instant — a missing server/path/URI just means
+            // there's nothing to send, not that the entries should be
+            // dropped unremapped.
+            let send_target = buf
                 .lsp_server
-                .expect("filtered on lsp_server.is_some() above");
+                .and_then(|sid| Some((sid, hume_lsp::uri::path_to_uri(buf.path()?).ok()?)));
+
+            let buf = self.state.buffers.get_mut(bid);
             let pending = std::mem::take(&mut buf.lsp_pending);
-            let Some(path) = buf.path().map(Path::to_path_buf) else {
-                continue; // can't happen (attach requires a path) but never send garbage
-            };
-            let Ok(uri) = hume_lsp::uri::path_to_uri(&path) else {
-                continue;
-            };
 
             // Manual field split: the loop below interleaves a diagnostics
             // remap with a client-routed send, so `servers`/`backend`/
@@ -156,10 +163,6 @@ impl Editor {
                 diagnostics,
                 ..
             } = &mut self.lsp;
-            let Some(client) = servers.get_mut(&server_id).map(|e| &mut e.client) else {
-                continue; // can't happen once attached, but never send into the void
-            };
-            let encoding = client.encoding;
 
             for change in pending {
                 // Same source as the didChange conversion below — remap
@@ -167,11 +170,20 @@ impl Editor {
                 // it's consumed, so both consumers see the exact
                 // same edit stream, including undo/redo. The char-offset
                 // decoration stores (inlay hints, extra highlights) go
-                // through the same chokepoint for the same reason.
+                // through the same chokepoint for the same reason — done
+                // unconditionally, whether or not this buffer has anywhere
+                // to send a didChange.
                 diagnostics.remap_through(bid, &change.cs);
                 self.state.decorations.remap_through(bid, &change.cs);
 
-                let events = changeset_to_content_changes(&change.before, &change.cs, encoding);
+                let Some((server_id, uri)) = &send_target else {
+                    continue; // no attached server (or no path/URI yet) — nothing to send
+                };
+                let Some(client) = servers.get_mut(server_id).map(|e| &mut e.client) else {
+                    continue; // can't happen once attached, but never send into the void
+                };
+                let events =
+                    changeset_to_content_changes(&change.before, &change.cs, client.encoding);
                 if events.is_empty() {
                     continue;
                 }

@@ -125,6 +125,23 @@ fn is_prefix_match(needle: &str, haystack: &str) -> bool {
         .all(|n| h.next().is_some_and(|hc| hc.eq_ignore_ascii_case(&n)))
 }
 
+/// Scans backward from `pos` over identifier (`Word`-class) chars, stopping
+/// at the first non-`Word` boundary — the start of the token immediately
+/// preceding `pos`. Grapheme-safe (steps via `prev_grapheme_boundary`, never
+/// a raw `-= 1`) since this walks buffer positions, not wire positions.
+fn word_start_before(text: &hume_editing::text::Text, pos: usize) -> usize {
+    let mut cursor = pos;
+    while cursor > 0 {
+        let prev = hume_editing::grapheme::prev_grapheme_boundary(text, cursor);
+        let Some(ch) = text.char_at(prev) else { break };
+        if hume_editing::word::classify_char(ch) != hume_editing::word::CharClass::Word {
+            break;
+        }
+        cursor = prev;
+    }
+    cursor
+}
+
 pub(crate) struct CompletionSession {
     bid: BufferId,
     /// Char offset where the completed token starts — the primary
@@ -176,7 +193,7 @@ impl CompletionSession {
         bid: BufferId,
         items_json: &[serde_json::Value],
         incomplete: bool,
-    ) -> Self {
+    ) -> Result<Self, String> {
         let items: Vec<StoredCompletionItem> = items_json
             .iter()
             .map(StoredCompletionItem::from_json)
@@ -188,7 +205,9 @@ impl CompletionSession {
             .get(pid)
             .and_then(|by_buf| by_buf.get(bid))
             .map(|pbs| pbs.selections.primary().head())
-            .unwrap_or(0);
+            .ok_or_else(|| {
+                "completion-begin!: buffer is not shown in the focused pane".to_string()
+            })?;
         let mut session = Self {
             bid,
             anchor,
@@ -201,7 +220,7 @@ impl CompletionSession {
             generation_at_begin: 0,
         };
         session.update_filter(state, String::new());
-        session
+        Ok(session)
     }
 
     /// Re-ranks `items` against `text`, re-stamping `generation_at_begin` —
@@ -239,12 +258,12 @@ impl CompletionSession {
             .collect()
     }
 
-    /// Applies `filtered[idx]`'s `textEdit` (falling back to `insertText` at
-    /// the anchor..cursor span when absent) as one undo step through the edit
-    /// engine, gen-checked against `generation_at_begin` — a buffer edit
-    /// that bypassed `update_filter` (so never re-stamped the generation)
-    /// rejects rather than applying against text the item wasn't computed
-    /// for.
+    /// Applies `filtered[idx]`'s `textEdit` (falling back to `insertText`
+    /// over the whole identifier token when absent) as one undo step
+    /// through the edit engine, gen-checked against `generation_at_begin` —
+    /// a buffer edit that bypassed `update_filter` (so never re-stamped the
+    /// generation) rejects rather than applying against text the item
+    /// wasn't computed for.
     pub(crate) fn accept(
         &self,
         state: &mut EditorState,
@@ -256,13 +275,35 @@ impl CompletionSession {
             .get(idx)
             .ok_or_else(|| "completion-accept!: index out of range".to_string())?;
         let item = &self.items[item_idx as usize];
+        let encoding = introspect::encoding_for_buffer(state, lsp, self.bid);
+        let cursor = self.anchor + self.filter.chars().count();
         let wire_edit = match &item.text_edit {
-            Some(te) => te.clone(),
-            None => {
-                let encoding = introspect::encoding_for_buffer(state, lsp, self.bid);
+            Some(te) => {
+                // The server's range was computed against the anchor..cursor
+                // span *at request time* — characters typed since (further
+                // narrowing the filter) sit just past `end` and must be
+                // replaced too, or they survive verbatim next to the
+                // inserted text. Only extend, never shrink: a cursor at or
+                // before the server's own end leaves its range untouched.
                 let rope = state.buffers.get(self.bid).text().rope();
-                let cursor = self.anchor + self.filter.chars().count();
-                let (start_line, start_char) = char_to_wire(rope, self.anchor, encoding);
+                let (end_line, end_char) = char_to_wire(rope, cursor, encoding);
+                let mut te = te.clone();
+                if (end_line, end_char) > (te.end_line, te.end_char) {
+                    te.end_line = end_line;
+                    te.end_char = end_char;
+                }
+                te
+            }
+            None => {
+                // No server-provided range: replace the whole identifier
+                // token, not just the anchor..cursor span — any prefix typed
+                // *before* triggering completion (e.g. "fo" before the popup
+                // opened) sits before `anchor` and is otherwise left
+                // untouched, duplicating it ahead of `insert_text`.
+                let text = state.buffers.get(self.bid).text();
+                let start = word_start_before(text, self.anchor);
+                let rope = text.rope();
+                let (start_line, start_char) = char_to_wire(rope, start, encoding);
                 let (end_line, end_char) = char_to_wire(rope, cursor, encoding);
                 WireEdit {
                     start_line,

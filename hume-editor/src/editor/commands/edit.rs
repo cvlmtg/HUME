@@ -179,6 +179,7 @@ fn open_paste_session_and_apply(
     let paste_fn = if before { paste_before } else { paste_after };
     doc_ops::apply_doc_edit_regrouped(
         &mut state.buffers,
+        &state.decorations,
         &mut state.panes.state,
         focused,
         buf,
@@ -300,6 +301,7 @@ fn do_paste_cycle(
         let paste_fn = if before { paste_before } else { paste_after };
         doc_ops::apply_doc_edit_regrouped(
             &mut state.buffers,
+            &state.decorations,
             &mut state.panes.state,
             focused,
             buf,
@@ -343,7 +345,13 @@ pub fn cmd_undo(
             state.report(Severity::Info, "Already at oldest change".to_string());
             break;
         }
-        doc_ops::apply_doc_undo(&mut state.buffers, &mut state.panes.state, focused, buf);
+        doc_ops::apply_doc_undo(
+            &mut state.buffers,
+            &state.decorations,
+            &mut state.panes.state,
+            focused,
+            buf,
+        );
     }
     Ok(())
 }
@@ -361,7 +369,13 @@ pub fn cmd_redo(
             state.report(Severity::Info, "Already at newest change".to_string());
             break;
         }
-        doc_ops::apply_doc_redo(&mut state.buffers, &mut state.panes.state, focused, buf);
+        doc_ops::apply_doc_redo(
+            &mut state.buffers,
+            &state.decorations,
+            &mut state.panes.state,
+            focused,
+            buf,
+        );
     }
     Ok(())
 }

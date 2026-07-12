@@ -166,6 +166,7 @@ pub(super) fn run_native_body(
             if is_group_open_current(state, view) {
                 doc_ops::apply_doc_edit_grouped(
                     &mut state.buffers,
+                    &state.decorations,
                     &mut state.panes.state,
                     focused,
                     buf,
@@ -174,6 +175,7 @@ pub(super) fn run_native_body(
             } else {
                 doc_ops::apply_doc_edit(
                     &mut state.buffers,
+                    &state.decorations,
                     &mut state.panes.state,
                     focused,
                     buf,
@@ -455,6 +457,7 @@ pub(super) fn apply_focused_edit(
     let buf = focused_buffer_id(state, view);
     doc_ops::apply_doc_edit(
         &mut state.buffers,
+        &state.decorations,
         &mut state.panes.state,
         focused,
         buf,
@@ -476,6 +479,7 @@ pub(super) fn apply_focused_edit_grouped(
     let buf = focused_buffer_id(state, view);
     doc_ops::apply_doc_edit_grouped(
         &mut state.buffers,
+        &state.decorations,
         &mut state.panes.state,
         focused,
         buf,

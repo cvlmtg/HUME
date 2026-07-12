@@ -5,7 +5,9 @@
 //! ```text
 //! json -> steel:  null    -> Void        (NOT #f — false must round-trip distinctly)
 //!                 bool    -> BoolV
-//!                 number  -> IntV when i64-representable, else NumV (f64)
+//!                 number  -> IntV when i64-representable; BigNum when
+//!                             u64-representable but not i64 (exact, no
+//!                             precision loss); NumV (f64) otherwise
 //!                 string  -> StringV
 //!                 array   -> ListV
 //!                 object  -> HashMapV with STRING keys (not symbols — JSON keys are
@@ -19,6 +21,7 @@
 //!
 //! This is deliberately generic JSON — it knows nothing about LSP shapes.
 
+use num_traits::ToPrimitive;
 use steel::HashMap as SteelHashMap;
 use steel::gc::Gc;
 use steel::rvals::SteelVal;
@@ -48,10 +51,18 @@ pub fn json_to_steel(v: &serde_json::Value) -> SteelVal {
 fn number_to_steel(n: &serde_json::Number) -> SteelVal {
     if let Some(i) = n.as_i64() {
         SteelVal::IntV(i as isize)
+    } else if let Some(u) = n.as_u64() {
+        // In (i64::MAX, u64::MAX] — not i64-representable, but still an
+        // exact integer (e.g. a large id/hash field). Falling back to f64
+        // here would silently lose precision; BigNum represents it exactly
+        // instead, so a value echoed back through steel_to_json still
+        // matches what the server sent.
+        SteelVal::BigNum(Gc::new(u.into()))
     } else {
-        // Not i64-representable (huge integer or a float). serde_json::Number
-        // is always finite and, without the `arbitrary_precision` feature
-        // (which this workspace does not enable), always convertible to f64.
+        // Not representable as an integer at all — a genuine float.
+        // serde_json::Number is always finite and, without the
+        // `arbitrary_precision` feature (which this workspace does not
+        // enable), always convertible to f64.
         SteelVal::NumV(
             n.as_f64()
                 .expect("serde_json::Number is f64-representable without arbitrary_precision"),
@@ -67,6 +78,14 @@ pub fn steel_to_json(v: &SteelVal) -> Result<serde_json::Value, String> {
         SteelVal::Void => Ok(serde_json::Value::Null),
         SteelVal::BoolV(b) => Ok(serde_json::Value::Bool(*b)),
         SteelVal::IntV(i) => Ok(serde_json::Value::Number((*i as i64).into())),
+        // Only ever produced (by json_to_steel) for a u64-range JSON integer,
+        // so it always fits back into u64 exactly — but Steel code could in
+        // principle construct a bigger one directly, hence the checked
+        // conversion rather than an infallible one.
+        SteelVal::BigNum(b) => b
+            .to_u64()
+            .map(|u| serde_json::Value::Number(u.into()))
+            .ok_or_else(|| "integer too large to represent in JSON".to_string()),
         SteelVal::NumV(n) => serde_json::Number::from_f64(*n)
             .map(serde_json::Value::Number)
             .ok_or_else(|| format!("number is not finite: {n}")),
@@ -158,6 +177,29 @@ mod tests {
 
         assert!(matches!(json_to_steel(&json!(42)), SteelVal::IntV(42)));
         assert!(matches!(json_to_steel(&json!(1.5)), SteelVal::NumV(n) if n == 1.5));
+    }
+
+    /// Regression: a JSON integer in `(i64::MAX, u64::MAX]` (e.g. a large
+    /// id/hash field) must round-trip exactly, not silently lose precision
+    /// through an f64 fallback.
+    #[test]
+    fn round_trips_u64_range_integers_exactly_via_bignum() {
+        let huge = u64::MAX; // 18446744073709551615 — not i64- or f64-exact-representable
+        round_trip(json!(huge));
+
+        let steel = json_to_steel(&json!(huge));
+        assert!(
+            matches!(steel, SteelVal::BigNum(_)),
+            "expected BigNum for a u64-range integer, got {steel:?}"
+        );
+        // The float fallback this replaces would have rounded u64::MAX to
+        // 18446744073709551616.0 (f64 can't represent every u64 exactly) —
+        // confirm the round trip lands on the exact original value, not that.
+        assert_eq!(
+            steel_to_json(&steel).unwrap(),
+            json!(huge),
+            "must not lose precision the way an f64 fallback would"
+        );
     }
 
     #[test]

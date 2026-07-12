@@ -369,3 +369,34 @@ fn lsp_stop_clears_stored_diagnostics_for_the_detached_buffer() {
         "diagnostics from the stopped server must not survive the stop"
     );
 }
+
+/// Regression: on the minimal 1-char "\n" buffer, `widen_zero_length` has
+/// no char to widen a zero-width diagnostic onto in either direction and
+/// stays `(0, 0)`. Stored anyway, it would be invisible to `for_range`
+/// (`d.end > lo` never holds) but still tallied by `counts` — an error the
+/// buffer shows nowhere. Must be dropped at ingest instead.
+#[test]
+fn zero_width_diagnostic_on_minimal_buffer_is_dropped_not_stored() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
+    std::fs::write(&file, "\n").unwrap();
+
+    let mut ed = editor_from("-[w]>ord\n");
+    let mut backend = InlineLspBackend::new();
+    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    let bid = open_with_client(&mut ed, &file, sid);
+    let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
+
+    let params = params_of(publish_diagnostics_notification(
+        uri.as_str(),
+        &[((0, 0), (0, 0), 1)],
+    ));
+    ed.ingest_publish_diagnostics(sid, params);
+
+    assert_eq!(
+        ed.lsp.diagnostic_counts_for_test(bid),
+        (0, 0),
+        "an unwidenable zero-width diagnostic must be dropped, not silently tallied"
+    );
+}

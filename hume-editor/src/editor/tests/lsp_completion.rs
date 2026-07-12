@@ -95,6 +95,53 @@ fn accept_with_no_text_edit_inserts_insert_text_at_the_anchor_span() {
 }
 
 #[test]
+fn accept_with_no_text_edit_replaces_the_prefix_typed_before_completion_began() {
+    let tmp = tempfile::tempdir().unwrap();
+    // Cursor (anchor at begin time) sits right after an already-typed "fo"
+    // prefix — completion invoked manually after typing, not from an empty
+    // token. The fallback must replace that whole token, not just
+    // [anchor, anchor) (a zero-width insert that would duplicate "fo" ahead
+    // of the inserted "foobar").
+    let mut ed = editor_from("fo-[ ]>bar\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer)
+               (list (hash "label" "foobar" "insertText" "foobar")))
+             (completion-accept! 0)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert_eq!(ed.doc().text().to_string(), "foobar bar\n");
+}
+
+#[test]
+fn accept_with_a_text_edit_extends_the_range_to_cover_chars_typed_after_begin() {
+    let tmp = tempfile::tempdir().unwrap();
+    // Buffer already holds "for" — standing in for "the user typed one more
+    // char ('r') after the completion menu opened, narrowing the filter
+    // further." The server's textEdit range (0,0)-(0,2) was computed
+    // against "fo", *before* that extra keystroke.
+    let mut ed = editor_from("-[f]>or\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer)
+               (list (hash "label" "format!" "insertText" "ignored-fallback"
+                           "textEdit" (hash "range" (hash "start" (hash "line" 0 "character" 0)
+                                                        "end" (hash "line" 0 "character" 2))
+                                       "newText" "format!"))))
+             (completion-update-filter! "for")
+             (completion-accept! 0)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    // Without the fix, only [0, 2) ("fo") is replaced, leaving the "r"
+    // typed after begin sitting untouched next to the insert: "format!r".
+    assert_eq!(ed.doc().text().to_string(), "format!\n");
+}
+
+#[test]
 fn accept_with_a_text_edit_applies_the_servers_range_exactly() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");

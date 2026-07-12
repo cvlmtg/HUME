@@ -200,6 +200,14 @@ impl DiagnosticsStore {
 
     /// Production caller: the `(diagnostics-for-buffer …)` builtin. The
     /// underline/sign providers also read from here.
+    ///
+    /// Each server's own `Vec` is sorted by `start`, but with 2+ servers
+    /// publishing for the same buffer, concatenating them in server order
+    /// would not be globally sorted — callers that assume start-ascending
+    /// order (e.g. `goto-next-diagnostic`'s nearest-match logic) would jump
+    /// to whichever server happened to be iterated first rather than the
+    /// nearest diagnostic. Collected and sorted once here so every caller
+    /// gets a globally ordered result without re-deriving it.
     pub(crate) fn for_range(
         &self,
         bid: BufferId,
@@ -207,7 +215,8 @@ impl DiagnosticsStore {
         floor: DiagSeverity,
     ) -> impl Iterator<Item = &StoredDiag> {
         let (lo, hi) = (range.start, range.end);
-        self.by_buffer
+        let mut out: Vec<&StoredDiag> = self
+            .by_buffer
             .get(&bid)
             .into_iter()
             .flat_map(|entry| entry.iter())
@@ -220,6 +229,9 @@ impl DiagnosticsStore {
                 diags[..upper].iter()
             })
             .filter(move |d| d.severity <= floor && d.end > lo)
+            .collect();
+        out.sort_by_key(|d| d.start);
+        out.into_iter()
     }
 }
 
@@ -330,7 +342,7 @@ impl Editor {
         let mut stored: Vec<StoredDiag> = parsed
             .diagnostics
             .into_iter()
-            .map(|d| {
+            .filter_map(|d| {
                 let raw = serde_json::to_value(&d).unwrap_or(serde_json::Value::Null);
                 let start = wire_to_char(
                     &rope,
@@ -349,7 +361,17 @@ impl Editor {
                 } else {
                     (start, end)
                 };
-                StoredDiag {
+                // `widen_zero_length` only fails to widen (stays `(pos,
+                // pos)`) on the minimal 1-char "\n" buffer — no char to
+                // widen onto in either direction. Dropped rather than
+                // stored: a zero-width entry is invisible to `for_range`
+                // (`d.end > lo` never holds) but `counts` doesn't filter on
+                // extent, so it would still be tallied — an error the
+                // buffer shows nowhere.
+                if start == end {
+                    return None;
+                }
+                Some(StoredDiag {
                     start,
                     end,
                     severity: map_severity(d.severity),
@@ -360,7 +382,7 @@ impl Editor {
                     }),
                     source: d.source,
                     raw,
-                }
+                })
             })
             .collect();
         stored.sort_by_key(|d| d.start);
@@ -465,6 +487,27 @@ mod tests {
                 .next()
                 .is_none(),
             "no entry should remain for a buffer with no servers left"
+        );
+    }
+
+    #[test]
+    fn for_range_is_globally_sorted_across_multiple_servers() {
+        let mut store = DiagnosticsStore::default();
+        let bid = make_bid();
+        // Server 0 (inserted first) publishes a diagnostic starting later;
+        // server 1 (inserted after) publishes one starting earlier —
+        // concatenating in insertion order would put the later one first.
+        store.replace(ServerId(0), bid, vec![diag(10, 12, DiagSeverity::Error)]);
+        store.replace(ServerId(1), bid, vec![diag(0, 2, DiagSeverity::Warning)]);
+
+        let starts: Vec<usize> = store
+            .for_range(bid, 0..100, DiagSeverity::Hint)
+            .map(|d| d.start)
+            .collect();
+        assert_eq!(
+            starts,
+            vec![0, 10],
+            "results must be globally start-ascending regardless of server insertion order"
         );
     }
 
