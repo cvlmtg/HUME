@@ -241,6 +241,28 @@ fn orphan_server_is_warned_and_not_registered() {
     );
 }
 
+#[test]
+#[cfg(not(windows))]
+fn install_lock_sentinel_file_is_never_scanned_as_a_server_directory() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
+    std::fs::create_dir_all(&servers_dir).unwrap();
+    // A file, not a directory — sitting directly under servers/, exactly
+    // where acquire-install-lock! puts it and register-installed-servers!
+    // scans.
+    std::fs::write(servers_dir.join(".install-lock"), b"").unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        !log.contains(".install-lock"),
+        "the lock sentinel file must never be scanned as an interrupted/orphan server: {log}"
+    );
+}
+
 // ── :lsp-install failure paths ────────────────────────────────────────────────
 
 #[test]
@@ -316,6 +338,32 @@ fn lsp_install_unsupported_asset_format_fails_loudly() {
     );
 }
 
+/// A live `.install-lock` (as another HUME process mid-install would leave)
+/// must refuse the install loudly, before any network activity — never
+/// interleave with a concurrent install/uninstall. `acquire-install-lock!`
+/// fails first, so this never actually reaches rust-analyzer's real
+/// download path (no `HUME_REQUIRE_LIVE_LSP_INSTALL_E2E` gate needed).
+#[test]
+#[cfg(not(windows))]
+fn lsp_install_refuses_when_the_cross_process_lock_is_already_held() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
+    std::fs::create_dir_all(&servers_dir).unwrap();
+    std::fs::write(servers_dir.join(".install-lock"), b"").unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":lsp-install rust");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("already in progress"),
+        "a live cross-process lock must refuse the install loudly: {log}"
+    );
+}
+
 /// Proves the minibuffer's `IntV(1)` no-arg sentinel (see
 /// `command_mode.rs`'s arity marshalling) takes the buffer-language
 /// fallback branch, not the "no argument given" branch — a made-up language
@@ -377,6 +425,41 @@ fn lsp_uninstall_removes_registration_and_directory() {
     assert!(
         !dir.exists(),
         "uninstall must remove the server directory once the deferred (after 0 ...) fires"
+    );
+}
+
+/// The uninstall delete is guarded by the same cross-process lock — a live
+/// `.install-lock` at the moment the deferred `(after 0 ...)` callback fires
+/// must refuse the delete loudly, leaving the directory intact.
+#[test]
+#[cfg(not(windows))]
+fn lsp_uninstall_refuses_the_delete_when_the_cross_process_lock_is_already_held() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    fabricate_server(
+        data_tmp.path(),
+        "rust-analyzer",
+        "2026-07-06",
+        "rust-analyzer",
+    );
+    let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
+    std::fs::write(servers_dir.join(".install-lock"), b"").unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":lsp-uninstall rust-analyzer");
+    ed.drain_async_sources();
+    ed.drain_pending_steel_calls();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("already in progress"),
+        "a live cross-process lock must refuse the delete loudly: {log}"
+    );
+    assert!(
+        servers_dir.join("rust-analyzer").exists(),
+        "the server directory must survive when the lock can't be acquired"
     );
 }
 

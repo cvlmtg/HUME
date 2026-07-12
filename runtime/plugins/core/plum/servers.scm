@@ -199,7 +199,12 @@
 
 ;;; Passive: registers already-installed servers only (a readable receipt
 ;;; naming a seeded server), no subprocess, no network. See README.md §
-;;; startup registration.
+;;; startup registration. `.install-lock` (the cross-process install lock's
+;;; sentinel file — see `plum/lsp-install-or-report!`) lives directly under
+;;; `servers-dir` alongside the per-server subdirectories — excluded here so
+;;; a lock left behind by a crash (or simply present during a legitimate
+;;; concurrent install elsewhere) is never misread as an interrupted or
+;;; orphan server.
 (define (plum/register-installed-servers!)
   (let ((sdir (plum/servers-dir)))
     (when (path-exists? sdir)
@@ -217,7 +222,8 @@
                (plum/register-server-languages!
                  name
                  (path-join (plum/server-dir name) (plum/receipt-bin receipt)))))))
-        (filter plum/valid-dir-entry? (list-dir sdir))))))
+        (filter (lambda (name) (and (plum/valid-dir-entry? name) (not (equal? name ".install-lock"))))
+                (list-dir sdir))))))
 
 ;; ── Install pipeline ──────────────────────────────────────────────────────────
 
@@ -329,7 +335,14 @@
 
 ;;; Install `name` if not already at the seeded version, reporting a
 ;;; guided-retry hint on failure when a prior install dir existed (covers
-;;; the Windows locked-file case; a one-shot retry on Unix).
+;;; the Windows locked-file case; a one-shot retry on Unix). Guarded by the
+;;; cross-process install lock (`<data>/servers/.install-lock`) — a second
+;;; HUME process installing/uninstalling at the same time is refused, not
+;;; interleaved. `acquired?` short-circuits the install attempt when the
+;;; lock itself couldn't be taken (another process holds it); the install's
+;;; own with-handler releases it on failure, or the protected body's own
+;;; trailing call releases it on success — the lock is never left held
+;;; after this function returns.
 (define (plum/lsp-install-or-report! name)
   (let* ((receipt (plum/read-receipt name))
          (source  (if (hash-contains? *plum-lsp-sources* name)
@@ -339,14 +352,22 @@
              (equal? (plum/receipt-version receipt) (cdr (plum/field source 'version))))
         (log! 'info (string-append "PLUM: " name " already installed (v"
                                    (plum/receipt-version receipt) ") — up to date"))
-        (let ((had-dir? (path-exists? (plum/server-dir name))))
-          (log! 'info (string-append "PLUM: installing " name "..."))
-          (with-handler
-            (lambda (err)
-              (log! 'error (string-append "PLUM: install failed: " (to-string err)))
-              (when had-dir?
-                (log! 'info "PLUM: if the server was running it has now been shut down — run :lsp-install again")))
-            (plum/install-server! name))))))
+        (let* ((had-dir? (path-exists? (plum/server-dir name)))
+               (acquired?
+                 (with-handler
+                   (lambda (err) (log! 'error (string-append "PLUM: " (to-string err))) #f)
+                   (begin (acquire-install-lock!) #t))))
+          (when acquired?
+            (log! 'info (string-append "PLUM: installing " name "..."))
+            (with-handler
+              (lambda (err)
+                (release-install-lock!)
+                (log! 'error (string-append "PLUM: install failed: " (to-string err)))
+                (when had-dir?
+                  (log! 'info "PLUM: if the server was running it has now been shut down — run :lsp-install again")))
+              (begin
+                (plum/install-server! name)
+                (release-install-lock!))))))))
 
 (define-command! "lsp-install"
   "Download, verify, and register the language server for a language (default: the current buffer's language)."
@@ -378,12 +399,27 @@
           (when (hash-contains? *plum-lsp-servers* name)
             (for-each (lambda (lang-entry) (unregister-lsp-server! (car lang-entry)))
                       (cdr (plum/field (hash-ref *plum-lsp-servers* name) 'languages))))
+          ;; The delete itself is cross-process-lock-guarded, same as
+          ;; install — a second HUME process must never race this one's
+          ;; delete-dir. Deferred to `after 0` so the unregister above has
+          ;; already shut down any running client; the lock is acquired
+          ;; there, right before the delete, not any earlier.
           (if (path-exists? dir)
               (begin
                 (log! 'info (string-append "PLUM: shutting down and removing " name "..."))
                 (after 0 (lambda ()
-                           (delete-dir dir)
-                           (log! 'info (string-append "PLUM: removed " name)))))
+                           (with-handler
+                             (lambda (err) (log! 'error (string-append "PLUM: " (to-string err))))
+                             (begin
+                               (acquire-install-lock!)
+                               (with-handler
+                                 (lambda (err)
+                                   (release-install-lock!)
+                                   (log! 'error (string-append "PLUM: uninstall failed: " (to-string err))))
+                                 (begin
+                                   (delete-dir dir)
+                                   (release-install-lock!)
+                                   (log! 'info (string-append "PLUM: removed " name)))))))))
               (log! 'info (string-append "PLUM: nothing to uninstall for " name))))))))
 
 (define-command! "lsp-servers"

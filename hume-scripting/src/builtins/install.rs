@@ -1,5 +1,6 @@
 //! LSP server install pipeline builtins: platform identification, sha256
-//! verification, archive unpacking, and a `$PATH` lookup predicate.
+//! verification, archive unpacking, a `$PATH` lookup predicate, and a
+//! cross-process install lock.
 //!
 //! sha256 verification and archive unpacking shell out to per-platform
 //! system tools (`hume_platform::process`) rather than pulling in
@@ -13,8 +14,12 @@
 //! | `unpack-gz`                     | `string string → void` | sandboxed to `<data>/servers/`     |
 //! | `unpack-zip`                    | `string string string → void` | sandboxed to `<data>/servers/`, bin-path chmod'd |
 //! | `exe-on-path?`                  | `string → bool`        | real `PATH` scan, no spawn         |
+//! | `acquire-install-lock!`         | `() → void`            | O_EXCL over `<data>/servers/.install-lock`; stale (>1h) → replace |
+//! | `release-install-lock!`        | `() → void`            | idempotent — a missing lock is not an error |
 
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
@@ -23,7 +28,15 @@ use crate::SteelCtx;
 use crate::log::LogLevel;
 
 use super::one_string;
+use super::sandbox::with_data_servers;
 use super::shell::{SandboxKind, validate_new_path};
+
+const INSTALL_LOCK_FILE_NAME: &str = ".install-lock";
+
+/// A lock file older than this is treated as abandoned by a crashed or
+/// killed prior process — replaced with a warning, rather than left to
+/// block every future install/uninstall forever.
+const STALE_INSTALL_LOCK_AGE: Duration = Duration::from_secs(60 * 60);
 
 /// Canonicalize `src` and verify it resolves inside `<data>/servers/`,
 /// shared by every builtin here whose `src` argument must already exist in
@@ -176,6 +189,88 @@ pub(crate) fn exe_on_path(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     Ok(SteelVal::BoolV(hume_platform::process::exe_on_search_path(
         &name,
     )))
+}
+
+/// Create `path` with O_EXCL semantics: errors with `AlreadyExists` if it's
+/// already there. Content doesn't matter, only existence + mtime.
+fn create_lock_file(path: &Path) -> std::io::Result<()> {
+    OpenOptions::new().write(true).create_new(true).open(path)?;
+    Ok(())
+}
+
+/// `(acquire-install-lock!)` — create `<data>/servers/.install-lock` with
+/// O_EXCL semantics, guarding `:lsp-install`/`:lsp-uninstall` against a
+/// second HUME process running one of them concurrently. A lock already
+/// present and younger than an hour is a live install in progress
+/// elsewhere — fails loudly. Older than that, it's treated as abandoned
+/// (the process that held it crashed or was killed without releasing) and
+/// replaced, with a warning.
+///
+/// # Errors
+/// A live (non-stale) lock already exists, or the lock file can't be
+/// created/replaced.
+pub(crate) fn acquire_install_lock(ctx: &mut SteelCtx) -> Result<SteelVal, SteelErr> {
+    with_data_servers(|servers_dir| {
+        let lock_path = servers_dir.join(INSTALL_LOCK_FILE_NAME);
+        let Err(create_err) = create_lock_file(&lock_path) else {
+            return Ok(SteelVal::Void);
+        };
+        if create_err.kind() != std::io::ErrorKind::AlreadyExists {
+            return Err(SteelErr::new(
+                steel::rerrs::ErrorKind::Generic,
+                format!("acquire-install-lock!: {create_err}"),
+            ));
+        }
+        let age = std::fs::metadata(&lock_path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|modified| modified.elapsed().ok());
+        match age {
+            Some(age) if age <= STALE_INSTALL_LOCK_AGE => Err(SteelErr::new(
+                steel::rerrs::ErrorKind::Generic,
+                "acquire-install-lock!: another install/uninstall is already in progress"
+                    .to_string(),
+            )),
+            _ => {
+                ctx.log(
+                    LogLevel::Warning,
+                    "acquire-install-lock!: stale lock (older than 1h) — replacing".to_string(),
+                );
+                std::fs::remove_file(&lock_path).map_err(|e| {
+                    SteelErr::new(
+                        steel::rerrs::ErrorKind::Generic,
+                        format!("acquire-install-lock!: cannot remove stale lock: {e}"),
+                    )
+                })?;
+                create_lock_file(&lock_path).map_err(|e| {
+                    SteelErr::new(
+                        steel::rerrs::ErrorKind::Generic,
+                        format!(
+                            "acquire-install-lock!: cannot create lock after removing stale one: {e}"
+                        ),
+                    )
+                })?;
+                Ok(SteelVal::Void)
+            }
+        }
+    })?
+}
+
+/// `(release-install-lock!)` — remove `<data>/servers/.install-lock`.
+/// Idempotent: a missing lock (already released, or never acquired) is not
+/// an error.
+pub(crate) fn release_install_lock() -> Result<SteelVal, SteelErr> {
+    with_data_servers(|servers_dir| {
+        let lock_path = servers_dir.join(INSTALL_LOCK_FILE_NAME);
+        match std::fs::remove_file(&lock_path) {
+            Ok(()) => Ok(SteelVal::Void),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(SteelVal::Void),
+            Err(e) => Err(SteelErr::new(
+                steel::rerrs::ErrorKind::Generic,
+                format!("release-install-lock!: {e}"),
+            )),
+        }
+    })?
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -421,6 +516,83 @@ mod tests {
         assert_eq!(
             exe_on_path(&[SteelVal::StringV("definitely-not-a-real-tool-xyz".into())]).unwrap(),
             SteelVal::BoolV(false)
+        );
+    }
+
+    // ── acquire-install-lock! / release-install-lock! ───────────────────────
+
+    #[test]
+    fn acquire_install_lock_succeeds_when_no_lock_exists() {
+        let tmp = TempDir::new().unwrap();
+        let servers = setup(&tmp);
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        assert!(acquire_install_lock(&mut ctx).is_ok());
+        assert!(servers.join(".install-lock").exists());
+    }
+
+    #[test]
+    fn acquire_install_lock_fails_loudly_on_a_second_live_acquire() {
+        let tmp = TempDir::new().unwrap();
+        setup(&tmp);
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        acquire_install_lock(&mut ctx).expect("first acquire");
+        let err = acquire_install_lock(&mut ctx).unwrap_err();
+        assert!(
+            err.to_string().contains("already in progress"),
+            "expected an 'already in progress' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn acquire_install_lock_replaces_a_stale_lock_with_a_warning() {
+        let tmp = TempDir::new().unwrap();
+        let servers = setup(&tmp);
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        acquire_install_lock(&mut ctx).expect("first acquire");
+
+        // Backdate the lock file's mtime past the 1h staleness threshold —
+        // no real waiting required.
+        let lock_path = servers.join(".install-lock");
+        let file = fs::File::open(&lock_path).unwrap();
+        file.set_modified(std::time::SystemTime::now() - Duration::from_secs(60 * 60 + 1))
+            .unwrap();
+
+        assert!(
+            acquire_install_lock(&mut ctx).is_ok(),
+            "a stale lock must be replaced, not treated as live"
+        );
+        assert!(
+            h.pending_messages
+                .iter()
+                .any(|(level, msg)| *level == LogLevel::Warning && msg.contains("stale")),
+            "replacing a stale lock must log a warning: {:?}",
+            h.pending_messages
+        );
+    }
+
+    #[test]
+    fn release_install_lock_is_idempotent() {
+        let tmp = TempDir::new().unwrap();
+        setup(&tmp);
+        assert!(release_install_lock().is_ok(), "no lock ever acquired");
+        assert!(release_install_lock().is_ok(), "second release call");
+    }
+
+    #[test]
+    fn release_install_lock_removes_the_file_so_a_later_acquire_succeeds_immediately() {
+        let tmp = TempDir::new().unwrap();
+        let servers = setup(&tmp);
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        acquire_install_lock(&mut ctx).expect("first acquire");
+        assert!(release_install_lock().is_ok());
+        assert!(!servers.join(".install-lock").exists());
+        assert!(
+            acquire_install_lock(&mut ctx).is_ok(),
+            "a released lock must not block the next acquire"
         );
     }
 }

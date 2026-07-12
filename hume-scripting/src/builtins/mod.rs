@@ -392,6 +392,12 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_fn_with_ctx(HUME_CTX, "unpack-gz", install::unpack_gz);
     steel.register_fn_with_ctx(HUME_CTX, "unpack-zip", install::unpack_zip);
     steel.register_value("exe-on-path?", SteelVal::FuncV(install::exe_on_path));
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "acquire-install-lock!",
+        install::acquire_install_lock,
+    );
+    steel.register_fn("release-install-lock!", install::release_install_lock);
 
     // Logging — push messages to the editor message log
     steel.register_fn_with_ctx(HUME_CTX, "log!", crate::log::log_msg);

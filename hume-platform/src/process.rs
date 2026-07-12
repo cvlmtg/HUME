@@ -399,10 +399,15 @@ pub fn unpack_gz(src: &Path, dest: &Path) -> io::Result<()> {
 /// expects the archive to contain. After extraction it is verified to exist
 /// — a defense against a seeded bin-path that no longer matches the
 /// archive's layout, mirroring `unpack_gz`'s guarantee that the produced
-/// path is exactly the caller's `dest`. On Unix it is then chmod'd `0o755`:
-/// unlike `.gz` (always a bare executable), zip entries carry the archive's
-/// own stored permissions, and CI-built release zips routinely strip the
-/// exec bit.
+/// path is exactly the caller's `dest`. On Unix, every regular file in the
+/// extracted tree (not just `bin_path`) is then chmod'd `0o755`: unlike
+/// `.gz` (always a bare executable), zip entries carry the archive's own
+/// stored permissions, CI-built release zips routinely strip the exec bit,
+/// and a server layout with a wrapper script or sibling helper binaries
+/// needs all of them executable, not only the seeded entry point. Every
+/// check and chmod goes through `symlink_metadata` — a symlink (wherever it
+/// points) is never followed, whether as `bin_path` itself or as an
+/// extracted-tree entry.
 ///
 /// Zip-slip and symlink-entry protection is delegated to the system tool
 /// (modern Info-ZIP strips `../` entries; bsdtar refuses them by default) —
@@ -411,8 +416,6 @@ pub fn unpack_gz(src: &Path, dest: &Path) -> io::Result<()> {
 /// function.
 #[cfg(unix)]
 pub fn unpack_zip(src: &Path, dest_dir: &Path, bin_path: &Path) -> io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-
     let src = strip_unc_prefix(src.to_path_buf());
     let dest_dir = strip_unc_prefix(dest_dir.to_path_buf());
     let status = Command::new("unzip")
@@ -429,13 +432,38 @@ pub fn unpack_zip(src: &Path, dest_dir: &Path, bin_path: &Path) -> io::Result<()
         )));
     }
     let bin_full = dest_dir.join(bin_path);
-    if !bin_full.is_file() {
-        return Err(io::Error::other(format!(
+    let missing_binary = || {
+        io::Error::other(format!(
             "extracted archive is missing expected binary: {}",
             bin_path.display()
-        )));
+        ))
+    };
+    if !std::fs::symlink_metadata(&bin_full)
+        .map_err(|_| missing_binary())?
+        .is_file()
+    {
+        return Err(missing_binary());
     }
-    std::fs::set_permissions(&bin_full, std::fs::Permissions::from_mode(0o755))?;
+    chmod_all_regular_files(&dest_dir)?;
+    Ok(())
+}
+
+/// Recursively chmod every regular file under `dir` to `0o755` —
+/// `symlink_metadata` so a symlink (wherever it points, even at another
+/// directory) is never followed, neither recursed into nor chmod'd.
+#[cfg(unix)]
+fn chmod_all_regular_files(dir: &Path) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        let meta = std::fs::symlink_metadata(&path)?;
+        if meta.is_dir() {
+            chmod_all_regular_files(&path)?;
+        } else if meta.is_file() {
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
+        }
+    }
     Ok(())
 }
 
@@ -470,17 +498,28 @@ pub fn unpack_zip(src: &Path, dest_dir: &Path, bin_path: &Path) -> io::Result<()
 /// Run `npm install --ignore-scripts --prefix <dest> -- <packages…>` with
 /// inherited stdio.
 ///
-/// On Windows, npm itself is a `.cmd` shim that `CreateProcess` cannot spawn
-/// directly, so the command is wrapped as `cmd /C npm …`.
+/// On Windows, npm itself is a `.cmd` shim — spawned directly (`Command::new`
+/// has applied safe `.bat`/`.cmd` argument escaping, and errors on an
+/// unrepresentable argument, since Rust 1.77.2/CVE-2024-24576) rather than
+/// wrapped as `cmd /C npm …`, which double-parses the command line and is
+/// exactly the shape that CVE exists for.
+///
+/// # Errors
+/// An `io::Error` if any `packages` entry contains a character outside
+/// `[A-Za-z0-9@/._+-]` — defense in depth, independent of the platform's
+/// argument-escaping story; a legitimate npm package spec never needs
+/// anything else.
 pub fn npm_install(dest: &Path, packages: &[String]) -> io::Result<ExitStatus> {
+    if let Some(bad) = packages.iter().find(|p| !is_valid_npm_package_spec(p)) {
+        return Err(io::Error::other(format!(
+            "npm_install: disallowed characters in package spec: {bad:?}"
+        )));
+    }
+
     let dest = strip_unc_prefix(dest.to_path_buf());
 
     #[cfg(windows)]
-    let mut cmd = {
-        let mut c = Command::new("cmd");
-        c.arg("/C").arg("npm");
-        c
-    };
+    let mut cmd = Command::new("npm.cmd");
     #[cfg(not(windows))]
     let mut cmd = Command::new("npm");
 
@@ -491,6 +530,18 @@ pub fn npm_install(dest: &Path, packages: &[String]) -> io::Result<ExitStatus> {
         .arg("--")
         .args(packages);
     cmd.new_process_group().status()
+}
+
+/// `true` if `spec` is non-empty and contains only chars a well-formed npm
+/// package spec (bare name, scoped `@scope/name`, or either with `@version`)
+/// can contain — npm's own registry already restricts package names far more
+/// tightly than this; this is a defense-in-depth backstop, not a real
+/// validator.
+fn is_valid_npm_package_spec(spec: &str) -> bool {
+    !spec.is_empty()
+        && spec.bytes().all(|b| {
+            b.is_ascii_alphanumeric() || matches!(b, b'@' | b'/' | b'.' | b'_' | b'+' | b'-')
+        })
 }
 
 /// Whether `name` resolves to an executable file on `PATH`, without spawning
@@ -884,6 +935,94 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
+    fn unpack_zip_chmods_every_regular_file_not_just_bin_path() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let src_dir = dir.path().join("src");
+        std::fs::create_dir(&src_dir).expect("mkdir src");
+        std::fs::write(src_dir.join("bin-name"), b"binary contents").expect("write fixture");
+        // A sibling helper/wrapper the archive ships alongside the seeded
+        // entry point — must end up executable too, not just "bin-name".
+        std::fs::write(src_dir.join("helper"), b"helper contents").expect("write fixture");
+
+        let zip_path = dir.path().join("archive.zip");
+        let zip_status = Command::new("zip")
+            .arg("-j")
+            .arg(&zip_path)
+            .arg(src_dir.join("bin-name"))
+            .arg(src_dir.join("helper"))
+            .status()
+            .expect("spawn zip");
+        assert!(zip_status.success());
+
+        let dest_dir = dir.path().join("dest");
+        std::fs::create_dir(&dest_dir).expect("mkdir dest");
+        unpack_zip(&zip_path, &dest_dir, Path::new("bin-name")).expect("unpack_zip");
+
+        let helper_mode = std::fs::metadata(dest_dir.join("helper"))
+            .expect("metadata")
+            .permissions()
+            .mode();
+        assert_eq!(
+            helper_mode & 0o777,
+            0o755,
+            "a sibling file in the archive must also end up executable"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn unpack_zip_never_follows_a_symlink_entry_for_chmod() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let outside_target = dir.path().join("outside-target.txt");
+        std::fs::write(&outside_target, b"secret").expect("write fixture");
+        std::fs::set_permissions(&outside_target, std::fs::Permissions::from_mode(0o600))
+            .expect("chmod fixture to non-executable");
+
+        let src_dir = dir.path().join("src");
+        std::fs::create_dir(&src_dir).expect("mkdir src");
+        std::fs::write(src_dir.join("bin-name"), b"binary contents").expect("write fixture");
+        std::os::unix::fs::symlink(&outside_target, src_dir.join("link-name"))
+            .expect("create symlink fixture");
+
+        let zip_path = dir.path().join("archive.zip");
+        let zip_status = Command::new("zip")
+            .arg("--symlinks")
+            .arg("-j")
+            .arg(&zip_path)
+            .arg(src_dir.join("bin-name"))
+            .arg(src_dir.join("link-name"))
+            .status()
+            .expect("spawn zip");
+        assert!(zip_status.success());
+
+        let dest_dir = dir.path().join("dest");
+        std::fs::create_dir(&dest_dir).expect("mkdir dest");
+        unpack_zip(&zip_path, &dest_dir, Path::new("bin-name")).expect("unpack_zip");
+
+        assert!(
+            std::fs::symlink_metadata(dest_dir.join("link-name"))
+                .expect("extracted entry must exist")
+                .file_type()
+                .is_symlink(),
+            "the archive's symlink entry must extract as a real symlink, not get dereferenced"
+        );
+        let target_mode = std::fs::metadata(&outside_target)
+            .expect("metadata")
+            .permissions()
+            .mode();
+        assert_eq!(
+            target_mode & 0o777,
+            0o600,
+            "chmod must never follow the symlink to its target outside dest_dir"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
     fn unpack_zip_missing_source_is_error() {
         let dir = tempfile::tempdir().expect("tempdir");
         let src = dir.path().join("missing.zip");
@@ -915,6 +1054,42 @@ mod tests {
         assert!(
             err.to_string().contains("wrong-name"),
             "expected error naming the missing binary, got: {err}"
+        );
+    }
+
+    // ── npm_install package-spec validation ─────────────────────────────────
+
+    #[test]
+    fn is_valid_npm_package_spec_accepts_real_seeded_shapes() {
+        // Every real entry in runtime/scheme/lsp-sources.scm's `packages`
+        // lists takes one of these shapes — bare name, scoped name, either
+        // with an exact `@version` pin. Never a semver range.
+        assert!(is_valid_npm_package_spec("typescript"));
+        assert!(is_valid_npm_package_spec(
+            "typescript-language-server@5.3.0"
+        ));
+        assert!(is_valid_npm_package_spec(
+            "@astrojs/language-server@2.16.11"
+        ));
+        assert!(is_valid_npm_package_spec("@imc-trading/svlangserver@0.4.1"));
+    }
+
+    #[test]
+    fn is_valid_npm_package_spec_rejects_shell_metacharacters() {
+        assert!(!is_valid_npm_package_spec("pkg; rm -rf /"));
+        assert!(!is_valid_npm_package_spec("pkg && evil"));
+        assert!(!is_valid_npm_package_spec("pkg`evil`"));
+        assert!(!is_valid_npm_package_spec("pkg | evil"));
+        assert!(!is_valid_npm_package_spec(""));
+    }
+
+    #[test]
+    fn npm_install_rejects_a_package_spec_with_disallowed_characters_before_spawning() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let err = npm_install(dir.path(), &["pkg; rm -rf /".to_string()]).unwrap_err();
+        assert!(
+            err.to_string().contains("pkg; rm -rf /"),
+            "expected error naming the offending spec, got: {err}"
         );
     }
 

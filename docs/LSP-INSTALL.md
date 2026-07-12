@@ -179,6 +179,7 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
 ├── grammars/                   (existing)
 ├── plugins/                    (existing)
 └── servers/
+    ├── .install-lock            transient — held only during an install/uninstall
     └── rust-analyzer/
         ├── receipt.scm         written LAST — the install commit point
         └── rust-analyzer       (or node_modules/… for npm-kind installs)
@@ -191,7 +192,19 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
   Developer Mode. One less moving part on every platform.
 - **Windows spawn wrinkle**: npm's `node_modules/.bin` entries on Windows are `.cmd` shims,
   which `CreateProcess` cannot spawn directly. The client's single process-spawn site
-  (`hume-lsp`'s transport) wraps `.cmd`/`.bat` commands in `cmd /C`, cfg-gated.
+  (`hume-lsp`'s transport) wraps `.cmd`/`.bat` commands in `cmd /C`, cfg-gated. The
+  *installer's* own `npm install` invocation (`hume-platform::process::npm_install`) spawns
+  `npm.cmd` directly via `Command::new` instead — Rust's std has applied safe `.bat`/`.cmd`
+  argument escaping since 1.77.2 (CVE-2024-24576), so this avoids the double
+  command-line-parsing a `cmd /C npm …` wrapper would add. A defense-in-depth allowlist
+  (`[A-Za-z0-9@/._+-]`) on every package spec runs before spawn either way, cfg-independent.
+- **Cross-process install lock**: `:lsp-install`/`:lsp-uninstall` acquire
+  `<data>/servers/.install-lock` (O_EXCL — `acquire-install-lock!`/`release-install-lock!`)
+  before mutating `servers/`, so two HUME processes racing the same operation refuse rather
+  than interleave. A lock older than an hour is treated as abandoned (the process that held
+  it crashed or was killed) and replaced, with a warning. The sentinel file lives directly
+  under `servers/`, excluded from the startup scan so it's never misread as an interrupted
+  or orphan server install.
 - **Receipt = commit point.** `receipt.scm` (pure data: name, version, bin path) is written
   as the final install step. A dir without a receipt is an interrupted install: warned
   about, ignored by the scan, safely redone by `:lsp-install`. No half-installed server is
@@ -357,9 +370,17 @@ audited process-spawn surface (`hume-platform/src/process.rs`) as the only place
 OS/toolchain already ships, and — since these tools are already required by any
 developer's `git`/build toolchain — costs no new install step in the common case.
 
-**Accepted tradeoff — zip-slip and symlink-entry protection is delegated to the system
-tool** (modern Info-ZIP strips `../` entries; bsdtar refuses them by default), rather than
-implemented in HUME. The residual risk is bounded by the sync-time sha256 pin: `unpack-zip`
-runs only after `verify-sha256!` has confirmed the archive matches the maintainer-vetted,
-hash-locked asset recorded in `lsp-sources.scm` — an attacker would need to compromise the
-pinned upstream release itself, not just something interposed at install time.
+**Accepted tradeoff — zip-slip protection is delegated to the system tool** (modern
+Info-ZIP strips `../` entries; bsdtar refuses them by default), rather than implemented in
+HUME. The residual risk is bounded by the sync-time sha256 pin: `unpack-zip` runs only
+after `verify-sha256!` has confirmed the archive matches the maintainer-vetted, hash-locked
+asset recorded in `lsp-sources.scm` — an attacker would need to compromise the pinned
+upstream release itself, not just something interposed at install time.
+
+**Symlink-entry handling**: `unpack-zip` (Unix) chmods `0o755` every *regular file* in the
+extracted tree, not just the seeded `bin-path` — a server whose layout ships a wrapper
+script or sibling helper binaries needs all of them executable. Every check and chmod goes
+through `symlink_metadata`, never a symlink-following stat/chmod: a symlink entry the
+archive tool extracted (whether it's `bin-path` itself or some other tree entry) is neither
+recursed into nor chmod'd, so a malicious symlink pointing outside the server dir can't have
+its target's permissions mutated.
