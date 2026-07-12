@@ -14,17 +14,17 @@ Idempotent: running twice produces byte-identical files.
 """
 
 import sys
-import urllib.request
 from pathlib import Path
-from urllib.error import URLError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from sync_common import (  # noqa: E402
+    fetch_bytes,
     read_pin,
+    read_sexpr,
     scheme_list,
     scheme_str,
     sexpr_dumps,
-    write_atomic,
+    write_generated_file,
 )
 
 try:
@@ -115,12 +115,7 @@ LSP_SERVERS_HEADER = """\
 
 def fetch_toml(sha: str) -> dict:
     url = f"https://raw.githubusercontent.com/helix-editor/helix/{sha}/languages.toml"
-    print(f"fetching {url}", file=sys.stderr)
-    try:
-        with urllib.request.urlopen(url, timeout=30) as r:
-            return tomllib.loads(r.read().decode())
-    except URLError as e:
-        sys.exit(f"error: failed to fetch {url}: {e}")
+    return tomllib.loads(fetch_bytes(url, timeout=30).decode())
 
 
 def parse_grammars(doc: dict) -> dict[str, dict]:
@@ -153,7 +148,10 @@ def parse_languages(doc: dict, grammars: dict[str, dict]) -> list[dict]:
     no_grammar = []
 
     for entry in doc.get("language", []):
-        name = entry["name"]
+        try:
+            name = entry["name"]
+        except KeyError as e:
+            sys.exit(f"error: malformed language entry in languages.toml: missing key {e}")
         extensions = []
         globs = []
         for ft in entry.get("file-types", []):
@@ -208,7 +206,13 @@ def emit_grammar_sources(grammars: dict[str, dict], langs: list[dict]) -> list[s
     for lang in langs:
         lname = lang["name"]
         gname = lang["grammar_name"]
-        if gname != lname and gname in grammars and lname not in entries:
+        if gname != lname and gname in grammars:
+            if lname in entries:
+                print(
+                    f"  grammar delegation: language '{lname}' delegates to grammar "
+                    f"'{gname}', overriding its own same-named direct grammar entry",
+                    file=sys.stderr,
+                )
             g = grammars[gname]
             entries[lname] = {**g, "sym": "tree_sitter_" + gname.replace("-", "_")}
 
@@ -387,23 +391,26 @@ def main() -> None:
         file=sys.stderr,
     )
 
-    # languages.scm — identity-only
-    langs_parts = [LANGUAGES_HEADER.format(sha=sha)]
-    langs_parts.append("\n".join(emit_language_identities(langs)))
-    langs_parts.append("")  # trailing newline
-    write_atomic(LANGUAGES_SCM, "\n".join(langs_parts))
+    # languages.scm — identity-only. Not a single-literal-sexpr file (a
+    # sequence of top-level (define-language! …) forms), so unlike the two
+    # below it has no read_sexpr self-check.
+    write_generated_file(
+        LANGUAGES_SCM, LANGUAGES_HEADER.format(sha=sha), emit_language_identities(langs)
+    )
 
     # grammar-sources.scm — source catalog only
-    src_parts = [GRAMMAR_SOURCES_HEADER.format(sha=sha)]
-    src_parts.append("\n".join(emit_grammar_sources(grammars, langs)))
-    src_parts.append("")  # trailing newline
-    write_atomic(GRAMMAR_SOURCES_SCM, "\n".join(src_parts))
+    write_generated_file(
+        GRAMMAR_SOURCES_SCM,
+        GRAMMAR_SOURCES_HEADER.format(sha=sha),
+        emit_grammar_sources(grammars, langs),
+    )
+    read_sexpr(GRAMMAR_SOURCES_SCM)  # self-check: emitted file must re-parse
 
     # lsp-servers.scm — LSP server registration catalog
-    lsp_parts = [LSP_SERVERS_HEADER.format(sha=sha)]
-    lsp_parts.append("\n".join(emit_lsp_servers(servers)))
-    lsp_parts.append("")  # trailing newline
-    write_atomic(LSP_SERVERS_SCM, "\n".join(lsp_parts))
+    write_generated_file(
+        LSP_SERVERS_SCM, LSP_SERVERS_HEADER.format(sha=sha), emit_lsp_servers(servers)
+    )
+    read_sexpr(LSP_SERVERS_SCM)  # self-check: emitted file must re-parse
 
 
 if __name__ == "__main__":

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import collections
 import hashlib
+import http.client
 import io
 import json
 import re
@@ -34,7 +35,13 @@ from pathlib import Path
 from urllib.error import URLError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from sync_common import read_pin, read_sexpr, scheme_str, write_atomic  # noqa: E402
+from sync_common import (  # noqa: E402
+    fetch_bytes,
+    read_pin,
+    read_sexpr,
+    scheme_str,
+    write_generated_file,
+)
 
 REPO = Path(__file__).resolve().parent.parent
 MASON_PIN_SCM = REPO / "runtime" / "scheme" / "mason-pin.scm"
@@ -114,12 +121,17 @@ HELIX_TO_MASON = {
 }
 
 # hume-target -> ordered Mason target names to try, most-preferred first
-# (e.g. prefer a glibc Linux build over musl when both are offered).
+# (e.g. prefer a glibc Linux build over musl when both are offered). The
+# trailing arch-agnostic entries (`darwin`, `linux`, `win`, `unix`) are real
+# Mason target strings some packages use for a universal/interpreted asset
+# (e.g. neocmakelsp's "universal-apple-darwin" build, or a zip'd script
+# elixir-ls/kotlin-language-server ship once for all Unix hume-targets) —
+# tried only after every arch-specific option is exhausted.
 MASON_TARGET_PRIORITY = {
-    "darwin-arm64": ("darwin_arm64",),
-    "darwin-x64": ("darwin_x64",),
-    "linux-x64": ("linux_x64_gnu", "linux_x64", "linux_x64_musl"),
-    "windows-x64": ("win_x64",),
+    "darwin-arm64": ("darwin_arm64", "darwin", "unix"),
+    "darwin-x64": ("darwin_x64", "darwin", "unix"),
+    "linux-x64": ("linux_x64_gnu", "linux_x64", "linux_x64_musl", "linux", "unix"),
+    "windows-x64": ("win_x64", "win"),
 }
 
 ARCHIVE_EXTENSIONS = (".tar.gz", ".tar.xz", ".tar.bz2", ".tgz", ".txz", ".zip", ".gz", ".xz")
@@ -129,12 +141,7 @@ _BIN_PREFIX_RE = re.compile(r"^[a-z][a-z0-9_]*:(?!//)")
 
 def fetch_registry(tag: str) -> list:
     url = f"https://github.com/mason-org/mason-registry/releases/download/{tag}/registry.json.zip"
-    print(f"fetching {url}", file=sys.stderr)
-    try:
-        with urllib.request.urlopen(url, timeout=60) as r:
-            blob = r.read()
-    except URLError as e:
-        sys.exit(f"error: failed to fetch {url}: {e}")
+    blob = fetch_bytes(url, timeout=60)
     with zipfile.ZipFile(io.BytesIO(blob)) as zf:
         with zf.open("registry.json") as f:
             return json.loads(f.read().decode())
@@ -147,7 +154,12 @@ def parse_purl(purl: str) -> tuple[str, str, str]:
     if not purl.startswith("pkg:"):
         sys.exit(f"error: malformed purl (no 'pkg:' prefix): {purl}")
     kind, _, rest = purl[4:].partition("/")
-    rest = rest.split("?", 1)[0]
+    # Strip qualifiers (`?...`) and subpath (`#...`) — whichever appears
+    # first, per the purl grammar `type/namespace/name@version?qualifiers#subpath`.
+    # Dropping only `?` left a subpath fragment glued onto the version for any
+    # purl with one (e.g. cuelsp's `...@v0.3.4#cmd/cuelsp`), silently
+    # recording a wrong version.
+    rest = re.split(r"[?#]", rest, maxsplit=1)[0]
     rest = urllib.parse.unquote(rest)
     subject, sep, version = rest.rpartition("@")
     if not sep:
@@ -221,12 +233,17 @@ def resolve_template(template: str, *, version: str, asset: dict) -> str | None:
     return None if unresolved or "{{" in result else result
 
 
-def index_assets_by_mason_target(assets) -> dict:
+def index_assets_by_mason_target(assets, package_name: str) -> dict:
     by_target = {}
     for asset in assets:
         targets = asset.get("target")
         for t in targets if isinstance(targets, list) else [targets]:
-            by_target.setdefault(t, asset)
+            if t in by_target and by_target[t] is not asset:
+                sys.exit(
+                    f"error: mason package '{package_name}' has two different assets both "
+                    f"claiming target {t!r} — ambiguous, cannot pick one automatically"
+                )
+            by_target[t] = asset
     return by_target
 
 
@@ -285,7 +302,14 @@ def sha256_of_url(url: str):
     downloaded. A download failure here means Mason's own registry data is
     stale or wrong for this one asset (e.g. a release tag that was since
     deleted or renamed upstream) — the caller skips just that target rather
-    than aborting the whole sync over one broken, unrelated package."""
+    than aborting the whole sync over one broken, unrelated package.
+
+    Catches failures from both connect (`URLError`) and the chunked read
+    loop after a connection was established — a mid-read timeout surfaces as
+    `TimeoutError`/`socket.timeout` (an `OSError`, not a `URLError`) or a
+    truncated response as `http.client.IncompleteRead` (not an `OSError` at
+    all) — either would otherwise crash the whole sync over one flaky asset.
+    """
     h = hashlib.sha256()
     try:
         with urllib.request.urlopen(url, timeout=180) as r:
@@ -294,7 +318,7 @@ def sha256_of_url(url: str):
                 if not chunk:
                     break
                 h.update(chunk)
-    except URLError as e:
+    except (URLError, OSError, http.client.IncompleteRead) as e:
         print(f"  download failed, skipping target: {url}: {e}", file=sys.stderr)
         return None
     return f"sha256:{h.hexdigest()}"
@@ -314,13 +338,14 @@ def build_github_record(
         return None
 
     by_mason_target = index_assets_by_mason_target(
-        assets if isinstance(assets, list) else [assets]
+        assets if isinstance(assets, list) else [assets], name
     )
 
     targets = []
     for hume_target, mason_targets in MASON_TARGET_PRIORITY.items():
         asset = next((by_mason_target[t] for t in mason_targets if t in by_mason_target), None)
         if asset is None:
+            print(f"  {name} [{hume_target}]: no matching Mason asset — dropped", file=sys.stderr)
             continue
 
         raw_file = strip_mason_subpath(asset["file"])
@@ -406,19 +431,21 @@ def emit_lsp_sources(records: dict) -> list[str]:
     for name in sorted(records):
         r = records[name]
         if r["kind"] == "github":
+            # build_github_record never returns a "github" record with an
+            # empty targets list (it downgrades to "github-build" instead —
+            # see its own trailing guard), so target_rows is always non-empty
+            # here.
             target_rows = " ".join(
                 "({} {} {} {})".format(
                     t, scheme_str(f), scheme_str(sha), scheme_str(b)
                 )
                 for t, f, sha, b in r["targets"]
             )
-            row = (
-                " ({} (kind . github) (version . {}) (repo . {}) (targets{}))".format(
-                    scheme_str(name),
-                    scheme_str(r["version"]),
-                    scheme_str(r["repo"]),
-                    f" {target_rows}" if target_rows else "",
-                )
+            row = " ({} (kind . github) (version . {}) (repo . {}) (targets {}))".format(
+                scheme_str(name),
+                scheme_str(r["version"]),
+                scheme_str(r["repo"]),
+                target_rows,
             )
         elif r["kind"] == "npm":
             row = " ({} (kind . npm) (version . {}) (packages {}) (bin . {}))".format(
@@ -537,15 +564,13 @@ def main() -> None:
     print(f"parsed: {len(records)} installable server records", file=sys.stderr)
 
     for name in records:
-        assert name in commands, f"invariant violated: emitted server '{name}' not in lsp-servers.scm"
+        if name not in commands:
+            sys.exit(f"error: invariant violated: emitted server '{name}' not in lsp-servers.scm")
 
     source_rows = emit_lsp_sources(records)
     assert_no_unresolved_templates(source_rows)
 
-    parts = [LSP_SOURCES_HEADER.format(tag=tag)]
-    parts.append("\n".join(source_rows))
-    parts.append("")
-    write_atomic(LSP_SOURCES_SCM, "\n".join(parts))
+    write_generated_file(LSP_SOURCES_SCM, LSP_SOURCES_HEADER.format(tag=tag), source_rows)
 
     read_sexpr(LSP_SOURCES_SCM)  # self-check: emitted file must re-parse
 

@@ -9,7 +9,9 @@ how a generated file is written and read back.
 import os
 import re
 import sys
+import urllib.request
 from pathlib import Path
+from urllib.error import URLError
 
 
 class Sym(str):
@@ -31,7 +33,18 @@ def scheme_list(items: list) -> str:
     return "'(" + " ".join(scheme_str(x) for x in items) + ")"
 
 
-def sexpr_dumps(value, *, vector_arrays: bool = False) -> str:
+# Chars `read_sexpr`'s `read_atom` treats as token boundaries — a bare
+# symbol containing any of these would either truncate mid-key or corrupt
+# the surrounding structure on read-back.
+_UNSAFE_BARE_SYMBOL_CHARS_RE = re.compile(r'[\s()";]')
+
+
+def _check_safe_bare_symbol(k: str, path: str) -> None:
+    if not k or _UNSAFE_BARE_SYMBOL_CHARS_RE.search(k):
+        sys.exit(f"sexpr_dumps: key {k!r} at {path} is not a safe bare Scheme symbol")
+
+
+def sexpr_dumps(value, *, vector_arrays: bool = False, _path: str = "<root>") -> str:
     """Render a TOML/JSON-parsed value as a canonical Scheme literal.
 
     - dict -> alist: a key whose value is a scalar becomes `(key . value)`;
@@ -40,9 +53,16 @@ def sexpr_dumps(value, *, vector_arrays: bool = False) -> str:
       without double-wrapping; an empty dict becomes `(key)`, the empty
       tail). A key whose value is a list becomes `(key elem…)` — or, when
       `vector_arrays` is set, `(key . #(elem…))` (`#()` for an empty list).
-      Keys are sorted for determinism.
+      Keys are sorted for determinism, and validated as safe bare Scheme
+      symbols (no whitespace/parens/quote/semicolon — `read_sexpr`'s token
+      boundary chars) before being emitted unquoted.
     - list -> its elements, each dumped and space-joined (top-level only;
-      nested-in-dict lists go through the branch above).
+      nested-in-dict lists go through the branch above). An element that is
+      itself a dict or a list has no representable shape here — a bare list
+      has no wrapping parens of its own to mark where one element ends and
+      the next begins, so a nested dict/list would silently splice into its
+      siblings on read-back instead of erroring. Fails loudly instead,
+      naming the offending path.
     - str -> a quoted Scheme string; bool -> `#t`/`#f`; int/float -> literal.
 
     `vector_arrays` exists because the two non-vector shapes above collide:
@@ -56,6 +76,9 @@ def sexpr_dumps(value, *, vector_arrays: bool = False) -> str:
 
     Absent/empty values are never represented here as `#f` — callers emit
     the empty tail (e.g. `(settings)`) themselves when a value is missing.
+
+    `_path` is an internal accumulator for error messages naming the
+    offending key/index on failure — callers never pass it.
     """
     if isinstance(value, bool):
         return "#t" if value else "#f"
@@ -66,21 +89,30 @@ def sexpr_dumps(value, *, vector_arrays: bool = False) -> str:
     if isinstance(value, dict):
         parts = []
         for k in sorted(value):
+            _check_safe_bare_symbol(k, _path)
             v = value[k]
+            key_path = f"{_path}.{k}"
             if isinstance(v, dict):
-                parts.append(f"({k} {sexpr_dumps(v, vector_arrays=vector_arrays)})")
+                parts.append(f"({k} {sexpr_dumps(v, vector_arrays=vector_arrays, _path=key_path)})")
             elif isinstance(v, list):
+                inner = sexpr_dumps(v, vector_arrays=vector_arrays, _path=key_path)
                 if vector_arrays:
-                    inner = " ".join(sexpr_dumps(x, vector_arrays=vector_arrays) for x in v)
                     parts.append(f"({k} . #({inner}))")
                 else:
-                    inner = " ".join(sexpr_dumps(x, vector_arrays=vector_arrays) for x in v)
                     parts.append(f"({k} {inner})")
             else:
-                parts.append(f"({k} . {sexpr_dumps(v, vector_arrays=vector_arrays)})")
+                parts.append(f"({k} . {sexpr_dumps(v, vector_arrays=vector_arrays, _path=key_path)})")
         return " ".join(parts)
     if isinstance(value, list):
-        return " ".join(sexpr_dumps(x, vector_arrays=vector_arrays) for x in value)
+        parts = []
+        for i, x in enumerate(value):
+            if isinstance(x, (dict, list)):
+                sys.exit(
+                    f"sexpr_dumps: {_path}[{i}] is a nested {type(x).__name__} inside a "
+                    "bare list — no representable seeded shape (list elements must be scalars)"
+                )
+            parts.append(sexpr_dumps(x, vector_arrays=vector_arrays, _path=f"{_path}[{i}]"))
+        return " ".join(parts)
     raise TypeError(f"sexpr_dumps: unsupported type {type(value).__name__}")
 
 
@@ -104,6 +136,26 @@ def write_atomic(path: Path, content: str) -> None:
     tmp.write_text(content, encoding="utf-8")
     os.replace(tmp, path)
     print(f"wrote {path}", file=sys.stderr)
+
+
+def write_generated_file(path: Path, header: str, rows: list[str]) -> None:
+    """Assemble `header` + the row lines + a trailing newline and write it
+    atomically — the shape every generated `*.scm` file shares."""
+    write_atomic(path, "\n".join([header, "\n".join(rows), ""]))
+
+
+def fetch_bytes(url: str, *, timeout: int) -> bytes:
+    """GET `url`, returning the raw response body. Aborts the whole sync
+    loudly on failure — this is for a script's one registry/source-of-truth
+    fetch, not a per-asset download where a single failure should only skip
+    that one asset (see `sync-lsp-sources.py`'s `sha256_of_url`, which has
+    its own narrower catch for exactly that reason)."""
+    print(f"fetching {url}", file=sys.stderr)
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            return r.read()
+    except URLError as e:
+        sys.exit(f"error: failed to fetch {url}: {e}")
 
 
 def read_sexpr(path: Path):
