@@ -25,8 +25,9 @@
                              (if name name "server"))))))
 
 ;;; One `'error` log line for a callback error — `err` is either a
-;;; {"code" "message"} hashmap (protocol error) or a bare string
-;;; ("timeout"/"server-crashed").
+;;; {"code" "message"} hashmap (protocol error) or the bare string
+;;; "timeout" (deadline expiry, including a request orphaned by a server
+;;; crash — there is no separate "server-crashed" err value).
 (define (lsp/report-error what err)
   (log! 'error
         (string-append "lsp " what ": "

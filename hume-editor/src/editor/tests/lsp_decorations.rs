@@ -111,6 +111,39 @@ fn set_inlay_hints_replaces_wholesale_not_appends() {
     assert_eq!(hints[0].text, "second");
 }
 
+/// Regression: a malformed position (missing `line`/`character`, or a
+/// non-numeric value) must error loudly at the `set-inlay-hints!` boundary
+/// rather than being silently dropped by the host's extraction — a plugin
+/// author's typo used to just produce fewer hints with no explanation.
+#[test]
+fn set_inlay_hints_errors_loudly_on_a_malformed_position() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdef\n");
+    attach_running_server(&mut ed);
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "arm-bad" "" (lambda ()
+             (set-inlay-hints! (current-buffer)
+               (list (list (hash "line" 0) "oops" 'before)))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm-bad");
+
+    assert!(
+        ed.state.decorations.inlay_hints_for(bid).is_empty(),
+        "a malformed entry must not land in the store at all"
+    );
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("character"),
+        "must report which field is missing/invalid: {log:?}"
+    );
+}
+
 #[test]
 fn inlay_hints_remap_through_an_edit() {
     let tmp = tempfile::tempdir().unwrap();
@@ -366,5 +399,32 @@ fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
         ed.state.status_msg.clone().unwrap(),
         "1",
         "range 5..10 must keep only the hint at char 8"
+    );
+}
+
+/// Regression: an unknown `#:severity` name (e.g. a typo like `'warn` for
+/// `'warning`) must error loudly rather than silently returning nothing
+/// that qualifies — the old behavior was indistinguishable from "no
+/// diagnostics at that floor".
+#[test]
+fn diagnostics_for_buffer_errors_loudly_on_an_unknown_severity_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "typo" "" (lambda ()
+             (diagnostics-for-buffer (current-buffer) #:severity 'warn)))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":typo");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("warn") && log.to_lowercase().contains("severity"),
+        "an unknown severity name must be reported loudly, naming the bad value: {log:?}"
     );
 }

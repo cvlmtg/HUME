@@ -195,26 +195,29 @@ pub(crate) fn encoding_for_buffer(
 /// `(diagnostics-for-buffer bid #:severity floor #:range (start end))` —
 /// decoded, filtered, capped-at-1000 hashmaps. `start`/`end`
 /// are char offsets; `line`/`col` are the char-indexed start position,
-/// ready for `goto-location!` shape 2.
+/// ready for `goto-location!` shape 2. Errors loudly on an unknown
+/// `#:severity` name (e.g. `'warn` typoed for `'warning`) rather than
+/// silently returning nothing that qualifies.
 pub(crate) fn diagnostics_for_buffer(
     state: &EditorState,
     lsp: &LspState,
     bid: BufferId,
     severity_floor: Option<&str>,
     range: Option<(usize, usize)>,
-) -> Vec<serde_json::Value> {
+) -> Result<Vec<serde_json::Value>, String> {
     const CAP: usize = 1000;
     let floor = match severity_floor.map(str::parse::<DiagSeverity>) {
         None => DiagSeverity::Hint, // most lenient — no filtering
         Some(Ok(f)) => f,
-        Some(Err(_)) => return Vec::new(), // unknown floor name — nothing qualifies
+        Some(Err(e)) => return Err(e),
     };
     let (start, end) = range.unwrap_or((0, usize::MAX));
     let Some(rope) = state.buffers.try_get(bid).map(|b| b.text().rope()) else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
 
-    lsp.diagnostics
+    let entries = lsp
+        .diagnostics
         .for_range(bid, start..end, floor)
         .take(CAP)
         .map(|d| {
@@ -232,7 +235,8 @@ pub(crate) fn diagnostics_for_buffer(
                 "raw": d.raw,
             })
         })
-        .collect()
+        .collect();
+    Ok(entries)
 }
 
 /// `(diagnostic-counts bid)` → `(errors, warnings)`.

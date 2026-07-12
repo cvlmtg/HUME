@@ -348,15 +348,15 @@ pub trait EditorHost {
     /// decoded `{"start" "end" "line" "col" "severity" "message" "code"
     /// "source"}` hashmaps, filtered then capped at 1000. `severity_floor`
     /// is `None` for "no floor" (everything); `range` is `None` for the
-    /// whole buffer.
+    /// whole buffer. `Err` on an unknown `#:severity` name.
     fn diagnostics_for_buffer(
         &self,
         bid: BufferId,
         severity_floor: Option<&str>,
         range: Option<(usize, usize)>,
-    ) -> Vec<serde_json::Value> {
+    ) -> Result<Vec<serde_json::Value>, String> {
         let _ = (bid, severity_floor, range);
-        Vec::new()
+        Ok(Vec::new())
     }
 
     /// `(diagnostic-counts bid)` → `(errors . warnings)`.

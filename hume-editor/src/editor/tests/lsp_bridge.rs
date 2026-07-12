@@ -605,3 +605,32 @@ fn lsp_request_against_a_crashed_server_fires_callback_with_err() {
         "callback must fire immediately with a string err when the server has crashed"
     );
 }
+
+/// Regression: `(lsp-position-params bid)`/`(lsp-range-params bid)` return
+/// `#f` when `bid` has no attached server or isn't shown in any pane, and
+/// callers pass that result straight through as `params`. Without a check,
+/// `#f` would silently reach the wire as JSON `params: false` instead of
+/// erroring at the boundary.
+#[test]
+fn lsp_request_rejects_false_as_params_instead_of_sending_it_on_the_wire() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    setup_with(&mut ed, |_b, _sid| {});
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "test-cmd" "" (lambda ()
+             (lsp-request #f "textDocument/hover" #f (lambda (err result) (begin)))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":test-cmd");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.to_lowercase().contains("boolean"),
+        "passing #f as params must error loudly, not silently reach the wire as params: false: {log:?}"
+    );
+}

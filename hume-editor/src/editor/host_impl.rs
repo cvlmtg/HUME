@@ -431,14 +431,20 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         else {
             return;
         };
+        // The `set-inlay-hints!` builtin already validates each position has
+        // numeric `line`/`character` before this ever runs — a malformed
+        // shape errors loudly at that boundary instead of being silently
+        // dropped here.
         let entries: Vec<crate::editor::decorations::InlayHintEntry> = hints
             .into_iter()
-            .filter_map(|(wire_pos, text, before)| {
-                let line = wire_pos.get("line")?.as_u64()? as usize;
-                let character = wire_pos.get("character")?.as_u64()? as usize;
+            .map(|(wire_pos, text, before)| {
+                let line = wire_pos["line"].as_u64().expect("validated by builtin") as usize;
+                let character = wire_pos["character"]
+                    .as_u64()
+                    .expect("validated by builtin") as usize;
                 let pos =
                     hume_editing::position_encoding::wire_to_char(&rope, line, character, encoding);
-                Some(crate::editor::decorations::InlayHintEntry { pos, text, before })
+                crate::editor::decorations::InlayHintEntry { pos, text, before }
             })
             .collect();
         self.state.decorations.set_inlay_hints(bid, entries);
@@ -511,9 +517,9 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         bid: BufferId,
         severity_floor: Option<&str>,
         range: Option<(usize, usize)>,
-    ) -> Vec<serde_json::Value> {
+    ) -> Result<Vec<serde_json::Value>, String> {
         let Some(lsp) = self.lsp else {
-            return Vec::new();
+            return Ok(Vec::new());
         };
         crate::editor::lsp::introspect::diagnostics_for_buffer(
             self.state,

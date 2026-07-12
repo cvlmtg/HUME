@@ -21,7 +21,17 @@ fn optional_string_arg(val: SteelVal, ctx_name: &str) -> Result<Option<String>, 
     }
 }
 
+/// Converts `val` to the wire-shaped JSON a request/notification `params`
+/// (or `#:init-options`/`#:settings` blob) expects — always an object (or
+/// array), never a bare scalar. Rejects a bool explicitly: `(lsp-position-
+/// params bid)`/`(lsp-range-params bid)` return `#f` when `bid` has no
+/// attached server or isn't shown in any pane, and callers pass that result
+/// straight through — without this check it would silently reach the wire
+/// as `params: false` instead of erroring at the boundary.
 fn json_params(val: SteelVal, ctx_name: &str) -> Result<serde_json::Value, SteelErr> {
+    if matches!(val, SteelVal::BoolV(_)) {
+        steel::stop!(TypeMismatch => "{ctx_name}: expected a hashmap, got a boolean");
+    }
     steel_to_json(&val).map_err(|e| super::conv_err(format!("{ctx_name}: {e}")))
 }
 
@@ -30,10 +40,7 @@ fn json_params(val: SteelVal, ctx_name: &str) -> Result<serde_json::Value, Steel
 fn optional_json_arg(val: SteelVal, ctx_name: &str) -> Result<Option<serde_json::Value>, SteelErr> {
     match val {
         SteelVal::BoolV(false) => Ok(None),
-        other => match steel_to_json(&other) {
-            Ok(json) => Ok(Some(json)),
-            Err(msg) => steel::stop!(TypeMismatch => "{}: {}", ctx_name, msg),
-        },
+        other => Ok(Some(json_params(other, ctx_name)?)),
     }
 }
 
@@ -358,6 +365,18 @@ pub(crate) fn set_inlay_hints(ctx: &mut SteelCtx, bid: SteelVal, hints: SteelVal
         let before_or_after = fields.next().expect("len checked");
         let position_json = steel_to_json(&position)
             .map_err(|e| super::conv_err(format!("set-inlay-hints! position: {e}")))?;
+        // Validated here, at the boundary, rather than left to the host
+        // side's extraction — a malformed position must error loudly, not
+        // silently drop the hint (host_impl.rs's `set_inlay_hints` treats
+        // this shape as already guaranteed).
+        let has_valid_position = position_json.get("line").is_some_and(|v| v.is_u64())
+            && position_json.get("character").is_some_and(|v| v.is_u64());
+        if !has_valid_position {
+            steel::stop!(Generic =>
+                "set-inlay-hints!: position must be a hashmap with numeric 'line' and 'character' keys, got {}",
+                position_json
+            );
+        }
         let text = string_arg(text, "set-inlay-hints! text")?;
         let before = match &before_or_after {
             SteelVal::SymbolV(s) if s.as_str() == "before" => true,
@@ -516,7 +535,10 @@ pub(crate) fn diagnostics_for_buffer(
             Some((start, end))
         }
     };
-    let entries = ctx.host.diagnostics_for_buffer(id, floor.as_deref(), range);
+    let entries = ctx
+        .host
+        .diagnostics_for_buffer(id, floor.as_deref(), range)
+        .map_err(|e| conv_err(format!("diagnostics-for-buffer: {e}")))?;
     let list: Vec<SteelVal> = entries.iter().map(json_to_steel).collect();
     Ok(SteelVal::ListV(list.into()))
 }
