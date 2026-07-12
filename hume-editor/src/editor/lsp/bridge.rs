@@ -74,6 +74,7 @@ impl Editor {
             Ok(id) => id,
             Err(e) => {
                 self.report(Severity::Error, format!("lsp-request: {e}"));
+                self.fail_lsp_request_callback(req.callback, &e);
                 return;
             }
         };
@@ -81,10 +82,13 @@ impl Editor {
         let timeout_ms = self.state.settings.lsp_request_timeout_ms as u64;
         let deadline = Instant::now() + Duration::from_millis(timeout_ms);
 
-        let callback = req.callback;
+        // Cloned (SteelVal is Rc-based, cheap): the send-failure branch
+        // below needs its own copy of the callback to fire immediately,
+        // since the success-path closure already moved one in.
+        let callback_for_send = req.callback.clone();
         let lsp_callback: super::LspCallback = Box::new(move |editor, outcome| {
             let (err, result) = outcome_to_steel(outcome);
-            editor.queue_steel_call(callback, vec![err, result]);
+            editor.queue_steel_call(callback_for_send, vec![err, result]);
         });
         let meta = RequestMeta {
             method: req.method.clone(),
@@ -98,14 +102,28 @@ impl Editor {
             .lsp
             .send_request(server_id, &req.method, req.params, meta)
         else {
-            self.report(
-                Severity::Error,
-                format!("lsp-request: no client tracked for '{}'", req.method),
-            );
+            let msg = format!("no client tracked for the server sending '{}'", req.method);
+            self.report(Severity::Error, format!("lsp-request: {msg}"));
+            self.fail_lsp_request_callback(req.callback, &msg);
             return;
         };
         self.lsp
             .register_callback(server_id, id, stale_check, lsp_callback);
+    }
+
+    /// Fires an `(lsp-request …)` callback immediately with an error —
+    /// used when resolution or the send itself fails before any
+    /// request/response pair could ever exist, so the callback would
+    /// otherwise never fire at all. Keeps the documented `(err result)`
+    /// contract (exactly one non-`#f`) true even on this early-failure path.
+    fn fail_lsp_request_callback(&mut self, callback: SteelVal, message: &str) {
+        self.queue_steel_call(
+            callback,
+            vec![
+                SteelVal::StringV(message.to_string().into()),
+                SteelVal::BoolV(false),
+            ],
+        );
     }
 
     /// Sends every queued `(lsp-notify …)` call. Same server resolution as

@@ -161,16 +161,33 @@ impl Editor {
 
         let root = resolve_root(&path, &config.root_markers, &self.state.cwd);
 
-        // Scan for an existing server under this (language, root) pair —
-        // `LspState.servers` is the single source of truth, so there's no
-        // separate index that could disagree with it.
+        // Scan for an existing *viable* server under this (language, root)
+        // pair — `LspState.servers` is the single source of truth, so
+        // there's no separate index that could disagree with it. A Crashed
+        // entry is excluded: nothing removes it from `servers` on its own
+        // (only `:lsp-stop`/`:lsp-restart` do), so without this check every
+        // buffer opened after a crash would silently attach to the corpse.
         let existing = self.lsp.servers.iter().find_map(|(&sid, entry)| {
-            (entry.language.as_deref() == Some(language.as_str()) && entry.client.root == root)
+            (entry.language.as_deref() == Some(language.as_str())
+                && entry.client.root == root
+                && entry.client.state != hume_lsp::client::ServerState::Crashed)
                 .then_some(sid)
         });
 
         let server_id = if let Some(existing) = existing {
             existing
+        } else if self.lsp.servers.values().any(|entry| {
+            entry.language.as_deref() == Some(language.as_str()) && entry.client.root == root
+        }) {
+            // The only match for this (language, root) is Crashed — refuse
+            // to silently attach to it; the buffer stays unattached until
+            // an explicit `:lsp-restart`, which re-attaches every buffer
+            // that was on the stopped server through this same path.
+            self.report(
+                Severity::Error,
+                format!("lsp: {language} server crashed — :lsp-restart {language}"),
+            );
+            return;
         } else {
             match self.lsp.backend.start(&config.command, &config.args, &root) {
                 Ok(server_id) => {

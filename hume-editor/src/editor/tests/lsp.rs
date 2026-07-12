@@ -694,3 +694,66 @@ fn opening_a_file_under_a_different_root_spawns_a_second_server() {
         "a different workspace root must spawn a second, independent server"
     );
 }
+
+#[test]
+fn crashed_server_is_not_silently_reattached_to() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(tmp.path()).unwrap();
+    std::fs::write(root.join("Cargo.toml"), b"").unwrap();
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    let file1 = root.join("src/main.rs");
+    std::fs::write(&file1, b"fn main() {}\n").unwrap();
+    let file2 = root.join("src/lib.rs");
+    std::fs::write(&file2, b"// lib\n").unwrap();
+
+    let mut ed = editor_from("-[w]>ord\n");
+    ed.lsp = LspState::new_inline();
+    ed.state
+        .languages
+        .register_identity("rust", &["rs"], &[], &[])
+        .unwrap();
+    let mut host = ScriptingHost::new();
+    eval_register(
+        &mut ed,
+        &mut host,
+        r#"(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))"#,
+        tmp.path(),
+    );
+
+    ed.execute_typed("e", Some(file1.to_str().unwrap()))
+        .unwrap();
+    let bid1 = ed.focused_buffer_id();
+    let server_id = ed
+        .state
+        .buffers
+        .get(bid1)
+        .lsp_server
+        .expect("first buffer attached");
+    assert_eq!(ed.lsp.server_count_for_test(), 1);
+
+    // Simulate a crash: the same state `on_event(Eof)`/
+    // `check_handshake_timeout` would transition to. Nothing removes a
+    // Crashed entry from `LspState.servers` on its own (only `:lsp-stop`/
+    // `:lsp-restart` do), so the corpse stays put for the next attach
+    // attempt to find.
+    ed.lsp.client_for_test(server_id).unwrap().state = hume_lsp::client::ServerState::Crashed;
+
+    ed.execute_typed("e", Some(file2.to_str().unwrap()))
+        .unwrap();
+    let bid2 = ed.focused_buffer_id();
+
+    assert!(
+        ed.state.buffers.get(bid2).lsp_server.is_none(),
+        "must not silently attach to a Crashed server"
+    );
+    assert_eq!(
+        ed.lsp.server_count_for_test(),
+        1,
+        "must not spawn a second server either — the corpse blocks reattachment until :lsp-restart"
+    );
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("crashed") && log.contains(":lsp-restart"),
+        "must hint at :lsp-restart: {log}"
+    );
+}

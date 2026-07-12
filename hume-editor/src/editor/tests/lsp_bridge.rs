@@ -533,7 +533,11 @@ fn didchange_reaches_the_wire_before_a_same_dispatch_request() {
 }
 
 #[test]
-fn lsp_request_with_unknown_server_reports_an_error_and_never_calls_back() {
+fn lsp_request_with_unknown_server_reports_an_error_and_fires_callback_with_err() {
+    // Regression: a resolution failure must never silently drop the
+    // callback — the documented `(err result)` contract (exactly one
+    // non-`#f`) must hold even when no request/response pair could ever
+    // exist. Before the fix, the callback simply never fired here.
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     setup_with(&mut ed, |_b, _sid| {});
@@ -543,7 +547,8 @@ fn lsp_request_with_unknown_server_reports_an_error_and_never_calls_back() {
         &mut host,
         r#"(define-command! "test-cmd" "" (lambda ()
              (lsp-request "no-such-language" "textDocument/hover" (hash) (lambda (err result)
-               (call! "move-right")))))"#,
+               (when (string? err)
+                 (call! "move-right"))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -553,14 +558,50 @@ fn lsp_request_with_unknown_server_reports_an_error_and_never_calls_back() {
     ed.drain_lsp();
     ed.drain_pending_steel_calls();
 
-    assert_eq!(
+    assert_ne!(
         state(&ed),
         before,
-        "callback must never fire when the named server doesn't resolve"
+        "callback must fire immediately with a string err when the named server doesn't resolve"
     );
     let log = ed.state.message_log.format_for_display();
     assert!(
         log.contains("lsp-request:"),
-        "resolution failure must be reported: {log:?}"
+        "resolution failure must also be reported: {log:?}"
+    );
+}
+
+#[test]
+fn lsp_request_against_a_crashed_server_fires_callback_with_err() {
+    // Same contract as the unknown-server case above, for the other
+    // resolve_server failure mode: a server that resolved fine at
+    // registration time but has since crashed. Without the fix, a plugin
+    // relying on the err branch (e.g. sighelp's popup-close-on-error) would
+    // never see it — the request would just sit silently dropped.
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let sid = setup_with(&mut ed, |_b, _sid| {});
+    ed.lsp.client_for_test(sid).unwrap().state = ServerState::Crashed;
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "test-cmd" "" (lambda ()
+             (lsp-request #f "textDocument/hover" (hash) (lambda (err result)
+               (when (string? err)
+                 (call! "move-right"))))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    let before = state(&ed);
+    type_cmd(&mut ed, ":test-cmd");
+    ed.drain_lsp();
+    ed.drain_pending_steel_calls();
+
+    assert_ne!(
+        state(&ed),
+        before,
+        "callback must fire immediately with a string err when the server has crashed"
     );
 }

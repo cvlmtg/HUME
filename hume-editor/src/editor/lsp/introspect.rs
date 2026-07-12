@@ -21,6 +21,12 @@ use crate::editor::pane_state::PaneBufferState;
 /// matches, and otherwise errors rather than guessing. Shared by
 /// `lsp-request`/`lsp-notify` (via `Editor::resolve_lsp_server`) and
 /// `lsp-capabilities`.
+///
+/// Errors loudly on a Crashed (or otherwise untracked) server rather than
+/// resolving to it — its sends are silently dropped (`send_or_queue`), so a
+/// caller would otherwise learn of the problem only as a generic timeout at
+/// the request's deadline. `Starting` still resolves: `send_or_queue`'s
+/// Starting-queue correctly defers the send until the handshake completes.
 pub(super) fn resolve_server(
     state: &EditorState,
     lsp: &LspState,
@@ -28,9 +34,9 @@ pub(super) fn resolve_server(
     server: Option<&str>,
 ) -> Result<ServerId, String> {
     let focused_server = || state.buffers.get(focused_bid).lsp_server;
-    match server {
+    let sid = match server {
         None => focused_server()
-            .ok_or_else(|| "no LSP server attached to the current buffer".to_string()),
+            .ok_or_else(|| "no LSP server attached to the current buffer".to_string())?,
         Some(name) => {
             let matches: Vec<ServerId> = lsp
                 .servers
@@ -39,8 +45,8 @@ pub(super) fn resolve_server(
                 .map(|(&sid, _)| sid)
                 .collect();
             match matches.as_slice() {
-                [] => Err(format!("no running LSP server for language '{name}'")),
-                [sid] => Ok(*sid),
+                [] => return Err(format!("no running LSP server for language '{name}'")),
+                [sid] => *sid,
                 _ => focused_server()
                     .filter(|sid| matches.contains(sid))
                     .ok_or_else(|| {
@@ -48,9 +54,18 @@ pub(super) fn resolve_server(
                             "multiple '{name}' servers running — pass #f to use the \
                          current buffer's server"
                         )
-                    }),
+                    })?,
             }
         }
+    };
+    match lsp.servers.get(&sid).map(|e| e.client.state) {
+        Some(hume_lsp::client::ServerState::Starting | hume_lsp::client::ServerState::Running) => {
+            Ok(sid) // send_or_queue handles Starting's deferred send correctly
+        }
+        Some(hume_lsp::client::ServerState::Crashed) => {
+            Err("lsp server crashed — run :lsp-restart".to_string())
+        }
+        Some(hume_lsp::client::ServerState::Dead) | None => Err("lsp server stopped".to_string()),
     }
 }
 
