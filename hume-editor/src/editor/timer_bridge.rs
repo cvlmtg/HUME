@@ -80,8 +80,11 @@ impl Editor {
     /// never from the render math itself, just this cheap follow-up.
     pub(super) fn debounce_viewport_change(&mut self, pane_id: PaneId) {
         if let Some(old_id) = self.viewport_debounce.remove(&pane_id) {
-            self.timer_wheel.cancel(old_id);
-            self.timer_payloads.remove(&old_id);
+            TimerHandle {
+                wheel: &mut self.timer_wheel,
+                payloads: &mut self.timer_payloads,
+            }
+            .cancel(old_id.0);
         }
         let ms = self.state.settings.lsp_viewport_debounce_ms as u64;
         let id = self.timer_wheel.schedule(Duration::from_millis(ms));

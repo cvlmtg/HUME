@@ -69,8 +69,8 @@ impl Editor {
             serde_json::json!({
                 "textDocument": {
                     "uri": uri.as_str(),
-                    "languageId": buf.language.clone().unwrap_or_default(),
-                    "version": buf.text_gen as i32,
+                    "languageId": buf.language.clone().expect("attached buffer always has a language"),
+                    "version": super::wire_version(buf.text_gen),
                     "text": buf.text().to_string(),
                 }
             })
@@ -110,7 +110,7 @@ impl Editor {
     pub(in crate::editor) fn lsp_did_change_whole_document(&mut self, bid: BufferId) {
         self.send_doc_notification(bid, "textDocument/didChange", |buf, uri| {
             serde_json::json!({
-                "textDocument": { "uri": uri.as_str(), "version": buf.text_gen as i32 },
+                "textDocument": { "uri": uri.as_str(), "version": super::wire_version(buf.text_gen) },
                 "contentChanges": [{ "text": buf.text().to_string() }],
             })
         });
@@ -188,7 +188,7 @@ impl Editor {
                     continue;
                 }
                 let params = serde_json::json!({
-                    "textDocument": { "uri": uri.as_str(), "version": change.version as i32 },
+                    "textDocument": { "uri": uri.as_str(), "version": super::wire_version(change.version) },
                     "contentChanges": events,
                 });
                 client.send_or_queue(

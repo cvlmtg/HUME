@@ -316,7 +316,7 @@ Three steps, each landing green and committable on its own, planned independentl
 order — each is a pure consumer of the previous step's contract: step 1's generated data
 files, step 2's builtin signatures).
 
-- [ ] **Step 1 — data pipeline** (Python only, zero editor changes): `mason-pin.scm`;
+- [x] **Step 1 — data pipeline** (Python only, zero editor changes): `mason-pin.scm`;
   extend `sync-grammars.py` to emit `lsp-servers.scm`; new `sync-lsp-sources.py` emitting
   `lsp-sources.scm` (with the Helix→Mason name-mapping table and unmatched-server report);
   shared `sync_common.py`; run both and check in the generated files. Verified by

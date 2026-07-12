@@ -770,6 +770,15 @@ fn workspace_configuration_response(params: &serde_json::Value) -> serde_json::V
     serde_json::Value::Array(vec![serde_json::Value::Null; item_count])
 }
 
+/// `Buffer.text_gen` (a monotonic `u64` edit counter) -> the wire's `i32`
+/// document version. `text_gen` would need over two billion edits to a
+/// single buffer to overflow this — effectively unreachable — but a silent
+/// wraparound would desync diagnostics/didChange version correlation in a
+/// way that's very hard to diagnose, so this fails loudly instead of `as i32`.
+pub(super) fn wire_version(text_gen: u64) -> i32 {
+    i32::try_from(text_gen).expect("text_gen overflowed i32 — over 2 billion edits to one buffer")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -787,6 +796,18 @@ mod tests {
         let params = serde_json::json!({"items": []});
         let result = server_request_response("workspace/configuration", &params).unwrap();
         assert_eq!(result, serde_json::json!([]));
+    }
+
+    #[test]
+    fn wire_version_passes_through_ordinary_values() {
+        assert_eq!(wire_version(0), 0);
+        assert_eq!(wire_version(42), 42);
+    }
+
+    #[test]
+    #[should_panic(expected = "overflowed i32")]
+    fn wire_version_panics_instead_of_silently_wrapping_past_i32_max() {
+        wire_version(i32::MAX as u64 + 1);
     }
 
     // `workspace/applyEdit` moved to `apply_edit_request_response` (needs
