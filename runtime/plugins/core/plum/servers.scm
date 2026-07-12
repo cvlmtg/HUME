@@ -97,10 +97,26 @@
 
 ;;; Write `name`'s receipt — the install commit point.
 (define (plum/write-receipt! name version bin)
-  (write-file (plum/receipt-path name)
+  (plum/write-file (plum/receipt-path name)
     (string-append "((name . " (plum/scheme-quote name) ")"
                    " (version . " (plum/scheme-quote version) ")"
                    " (bin . " (plum/scheme-quote bin) "))")))
+
+;;; Verify `path`'s sha256 digest matches `expected` (either the seeded
+;;; data-file literal `"sha256:<hex>"` or bare hex; ASCII-case-insensitive).
+;;; On mismatch, deletes `path` and raises naming both digests — mirrors the
+;;; removed `verify-sha256!` builtin's contract, now split across the
+;;; sandbox-free `sha256-file` survivor (hashing only) and this compare step.
+(define (plum/verify-sha256! path expected)
+  (let* ((expected-hex (string-downcase
+                          (if (starts-with? expected "sha256:")
+                              (substring expected 7 (string-length expected))
+                              expected)))
+         (actual (string-downcase (sha256-file path))))
+    (unless (equal? actual expected-hex)
+      (plum/delete-file path)
+      (error (string-append "plum/verify-sha256!: sha256 mismatch for '" path
+                            "': expected " expected-hex ", got " actual)))))
 
 ;; ── Settings conversion ───────────────────────────────────────────────────────
 ;;
@@ -163,7 +179,7 @@
             (kind   (cdr (plum/field fields 'kind))))
        (cond
          ((equal? kind 'npm)
-          (if (exe-on-path? "npm") #f "requires 'npm' on $PATH, which was not found"))
+          (if (which "npm") #f "requires 'npm' on $PATH, which was not found"))
          ((not (equal? kind 'github))
           (string-append "not installable (kind " (symbol->string kind) ") in v1"))
          (else
@@ -223,7 +239,7 @@
                  name
                  (path-join (plum/server-dir name) (plum/receipt-bin receipt)))))))
         (filter (lambda (name) (and (plum/valid-dir-entry? name) (not (equal? name ".install-lock"))))
-                (list-dir sdir))))))
+                (plum/list-dir sdir))))))
 
 ;; ── Install pipeline ──────────────────────────────────────────────────────────
 
@@ -245,10 +261,10 @@
   (let* ((fields (hash-ref *plum-lsp-sources* name))
          (kind   (cdr (plum/field fields 'kind)))
          (tool   (plum/required-tool name)))
-    (unless (exe-on-path? tool)
+    (unless (which tool)
       (error (string-append "plum/install-server!: " name " requires '" tool
                             "' on $PATH, which was not found")))
-    (when (and (equal? kind 'github) (not (exe-on-path? "curl")))
+    (when (and (equal? kind 'github) (not (which "curl")))
       (error (string-append "plum/install-server!: " name
                             " requires 'curl' on $PATH, which was not found")))))
 
@@ -265,12 +281,15 @@
          (archive (path-join dir asset))
          (url     (string-append "https://github.com/" repo "/releases/download/"
                                  version "/" asset)))
-    (curl-fetch url archive)
-    (verify-sha256! archive sha)
+    ;; The removed `curl-fetch` builtin created `archive`'s parent dir itself;
+    ;; `dir` was only ever purged by `plum/delete-dir` above, never recreated.
+    (create-directory! dir)
+    (run-inline-output! "curl" (list "-fsSL" "-o" archive "--" url))
+    (plum/verify-sha256! archive sha)
     (cond
       ((equal? fmt 'gz) (unpack-gz archive (path-join dir bin)))
       ((equal? fmt 'zip) (unpack-zip archive dir bin)))
-    (delete-file archive)
+    (plum/delete-file archive)
     (unless (path-exists? (path-join dir bin))
       (error (string-append "plum/install-github!: " name
                             ": expected binary not found after unpack: " bin)))
@@ -284,7 +303,8 @@
          (bin      (cdr (plum/field fields 'bin)))
          (windows? (equal? (hume-target) "windows-x64"))
          (bin-rel  (string-append "node_modules/.bin/" bin (if windows? ".cmd" ""))))
-    (npm-install! dir packages)
+    (run-inline-output! (if windows? "npm.cmd" "npm")
+                        (append (list "install" "--ignore-scripts" "--prefix" dir "--") packages))
     (unless (path-exists? (path-join dir bin-rel))
       (error (string-append "plum/install-npm!: " name
                             ": expected binary not found after npm install: " bin-rel)))
@@ -297,9 +317,9 @@
 ;;;   1. blocker check + tool preflight
 ;;;   2. unregister every seeded language (idempotent; queued, applies at
 ;;;      end-of-eval, after which any running client is reaped)
-;;;   3. delete-dir — purge any existing install; the receipt dies with it,
-;;;      so an interruption from here on is self-describing
-;;;   4. download + verify + unpack (github), or npm-install! (npm)
+;;;   3. plum/delete-dir — purge any existing install; the receipt dies with
+;;;      it, so an interruption from here on is self-describing
+;;;   4. download + verify + unpack (github), or npm install (npm)
 ;;;   5. write receipt — the commit point
 ;;;   6. register every seeded language with the fresh absolute bin path
 ;;;   7. $PATH notice, if the seeded command also resolves there
@@ -314,14 +334,14 @@
          (dir           (plum/server-dir name)))
     (for-each (lambda (lang-entry) (unregister-lsp-server! (car lang-entry)))
               (cdr (plum/field server-fields 'languages)))
-    (delete-dir dir)
+    (plum/delete-dir dir)
     (let ((bin-rel (if (equal? kind 'github)
                         (plum/install-github! name source-fields dir)
                         (plum/install-npm! name source-fields dir))))
       (plum/write-receipt! name (cdr (plum/field source-fields 'version)) bin-rel)
       (plum/register-server-languages! name (path-join dir bin-rel))
       (let ((cmd (cdr (plum/field server-fields 'command))))
-        (when (exe-on-path? cmd)
+        (when (which cmd)
           (log! 'info (string-append "PLUM: " cmd " is also on $PATH — the managed install at "
                                      (path-join dir bin-rel) " takes precedence")))))))
 
@@ -417,7 +437,7 @@
                                    (release-install-lock!)
                                    (log! 'error (string-append "PLUM: uninstall failed: " (to-string err))))
                                  (begin
-                                   (delete-dir dir)
+                                   (plum/delete-dir dir)
                                    (release-install-lock!)
                                    (log! 'info (string-append "PLUM: removed " name)))))))))
               (log! 'info (string-append "PLUM: nothing to uninstall for " name))))))))

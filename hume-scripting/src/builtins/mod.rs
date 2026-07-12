@@ -20,7 +20,6 @@ pub(crate) mod panes;
 pub(crate) mod plugins;
 pub(crate) mod sandbox;
 pub(crate) mod settings;
-pub(crate) mod shell;
 pub(crate) mod statusline;
 pub(crate) mod syntax;
 pub(crate) mod timers;
@@ -101,18 +100,6 @@ pub(crate) fn string_arg(val: SteelVal, ctx_name: &str) -> Result<String, SteelE
         SteelVal::StringV(s) => Ok(s.to_string()),
         SteelVal::SymbolV(s) => Ok(s.to_string()),
         _ => steel::stop!(TypeMismatch => "{}: expected a string", ctx_name),
-    }
-}
-
-/// Extract the single string argument from `args`, returning a Steel error on
-/// arity or type mismatch.  Used by fs builtins that still take `&[SteelVal]`.
-pub(crate) fn one_string(args: &[SteelVal], name: &'static str) -> Result<String, SteelErr> {
-    if args.len() != 1 {
-        steel::stop!(ArityMismatch => "{name} expects 1 arg, got {}", args.len());
-    }
-    match &args[0] {
-        SteelVal::StringV(s) => Ok(s.to_string()),
-        _ => steel::stop!(TypeMismatch => "{name}: expected a string, got {:?}", args[0]),
     }
 }
 
@@ -262,6 +249,18 @@ const BOOTSTRAP: &str = r#"
 (define (completion-begin! bid items #:incomplete [incomplete #f])
   (%completion-begin! bid items incomplete))
 
+; run-inline-output! — process-group-isolated spawn for #:inline-output
+; commands (see hume-platform::process::run_inline_output doc comment for
+; why this can't just be Steel's own spawn-process). Blocks; raises (naming
+; cmd and the exit code) on a nonzero exit or a signal-killed child (-1);
+; returns nothing meaningful on success — same contract as plum/run!, so
+; call sites (git-clone-rev, curl-fetch, npm-install!) read identically to
+; the old hardened builtins they replace, with no manual exit-code checks.
+(define (run-inline-output! cmd args #:cwd [cwd #f])
+  (let ([code (%run-inline-output! cmd args cwd)])
+    (unless (= code 0)
+      (error (string-append cmd ": failed (exit " (number->string code) ")")))))
+
 ; show-popup! — cursor-anchored floating text panel. #:anchor is
 ; reserved for future anchor kinds; 'cursor is the only value v1 accepts.
 ; close-popup! needs no wrapper — no keyword defaults to supply.
@@ -370,34 +369,27 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_fn_with_ctx(HUME_CTX, "pending-char", commands::pending_char);
     steel.register_fn_with_ctx(HUME_CTX, "command-plugin", commands::command_plugin);
 
-    // Shell — narrow git/curl/npm wrappers only (no generic run-process)
-    steel.register_fn_with_ctx(HUME_CTX, "git-clone", shell::git_clone);
-    steel.register_fn_with_ctx(HUME_CTX, "git-pull", shell::git_pull);
-    steel.register_fn_with_ctx(HUME_CTX, "git-clone-rev", shell::git_clone_rev);
-    steel.register_fn_with_ctx(HUME_CTX, "curl-fetch", shell::curl_fetch);
-    steel.register_fn_with_ctx(HUME_CTX, "npm-install!", shell::npm_install);
-
-    // Grammar compilation
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "grammar-output-path",
-        grammar::grammar_output_path,
-    );
+    // Grammar compilation — sandbox-free, full-trust plugin model. Kept as a
+    // Rust builtin only for the Windows compiler-selection dance (see
+    // grammar.rs's module doc); `grammar-output-path` moved to Scheme.
     steel.register_fn_with_ctx(HUME_CTX, "compile-grammar!", grammar::compile_grammar);
 
-    // LSP server install pipeline — sha256 verification, archive unpacking,
-    // platform id, $PATH lookup (see docs/LSP-INSTALL.md).
+    // LSP server install pipeline — sha256 hashing, archive unpacking,
+    // platform id, cross-process install lock (see docs/LSP-INSTALL.md).
+    // Sandbox-free — full-trust plugin model. `verify-sha256!`/`exe-on-path?`
+    // /`git-clone`/`curl-fetch`/`npm-install!` moved to Scheme + Steel's own
+    // `steel/process` stdlib (`which`, `spawn-process`).
     steel.register_value("hume-target", SteelVal::FuncV(install::hume_target));
-    steel.register_fn_with_ctx(HUME_CTX, "verify-sha256!", install::verify_sha256);
+    steel.register_fn_with_ctx(HUME_CTX, "sha256-file", install::sha256_file);
     steel.register_fn_with_ctx(HUME_CTX, "unpack-gz", install::unpack_gz);
     steel.register_fn_with_ctx(HUME_CTX, "unpack-zip", install::unpack_zip);
-    steel.register_value("exe-on-path?", SteelVal::FuncV(install::exe_on_path));
     steel.register_fn_with_ctx(
         HUME_CTX,
         "acquire-install-lock!",
         install::acquire_install_lock,
     );
     steel.register_fn("release-install-lock!", install::release_install_lock);
+    steel.register_fn_with_ctx(HUME_CTX, "%run-inline-output!", install::run_inline_output);
 
     // Logging — push messages to the editor message log
     steel.register_fn_with_ctx(HUME_CTX, "log!", crate::log::log_msg);
@@ -550,17 +542,12 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_fn("pane-buffer", panes::pane_buffer);
     steel.register_fn("pane-set-buffer!", panes::pane_set_buffer);
 
-    // Context-free builtins: sandboxed filesystem ops that read from SCRIPT_DIRS TLS.
+    // Context-free builtins: editor-integration info that reads from
+    // SCRIPT_DIRS TLS, plus path-join's Windows UNC-prefix stripping.
+    // General filesystem access is Steel's own steel/filesystem stdlib.
     steel.register_value("data-dir", SteelVal::FuncV(fs::data_dir));
     steel.register_value("runtime-dir", SteelVal::FuncV(fs::runtime_dir));
     steel.register_value("path-join", SteelVal::FuncV(fs::path_join));
-    steel.register_value("path-exists?", SteelVal::FuncV(fs::path_exists));
-    steel.register_value("list-dir", SteelVal::FuncV(fs::list_dir));
-    steel.register_value("read-file", SteelVal::FuncV(fs::read_file));
-    steel.register_value("make-dir", SteelVal::FuncV(fs::make_dir));
-    steel.register_value("delete-dir", SteelVal::FuncV(fs::delete_dir));
-    steel.register_value("delete-file", SteelVal::FuncV(fs::delete_file));
-    steel.register_value("write-file", SteelVal::FuncV(fs::write_file));
 
     // Evaluate the Scheme bootstrap (defines `load-plugin`).
     // Runs before any user init.scm; HUME_CTX is not yet set but the

@@ -82,14 +82,18 @@ This registers `:hello` as a typed command.
 
 Registers a typed command available as `:command-name`. The second argument is a doc string shown in command help; the function is called when the command is dispatched.
 
-For commands that stream subprocess output to the terminal (installers, git operations), add the `#:inline-output #t` keyword — HUME exits the alt-screen so output is visible, then waits for a keypress before returning. HUME exposes narrow shell builtins (`git-clone`, `git-pull`, `git-clone-rev`, `curl-fetch`) rather than a generic `system` call:
+For commands that stream subprocess output to the terminal (installers, git operations), add the `#:inline-output #t` keyword — HUME exits the alt-screen so output is visible, then waits for a keypress before returning. Plugins run with the same privileges as HUME itself, so any Scheme process/filesystem function is available — there's no separate "shell builtin" layer:
 
 ```scheme
 (define-command! "fetch-config"
   "Clone the team config repo into the data directory."
   (lambda ()
-    (git-clone "https://github.com/team/hume-config.git"
-               (path-join (data-dir) "config")))
+    (define result (spawn-process
+                     (command "git" (list "clone" "--"
+                                           "https://github.com/team/hume-config.git"
+                                           (path-join (data-dir) "config")))))
+    (when (Err? result)
+      (error (to-string (Err->value result)))))
   #:inline-output #t)
 ```
 
@@ -196,19 +200,19 @@ A plugin can read the `#:config` value its user passed to `load-plugin` or `decl
 
 Document the keys your plugin understands so users know what to pass.
 
-### Sandboxed filesystem
+### Filesystem and processes
 
-Plugins have access to sandboxed filesystem operations restricted to the data directory:
+Plugins are trusted code: they can read and write any file, and spawn any process, just like any other Scheme program. There's no separate sandboxed subset of the filesystem — use Scheme's own functions directly (`open-input-file`, `create-directory!`, `delete-file!`, `read-dir`, `path-exists?`, and so on) for file access, and `command`/`spawn-process`/`wait` for running external tools.
+
+A few extra functions cover things Scheme has no way to know on its own:
 
 | Function | Description |
 |----------|-------------|
-| `(make-dir path)` | Create a directory |
-| `(delete-dir path)` | Delete a directory |
-| `(delete-file path)` | Delete a file |
-| `(list-dir path)` | List directory contents |
-| `(path-exists? path)` | Check if a path exists |
+| `(data-dir)` | HUME's data directory, or `#f` if unavailable |
+| `(runtime-dir)` | HUME's runtime directory, or `#f` if unavailable |
+| `(path-join seg…)` | Join path segments with the OS-native separator |
 
-These are sandboxed to `data/plugins/`, `data/grammars/`, and `runtime/plugins/`.
+Only install or overwrite files under `(data-dir)` unless you have a specific reason to go elsewhere — that's where HUME expects a plugin's own data (installed grammars, downloaded servers, plugin state) to live.
 
 ## Bundled core plugins
 

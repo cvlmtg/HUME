@@ -316,6 +316,152 @@ fn plum_plugin_loads_with_real_grammar_catalog() {
     );
 }
 
+/// `:plum-list` exercises `plugins.scm`'s post-migration `plum/installed-plugins`
+/// (now built on `plum/list-dir`, a Steel `read-dir`-backed helper, instead of
+/// the removed `list-dir` builtin) against a real (empty) data dir — no
+/// network. Pins that the migration to Steel's stdlib process/fs helpers
+/// (see docs/ROADMAP.md's plugin trust model decision) didn't break loading
+/// or basic discovery.
+#[test]
+#[cfg(not(windows))]
+fn plum_list_runs_with_no_errors_against_empty_data_dir() {
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":plum-list");
+
+    let errors: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.as_str())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        ":plum-list against an empty data dir must not error: {errors:?}"
+    );
+}
+
+/// Run `git` with `args` in `dir`, asserting success — test-setup helper
+/// only (builds local origin/clone fixtures), not part of the migration
+/// under test.
+#[cfg(not(windows))]
+fn git_ok(dir: &std::path::Path, args: &[&str]) {
+    let status = std::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .status()
+        .expect("spawn git");
+    assert!(status.success(), "git {args:?} in {dir:?} failed");
+}
+
+/// `:plum-update` exercises `plum/run!` (Phase 1 helper, now backing
+/// `git-pull`'s replacement) against a REAL local git repo — no network. A
+/// local "origin" gets a second commit after the "installed" clone is made,
+/// then `:plum-update` must actually run `git pull` (via Steel's
+/// `spawn-process` + `with-current-dir`, not the removed `git-pull`
+/// builtin) and fast-forward the clone to match.
+#[test]
+#[cfg(not(windows))]
+fn plum_update_runs_real_git_pull_against_local_origin() {
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let origin_tmp = tempfile::tempdir().unwrap();
+    let origin_dir = origin_tmp.path();
+    git_ok(origin_dir, &["init", "-q"]);
+    git_ok(origin_dir, &["config", "user.email", "test@example.com"]);
+    git_ok(origin_dir, &["config", "user.name", "Test"]);
+    std::fs::write(origin_dir.join("plugin.scm"), "; v1\n").unwrap();
+    git_ok(origin_dir, &["add", "plugin.scm"]);
+    git_ok(origin_dir, &["commit", "-q", "-m", "v1"]);
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let clone_dir = data_tmp.path().join("hume/plugins/testuser/testrepo");
+    std::fs::create_dir_all(clone_dir.parent().unwrap()).unwrap();
+    git_ok(
+        data_tmp.path(),
+        &[
+            "clone",
+            "-q",
+            origin_dir.to_str().unwrap(),
+            clone_dir.to_str().unwrap(),
+        ],
+    );
+
+    // Advance the origin past what the clone has.
+    std::fs::write(origin_dir.join("plugin.scm"), "; v2\n").unwrap();
+    git_ok(origin_dir, &["add", "plugin.scm"]);
+    git_ok(origin_dir, &["commit", "-q", "-m", "v2"]);
+
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":plum-update");
+
+    let errors: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.as_str())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        ":plum-update against a local origin must not error: {errors:?}"
+    );
+    let content = std::fs::read_to_string(clone_dir.join("plugin.scm")).unwrap();
+    assert_eq!(
+        content, "; v2\n",
+        "plum/run!-backed git pull must fast-forward the clone to origin's latest commit"
+    );
+}
+
+/// `:plum-cleanup` exercises `plum/delete-dir` (Phase 1 helper, now backing
+/// `delete-dir`'s replacement) against a real on-disk orphan plugin — no
+/// network. Nothing in `init.scm` declares it, so it's an orphan by
+/// definition; `:plum-cleanup` must remove its directory.
+#[test]
+#[cfg(not(windows))]
+fn plum_cleanup_removes_orphan_plugin_directory() {
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let orphan_dir = data_tmp.path().join("hume/plugins/testuser/orphanrepo");
+    std::fs::create_dir_all(&orphan_dir).unwrap();
+    std::fs::write(orphan_dir.join("plugin.scm"), "; orphan\n").unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":plum-cleanup");
+
+    let errors: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.as_str())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        ":plum-cleanup must not error: {errors:?}"
+    );
+    assert!(
+        !orphan_dir.exists(),
+        "plum/delete-dir-backed plum-cleanup must remove the orphan plugin directory"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // plum-install-grammar — optional name argument
 // ---------------------------------------------------------------------------

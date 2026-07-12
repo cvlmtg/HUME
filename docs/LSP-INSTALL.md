@@ -339,6 +339,19 @@ files, step 2's builtin signatures).
   Windows without it). Update `LSP.md` where the new semantics invalidate it: the
   Decisions row "reject a second `register-lsp-server!`" and the Steel API index's
   init-only marking.
+
+  **Superseded 2026-07-13 (full-trust plugin model, see `docs/ROADMAP.md`'s plugin trust
+  model decision)**: the "no generic run-process builtin" framing above no longer holds —
+  `servers.scm` now runs `curl`/`git`/`npm` directly through Steel's own `steel/process`
+  (`command`/`spawn-process`/`which`), with all path-sandbox checks removed (plugins are
+  trusted code). `curl-fetch`/`verify-sha256!`/`npm-install!`/`exe-on-path?` were removed;
+  their replacements are `run-inline-output!` (a new sandbox-free Rust builtin —
+  process-group-isolated spawn, needed only because `#:inline-output` commands run with
+  terminal raw mode off and Steel's `spawn-process` has no `setpgid`), `sha256-file` (hash
+  only; the compare-and-delete-on-mismatch logic moved to `plum/verify-sha256!` in
+  `servers.scm`), and Steel's own `which`. `unpack-gz`/`unpack-zip` survive as sandbox-free
+  utility builtins (chmod + archive-format platform logic). The tool-preflight and
+  zip-slip/symlink notes below are otherwise unaffected.
 - [x] **Step 3 — PLUM `servers.scm`** (Steel, pure consumer of steps 1+2): scan-on-load
   registration; `lsp-install` / `lsp-uninstall` / `lsp-servers` commands; receipts; orphan
   warnings; npm install path; missing-server hint; user-manual + `init.scm.example` docs.
@@ -361,8 +374,9 @@ choice (see below), traded for a hard runtime dependency on these being present:
 
 `git` and `curl` were already required by the grammar pipeline; this adds `unzip` on
 Linux and `gzip` on Windows as the only new hard requirements. `:lsp-install` preflights
-the specific tool an install needs (via `exe-on-path?`) before downloading anything, so a
-missing tool fails loudly naming it rather than partway through an install.
+the specific tool an install needs (via Steel's `which`, post-2026-07-13 — see the Step 2
+update note above) before downloading anything, so a missing tool fails loudly naming it
+rather than partway through an install.
 
 **Why shell out instead of adding `sha2`/`flate2`/`zip` crate dependencies**: keeps the
 audited process-spawn surface (`hume-platform/src/process.rs`) as the only place
@@ -373,9 +387,11 @@ developer's `git`/build toolchain — costs no new install step in the common ca
 **Accepted tradeoff — zip-slip protection is delegated to the system tool** (modern
 Info-ZIP strips `../` entries; bsdtar refuses them by default), rather than implemented in
 HUME. The residual risk is bounded by the sync-time sha256 pin: `unpack-zip` runs only
-after `verify-sha256!` has confirmed the archive matches the maintainer-vetted, hash-locked
-asset recorded in `lsp-sources.scm` — an attacker would need to compromise the pinned
-upstream release itself, not just something interposed at install time.
+after `plum/verify-sha256!` (Scheme, `servers.scm` — wraps the sandbox-free `sha256-file`
+builtin; see the Step 2 update note above) has confirmed the archive matches the
+maintainer-vetted, hash-locked asset recorded in `lsp-sources.scm` — an attacker would need
+to compromise the pinned upstream release itself, not just something interposed at install
+time.
 
 **Symlink-entry handling**: `unpack-zip` (Unix) chmods `0o755` every *regular file* in the
 extracted tree, not just the seeded `bin-path` — a server whose layout ships a wrapper

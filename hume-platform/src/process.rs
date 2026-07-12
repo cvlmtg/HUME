@@ -1,99 +1,57 @@
 //! Process-spawning helpers.
 //!
 //! All `std::process::Command` usage in this workspace lives here, providing
-//! a single audit surface for process spawning.
-//!
-//! Sandbox enforcement (path prefix checks) is the caller's responsibility;
-//! these functions only perform the spawn.
+//! a single audit surface for process spawning. General-purpose process
+//! spawning for plugin code goes through Steel's own `steel/process` stdlib
+//! instead (full-trust plugin model — see `docs/ROADMAP.md`'s plugin trust
+//! model decision); what remains here is `run_inline_output` (process-group
+//! isolation Steel can't express) plus a handful of utility functions wrapping
+//! genuinely platform-conditional logic (Windows compiler selection, sha256
+//! tool selection, archive unpacking with chmod) that a Scheme rewrite would
+//! only make worse.
 //!
 //! ## Captured vs inherited stdio
 //!
-//! - **Captured** (`git_clone`, `git_pull_in`, `sha256_file`): returns
-//!   `Output` so callers can surface stderr (or, for `sha256_file`, parse
-//!   stdout) in error messages.
-//! - **Inherited** (`git_clone_rev`, `git_checkout`, `curl_fetch`,
-//!   `tree_sitter_build`, `unpack_zip`, `npm_install`): subprocess output
-//!   flows directly to the terminal so the user sees live progress; returns
-//!   `ExitStatus` only.
+//! - **Captured** (`sha256_file`): returns parsed stdout.
+//! - **Inherited** (`run_inline_output`, `tree_sitter_build`, `unpack_zip`):
+//!   subprocess output flows directly to the terminal so the user sees live
+//!   progress; returns `ExitStatus` only.
 //! - **Piped-to-file** (`unpack_gz`): stdout is redirected to the destination
 //!   file rather than the terminal or a captured buffer.
 //!
-//! Callers pass canonicalized paths (for sandbox `starts_with` checks), which
-//! on Windows carry the `\\?\` extended-length prefix. External tools like
-//! `git` and `curl` reject that prefix, so every path handed to a `Command`
-//! here is normalized via `strip_unc_prefix` first (a no-op on non-Windows).
+//! On Windows, canonicalized paths carry the `\\?\` extended-length prefix.
+//! External tools like `tree-sitter`, `gzip`, and `unzip`/`tar` reject that
+//! prefix, so every path handed to a `Command` here is normalized via
+//! `strip_unc_prefix` first (a no-op on non-Windows).
 
-use std::ffi::OsStr;
 use std::fs::File;
 use std::io;
-use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus, Output, Stdio};
+use std::path::Path;
+use std::process::{Command, ExitStatus, Stdio};
 
 #[cfg(unix)]
 use std::os::unix::process::CommandExt as _;
 
 use crate::path::strip_unc_prefix;
 
-/// Run `git clone -- <url> <dest>` and return captured output.
+/// Run `cmd` with `args`, inherited stdio, in its own process group.
 ///
-/// The caller is responsible for validating that `dest` resolves inside the
-/// write sandbox before calling this.
-pub fn git_clone(url: &str, dest: &Path) -> io::Result<Output> {
-    let dest = strip_unc_prefix(dest.to_path_buf());
-    Command::new("git")
-        .args(["clone", "--", url])
-        .arg(&dest)
-        .output()
-}
-
-/// Run `git pull` inside `dir` and return captured output.
-///
-/// `dir` must already be canonicalized and sandbox-checked by the caller.
-pub fn git_pull_in(dir: &Path) -> io::Result<Output> {
-    let dir = strip_unc_prefix(dir.to_path_buf());
-    Command::new("git").arg("pull").current_dir(&dir).output()
-}
-
-/// Clone `url` at the specific `rev` into `dest` using inherited stdio
-/// (progress shown live in the terminal).
-///
-/// Uses `--filter=blob:none` (blobless partial clone) to avoid fetching all
-/// file history.  `git_checkout` is called afterward to pin the exact revision.
-pub fn git_clone_rev(url: &str, dest: &Path, rev: &str) -> io::Result<ExitStatus> {
-    let dest = strip_unc_prefix(dest.to_path_buf());
-    let status = Command::new("git")
-        .args(["clone", "--filter=blob:none", "--", url])
-        .arg(&dest)
-        .new_process_group()
-        .status()?;
-    if !status.success() {
-        return Ok(status);
+/// Used for `#:inline-output` Steel commands — terminal raw mode is
+/// temporarily disabled there (`hume_platform::terminal::enter_inline_output`
+/// calls `disable_raw_mode()`), so a terminal-generated Ctrl+C (SIGINT)
+/// targets the whole foreground process group. Without `process_group(0)`
+/// that would kill HUME itself alongside the child. Steel's own
+/// `spawn-process` has no such capability (no `setpgid`/`pre_exec` anywhere
+/// in steel-core, verified against 0.8.2), so plugin code that needs this
+/// safety property calls the `run-inline-output!` builtin (backed by this
+/// function) instead of Steel's stdlib directly.
+pub fn run_inline_output(cmd: &str, args: &[String], cwd: Option<&Path>) -> io::Result<ExitStatus> {
+    let mut command = Command::new(cmd);
+    command.args(args);
+    if let Some(dir) = cwd {
+        command.current_dir(strip_unc_prefix(dir.to_path_buf()));
     }
-    git_checkout(&dest, rev)
-}
-
-/// Run `git checkout --force <rev>` inside `dir` with inherited stdio.
-pub(crate) fn git_checkout(dir: &Path, rev: &str) -> io::Result<ExitStatus> {
-    let dir = strip_unc_prefix(dir.to_path_buf());
-    Command::new("git")
-        .args(["-C"])
-        .arg(&dir)
-        .args(["checkout", "--force", "--end-of-options", rev, "--"])
-        .new_process_group()
-        .status()
-}
-
-/// Fetch `url` to `dest` via `curl -fsSL` with inherited stdio.
-///
-/// `dest`'s parent directory must already exist before calling this.
-pub fn curl_fetch(url: &str, dest: &Path) -> io::Result<ExitStatus> {
-    let dest = strip_unc_prefix(dest.to_path_buf());
-    Command::new("curl")
-        .args(["-fsSL", "-o"])
-        .arg(&dest)
-        .args(["--", url])
-        .new_process_group()
-        .status()
+    command.new_process_group().status()
 }
 
 /// Compile a tree-sitter grammar source at `src` to a shared library at `out`
@@ -495,115 +453,6 @@ pub fn unpack_zip(src: &Path, dest_dir: &Path, bin_path: &Path) -> io::Result<()
     Ok(())
 }
 
-/// Run `npm install --ignore-scripts --prefix <dest> -- <packages…>` with
-/// inherited stdio.
-///
-/// On Windows, npm itself is a `.cmd` shim — spawned directly (`Command::new`
-/// has applied safe `.bat`/`.cmd` argument escaping, and errors on an
-/// unrepresentable argument, since Rust 1.77.2/CVE-2024-24576) rather than
-/// wrapped as `cmd /C npm …`, which double-parses the command line and is
-/// exactly the shape that CVE exists for.
-///
-/// # Errors
-/// An `io::Error` if any `packages` entry contains a character outside
-/// `[A-Za-z0-9@/._+-]` — defense in depth, independent of the platform's
-/// argument-escaping story; a legitimate npm package spec never needs
-/// anything else.
-pub fn npm_install(dest: &Path, packages: &[String]) -> io::Result<ExitStatus> {
-    if let Some(bad) = packages.iter().find(|p| !is_valid_npm_package_spec(p)) {
-        return Err(io::Error::other(format!(
-            "npm_install: disallowed characters in package spec: {bad:?}"
-        )));
-    }
-
-    let dest = strip_unc_prefix(dest.to_path_buf());
-
-    #[cfg(windows)]
-    let mut cmd = Command::new("npm.cmd");
-    #[cfg(not(windows))]
-    let mut cmd = Command::new("npm");
-
-    cmd.arg("install")
-        .arg("--ignore-scripts")
-        .arg("--prefix")
-        .arg(&dest)
-        .arg("--")
-        .args(packages);
-    cmd.new_process_group().status()
-}
-
-/// `true` if `spec` is non-empty and contains only chars a well-formed npm
-/// package spec (bare name, scoped `@scope/name`, or either with `@version`)
-/// can contain — npm's own registry already restricts package names far more
-/// tightly than this; this is a defense-in-depth backstop, not a real
-/// validator.
-fn is_valid_npm_package_spec(spec: &str) -> bool {
-    !spec.is_empty()
-        && spec.bytes().all(|b| {
-            b.is_ascii_alphanumeric() || matches!(b, b'@' | b'/' | b'.' | b'_' | b'+' | b'-')
-        })
-}
-
-/// Whether `name` resolves to an executable file on `PATH`, without spawning
-/// anything (a lookup predicate must be side-effect-free — some tools do
-/// real work on `--version`, unlike the spawn-based `exe_on_path` used for
-/// the Windows compiler preflight above).
-///
-/// Rejects `name` containing a path separator (must be a bare command name).
-pub fn exe_on_search_path(name: &str) -> bool {
-    if name.contains('/') || name.contains('\\') {
-        return false;
-    }
-    let path_var = std::env::var_os("PATH").unwrap_or_default();
-    #[cfg(windows)]
-    let pathext_var = std::env::var_os("PATHEXT")
-        .unwrap_or_else(|| std::ffi::OsString::from(".COM;.EXE;.BAT;.CMD"));
-    #[cfg(not(windows))]
-    let pathext_var = std::ffi::OsString::new();
-    scan_path_for_exe(&path_var, &pathext_var, name)
-}
-
-/// Pure core of [`exe_on_search_path`]: scans `path_var` (a `PATH`-style,
-/// platform-separator-delimited string) for `name`, resolved as an
-/// executable file. `pathext_var` (Windows only; ignored on Unix) is a
-/// `;`-delimited list of extensions tried in order, plus the bare name.
-///
-/// Takes both env values as parameters (rather than reading `std::env`
-/// directly) so tests can exercise arbitrary `PATH`/`PATHEXT` combinations
-/// without mutating process-global environment state.
-fn scan_path_for_exe(path_var: &OsStr, pathext_var: &OsStr, name: &str) -> bool {
-    #[cfg(not(windows))]
-    let _ = pathext_var;
-    for dir in std::env::split_paths(path_var) {
-        if candidate_is_executable(&dir.join(name)) {
-            return true;
-        }
-        #[cfg(windows)]
-        for ext in pathext_var.to_string_lossy().split(';') {
-            if ext.is_empty() {
-                continue;
-            }
-            if candidate_is_executable(&dir.join(format!("{name}{ext}"))) {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-#[cfg(unix)]
-fn candidate_is_executable(path: &PathBuf) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(path)
-        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
-}
-
-#[cfg(windows)]
-fn candidate_is_executable(path: &PathBuf) -> bool {
-    path.is_file()
-}
-
 /// Whether no C compiler at all was found on `PATH` (neither `cl` nor any of
 /// the `choose_windows_compiler` fallbacks). Used to append an install hint
 /// to grammar-compile failure messages, without misattributing a real
@@ -653,6 +502,37 @@ impl NewProcessGroup for Command {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── run_inline_output ─────────────────────────────────────────────────────
+
+    #[test]
+    #[cfg(unix)]
+    fn run_inline_output_returns_exit_status_of_child() {
+        let status = run_inline_output("true", &[], None).expect("spawn true");
+        assert!(status.success());
+
+        let status = run_inline_output("false", &[], None).expect("spawn false");
+        assert!(!status.success());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn run_inline_output_honors_cwd() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("marker.txt"), b"hi").expect("write marker");
+        let status = run_inline_output(
+            "test",
+            &["-f".to_string(), "marker.txt".to_string()],
+            Some(dir.path()),
+        )
+        .expect("spawn test -f");
+        assert!(status.success(), "marker.txt must be found via cwd");
+    }
+
+    #[test]
+    fn run_inline_output_missing_binary_is_io_error() {
+        assert!(run_inline_output("definitely-not-a-real-binary-xyz", &[], None).is_err());
+    }
 
     /// `cl` on PATH means MSVC is usable — no override, regardless of what
     /// else is installed.
@@ -1055,97 +935,5 @@ mod tests {
             err.to_string().contains("wrong-name"),
             "expected error naming the missing binary, got: {err}"
         );
-    }
-
-    // ── npm_install package-spec validation ─────────────────────────────────
-
-    #[test]
-    fn is_valid_npm_package_spec_accepts_real_seeded_shapes() {
-        // Every real entry in runtime/scheme/lsp-sources.scm's `packages`
-        // lists takes one of these shapes — bare name, scoped name, either
-        // with an exact `@version` pin. Never a semver range.
-        assert!(is_valid_npm_package_spec("typescript"));
-        assert!(is_valid_npm_package_spec(
-            "typescript-language-server@5.3.0"
-        ));
-        assert!(is_valid_npm_package_spec(
-            "@astrojs/language-server@2.16.11"
-        ));
-        assert!(is_valid_npm_package_spec("@imc-trading/svlangserver@0.4.1"));
-    }
-
-    #[test]
-    fn is_valid_npm_package_spec_rejects_shell_metacharacters() {
-        assert!(!is_valid_npm_package_spec("pkg; rm -rf /"));
-        assert!(!is_valid_npm_package_spec("pkg && evil"));
-        assert!(!is_valid_npm_package_spec("pkg`evil`"));
-        assert!(!is_valid_npm_package_spec("pkg | evil"));
-        assert!(!is_valid_npm_package_spec(""));
-    }
-
-    #[test]
-    fn npm_install_rejects_a_package_spec_with_disallowed_characters_before_spawning() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let err = npm_install(dir.path(), &["pkg; rm -rf /".to_string()]).unwrap_err();
-        assert!(
-            err.to_string().contains("pkg; rm -rf /"),
-            "expected error naming the offending spec, got: {err}"
-        );
-    }
-
-    // ── scan_path_for_exe (pure, injected PATH/PATHEXT — no env mutation) ────
-
-    #[test]
-    #[cfg(unix)]
-    fn scan_path_for_exe_finds_executable_file() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let exe = dir.path().join("mytool");
-        std::fs::write(&exe, b"#!/bin/sh\n").expect("write");
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-
-        let path_var = std::ffi::OsString::from(dir.path());
-        assert!(scan_path_for_exe(&path_var, OsStr::new(""), "mytool"));
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn scan_path_for_exe_rejects_non_executable_file() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let file = dir.path().join("notexec");
-        std::fs::write(&file, b"data").expect("write");
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).expect("chmod");
-
-        let path_var = std::ffi::OsString::from(dir.path());
-        assert!(!scan_path_for_exe(&path_var, OsStr::new(""), "notexec"));
-    }
-
-    #[test]
-    fn scan_path_for_exe_missing_name_returns_false() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path_var = std::ffi::OsString::from(dir.path());
-        assert!(!scan_path_for_exe(
-            &path_var,
-            OsStr::new(""),
-            "nonexistent-tool"
-        ));
-    }
-
-    #[test]
-    #[cfg(windows)]
-    fn scan_path_for_exe_resolves_pathext_suffix() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        std::fs::write(dir.path().join("mytool.EXE"), b"stub").expect("write");
-
-        let path_var = std::ffi::OsString::from(dir.path());
-        let pathext_var = std::ffi::OsString::from(".COM;.EXE;.BAT;.CMD");
-        assert!(scan_path_for_exe(&path_var, &pathext_var, "mytool"));
-    }
-
-    #[test]
-    fn exe_on_search_path_rejects_path_separators() {
-        assert!(!exe_on_search_path("some/path"));
-        assert!(!exe_on_search_path("some\\path"));
     }
 }

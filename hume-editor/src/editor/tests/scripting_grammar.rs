@@ -59,6 +59,44 @@ fn helix_pin() -> String {
         .expect("helix-pin.scm must contain a quoted SHA")
 }
 
+/// Blobless-clone `url` at `rev` into `dest`, test-fixture-only — mirrors the
+/// two-step shape `plum/install-grammar` now runs via `run-inline-output!`
+/// (the removed `hume_platform::process::git_clone_rev`'s Rust
+/// implementation collapsed clone+checkout into one call; full-trust plugin
+/// model, see `docs/ROADMAP.md`, moved that shape to Scheme).
+fn git_clone_rev_for_test(
+    url: &str,
+    dest: &std::path::Path,
+    rev: &str,
+) -> std::io::Result<std::process::ExitStatus> {
+    let status = std::process::Command::new("git")
+        .args(["clone", "--filter=blob:none", "--", url])
+        .arg(dest)
+        .status()?;
+    if !status.success() {
+        return Ok(status);
+    }
+    std::process::Command::new("git")
+        .arg("-C")
+        .arg(dest)
+        .args(["checkout", "--force", "--end-of-options", rev, "--"])
+        .status()
+}
+
+/// Fetch `url` to `dest` via curl, test-fixture-only — mirrors
+/// `plum/fetch-raw-query`'s `run-inline-output!` call (the removed
+/// `hume_platform::process::curl_fetch` builtin's shape).
+fn curl_fetch_for_test(
+    url: &str,
+    dest: &std::path::Path,
+) -> std::io::Result<std::process::ExitStatus> {
+    std::process::Command::new("curl")
+        .args(["-fsSL", "-o"])
+        .arg(dest)
+        .args(["--", url])
+        .status()
+}
+
 fn grammar_fixture(name: &str) -> (PathBuf, PathBuf) {
     let parser = grammar_parser_path(name);
     if !parser.exists() {
@@ -827,21 +865,23 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
     let body = format!(
         r#"
 (define hl-path "{hl}")
+(define grammar-out-path "{grammar_out}")
 
 (define (grammar-installed? name)
-  (path-exists? (grammar-output-path name)))
+  (path-exists? grammar-out-path))
 
 (define (do-register! names)
   (for-each
     (lambda (name)
       (when (and (grammar-installed? name) (path-exists? hl-path))
-        (register-grammar! name (grammar-output-path name) "tree_sitter_json" hl-path)))
+        (register-grammar! name grammar-out-path "tree_sitter_json" hl-path)))
     names))
 
 (do-register! (list "json" "phantom"))
 (call! "plum-ensure-grammars")
         "#,
         hl = hl_dest.display(),
+        grammar_out = grammar_out.display(),
     );
     std::fs::write(&init_path, prelude_src + &body).unwrap();
 
@@ -947,7 +987,7 @@ fn install_real_json_grammar_e2e() {
     let out_path = data_dir.join("grammars").join(format!("json.{ext}"));
 
     // Step 1: git clone --filter=blob:none
-    let status = hume_platform::process::git_clone_rev(url, &src_dir, rev);
+    let status = git_clone_rev_for_test(url, &src_dir, rev);
     match &status {
         Err(e) => {
             if require_live {
@@ -986,7 +1026,7 @@ fn install_real_json_grammar_e2e() {
     let hl_url = format!(
         "https://raw.githubusercontent.com/helix-editor/helix/{pin}/runtime/queries/json/highlights.scm"
     );
-    let curl_status = hume_platform::process::curl_fetch(&hl_url, &hl_path);
+    let curl_status = curl_fetch_for_test(&hl_url, &hl_path);
     match &curl_status {
         Err(e) => {
             if require_live {

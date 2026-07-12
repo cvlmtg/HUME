@@ -45,6 +45,23 @@
 (define (plum/grammar-injections-path name)
   (path-join (plum/grammar-source-dir name) "injections.scm"))
 
+;;; Shared-library extension for compiled grammars on this platform. Mirrors
+;;; the (removed) `grammar-output-path` Rust builtin's compile-time `cfg`
+;;; dispatch as closely as a runtime string allows: `(hume-target)` only
+;;; recognizes 4 platform strings and returns `#f` otherwise (unlike the
+;;; Rust `cfg(target_os)` match, which covers every OS at compile time), so
+;;; the `else` branch here — like the Rust `else` branch it replaces —
+;;; defaults to "so" rather than erroring on an unrecognized platform.
+(define (plum/platform-grammar-ext)
+  (let ((target (hume-target)))
+    (cond ((and (string? target) (starts-with? target "darwin")) "dylib")
+          ((and (string? target) (starts-with? target "windows")) "dll")
+          (else "so"))))
+
+;;; Path a compiled grammar for `name` lives (or will live) at.
+(define (grammar-output-path name)
+  (path-join (plum/grammars-dir) (string-append name "." (plum/platform-grammar-ext))))
+
 ;;; Helix commit pin, read once at plugin load.
 (define *plum-helix-pin*
   (call-with-input-file (path-join (runtime-dir) "scheme" "helix-pin.scm") read))
@@ -85,17 +102,33 @@
     (map trim (split-many (trim (substring trimmed 11 (string-length trimmed))) ","))))
 
 ;;; Fetch `name`'s `filename` query to a scratch file and return its raw
-;;; content as a string. `curl-fetch` already cleans up its own dest file on
-;;; failure, so the only leak this guards is `read-file` itself raising (e.g.
-;;; non-UTF-8 content) after a successful download — the handler deletes the
-;;; scratch file before re-raising instead of leaving it behind.
+;;; content as a string. The `curl` call is NOT wrapped in a `with-handler`
+;;; here — deliberately: this function is itself called from inside
+;;; `plum/resolve-query`'s tolerant `with-handler` when resolving an
+;;; `; inherits:` dependency, and re-raising a native-builtin-sourced error
+;;; (via `raise-error`) out of an inner handler into an outer one corrupts
+;;; Steel 0.8.2's continuation stack ("Failed to find an open continuation on
+;;; the stack") — reproduced in isolation and pinned by a permanent test in
+;;; hume-scripting (see `steel_stdlib_availability`). A curl failure
+;;;(network/404) therefore propagates in one hop straight to whichever
+;;; handler is up the call stack, exactly like the removed `curl-fetch`
+;;; builtin's failures always did (it raised natively from Rust, never
+;;; through a Steel `with-handler` at this call site). The only cost: a
+;;; failed curl may leave a stale/partial `tmp` behind — harmless, since the
+;;; filename is deterministic per `(name, filename)` and gets overwritten by
+;;; `curl -o` on the next attempt.
+;;;
+;;; The inner `with-handler` around `plum/read-file` is unchanged from
+;;; before the migration — it only ever catches a Steel-internal port error
+;;; (curl having already succeeded), which in practice never happens; that
+;;; latent risk predates this migration and is out of scope here.
 (define (plum/fetch-raw-query name filename)
   (let ((tmp (path-join (plum/grammar-sources-dir) (string-append "_fetch_" name "_" filename))))
-    (curl-fetch (plum/helix-query-url name filename) tmp)
+    (run-inline-output! "curl" (list "-fsSL" "-o" tmp "--" (plum/helix-query-url name filename)))
     (let ((content (with-handler
-                     (lambda (err) (delete-file tmp) (raise-error err))
-                     (read-file tmp))))
-      (delete-file tmp)
+                     (lambda (err) (plum/delete-file tmp) (raise-error err))
+                     (plum/read-file tmp))))
+      (plum/delete-file tmp)
       content)))
 
 ;;; Fetch `name`'s `filename` query and fully resolve any `; inherits:` chain
@@ -127,7 +160,7 @@
 ;;; `dest`. Drop-in replacement for a plain `curl-fetch` of a query file —
 ;;; same 404 behaviour (raises), but also resolves `; inherits:` chains.
 (define (plum/fetch-query! name filename dest)
-  (write-file dest (plum/resolve-query name filename #f)))
+  (plum/write-file dest (plum/resolve-query name filename #f)))
 
 ;; ── Injection dependencies ────────────────────────────────────────────────────
 
@@ -150,9 +183,9 @@
     (plum/grammar-deps name)))
 
 ;;; Fetch `name`'s injections.scm to its declared path, tolerating a missing
-;;; file (most grammars have none) — a 404 makes `curl-fetch` raise, which
-;;; would otherwise abort the whole grammar install for no reason. Returns
-;;; the path on success, `#f` if there is no injections query to fetch.
+;;; file (most grammars have none) — a 404 makes `plum/fetch-query!` raise,
+;;; which would otherwise abort the whole grammar install for no reason.
+;;; Returns the path on success, `#f` if there is no injections query to fetch.
 (define (plum/try-fetch-injections! name)
   (let ((path (plum/grammar-injections-path name)))
     (with-handler
@@ -189,7 +222,7 @@
         '()
         (filter (lambda (x) x)
                 (map plum/grammar-name-from-file
-                     (filter plum/valid-dir-entry? (list-dir gdir)))))))
+                     (filter plum/valid-dir-entry? (plum/list-dir gdir)))))))
 
 ;;; Declared grammar names not yet compiled.
 (define (plum/missing-grammars)
@@ -221,8 +254,8 @@
 ;;; slate — this doubles as the repair path for a grammar left in a failed
 ;;; state (e.g. a source tree cloned but never compiled):
 ;;;   0. plum/install-grammar-deps! — install any dependency grammars first
-;;;   1. delete-dir     — purge any existing source tree
-;;;   2. git-clone-rev  — blobless clone at pinned rev
+;;;   1. plum/delete-dir — purge any existing source tree
+;;;   2. run-inline-output! (git clone + checkout) — blobless clone at pinned rev
 ;;;   3. plum/fetch-query! — download highlights query, resolving any
 ;;;      `; inherits:` chain (see "Query inheritance resolution" above)
 ;;;   4. plum/try-fetch-injections! — download Helix injections query, if any
@@ -241,11 +274,16 @@
          (out-path (grammar-output-path name))
          (hl-path  (plum/grammar-highlights-path name)))
     (plum/install-grammar-deps! name)
-    ;; git-clone-rev refuses a non-empty dest — clear any stale source tree
-    ;; (e.g. left behind by a prior install that failed after cloning) first.
-    ;; delete-dir is a no-op when src-dir doesn't exist.
-    (delete-dir src-dir)
-    (git-clone-rev url src-dir rev)
+    ;; git clone refuses a non-empty dest — clear any stale source tree (e.g.
+    ;; left behind by a prior install that failed after cloning) first.
+    ;; plum/delete-dir is a no-op when src-dir doesn't exist.
+    (plum/delete-dir src-dir)
+    ;; Blobless clone (skip file-history blobs) at the pinned rev, then pin
+    ;; the exact revision — replaces the removed `git-clone-rev` builtin's
+    ;; two-step Rust implementation (process-group-safe via
+    ;; run-inline-output!, since this runs inside an #:inline-output command).
+    (run-inline-output! "git" (list "clone" "--filter=blob:none" "--" url src-dir))
+    (run-inline-output! "git" (list "checkout" "--force" "--end-of-options" rev "--") #:cwd src-dir)
     (plum/fetch-query! name "highlights.scm" hl-path)
     ;; git prints its own progress; the C compiler stays silent until it's
     ;; done or errors, which on a slow grammar reads as a hang.
@@ -312,4 +350,4 @@
           (log! 'info "PLUM: no orphan grammars to remove")
           (plum/batch-run "removed grammar" orphans
             (lambda (name)
-              (delete-file (grammar-output-path name))))))))
+              (plum/delete-file (grammar-output-path name))))))))

@@ -18,7 +18,7 @@
   (let ((pdir (plum/plugins-dir)))
     (if (not (path-exists? pdir))
         '()
-        (let user-loop ((users (filter plum/valid-dir-entry? (list-dir pdir)))
+        (let user-loop ((users (filter plum/valid-dir-entry? (plum/list-dir pdir)))
                         (result '()))
           (cond
             ((null? users)
@@ -26,7 +26,7 @@
             (else
              (let* ((user  (car users))
                     (udir  (path-join pdir user)))
-               (let repo-loop ((repos (filter plum/valid-dir-entry? (list-dir udir)))
+               (let repo-loop ((repos (filter plum/valid-dir-entry? (plum/list-dir udir)))
                                (acc result))
                  (cond
                    ((null? repos)
@@ -64,8 +64,9 @@
           (log! 'info "PLUM: nothing to install")
           (let ((n (plum/batch-run "installed" missing
                      (lambda (name)
-                       (git-clone (string-append "https://github.com/" name ".git")
-                                  (plum/plugin-dir name))))))
+                       (plum/run! "git" (list "clone" "--"
+                                              (string-append "https://github.com/" name ".git")
+                                              (plum/plugin-dir name)))))))
             (when (> n 0)
               (call! "reload-config")))))))
 
@@ -76,7 +77,7 @@
       (if (null? orphans)
           (log! 'info "PLUM: nothing to remove")
           (plum/batch-run "removed" orphans
-            (lambda (name) (delete-dir (plum/plugin-dir name))))))))
+            (lambda (name) (plum/delete-dir (plum/plugin-dir name))))))))
 
 (define-command! "plum-update"
   "Run git pull in every installed third-party plugin directory."
@@ -85,7 +86,7 @@
       (if (null? installed)
           (log! 'info "PLUM: no installed plugins to update")
           (let ((n (plum/batch-run "updated" installed
-                     (lambda (name) (git-pull (plum/plugin-dir name))))))
+                     (lambda (name) (plum/run! "git" (list "pull") #:cwd (plum/plugin-dir name))))))
             (when (> n 0)
               (call! "reload-config")))))))
 
