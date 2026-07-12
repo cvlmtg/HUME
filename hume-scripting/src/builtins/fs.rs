@@ -288,11 +288,17 @@ pub(crate) fn make_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 ///
 /// Sandboxed to the write sandbox (`<data>/plugins/`, `<data>/grammars/`, or
 /// `<data>/servers/`). `path` must exist; `canonicalize` failure is a hard
-/// error — never falls back to the raw path.
+/// error — never falls back to the raw path. Rejects any raw path containing
+/// `..` components before canonicalizing — the write sandbox spans three
+/// sibling roots, so a `..` segment can resolve from one root into another
+/// without ever leaving the sandbox (e.g. `servers/../plugins`).
 ///
 /// Returns `#<void>` (including when `path` does not exist — idempotent).
 pub(crate) fn delete_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     let raw = one_string(args, "delete-dir")?;
+    if has_dotdot(std::path::Path::new(&raw)) {
+        steel::stop!(Generic => "delete-dir: path must not contain '..' components: {}", raw);
+    }
     let Some(canonical) = canonicalize_or_notfound("delete-dir", &raw)? else {
         return Ok(SteelVal::Void); // idempotent — nothing to delete
     };
@@ -318,9 +324,14 @@ pub(crate) fn delete_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 ///
 /// Sandboxed to `<data>/grammars/` or `<data>/servers/` (the install
 /// sandbox).  Idempotent: returns `#<void>` when the path does not exist.
-/// Rejects directories — use `delete-dir` for those.
+/// Rejects directories — use `delete-dir` for those. Rejects any raw path
+/// containing `..` components before canonicalizing, same rationale as
+/// `delete-dir`.
 pub(crate) fn delete_file(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     let raw = one_string(args, "delete-file")?;
+    if has_dotdot(std::path::Path::new(&raw)) {
+        steel::stop!(Generic => "delete-file: path must not contain '..' components: {}", raw);
+    }
     let Some(canonical) = canonicalize_or_notfound("delete-file", &raw)? else {
         return Ok(SteelVal::Void); // idempotent — nothing to delete
     };
@@ -482,15 +493,35 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let plugins = setup(&tmp);
         // Construct an existing path with .. escape.
-        // Create the directory so canonicalize succeeds, then check sandbox.
         fs::create_dir_all(plugins.join("user/repo")).unwrap();
         let escape = format!("{}/user/repo/../../..", plugins.display());
         let args = vec![SteelVal::StringV(escape.into())];
         let err = delete_dir(&args).unwrap_err();
         assert!(
-            err.to_string().contains("outside the write sandbox")
-                || err.to_string().contains("cannot resolve"),
-            "expected sandbox error, got: {err}"
+            err.to_string().contains("must not contain '..' components"),
+            "expected the dotdot rejection (checked before canonicalize), got: {err}"
+        );
+    }
+
+    #[test]
+    fn delete_dir_rejects_dotdot_even_within_sandbox() {
+        // The write sandbox spans three sibling roots (plugins/grammars/servers),
+        // so a `..` segment from one can resolve into another without ever
+        // leaving the sandbox — `is_under_write_sandbox` alone would allow it.
+        let tmp = TempDir::new().unwrap();
+        let servers = setup_servers(&tmp);
+        let data_dir = servers.parent().unwrap();
+        fs::create_dir_all(data_dir.join("plugins/some-plugin")).unwrap();
+        let escape = format!("{}/../plugins/some-plugin", servers.display());
+        let args = vec![SteelVal::StringV(escape.into())];
+        let err = delete_dir(&args).unwrap_err();
+        assert!(
+            err.to_string().contains("must not contain '..' components"),
+            "expected the dotdot rejection, got: {err}"
+        );
+        assert!(
+            data_dir.join("plugins/some-plugin").exists(),
+            "the sibling sandbox root must survive untouched"
         );
     }
 
@@ -679,6 +710,20 @@ mod tests {
         assert!(
             err.to_string().contains("directory"),
             "expected directory error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn delete_file_rejects_dotdot_escape() {
+        let tmp = TempDir::new().unwrap();
+        let grammars = setup_grammars(&tmp);
+        fs::write(grammars.join("json.dylib"), b"fake").unwrap();
+        let escape = format!("{}/../grammars/json.dylib", grammars.display());
+        let args = vec![SteelVal::StringV(escape.into())];
+        let err = delete_file(&args).unwrap_err();
+        assert!(
+            err.to_string().contains("must not contain '..' components"),
+            "expected the dotdot rejection (checked before canonicalize), got: {err}"
         );
     }
 

@@ -57,6 +57,23 @@
 (define (plum/server-dir name) (path-join (plum/servers-dir) name))
 (define (plum/receipt-path name) (path-join (plum/server-dir name) "receipt.scm"))
 
+;;; Reject a server name unsafe to join as a single path segment — must be
+;;; non-empty, not "." or "..", and free of path separators. `:lsp-uninstall`
+;;; takes a user-typed name straight into `plum/server-dir`; `lsp-install`
+;;; never needs this since its name always comes from the seeded
+;;; `*plum-lang->server*` hash, never the raw argument.
+(define (plum/valid-server-name? name)
+  (and (string? name)
+       (> (string-length name) 0)
+       (not (equal? name "."))
+       (not (equal? name ".."))
+       (let loop ((i 0))
+         (cond ((= i (string-length name)) #t)
+               ((or (equal? (substring name i (+ i 1)) "/")
+                    (equal? (substring name i (+ i 1)) "\\"))
+                #f)
+               (else (loop (+ i 1)))))))
+
 ;; ── Receipts ──────────────────────────────────────────────────────────────────
 ;;
 ;; receipt.scm is the install commit point: pure data
@@ -346,8 +363,12 @@
 (define-command! "lsp-uninstall"
   "Shut down and remove an installed language server by name."
   (lambda (arg)
-    (if (not (string? arg))
-        (log! 'warn "lsp-uninstall: requires a server name, e.g. :lsp-uninstall rust-analyzer")
+    (cond
+      ((not (string? arg))
+       (log! 'warn "lsp-uninstall: requires a server name, e.g. :lsp-uninstall rust-analyzer"))
+      ((not (plum/valid-server-name? arg))
+       (log! 'warn (string-append "lsp-uninstall: invalid server name: " arg)))
+      (else
         (let* ((name arg)
                (dir  (plum/server-dir name)))
           ;; Idempotent no-op when unseeded/never-registered — matches
@@ -362,7 +383,7 @@
                 (after 0 (lambda ()
                            (delete-dir dir)
                            (log! 'info (string-append "PLUM: removed " name)))))
-              (log! 'info (string-append "PLUM: nothing to uninstall for " name)))))))
+              (log! 'info (string-append "PLUM: nothing to uninstall for " name))))))))
 
 (define-command! "lsp-servers"
   "Log the LSP server catalog: languages, seeded version, and install status."

@@ -413,6 +413,35 @@ fn lsp_uninstall_of_never_installed_server_is_silent() {
     );
 }
 
+#[test]
+#[cfg(not(windows))]
+fn lsp_uninstall_rejects_path_traversal_name() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    // A sibling write-sandbox dir `../plugins` would canonicalize into —
+    // it must survive untouched.
+    let plugins_dir = canonical_data_dir(data_tmp.path()).join("plugins");
+    std::fs::create_dir_all(&plugins_dir).unwrap();
+    std::fs::write(plugins_dir.join("sentinel"), b"do not delete me").unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":lsp-uninstall ../plugins");
+    ed.drain_async_sources();
+    ed.drain_pending_steel_calls();
+
+    assert!(
+        plugins_dir.join("sentinel").exists(),
+        "path-traversal uninstall must never reach a sibling sandbox directory"
+    );
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("invalid server name") && log.contains("../plugins"),
+        "must warn loudly about the rejected name: {log}"
+    );
+}
+
 // ── :lsp-servers ──────────────────────────────────────────────────────────────
 
 #[test]
