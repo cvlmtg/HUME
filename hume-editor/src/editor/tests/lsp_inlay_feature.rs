@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use super::*;
+use crate::editor::commands::open_pane;
 use crate::editor::lsp::LspState;
 use crate::editor::scripting_setup::make_init_host;
 use hume_engine::pipeline::RenderContext;
@@ -289,4 +290,132 @@ fn no_viewport_seen_yet_skips_diagnostics_triggered_refresh() {
     settle_after_debounce(&mut ed);
 
     assert_eq!(request_count(&requests, "textDocument/inlayHint"), 0);
+}
+
+#[test]
+#[cfg(not(windows))]
+fn an_empty_response_clears_previously_stored_hints() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/inlayHint",
+            inlay_hint_response(&[(0, 4, serde_json::json!(": i32"))]),
+        );
+        // Second refresh (below) gets this canned response — an empty
+        // result must still clear the hint the first response stored.
+        backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
+    });
+    ed.state.settings.lsp_inlay_hints = true;
+    let bid = ed.focused_buffer_id();
+
+    fire_viewport_change(&mut ed);
+    settle_after_debounce(&mut ed);
+    assert_eq!(
+        ed.state.decorations.inlay_hints_for(bid).len(),
+        1,
+        "first response must land the hint"
+    );
+
+    // Viewport is already known; on-diagnostics-changed alone re-triggers
+    // the debounced refresh without moving anything.
+    ed.fire_hook_diagnostics_changed(bid);
+    settle_after_debounce(&mut ed);
+
+    assert_eq!(
+        ed.state.decorations.inlay_hints_for(bid).len(),
+        0,
+        "an empty/null inlayHint response must clear stale hints from a previous, larger response"
+    );
+}
+
+/// Two buffers, each attached to its own server with different
+/// capabilities: buffer A ("rust", no inlayHintProvider) stays focused;
+/// buffer B ("python", inlayHintProvider: true) sits in a background pane.
+/// `on-viewport-change` fires per-pane, so a viewport event for the
+/// background pane must resolve capabilities and the request target
+/// against buffer B's own server — never the focused buffer's.
+#[test]
+#[cfg(not(windows))]
+fn refresh_hints_resolves_against_the_buffers_own_server_not_the_focused_buffers() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file_a = write_fixture_file(file_dir.path());
+    let file_b = file_dir.path().join("main.py");
+    std::fs::write(&file_b, "x = 1\n").unwrap();
+
+    let _guard = RealRuntimeGuard::new();
+    let (mut backend, _notifications, requests) = RecordingLspBackend::new();
+    // Popped in start order: server A first (no inlayHintProvider), then
+    // server B (inlayHintProvider: true).
+    backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
+    backend.respond_to(
+        "initialize",
+        serde_json::json!({"capabilities": {"inlayHintProvider": true}}),
+    );
+    let sid_a = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid_b = backend.start("pylsp", &[], Path::new(".")).unwrap();
+    backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
+
+    let mut ed = Editor::open(None).unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+
+    let mut client_a = LspClient::new(sid_a, PathBuf::from("."));
+    client_a.start_handshake(ed.lsp.backend_mut());
+    ed.lsp.insert_client_for_test(client_a);
+    ed.lsp
+        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid_a);
+
+    let mut client_b = LspClient::new(sid_b, PathBuf::from("."));
+    client_b.start_handshake(ed.lsp.backend_mut());
+    ed.lsp.insert_client_for_test(client_b);
+    ed.lsp
+        .insert_server_key_for_test("python".to_string(), PathBuf::from("."), sid_b);
+
+    ed.execute_typed("e", Some(file_a.to_str().unwrap()))
+        .unwrap();
+    let bid_a = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid_a).lsp_server = Some(sid_a);
+
+    ed.open_extra_files(std::slice::from_ref(&file_b));
+    let bid_b = ed
+        .state
+        .buffers
+        .find_by_path(&std::fs::canonicalize(&file_b).unwrap())
+        .expect("file_b opened via open_extra_files");
+    ed.state.buffers.get_mut(bid_b).lsp_server = Some(sid_b);
+    let pane_b = open_pane(&mut ed.state, &mut ed.view, bid_b);
+
+    for (sid, ev) in ed.lsp.backend_mut().drain() {
+        let actions = ed.lsp.client_for_test(sid).unwrap().on_event(ev);
+        for action in actions {
+            ed.dispatch_lsp_action(sid, action);
+        }
+    }
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(load-plugin "core:lsp")"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    ed.state.settings.lsp_inlay_hints = true;
+
+    // Buffer A (focused, server A, no inlayHintProvider) never changes
+    // focus — the viewport event below is for the background pane only.
+    ed.fire_hook_viewport_change(pane_b);
+    settle_after_debounce(&mut ed);
+
+    let sent_to_b = requests
+        .borrow()
+        .iter()
+        .any(|(sid, m, _)| *sid == sid_b && m == "textDocument/inlayHint");
+    assert!(
+        sent_to_b,
+        "a viewport event for buffer B's pane must query buffer B's own server's \
+         capabilities and send the request there, not the focused buffer's server"
+    );
 }

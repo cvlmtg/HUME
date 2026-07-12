@@ -162,7 +162,8 @@
      (let* ((fields (hash-ref *plum-lsp-sources* name))
             (kind   (cdr (plum/field fields 'kind))))
        (cond
-         ((equal? kind 'npm) #f)
+         ((equal? kind 'npm)
+          (if (exe-on-path? "npm") #f "requires 'npm' on $PATH, which was not found"))
          ((not (equal? kind 'github))
           (string-append "not installable (kind " (symbol->string kind) ") in v1"))
          (else

@@ -24,13 +24,17 @@
          (text (if pad-right (string-append text " ") text)))
     (list (hash-ref hint "position") text 'before)))
 
-;;; `(first last)` visible lines -> `InlayHintParams` — `"textDocument"`
-;;; from `lsp-position-params`, a hand-built range with character 0 at both
-;;; ends (encoding-safe: no wire math needed at a line boundary).
+;;; `(first last)` visible lines -> `InlayHintParams`, or `#f` if
+;;; `lsp-position-params` can't resolve `bid` (hidden/detached by the time
+;;; a debounced refresh actually fires) — `"textDocument"` from
+;;; `lsp-position-params`, a hand-built range with character 0 at both ends
+;;; (encoding-safe: no wire math needed at a line boundary).
 (define (lsp/inlay-hint-params bid first last)
-  (hash "textDocument" (hash-ref (lsp-position-params bid) "textDocument")
-        "range" (hash "start" (hash "line" first "character" 0)
-                       "end" (hash "line" (+ last 1) "character" 0))))
+  (let ((pp (lsp-position-params bid)))
+    (and pp
+         (hash "textDocument" (hash-ref pp "textDocument")
+               "range" (hash "start" (hash "line" first "character" 0)
+                              "end" (hash "line" (+ last 1) "character" 0))))))
 
 ;;; Debounced (200ms) and re-run from both on-viewport-change and
 ;;; on-diagnostics-changed — servers refresh hints roughly when diagnostics
@@ -38,16 +42,29 @@
 ;;; Always re-reads the current viewport from lib.scm's tracker rather than
 ;;; trusting an argument, so both call sites can share one signature; `#f`
 ;;; before the first on-viewport-change event skips silently (the next
-;;; viewport event refreshes).
+;;; viewport event refreshes). Resolved against `bid`'s own attached
+;;; server, not the focused buffer's — a split can show a different
+;;; buffer/language in each pane, and both hooks fire per-buffer.
 (define lsp/refresh-hints
   (debounce 200
     (lambda (bid)
-      (let ((range (lsp/viewport-range bid)))
-        (when (and range (get-option "lsp.inlay-hints") (lsp/supports? "inlayHintProvider"))
-          (lsp-request #f "textDocument/inlayHint" (lsp/inlay-hint-params bid (car range) (cadr range))
-            (lambda (err res)
-              (when (and (not err) (not (void? res)) (not (null? res)))
-                (set-inlay-hints! bid (map lsp/hint->store-entry res))))))))))
+      (let ((range (lsp/viewport-range bid))
+            (server (lsp-server-for-buffer bid)))
+        (when (and range server (get-option "lsp.inlay-hints")
+                   (lsp/supports-for-buffer? bid "inlayHintProvider"))
+          (let ((params (lsp/inlay-hint-params bid (car range) (cadr range))))
+            (when params
+              (lsp-request server "textDocument/inlayHint" params
+                (lambda (err res)
+                  ;; A legitimate empty/null response (no hints in this
+                  ;; viewport right now) must still clear any hints from a
+                  ;; previous, larger response — only a genuine error leaves
+                  ;; the existing display untouched.
+                  (unless err
+                    (set-inlay-hints! bid
+                      (if (or (void? res) (null? res))
+                          '()
+                          (map lsp/hint->store-entry res)))))))))))))
 
 (register-hook! 'on-viewport-change
   (lambda (bid first last) (lsp/refresh-hints bid)))

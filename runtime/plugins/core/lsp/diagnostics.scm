@@ -2,8 +2,6 @@
 ;;; reads the diagnostics store via diagnostics-for-buffer. Depends on
 ;;; core:stdlib for cursor-char-index (see plugin.scm).
 
-(require "lib.scm")
-
 ;; ── Helpers ──────────────────────────────────────────────────────────────────
 
 (define (lsp/severity-glyph severity)

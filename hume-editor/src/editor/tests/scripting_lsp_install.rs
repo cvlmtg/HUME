@@ -554,6 +554,39 @@ fn discovery_hint_does_not_fire_for_a_blocked_server() {
 
 #[test]
 #[cfg(not(windows))]
+fn discovery_hint_does_not_fire_for_npm_kind_when_npm_missing_from_path() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    // svlangserver (npm-kind, language "systemverilog") used to report
+    // installable unconditionally — the hint could suggest a :lsp-install
+    // that immediately fails `plum/preflight!`'s own npm-on-$PATH check.
+    // Force $PATH to a directory with no npm binary in it.
+    let empty_path_dir = tempfile::tempdir().unwrap();
+    let original_path = std::env::var("PATH").unwrap();
+    unsafe {
+        std::env::set_var("PATH", empty_path_dir.path());
+    }
+
+    let bid = ed.focused_buffer_id();
+    ed.set_buffer_language(bid, Some("systemverilog".to_owned()));
+    ed.drain_hooks();
+
+    unsafe {
+        std::env::set_var("PATH", original_path);
+    }
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        !log.contains("run :lsp-install"),
+        "must never hint an npm-kind install when npm is not on $PATH: {log}"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
 fn discovery_hint_does_not_fire_when_already_registered() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();

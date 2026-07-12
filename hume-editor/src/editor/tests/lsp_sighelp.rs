@@ -409,3 +409,38 @@ fn offset_form_parameter_label_marks_the_correct_slice() {
         ]
     );
 }
+
+#[test]
+#[cfg(not(windows))]
+fn offset_form_label_with_an_astral_char_marks_the_correct_slice() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/signatureHelp",
+            serde_json::json!({
+                "signatures": [{
+                    // "😀" is one astral char (U+1F600 -> 2 UTF-16 units,
+                    // 1 Steel char). "a" starts at char index 2 but wire
+                    // (UTF-16) offset 3 — a param-text impl that treats
+                    // the offset as a char index directly would slice the
+                    // wrong span or panic out of bounds.
+                    "label": "😀 a",
+                    "parameters": [{"label": [3, 4]}],
+                }],
+                "activeSignature": 0,
+                "activeParameter": 0,
+            }),
+        );
+    });
+    position_after_foo(&mut ed);
+    ed.feed_key(key('i'));
+    ed.drain_hooks();
+    type_char_and_settle(&mut ed, '(');
+
+    assert_eq!(
+        popup_lines(&mut ed),
+        vec!["😀 a".to_string(), "⟨a⟩".to_string()]
+    );
+}

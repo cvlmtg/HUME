@@ -300,6 +300,69 @@ fn accept_applies_main_edit_and_additional_text_edits_as_two_undo_steps() {
 
 #[test]
 #[cfg(not(windows))]
+fn additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    // "foo.b XXX\n" — main edit replaces ".b" (chars 3..5) with ".bar",
+    // shifting everything after it on the line by +2 UTF-16 units. The
+    // additionalTextEdits entry (chars 6..9, "XXX") is on the same line,
+    // entirely after the main edit's end — its position is stale unless
+    // shifted by that same delta.
+    let file = file_dir.path().join("main.rs");
+    std::fs::write(&file, "foo.b XXX\n").unwrap();
+    let (mut ed, _guard, _requests) = setup(
+        &file,
+        tmp.path(),
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([{
+                    "label": "bar",
+                    "textEdit": {
+                        "range": {"start": {"line": 0, "character": 3}, "end": {"line": 0, "character": 5}},
+                        "newText": ".bar"
+                    },
+                    "additionalTextEdits": [
+                        {"range": {"start": {"line": 0, "character": 6}, "end": {"line": 0, "character": 9}},
+                         "newText": "YYY"}
+                    ]
+                }]),
+            );
+        },
+    );
+    // Char 5 is right after "foo.b" — matches the server's textEdit end
+    // exactly, so accept() never extends the range past what's specified.
+    let bid = ed.focused_buffer_id();
+    let pid = ed.state.focused_pane_id;
+    let pbs = ed
+        .state
+        .panes
+        .state
+        .get_mut(pid)
+        .and_then(|by_buf| by_buf.get_mut(bid))
+        .expect("pane buffer state must exist");
+    pbs.selections = hume_editing::selection::SelectionSet::single(
+        hume_editing::selection::Selection::collapsed(5),
+    );
+
+    ed.feed_key(key('i'));
+    ed.drain_hooks();
+    ed.feed_key(key_ctrl(' '));
+    settle(&mut ed);
+    ed.feed_key(key_enter());
+    settle(&mut ed);
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "foo.bar YYY\n",
+        "the additionalTextEdits range must shift by the main edit's UTF-16 \
+         length delta since it lands on the same line, after the main edit"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
 fn resolve_sent_only_when_item_lacks_additional_text_edits_and_resolve_provider_present() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();

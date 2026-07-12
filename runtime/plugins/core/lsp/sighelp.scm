@@ -10,12 +10,16 @@
 
 ;;; A `SignatureHelp.parameters[].label` is either a plain string, or a
 ;;; `[start, end)` UTF-16 offset pair into the *signature's own* label —
-;;; both forms resolve to the same parameter text.
+;;; both forms resolve to the same parameter text. The offset pair is
+;;; converted to char indices first (`lib.scm`) since it may have been
+;;; computed over a label containing astral-plane characters.
 (define (lsp/param-text sig-label param)
   (let ((param-label (hash-ref param "label")))
     (if (string? param-label)
         param-label
-        (substring sig-label (car param-label) (cadr param-label)))))
+        (substring sig-label
+                   (lsp/utf16-offset->char-index sig-label (car param-label))
+                   (lsp/utf16-offset->char-index sig-label (cadr param-label))))))
 
 ;;; The chosen signature's label, plus the active parameter's own text
 ;;; marked with `⟨…⟩` on a second line (no styling API in `show-popup!`
@@ -52,40 +56,17 @@
             ((void? res) (close-popup!))
             (else (lsp/show-sighelp res))))))))
 
-;;; The char set this feature reacts to — `on-trigger-char` fires for
-;;; *every* registered source's chars (union semantics), so the
-;;; handler must filter to its own set rather than reacting to any char.
-(define *sighelp-chars* '())
-
-(register-hook! 'on-lsp-attach
-  (lambda (bid server-name)
-    (let ((caps (lsp-capabilities server-name)))
-      (when (and caps (hash-contains? caps "signatureHelpProvider"))
-        (let* ((sh (hash-ref caps "signatureHelpProvider"))
-               (triggers (if (hash-contains? sh "triggerCharacters") (hash-ref sh "triggerCharacters") (list)))
-               ;; ")" is a dismiss trigger, not a request trigger — still
-               ;; needs registering or it never reaches Insert-mode text.
-               (chars (cons ")" triggers)))
-          (set! *sighelp-chars* chars)
-          (register-trigger-chars! "lsp-sighelp" chars))))))
-
-;;; Same global-not-per-server caveat as completion.scm's `on-lsp-detach` —
-;;; `register-trigger-chars!` has no scoping narrower than the source name.
-(register-hook! 'on-lsp-detach
-  (lambda (bid server-name)
-    (set! *sighelp-chars* '())
-    (register-trigger-chars! "lsp-sighelp" '())))
-
-(register-hook! 'on-trigger-char
+;;; ")" is a dismiss trigger, not a request trigger — still needs
+;;; registering or it never reaches Insert-mode text.
+(lsp/setup-trigger-chars! "signatureHelpProvider" "lsp-sighelp" (list ")")
   (lambda (bid ch)
-    (when (member ch *sighelp-chars*)
-      (if (equal? ch ")")
-          (close-popup!)
-          ;; Unlike completion.scm's trigger path, this used to call
-          ;; lsp/sighelp-request directly with no capability guard — a
-          ;; stale trigger char left registered past detach (or a server
-          ;; that never advertised signatureHelpProvider in the first
-          ;; place) hit lsp-request's server-resolution failure and logged
-          ;; an Error on every matching keystroke instead of a polite skip.
-          (lsp/guard-capability "signatureHelpProvider"
-            (lambda () (lsp/sighelp-request bid)))))))
+    (if (equal? ch ")")
+        (close-popup!)
+        ;; Unlike completion.scm's trigger path, this used to call
+        ;; lsp/sighelp-request directly with no capability guard — a
+        ;; stale trigger char left registered past detach (or a server
+        ;; that never advertised signatureHelpProvider in the first
+        ;; place) hit lsp-request's server-resolution failure and logged
+        ;; an Error on every matching keystroke instead of a polite skip.
+        (lsp/guard-capability "signatureHelpProvider"
+          (lambda () (lsp/sighelp-request bid))))))

@@ -1,7 +1,9 @@
 ;;; core:lsp/lib.scm — shared helpers used by every feature file.
 
-(provide lsp/supports? lsp/guard-capability lsp/report-error lsp/visible-lines
-         lsp/uri->display-path lsp/show-locations! lsp/text-edit->tuple lsp/viewport-range)
+(provide lsp/supports? lsp/supports-for-buffer? lsp/guard-capability lsp/report-error
+         lsp/visible-lines lsp/uri->display-path lsp/show-locations! lsp/text-edit->tuple
+         lsp/viewport-range lsp/string-utf16-length lsp/utf16-offset->char-index
+         lsp/setup-trigger-chars!)
 
 ;; ── Capability guard ────────────────────────────────────────────────────────
 
@@ -13,6 +15,19 @@
          (hash-contains? caps cap-key)
          (not (equal? (hash-ref caps cap-key) #f)))))
 
+;;; Per-buffer variant of `lsp/supports?` — needed wherever the buffer in
+;;; question isn't necessarily the focused one (e.g. a hook argument fired
+;;; for a background pane in a split). `#f` when `bid` has no attached
+;;; server at all — never falls back to checking the focused buffer's
+;;; capabilities instead.
+(define (lsp/supports-for-buffer? bid cap-key)
+  (let ((server (lsp-server-for-buffer bid)))
+    (and server
+         (let ((caps (lsp-capabilities server)))
+           (and caps
+                (hash-contains? caps cap-key)
+                (not (equal? (hash-ref caps cap-key) #f)))))))
+
 ;;; Run `thunk` only if the focused buffer's server supports `cap-key`;
 ;;; otherwise report politely and skip — every feature capability-checks
 ;;; before firing a request (hub primer).
@@ -23,6 +38,44 @@
             (string-append "not supported by "
                            (let ((name (lsp-server-for-buffer (current-buffer))))
                              (if name name "server"))))))
+
+;; ── Trigger-char lifecycle ──────────────────────────────────────────────────
+
+;;; Wires up the on-lsp-attach / on-lsp-detach / on-trigger-char trio a
+;;; trigger-char-driven feature (completion, signature help) needs —
+;;; `cap-key`/`source-name` name the capability and the
+;;; `register-trigger-chars!` source; `extra-chars` are always-registered
+;;; chars beyond whatever the server advertises (e.g. sighelp's dismiss
+;;; ")"); `on-trigger` is `(lambda (bid ch) ...)`, called only for a `ch` in
+;;; this feature's own set. Each call gets its own private `chars`,
+;;; captured by all three hook closures — a second feature calling this
+;;; never shares state with the first.
+(define (lsp/setup-trigger-chars! cap-key source-name extra-chars on-trigger)
+  (let ((chars '()))
+    (register-hook! 'on-lsp-attach
+      (lambda (bid server-name)
+        (let ((caps (lsp-capabilities server-name)))
+          (when (and caps (hash-contains? caps cap-key))
+            (let* ((provider (hash-ref caps cap-key))
+                   (triggers (if (hash-contains? provider "triggerCharacters")
+                                 (hash-ref provider "triggerCharacters")
+                                 (list)))
+                   (all-chars (append extra-chars triggers)))
+              (set! chars all-chars)
+              (register-trigger-chars! source-name all-chars))))))
+    ;; `register-trigger-chars!` has no scoping narrower than `source-name`
+    ;; — global, not per-buffer/per-server. Clearing here on detach is the
+    ;; same "last call wins" semantics attach already has (a second
+    ;; still-running server sharing this source would have its chars
+    ;; clobbered the same way a second attach would clobber the first).
+    (register-hook! 'on-lsp-detach
+      (lambda (bid server-name)
+        (set! chars '())
+        (register-trigger-chars! source-name '())))
+    (register-hook! 'on-trigger-char
+      (lambda (bid ch)
+        (when (member ch chars)
+          (on-trigger bid ch))))))
 
 ;;; One `'error` log line for a callback error — `err` is either a
 ;;; {"code" "message"} hashmap (protocol error) or the bare string
@@ -45,6 +98,32 @@
           (list (hash-ref end "line") (hash-ref end "character"))
           (hash-ref te "newText"))))
 
+;; ── UTF-16 offset conversion ────────────────────────────────────────────────
+;; LSP wire positions are UTF-16 code-unit offsets (this client negotiates
+;; `positionEncoding: utf-16`, its default). Steel strings index by Unicode
+;; scalar value (`string-ref`/`substring`), which only diverges from UTF-16
+;; units for astral-plane chars (>= U+10000 — a surrogate pair, 2 units, but
+;; 1 Steel char). Signature-help's offset-form parameter labels are the one
+;; place a raw UTF-16 offset pair reaches Steel code directly.
+
+;;; Number of UTF-16 code units `s` would take on the wire.
+(define (lsp/string-utf16-length s)
+  (let loop ((i 0) (n (string-length s)) (units 0))
+    (if (>= i n)
+        units
+        (loop (+ i 1) n (+ units (if (>= (char->integer (string-ref s i)) #x10000) 2 1))))))
+
+;;; `offset`: a UTF-16 code-unit offset into `s` -> the char index
+;;; `string-ref`/`substring` expect. Stops at the first char whose
+;;; cumulative unit count reaches `offset` — a surrogate-pair-splitting
+;;; offset (never valid on the wire) lands on that char rather than
+;;; between its two units.
+(define (lsp/utf16-offset->char-index s offset)
+  (let loop ((i 0) (n (string-length s)) (units 0))
+    (if (or (>= i n) (>= units offset))
+        i
+        (loop (+ i 1) n (+ units (if (>= (char->integer (string-ref s i)) #x10000) 2 1))))))
+
 ;; ── Viewport tracker ────────────────────────────────────────────────────────
 ;; No pane-geometry builtin exists — on-viewport-change is the only
 ;; Steel-visible viewport source. Buffer-id SteelVals are NOT `equal?` across
@@ -60,6 +139,14 @@
           (cons (list bid first last)
                 (filter (lambda (e) (not (buffer-id=? (list-ref e 0) bid)))
                         *lsp-viewports*)))))
+
+;;; A closed buffer's entry would otherwise sit in `*lsp-viewports*` forever
+;;; — nothing else ever removes one.
+(register-hook! 'on-buffer-close
+  (lambda (bid)
+    (set! *lsp-viewports*
+          (filter (lambda (e) (not (buffer-id=? (list-ref e 0) bid)))
+                  *lsp-viewports*))))
 
 ;;; `(first last)` visible line pair for `bid` as of the last
 ;;; on-viewport-change fire, or `#f` before the first event for it.
