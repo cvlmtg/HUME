@@ -32,7 +32,12 @@ pub struct ServerHandle {
     /// Reader + stderr thread output.
     rx: mpsc::Receiver<InboundEvent>,
     child: Child,
-    threads: Vec<thread::JoinHandle<()>>,
+    /// Tracked separately (not lumped into `other_threads`) so `Drop` can
+    /// give it a bounded window to flush any already-queued message (e.g. a
+    /// `begin_shutdown`'s `shutdown`/`exit` pair) before the process is
+    /// killed out from under it.
+    writer: Option<thread::JoinHandle<()>>,
+    other_threads: Vec<thread::JoinHandle<()>>,
 }
 
 impl ServerHandle {
@@ -69,27 +74,61 @@ impl ServerHandle {
         let (tx_events, rx_events) = mpsc::channel::<InboundEvent>();
         let (tx_out, rx_out) = mpsc::channel::<Message>();
 
+        // If a later thread fails to spawn, the child (already running) must
+        // not be orphaned: kill+reap it and join whatever threads did start
+        // before propagating the error — `Child`'s own `Drop` does not kill,
+        // so leaving this to unwind would leak the process.
         let reader_tx = tx_events.clone();
-        let reader = thread::Builder::new()
+        let reader = match thread::Builder::new()
             .name("hume-lsp-reader".into())
             .spawn(move || reader_loop(BufReader::new(stdout), &reader_tx))
-            .expect("failed to spawn LSP reader thread");
+        {
+            Ok(t) => t,
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(e);
+            }
+        };
 
-        let writer = thread::Builder::new()
+        let writer = match thread::Builder::new()
             .name("hume-lsp-writer".into())
             .spawn(move || writer_loop(stdin, rx_out))
-            .expect("failed to spawn LSP writer thread");
+        {
+            Ok(t) => t,
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = reader.join();
+                return Err(e);
+            }
+        };
 
-        let stderr_thread = thread::Builder::new()
+        let stderr_thread = match thread::Builder::new()
             .name("hume-lsp-stderr".into())
             .spawn(move || stderr_loop(BufReader::new(stderr), &tx_events))
-            .expect("failed to spawn LSP stderr thread");
+        {
+            Ok(t) => t,
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = reader.join();
+                // The writer thread blocks on `for msg in rx_out` until its
+                // sender is dropped — `tx_out` isn't moved into `ServerHandle`
+                // on this failure path, so drop it explicitly to let the
+                // thread's loop end before joining.
+                drop(tx_out);
+                let _ = writer.join();
+                return Err(e);
+            }
+        };
 
         Ok(ServerHandle {
             tx: Some(tx_out),
             rx: rx_events,
             child,
-            threads: vec![reader, writer, stderr_thread],
+            writer: Some(writer),
+            other_threads: vec![reader, stderr_thread],
         })
     }
 
@@ -112,15 +151,48 @@ impl ServerHandle {
     }
 }
 
+/// Bound on how long `Drop` waits for the writer thread to flush any
+/// already-queued message (e.g. `begin_shutdown`'s `shutdown`/`exit` pair)
+/// before killing the process — long enough for a normal write+flush to a
+/// live pipe, short enough that a server ignoring stdin doesn't hang exit.
+const WRITER_FLUSH_GRACE: std::time::Duration = std::time::Duration::from_millis(200);
+
+/// Polls `handle` up to `timeout`, returning whether it finished in time.
+/// Extracted from `Drop` so the bounded-wait mechanism is unit-testable
+/// without spawning a real child process.
+fn wait_for_finish(handle: &thread::JoinHandle<()>, timeout: std::time::Duration) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        if handle.is_finished() {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
 impl Drop for ServerHandle {
     fn drop(&mut self) {
-        // Closing tx makes the writer thread's `for msg in rx` end.
+        // Closing tx signals the writer thread's `for msg in rx` to end —
+        // but only once it drains every message already queued. Killing
+        // the process immediately after would race that flush purely on
+        // scheduling luck, silently downgrading every "graceful" shutdown
+        // (shutdown request + exit notification) to a plain kill. Give the
+        // writer a bounded window to actually finish first.
         self.tx = None;
+        if let Some(writer) = &self.writer {
+            wait_for_finish(writer, WRITER_FLUSH_GRACE);
+        }
         // Killing the child closes its stdout/stderr, which ends the reader
         // and stderr threads' blocking reads.
         let _ = self.child.kill();
         let _ = self.child.wait();
-        for t in self.threads.drain(..) {
+        if let Some(writer) = self.writer.take() {
+            let _ = writer.join();
+        }
+        for t in self.other_threads.drain(..) {
             let _ = t.join();
         }
     }
@@ -146,6 +218,13 @@ fn reader_loop(mut r: impl BufRead, tx: &mpsc::Sender<InboundEvent>) {
                 if tx.send(InboundEvent::Message(msg)).is_err() {
                     return;
                 }
+            }
+            // A clean end-of-stream at a frame boundary is a voluntary
+            // server exit, not a crash — report no error so the editor
+            // glue doesn't log a spurious "server crashed".
+            Err(codec::CodecError::Eof) => {
+                let _ = tx.send(InboundEvent::Eof { error: None });
+                return;
             }
             Err(e) => {
                 let _ = tx.send(InboundEvent::Eof {
@@ -210,8 +289,25 @@ mod tests {
             _ => panic!("expected Message"),
         }
         match rx.recv().unwrap() {
-            InboundEvent::Eof { .. } => {}
+            // A clean end-of-stream at a frame boundary (a voluntary server
+            // exit) must not be reported as an error — only a genuine
+            // mid-frame truncation should carry one.
+            InboundEvent::Eof { error } => assert!(error.is_none()),
             _ => panic!("expected Eof after stream end"),
+        }
+    }
+
+    #[test]
+    fn reader_loop_reports_mid_frame_truncation_with_an_error() {
+        // A Content-Length header was read, but the stream ends before the
+        // blank line that would terminate the header block — a genuine
+        // truncation, distinct from the clean-exit case above.
+        let cursor = Cursor::new(b"Content-Length: 5\r\n".to_vec());
+        let (tx, rx) = mpsc::channel();
+        reader_loop(cursor, &tx);
+        match rx.recv().unwrap() {
+            InboundEvent::Eof { error } => assert!(error.is_some()),
+            _ => panic!("expected Eof"),
         }
     }
 
@@ -272,6 +368,35 @@ mod tests {
             _ => panic!("expected Stderr"),
         }
         assert!(rx.try_recv().is_err());
+    }
+
+    // ── wait_for_finish ──────────────────────────────────────────────────────
+
+    #[test]
+    fn wait_for_finish_returns_true_once_thread_completes() {
+        let handle = thread::spawn(|| {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        });
+        assert!(wait_for_finish(
+            &handle,
+            std::time::Duration::from_millis(500)
+        ));
+        let _ = handle.join();
+    }
+
+    #[test]
+    fn wait_for_finish_times_out_on_a_thread_that_never_finishes_in_time() {
+        let (tx, rx) = mpsc::channel::<()>();
+        let handle = thread::spawn(move || {
+            // Blocks until `tx` is dropped below.
+            let _ = rx.recv();
+        });
+        assert!(!wait_for_finish(
+            &handle,
+            std::time::Duration::from_millis(50)
+        ));
+        drop(tx);
+        let _ = handle.join();
     }
 
     #[test]

@@ -250,7 +250,52 @@ fn crashed_action_is_reported_to_the_message_log() {
     );
 
     let log = ed.state.message_log.format_for_display();
-    assert!(log.contains("server crashed") && log.contains("boom"));
+    // `wire_client` registers under the "lsp" test-only placeholder name
+    // (`insert_client_for_test`) — a real registration's server name would
+    // appear here instead, so multiple crashed servers are distinguishable.
+    assert!(log.contains("lsp crashed") && log.contains("boom"));
+}
+
+#[test]
+fn crash_fails_in_flight_requests_immediately_instead_of_waiting_for_their_deadline() {
+    let mut ed = editor_from("-[w]>ord\n");
+    let mut backend = InlineLspBackend::new();
+    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    // No response scripted — this request would otherwise sit pending
+    // until its (deliberately far-future) deadline.
+    wire_client(&mut ed, backend, sid);
+
+    let result: Rc<RefCell<Option<Outcome>>> = Rc::new(RefCell::new(None));
+    let result_in_closure = result.clone();
+    let meta = RequestMeta {
+        method: "textDocument/hover".to_string(),
+        allow_stale: false,
+        deadline: Instant::now() + Duration::from_secs(3600),
+    };
+    let id = ed
+        .lsp
+        .send_request(sid, "textDocument/hover", serde_json::Value::Null, meta)
+        .expect("client tracked");
+    ed.lsp.register_callback(
+        sid,
+        id,
+        None,
+        Box::new(move |_ed, outcome| {
+            *result_in_closure.borrow_mut() = Some(outcome);
+        }),
+    );
+
+    ed.dispatch_lsp_action(
+        sid,
+        hume_lsp::client::ClientAction::Crashed {
+            error: Some("boom".to_string()),
+        },
+    );
+
+    match result.borrow_mut().take() {
+        Some(Outcome::TimedOut) => {}
+        other => panic!("expected the pending request to fail immediately on crash, got {other:?}"),
+    }
 }
 
 #[test]

@@ -45,6 +45,11 @@ pub struct ResponseError {
 #[derive(Debug)]
 pub enum CodecError {
     Io(std::io::Error),
+    /// Clean end-of-stream exactly at a frame boundary — no header bytes
+    /// were read yet, so nothing was interrupted mid-flight. Distinguishes
+    /// a server's voluntary exit (nothing to report as a crash) from a real
+    /// truncation error partway through a frame, which stays `Io`.
+    Eof,
     MissingLength,
     BadHeader(String),
     Json(serde_json::Error),
@@ -57,6 +62,7 @@ impl std::fmt::Display for CodecError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CodecError::Io(e) => write!(f, "io error: {e}"),
+            CodecError::Eof => write!(f, "end of stream"),
             CodecError::MissingLength => write!(f, "missing Content-Length header"),
             CodecError::BadHeader(line) => write!(f, "malformed header: {line:?}"),
             CodecError::Json(e) => write!(f, "json error: {e}"),
@@ -125,6 +131,7 @@ struct RawMessage {
 /// text).
 #[derive(Serialize)]
 struct RawMessageRef<'a> {
+    jsonrpc: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     id: Option<&'a RequestId>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -137,21 +144,73 @@ struct RawMessageRef<'a> {
     error: Option<&'a ResponseError>,
 }
 
+/// Content-Length above this is never a legitimate LSP body — the largest
+/// realistic message (a huge hover or diagnostics burst) is well under
+/// this. Bounds the `vec![0u8; len]` allocation against a garbage or
+/// hostile `Content-Length` value.
+const MAX_CONTENT_LENGTH: usize = 256 * 1024 * 1024; // 256 MiB
+
+/// A single header line above this length cannot be a legitimate
+/// `Content-Length`/`Content-Type` header — bounds `read_line`'s growth
+/// against a stream that never sends a newline.
+const MAX_HEADER_LINE_LEN: usize = 64 * 1024; // 64 KiB
+
+/// Reads one line (through the trailing `\n`, inclusive) via `fill_buf`/
+/// `consume`, bounded to `max` bytes total. `BufRead::read_line` has no
+/// built-in cap and would otherwise grow without limit against a stream
+/// that never sends a newline. `Ok(None)` means a clean EOF with nothing
+/// read at all; `Err` means the `max` bound was exceeded with no newline
+/// found (a real I/O error is propagated as-is via `?` at the call site).
+fn read_bounded_line(r: &mut impl BufRead, max: usize) -> std::io::Result<Option<Vec<u8>>> {
+    let mut buf = Vec::new();
+    loop {
+        let available = r.fill_buf()?;
+        if available.is_empty() {
+            return Ok(if buf.is_empty() { None } else { Some(buf) });
+        }
+        match available.iter().position(|&b| b == b'\n') {
+            Some(pos) => {
+                buf.extend_from_slice(&available[..=pos]);
+                r.consume(pos + 1);
+                return Ok(Some(buf));
+            }
+            None => {
+                let n = available.len();
+                buf.extend_from_slice(available);
+                r.consume(n);
+                if buf.len() > max {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("header line exceeds {max} bytes with no newline"),
+                    ));
+                }
+            }
+        }
+    }
+}
+
 /// Reads headers up to the blank `\r\n` line, then exactly `Content-Length`
 /// bytes of body. Blocks until one full frame is available; any error
 /// (I/O, malformed header, truncated body, bad JSON, ambiguous shape) is
 /// fatal for the connection — callers must not attempt to resynchronize.
 pub fn read_message(r: &mut impl BufRead) -> Result<Message, CodecError> {
     let mut content_length: Option<usize> = None;
+    let mut first_line = true;
     loop {
-        let mut line = String::new();
-        let n = r.read_line(&mut line)?;
-        if n == 0 {
+        let Some(bytes) = read_bounded_line(r, MAX_HEADER_LINE_LEN)? else {
+            // A frame boundary (nothing read yet for this message) is a
+            // clean, expected end-of-stream — a server that exited
+            // voluntarily. Mid-header-block, it's a genuine truncation.
+            if first_line {
+                return Err(CodecError::Eof);
+            }
             return Err(CodecError::Io(std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
                 "stream closed while reading headers",
             )));
-        }
+        };
+        first_line = false;
+        let line = String::from_utf8_lossy(&bytes);
         let trimmed = line.trim_end_matches(['\r', '\n']);
         if trimmed.is_empty() {
             break;
@@ -164,6 +223,9 @@ pub fn read_message(r: &mut impl BufRead) -> Result<Message, CodecError> {
                 .trim()
                 .parse()
                 .map_err(|_| CodecError::BadHeader(trimmed.to_string()))?;
+            if len > MAX_CONTENT_LENGTH {
+                return Err(CodecError::BadHeader(trimmed.to_string()));
+            }
             content_length = Some(len);
         }
         // Other headers (e.g. Content-Type) are tolerated and ignored.
@@ -213,6 +275,7 @@ fn classify(raw: RawMessage) -> Result<Message, CodecError> {
 pub fn write_message(w: &mut impl Write, msg: &Message) -> std::io::Result<()> {
     let raw = match msg {
         Message::Request { id, method, params } => RawMessageRef {
+            jsonrpc: "2.0",
             id: Some(id),
             method: Some(method),
             params: Some(params),
@@ -220,6 +283,7 @@ pub fn write_message(w: &mut impl Write, msg: &Message) -> std::io::Result<()> {
             error: None,
         },
         Message::Notification { method, params } => RawMessageRef {
+            jsonrpc: "2.0",
             id: None,
             method: Some(method),
             params: Some(params),
@@ -227,6 +291,7 @@ pub fn write_message(w: &mut impl Write, msg: &Message) -> std::io::Result<()> {
             error: None,
         },
         Message::Response { id, result: Ok(v) } => RawMessageRef {
+            jsonrpc: "2.0",
             id: Some(id),
             method: None,
             params: None,
@@ -234,6 +299,7 @@ pub fn write_message(w: &mut impl Write, msg: &Message) -> std::io::Result<()> {
             error: None,
         },
         Message::Response { id, result: Err(e) } => RawMessageRef {
+            jsonrpc: "2.0",
             id: Some(id),
             method: None,
             params: None,
@@ -428,6 +494,48 @@ mod tests {
     }
 
     #[test]
+    fn content_length_above_cap_is_error() {
+        // A garbage/hostile value must be rejected before the `vec![0u8; len]`
+        // allocation, not attempted.
+        let mut cursor = Cursor::new(b"Content-Length: 99999999999\r\n\r\n{}".to_vec());
+        match read_message(&mut cursor) {
+            Err(CodecError::BadHeader(line)) => assert!(line.contains("99999999999")),
+            other => panic!("expected BadHeader, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn header_line_with_no_newline_past_cap_is_error() {
+        // A stream that never sends a newline must not grow `read_line`'s
+        // buffer without bound — it errors once the cap is exceeded.
+        let garbage = vec![b'x'; 128 * 1024];
+        let mut cursor = Cursor::new(garbage);
+        match read_message(&mut cursor) {
+            Err(CodecError::Io(_)) => {}
+            other => panic!("expected Io (bound exceeded), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn clean_eof_at_frame_boundary_is_distinct_from_mid_frame_truncation() {
+        // Nothing at all read for this frame — a voluntary server exit,
+        // not a truncation.
+        let mut cursor = Cursor::new(Vec::<u8>::new());
+        match read_message(&mut cursor) {
+            Err(CodecError::Eof) => {}
+            other => panic!("expected Eof, got {other:?}"),
+        }
+
+        // A header line was already read for this frame before the stream
+        // ended — a genuine mid-frame truncation, not a clean exit.
+        let mut cursor = Cursor::new(b"Content-Length: 5\r\n".to_vec());
+        match read_message(&mut cursor) {
+            Err(CodecError::Io(_)) => {}
+            other => panic!("expected Io, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn two_frames_back_to_back() {
         let mut buf = Vec::new();
         write_message(
@@ -503,6 +611,26 @@ mod tests {
             Err(CodecError::Ambiguous) => {}
             other => panic!("expected Ambiguous, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn write_emits_jsonrpc_version_member() {
+        // JSON-RPC 2.0 requires "jsonrpc":"2.0" on every request, response,
+        // and notification — a strict server-side stack can reject or drop
+        // a frame missing it.
+        let msg = Message::Notification {
+            method: "textDocument/didOpen".to_string(),
+            params: serde_json::Value::Null,
+        };
+        let mut buf = Vec::new();
+        write_message(&mut buf, &msg).unwrap();
+        let header_end = buf
+            .windows(4)
+            .position(|w| w == b"\r\n\r\n")
+            .expect("header terminator")
+            + 4;
+        let body: serde_json::Value = serde_json::from_slice(&buf[header_end..]).unwrap();
+        assert_eq!(body.get("jsonrpc"), Some(&serde_json::json!("2.0")));
     }
 
     #[test]

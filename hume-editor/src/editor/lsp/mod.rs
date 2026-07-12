@@ -383,6 +383,17 @@ impl Editor {
         let now = Instant::now();
         let server_ids: Vec<ServerId> = self.lsp.servers.keys().copied().collect();
         for server_id in server_ids {
+            // A server that started but never answers `initialize` has no
+            // `RequestMeta`/`pending` entry of its own to expire via
+            // `take_completed` below — checked separately, same cadence.
+            if let Some(action) = self
+                .lsp
+                .servers
+                .get_mut(&server_id)
+                .and_then(|entry| entry.client.check_handshake_timeout(now))
+            {
+                self.dispatch_lsp_action(server_id, action);
+            }
             let LspState {
                 servers, backend, ..
             } = &mut self.lsp;
@@ -481,13 +492,23 @@ impl Editor {
                 }
             }
             ClientAction::Crashed { error } => {
+                let name = self.lsp_server_name(server_id);
                 self.report(
                     Severity::Error,
                     format!(
-                        "lsp: server crashed{}",
+                        "lsp: {name} crashed{}",
                         error.map(|e| format!(": {e}")).unwrap_or_default()
                     ),
                 );
+                // Fail every in-flight request immediately rather than
+                // leaving each to expire on its own deadline — the crash is
+                // already known, so there's nothing to wait for. Mirrors
+                // `:lsp-stop`'s own teardown (`lsp_stop_one`).
+                if let Some(entry) = self.lsp.servers.get_mut(&server_id) {
+                    for (id, meta) in entry.client.drain_pending() {
+                        self.dispatch_completed(server_id, id, meta, Outcome::TimedOut);
+                    }
+                }
             }
             ClientAction::ServerRequest { id, method, params } => {
                 // `workspace/applyEdit` needs `&mut Editor` (the edit engine) —

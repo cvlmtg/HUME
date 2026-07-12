@@ -77,15 +77,25 @@ pub enum Outcome {
     TimedOut,
 }
 
-/// Builds the `$/cancelRequest` notification params for `id`. Shared by
-/// `LspClient::cancel` and the editor glue's timeout path.
-pub fn cancel_request_params(id: &RequestId) -> serde_json::Value {
+/// Builds the `$/cancelRequest` notification params for `id`. Used by
+/// `send_cancel_notification`, this module's single production caller
+/// (from both the test-only `cancel` and the timeout sweep in
+/// `take_completed`).
+fn cancel_request_params(id: &RequestId) -> serde_json::Value {
     let id_value = match id {
         RequestId::Int(n) => serde_json::Value::from(*n),
         RequestId::Str(s) => serde_json::Value::String(s.clone()),
     };
     serde_json::json!({ "id": id_value })
 }
+
+/// How long `initialize` may go unanswered before the client gives up and
+/// transitions to `Crashed` — independent of `lsp.request-timeout-ms` (a
+/// per-request setting): the handshake has no `RequestMeta`/`pending` entry
+/// of its own to piggyback that on, and a server that starts but never
+/// responds would otherwise pin the event loop at the 8ms Starting-poll
+/// cadence for the rest of the session with no way to notice or recover.
+const INITIALIZE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Per-server lifecycle state: handshake, negotiated encoding, and the
 /// queue of messages a caller tried to send before the handshake finished.
@@ -94,12 +104,19 @@ pub struct LspClient {
     pub state: ServerState,
     pub caps: Option<ServerCapabilities>,
     /// Negotiated position encoding; UTF-16 until `initialize` proves UTF-8.
+    /// A decode-once cache of `caps.position_encoding` (`handle_initialize_
+    /// response` is the only writer of either field) — kept separate so
+    /// callers don't re-derive it from the raw capability on every position
+    /// conversion, not an independent fact that could drift on its own.
     pub encoding: PositionEncoding,
     pub root: PathBuf,
     /// Messages (e.g. `didOpen`) that arrived while `Starting` — sent, in
     /// order, right after `initialized` once the handshake completes.
     queued: Vec<Message>,
     initialize_id: Option<RequestId>,
+    /// Set by `start_handshake`, cleared once `initialize` completes (either
+    /// way) — checked by `check_handshake_timeout`.
+    handshake_deadline: Option<Instant>,
     ids: IdAllocator,
     /// Requests awaiting a response, keyed by the id we sent.
     pending: HashMap<RequestId, RequestMeta>,
@@ -119,6 +136,7 @@ impl LspClient {
             root,
             queued: Vec::new(),
             initialize_id: None,
+            handshake_deadline: None,
             ids: IdAllocator::new(),
             pending: HashMap::new(),
             completed: Vec::new(),
@@ -161,13 +179,14 @@ impl LspClient {
 
     /// Best-effort cancellation: drops the pending entry (if still present)
     /// and, only once the handshake has completed, notifies the server — a
-    /// no-op if the request already completed. Nothing but `initialize` is
-    /// legal on the wire before `initialized`, so a request cancelled while
-    /// still `Starting` (its send itself still sitting in `queued`, per
-    /// `send_request`'s discipline) has never reached the server either;
-    /// there is nothing to notify, and sending would violate the handshake.
-    pub fn cancel(&mut self, backend: &mut dyn LspBackend, id: RequestId) {
+    /// no-op if the request already completed. Test-only: no production
+    /// caller cancels a request today (`drain_pending` covers teardown,
+    /// `take_completed`'s deadline sweep covers timeout) — kept for the
+    /// unit tests that exercise this path directly.
+    #[cfg(test)]
+    fn cancel(&mut self, backend: &mut dyn LspBackend, id: RequestId) {
         if self.pending.remove(&id).is_some() {
+            self.drop_from_queue(&id);
             self.send_cancel_notification(backend, &id);
         }
     }
@@ -178,6 +197,17 @@ impl LspClient {
     /// callback along with the client.
     pub fn drain_pending(&mut self) -> Vec<(RequestId, RequestMeta)> {
         self.pending.drain().collect()
+    }
+
+    /// Drops `id`'s `Message::Request` from the Starting-queue, if it's
+    /// still sitting there unsent. A cancelled or timed-out request whose
+    /// `pending` entry is gone must not still be flushed to the server by
+    /// `handle_initialize_response` once the handshake completes — nothing
+    /// would be left to correlate the eventual response (or notice it
+    /// arrived at all), and no `$/cancelRequest` would ever follow it.
+    fn drop_from_queue(&mut self, id: &RequestId) {
+        self.queued
+            .retain(|msg| !matches!(msg, Message::Request { id: qid, .. } if qid == id));
     }
 
     /// Best-effort `$/cancelRequest` — only legal once the handshake has
@@ -215,6 +245,7 @@ impl LspClient {
             .collect();
         for id in timed_out {
             if let Some(meta) = self.pending.remove(&id) {
+                self.drop_from_queue(&id);
                 self.send_cancel_notification(backend, &id);
                 out.push((id, meta, Outcome::TimedOut));
             }
@@ -226,9 +257,10 @@ impl LspClient {
     pub fn start_handshake(&mut self, backend: &mut dyn LspBackend) {
         let id = self.ids.next();
         self.initialize_id = Some(id.clone());
+        self.handshake_deadline = Some(Instant::now() + INITIALIZE_TIMEOUT);
 
         let params = serde_json::to_value(build_initialize_params(&self.root))
-            .unwrap_or(serde_json::Value::Null);
+            .expect("InitializeParams always serializes");
 
         backend.send(
             self.id,
@@ -274,6 +306,7 @@ impl LspClient {
                 if self.initialize_id.as_ref() == Some(&id) =>
             {
                 self.initialize_id = None;
+                self.handshake_deadline = None;
                 self.handle_initialize_response(result)
             }
             InboundEvent::Message(Message::Response { id, result }) => {
@@ -294,6 +327,32 @@ impl LspClient {
             }
             InboundEvent::Stderr(line) => vec![ClientAction::Stderr(line)],
         }
+    }
+
+    /// Checks whether `initialize` has been outstanding past its own
+    /// deadline — the handshake has no `RequestMeta`/`pending` entry of its
+    /// own to piggyback the usual per-request timeout on, so this is a
+    /// separate check. Called from the same per-frame drain cadence as
+    /// `take_completed`. Transitions to `Crashed` and returns the action to
+    /// report exactly once (the `state != Starting` guard makes a second
+    /// call after that a no-op, same discipline as `on_event`'s `Eof` arm).
+    pub fn check_handshake_timeout(&mut self, now: Instant) -> Option<ClientAction> {
+        if self.state != ServerState::Starting {
+            return None;
+        }
+        if self
+            .handshake_deadline
+            .is_none_or(|deadline| now < deadline)
+        {
+            return None;
+        }
+        self.state = ServerState::Crashed;
+        Some(ClientAction::Crashed {
+            error: Some(format!(
+                "initialize timed out after {}s",
+                INITIALIZE_TIMEOUT.as_secs()
+            )),
+        })
     }
 
     fn handle_initialize_response(
@@ -332,32 +391,40 @@ impl LspClient {
 
         let mut send = vec![Message::Notification {
             method: "initialized".to_string(),
-            params: serde_json::to_value(InitializedParams {}).unwrap_or(serde_json::Value::Null),
+            params: serde_json::to_value(InitializedParams {})
+                .expect("InitializedParams always serializes"),
         }];
         send.append(&mut self.queued);
         vec![ClientAction::BecameRunning { send }]
     }
 
-    /// `shutdown` request, then `exit` notification. The transport-level
-    /// teardown (`ServerHandle::drop`: kill -> wait -> join) reaps the
-    /// process regardless, so this is a best-effort courtesy, not a
-    /// synchronous protocol round-trip.
+    /// `shutdown` request, then `exit` notification — only while `Running`;
+    /// nothing but `initialize` is legal on the wire before `initialized`,
+    /// so a Starting (or already Crashed/Dead) client sends nothing here.
+    /// Every caller still gets a definite `Dead` transition regardless of
+    /// prior state, so the transport-level teardown (`ServerHandle::drop`:
+    /// kill -> wait -> join, which reaps the process unconditionally) is
+    /// always what actually ends a non-Running client — this is a
+    /// best-effort protocol courtesy on top of that, never a substitute
+    /// for it, and never a synchronous round-trip.
     pub fn begin_shutdown(&mut self, backend: &mut dyn LspBackend) {
-        backend.send(
-            self.id,
-            Message::Request {
-                id: self.ids.next(),
-                method: "shutdown".to_string(),
-                params: serde_json::Value::Null,
-            },
-        );
-        backend.send(
-            self.id,
-            Message::Notification {
-                method: "exit".to_string(),
-                params: serde_json::Value::Null,
-            },
-        );
+        if self.state == ServerState::Running {
+            backend.send(
+                self.id,
+                Message::Request {
+                    id: self.ids.next(),
+                    method: "shutdown".to_string(),
+                    params: serde_json::Value::Null,
+                },
+            );
+            backend.send(
+                self.id,
+                Message::Notification {
+                    method: "exit".to_string(),
+                    params: serde_json::Value::Null,
+                },
+            );
+        }
         self.state = ServerState::Dead;
     }
 }
@@ -616,6 +683,46 @@ mod tests {
         }
     }
 
+    // ── check_handshake_timeout ──────────────────────────────────────────────
+
+    #[test]
+    fn check_handshake_timeout_is_none_before_the_deadline() {
+        let mut backend = InlineLspBackend::new();
+        let sid = backend.start("x", &[], std::path::Path::new(".")).unwrap();
+        let mut client = LspClient::new(sid, PathBuf::from("."));
+        client.start_handshake(&mut backend);
+
+        assert!(client.check_handshake_timeout(Instant::now()).is_none());
+        assert_eq!(client.state, ServerState::Starting);
+    }
+
+    #[test]
+    fn check_handshake_timeout_crashes_after_the_deadline() {
+        let mut backend = InlineLspBackend::new();
+        let sid = backend.start("x", &[], std::path::Path::new(".")).unwrap();
+        let mut client = LspClient::new(sid, PathBuf::from("."));
+        client.start_handshake(&mut backend);
+
+        let past_deadline = Instant::now() + std::time::Duration::from_secs(31);
+        match client.check_handshake_timeout(past_deadline) {
+            Some(ClientAction::Crashed { error }) => {
+                assert!(error.unwrap().contains("initialize timed out"));
+            }
+            other => panic!("expected Crashed action, got {other:?}"),
+        }
+        assert_eq!(client.state, ServerState::Crashed);
+
+        // A second call after already Crashed must not report again.
+        assert!(client.check_handshake_timeout(past_deadline).is_none());
+    }
+
+    #[test]
+    fn check_handshake_timeout_is_none_once_running() {
+        let (_backend, mut client) = make_running_client();
+        let far_future = Instant::now() + std::time::Duration::from_secs(1000);
+        assert!(client.check_handshake_timeout(far_future).is_none());
+    }
+
     #[test]
     fn messages_sent_while_starting_are_queued_then_flushed_in_order() {
         let mut backend = InlineLspBackend::with_default_handshake();
@@ -790,22 +897,44 @@ mod tests {
 
     #[test]
     fn shutdown_sends_shutdown_request_then_exit_notification_in_order() {
-        let mut backend = InlineLspBackend::new();
-        let sid = backend.start("x", &[], std::path::Path::new(".")).unwrap();
-        let mut client = LspClient::new(sid, PathBuf::from("."));
+        let (mut backend, mut client) = make_running_client();
+        // `make_running_client` already sent `initialize` — this test only
+        // asserts on what `begin_shutdown` adds after it.
+        let before = backend.sent.len();
 
         client.begin_shutdown(&mut backend);
 
         assert_eq!(client.state, ServerState::Dead);
-        assert_eq!(backend.sent.len(), 2);
-        match &backend.sent[0] {
+        assert_eq!(backend.sent.len(), before + 2);
+        match &backend.sent[before] {
             (_, Message::Request { method, .. }) => assert_eq!(method, "shutdown"),
             other => panic!("expected the shutdown request first, got {other:?}"),
         }
-        match &backend.sent[1] {
+        match &backend.sent[before + 1] {
             (_, Message::Notification { method, .. }) => assert_eq!(method, "exit"),
             other => panic!("expected the exit notification second, got {other:?}"),
         }
+    }
+
+    /// Regression: nothing but `initialize` is legal on the wire before
+    /// `initialized` — `begin_shutdown` on a still-Starting client must
+    /// send neither `shutdown` nor `exit` (it still transitions to `Dead`;
+    /// transport-level teardown reaps the process regardless).
+    #[test]
+    fn begin_shutdown_sends_nothing_while_still_starting() {
+        let mut backend = InlineLspBackend::new();
+        let sid = backend.start("x", &[], std::path::Path::new(".")).unwrap();
+        let mut client = LspClient::new(sid, PathBuf::from("."));
+        assert_eq!(client.state, ServerState::Starting);
+
+        client.begin_shutdown(&mut backend);
+
+        assert_eq!(client.state, ServerState::Dead);
+        assert!(
+            backend.sent.is_empty(),
+            "must not send shutdown/exit before the handshake completed: {:?}",
+            backend.sent
+        );
     }
 
     fn make_running_client() -> (InlineLspBackend, LspClient) {
@@ -950,6 +1079,55 @@ mod tests {
             backend.sent.is_empty(),
             "a timeout while still Starting must not send $/cancelRequest either"
         );
+    }
+
+    /// Regression: a request cancelled while still `Starting` must not
+    /// resurface once the handshake completes — its `Message::Request` sat
+    /// unsent in `queued` (removed from `pending` by `cancel`), and without
+    /// also stripping it from `queued`, `handle_initialize_response`'s
+    /// flush would still deliver it to the server with no pending entry
+    /// left to correlate a response (or send `$/cancelRequest` for).
+    #[test]
+    fn cancelled_request_is_not_flushed_after_handshake_completes() {
+        let mut backend = InlineLspBackend::new();
+        backend.respond_to("initialize", canned_result(None));
+        let sid = backend.start("x", &[], std::path::Path::new(".")).unwrap();
+        let mut client = LspClient::new(sid, PathBuf::from("."));
+        client.start_handshake(&mut backend);
+
+        let meta = RequestMeta {
+            method: "textDocument/definition".to_string(),
+            allow_stale: false,
+            deadline: Instant::now() + std::time::Duration::from_secs(10),
+        };
+        let id = client.send_request(
+            &mut backend,
+            "textDocument/definition",
+            serde_json::Value::Null,
+            meta,
+        );
+        client.cancel(&mut backend, id);
+
+        let (_id, ev) = backend
+            .drain()
+            .into_iter()
+            .find(|(_, ev)| matches!(ev, InboundEvent::Message(Message::Response { .. })))
+            .expect("initialize response");
+        let actions = client.on_event(ev);
+        match &actions[..] {
+            [ClientAction::BecameRunning { send }] => {
+                assert_eq!(
+                    send.len(),
+                    1,
+                    "only 'initialized' should flush — the cancelled request must not reappear: {send:?}"
+                );
+                match &send[0] {
+                    Message::Notification { method, .. } => assert_eq!(method, "initialized"),
+                    other => panic!("expected only the initialized notification, got {other:?}"),
+                }
+            }
+            other => panic!("expected one BecameRunning action, got {other:?}"),
+        }
     }
 
     #[test]
