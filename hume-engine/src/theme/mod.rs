@@ -308,7 +308,8 @@ impl Theme {
             selection: self.resolve_raw("ui.selection"),
             cursorline: self.resolve_raw("ui.cursorline.primary"),
             virtual_text: self.resolve_raw("ui.virtual"),
-            indent_guide: self.resolve_raw("ui.indent_guide"),
+            // dot-fallback to ui.virtual for themes that don't define the guide explicitly
+            indent_guide: self.resolve_raw("ui.virtual.indent-guide"),
             // Primary cursor: dot-notation fallback ui.cursor.primary → ui.cursor is correct.
             cursor_primary: self.resolve_raw("ui.cursor.primary"),
             // Primary insert cursor: prefer ui.cursor.primary.insert, then ui.cursor.insert,

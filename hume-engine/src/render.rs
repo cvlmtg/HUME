@@ -331,7 +331,7 @@ pub(crate) fn compose_row(
                 let visible_col = guide_col.saturating_sub(h_offset);
                 let screen_x = content_x_origin + visible_col;
                 if screen_x < right_edge {
-                    canvas.set_cell(screen_x, y, "│", compose_ctx.indent_guide_style);
+                    canvas.set_cell(screen_x, y, "╎", compose_ctx.indent_guide_style);
                 }
             }
         }

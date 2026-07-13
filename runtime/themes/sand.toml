@@ -36,7 +36,7 @@
 "ui.bufferline.background" = { bg = "bg" }
 "ui.virtual" = { fg = "muted" }
 "ui.virtual.whitespace" = { fg = "surface" }
-"ui.virtual.indent-guide" = { fg = "surface" }
+"ui.virtual.indent-guide" = { fg = "muted" }
 "ui.virtual.inlay-hint" = { fg = "muted" }
 "ui.virtual.inlay-hint.parameter" = { fg = "muted" }
 "ui.virtual.inlay-hint.type" = { fg = "muted" }
