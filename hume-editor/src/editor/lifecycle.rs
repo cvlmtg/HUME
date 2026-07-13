@@ -184,7 +184,9 @@ impl Editor {
                 keymap: Keymap::default(),
                 last_find: None,
                 force_full_redraw: false,
-                dispatch_inline_output: false,
+                inline_output: super::InlineOutputDispatch::Inactive,
+                #[cfg(test)]
+                inline_output_entered: false,
                 last_repeatable_action: None,
                 selection_recipe: Vec::new(),
                 insert_session: None,
@@ -252,8 +254,6 @@ impl Editor {
             virtual_lines_synced: std::collections::HashMap::new(),
             lsp: super::lsp::LspState::new_threaded(),
             tui_active: false,
-            #[cfg(test)]
-            inline_output_entered: false,
         })
     }
 
@@ -746,13 +746,14 @@ impl Editor {
         &self.view.panes[self.state.focused_pane_id].viewport
     }
 
-    /// `true` if dispatch has ever entered the inline-output terminal
-    /// bracket (alt-screen toggle + "press any key") on this `Editor`. Off
-    /// the event loop this must stay `false` for every `#:inline-output #t`
-    /// command dispatched — see `tui_active` on `Editor`.
+    /// `true` if `ensure_inline_output_screen` has ever actually entered the
+    /// inline-output terminal bracket (alt-screen toggle + "press any key")
+    /// on this `Editor`. Off the event loop this must stay `false` for every
+    /// `#:inline-output #t` command dispatched, output or not — see
+    /// `tui_active` on `Editor`.
     #[cfg(test)]
     pub(crate) fn inline_output_entered(&self) -> bool {
-        self.inline_output_entered
+        self.state.inline_output_entered
     }
 
     pub(crate) fn viewport_mut(&mut self) -> &mut hume_engine::pane::ViewportState {

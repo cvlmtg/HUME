@@ -126,6 +126,11 @@ pub(crate) fn unpack_zip(
         format!("unpack-zip: {src} → {dest_dir} (bin: {bin_path})"),
     );
 
+    // `unzip`/`tar` inherit stdio (see `hume_platform::process::unpack_zip`'s
+    // doc), so this is a real terminal write — open the bracket first.
+    ctx.host.ensure_inline_output_screen().map_err(|e| {
+        SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("unpack-zip: {e}"))
+    })?;
     hume_platform::process::unpack_zip(&src_path, &dest_path, Path::new(&bin_path))
         .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("unpack-zip: {e}")))?;
     Ok(SteelVal::Void)
@@ -210,7 +215,7 @@ pub(crate) fn acquire_install_lock(ctx: &mut SteelCtx) -> Result<SteelVal, Steel
 /// # Errors
 /// The binary can't be spawned (e.g. not found on `PATH`).
 pub(crate) fn run_inline_output(
-    _ctx: &mut SteelCtx,
+    ctx: &mut SteelCtx,
     cmd: String,
     args_val: SteelVal,
     cwd_val: SteelVal,
@@ -220,6 +225,15 @@ pub(crate) fn run_inline_output(
         SteelVal::BoolV(false) => None,
         other => Some(PathBuf::from(string_arg(other, "%run-inline-output! cwd")?)),
     };
+
+    // The child inherits stdio, so this is a real terminal write — open the
+    // bracket before spawning it.
+    ctx.host.ensure_inline_output_screen().map_err(|e| {
+        SteelErr::new(
+            steel::rerrs::ErrorKind::Generic,
+            format!("run-inline-output!: {e}"),
+        )
+    })?;
 
     let status =
         hume_platform::process::run_inline_output(&cmd, &args, cwd.as_deref()).map_err(|e| {
@@ -256,6 +270,7 @@ pub(crate) fn release_install_lock() -> Result<SteelVal, SteelErr> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::null_host::RecordingInlineOutputHost;
     use crate::test_support::SteelCtxTestHarness;
     use std::fs;
     use tempfile::TempDir;
@@ -360,6 +375,28 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    /// `unpack-zip` shells out to `unzip`/`tar` with inherited stdio — it
+    /// must open the inline-output bracket before spawning that tool, even
+    /// when the spawn itself then fails (missing src).
+    #[test]
+    fn unpack_zip_calls_ensure_before_unzip() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("does-not-exist.zip");
+        let dest_dir = tmp.path().join("out-dir");
+
+        let mut host = RecordingInlineOutputHost::default();
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_with_host(&mut host);
+        let _ = unpack_zip(
+            &mut ctx,
+            src.to_string_lossy().to_string(),
+            dest_dir.to_string_lossy().to_string(),
+            "bin".to_string(),
+        );
+        drop(ctx);
+        assert_eq!(host.ensure_calls, 1);
     }
 
     // ── acquire-install-lock! / release-install-lock! ───────────────────────
@@ -508,6 +545,23 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("definitely-not-a-real-binary-xyz"));
+    }
+
+    /// The spawned process inherits stdio — the bracket must open before the
+    /// spawn attempt, even when the spawn itself then fails.
+    #[test]
+    fn run_inline_output_calls_ensure_before_spawn() {
+        let mut host = RecordingInlineOutputHost::default();
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_with_host(&mut host);
+        let _ = run_inline_output(
+            &mut ctx,
+            "definitely-not-a-real-binary-xyz".to_string(),
+            list_val(&[]),
+            SteelVal::BoolV(false),
+        );
+        drop(ctx);
+        assert_eq!(host.ensure_calls, 1);
     }
 
     #[test]

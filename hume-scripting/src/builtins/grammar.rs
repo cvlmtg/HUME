@@ -53,6 +53,18 @@ pub(crate) fn compile_grammar(
         format!("compile-grammar!: `tree-sitter build -o {out} {src}`"),
     );
 
+    // `tree-sitter build` inherits stdio, so this is a real terminal write —
+    // open the bracket first. Init-time compiles run pre-terminal (no screen
+    // to enter, and `is_inline_output` is never set there anyway).
+    if !ctx.is_init {
+        ctx.host.ensure_inline_output_screen().map_err(|e| {
+            SteelErr::new(
+                steel::rerrs::ErrorKind::Generic,
+                format!("compile-grammar!: {e}"),
+            )
+        })?;
+    }
+
     let result = hume_platform::process::tree_sitter_build(&src_path, &out_path);
     let msg = match result {
         Ok(status) if status.success() => return Ok(SteelVal::Void),
@@ -80,6 +92,7 @@ pub(crate) fn compile_grammar(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::null_host::RecordingInlineOutputHost;
     use crate::test_support::SteelCtxTestHarness;
     use tempfile::TempDir;
 
@@ -118,5 +131,46 @@ mod tests {
         let mut ctx = h.ctx();
         ctx.is_init = false;
         assert!(compile_grammar(&mut ctx, src, out).is_err());
+    }
+
+    /// `tree-sitter build` inherits stdio — the bracket must open before the
+    /// spawn attempt in command mode, even when the build itself then fails.
+    #[test]
+    fn compile_grammar_calls_ensure_before_build_in_command_mode() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp
+            .path()
+            .join("does-not-exist")
+            .to_string_lossy()
+            .to_string();
+        let out = tmp.path().join("out.dylib").to_string_lossy().to_string();
+
+        let mut host = RecordingInlineOutputHost::default();
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_with_host(&mut host);
+        ctx.is_init = false;
+        let _ = compile_grammar(&mut ctx, src, out);
+        drop(ctx);
+        assert_eq!(host.ensure_calls, 1);
+    }
+
+    /// Init-time compiles run pre-terminal — the bracket must never open.
+    #[test]
+    fn compile_grammar_does_not_call_ensure_in_init_mode() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp
+            .path()
+            .join("does-not-exist")
+            .to_string_lossy()
+            .to_string();
+        let out = tmp.path().join("out.dylib").to_string_lossy().to_string();
+
+        let mut host = RecordingInlineOutputHost::default();
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_with_host(&mut host);
+        ctx.is_init = true;
+        let _ = compile_grammar(&mut ctx, src, out);
+        drop(ctx);
+        assert_eq!(host.ensure_calls, 0);
     }
 }

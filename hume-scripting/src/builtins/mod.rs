@@ -277,7 +277,10 @@ const BOOTSTRAP: &str = r#"
 
 ; displayln — shadows steel-core's kernel.scm binding (raw, ungated stdout
 ; print) with a version gated on SteelCtx::is_inline_output (see io.rs): a
-; no-op unless the alt-screen TUI is guaranteed not to own the terminal.
+; no-op unless the alt-screen TUI is guaranteed not to own the terminal. When
+; the gate is open via is_inline_output, this call is also what lazily opens
+; the alt-screen bracket (EditorHost::ensure_inline_output_screen) — the
+; screen appears on the command's first real print, not eagerly at dispatch.
 (define (displayln . args) (%displayln! args))
 "#;
 
@@ -397,6 +400,24 @@ pub(crate) fn register_all(steel: &mut Engine) {
     // %displayln! is the Rust leaf behind the BOOTSTRAP `displayln` shim below,
     // which shadows steel-core's kernel.scm `displayln` (raw, ungated stdout
     // print) with a version gated on SteelCtx::is_inline_output — see io.rs.
+    //
+    // KNOWN GAP: this shadow does not reach code compiled via `(require
+    // "path.scm")` — i.e. every real HUME plugin (PLUM). A displayln call
+    // from inside a required module's command body silently resolves to
+    // steel-core's raw, ungated kernel `displayln` instead of this gate.
+    // Confirmed empirically (hume-scripting/src/builtins/io.rs's
+    // `required_module_displayln_call_reaches_the_gate` test, currently
+    // `#[ignore]`d, documents the reproduction). Two fix attempts — a
+    // `#%prim.displayln` reserved-slot registration (steel-core's own
+    // `require-builtin ... as #%prim.` aliasing mechanism) and a direct bare
+    // `"displayln"` registration at this same call site — both failed to
+    // close the gap; the true mechanism by which required modules resolve
+    // kernel-provided names is not yet understood. Root-cause fix pending
+    // further investigation into steel-core's module/require compilation
+    // pipeline. Until fixed, PLUM's two `displayln` call sites
+    // (`servers.scm`'s `lsp-servers`, `grammars.scm`'s grammar-compile
+    // progress line) print unconditionally rather than through the
+    // `is_inline_output`/`ensure_inline_output_screen` gate.
     steel.register_fn_with_ctx(HUME_CTX, "%displayln!", io::displayln);
 
     // Opaque ID predicates and equality — context-free; no SteelCtx needed.

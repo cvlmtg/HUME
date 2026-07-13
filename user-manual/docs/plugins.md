@@ -82,18 +82,17 @@ This registers `:hello` as a typed command.
 
 Registers a typed command available as `:command-name`. The second argument is a doc string shown in command help; the function is called when the command is dispatched.
 
-For commands that stream subprocess output to the terminal (installers, git operations), add the `#:inline-output #t` keyword — HUME exits the alt-screen so output is visible, then waits for a keypress before returning. Plugins run with the same privileges as HUME itself, so any Scheme process/filesystem function is available — there's no separate "shell builtin" layer:
+For commands that stream subprocess output to the terminal (installers, git operations), add the `#:inline-output #t` keyword. The alt-screen opens on the command's first real output — not eagerly at the start — so a run that produces no output (an already-up-to-date check, a validation error) never flashes an empty screen or waits on an unneeded keypress. Once something is printed, HUME exits the alt-screen so it's visible, then waits for a keypress before returning.
+
+Plugins run with the same privileges as HUME itself, so any Scheme process/filesystem function is available — there's no separate "shell builtin" layer. The one exception: inside an `#:inline-output` command, spawn subprocesses whose output should reach the terminal via `run-inline-output!` rather than a raw `spawn-process`/`command` call — it isolates the child into its own process group so a Ctrl+C meant to interrupt the subprocess doesn't kill HUME too, and it's the trigger that opens the alt-screen:
 
 ```scheme
 (define-command! "fetch-config"
   "Clone the team config repo into the data directory."
   (lambda ()
-    (define result (spawn-process
-                     (command "git" (list "clone" "--"
-                                           "https://github.com/team/hume-config.git"
-                                           (path-join (data-dir) "config")))))
-    (when (Err? result)
-      (error (to-string (Err->value result)))))
+    (run-inline-output! "git" (list "clone" "--"
+                                     "https://github.com/team/hume-config.git"
+                                     (path-join (data-dir) "config"))))
   #:inline-output #t)
 ```
 

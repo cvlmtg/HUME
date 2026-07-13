@@ -573,6 +573,12 @@ fn plum_install_grammar_arg_overrides_buffer_language() {
 /// dispatch blocks forever on a keypress that never comes whenever stdin
 /// happens to be a real TTY (e.g. `cargo test` run interactively), which is
 /// exactly what stalled the suite before `tui_active` was introduced.
+///
+/// This particular command errors out via `log!` only (no `displayln`), so
+/// under the lazy-entry design it never even reaches
+/// `ensure_inline_output_screen` — see
+/// `inline_output_command_with_real_output_still_skips_bracket_off_event_loop`
+/// below for the case that does.
 #[test]
 #[cfg(not(windows))]
 fn inline_output_command_does_not_enter_terminal_bracket_off_event_loop() {
@@ -594,6 +600,42 @@ fn inline_output_command_does_not_enter_terminal_bracket_off_event_loop() {
     assert!(
         !ed.inline_output_entered(),
         "inline-output bracket must stay skipped when Editor::run never took the terminal"
+    );
+}
+
+/// `lsp-servers` is `#:inline-output #t` and *does* print via `displayln`
+/// (one line per seeded server) — off the event loop that must still reach
+/// `EditorHostImpl::ensure_inline_output_screen`'s `Headless` no-op branch
+/// rather than the real terminal: printing must succeed without ever
+/// flipping `inline_output_entered()`.
+///
+/// Flip: hardcode `ensure_inline_output_screen` to always enter (drop the
+/// `Headless`/`Armed` distinction) → this test hangs on `wait_for_keypress`
+/// against a real TTY, or panics against a non-TTY stdin in CI.
+#[test]
+#[cfg(not(windows))]
+fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":lsp-servers");
+
+    assert!(
+        !ed.inline_output_entered(),
+        "displayln output off the event loop must not enter the real terminal bracket"
+    );
+    assert!(
+        ed.state
+            .status_msg
+            .as_deref()
+            .is_some_and(|m| m.contains("seeded servers")),
+        "lsp-servers must still log its summary line, got: {:?}",
+        ed.state.status_msg
     );
 }
 

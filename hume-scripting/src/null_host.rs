@@ -376,3 +376,132 @@ impl EditorHost for InlineOutputHost {
         NullHost.char_index_to_line(idx)
     }
 }
+
+/// Like [`InlineOutputHost`] but also counts calls to
+/// `ensure_inline_output_screen` — lets a test assert a builtin opens the
+/// inline-output bracket exactly when (and only when) it has real terminal
+/// output to produce, without a real terminal.
+#[derive(Default)]
+pub(crate) struct RecordingInlineOutputHost {
+    pub(crate) ensure_calls: usize,
+}
+
+impl EditorHost for RecordingInlineOutputHost {
+    fn buffer_ids(&self) -> Vec<BufferId> {
+        NullHost.buffer_ids()
+    }
+    fn pane_ids(&self) -> Vec<PaneId> {
+        NullHost.pane_ids()
+    }
+    fn buffer_exists(&self, id: BufferId) -> bool {
+        NullHost.buffer_exists(id)
+    }
+    fn buffer_path(&self, id: BufferId) -> Option<PathBuf> {
+        NullHost.buffer_path(id)
+    }
+    fn buffer_display_name(&self, id: BufferId) -> Option<String> {
+        NullHost.buffer_display_name(id)
+    }
+    fn buffer_is_dirty(&self, id: BufferId) -> Option<bool> {
+        NullHost.buffer_is_dirty(id)
+    }
+    fn buffer_stored_language(&self, id: BufferId) -> Option<String> {
+        NullHost.buffer_stored_language(id)
+    }
+    fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String> {
+        NullHost.open_buffer(path)
+    }
+    fn close_buffer(&mut self, id: BufferId) -> Result<BufferId, String> {
+        NullHost.close_buffer(id)
+    }
+    fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String> {
+        NullHost.switch_to_buffer(current, target)
+    }
+    fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
+        NullHost.set_global_option(key, value)
+    }
+    fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
+        NullHost.get_option(key, bid)
+    }
+    fn configure_statusline(
+        &mut self,
+        l: Vec<String>,
+        c: Vec<String>,
+        r: Vec<String>,
+    ) -> Result<(), String> {
+        NullHost.configure_statusline(l, c, r)
+    }
+    fn bind_key(
+        &mut self,
+        mode: BindMode,
+        keys: &[KeyEvent],
+        cmd: &str,
+        fe: bool,
+    ) -> Result<(), String> {
+        NullHost.bind_key(mode, keys, cmd, fe)
+    }
+    fn bind_wait_char(
+        &mut self,
+        mode: BindMode,
+        keys: &[KeyEvent],
+        cmd: &str,
+    ) -> Result<(), String> {
+        NullHost.bind_wait_char(mode, keys, cmd)
+    }
+    fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String> {
+        NullHost.unbind_key(mode, keys)
+    }
+    fn attach_grammar(
+        &mut self,
+        name: &str,
+        gp: &Path,
+        sym: &str,
+        hl: &Path,
+        inj: Option<&Path>,
+    ) -> Result<(), String> {
+        NullHost.attach_grammar(name, gp, sym, hl, inj)
+    }
+    fn has_grammar(&self, language: &str) -> bool {
+        NullHost.has_grammar(language)
+    }
+    fn is_valid_register_name(&self, ch: char) -> bool {
+        NullHost.is_valid_register_name(ch)
+    }
+    fn steel_command_budget_ms(&self) -> u64 {
+        NullHost.steel_command_budget_ms()
+    }
+    fn is_inline_output_command(&self) -> bool {
+        true
+    }
+    fn ensure_inline_output_screen(&mut self) -> Result<(), String> {
+        self.ensure_calls += 1;
+        Ok(())
+    }
+    fn command_is_native(&self, name: &str) -> Result<bool, String> {
+        NullHost.command_is_native(name)
+    }
+    fn run_command_sync(
+        &mut self,
+        name: &str,
+        count: Option<usize>,
+        extend: bool,
+        register: Option<char>,
+    ) -> Result<(), String> {
+        NullHost.run_command_sync(name, count, extend, register)
+    }
+    fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String> {
+        NullHost.register_command(def)
+    }
+    fn unregister_command(&mut self, name: &str) {
+        NullHost.unregister_command(name)
+    }
+    fn current_line_number(&self) -> Option<usize> {
+        NullHost.current_line_number()
+    }
+    fn current_selections(&self) -> Option<Vec<(usize, usize, bool)>> {
+        NullHost.current_selections()
+    }
+    fn char_index_to_line(&self, idx: usize) -> Option<usize> {
+        NullHost.char_index_to_line(idx)
+    }
+}

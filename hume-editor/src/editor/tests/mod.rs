@@ -213,7 +213,9 @@ impl Editor {
                 keymap: super::keymap::Keymap::default(),
                 last_find: None,
                 force_full_redraw: false,
-                dispatch_inline_output: false,
+                inline_output: super::InlineOutputDispatch::Inactive,
+                #[cfg(test)]
+                inline_output_entered: false,
                 last_repeatable_action: None,
                 selection_recipe: Vec::new(),
                 pending_repeat: None,
@@ -283,8 +285,6 @@ impl Editor {
             virtual_lines_synced: std::collections::HashMap::new(),
             lsp: super::lsp::LspState::new_inline(),
             tui_active: false,
-            #[cfg(test)]
-            inline_output_entered: false,
         }
     }
 

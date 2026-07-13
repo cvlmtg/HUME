@@ -7,7 +7,7 @@
 //! timer bridge — fields only reachable through `&mut Editor`.
 
 use super::registry::MappableCommand;
-use super::{Editor, Severity, commands, timer_bridge};
+use super::{Editor, InlineOutputDispatch, Severity, commands, timer_bridge};
 
 // ── Command dispatch context ──────────────────────────────────────────────────
 
@@ -182,30 +182,28 @@ impl Editor {
             steel_args.clone()
         };
 
-        // Alt-screen bracketing for inline-output commands. Only meaningful
-        // when `Editor::run` owns the terminal — off the event loop (tests,
-        // headless `run_keys`) there is no alt-screen to leave and no
-        // interactive user to answer the "press any key" prompt, so skip the
-        // whole bracket and just run the command body below.
-        let bracket_inline_output = inline_output && self.tui_active;
-        if bracket_inline_output {
-            #[cfg(test)]
-            {
-                self.inline_output_entered = true;
+        // Alt-screen bracketing for inline-output commands is lazy: entering
+        // the alt-screen and printing the running banner happens on the
+        // command body's *first actual output* (see
+        // `EditorHostImpl::ensure_inline_output_screen`), not eagerly here —
+        // a body that only logs (`log!`) never flashes an empty screen or
+        // blocks on a keypress nobody needed to answer. `Armed` just primes
+        // the state SteelCtx reads through `is_inline_output_command`; off
+        // the event loop (tests, headless `run_keys`) there is no alt-screen
+        // to leave and no interactive user to answer a keypress prompt, so a
+        // declared command goes `Headless` instead — stdout writes stay
+        // permitted, but no bracket ever runs.
+        self.state.inline_output = if inline_output && self.tui_active {
+            InlineOutputDispatch::Armed {
+                kitty: self.kitty_enabled,
+                mouse: self.state.settings.mouse_enabled,
+                name: name.to_string(),
             }
-            let kitty = self.kitty_enabled;
-            let mouse = self.state.settings.mouse_enabled;
-            if let Err(e) = hume_platform::terminal::enter_inline_output(kitty, mouse) {
-                self.report(Severity::Error, format!("inline-output enter failed: {e}"));
-                return false;
-            }
-            hume_platform::terminal::print_running_banner(name);
-        }
-
-        // Declared flag (not `bracket_inline_output`) — SteelCtx must see it
-        // even off the event loop (tests, headless `run_keys`), where no
-        // alt-screen bracket runs but the print is harmless either way.
-        self.state.dispatch_inline_output = inline_output;
+        } else if inline_output {
+            InlineOutputDispatch::Headless
+        } else {
+            InlineOutputDispatch::Inactive
+        };
 
         let result = {
             let mut impl_host = crate::editor::host_impl::EditorHostImpl {
@@ -227,11 +225,14 @@ impl Editor {
             )
         };
 
-        // Scope the flag to the command body: reset it so a stale `true` can't
-        // outlive this dispatch and leak into a later command's `SteelCtx`.
-        self.state.dispatch_inline_output = false;
-
-        if bracket_inline_output {
+        // Close the bracket only if a builtin actually opened it. This runs
+        // before `match result` below so a Steel error raised after screen
+        // entry still gets the TUI restored first. Scoped to this dispatch
+        // either way: reset unconditionally so stale state can't outlive it
+        // and leak into a later command's `SteelCtx`.
+        let entered = matches!(self.state.inline_output, InlineOutputDispatch::Entered);
+        self.state.inline_output = InlineOutputDispatch::Inactive;
+        if entered {
             hume_platform::terminal::print_return_prompt();
             hume_platform::terminal::wait_for_keypress();
             let kitty = self.kitty_enabled;

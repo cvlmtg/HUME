@@ -277,7 +277,26 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
 
     // ── Terminal safety ──────────────────────────────────────────────────────
     fn is_inline_output_command(&self) -> bool {
-        self.state.dispatch_inline_output
+        !matches!(self.state.inline_output, super::InlineOutputDispatch::Inactive)
+    }
+
+    fn ensure_inline_output_screen(&mut self) -> Result<(), String> {
+        // Only `Armed` needs action: `Entered` already left the alt-screen,
+        // `Headless`/`Inactive` have no bracket to enter at all.
+        let super::InlineOutputDispatch::Armed { kitty, mouse, name } = &self.state.inline_output
+        else {
+            return Ok(());
+        };
+        let (kitty, mouse, name) = (*kitty, *mouse, name.clone());
+        hume_platform::terminal::enter_inline_output(kitty, mouse)
+            .map_err(|e| format!("inline-output enter failed: {e}"))?;
+        hume_platform::terminal::print_running_banner(&name);
+        self.state.inline_output = super::InlineOutputDispatch::Entered;
+        #[cfg(test)]
+        {
+            self.state.inline_output_entered = true;
+        }
+        Ok(())
     }
 
     // ── Synchronous command dispatch ─────────────────────────────────────────

@@ -75,6 +75,38 @@ pub(crate) use message_log::Severity;
 // as an unqualified alias.
 pub(crate) use hume_engine::types::EditorMode as Mode;
 
+// ── InlineOutputDispatch ─────────────────────────────────────────────────────
+
+/// State of the `#:inline-output` terminal bracket for the command currently
+/// being dispatched. The alt-screen is entered lazily — only once a builtin
+/// actually has terminal output to produce (`ensure_inline_output_screen`) —
+/// so a command whose body only logs (`log!`, status line) never flashes an
+/// empty screen or blocks on a keypress nobody needed to answer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum InlineOutputDispatch {
+    /// Not dispatching an `#:inline-output` command.
+    Inactive,
+    /// Declared `#:inline-output #t` and `Editor::run` owns the terminal, but
+    /// no builtin has produced output yet — the alt-screen is still up.
+    /// Carries what `ensure_inline_output_screen` needs to enter: the kitty/
+    /// mouse state to restore on the way back, and the command name for the
+    /// running banner.
+    Armed {
+        kitty: bool,
+        mouse: bool,
+        name: String,
+    },
+    /// A builtin has produced output — the alt-screen has been left and the
+    /// running banner printed. Dispatch must close the bracket (press-any-key
+    /// prompt + restore the TUI) after the command body returns.
+    Entered,
+    /// Declared `#:inline-output #t` but off the event loop (tests, headless
+    /// `run_keys`) — there is no alt-screen to leave and no interactive user
+    /// to answer a keypress prompt. Raw stdout writes stay permitted (mirrors
+    /// `Entered`'s effect on `is_inline_output_command`) but no bracket runs.
+    Headless,
+}
+
 // ── EditorState ───────────────────────────────────────────────────────────────
 //
 // All command-mutable editor data. Separated from `Editor` so the Steel VM
@@ -136,11 +168,20 @@ pub(crate) struct EditorState {
     pub(super) history: self::minibuf::history::HistoryStore,
     /// Set by the inline-output dispatch arm to trigger a full ratatui repaint.
     pub(crate) force_full_redraw: bool,
-    /// Whether the Steel command currently being dispatched is `#:inline-output`.
-    /// Set just before `call_steel_cmd`; read back through
-    /// `EditorHostImpl::is_inline_output_command` so `SteelCtx` (and the gated
-    /// `displayln` builtin) know it's safe to write to the real stdout.
-    pub(crate) dispatch_inline_output: bool,
+    /// State of the `#:inline-output` bracket for the Steel command currently
+    /// being dispatched. Set just before `call_steel_cmd`; read and driven by
+    /// `EditorHostImpl::ensure_inline_output_screen` / `is_inline_output_command`
+    /// so `SteelCtx` (and the gated `displayln` builtin) know it's safe to
+    /// write to the real stdout, and so the screen is only entered lazily, on
+    /// the first byte of actual output. See [`InlineOutputDispatch`].
+    pub(crate) inline_output: InlineOutputDispatch,
+    /// Test-only seam: flips `true` when a command body actually enters the
+    /// inline-output terminal bracket (via `ensure_inline_output_screen`).
+    /// Lets tests assert the bracket was skipped (rather than merely that it
+    /// didn't hang, which depends on whether stdin happens to be a TTY)
+    /// without capturing real terminal I/O.
+    #[cfg(test)]
+    pub(crate) inline_output_entered: bool,
     /// Reusable scratch buffer for format operations in visual-line movement.
     pub(super) motion_format_scratch: hume_engine::format::FormatScratch,
     /// Reusable sticky-column buffer for visual j/k movement.
@@ -399,12 +440,6 @@ pub(crate) struct Editor {
     /// toggle + "press any key to return" block) when there is no TUI to
     /// suspend and no interactive user to press a key.
     tui_active: bool,
-    /// Test-only seam: flips `true` when dispatch actually enters the
-    /// inline-output terminal bracket. Lets tests assert the bracket was
-    /// skipped (rather than merely that it didn't hang, which depends on
-    /// whether stdin happens to be a TTY) without capturing real terminal I/O.
-    #[cfg(test)]
-    inline_output_entered: bool,
 }
 
 impl Editor {

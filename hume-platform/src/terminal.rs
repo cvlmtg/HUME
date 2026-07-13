@@ -303,6 +303,10 @@ pub fn end_synchronized_update() -> io::Result<()> {
 ///
 /// Must be paired with [`leave_inline_output`] to restore the editor. Passes
 /// the current kitty and mouse state so [`leave_inline_output`] can re-apply it.
+///
+/// Called from `EditorHostImpl::ensure_inline_output_screen`, not eagerly at
+/// dispatch — the caller only reaches this on a command's first real output,
+/// so a command whose body produces none never leaves the alt-screen at all.
 pub fn enter_inline_output(kitty_enabled: bool, mouse_enabled: bool) -> io::Result<()> {
     // Close any open synchronized-output envelope (harmless if none is open).
     let _ = execute!(stdout(), EndSynchronizedUpdate);

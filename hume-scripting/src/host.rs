@@ -132,11 +132,26 @@ pub trait EditorHost {
 
     // ── Terminal safety ──────────────────────────────────────────────────────
     /// True while the command currently being dispatched is `#:inline-output`
-    /// (the alt-screen TUI is suspended for the duration of its body), meaning
-    /// raw stdout writes are safe. Defaults to `false` so hosts that never run
-    /// under the live TUI (test stubs) need no override.
+    /// (raw stdout writes are safe — either the alt-screen has been left for
+    /// the duration of its body, or there is no TUI to protect at all).
+    /// Defaults to `false` so hosts that never run under the live TUI (test
+    /// stubs) need no override.
     fn is_inline_output_command(&self) -> bool {
         false
+    }
+
+    /// Called by a builtin just before it writes its first byte of terminal
+    /// output (`displayln`, a subprocess with inherited stdio, …). Enters the
+    /// inline-output alt-screen bracket lazily — on the first real output,
+    /// not eagerly at dispatch — so a command whose body only logs never
+    /// flashes an empty screen or blocks on an unnecessary keypress. Safe to
+    /// call more than once per command body: only the first call (per
+    /// dispatch) does anything.
+    ///
+    /// Defaults to `Ok(())` so hosts with no terminal to protect (test stubs)
+    /// need no override.
+    fn ensure_inline_output_screen(&mut self) -> Result<(), String> {
+        Ok(())
     }
 
     // ── Synchronous command dispatch ─────────────────────────────────────────
