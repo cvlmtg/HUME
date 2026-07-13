@@ -7,7 +7,7 @@ use std::path::Path;
 
 use super::*;
 use crate::editor::lsp::LspState;
-use crate::ui::statusline::StatusElement;
+use crate::ui::statusline::{DIAGNOSTICS_ERROR_GLYPH, DIAGNOSTICS_WARNING_GLYPH, StatusElement};
 use hume_lsp::backend::LspBackend;
 use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
@@ -99,7 +99,10 @@ fn diagnostics_element_renders_error_and_warning_counts() {
     let colors = crate::ui::theme::EditorColors::default();
     let (text, _) =
         crate::ui::statusline::render_element(StatusElement::Diagnostics, &c.ed, &colors, "");
-    assert_eq!(text.as_ref(), "✗ 1 ⚠ 2");
+    assert_eq!(
+        text.as_ref(),
+        format!("{DIAGNOSTICS_ERROR_GLYPH} 1 {DIAGNOSTICS_WARNING_GLYPH} 2")
+    );
 }
 
 #[test]
@@ -108,12 +111,12 @@ fn diagnostics_element_omits_zero_half() {
     let colors = crate::ui::theme::EditorColors::default();
     let (text, _) =
         crate::ui::statusline::render_element(StatusElement::Diagnostics, &c.ed, &colors, "");
-    assert_eq!(text.as_ref(), "✗ 1");
+    assert_eq!(text.as_ref(), format!("{DIAGNOSTICS_ERROR_GLYPH} 1"));
 
     let c = setup("abcdefgh\n", &[&[((0, 0), (0, 1), 2)]]);
     let (text, _) =
         crate::ui::statusline::render_element(StatusElement::Diagnostics, &c.ed, &colors, "");
-    assert_eq!(text.as_ref(), "⚠ 1");
+    assert_eq!(text.as_ref(), format!("{DIAGNOSTICS_WARNING_GLYPH} 1"));
 }
 
 #[test]

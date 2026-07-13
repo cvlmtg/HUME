@@ -6,6 +6,9 @@ use super::StatuslineElement;
 use crate::editor::Editor;
 use crate::ui::theme::EditorColors;
 
+pub(crate) const DIAGNOSTICS_ERROR_GLYPH: &str = "✘";
+pub(crate) const DIAGNOSTICS_WARNING_GLYPH: &str = "⚠";
+
 pub(in crate::ui::statusline) struct DiagnosticsElement;
 
 impl StatuslineElement for DiagnosticsElement {
@@ -23,9 +26,9 @@ impl StatuslineElement for DiagnosticsElement {
     fn format((errors, warnings): Self::Data, colors: &EditorColors) -> (Cow<'static, str>, Style) {
         let label = match (errors, warnings) {
             (0, 0) => String::new(),
-            (e, 0) => format!("✘ {e}"),
-            (0, w) => format!("⚠ {w}"),
-            (e, w) => format!("✘ {e} ⚠ {w}"),
+            (e, 0) => format!("{DIAGNOSTICS_ERROR_GLYPH} {e}"),
+            (0, w) => format!("{DIAGNOSTICS_WARNING_GLYPH} {w}"),
+            (e, w) => format!("{DIAGNOSTICS_ERROR_GLYPH} {e} {DIAGNOSTICS_WARNING_GLYPH} {w}"),
         };
         (Cow::Owned(label), colors.statusline)
     }

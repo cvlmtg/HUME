@@ -44,6 +44,8 @@ mod separator;
 
 pub(super) use cwd::CwdElement;
 pub(super) use diagnostics::DiagnosticsElement;
+#[cfg(test)]
+pub(crate) use diagnostics::{DIAGNOSTICS_ERROR_GLYPH, DIAGNOSTICS_WARNING_GLYPH};
 pub(super) use dirty_indicator::DirtyIndicatorElement;
 pub(super) use file_name::FileNameElement;
 pub(super) use kitty_protocol::KittyProtocolElement;
