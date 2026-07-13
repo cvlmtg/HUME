@@ -27,18 +27,20 @@ pub struct Sign {
 
 /// A source of signs for buffer lines (diagnostics, git status, breakpoints,
 /// bookmarks, ...). Multiple sources can share one `SignColumn`, which keeps
-/// only the highest-priority `Sign` per line — this is what lets several
-/// features merge into one narrow gutter column instead of each burning a
-/// column of width.
+/// the top N priority-ordered signs per line (where N = configured sign slots)
+/// — this is what lets several features merge into one gutter column, with
+/// the column's width deciding how many coexisting signs actually show.
 pub trait SignSource {
-    /// Sign for one buffer line, or `None`. Called per `LineStart` row per
-    /// frame — implementations should be cheap lookups into their own state
-    /// (same contract as `VirtualLineSource`).
-    fn sign_for_line(&self, line_idx: usize, ctx: &GutterRowCtx) -> Option<Sign>;
+    /// Signs for one buffer line, ordered by the source's own preference
+    /// (highest priority first when it has several). Called per `LineStart`
+    /// row per frame — implementations should be cheap lookups into their
+    /// own state (same contract as `VirtualLineSource`).
+    fn signs_for_line(&self, line_idx: usize, ctx: &GutterRowCtx) -> Vec<Sign>;
 }
 
 /// Built-in gutter column that merges signs from multiple `SignSource`s,
-/// keeping only the highest-priority one per line.
+/// keeping the top N priority-ordered signs per line (where N = configured
+/// sign slots = `width - 1`). Lower-priority signs that don't fit are hidden.
 ///
 /// Registered like any other `GutterColumn` via
 /// `ProviderSet::add_gutter_column`, which returns the column's own
@@ -113,25 +115,63 @@ impl GutterColumn for SignColumn {
     }
 
     fn render_row(&self, kind: RowKind, ctx: &GutterRowCtx) -> GutterCell {
+        // Highest-priority sign (first cell of the multi-cell output), or
+        // blank. Existing single-cell callers (tests, direct inspection)
+        // keep working unchanged.
+        self.render_row_cells(kind, ctx)
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| GutterCell::blank(crate::types::Scope("ui.linenr")))
+    }
+
+    fn render_row_cells(&self, kind: RowKind, ctx: &GutterRowCtx) -> Vec<GutterCell> {
         let RowKind::LineStart { line_idx } = kind else {
-            // Wrap/Virtual/Filler rows never carry a sign.
-            return GutterCell::blank(crate::types::Scope("ui.linenr"));
+            // Wrap/Virtual/Filler rows never carry a sign — one blank cell
+            // per configured slot so `compose_gutter`'s cell count matches
+            // the column's width.
+            let slots = self.width.saturating_sub(1) as usize;
+            return vec![GutterCell::blank(crate::types::Scope("ui.linenr")); slots];
         };
-        let winner = self
+        let max_signs = self.width.saturating_sub(1) as usize;
+        if max_signs == 0 {
+            return Vec::new();
+        }
+
+        let mut collected: Vec<(Sign, usize)> = self
             .sources
             .iter()
-            .filter_map(|(_, src)| src.sign_for_line(line_idx, ctx))
-            // max_by_key keeps the *last* maximum on ties, i.e. the
-            // later-registered source wins — matches the documented
-            // tie-break rule.
-            .max_by_key(|sign| sign.priority);
-        match winner {
-            Some(sign) => GutterCell {
+            .enumerate()
+            .flat_map(|(src_idx, (_, src))| {
+                src.signs_for_line(line_idx, ctx)
+                    .into_iter()
+                    .map(move |s| (s, src_idx))
+            })
+            .collect();
+        // Sort by (priority desc, source_index desc) — higher priority first,
+        // ties resolve to the later-registered source (matches the documented
+        // tie-break rule).
+        collected.sort_by(|a, b| {
+            b.0.priority
+                .cmp(&a.0.priority)
+                .then(b.1.cmp(&a.1))
+        });
+        collected.truncate(max_signs);
+
+        let mut cells: Vec<GutterCell> = collected
+            .into_iter()
+            .map(|(sign, _)| GutterCell {
                 content: GutterCellContent::Text(sign.text),
                 scope: sign.scope.into(),
-            },
-            None => GutterCell::blank(crate::types::Scope("ui.linenr")),
+            })
+            .collect();
+        // Pad any unused slots with blanks so the cell count equals the
+        // configured sign slots — `compose_gutter` relies on this to lay
+        // out the column at its full width.
+        let blank_scope = crate::types::Scope("ui.linenr");
+        while cells.len() < max_signs {
+            cells.push(GutterCell::blank(blank_scope));
         }
+        cells
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
@@ -164,8 +204,10 @@ mod tests {
     }
 
     impl SignSource for FixedSign {
-        fn sign_for_line(&self, line_idx: usize, _ctx: &GutterRowCtx) -> Option<Sign> {
-            (line_idx == self.line).then(|| self.sign.clone())
+        fn signs_for_line(&self, line_idx: usize, _ctx: &GutterRowCtx) -> Vec<Sign> {
+            (line_idx == self.line)
+                .then(|| vec![self.sign.clone()])
+                .unwrap_or_default()
         }
     }
 
@@ -513,5 +555,89 @@ mod tests {
             panic!("expected an interned ScopeId, got {:?}", cell.scope);
         };
         assert_eq!(theme.resolve(id).fg, Some(ratatui::style::Color::Red));
+    }
+
+    #[test]
+    fn multi_slot_column_keeps_top_n_signs_by_priority() {
+        let mut registry = ScopeRegistry::new();
+        let a = registry.intern("a");
+        let b = registry.intern("b");
+        let c = registry.intern("c");
+
+        let mut col = SignColumn::with_width(3); // 2 sign slots
+        col.add_source(Box::new(FixedSign {
+            line: 0,
+            sign: Sign { text: "!".into(), scope: a, priority: 10 },
+        }));
+        col.add_source(Box::new(FixedSign {
+            line: 0,
+            sign: Sign { text: "+".into(), scope: b, priority: 5 },
+        }));
+        col.add_source(Box::new(FixedSign {
+            line: 0,
+            sign: Sign { text: "~".into(), scope: c, priority: 1 },
+        }));
+
+        let rope = ropey::Rope::new();
+        let cells = col.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
+        assert_eq!(cells.len(), 2, "width-3 column = 2 sign slots");
+        assert_eq!(cells[0].as_str(), "!", "priority 10 first");
+        assert_eq!(cells[1].as_str(), "+", "priority 5 second");
+    }
+
+    #[test]
+    fn multi_slot_column_pads_with_blank_when_fewer_signs_than_slots() {
+        let mut registry = ScopeRegistry::new();
+        let a = registry.intern("a");
+
+        let mut col = SignColumn::with_width(3); // 2 sign slots
+        col.add_source(Box::new(FixedSign {
+            line: 0,
+            sign: Sign { text: "!".into(), scope: a, priority: 10 },
+        }));
+
+        let rope = ropey::Rope::new();
+        let cells = col.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
+        assert_eq!(cells.len(), 2, "still 2 cells — padded to slot count");
+        assert_eq!(cells[0].as_str(), "!");
+        assert_eq!(cells[1].as_str(), " ", "unused slot is blank");
+    }
+
+    #[test]
+    fn multi_slot_column_ties_go_to_later_registered_source() {
+        let mut registry = ScopeRegistry::new();
+        let a = registry.intern("a");
+        let b = registry.intern("b");
+
+        let mut col = SignColumn::with_width(3); // 2 sign slots
+        col.add_source(Box::new(FixedSign {
+            line: 0,
+            sign: Sign { text: "A".into(), scope: a, priority: 10 },
+        }));
+        col.add_source(Box::new(FixedSign {
+            line: 0,
+            sign: Sign { text: "B".into(), scope: b, priority: 10 },
+        }));
+
+        let rope = ropey::Rope::new();
+        let cells = col.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
+        assert_eq!(cells[0].as_str(), "B", "same priority — later source wins");
+        assert_eq!(cells[1].as_str(), "A");
+    }
+
+    #[test]
+    fn width_one_column_keeps_no_signs() {
+        let mut registry = ScopeRegistry::new();
+        let a = registry.intern("a");
+
+        let mut col = SignColumn::with_width(1); // 0 sign slots
+        col.add_source(Box::new(FixedSign {
+            line: 0,
+            sign: Sign { text: "!".into(), scope: a, priority: 10 },
+        }));
+
+        let rope = ropey::Rope::new();
+        let cells = col.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
+        assert!(cells.is_empty(), "width-1 column has 0 sign slots");
     }
 }

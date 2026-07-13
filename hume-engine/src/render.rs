@@ -125,7 +125,6 @@ fn compose_gutter(
     y: u16,
     canvas: &mut PaneCanvas,
 ) {
-    let right_edge = compose_ctx.pane_rect.x + compose_ctx.pane_rect.width;
     let mut gutter_x = compose_ctx.pane_rect.x;
     let gutter_ctx = GutterRowCtx {
         mode: compose_ctx.mode,
@@ -135,56 +134,91 @@ fn compose_gutter(
     };
     for ((_, col_provider), &col_width) in compose_ctx.gutter_columns.iter().zip(col_widths.iter())
     {
-        let cell = col_provider.render_row(row_kind, &gutter_ctx);
-        let text = cell.as_str();
-        // `GutterScope::Name` is the slow by-string path (static builtins);
-        // `Id` is the fast O(1) path for providers that intern at
-        // construction (e.g. `SignSource`). Gutter rendering is ~100
-        // calls/frame either way, so the difference is negligible here.
-        let scope_style: ratatui::style::Style = match cell.scope {
-            crate::providers::GutterScope::Name(name) => {
-                compose_ctx.theme.resolve_by_name(name).into()
-            }
-            crate::providers::GutterScope::Id(id) => compose_ctx.theme.resolve(id).into(),
-        };
-        // Cursorline/pane bg is the base; the gutter scope style layers on top.
-        // If the scope defines its own bg, it wins; otherwise the row bg shows through.
-        let style = match row_bg.or(compose_ctx.pane_bg) {
-            Some(bg) => ratatui::style::Style::default().bg(bg).patch(scope_style),
-            None => scope_style,
-        };
-
-        // Right-align within usable width, then write a trailing separator space.
-        // `usable` bounds how much of `text` may be written: a builtin column
-        // (only `LineNumberColumn` today) always fits, but a future
-        // plugin-supplied column isn't guaranteed to — `set_string` only clips
-        // to the terminal buffer, not to this column's width or the pane
-        // rect, so an overlong cell would otherwise bleed into the content
-        // area or the neighbouring pane. Truncate on grapheme-cluster
-        // boundaries (never raw chars/bytes — the project's text-boundary
-        // invariant) by accumulating display width until `usable` is
-        // exhausted.
-        let usable = col_width.saturating_sub(1); // 1 col reserved as right-padding separator
-        let mut truncated_len = text.len();
-        let mut text_width = 0u16;
-        for (byte_idx, g) in text.grapheme_indices(true) {
-            let w = unicode_display_width(g) as u16;
-            if text_width + w > usable {
-                truncated_len = byte_idx;
-                break;
-            }
-            text_width += w;
+        if col_width == 0 {
+            continue;
         }
-        let text = &text[..truncated_len];
-        let pad = usable.saturating_sub(text_width);
-        for px in 0..pad {
-            canvas.set_cell(gutter_x + px, y, " ", style);
-        }
-        canvas.set_string(gutter_x + pad, y, text, style);
-        let sep_x = (gutter_x + pad + text_width).min(right_edge.saturating_sub(1));
-        canvas.set_cell(sep_x, y, " ", style);
+        let cells = col_provider.render_row_cells(row_kind, &gutter_ctx);
+        // Distribute `col_width` across `cells.len()` sub-cells, each
+        // followed by a one-cell separator. The last sub-cell's trailing
+        // separator is the column's right-padding (matches the single-cell
+        // builtin behaviour). `usable_per_cell` is how much of each
+        // sub-cell's text may be written before truncation.
+        let n_cells = cells.len().max(1);
+        let usable_per_cell = col_width.saturating_sub(n_cells as u16) / n_cells as u16;
+        let mut last_scope: crate::providers::GutterScope =
+            crate::providers::GutterScope::Name(crate::types::Scope("ui.linenr"));
+        for cell in &cells {
+            let text = cell.as_str();
+            // `GutterScope::Name` is the slow by-string path (static builtins);
+            // `Id` is the fast O(1) path for providers that intern at
+            // construction (e.g. `SignSource`). Gutter rendering is ~100
+            // calls/frame either way, so the difference is negligible here.
+            let scope_style: ratatui::style::Style = match cell.scope {
+                crate::providers::GutterScope::Name(name) => {
+                    compose_ctx.theme.resolve_by_name(name).into()
+                }
+                crate::providers::GutterScope::Id(id) => compose_ctx.theme.resolve(id).into(),
+            };
+            // Cursorline/pane bg is the base; the gutter scope style layers on top.
+            // If the scope defines its own bg, it wins; otherwise the row bg shows through.
+            let style = match row_bg.or(compose_ctx.pane_bg) {
+                Some(bg) => ratatui::style::Style::default().bg(bg).patch(scope_style),
+                None => scope_style,
+            };
 
-        gutter_x += col_width;
+            // Right-align within usable width, then write a trailing separator space.
+            // `usable` bounds how much of `text` may be written: a builtin column
+            // (only `LineNumberColumn` today) always fits, but a future
+            // plugin-supplied column isn't guaranteed to — `set_string` only clips
+            // to the terminal buffer, not to this column's width or the pane
+            // rect, so an overlong cell would otherwise bleed into the content
+            // area or the neighbouring pane. Truncate on grapheme-cluster
+            // boundaries (never raw chars/bytes — the project's text-boundary
+            // invariant) by accumulating display width until `usable` is
+            // exhausted.
+            let usable = usable_per_cell;
+            let mut truncated_len = text.len();
+            let mut text_width = 0u16;
+            for (byte_idx, g) in text.grapheme_indices(true) {
+                let w = unicode_display_width(g) as u16;
+                if text_width + w > usable {
+                    truncated_len = byte_idx;
+                    break;
+                }
+                text_width += w;
+            }
+            let text = &text[..truncated_len];
+            let pad = usable.saturating_sub(text_width);
+            for px in 0..pad {
+                canvas.set_cell(gutter_x + px, y, " ", style);
+            }
+            canvas.set_string(gutter_x + pad, y, text, style);
+            let sep_x = gutter_x + pad + text_width;
+            canvas.set_cell(sep_x, y, " ", style);
+
+            gutter_x += usable + 1;
+            last_scope = cell.scope;
+        }
+        // Any leftover width (e.g. a wide LineNumberColumn with a short
+        // number) fills as blanks under the last cell's scope — preserves
+        // the single-cell builtin behaviour where the whole column shared
+        // one scope.
+        if gutter_x < compose_ctx.pane_rect.x + col_width {
+            let last_style: ratatui::style::Style = match last_scope {
+                crate::providers::GutterScope::Name(name) => {
+                    compose_ctx.theme.resolve_by_name(name).into()
+                }
+                crate::providers::GutterScope::Id(id) => compose_ctx.theme.resolve(id).into(),
+            };
+            let style = match row_bg.or(compose_ctx.pane_bg) {
+                Some(bg) => ratatui::style::Style::default().bg(bg).patch(last_style),
+                None => last_style,
+            };
+            while gutter_x < compose_ctx.pane_rect.x + col_width {
+                canvas.set_cell(gutter_x, y, " ", style);
+                gutter_x += 1;
+            }
+        }
     }
 }
 

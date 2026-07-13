@@ -1110,6 +1110,17 @@ impl Editor {
             let visible = self.visible_char_range(pid, bid);
             let visible_lines = self.visible_line_range(pid, bid);
 
+            // Compute the buffer's `signcolumn` setting up front — the
+            // configured column count decides how many signs per line the
+            // plugin merge keeps (the rest is dropped before the map write).
+            let signcolumn = self
+                .state
+                .buffers
+                .get(bid)
+                .overrides
+                .signcolumn(&self.state.settings);
+            let max_plugin_signs = signcolumn.columns as usize;
+
             // Diagnostics: every line a diagnostic touches gets a marker;
             // the most severe diagnostic wins when several touch one line.
             // Clamped to the buffer's last valid char (same defense the
@@ -1153,19 +1164,21 @@ impl Editor {
                 for (line, severity) in diag_best {
                     guard.insert(
                         line,
-                        Sign {
+                        vec![Sign {
                             text: std::borrow::Cow::Borrowed("●"),
                             scope: diag_scopes[severity as usize],
                             priority: 10,
-                        },
+                        }],
                     );
                 }
             }
 
-            // Plugin signs (`set-signs!`): all sources merged, highest
-            // priority per line wins. Sorted by source name first so a tie
-            // between two different sources resolves deterministically
-            // rather than by `HashMap` iteration order.
+            // Plugin signs (`set-signs!`): top N signs per line by priority,
+            // where N = the buffer's configured `signcolumn` columns. Sorted
+            // by source name first so a tie between two different sources
+            // resolves deterministically rather than by `HashMap` iteration
+            // order. Signs beyond the N-slot budget are dropped here — the
+            // `SignColumn` merge downstream doesn't need to see them.
             let mut plugin_raw: Vec<(String, usize, String, String, i64)> = self
                 .state
                 .decorations
@@ -1183,45 +1196,40 @@ impl Editor {
                 .collect();
             plugin_raw.sort_by(|a, b| a.0.cmp(&b.0));
 
-            let mut plugin_best: std::collections::HashMap<usize, (String, String, i64)> =
+            let mut plugin_all: std::collections::HashMap<usize, Vec<(String, String, i64)>> =
                 std::collections::HashMap::new();
             for (_, line, text, scope, priority) in plugin_raw {
-                match plugin_best.entry(line) {
-                    std::collections::hash_map::Entry::Vacant(v) => {
-                        v.insert((text, scope, priority));
-                    }
-                    std::collections::hash_map::Entry::Occupied(mut o) => {
-                        if priority >= o.get().2 {
-                            o.insert((text, scope, priority));
-                        }
-                    }
-                }
+                plugin_all
+                    .entry(line)
+                    .or_default()
+                    .push((text, scope, priority));
             }
             {
                 let mut guard = plugin_map.write().expect("RwLock not poisoned");
                 guard.clear();
-                for (line, (text, scope_name, priority)) in plugin_best {
-                    let scope = self.runtime_scope(&scope_name);
-                    guard.insert(
-                        line,
-                        Sign {
-                            text: std::borrow::Cow::Owned(text),
-                            scope,
-                            priority: priority.clamp(i16::MIN as i64, i16::MAX as i64) as i16,
-                        },
-                    );
+                for (line, mut entries) in plugin_all {
+                    entries.sort_by(|a, b| {
+                        b.2.cmp(&a.2).then(b.0.cmp(&a.0))
+                    });
+                    entries.truncate(max_plugin_signs);
+                    let signs: Vec<Sign> = entries
+                        .into_iter()
+                        .map(|(text, scope_name, priority)| {
+                            let scope = self.runtime_scope(&scope_name);
+                            Sign {
+                                text: std::borrow::Cow::Owned(text),
+                                scope,
+                                priority: priority.clamp(i16::MIN as i64, i16::MAX as i64) as i16,
+                            }
+                        })
+                        .collect();
+                    guard.insert(line, signs);
                 }
             }
 
             // Compute sign column width from the buffer's `signcolumn` setting:
             // `always` keeps it visible at the configured width; `auto` collapses
             // to zero when no signs exist.
-            let signcolumn = self
-                .state
-                .buffers
-                .get(bid)
-                .overrides
-                .signcolumn(&self.state.settings);
             let has_signs = {
                 let diag_empty = diag_map.read().expect("RwLock not poisoned").is_empty();
                 let plugin_empty = plugin_map.read().expect("RwLock not poisoned").is_empty();

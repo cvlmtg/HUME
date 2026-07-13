@@ -102,6 +102,16 @@ pub trait GutterColumn {
     /// Produce content for one display row.
     fn render_row(&self, kind: RowKind, ctx: &GutterRowCtx) -> GutterCell;
 
+    /// Produce content for one display row as a sequence of cells — used by
+    /// columns that render multiple sub-cells within their configured width
+    /// (e.g. `SignColumn` showing the top N priority-ordered signs when the
+    /// user sets `signcolumn=always:N`). Default wraps `render_row` in a
+    /// single-element `Vec`, so existing one-cell implementations
+    /// (`LineNumberColumn`, test mocks) need no change.
+    fn render_row_cells(&self, kind: RowKind, ctx: &GutterRowCtx) -> Vec<GutterCell> {
+        vec![self.render_row(kind, ctx)]
+    }
+
     /// Downcast support for per-frame config sync (e.g. updating `LineNumberStyle`).
     ///
     /// Implement as `fn as_any_mut(&mut self) -> &mut dyn Any { self }`.

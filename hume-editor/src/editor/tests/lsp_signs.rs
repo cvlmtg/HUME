@@ -89,7 +89,7 @@ fn setup_with_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagCtx {
     }
 }
 
-fn diag_signs(ed: &Editor, pid: PaneId) -> std::collections::HashMap<usize, Sign> {
+fn diag_signs(ed: &Editor, pid: PaneId) -> std::collections::HashMap<usize, Vec<Sign>> {
     ed.state.panes.render[pid]
         .signs
         .diagnostics
@@ -98,7 +98,7 @@ fn diag_signs(ed: &Editor, pid: PaneId) -> std::collections::HashMap<usize, Sign
         .clone()
 }
 
-fn plugin_signs(ed: &Editor, pid: PaneId) -> std::collections::HashMap<usize, Sign> {
+fn plugin_signs(ed: &Editor, pid: PaneId) -> std::collections::HashMap<usize, Vec<Sign>> {
     ed.state.panes.render[pid]
         .signs
         .plugin
@@ -129,7 +129,7 @@ fn error_line_gets_a_sign_with_the_error_scope() {
 
     let signs = diag_signs(&c.ed, c.pid);
     assert_eq!(signs.len(), 1);
-    let sign = &signs[&0];
+    let sign = signs[&0].first().expect("one sign on the error line");
     assert_eq!(sign.text, "●");
     assert_eq!(sign.scope, error_scope);
     assert_eq!(sign.priority, 10);
@@ -145,8 +145,9 @@ fn error_beats_warning_on_the_same_line() {
 
     let signs = diag_signs(&c.ed, c.pid);
     assert_eq!(signs.len(), 1, "one line, one merged sign");
+    let sign = signs[&0].first().expect("one sign on the line");
     assert_eq!(
-        signs[&0].scope, error_scope,
+        sign.scope, error_scope,
         "error must win over warning on the same line regardless of publish order"
     );
 }
@@ -267,7 +268,7 @@ fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
 
     let signs = plugin_signs(&ed, pid);
     assert_eq!(signs.len(), 1);
-    let sign = &signs[&0];
+    let sign = signs[&0].first().expect("one sign on the line");
     assert_eq!(sign.text, "!");
     assert_eq!(sign.priority, 7);
     let warn_scope = ed.view.registry.get("warn-scope").unwrap();
@@ -281,7 +282,7 @@ fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
 }
 
 #[test]
-fn two_plugin_sources_on_the_same_line_keep_the_higher_priority() {
+fn two_plugin_sources_on_the_same_line_keep_the_higher_priority_first() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = Editor::open(None).unwrap();
     ed.feed_key(key('i'));
@@ -306,10 +307,63 @@ fn two_plugin_sources_on_the_same_line_keep_the_higher_priority() {
     ed.prepare_frame(80, 25, &mut ctx);
 
     let signs = plugin_signs(&ed, pid);
-    assert_eq!(signs.len(), 1, "one line, one merged winner across sources");
+    assert_eq!(signs.len(), 1, "one line, one merged entry across sources");
+    let line_signs = &signs[&0];
     assert_eq!(
-        signs[&0].text, "+",
+        line_signs.len(),
+        1,
+        "default `signcolumn` columns=1 keeps only the winner"
+    );
+    assert_eq!(
+        line_signs[0].text, "+",
         "priority 9 (vcs) beats priority 3 (linter)"
+    );
+}
+
+/// With `signcolumn=always:2` the plugin merge keeps the top 2 signs per line
+/// (sorted by priority desc), so both sources survive to the render stage —
+/// the `SignColumn` then lays them out left-to-right in the 2-slot gutter.
+#[test]
+fn wider_signcolumn_keeps_multiple_signs_per_line() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = Editor::open(None).unwrap();
+    ed.feed_key(key('i'));
+    for ch in "abcdefgh".chars() {
+        ed.feed_key(key(ch));
+    }
+    ed.feed_key(key_esc());
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).overrides.signcolumn =
+        Some("always:2".parse().unwrap());
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "arm" "" (lambda ()
+             (set-signs! "linter" (current-buffer) (list (list 0 "!" "a" 3)))
+             (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b" 9)))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm");
+
+    let pid = ed.state.focused_pane_id;
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(80, 25, &mut ctx);
+
+    let signs = plugin_signs(&ed, pid);
+    let line_signs = &signs[&0];
+    assert_eq!(
+        line_signs.len(),
+        2,
+        "signcolumn=always:2 keeps both signs on the line"
+    );
+    assert_eq!(line_signs[0].text, "+", "priority 9 first");
+    assert_eq!(line_signs[1].text, "!", "priority 3 second");
+    assert_eq!(
+        sign_column_width(&ed, pid),
+        3,
+        "always:2 = 2 sign slots + 1 padding = 3 cells"
     );
 }
 
