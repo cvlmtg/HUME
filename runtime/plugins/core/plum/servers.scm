@@ -166,12 +166,17 @@
 ;; PLUM never calls `register-lsp-server!` itself — see file header.
 ;; Registration lives entirely in core:lsp (lsp/registration.scm). After an
 ;; install (fresh or already-up-to-date), PLUM asks core:lsp to rescan disk
-;; via `call!` so the server attaches immediately in the same session; if
-;; core:lsp isn't loaded, it warns instead of silently doing nothing.
+;; via `call!` so the server attaches immediately in the same session.
+;; core:lsp may be loaded, declared-but-inactive (the manual's recommended
+;; lazy setup — activates on first matching event/language/command), or
+;; absent from init.scm entirely; each gets a different message.
 (define (plum/notify-lsp!)
-  (if (member "core:lsp" (loaded-plugins))
-      (call! "lsp-rescan-servers")
-      (log! 'warn "PLUM: server installed but core:lsp is not loaded — add (load-plugin \"core:lsp\") to init.scm for LSP features")))
+  (cond
+    ((member "core:lsp" (loaded-plugins)) (call! "lsp-rescan-servers"))
+    ((member "core:lsp" (declared-plugins))
+     (log! 'info "PLUM: server installed — core:lsp will register it once it activates (e.g. when a matching file opens)"))
+    (else
+     (log! 'warn "PLUM: server installed but core:lsp is not loaded — add (load-plugin \"core:lsp\") to init.scm for LSP features"))))
 
 ;; ── Install pipeline ──────────────────────────────────────────────────────────
 

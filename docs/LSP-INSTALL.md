@@ -240,8 +240,15 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
   rescan right after a successful `:lsp-install` (via `call!`, never a direct require —
   see [Placement](#placement-third-plum-module-but-registration-lives-in-corelsp)) — or
   after confirming an already-up-to-date install — so a server installed mid-session
-  attaches immediately, without a restart. If `core:lsp` isn't loaded at that moment,
-  PLUM warns instead: the server is on disk but nothing will attach it this session.
+  attaches immediately, without a restart. If `core:lsp` is declared (lazily) but not yet
+  activated, PLUM logs an info note instead — its own load-time scan runs at activation
+  and picks up the install then, so no rescan is needed. If `core:lsp` isn't in `init.scm`
+  at all, PLUM warns: the server is on disk but nothing will attach it this session.
+  (`plum/notify-lsp!` in `servers.scm` is the three-way dispatch: loaded → rescan; declared
+  → info note; neither → warn. Distinguishing "declared" from "absent" needs
+  `(declared-plugins)` to report `core:*` names too — PLUM's own install-list logic
+  (`plum/missing-plugins`) filters them back out, since core plugins are bundled and never
+  installed by PLUM.)
   `core:lsp` also exposes the rescan directly as `:lsp-rescan-servers`, for servers
   installed out-of-band (not through PLUM).
   **Caveat for a lazily-declared `core:lsp`**: a manifest keyed only on
@@ -278,7 +285,7 @@ and `#:inline-output #t` displays listing output.
 
 | Command | Behaviour |
 |---|---|
-| `:lsp-install [lang]` | No arg: current buffer's language. Downloads, verifies sha256, unpacks, writes receipt; asks `core:lsp` to register and attach already-open buffers if it's loaded, otherwise warns that it isn't. Re-running against an already-up-to-date install still triggers this registration step (a no-op download, but not a no-op session effect) — see [Registration model](#registration-model). No argument completion in v1 — Steel commands have no argument-completion path today (possible follow-up). |
+| `:lsp-install [lang]` | No arg: current buffer's language. Downloads, verifies sha256, unpacks, writes receipt; asks `core:lsp` to register and attach already-open buffers if it's loaded, notes it'll register on activation if it's declared but inactive, otherwise warns it's absent from `init.scm`. Re-running against an already-up-to-date install still triggers this registration step (a no-op download, but not a no-op session effect) — see [Registration model](#registration-model). No argument completion in v1 — Steel commands have no argument-completion path today (possible follow-up). |
 | `:lsp-uninstall <server>` | Shuts down the server's running clients — plural: one per (language, root), and a multi-language server may back several — unregisters every language it serves, removes the server dir. Registry needs a new unregister path — does not exist today; like registration it is language-keyed, so the plugin fans out over the server's seeded language list. |
 | `:lsp-servers` | Catalog listing (`hx --health`-style): every seeded server with languages, seeded version, installed version / not installed / update available. |
 | `:lsp-rescan-servers` (`core:lsp`) | Re-scans `servers/` receipts and registers any not yet registered — the same scan that runs at `core:lsp` load, callable directly for a server installed outside PLUM. |

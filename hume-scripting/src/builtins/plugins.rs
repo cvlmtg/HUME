@@ -505,14 +505,14 @@ pub(crate) fn loaded_plugins(ctx: &mut SteelCtx) -> SteelResult {
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
 }
 
-/// `(declared-plugins)` — return a Steel list of all declared third-party
-/// (non-`core:*`) plugin names.  Used by PLUM to know what to install.
+/// `(declared-plugins)` — return a Steel list of every declared plugin name,
+/// `core:*` included.  PLUM filters out `core:*` itself where install policy
+/// requires it (core plugins are bundled, never installed by PLUM).
 pub(crate) fn declared_plugins(ctx: &mut SteelCtx) -> SteelResult {
     let vals: Vec<SteelVal> = ctx
         .registries
         .declared_plugins
         .iter()
-        .filter(|name| !name.to_ascii_lowercase().starts_with("core:"))
         .map(|s| SteelVal::StringV(s.as_str().into()))
         .collect();
     vals.into_steelval()

@@ -90,12 +90,15 @@ Or name the language directly:
 
 HUME downloads the pinned release, verifies its checksum, and unpacks it, then (if
 `core:lsp` is loaded) registers it — already-open buffers of that language attach
-immediately, no restart needed. If `core:lsp` isn't loaded, you'll see a note that nothing
-will attach this session; load it and the next `:lsp-install` (even for a server already
-at the latest seeded version) registers it. Running `:lsp-install` again for a server
-that's already at the latest seeded version never re-downloads, but still triggers a
-rescan — useful if you loaded `core:lsp` after the fact. (A language you've registered by
-hand is left alone by any rescan, whether or not the server is also PLUM-installed.)
+immediately, no restart needed. If you set `core:lsp` up lazily (see [Setup](#setup)) and
+it hasn't activated yet, you'll instead see a note that it'll register the server once it
+does — nothing more to do. If `core:lsp` isn't in your `init.scm` at all, you'll see a
+note that nothing will attach this session; add it and the next `:lsp-install` (even for a
+server already at the latest seeded version) registers it. Running `:lsp-install` again
+for a server that's already at the latest seeded version never re-downloads, but still
+triggers a rescan — useful if you loaded `core:lsp` after the fact. (A language you've
+registered by hand is left alone by any rescan, whether or not the server is also
+PLUM-installed.)
 
 You don't need to run this ahead of time: opening a file whose language has an installable
 server but nothing registered yet shows a one-line hint, once per language per session —

@@ -281,6 +281,47 @@ fn load_plugin_malformed_name_errors() {
     assert!(!err.is_empty(), "expected error for malformed plugin name");
 }
 
+/// `(declared-plugins)` must include `core:*` names — PLUM's
+/// never-install-core filter lives in Steel (`plum/missing-plugins`), not in
+/// this builtin. No runtime dir is set, so the declare's own disk-resolution
+/// logs an absent-core error and no-ops the activation — but `declared_plugins`
+/// is recorded unconditionally before that check runs (see `declare_plugin`),
+/// which is exactly the persistence this test locks in.
+#[test]
+fn declared_plugins_includes_core_plugins() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+
+    h.eval_source(
+        r#"(declare-plugin "core:lsp" #:events '("on-lsp-attach"))"#,
+        &mut mock,
+    )
+    .unwrap();
+
+    assert!(
+        h.declared_plugins()
+            .iter()
+            .any(|d| d.eq_ignore_ascii_case("core:lsp")),
+        "declared_plugins field does not contain the declared core plugin: {:?}",
+        h.declared_plugins(),
+    );
+
+    h.eval_source(
+        r#"(if (member "core:lsp" (declared-plugins))
+               (log! 'info "PERSISTED")
+               (log! 'info "MISSING"))"#,
+        &mut mock,
+    )
+    .unwrap();
+    assert!(
+        h.peek_pending_messages()
+            .iter()
+            .any(|(_, msg)| msg == "PERSISTED"),
+        "(declared-plugins) did not include the declared core plugin across the eval boundary; messages: {:?}",
+        h.peek_pending_messages(),
+    );
+}
+
 // ── configure-statusline! ─────────────────────────────────────────────────
 
 #[test]

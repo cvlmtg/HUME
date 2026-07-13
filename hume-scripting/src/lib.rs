@@ -31,7 +31,8 @@
 //!   subsequent event — hooks and activation entries are distinct.
 //! - Activation states: `Declared → Loading → Loaded | Failed`. `Loading` guards
 //!   re-entrant cycles (A→B→A); `Failed` does not retry until `:reload-config`.
-//! - PLUM (`core:plum`) reads `(declared-plugins)` (non-`core:` only) to install
+//! - PLUM (`core:plum`) reads `(declared-plugins)` (all declared names, `core:*`
+//!   included — PLUM filters those out itself for install decisions) to install
 //!   third-party plugins. Both `load-plugin` and `declare-plugin` record the name
 //!   in `declared_plugins` (persistent on `ScriptingHost`). Declaring a dep at
 //!   init top-level records it up front so PLUM can install it, even before any

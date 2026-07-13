@@ -701,6 +701,95 @@ fn lsp_install_up_to_date_rescans_when_lsp_loaded() {
     );
 }
 
+/// A lazily-declared (not yet activated) core:lsp — the manual's recommended
+/// setup — must get the activation note from `plum/notify-lsp!`'s declared
+/// branch, not the "not loaded" warn meant for a truly absent core:lsp. Before
+/// this test, `declared-plugins` filtered out every `core:*` name, so
+/// `plum/notify-lsp!` had no way to distinguish "declared but inactive" from
+/// "never configured" and always fell through to the misleading warn.
+#[test]
+#[cfg(not(windows))]
+fn lsp_install_up_to_date_notes_lazily_declared_lsp() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    fabricate_server(
+        data_tmp.path(),
+        "rust-analyzer",
+        "2026-07-06",
+        "rust-analyzer",
+    );
+
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init(
+        &mut ed,
+        data_tmp.path(),
+        "(load-plugin \"core:plum\")\n\
+         (load-plugin \"core:stdlib\")\n\
+         (declare-plugin \"core:lsp\" #:languages '(\"rust\"))",
+    );
+    assert_eq!(
+        ed.lsp.config_command_for_test("rust"),
+        None,
+        "precondition: core:lsp is declared but not yet activated, so nothing is registered"
+    );
+
+    type_cmd(&mut ed, ":lsp-install rust");
+
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some(
+            "PLUM: server installed — core:lsp will register it once it activates \
+             (e.g. when a matching file opens)"
+        ),
+        "a declared-but-inactive core:lsp must get the activation note, not the load-plugin warn"
+    );
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        !log.contains("add (load-plugin \"core:lsp\")"),
+        "must not tell a correctly-configured user to change their config: {log}"
+    );
+    assert_eq!(
+        ed.lsp.config_command_for_test("rust"),
+        None,
+        "must not register — core:lsp still hasn't activated"
+    );
+}
+
+/// `declared-plugins` now includes `core:*` names (needed so
+/// `plum/notify-lsp!` can tell "declared but inactive" apart from "never
+/// configured"). PLUM's own install-list logic must still exclude them —
+/// `:plum-install`/`:plum-list` must never treat a bundled core plugin as
+/// something to `git clone`. `:plum-list`'s trailing "PLUM missing:" status
+/// is the safe way to observe `plum/missing-plugins`'s output without ever
+/// touching the network.
+#[test]
+#[cfg(not(windows))]
+fn plum_missing_plugins_excludes_declared_core_plugins() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init(
+        &mut ed,
+        data_tmp.path(),
+        "(load-plugin \"core:plum\")\n\
+         (load-plugin \"core:stdlib\")\n\
+         (declare-plugin \"core:lsp\" #:languages '(\"rust\"))",
+    );
+
+    type_cmd(&mut ed, ":plum-list");
+
+    let status = ed.state.status_msg.as_deref().unwrap_or("");
+    assert!(
+        status.starts_with("PLUM missing:"),
+        "expected the trailing 'PLUM missing:' status line, got: {status}"
+    );
+    assert!(
+        !status.contains("core:lsp"),
+        "a bundled core plugin must never appear as 'missing' — PLUM would try to \
+         git-clone it: {status}"
+    );
+}
+
 // ── :lsp-uninstall ────────────────────────────────────────────────────────────
 
 #[test]

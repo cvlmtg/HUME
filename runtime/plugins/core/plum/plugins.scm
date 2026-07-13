@@ -42,10 +42,12 @@
 
 ;; ── Set operations ────────────────────────────────────────────────────────────
 
-;;; Plugins declared in init.scm that are not yet on disk.
+;;; Third-party plugins declared in init.scm that are not yet on disk.
+;;; core:* plugins are excluded — they're bundled, never installed by PLUM.
 (define (plum/missing-plugins)
   (let ((installed (plum/installed-plugins)))
-    (filter (lambda (name) (not (member name installed)))
+    (filter (lambda (name) (and (not (starts-with? name "core:"))
+                                 (not (member name installed))))
             (declared-plugins))))
 
 ;;; Plugins on disk that are not (or no longer) declared in init.scm.
