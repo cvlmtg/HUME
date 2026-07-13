@@ -25,6 +25,8 @@ pub(crate) mod syntax;
 pub(crate) mod timers;
 pub(crate) mod ui;
 
+use std::borrow::Cow;
+
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 use steel::steel_vm::engine::Engine;
@@ -275,13 +277,67 @@ const BOOTSTRAP: &str = r#"
     ((_ name args ...)
      (%dispatch-command name (list args ...)))))
 
-; displayln — shadows steel-core's kernel.scm binding (raw, ungated stdout
-; print) with a version gated on SteelCtx::is_inline_output (see io.rs): a
-; no-op unless the alt-screen TUI is guaranteed not to own the terminal. When
-; the gate is open via is_inline_output, this call is also what lazily opens
-; the alt-screen bracket (EditorHost::ensure_inline_output_screen) — the
-; screen appears on the command's first real print, not eagerly at dispatch.
-(define (displayln . args) (%displayln! args))
+; Gated print — capture steel-core's original displayln/display/print/
+; println/newline and the real stdout port ONCE, before PRINT_GATE_SHIMS (see
+; below) redefines the names. This runs against steel's *default* prelude
+; (set_prelude_string is only called after BOOTSTRAP evaluates — see
+; register_all), so these captures are guaranteed to be the originals.
+(define %raw-displayln displayln)
+(define %raw-display display)
+(define %raw-print print)
+(define %raw-println println)
+(define %raw-newline newline)
+(define %stdout-port (current-output-port))
+(define (%stdout-safe?)
+  (if (eq? (current-output-port) %stdout-port)
+      (%stdout-gate!)
+      #t))
+"#;
+
+// PRINT_GATE_SHIMS is appended to BOOTSTRAP itself (top level; nothing else
+// re-imports the print names into a top-level program) and, verbatim, to
+// steel-core's own prelude string via set_prelude_string — since the
+// prelude is prepended to every `(require "path.scm")` unit, this closes
+// the gap where required-module (i.e. every real plugin's) print calls used
+// to resolve straight to steel-core's raw, ungated originals instead of
+// HUME's gate. See io.rs's module doc for the root-cause writeup.
+//
+// Explicit-port forms (`(display obj port)`, …) always forward untouched —
+// writing to a caller-supplied port (e.g. `with-output-to-string`) is
+// TUI-safe regardless of gate state, and forwarding via `apply` keeps the
+// original case-lambda's arity checking intact rather than reimplementing it.
+//
+// Every shim below uses a REST-ONLY parameter list (`. args`), never a fixed
+// leading parameter plus a rest parameter (`obj . port`). Verified
+// empirically against steel-core 0.8.2: a required-module unit that compiles
+// a call site invoking a locally-shadowed prelude name with 2+ positional
+// args, where that name's shim declares a MIXED fixed+rest parameter list,
+// hits a compiler limitation ("cannot reference an identifier before its
+// definition: ##argsN") — reproduced independent of naming, and even with
+// `case-lambda` in place of a rest-arg lambda. A rest-only parameter list
+// does not trigger it. The explicit-port (2-arg) call form still works
+// correctly through a rest-only shim, both at the top level and — for
+// the implicit 0/1-arg form specifically — inside required modules; see
+// io.rs's module doc for the one remaining narrow gap this leaves (explicit
+// port args from *inside* a plugin's own required-module body).
+const PRINT_GATE_SHIMS: &str = r#"
+(define (displayln . args) (when (%stdout-safe?) (apply %raw-displayln args)))
+(define (display . args)
+  (if (pair? (cdr args))
+      (apply %raw-display args)
+      (when (%stdout-safe?) (%raw-display (car args)))))
+(define (print . args)
+  (if (pair? (cdr args))
+      (apply %raw-print args)
+      (when (%stdout-safe?) (%raw-print (car args)))))
+(define (println . args)
+  (if (pair? (cdr args))
+      (apply %raw-println args)
+      (when (%stdout-safe?) (%raw-println (car args)))))
+(define (newline . args)
+  (if (pair? args)
+      (apply %raw-newline args)
+      (when (%stdout-safe?) (%raw-newline))))
 "#;
 
 // ── Registration ──────────────────────────────────────────────────────────────
@@ -397,28 +453,9 @@ pub(crate) fn register_all(steel: &mut Engine) {
     // Logging — push messages to the editor message log
     steel.register_fn_with_ctx(HUME_CTX, "log!", crate::log::log_msg);
 
-    // %displayln! is the Rust leaf behind the BOOTSTRAP `displayln` shim below,
-    // which shadows steel-core's kernel.scm `displayln` (raw, ungated stdout
-    // print) with a version gated on SteelCtx::is_inline_output — see io.rs.
-    //
-    // KNOWN GAP: this shadow does not reach code compiled via `(require
-    // "path.scm")` — i.e. every real HUME plugin (PLUM). A displayln call
-    // from inside a required module's command body silently resolves to
-    // steel-core's raw, ungated kernel `displayln` instead of this gate.
-    // Confirmed empirically (hume-scripting/src/builtins/io.rs's
-    // `required_module_displayln_call_reaches_the_gate` test, currently
-    // `#[ignore]`d, documents the reproduction). Two fix attempts — a
-    // `#%prim.displayln` reserved-slot registration (steel-core's own
-    // `require-builtin ... as #%prim.` aliasing mechanism) and a direct bare
-    // `"displayln"` registration at this same call site — both failed to
-    // close the gap; the true mechanism by which required modules resolve
-    // kernel-provided names is not yet understood. Root-cause fix pending
-    // further investigation into steel-core's module/require compilation
-    // pipeline. Until fixed, PLUM's two `displayln` call sites
-    // (`servers.scm`'s `lsp-servers`, `grammars.scm`'s grammar-compile
-    // progress line) print unconditionally rather than through the
-    // `is_inline_output`/`ensure_inline_output_screen` gate.
-    steel.register_fn_with_ctx(HUME_CTX, "%displayln!", io::displayln);
+    // %stdout-gate! is the Rust leaf behind the gated print shims (displayln,
+    // display, print, println, newline) — see io.rs and PRINT_GATE_SHIMS above.
+    steel.register_fn_with_ctx(HUME_CTX, "%stdout-gate!", io::stdout_gate);
 
     // Opaque ID predicates and equality — context-free; no SteelCtx needed.
     steel.register_fn("buffer-id?", ids::is_buffer_id);
@@ -570,10 +607,40 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_value("runtime-dir", SteelVal::FuncV(fs::runtime_dir));
     steel.register_value("path-join", SteelVal::FuncV(fs::path_join));
 
-    // Evaluate the Scheme bootstrap (defines `load-plugin`).
-    // Runs before any user init.scm; HUME_CTX is not yet set but the
-    // bootstrap only uses `define`, so no builtins are called at this point.
+    // Evaluate the Scheme bootstrap (defines `load-plugin`, and — at its
+    // tail — captures steel-core's original print functions/port before
+    // anything shadows them). Runs before any user init.scm; HUME_CTX is not
+    // yet set but the bootstrap only uses `define`, so no builtins are
+    // called at this point.
     steel
         .compile_and_run_raw_program(BOOTSTRAP.to_owned())
         .expect("HUME scripting bootstrap failed — this is a bug");
+
+    // PRINT_GATE_SHIMS must compile as its OWN program, separate from
+    // BOOTSTRAP: steel-core rejects a single compiled unit that both
+    // references a name (the `%raw-*` captures above) and redefines that
+    // same name later in the same unit — "variable redefined within the top
+    // level definition" / "cannot reference an identifier before its
+    // definition" (verified empirically against steel-core 0.8.2; see
+    // io.rs's module doc). Splitting into two sequential top-level programs
+    // sidesteps this: by the time this call compiles, `displayln` etc. are
+    // ordinary already-bound globals, and redefining them here is a plain
+    // global rebind — no self-reference within the same unit.
+    steel
+        .compile_and_run_raw_program(PRINT_GATE_SHIMS.to_owned())
+        .expect("HUME scripting print-gate shims failed — this is a bug");
+
+    // Append the same shims to steel-core's prelude string. The prelude is
+    // prepended to every `(require "path.scm")` compilation unit (steel-core
+    // internals — see io.rs's module doc), so this closes the gap where a
+    // plugin's own displayln/display/print/println/newline calls would
+    // otherwise resolve to steel-core's raw, ungated originals instead of
+    // HUME's gate. Unlike the top-level case above, a required module's
+    // import-then-body-define compiles as one unit without conflict (the
+    // shim's `define` simply overwrites the mangled slot the prelude import
+    // created moments earlier), so no splitting is needed here.
+    steel.set_prelude_string(Cow::Owned(format!(
+        "{}{PRINT_GATE_SHIMS}",
+        steel::compiler::modules::PRELUDE_STRING
+    )));
 }

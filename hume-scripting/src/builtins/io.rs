@@ -1,29 +1,65 @@
-//! `displayln` — a gated, TUI-safe shadow of steel-core's stdout builtin.
+//! `%stdout-gate!` — the Rust half of HUME's gated print builtins.
 //!
-//! steel-core's own prelude binds `displayln` to a raw `print!` on the real
-//! process stdout. Calling that while HUME's alt-screen TUI owns the terminal
-//! would corrupt the rendered frame. `register_all` (see `builtins/mod.rs`)
-//! registers `%displayln!` after `Engine::new()`, and the BOOTSTRAP shim
-//! rebinds the Scheme-visible name `displayln` to call it, gated on
-//! `SteelCtx::is_inline_output`/`is_init` via [`stdout_is_safe`].
+//! steel-core's `displayln`/`display`/`print`/`println`/`newline` all write
+//! to the real process stdout by default. Calling any of them while HUME's
+//! alt-screen TUI owns the terminal would corrupt the rendered frame.
 //!
-//! **KNOWN GAP**: this shadow does not reach code compiled via `(require
-//! "path.scm")` — i.e. every real HUME plugin (PLUM, per the namespace-
-//! isolation decision in `docs/ROADMAP.md`). A `displayln` call from inside a
-//! required module's command body resolves to steel-core's raw, ungated
-//! kernel version instead of this gate — confirmed empirically, root cause
-//! not yet understood (two fix attempts, a reserved-slot `#%prim.displayln`
-//! registration and a direct bare-name registration, both failed to close
-//! the gap). See the KNOWN GAP note on `%displayln!`'s registration in
-//! `builtins/mod.rs`, and the `#[ignore]`d
-//! `required_module_displayln_call_reaches_the_gate` test below, which is the
-//! live reproduction.
+//! Root cause of why a plain top-level shadow used to miss plugin code: in
+//! steel-core, these five names are exports of the prelude module
+//! `#%private/steel/print` / `#%private/steel/control`, and steel-core
+//! prepends its prelude source to *every* compiled unit — including each
+//! `(require "path.scm")` plugin file (a separate compilation unit from
+//! HUME's top level). A top-level `(define displayln …)` or
+//! `register_value("displayln", …)` only rebinds the name in the host's own
+//! unit; every plugin unit still imports the original straight from the
+//! prelude. See `docs/ROADMAP.md`'s displayln row for the historical
+//! writeup of the two shadow attempts that failed for this reason.
 //!
-//! When the gate is open via `is_inline_output`, a call is also meant to be
-//! the trigger that lazily opens the alt-screen bracket — see
-//! `EditorHost::ensure_inline_output_screen` — but this only happens for code
-//! that actually reaches [`displayln`] below, which the known gap above
-//! excludes for required-module callers.
+//! The fix: HUME appends its own gated redefinitions of all five names to
+//! steel-core's prelude string itself, via the public
+//! `Engine::set_prelude_string` (see `builtins/mod.rs::register_all`). Since
+//! the prelude lands in every unit, the shims shadow the imports inside
+//! every plugin module too, not just the top level.
+//!
+//! One steel-core wrinkle this ran into (verified empirically against
+//! 0.8.2): a single `compile_and_run_raw_program` call cannot both capture a
+//! name's current value (`(define %raw-displayln displayln)`) and later
+//! redefine that same name (`(define displayln …)`) — steel-core rejects it
+//! at compile time ("variable redefined within the top level definition" /
+//! "cannot reference an identifier before its definition"). `register_all`
+//! therefore runs BOOTSTRAP (which captures the originals) and
+//! `PRINT_GATE_SHIMS` (which redefines the five names) as two *separate*
+//! sequential `compile_and_run_raw_program` calls — by the second call,
+//! `displayln` etc. are just ordinary already-bound globals, so redefining
+//! them is a plain rebind, not a self-referential one. A required module
+//! compiles the prelude (with `PRINT_GATE_SHIMS` appended) and the plugin's
+//! own body as one unit without hitting this restriction, since the shim
+//! only *overwrites* the mangled import slot — it never references the
+//! original by name within that same unit.
+//!
+//! A second steel-core wrinkle, also verified empirically: a required
+//! module's compiled unit cannot contain a call site invoking a locally-
+//! shadowed prelude name with 2+ positional args (e.g. an explicit-port
+//! `(display obj port)`) when that name's shim declares a *mixed*
+//! fixed-plus-rest parameter list (`(obj . port)`) — steel-core raises the
+//! same "cannot reference an identifier before its definition" error,
+//! reproduced independent of naming and even with `case-lambda` in place of
+//! a rest-arg lambda. `PRINT_GATE_SHIMS` therefore uses a *rest-only*
+//! parameter list for every shim (`. args`, destructuring `(car args)` /
+//! `(cdr args)` by hand) — this dodges the limitation, and the implicit
+//! 0/1-arg form (the actual PLUM/plugin use case) works correctly in both
+//! the top level and required modules. One narrow residual gap remains: a
+//! plugin that calls one of these five names with an **explicit port
+//! argument from inside its own required-module body** still hits the
+//! compiler limitation (no known workaround short of patching steel-core;
+//! no real HUME code does this today). The explicit-port form works
+//! correctly everywhere else — top-level command bodies, `with-output-to-
+//! string`, `call-with-output-string`, etc.
+//!
+//! This module provides only the gate check itself — [`stdout_gate`],
+//! registered as `%stdout-gate!` — called by each Scheme shim before it
+//! forwards to the captured original. See the `PRINT_GATE_SHIMS` Scheme
+//! constant in `builtins/mod.rs` for the shim definitions.
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
@@ -37,32 +73,23 @@ fn stdout_is_safe(ctx: &SteelCtx) -> bool {
     ctx.is_inline_output || ctx.is_init
 }
 
-/// `(%displayln! args)` — `args` is the Scheme rest-list collected by the
-/// `(define (displayln . args) (%displayln! args))` shim in BOOTSTRAP.
-///
-/// No-ops (returns `#<void>` without touching stdout) unless
-/// [`stdout_is_safe`]. When safe, forwards `args` verbatim to steel-core's
-/// own `displayln` implementation rather than reimplementing it.
-pub(crate) fn displayln(ctx: &mut SteelCtx, args: SteelVal) -> Result<SteelVal, SteelErr> {
+/// `(%stdout-gate!)` — called by each gated print shim (see
+/// `PRINT_GATE_SHIMS` in `builtins/mod.rs`) immediately before it would write
+/// to the real stdout. Returns `#f` (write must be suppressed) unless
+/// [`stdout_is_safe`]. When safe via `is_inline_output` specifically (not
+/// `is_init`, which prints pre-terminal with no bracket to open), lazily
+/// enters the alt-screen bracket on this, the first real write of the
+/// command body.
+pub(crate) fn stdout_gate(ctx: &mut SteelCtx) -> Result<SteelVal, SteelErr> {
     if !stdout_is_safe(ctx) {
-        return Ok(SteelVal::Void);
+        return Ok(SteelVal::BoolV(false));
     }
-    let SteelVal::ListV(list) = args else {
-        steel::stop!(TypeMismatch => "displayln: expected an arg list, got {:?}", args);
-    };
-    // Gate on `is_inline_output` specifically, not `stdout_is_safe`'s `||`:
-    // `is_init` prints run pre-terminal, where there is no alt-screen bracket
-    // to open at all.
     if ctx.is_inline_output {
         ctx.host.ensure_inline_output_screen().map_err(|e| {
-            SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("displayln: {e}"))
+            SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("print: {e}"))
         })?;
     }
-    let SteelVal::FuncV(core_displayln) = steel::primitives::IoFunctions::displayln() else {
-        unreachable!("IoFunctions::displayln always returns FuncV")
-    };
-    let items: Vec<SteelVal> = list.into_iter().collect();
-    core_displayln(&items)
+    Ok(SteelVal::BoolV(true))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -73,18 +100,10 @@ mod tests {
     use crate::null_host::{InlineOutputHost, RecordingInlineOutputHost};
     use crate::test_support::SteelCtxTestHarness;
 
-    fn list_of(items: Vec<SteelVal>) -> SteelVal {
-        use steel::rvals::IntoSteelVal;
-        items.into_steelval().expect("list conversion")
-    }
-
     // ── stdout_is_safe: the actual gate logic ─────────────────────────────────
     //
-    // `displayln` itself can't be asserted on directly for the print-vs-no-op
-    // split (both branches return `#<void>`, so an assertion on the return
-    // value alone would pass even if the gate were removed entirely). These
-    // three cases pin the `||` semantics of `stdout_is_safe` instead — each
-    // one distinguishes `||` from a wrong `&&`.
+    // These three cases pin the `||` semantics of `stdout_is_safe` — each one
+    // distinguishes `||` from a wrong `&&`.
     //
     // Fail oracle: change `stdout_is_safe` to `ctx.is_inline_output &&
     // ctx.is_init` → `neither_flag_set_is_unsafe` still passes, but the other
@@ -112,66 +131,46 @@ mod tests {
         assert!(stdout_is_safe(&ctx));
     }
 
-    // ── displayln: behavior around the gate ────────────────────────────────────
+    // ── stdout_gate: behavior around the gate ──────────────────────────────────
 
-    /// Gate closed: no-ops without inspecting `args` at all — a malformed
-    /// `args` value must not surface as an error when the gate is shut.
+    /// Gate closed: returns `#f`, no bracket entry.
     #[test]
-    fn displayln_noops_and_skips_arg_validation_when_gate_closed() {
+    fn stdout_gate_returns_false_when_closed() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx(); // gate closed
-        let result = displayln(&mut ctx, SteelVal::StringV("not-a-list".into()));
-        assert_eq!(result.unwrap(), SteelVal::Void);
+        let result = stdout_gate(&mut ctx);
+        assert_eq!(result.unwrap(), SteelVal::BoolV(false));
     }
 
-    /// A non-list `args` value is a type error once the gate is open — even
-    /// though the gate lets it through, malformed input from the BOOTSTRAP
-    /// shim (or a future caller) must surface, not vanish.
+    /// Gate open via `is_init` alone: returns `#t`, no bracket entry (there is
+    /// no alt-screen to leave before the terminal exists).
     #[test]
-    fn displayln_rejects_non_list_args_when_gate_open() {
-        let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx_init(); // gate open
-        let result = displayln(&mut ctx, SteelVal::StringV("not-a-list".into()));
-        assert!(result.is_err());
-    }
-
-    /// Valid list args through the open gate forward successfully.
-    #[test]
-    fn displayln_forwards_valid_list_when_gate_open() {
-        let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx_init(); // gate open
-        let result = displayln(&mut ctx, list_of(vec![SteelVal::StringV("hi".into())]));
-        assert_eq!(result.unwrap(), SteelVal::Void);
-    }
-
-    // ── ensure_inline_output_screen: lazy bracket entry ─────────────────────
-
-    /// A real `#:inline-output` print opens the bracket exactly once.
-    #[test]
-    fn displayln_calls_ensure_when_open_via_is_inline_output() {
-        let mut host = RecordingInlineOutputHost::default();
-        let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx_with_host(&mut host); // is_init=false, is_inline_output=true
-        let result = displayln(&mut ctx, list_of(vec![SteelVal::StringV("hi".into())]));
-        assert!(result.is_ok());
-        drop(ctx);
-        assert_eq!(host.ensure_calls, 1);
-    }
-
-    /// An init-time print (`is_init` alone) never opens the bracket — there is
-    /// no alt-screen to leave before the terminal exists.
-    #[test]
-    fn displayln_does_not_call_ensure_when_open_via_is_init_only() {
+    fn stdout_gate_returns_true_and_skips_ensure_when_open_via_is_init_only() {
         let mut host = RecordingInlineOutputHost::default();
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx_init_with_host(&mut host); // is_init=true, is_inline_output=false
-        let result = displayln(&mut ctx, list_of(vec![SteelVal::StringV("hi".into())]));
-        assert!(result.is_ok());
+        let result = stdout_gate(&mut ctx);
+        assert_eq!(result.unwrap(), SteelVal::BoolV(true));
         drop(ctx);
         assert_eq!(host.ensure_calls, 0);
     }
 
-    /// End-to-end regression for the require-module bug documented in this
+    /// Gate open via `is_inline_output`: returns `#t` and opens the bracket
+    /// exactly once per call.
+    #[test]
+    fn stdout_gate_returns_true_and_calls_ensure_when_open_via_is_inline_output() {
+        let mut host = RecordingInlineOutputHost::default();
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_with_host(&mut host); // is_init=false, is_inline_output=true
+        let result = stdout_gate(&mut ctx);
+        assert_eq!(result.unwrap(), SteelVal::BoolV(true));
+        drop(ctx);
+        assert_eq!(host.ensure_calls, 1);
+    }
+
+    // ── End-to-end: gated print shims via the real ScriptingHost ───────────────
+
+    /// Regression guard for the require-module bug documented in this
     /// module's doc comment: a plugin file loaded via `(require "path.scm")`
     /// is a separately-compiled module — exactly the shape of every real
     /// `#:inline-output` PLUM command (`servers.scm`'s `lsp-servers`,
@@ -181,15 +180,11 @@ mod tests {
     /// plugin command is defined) and dispatches it via `call_steel_cmd` — the
     /// same path `Editor::run_steel_command` uses — with a host reporting
     /// `is_inline_output_command() == true`. If the required module's
-    /// `displayln` call resolved to steel-core's raw kernel version instead of
-    /// this module's gated `displayln`, `ensure_calls` stays 0 despite the
-    /// dispatch succeeding — the exact silent-bypass shape of the bug.
-    ///
-    /// KNOWN FAILING — kept `#[ignore]`d as a live reproduction. Un-ignore
-    /// once the real fix lands; this assertion is the actual regression
-    /// guard for whatever that fix turns out to be.
+    /// `displayln` call resolved to steel-core's raw prelude version instead
+    /// of the gated shim (the bug this test used to reproduce, before the
+    /// prelude-injection fix), `ensure_calls` stays 0 despite the dispatch
+    /// succeeding — the exact silent-bypass shape of the bug.
     #[test]
-    #[ignore = "known gap: required-module displayln bypasses the gate — see KNOWN GAP note in builtins/mod.rs::register_all"]
     fn required_module_displayln_call_reaches_the_gate() {
         use crate::ScriptingHost;
         use crate::null_host::{NullHost, RecordingInlineOutputHost};
@@ -229,5 +224,163 @@ mod tests {
             recording_host.ensure_calls, 1,
             "required-module displayln call must reach the gate"
         );
+    }
+
+    /// The other four gated names (`display`, `newline`, `println` — `print`
+    /// is exercised transitively via `println`) reach the gate from inside a
+    /// required module too, not just `displayln`. Three implicit-port calls
+    /// in one command body must open the bracket three times — once per
+    /// gated call — since `RecordingInlineOutputHost` counts every
+    /// `ensure_inline_output_screen` invocation unconditionally (unlike the
+    /// real editor host, which only acts on the first).
+    #[test]
+    fn required_module_other_print_fns_reach_the_gate() {
+        use crate::ScriptingHost;
+        use crate::null_host::{NullHost, RecordingInlineOutputHost};
+
+        let tmp = tempfile::tempdir().unwrap();
+        let plugin_path = tmp.path().join("probe_multi.scm");
+        std::fs::write(
+            &plugin_path,
+            r#"
+                (define-command! "probe-print-multi"
+                  "doc"
+                  (lambda ()
+                    (display "a")
+                    (newline)
+                    (println "b"))
+                  #:inline-output #t)
+            "#,
+        )
+        .unwrap();
+
+        let mut host = ScriptingHost::new();
+        let mut null_host = NullHost;
+        let src = format!(r#"(require "{}")"#, plugin_path.to_string_lossy());
+        host.eval_source(&src, &mut null_host)
+            .expect("requiring the plugin file must not error");
+
+        let mut recording_host = RecordingInlineOutputHost::default();
+        host.call_steel_cmd(
+            "probe-print-multi",
+            None,
+            vec![],
+            hume_engine::pipeline::PaneId::default(),
+            hume_engine::pipeline::BufferId::default(),
+            &mut recording_host,
+        )
+        .expect("dispatching the required-module command must not error");
+
+        assert_eq!(
+            recording_host.ensure_calls, 3,
+            "display, newline, and println must each reach the gate"
+        );
+    }
+
+    /// A `displayln` call at the top level (no `(require …)` involved) must
+    /// also reach the gate — this is the load-bearing BOOTSTRAP-shim path,
+    /// since steel never re-imports the print names into top-level programs.
+    #[test]
+    fn top_level_displayln_call_reaches_the_gate() {
+        use crate::ScriptingHost;
+        use crate::null_host::{NullHost, RecordingInlineOutputHost};
+
+        let mut host = ScriptingHost::new();
+        let mut null_host = NullHost;
+        host.eval_source(
+            r#"
+                (define-command! "probe-print-top"
+                  "doc"
+                  (lambda ()
+                    (displayln "hi-from-top-level"))
+                  #:inline-output #t)
+            "#,
+            &mut null_host,
+        )
+        .expect("defining the top-level command must not error");
+
+        let mut recording_host = RecordingInlineOutputHost::default();
+        host.call_steel_cmd(
+            "probe-print-top",
+            None,
+            vec![],
+            hume_engine::pipeline::PaneId::default(),
+            hume_engine::pipeline::BufferId::default(),
+            &mut recording_host,
+        )
+        .expect("dispatching the top-level command must not error");
+
+        assert_eq!(recording_host.ensure_calls, 1);
+    }
+
+    /// Writes to an explicit custom port (`with-output-to-string`) pass
+    /// through untouched even when the gate is closed — `%stdout-safe?`'s
+    /// `eq?` check against the real stdout port fails inside the
+    /// parameterized dynamic extent, so the write is never suppressed.
+    #[test]
+    fn custom_port_write_bypasses_gate_when_closed() {
+        use crate::ScriptingHost;
+        use crate::null_host::NullHost;
+
+        let mut host = ScriptingHost::new();
+        let mut null_host = NullHost;
+        host.eval_source(
+            r#"
+                (define-command! "probe-custom-port"
+                  "doc"
+                  (lambda ()
+                    (log! 'info (with-output-to-string (lambda () (display "x") (newline))))))
+            "#,
+            &mut null_host,
+        )
+        .expect("defining the command must not error");
+
+        // NullHost defaults is_inline_output_command() to false → gate closed.
+        host.call_steel_cmd(
+            "probe-custom-port",
+            None,
+            vec![],
+            hume_engine::pipeline::PaneId::default(),
+            hume_engine::pipeline::BufferId::default(),
+            &mut null_host,
+        )
+        .expect("dispatching the command must not error");
+
+        let messages = host.take_pending_messages();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].1, "x\n");
+    }
+
+    /// The explicit-port branch forwards straight to the original case-lambda
+    /// rather than reimplementing arity checking — an extra positional
+    /// argument still raises, exactly as it did before the gate existed.
+    #[test]
+    fn explicit_port_form_still_enforces_arity() {
+        use crate::ScriptingHost;
+        use crate::null_host::NullHost;
+
+        let mut host = ScriptingHost::new();
+        let mut null_host = NullHost;
+        host.eval_source(
+            r#"
+                (define-command! "probe-bad-arity"
+                  "doc"
+                  (lambda ()
+                    (call-with-output-string
+                      (lambda (port) (display "a" port "extra")))))
+            "#,
+            &mut null_host,
+        )
+        .expect("defining the command must not error");
+
+        let result = host.call_steel_cmd(
+            "probe-bad-arity",
+            None,
+            vec![],
+            hume_engine::pipeline::PaneId::default(),
+            hume_engine::pipeline::BufferId::default(),
+            &mut null_host,
+        );
+        assert!(result.is_err(), "extra positional arg must still error");
     }
 }

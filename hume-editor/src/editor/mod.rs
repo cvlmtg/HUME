@@ -171,7 +171,7 @@ pub(crate) struct EditorState {
     /// State of the `#:inline-output` bracket for the Steel command currently
     /// being dispatched. Set just before `call_steel_cmd`; read and driven by
     /// `EditorHostImpl::ensure_inline_output_screen` / `is_inline_output_command`
-    /// so `SteelCtx` (and the gated `displayln` builtin) know it's safe to
+    /// so `SteelCtx` (and the gated print shims) know it's safe to
     /// write to the real stdout, and so the screen is only entered lazily, on
     /// the first byte of actual output. See [`InlineOutputDispatch`].
     pub(crate) inline_output: InlineOutputDispatch,
