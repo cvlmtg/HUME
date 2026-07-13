@@ -172,15 +172,30 @@ fn zero_diagnostics_produce_no_signs() {
     assert!(diag_signs(&c.ed, c.pid).is_empty());
 }
 
-// ── Gutter width auto-collapse ────────────────────────────────────────────────
+// ── Gutter width ──────────────────────────────────────────────────────────────
 
 #[test]
-fn gutter_width_collapses_to_zero_with_no_signs() {
+fn gutter_width_stays_at_default_with_no_signs_under_always_mode() {
     let c = setup_with_diagnostics("abcdefgh\n", &[]);
     assert_eq!(
         sign_column_width(&c.ed, c.pid),
+        2,
+        "default is `always` — column stays visible even with no signs"
+    );
+}
+
+#[test]
+fn gutter_width_collapses_under_auto_mode_with_no_signs() {
+    let mut c = setup_with_diagnostics("abcdefgh\n", &[]);
+    let bid = c.ed.focused_buffer_id();
+    c.ed.state.buffers.get_mut(bid).overrides.signcolumn =
+        Some("auto".parse().unwrap());
+    let mut ctx = RenderContext::new();
+    c.ed.prepare_frame(80, 25, &mut ctx);
+    assert_eq!(
+        sign_column_width(&c.ed, c.pid),
         0,
-        "no diagnostics, no plugin signs — column collapses"
+        "auto mode with no signs — column collapses"
     );
 }
 
@@ -191,6 +206,36 @@ fn gutter_width_is_the_default_when_a_diagnostic_exists() {
         sign_column_width(&c.ed, c.pid),
         2,
         "a diagnostic exists — column shows at the default width"
+    );
+}
+
+#[test]
+fn gutter_width_always_2_is_3_cells_wide() {
+    let mut c = setup_with_diagnostics("abcdefgh\n", &[]);
+    let bid = c.ed.focused_buffer_id();
+    c.ed.state.buffers.get_mut(bid).overrides.signcolumn =
+        Some("always:2".parse().unwrap());
+    let mut ctx = RenderContext::new();
+    c.ed.prepare_frame(80, 25, &mut ctx);
+    assert_eq!(
+        sign_column_width(&c.ed, c.pid),
+        3,
+        "always:2 = 2 sign slots + 1 padding = 3 cells"
+    );
+}
+
+#[test]
+fn gutter_width_auto_2_expands_when_signs_exist() {
+    let mut c = setup_with_diagnostics("abcdefgh\n", &[((0, 0), (0, 1), 1)]);
+    let bid = c.ed.focused_buffer_id();
+    c.ed.state.buffers.get_mut(bid).overrides.signcolumn =
+        Some("auto:2".parse().unwrap());
+    let mut ctx = RenderContext::new();
+    c.ed.prepare_frame(80, 25, &mut ctx);
+    assert_eq!(
+        sign_column_width(&c.ed, c.pid),
+        3,
+        "auto:2 with signs = 2 sign slots + 1 padding = 3 cells"
     );
 }
 

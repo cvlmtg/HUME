@@ -1213,16 +1213,33 @@ impl Editor {
                 }
             }
 
-            // Collapse the gutter to zero width when this pane has no signs
-            // at all; grow it back to the default (2) as soon as one exists.
+            // Compute sign column width from the buffer's `signcolumn` setting:
+            // `always` keeps it visible at the configured width; `auto` collapses
+            // to zero when no signs exist.
+            let signcolumn = self
+                .state
+                .buffers
+                .get(bid)
+                .overrides
+                .signcolumn(&self.state.settings);
             let has_signs = {
                 let diag_empty = diag_map.read().expect("RwLock not poisoned").is_empty();
                 let plugin_empty = plugin_map.read().expect("RwLock not poisoned").is_empty();
                 !(diag_empty && plugin_empty)
             };
+            let width = match signcolumn.mode {
+                crate::settings::SignColumnMode::Always => signcolumn.width(),
+                crate::settings::SignColumnMode::Auto => {
+                    if has_signs {
+                        signcolumn.width()
+                    } else {
+                        0
+                    }
+                }
+            };
             self.view.panes[pid]
                 .providers
-                .sync_sign_column_width(if has_signs { 2 } else { 0 });
+                .sync_sign_column_width(width);
         }
     }
 

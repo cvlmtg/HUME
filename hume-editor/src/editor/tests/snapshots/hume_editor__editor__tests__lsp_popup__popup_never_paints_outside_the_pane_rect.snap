@@ -1,10 +1,9 @@
 ---
 source: hume-editor/src/editor/tests/lsp_popup.rs
-assertion_line: 162
 expression: snap
 ---
-<fg=#c8c8d2,bg=#3a3a3a>1 </><fg=#d0d0d0,bg=#3a3a3a>hello</>
-<fg=#808080,bg=#1a1a1a>~ </><bg=#1a1a1a>     </><fg=#d0d0d0,bg=#282832>hover text</>
+<fg=#808080,bg=#3a3a3a>  </><fg=#c8c8d2,bg=#3a3a3a>1 </><fg=#d0d0d0,bg=#3a3a3a>hello</>
+<fg=#808080,bg=#1a1a1a>~   </><bg=#1a1a1a>     </><fg=#d0d0d0,bg=#282832>hover text</>
 <fg=#808080,bg=#1a1a1a>~</>
 <fg=#808080,bg=#1a1a1a>~</>
 <fg=#808080,bg=#1a1a1a>~</>

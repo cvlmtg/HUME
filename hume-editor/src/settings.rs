@@ -97,6 +97,109 @@ impl FromStr for TabStyle {
     }
 }
 
+// ── SignColumnConfig ──────────────────────────────────────────────────────────
+
+/// Whether the sign column stays visible or collapses when empty.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SignColumnMode {
+    /// Always visible, regardless of whether any signs exist.
+    #[default]
+    Always,
+    /// Collapses to zero width when no signs exist.
+    Auto,
+}
+
+impl SignColumnMode {
+    pub const VALUES: &'static [&'static str] = &["always", "auto"];
+}
+
+impl fmt::Display for SignColumnMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Always => f.write_str("always"),
+            Self::Auto => f.write_str("auto"),
+        }
+    }
+}
+
+impl FromStr for SignColumnMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "always" => Ok(Self::Always),
+            "auto" => Ok(Self::Auto),
+            _ => Err(format!(
+                "invalid signcolumn mode: expected 'always' or 'auto', got '{s}'"
+            )),
+        }
+    }
+}
+
+/// Sign column configuration: visibility mode and number of sign slots.
+///
+/// Wire format: `"always"`, `"always:N"`, `"auto"`, `"auto:N"` where N is the
+/// number of sign slots (1–127). The gutter width is `columns + 1` (one cell
+/// per sign plus one padding column). Default is `"always"` (= `"always:1"`,
+/// width 2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SignColumnConfig {
+    pub mode: SignColumnMode,
+    /// Number of sign slots. Width = `columns + 1` (padding).
+    pub columns: u8,
+}
+
+impl Default for SignColumnConfig {
+    fn default() -> Self {
+        Self {
+            mode: SignColumnMode::Always,
+            columns: 1,
+        }
+    }
+}
+
+impl SignColumnConfig {
+    /// Gutter width in cells: one cell per sign slot plus one padding column.
+    pub fn width(self) -> u8 {
+        self.columns.saturating_add(1)
+    }
+
+    pub const VALUES: &'static [&'static str] = &["always", "auto", "always:1", "auto:1"];
+}
+
+impl fmt::Display for SignColumnConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.mode, self.columns)
+    }
+}
+
+impl FromStr for SignColumnConfig {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (mode_str, cols_str) = match s.split_once(':') {
+            Some((m, c)) => (m, Some(c)),
+            None => (s, None),
+        };
+        let mode: SignColumnMode = mode_str.parse()?;
+        let columns = match cols_str {
+            Some(c) => {
+                let n: u8 = c.parse().map_err(|_| {
+                    format!("invalid signcolumn columns: expected 1–127, got '{c}'")
+                })?;
+                if n == 0 || n > 127 {
+                    return Err(format!(
+                        "invalid signcolumn columns: expected 1–127, got '{n}'"
+                    ));
+                }
+                n
+            }
+            None => 1,
+        };
+        Ok(Self { mode, columns })
+    }
+}
+
 // ── SettingScope ──────────────────────────────────────────────────────────────
 
 /// Scope for a `:set` command.
@@ -505,6 +608,9 @@ define_settings! {
         "auto-pairs-enabled" => auto_pairs_enabled: bool = true,
             scope: ["global", "buffer"],
             parser: bool;
+        "signcolumn" => signcolumn: SignColumnConfig = SignColumnConfig::default(),
+            scope: ["global", "buffer"],
+            parser: from_str;
     }
     extra_global {
         statusline: StatusLineConfig = StatusLineConfig::default();
@@ -680,6 +786,7 @@ mod tests {
         assert_eq!(s.line_number_style, LineNumberStyle::Hybrid);
         assert!(s.auto_pairs_enabled);
         assert!(s.pane_dividers);
+        assert_eq!(s.signcolumn, SignColumnConfig::default());
     }
 
     #[test]
@@ -693,6 +800,7 @@ mod tests {
         assert!(ov.whitespace_space.is_none());
         assert!(ov.whitespace_tab.is_none());
         assert!(ov.whitespace_newline.is_none());
+        assert!(ov.signcolumn.is_none());
     }
 
     // ── Resolution: override present → returns override value ─────────────────
@@ -1355,5 +1463,86 @@ mod tests {
                 );
             }
         }
+    }
+
+    // ── SignColumnConfig parsing ──────────────────────────────────────────────
+
+    #[test]
+    fn signcolumn_default_is_always_1() {
+        let cfg = SignColumnConfig::default();
+        assert_eq!(cfg.mode, SignColumnMode::Always);
+        assert_eq!(cfg.columns, 1);
+        assert_eq!(cfg.width(), 2);
+    }
+
+    #[test]
+    fn signcolumn_parses_always() {
+        let cfg: SignColumnConfig = "always".parse().unwrap();
+        assert_eq!(cfg.mode, SignColumnMode::Always);
+        assert_eq!(cfg.columns, 1);
+    }
+
+    #[test]
+    fn signcolumn_parses_auto() {
+        let cfg: SignColumnConfig = "auto".parse().unwrap();
+        assert_eq!(cfg.mode, SignColumnMode::Auto);
+        assert_eq!(cfg.columns, 1);
+    }
+
+    #[test]
+    fn signcolumn_parses_always_with_columns() {
+        let cfg: SignColumnConfig = "always:3".parse().unwrap();
+        assert_eq!(cfg.mode, SignColumnMode::Always);
+        assert_eq!(cfg.columns, 3);
+        assert_eq!(cfg.width(), 4);
+    }
+
+    #[test]
+    fn signcolumn_parses_auto_with_columns() {
+        let cfg: SignColumnConfig = "auto:2".parse().unwrap();
+        assert_eq!(cfg.mode, SignColumnMode::Auto);
+        assert_eq!(cfg.columns, 2);
+        assert_eq!(cfg.width(), 3);
+    }
+
+    #[test]
+    fn signcolumn_rejects_zero_columns() {
+        assert!("always:0".parse::<SignColumnConfig>().is_err());
+        assert!("auto:0".parse::<SignColumnConfig>().is_err());
+    }
+
+    #[test]
+    fn signcolumn_rejects_invalid_mode() {
+        assert!("bogus".parse::<SignColumnConfig>().is_err());
+        assert!("bogus:1".parse::<SignColumnConfig>().is_err());
+    }
+
+    #[test]
+    fn signcolumn_rejects_non_numeric_columns() {
+        assert!("always:abc".parse::<SignColumnConfig>().is_err());
+    }
+
+    #[test]
+    fn signcolumn_display_round_trips() {
+        for input in ["always:1", "auto:1", "always:3", "auto:2"] {
+            let cfg: SignColumnConfig = input.parse().unwrap();
+            assert_eq!(cfg.to_string(), input);
+        }
+    }
+
+    #[test]
+    fn set_global_signcolumn() {
+        let s = global("signcolumn", "auto:2").unwrap();
+        assert_eq!(s.signcolumn.mode, SignColumnMode::Auto);
+        assert_eq!(s.signcolumn.columns, 2);
+    }
+
+    #[test]
+    fn set_buffer_signcolumn() {
+        let global = EditorSettings::default();
+        let ov = buffer("signcolumn", "always:3").unwrap();
+        let cfg = ov.signcolumn(&global);
+        assert_eq!(cfg.mode, SignColumnMode::Always);
+        assert_eq!(cfg.columns, 3);
     }
 }
