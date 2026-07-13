@@ -33,27 +33,30 @@
 ;; See plugins.md and core-plugins.md.
 
 ;; (load-plugin "core:stdlib")         ; selection-query helpers other plugins need
-;; (load-plugin "core:plum")           ; plugin/grammar/language-server manager
+;; (load-plugin "core:plum")           ; plugin/grammar manager
 
 ;; Language servers — see user-manual/docs/lsp.md for setup and per-language examples.
-;; With core:plum AND core:lsp both loaded, run :lsp-install (per language) to download,
-;; register, and attach a server automatically — no manual registration below needed for
-;; a seeded server. core:lsp does the registering; core:plum only downloads.
+;; core:lsp alone is enough: run :lsp-install (per language) to download, verify,
+;; register, and attach a server automatically — no manual registration below needed
+;; for a seeded server. core:plum is not involved in language servers at all.
 ;;
-;; core:lsp can be declared lazily, but #:events '("on-lsp-attach") alone never activates
-;; from a PLUM-managed install — nothing is registered yet, so nothing attaches, so the
-;; event never fires. Name the languages you rely on PLUM for in #:languages so opening a
-;; matching file triggers activation directly (or just (load-plugin "core:lsp") eagerly):
+;; core:lsp can be declared lazily, but #:events '("on-lsp-attach") alone never
+;; activates on its own — nothing is registered yet, so nothing attaches, so the event
+;; never fires. Name the languages you want servers installed for in #:languages so
+;; opening a matching file triggers activation directly, list the lsp-install/etc.
+;; commands in #:commands so typing one of them does, or just
+;; (load-plugin "core:lsp") eagerly:
 ;; (declare-plugin "core:lsp"
 ;;   #:events '("on-lsp-attach")
 ;;   #:languages '("rust")
 ;;   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
 ;;                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
 ;;                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
-;;                "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger"))
+;;                "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger"
+;;                "lsp-install" "lsp-uninstall" "lsp-servers" "lsp-rescan-servers"))
 ;;
-;; A manual registration always overrides a PLUM-managed one — use it for a local
-;; build, a version PLUM doesn't carry, or to prefer a $PATH copy:
+;; A manual registration always overrides an :lsp-install-managed one — use it for a
+;; local build, a version the seeded catalog doesn't carry, or to prefer a $PATH copy:
 ;; (register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
 
 ;; Third-party plugins, installed by :plum-install:

@@ -1,23 +1,22 @@
-;;; core:lsp/registration.scm — startup registration of PLUM-installed LSP
-;;; servers. Self-contained: loads the seeded catalog and reads receipts
-;;; itself rather than requiring anything from core:plum — plugins never
-;;; require each other's modules (see docs/ROADMAP.md "Plugin namespace
-;;; isolation"). core:plum only installs servers to disk (see
-;;; plum/servers.scm); this file is what turns an installed server into a
-;;; live registration. A few small helpers below are intentional twins of
-;;; ones in plum/servers.scm and plum/lib.scm — kept in sync by hand, not
-;;; shared, since there is no cross-plugin require to share them through.
+;;; core:lsp/registration.scm — the LSP server catalog, receipt/path
+;;; primitives, and the scan that turns an installed server into a live
+;;; registration. `servers.scm` (this plugin's install/uninstall pipeline)
+;;; requires this file for its read-side helpers — both live in core:lsp, so
+;;; there is no cross-plugin require to route around (see docs/ROADMAP.md
+;;; "Plugin namespace isolation").
 
 (require-builtin steel/vectors)
-(provide lsp/register-installed-servers!)
+(provide lsp/register-installed-servers! lsp/field lsp/servers-dir lsp/server-dir
+         lsp/receipt-path lsp/read-receipt lsp/receipt-bin lsp/receipt-version
+         lsp/servers-catalog)
 
 ;; ── Server catalog ────────────────────────────────────────────────────────────
 ;;
 ;; Hash: name → server-entry fields, the tagged-alist tail from
 ;; lsp-servers.scm: (languages ...) (command . cmd) (args ...) (settings ...).
-;; Twin of plum/servers.scm's *plum-lsp-servers* — plum needs its own copy to
-;; resolve `:lsp-install <lang>` and list `:lsp-servers`; this plugin only
-;; needs it to turn a receipt's bin path into a full registration.
+;; Exposed read-only via `lsp/servers-catalog` — `servers.scm` needs it to
+;; resolve `:lsp-install <lang>` and list `:lsp-servers`; this file needs it
+;; to turn a receipt's bin path into a full registration.
 (define *lsp-servers* (hash))
 
 ;;; Register one lsp-servers.scm entry: `(name field...)`.
@@ -29,12 +28,16 @@
     (path-join (runtime-dir) "scheme" "lsp-servers.scm")
     read))
 
+;;; The seeded server catalog: name → server-entry fields. Read-only accessor
+;;; — callers must not mutate the returned hash.
+(define (lsp/servers-catalog) *lsp-servers*)
+
 ;; ── Field access ──────────────────────────────────────────────────────────────
 ;;
 ;; Entries in the catalog are tagged alists — `(key . value)` (a scalar or
 ;; #(...) vector leaf) or `(key sub…)` (a nested list) — never positional
 ;; tuples. `car` works on both shapes, which is what makes a single lookup
-;; helper possible. Twin of plum/field (plum/servers.scm).
+;; helper possible.
 
 ;;; First element of `fields` whose car is `key` (a symbol), or `#f`.
 (define (lsp/field fields key)
@@ -43,7 +46,6 @@
         (else (lsp/field (cdr fields) key))))
 
 ;; ── Directory entry filter + listing ──────────────────────────────────────────
-;; Twins of plum/valid-dir-entry? and plum/list-dir (plum/lib.scm).
 
 ;;; Return #t if `name` is a valid, traversable directory entry (not "." or "..").
 (define (lsp/valid-dir-entry? name)
@@ -55,7 +57,6 @@
   (sort (map file-name (read-dir dir)) string<?))
 
 ;; ── Paths ─────────────────────────────────────────────────────────────────────
-;; Twins of plum/servers-dir / plum/server-dir / plum/receipt-path.
 
 (define (lsp/servers-dir) (path-join (data-dir) "servers"))
 (define (lsp/server-dir name) (path-join (lsp/servers-dir) name))
@@ -65,9 +66,9 @@
 ;;
 ;; receipt.scm is the install commit point: pure data
 ;; `((name . "X") (version . "V") (bin . "relative/bin/path"))`, written by
-;; `plum/install-server!`. A server dir without a readable receipt is an
-;; interrupted install (see docs/LSP-INSTALL.md "Installation layout").
-;; Twins of plum/read-receipt / plum/receipt-version / plum/receipt-bin.
+;; `servers.scm`'s `lsp/install-server!`. A server dir without a readable
+;; receipt is an interrupted install (see docs/LSP-INSTALL.md "Installation
+;; layout").
 
 ;;; Read `name`'s receipt, or `#f` if missing/unreadable (interrupted install).
 (define (lsp/read-receipt name)
@@ -75,6 +76,7 @@
     (call-with-input-file (lsp/receipt-path name) read)))
 
 (define (lsp/receipt-bin receipt) (cdr (lsp/field receipt 'bin)))
+(define (lsp/receipt-version receipt) (cdr (lsp/field receipt 'version)))
 
 ;; ── Settings conversion ───────────────────────────────────────────────────────
 ;;
@@ -82,8 +84,7 @@
 ;; (see docs/LSP-INSTALL.md "Seeded data format"): `(key . scalar)`,
 ;; `(key . #(elem…))` for a JSON array, or `(key entry…)` for a nested
 ;; object. `steel_to_json` has no case for a raw vector, so every `#(...)`
-;; must become a Steel list before it can reach `#:settings`. Twin of
-;; plum/vector->steel-list + plum/settings->hash.
+;; must become a Steel list before it can reach `#:settings`.
 
 ;;; Convert a #(...) vector into a Steel list.
 (define (lsp/vector->steel-list v)
@@ -117,8 +118,9 @@
 ;;; init.scm run *after* `load-plugin`, last-wins-overriding the scan — see
 ;;; docs/LSP.md's "Multiple servers per language" row), so registering
 ;;; unconditionally there matches prior behavior. Only a mid-session call
-;;; (`:lsp-rescan-servers`, or PLUM's post-install notify) runs with real
-;;; dispatch context and gets the real check.
+;;; (`:lsp-rescan-servers`, or the rescan `:lsp-install` runs after a
+;;; successful/up-to-date install) runs with real dispatch context and gets
+;;; the real check.
 (define (lsp/language-registered? lang)
   (with-handler (lambda (err) #f) (lsp-registered-for-language? lang)))
 
@@ -127,10 +129,10 @@
 ;;; multi-language server; only root markers vary per language (see
 ;;; docs/LSP-INSTALL.md "Seeded data format"). Skipping an already-registered
 ;;; language is what makes a mid-session rescan (`:lsp-rescan-servers`, or
-;;; the notify after `:lsp-install`) leave a user's own manual
-;;; `register-lsp-server!` override alone instead of last-wins-clobbering it
-;;; with the catalog default — the scan only needs to pick up languages
-;;; nothing has claimed yet.
+;;; the rescan `:lsp-install` runs after installing) leave a user's own
+;;; manual `register-lsp-server!` override alone instead of
+;;; last-wins-clobbering it with the catalog default — the scan only needs
+;;; to pick up languages nothing has claimed yet.
 (define (lsp/register-server-languages! name cmd)
   (let* ((fields   (hash-ref *lsp-servers* name))
          (langs    (filter (lambda (lang-entry) (not (lsp/language-registered? (car lang-entry))))
@@ -150,11 +152,12 @@
 ;; ── Startup server registration ───────────────────────────────────────────────
 ;;
 ;; Passive: registers already-installed servers only (a readable receipt
-;; naming a seeded server), no subprocess, no network. `.install-lock` (PLUM's
-;; cross-process install lock sentinel file) lives directly under
-;; `servers-dir` alongside the per-server subdirectories — excluded here so a
-;; lock left behind by a crash (or present during a legitimate concurrent
-;; install elsewhere) is never misread as an interrupted or orphan server.
+;; naming a seeded server), no subprocess, no network. `.install-lock`
+;; (the cross-process install lock sentinel file `servers.scm` acquires
+;; around install/uninstall) lives directly under `servers-dir` alongside
+;; the per-server subdirectories — excluded here so a lock left behind by a
+;; crash (or present during a legitimate concurrent install elsewhere) is
+;; never misread as an interrupted or orphan server.
 ;;
 ;; Runs at plugin load, or at lazy activation. Either way,
 ;; `apply_pending_lsp_server_reg` (hume-editor/src/editor/lsp/registry.rs)
@@ -164,9 +167,9 @@
 ;; activation only queues them, and they aren't applied until the next
 ;; effects-draining point (a hook with a registered handler, or the next
 ;; command dispatch) — see docs/ROADMAP.md's "Lazy-activation queued effects"
-;; open question. Also exposed as the `lsp-rescan-servers` command so PLUM
-;; can trigger a rescan right after an install without this plugin requiring
-;; anything from PLUM's module.
+;; open question. Also exposed as the `lsp-rescan-servers` command, and
+;; called directly by `servers.scm`'s install/uninstall commands right after
+;; they mutate disk — no cross-plugin notify needed, both live here.
 (define (lsp/register-installed-servers!)
   (let ((sdir (lsp/servers-dir)))
     (when (path-exists? sdir)
@@ -176,10 +179,10 @@
             (cond
               ((not receipt)
                (log! 'warn (string-append "LSP: interrupted install of " name
-                                          " — run :lsp-install (core:plum) to redo, or delete the directory")))
+                                          " — run :lsp-install to redo, or delete the directory")))
               ((not (hash-contains? *lsp-servers* name))
                (log! 'warn (string-append "LSP: orphan server " name
-                                          " — not in the seeded catalog, run :lsp-uninstall (core:plum) to remove")))
+                                          " — not in the seeded catalog, run :lsp-uninstall to remove")))
               (else
                (lsp/register-server-languages!
                  name

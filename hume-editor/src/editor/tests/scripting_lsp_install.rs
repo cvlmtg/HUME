@@ -1,6 +1,7 @@
-// Editor-level tests for LSP-INSTALL step 3 (PLUM `servers.scm`): scan-on-load
-// registration, :lsp-install/:lsp-uninstall/:lsp-servers, receipts, orphan
-// warnings, and the on-language-set discovery hint. See docs/LSP-INSTALL.md.
+// Editor-level tests for core:lsp's server install pipeline (servers.scm):
+// scan-on-load registration, :lsp-install/:lsp-uninstall/:lsp-servers,
+// receipts, orphan warnings, and the on-language-set discovery hint. See
+// docs/LSP-INSTALL.md.
 //
 // Fixture servers, chosen from the real runtime/scheme/lsp-{servers,sources}.scm
 // catalogs (verified at authoring time, re-checked by these tests every run):
@@ -26,7 +27,7 @@ fn canonical_data_dir(root: &Path) -> PathBuf {
 }
 
 /// Write a receipt + a dummy binary file for `name` directly into
-/// `<data_dir>/servers/<name>/`, matching what `plum/install-server!` would
+/// `<data_dir>/servers/<name>/`, matching what `lsp/install-server!` would
 /// produce — for scan-time tests that don't need a real network install.
 fn fabricate_server(data_dir_root: &Path, name: &str, version: &str, bin: &str) {
     let dir = canonical_data_dir(data_dir_root).join("servers").join(name);
@@ -75,14 +76,16 @@ fn load_with_init(ed: &mut Editor, data_dir: &std::path::Path, init_src: &str) {
     }
 }
 
-/// Load the real `core:plum` plugin only — the installer, no registration.
+/// Load the real `core:plum` plugin only — plugin/grammar management, no
+/// LSP awareness at all (servers.scm lives entirely in core:lsp now).
 #[cfg(not(windows))]
 fn load_plum(ed: &mut Editor, data_dir: &std::path::Path) {
     load_with_init(ed, data_dir, r#"(load-plugin "core:plum")"#);
 }
 
 /// Load the real `core:lsp` plugin only (plus its documented `core:stdlib`
-/// dependency) — registration, no installer.
+/// dependency) — the entire LSP server lifecycle: install, uninstall,
+/// listing, and scan-on-load registration.
 #[cfg(not(windows))]
 fn load_lsp(ed: &mut Editor, data_dir: &std::path::Path) {
     load_with_init(
@@ -92,26 +95,12 @@ fn load_lsp(ed: &mut Editor, data_dir: &std::path::Path) {
     );
 }
 
-/// Load both real plugins, `core:plum` then `core:lsp` — the ordering a
-/// normal init.scm relying on installed servers would use.
-#[cfg(not(windows))]
-fn load_plum_and_lsp(ed: &mut Editor, data_dir: &std::path::Path) {
-    load_with_init(
-        ed,
-        data_dir,
-        "(load-plugin \"core:plum\")\n(load-plugin \"core:stdlib\")\n(load-plugin \"core:lsp\")",
-    );
-}
-
-/// PLUM's catalog load (lsp-servers.scm/lsp-sources.scm) runs its real body
-/// against the real catalogs with an empty data dir. This is a pure
-/// Scheme-syntax/logic smoke test for `servers.scm`, not an installation
-/// test — it must catch parse errors, unbound identifiers, and
-/// context-gating mistakes (e.g. calling a command-only builtin at load
-/// time) before any of that reaches a real install.
+/// core:plum's own load must never error — a pure Scheme-syntax/logic smoke
+/// test for `plugins.scm`/`grammars.scm` (no LSP catalogs touch this plugin
+/// anymore; that's `lsp_plugin_loads_with_real_lsp_catalogs`'s job below).
 #[test]
 #[cfg(not(windows))]
-fn plum_plugin_loads_with_real_lsp_catalogs() {
+fn plum_plugin_loads_cleanly() {
     let _lock = lock();
 
     let data_tmp = tempfile::tempdir().unwrap();
@@ -127,13 +116,13 @@ fn plum_plugin_loads_with_real_lsp_catalogs() {
         .collect();
     assert!(
         errors.is_empty(),
-        "loading core:plum against the real lsp-servers.scm/lsp-sources.scm catalogs must not error: {errors:?}"
+        "loading core:plum (plugins + grammars only) must not error: {errors:?}"
     );
 }
 
-/// Twin of the above for `core:lsp`'s own catalog load (`registration.scm`),
-/// which independently reads the seeded lsp-servers.scm catalog — this is
-/// the smoke test for that self-contained module load.
+/// core:lsp's own catalog load (`registration.scm`), which reads the seeded
+/// lsp-servers.scm catalog, and `servers.scm`'s lsp-sources.scm catalog load
+/// — this is the smoke test for both self-contained module loads.
 #[test]
 #[cfg(not(windows))]
 fn lsp_plugin_loads_with_real_lsp_catalogs() {
@@ -152,13 +141,14 @@ fn lsp_plugin_loads_with_real_lsp_catalogs() {
         .collect();
     assert!(
         errors.is_empty(),
-        "loading core:lsp against the real lsp-servers.scm catalog must not error: {errors:?}"
+        "loading core:lsp against the real lsp-servers.scm/lsp-sources.scm catalogs must not error: {errors:?}"
     );
 }
 
 /// The regression test this whole change exists to pin: loading only
-/// `core:plum` must never register or attach an installed server — PLUM is
-/// installer-only now. See docs/LSP-INSTALL.md "Registration model".
+/// `core:plum` exposes no LSP commands at all (not even `:lsp-install`) and
+/// runs no receipt scan — LSP server install/uninstall/registration is
+/// core:lsp-owned end to end. See docs/LSP-INSTALL.md "Registration model".
 #[test]
 #[cfg(not(windows))]
 fn plum_alone_does_not_register_installed_servers() {
@@ -183,6 +173,13 @@ fn plum_alone_does_not_register_installed_servers() {
     assert!(
         !log.contains("interrupted install") && !log.contains("orphan server"),
         "core:plum must not run any receipt scan at all: {log}"
+    );
+
+    type_cmd(&mut ed, ":lsp-install rust");
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("Unknown command: lsp-install"),
+        "core:plum alone must not expose :lsp-install: {log}"
     );
 }
 
@@ -217,7 +214,7 @@ fn scan_registers_installed_server_with_absolute_managed_path() {
 
 /// Independent oracle: the expected JSON is transcribed by hand from
 /// runtime/scheme/lsp-servers.scm's current text, not derived by calling
-/// `plum/settings->hash` — this is the settings-conversion correctness
+/// `lsp/settings->hash` — this is the settings-conversion correctness
 /// check, so it must not share logic with the thing it verifies.
 #[test]
 #[cfg(not(windows))]
@@ -345,9 +342,9 @@ fn install_lock_sentinel_file_is_never_scanned_as_a_server_directory() {
     );
 }
 
-/// Pins the notify path PLUM uses after a successful install: core:lsp
-/// exposes `lsp-rescan-servers` precisely so PLUM can trigger a rescan
-/// without requiring anything from core:lsp's module.
+/// Exposed for out-of-band installs (a server installed outside
+/// `:lsp-install`), and used internally by `servers.scm`'s own install and
+/// uninstall commands to pick up what they just wrote to disk.
 #[test]
 #[cfg(not(windows))]
 fn lsp_rescan_servers_command_registers_newly_installed() {
@@ -380,15 +377,15 @@ fn lsp_rescan_servers_command_registers_newly_installed() {
     );
 }
 
-/// A mid-session rescan (`:lsp-rescan-servers`, or the notify PLUM sends
-/// after `:lsp-install`) must never clobber a language the user registered
-/// by hand — only languages nothing has claimed yet get the catalog
-/// default. Before this test, the scan re-registered every catalog
-/// language unconditionally, which would silently replace a manual
-/// `register-lsp-server!` override (documented workflow: a local build, a
-/// version PLUM doesn't carry, or a `$PATH` copy the user wants to take
-/// precedence — see user-manual/docs/lsp.md) the next time anything
-/// triggered a rescan.
+/// A mid-session rescan (`:lsp-rescan-servers`, or the one `:lsp-install`
+/// runs after a successful/up-to-date install) must never clobber a
+/// language the user registered by hand — only languages nothing has
+/// claimed yet get the catalog default. Before this test, the scan
+/// re-registered every catalog language unconditionally, which would
+/// silently replace a manual `register-lsp-server!` override (documented
+/// workflow: a local build, a version the catalog doesn't carry, or a
+/// `$PATH` copy the user wants to take precedence — see
+/// user-manual/docs/lsp.md) the next time anything triggered a rescan.
 #[test]
 #[cfg(not(windows))]
 fn rescan_does_not_clobber_a_manually_registered_language() {
@@ -425,9 +422,9 @@ fn rescan_does_not_clobber_a_manually_registered_language() {
     );
 }
 
-/// A lazily-declared core:lsp (`#:languages`) still registers a
-/// PLUM-installed server once activated — the startup scan runs at
-/// activation time, not only at eager `(load-plugin "core:lsp")`.
+/// A lazily-declared core:lsp (`#:languages`) still registers an installed
+/// server once activated — the startup scan runs at activation time, not
+/// only at eager `(load-plugin "core:lsp")`.
 ///
 /// `activate_lazy_language_plugins` (called from `set_buffer_language`,
 /// before `lsp_attach_buffer`) evaluates the plugin inline but only flushes
@@ -481,6 +478,34 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
     );
 }
 
+/// A `:`-typed command can activate a lazily-declared core:lsp when the
+/// command name is listed in the declaration's `#:commands` manifest —
+/// dispatch runs `activate_lazy_plugin` before arity marshalling (see
+/// mappings/command_mode.rs), so `:lsp-install` on a plugin that hasn't
+/// loaded yet still works, no eager `(load-plugin "core:lsp")` required.
+#[test]
+#[cfg(not(windows))]
+fn lazy_lsp_plugin_activates_on_typed_lsp_install_command() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init(
+        &mut ed,
+        data_tmp.path(),
+        "(load-plugin \"core:stdlib\")\n\
+         (declare-plugin \"core:lsp\" #:commands '(\"lsp-install\"))",
+    );
+
+    type_cmd(&mut ed, ":lsp-install not-a-real-language-xyz");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("no language server is seeded"),
+        "dispatching :lsp-install must activate the lazily-declared plugin \
+         and then run normally: {log}"
+    );
+}
+
 // ── :lsp-install failure paths ────────────────────────────────────────────────
 
 #[test]
@@ -489,7 +514,7 @@ fn lsp_install_stub_kind_names_the_unsupported_kind() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
+    load_lsp(&mut ed, data_tmp.path());
 
     // gopls's Mason source is purl kind `golang` — a stub, never installable in v1.
     type_cmd(&mut ed, ":lsp-install go");
@@ -507,7 +532,7 @@ fn lsp_install_unknown_language_warns() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
+    load_lsp(&mut ed, data_tmp.path());
 
     type_cmd(&mut ed, ":lsp-install not-a-real-language-xyz");
 
@@ -524,7 +549,7 @@ fn lsp_install_no_language_buffer_and_no_arg_warns() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
+    load_lsp(&mut ed, data_tmp.path());
 
     // Fresh test buffer has no language set.
     type_cmd(&mut ed, ":lsp-install");
@@ -542,7 +567,7 @@ fn lsp_install_unsupported_asset_format_fails_loudly() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
+    load_lsp(&mut ed, data_tmp.path());
 
     // ada-language-server ships only .tar.gz on every platform — unsupported
     // in v1 (step 2 shipped plain-.gz and .zip unpacking only) regardless of
@@ -571,7 +596,7 @@ fn lsp_install_refuses_when_the_cross_process_lock_is_already_held() {
     std::fs::write(servers_dir.join(".install-lock"), b"").unwrap();
 
     let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
+    load_lsp(&mut ed, data_tmp.path());
 
     type_cmd(&mut ed, ":lsp-install rust");
 
@@ -592,7 +617,7 @@ fn lsp_install_no_arg_falls_back_to_buffer_language_not_the_count_sentinel() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
+    load_lsp(&mut ed, data_tmp.path());
 
     let bid = ed.focused_buffer_id();
     ed.set_buffer_language(bid, Some("definitely-not-seeded".to_owned()));
@@ -609,68 +634,28 @@ fn lsp_install_no_arg_falls_back_to_buffer_language_not_the_count_sentinel() {
 
 // ── :lsp-install up-to-date path ──────────────────────────────────────────────
 
+/// The up-to-date path still re-registers: a receipt written after the
+/// load-time scan already ran (e.g. installed out-of-band) must be picked
+/// up by `:lsp-install`'s own post-check rescan, not just reported as
+/// up-to-date and left unregistered.
 #[test]
 #[cfg(not(windows))]
-fn lsp_install_up_to_date_hints_when_lsp_not_loaded() {
-    let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
-    // Seeded version from runtime/scheme/lsp-sources.scm's rust-analyzer entry —
-    // an exact match takes the "already installed" branch.
-    fabricate_server(
-        data_tmp.path(),
-        "rust-analyzer",
-        "2026-07-06",
-        "rust-analyzer",
-    );
-
-    let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
-
-    type_cmd(&mut ed, ":lsp-install rust");
-
-    // The up-to-date `'info` status is superseded by the `'warn` hint that
-    // follows it in the same command — `'warn` sets both `message_log` and
-    // `status_msg` (see message_log.rs's Severity table), so the hint is
-    // what's left standing in `status_msg`, and it's the only thing that
-    // must survive in `message_log` too (`'info` never reaches it).
-    assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some(
-            "PLUM: server installed but core:lsp is not loaded — \
-             add (load-plugin \"core:lsp\") to init.scm for LSP features"
-        ),
-        "must hint that core:lsp isn't loaded when it's the only thing missing"
-    );
-    let log = ed.state.message_log.format_for_display();
-    assert!(
-        log.contains("core:lsp"),
-        "the hint must also be written to :messages, not just the status line: {log}"
-    );
-    assert_eq!(
-        ed.lsp.config_command_for_test("rust"),
-        None,
-        "PLUM alone must never register, even on the up-to-date path"
-    );
-}
-
-#[test]
-#[cfg(not(windows))]
-fn lsp_install_up_to_date_rescans_when_lsp_loaded() {
+fn lsp_install_up_to_date_registers_a_late_fabricated_receipt() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
 
     let mut ed = editor_from("-[x]>\n");
-    load_plum_and_lsp(&mut ed, data_tmp.path());
+    load_lsp(&mut ed, data_tmp.path());
     assert_eq!(
         ed.lsp.config_command_for_test("rust"),
         None,
         "precondition: nothing installed at load time, so core:lsp's load-time scan \
          registered nothing"
     );
-    // Fabricate the receipt only now, after the load-time scan already ran against
-    // an empty data dir — so the final assertion below can only pass if the
-    // up-to-date notify path (`plum/notify-lsp!` → `:lsp-rescan-servers`) itself
-    // registers it, not the load-time scan.
+    // Fabricate the receipt only now, after the load-time scan already ran
+    // against an empty data dir — so the final assertion below can only pass
+    // if :lsp-install's own up-to-date rescan registers it, not the
+    // load-time scan.
     fabricate_server(
         data_tmp.path(),
         "rust-analyzer",
@@ -682,13 +667,8 @@ fn lsp_install_up_to_date_rescans_when_lsp_loaded() {
 
     assert_eq!(
         ed.state.status_msg.as_deref(),
-        Some("PLUM: rust-analyzer already installed (v2026-07-06) — up to date"),
+        Some("LSP: rust-analyzer already installed (v2026-07-06) — up to date"),
         "must report the up-to-date status"
-    );
-    let log = ed.state.message_log.format_for_display();
-    assert!(
-        !log.contains("add (load-plugin \"core:lsp\")"),
-        "must not hint to load core:lsp when it's already loaded: {log}"
     );
     let expected_cmd = canonical_data_dir(data_tmp.path())
         .join("servers")
@@ -697,71 +677,15 @@ fn lsp_install_up_to_date_rescans_when_lsp_loaded() {
     assert_eq!(
         ed.lsp.config_command_for_test("rust"),
         Some(expected_cmd.to_string_lossy().into_owned()),
-        "registration must survive the up-to-date :lsp-install notify path"
+        "registration must survive the up-to-date :lsp-install rescan"
     );
 }
 
-/// A lazily-declared (not yet activated) core:lsp — the manual's recommended
-/// setup — must get the activation note from `plum/notify-lsp!`'s declared
-/// branch, not the "not loaded" warn meant for a truly absent core:lsp. Before
-/// this test, `declared-plugins` filtered out every `core:*` name, so
-/// `plum/notify-lsp!` had no way to distinguish "declared but inactive" from
-/// "never configured" and always fell through to the misleading warn.
-#[test]
-#[cfg(not(windows))]
-fn lsp_install_up_to_date_notes_lazily_declared_lsp() {
-    let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
-    fabricate_server(
-        data_tmp.path(),
-        "rust-analyzer",
-        "2026-07-06",
-        "rust-analyzer",
-    );
-
-    let mut ed = editor_from("-[x]>\n");
-    load_with_init(
-        &mut ed,
-        data_tmp.path(),
-        "(load-plugin \"core:plum\")\n\
-         (load-plugin \"core:stdlib\")\n\
-         (declare-plugin \"core:lsp\" #:languages '(\"rust\"))",
-    );
-    assert_eq!(
-        ed.lsp.config_command_for_test("rust"),
-        None,
-        "precondition: core:lsp is declared but not yet activated, so nothing is registered"
-    );
-
-    type_cmd(&mut ed, ":lsp-install rust");
-
-    assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some(
-            "PLUM: server installed — core:lsp will register it once it activates \
-             (e.g. when a matching file opens)"
-        ),
-        "a declared-but-inactive core:lsp must get the activation note, not the load-plugin warn"
-    );
-    let log = ed.state.message_log.format_for_display();
-    assert!(
-        !log.contains("add (load-plugin \"core:lsp\")"),
-        "must not tell a correctly-configured user to change their config: {log}"
-    );
-    assert_eq!(
-        ed.lsp.config_command_for_test("rust"),
-        None,
-        "must not register — core:lsp still hasn't activated"
-    );
-}
-
-/// `declared-plugins` now includes `core:*` names (needed so
-/// `plum/notify-lsp!` can tell "declared but inactive" apart from "never
-/// configured"). PLUM's own install-list logic must still exclude them —
-/// `:plum-install`/`:plum-list` must never treat a bundled core plugin as
-/// something to `git clone`. `:plum-list`'s trailing "PLUM missing:" status
-/// is the safe way to observe `plum/missing-plugins`'s output without ever
-/// touching the network.
+/// `declared-plugins` includes `core:*` names. PLUM's own install-list logic
+/// must still exclude them — `:plum-install`/`:plum-list` must never treat a
+/// bundled core plugin as something to `git clone`. `:plum-list`'s trailing
+/// "PLUM missing:" status is the safe way to observe `plum/missing-plugins`'s
+/// output without ever touching the network.
 #[test]
 #[cfg(not(windows))]
 fn plum_missing_plugins_excludes_declared_core_plugins() {
@@ -805,7 +729,7 @@ fn lsp_uninstall_removes_registration_and_directory() {
     );
 
     let mut ed = editor_from("-[x]>\n");
-    load_plum_and_lsp(&mut ed, data_tmp.path());
+    load_lsp(&mut ed, data_tmp.path());
     assert!(
         ed.lsp.config_command_for_test("rust").is_some(),
         "precondition: scan must have registered the fabricated install"
@@ -847,7 +771,7 @@ fn lsp_uninstall_refuses_the_delete_when_the_cross_process_lock_is_already_held(
     std::fs::write(servers_dir.join(".install-lock"), b"").unwrap();
 
     let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
+    load_lsp(&mut ed, data_tmp.path());
 
     type_cmd(&mut ed, ":lsp-uninstall rust-analyzer");
     ed.drain_async_sources();
@@ -870,7 +794,7 @@ fn lsp_uninstall_of_never_installed_server_is_silent() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
+    load_lsp(&mut ed, data_tmp.path());
 
     type_cmd(&mut ed, ":lsp-uninstall rust-analyzer");
     ed.drain_async_sources();
@@ -892,7 +816,7 @@ fn lsp_uninstall_of_never_installed_server_is_silent() {
     // confirmation shows up in `status_msg`, not `message_log`.
     assert_eq!(
         ed.state.status_msg.as_deref(),
-        Some("PLUM: nothing to uninstall for rust-analyzer"),
+        Some("LSP: nothing to uninstall for rust-analyzer"),
         "must report there was nothing to do"
     );
 }
@@ -909,7 +833,7 @@ fn lsp_uninstall_rejects_path_traversal_name() {
     std::fs::write(plugins_dir.join("sentinel"), b"do not delete me").unwrap();
 
     let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
+    load_lsp(&mut ed, data_tmp.path());
 
     type_cmd(&mut ed, ":lsp-uninstall ../plugins");
     ed.drain_async_sources();
@@ -934,7 +858,7 @@ fn lsp_servers_command_runs_without_error() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
+    load_lsp(&mut ed, data_tmp.path());
 
     type_cmd(&mut ed, ":lsp-servers");
 
@@ -957,11 +881,11 @@ fn lsp_servers_command_runs_without_error() {
         .as_deref()
         .expect("lsp-servers must report a seeded-server count");
     assert!(
-        status.starts_with("PLUM: ") && status.ends_with(" seeded servers"),
+        status.starts_with("LSP: ") && status.ends_with(" seeded servers"),
         "unexpected status message: {status}"
     );
     let count: usize = status
-        .trim_start_matches("PLUM: ")
+        .trim_start_matches("LSP: ")
         .trim_end_matches(" seeded servers")
         .parse()
         .unwrap_or_else(|_| panic!("status message count is not a number: {status}"));
@@ -985,7 +909,7 @@ fn discovery_hint_fires_once_for_an_installable_unregistered_language() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
+    load_lsp(&mut ed, data_tmp.path());
 
     let bid = ed.focused_buffer_id();
     ed.set_buffer_language(bid, Some("rust".to_owned()));
@@ -1021,7 +945,7 @@ fn discovery_hint_does_not_fire_for_a_blocked_server() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
+    load_lsp(&mut ed, data_tmp.path());
 
     let bid = ed.focused_buffer_id();
     // gopls (golang stub) is never installable — the hint must never
@@ -1042,11 +966,11 @@ fn discovery_hint_does_not_fire_for_npm_kind_when_npm_missing_from_path() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
+    load_lsp(&mut ed, data_tmp.path());
 
     // svlangserver (npm-kind, language "systemverilog") used to report
     // installable unconditionally — the hint could suggest a :lsp-install
-    // that immediately fails `plum/preflight!`'s own npm-on-$PATH check.
+    // that immediately fails `lsp/preflight!`'s own npm-on-$PATH check.
     // Force $PATH to a directory with no npm binary in it.
     let empty_path_dir = tempfile::tempdir().unwrap();
     let original_path = std::env::var("PATH").unwrap();
@@ -1082,7 +1006,7 @@ fn discovery_hint_does_not_fire_when_already_registered() {
     );
 
     let mut ed = editor_from("-[x]>\n");
-    load_plum_and_lsp(&mut ed, data_tmp.path()); // core:lsp's scan registers rust-analyzer for "rust"
+    load_lsp(&mut ed, data_tmp.path()); // core:lsp's own scan registers rust-analyzer for "rust"
 
     let bid = ed.focused_buffer_id();
     ed.set_buffer_language(bid, Some("rust".to_owned()));
@@ -1095,47 +1019,11 @@ fn discovery_hint_does_not_fire_when_already_registered() {
     );
 }
 
-/// D6: an installed-but-unregistered server (PLUM loaded, core:lsp not)
-/// gets a different hint than an uninstalled one — running `:lsp-install`
-/// again would be a no-op, so the hint must point at loading core:lsp
-/// instead.
-#[test]
-#[cfg(not(windows))]
-fn discovery_hint_suggests_loading_lsp_for_installed_server() {
-    let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
-    fabricate_server(
-        data_tmp.path(),
-        "rust-analyzer",
-        "2026-07-06",
-        "rust-analyzer",
-    );
-
-    let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
-
-    let bid = ed.focused_buffer_id();
-    ed.set_buffer_language(bid, Some("rust".to_owned()));
-    ed.drain_hooks();
-
-    let log = ed.state.message_log.format_for_display();
-    assert!(
-        !log.contains("run :lsp-install"),
-        "must not suggest re-running :lsp-install for an already-installed server: {log}"
-    );
-    assert!(
-        log.contains("load-plugin \"core:lsp\"") && log.contains("rust-analyzer"),
-        "must hint to load core:lsp, naming the installed server: {log}"
-    );
-}
-
 // ── Live e2e (env-gated) ───────────────────────────────────────────────────────
 
 /// End-to-end: real `:lsp-install rust` (rust-analyzer, github, plain .gz) —
 /// download, sha256 verification, unpack, receipt, and registration all
-/// exercised for real against the live GitHub release. Loads both plugins
-/// (PLUM installs, core:lsp registers) — the realistic setup for someone
-/// who actually wants the server to work, not just download.
+/// exercised for real against the live GitHub release.
 ///
 /// Gated by `HUME_REQUIRE_LIVE_LSP_INSTALL_E2E=1`; skipped otherwise.
 #[test]
@@ -1155,7 +1043,7 @@ fn lsp_install_real_rust_analyzer_e2e() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
-    load_plum_and_lsp(&mut ed, data_tmp.path());
+    load_lsp(&mut ed, data_tmp.path());
 
     type_cmd(&mut ed, ":lsp-install rust");
 
@@ -1199,10 +1087,4 @@ fn lsp_install_real_rust_analyzer_e2e() {
             "the installed binary must be executable: {cmd}"
         );
     }
-
-    let log = ed.state.message_log.format_for_display();
-    assert!(
-        !log.contains("add (load-plugin \"core:lsp\")"),
-        "must not hint to load core:lsp when it's already loaded: {log}"
-    );
 }

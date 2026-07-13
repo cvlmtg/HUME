@@ -793,7 +793,7 @@ mod steel_stdlib_availability {
         host.eval_source(src, &mut null_host)
             .expect("steel stdlib availability pin failed");
 
-        // string-downcase, needed by plum/verify-sha256! (Phase 4 helper).
+        // string-downcase, needed by lsp/verify-sha256! (Phase 4 helper).
         let mut host3 = ScriptingHost::new();
         let mut null_host3 = NullHost;
         let downcase_src = r#"

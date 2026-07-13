@@ -1,4 +1,4 @@
-# HUME — LSP Server Installation (PLUM `servers.scm`)
+# HUME — LSP Server Installation (core:lsp `servers.scm`)
 
 Design decisions for automatic language-server download, installation, and registration.
 Status: **design complete** — decisions below are pinned; implementation is broken into
@@ -13,32 +13,31 @@ onboarding step: users must find, install, and wire each server by hand. This fe
 closes the gap: `:lsp-install` downloads a server, installs it under HUME's data dir, and
 registers it — mirroring what the grammar pipeline already does for tree-sitter grammars.
 
-## Placement: third PLUM module, but registration lives in core:lsp
+## Placement: core:lsp owns the server lifecycle end to end
 
-The installer is **not** a new plugin. `core:plum` already manages two artifact classes
-(plugins, grammars) with exactly this lifecycle — install / list / cleanup commands plus
-scan-on-load registration (`plum/register-installed-grammars!`) — one module per class
-(`plugins.scm`, `grammars.scm`), shared helpers in `lib.scm`. Servers are the third class:
-a new `servers.scm` module in PLUM.
+LSP server install, uninstall, and registration all live in `core:lsp`
+(`servers.scm` installs/uninstalls; `registration.scm` turns an installed server into a
+live `register-lsp-server!` call, on plugin load, lazy activation, or right after an
+install/uninstall). `core:plum` (the plugin manager) is not involved — it manages
+ordinary plugins and grammars only, via its own `plugins.scm`/`grammars.scm` modules and
+shared `lib.scm` helpers, with the same install/list/cleanup + scan-on-load-registration
+shape `core:lsp`'s server pipeline mirrors.
 
-Command names keep the `lsp-` prefix (`lsp-install`, not `plum-install-server`): the
+Command names keep the `lsp-` prefix (`lsp-install`, not a `plum-`-prefixed name): the
 command namespace is flat, and discoverability next to the existing `:lsp-status` /
-`:lsp-stop` / `:lsp-restart` beats prefix symmetry with the other PLUM modules.
+`:lsp-stop` / `:lsp-restart` matters more than any naming symmetry with `core:plum`.
 
-**Revised 2026-07-13**: unlike grammars, LSP server *registration* does not live in
-PLUM. `servers.scm` is installer-only — download, verify, unpack, receipt, uninstall,
-catalog listing. The receipt-scan that turns an installed server into a live
-`register-lsp-server!` call lives entirely in `core:lsp` (`lsp/registration.scm`),
-which independently reads the seeded `lsp-servers.scm` catalog (a plugin never
-`require`s another plugin's module — see `docs/ROADMAP.md` "Plugin namespace
-isolation"). Rationale: loading PLUM alone (to install a server) must never cause that
-server to attach and start reporting diagnostics — attachment is an `core:lsp`-owned
-feature, not a side effect of having a package manager installed. Consequence:
-
-- `core:lsp` not loaded → installed servers are never auto-registered, even right
-  after a successful `:lsp-install` (see [Registration model](#registration-model)).
-- PLUM not loaded but `core:lsp` loaded → installed servers still register normally;
-  the installer's presence is irrelevant to the feature working.
+**Revised 2026-07-14**: server install/uninstall used to live in `core:plum`
+(`servers.scm`, installer-only) with registration in `core:lsp`, connected by a
+cross-plugin notify (`call!`). That split made loading only `core:plum` still expose
+`:lsp-install`/`:lsp-uninstall`/`:lsp-servers` — confusing when the LSP feature plugin
+isn't even loaded — and forced hand-synced "twin" copies of receipt/path/catalog helpers
+between the two plugins' modules. Moving the whole lifecycle into `core:lsp` fixes both:
+the `lsp-*` commands exist iff `core:lsp` is loaded or lazily declared, and install
+finishes with a direct call to `core:lsp`'s own scan (`lsp/register-installed-servers!`)
+instead of a notify round-trip. Consequence: with no `core:lsp` in `init.scm` at all,
+there is no LSP install/uninstall/registration feature, full stop — not a degraded
+notify path, an absent one. `core:plum` never touches `servers/` or the LSP catalogs.
 
 ## Architecture: two seeded data sources, two pins
 
@@ -236,27 +235,23 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
 - **Filesystem is the SSOT for "what is installed"; seeded data is the SSOT for "how to
   run it".** On `core:lsp` load (or lazy activation — see the caveat below), the scan
   reads `servers/` receipts and registers each installed server for every language it
-  serves (per the seeded data). A directory scan is cheap. PLUM also asks `core:lsp` to
-  rescan right after a successful `:lsp-install` (via `call!`, never a direct require —
-  see [Placement](#placement-third-plum-module-but-registration-lives-in-corelsp)) — or
-  after confirming an already-up-to-date install — so a server installed mid-session
-  attaches immediately, without a restart. If `core:lsp` is declared (lazily) but not yet
-  activated, PLUM logs an info note instead — its own load-time scan runs at activation
-  and picks up the install then, so no rescan is needed. If `core:lsp` isn't in `init.scm`
-  at all, PLUM warns: the server is on disk but nothing will attach it this session.
-  (`plum/notify-lsp!` in `servers.scm` is the three-way dispatch: loaded → rescan; declared
-  → info note; neither → warn. Distinguishing "declared" from "absent" needs
-  `(declared-plugins)` to report `core:*` names too — PLUM's own install-list logic
-  (`plum/missing-plugins`) filters them back out, since core plugins are bundled and never
-  installed by PLUM.)
+  serves (per the seeded data). A directory scan is cheap. `:lsp-install` calls the same
+  scan directly right after a successful install — or after confirming an
+  already-up-to-date one — so a server installed mid-session attaches immediately,
+  without a restart. No cross-plugin notify: install and registration are the same
+  plugin now, so this is an ordinary function call
+  (`lsp/register-installed-servers!`, `registration.scm`), not a `call!` round-trip.
   `core:lsp` also exposes the rescan directly as `:lsp-rescan-servers`, for servers
-  installed out-of-band (not through PLUM).
+  installed out-of-band (not through `:lsp-install`).
   **Caveat for a lazily-declared `core:lsp`**: a manifest keyed only on
-  `#:events '("on-lsp-attach")` can never activate from a PLUM-managed install alone —
-  nothing is registered yet, so nothing attaches, so the event that would trigger
-  activation never fires. Load `core:lsp` eagerly, or declare it with `#:languages`
-  naming the languages you rely on PLUM for, so activation is triggered by opening a
-  matching file instead.
+  `#:events '("on-lsp-attach")` can never activate on its own — nothing is registered
+  yet, so nothing attaches, so the event that would trigger activation never fires.
+  Load `core:lsp` eagerly, declare it with `#:languages` naming the languages you rely
+  on it for (activation triggered by opening a matching file), or declare it with
+  `#:commands` naming `lsp-install`/`lsp-uninstall`/`lsp-servers`/`lsp-rescan-servers`
+  (activation triggered by typing one of those `:` commands — Lazy command stubs
+  activate their plugin before arity marshalling, so `:lsp-install <lang>` on a
+  not-yet-activated `core:lsp` works with no eager `(load-plugin "core:lsp")` needed).
 - **Last-wins registration.** `register-lsp-server!` changes from ignore-duplicate (today
   reported as an error) to *replace* semantics, matching `define-language!`. `init.scm`
   then reads naturally: `load-plugin` → scan auto-registers → later user
@@ -279,16 +274,16 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
 
 ## Commands and lifecycle
 
-All three are Steel commands in the PLUM module — no Rust command work needed: `:`-line
-string arguments already reach Steel commands (arity marshalling in `command_mode.rs`),
-and `#:inline-output #t` displays listing output.
+All four are Steel commands in the `core:lsp` module — no Rust command work needed:
+`:`-line string arguments already reach Steel commands (arity marshalling in
+`command_mode.rs`), and `#:inline-output #t` displays listing output.
 
 | Command | Behaviour |
 |---|---|
-| `:lsp-install [lang]` | No arg: current buffer's language. Downloads, verifies sha256, unpacks, writes receipt; asks `core:lsp` to register and attach already-open buffers if it's loaded, notes it'll register on activation if it's declared but inactive, otherwise warns it's absent from `init.scm`. Re-running against an already-up-to-date install still triggers this registration step (a no-op download, but not a no-op session effect) — see [Registration model](#registration-model). No argument completion in v1 — Steel commands have no argument-completion path today (possible follow-up). |
-| `:lsp-uninstall <server>` | Shuts down the server's running clients — plural: one per (language, root), and a multi-language server may back several — unregisters every language it serves, removes the server dir. Registry needs a new unregister path — does not exist today; like registration it is language-keyed, so the plugin fans out over the server's seeded language list. |
+| `:lsp-install [lang]` | No arg: current buffer's language. Downloads, verifies sha256, unpacks, writes receipt, then registers and attaches already-open buffers via the same scan `:lsp-rescan-servers` runs. Re-running against an already-up-to-date install still triggers this registration step (a no-op download, but not a no-op session effect) — covers a server installed out-of-band. No argument completion in v1 — Steel commands have no argument-completion path today (possible follow-up). |
+| `:lsp-uninstall <server>` | Shuts down the server's running clients — plural: one per (language, root), and a multi-language server may back several — unregisters every language it serves, removes the server dir. |
 | `:lsp-servers` | Catalog listing (`hx --health`-style): every seeded server with languages, seeded version, installed version / not installed / update available. |
-| `:lsp-rescan-servers` (`core:lsp`) | Re-scans `servers/` receipts and registers any not yet registered — the same scan that runs at `core:lsp` load, callable directly for a server installed outside PLUM. |
+| `:lsp-rescan-servers` | Re-scans `servers/` receipts and registers any not yet registered — the same scan that runs at `core:lsp` load and after every `:lsp-install`/`:lsp-uninstall`, callable directly for a server installed outside `:lsp-install`. |
 
 The existing Rust `:lsp-status` (running servers, roots, state, in-flight counts,
 diagnostics) stays untouched as the sole *runtime* view; `:lsp-servers` is the *catalog*
@@ -298,15 +293,16 @@ them.
 - **Upgrades**: after a pin bump, `:lsp-install` compares the receipt's version against the
   seeded version and reinstalls on mismatch. No auto-upgrade.
 - **Manual only** — no install-on-file-open. Discovery instead: opening a buffer whose
-  language has a seeded server but no registered one produces a one-line hint via the
-  `on-language-set` hook — the hint names the actual next step: `:lsp-install` when the
-  server isn't installed yet, or "load `core:lsp`" when it's already installed but
-  `core:lsp` isn't loaded (re-running `:lsp-install` there would be a no-op download).
-  "No registered one" is checked with the step-2 `lsp-registered-for-language?` builtin —
+  language has a seeded, uninstalled server produces a one-line `:lsp-install` hint via
+  the `on-language-set` hook. Only fires while `core:lsp` itself is loaded or active —
+  a setup running only `core:plum` (or nothing) gets no LSP hints, matching the rest of
+  the feature (see [Placement](#placement-corelsp-owns-the-server-lifecycle-end-to-end)).
+  "No registered one" is checked with the `lsp-registered-for-language?` builtin —
   registration state is not otherwise visible to Steel (`lsp-server-for-buffer` reports
   *attachment*, which is ordering-dependent and can't distinguish "unregistered" from
   "still starting"). Hinted at most once per language per session, and only when the
-  server's install source is a supported kind — never a hint whose suggestion would fail.
+  server's install source is a supported kind and it isn't already installed — never a
+  hint whose suggestion would fail or be a no-op.
 - **Synchronous**: installs block the editor for their duration, exactly like grammar
   installs today, with progress reported as log lines. Async install infrastructure is
   not planned.
@@ -382,14 +378,16 @@ files, step 2's builtin signatures).
   their replacements are `run-inline-output!` (a new sandbox-free Rust builtin —
   process-group-isolated spawn, needed only because `#:inline-output` commands run with
   terminal raw mode off and Steel's `spawn-process` has no `setpgid`), `sha256-file` (hash
-  only; the compare-and-delete-on-mismatch logic moved to `plum/verify-sha256!` in
+  only; the compare-and-delete-on-mismatch logic moved to `lsp/verify-sha256!` in
   `servers.scm`), and Steel's own `which`. `unpack-gz`/`unpack-zip` survive as sandbox-free
   utility builtins (chmod + archive-format platform logic). The tool-preflight and
   zip-slip/symlink notes below are otherwise unaffected.
-- [x] **Step 3 — PLUM `servers.scm`** (Steel, pure consumer of steps 1+2): scan-on-load
+- [x] **Step 3 — `servers.scm`** (Steel, pure consumer of steps 1+2): scan-on-load
   registration; `lsp-install` / `lsp-uninstall` / `lsp-servers` commands; receipts; orphan
   warnings; npm install path; missing-server hint; user-manual + `init.scm.example` docs.
-  `grammars.scm` is the template. Marshalling gotcha: the minibuffer passes the integer
+  `core:plum`'s `grammars.scm` is the template. Landed in `core:plum` originally, moved
+  wholesale into `core:lsp` 2026-07-14 (see [Placement](#placement-corelsp-owns-the-server-lifecycle-end-to-end)).
+  Marshalling gotcha: the minibuffer passes the integer
   `1` to an arity-1 Steel command invoked with no argument — the `lsp-install` no-arg
   branch must test "argument is a string", not absence.
 
@@ -421,7 +419,7 @@ developer's `git`/build toolchain — costs no new install step in the common ca
 **Accepted tradeoff — zip-slip protection is delegated to the system tool** (modern
 Info-ZIP strips `../` entries; bsdtar refuses them by default), rather than implemented in
 HUME. The residual risk is bounded by the sync-time sha256 pin: `unpack-zip` runs only
-after `plum/verify-sha256!` (Scheme, `servers.scm` — wraps the sandbox-free `sha256-file`
+after `lsp/verify-sha256!` (Scheme, `servers.scm` — wraps the sandbox-free `sha256-file`
 builtin; see the Step 2 update note above) has confirmed the archive matches the
 maintainer-vetted, hash-locked asset recorded in `lsp-sources.scm` — an attacker would need
 to compromise the pinned upstream release itself, not just something interposed at install

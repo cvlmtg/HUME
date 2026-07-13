@@ -8,7 +8,7 @@
 //! (`acquire-install-lock!`/`release-install-lock!`) needs pre-created and
 //! canonicalized at init time (unlike plugin/grammar install targets, which
 //! Steel's own `create-directory!`, or `git clone`'s own recursive parent
-//! creation, now create on demand — see `plum/install-github!`'s
+//! creation, now create on demand — see `lsp/install-github!`'s
 //! `create-directory!` call and the `git clone` behavior it relies on).
 //!
 //! # Public surface (within the crate)

@@ -2,10 +2,9 @@
 
 Language server features: hover, go-to-definition (+ declaration / type-definition /
 implementation), references, diagnostics navigation, rename, formatting, code actions,
-signature help, completions, inlay hints. Also owns LSP server *registration*: loading
-this plugin scans `<data>/servers/` for PLUM-installed receipts and registers each one
-(`registration.scm`) — PLUM only downloads servers to disk, it never registers them (see
-`docs/LSP-INSTALL.md`).
+signature help, completions, inlay hints. Also owns the LSP server lifecycle end to
+end — install, uninstall, and registration (`servers.scm`, `registration.scm`) — see
+`docs/LSP-INSTALL.md`. `core:plum` (the plugin manager) is not involved.
 
 Requires `core:stdlib` loaded first — diagnostics navigation calls
 `stdlib/cursor-char-index` via `call!`.
@@ -13,9 +12,9 @@ Requires `core:stdlib` loaded first — diagnostics navigation calls
 ## Usage
 
 `core:lsp` composes servers you register — either manually via `register-lsp-server!`, or
-by loading `core:plum` and installing one with `:lsp-install` (PLUM notifies this plugin
-to rescan after every install). Add both to your `init.scm`, plus at least one
-`register-lsp-server!` call if you're not relying on PLUM:
+by installing one with `:lsp-install` (below), which registers it automatically. Add to
+your `init.scm`, plus at least one `register-lsp-server!` call if you're not relying on
+`:lsp-install`:
 
 ```scheme
 (load-plugin "core:stdlib")
@@ -27,21 +26,34 @@ to rescan after every install). Add both to your `init.scm`, plus at least one
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
-               "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger"))
+               "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger"
+               "lsp-install" "lsp-uninstall" "lsp-servers" "lsp-rescan-servers"))
 ```
 
-`declare-plugin` activates the first time a registered server attaches to a buffer, or the
-first time one of the listed commands runs — whichever comes first. `(load-plugin "core:lsp")`
-also works if you'd rather load it eagerly.
+`declare-plugin` activates the first time a registered server attaches to a buffer, the
+first time one of the listed commands runs, or — with `lsp-install`/etc. in `#:commands`
+as above — the first time you type `:lsp-install` on a language with no server yet.
+`(load-plugin "core:lsp")` also works if you'd rather load it eagerly.
 
-**Caveat when relying on PLUM-installed servers**: a manifest keyed only on
-`#:events '("on-lsp-attach")` can never activate from a PLUM install alone — nothing is
-registered yet, so nothing attaches, so the event never fires. Load `core:lsp` eagerly, or
-add `#:languages` naming the languages you rely on PLUM for, so opening a matching file
-triggers activation (and the scan) directly.
+**Caveat**: a manifest keyed only on `#:events '("on-lsp-attach")` can never activate on
+its own — nothing is registered yet, so nothing attaches, so the event never fires. Load
+`core:lsp` eagerly, add `#:languages` naming the languages you want servers installed
+for, or add the four `lsp-*` install commands to `#:commands` as above, so typing one of
+them triggers activation directly.
 
 See the [user manual](../../../../user-manual/docs/lsp.md) for the full walkthrough, commands,
 keys, and settings.
+
+## Commands
+
+LSP server management:
+
+| Command                | Effect                                                                       |
+|-------------------------|-------------------------------------------------------------------------------|
+| `:lsp-install [lang]`  | Download, verify, unpack, and register the server for a language (default: current buffer's language) |
+| `:lsp-uninstall <name>`| Shut down and unregister a server's clients, remove it from disk (by server name, not language) |
+| `:lsp-servers`         | Catalog listing: every seeded server, its languages, and install status      |
+| `:lsp-rescan-servers`  | Re-scan `<data>/servers/` and register any installed server not yet registered — useful for a server installed out-of-band |
 
 ## Keys
 
@@ -70,17 +82,19 @@ plugin only needs to `define-command!` that exact name.
 One `plugin.scm` entry `require`s a file per feature area (`hover.scm`, `goto.scm`,
 `diagnostics.scm`, `rename.scm`, `format.scm`, `actions.scm`, `sighelp.scm`,
 `completion.scm`, `inlay.scm`), plus a shared `lib.scm` (capability checks, error
-reporting, the viewport tracker, location-drawer helper) and `registration.scm` (server
-registration — see below). Every feature is the same three-line shape: send an
-`lsp-request`, transform the response, call a UI or store builtin.
+reporting, the viewport tracker, location-drawer helper), `registration.scm` (the seeded
+catalog, receipt/path helpers, and the scan), and `servers.scm` (install/uninstall — see
+below). Every feature file is the same three-line shape: send an `lsp-request`,
+transform the response, call a UI or store builtin.
 
-### Server registration
+### Server install and registration
 
-`registration.scm` independently reads the seeded `runtime/scheme/lsp-servers.scm`
-catalog and scans `<data>/servers/` for receipts written by PLUM's install pipeline,
-registering (`register-lsp-server!`) every installed server it finds — `plugin.scm` runs
-this scan once at its own top level, so it happens at load or at lazy activation. It also
-exposes `:lsp-rescan-servers`, a `define-command!` PLUM's `:lsp-install` calls via `call!`
-right after an install (fresh or already-up-to-date) so the server attaches immediately —
-the sanctioned way for one plugin to trigger behavior in another without requiring its
-module directly (see `docs/ROADMAP.md` "Plugin namespace isolation").
+`servers.scm` downloads, verifies, and unpacks a server (`:lsp-install`), writes a
+receipt as the install commit point, and calls `registration.scm`'s scan
+(`lsp/register-installed-servers!`) directly afterward so the server attaches
+immediately — no cross-plugin notify, since install and registration are the same
+plugin. That scan independently reads the seeded `runtime/scheme/lsp-servers.scm`
+catalog and `<data>/servers/` for receipts, registering (`register-lsp-server!`) every
+installed server it finds; `plugin.scm` runs it once at its own top level, so it also
+happens at load or lazy activation. `:lsp-rescan-servers` exposes the same scan for a
+server installed outside `:lsp-install`.

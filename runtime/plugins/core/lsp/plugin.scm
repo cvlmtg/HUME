@@ -1,15 +1,18 @@
 ;;; core:lsp — LSP features (hover, goto, completions, diagnostics, rename,
 ;;; formatting, code actions, signature help, inlay hints) composed from the
-;;; generic bridge and platform primitives. Also owns LSP server
-;;; registration: loading this plugin registers any PLUM-installed server
-;;; found on disk (see registration.scm) — PLUM only downloads servers, it
-;;; never registers them.
+;;; generic bridge and platform primitives. Also owns the LSP server
+;;; lifecycle end to end: `servers.scm` installs/uninstalls servers
+;;; (`:lsp-install`, `:lsp-uninstall`, `:lsp-servers`), `registration.scm`
+;;; turns an installed server into a live registration, on plugin load, lazy
+;;; activation, or right after an install/uninstall. core:plum (the plugin
+;;; manager) is not involved — it manages ordinary plugins and grammars only.
 ;;;
 ;;; Depends on core:stdlib (diagnostic navigation calls
 ;;; stdlib/cursor-char-index) — load it first.
 
 (require "lib.scm")
 (require "registration.scm")
+(require "servers.scm")
 (require "hover.scm")
 (require "goto.scm")
 (require "diagnostics.scm")
@@ -22,10 +25,11 @@
 
 ;; ── Register installed servers ────────────────────────────────────────────────
 ;;
-;; Passive: reads on-disk receipts written by PLUM's install pipeline, no
-;; subprocess, no network. Runs here at load time, or later at lazy
-;; activation — see registration.scm's `lsp/register-installed-servers!` doc
-;; comment and docs/LSP-INSTALL.md "Registration model".
+;; Passive: reads on-disk receipts written by this plugin's own install
+;; pipeline (servers.scm), no subprocess, no network. Runs here at load
+;; time, or later at lazy activation — see registration.scm's
+;; `lsp/register-installed-servers!` doc comment and docs/LSP-INSTALL.md
+;; "Registration model".
 
 (lsp/register-installed-servers!)
 

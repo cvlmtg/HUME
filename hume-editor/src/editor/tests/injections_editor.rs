@@ -287,6 +287,37 @@ fn load_plum(ed: &mut Editor, data_dir: &std::path::Path) {
     }
 }
 
+/// Load the real `core:lsp` plugin (plus its `core:stdlib` dependency) —
+/// `:lsp-servers` (the `#:inline-output` command exercised below) lives
+/// there, not in core:plum. Twin of `load_plum` above, different init.scm.
+#[cfg(not(windows))]
+fn load_lsp(ed: &mut Editor, data_dir: &std::path::Path) {
+    let repo_runtime_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("runtime");
+    let config_tmp = tempfile::tempdir().unwrap();
+    let hume_config = config_tmp.path().join("hume");
+    std::fs::create_dir_all(&hume_config).unwrap();
+    std::fs::write(
+        hume_config.join("init.scm"),
+        "(load-plugin \"core:stdlib\")\n(load-plugin \"core:lsp\")",
+    )
+    .unwrap();
+
+    unsafe {
+        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
+        std::env::set_var("HUME_RUNTIME", &repo_runtime_dir);
+        std::env::set_var("XDG_DATA_HOME", data_dir);
+    }
+    ed.init_scripting();
+    unsafe {
+        std::env::remove_var("XDG_CONFIG_HOME");
+        std::env::remove_var("HUME_RUNTIME");
+        std::env::remove_var("XDG_DATA_HOME");
+    }
+}
+
 /// `plum/register-installed-grammars!` runs its real body — including the
 /// injections-path lookup — for every entry in the real `grammar-sources.scm`
 /// catalog. None of them are compiled in the empty data dir, so every one is
@@ -621,7 +652,7 @@ fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
 
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
+    load_lsp(&mut ed, data_tmp.path());
 
     type_cmd(&mut ed, ":lsp-servers");
 
