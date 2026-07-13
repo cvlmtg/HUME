@@ -13,20 +13,32 @@ onboarding step: users must find, install, and wire each server by hand. This fe
 closes the gap: `:lsp-install` downloads a server, installs it under HUME's data dir, and
 registers it — mirroring what the grammar pipeline already does for tree-sitter grammars.
 
-## Placement: third PLUM module
+## Placement: third PLUM module, but registration lives in core:lsp
 
 The installer is **not** a new plugin. `core:plum` already manages two artifact classes
 (plugins, grammars) with exactly this lifecycle — install / list / cleanup commands plus
 scan-on-load registration (`plum/register-installed-grammars!`) — one module per class
 (`plugins.scm`, `grammars.scm`), shared helpers in `lib.scm`. Servers are the third class:
-a new `servers.scm` module, scan wired in PLUM's `plugin.scm` next to the grammar scan.
+a new `servers.scm` module in PLUM.
 
 Command names keep the `lsp-` prefix (`lsp-install`, not `plum-install-server`): the
 command namespace is flat, and discoverability next to the existing `:lsp-status` /
 `:lsp-stop` / `:lsp-restart` beats prefix symmetry with the other PLUM modules.
 
-Grammar-precedent consequence, accepted: with PLUM disabled, installed servers are not
-auto-registered that session (same as grammars today).
+**Revised 2026-07-13**: unlike grammars, LSP server *registration* does not live in
+PLUM. `servers.scm` is installer-only — download, verify, unpack, receipt, uninstall,
+catalog listing. The receipt-scan that turns an installed server into a live
+`register-lsp-server!` call lives entirely in `core:lsp` (`lsp/registration.scm`),
+which independently reads the seeded `lsp-servers.scm` catalog (a plugin never
+`require`s another plugin's module — see `docs/ROADMAP.md` "Plugin namespace
+isolation"). Rationale: loading PLUM alone (to install a server) must never cause that
+server to attach and start reporting diagnostics — attachment is an `core:lsp`-owned
+feature, not a side effect of having a package manager installed. Consequence:
+
+- `core:lsp` not loaded → installed servers are never auto-registered, even right
+  after a successful `:lsp-install` (see [Registration model](#registration-model)).
+- PLUM not loaded but `core:lsp` loaded → installed servers still register normally;
+  the installer's presence is irrelevant to the feature working.
 
 ## Architecture: two seeded data sources, two pins
 
@@ -222,10 +234,22 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
 ## Registration model
 
 - **Filesystem is the SSOT for "what is installed"; seeded data is the SSOT for "how to
-  run it".** On PLUM load, the scan reads `servers/` receipts and registers each installed
-  server for every language it serves (per the seeded data). The scan is **eager** — it
-  runs at startup, before any buffer opens, regardless of lazy-loading machinery. A
-  directory scan is cheap.
+  run it".** On `core:lsp` load (or lazy activation — see the caveat below), the scan
+  reads `servers/` receipts and registers each installed server for every language it
+  serves (per the seeded data). A directory scan is cheap. PLUM also asks `core:lsp` to
+  rescan right after a successful `:lsp-install` (via `call!`, never a direct require —
+  see [Placement](#placement-third-plum-module-but-registration-lives-in-corelsp)) — or
+  after confirming an already-up-to-date install — so a server installed mid-session
+  attaches immediately, without a restart. If `core:lsp` isn't loaded at that moment,
+  PLUM warns instead: the server is on disk but nothing will attach it this session.
+  `core:lsp` also exposes the rescan directly as `:lsp-rescan-servers`, for servers
+  installed out-of-band (not through PLUM).
+  **Caveat for a lazily-declared `core:lsp`**: a manifest keyed only on
+  `#:events '("on-lsp-attach")` can never activate from a PLUM-managed install alone —
+  nothing is registered yet, so nothing attaches, so the event that would trigger
+  activation never fires. Load `core:lsp` eagerly, or declare it with `#:languages`
+  naming the languages you rely on PLUM for, so activation is triggered by opening a
+  matching file instead.
 - **Last-wins registration.** `register-lsp-server!` changes from ignore-duplicate (today
   reported as an error) to *replace* semantics, matching `define-language!`. `init.scm`
   then reads naturally: `load-plugin` → scan auto-registers → later user
@@ -254,9 +278,10 @@ and `#:inline-output #t` displays listing output.
 
 | Command | Behaviour |
 |---|---|
-| `:lsp-install [lang]` | No arg: current buffer's language. Downloads, verifies sha256, unpacks, writes receipt, registers immediately, attaches already-open buffers of every language the server serves. No argument completion in v1 — Steel commands have no argument-completion path today (possible follow-up). |
+| `:lsp-install [lang]` | No arg: current buffer's language. Downloads, verifies sha256, unpacks, writes receipt; asks `core:lsp` to register and attach already-open buffers if it's loaded, otherwise warns that it isn't. Re-running against an already-up-to-date install still triggers this registration step (a no-op download, but not a no-op session effect) — see [Registration model](#registration-model). No argument completion in v1 — Steel commands have no argument-completion path today (possible follow-up). |
 | `:lsp-uninstall <server>` | Shuts down the server's running clients — plural: one per (language, root), and a multi-language server may back several — unregisters every language it serves, removes the server dir. Registry needs a new unregister path — does not exist today; like registration it is language-keyed, so the plugin fans out over the server's seeded language list. |
 | `:lsp-servers` | Catalog listing (`hx --health`-style): every seeded server with languages, seeded version, installed version / not installed / update available. |
+| `:lsp-rescan-servers` (`core:lsp`) | Re-scans `servers/` receipts and registers any not yet registered — the same scan that runs at `core:lsp` load, callable directly for a server installed outside PLUM. |
 
 The existing Rust `:lsp-status` (running servers, roots, state, in-flight counts,
 diagnostics) stays untouched as the sole *runtime* view; `:lsp-servers` is the *catalog*
@@ -266,8 +291,10 @@ them.
 - **Upgrades**: after a pin bump, `:lsp-install` compares the receipt's version against the
   seeded version and reinstalls on mismatch. No auto-upgrade.
 - **Manual only** — no install-on-file-open. Discovery instead: opening a buffer whose
-  language has a seeded server but no registered one (i.e. not installed, not manually
-  wired) produces a one-line hint ("run `:lsp-install`") via the `on-language-set` hook.
+  language has a seeded server but no registered one produces a one-line hint via the
+  `on-language-set` hook — the hint names the actual next step: `:lsp-install` when the
+  server isn't installed yet, or "load `core:lsp`" when it's already installed but
+  `core:lsp` isn't loaded (re-running `:lsp-install` there would be a no-op download).
   "No registered one" is checked with the step-2 `lsp-registered-for-language?` builtin —
   registration state is not otherwise visible to Steel (`lsp-server-for-buffer` reports
   *attachment*, which is ordering-dependent and can't distinguish "unregistered" from

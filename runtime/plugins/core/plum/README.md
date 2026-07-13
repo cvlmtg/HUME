@@ -38,9 +38,12 @@ LSP server management:
 
 | Command                | Effect                                                                       |
 |-------------------------|-------------------------------------------------------------------------------|
-| `:lsp-install [lang]`  | Download, verify, unpack, and register the server for a language (default: current buffer's language) |
+| `:lsp-install [lang]`  | Download, verify, and unpack the server for a language (default: current buffer's language); registers it via `core:lsp` if that plugin is loaded, otherwise warns |
 | `:lsp-uninstall <name>`| Shut down and unregister a server's clients, remove it from disk (by server name, not language) |
 | `:lsp-servers`         | Catalog listing: every seeded server, its languages, and install status      |
+
+PLUM never calls `register-lsp-server!` itself — see "Startup registration is passive"
+below and `core:lsp`'s README for the `:lsp-rescan-servers` command it owns.
 
 See `docs/LSP-INSTALL.md` for the design and `user-manual/docs/lsp.md#installing-servers` for
 the user-facing workflow.
@@ -53,11 +56,12 @@ PLUM is the one core plugin split across multiple files, since it bundles three 
 subsystems:
 
 - `plugin.scm` — entry point; `require`s the three subsystems below and runs startup
-  grammar and server registration.
+  grammar registration (server registration is `core:lsp`'s job — see below).
 - `plugins.scm` — third-party **plugin** install/update/cleanup (`:plum-install` etc).
 - `grammars.scm` — tree-sitter **grammar** install pipeline (`:plum-install-grammar` etc).
-- `servers.scm` — LSP **server** install pipeline (`:lsp-install` etc); see
-  `docs/LSP-INSTALL.md`.
+- `servers.scm` — LSP **server** install pipeline (`:lsp-install` etc) — download,
+  verify, unpack, receipt, uninstall, catalog listing. Registration lives in
+  `core:lsp/registration.scm`, not here; see `docs/LSP-INSTALL.md`.
 - `lib.scm` — shared utilities: `plum/valid-dir-entry?` (used by all three) and
   `plum/batch-run` (used by `plugins.scm`/`grammars.scm` for batch installs — `servers.scm`'s
   install/uninstall are single-target, so it doesn't need it).
@@ -109,8 +113,12 @@ yet compiled stay missing until the user explicitly runs `:plum-install-grammar`
 `:plum-ensure-grammars`; PLUM never auto-installs on startup, since a first run with many
 declared languages could otherwise mean a long, surprising stall before the editor is usable.
 
-`plum/register-installed-servers!` follows the same rule for LSP servers: it runs once at
-plugin load, registers any server with a readable `receipt.scm` (using its recorded absolute
-bin path — no `$PATH` lookup, no subprocess), and leaves anything not yet installed alone. A
-buffer whose language has a seeded, installable server but nothing registered gets a one-line
-`on-language-set` hint suggesting `:lsp-install`, instead of an automatic install.
+LSP servers are the exception, not a variant of this rule: PLUM installs them but never
+registers one for use. `core:lsp`'s `lsp/register-installed-servers!` runs the equivalent
+scan — same passive contract (readable `receipt.scm`, recorded absolute bin path, no
+`$PATH` lookup, no subprocess) — at `core:lsp`'s own load or lazy activation. PLUM asks it
+to rescan right after a successful (or already-up-to-date) `:lsp-install`, via `call!`; if
+`core:lsp` isn't loaded, PLUM warns instead of silently leaving the server unusable. A
+buffer whose language has a seeded, installable server but nothing registered gets a
+one-line `on-language-set` hint — `:lsp-install` if it isn't installed yet, or "load
+`core:lsp`" if it already is. See `docs/LSP-INSTALL.md` for the full rationale.

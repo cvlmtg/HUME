@@ -1,8 +1,13 @@
-;;; core:plum/servers.scm
+;;; core:plum/servers.scm — LSP server install pipeline. PLUM downloads,
+;;; verifies, unpacks, and tracks servers on disk; it never registers one for
+;;; use. Registration (turning a receipt into a live `register-lsp-server!`
+;;; call) is core:lsp's job — see lsp/registration.scm. PLUM notifies core:lsp
+;;; to rescan after a successful install (`plum/notify-lsp!`, via `call!`,
+;;; never a direct require — plugins never require each other's modules, see
+;;; docs/ROADMAP.md "Plugin namespace isolation").
 
 (require "lib.scm")
-(require-builtin steel/vectors)
-(provide plum/declare-lsp-server! plum/declare-lsp-source! plum/register-installed-servers!)
+(provide plum/declare-lsp-server! plum/declare-lsp-source!)
 
 ;; ── Server registration + source registries ──────────────────────────────────
 
@@ -87,7 +92,6 @@
     (call-with-input-file (plum/receipt-path name) read)))
 
 (define (plum/receipt-version receipt) (cdr (plum/field receipt 'version)))
-(define (plum/receipt-bin receipt) (cdr (plum/field receipt 'bin)))
 
 ;;; Escape `s` as a double-quoted Scheme string literal (mirrors
 ;;; scripts/sync_common.py's scheme_str — receipts are the one place PLUM
@@ -117,39 +121,6 @@
       (plum/delete-file path)
       (error (string-append "plum/verify-sha256!: sha256 mismatch for '" path
                             "': expected " expected-hex ", got " actual)))))
-
-;; ── Settings conversion ───────────────────────────────────────────────────────
-;;
-;; Seeded settings are nested alists whose entries take one of three shapes
-;; (see docs/LSP-INSTALL.md "Seeded data format"): `(key . scalar)`,
-;; `(key . #(elem…))` for a JSON array, or `(key entry…)` for a nested
-;; object. `steel_to_json` has no case for a raw vector, so every `#(...)`
-;; must become a Steel list before it can reach `#:settings`.
-
-;;; Convert a #(...) vector into a Steel list.
-(define (plum/vector->steel-list v)
-  (let loop ((i (- (vector-length v) 1)) (acc '()))
-    (if (< i 0) acc (loop (- i 1) (cons (vector-ref v i) acc)))))
-
-;;; Convert a settings entry list into a Steel hash suitable for `#:settings`.
-;;; Every entry must be a pair or a (nonempty-or-not) list — the seeded data
-;;; is canonicalised at sync time, so anything else is a sync bug, not
-;;; something to skip over.
-(define (plum/settings->hash entries)
-  (let loop ((entries entries) (h (hash)))
-    (cond
-      ((null? entries) h)
-      ((not (pair? (car entries)))
-       (error (string-append "plum/settings->hash: malformed settings entry: "
-                             (to-string (car entries)))))
-      (else
-       (let* ((entry (car entries))
-              (key   (car entry))
-              (value (if (list? entry)
-                         (plum/settings->hash (cdr entry))
-                         (let ((v (cdr entry)))
-                           (if (vector? v) (plum/vector->steel-list v) v)))))
-         (loop (cdr entries) (hash-insert h key value)))))))
 
 ;; ── Asset format + installability ─────────────────────────────────────────────
 
@@ -190,56 +161,17 @@
                (string-append "unsupported asset format (" (list-ref target 1) ") in v1"))
               (else #f)))))))))
 
-;; ── Registration helper (shared by the scan and by install) ──────────────────
-
-;;; Register `name` for every language it serves, with `cmd` as the server
-;;; command. `args`/`settings` are shared across a multi-language server;
-;;; only root markers vary per language (see docs/LSP-INSTALL.md "Seeded
-;;; data format").
-(define (plum/register-server-languages! name cmd)
-  (let* ((fields   (hash-ref *plum-lsp-servers* name))
-         (langs    (cdr (plum/field fields 'languages)))
-         (args     (cdr (plum/field fields 'args)))
-         (settings-entries (cdr (plum/field fields 'settings)))
-         (settings (if (null? settings-entries) #f (plum/settings->hash settings-entries))))
-    (for-each
-      (lambda (lang-entry)
-        (register-lsp-server! (car lang-entry)
-                               #:command cmd
-                               #:args args
-                               #:root-markers (cdr lang-entry)
-                               #:settings settings))
-      langs)))
-
-;; ── Startup server registration ───────────────────────────────────────────────
-
-;;; Passive: registers already-installed servers only (a readable receipt
-;;; naming a seeded server), no subprocess, no network. See README.md §
-;;; startup registration. `.install-lock` (the cross-process install lock's
-;;; sentinel file — see `plum/lsp-install-or-report!`) lives directly under
-;;; `servers-dir` alongside the per-server subdirectories — excluded here so
-;;; a lock left behind by a crash (or simply present during a legitimate
-;;; concurrent install elsewhere) is never misread as an interrupted or
-;;; orphan server.
-(define (plum/register-installed-servers!)
-  (let ((sdir (plum/servers-dir)))
-    (when (path-exists? sdir)
-      (for-each
-        (lambda (name)
-          (let ((receipt (plum/read-receipt name)))
-            (cond
-              ((not receipt)
-               (log! 'warn (string-append "PLUM: interrupted install of " name
-                                          " — run :lsp-install to redo, or delete the directory")))
-              ((not (hash-contains? *plum-lsp-servers* name))
-               (log! 'warn (string-append "PLUM: orphan server " name
-                                          " — not in the seeded catalog, run :lsp-uninstall to remove")))
-              (else
-               (plum/register-server-languages!
-                 name
-                 (path-join (plum/server-dir name) (plum/receipt-bin receipt)))))))
-        (filter (lambda (name) (and (plum/valid-dir-entry? name) (not (equal? name ".install-lock"))))
-                (plum/list-dir sdir))))))
+;; ── LSP plugin notification ───────────────────────────────────────────────────
+;;
+;; PLUM never calls `register-lsp-server!` itself — see file header.
+;; Registration lives entirely in core:lsp (lsp/registration.scm). After an
+;; install (fresh or already-up-to-date), PLUM asks core:lsp to rescan disk
+;; via `call!` so the server attaches immediately in the same session; if
+;; core:lsp isn't loaded, it warns instead of silently doing nothing.
+(define (plum/notify-lsp!)
+  (if (member "core:lsp" (loaded-plugins))
+      (call! "lsp-rescan-servers")
+      (log! 'warn "PLUM: server installed but core:lsp is not loaded — add (load-plugin \"core:lsp\") to init.scm for LSP features")))
 
 ;; ── Install pipeline ──────────────────────────────────────────────────────────
 
@@ -321,8 +253,9 @@
 ;;;      it, so an interruption from here on is self-describing
 ;;;   4. download + verify + unpack (github), or npm install (npm)
 ;;;   5. write receipt — the commit point
-;;;   6. register every seeded language with the fresh absolute bin path
-;;;   7. $PATH notice, if the seeded command also resolves there
+;;;   6. $PATH notice, if the seeded command also resolves there
+;;; Registration is not this function's job — the caller notifies core:lsp
+;;; to rescan afterward (see `plum/notify-lsp!`).
 (define (plum/install-server! name)
   (let ((blocker (plum/install-blocker name)))
     (when blocker
@@ -339,7 +272,6 @@
                         (plum/install-github! name source-fields dir)
                         (plum/install-npm! name source-fields dir))))
       (plum/write-receipt! name (cdr (plum/field source-fields 'version)) bin-rel)
-      (plum/register-server-languages! name (path-join dir bin-rel))
       (let ((cmd (cdr (plum/field server-fields 'command))))
         (when (which cmd)
           (log! 'info (string-append "PLUM: " cmd " is also on $PATH — the managed install at "
@@ -370,8 +302,10 @@
                       #f)))
     (if (and receipt source
              (equal? (plum/receipt-version receipt) (cdr (plum/field source 'version))))
-        (log! 'info (string-append "PLUM: " name " already installed (v"
-                                   (plum/receipt-version receipt) ") — up to date"))
+        (begin
+          (log! 'info (string-append "PLUM: " name " already installed (v"
+                                     (plum/receipt-version receipt) ") — up to date"))
+          (plum/notify-lsp!))
         (let* ((had-dir? (path-exists? (plum/server-dir name)))
                (acquired?
                  (with-handler
@@ -387,10 +321,11 @@
                   (log! 'info "PLUM: if the server was running it has now been shut down — run :lsp-install again")))
               (begin
                 (plum/install-server! name)
-                (release-install-lock!))))))))
+                (release-install-lock!)
+                (plum/notify-lsp!))))))))
 
 (define-command! "lsp-install"
-  "Download, verify, and register the language server for a language (default: the current buffer's language)."
+  "Download and verify the language server for a language (default: the current buffer's language); registers it if core:lsp is loaded."
   (lambda (arg)
     (let ((lang (plum/resolve-lsp-lang-arg arg)))
       (cond
@@ -471,11 +406,13 @@
 
 ;; ── Discovery hint ────────────────────────────────────────────────────────────
 ;;
-;; Once per language per session: if a buffer's language has an installable
-;; seeded server that isn't registered yet, suggest :lsp-install. Never
-;; hints a suggestion that would fail — the dedup marker is set on the
-;; language's first evaluation regardless of outcome, so a language that
-;; doesn't qualify (no seeded server, blocked, already registered) is never
+;; Once per language per session: if a buffer's language has a seeded server
+;; that isn't registered yet, suggest a next step — :lsp-install when it
+;; isn't installed, or loading core:lsp when it's already installed but
+;; unregistered (running :lsp-install again would be a no-op). Never hints a
+;; suggestion that would fail — the dedup marker is set on the language's
+;; first evaluation regardless of outcome, so a language that doesn't
+;; qualify (no seeded server, blocked, already registered) is never
 ;; re-evaluated this session either. `'warn`, not `'info`: an `'info`
 ;; message only flashes on the status line and is never written to
 ;; `:messages` (HUME's `Severity::Info` is display-only, not logged) — a
@@ -489,5 +426,9 @@
         (let* ((name    (hash-ref *plum-lang->server* lang))
                (blocker (plum/install-blocker name)))
           (when (and (not blocker) (not (lsp-registered-for-language? lang)))
-            (log! 'warn (string-append "PLUM: language server '" name
-                                       "' is available for " lang " — run :lsp-install"))))))))
+            (if (plum/read-receipt name)
+                (log! 'warn (string-append "PLUM: language server '" name
+                                           "' is installed for " lang
+                                           " — add (load-plugin \"core:lsp\") to init.scm to use it"))
+                (log! 'warn (string-append "PLUM: language server '" name
+                                           "' is available for " lang " — run :lsp-install")))))))))

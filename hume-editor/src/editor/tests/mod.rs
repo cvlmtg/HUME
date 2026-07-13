@@ -472,6 +472,13 @@ fn write_core_plugin(guard: &HumeRuntimeGuard, name: &str, source: &str) {
 /// files without hand-copying every one into a temp dir and keeping that
 /// list in sync as feature files are added.
 ///
+/// Also points `XDG_DATA_HOME` at a fresh, guard-owned temp dir: loading the
+/// real `core:lsp` plugin now scans `<data-dir>/servers/` at load time (see
+/// `lsp/registration.scm`), so without this every `RealRuntimeGuard` test
+/// would scan whatever the developer running the suite actually has
+/// installed on their machine — non-hermetic, and a source of spurious
+/// scan warnings in test output.
+///
 /// Deliberately does **not** touch `TMPDIR`, unlike [`HumeRuntimeGuard`]:
 /// pointing at a persistent, never-deleted directory means there is nothing
 /// for a concurrent test's cleanup to race against. `HumeRuntimeGuard`'s
@@ -482,9 +489,13 @@ fn write_core_plugin(guard: &HumeRuntimeGuard, name: &str, source: &str) {
 /// test can redirect an unrelated concurrent test's `tempfile::tempdir()`
 /// into its own tree and then delete that tree out from under it on drop.
 /// Avoiding `TMPDIR` entirely sidesteps the hazard rather than narrowing it.
+/// `XDG_DATA_HOME` doesn't need the same care — nothing outside HUME's own
+/// `data-dir` resolution reads it, so there is no allocator-style hazard.
 #[cfg(not(windows))]
 struct RealRuntimeGuard {
     _lock: std::sync::MutexGuard<'static, ()>,
+    _data_tmp: tempfile::TempDir,
+    prev_xdg_data_home: Option<String>,
 }
 
 #[cfg(not(windows))]
@@ -492,10 +503,17 @@ impl RealRuntimeGuard {
     fn new() -> Self {
         let lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let real_runtime = concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime");
+        let data_tmp = tempfile::tempdir().expect("tempdir");
+        let prev_xdg_data_home = std::env::var("XDG_DATA_HOME").ok();
         unsafe {
             std::env::set_var("HUME_RUNTIME", real_runtime);
+            std::env::set_var("XDG_DATA_HOME", data_tmp.path());
         }
-        RealRuntimeGuard { _lock: lock }
+        RealRuntimeGuard {
+            _lock: lock,
+            _data_tmp: data_tmp,
+            prev_xdg_data_home,
+        }
     }
 }
 
@@ -504,6 +522,10 @@ impl Drop for RealRuntimeGuard {
     fn drop(&mut self) {
         unsafe {
             std::env::remove_var("HUME_RUNTIME");
+            match &self.prev_xdg_data_home {
+                Some(v) => std::env::set_var("XDG_DATA_HOME", v),
+                None => std::env::remove_var("XDG_DATA_HOME"),
+            }
         }
     }
 }

@@ -26,7 +26,9 @@
     (path-join (runtime-dir) "scheme" "lsp-sources.scm")
     read))
 
-;; ── Register installed grammars + servers ─────────────────────────────────────
+;; ── Register installed grammars ────────────────────────────────────────────────
+;;
+;; LSP servers are not registered here — that's core:lsp's job (see
+;; runtime/plugins/core/lsp/registration.scm). PLUM only installs them.
 
 (plum/register-installed-grammars!)
-(plum/register-installed-servers!)

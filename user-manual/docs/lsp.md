@@ -6,10 +6,13 @@ diagnostics, rename, formatting, code actions, signature help, completions, and 
 ## Setup
 
 Bring in `core:lsp` from your `init.scm`, and make sure a server is registered for the
-languages you use. The easiest way to get one is [`:lsp-install`](#installing-servers) — run
-it once per language and PLUM downloads, registers, and reattaches automatically from then
-on. If you'd rather manage a server yourself (a local build, a version PLUM doesn't carry, or
-a `$PATH` copy you want to take precedence), register it by hand instead — see
+languages you use. `core:lsp` is the plugin that turns a server into something HUME
+actually spawns and attaches — `core:plum` only downloads one to disk. The easiest way to
+get a server is [`:lsp-install`](#installing-servers) — run it once per language and PLUM
+downloads it, then asks `core:lsp` to register and reattach automatically from then on
+(as long as `core:lsp` is loaded — see the caveat below). If you'd rather manage a server
+yourself (a local build, a version PLUM doesn't carry, or a `$PATH` copy you want to take
+precedence), register it by hand instead — see
 [Registering a language server](#registering-a-language-server).
 
 ```scheme
@@ -18,6 +21,7 @@ a `$PATH` copy you want to take precedence), register it by hand instead — see
 
 (declare-plugin "core:lsp"
   #:events '("on-lsp-attach")
+  #:languages '("rust")   ; languages you rely on a PLUM-installed server for
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
@@ -25,13 +29,18 @@ a `$PATH` copy you want to take precedence), register it by hand instead — see
 ```
 
 Declaring is recommended — it keeps startup fast, and `core:lsp` activates the first time a
-registered server attaches to a buffer or you run one of its commands directly. If you use
-LSP in every session and would rather it load from the start, swap `declare-plugin` for
-`load-plugin`:
+registered server attaches to a buffer, a matching language opens, or you run one of its
+commands directly. If you use LSP in every session and would rather it load from the
+start, swap `declare-plugin` for `load-plugin`:
 
 ```scheme
 (load-plugin "core:lsp")
 ```
+
+**Caveat**: `#:events '("on-lsp-attach")` by itself never activates from a PLUM-managed
+install — nothing is registered yet, so nothing attaches, so the event that would trigger
+activation never fires. List the languages you rely on PLUM for in `#:languages` (as
+above), or load `core:lsp` eagerly, so opening a matching file activates it directly.
 
 Opening a file whose language matches a registered server spawns it automatically (once per
 project root) and attaches.
@@ -79,9 +88,13 @@ Or name the language directly:
 :lsp-install rust
 ```
 
-HUME downloads the pinned release, verifies its checksum, unpacks it, and registers it —
-already-open buffers of that language attach immediately, no restart needed. Running it again
-for a server that's already at the latest seeded version is a no-op.
+HUME downloads the pinned release, verifies its checksum, and unpacks it, then (if
+`core:lsp` is loaded) registers it — already-open buffers of that language attach
+immediately, no restart needed. If `core:lsp` isn't loaded, you'll see a note that nothing
+will attach this session; load it and the next `:lsp-install` (even for a server already
+at the latest seeded version) registers it. Running `:lsp-install` again for a server
+that's already at the latest seeded version never re-downloads, but still re-registers —
+useful if you loaded `core:lsp` after the fact.
 
 You don't need to run this ahead of time: opening a file whose language has an installable
 server but nothing registered yet shows a one-line hint — `run :lsp-install` — once per
@@ -120,6 +133,11 @@ auto-installed — some don't publish prebuilt binaries HUME can unpack, or are 
 through a package manager not yet supported (`cargo`, `pip`, `gem`, …). Install it yourself
 and register it manually — see [Registering a language server](#registering-a-language-server)
 below.
+
+**A server installed fine but nothing attaches.** `core:lsp` isn't loaded — it's the plugin
+that registers and attaches a server, not `core:plum` (which only downloads). Add
+`(load-plugin "core:lsp")`, or a `#:languages` entry naming the language on a lazily
+declared `core:lsp`, to your `init.scm` — see [Setup](#setup).
 
 **A server on your `$PATH` isn't the one HUME runs.** `:lsp-install` always spawns the managed
 copy, even when the same command name also resolves on `$PATH` — you'll see a note about this

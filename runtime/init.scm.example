@@ -36,10 +36,17 @@
 ;; (load-plugin "core:plum")           ; plugin/grammar/language-server manager
 
 ;; Language servers — see user-manual/docs/lsp.md for setup and per-language examples.
-;; With core:plum loaded, run :lsp-install (per language) to download and register a
-;; server automatically — no manual registration below needed for a seeded server.
+;; With core:plum AND core:lsp both loaded, run :lsp-install (per language) to download,
+;; register, and attach a server automatically — no manual registration below needed for
+;; a seeded server. core:lsp does the registering; core:plum only downloads.
+;;
+;; core:lsp can be declared lazily, but #:events '("on-lsp-attach") alone never activates
+;; from a PLUM-managed install — nothing is registered yet, so nothing attaches, so the
+;; event never fires. Name the languages you rely on PLUM for in #:languages so opening a
+;; matching file triggers activation directly (or just (load-plugin "core:lsp") eagerly):
 ;; (declare-plugin "core:lsp"
 ;;   #:events '("on-lsp-attach")
+;;   #:languages '("rust")
 ;;   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
 ;;                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
 ;;                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
