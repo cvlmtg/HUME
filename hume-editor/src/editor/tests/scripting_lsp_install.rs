@@ -380,6 +380,51 @@ fn lsp_rescan_servers_command_registers_newly_installed() {
     );
 }
 
+/// A mid-session rescan (`:lsp-rescan-servers`, or the notify PLUM sends
+/// after `:lsp-install`) must never clobber a language the user registered
+/// by hand — only languages nothing has claimed yet get the catalog
+/// default. Before this test, the scan re-registered every catalog
+/// language unconditionally, which would silently replace a manual
+/// `register-lsp-server!` override (documented workflow: a local build, a
+/// version PLUM doesn't carry, or a `$PATH` copy the user wants to take
+/// precedence — see user-manual/docs/lsp.md) the next time anything
+/// triggered a rescan.
+#[test]
+#[cfg(not(windows))]
+fn rescan_does_not_clobber_a_manually_registered_language() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init(
+        &mut ed,
+        data_tmp.path(),
+        "(load-plugin \"core:stdlib\")\n\
+         (load-plugin \"core:lsp\")\n\
+         (register-lsp-server! \"rust\" #:command \"my-custom-rust-analyzer\" \
+         #:root-markers '(\"Cargo.toml\"))",
+    );
+    assert_eq!(
+        ed.lsp.config_command_for_test("rust"),
+        Some("my-custom-rust-analyzer".to_owned()),
+        "precondition: the manual registration from init.scm took effect"
+    );
+
+    fabricate_server(
+        data_tmp.path(),
+        "rust-analyzer",
+        "2026-07-06",
+        "rust-analyzer",
+    );
+    type_cmd(&mut ed, ":lsp-rescan-servers");
+
+    assert_eq!(
+        ed.lsp.config_command_for_test("rust"),
+        Some("my-custom-rust-analyzer".to_owned()),
+        "a rescan must not overwrite a language the user registered manually"
+    );
+}
+
 /// A lazily-declared core:lsp (`#:languages`) still registers a
 /// PLUM-installed server once activated — the startup scan runs at
 /// activation time, not only at eager `(load-plugin "core:lsp")`.
@@ -613,18 +658,25 @@ fn lsp_install_up_to_date_hints_when_lsp_not_loaded() {
 fn lsp_install_up_to_date_rescans_when_lsp_loaded() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    load_plum_and_lsp(&mut ed, data_tmp.path());
+    assert_eq!(
+        ed.lsp.config_command_for_test("rust"),
+        None,
+        "precondition: nothing installed at load time, so core:lsp's load-time scan \
+         registered nothing"
+    );
+    // Fabricate the receipt only now, after the load-time scan already ran against
+    // an empty data dir — so the final assertion below can only pass if the
+    // up-to-date notify path (`plum/notify-lsp!` → `:lsp-rescan-servers`) itself
+    // registers it, not the load-time scan.
     fabricate_server(
         data_tmp.path(),
         "rust-analyzer",
         "2026-07-06",
         "rust-analyzer",
     );
-
-    let mut ed = editor_from("-[x]>\n");
-    load_plum_and_lsp(&mut ed, data_tmp.path());
-    // core:lsp's own load-time scan already registered it — clear the slate
-    // by asserting the notify path alone still leaves it registered and
-    // hint-free, which is what actually matters here.
 
     type_cmd(&mut ed, ":lsp-install rust");
 
