@@ -217,8 +217,8 @@ mod tests {
         fn width(&self, _: usize) -> u8 {
             0
         }
-        fn render_row(&self, _: RowKind, _: &GutterRowCtx) -> GutterCell {
-            GutterCell::blank(Scope("ui.linenr"))
+        fn render_row_cells(&self, _: RowKind, _: &GutterRowCtx) -> Vec<GutterCell> {
+            vec![GutterCell::blank(Scope("ui.linenr"))]
         }
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
             self

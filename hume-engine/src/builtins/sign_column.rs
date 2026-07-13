@@ -114,25 +114,14 @@ impl GutterColumn for SignColumn {
         self.width
     }
 
-    fn render_row(&self, kind: RowKind, ctx: &GutterRowCtx) -> GutterCell {
-        // Highest-priority sign (first cell of the multi-cell output), or
-        // blank. Existing single-cell callers (tests, direct inspection)
-        // keep working unchanged.
-        self.render_row_cells(kind, ctx)
-            .into_iter()
-            .next()
-            .unwrap_or_else(|| GutterCell::blank(crate::types::Scope("ui.linenr")))
-    }
-
     fn render_row_cells(&self, kind: RowKind, ctx: &GutterRowCtx) -> Vec<GutterCell> {
+        let max_signs = self.width.saturating_sub(1) as usize;
         let RowKind::LineStart { line_idx } = kind else {
             // Wrap/Virtual/Filler rows never carry a sign — one blank cell
             // per configured slot so `compose_gutter`'s cell count matches
             // the column's width.
-            let slots = self.width.saturating_sub(1) as usize;
-            return vec![GutterCell::blank(crate::types::Scope("ui.linenr")); slots];
+            return vec![GutterCell::blank(crate::types::Scope("ui.linenr")); max_signs];
         };
-        let max_signs = self.width.saturating_sub(1) as usize;
         if max_signs == 0 {
             return Vec::new();
         }
@@ -236,7 +225,7 @@ mod tests {
         }));
 
         let rope = ropey::Rope::new();
-        let cell = col.render_row(RowKind::LineStart { line_idx: 3 }, &ctx(&rope));
+        let cell = col.render_row_cells(RowKind::LineStart { line_idx: 3 }, &ctx(&rope)).into_iter().next().unwrap();
         assert_eq!(cell.as_str(), "!", "priority 10 beats priority 5");
         assert_eq!(cell.scope, crate::providers::GutterScope::Id(diag_scope));
     }
@@ -268,7 +257,7 @@ mod tests {
         assert!(col.remove_source(winner_id));
 
         let rope = ropey::Rope::new();
-        let cell = col.render_row(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
+        let cell = col.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope)).into_iter().next().unwrap();
         assert_eq!(
             cell.as_str(),
             "+",
@@ -280,7 +269,7 @@ mod tests {
     fn no_source_fires_renders_blank() {
         let col = SignColumn::new();
         let rope = ropey::Rope::new();
-        let cell = col.render_row(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
+        let cell = col.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope)).into_iter().next().unwrap();
         assert_eq!(cell.as_str(), " ");
     }
 
@@ -310,7 +299,7 @@ mod tests {
             },
             RowKind::Filler,
         ] {
-            let cell = col.render_row(kind, &ctx(&rope));
+            let cell = col.render_row_cells(kind, &ctx(&rope)).into_iter().next().unwrap();
             assert_eq!(cell.as_str(), " ", "{kind:?} must not show a sign");
         }
     }
@@ -550,7 +539,7 @@ mod tests {
             },
         }));
         let rope = ropey::Rope::new();
-        let cell = col.render_row(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
+        let cell = col.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope)).into_iter().next().unwrap();
         let crate::providers::GutterScope::Id(id) = cell.scope else {
             panic!("expected an interned ScopeId, got {:?}", cell.scope);
         };
@@ -639,5 +628,101 @@ mod tests {
         let rope = ropey::Rope::new();
         let cells = col.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
         assert!(cells.is_empty(), "width-1 column has 0 sign slots");
+    }
+
+    /// Multi-slot sign columns must render through the full `compose_gutter`
+    /// path, not just `render_row_cells` in isolation. This test catches the
+    /// bug where the `usable_per_cell` formula was wrong, causing all signs
+    /// to be truncated to empty.
+    #[test]
+    fn multi_slot_column_renders_through_compose_gutter() {
+        let mut registry = ScopeRegistry::new();
+        let a = registry.intern("a");
+        let b = registry.intern("b");
+
+        let mut col = SignColumn::with_width(3); // 2 sign slots
+        col.add_source(Box::new(FixedSign {
+            line: 0,
+            sign: Sign { text: "!".into(), scope: a, priority: 10 },
+        }));
+        col.add_source(Box::new(FixedSign {
+            line: 0,
+            sign: Sign { text: "+".into(), scope: b, priority: 5 },
+        }));
+
+        let graphemes = vec![crate::types::Grapheme {
+            byte_range: 0..1,
+            char_offset: 0,
+            col: 0,
+            width: 1,
+            content: crate::types::CellContent::Grapheme,
+            indent_depth: 0,
+            scope: None,
+        }];
+        let rows = [crate::types::DisplayRow {
+            kind: RowKind::LineStart { line_idx: 0 },
+            graphemes: 0..1,
+        }];
+        let styles = vec![crate::types::ResolvedStyle::default()];
+        let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![(0, Box::new(col))];
+        let visible = crate::layout::VisibleRange {
+            line_range: 0..1,
+            top_skip_rows: 0,
+            content_height: 1,
+            content_width: 5,
+            gutter_width: 3,
+            last_line_idx: 0,
+        };
+        let viewport = crate::pane::ViewportState::new(8, 1);
+        let pane_rect = ratatui::layout::Rect {
+            x: 0,
+            y: 0,
+            width: 8,
+            height: 1,
+        };
+        let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
+        let mut theme = Theme::default();
+        theme.bake(&registry);
+        let rope = ropey::Rope::from_str("x\n");
+        let col_widths = vec![3u16];
+        let compose_ctx = crate::render::ComposeCtx {
+            gutter_columns: &gutter_columns,
+            visible: &visible,
+            viewport: &viewport,
+            mode: EditorMode::Normal,
+            primary_head_line: 0,
+            tab_width: 4,
+            tilde_style: ratatui::style::Style::default(),
+            indent_guide_style: ratatui::style::Style::default(),
+            pane_rect,
+            theme: &theme,
+            pane_bg: None,
+            rope: &rope,
+            tree: None,
+        };
+        let mut canvas = crate::render::PaneCanvas::new(&mut buf, None);
+        crate::render::compose_row(
+            &rows[0],
+            &graphemes,
+            &styles,
+            "x",
+            "",
+            0,
+            &col_widths,
+            &compose_ctx,
+            &mut canvas,
+            None,
+        );
+
+        let sym = |x: u16| {
+            buf.cell(ratatui::layout::Position { x, y: 0 })
+                .unwrap()
+                .symbol()
+                .to_string()
+        };
+        assert_eq!(sym(0), "!", "first sign slot renders");
+        assert_eq!(sym(1), "+", "second sign slot renders");
+        assert_eq!(sym(2), " ", "column right padding");
+        assert_eq!(sym(3), "x", "content starts at gutter_width");
     }
 }

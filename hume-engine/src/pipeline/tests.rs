@@ -269,12 +269,12 @@ impl crate::providers::GutterColumn for ProviderIdReportingGutter {
     fn width(&self, _: usize) -> u8 {
         5
     }
-    fn render_row(
+    fn render_row_cells(
         &self,
         kind: RowKind,
         _: &crate::providers::GutterRowCtx,
-    ) -> crate::providers::GutterCell {
-        match kind {
+    ) -> Vec<crate::providers::GutterCell> {
+        let cell = match kind {
             RowKind::Virtual { provider_id, .. } => crate::providers::GutterCell {
                 content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Owned(
                     provider_id.to_string(),
@@ -282,7 +282,8 @@ impl crate::providers::GutterColumn for ProviderIdReportingGutter {
                 scope: crate::types::Scope("ui.linenr").into(),
             },
             _ => crate::providers::GutterCell::blank(crate::types::Scope("ui.linenr")),
-        }
+        };
+        vec![cell]
     }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
@@ -432,22 +433,22 @@ fn filler_row_gutter_shows_gutter_content_not_stale_blank() {
         fn width(&self, _: usize) -> u8 {
             3
         }
-        fn render_row(
+        fn render_row_cells(
             &self,
             kind: RowKind,
             _: &crate::providers::GutterRowCtx,
-        ) -> crate::providers::GutterCell {
+        ) -> Vec<crate::providers::GutterCell> {
             let text = if matches!(kind, RowKind::Filler) {
                 "~g"
             } else {
                 "ln"
             };
-            crate::providers::GutterCell {
+            vec![crate::providers::GutterCell {
                 content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed(
                     text,
                 )),
                 scope: crate::types::Scope("ui.linenr").into(),
-            }
+            }]
         }
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
             self

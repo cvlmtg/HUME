@@ -541,17 +541,17 @@ impl GutterColumn for OverlongGutter {
     fn width(&self, _: usize) -> u8 {
         4
     }
-    fn render_row(
+    fn render_row_cells(
         &self,
         _: RowKind,
         _: &crate::providers::GutterRowCtx,
-    ) -> crate::providers::GutterCell {
-        crate::providers::GutterCell {
+    ) -> Vec<crate::providers::GutterCell> {
+        vec![crate::providers::GutterCell {
             content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed(
                 "TOOLONG",
             )),
             scope: crate::types::Scope("ui.linenr").into(),
-        }
+        }]
     }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
@@ -716,19 +716,19 @@ impl GutterColumn for OwnedIconGutter {
     fn width(&self, _: usize) -> u8 {
         3
     }
-    fn render_row(
+    fn render_row_cells(
         &self,
         _: RowKind,
         _: &crate::providers::GutterRowCtx,
-    ) -> crate::providers::GutterCell {
-        crate::providers::GutterCell {
+    ) -> Vec<crate::providers::GutterCell> {
+        vec![crate::providers::GutterCell {
             // Built at call time (e.g. `format!`) rather than a literal —
             // exercises the `Cow::Owned` path, not `Cow::Borrowed`.
             content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Owned(
                 "AB".to_string(),
             )),
             scope: crate::types::Scope("ui.linenr").into(),
-        }
+        }]
     }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
@@ -743,15 +743,15 @@ impl GutterColumn for StaticIconGutter {
     fn width(&self, _: usize) -> u8 {
         3
     }
-    fn render_row(
+    fn render_row_cells(
         &self,
         _: RowKind,
         _: &crate::providers::GutterRowCtx,
-    ) -> crate::providers::GutterCell {
-        crate::providers::GutterCell {
+    ) -> Vec<crate::providers::GutterCell> {
+        vec![crate::providers::GutterCell {
             content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed("AB")),
             scope: crate::types::Scope("ui.linenr").into(),
-        }
+        }]
     }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
@@ -842,12 +842,12 @@ impl GutterColumn for FirstCharGutter {
     fn width(&self, _: usize) -> u8 {
         2
     }
-    fn render_row(
+    fn render_row_cells(
         &self,
         kind: RowKind,
         ctx: &crate::providers::GutterRowCtx,
-    ) -> crate::providers::GutterCell {
-        match kind {
+    ) -> Vec<crate::providers::GutterCell> {
+        let cell = match kind {
             RowKind::LineStart { line_idx } => {
                 let first_char = ctx.rope.line(line_idx).chars().next().unwrap_or(' ');
                 crate::providers::GutterCell {
@@ -858,7 +858,8 @@ impl GutterColumn for FirstCharGutter {
                 }
             }
             _ => crate::providers::GutterCell::blank(crate::types::Scope("ui.linenr")),
-        }
+        };
+        vec![cell]
     }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self

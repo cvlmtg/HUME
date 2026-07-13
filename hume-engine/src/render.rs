@@ -138,16 +138,16 @@ fn compose_gutter(
             continue;
         }
         let cells = col_provider.render_row_cells(row_kind, &gutter_ctx);
-        // Distribute `col_width` across `cells.len()` sub-cells, each
-        // followed by a one-cell separator. The last sub-cell's trailing
-        // separator is the column's right-padding (matches the single-cell
-        // builtin behaviour). `usable_per_cell` is how much of each
-        // sub-cell's text may be written before truncation.
+        // Distribute `col_width` across `cells.len()` sub-cells. Only the
+        // column's right padding (1 cell) is reserved — no separators between
+        // sub-cells. `usable_per_cell` is how much of each sub-cell's text
+        // may be written before truncation.
         let n_cells = cells.len().max(1);
-        let usable_per_cell = col_width.saturating_sub(n_cells as u16) / n_cells as u16;
+        let usable_per_cell = col_width.saturating_sub(1) / n_cells as u16;
         let mut last_scope: crate::providers::GutterScope =
             crate::providers::GutterScope::Name(crate::types::Scope("ui.linenr"));
-        for cell in &cells {
+        for (cell_idx, cell) in cells.iter().enumerate() {
+            let is_last = cell_idx == cells.len() - 1;
             let text = cell.as_str();
             // `GutterScope::Name` is the slow by-string path (static builtins);
             // `Id` is the fast O(1) path for providers that intern at
@@ -166,16 +166,15 @@ fn compose_gutter(
                 None => scope_style,
             };
 
-            // Right-align within usable width, then write a trailing separator space.
-            // `usable` bounds how much of `text` may be written: a builtin column
-            // (only `LineNumberColumn` today) always fits, but a future
-            // plugin-supplied column isn't guaranteed to — `set_string` only clips
-            // to the terminal buffer, not to this column's width or the pane
-            // rect, so an overlong cell would otherwise bleed into the content
-            // area or the neighbouring pane. Truncate on grapheme-cluster
-            // boundaries (never raw chars/bytes — the project's text-boundary
-            // invariant) by accumulating display width until `usable` is
-            // exhausted.
+            // Right-align within usable width. `usable` bounds how much of
+            // `text` may be written: a builtin column (only `LineNumberColumn`
+            // today) always fits, but a future plugin-supplied column isn't
+            // guaranteed to — `set_string` only clips to the terminal buffer,
+            // not to this column's width or the pane rect, so an overlong cell
+            // would otherwise bleed into the content area or the neighbouring
+            // pane. Truncate on grapheme-cluster boundaries (never raw
+            // chars/bytes — the project's text-boundary invariant) by
+            // accumulating display width until `usable` is exhausted.
             let usable = usable_per_cell;
             let mut truncated_len = text.len();
             let mut text_width = 0u16;
@@ -193,10 +192,15 @@ fn compose_gutter(
                 canvas.set_cell(gutter_x + px, y, " ", style);
             }
             canvas.set_string(gutter_x + pad, y, text, style);
-            let sep_x = gutter_x + pad + text_width;
-            canvas.set_cell(sep_x, y, " ", style);
-
-            gutter_x += usable + 1;
+            // Only write a separator after the last cell — it's the column's
+            // right padding, not a separator between sub-cells.
+            if is_last {
+                let sep_x = gutter_x + pad + text_width;
+                canvas.set_cell(sep_x, y, " ", style);
+                gutter_x += usable + 1;
+            } else {
+                gutter_x += usable;
+            }
             last_scope = cell.scope;
         }
         // Any leftover width (e.g. a wide LineNumberColumn with a short

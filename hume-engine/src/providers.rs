@@ -99,18 +99,11 @@ pub trait GutterColumn {
     /// size line-number columns to fit the largest line number.
     fn width(&self, last_line_idx: usize) -> u8;
 
-    /// Produce content for one display row.
-    fn render_row(&self, kind: RowKind, ctx: &GutterRowCtx) -> GutterCell;
-
-    /// Produce content for one display row as a sequence of cells — used by
-    /// columns that render multiple sub-cells within their configured width
-    /// (e.g. `SignColumn` showing the top N priority-ordered signs when the
-    /// user sets `signcolumn=always:N`). Default wraps `render_row` in a
-    /// single-element `Vec`, so existing one-cell implementations
-    /// (`LineNumberColumn`, test mocks) need no change.
-    fn render_row_cells(&self, kind: RowKind, ctx: &GutterRowCtx) -> Vec<GutterCell> {
-        vec![self.render_row(kind, ctx)]
-    }
+    /// Produce content for one display row as a sequence of cells.
+    /// Single-cell columns (like `LineNumberColumn`) return a `Vec` with one element.
+    /// Multi-cell columns (like `SignColumn` with `signcolumn=always:N`) return
+    /// multiple cells, one per sign slot.
+    fn render_row_cells(&self, kind: RowKind, ctx: &GutterRowCtx) -> Vec<GutterCell>;
 
     /// Downcast support for per-frame config sync (e.g. updating `LineNumberStyle`).
     ///
@@ -487,8 +480,8 @@ mod tests {
         fn width(&self, _: usize) -> u8 {
             0
         }
-        fn render_row(&self, _: crate::types::RowKind, _: &GutterRowCtx) -> GutterCell {
-            GutterCell::blank(Scope("x"))
+        fn render_row_cells(&self, _: crate::types::RowKind, _: &GutterRowCtx) -> Vec<GutterCell> {
+            vec![GutterCell::blank(Scope("x"))]
         }
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
             self
@@ -503,8 +496,8 @@ mod tests {
         fn width(&self, _: usize) -> u8 {
             5
         }
-        fn render_row(&self, _: crate::types::RowKind, _: &GutterRowCtx) -> GutterCell {
-            GutterCell::blank(Scope("y"))
+        fn render_row_cells(&self, _: crate::types::RowKind, _: &GutterRowCtx) -> Vec<GutterCell> {
+            vec![GutterCell::blank(Scope("y"))]
         }
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
             self
