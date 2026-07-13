@@ -27,17 +27,10 @@ Command names keep the `lsp-` prefix (`lsp-install`, not a `plum-`-prefixed name
 command namespace is flat, and discoverability next to the existing `:lsp-status` /
 `:lsp-stop` / `:lsp-restart` matters more than any naming symmetry with `core:plum`.
 
-**Revised 2026-07-14**: server install/uninstall used to live in `core:plum`
-(`servers.scm`, installer-only) with registration in `core:lsp`, connected by a
-cross-plugin notify (`call!`). That split made loading only `core:plum` still expose
-`:lsp-install`/`:lsp-uninstall`/`:lsp-servers` — confusing when the LSP feature plugin
-isn't even loaded — and forced hand-synced "twin" copies of receipt/path/catalog helpers
-between the two plugins' modules. Moving the whole lifecycle into `core:lsp` fixes both:
-the `lsp-*` commands exist iff `core:lsp` is loaded or lazily declared, and install
-finishes with a direct call to `core:lsp`'s own scan (`lsp/register-installed-servers!`)
-instead of a notify round-trip. Consequence: with no `core:lsp` in `init.scm` at all,
-there is no LSP install/uninstall/registration feature, full stop — not a degraded
-notify path, an absent one. `core:plum` never touches `servers/` or the LSP catalogs.
+Consequence: with no `core:lsp` in `init.scm` at all, there is no LSP
+install/uninstall/registration feature — `core:plum` never touches `servers/` or the LSP
+catalogs. See `docs/ROADMAP.md`'s "LSP server lifecycle ownership" row for how this
+placement was arrived at.
 
 ## Architecture: two seeded data sources, two pins
 
@@ -236,13 +229,11 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
   run it".** On `core:lsp` load (or lazy activation — see the caveat below), the scan
   reads `servers/` receipts and registers each installed server for every language it
   serves (per the seeded data). A directory scan is cheap. `:lsp-install` calls the same
-  scan directly right after a successful install — or after confirming an
-  already-up-to-date one — so a server installed mid-session attaches immediately,
-  without a restart. No cross-plugin notify: install and registration are the same
-  plugin now, so this is an ordinary function call
-  (`lsp/register-installed-servers!`, `registration.scm`), not a `call!` round-trip.
-  `core:lsp` also exposes the rescan directly as `:lsp-rescan-servers`, for servers
-  installed out-of-band (not through `:lsp-install`).
+  scan (`lsp/register-installed-servers!`, `registration.scm`) directly right after a
+  successful install — or after confirming an already-up-to-date one — so a server
+  installed mid-session attaches immediately, without a restart. `core:lsp` also exposes
+  the rescan directly as `:lsp-rescan-servers`, for servers installed out-of-band (not
+  through `:lsp-install`).
   **Caveat for a lazily-declared `core:lsp`**: a manifest keyed only on
   `#:events '("on-lsp-attach")` can never activate on its own — nothing is registered
   yet, so nothing attaches, so the event that would trigger activation never fires.
@@ -385,8 +376,8 @@ files, step 2's builtin signatures).
 - [x] **Step 3 — `servers.scm`** (Steel, pure consumer of steps 1+2): scan-on-load
   registration; `lsp-install` / `lsp-uninstall` / `lsp-servers` commands; receipts; orphan
   warnings; npm install path; missing-server hint; user-manual + `init.scm.example` docs.
-  `core:plum`'s `grammars.scm` is the template. Landed in `core:plum` originally, moved
-  wholesale into `core:lsp` 2026-07-14 (see [Placement](#placement-corelsp-owns-the-server-lifecycle-end-to-end)).
+  `core:plum`'s `grammars.scm` is the template. Lives in `core:lsp` — see
+  [Placement](#placement-corelsp-owns-the-server-lifecycle-end-to-end).
   Marshalling gotcha: the minibuffer passes the integer
   `1` to an arity-1 Steel command invoked with no argument — the `lsp-install` no-arg
   branch must test "argument is a string", not absence.
