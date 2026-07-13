@@ -38,7 +38,12 @@
 ;; Language servers — see user-manual/docs/lsp.md for setup and per-language examples.
 ;; With core:plum loaded, run :lsp-install (per language) to download and register a
 ;; server automatically — no manual registration below needed for a seeded server.
-;; (declare-plugin "core:lsp" #:events '("on-lsp-attach") #:commands '("lsp-hover"))
+;; (declare-plugin "core:lsp"
+;;   #:events '("on-lsp-attach")
+;;   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
+;;                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
+;;                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
+;;                "lsp-rename" "fmt" "lsp-code-actions" "completion-trigger"))
 ;;
 ;; A manual registration always overrides a PLUM-managed one — use it for a local
 ;; build, a version PLUM doesn't carry, or to prefer a $PATH copy:
