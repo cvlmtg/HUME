@@ -22,7 +22,7 @@ Requires `core:stdlib` loaded first — diagnostics navigation calls
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
-               "lsp-rename" "fmt" "lsp-code-actions" "completion-trigger"))
+               "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger"))
 ```
 
 `declare-plugin` activates the first time a registered server attaches to a buffer, or the
@@ -50,8 +50,8 @@ keys, and settings.
 No collisions with HUME's default `g` goto trie (`g g e h l s`) at the time these were bound —
 re-check `keymap/defaults.rs` if you rebind any of the native goto leaves.
 
-`fmt` and `diagnostics` are typed-command only (`:fmt`, `:diagnostics`) — no default key.
-`completion-trigger` is already bound to `Ctrl+Space` in Insert mode by HUME itself; the
+`lsp-fmt` and `diagnostics` are typed-command only (`:lsp-fmt`, `:diagnostics`) — no default key.
+`lsp-completion-trigger` is already bound to `Ctrl+Space` in Insert mode by HUME itself; the
 plugin only needs to `define-command!` that exact name.
 
 ## How it works

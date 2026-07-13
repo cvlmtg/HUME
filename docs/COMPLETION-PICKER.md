@@ -59,7 +59,7 @@ Everything below was read from source, not recalled. This is the substrate this 
 **The LSP feature plugin — `runtime/plugins/core/lsp/completion.scm`** (the model for what any source looks like):
 
 - `lsp/request-and-begin-completions`: `lsp-request "textDocument/completion"` → decode (`CompletionItem[]` or `CompletionList`) → strip snippets (`lsp/strip-snippet-item` rewrites `insertTextFormat == 2` items to plain text — v1 has no tabstop UI) → `completion-begin!`.
-- Entry points: `(define-command! "completion-trigger" …)` (Ctrl+Space is bound to that command name) and the `on-trigger-char` hook filtered by `*completion-chars*` (populated on `on-lsp-attach` from `completionProvider.triggerCharacters`, cleared on detach).
+- Entry points: `(define-command! "lsp-completion-trigger" …)` (Ctrl+Space is bound to that command name) and the `on-trigger-char` hook filtered by `*completion-chars*` (populated on `on-lsp-attach` from `completionProvider.triggerCharacters`, cleared on detach).
 - `on-completion-accept` handler: applies `additionalTextEdits`, or resolves via `completionItem/resolve` then applies.
 - `on-completion-refilter` handler: re-requests (isIncomplete flow).
 
@@ -84,7 +84,7 @@ Everything below was read from source, not recalled. This is the substrate this 
 | `accept` with `text_edit` present | LSP wire positions — but isolated to one branch |
 | `accept` fallback (no `text_edit`) | Generic; works with no server attached (UTF-16 default round-trips) |
 | Trigger chars | Generic, already multi-source (`register-trigger-chars!` keyed by source name) |
-| Trigger *ownership* (`completion-trigger` command, `on-trigger-char` subscription) | Lives in `core:lsp` plugin — needs relocation (task A3) |
+| Trigger *ownership* (`lsp-completion-trigger` command, `on-trigger-char` subscription) | Lives in `core:lsp` plugin — needs relocation (task A3) |
 | `on-completion-accept` post-processing | LSP-specific by content, but it's Steel — each source brings its own handler |
 | Naming (`lsp_completion*` fields, `editor/lsp/completion.rs` path, `LspCompletionUi`) | Cosmetic LSP residue — rename in A1 |
 | Snippet stripping | Correctly lives in the LSP source plugin; stays there |
@@ -131,7 +131,7 @@ and their items appear in the same menu as LSP completions, ranked by the same R
 
 **A new `core:completion` plugin owns orchestration.** It is the only caller of `completion-begin!`/`completion-add-items!`. It owns:
 
-- the `completion-trigger` command (moves out of `core:lsp`; the Ctrl+Space binding already targets the command *name*, so the keymap doesn't change),
+- the `lsp-completion-trigger` command (moves out of `core:lsp`; the Ctrl+Space binding already targets the command *name*, so the keymap doesn't change),
 - the `on-trigger-char` subscription (each source declares its trigger chars; the coordinator unions them via the existing `register-trigger-chars!` mechanism — which is already keyed by source name),
 - the `on-completion-refilter` subscription (re-invokes only sources that flagged themselves incomplete),
 - a pure-Steel source registry: `(register-completion-source! name fn #:priority n #:trigger-chars lst)`. No Rust registry needed — this is per-user-intent frequency.
@@ -167,7 +167,7 @@ Rust work for incremental:
 |----|------|---------|------|
 | A1 | Rename pass: de-LSP the session/store/view names (see list above). No behavior change. | — | S (mechanical, wide) |
 | A2 | Session token + `completion-add-items!` (replace-per-source merge) + `source` tag + per-source `#:incomplete` (session flag = OR of latest per-source flags) + priority tiebreaker + per-source rank/display plumbing. Rust: `completion_session.rs`, host trait + `host_impl.rs`, builtin + bootstrap wrapper in `hume-scripting`. Tests: token mismatch no-op, merge re-rank, same-source re-add replaces (no duplicates), late add flips `incomplete`, selection reset, source tiebreak. | A1 | M |
-| A3 | `core:completion` plugin: source registry, coordinator (begin/add orchestration, per-source incomplete tracking, trigger-char union, refilter fan-out), move `completion-trigger` + `on-trigger-char` + `on-completion-refilter` out of `core:lsp`; `core:lsp` re-shapes into a registered source (its `on-completion-accept` handler gains the source guard). Tests: two mock sources (fast sync + slow `after`-delayed), late-arrival merge, stale-token drop, accept-hook source filtering. | A2 | M |
+| A3 | `core:completion` plugin: source registry, coordinator (begin/add orchestration, per-source incomplete tracking, trigger-char union, refilter fan-out), move `lsp-completion-trigger` + `on-trigger-char` + `on-completion-refilter` out of `core:lsp`; `core:lsp` re-shapes into a registered source (its `on-completion-accept` handler gains the source guard). Tests: two mock sources (fast sync + slow `after`-delayed), late-arrival merge, stale-token drop, accept-hook source filtering. | A2 | M |
 | A4 | `buffer-words` builtin + the buffer-words source plugin (`core:buffer-words` or part of `core:completion` — Q-A6). Tests: dedup, bound, prefix vs subsequence per the Q-A5 decision, no-panic on huge buffer. | A3 | S–M |
 
 Estimated total: comparable to one-and-a-half LSP Step 4 cards. No architectural risk; every piece lands behind existing seams.

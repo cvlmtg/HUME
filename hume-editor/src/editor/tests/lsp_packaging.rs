@@ -24,7 +24,7 @@ const DECLARE_LSP: &str = r#"(load-plugin "core:stdlib")
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
-               "lsp-rename" "fmt" "lsp-code-actions" "completion-trigger"))"#;
+               "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger"))"#;
 
 /// Same manifest as `DECLARE_LSP` but keyed on `on-buffer-save` instead of
 /// `on-lsp-attach` — used to prove a positive activation result isn't a
@@ -36,7 +36,7 @@ const DECLARE_LSP_WRONG_EVENT: &str = r#"(load-plugin "core:stdlib")
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
-               "lsp-rename" "fmt" "lsp-code-actions" "completion-trigger"))"#;
+               "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger"))"#;
 
 #[cfg(not(windows))]
 fn eval_with_real_host(ed: &mut Editor, host: &mut ScriptingHost, source: &str, tmp: &Path) {
@@ -340,7 +340,7 @@ fn commented_init_example_block_is_valid_source() {
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
-               "lsp-rename" "fmt" "lsp-code-actions" "completion-trigger"))"#,
+               "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger"))"#,
         tmp.path(),
     );
     drop(guard);

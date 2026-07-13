@@ -421,7 +421,7 @@ pub(super) fn default_insert_keymap() -> KeyTrie {
     // (the `core:lsp` manifest, lazy-loaded on first press) — until that
     // plugin exists, pressing this reports "unknown command" rather than
     // doing nothing silently.
-    t.bind_leaf(key!(Ctrl + ' '), cmd!("completion-trigger"));
+    t.bind_leaf(key!(Ctrl + ' '), cmd!("lsp-completion-trigger"));
 
     // Special insert-mode keys (Backspace, Delete, Enter) are handled directly
     // in handle_insert because they interact with auto-pairs logic.

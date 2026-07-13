@@ -18,7 +18,7 @@
 
 ;; Default keybindings — goto trie (`g …`), free against
 ;; keymap/defaults.rs (only g/e/h/l/s taken). No collisions to document.
-;; `fmt`, `diagnostics`, and `completion-trigger` (already bound to
+;; `lsp-fmt`, `diagnostics`, and `lsp-completion-trigger` (already bound to
 ;; Ctrl+Space, see keymap/defaults.rs) stay typed-command/pre-bound only.
 (bind-key! 'normal "g d" "lsp-goto-definition")
 (bind-key! 'normal "g D" "lsp-goto-declaration")

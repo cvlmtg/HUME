@@ -1,4 +1,4 @@
-// Formatting: `:fmt`, composing `lsp-request`,
+// Formatting: `:lsp-fmt`, composing `lsp-request`,
 // `lsp-capabilities`, `selection-spans-full-line?`, `apply-text-edits!`.
 // Loads the real shipped `core:lsp` plugin in place (`RealRuntimeGuard`).
 //
@@ -89,7 +89,7 @@ fn select_full_line_1(ed: &mut Editor) {
 
 #[cfg(not(windows))]
 fn run_fmt(ed: &mut Editor) {
-    type_cmd(ed, ":fmt");
+    type_cmd(ed, ":lsp-fmt");
     ed.drain_hooks();
     ed.drain_lsp();
     ed.drain_pending_steel_calls();
@@ -230,7 +230,7 @@ fn loading_the_plugin_registers_no_save_hook() {
         &file_dir.path().join("main.rs"),
         tmp.path(),
         |backend, _sid| {
-            // If a save hook incorrectly fired :fmt, this response landing
+            // If a save hook incorrectly fired :lsp-fmt, this response landing
             // would visibly rewrite the buffer.
             backend.respond_to(
                 "textDocument/formatting",
@@ -249,6 +249,6 @@ fn loading_the_plugin_registers_no_save_hook() {
     assert_eq!(
         ed.doc().text().to_string(),
         before,
-        "loading core:lsp must not register an on-buffer-save formatter — v1 is manual :fmt only"
+        "loading core:lsp must not register an on-buffer-save formatter — v1 is manual :lsp-fmt only"
     );
 }

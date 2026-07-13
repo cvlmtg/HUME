@@ -92,7 +92,7 @@
 ;; Two entry points reach the same request: Ctrl+Space (already bound to
 ;; this exact command name) and a registered server trigger character.
 
-(define-command! "completion-trigger" "Trigger LSP completion at the cursor."
+(define-command! "lsp-completion-trigger" "Trigger LSP completion at the cursor."
   (lambda ()
     (lsp/guard-capability "completionProvider"
       (lambda () (lsp/request-and-begin-completions (current-buffer))))))

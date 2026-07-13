@@ -21,7 +21,7 @@ a `$PATH` copy you want to take precedence), register it by hand instead — see
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
-               "lsp-rename" "fmt" "lsp-code-actions" "completion-trigger"))
+               "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger"))
 ```
 
 Declaring is recommended — it keeps startup fast, and `core:lsp` activates the first time a
@@ -178,8 +178,8 @@ Examples for a few commonly used servers:
 | `g n` | `goto-next-diagnostic`       | Jump to the next error/warning after the cursor (wraps) |
 | `g p` | `goto-prev-diagnostic`       | Jump to the previous error/warning before the cursor (wraps) |
 | —     | `:diagnostics`               | List every diagnostic in the buffer |
-| —     | `:fmt`                       | Format the buffer, or just the selected lines if the selection spans whole lines |
-| `Ctrl+Space` (Insert) | `completion-trigger` | Show completions at the cursor |
+| —     | `:lsp-fmt`                   | Format the buffer, or just the selected lines if the selection spans whole lines |
+| `Ctrl+Space` (Insert) | `lsp-completion-trigger` | Show completions at the cursor |
 
 Jumping to a definition, declaration, type, implementation, or reference in another file
 opens that file as a buffer; use HUME's jump-back binding to return. A goto/references

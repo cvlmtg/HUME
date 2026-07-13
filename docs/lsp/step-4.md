@@ -220,20 +220,20 @@ Response cases (all four methods share them): null → "No definition found"; si
 
 ### F8 — Formatting
 
-**Goal** — `:fmt` → whole-buffer `textDocument/formatting`, or `rangeFormatting` when a selection spans at least one full line (hub F8 decision; HUME selections are never empty, so bare "has selection" would always match). One undo step. **Never** format-on-save by default — ship the hook recipe commented out.
+**Goal** — `:lsp-fmt` → whole-buffer `textDocument/formatting`, or `rangeFormatting` when a selection spans at least one full line (hub F8 decision; HUME selections are never empty, so bare "has selection" would always match). One undo step. **Never** format-on-save by default — ship the hook recipe commented out.
 
 **Composes** — B2, B3, B6.
 
 **Steel sketch**
 ```scheme
-(define-command! "fmt" ":fmt — format the buffer (or the selected lines) via LSP."
+(define-command! "lsp-fmt" ":lsp-fmt — format the buffer (or the selected lines) via LSP."
   (lambda ()
     (let ((range? (selection-spans-full-line? (current-buffer))))
       (guard-capability (if range? "documentRangeFormattingProvider" "documentFormattingProvider")
         (lsp-request #f (if range? "textDocument/rangeFormatting" "textDocument/formatting")
           (format-params range?)   ; adds FormattingOptions {tabSize, insertSpaces} from settings
           (lambda (err res)
-            (cond (err (report-lsp-error "fmt" err))
+            (cond (err (report-lsp-error "lsp-fmt" err))
                   ((not res) (log! 'info "Already formatted"))
                   (else (apply-text-edits! (current-buffer) res)))))))))
 ```
@@ -241,7 +241,7 @@ Response cases (all four methods share them): null → "No definition found"; si
 
 **Tests** — whole-buffer edits applied as one undo; sub-line selection formats the whole buffer (the decision's test!); full-line selection sends rangeFormatting with the right range; null → message; commented-out on-buffer-save recipe exists in the plugin source and stays inert (grep-test that loading the plugin registers no save hook).
 
-**Done when** — manual `:fmt` on a scrambled rust file matches `cargo fmt` output.
+**Done when** — manual `:lsp-fmt` on a scrambled rust file matches `cargo fmt` output.
 
 **Size** — ~70 Steel + ~120 test lines.
 
@@ -318,7 +318,7 @@ Response cases (all four methods share them): null → "No definition found"; si
 **Composes** — everything.
 
 **Deliverables**
-1. **Manifest** — `runtime/plugins/core/lsp/plugin.scm`: activation via `declare-plugin` in the user's `init.scm` with `#:events '(on-lsp-attach)` (activates on the first server attach — languages aren't known statically) **plus** `#:commands` for every `:`-command (`diagnostics`, `fmt`, `lsp-hover`, … — invoking any command also activates). Verify this dual activation against `lazy.rs` semantics. Multi-file layout mimicking `plum` (`plugin.scm` + `lib.scm` + per-feature files via relative `require`).
+1. **Manifest** — `runtime/plugins/core/lsp/plugin.scm`: activation via `declare-plugin` in the user's `init.scm` with `#:events '(on-lsp-attach)` (activates on the first server attach — languages aren't known statically) **plus** `#:commands` for every `:`-command (`diagnostics`, `lsp-fmt`, `lsp-hover`, … — invoking any command also activates). Verify this dual activation against `lazy.rs` semantics. Multi-file layout mimicking `plum` (`plugin.scm` + `lib.scm` + per-feature files via relative `require`).
 2. **Keybindings** — the final audit: every suggested default from F1–F10 checked against `keymap/defaults.rs` **at this moment** (things move); bind via `bind-key!` under the goto trie where suggested (`gd gD gy gi gr gR gk ga gn gp` were free at spec time). Collisions: prefer the goto-trie letter closest to convention, document the loser in the plugin README.
 3. **User docs** — `user-manual/docs/lsp.md`: how to install a server, `register-lsp-server!` in `init.scm` (copy-paste rust-analyzer + one non-rust example), the commands/keys, the settings knobs. **Audience rules apply** (project `CLAUDE.md`): no Rust type names, no builtin internals beyond the documented Steel API, no babysitting.
 4. **Plugin-author guide** — a section in the user manual or `docs/`: calling `lsp-request` for custom server extensions, worked example: rust-analyzer's `rust-analyzer/expandMacro` → popup. This is the community-offload payoff — write it like the reader never saw this repo.

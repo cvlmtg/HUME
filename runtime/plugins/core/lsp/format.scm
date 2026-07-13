@@ -1,8 +1,8 @@
 ;;; core:lsp/format.scm — textDocument/formatting / rangeFormatting.
 ;;;
-;;; Format-on-save is NOT wired by default — v1 is manual `:fmt` only. To
+;;; Format-on-save is NOT wired by default — v1 is manual `:lsp-fmt` only. To
 ;;; opt in, uncomment:
-;; (register-hook! 'on-buffer-save (lambda (bid) (call! "fmt")))
+;; (register-hook! 'on-buffer-save (lambda (bid) (call! "lsp-fmt")))
 
 (require "lib.scm")
 
@@ -10,8 +10,8 @@
   (hash "tabSize" (get-option "tab-width")
         "insertSpaces" (equal? (get-option "tab-style") "soft")))
 
-(define-command! "fmt"
-  ":fmt — format the buffer via LSP, or just the selected lines if the \
+(define-command! "lsp-fmt"
+  ":lsp-fmt — format the buffer via LSP, or just the selected lines if the \
 selection spans one or more complete lines."
   (lambda ()
     (let* ((bid (current-buffer))
@@ -29,7 +29,7 @@ selection spans one or more complete lines."
             (lsp-request #f method params
               (lambda (err res)
                 (cond
-                  (err (lsp/report-error "fmt" err))
+                  (err (lsp/report-error "lsp-fmt" err))
                   ((void? res) (log! 'info "Already formatted"))
                   ((null? res) (log! 'info "Already formatted"))
                   (else (apply-text-edits! bid (map lsp/text-edit->tuple res)

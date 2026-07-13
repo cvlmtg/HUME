@@ -43,7 +43,7 @@
 ;;   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
 ;;                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
 ;;                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
-;;                "lsp-rename" "fmt" "lsp-code-actions" "completion-trigger"))
+;;                "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger"))
 ;;
 ;; A manual registration always overrides a PLUM-managed one — use it for a local
 ;; build, a version PLUM doesn't carry, or to prefer a $PATH copy:
