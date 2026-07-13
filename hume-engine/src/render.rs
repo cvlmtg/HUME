@@ -11,6 +11,11 @@ use crate::types::{CellContent, DisplayRow, EditorMode, Grapheme, ResolvedStyle,
 // Stage 4: compose
 // ---------------------------------------------------------------------------
 
+/// Glyph drawn at each inner indent-guide tab stop. Single source of truth —
+/// referenced by `compose_row` and by tests, so the glyph only ever needs to
+/// change in one place.
+pub(crate) const INDENT_GUIDE_GLYPH: &str = "╎";
+
 /// Per-frame constants needed by `compose_row`. Bundle these once per pane
 /// and pass them through without repeating at each call site.
 pub(crate) struct ComposeCtx<'a> {
@@ -331,7 +336,12 @@ pub(crate) fn compose_row(
                 let visible_col = guide_col.saturating_sub(h_offset);
                 let screen_x = content_x_origin + visible_col;
                 if screen_x < right_edge {
-                    canvas.set_cell(screen_x, y, "╎", compose_ctx.indent_guide_style);
+                    canvas.set_cell(
+                        screen_x,
+                        y,
+                        INDENT_GUIDE_GLYPH,
+                        compose_ctx.indent_guide_style,
+                    );
                 }
             }
         }

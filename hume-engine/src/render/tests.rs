@@ -367,21 +367,21 @@ fn indent_guide_drawn_at_inner_tab_stops() {
         buf.cell(ratatui::layout::Position { x: 4, y: 0 })
             .unwrap()
             .symbol(),
-        "│"
+        INDENT_GUIDE_GLYPH
     );
     // Col 0 has the space content (no guide at depth boundary).
     assert_ne!(
         buf.cell(ratatui::layout::Position { x: 0, y: 0 })
             .unwrap()
             .symbol(),
-        "│"
+        INDENT_GUIDE_GLYPH
     );
     // Col 8 is where content starts — no guide there.
     assert_ne!(
         buf.cell(ratatui::layout::Position { x: 8, y: 0 })
             .unwrap()
             .symbol(),
-        "│"
+        INDENT_GUIDE_GLYPH
     );
 }
 
@@ -426,7 +426,7 @@ fn indent_guide_not_drawn_on_wrap_rows() {
         buf.cell(ratatui::layout::Position { x: 0, y: 0 })
             .unwrap()
             .symbol(),
-        "│"
+        INDENT_GUIDE_GLYPH
     );
 }
 

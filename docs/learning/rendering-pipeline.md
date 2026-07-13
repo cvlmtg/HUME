@@ -90,7 +90,7 @@ counterparts, so a multi-cursor view always shows which cursor is focused.
 
 **Stage 4 (Compose)** writes styled grapheme text into the terminal's screen
 buffer. Gutter columns are drawn to the left, the content area to the right.
-On the first row of every buffer line, indent guides — vertical `│` rules at
+On the first row of every buffer line, indent guides — thin vertical rules at
 each inner tab stop of the leading whitespace — are drawn so nested blocks
 stay visually aligned even when the user has tabs turning into spaces or vice
 versa. Overlays (like the completion popup) are drawn last, on top of
