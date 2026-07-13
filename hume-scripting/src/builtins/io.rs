@@ -5,7 +5,7 @@
 //! to the real process stdout by default. Calling any of them while HUME's
 //! alt-screen TUI owns the terminal would corrupt the rendered frame.
 //!
-//! Root cause of why a plain top-level shadow used to miss plugin code: in
+//! Root cause of why a plain top-level shadow misses plugin code: in
 //! steel-core, these ten names are exports of prelude modules
 //! (`#%private/steel/print`, `#%private/steel/control`, and the parameters
 //! module that defines `write`/`write-string`/`write-char`/`simple-display`/
@@ -14,9 +14,9 @@
 //! separate compilation unit from HUME's top level). A top-level
 //! `(define displayln …)` or `register_value("displayln", …)` only rebinds
 //! the name in the host's own unit; every plugin unit still imports the
-//! original straight from the prelude. See `docs/ROADMAP.md`'s displayln row
-//! for the historical writeup of the two shadow attempts that failed for
-//! this reason.
+//! original straight from the prelude — true regardless of the exact form
+//! the top-level-only rebind takes (a reserved-primitive-slot registration,
+//! a direct bare-name registration, or anything else scoped to one unit).
 //!
 //! The fix: HUME appends its own gated redefinitions of all ten names to
 //! steel-core's prelude string itself, via the public
