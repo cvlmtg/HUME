@@ -277,7 +277,10 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
 
     // ── Terminal safety ──────────────────────────────────────────────────────
     fn is_inline_output_command(&self) -> bool {
-        !matches!(self.state.inline_output, super::InlineOutputDispatch::Inactive)
+        !matches!(
+            self.state.inline_output,
+            super::InlineOutputDispatch::Inactive
+        )
     }
 
     fn ensure_inline_output_screen(&mut self) -> Result<(), String> {

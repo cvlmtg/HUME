@@ -85,9 +85,9 @@ pub(crate) fn stdout_gate(ctx: &mut SteelCtx) -> Result<SteelVal, SteelErr> {
         return Ok(SteelVal::BoolV(false));
     }
     if ctx.is_inline_output {
-        ctx.host.ensure_inline_output_screen().map_err(|e| {
-            SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("print: {e}"))
-        })?;
+        ctx.host
+            .ensure_inline_output_screen()
+            .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("print: {e}")))?;
     }
     Ok(SteelVal::BoolV(true))
 }
