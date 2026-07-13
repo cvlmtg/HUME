@@ -22,7 +22,7 @@ use crate::settings::{BufferOverrides, SettingScope, apply_setting};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 use hume_scripting::host::{BindMode, EditorHost, OptionValue};
 
-use super::EditorState;
+use super::{EditorState, Severity};
 
 pub(crate) struct EditorHostImpl<'a> {
     pub(crate) state: &'a mut EditorState,
@@ -778,9 +778,19 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         if self.state.buffers.try_get(bid).is_none() {
             return Err("completion-begin!: no such buffer".to_string());
         }
-        let session = crate::editor::lsp::completion::CompletionSession::begin(
+        let Some(session) = crate::editor::lsp::completion::CompletionSession::begin(
             self.state, bid, &items, incomplete,
-        )?;
+        ) else {
+            // Benign race: the async completion response landed after the
+            // user switched away from `bid`'s pane. Not an error — raising
+            // here would abort the whole drain_pending_steel_calls batch and
+            // drop every other queued LSP callback/timer this frame.
+            self.state.report(
+                Severity::Trace,
+                "completion-begin!: buffer not shown in focused pane — ignored".to_string(),
+            );
+            return Ok(());
+        };
         self.state.lsp_completion = Some(session);
         Ok(())
     }

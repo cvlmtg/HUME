@@ -385,3 +385,59 @@ fn scripted_1k_item_session_stays_under_the_p8_budget() {
         "1k-item begin->filter->top->accept took {elapsed:?}, over the 5ms guardrail budget"
     );
 }
+
+/// Regression: `completion-begin!` for a buffer that isn't shown in the
+/// focused pane — the normal shape of an async LSP completion response
+/// landing after the user switched panes — must be a benign no-op (Trace
+/// log, no session created), not an error. Erroring here used to abort the
+/// whole `drain_pending_steel_calls` batch and drop every other queued
+/// callback/timer for the frame.
+#[test]
+fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op() {
+    use crate::editor::commands::open_pane;
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::EditorHost;
+
+    let dir = tempfile::tempdir().unwrap();
+    let file_b = dir.path().join("b.txt");
+    std::fs::write(&file_b, "hello\n").unwrap();
+
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let pid_a = ed.state.focused_pane_id;
+    let bid_a = ed.focused_buffer_id();
+    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid_a);
+
+    // Open a second file only in pane B, then focus back to pane A — bid_b
+    // is now only ever recorded in pane B's per-pane state.
+    ed.switch_focused_pane(pid_b);
+    ed.execute_typed("e", Some(file_b.to_str().unwrap()))
+        .unwrap();
+    let bid_b = ed.focused_buffer_id();
+    assert_ne!(bid_a, bid_b, "must be genuinely different buffers");
+    ed.switch_focused_pane(pid_a);
+
+    let mut impl_host = EditorHostImpl {
+        state: &mut ed.state,
+        view: &mut ed.view,
+        lsp: None,
+        timers: None,
+    };
+    let result = impl_host.completion_begin(bid_b, vec![], false);
+    assert!(
+        result.is_ok(),
+        "unfocused-pane buffer must be a benign no-op, not an error: {result:?}"
+    );
+
+    assert!(
+        ed.state.lsp_completion.is_none(),
+        "no session must be created for a buffer not shown in the focused pane"
+    );
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Trace && e.text.contains("not shown in focused pane")),
+        "must log a Trace entry explaining the ignored begin, got: {:?}",
+        ed.state.message_log.entries().collect::<Vec<_>>()
+    );
+}

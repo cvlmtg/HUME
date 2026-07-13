@@ -250,7 +250,11 @@ fn map_severity(sev: Option<lsp_types::DiagnosticSeverity>) -> DiagSeverity {
 /// Widens a zero-length `[pos, pos)` range to one char — HUME diagnostic
 /// decorations, like selections, are never empty. Widens forward by
 /// default; widens backward instead when `pos` is at end-of-line or
-/// end-of-buffer, so the range never crosses into the next line.
+/// end-of-buffer, so the range never crosses into the next line. Always
+/// succeeds: the buffer invariant (`len_chars() >= 1`, always ending in a
+/// structural `\n`) guarantees at least the newline itself to widen onto,
+/// even on the minimal `"\n"` buffer — matching how a selection can cover
+/// that same newline cell.
 fn widen_zero_length(rope: &Rope, pos: usize) -> (usize, usize) {
     let len = rope.len_chars();
     if pos < len && rope.char(pos) != '\n' {
@@ -258,7 +262,7 @@ fn widen_zero_length(rope: &Rope, pos: usize) -> (usize, usize) {
     } else if pos > 0 {
         (pos - 1, pos)
     } else {
-        (pos, pos)
+        (0, 1)
     }
 }
 
@@ -342,7 +346,7 @@ impl Editor {
         let mut stored: Vec<StoredDiag> = parsed
             .diagnostics
             .into_iter()
-            .filter_map(|d| {
+            .map(|d| {
                 let raw = serde_json::to_value(&d).unwrap_or(serde_json::Value::Null);
                 let start = wire_to_char(
                     &rope,
@@ -361,17 +365,7 @@ impl Editor {
                 } else {
                     (start, end)
                 };
-                // `widen_zero_length` only fails to widen (stays `(pos,
-                // pos)`) on the minimal 1-char "\n" buffer — no char to
-                // widen onto in either direction. Dropped rather than
-                // stored: a zero-width entry is invisible to `for_range`
-                // (`d.end > lo` never holds) but `counts` doesn't filter on
-                // extent, so it would still be tallied — an error the
-                // buffer shows nowhere.
-                if start == end {
-                    return None;
-                }
-                Some(StoredDiag {
+                StoredDiag {
                     start,
                     end,
                     severity: map_severity(d.severity),
@@ -382,7 +376,7 @@ impl Editor {
                     }),
                     source: d.source,
                     raw,
-                })
+                }
             })
             .collect();
         stored.sort_by_key(|d| d.start);
@@ -758,5 +752,14 @@ mod tests {
     fn widen_zero_length_widens_backward_at_end_of_buffer() {
         let rope = Rope::from_str("hi");
         assert_eq!(widen_zero_length(&rope, 2), (1, 2));
+    }
+
+    /// On the minimal 1-char "\n" buffer, `pos = 0` has no char to widen
+    /// onto in either direction under the general rule — it must widen onto
+    /// the structural newline itself rather than staying `(0, 0)`.
+    #[test]
+    fn widen_zero_length_widens_onto_the_newline_on_the_minimal_buffer() {
+        let rope = Rope::from_str("\n");
+        assert_eq!(widen_zero_length(&rope, 0), (0, 1));
     }
 }

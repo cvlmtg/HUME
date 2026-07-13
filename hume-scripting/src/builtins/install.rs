@@ -19,7 +19,7 @@
 
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use steel::rerrs::SteelErr;
 use steel::rvals::{IntoSteelVal, SteelVal};
@@ -146,14 +146,17 @@ fn create_lock_file(path: &Path) -> std::io::Result<()> {
 /// `(acquire-install-lock!)` — create `<data>/servers/.install-lock` with
 /// O_EXCL semantics, guarding `:lsp-install`/`:lsp-uninstall` against a
 /// second HUME process running one of them concurrently. A lock already
-/// present and younger than an hour is a live install in progress
-/// elsewhere — fails loudly. Older than that, it's treated as abandoned
-/// (the process that held it crashed or was killed without releasing) and
-/// replaced, with a warning.
+/// present and *provably* older than an hour is treated as abandoned (the
+/// process that held it crashed or was killed without releasing) and
+/// replaced, with a warning. Everything else — younger than an hour, or an
+/// age that can't be positively determined at all (unreadable metadata, or
+/// a future mtime from clock skew / a networked or synced filesystem) —
+/// is treated as live: deleting a lock we can't prove abandoned risks two
+/// installs racing on the same server directory.
 ///
 /// # Errors
-/// A live (non-stale) lock already exists, or the lock file can't be
-/// created/replaced.
+/// A live (or indeterminate-age) lock already exists, or the lock file
+/// can't be created/replaced.
 pub(crate) fn acquire_install_lock(ctx: &mut SteelCtx) -> Result<SteelVal, SteelErr> {
     with_data_servers(|servers_dir| {
         let lock_path = servers_dir.join(INSTALL_LOCK_FILE_NAME);
@@ -166,38 +169,40 @@ pub(crate) fn acquire_install_lock(ctx: &mut SteelCtx) -> Result<SteelVal, Steel
                 format!("acquire-install-lock!: {create_err}"),
             ));
         }
-        let age = std::fs::metadata(&lock_path)
+        // `duration_since` errors (rather than defaulting to "unknown") on a
+        // future mtime — clock skew or a networked/synced filesystem — which
+        // is exactly the case that must NOT be treated as stale.
+        let is_stale = std::fs::metadata(&lock_path)
             .and_then(|m| m.modified())
             .ok()
-            .and_then(|modified| modified.elapsed().ok());
-        match age {
-            Some(age) if age <= STALE_INSTALL_LOCK_AGE => Err(SteelErr::new(
+            .and_then(|modified| SystemTime::now().duration_since(modified).ok())
+            .is_some_and(|age| age > STALE_INSTALL_LOCK_AGE);
+        if !is_stale {
+            return Err(SteelErr::new(
                 steel::rerrs::ErrorKind::Generic,
                 "acquire-install-lock!: another install/uninstall is already in progress"
                     .to_string(),
-            )),
-            _ => {
-                ctx.log(
-                    LogLevel::Warning,
-                    "acquire-install-lock!: stale lock (older than 1h) — replacing".to_string(),
-                );
-                std::fs::remove_file(&lock_path).map_err(|e| {
-                    SteelErr::new(
-                        steel::rerrs::ErrorKind::Generic,
-                        format!("acquire-install-lock!: cannot remove stale lock: {e}"),
-                    )
-                })?;
-                create_lock_file(&lock_path).map_err(|e| {
-                    SteelErr::new(
-                        steel::rerrs::ErrorKind::Generic,
-                        format!(
-                            "acquire-install-lock!: cannot create lock after removing stale one: {e}"
-                        ),
-                    )
-                })?;
-                Ok(SteelVal::Void)
-            }
+            ));
         }
+        ctx.log(
+            LogLevel::Warning,
+            "acquire-install-lock!: stale lock (older than 1h) — replacing".to_string(),
+        );
+        std::fs::remove_file(&lock_path).map_err(|e| {
+            SteelErr::new(
+                steel::rerrs::ErrorKind::Generic,
+                format!("acquire-install-lock!: cannot remove stale lock: {e}"),
+            )
+        })?;
+        create_lock_file(&lock_path).map_err(|e| {
+            SteelErr::new(
+                steel::rerrs::ErrorKind::Generic,
+                format!(
+                    "acquire-install-lock!: cannot create lock after removing stale one: {e}"
+                ),
+            )
+        })?;
+        Ok(SteelVal::Void)
     })?
 }
 
@@ -450,6 +455,35 @@ mod tests {
                 .any(|(level, msg)| *level == LogLevel::Warning && msg.contains("stale")),
             "replacing a stale lock must log a warning: {:?}",
             h.pending_messages
+        );
+    }
+
+    /// Regression: a lock file with an mtime in the FUTURE (clock skew, or a
+    /// networked/synced filesystem racing the write) must never be treated
+    /// as stale — `duration_since` errors on a future mtime, and that error
+    /// must fall on the "live, don't delete" side, not the "unknown age,
+    /// assume abandoned" side.
+    #[test]
+    fn acquire_install_lock_treats_a_future_mtime_lock_as_live() {
+        let tmp = TempDir::new().unwrap();
+        let servers = setup(&tmp);
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        acquire_install_lock(&mut ctx).expect("first acquire");
+
+        let lock_path = servers.join(".install-lock");
+        let file = fs::File::open(&lock_path).unwrap();
+        file.set_modified(std::time::SystemTime::now() + Duration::from_secs(60 * 60))
+            .unwrap();
+
+        let err = acquire_install_lock(&mut ctx).unwrap_err();
+        assert!(
+            err.to_string().contains("already in progress"),
+            "a future-dated mtime must not be treated as stale, got: {err}"
+        );
+        assert!(
+            lock_path.exists(),
+            "the live lock must not be deleted when its age can't be determined"
         );
     }
 

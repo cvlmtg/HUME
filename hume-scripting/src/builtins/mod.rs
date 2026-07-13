@@ -287,11 +287,20 @@ const BOOTSTRAP: &str = r#"
 (define %raw-print print)
 (define %raw-println println)
 (define %raw-newline newline)
+(define %raw-write write)
+(define %raw-write-string write-string)
+(define %raw-write-char write-char)
+(define %raw-simple-display simple-display)
+(define %raw-simple-displayln simple-displayln)
 (define %stdout-port (current-output-port))
-(define (%stdout-safe?)
-  (if (eq? (current-output-port) %stdout-port)
+; %port-safe? — writing to `port` is TUI-safe unless it IS the real stdout
+; port, in which case defer to the gate. Shared by every shim's explicit-port
+; branch, not just the implicit (current-output-port) case %stdout-safe? covers.
+(define (%port-safe? port)
+  (if (eq? port %stdout-port)
       (%stdout-gate!)
       #t))
+(define (%stdout-safe?) (%port-safe? (current-output-port)))
 "#;
 
 // PRINT_GATE_SHIMS is appended to BOOTSTRAP itself (top level; nothing else
@@ -302,10 +311,17 @@ const BOOTSTRAP: &str = r#"
 // to resolve straight to steel-core's raw, ungated originals instead of
 // HUME's gate. See io.rs's module doc for the root-cause writeup.
 //
-// Explicit-port forms (`(display obj port)`, …) always forward untouched —
-// writing to a caller-supplied port (e.g. `with-output-to-string`) is
-// TUI-safe regardless of gate state, and forwarding via `apply` keeps the
-// original case-lambda's arity checking intact rather than reimplementing it.
+// Explicit-port forms (`(display obj port)`, …) consult `%port-safe?` on the
+// supplied port rather than forwarding unconditionally — a caller can pass
+// `(current-output-port)` itself (or steel-core's own error printer can), and
+// that IS the real stdout port whenever nothing has parameterized it away.
+// Only a genuinely custom port (`with-output-to-string`, a string port, …)
+// skips the gate; forwarding via `apply` still keeps the original
+// case-lambda's arity checking intact for those. One accepted side effect:
+// an explicit call to the real stdout port while the gate is closed now
+// silently suppresses (matching the implicit-port case) instead of raising
+// an arity error — the old "always forward" shape could not tell the two
+// apart.
 //
 // Every shim below uses a REST-ONLY parameter list (`. args`), never a fixed
 // leading parameter plus a rest parameter (`obj . port`). Verified
@@ -320,23 +336,45 @@ const BOOTSTRAP: &str = r#"
 // the implicit 0/1-arg form specifically — inside required modules; see
 // io.rs's module doc for the one remaining narrow gap this leaves (explicit
 // port args from *inside* a plugin's own required-module body).
+//
+// `write-string`/`write-char` are shimmed even though their steel-core
+// originals are bound directly to the `#%raw-*` natives (no
+// `(current-output-port)` indirection in the implicit-arg case) — the
+// natives default to the real process stdout regardless, so the implicit
+// form is exactly as unsafe as `display`'s and needs the same gate.
+// `simple-display`/`simple-displayln` always resolve `(current-output-port)`
+// themselves and take no port argument, so they're gated like `displayln`.
 const PRINT_GATE_SHIMS: &str = r#"
 (define (displayln . args) (when (%stdout-safe?) (apply %raw-displayln args)))
 (define (display . args)
   (if (pair? (cdr args))
-      (apply %raw-display args)
+      (when (%port-safe? (cadr args)) (apply %raw-display args))
       (when (%stdout-safe?) (%raw-display (car args)))))
 (define (print . args)
   (if (pair? (cdr args))
-      (apply %raw-print args)
+      (when (%port-safe? (cadr args)) (apply %raw-print args))
       (when (%stdout-safe?) (%raw-print (car args)))))
 (define (println . args)
   (if (pair? (cdr args))
-      (apply %raw-println args)
+      (when (%port-safe? (cadr args)) (apply %raw-println args))
       (when (%stdout-safe?) (%raw-println (car args)))))
+(define (write . args)
+  (if (pair? (cdr args))
+      (when (%port-safe? (cadr args)) (apply %raw-write args))
+      (when (%stdout-safe?) (%raw-write (car args)))))
+(define (write-string . args)
+  (if (pair? (cdr args))
+      (when (%port-safe? (cadr args)) (apply %raw-write-string args))
+      (when (%stdout-safe?) (%raw-write-string (car args) (current-output-port)))))
+(define (write-char . args)
+  (if (pair? (cdr args))
+      (when (%port-safe? (cadr args)) (apply %raw-write-char args))
+      (when (%stdout-safe?) (%raw-write-char (car args) (current-output-port)))))
+(define (simple-display . args) (when (%stdout-safe?) (apply %raw-simple-display args)))
+(define (simple-displayln . args) (when (%stdout-safe?) (apply %raw-simple-displayln args)))
 (define (newline . args)
   (if (pair? args)
-      (apply %raw-newline args)
+      (when (%port-safe? (car args)) (apply %raw-newline args))
       (when (%stdout-safe?) (%raw-newline))))
 "#;
 

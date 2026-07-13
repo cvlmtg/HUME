@@ -64,10 +64,16 @@ impl Editor {
 
     /// Last-wins insert: replaces any existing registration for the same
     /// language (matching `define-language!`'s semantics) rather than
-    /// rejecting the second call. Running clients on the *old* config are
-    /// left alone until their next spawn — a caller that needs a fresh
-    /// spawn right away (e.g. reinstalling a server) unregisters explicitly
-    /// first, which this does not do on its own.
+    /// rejecting the second call. Deliberate, not a missing guard: a user's
+    /// `init.scm` loads after every plugin's own registration, and its
+    /// `register-lsp-server!` call for a language a plugin already
+    /// registered must override that plugin's default — a hard error here
+    /// would make user config unable to win over plugin defaults at all.
+    /// See `docs/LSP.md`'s "Multiple servers per language" decision row.
+    /// Running clients on the *old* config are left alone until their next
+    /// spawn — a caller that needs a fresh spawn right away (e.g.
+    /// reinstalling a server) unregisters explicitly first, which this does
+    /// not do on its own.
     ///
     /// After inserting, sweeps already-open buffers of this language that
     /// aren't yet attached (`lsp_attach_buffer` is idempotent), so

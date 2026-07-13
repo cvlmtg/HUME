@@ -370,13 +370,13 @@ fn lsp_stop_clears_stored_diagnostics_for_the_detached_buffer() {
     );
 }
 
-/// Regression: on the minimal 1-char "\n" buffer, `widen_zero_length` has
-/// no char to widen a zero-width diagnostic onto in either direction and
-/// stays `(0, 0)`. Stored anyway, it would be invisible to `for_range`
-/// (`d.end > lo` never holds) but still tallied by `counts` — an error the
-/// buffer shows nowhere. Must be dropped at ingest instead.
+/// Regression: on the minimal 1-char "\n" buffer, `widen_zero_length` has no
+/// char to widen a zero-width diagnostic onto in either direction under the
+/// general forward/backward rule — it must widen onto the structural
+/// newline itself (matching how a selection can cover that same cell) and
+/// be stored and counted, not silently dropped from `:lsp-status`.
 #[test]
-fn zero_width_diagnostic_on_minimal_buffer_is_dropped_not_stored() {
+fn zero_width_diagnostic_on_minimal_buffer_is_widened_onto_the_newline() {
     let tmp = tempfile::tempdir().unwrap();
     let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
     std::fs::write(&file, "\n").unwrap();
@@ -396,7 +396,12 @@ fn zero_width_diagnostic_on_minimal_buffer_is_dropped_not_stored() {
 
     assert_eq!(
         ed.lsp.diagnostic_counts_for_test(bid),
-        (0, 0),
-        "an unwidenable zero-width diagnostic must be dropped, not silently tallied"
+        (1, 0),
+        "an unwidenable zero-width diagnostic must widen onto the newline and be counted"
+    );
+    assert_eq!(
+        ed.lsp.diagnostics_for_test(bid).collect::<Vec<_>>(),
+        vec![(0, 1)],
+        "the widened diagnostic must also be visible to for_range, not just counts"
     );
 }

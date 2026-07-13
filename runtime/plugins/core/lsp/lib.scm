@@ -7,13 +7,18 @@
 
 ;; ── Capability guard ────────────────────────────────────────────────────────
 
+;;; Shared predicate: `caps` hash present, advertises `cap-key`, and not
+;;; explicitly `#f` — the definition of "supported" both `lsp/supports?` and
+;;; `lsp/supports-for-buffer?` check, differing only in how `caps` is obtained.
+(define (lsp/caps-has-cap? caps cap-key)
+  (and caps
+       (hash-contains? caps cap-key)
+       (not (equal? (hash-ref caps cap-key) #f))))
+
 ;;; #t if the focused buffer's attached server advertises `cap-key` (e.g.
 ;;; "hoverProvider") — missing or explicitly `#f` means unsupported.
 (define (lsp/supports? cap-key)
-  (let ((caps (lsp-capabilities #f)))
-    (and caps
-         (hash-contains? caps cap-key)
-         (not (equal? (hash-ref caps cap-key) #f)))))
+  (lsp/caps-has-cap? (lsp-capabilities #f) cap-key))
 
 ;;; Per-buffer variant of `lsp/supports?` — needed wherever the buffer in
 ;;; question isn't necessarily the focused one (e.g. a hook argument fired
@@ -22,11 +27,7 @@
 ;;; capabilities instead.
 (define (lsp/supports-for-buffer? bid cap-key)
   (let ((server (lsp-server-for-buffer bid)))
-    (and server
-         (let ((caps (lsp-capabilities server)))
-           (and caps
-                (hash-contains? caps cap-key)
-                (not (equal? (hash-ref caps cap-key) #f)))))))
+    (and server (lsp/caps-has-cap? (lsp-capabilities server) cap-key))))
 
 ;;; Run `thunk` only if the focused buffer's server supports `cap-key`;
 ;;; otherwise report politely and skip — every feature capability-checks

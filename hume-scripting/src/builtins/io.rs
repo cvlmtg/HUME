@@ -1,21 +1,24 @@
 //! `%stdout-gate!` — the Rust half of HUME's gated print builtins.
 //!
-//! steel-core's `displayln`/`display`/`print`/`println`/`newline` all write
+//! steel-core's `displayln`/`display`/`print`/`println`/`newline`/`write`/
+//! `write-string`/`write-char`/`simple-display`/`simple-displayln` all write
 //! to the real process stdout by default. Calling any of them while HUME's
 //! alt-screen TUI owns the terminal would corrupt the rendered frame.
 //!
 //! Root cause of why a plain top-level shadow used to miss plugin code: in
-//! steel-core, these five names are exports of the prelude module
-//! `#%private/steel/print` / `#%private/steel/control`, and steel-core
-//! prepends its prelude source to *every* compiled unit — including each
-//! `(require "path.scm")` plugin file (a separate compilation unit from
-//! HUME's top level). A top-level `(define displayln …)` or
-//! `register_value("displayln", …)` only rebinds the name in the host's own
-//! unit; every plugin unit still imports the original straight from the
-//! prelude. See `docs/ROADMAP.md`'s displayln row for the historical
-//! writeup of the two shadow attempts that failed for this reason.
+//! steel-core, these ten names are exports of prelude modules
+//! (`#%private/steel/print`, `#%private/steel/control`, and the parameters
+//! module that defines `write`/`write-string`/`write-char`/`simple-display`/
+//! `simple-displayln`), and steel-core prepends its prelude source to *every*
+//! compiled unit — including each `(require "path.scm")` plugin file (a
+//! separate compilation unit from HUME's top level). A top-level
+//! `(define displayln …)` or `register_value("displayln", …)` only rebinds
+//! the name in the host's own unit; every plugin unit still imports the
+//! original straight from the prelude. See `docs/ROADMAP.md`'s displayln row
+//! for the historical writeup of the two shadow attempts that failed for
+//! this reason.
 //!
-//! The fix: HUME appends its own gated redefinitions of all five names to
+//! The fix: HUME appends its own gated redefinitions of all ten names to
 //! steel-core's prelude string itself, via the public
 //! `Engine::set_prelude_string` (see `builtins/mod.rs::register_all`). Since
 //! the prelude lands in every unit, the shims shadow the imports inside
@@ -28,7 +31,7 @@
 //! at compile time ("variable redefined within the top level definition" /
 //! "cannot reference an identifier before its definition"). `register_all`
 //! therefore runs BOOTSTRAP (which captures the originals) and
-//! `PRINT_GATE_SHIMS` (which redefines the five names) as two *separate*
+//! `PRINT_GATE_SHIMS` (which redefines the ten names) as two *separate*
 //! sequential `compile_and_run_raw_program` calls — by the second call,
 //! `displayln` etc. are just ordinary already-bound globals, so redefining
 //! them is a plain rebind, not a self-referential one. A required module
@@ -49,12 +52,27 @@
 //! `(cdr args)` by hand) — this dodges the limitation, and the implicit
 //! 0/1-arg form (the actual PLUM/plugin use case) works correctly in both
 //! the top level and required modules. One narrow residual gap remains: a
-//! plugin that calls one of these five names with an **explicit port
+//! plugin that calls one of these ten names with an **explicit port
 //! argument from inside its own required-module body** still hits the
 //! compiler limitation (no known workaround short of patching steel-core;
 //! no real HUME code does this today). The explicit-port form works
 //! correctly everywhere else — top-level command bodies, `with-output-to-
 //! string`, `call-with-output-string`, etc.
+//!
+//! Explicit-port calls (`(display obj port)`, `(write-string s port)`, …) are
+//! gated too, not just forwarded — `port` can itself be `(current-output-port)`
+//! (or the real stdout port some other way, e.g. from steel-core's own error
+//! printer), and that write is exactly as unsafe as the implicit-port case.
+//! [`stdout_gate`]'s Scheme-side caller, `%port-safe?`, checks the *supplied*
+//! port's identity against the captured real stdout port rather than always
+//! consulting `(current-output-port)` — a custom port (a string port, a pipe)
+//! is never the real stdout port and so always passes through ungated,
+//! regardless of gate state. `write-string`/`write-char` need this even
+//! though steel-core's own natives ignore the `(current-output-port)`
+//! parameter in their 1-arg form and default straight to real stdout — the
+//! shim explicitly threads `(current-output-port)` through so redirecting it
+//! (`with-output-to-string`) works, which also means the implicit 1-arg form
+//! is exactly as gate-relevant as `display`'s.
 //!
 //! This module provides only the gate check itself — [`stdout_gate`],
 //! registered as `%stdout-gate!` — called by each Scheme shim before it
@@ -277,6 +295,56 @@ mod tests {
         );
     }
 
+    /// The write-family names (`write`, `write-string`, `write-char`,
+    /// `simple-display`, `simple-displayln`) reach the gate from inside a
+    /// required module too — these were previously unshimmed, leaving every
+    /// one of them an ungated path to the real stdout.
+    #[test]
+    fn required_module_write_family_reaches_the_gate() {
+        use crate::ScriptingHost;
+        use crate::null_host::{NullHost, RecordingInlineOutputHost};
+
+        let tmp = tempfile::tempdir().unwrap();
+        let plugin_path = tmp.path().join("probe_write.scm");
+        std::fs::write(
+            &plugin_path,
+            r#"
+                (define-command! "probe-write-multi"
+                  "doc"
+                  (lambda ()
+                    (write 1)
+                    (write-string "a")
+                    (write-char #\c)
+                    (simple-display "d")
+                    (simple-displayln "e"))
+                  #:inline-output #t)
+            "#,
+        )
+        .unwrap();
+
+        let mut host = ScriptingHost::new();
+        let mut null_host = NullHost;
+        let src = format!(r#"(require "{}")"#, plugin_path.to_string_lossy());
+        host.eval_source(&src, &mut null_host)
+            .expect("requiring the plugin file must not error");
+
+        let mut recording_host = RecordingInlineOutputHost::default();
+        host.call_steel_cmd(
+            "probe-write-multi",
+            None,
+            vec![],
+            hume_engine::pipeline::PaneId::default(),
+            hume_engine::pipeline::BufferId::default(),
+            &mut recording_host,
+        )
+        .expect("dispatching the required-module command must not error");
+
+        assert_eq!(
+            recording_host.ensure_calls, 5,
+            "write, write-string, write-char, simple-display, and simple-displayln must each reach the gate"
+        );
+    }
+
     /// A `displayln` call at the top level (no `(require …)` involved) must
     /// also reach the gate — this is the load-bearing BOOTSTRAP-shim path,
     /// since steel never re-imports the print names into top-level programs.
@@ -352,8 +420,9 @@ mod tests {
     }
 
     /// The explicit-port branch forwards straight to the original case-lambda
-    /// rather than reimplementing arity checking — an extra positional
-    /// argument still raises, exactly as it did before the gate existed.
+    /// rather than reimplementing arity checking — for a non-stdout port
+    /// (`%port-safe?` is `#t` unconditionally), an extra positional argument
+    /// still raises, exactly as it did before the gate existed.
     #[test]
     fn explicit_port_form_still_enforces_arity() {
         use crate::ScriptingHost;
@@ -382,5 +451,86 @@ mod tests {
             &mut null_host,
         );
         assert!(result.is_err(), "extra positional arg must still error");
+    }
+
+    /// An explicit-port call where the supplied port genuinely IS the real
+    /// stdout port (`(display obj (current-output-port))`, unparameterized)
+    /// must still reach the gate — the bug this regression guards: the old
+    /// shims forwarded any 2+-arg call unconditionally, so this exact call
+    /// bypassed the gate entirely and wrote raw bytes onto the alt-screen.
+    #[test]
+    fn explicit_stdout_port_call_reaches_the_gate() {
+        use crate::ScriptingHost;
+        use crate::null_host::{NullHost, RecordingInlineOutputHost};
+
+        let mut host = ScriptingHost::new();
+        let mut null_host = NullHost;
+        host.eval_source(
+            r#"
+                (define-command! "probe-explicit-stdout-port"
+                  "doc"
+                  (lambda ()
+                    (display "x" (current-output-port)))
+                  #:inline-output #t)
+            "#,
+            &mut null_host,
+        )
+        .expect("defining the command must not error");
+
+        let mut recording_host = RecordingInlineOutputHost::default();
+        host.call_steel_cmd(
+            "probe-explicit-stdout-port",
+            None,
+            vec![],
+            hume_engine::pipeline::PaneId::default(),
+            hume_engine::pipeline::BufferId::default(),
+            &mut recording_host,
+        )
+        .expect("dispatching the command must not error");
+
+        assert_eq!(
+            recording_host.ensure_calls, 1,
+            "an explicit (current-output-port) argument that resolves to real \
+             stdout must still open the bracket, not bypass the gate"
+        );
+    }
+
+    /// `write-string`'s implicit 1-arg form must honor a redirected
+    /// `(current-output-port)` (e.g. inside `with-output-to-string`) rather
+    /// than falling through to steel-core's raw native, which ignores the
+    /// parameter and always targets real stdout.
+    #[test]
+    fn write_string_implicit_form_honors_output_redirect() {
+        use crate::ScriptingHost;
+        use crate::null_host::NullHost;
+
+        let mut host = ScriptingHost::new();
+        let mut null_host = NullHost;
+        host.eval_source(
+            r#"
+                (define-command! "probe-write-string-redirect"
+                  "doc"
+                  (lambda ()
+                    (log! 'info (with-output-to-string (lambda () (write-string "x"))))))
+            "#,
+            &mut null_host,
+        )
+        .expect("defining the command must not error");
+
+        // NullHost defaults is_inline_output_command() to false → gate closed —
+        // pins that a captured, non-stdout port is never suppressed regardless.
+        host.call_steel_cmd(
+            "probe-write-string-redirect",
+            None,
+            vec![],
+            hume_engine::pipeline::PaneId::default(),
+            hume_engine::pipeline::BufferId::default(),
+            &mut null_host,
+        )
+        .expect("dispatching the command must not error");
+
+        let messages = host.take_pending_messages();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].1, "x");
     }
 }

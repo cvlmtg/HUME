@@ -188,12 +188,16 @@ impl CompletionSession {
         self.bid
     }
 
+    /// Returns `None` when `bid` isn't shown in the focused pane — a normal
+    /// race (the async completion response landed after the user switched
+    /// panes), not a caller bug, so this is silently absorbed by the caller
+    /// rather than raised as a Steel error.
     pub(crate) fn begin(
         state: &EditorState,
         bid: BufferId,
         items_json: &[serde_json::Value],
         incomplete: bool,
-    ) -> Result<Self, String> {
+    ) -> Option<Self> {
         let items: Vec<StoredCompletionItem> = items_json
             .iter()
             .map(StoredCompletionItem::from_json)
@@ -204,10 +208,7 @@ impl CompletionSession {
             .state
             .get(pid)
             .and_then(|by_buf| by_buf.get(bid))
-            .map(|pbs| pbs.selections.primary().head())
-            .ok_or_else(|| {
-                "completion-begin!: buffer is not shown in the focused pane".to_string()
-            })?;
+            .map(|pbs| pbs.selections.primary().head())?;
         let mut session = Self {
             bid,
             anchor,
@@ -220,7 +221,7 @@ impl CompletionSession {
             generation_at_begin: 0,
         };
         session.update_filter(state, String::new());
-        Ok(session)
+        Some(session)
     }
 
     /// Re-ranks `items` against `text`, re-stamping `generation_at_begin` —

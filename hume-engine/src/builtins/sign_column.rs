@@ -194,9 +194,11 @@ mod tests {
 
     impl SignSource for FixedSign {
         fn signs_for_line(&self, line_idx: usize, _ctx: &GutterRowCtx) -> Vec<Sign> {
-            (line_idx == self.line)
-                .then(|| vec![self.sign.clone()])
-                .unwrap_or_default()
+            if line_idx == self.line {
+                vec![self.sign.clone()]
+            } else {
+                Vec::new()
+            }
         }
     }
 
