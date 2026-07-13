@@ -23,9 +23,9 @@ impl StatuslineElement for DiagnosticsElement {
     fn format((errors, warnings): Self::Data, colors: &EditorColors) -> (Cow<'static, str>, Style) {
         let label = match (errors, warnings) {
             (0, 0) => String::new(),
-            (e, 0) => format!("✗ {e}"),
+            (e, 0) => format!("✘ {e}"),
             (0, w) => format!("⚠ {w}"),
-            (e, w) => format!("✗ {e} ⚠ {w}"),
+            (e, w) => format!("✘ {e} ⚠ {w}"),
         };
         (Cow::Owned(label), colors.statusline)
     }
