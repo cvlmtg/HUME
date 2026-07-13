@@ -104,7 +104,7 @@ mod tests {
 
     use hume_engine::theme::ScopeRegistry;
     use hume_engine::types::{ResolvedStyle, Scope};
-    use ratatui::style::{Color, Style};
+    use ratatui::style::{Color, Modifier, Style};
 
     use super::*;
 
@@ -186,9 +186,18 @@ mod tests {
         let theme = make_theme_with_statusline(Color::Red, Color::Green, Color::Cyan);
         let colors = EditorColors::from_theme(&theme);
 
-        // Independent oracle: expected values come from the input scopes, not from from_theme.
-        let want_base = Style::default().fg(Color::Red).bg(Color::Green);
-        let want_insert = Style::default().fg(Color::Cyan).bg(Color::Green);
+        // Independent oracle: expected values come from the input scopes, not from
+        // from_theme. ResolvedStyle -> ratatui::Style is fully-specifying (every
+        // modifier not explicitly enabled is explicitly turned off), so a plain
+        // fg/bg style also clears every modifier bit.
+        let want_base = Style::default()
+            .fg(Color::Red)
+            .bg(Color::Green)
+            .remove_modifier(Modifier::all());
+        let want_insert = Style::default()
+            .fg(Color::Cyan)
+            .bg(Color::Green)
+            .remove_modifier(Modifier::all());
 
         assert_eq!(colors.statusline, want_base);
         assert_eq!(colors.status_insert, want_insert);
@@ -210,7 +219,12 @@ mod tests {
         let theme = hume_engine::theme::Theme::new(styles, ResolvedStyle::default());
         let colors = EditorColors::from_theme(&theme);
 
-        let want = Style::default().fg(Color::White).bg(Color::DarkGray);
+        // Fully-specifying: a plain fg/bg style also clears every modifier bit
+        // (see the `From<ResolvedStyle> for ratatui::style::Style` contract).
+        let want = Style::default()
+            .fg(Color::White)
+            .bg(Color::DarkGray)
+            .remove_modifier(Modifier::all());
         assert_eq!(colors.statusline, want);
         assert_eq!(colors.status_normal, want);
         assert_eq!(colors.status_insert, want);

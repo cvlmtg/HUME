@@ -138,6 +138,14 @@ impl From<ResolvedStyle> for ratatui::style::Style {
                 }
             }
         }
+        // A ResolvedStyle fully specifies the cell: everything not explicitly
+        // enabled must be explicitly turned OFF. ratatui's `Cell::set_style` is
+        // additive (it only inserts `add_modifier` and removes `sub_modifier`,
+        // never clearing what the cell already had), so without this an opaque
+        // surface painted over styled text — e.g. a completion popup over
+        // syntax-highlighted code — would inherit stale BOLD/ITALIC from the
+        // cell underneath.
+        style.sub_modifier = ratatui::style::Modifier::all() - style.add_modifier;
         style
     }
 }
@@ -497,6 +505,32 @@ mod tests {
             r.add_modifier
                 .contains(ratatui::style::Modifier::RAPID_BLINK)
         );
+    }
+
+    #[test]
+    fn resolved_style_default_clears_all_modifiers() {
+        // A style with nothing enabled must explicitly turn every modifier
+        // OFF, so it can safely overwrite a cell that already carries stale
+        // modifiers (e.g. a popup painted over syntax-highlighted text).
+        let r: ratatui::style::Style = ResolvedStyle::default().into();
+        assert_eq!(r.add_modifier, ratatui::style::Modifier::empty());
+        assert_eq!(r.sub_modifier, ratatui::style::Modifier::all());
+    }
+
+    #[test]
+    fn resolved_style_sub_modifier_is_complement_of_add_modifier() {
+        let s = ResolvedStyle {
+            modifiers: Modifiers::BOLD,
+            ..Default::default()
+        };
+        let r: ratatui::style::Style = s.into();
+        assert_eq!(r.add_modifier, ratatui::style::Modifier::BOLD);
+        assert_eq!(
+            r.sub_modifier,
+            ratatui::style::Modifier::all() - ratatui::style::Modifier::BOLD
+        );
+        // No overlap between what's turned on and what's turned off.
+        assert!((r.add_modifier & r.sub_modifier).is_empty());
     }
 
     #[test]

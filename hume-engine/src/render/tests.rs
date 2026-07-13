@@ -1127,3 +1127,46 @@ fn compose_row_non_rgb_dim_target_is_noop() {
         Color::Rgb(255, 255, 255)
     );
 }
+
+#[test]
+fn fill_rect_bg_clears_stale_modifiers() {
+    // Reproduces the completion-popup bleed: an opaque overlay painted over a
+    // cell the pane already wrote in italic/bold must not leave those
+    // modifiers on the cell. A plain (no-modifier) ResolvedStyle converts to
+    // a ratatui Style whose sub_modifier clears everything not explicitly
+    // enabled — see the `From<ResolvedStyle> for ratatui::style::Style`
+    // impl in types.rs.
+    let mut buf = make_test_buf(4, 1);
+    buf[(0, 0)].set_style(
+        ratatui::style::Style::default()
+            .add_modifier(ratatui::style::Modifier::ITALIC | ratatui::style::Modifier::BOLD),
+    );
+    assert!(
+        buf[(0, 0)]
+            .modifier
+            .contains(ratatui::style::Modifier::ITALIC)
+    );
+
+    let menu_style: ratatui::style::Style = ResolvedStyle::default().into();
+    fill_rect_bg(
+        &mut buf,
+        ratatui::layout::Rect {
+            x: 0,
+            y: 0,
+            width: 4,
+            height: 1,
+        },
+        menu_style,
+    );
+
+    assert!(
+        !buf[(0, 0)]
+            .modifier
+            .contains(ratatui::style::Modifier::ITALIC)
+    );
+    assert!(
+        !buf[(0, 0)]
+            .modifier
+            .contains(ratatui::style::Modifier::BOLD)
+    );
+}
