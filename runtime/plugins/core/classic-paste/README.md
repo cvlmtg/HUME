@@ -5,6 +5,9 @@ as an alternative to HUME's default smart-p heuristic.
 
 ## Usage
 
+Loads eagerly — it rebinds keys, which must be live from the first keystroke, not deferred
+to a first-use trigger:
+
 ```scheme
 (load-plugin "core:classic-paste")
 ```

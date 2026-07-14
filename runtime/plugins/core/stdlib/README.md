@@ -6,16 +6,17 @@ plugin might need, exposed via `call!` so cross-plugin code never has to re-deri
 ## Usage
 
 ```scheme
-(load-plugin "core:stdlib")
+(declare-plugin "core:stdlib")
 ```
 
-Load before any plugin that calls its commands (e.g. `core:vim-keybind`).
+With no explicit `#:commands`/`#:events`/`#:languages`, this reads `core:stdlib`'s own
+`manifest.scm`, which declares all three commands below as activation triggers — `call!`
+dispatch activates an unactivated plugin inline before retrying the call, so a
+lazily-declared `core:stdlib` still activates transparently the first time another
+plugin's command body calls one of them at runtime.
 
-`(declare-plugin "core:stdlib")` also works: with no explicit `#:commands`/`#:events`/
-`#:languages`, it reads `core:stdlib`'s own `manifest.scm`, which declares all three commands
-below as activation triggers — `call!` dispatch activates an unactivated plugin inline before
-retrying the call, so a lazily-declared `core:stdlib` still activates transparently the first
-time another plugin's command body calls one of them at runtime.
+`(load-plugin "core:stdlib")` also works, loading it eagerly instead. Some dependents
+require this — see the Caveat below.
 
 **Caveat**: `core:vim-keybind`'s `'smart` `change-to-eol` mode checks `(loaded-plugins)` for
 `"core:stdlib"` synchronously at *`core:vim-keybind`'s own load time*, by design (fail fast

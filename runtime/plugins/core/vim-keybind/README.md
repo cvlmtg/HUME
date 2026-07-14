@@ -5,9 +5,11 @@ natively.
 
 ## Usage
 
-Requires `core:stdlib` loaded first — the default `'smart` `change-to-eol` mode hard-errors at
-load time otherwise (see [Config](#config) to opt out with `'on`/`'off` instead):
-
+Requires `core:stdlib` loaded **eagerly** first — not just declared. The default `'smart`
+`change-to-eol` mode checks `(loaded-plugins)` for `"core:stdlib"` at *this plugin's own load
+time*, and a merely lazily-declared `core:stdlib` doesn't show up there until something
+activates it. Loading it eagerly guarantees it's already up before this check runs (see
+[Config](#config) to opt out with `'on`/`'off` instead, which don't need `core:stdlib` at all):
 
 ```scheme
 (load-plugin "core:stdlib")

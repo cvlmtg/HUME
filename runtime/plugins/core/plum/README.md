@@ -6,20 +6,22 @@ from GitHub, and installs the tree-sitter grammars that power syntax highlightin
 ## Usage
 
 ```scheme
-(load-plugin "core:plum")
+(declare-plugin "core:plum")
 ```
 
-PLUM is not privileged — it's a plugin like any other, so it must be loaded explicitly too.
-Disabling it only removes the management commands below; anything already installed keeps
-working without it.
+PLUM is not privileged — it's a plugin like any other, so it must be brought in explicitly
+too. Disabling it only removes the management commands below; anything already installed
+keeps working without it.
 
-`(declare-plugin "core:plum")` also works: with no explicit `#:commands`/`#:events`/
-`#:languages`, it reads `core:plum`'s own `manifest.scm`, which declares `#:languages '("*")`
-(any buffer with a detected language) plus every `:plum-*` command — so it activates on the
-first buffer with a language, or the first `:plum-*` command you type, whichever comes first.
-The language trigger runs before a buffer's tree-sitter highlighting is wired up, so an
-already-compiled grammar still registers (`plum/register-installed-grammars!`) in time for
-that buffer, matching eager `load-plugin` behavior.
+With no explicit `#:commands`/`#:events`/`#:languages`, this reads `core:plum`'s own
+`manifest.scm`, which declares `#:languages '("*")` (any buffer with a detected language)
+plus every `:plum-*` command — so it activates on the first buffer with a language, or the
+first `:plum-*` command you type, whichever comes first. The language trigger runs before a
+buffer's tree-sitter highlighting is wired up, so an already-compiled grammar still
+registers (`plum/register-installed-grammars!`) in time for that buffer, matching eager
+`load-plugin` behavior.
+
+`(load-plugin "core:plum")` also works, loading it eagerly instead.
 
 **Caveat**: passing a custom `#:commands`/`#:events` override to `declare-plugin` without also
 naming `#:languages` bypasses the manifest entirely (all-or-nothing) — PLUM then won't register

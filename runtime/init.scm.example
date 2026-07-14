@@ -28,14 +28,14 @@
 ;;     (log! 'info "Hello from init.scm!")))
 
 ;; ── Plugins ───────────────────────────────────────────────────────────────────
-;;   (load-plugin name)                    — eager: load now, at startup.
 ;;   (declare-plugin name keyword-args...) — lazy: load on first activation.
+;;   (load-plugin name)                    — eager: load now, at startup.
 ;; See plugins.md and core-plugins.md.
 
-;; (load-plugin "core:stdlib")         ; helpers other plugins need
-;; (declare-plugin "core:stdlib")      ; same, lazily — see core:stdlib README "Caveat"
-;; (load-plugin "core:plum")           ; plugin/grammar manager
-;; (declare-plugin "core:plum")        ; same, lazily — see core:plum README "Caveat"
+;; (declare-plugin "core:stdlib")      ; helpers other plugins need — see core:stdlib README "Caveat"
+;; (load-plugin "core:stdlib")         ; same, eagerly — required by some dependents (e.g. core:vim-keybind)
+;; (declare-plugin "core:plum")        ; plugin/grammar manager
+;; (load-plugin "core:plum")           ; same, eagerly — see core:plum README "Caveat"
 
 ;; Third-party plugins, installed by :plum-install:
 ;; (load-plugin "alice/my-theme")

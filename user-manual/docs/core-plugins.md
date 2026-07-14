@@ -1,16 +1,18 @@
 # Core Plugins
 
-HUME ships a few plugins under the `core:` namespace. None load automatically — add `(load-plugin "core:...")` to your `init.scm` for any you want.
+HUME ships a few plugins under the `core:` namespace. None load automatically — add a `declare-plugin` or `load-plugin` call to your `init.scm` for any you want. See [Plugins](plugins.md#how-plugins-are-loaded) for the difference.
 
 ## PLUM
 
 **PLUM** — the HUME **PLU**gin **M**anager — installs and updates third-party plugins from GitHub, and installs the tree-sitter grammars that power syntax highlighting.
 
-PLUM is not different from any other plugin, so you must load it too in your `init.scm`:
+PLUM is not different from any other plugin, so you must bring it in too, in your `init.scm`:
 
 ```scheme
-(load-plugin "core:plum")
+(declare-plugin "core:plum")
 ```
+
+`(load-plugin "core:plum")` also works, loading it eagerly instead.
 
 Disabling it just removes the management commands below — anything already installed keeps working.
 
@@ -36,7 +38,8 @@ formatting, code actions, signature help, completions, and inlay hints — and d
 and manages the language servers themselves (`:lsp-install` / `:lsp-uninstall` /
 `:lsp-servers`), independently of PLUM. Also owns runtime server management
 (`:lsp-status` / `:lsp-stop` / `:lsp-restart`) — these require `core:lsp` loaded even for
-a manually `register-lsp-server!`-registered server. Requires `core:stdlib` loaded first.
+a manually `register-lsp-server!`-registered server. Requires `core:stdlib` declared (or
+loaded) first.
 See [Language Servers](lsp.md) for setup, the full commands/keys table, and settings.
 
 ## core:helix-surround
@@ -49,7 +52,7 @@ Opt-in GUI-style paste split: `p` / `P` paste the kill-ring head, `Ctrl+V` / `Ct
 
 ## core:vim-keybind
 
-Vim muscle-memory keys: `$`, `^`, `0`, and the alternate-file toggle, plus `C`, `D` (delete to end of line), and `G` (go to last line). Requires `core:stdlib` loaded first.
+Vim muscle-memory keys: `$`, `^`, `0`, and the alternate-file toggle, plus `C`, `D` (delete to end of line), and `G` (go to last line). Requires `core:stdlib` loaded eagerly first — not just declared; this plugin checks for it at its own load time.
 
 By default (`'smart`), `C` is context-sensitive: on a bare cursor it's vim's change to end of line; with an active (multi-char) selection it instead runs the default command, `copy-selection-on-next-line`, so that command stays reachable without giving up vim muscle memory for the common case. Pass `#:config` to change this:
 
@@ -62,11 +65,13 @@ By default (`'smart`), `C` is context-sensitive: on a bare cursor it's vim's cha
 
 ## core:stdlib
 
-General-purpose standard library for plugin authors — a growing toolkit of commands any plugin might need, exposed via `call!` so cross-plugin code never has to re-derive them. Load it before any plugin that calls them:
+General-purpose standard library for plugin authors — a growing toolkit of commands any plugin might need, exposed via `call!` so cross-plugin code never has to re-derive them. Bring it in before any plugin that calls them:
 
 ```scheme
-(load-plugin "core:stdlib")
+(declare-plugin "core:stdlib")
 ```
+
+`(load-plugin "core:stdlib")` also works, loading it eagerly instead — some dependents (like `core:vim-keybind`, above) require this.
 
 `(current-selections)` returns a list of selection records, one per cursor — treat each record as opaque; query it only through the commands below, never by picking it apart directly. Character positions count from 0; line numbers count from 1, matching what the statusline shows.
 

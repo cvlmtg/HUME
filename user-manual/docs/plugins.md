@@ -48,9 +48,9 @@ There are two ways to bring a plugin into the editor from `init.scm`:
 | `(declare-plugin "name" #:commands ...)` | **Lazy** — body deferred until first use |
 | `(load-plugin "name")` | **Eager** — body runs during startup |
 
-**Eager plugins** (`load-plugin`) evaluate their body immediately. Use this for plugins that install options, hooks, or key bindings that must be in place from the first keystroke — themes, paste-style overrides, or anything without a natural "first use" trigger.
+**Lazy plugins** (`declare-plugin`) record a *manifest* of what the plugin offers, but don't evaluate the body until the first activation entry is exercised. This keeps startup fast, and is the recommended default: a language-server or formatting plugin whose commands you might never call costs nothing until you do.
 
-**Lazy plugins** (`declare-plugin`) record a *manifest* of what the plugin offers, but don't evaluate the body until the first activation entry is exercised. This keeps startup fast: a Rust formatting plugin whose commands you might never call costs nothing until you do.
+**Eager plugins** (`load-plugin`) evaluate their body immediately. Use this for plugins that install options, hooks, or key bindings that must be in place from the first keystroke — themes, paste-style overrides, or anything without a natural "first use" trigger.
 
 A lazy plugin needs at least one activation entry, or it could never activate. Declare them yourself:
 
