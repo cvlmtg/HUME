@@ -120,7 +120,8 @@
   (let* ((leftmost (car group))
          (n (length group))
          (msg (lsp/first-line (hash-ref leftmost "message")))
-         (text (if (> n 1) (string-append "[" (number->string n) "] " msg) msg))
+         (body (if (> n 1) (string-append "[" (number->string n) "] " msg) msg))
+         (text (string-append " " body))
          (scope (lsp/severity-scope (hash-ref (lsp/most-severe group) "severity"))))
     (list (hash-ref leftmost "line") text scope)))
 

@@ -7,8 +7,10 @@
 use std::path::Path;
 
 use super::*;
+use crate::editor::decorations::InlineDiagnosticEntry;
 use crate::editor::lsp::LspState;
 use crate::editor::scripting_setup::make_init_host;
+use hume_engine::pipeline::RenderContext;
 use hume_lsp::backend::LspBackend;
 use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
@@ -111,8 +113,9 @@ fn single_diagnostic_on_a_line_shows_a_bare_message() {
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].line, 1);
     assert_eq!(
-        entries[0].text, "problem A",
-        "a single diagnostic must not get a '[1]' count prefix"
+        entries[0].text, " problem A",
+        "a single diagnostic must not get a '[1]' count prefix, but keeps \
+         the leading space that separates it from the line's code"
     );
     assert_eq!(entries[0].scope, "diagnostic.error");
 }
@@ -134,8 +137,9 @@ fn two_diagnostics_on_the_same_line_show_count_and_leftmost_message() {
     assert_eq!(entries.len(), 1, "both diagnostics collapse into one entry");
     assert_eq!(entries[0].line, 1);
     assert_eq!(
-        entries[0].text, "[2] warn near start",
-        "count prefix plus the leftmost (D1) diagnostic's message"
+        entries[0].text, " [2] warn near start",
+        "count prefix plus the leftmost (D1) diagnostic's message, with the \
+         leading separator space"
     );
 }
 
@@ -186,9 +190,57 @@ fn diagnostics_on_different_lines_get_independent_entries() {
     assert_eq!(
         entries,
         vec![
-            (1, "problem A".to_string(), "diagnostic.error".to_string()),
-            (3, "problem B".to_string(), "diagnostic.warning".to_string()),
+            (1, " problem A".to_string(), "diagnostic.error".to_string()),
+            (3, " problem B".to_string(), "diagnostic.warning".to_string()),
         ]
+    );
+}
+
+/// `update_inline_diagnostics_providers` (`lifecycle.rs`) must hand the full,
+/// untruncated message through to the pane's `InlineInsert` — the per-line
+/// summary text set via `set-inline-diagnostics!` must reach the render
+/// provider byte-for-byte. (`format_buffer_line`'s trailing-insert path then
+/// splits this `InlineInsert` into one cell per grapheme so a terminal
+/// flush doesn't clobber it past the first column — covered directly by
+/// `format::tests::trailing_insert_emits_one_cell_per_grapheme` in
+/// `hume-engine`, since a ratatui `Buffer` snapshot here can't observe that
+/// terminal-flush-time truncation.)
+#[test]
+fn full_message_reaches_the_render_provider_untruncated() {
+    let mut ed = Editor::open(None).unwrap();
+    ed.feed_key(key('i'));
+    for ch in "let x = 1".chars() {
+        ed.feed_key(key(ch));
+    }
+    ed.feed_key(key_esc());
+    let bid = ed.focused_buffer_id();
+    let message = " mismatched types here";
+    ed.state.decorations.set_inline_diagnostics(
+        bid,
+        vec![InlineDiagnosticEntry {
+            line: 0,
+            text: message.to_string(),
+            scope: "diagnostic.error".to_string(),
+        }],
+    );
+
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(60, 8, &mut ctx);
+    let pid = ed.state.focused_pane_id;
+    let by_line = ed
+        .state
+        .panes
+        .render
+        .get(pid)
+        .unwrap()
+        .inline_diagnostics
+        .read()
+        .unwrap();
+    let inserts = by_line.get(&0).expect("line 0 must have an insert");
+    assert_eq!(inserts.len(), 1);
+    assert_eq!(
+        inserts[0].text, message,
+        "the full message must reach the provider, not a prefix of it"
     );
 }
 

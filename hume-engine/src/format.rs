@@ -297,43 +297,15 @@ pub fn format_buffer_line(
                     .as_ref()
                     .is_none_or(|w| wrap.current_col + ins_width as u16 > w.start);
                 if visible {
-                    // One `Grapheme`/cell per grapheme cluster of `ins.text`,
-                    // not one wide cell for the whole string: a ratatui `Cell`
-                    // renders its `symbol` at exactly one column, so packing
-                    // a multi-character insert into a single cell leaves the
-                    // columns after the first unwritten by this insert —
-                    // whatever the compose stage puts there instead (real
-                    // buffer content) then wins when the backend paints
-                    // cell-by-cell, clobbering everything past the first
-                    // character. `CellContent::Indicator` sidesteps this by
-                    // keeping its own symbol to one glyph and space-filling
-                    // the rest; inlay-hint text has no such luxury.
-                    let (text_start, _) = push_arena_text(virtual_texts_out, &ins.text);
-                    for (g_byte_offset, g_str) in ins.text.grapheme_indices(true) {
-                        let g_width = unicode_display_width(g_str).min(255) as u8;
-                        if g_width == 0 {
-                            continue;
-                        }
-                        graphemes_out.push(Grapheme {
-                            byte_range: byte_offset..byte_offset, // zero-length: virtual
-                            // Char offset of the real grapheme this insert precedes (not
-                            // MAX): keeps the row non-decreasing in char_offset, which
-                            // `resolve_grapheme_col`'s partition_point requires. Inserts
-                            // are pushed before that grapheme, so ties resolve to the
-                            // insert first — `resolve_grapheme_col` skips forward past
-                            // `Virtual` cells to reach the real one.
-                            char_offset: char_pos,
-                            col: wrap.current_col,
-                            width: g_width,
-                            content: CellContent::Virtual {
-                                start: text_start + g_byte_offset as u32,
-                                len: g_str.len() as u16,
-                            },
-                            indent_depth,
-                            scope: Some(ins.scope),
-                        });
-                        wrap.current_col = wrap.current_col.saturating_add(g_width as u16);
-                    }
+                    push_insert_cells(
+                        virtual_texts_out,
+                        graphemes_out,
+                        ins,
+                        byte_offset..byte_offset, // zero-length: virtual
+                        char_pos,
+                        indent_depth,
+                        &mut wrap.current_col,
+                    );
                 } else {
                     wrap.current_col = wrap.current_col.saturating_add(ins_width as u16);
                 }
@@ -465,23 +437,15 @@ pub fn format_buffer_line(
 
         // ── Emit any trailing inline inserts ────────────────────────────────
         for ins in &inline_inserts[insert_idx..] {
-            let ins_width = unicode_display_width(&ins.text).min(255) as u8;
-            if ins_width > 0 {
-                let (start, len) = push_arena_text(virtual_texts_out, &ins.text);
-                graphemes_out.push(Grapheme {
-                    byte_range: line_str.len()..line_str.len(),
-                    // Same offset as the EOL sentinel above (the `\n` position) —
-                    // there is no later real grapheme on this row for a trailing
-                    // insert to precede. Keeps char_offset non-decreasing.
-                    char_offset: char_pos,
-                    col: wrap.current_col,
-                    width: ins_width,
-                    content: CellContent::Virtual { start, len },
-                    indent_depth,
-                    scope: Some(ins.scope),
-                });
-                wrap.current_col = wrap.current_col.saturating_add(ins_width as u16);
-            }
+            push_insert_cells(
+                virtual_texts_out,
+                graphemes_out,
+                ins,
+                line_str.len()..line_str.len(),
+                char_pos,
+                indent_depth,
+                &mut wrap.current_col,
+            );
         }
 
         // ── Newline indicator ───────────────────────────────────────────────
@@ -724,6 +688,55 @@ pub(crate) fn push_arena_text(arena: &mut String, text: &str) -> (u32, u16) {
         u32::try_from(start).unwrap_or(u32::MAX),
         u16::try_from(text.len()).unwrap_or(u16::MAX),
     )
+}
+
+/// Push one `Grapheme`/cell per grapheme cluster of `ins.text`, not one wide
+/// cell for the whole string: a ratatui `Cell` renders its `symbol` at
+/// exactly one column, so packing a multi-character insert into a single
+/// cell leaves the columns after the first unwritten by this insert —
+/// whatever the compose stage puts there instead (real buffer content) then
+/// wins when the backend paints cell-by-cell, clobbering everything past the
+/// first character. `CellContent::Indicator` sidesteps this by keeping its
+/// own symbol to one glyph and space-filling the rest; inline-insert text
+/// (inlay hints, diagnostics) has no such luxury. Shared by both the
+/// mid-line and end-of-line insert sites in `format_buffer_line`.
+fn push_insert_cells(
+    virtual_texts_out: &mut String,
+    graphemes_out: &mut Vec<Grapheme>,
+    ins: &InlineInsert,
+    byte_range: Range<usize>,
+    char_offset: usize,
+    indent_depth: u8,
+    current_col: &mut u16,
+) {
+    let (text_start, _) = push_arena_text(virtual_texts_out, &ins.text);
+    for (g_byte_offset, g_str) in ins.text.grapheme_indices(true) {
+        let g_width = unicode_display_width(g_str).min(255) as u8;
+        if g_width == 0 {
+            continue;
+        }
+        graphemes_out.push(Grapheme {
+            byte_range: byte_range.clone(),
+            // Char offset of the real grapheme this insert precedes (not MAX):
+            // keeps the row non-decreasing in char_offset, which
+            // `resolve_grapheme_col`'s partition_point requires. Mid-line
+            // inserts are pushed before that grapheme, so ties resolve to the
+            // insert first — `resolve_grapheme_col` skips forward past
+            // `Virtual` cells to reach the real one. Trailing inserts share
+            // the EOL sentinel's offset (the `\n` position) since there is no
+            // later real grapheme on the row to precede.
+            char_offset,
+            col: *current_col,
+            width: g_width,
+            content: CellContent::Virtual {
+                start: text_start + g_byte_offset as u32,
+                len: g_str.len() as u16,
+            },
+            indent_depth,
+            scope: Some(ins.scope),
+        });
+        *current_col = current_col.saturating_add(g_width as u16);
+    }
 }
 
 /// Returns `true` if a whitespace indicator should be rendered for this cell.
@@ -1564,6 +1577,45 @@ mod tests {
         let cols: Vec<u16> = insert_cells.iter().map(|g| g.col).collect();
         let expected: Vec<u16> = (0..300).collect();
         assert_eq!(cols, expected, "columns advance 0..300 without wraparound");
+    }
+
+    #[test]
+    fn trailing_insert_emits_one_cell_per_grapheme() {
+        // A multi-char insert past the end of the line (diagnostics' EOL
+        // summary, an inlay hint's `'after` anchor on the last char, etc.)
+        // must go through the same per-grapheme cell emission as a mid-line
+        // insert — one Virtual cell per grapheme cluster, not a single wide
+        // cell whose `symbol` a ratatui `Cell` can only paint at one column.
+        let rope = Rope::from_str("abc");
+        let inserts = vec![InlineInsert {
+            byte_offset: 3, // == line_str.len(): never matched by the in-loop
+            text: "hello".into(),
+            scope: crate::types::ScopeId(0),
+        }];
+        let mut scratch = FormatScratch::new();
+        format_buffer_line(
+            &rope,
+            0,
+            4,
+            &WhitespaceConfig::default(),
+            &WrapMode::None,
+            None,
+            &inserts,
+            &mut scratch,
+        );
+        let insert_cells: Vec<&Grapheme> = scratch
+            .graphemes
+            .iter()
+            .filter(|g| matches!(g.content, CellContent::Virtual { .. }))
+            .collect();
+        assert_eq!(insert_cells.len(), 5, "one virtual cell per grapheme");
+        assert!(insert_cells.iter().all(|g| g.width == 1));
+        let cols: Vec<u16> = insert_cells.iter().map(|g| g.col).collect();
+        assert_eq!(
+            cols,
+            vec![3, 4, 5, 6, 7],
+            "columns advance one-by-one starting right after 'abc'"
+        );
     }
 
     #[test]
