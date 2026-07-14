@@ -13,6 +13,20 @@ PLUM is not privileged — it's a plugin like any other, so it must be loaded ex
 Disabling it only removes the management commands below; anything already installed keeps
 working without it.
 
+`(declare-plugin "core:plum")` also works: with no explicit `#:commands`/`#:events`/
+`#:languages`, it reads `core:plum`'s own `manifest.scm`, which declares `#:languages '("*")`
+(any buffer with a detected language) plus every `:plum-*` command — so it activates on the
+first buffer with a language, or the first `:plum-*` command you type, whichever comes first.
+The language trigger runs before a buffer's tree-sitter highlighting is wired up, so an
+already-compiled grammar still registers (`plum/register-installed-grammars!`) in time for
+that buffer, matching eager `load-plugin` behavior.
+
+**Caveat**: passing a custom `#:commands`/`#:events` override to `declare-plugin` without also
+naming `#:languages` bypasses the manifest entirely (all-or-nothing) — PLUM then won't register
+already-installed grammars until the first `:plum-*` command runs, so buffers opened before
+that render with no syntax highlighting until you do. Keep `#:languages '("*")` (or a narrower
+language list) in any custom override, or load `core:plum` eagerly instead.
+
 ## Commands
 
 Plugin management:

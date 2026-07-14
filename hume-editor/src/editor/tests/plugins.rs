@@ -1754,8 +1754,8 @@ fn language_activation_lint_silent_for_wildcard() {
     );
 }
 
-/// A real core plugin with no `manifest.scm` of its own (`core:stdlib`) still
-/// hard-errors on a zero-trigger `(declare-plugin "core:stdlib")` against the
+/// A real core plugin with no `manifest.scm` of its own (`core:vim-keybind`) still
+/// hard-errors on a zero-trigger `(declare-plugin "core:vim-keybind")` against the
 /// repo's actual `runtime/` tree — the manifest opt-in doesn't silently make
 /// every plugin support the zero-trigger form.
 ///
@@ -1763,7 +1763,7 @@ fn language_activation_lint_silent_for_wildcard() {
 /// erroring on a missing file, this would incorrectly log no error at all.
 #[test]
 #[cfg(not(windows))]
-fn core_stdlib_has_no_manifest_scm_zero_trigger_declare_errors() {
+fn core_vim_keybind_has_no_manifest_scm_zero_trigger_declare_errors() {
     use crate::editor::Severity;
 
     let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
@@ -1776,10 +1776,10 @@ fn core_stdlib_has_no_manifest_scm_zero_trigger_declare_errors() {
         !runtime_dir
             .join("plugins")
             .join("core")
-            .join("stdlib")
+            .join("vim-keybind")
             .join("manifest.scm")
             .exists(),
-        "sanity: core:stdlib must NOT ship a manifest.scm for this negative check to be meaningful"
+        "sanity: core:vim-keybind must NOT ship a manifest.scm for this negative check to be meaningful"
     );
 
     let config_tmp = tempfile::tempdir().unwrap();
@@ -1788,7 +1788,7 @@ fn core_stdlib_has_no_manifest_scm_zero_trigger_declare_errors() {
     std::fs::create_dir_all(&hume_config).unwrap();
     std::fs::write(
         hume_config.join("init.scm"),
-        r#"(declare-plugin "core:stdlib")"#,
+        r#"(declare-plugin "core:vim-keybind")"#,
     )
     .unwrap();
 
@@ -1821,7 +1821,7 @@ fn core_stdlib_has_no_manifest_scm_zero_trigger_declare_errors() {
     );
 }
 
-// ── End-to-end: real core:lsp manifest.scm ────────────────────────────────
+// ── End-to-end: real manifest.scm ─────────────────────────────────────────
 
 /// The real `core:lsp` plugin's own shipped `manifest.scm` (not a synthetic
 /// fixture) resolves and evaluates via a zero-trigger `(declare-plugin
@@ -1899,6 +1899,184 @@ fn core_lsp_real_manifest_scm_resolves_via_zero_trigger_declare() {
             Some(PluginStatus::Declared)
         ),
         "core:lsp must be Declared (not yet activated) once the zero-trigger \
+         declare resolves its manifest.scm"
+    );
+    assert!(
+        !ed.scripting
+            .as_ref()
+            .unwrap()
+            .activation_commands()
+            .is_empty(),
+        "manifest.scm's #:commands entries must be registered as activation stubs"
+    );
+    assert!(
+        !ed.scripting
+            .as_ref()
+            .unwrap()
+            .activation_language_plugins("some-made-up-language")
+            .is_empty(),
+        "manifest.scm's #:languages '(\"*\") must match any language, including an unregistered one"
+    );
+}
+
+/// The real `core:stdlib` plugin's own shipped `manifest.scm` resolves and evaluates via a
+/// zero-trigger `(declare-plugin "core:stdlib")`, through the full production
+/// `init_scripting` path against the repo's actual `runtime/` tree.
+///
+/// Flip: a syntax error, a wrong plugin name, or a stale command list in the real
+/// `runtime/plugins/core/stdlib/manifest.scm` would fail this test while every
+/// synthetic-fixture test elsewhere in this file still passes.
+#[test]
+#[cfg(not(windows))]
+fn core_stdlib_real_manifest_scm_resolves_via_zero_trigger_declare() {
+    use crate::editor::Severity;
+    use hume_scripting::attribution::PluginId;
+
+    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let runtime_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("hume-editor/ must have a parent (the repo root)")
+        .join("runtime");
+    assert!(
+        runtime_dir
+            .join("plugins")
+            .join("core")
+            .join("stdlib")
+            .join("manifest.scm")
+            .exists(),
+        "sanity: the real manifest.scm must exist at the expected repo path"
+    );
+
+    let config_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let hume_config = config_tmp.path().join("hume");
+    std::fs::create_dir_all(&hume_config).unwrap();
+    std::fs::write(
+        hume_config.join("init.scm"),
+        r#"(declare-plugin "core:stdlib")"#,
+    )
+    .unwrap();
+
+    unsafe {
+        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
+        std::env::set_var("HUME_RUNTIME", &runtime_dir);
+        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
+    }
+
+    let mut ed = editor_from("-[a]>b\n");
+    ed.init_scripting();
+
+    unsafe {
+        std::env::remove_var("XDG_CONFIG_HOME");
+        std::env::remove_var("HUME_RUNTIME");
+        std::env::remove_var("XDG_DATA_HOME");
+    }
+
+    let errors: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.clone())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "init.scm with core:stdlib's real manifest.scm must not log errors; got: {errors:?}"
+    );
+
+    let id = PluginId::Core("stdlib".to_string());
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Declared)
+        ),
+        "core:stdlib must be Declared (not yet activated) once the zero-trigger \
+         declare resolves its manifest.scm"
+    );
+    assert!(
+        !ed.scripting
+            .as_ref()
+            .unwrap()
+            .activation_commands()
+            .is_empty(),
+        "manifest.scm's #:commands entries must be registered as activation stubs"
+    );
+}
+
+/// The real `core:plum` plugin's own shipped `manifest.scm` resolves and evaluates via a
+/// zero-trigger `(declare-plugin "core:plum")`, through the full production `init_scripting`
+/// path against the repo's actual `runtime/` tree.
+///
+/// Flip: a syntax error, a wrong plugin name, or a stale command/language list in the real
+/// `runtime/plugins/core/plum/manifest.scm` would fail this test while every synthetic-fixture
+/// test elsewhere in this file still passes.
+#[test]
+#[cfg(not(windows))]
+fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
+    use crate::editor::Severity;
+    use hume_scripting::attribution::PluginId;
+
+    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let runtime_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("hume-editor/ must have a parent (the repo root)")
+        .join("runtime");
+    assert!(
+        runtime_dir
+            .join("plugins")
+            .join("core")
+            .join("plum")
+            .join("manifest.scm")
+            .exists(),
+        "sanity: the real manifest.scm must exist at the expected repo path"
+    );
+
+    let config_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let hume_config = config_tmp.path().join("hume");
+    std::fs::create_dir_all(&hume_config).unwrap();
+    std::fs::write(
+        hume_config.join("init.scm"),
+        r#"(declare-plugin "core:plum")"#,
+    )
+    .unwrap();
+
+    unsafe {
+        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
+        std::env::set_var("HUME_RUNTIME", &runtime_dir);
+        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
+    }
+
+    let mut ed = editor_from("-[a]>b\n");
+    ed.init_scripting();
+
+    unsafe {
+        std::env::remove_var("XDG_CONFIG_HOME");
+        std::env::remove_var("HUME_RUNTIME");
+        std::env::remove_var("XDG_DATA_HOME");
+    }
+
+    let errors: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.clone())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "init.scm with core:plum's real manifest.scm must not log errors; got: {errors:?}"
+    );
+
+    let id = PluginId::Core("plum".to_string());
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Declared)
+        ),
+        "core:plum must be Declared (not yet activated) once the zero-trigger \
          declare resolves its manifest.scm"
     );
     assert!(

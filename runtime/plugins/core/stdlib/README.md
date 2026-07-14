@@ -11,6 +11,20 @@ plugin might need, exposed via `call!` so cross-plugin code never has to re-deri
 
 Load before any plugin that calls its commands (e.g. `core:vim-keybind`).
 
+`(declare-plugin "core:stdlib")` also works: with no explicit `#:commands`/`#:events`/
+`#:languages`, it reads `core:stdlib`'s own `manifest.scm`, which declares all three commands
+below as activation triggers — `call!` dispatch activates an unactivated plugin inline before
+retrying the call, so a lazily-declared `core:stdlib` still activates transparently the first
+time another plugin's command body calls one of them at runtime.
+
+**Caveat**: `core:vim-keybind`'s `'smart` `change-to-eol` mode checks `(loaded-plugins)` for
+`"core:stdlib"` synchronously at *`core:vim-keybind`'s own load time*, by design (fail fast
+instead of a wrong-branch bug at the first `C` keypress — see that plugin's README). A merely
+*declared*, not-yet-activated `core:stdlib` doesn't show up in `(loaded-plugins)`, so `'smart`
+mode still needs `core:stdlib` loaded eagerly first, as above. The zero-trigger form is for
+consumers that only reach `core:stdlib` via `call!` at runtime (e.g. `core:lsp`'s diagnostics
+navigation) with no `core:vim-keybind` `'smart` mode in the mix.
+
 ## Commands
 
 ### Selections

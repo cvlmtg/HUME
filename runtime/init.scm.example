@@ -33,7 +33,9 @@
 ;; See plugins.md and core-plugins.md.
 
 ;; (load-plugin "core:stdlib")         ; helpers other plugins need
+;; (declare-plugin "core:stdlib")      ; same, lazily — see core:stdlib README "Caveat"
 ;; (load-plugin "core:plum")           ; plugin/grammar manager
+;; (declare-plugin "core:plum")        ; same, lazily — see core:plum README "Caveat"
 
 ;; Third-party plugins, installed by :plum-install:
 ;; (load-plugin "alice/my-theme")
