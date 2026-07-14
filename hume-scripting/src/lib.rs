@@ -181,7 +181,9 @@ pub struct ScriptingHost {
     /// Drained by the editor via `take_pending_messages()`.
     pending_messages: Vec<(LogLevel, String)>,
     /// Language identity registrations queued by `(define-language! …)`.
-    /// Drained by `Editor::flush_pending_language_regs` after each `eval_init` boundary.
+    /// Drained after every eval — see `Editor::apply_script_effects` (runtime)
+    /// and `Editor::flush_pending_language_regs` (the init.scm boundary,
+    /// which calls the same apply function).
     pending_language_regs: Vec<PendingLanguageReg>,
     /// LSP server registrations/unregistrations queued by
     /// `(register-lsp-server! …)` / `(unregister-lsp-server! …)`, in call

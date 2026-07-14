@@ -38,8 +38,9 @@ fn optional_path_arg(val: SteelVal, ctx_name: &str) -> Result<Option<PathBuf>, S
 /// `(%define-language! name extensions globs shebangs)` — init-only.
 ///
 /// All three list args must be lists of strings. Pushes a `PendingLanguageReg::Identity`
-/// onto `ctx.pending_language_regs`; `Editor::flush_pending_language_regs` applies
-/// them after each `eval_init` boundary.
+/// onto `ctx.pending_language_regs`; `Editor::apply_pending_language_regs` applies
+/// them after every eval (`Editor::apply_script_effects`) as well as at the
+/// `eval_init` boundary (`Editor::flush_pending_language_regs`).
 pub(crate) fn define_language(
     ctx: &mut SteelCtx,
     name: SteelVal,

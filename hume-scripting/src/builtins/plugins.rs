@@ -421,6 +421,7 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
         .plugins
         .insert(id.clone(), PluginState::Loading);
     ctx.plugin_stack.push(id);
+    ctx.mark_effects();
 
     Ok(SteelVal::StringV(require_program.into()))
 }
@@ -438,6 +439,11 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
 /// leaving callable orphan commands behind.  Steel globals defined before the
 /// error remain in the VM's symbol table (no rollback possible there) but are
 /// unreachable through HUME's command dispatch.
+///
+/// `ctx.pop_effect_marks(success)` does the same for every queued side effect
+/// (`register-lsp-server!`, `define-language!`, `set-buffer-language!`, LSP
+/// requests/notifies, grammar sweeps) — a `Failed` plugin must not leave any
+/// of these to be silently applied by some later, unrelated drain.
 pub(crate) fn finish_lazy_activation(
     ctx: &mut SteelCtx,
     id_str: String,
@@ -446,6 +452,7 @@ pub(crate) fn finish_lazy_activation(
     let id = PluginId::parse(&id_str).map_err(steel_parse_err)?;
 
     ctx.plugin_stack.pop();
+    ctx.pop_effect_marks(success);
 
     let new_state = if success {
         PluginState::Loaded

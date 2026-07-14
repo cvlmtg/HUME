@@ -424,15 +424,19 @@ fn rescan_does_not_clobber_a_manually_registered_language() {
 
 /// A lazily-declared core:lsp (`#:languages`) still registers an installed
 /// server once activated — the startup scan runs at activation time, not
-/// only at eager `(load-plugin "core:lsp")`.
+/// only at eager `(load-plugin "core:lsp")` — and the very buffer whose
+/// language-set triggered the activation attaches to that server in the
+/// same call, with no need to wait for a later effects-applying drain.
 ///
 /// `activate_lazy_language_plugins` (called from `set_buffer_language`,
 /// before `lsp_attach_buffer`) evaluates the plugin inline via
 /// `activate_and_register` (mappings/lazy.rs), which applies the activating
 /// body's queued side effects — including any `register-lsp-server!` —
-/// through `apply_script_effects` before returning. So the buffer whose
-/// language-set *caused* the activation attaches in that same call, with no
-/// need to wait for a later effects-applying drain.
+/// through `apply_script_effects` before returning.
+///
+/// The buffer is given a real path (`lsp_attach_buffer` no-ops on a pathless
+/// buffer) so the attach assertions below actually exercise the attach path,
+/// not just the registration.
 #[test]
 #[cfg(not(windows))]
 fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
@@ -444,6 +448,9 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
         "2026-07-06",
         "rust-analyzer",
     );
+    let src_tmp = tempfile::tempdir().unwrap();
+    let file = src_tmp.path().join("main.rs");
+    std::fs::write(&file, b"fn main() {}\n").unwrap();
 
     let mut ed = editor_from("-[x]>\n");
     load_with_init(
@@ -456,8 +463,16 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
         None,
         "precondition: core:lsp must not have activated yet"
     );
+    // Set the path *after* init_scripting (which re-detects language for
+    // every already-open buffer and would otherwise activate core:lsp early,
+    // before this test's own explicit `set_buffer_language` call below).
+    ed.doc_mut().set_path(Some(file));
 
     let bid = ed.focused_buffer_id();
+    assert!(
+        ed.state.buffers.get(bid).lsp_server.is_none(),
+        "precondition: buffer must be unattached before core:lsp activates"
+    );
     ed.set_buffer_language(bid, Some("rust".to_owned()));
 
     let expected_cmd = canonical_data_dir(data_tmp.path())
@@ -470,6 +485,12 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
         "activating core:lsp via a language-set trigger must apply its startup scan \
          immediately, in the same set_buffer_language call"
     );
+    assert!(
+        ed.state.buffers.get(bid).lsp_server.is_some(),
+        "the buffer whose language-set triggered activation must attach in that same \
+         call, not wait for a later effects-applying drain"
+    );
+    assert_eq!(ed.lsp.server_count_for_test(), 1);
 }
 
 /// A `:`-typed command can activate a lazily-declared core:lsp when the

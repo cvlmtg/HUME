@@ -539,6 +539,44 @@ mod tests {
         );
     }
 
+    /// A plugin body that queues an LSP server registration and a language
+    /// registration and then errors: both must be rolled back from the
+    /// host's persistent queues, not left for some later unrelated drain to
+    /// silently apply.
+    ///
+    /// Fail oracle: without `SteelCtx::pop_effect_marks` truncating on
+    /// failure, both `take_pending_lsp_server_ops()` and
+    /// `take_pending_language_regs()` come back non-empty.
+    #[test]
+    fn queued_effects_before_failure_are_rolled_back() {
+        let dir = TempDir::new().unwrap();
+        let path = write_plugin(
+            &dir,
+            "effects.scm",
+            r#"(register-lsp-server! "rust" #:command "rust-analyzer")
+               (%define-language! "foo" '() '() '())
+               (error "intentional mid-body error")"#,
+        );
+        let id = plugin_id("core:effects");
+        let mut host = ScriptingHost::new();
+        host.registries
+            .lazy_registry
+            .plugins
+            .insert(id.clone(), PluginState::Declared { path });
+
+        let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins());
+
+        assert!(result.is_err(), "activation must fail on intentional error");
+        assert!(
+            host.take_pending_lsp_server_ops().is_empty(),
+            "failed activation must not leave a queued LSP server op behind"
+        );
+        assert!(
+            host.take_pending_language_regs().is_empty(),
+            "failed activation must not leave a queued language registration behind"
+        );
+    }
+
     // ── G4: self-ownership exemption ──────────────────────────────────────────
 
     /// A lazy plugin is allowed to call `define-command!` for its own activation

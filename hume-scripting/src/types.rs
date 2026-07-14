@@ -25,8 +25,10 @@ pub struct SteelCmdDef {
     pub repeatable: bool,
 }
 
-/// Language identity registration queued during `eval_init` and flushed by
-/// `Editor::flush_pending_language_regs` after each `eval_init` boundary.
+/// Language identity registration queued by `(define-language! …)` and
+/// applied via `Editor::apply_pending_language_regs`, drained after every
+/// eval (`Editor::apply_script_effects`) as well as at the `eval_init`
+/// boundary (`Editor::flush_pending_language_regs`).
 #[derive(Debug)]
 pub enum PendingLanguageReg {
     Identity {

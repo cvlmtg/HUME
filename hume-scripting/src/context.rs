@@ -106,6 +106,28 @@ pub(crate) struct SteelCtx<'a> {
     pub(crate) pending_lsp_requests: Vec<PendingLspRequest>,
     /// `(lsp-notify …)` calls queued this eval; flushed the same way.
     pub(crate) pending_lsp_notifies: Vec<PendingLspNotify>,
+    /// Effect-queue length snapshots, one per currently-nested plugin body
+    /// (`begin_lazy_activation` pushes, `finish_lazy_activation` pops — LIFO,
+    /// matching `plugin_stack`). Lets a failed body's queued effects be
+    /// rolled back without touching whatever the enclosing eval already
+    /// queued before the nested activation began.
+    pub(crate) activation_effect_marks: Vec<EffectMarks>,
+}
+
+/// Snapshot of every effect-queue length at the point a plugin body begins
+/// evaluating (`begin_lazy_activation`). On a failed activation,
+/// `finish_lazy_activation` truncates each queue back to its mark — undoing
+/// whatever the partially-evaluated body queued — the same way D2 rolls back
+/// `define-command!` calls. `pending_messages` is deliberately excluded: a
+/// failed plugin's `log!` output stays visible for debugging.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct EffectMarks {
+    pending_language_regs: usize,
+    pending_lsp_server_ops: usize,
+    pending_language_sets: usize,
+    pending_grammar_sweeps: usize,
+    pending_lsp_requests: usize,
+    pending_lsp_notifies: usize,
 }
 
 impl CustomReference for SteelCtx<'_> {}
@@ -140,6 +162,7 @@ impl<'a> SteelCtx<'a> {
             pending_grammar_sweeps: Vec::new(),
             pending_lsp_requests: Vec::new(),
             pending_lsp_notifies: Vec::new(),
+            activation_effect_marks: Vec::new(),
         }
     }
 
@@ -179,6 +202,40 @@ impl<'a> SteelCtx<'a> {
         }
     }
 
+    /// Snapshot every effect queue's current length and push it — called by
+    /// `begin_lazy_activation` right after it pushes `plugin_stack`, so the
+    /// two stacks stay in lockstep (LIFO, one mark per currently-nested body).
+    pub(crate) fn mark_effects(&mut self) {
+        self.activation_effect_marks.push(EffectMarks {
+            pending_language_regs: self.pending_language_regs.len(),
+            pending_lsp_server_ops: self.pending_lsp_server_ops.len(),
+            pending_language_sets: self.pending_language_sets.len(),
+            pending_grammar_sweeps: self.pending_grammar_sweeps.len(),
+            pending_lsp_requests: self.pending_lsp_requests.len(),
+            pending_lsp_notifies: self.pending_lsp_notifies.len(),
+        });
+    }
+
+    /// Pop the most recent mark and, on `success == false`, truncate every
+    /// effect queue back to it — discarding whatever the failed body queued
+    /// before it errored. Called by `finish_lazy_activation` right after it
+    /// pops `plugin_stack`. `pending_messages` is untouched: a failed
+    /// plugin's `log!` output stays visible for debugging.
+    pub(crate) fn pop_effect_marks(&mut self, success: bool) {
+        let Some(marks) = self.activation_effect_marks.pop() else {
+            return;
+        };
+        if success {
+            return;
+        }
+        self.pending_language_regs.truncate(marks.pending_language_regs);
+        self.pending_lsp_server_ops.truncate(marks.pending_lsp_server_ops);
+        self.pending_language_sets.truncate(marks.pending_language_sets);
+        self.pending_grammar_sweeps.truncate(marks.pending_grammar_sweeps);
+        self.pending_lsp_requests.truncate(marks.pending_lsp_requests);
+        self.pending_lsp_notifies.truncate(marks.pending_lsp_notifies);
+    }
+
     pub(crate) fn new_command(
         host: &'a mut dyn EditorHost,
         host_bundle: HostBundle<'a>,
@@ -211,6 +268,7 @@ impl<'a> SteelCtx<'a> {
             pending_grammar_sweeps: Vec::new(),
             pending_lsp_requests: Vec::new(),
             pending_lsp_notifies: Vec::new(),
+            activation_effect_marks: Vec::new(),
         }
     }
 }

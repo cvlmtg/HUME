@@ -159,8 +159,8 @@ impl Editor {
     /// Drain `host`'s queued LSP server ops and apply them. Mirrors
     /// `flush_pending_language_regs`'s Rust-side twin — called once, at the
     /// end of `init.scm` (the runtime path drains through
-    /// `Editor::apply_script_effects` instead, calling the same
-    /// `apply_lsp_server_ops`).
+    /// `Editor::apply_script_effects` instead, which calls the same
+    /// `apply_lsp_server_ops` after every eval).
     pub(in crate::editor) fn flush_pending_lsp_server_ops(
         &mut self,
         host: &mut hume_scripting::ScriptingHost,

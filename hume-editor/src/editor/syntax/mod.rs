@@ -39,6 +39,16 @@ impl Editor {
         // registered in time for the OnLanguageSet fire below.
         if let Some(name) = activate_name.as_deref() {
             self.activate_lazy_language_plugins(name);
+            // A lazy plugin's own body can call `set-buffer-language!` on
+            // this same buffer (applied inline via `apply_script_effects`
+            // before `activate_lazy_language_plugins` returns) — that nested
+            // call already ran this function to completion for the newer
+            // value. Ours is stale: bail out rather than fire a second,
+            // out-of-order `OnLanguageSet` and re-derive syntax/LSP state
+            // for a language the buffer no longer has.
+            if self.state.buffers.get(bid).language != activate_name {
+                return;
+            }
         }
         let bid_val = SteelBufferId::new(bid).into_steel_val();
         self.fire_hook_silent(HookId::OnLanguageSet, &[bid_val, lang_val]);
@@ -137,7 +147,10 @@ impl Editor {
         }
     }
 
-    /// Drain `host.pending_language_regs` and apply them.
+    /// Drain `host.pending_language_regs` and apply them. Called at the
+    /// `eval_init` boundary (`init_scripting`) — the runtime path drains
+    /// through `Editor::apply_script_effects` instead, which calls the same
+    /// `apply_pending_language_regs` after every eval.
     pub(super) fn flush_pending_language_regs(&mut self, host: &mut hume_scripting::ScriptingHost) {
         let regs = host.take_pending_language_regs();
         self.apply_pending_language_regs(regs);

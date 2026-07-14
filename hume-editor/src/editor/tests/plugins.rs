@@ -128,6 +128,102 @@ fn loop_guard_removes_stub_when_body_never_defines_command() {
     );
 }
 
+/// A lazy plugin body that queues a `register-lsp-server!` and then errors
+/// before defining its activation command: the queued registration must not
+/// survive the failed activation — it must not be picked up by
+/// `apply_script_effects`'s own inline application, nor leak into some later
+/// unrelated drain.
+///
+/// Flip: without `SteelCtx::pop_effect_marks` rolling back on failure,
+/// `config_command_for_test("rust")` comes back `Some(..)`.
+#[test]
+#[cfg(not(windows))]
+fn failed_activation_does_not_leave_a_queued_lsp_registration() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
+        r#"(register-lsp-server! "rust" #:command "rust-analyzer")
+           (error "intentional mid-body error")"#,
+    );
+
+    type_cmd(&mut ed, ":bar");
+
+    assert!(
+        ed.lsp.config_command_for_test("rust").is_none(),
+        "a failed activation must not leave its queued register-lsp-server! applied"
+    );
+}
+
+/// A lazy plugin body that calls `%define-language!` (the builtin behind
+/// `define-language!`) is applied in the very same activation call —
+/// `apply_script_effects` drains `pending_language_regs` at runtime, not
+/// only at the `eval_init` boundary.
+///
+/// Flip: without the runtime drain in `apply_script_effects`,
+/// `languages.by_name("foo")` stays `None` after dispatch.
+#[test]
+#[cfg(not(windows))]
+fn lazy_plugin_defined_language_is_registered_on_activation() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
+        r#"(%define-language! "foo" '() '() '())
+           (define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
+    );
+
+    assert!(
+        ed.state.languages.by_name("foo").is_none(),
+        "precondition: 'foo' must not be registered before activation"
+    );
+
+    type_cmd(&mut ed, ":bar");
+
+    assert!(
+        ed.state.languages.by_name("foo").is_some(),
+        "a define-language! from a lazily-activated plugin body must be applied \
+         in the same activation call, not stranded until :reload-config"
+    );
+}
+
+/// A lazily-activated `#:languages` plugin body that itself calls
+/// `set-buffer-language!` on the very buffer whose language-set triggered
+/// its own activation: the nested call (applied inline, before activation
+/// returns) must win. The outer `set_buffer_language` call must detect the
+/// buffer no longer holds the value it's about to fire `OnLanguageSet` for,
+/// and bail out rather than enqueue a second, stale hook.
+///
+/// Flip: without the re-entrancy guard, `pending_hooks` holds two
+/// `OnLanguageSet` entries (python, then a stale rust) instead of one.
+#[test]
+#[cfg(not(windows))]
+fn set_buffer_language_reentrant_activation_uses_final_value() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin "user/tp" #:languages '("rust"))"#,
+        r#"(set-buffer-language! (car (buffers)) "python")"#,
+    );
+    let bid = ed.focused_buffer_id();
+
+    ed.set_buffer_language(bid, Some("rust".to_owned()));
+
+    assert_eq!(
+        ed.state.buffers.get(bid).language.as_deref(),
+        Some("python"),
+        "the plugin's own set-buffer-language! call inside its activation body must win"
+    );
+    assert_eq!(
+        ed.state.pending_hooks.len(),
+        1,
+        "exactly one OnLanguageSet hook must be queued, not a stale duplicate; got: {:?}",
+        ed.state.pending_hooks
+    );
+    let (hook_id, args) = &ed.state.pending_hooks[0];
+    assert_eq!(*hook_id, HookId::OnLanguageSet);
+    assert!(
+        matches!(&args[1], steel::rvals::SteelVal::StringV(s) if s.as_str() == "python"),
+        "the queued OnLanguageSet hook must carry the final ('python') value, not the stale \
+         ('rust') one that triggered activation; got: {:?}",
+        args[1]
+    );
+}
+
 /// Body-error path: if the plugin body raises an error, the state becomes
 /// `Failed`, the stub is removed, and a Warning/Error is reported.
 ///

@@ -18,24 +18,27 @@ use super::{Editor, Severity, host_impl::EditorHostImpl, theme};
 const MAX_HOOK_DRAIN_HOOKS: usize = 1000;
 
 impl Editor {
-    /// Apply a `HookResult`'s queued side effects: drain any queued LSP
-    /// server registrations/unregistrations, send/notify any queued LSP
-    /// calls, apply deferred `set-buffer-language!` calls, and sweep buffers
-    /// for newly attached grammars. Shared tail for `call_steel_cmd`'s call
-    /// site, `drain_hooks`, and `drain_pending_steel_calls`.
+    /// Apply a `HookResult`'s queued side effects: drain any queued language
+    /// registrations and LSP server registrations/unregistrations,
+    /// send/notify any queued LSP calls, apply deferred `set-buffer-language!`
+    /// calls, and sweep buffers for newly attached grammars. Shared tail for
+    /// `call_steel_cmd`'s call site, `drain_hooks`, and `drain_pending_steel_calls`.
     pub(crate) fn apply_script_effects(&mut self, effects: HookResult) {
-        // LSP server ops drain first: `register-lsp-server!` queued earlier
+        // Language regs drain first: a `define-language!` queued earlier in
+        // this same eval must register the identity before the LSP-server-ops
+        // and `pending_language_sets` drains below, so a same-eval
+        // `set-buffer-language!` for that language detects it immediately.
+        // LSP server ops drain next: `register-lsp-server!` queued earlier
         // in this same eval must apply before the `pending_language_sets`
         // loop below, so a `set-buffer-language!` in the same eval attaches
         // through the new config directly rather than waiting a drain cycle.
-        // The queue is persistent on the host (unlike `HookResult`'s
-        // per-eval fields), so it's pulled with the same two-phase take
+        // Both queues are persistent on the host (unlike `HookResult`'s
+        // per-eval fields), so they're pulled with the same two-phase take
         // `flush_script_messages` uses.
-        let lsp_server_ops = self
-            .scripting
-            .as_mut()
-            .map(|h| h.take_pending_lsp_server_ops())
-            .unwrap_or_default();
+        let lang_regs = self.take_from_host(hume_scripting::ScriptingHost::take_pending_language_regs);
+        self.apply_pending_language_regs(lang_regs);
+
+        let lsp_server_ops = self.take_from_host(hume_scripting::ScriptingHost::take_pending_lsp_server_ops);
         self.apply_lsp_server_ops(lsp_server_ops);
 
         let HookResult {
@@ -65,15 +68,21 @@ impl Editor {
         self.state.report(severity, text);
     }
 
+    /// Take a persistent queue off the scripting host, or an empty `Vec` if
+    /// scripting isn't initialized. Collecting into an owned `Vec` first
+    /// (rather than draining in place) satisfies the borrow checker at every
+    /// call site, which also needs `&mut self` to apply what's taken.
+    fn take_from_host<T>(
+        &mut self,
+        taker: impl FnOnce(&mut hume_scripting::ScriptingHost) -> Vec<T>,
+    ) -> Vec<T> {
+        self.scripting.as_mut().map(taker).unwrap_or_default()
+    }
+
     /// Drain any pending `(log! …)` messages from the scripting host and
-    /// report each one.  Collected into a temporary vec first to satisfy the
-    /// borrow checker (both `self.scripting` and `self` are `&mut`).
+    /// report each one.
     pub(crate) fn flush_script_messages(&mut self) {
-        let msgs = self
-            .scripting
-            .as_mut()
-            .map(|h| h.take_pending_messages())
-            .unwrap_or_default();
+        let msgs = self.take_from_host(hume_scripting::ScriptingHost::take_pending_messages);
         for (level, text) in msgs {
             self.report(log_level_to_severity(level), text);
         }
