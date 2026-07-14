@@ -45,12 +45,31 @@ fn setup(
     tmp: &Path,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (Editor, RealRuntimeGuard, ServerId, RequestLog) {
+    setup_with_capabilities(
+        file,
+        tmp,
+        serde_json::json!({"codeActionProvider": true}),
+        configure,
+    )
+}
+
+/// Like `setup`, but with caller-chosen `initialize` capabilities — needed
+/// for the resolve tests, which require `codeActionProvider` to be the
+/// CodeActionOptions hash shape (`{"resolveProvider": true}`), not the bare
+/// boolean `setup`'s default uses.
+#[cfg(not(windows))]
+fn setup_with_capabilities(
+    file: &Path,
+    tmp: &Path,
+    capabilities: serde_json::Value,
+    configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
+) -> (Editor, RealRuntimeGuard, ServerId, RequestLog) {
     let guard = RealRuntimeGuard::new();
 
-    let (mut backend, _notifications, requests) = RecordingLspBackend::with_default_handshake();
+    let (mut backend, _notifications, requests) = RecordingLspBackend::new();
     backend.respond_to(
         "initialize",
-        serde_json::json!({"capabilities": {"codeActionProvider": true}}),
+        serde_json::json!({"capabilities": capabilities}),
     );
     let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
     configure(&mut backend, sid);
@@ -126,6 +145,12 @@ fn command_action(title: &str) -> serde_json::Value {
 
 fn disabled_action(title: &str) -> serde_json::Value {
     serde_json::json!({"title": title, "disabled": {"reason": "not applicable here"}})
+}
+
+/// A lazily-resolved CodeAction: neither "edit" nor "command", per spec —
+/// the client must send `codeAction/resolve` to get either.
+fn unresolved_action(title: &str) -> serde_json::Value {
+    serde_json::json!({"title": title})
 }
 
 fn diagnostic_params(uri: &str) -> serde_json::Value {
@@ -301,5 +326,77 @@ fn context_diagnostics_echoes_the_raw_diagnostic_overlapping_the_cursor() {
     assert!(
         diags[0].get("start").is_none(),
         "must be the raw wire Diagnostic, not the flat shape"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn selecting_an_unresolved_action_sends_resolve_then_applies_it() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, uri) = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _sid, requests) = setup_with_capabilities(
+        &file,
+        tmp.path(),
+        serde_json::json!({"codeActionProvider": {"resolveProvider": true}}),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/codeAction",
+                serde_json::json!([unresolved_action("Fix the thing")]),
+            );
+            backend.respond_to(
+                "codeAction/resolve",
+                edit_action("Fix the thing", &uri),
+            );
+        },
+    );
+
+    run_actions(&mut ed);
+    ed.handle_key(key_enter());
+    ed.drain_pending_steel_calls();
+    ed.drain_lsp();
+    ed.drain_pending_steel_calls();
+
+    last_request_params(&requests, "codeAction/resolve");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "fn main() {\n    let x = 2;\n}\n",
+        "the resolved action's edit must apply after the resolve round-trip"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn selecting_an_unresolved_action_without_resolve_support_reports_it() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, _uri) = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _sid, requests) = setup_with_capabilities(
+        &file,
+        tmp.path(),
+        serde_json::json!({"codeActionProvider": true}),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/codeAction",
+                serde_json::json!([unresolved_action("Fix the thing")]),
+            );
+        },
+    );
+
+    run_actions(&mut ed);
+    ed.handle_key(key_enter());
+    ed.drain_pending_steel_calls();
+
+    assert!(
+        requests
+            .borrow()
+            .iter()
+            .all(|(_sid, m, _params)| m != "codeAction/resolve"),
+        "must never send codeAction/resolve when the server didn't advertise it"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("no edit or command"),
+        "expected an unsupported-action message, got {msg:?}"
     );
 }

@@ -28,6 +28,17 @@
 (define (lsp/action-title action)
   (hash-ref action "title"))
 
+;;; `codeActionProvider` is `#t` or a CodeActionOptions hash — only the
+;;; hash form can carry `resolveProvider`.
+(define (lsp/action-resolve-provider?)
+  (let ((caps (lsp-capabilities #f)))
+    (and caps
+         (hash-contains? caps "codeActionProvider")
+         (let ((cap (hash-ref caps "codeActionProvider")))
+           (and (hash? cap)
+                (hash-contains? cap "resolveProvider")
+                (equal? (hash-ref cap "resolveProvider") #t))))))
+
 ;;; `cmd-obj`: a Command `{title, command, arguments?}` (either the bare
 ;;; top-level shape or a CodeAction's nested "command" field).
 (define (lsp/exec-command cmd-obj)
@@ -40,13 +51,25 @@
 
 ;;; Applies `edit` first, then runs `command`, per spec order. A bare
 ;;; `Command` (legacy shape: "command" is a *string* at the top level, no
-;;; "edit" key at all) only ever reaches the command branch.
+;;; "edit" key at all) only ever reaches the command branch. An action with
+;;; neither key is lazily-resolved — send `codeAction/resolve` first, or
+;;; report it as unsupported if the server never advertised resolve.
 (define (lsp/run-action action)
-  (when (hash-contains? action "edit")
-    (apply-workspace-edit! (hash-ref action "edit")))
-  (when (hash-contains? action "command")
-    (let ((cmd (hash-ref action "command")))
-      (lsp/exec-command (if (string? cmd) action cmd)))))
+  (cond
+    ((or (hash-contains? action "edit") (hash-contains? action "command"))
+     (when (hash-contains? action "edit")
+       (apply-workspace-edit! (hash-ref action "edit")))
+     (when (hash-contains? action "command")
+       (let ((cmd (hash-ref action "command")))
+         (lsp/exec-command (if (string? cmd) action cmd)))))
+    ((lsp/action-resolve-provider?)
+     (lsp-request #f "codeAction/resolve" action
+       (lambda (err resolved)
+         (cond
+           (err (lsp/report-error "code action" err))
+           ((void? resolved) (log! 'info "Code action has no edit or command"))
+           (else (lsp/run-action resolved))))))
+    (else (log! 'info "Code action has no edit or command"))))
 
 (define-command! "lsp-code-actions" "Show available code actions for the cursor or selection."
   (lambda ()
