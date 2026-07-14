@@ -417,12 +417,6 @@ pub(super) fn default_insert_keymap() -> KeyTrie {
 
     t.bind_leaf(key!(Ctrl + 'w'), cmd!("delete-word-backward"));
 
-    // Triggers LSP completion. The command itself is Steel-defined
-    // (the `core:lsp` manifest, lazy-loaded on first press) — until that
-    // plugin exists, pressing this reports "unknown command" rather than
-    // doing nothing silently.
-    t.bind_leaf(key!(Ctrl + ' '), cmd!("lsp-completion-trigger"));
-
     // Special insert-mode keys (Backspace, Delete, Enter) are handled directly
     // in handle_insert because they interact with auto-pairs logic.
     // Characters that are NOT in the trie fall through to char-insertion.

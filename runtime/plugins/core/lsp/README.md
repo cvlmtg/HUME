@@ -74,13 +74,14 @@ LSP server management:
 | `g a` | lsp-code-actions                |
 | `g n` | goto-next-diagnostic            |
 | `g p` | goto-prev-diagnostic            |
+| `Ctrl+Space` (Insert) | lsp-completion-trigger |
 
 No collisions with HUME's default `g` goto trie (`g g e h l s`) at the time these were bound —
 re-check `keymap/defaults.rs` if you rebind any of the native goto leaves.
 
 `lsp-fmt` and `diagnostics` are typed-command only (`:lsp-fmt`, `:diagnostics`) — no default key.
-`lsp-completion-trigger` is already bound to `Ctrl+Space` in Insert mode by HUME itself; the
-plugin only needs to `define-command!` that exact name.
+All keybindings above, including `Ctrl+Space`, are bound by this plugin itself — with no
+`core:lsp` loaded or declared, none of these keys do anything.
 
 ## How it works
 

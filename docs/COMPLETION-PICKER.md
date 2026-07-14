@@ -131,7 +131,7 @@ and their items appear in the same menu as LSP completions, ranked by the same R
 
 **A new `core:completion` plugin owns orchestration.** It is the only caller of `completion-begin!`/`completion-add-items!`. It owns:
 
-- the `lsp-completion-trigger` command (moves out of `core:lsp`; the Ctrl+Space binding already targets the command *name*, so the keymap doesn't change),
+- the `lsp-completion-trigger` command and its `(bind-key! 'insert "ctrl-space" …)` call (both move out of `core:lsp`'s `plugin.scm`; the binding targets the command *name*, so no other keymap changes are needed),
 - the `on-trigger-char` subscription (each source declares its trigger chars; the coordinator unions them via the existing `register-trigger-chars!` mechanism — which is already keyed by source name),
 - the `on-completion-refilter` subscription (re-invokes only sources that flagged themselves incomplete),
 - a pure-Steel source registry: `(register-completion-source! name fn #:priority n #:trigger-chars lst)`. No Rust registry needed — this is per-user-intent frequency.

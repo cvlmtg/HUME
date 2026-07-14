@@ -1208,6 +1208,34 @@ fn keymap_lint_warns_on_unknown_command() {
     );
 }
 
+/// Native default keymaps must never bind a key to a command that isn't a Rust
+/// built-in — `lsp-completion-trigger` (Ctrl+Space) lives entirely in
+/// `core:lsp`'s `plugin.scm` now, not in `keymap/defaults.rs`, so an editor
+/// that never loads or declares `core:lsp` must start up with no keymap-lint
+/// warning naming it.
+///
+/// Flip: re-adding `t.bind_leaf(key!(Ctrl + ' '), cmd!("lsp-completion-trigger"))`
+/// to `default_insert_keymap` in `keymap/defaults.rs` makes this fail.
+#[test]
+#[cfg(not(windows))]
+fn no_keymap_lint_warning_for_lsp_completion_trigger_without_core_lsp() {
+    use crate::editor::Severity;
+
+    let (ed, _dirs) = setup_editor_with_init_scripting("");
+
+    assert!(
+        !ed.state.message_log.entries().any(|e| {
+            e.severity == Severity::Warning && e.text.contains("lsp-completion-trigger")
+        }),
+        "no warning should name 'lsp-completion-trigger' when core:lsp is never loaded/declared; messages: {:?}",
+        ed.state
+            .message_log
+            .entries()
+            .map(|e| format!("{:?}: {}", e.severity, e.text))
+            .collect::<Vec<_>>()
+    );
+}
+
 /// `(load-plugin …)` called from a plugin body during *runtime* activation
 /// (command activation) is rejected — registration verbs are top-level-only.
 /// The parent plugin is marked `Failed` and an `Error` is logged.

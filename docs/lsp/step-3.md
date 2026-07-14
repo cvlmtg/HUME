@@ -193,7 +193,7 @@ Height = min(rows + 1, terminal_height / 2). Rendering: engine band render (like
 
 **Depends** — B8, U4, B7. **Unlocks** — F3.
 
-**Files** — `ui/popup.rs` (completion menu = U5 menu + doc column), Insert-mode key routing (`editor/mappings/` insert path), `keymap/defaults.rs` (`Ctrl+Space` binding → a `lsp-completion-trigger` **named command** so plugins can rebind), builtins already exist (B8).
+**Files** — `ui/popup.rs` (completion menu = U5 menu + doc column), Insert-mode key routing (`editor/mappings/` insert path), `core:lsp`'s `plugin.scm` (`Ctrl+Space` binding → a `lsp-completion-trigger` **named command** so plugins can rebind), builtins already exist (B8).
 
 **Read first** — U5's intercept (this one runs in **Insert** mode — stricter: printable chars must still self-insert *and* refilter); `editor/completion/mod.rs` `CompletionState` (reuse the selection bookkeeping if it fits — the card title says "where it fits": judge after reading; a parallel small struct is fine if minibuffer coupling is awkward); LESSONS on Ctrl-key interior dispatch (`pending_keys`).
 

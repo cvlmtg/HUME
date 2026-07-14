@@ -89,8 +89,8 @@
             (completion-begin! bid (map lsp/strip-snippet-item items) #:incomplete incomplete)))))))
 
 ;; ── Trigger entry points ─────────────────────────────────────────────────────
-;; Two entry points reach the same request: Ctrl+Space (already bound to
-;; this exact command name) and a registered server trigger character.
+;; Two entry points reach the same request: Ctrl+Space (bound to this exact
+;; command name in plugin.scm) and a registered server trigger character.
 
 (define-command! "lsp-completion-trigger" "Trigger LSP completion at the cursor."
   (lambda ()
