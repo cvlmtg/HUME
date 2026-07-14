@@ -16,24 +16,31 @@ instead — see [Registering a language server](#registering-a-language-server).
 ```scheme
 (load-plugin "core:stdlib")   ; core:lsp depends on it
 
+(declare-plugin "core:lsp")
+```
+
+Declaring is recommended — it keeps startup fast, and `core:lsp` activates the first time a
+registered server attaches to a buffer, any file with a recognized language opens, or you
+run one of its commands directly (including `:lsp-install`). If you use LSP in every
+session and would rather it load from the start, swap `declare-plugin` for `load-plugin`:
+
+```scheme
+(load-plugin "core:lsp")
+```
+
+Want activation to only trigger for specific languages, or a smaller set of commands?
+Pass `#:languages`/`#:commands`/`#:events` to `declare-plugin` yourself and it uses
+exactly what you list instead of the defaults:
+
+```scheme
 (declare-plugin "core:lsp"
-  #:languages '("rust")   ; languages you want a server installed/attached for
+  #:languages '("rust")   ; only activate for languages you name here
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
                "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger"
                "lsp-install" "lsp-uninstall" "lsp-servers" "lsp-rescan-servers"
                "lsp-status" "lsp-stop" "lsp-restart"))
-```
-
-Declaring is recommended — it keeps startup fast, and `core:lsp` activates the first time a
-registered server attaches to a buffer, a matching language opens, or you run one of its
-commands directly (including `:lsp-install` itself, if it's listed in `#:commands` as
-above). If you use LSP in every session and would rather it load from the start, swap
-`declare-plugin` for `load-plugin`:
-
-```scheme
-(load-plugin "core:lsp")
 ```
 
 **Caveat**: `#:events '("on-lsp-attach")` by itself never activates on its own — nothing

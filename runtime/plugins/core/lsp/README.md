@@ -22,6 +22,21 @@ your `init.scm`, plus at least one `register-lsp-server!` call if you're not rel
 
 (register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
 
+(declare-plugin "core:lsp")
+```
+
+The zero-argument `declare-plugin` above reads `core:lsp`'s own `manifest.scm`, which
+declares the plugin with `#:languages '("*")` (any buffer with a detected language) plus
+every `lsp-*` command — so it activates on the first buffer with a language, the first
+`lsp-*` command you type, or the first server attach, whichever comes first.
+`(load-plugin "core:lsp")` also works if you'd rather load it eagerly.
+
+## Customizing activation
+
+Pass `#:commands`/`#:events`/`#:languages` explicitly to `declare-plugin` to override the
+manifest's defaults — e.g. restrict activation to specific languages instead of any:
+
+```scheme
 (declare-plugin "core:lsp"
   #:languages '("rust")
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
@@ -32,10 +47,8 @@ your `init.scm`, plus at least one `register-lsp-server!` call if you're not rel
                "lsp-status" "lsp-stop" "lsp-restart"))
 ```
 
-`declare-plugin` activates the first time a registered server attaches to a buffer, the
-first time one of the listed commands runs, or — with `lsp-install`/etc. in `#:commands`
-as above — the first time you type `:lsp-install` on a language with no server yet.
-`(load-plugin "core:lsp")` also works if you'd rather load it eagerly.
+Any explicit `#:commands`/`#:events`/`#:languages` bypasses the manifest entirely — the
+list above is exactly what `manifest.scm` declares by default, so start from it and trim.
 
 **Caveat**: a manifest keyed only on `#:events '("on-lsp-attach")` can never activate on
 its own — nothing is registered yet, so nothing attaches, so the event never fires. Load
@@ -85,7 +98,9 @@ none of these keys do anything.
 
 ## How it works
 
-One `plugin.scm` entry `require`s a file per feature area (`hover.scm`, `goto.scm`,
+`manifest.scm` holds nothing but the default `declare-plugin` call shown above — HUME
+evaluates it only when `init.scm` calls `(declare-plugin "core:lsp")` with no explicit
+activation entries. One `plugin.scm` entry `require`s a file per feature area (`hover.scm`, `goto.scm`,
 `diagnostics.scm`, `rename.scm`, `format.scm`, `actions.scm`, `sighelp.scm`,
 `completion.scm`, `inlay.scm`), plus a shared `lib.scm` (capability checks, error
 reporting, the viewport tracker, location-drawer helper), `registration.scm` (the seeded

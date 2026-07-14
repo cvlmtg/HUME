@@ -566,3 +566,345 @@ fn plugin_config_survives_lazy_declare_to_activation() {
         "plugin body must observe #:config passed at declare-plugin time; messages: {messages:?}"
     );
 }
+
+// ── Zero-trigger backstop (direct %declare-plugin! call) ──────────────────
+
+/// A direct `%declare-plugin!` call with all three activation lists empty must
+/// hard-error — the pre-existing backstop the Scheme `declare-plugin` wrapper's
+/// zero-trigger routing sits in front of. No prior test exercised this directly.
+///
+/// Fail oracle: remove the zero-entry check in `declare_plugin` → this call
+/// silently registers nothing and returns `Ok`.
+#[test]
+fn declare_plugin_bang_direct_zero_trigger_call_errors() {
+    use crate::{ScriptingHost, null_host::NullHost};
+    let mut host = ScriptingHost::new();
+    let result = host.eval_source(
+        r#"(%declare-plugin! "user/direct-zero" '() '() '() (hash))"#,
+        &mut NullHost,
+    );
+    let err = result.expect_err("direct %declare-plugin! with zero activation entries must error");
+    assert!(
+        err.contains("could never be activated"),
+        "error must explain the plugin could never be activated; got: {err}"
+    );
+}
+
+// ── manifest.scm (zero-trigger declare-plugin) ─────────────────────────────
+
+/// A zero-trigger `(declare-plugin "id")` with a `manifest.scm` present resolves
+/// and evaluates it, registering whatever the manifest declares for itself.
+///
+/// Fail oracle: if the Scheme wrapper didn't route to `%begin-manifest-declare!`
+/// on empty lists, this would hit the "could never be activated" backstop error
+/// instead of succeeding.
+#[test]
+#[cfg(not(windows))]
+fn manifest_declare_resolves_and_evaluates_manifest_scm() {
+    use crate::{ScriptingHost, null_host::NullHost};
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let plugin_dir = dir.path().join("plugins").join("user").join("mftest");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
+    std::fs::write(
+        plugin_dir.join("manifest.scm"),
+        br#"(declare-plugin "user/mftest" #:commands '("mf-cmd"))"#,
+    )
+    .unwrap();
+
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+
+    host.eval_source(r#"(declare-plugin "user/mftest")"#, &mut NullHost)
+        .expect("zero-trigger declare with a manifest.scm present must succeed");
+
+    let id = PluginId::parse("user/mftest").unwrap();
+    assert!(
+        matches!(
+            host.registries.lazy_registry.plugins.get(&id),
+            Some(PluginState::Declared { .. })
+        ),
+        "manifest's own declare-plugin must register the plugin as Declared"
+    );
+    assert_eq!(
+        host.registries
+            .lazy_registry
+            .activation_commands
+            .get("mf-cmd"),
+        Some(&id),
+        "manifest's #:commands entry must be recorded as an activation entry"
+    );
+}
+
+/// `#:config` on the outer zero-trigger `declare-plugin` call wins over whatever
+/// the manifest's own `declare-plugin` passes (the manifest here passes none,
+/// i.e. the empty-hash default) — a plugin body reading `(plugin-config)` at
+/// activation must see the user's value.
+///
+/// Fail oracle: if `declare_plugin`'s config store were an unconditional insert
+/// during manifest resolution (instead of `or_insert`), the manifest's own
+/// default would clobber the user's value and the message would never appear.
+#[test]
+#[cfg(not(windows))]
+fn manifest_declare_user_config_wins_over_manifest_default() {
+    use crate::{ScriptingHost, null_host::NullHost};
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let plugin_dir = dir.path().join("plugins").join("user").join("cfgmftest");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(
+        plugin_dir.join("plugin.scm"),
+        br#"(log! 'info (hash-ref (plugin-config) "key"))"#,
+    )
+    .unwrap();
+    std::fs::write(
+        plugin_dir.join("manifest.scm"),
+        br#"(declare-plugin "user/cfgmftest" #:commands '("probe"))"#,
+    )
+    .unwrap();
+
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+
+    host.eval_source(
+        r#"(declare-plugin "user/cfgmftest" #:config (hash "key" "val"))"#,
+        &mut NullHost,
+    )
+    .expect("zero-trigger declare with #:config must succeed");
+
+    host.eval_source(
+        r#"(%activate-plugin-inline "user/cfgmftest")"#,
+        &mut NullHost,
+    )
+    .expect("lazy activation must succeed");
+
+    let messages = host.peek_pending_messages();
+    assert!(
+        messages.iter().any(|(_, msg)| msg == "val"),
+        "the outer #:config must win over the manifest's own default; messages: {messages:?}"
+    );
+}
+
+/// A zero-trigger declare of a plugin whose directory doesn't exist at all is a
+/// soft no-op — Info log, `declared_plugins` recorded for PLUM, no plugin state.
+/// Mirrors the existing `declare_plugin_user_absent_logs_info` behavior for the
+/// trigger-ful path.
+///
+/// Fail oracle: routing "not installed yet" to the same hard error as "installed
+/// but missing manifest.scm" would break the declare-then-:plum-install flow for
+/// every zero-trigger declare of an as-yet-uninstalled plugin.
+#[test]
+fn manifest_declare_absent_dir_soft_logs_and_records_declared_plugins() {
+    use crate::{ScriptingHost, null_host::NullHost};
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+
+    let result = host.eval_source(
+        r#"(declare-plugin "user/definitely-absent-mf")"#,
+        &mut NullHost,
+    );
+    assert!(
+        result.is_ok(),
+        "absent-dir zero-trigger declare must not error; got {result:?}"
+    );
+
+    let messages = host.peek_pending_messages();
+    assert!(
+        messages.iter().any(|(level, msg)| {
+            matches!(level, crate::log::LogLevel::Info) && msg.contains("not found on disk")
+        }),
+        "must log Info for an absent user/ plugin directory; messages: {messages:?}"
+    );
+    assert!(
+        host.registries
+            .declared_plugins
+            .iter()
+            .any(|d| d == "user/definitely-absent-mf"),
+        "declared_plugins must record the name for PLUM even though nothing was declared"
+    );
+    let id = PluginId::parse("user/definitely-absent-mf").unwrap();
+    assert!(
+        !host.registries.lazy_registry.plugins.contains_key(&id),
+        "no plugin state should be recorded when the directory is absent"
+    );
+}
+
+/// A zero-trigger declare of a plugin whose directory exists but has no
+/// `manifest.scm` is a hard error, distinct from "not installed yet".
+///
+/// Fail oracle: treating this the same as an absent directory would silently
+/// no-op instead of telling the user their plugin doesn't support default
+/// activation.
+#[test]
+#[cfg(not(windows))]
+fn manifest_declare_dir_present_without_manifest_scm_errors() {
+    use crate::{ScriptingHost, null_host::NullHost};
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let plugin_dir = dir.path().join("plugins").join("user").join("nomf");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
+    // No manifest.scm written.
+
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+
+    let result = host.eval_source(r#"(declare-plugin "user/nomf")"#, &mut NullHost);
+    let err = result.expect_err("zero-trigger declare must hard-error without manifest.scm");
+    assert!(
+        err.contains("manifest.scm"),
+        "error must name the missing manifest.scm; got: {err}"
+    );
+}
+
+/// A manifest.scm that declares a *different* plugin id than the one it was
+/// resolved for must be rejected — a manifest for "user/wrongname" cannot smuggle
+/// in a declaration for "user/somebody-else".
+///
+/// Fail oracle: without the `manifest_resolving` mismatch guard in
+/// `declare_plugin`, the smuggled-in id would register successfully.
+#[test]
+#[cfg(not(windows))]
+fn manifest_declaring_different_plugin_name_errors() {
+    use crate::{ScriptingHost, null_host::NullHost};
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let plugin_dir = dir.path().join("plugins").join("user").join("wrongname");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
+    std::fs::write(
+        plugin_dir.join("manifest.scm"),
+        br#"(declare-plugin "user/somebody-else" #:commands '("evil-cmd"))"#,
+    )
+    .unwrap();
+
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+
+    let result = host.eval_source(r#"(declare-plugin "user/wrongname")"#, &mut NullHost);
+    let err = result.expect_err("manifest declaring a different plugin id must error");
+    assert!(
+        err.contains("user/wrongname") && err.contains("user/somebody-else"),
+        "error must name both the expected and actual ids; got: {err}"
+    );
+
+    let evil_id = PluginId::parse("user/somebody-else").unwrap();
+    assert!(
+        !host.registries.lazy_registry.plugins.contains_key(&evil_id),
+        "the smuggled-in plugin id must not be registered"
+    );
+}
+
+/// A manifest.scm whose own `declare-plugin` call is itself zero-trigger must
+/// error immediately instead of recursing into manifest resolution again.
+///
+/// Fail oracle: without the `manifest_resolving.is_some()` guard in
+/// `%begin-manifest-declare!`, this would loop (bounded only by the Steel VM's
+/// own stack, not a designed guard) instead of erroring cleanly.
+#[test]
+#[cfg(not(windows))]
+fn manifest_with_zero_trigger_self_declare_errors_without_recursing() {
+    use crate::{ScriptingHost, null_host::NullHost};
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let plugin_dir = dir.path().join("plugins").join("user").join("selfmf");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
+    std::fs::write(
+        plugin_dir.join("manifest.scm"),
+        br#"(declare-plugin "user/selfmf")"#,
+    )
+    .unwrap();
+
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+
+    let result = host.eval_source(r#"(declare-plugin "user/selfmf")"#, &mut NullHost);
+    let err = result.expect_err(
+        "a manifest.scm whose own declare-plugin is zero-trigger must error, not recurse",
+    );
+    assert!(
+        err.contains("cannot itself be"),
+        "error must explain the recursion guard; got: {err}"
+    );
+}
+
+/// A manifest.scm that evaluates without error but never calls `declare-plugin`
+/// must still be rejected — otherwise the outer declare silently no-ops with no
+/// plugin ever registered.
+///
+/// Fail oracle: without the post-eval check in `%finish-manifest-declare!`, this
+/// call would return `Ok` with nothing declared.
+#[test]
+#[cfg(not(windows))]
+fn manifest_that_never_declares_errors() {
+    use crate::{ScriptingHost, null_host::NullHost};
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let plugin_dir = dir.path().join("plugins").join("user").join("nodeclare");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
+    std::fs::write(plugin_dir.join("manifest.scm"), b"(define x 1)").unwrap();
+
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+
+    let result = host.eval_source(r#"(declare-plugin "user/nodeclare")"#, &mut NullHost);
+    let err = result.expect_err("manifest.scm that never calls declare-plugin must error");
+    assert!(
+        err.contains("did not declare"),
+        "error must explain the manifest never declared the plugin; got: {err}"
+    );
+}
+
+/// A second zero-trigger declare of an already-declared plugin is a silent
+/// no-op — `manifest.scm` is not re-evaluated.
+///
+/// Fail oracle: without the pre-eval state check in `%begin-manifest-declare!`,
+/// the manifest would run twice, double-registering activation entries.
+#[test]
+#[cfg(not(windows))]
+fn manifest_declare_second_call_is_silent_noop() {
+    use crate::{ScriptingHost, null_host::NullHost};
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let plugin_dir = dir.path().join("plugins").join("user").join("twicemf");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
+    std::fs::write(
+        plugin_dir.join("manifest.scm"),
+        br#"(log! 'info "manifest-ran") (declare-plugin "user/twicemf" #:commands '("twice-cmd"))"#,
+    )
+    .unwrap();
+
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+
+    host.eval_source(r#"(declare-plugin "user/twicemf")"#, &mut NullHost)
+        .expect("first zero-trigger declare must succeed");
+    host.eval_source(r#"(declare-plugin "user/twicemf")"#, &mut NullHost)
+        .expect(
+            "second zero-trigger declare of the same plugin must be a silent no-op, not an error",
+        );
+
+    let ran_count = host
+        .peek_pending_messages()
+        .iter()
+        .filter(|(_, msg)| msg == "manifest-ran")
+        .count();
+    assert_eq!(
+        ran_count, 1,
+        "manifest.scm must be evaluated exactly once across repeated zero-trigger declares"
+    );
+}

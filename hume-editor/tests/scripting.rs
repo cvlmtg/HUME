@@ -2658,17 +2658,21 @@ fn declare_plugin_in_plugin_body_rejected() {
 
 // ── zero-entry / duplicate no-op regressions ─────────────────────────────────
 
-/// `(declare-plugin "foo")` with no activation entries is a hard error even in
-/// the hume-scripting unit-test harness (no editor needed).
+/// `(declare-plugin "foo")` with no activation entries and no `manifest.scm`
+/// on disk is a hard error even in the hume-scripting unit-test harness (no
+/// editor needed) — a plugin directory without a manifest doesn't support the
+/// zero-trigger form at all.
 ///
-/// Flip: remove the zero-entry guard in declare_plugin and eval_source succeeds.
+/// Flip: remove the manifest-presence check in `%begin-manifest-declare!` and
+/// eval_source succeeds instead (silently doing nothing).
 #[test]
 #[cfg(not(windows))]
-fn declare_plugin_no_triggers_hard_error_scripting_level() {
+fn declare_plugin_no_triggers_no_manifest_hard_error_scripting_level() {
     let dir = tempfile::tempdir().unwrap();
     let plugin_dir = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(plugin_dir.join("plugin.scm"), r#"(+ 1 0)"#).unwrap();
+    // No manifest.scm written.
     let init_path = dir.path().join("init.scm");
     std::fs::write(&init_path, r#"(declare-plugin "user/tp")"#).unwrap();
 
@@ -2679,7 +2683,42 @@ fn declare_plugin_no_triggers_hard_error_scripting_level() {
     let result = h.eval_init(&init_path, 10_000, &mut mock, Default::default());
     assert!(
         result.is_err(),
-        "declare-plugin with no activation entries must hard-error"
+        "zero-trigger declare-plugin without a manifest.scm must hard-error"
+    );
+    let msg = result.unwrap_err();
+    assert!(
+        msg.contains("manifest.scm"),
+        "error must name the missing manifest.scm; got: {msg}"
+    );
+}
+
+/// The Rust `%declare-plugin!` primitive's own zero-entry backstop still
+/// hard-errors when called directly, bypassing the Scheme `declare-plugin`
+/// wrapper's zero-trigger → manifest.scm routing.
+///
+/// Flip: remove the zero-entry guard in `declare_plugin` and eval_source succeeds.
+#[test]
+#[cfg(not(windows))]
+fn declare_plugin_bang_no_triggers_hard_error_scripting_level() {
+    let dir = tempfile::tempdir().unwrap();
+    let plugin_dir = dir.path().join("plugins").join("user").join("tp");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(plugin_dir.join("plugin.scm"), r#"(+ 1 0)"#).unwrap();
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(
+        &init_path,
+        r#"(%declare-plugin! "user/tp" '() '() '() (hash))"#,
+    )
+    .unwrap();
+
+    let mut h = host();
+    h.set_data_dir(dir.path().to_path_buf());
+    let mut mock = MockHost::new();
+
+    let result = h.eval_init(&init_path, 10_000, &mut mock, Default::default());
+    assert!(
+        result.is_err(),
+        "%declare-plugin! with no activation entries must hard-error"
     );
     let msg = result.unwrap_err();
     assert!(

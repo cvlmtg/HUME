@@ -52,11 +52,19 @@ There are two ways to bring a plugin into the editor from `init.scm`:
 
 **Lazy plugins** (`declare-plugin`) record a *manifest* of what the plugin offers, but don't evaluate the body until the first activation entry is exercised. This keeps startup fast: a Rust formatting plugin whose commands you might never call costs nothing until you do.
 
-A lazy plugin must declare at least one activation entry. Without one, the plugin could never activate:
+A lazy plugin needs at least one activation entry, or it could never activate. Declare them yourself:
 
 - **`#:commands`** — command names the plugin provides. HUME creates placeholder stubs so the names appear in `:` Tab completion immediately; the first dispatch triggers real definition.
 - **`#:events`** — lifecycle hooks that trigger loading (e.g., `'on-buffer-open`).
 - **`#:languages`** — buffer language names that trigger loading.
+
+...or, if the plugin ships its own defaults, leave all three off:
+
+```scheme
+(declare-plugin "username/repo-name")
+```
+
+A bare `declare-plugin` with no activation entries asks the plugin for its own defaults instead of erroring — see [Default activation](#default-activation) if you're writing a plugin and want to support this.
 
 ## Writing a plugin
 
@@ -186,6 +194,31 @@ Available hooks and their lambda signatures:
 | `on-language-set` | A buffer's language is detected or changed | `(buffer-id lang)` — `lang` is a string or `#f` |
 
 For lazy plugins, declare the events that should trigger activation via `#:events` on `declare-plugin` instead (see [How plugins are loaded](#how-plugins-are-loaded)).
+
+### Default activation
+
+If most users would activate your plugin the same way, give them a one-liner: put a `declare-plugin` call for your own plugin in a `manifest.scm` file next to your plugin's main file.
+
+```scheme
+; manifest.scm
+(declare-plugin "username/repo-name"
+  #:commands '("my-cmd" "my-other-cmd"))
+```
+
+A user who writes `(declare-plugin "username/repo-name")` with no `#:commands`/`#:events`/`#:languages` gets your manifest's entries instead of an error. Passing any activation entry explicitly skips your manifest entirely — the user's list is authoritative, not merged with yours. A plugin with no `manifest.scm` can't be declared this way; users who want to use it lazily must list its activation entries themselves (or you can add one).
+
+If your plugin reacts to a language but can't predict which ones a given user cares about, `#:languages '("*")` matches any buffer with a detected language:
+
+```scheme
+; manifest.scm
+(declare-plugin "username/repo-name"
+  #:languages '("*")
+  #:commands '("my-cmd"))
+```
+
+`#:config` behaves the same as elsewhere: if the user passes `#:config` to their zero-argument `declare-plugin`, that value wins over anything your manifest passes — read it back the usual way with `(plugin-config)`.
+
+Keep `manifest.scm` to just the `declare-plugin` call — it runs whenever a user's bare `declare-plugin` resolves it, which is not a signal that your plugin is about to load.
 
 ### Configuring a plugin
 

@@ -1198,6 +1198,121 @@ fn language_trigger_does_not_fire_on_unrelated_language() {
     );
 }
 
+/// `#:languages '("*")` activates on ANY language set, not just an exact match —
+/// the wildcard a manifest.scm uses because it can't enumerate every language a
+/// user might want it for.
+///
+/// Flip: if `activation_language_plugins` only checked the exact key, the
+/// wildcard entry would never fire and the plugin would stay `Declared` forever.
+#[test]
+#[cfg(not(windows))]
+fn language_wildcard_trigger_activates_on_any_language() {
+    use hume_scripting::attribution::PluginId;
+
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin "user/tp" #:languages '("*"))"#,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
+    );
+    let id = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
+
+    assert!(
+        !ed.scripting
+            .as_ref()
+            .unwrap()
+            .activation_language_plugins("toml")
+            .is_empty(),
+        "the \"*\" entry must be returned for a language it never named explicitly"
+    );
+
+    let before = state(&ed);
+    let bid = ed.focused_buffer_id();
+    ed.set_buffer_language(bid, Some("toml".into()));
+    ed.drain_hooks();
+
+    assert_ne!(
+        state(&ed),
+        before,
+        "on-language-set handler must run and move cursor on a wildcard-matched set"
+    );
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Loaded)
+        ),
+        "plugin must be Loaded after a wildcard-matched language set"
+    );
+}
+
+/// A wildcard entry and a specific-language entry coexist without cross-firing:
+/// a set for a language only the wildcard plugin matches activates that plugin
+/// alone, leaving the specific-language plugin `Declared`.
+///
+/// Flip: if the union in `activation_language_plugins` deduped incorrectly or
+/// dropped the specific-language map, either the wrong plugin would activate or
+/// both would.
+#[test]
+#[cfg(not(windows))]
+fn language_wildcard_and_specific_entry_coexist() {
+    use hume_scripting::attribution::PluginId;
+
+    let dir = {
+        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        tempfile::tempdir().unwrap()
+    };
+    let dir_rust = dir.path().join("plugins").join("user").join("tp");
+    std::fs::create_dir_all(&dir_rust).unwrap();
+    std::fs::write(dir_rust.join("plugin.scm"), "(+ 1 0)").unwrap();
+    let dir_any = dir.path().join("plugins").join("user").join("tp2");
+    std::fs::create_dir_all(&dir_any).unwrap();
+    std::fs::write(dir_any.join("plugin.scm"), "(+ 1 0)").unwrap();
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(
+        &init_path,
+        "(declare-plugin \"user/tp\"  #:languages '(\"rust\"))\n\
+         (declare-plugin \"user/tp2\" #:languages '(\"*\"))",
+    )
+    .unwrap();
+
+    let mut ed = editor_from("-[a]>b c d\n");
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+    {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init must succeed");
+    ed.scripting = Some(host);
+
+    let id_rust = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
+    let id_any = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp2".to_string(),
+    };
+    let bid = ed.focused_buffer_id();
+    ed.set_buffer_language(bid, Some("toml".into()));
+
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&id_rust),
+            Some(PluginStatus::Declared)
+        ),
+        "the \"rust\"-only plugin must stay Declared for an unrelated language"
+    );
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&id_any),
+            Some(PluginStatus::Loaded)
+        ),
+        "the wildcard plugin must activate for any language, including \"toml\""
+    );
+}
+
 // ── Phase 4 Polish — load-time activation reporting ──────────────────────────
 
 /// Command activation: first dispatch of a lazy command logs a Trace entry naming
@@ -1609,6 +1724,198 @@ fn language_trigger_lint_silent_for_forward_defined_language() {
             .entries()
             .map(|e| format!("{:?}: {}", e.severity, e.text))
             .collect::<Vec<_>>()
+    );
+}
+
+/// Language-activation lint never warns about `"*"` — it's the any-language
+/// wildcard, not a language identity to look up in the registry.
+///
+/// Flip: drop the `lang != "*"` guard from the lint → "*" is looked up in
+/// `state.languages`, is never found, and a spurious Warning fires on every
+/// startup for any manifest.scm using the wildcard.
+#[test]
+#[cfg(not(windows))]
+fn language_activation_lint_silent_for_wildcard() {
+    use crate::editor::Severity;
+
+    let (ed, _dirs) = setup_lang_lint_editor(r#"(declare-plugin "user/tp" #:languages '("*"))"#);
+
+    assert!(
+        !ed.state
+            .message_log
+            .entries()
+            .any(|e| { e.severity == Severity::Warning && e.text.contains('*') }),
+        "must not warn about the \"*\" wildcard; messages: {:?}",
+        ed.state
+            .message_log
+            .entries()
+            .map(|e| format!("{:?}: {}", e.severity, e.text))
+            .collect::<Vec<_>>()
+    );
+}
+
+/// A real core plugin with no `manifest.scm` of its own (`core:stdlib`) still
+/// hard-errors on a zero-trigger `(declare-plugin "core:stdlib")` against the
+/// repo's actual `runtime/` tree — the manifest opt-in doesn't silently make
+/// every plugin support the zero-trigger form.
+///
+/// Flip: if manifest resolution fell back to some default instead of hard
+/// erroring on a missing file, this would incorrectly log no error at all.
+#[test]
+#[cfg(not(windows))]
+fn core_stdlib_has_no_manifest_scm_zero_trigger_declare_errors() {
+    use crate::editor::Severity;
+
+    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let runtime_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("hume-editor/ must have a parent (the repo root)")
+        .join("runtime");
+    assert!(
+        !runtime_dir
+            .join("plugins")
+            .join("core")
+            .join("stdlib")
+            .join("manifest.scm")
+            .exists(),
+        "sanity: core:stdlib must NOT ship a manifest.scm for this negative check to be meaningful"
+    );
+
+    let config_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let hume_config = config_tmp.path().join("hume");
+    std::fs::create_dir_all(&hume_config).unwrap();
+    std::fs::write(
+        hume_config.join("init.scm"),
+        r#"(declare-plugin "core:stdlib")"#,
+    )
+    .unwrap();
+
+    unsafe {
+        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
+        std::env::set_var("HUME_RUNTIME", &runtime_dir);
+        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
+    }
+
+    let mut ed = editor_from("-[a]>b\n");
+    ed.init_scripting();
+
+    unsafe {
+        std::env::remove_var("XDG_CONFIG_HOME");
+        std::env::remove_var("HUME_RUNTIME");
+        std::env::remove_var("XDG_DATA_HOME");
+    }
+
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| { e.severity == Severity::Error && e.text.contains("manifest.scm") }),
+        "must log an Error naming the missing manifest.scm; messages: {:?}",
+        ed.state
+            .message_log
+            .entries()
+            .map(|e| format!("{:?}: {}", e.severity, e.text))
+            .collect::<Vec<_>>()
+    );
+}
+
+// ── End-to-end: real core:lsp manifest.scm ────────────────────────────────
+
+/// The real `core:lsp` plugin's own shipped `manifest.scm` (not a synthetic
+/// fixture) resolves and evaluates via a zero-trigger `(declare-plugin
+/// "core:lsp")`, through the full production `init_scripting` path against the
+/// repo's actual `runtime/` tree.
+///
+/// Flip: a syntax error, a wrong plugin name, or a stale command list in the
+/// real `runtime/plugins/core/lsp/manifest.scm` would fail this test while
+/// every synthetic-fixture test elsewhere in this file still passes.
+#[test]
+#[cfg(not(windows))]
+fn core_lsp_real_manifest_scm_resolves_via_zero_trigger_declare() {
+    use crate::editor::Severity;
+    use hume_scripting::attribution::PluginId;
+
+    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let runtime_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("hume-editor/ must have a parent (the repo root)")
+        .join("runtime");
+    assert!(
+        runtime_dir
+            .join("plugins")
+            .join("core")
+            .join("lsp")
+            .join("manifest.scm")
+            .exists(),
+        "sanity: the real manifest.scm must exist at the expected repo path"
+    );
+
+    let config_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let hume_config = config_tmp.path().join("hume");
+    std::fs::create_dir_all(&hume_config).unwrap();
+    std::fs::write(
+        hume_config.join("init.scm"),
+        r#"(load-plugin "core:stdlib")
+           (register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
+           (declare-plugin "core:lsp")"#,
+    )
+    .unwrap();
+
+    unsafe {
+        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
+        std::env::set_var("HUME_RUNTIME", &runtime_dir);
+        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
+    }
+
+    let mut ed = editor_from("-[a]>b\n");
+    ed.init_scripting();
+
+    unsafe {
+        std::env::remove_var("XDG_CONFIG_HOME");
+        std::env::remove_var("HUME_RUNTIME");
+        std::env::remove_var("XDG_DATA_HOME");
+    }
+
+    let errors: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.clone())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "init.scm with core:lsp's real manifest.scm must not log errors; got: {errors:?}"
+    );
+
+    let id = PluginId::Core("lsp".to_string());
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Declared)
+        ),
+        "core:lsp must be Declared (not yet activated) once the zero-trigger \
+         declare resolves its manifest.scm"
+    );
+    assert!(
+        !ed.scripting
+            .as_ref()
+            .unwrap()
+            .activation_commands()
+            .is_empty(),
+        "manifest.scm's #:commands entries must be registered as activation stubs"
+    );
+    assert!(
+        !ed.scripting
+            .as_ref()
+            .unwrap()
+            .activation_language_plugins("some-made-up-language")
+            .is_empty(),
+        "manifest.scm's #:languages '(\"*\") must match any language, including an unregistered one"
     );
 }
 

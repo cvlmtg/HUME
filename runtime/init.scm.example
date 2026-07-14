@@ -44,19 +44,13 @@
 ;; register, and attach a server automatically — no manual registration below needed
 ;; for a seeded server.
 ;;
-;; core:lsp can be declared lazily. Name the languages you want servers installed for
-in #:languages so opening a matching file triggers activation directly, list the
-;; lsp-install/etc. commands in #:commands so typing one of them does, or just
-;; (load-plugin "core:lsp") eagerly:
+;; core:lsp can be declared lazily — the one-liner below activates on the first
+;; buffer with a detected language, the first lsp-* command typed, or the first
+;; server attach. Customize activation yourself (name specific #:languages,
+;; pick a subset of #:commands, ...) by passing those keywords explicitly instead —
+;; see README.md in runtime/plugins/core/lsp/ for the full trigger list.
 ;;
-;; (declare-plugin "core:lsp"
-;;   #:languages '("rust")
-;;   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
-;;                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
-;;                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
-;;                "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger"
-;;                "lsp-install" "lsp-uninstall" "lsp-servers" "lsp-rescan-servers"
-;;                "lsp-status" "lsp-stop" "lsp-restart"))
+;; (declare-plugin "core:lsp")
 ;;
 ;; A manual registration always overrides an :lsp-install-managed one — use it for a
 ;; local build, a version the seeded catalog doesn't carry, or to prefer a $PATH copy.

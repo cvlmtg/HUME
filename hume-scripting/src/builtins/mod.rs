@@ -129,14 +129,23 @@ const BOOTSTRAP: &str = r#"
 (require-builtin steel/meta as hm.)
 
 ; declare-plugin — plugin manifest; activation entries forwarded to %declare-plugin!.
-; At least one activation entry (#:commands/#:events/#:languages) is required.
-; #:config is an opaque value (typically a hash) the plugin body reads back via
-; (plugin-config) whenever activation eventually runs it.
+; A zero-trigger call (no #:commands/#:events/#:languages) instead resolves and
+; evaluates <plugin-dir>/manifest.scm, where the plugin declares its own default
+; activation entries — see %begin-manifest-declare!. #:config is an opaque value
+; (typically a hash) the plugin body reads back via (plugin-config) whenever
+; activation eventually runs it; on the manifest path, the caller's #:config wins
+; over whatever the manifest itself passes.
 (define (declare-plugin name #:commands  [commands  '()]
                              #:events    [events    '()]
                              #:languages [languages '()]
                              #:config    [config    (hash)])
-  (%declare-plugin! name commands events languages config))
+  (if (and (null? commands) (null? events) (null? languages))
+      (let ((prog (%begin-manifest-declare! name config)))
+        (when prog
+          (with-handler
+            (lambda (e) (%finish-manifest-declare! name #f) (raise-error e))
+            (begin (hm.eval-string prog) (%finish-manifest-declare! name #t)))))
+      (%declare-plugin! name commands events languages config)))
 
 ; load-plugin — eager init-context activation; delegates to the shared
 ; inline-activation helper after declaring/resolving the plugin.
@@ -443,6 +452,19 @@ pub(crate) fn register_all(steel: &mut Engine) {
         plugins::finish_lazy_activation,
     );
     steel.register_fn_with_ctx(HUME_CTX, "%lazy-command-owner", plugins::lazy_command_owner);
+
+    // Manifest resolution — zero-trigger declare-plugin routes here to eval
+    // <plugin-dir>/manifest.scm so the plugin can declare its own defaults.
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "%begin-manifest-declare!",
+        plugins::begin_manifest_declare,
+    );
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "%finish-manifest-declare!",
+        plugins::finish_manifest_declare,
+    );
 
     // Hook registration — init-only
     steel.register_fn_with_ctx(HUME_CTX, "register-hook!", hooks::register_hook);

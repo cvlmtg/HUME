@@ -431,7 +431,9 @@ impl Editor {
         // grammar.  Not a hard error: inert but harmless, and language sets are
         // open/dynamic (a future define-language! + reload may make the name valid).
         for (lang, plugins) in &lang_activations {
-            if self.state.languages.by_name(lang).is_none() {
+            // "*" is the any-language wildcard (manifest.scm can't enumerate every
+            // language it might ever support) — not a language identity to look up.
+            if lang != "*" && self.state.languages.by_name(lang).is_none() {
                 for plugin in plugins {
                     self.report(
                         Severity::Warning,

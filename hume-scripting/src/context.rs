@@ -112,6 +112,13 @@ pub(crate) struct SteelCtx<'a> {
     /// rolled back without touching whatever the enclosing eval already
     /// queued before the nested activation began.
     pub(crate) activation_effect_marks: Vec<EffectMarks>,
+    /// Set for the duration of a `manifest.scm` eval driven by a zero-trigger
+    /// `(declare-plugin "id")` — the id being resolved. `%begin-manifest-declare!`
+    /// sets it, `%finish-manifest-declare!` clears it. Guards against a manifest
+    /// declaring a different plugin than the one it was resolved for, and against
+    /// a manifest whose own `declare-plugin` is itself zero-trigger (which would
+    /// otherwise recurse into manifest resolution forever).
+    pub(crate) manifest_resolving: Option<crate::attribution::PluginId>,
 }
 
 /// Snapshot of every effect-queue length at the point a plugin body begins
@@ -163,6 +170,7 @@ impl<'a> SteelCtx<'a> {
             pending_lsp_requests: Vec::new(),
             pending_lsp_notifies: Vec::new(),
             activation_effect_marks: Vec::new(),
+            manifest_resolving: None,
         }
     }
 
@@ -275,6 +283,7 @@ impl<'a> SteelCtx<'a> {
             pending_lsp_requests: Vec::new(),
             pending_lsp_notifies: Vec::new(),
             activation_effect_marks: Vec::new(),
+            manifest_resolving: None,
         }
     }
 }

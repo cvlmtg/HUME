@@ -407,13 +407,23 @@ impl ScriptingHost {
     }
 
     /// Plugin ids that should be activated when `language` is set on a buffer.
+    ///
+    /// Unions entries keyed by `language` with entries keyed by the wildcard
+    /// `"*"` (a manifest that can't enumerate every language it might ever
+    /// support) — deduped so a plugin listed under both activates once.
     pub fn activation_language_plugins(&self, language: &str) -> Vec<attribution::PluginId> {
-        self.registries
-            .lazy_registry
-            .activation_languages
-            .get(language)
-            .cloned()
-            .unwrap_or_default()
+        let activation_languages = &self.registries.lazy_registry.activation_languages;
+        let specific = activation_languages.get(language);
+        let wildcard = activation_languages.get("*");
+        let mut plugins: Vec<attribution::PluginId> = specific.cloned().unwrap_or_default();
+        if let Some(wildcard) = wildcard {
+            for id in wildcard {
+                if !plugins.contains(id) {
+                    plugins.push(id.clone());
+                }
+            }
+        }
+        plugins
     }
 
     /// Status of a plugin in the lazy registry.

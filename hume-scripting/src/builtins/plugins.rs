@@ -92,6 +92,18 @@ pub(crate) fn declare_plugin(
     ensure_top_level(ctx, "declare-plugin")?;
     let plugin_id = PluginId::parse(&name).map_err(steel_parse_err)?;
 
+    // A manifest.scm being resolved by %begin-manifest-declare! may only ever
+    // declare the plugin it was resolved for — otherwise a manifest for
+    // "foo/bar" could smuggle in an unrelated "baz/qux" declaration under the
+    // same zero-trigger gate.
+    if let Some(expected) = &ctx.manifest_resolving
+        && *expected != plugin_id
+    {
+        return Err(steel_parse_err(format!(
+            "declare-plugin: manifest.scm for '{expected}' must declare '{expected}', not '{name}'"
+        )));
+    }
+
     // If the plugin is already in the registry, decide by state:
     // - Loaded: soft error (prior load-plugin contradicts this declare).
     // - Declared/Loading/Failed: silent no-op (first declaration wins; idempotency).
@@ -109,9 +121,19 @@ pub(crate) fn declare_plugin(
 
     // First declaration wins for config too, matching the state no-op above:
     // stored now so it is already in place by the time activation runs the body.
-    ctx.registries
-        .plugin_configs
-        .insert(plugin_id.clone(), config);
+    // Inside manifest resolution, the user's #:config was already stored by
+    // %begin-manifest-declare! before manifest.scm ran — that must win over the
+    // manifest's own default, so use or_insert instead of an unconditional overwrite.
+    if ctx.manifest_resolving.is_some() {
+        ctx.registries
+            .plugin_configs
+            .entry(plugin_id.clone())
+            .or_insert(config);
+    } else {
+        ctx.registries
+            .plugin_configs
+            .insert(plugin_id.clone(), config);
+    }
 
     // PLUM compat: declared_plugins always records every declared plugin.
     if !ctx
@@ -239,8 +261,40 @@ pub(crate) fn declare_plugin(
     Ok(SteelVal::Void)
 }
 
+/// The directory a plugin's files live in, given its id — `core:` plugins
+/// under `runtime_dir`, `user/repo` plugins under `data_dir`. `None` when the
+/// relevant root is unset (`HOME`/`APPDATA` unset for user plugins).
+///
+/// Shared by `plugin.scm` resolution (`resolve_path_for_name`) and
+/// `manifest.scm` resolution (`begin_manifest_declare`) so the two-root
+/// layout logic lives in one place.
+fn plugin_dir_for_id(
+    plugin_id: &PluginId,
+    runtime_dir: Option<&std::path::Path>,
+    data_dir: Option<&std::path::Path>,
+) -> Option<std::path::PathBuf> {
+    match plugin_id {
+        PluginId::Core(core_name) => {
+            runtime_dir.map(|rt| rt.join("plugins").join("core").join(core_name))
+        }
+        // When data_dir is None (HOME/APPDATA unset), user plugins cannot be
+        // resolved — return None rather than panicking.
+        PluginId::User { user, repo } => data_dir.map(|d| d.join("plugins").join(user).join(repo)),
+    }
+}
+
+/// Probe a path's existence without a pre-flight `.exists()` (avoids TOCTOU).
+/// `NotFound` → `Ok(false)`; other errors propagate.
+fn path_exists(path: &std::path::Path) -> Result<bool, String> {
+    match hume_platform::fs::metadata(path) {
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(format!("cannot stat path '{}': {e}", path.display())),
+    }
+}
+
 /// Pure path resolution: given a plugin name and the runtime / data directories,
-/// return the resolved `PathBuf` if the plugin file exists on disk, or `None`.
+/// return the resolved `PathBuf` if `plugin.scm` exists on disk, or `None`.
 ///
 /// Called by the `resolve-plugin-path` Steel builtin (which accesses the dirs
 /// via `&mut SteelCtx`).
@@ -250,28 +304,14 @@ pub(crate) fn resolve_path_for_name(
     data_dir: Option<&std::path::Path>,
 ) -> Result<Option<std::path::PathBuf>, String> {
     let plugin_id = PluginId::parse(name)?;
-    let path = match plugin_id {
-        PluginId::Core(core_name) => runtime_dir.map(|rt| {
-            rt.join("plugins")
-                .join("core")
-                .join(&core_name)
-                .join("plugin.scm")
-        }),
-        // When data_dir is None (HOME/APPDATA unset), user plugins cannot be
-        // resolved — return None rather than panicking.
-        PluginId::User { user, repo } => {
-            data_dir.map(|d| d.join("plugins").join(&user).join(&repo).join("plugin.scm"))
-        }
+    let Some(dir) = plugin_dir_for_id(&plugin_id, runtime_dir, data_dir) else {
+        return Ok(None);
     };
-    // Probe existence without a pre-flight `.exists()` to avoid TOCTOU.
-    // NotFound → plugin absent (Ok(None)); other errors propagate.
-    match path {
-        None => Ok(None),
-        Some(p) => match hume_platform::fs::metadata(&p) {
-            Ok(_) => Ok(Some(p)),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(format!("cannot stat plugin path '{}': {e}", p.display())),
-        },
+    let file = dir.join("plugin.scm");
+    if path_exists(&file)? {
+        Ok(Some(file))
+    } else {
+        Ok(None)
     }
 }
 
@@ -493,6 +533,134 @@ pub(crate) fn lazy_command_owner(ctx: &mut SteelCtx, name: String) -> SteelResul
         Some(id) => Ok(SteelVal::StringV(id.to_string().into())),
         None => Ok(SteelVal::BoolV(false)),
     }
+}
+
+/// `(%begin-manifest-declare! name config)` — Rust primitive backing the
+/// zero-trigger branch of the Scheme `declare-plugin` wrapper.
+///
+/// A `(declare-plugin "id")` call with no `#:commands`/`#:events`/`#:languages`
+/// is routed here instead of `%declare-plugin!`: rather than hard-erroring,
+/// HUME looks for `<plugin-dir>/manifest.scm` and evaluates it so the plugin
+/// can declare itself with its own default activation triggers.
+///
+/// Returns the `(require "<abs manifest.scm>")` string to eval (mirrors
+/// `%begin-lazy-activation`), or `#f` for the no-op cases: already declared
+/// (first-wins) or absent on disk (soft-logged exactly like `%declare-plugin!`
+/// — a user plugin not yet installed by PLUM, or a core plugin typo/broken
+/// `HUME_RUNTIME`). Hard-errors when the plugin directory exists but has no
+/// `manifest.scm` (a misconfigured plugin, not a "not installed yet" state),
+/// and when a manifest resolution is already in progress — a manifest whose
+/// own self-declare is itself zero-trigger would otherwise recurse forever.
+pub(crate) fn begin_manifest_declare(
+    ctx: &mut SteelCtx,
+    name: String,
+    config: SteelVal,
+) -> SteelResult {
+    ensure_top_level(ctx, "declare-plugin")?;
+
+    if ctx.manifest_resolving.is_some() {
+        steel::stop!(Generic =>
+            "declare-plugin: '{}' has no activation entries and manifest.scm \
+             must declare at least one — a manifest.scm cannot itself be zero-trigger",
+            name);
+    }
+
+    let plugin_id = PluginId::parse(&name).map_err(steel_parse_err)?;
+
+    // Same idempotency rule as %declare-plugin!: Loaded → soft error, else first wins.
+    match ctx.registries.lazy_registry.plugins.get(&plugin_id) {
+        Some(PluginState::Loaded) => {
+            ctx.log(
+                crate::log::LogLevel::Error,
+                format!("declare-plugin: '{name}' is already loaded; ignoring declare"),
+            );
+            return Ok(SteelVal::BoolV(false));
+        }
+        Some(_) => return Ok(SteelVal::BoolV(false)), // Declared/Loading/Failed: first wins
+        None => {}
+    }
+
+    // PLUM compat: declared_plugins always records every declared plugin, even
+    // when manifest resolution below can't find a file to evaluate.
+    if !ctx
+        .registries
+        .declared_plugins
+        .iter()
+        .any(|d| d.eq_ignore_ascii_case(&name))
+    {
+        ctx.registries.declared_plugins.push(name.clone());
+    }
+
+    let Some(dir) = plugin_dir_for_id(&plugin_id, ctx.runtime_dir, ctx.data_dir) else {
+        return Ok(SteelVal::BoolV(false));
+    };
+    if !path_exists(&dir).map_err(steel_parse_err)? {
+        match &plugin_id {
+            PluginId::Core(_) => log_absent_core(ctx, &name, "declare-plugin"),
+            PluginId::User { .. } => ctx.log(
+                crate::log::LogLevel::Info,
+                format!(
+                    "declare-plugin: '{name}' not found on disk; install and reload to activate."
+                ),
+            ),
+        }
+        return Ok(SteelVal::BoolV(false));
+    }
+
+    let manifest_path = dir.join("manifest.scm");
+    if !path_exists(&manifest_path).map_err(steel_parse_err)? {
+        return Err(steel_parse_err(format!(
+            "declare-plugin: '{name}' has no manifest.scm; add #:commands/#:events/#:languages \
+             to declare it explicitly, or use (load-plugin \"{name}\") for eager loading."
+        )));
+    }
+
+    let abs_str = manifest_path.to_string_lossy();
+    if abs_str.contains('"') {
+        return Err(steel_parse_err(format!(
+            "plugin manifest path contains '\"' — cannot embed in require: {}",
+            manifest_path.display()
+        )));
+    }
+    // Escape backslashes so Windows paths survive embedding in a Steel string literal.
+    let escaped = abs_str.replace('\\', "\\\\");
+    let require_program = format!("(require \"{escaped}\")");
+
+    // Store the user's #:config now, before evaluating manifest.scm, so the
+    // or_insert guard in declare_plugin (fired by the manifest's own
+    // declare-plugin call) doesn't let the manifest's default clobber it.
+    ctx.registries
+        .plugin_configs
+        .insert(plugin_id.clone(), config);
+    ctx.manifest_resolving = Some(plugin_id);
+
+    Ok(SteelVal::StringV(require_program.into()))
+}
+
+/// `(%finish-manifest-declare! name success?)` — Rust primitive; the tail half
+/// of the zero-trigger `declare-plugin` path (mirrors `%finish-lazy-activation`).
+///
+/// Clears `manifest_resolving` unconditionally. On success, verifies the
+/// manifest actually declared the plugin — a `manifest.scm` that evaluates
+/// without error but never calls `declare-plugin` would otherwise leave the
+/// plugin silently undeclared.
+pub(crate) fn finish_manifest_declare(
+    ctx: &mut SteelCtx,
+    name: String,
+    success: bool,
+) -> SteelResult {
+    let id = PluginId::parse(&name).map_err(steel_parse_err)?;
+    ctx.manifest_resolving = None;
+
+    if success && !ctx.registries.lazy_registry.plugins.contains_key(&id) {
+        return Err(steel_parse_err(format!(
+            "declare-plugin: manifest.scm for '{name}' did not declare '{name}' — a \
+             manifest.scm must call (declare-plugin \"{name}\" …) with at least one \
+             activation entry"
+        )));
+    }
+
+    Ok(SteelVal::Void)
 }
 
 /// `(loaded-plugins)` — return a Steel list of plugin names in `Loaded` state.
