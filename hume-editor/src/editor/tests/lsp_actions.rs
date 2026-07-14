@@ -344,10 +344,7 @@ fn selecting_an_unresolved_action_sends_resolve_then_applies_it() {
                 "textDocument/codeAction",
                 serde_json::json!([unresolved_action("Fix the thing")]),
             );
-            backend.respond_to(
-                "codeAction/resolve",
-                edit_action("Fix the thing", &uri),
-            );
+            backend.respond_to("codeAction/resolve", edit_action("Fix the thing", &uri));
         },
     );
 

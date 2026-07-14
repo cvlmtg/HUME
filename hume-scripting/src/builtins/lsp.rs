@@ -131,7 +131,8 @@ pub(crate) fn lsp_restart(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult
 /// applied at the end of the current eval.
 pub(crate) fn lsp_show_status(ctx: &mut SteelCtx) -> SteelResult {
     require_cmd_ctx!(ctx, "lsp-show-status!");
-    ctx.pending_lsp_server_ops.push(PendingLspServerOp::ShowStatus);
+    ctx.pending_lsp_server_ops
+        .push(PendingLspServerOp::ShowStatus);
     Ok(SteelVal::Void)
 }
 

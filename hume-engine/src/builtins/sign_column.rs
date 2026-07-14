@@ -139,11 +139,7 @@ impl GutterColumn for SignColumn {
         // Sort by (priority desc, source_index desc) — higher priority first,
         // ties resolve to the later-registered source (matches the documented
         // tie-break rule).
-        collected.sort_by(|a, b| {
-            b.0.priority
-                .cmp(&a.0.priority)
-                .then(b.1.cmp(&a.1))
-        });
+        collected.sort_by(|a, b| b.0.priority.cmp(&a.0.priority).then(b.1.cmp(&a.1)));
         collected.truncate(max_signs);
 
         let mut cells: Vec<GutterCell> = collected
@@ -227,7 +223,11 @@ mod tests {
         }));
 
         let rope = ropey::Rope::new();
-        let cell = col.render_row_cells(RowKind::LineStart { line_idx: 3 }, &ctx(&rope)).into_iter().next().unwrap();
+        let cell = col
+            .render_row_cells(RowKind::LineStart { line_idx: 3 }, &ctx(&rope))
+            .into_iter()
+            .next()
+            .unwrap();
         assert_eq!(cell.as_str(), "!", "priority 10 beats priority 5");
         assert_eq!(cell.scope, crate::providers::GutterScope::Id(diag_scope));
     }
@@ -259,7 +259,11 @@ mod tests {
         assert!(col.remove_source(winner_id));
 
         let rope = ropey::Rope::new();
-        let cell = col.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope)).into_iter().next().unwrap();
+        let cell = col
+            .render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope))
+            .into_iter()
+            .next()
+            .unwrap();
         assert_eq!(
             cell.as_str(),
             "+",
@@ -271,7 +275,11 @@ mod tests {
     fn no_source_fires_renders_blank() {
         let col = SignColumn::new();
         let rope = ropey::Rope::new();
-        let cell = col.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope)).into_iter().next().unwrap();
+        let cell = col
+            .render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope))
+            .into_iter()
+            .next()
+            .unwrap();
         assert_eq!(cell.as_str(), " ");
     }
 
@@ -301,7 +309,11 @@ mod tests {
             },
             RowKind::Filler,
         ] {
-            let cell = col.render_row_cells(kind, &ctx(&rope)).into_iter().next().unwrap();
+            let cell = col
+                .render_row_cells(kind, &ctx(&rope))
+                .into_iter()
+                .next()
+                .unwrap();
             assert_eq!(cell.as_str(), " ", "{kind:?} must not show a sign");
         }
     }
@@ -541,7 +553,11 @@ mod tests {
             },
         }));
         let rope = ropey::Rope::new();
-        let cell = col.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope)).into_iter().next().unwrap();
+        let cell = col
+            .render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope))
+            .into_iter()
+            .next()
+            .unwrap();
         let crate::providers::GutterScope::Id(id) = cell.scope else {
             panic!("expected an interned ScopeId, got {:?}", cell.scope);
         };
@@ -558,15 +574,27 @@ mod tests {
         let mut col = SignColumn::with_width(3); // 2 sign slots
         col.add_source(Box::new(FixedSign {
             line: 0,
-            sign: Sign { text: "!".into(), scope: a, priority: 10 },
+            sign: Sign {
+                text: "!".into(),
+                scope: a,
+                priority: 10,
+            },
         }));
         col.add_source(Box::new(FixedSign {
             line: 0,
-            sign: Sign { text: "+".into(), scope: b, priority: 5 },
+            sign: Sign {
+                text: "+".into(),
+                scope: b,
+                priority: 5,
+            },
         }));
         col.add_source(Box::new(FixedSign {
             line: 0,
-            sign: Sign { text: "~".into(), scope: c, priority: 1 },
+            sign: Sign {
+                text: "~".into(),
+                scope: c,
+                priority: 1,
+            },
         }));
 
         let rope = ropey::Rope::new();
@@ -584,7 +612,11 @@ mod tests {
         let mut col = SignColumn::with_width(3); // 2 sign slots
         col.add_source(Box::new(FixedSign {
             line: 0,
-            sign: Sign { text: "!".into(), scope: a, priority: 10 },
+            sign: Sign {
+                text: "!".into(),
+                scope: a,
+                priority: 10,
+            },
         }));
 
         let rope = ropey::Rope::new();
@@ -603,11 +635,19 @@ mod tests {
         let mut col = SignColumn::with_width(3); // 2 sign slots
         col.add_source(Box::new(FixedSign {
             line: 0,
-            sign: Sign { text: "A".into(), scope: a, priority: 10 },
+            sign: Sign {
+                text: "A".into(),
+                scope: a,
+                priority: 10,
+            },
         }));
         col.add_source(Box::new(FixedSign {
             line: 0,
-            sign: Sign { text: "B".into(), scope: b, priority: 10 },
+            sign: Sign {
+                text: "B".into(),
+                scope: b,
+                priority: 10,
+            },
         }));
 
         let rope = ropey::Rope::new();
@@ -624,7 +664,11 @@ mod tests {
         let mut col = SignColumn::with_width(1); // 0 sign slots
         col.add_source(Box::new(FixedSign {
             line: 0,
-            sign: Sign { text: "!".into(), scope: a, priority: 10 },
+            sign: Sign {
+                text: "!".into(),
+                scope: a,
+                priority: 10,
+            },
         }));
 
         let rope = ropey::Rope::new();
@@ -645,11 +689,19 @@ mod tests {
         let mut col = SignColumn::with_width(3); // 2 sign slots
         col.add_source(Box::new(FixedSign {
             line: 0,
-            sign: Sign { text: "!".into(), scope: a, priority: 10 },
+            sign: Sign {
+                text: "!".into(),
+                scope: a,
+                priority: 10,
+            },
         }));
         col.add_source(Box::new(FixedSign {
             line: 0,
-            sign: Sign { text: "+".into(), scope: b, priority: 5 },
+            sign: Sign {
+                text: "+".into(),
+                scope: b,
+                priority: 5,
+            },
         }));
 
         let graphemes = vec![crate::types::Grapheme {

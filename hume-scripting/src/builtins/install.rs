@@ -197,9 +197,7 @@ pub(crate) fn acquire_install_lock(ctx: &mut SteelCtx) -> Result<SteelVal, Steel
         create_lock_file(&lock_path).map_err(|e| {
             SteelErr::new(
                 steel::rerrs::ErrorKind::Generic,
-                format!(
-                    "acquire-install-lock!: cannot create lock after removing stale one: {e}"
-                ),
+                format!("acquire-install-lock!: cannot create lock after removing stale one: {e}"),
             )
         })?;
         Ok(SteelVal::Void)

@@ -35,10 +35,12 @@ impl Editor {
         // Both queues are persistent on the host (unlike `HookResult`'s
         // per-eval fields), so they're pulled with the same two-phase take
         // `flush_script_messages` uses.
-        let lang_regs = self.take_from_host(hume_scripting::ScriptingHost::take_pending_language_regs);
+        let lang_regs =
+            self.take_from_host(hume_scripting::ScriptingHost::take_pending_language_regs);
         self.apply_pending_language_regs(lang_regs);
 
-        let lsp_server_ops = self.take_from_host(hume_scripting::ScriptingHost::take_pending_lsp_server_ops);
+        let lsp_server_ops =
+            self.take_from_host(hume_scripting::ScriptingHost::take_pending_lsp_server_ops);
         self.apply_lsp_server_ops(lsp_server_ops);
 
         let HookResult {

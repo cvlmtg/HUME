@@ -189,8 +189,7 @@ fn gutter_width_stays_at_default_with_no_signs_under_always_mode() {
 fn gutter_width_collapses_under_auto_mode_with_no_signs() {
     let mut c = setup_with_diagnostics("abcdefgh\n", &[]);
     let bid = c.ed.focused_buffer_id();
-    c.ed.state.buffers.get_mut(bid).overrides.signcolumn =
-        Some("auto".parse().unwrap());
+    c.ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("auto".parse().unwrap());
     let mut ctx = RenderContext::new();
     c.ed.prepare_frame(80, 25, &mut ctx);
     assert_eq!(
@@ -214,8 +213,7 @@ fn gutter_width_is_the_default_when_a_diagnostic_exists() {
 fn gutter_width_always_2_is_3_cells_wide() {
     let mut c = setup_with_diagnostics("abcdefgh\n", &[]);
     let bid = c.ed.focused_buffer_id();
-    c.ed.state.buffers.get_mut(bid).overrides.signcolumn =
-        Some("always:2".parse().unwrap());
+    c.ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("always:2".parse().unwrap());
     let mut ctx = RenderContext::new();
     c.ed.prepare_frame(80, 25, &mut ctx);
     assert_eq!(
@@ -229,8 +227,7 @@ fn gutter_width_always_2_is_3_cells_wide() {
 fn gutter_width_auto_2_expands_when_signs_exist() {
     let mut c = setup_with_diagnostics("abcdefgh\n", &[((0, 0), (0, 1), 1)]);
     let bid = c.ed.focused_buffer_id();
-    c.ed.state.buffers.get_mut(bid).overrides.signcolumn =
-        Some("auto:2".parse().unwrap());
+    c.ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("auto:2".parse().unwrap());
     let mut ctx = RenderContext::new();
     c.ed.prepare_frame(80, 25, &mut ctx);
     assert_eq!(
@@ -333,8 +330,7 @@ fn wider_signcolumn_keeps_multiple_signs_per_line() {
     }
     ed.feed_key(key_esc());
     let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).overrides.signcolumn =
-        Some("always:2".parse().unwrap());
+    ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("always:2".parse().unwrap());
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,

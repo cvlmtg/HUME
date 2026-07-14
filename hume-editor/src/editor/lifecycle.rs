@@ -1208,9 +1208,7 @@ impl Editor {
                 let mut guard = plugin_map.write().expect("RwLock not poisoned");
                 guard.clear();
                 for (line, mut entries) in plugin_all {
-                    entries.sort_by(|a, b| {
-                        b.2.cmp(&a.2).then(b.0.cmp(&a.0))
-                    });
+                    entries.sort_by(|a, b| b.2.cmp(&a.2).then(b.0.cmp(&a.0)));
                     entries.truncate(max_plugin_signs);
                     let signs: Vec<Sign> = entries
                         .into_iter()
@@ -1245,9 +1243,7 @@ impl Editor {
                     }
                 }
             };
-            self.view.panes[pid]
-                .providers
-                .sync_sign_column_width(width);
+            self.view.panes[pid].providers.sync_sign_column_width(width);
         }
     }
 

@@ -228,12 +228,18 @@ impl<'a> SteelCtx<'a> {
         if success {
             return;
         }
-        self.pending_language_regs.truncate(marks.pending_language_regs);
-        self.pending_lsp_server_ops.truncate(marks.pending_lsp_server_ops);
-        self.pending_language_sets.truncate(marks.pending_language_sets);
-        self.pending_grammar_sweeps.truncate(marks.pending_grammar_sweeps);
-        self.pending_lsp_requests.truncate(marks.pending_lsp_requests);
-        self.pending_lsp_notifies.truncate(marks.pending_lsp_notifies);
+        self.pending_language_regs
+            .truncate(marks.pending_language_regs);
+        self.pending_lsp_server_ops
+            .truncate(marks.pending_lsp_server_ops);
+        self.pending_language_sets
+            .truncate(marks.pending_language_sets);
+        self.pending_grammar_sweeps
+            .truncate(marks.pending_grammar_sweeps);
+        self.pending_lsp_requests
+            .truncate(marks.pending_lsp_requests);
+        self.pending_lsp_notifies
+            .truncate(marks.pending_lsp_notifies);
     }
 
     pub(crate) fn new_command(
