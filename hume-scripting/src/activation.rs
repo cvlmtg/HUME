@@ -31,6 +31,7 @@ use crate::ScriptingHost;
 use crate::attribution;
 use crate::context::SteelCtx;
 use crate::host::EditorHost;
+use crate::types::HookResult;
 use crate::watchdog::EvalWatchdog;
 
 // ── run_steel ──────────────────────────────────��──────────────────────────────
@@ -134,13 +135,18 @@ impl ScriptingHost {
     /// runs inside `hm.eval-string` (VM-aware, no `&mut Engine` borrow), sharing
     /// the same `ctx.registries` as any concurrent eval.  `define-command!` calls
     /// inside the body register directly into `host.register_command` inline.
+    ///
+    /// Returns the activating body's queued per-eval side effects (`register-lsp-server!`,
+    /// `set-buffer-language!`, etc.) so the caller can apply them immediately —
+    /// otherwise they'd sit unapplied until some unrelated later drain, which can
+    /// skip attaching the very buffer that triggered this activation.
     pub fn activate_plugin_inline(
         &mut self,
         id: &attribution::PluginId,
         budget_ms: u64,
         host: &mut dyn EditorHost,
         builtin_names: &HashSet<String>,
-    ) -> Result<(), String> {
+    ) -> Result<HookResult, String> {
         let args = vec![SteelVal::StringV(id.to_string().into())];
         let (steel, watchdog, bundle) = self.steel_and_bundle();
         let mut steel_ctx = SteelCtx::new_activation(host, bundle, builtin_names.clone());
@@ -151,7 +157,8 @@ impl ScriptingHost {
             "%activate-plugin-inline",
             args,
             budget_ms,
-        )
+        )?;
+        Ok(steel_ctx.take_side_effects())
     }
 }
 

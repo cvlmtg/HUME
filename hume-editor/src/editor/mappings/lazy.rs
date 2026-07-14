@@ -5,9 +5,14 @@ use hume_scripting::PluginStatus;
 impl Editor {
     // ── Command execution ─────────────────────────────────────────────────────
 
-    /// Shared core: activate `plugin` inline (or report the error), leaving
-    /// messages unflushed.  Called by both the command-stub path and the
-    /// event-activation path.
+    /// Shared core: activate `plugin` inline, apply its queued side effects (or
+    /// report the error), leaving messages unflushed.  Called by both the
+    /// command-stub path and the event-/language-activation path.
+    ///
+    /// Applying effects here — rather than leaving them for some later drain —
+    /// is what lets a lazily-activated plugin's own `register-lsp-server!` (or
+    /// `set-buffer-language!`, grammar sweep, ...) take effect before this call
+    /// returns, so the buffer that triggered activation isn't skipped.
     pub(super) fn activate_and_register(&mut self, plugin: &hume_scripting::attribution::PluginId) {
         let init_budget = self.state.settings.steel_init_budget_ms as u64;
         let result = {
@@ -17,8 +22,9 @@ impl Editor {
             let mut ih = make_init_host(&mut self.state, &mut self.view);
             host.activate_plugin_inline(plugin, init_budget, &mut ih, &self.builtin_cmd_names)
         };
-        if let Err(e) = result {
-            self.report(Severity::Error, e);
+        match result {
+            Ok(effects) => self.apply_script_effects(effects),
+            Err(e) => self.report(Severity::Error, e),
         }
     }
 

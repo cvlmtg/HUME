@@ -164,12 +164,12 @@
 ;; sweeps already-open buffers on every registration once it's actually
 ;; applied — at eager plugin load that happens synchronously (registrations
 ;; queued during init.scm are flushed once at the end of init); a *lazy*
-;; activation only queues them, and they aren't applied until the next
-;; effects-draining point (a hook with a registered handler, or the next
-;; command dispatch) — see docs/ROADMAP.md's "Lazy-activation queued effects"
-;; open question. Also exposed as the `lsp-rescan-servers` command, and
-;; called directly by `servers.scm`'s install/uninstall commands right after
-;; they mutate disk — no cross-plugin notify needed, both live here.
+;; activation applies its queued registrations immediately too
+;; (`activate_and_register`, hume-editor/src/editor/mappings/lazy.rs), so the
+;; buffer that triggered the activation attaches in that same call. Also
+;; exposed as the `lsp-rescan-servers` command, and called directly by
+;; `servers.scm`'s install/uninstall commands right after they mutate disk —
+;; no cross-plugin notify needed, both live here.
 (define (lsp/register-installed-servers!)
   (let ((sdir (lsp/servers-dir)))
     (when (path-exists? sdir)

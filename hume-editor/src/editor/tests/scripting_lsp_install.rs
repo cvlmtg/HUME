@@ -427,17 +427,12 @@ fn rescan_does_not_clobber_a_manually_registered_language() {
 /// only at eager `(load-plugin "core:lsp")`.
 ///
 /// `activate_lazy_language_plugins` (called from `set_buffer_language`,
-/// before `lsp_attach_buffer`) evaluates the plugin inline but only flushes
-/// *messages* (`activate_pending_plugins`, mappings/lazy.rs) — unlike the
-/// eager `(load-plugin ...)` path, which flushes queued
-/// `PendingLspServerOp`s at the end of init.scm
-/// (`flush_pending_lsp_server_ops`, scripting_setup.rs). So the buffer whose
-/// language-set *caused* the activation does not attach in that same call;
-/// registration only becomes visible at the next effects-applying drain
-/// (`apply_script_effects`, run by `drain_hooks` for a hook with a handler,
-/// by `drain_pending_steel_calls`, or by the next command dispatch) — mirror
-/// that explicitly here, matching the `flush_pending_lsp_server_ops`
-/// test-only flush idiom other lsp_*.rs tests already use.
+/// before `lsp_attach_buffer`) evaluates the plugin inline via
+/// `activate_and_register` (mappings/lazy.rs), which applies the activating
+/// body's queued side effects — including any `register-lsp-server!` —
+/// through `apply_script_effects` before returning. So the buffer whose
+/// language-set *caused* the activation attaches in that same call, with no
+/// need to wait for a later effects-applying drain.
 #[test]
 #[cfg(not(windows))]
 fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
@@ -464,8 +459,6 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
 
     let bid = ed.focused_buffer_id();
     ed.set_buffer_language(bid, Some("rust".to_owned()));
-    ed.drain_hooks();
-    ed.apply_script_effects(hume_scripting::HookResult::default());
 
     let expected_cmd = canonical_data_dir(data_tmp.path())
         .join("servers")
@@ -474,7 +467,8 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
     assert_eq!(
         ed.lsp.config_command_for_test("rust"),
         Some(expected_cmd.to_string_lossy().into_owned()),
-        "activating core:lsp via a language-set trigger must eventually run its startup scan"
+        "activating core:lsp via a language-set trigger must apply its startup scan \
+         immediately, in the same set_buffer_language call"
     );
 }
 
