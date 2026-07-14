@@ -34,8 +34,10 @@ PLUM also installs and manages tree-sitter grammars. See [Syntax Highlighting](s
 Language server support: hover, go-to-definition, references, diagnostics, rename,
 formatting, code actions, signature help, completions, and inlay hints — and downloads
 and manages the language servers themselves (`:lsp-install` / `:lsp-uninstall` /
-`:lsp-servers`), independently of PLUM. Requires `core:stdlib` loaded first. See
-[Language Servers](lsp.md) for setup, the full commands/keys table, and settings.
+`:lsp-servers`), independently of PLUM. Also owns runtime server management
+(`:lsp-status` / `:lsp-stop` / `:lsp-restart`) — these require `core:lsp` loaded even for
+a manually `register-lsp-server!`-registered server. Requires `core:stdlib` loaded first.
+See [Language Servers](lsp.md) for setup, the full commands/keys table, and settings.
 
 ## core:helix-surround
 

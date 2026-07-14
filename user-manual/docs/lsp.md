@@ -23,7 +23,8 @@ instead — see [Registering a language server](#registering-a-language-server).
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
                "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger"
-               "lsp-install" "lsp-uninstall" "lsp-servers" "lsp-rescan-servers"))
+               "lsp-install" "lsp-uninstall" "lsp-servers" "lsp-rescan-servers"
+               "lsp-status" "lsp-stop" "lsp-restart"))
 ```
 
 Declaring is recommended — it keeps startup fast, and `core:lsp` activates the first time a
@@ -144,7 +145,10 @@ precedence.
 Registering by hand is only needed if you're not using
 [`:lsp-install`](#installing-servers) — a locally built server, a version the seeded
 catalog doesn't carry, or a `$PATH` copy you want to take precedence over a managed install.
-`register-lsp-server!` takes:
+`register-lsp-server!` itself has no dependency on `core:lsp` — but the
+[managing-servers commands](#managing-servers) below (`:lsp-status`, `:lsp-stop`,
+`:lsp-restart`) are `core:lsp` commands, so a manually registered server still needs
+`core:lsp` loaded or declared to inspect, stop, or restart it. `register-lsp-server!` takes:
 
 | Argument | Meaning |
 |----------|---------|

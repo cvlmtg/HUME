@@ -193,3 +193,15 @@
 (define-command! "lsp-rescan-servers"
   "Re-scan installed language servers on disk and register any not yet registered."
   (lambda () (lsp/register-installed-servers!)))
+
+(define-command! "lsp-status"
+  "Show registered LSP servers and attached buffers' diagnostic counts."
+  (lambda () (lsp-show-status!)))
+
+(define-command! "lsp-stop"
+  "Stop an LSP server: :lsp-stop [language] (default: focused buffer's server)."
+  (lambda (arg) (lsp-stop! (if (string? arg) arg #f))))
+
+(define-command! "lsp-restart"
+  "Restart an LSP server: :lsp-restart [language] (default: focused buffer's server)."
+  (lambda (arg) (lsp-restart! (if (string? arg) arg #f))))

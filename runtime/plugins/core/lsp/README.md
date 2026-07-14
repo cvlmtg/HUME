@@ -3,8 +3,9 @@
 Language server features: hover, go-to-definition (+ declaration / type-definition /
 implementation), references, diagnostics navigation, rename, formatting, code actions,
 signature help, completions, inlay hints. Also owns the LSP server lifecycle end to
-end — install, uninstall, and registration (`servers.scm`, `registration.scm`) — see
-`docs/LSP-INSTALL.md`. `core:plum` (the plugin manager) is not involved.
+end — install, uninstall, registration, and runtime management (`servers.scm`,
+`registration.scm`) — see `docs/LSP-INSTALL.md`. `core:plum` (the plugin manager) is not
+involved.
 
 Requires `core:stdlib` loaded first — diagnostics navigation calls
 `stdlib/cursor-char-index` via `call!`.
@@ -27,7 +28,8 @@ your `init.scm`, plus at least one `register-lsp-server!` call if you're not rel
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
                "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger"
-               "lsp-install" "lsp-uninstall" "lsp-servers" "lsp-rescan-servers"))
+               "lsp-install" "lsp-uninstall" "lsp-servers" "lsp-rescan-servers"
+               "lsp-status" "lsp-stop" "lsp-restart"))
 ```
 
 `declare-plugin` activates the first time a registered server attaches to a buffer, the
@@ -54,6 +56,9 @@ LSP server management:
 | `:lsp-uninstall <name>`| Shut down and unregister a server's clients, remove it from disk (by server name, not language) |
 | `:lsp-servers`         | Catalog listing: every seeded server, its languages, and install status      |
 | `:lsp-rescan-servers`  | Re-scan `<data>/servers/` and register any installed server not yet registered — useful for a server installed out-of-band |
+| `:lsp-status`          | Show every running server and its state, plus attached buffers' diagnostic counts |
+| `:lsp-stop [lang]`     | Stop a running server (default: focused buffer's)                            |
+| `:lsp-restart [lang]`  | Stop and respawn a running server (default: focused buffer's)                |
 
 ## Keys
 
@@ -98,3 +103,12 @@ catalog and `<data>/servers/` for receipts, registering (`register-lsp-server!`)
 installed server it finds; `plugin.scm` runs it once at its own top level, so it also
 happens at load or lazy activation. `:lsp-rescan-servers` exposes the same scan for a
 server installed outside `:lsp-install`.
+
+### Runtime management
+
+`registration.scm` also defines `:lsp-status`/`:lsp-stop`/`:lsp-restart` — thin wrappers
+over the `lsp-show-status!`/`lsp-stop!`/`lsp-restart!` Rust builtins, which queue the
+actual work for the end-of-eval drain (the Steel-eval-time host doesn't hold `&mut
+Editor`, only `Editor::apply_lsp_server_ops` does). These are `core:lsp` commands, not
+ambient Rust builtins — a `register-lsp-server!` config with no `core:lsp` loaded has no
+way to inspect, stop, or restart the server it spawns.

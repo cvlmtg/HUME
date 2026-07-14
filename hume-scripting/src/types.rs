@@ -58,17 +58,23 @@ pub struct PendingLspServerReg {
     pub settings: Option<serde_json::Value>,
 }
 
-/// An LSP server registration or unregistration queued during any eval
-/// (init.scm, plugin activation, or a command/hook body) and applied — in
-/// order — by `Editor::apply_lsp_server_ops` at the end of that eval.
+/// An LSP server registration, unregistration, stop/restart, or status-view
+/// request queued during any eval (init.scm, plugin activation, or a
+/// command/hook body) and applied — in order — by
+/// `Editor::apply_lsp_server_ops` at the end of that eval.
 ///
-/// One ordered queue (not two separate `Vec`s) because a reinstall emits
+/// One ordered queue (not separate `Vec`s per op) because a reinstall emits
 /// `Unregister` then `Register` within the same eval and that interleaving
-/// must be preserved.
+/// must be preserved; `Stop`/`Restart`/`ShowStatus` ride the same queue
+/// because they too need `&mut Editor`, which the Steel-eval-time
+/// `EditorHost` impl doesn't hold.
 #[derive(Debug)]
 pub enum PendingLspServerOp {
     Register(PendingLspServerReg),
     Unregister { language: String },
+    Stop { language: Option<String> },
+    Restart { language: Option<String> },
+    ShowStatus,
 }
 
 /// One entry of `(lsp-server-status)` — mirrors `:lsp-status`'s data

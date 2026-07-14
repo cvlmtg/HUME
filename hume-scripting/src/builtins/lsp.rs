@@ -105,6 +105,36 @@ pub(crate) fn unregister_lsp_server(ctx: &mut SteelCtx, language: SteelVal) -> S
     Ok(SteelVal::Void)
 }
 
+/// `(lsp-stop! language)` — `language` a string, or `#f` for "the focused
+/// buffer's attached server". Queues a stop, applied at the end of the
+/// current eval (see `Editor::apply_lsp_server_ops`); the report of how many
+/// servers stopped is emitted by that same drain.
+pub(crate) fn lsp_stop(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "lsp-stop!");
+    let language = optional_string_arg(language, "lsp-stop! language")?;
+    ctx.pending_lsp_server_ops
+        .push(PendingLspServerOp::Stop { language });
+    Ok(SteelVal::Void)
+}
+
+/// `(lsp-restart! language)` — same argument shape as `lsp-stop!`. Queues a
+/// stop-then-respawn, applied at the end of the current eval.
+pub(crate) fn lsp_restart(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "lsp-restart!");
+    let language = optional_string_arg(language, "lsp-restart! language")?;
+    ctx.pending_lsp_server_ops
+        .push(PendingLspServerOp::Restart { language });
+    Ok(SteelVal::Void)
+}
+
+/// `(lsp-show-status!)` — queues opening the `[lsp-status]` read-only view,
+/// applied at the end of the current eval.
+pub(crate) fn lsp_show_status(ctx: &mut SteelCtx) -> SteelResult {
+    require_cmd_ctx!(ctx, "lsp-show-status!");
+    ctx.pending_lsp_server_ops.push(PendingLspServerOp::ShowStatus);
+    Ok(SteelVal::Void)
+}
+
 /// `(%lsp-request server method params callback allow-stale)`. The
 /// `lsp-request` Scheme wrapper (BOOTSTRAP) supplies `#:allow-stale`'s
 /// default. Queues a `PendingLspRequest`, flushed and actually sent by
@@ -991,5 +1021,99 @@ mod tests {
             &h.pending_lsp_server_ops[2],
             PendingLspServerOp::Register(reg) if reg.args == vec!["--new-flag".to_string()]
         ));
+    }
+
+    // ── lsp-stop! / lsp-restart! / lsp-show-status! ──────────────────────────
+
+    #[test]
+    fn lsp_stop_queues_a_stop_op_with_the_given_language() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = lsp_stop(&mut ctx, "rust".into_steelval().unwrap());
+        assert!(result.is_ok());
+        drop(ctx);
+        assert_eq!(h.pending_lsp_server_ops.len(), 1);
+        match &h.pending_lsp_server_ops[0] {
+            PendingLspServerOp::Stop { language } => assert_eq!(language.as_deref(), Some("rust")),
+            other => panic!("expected Stop, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn lsp_stop_with_false_arg_queues_no_language() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        lsp_stop(&mut ctx, SteelVal::BoolV(false)).unwrap();
+        drop(ctx);
+        match &h.pending_lsp_server_ops[0] {
+            PendingLspServerOp::Stop { language } => assert_eq!(*language, None),
+            other => panic!("expected Stop, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn lsp_stop_rejects_init_context() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        ctx.is_init = true;
+        let err = lsp_stop(&mut ctx, SteelVal::BoolV(false)).unwrap_err();
+        assert!(
+            err.to_string().contains("not available during init"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn lsp_restart_queues_a_restart_op_with_the_given_language() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = lsp_restart(&mut ctx, "rust".into_steelval().unwrap());
+        assert!(result.is_ok());
+        drop(ctx);
+        assert_eq!(h.pending_lsp_server_ops.len(), 1);
+        match &h.pending_lsp_server_ops[0] {
+            PendingLspServerOp::Restart { language } => {
+                assert_eq!(language.as_deref(), Some("rust"))
+            }
+            other => panic!("expected Restart, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn lsp_restart_rejects_init_context() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        ctx.is_init = true;
+        let err = lsp_restart(&mut ctx, SteelVal::BoolV(false)).unwrap_err();
+        assert!(
+            err.to_string().contains("not available during init"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn lsp_show_status_queues_a_show_status_op() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = lsp_show_status(&mut ctx);
+        assert!(result.is_ok());
+        drop(ctx);
+        assert_eq!(h.pending_lsp_server_ops.len(), 1);
+        assert!(matches!(
+            &h.pending_lsp_server_ops[0],
+            PendingLspServerOp::ShowStatus
+        ));
+    }
+
+    #[test]
+    fn lsp_show_status_rejects_init_context() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        ctx.is_init = true;
+        let err = lsp_show_status(&mut ctx).unwrap_err();
+        assert!(
+            err.to_string().contains("not available during init"),
+            "got: {err}"
+        );
     }
 }

@@ -895,6 +895,76 @@ fn lsp_servers_command_runs_without_error() {
     );
 }
 
+// ── :lsp-status / :lsp-stop / :lsp-restart ─────────────────────────────────────
+//
+// These used to be unconditional Rust builtins (present with zero plugins
+// loaded); they now live in core:lsp, dispatched through Steel to the
+// `lsp-show-status!`/`lsp-stop!`/`lsp-restart!` builtins.
+
+#[test]
+#[cfg(not(windows))]
+fn lsp_status_opens_a_read_only_view_when_no_servers_are_registered() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":lsp-status");
+
+    assert_eq!(ed.doc().display_name(), "[lsp-status]");
+    assert_eq!(ed.doc().text().to_string(), "No LSP servers registered.\n");
+}
+
+#[test]
+#[cfg(not(windows))]
+fn lsp_stop_with_no_matching_server_reports_nothing_to_stop() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":lsp-stop");
+
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("lsp: no matching server to stop")
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn lsp_restart_with_no_matching_server_reports_nothing_to_restart() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":lsp-restart");
+
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("lsp: no matching server to restart")
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn plum_alone_does_not_expose_lsp_status_stop_restart() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    for cmd in [":lsp-status", ":lsp-stop", ":lsp-restart"] {
+        type_cmd(&mut ed, cmd);
+        let log = ed.state.message_log.format_for_display();
+        assert!(
+            log.contains(&format!("Unknown command: {}", &cmd[1..])),
+            "core:plum alone must not expose {cmd}: {log}"
+        );
+    }
+}
+
 // ── Discovery hint ────────────────────────────────────────────────────────────
 //
 // `ed.set_buffer_language` + `ed.drain_hooks()` is not a `:`-typed command

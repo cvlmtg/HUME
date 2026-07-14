@@ -24,8 +24,9 @@ shared `lib.scm` helpers, with the same install/list/cleanup + scan-on-load-regi
 shape `core:lsp`'s server pipeline mirrors.
 
 Command names keep the `lsp-` prefix (`lsp-install`, not a `plum-`-prefixed name): the
-command namespace is flat, and discoverability next to the existing `:lsp-status` /
-`:lsp-stop` / `:lsp-restart` matters more than any naming symmetry with `core:plum`.
+command namespace is flat, and discoverability next to `core:lsp`'s other `:lsp-status` /
+`:lsp-stop` / `:lsp-restart` commands matters more than any naming symmetry with
+`core:plum`.
 
 Consequence: with no `core:lsp` in `init.scm` at all, there is no LSP
 install/uninstall/registration feature — `core:plum` never touches `servers/` or the LSP
@@ -276,10 +277,10 @@ All four are Steel commands in the `core:lsp` module — no Rust command work ne
 | `:lsp-servers` | Catalog listing (`hx --health`-style): every seeded server with languages, seeded version, installed version / not installed / update available. |
 | `:lsp-rescan-servers` | Re-scans `servers/` receipts and registers any not yet registered — the same scan that runs at `core:lsp` load and after every `:lsp-install`/`:lsp-uninstall`, callable directly for a server installed outside `:lsp-install`. |
 
-The existing Rust `:lsp-status` (running servers, roots, state, in-flight counts,
-diagnostics) stays untouched as the sole *runtime* view; `:lsp-servers` is the *catalog*
-view. Install knowledge (receipts, seeded lists) stays in the plugin — Rust never reads
-them.
+`:lsp-status` (running servers, roots, state, in-flight counts, diagnostics) is the
+*runtime* view — a `core:lsp` command dispatching into Rust introspection, unchanged by
+this feature; `:lsp-servers` is the *catalog* view. Install knowledge (receipts, seeded
+lists) stays in the plugin — Rust never reads them.
 
 - **Upgrades**: after a pin bump, `:lsp-install` compares the receipt's version against the
   seeded version and reinstalls on mismatch. No auto-upgrade.

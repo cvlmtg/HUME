@@ -536,6 +536,12 @@ pub(crate) fn register_all(steel: &mut Engine) {
         "unregister-lsp-server!",
         lsp::unregister_lsp_server,
     );
+    // Lifecycle — stop/restart a running server, or open the status view.
+    // Command-context only (core:lsp's `:lsp-status`/`:lsp-stop`/`:lsp-restart`
+    // typed commands are the only callers).
+    steel.register_fn_with_ctx(HUME_CTX, "lsp-stop!", lsp::lsp_stop);
+    steel.register_fn_with_ctx(HUME_CTX, "lsp-restart!", lsp::lsp_restart);
+    steel.register_fn_with_ctx(HUME_CTX, "lsp-show-status!", lsp::lsp_show_status);
     // Generic LSP bridge — any protocol method reachable from Steel.
     steel.register_fn_with_ctx(HUME_CTX, "%lsp-request", lsp::lsp_request);
     steel.register_fn_with_ctx(HUME_CTX, "lsp-notify", lsp::lsp_notify);

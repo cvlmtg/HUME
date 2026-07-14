@@ -59,6 +59,32 @@ impl Editor {
                 self.lsp.configs.remove(&language);
                 self.lsp_stop(Some(&language));
             }
+            hume_scripting::PendingLspServerOp::Stop { language } => {
+                let n = self.lsp_stop(language.as_deref());
+                if n == 0 {
+                    self.report(
+                        Severity::Info,
+                        "lsp: no matching server to stop".to_string(),
+                    );
+                } else {
+                    self.report(Severity::Info, format!("lsp: stopped {n} server(s)"));
+                }
+            }
+            hume_scripting::PendingLspServerOp::Restart { language } => {
+                let n = self.lsp_restart(language.as_deref());
+                if n == 0 {
+                    self.report(
+                        Severity::Info,
+                        "lsp: no matching server to restart".to_string(),
+                    );
+                } else {
+                    self.report(Severity::Info, format!("lsp: restarted {n} server(s)"));
+                }
+            }
+            hume_scripting::PendingLspServerOp::ShowStatus => {
+                let content = self.lsp_status_text();
+                self.open_read_only_view("[lsp-status]", &content, 0);
+            }
         }
     }
 
