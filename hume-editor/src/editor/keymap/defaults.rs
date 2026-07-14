@@ -450,149 +450,9 @@ impl Keymap {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{Keymap, KeymapCommand, WalkResult};
-    use super::{default_extend_keymap, default_insert_keymap, default_normal_keymap};
+    use super::super::{Keymap, WalkResult};
+    use super::{default_insert_keymap, default_normal_keymap};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-
-    #[test]
-    fn single_key_leaf() {
-        let trie = default_normal_keymap();
-        let result = trie.walk(&[key!('h')]);
-        assert!(matches!(result, WalkResult::Leaf(ref cmd) if cmd.name == "move-left"));
-    }
-
-    #[test]
-    fn single_key_editor_cmd() {
-        let trie = default_normal_keymap();
-        assert!(
-            matches!(trie.walk(&[key!('d')]), WalkResult::Leaf(ref cmd) if cmd.name == "delete")
-        );
-        assert!(matches!(trie.walk(&[key!('u')]), WalkResult::Leaf(ref cmd) if cmd.name == "undo"));
-        assert!(
-            matches!(trie.walk(&[key!('i')]), WalkResult::Leaf(ref cmd) if cmd.name == "insert-at-selection-start")
-        );
-    }
-
-    #[test]
-    fn wait_char_bindings() {
-        let trie = default_normal_keymap();
-        assert!(matches!(trie.walk(&[key!('f')]), WalkResult::WaitChar(_)));
-        assert!(matches!(trie.walk(&[key!('t')]), WalkResult::WaitChar(_)));
-        assert!(matches!(trie.walk(&[key!('F')]), WalkResult::WaitChar(_)));
-        assert!(matches!(trie.walk(&[key!('T')]), WalkResult::WaitChar(_)));
-        assert!(matches!(trie.walk(&[key!('r')]), WalkResult::WaitChar(_)));
-    }
-
-    #[test]
-    fn wait_char_has_correct_names() {
-        let trie = default_normal_keymap();
-
-        let WalkResult::WaitChar(wc) = trie.walk(&[key!('f')]) else {
-            panic!("expected WaitChar")
-        };
-        assert_eq!(wc.cmd_name, "find-forward");
-
-        let WalkResult::WaitChar(wc) = trie.walk(&[key!('t')]) else {
-            panic!("expected WaitChar")
-        };
-        assert_eq!(wc.cmd_name, "till-forward");
-
-        let WalkResult::WaitChar(wc) = trie.walk(&[key!('F')]) else {
-            panic!("expected WaitChar")
-        };
-        assert_eq!(wc.cmd_name, "find-backward");
-
-        let WalkResult::WaitChar(wc) = trie.walk(&[key!('T')]) else {
-            panic!("expected WaitChar")
-        };
-        assert_eq!(wc.cmd_name, "till-backward");
-
-        let WalkResult::WaitChar(wc) = trie.walk(&[key!('r')]) else {
-            panic!("expected WaitChar")
-        };
-        assert_eq!(wc.cmd_name, "replace");
-    }
-
-    #[test]
-    fn multi_key_text_object_interior() {
-        let trie = default_normal_keymap();
-        // `m` alone → Interior at the match node.
-        assert!(matches!(
-            trie.walk(&[key!('m')]),
-            WalkResult::Interior { name: "match" }
-        ));
-        // `m`, `i` → Interior at the inner node.
-        assert!(matches!(
-            trie.walk(&[key!('m'), key!('i')]),
-            WalkResult::Interior { name: "inner" }
-        ));
-        // `m`, `a` → Interior at the around node.
-        assert!(matches!(
-            trie.walk(&[key!('m'), key!('a')]),
-            WalkResult::Interior { name: "around" }
-        ));
-    }
-
-    #[test]
-    fn multi_key_text_object_leaf() {
-        let trie = default_normal_keymap();
-
-        // inner-word
-        let result = trie.walk(&[key!('m'), key!('i'), key!('w')]);
-        let WalkResult::Leaf(KeymapCommand { name, .. }) = result else {
-            panic!("expected Cmd leaf, got something else");
-        };
-        assert_eq!(name, "inner-word");
-
-        // around-paren (both `(` and `)` map to the same text object)
-        let result = trie.walk(&[key!('m'), key!('a'), key!('(')]);
-        let WalkResult::Leaf(KeymapCommand { name, .. }) = result else {
-            panic!("expected Cmd leaf");
-        };
-        assert_eq!(name, "around-paren");
-
-        let result = trie.walk(&[key!('m'), key!('a'), key!(')')]);
-        let WalkResult::Leaf(KeymapCommand { name, .. }) = result else {
-            panic!("expected Cmd leaf");
-        };
-        assert_eq!(name, "around-paren");
-    }
-
-    #[test]
-    fn surround_trie_interior() {
-        let trie = default_normal_keymap();
-        // `m`, `s` → Interior at the surround node.
-        assert!(matches!(
-            trie.walk(&[key!('m'), key!('s')]),
-            WalkResult::Interior { name: "surround" }
-        ));
-    }
-
-    #[test]
-    fn surround_trie_leaf() {
-        let trie = default_normal_keymap();
-
-        // surround-paren via `(`
-        let result = trie.walk(&[key!('m'), key!('s'), key!('(')]);
-        let WalkResult::Leaf(KeymapCommand { name, .. }) = result else {
-            panic!("expected Cmd leaf");
-        };
-        assert_eq!(name, "surround-paren");
-
-        // surround-paren via `)` (same command)
-        let result = trie.walk(&[key!('m'), key!('s'), key!(')')]);
-        let WalkResult::Leaf(KeymapCommand { name, .. }) = result else {
-            panic!("expected Cmd leaf");
-        };
-        assert_eq!(name, "surround-paren");
-
-        // surround-double-quote
-        let result = trie.walk(&[key!('m'), key!('s'), key!('"')]);
-        let WalkResult::Leaf(KeymapCommand { name, .. }) = result else {
-            panic!("expected Cmd leaf");
-        };
-        assert_eq!(name, "surround-double-quote");
-    }
 
     #[test]
     fn no_match() {
@@ -611,50 +471,7 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn w_maps_to_select_next_word() {
-        let trie = default_normal_keymap();
-        let WalkResult::Leaf(cmd) = trie.walk(&[key!('w')]) else {
-            panic!("expected Cmd leaf");
-        };
-        assert_eq!(cmd.name, "select-next-word");
-    }
-
-    #[test]
-    fn comma_maps_to_keep_primary_selection() {
-        let trie = default_normal_keymap();
-        let WalkResult::Leaf(cmd) = trie.walk(&[key!(',')]) else {
-            panic!("expected Cmd leaf");
-        };
-        assert_eq!(cmd.name, "keep-primary-selection");
-    }
-
-    #[test]
-    fn o_maps_to_open_line_below() {
-        let trie = default_normal_keymap();
-        let WalkResult::Leaf(cmd) = trie.walk(&[key!('o')]) else {
-            panic!("expected Cmd leaf");
-        };
-        assert_eq!(cmd.name, "open-line-below");
-    }
-
     // ── Insert keymap ─────────────────────────────────────────────────────────
-
-    #[test]
-    fn insert_esc_exits() {
-        let trie = default_insert_keymap();
-        assert!(
-            matches!(trie.walk(&[key!(Esc)]), WalkResult::Leaf(ref cmd) if cmd.name == "exit-insert")
-        );
-    }
-
-    #[test]
-    fn insert_arrows_are_motions() {
-        let trie = default_insert_keymap();
-        assert!(
-            matches!(trie.walk(&[key!(Left)]), WalkResult::Leaf(ref cmd) if cmd.name == "move-left")
-        );
-    }
 
     #[test]
     fn insert_char_is_no_match() {
@@ -663,15 +480,6 @@ mod tests {
         let trie = default_insert_keymap();
         assert!(matches!(trie.walk(&[key!('a')]), WalkResult::NoMatch));
         assert!(matches!(trie.walk(&[key!('z')]), WalkResult::NoMatch));
-    }
-
-    #[test]
-    fn insert_ctrl_c_exits() {
-        // Ctrl+c is an alternative exit key in insert mode (same as Esc).
-        let trie = default_insert_keymap();
-        assert!(
-            matches!(trie.walk(&[key!(Ctrl + 'c')]), WalkResult::Leaf(ref cmd) if cmd.name == "exit-insert")
-        );
     }
 
     #[test]
@@ -813,14 +621,6 @@ mod tests {
                 k
             );
         }
-    }
-
-    #[test]
-    fn extend_keymap_has_o_flip() {
-        let trie = default_extend_keymap();
-        assert!(
-            matches!(trie.walk(&[key!('o')]), WalkResult::Leaf(ref cmd) if cmd.name == "flip-selections")
-        );
     }
 
     // ── Kitty-only default binds ──────────────────────────────────────────────

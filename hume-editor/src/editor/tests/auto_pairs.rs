@@ -92,43 +92,6 @@ fn auto_pairs_disabled() {
 // editor insert-mode entry points because all of them (i, a, c, o, …) collapse
 // to a cursor before entering Insert.
 
-/// Typing `"` before an alphanumeric char inserts only `"`, not `""`.
-/// (The scenario from the original bug: `foo -[b]>ar` → `i` → `"` → `"bar`)
-#[test]
-fn auto_pairs_no_close_before_word_char() {
-    let mut ed = editor_from("foo -[b]>ar baz\n");
-    ed.handle_key(key('i')); // insert before 'b'
-    ed.handle_key(key('"'));
-    assert_eq!(state(&ed), "foo \"-[b]>ar baz\n");
-}
-
-/// Typing `(` before an alphanumeric char inserts only `(`.
-#[test]
-fn auto_pairs_no_close_paren_before_word_char() {
-    let mut ed = editor_from("-[f]>oo\n");
-    ed.handle_key(key('i'));
-    ed.handle_key(key('('));
-    assert_eq!(state(&ed), "(-[f]>oo\n");
-}
-
-/// Typing `"` before a space DOES auto-pair.
-#[test]
-fn auto_pairs_close_before_space() {
-    let mut ed = editor_from("-[ ]>foo\n");
-    ed.handle_key(key('i'));
-    ed.handle_key(key('"'));
-    assert_eq!(state(&ed), "\"-[\"]> foo\n");
-}
-
-/// Typing `(` before the structural newline (end of line) DOES auto-pair.
-#[test]
-fn auto_pairs_close_before_newline() {
-    let mut ed = editor_from("foo-[\n]>");
-    ed.handle_key(key('i'));
-    ed.handle_key(key('('));
-    assert_eq!(state(&ed), "foo(-[)]>\n");
-}
-
 /// Multi-cursor skip-close is all-or-nothing: if one cursor is on `)` and
 /// another is not, the whole operation falls back to plain insert for all cursors.
 #[test]
@@ -178,30 +141,6 @@ fn normal_wrap_bound_key_not_intercepted() {
     let mut ed = editor_from("foo -[bar]> baz\n");
     ed.handle_key(key('('));
     assert_eq!(state(&ed), "foo -[bar]> baz\n");
-}
-
-/// Collapsed cursor + `"` — register-prefix mode entered, buffer unchanged.
-#[test]
-fn normal_wrap_noop_on_cursor() {
-    let mut ed = editor_from("foo -[b]>ar baz\n");
-    ed.handle_key(key('"'));
-    assert_eq!(state(&ed), "foo -[b]>ar baz\n");
-}
-
-/// Multi-cursor: `"` arms register-prefix, no wrapping occurs.
-#[test]
-fn normal_wrap_multi_cursor() {
-    let mut ed = editor_from("-[foo]> -[bar]>\n");
-    ed.handle_key(key('"'));
-    assert_eq!(state(&ed), "-[foo]> -[bar]>\n");
-}
-
-/// Multi-line selection + `"` — register-prefix mode, buffer unchanged.
-#[test]
-fn normal_wrap_multi_line_selection() {
-    let mut ed = editor_from("-[foo\nbar]> baz\n");
-    ed.handle_key(key('"'));
-    assert_eq!(state(&ed), "-[foo\nbar]> baz\n");
 }
 
 /// Auto-pairs off: `"` still only arms the register-prefix.

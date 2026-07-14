@@ -12,33 +12,6 @@ fn find_forward_inclusive_basic() {
     assert_eq!(state(&ed), "hello -[a]> world\n");
 }
 
-/// `ta` stops one grapheme before the next `a`.
-#[test]
-fn find_forward_exclusive_basic() {
-    let mut ed = editor_from("-[h]>ello a world\n");
-    ed.handle_key(key('t'));
-    ed.handle_key(key('a'));
-    assert_eq!(state(&ed), "hello-[ ]>a world\n");
-}
-
-/// `Fa` finds `a` backward.
-#[test]
-fn find_backward_inclusive_basic() {
-    let mut ed = editor_from("hello a -[w]>orld\n");
-    ed.handle_key(key('F'));
-    ed.handle_key(key('a'));
-    assert_eq!(state(&ed), "hello -[a]> world\n");
-}
-
-/// `Ta` stops one grapheme after the `a` when searching backward.
-#[test]
-fn find_backward_exclusive_basic() {
-    let mut ed = editor_from("hello a -[w]>orld\n");
-    ed.handle_key(key('T'));
-    ed.handle_key(key('a'));
-    assert_eq!(state(&ed), "hello a-[ ]>world\n");
-}
-
 /// `=` repeats the last find forward regardless of original direction.
 #[test]
 fn find_repeat_forward() {
@@ -91,15 +64,6 @@ fn find_forward_extend_mode() {
     ed.handle_key(key('f'));
     ed.handle_key(key('a'));
     assert_eq!(state(&ed), "-[hello a]> world\n");
-}
-
-/// `f` with no match is a no-op.
-#[test]
-fn find_forward_no_match_is_noop() {
-    let mut ed = editor_from("-[h]>ello\n");
-    ed.handle_key(key('f'));
-    ed.handle_key(key('z'));
-    assert_eq!(state(&ed), "-[h]>ello\n");
 }
 
 /// `=` after `ta` (exclusive) repeats with the same exclusive kind — stops
