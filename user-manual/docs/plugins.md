@@ -192,8 +192,29 @@ Available hooks and their lambda signatures:
 | `on-buffer-save` | A buffer is saved | `(buffer-id)` |
 | `on-mode-change` | The editor mode changes | `(old new)` — mode strings |
 | `on-language-set` | A buffer's language is detected or changed | `(buffer-id lang)` — `lang` is a string or `#f` |
+| `on-diagnostics-changed` | A buffer's LSP diagnostics change | `(buffer-id)` — pull details with `diagnostics-for-buffer` |
 
-For lazy plugins, declare the events that should trigger activation via `#:events` on `declare-plugin` instead (see [How plugins are loaded](#how-plugins-are-loaded)).
+For lazy plugins, declare the events that should trigger activation via `#:events` on `declare-plugin` instead (see [How plugins are loaded](#how-plugins-are-loaded)). LSP-related hooks like `on-lsp-attach` work fine with `register-hook!`, but can't be used as an `#:events` activation entry — a plugin gated only on `on-lsp-attach` never activates, since nothing attaches to a server until the plugin has already loaded and registered it.
+
+A few more examples:
+
+```scheme
+; format on save
+(register-hook! 'on-buffer-save
+  (lambda (bid) (call! "lsp-fmt")))
+
+; per-language settings
+(register-hook! 'on-language-set
+  (lambda (bid lang)
+    (when (equal? lang "go")
+      (set-option! "tab-width" 4))))
+
+; react to diagnostics
+(register-hook! 'on-diagnostics-changed
+  (lambda (bid)
+    (let ((errs (diagnostics-for-buffer bid #:severity 'error)))
+      (log! 'info (string-append (to-string (length errs)) " errors")))))
+```
 
 ### Default activation
 
