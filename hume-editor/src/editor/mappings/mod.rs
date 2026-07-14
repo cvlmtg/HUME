@@ -37,6 +37,14 @@ impl Editor {
             }
         }
 
+        // A `#:dismiss-on-key` popup (the `gn`/`gp` diagnostic overlay) is
+        // cleared by the *next* key event, whatever key it is — the key
+        // still dispatches normally below. Hover/signature-help popups
+        // leave `dismiss_on_key` false and are unaffected.
+        if self.state.popup.as_ref().is_some_and(|p| p.dismiss_on_key) {
+            self.state.popup = None;
+        }
+
         // ── Selection menu intercept ─────────────────────────────────────
         // Guarded early-return before mode dispatch, not a new `Mode` — a
         // menu is transient chrome, not an editing mode (no `on-mode-change`,

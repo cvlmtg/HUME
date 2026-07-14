@@ -304,6 +304,46 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
 }
 
 #[test]
+fn set_inline_diagnostics_round_trips_and_replaces_wholesale() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdef\nghijkl\n");
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "arm-a" "" (lambda ()
+             (set-inline-diagnostics! (current-buffer)
+               (list (list 0 "[2] first problem" "diagnostic.error")))))
+           (define-command! "arm-b" "" (lambda ()
+             (set-inline-diagnostics! (current-buffer)
+               (list (list 1 "second problem" "diagnostic.warning")))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm-a");
+
+    let entries = ed.state.decorations.inline_diagnostics_for(bid);
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].line, 0);
+    assert_eq!(entries[0].text, "[2] first problem");
+    assert_eq!(entries[0].scope, "diagnostic.error");
+
+    // A second call must replace wholesale (one owner per buffer, unlike
+    // signs/virtual-lines' per-source multiplexing), not append.
+    type_cmd(&mut ed, ":arm-b");
+    let entries = ed.state.decorations.inline_diagnostics_for(bid);
+    assert_eq!(
+        entries.len(),
+        1,
+        "the second set-inline-diagnostics! must replace, not append"
+    );
+    assert_eq!(entries[0].line, 1);
+    assert_eq!(entries[0].text, "second problem");
+    assert_eq!(entries[0].scope, "diagnostic.warning");
+}
+
+#[test]
 fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
     let tmp = tempfile::tempdir().unwrap();
     let file_dir = tempfile::tempdir().unwrap();

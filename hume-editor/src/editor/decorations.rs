@@ -1,17 +1,19 @@
 //! Steel-writable decoration stores: inlay hints, gutter signs, virtual
-//! lines, and extra highlights. Not LSP-specific (any plugin can set them) —
-//! LSP is their first client, not their owner. The render providers read
-//! these fresh every frame; nothing here needs a dirty-tracking generation
-//! counter.
+//! lines, inline diagnostics, and extra highlights. Not LSP-specific (any
+//! plugin can set them) — LSP is their first client, not their owner. The
+//! render providers read these fresh every frame; nothing here needs a
+//! dirty-tracking generation counter.
 //!
-//! `inlay_hints` is keyed by `BufferId` alone (one owner per buffer, always
-//! replaced wholesale by the next `(set-inlay-hints! …)`); `signs` /
+//! `inlay_hints` / `inline_diagnostics` are keyed by `BufferId` alone (one
+//! owner per buffer, always replaced wholesale by the next
+//! `(set-inlay-hints! …)` / `(set-inline-diagnostics! …)`); `signs` /
 //! `virtual_lines` / `extra_highlights` are keyed by `BufferId` first, then a
 //! per-buffer `Vec<(source, entries)>` so unrelated plugins' entries for the
 //! same buffer coexist without a cross-buffer scan to find them (same shape
 //! as `DiagnosticsStore::by_buffer`). Only the char-offset stores
 //! (`inlay_hints`, `extra_highlights`) remap through edits — `signs` /
-//! `virtual_lines` are line-indexed and encoding/edit-independent for v1.
+//! `virtual_lines` / `inline_diagnostics` are line-indexed and
+//! encoding/edit-independent for v1.
 
 use std::collections::HashMap;
 
@@ -47,6 +49,19 @@ pub(crate) struct VirtualLineEntry {
     pub(crate) scope: Option<String>,
 }
 
+/// One `(set-inline-diagnostics! …)` entry: text appended at the end of
+/// buffer `line` (0-indexed) — the diagnostics plugin's per-line summary
+/// (`"[n] <message>"` or a bare message). Keyed and rendered exactly like
+/// `inlay_hints` (unconditional per-frame rebuild in
+/// `update_inline_diagnostics_providers` — this store is render-only,
+/// unlike `virtual_lines` which also feeds scroll/cursor math and so needs
+/// a dirty-tracking generation).
+pub(crate) struct InlineDiagnosticEntry {
+    pub(crate) line: usize,
+    pub(crate) text: String,
+    pub(crate) scope: String,
+}
+
 /// One `(set-extra-highlights! …)` entry: a char range styled with `scope`.
 pub(crate) struct ExtraHighlightEntry {
     pub(crate) start: usize,
@@ -60,6 +75,11 @@ pub(crate) struct DecorationStores {
     signs: HashMap<BufferId, Vec<(String, Vec<SignEntry>)>>,
     virtual_lines: HashMap<BufferId, Vec<(String, Vec<VirtualLineEntry>)>>,
     extra_highlights: HashMap<BufferId, Vec<(String, Vec<ExtraHighlightEntry>)>>,
+    /// One owner per buffer (always replaced wholesale by the diagnostics
+    /// plugin's next `(set-inline-diagnostics! …)`), same shape as
+    /// `inlay_hints` — no per-source multiplexing needed since diagnostics
+    /// are the only client.
+    inline_diagnostics: HashMap<BufferId, Vec<InlineDiagnosticEntry>>,
     /// Bumped by `set_virtual_lines` — the render write side mirrors
     /// `virtual_lines` into a per-pane Arc only when this changed since its
     /// last sync, rather than every frame (unlike inlay hints, this runs in
@@ -79,6 +99,23 @@ impl DecorationStores {
     /// `bid`'s inlay hints, sorted by `pos` (see `set_inlay_hints`).
     pub(crate) fn inlay_hints_for(&self, bid: BufferId) -> &[InlayHintEntry] {
         self.inlay_hints.get(&bid).map(Vec::as_slice).unwrap_or(&[])
+    }
+
+    /// Replaces `bid`'s inline-diagnostic entries wholesale.
+    pub(crate) fn set_inline_diagnostics(
+        &mut self,
+        bid: BufferId,
+        entries: Vec<InlineDiagnosticEntry>,
+    ) {
+        self.inline_diagnostics.insert(bid, entries);
+    }
+
+    /// `bid`'s inline-diagnostic entries (see `set_inline_diagnostics`).
+    pub(crate) fn inline_diagnostics_for(&self, bid: BufferId) -> &[InlineDiagnosticEntry] {
+        self.inline_diagnostics
+            .get(&bid)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
     }
 
     /// Replaces `source`'s signs for `bid` wholesale.
@@ -225,6 +262,7 @@ impl DecorationStores {
         self.signs.remove(&bid);
         self.virtual_lines.remove(&bid);
         self.extra_highlights.remove(&bid);
+        self.inline_diagnostics.remove(&bid);
     }
 
     /// Remaps `bid`'s inlay hints and extra highlights through `cs` — the

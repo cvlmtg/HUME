@@ -352,6 +352,14 @@ pub trait EditorHost {
         let _ = (source, bid, spans);
     }
 
+    /// `(set-inline-diagnostics! bid lines)` — replaces `bid`'s inline
+    /// diagnostic text wholesale (one owner, the diagnostics plugin — no
+    /// `source` multiplexing, unlike `set_virtual_lines`). Each entry is
+    /// `(line, text, scope)`; `text` is spliced in at the end of `line`.
+    fn set_inline_diagnostics(&mut self, bid: BufferId, lines: Vec<(usize, String, String)>) {
+        let _ = (bid, lines);
+    }
+
     /// `(diagnostics-for-buffer bid #:severity floor #:range (start end))` —
     /// decoded `{"start" "end" "line" "col" "severity" "message" "code"
     /// "source"}` hashmaps, filtered then capped at 1000. `severity_floor`
@@ -460,13 +468,15 @@ pub trait EditorHost {
     }
 
     // ── Cursor-anchored popup (default = "not supported") ────────────────
-    /// `(show-popup! text #:anchor 'cursor)` — shows `text` in a floating
-    /// panel anchored near the focused pane's cursor. Geometry (wrap width,
-    /// flip/clamp position) is resolved fresh every frame by the host, not
-    /// here — this just stores the raw content. Replaces any popup already
-    /// showing (no stacking).
-    fn show_popup(&mut self, text: String) -> Result<(), String> {
-        let _ = text;
+    /// `(show-popup! text #:anchor 'cursor #:dismiss-on-key #f)` — shows
+    /// `text` in a floating panel anchored near the focused pane's cursor.
+    /// Geometry (wrap width, flip/clamp position) is resolved fresh every
+    /// frame by the host, not here — this just stores the raw content.
+    /// Replaces any popup already showing (no stacking). `dismiss_on_key`:
+    /// when true, the popup is cleared by the *next* key press (any key),
+    /// rather than only by `close-popup!`/`on-mode-change`.
+    fn show_popup(&mut self, text: String, dismiss_on_key: bool) -> Result<(), String> {
+        let _ = (text, dismiss_on_key);
         Err("show-popup!: not supported by this host".to_string())
     }
 

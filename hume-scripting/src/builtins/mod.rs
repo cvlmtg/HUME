@@ -193,7 +193,10 @@ pub(crate) fn string_arg(val: SteelVal, ctx_name: &str) -> Result<String, SteelE
 // manual exit-code checks.
 //
 // show-popup! — cursor-anchored floating text panel. #:anchor is reserved;
-// 'cursor is the only v1 value.
+// 'cursor is the only v1 value. #:dismiss-on-key: the popup is cleared by
+// the Editor::handle_key top-of-loop check on the *next* key press, whatever
+// key it is (see `gn`/`gp`'s diagnostic overlay) — default #f keeps the
+// existing on-mode-change-only dismissal (hover, signature help).
 //
 // Variadic call! macro — desugars to %dispatch-command. Defined here (not
 // only prelude.scm) so test harnesses without the full prelude still have it.
@@ -288,8 +291,8 @@ const BOOTSTRAP: &str = r#"
     (unless (= code 0)
       (error (string-append cmd ": failed (exit " (number->string code) ")")))))
 
-(define (show-popup! text #:anchor [anchor 'cursor])
-  (%show-popup! text anchor))
+(define (show-popup! text #:anchor [anchor 'cursor] #:dismiss-on-key [dismiss-on-key #f])
+  (%show-popup! text anchor dismiss-on-key))
 
 (define-syntax call!
   (syntax-rules ()
@@ -575,6 +578,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_fn_with_ctx(HUME_CTX, "set-inlay-hints!", lsp::set_inlay_hints);
     steel.register_fn_with_ctx(HUME_CTX, "set-signs!", lsp::set_signs);
     steel.register_fn_with_ctx(HUME_CTX, "set-virtual-lines!", lsp::set_virtual_lines);
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "set-inline-diagnostics!",
+        lsp::set_inline_diagnostics,
+    );
     steel.register_fn_with_ctx(HUME_CTX, "set-extra-highlights!", lsp::set_extra_highlights);
     steel.register_fn_with_ctx(
         HUME_CTX,

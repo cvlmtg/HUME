@@ -14,17 +14,27 @@ use super::{conv_err, list_to_strings, require_cmd_ctx, string_arg};
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
-/// `(%show-popup! text anchor)` — the `show-popup!` Scheme wrapper supplies
-/// `#:anchor`'s default. `'cursor` is the only anchor accepted in v1.
-pub(crate) fn show_popup(ctx: &mut SteelCtx, text: SteelVal, anchor: SteelVal) -> SteelResult {
+/// `(%show-popup! text anchor dismiss-on-key)` — the `show-popup!` Scheme
+/// wrapper supplies `#:anchor`/`#:dismiss-on-key`'s defaults. `'cursor` is
+/// the only anchor accepted in v1.
+pub(crate) fn show_popup(
+    ctx: &mut SteelCtx,
+    text: SteelVal,
+    anchor: SteelVal,
+    dismiss_on_key: SteelVal,
+) -> SteelResult {
     require_cmd_ctx!(ctx, "show-popup!");
     let text = string_arg(text, "show-popup! text")?;
     let anchor = string_arg(anchor, "show-popup! #:anchor")?;
     if anchor != "cursor" {
         steel::stop!(Generic => "show-popup!: #:anchor must be 'cursor, got '{}'", anchor);
     }
+    let dismiss_on_key = match dismiss_on_key {
+        SteelVal::BoolV(b) => b,
+        _ => steel::stop!(TypeMismatch => "show-popup!: #:dismiss-on-key expected a bool"),
+    };
     ctx.host
-        .show_popup(text)
+        .show_popup(text, dismiss_on_key)
         .map(|()| SteelVal::Void)
         .map_err(conv_err)
 }

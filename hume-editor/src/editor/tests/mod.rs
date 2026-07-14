@@ -781,6 +781,7 @@ mod lsp_completion_feature;
 mod lsp_completion_menu;
 mod lsp_decorations;
 mod lsp_diagnostics;
+mod lsp_diagnostics_inline;
 mod lsp_diagnostics_nav;
 mod lsp_drawer;
 mod lsp_edits;

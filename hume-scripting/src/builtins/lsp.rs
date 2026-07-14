@@ -492,6 +492,43 @@ pub(crate) fn set_virtual_lines(
     Ok(SteelVal::Void)
 }
 
+/// `(set-inline-diagnostics! bid lines)` — `lines`: list of `(line text
+/// scope)`, one owner per buffer (no `source` arg, unlike
+/// `set-virtual-lines!` — the diagnostics plugin is the only client).
+pub(crate) fn set_inline_diagnostics(
+    ctx: &mut SteelCtx,
+    bid: SteelVal,
+    lines: SteelVal,
+) -> SteelResult {
+    require_cmd_ctx!(ctx, "set-inline-diagnostics!");
+    let id = bid_arg(&bid, "set-inline-diagnostics!")?;
+    let mut parsed = Vec::new();
+    for entry in list_items(lines, "set-inline-diagnostics! lines")? {
+        let fields = exact_fields(
+            list_items(entry, "set-inline-diagnostics! entry")?,
+            3,
+            "set-inline-diagnostics!",
+            "(line text scope)",
+        )?;
+        let mut fields = fields.into_iter();
+        let line = usize_arg(
+            fields.next().expect("len checked"),
+            "set-inline-diagnostics! line",
+        )?;
+        let text = string_arg(
+            fields.next().expect("len checked"),
+            "set-inline-diagnostics! text",
+        )?;
+        let scope = string_arg(
+            fields.next().expect("len checked"),
+            "set-inline-diagnostics! scope",
+        )?;
+        parsed.push((line, text, scope));
+    }
+    ctx.host.set_inline_diagnostics(id, parsed);
+    Ok(SteelVal::Void)
+}
+
 /// `(set-extra-highlights! source bid spans)` — `spans`: list of `(start end scope)`.
 pub(crate) fn set_extra_highlights(
     ctx: &mut SteelCtx,

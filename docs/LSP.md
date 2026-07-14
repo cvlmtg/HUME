@@ -194,6 +194,7 @@ Every Steel-visible surface Steps 1–3 introduce. Cards define the semantics; t
 | `(set-inlay-hints! bid hints)` | builtin | B5 |
 | `(set-signs! source bid signs)` | builtin | B5 |
 | `(set-virtual-lines! source bid lines)` — each entry `(line text)` or `(line text scope)`, `scope` added in U8b | builtin | B5 |
+| `(set-inline-diagnostics! bid lines)` — each entry `(line text scope)`; one owner per buffer (no `source` arg, unlike `set-virtual-lines!`) — text spliced at end-of-line via a second `InlineDecoration` provider, same shape as U9's inlay hints | builtin | U8 |
 | `(set-extra-highlights! source bid spans)` | builtin | B5 |
 | `(diagnostics-for-buffer bid #:severity floor #:range (list start end))` — a 2-elem list, not `(start . end)`: steel-core 0.8.2's `Pair`/`car`/`cdr` are crate-private, unreachable from a Rust builtin | builtin | B5 |
 | `(diagnostic-counts bid)` → `(errors . warnings)` (this direction is fine — `cons` to build a pair is public; only destructuring one from Rust isn't) | builtin | B5 |
@@ -211,7 +212,7 @@ Every Steel-visible surface Steps 1–3 introduce. Cards define the semantics; t
 | `on-completion-refilter` `(bid filter-text)` — fires from the per-keystroke refilter path, only while the session's `isIncomplete` flag is set | hook | B10c |
 | `(prompt! label on-confirm #:prefill text)` — callback is positional, `#:prefill` the keyword (not the reverse) | builtin | B9 |
 | `(symbol-under-cursor bid)` → string (word at primary cursor; Rust grapheme/word logic) | builtin | B9 |
-| `(show-popup! text #:anchor 'cursor)` / `(close-popup!)` | builtin | U4 |
+| `(show-popup! text #:anchor 'cursor #:dismiss-on-key #f)` / `(close-popup!)` — `#:dismiss-on-key`: cleared by `Editor::handle_key`'s top-of-loop check on the *next* key, whatever it is (`gn`/`gp`'s overlay), instead of only by `close-popup!`/`on-mode-change` | builtin | U4, U8 |
 | `(show-menu! items on-select)` / `(close-menu!)` | builtin | U5 |
 | `(show-drawer-list! items on-select)` / `(close-drawer!)` — `items` is a flat list of pre-formatted display strings; `on-select` receives an index and may fire more than once (drawer stays open until `Esc`/`close-drawer!`, which calls it with `#f`) | builtin | U6 |
 | `:lsp-status`, `:lsp-stop`, `:lsp-restart` | `core:lsp` typed commands over `(lsp-show-status!)`/`(lsp-stop! lang)`/`(lsp-restart! lang)` builtins | C10, moved into `core:lsp` — see `docs/ROADMAP.md` |
@@ -306,7 +307,7 @@ Generic, Steel-scriptable widgets plus store-fed render wiring. The engine primi
 - [x] **U5** — selection menu widget (`show-menu!`)
 - [x] **U6** — Class B bottom drawer (minimal) + location list (`show-drawer-list!`)
 - [x] **U7** — in-buffer completion menu + dispatch (insert-mode flow over B8 + U4)
-- [x] **U8** — inline diagnostics (`VirtualLineSource`) + the deferred scroll/cursor rewiring
+- [x] **U8** — inline diagnostics: end-of-line summary (`InlineDecoration`, same shape as U9 — not `VirtualLineSource`; a line's leftmost diagnostic supplies the message, its most severe supplies the color) + `gn`/`gp`'s dismiss-on-next-key full-message popup (`show-popup! #:dismiss-on-key`)
 - [x] **U9** — inlay-hint rendering (`InlineDecoration` over B5's store)
 
 ## Step 4 — Features (Steel, `core:lsp`)

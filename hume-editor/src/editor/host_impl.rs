@@ -534,6 +534,20 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             .set_extra_highlights(source, bid, entries);
     }
 
+    fn set_inline_diagnostics(&mut self, bid: BufferId, lines: Vec<(usize, String, String)>) {
+        let entries = lines
+            .into_iter()
+            .map(
+                |(line, text, scope)| crate::editor::decorations::InlineDiagnosticEntry {
+                    line,
+                    text,
+                    scope,
+                },
+            )
+            .collect();
+        self.state.decorations.set_inline_diagnostics(bid, entries);
+    }
+
     fn diagnostics_for_buffer(
         &self,
         bid: BufferId,
@@ -709,8 +723,11 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     }
 
     // ── Cursor-anchored popup ────────────────────────────────────────────
-    fn show_popup(&mut self, text: String) -> Result<(), String> {
-        self.state.popup = Some(crate::ui::popup::PopupModel { text });
+    fn show_popup(&mut self, text: String, dismiss_on_key: bool) -> Result<(), String> {
+        self.state.popup = Some(crate::ui::popup::PopupModel {
+            text,
+            dismiss_on_key,
+        });
         Ok(())
     }
 

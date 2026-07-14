@@ -43,6 +43,11 @@ pub(crate) const MAX_POPUP_WIDTH: u16 = 60;
 /// [`PopupState`].
 pub(crate) struct PopupModel {
     pub(crate) text: String,
+    /// `#:dismiss-on-key` — when true, `Editor::handle_key` clears this
+    /// model at the start of the *next* key event, regardless of what key
+    /// it is. Hover/signature-help popups leave this `false` and keep their
+    /// existing `on-mode-change` dismissal.
+    pub(crate) dismiss_on_key: bool,
 }
 
 /// `(show-menu! items on-select)`'s raw content — held on `EditorState`

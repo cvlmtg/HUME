@@ -695,6 +695,12 @@ impl Editor {
         //     scroll/cursor math too, not just render.
         self.update_virtual_line_providers();
 
+        // 6e. Sync diagnostics end-of-line summary data (decoration store →
+        //     per-pane InlineDecoration), same unconditional per-frame
+        //     rebuild as inlay hints (6c) — render-only, no scroll/cursor
+        //     math depends on it.
+        self.update_inline_diagnostics_providers();
+
         // 7. Sync completion-popup view to the shared Arc for `MinibufCompletionOverlay`.
         self.sync_completion_view();
 
@@ -1328,6 +1334,72 @@ impl Editor {
                 by_line.entry(line).or_default().push(InlineInsert {
                     byte_offset,
                     text: entry.text.clone(),
+                    scope,
+                });
+            }
+
+            *map.write().expect("RwLock not poisoned") = by_line;
+        }
+    }
+
+    /// Sync per-pane diagnostics end-of-line decorations from the
+    /// `decorations.inline_diagnostics` store to each pane's second
+    /// `InlayHintProvider` Arc (`PaneRenderHandles::inline_diagnostics`).
+    /// Unconditional per-frame rebuild, same as `update_inlay_hint_providers`
+    /// — this store is render-only, unlike `virtual_lines` which also feeds
+    /// scroll/cursor math and so needs a dirty-tracking generation gate.
+    pub(super) fn update_inline_diagnostics_providers(&mut self) {
+        use hume_engine::providers::InlineInsert;
+
+        let panes: Vec<(PaneId, BufferId)> = self
+            .view
+            .panes
+            .iter()
+            .map(|(pid, pane)| (pid, pane.buffer_id))
+            .collect();
+
+        for &(pid, bid) in &panes {
+            let Some(map) = self
+                .state
+                .panes
+                .render
+                .get(pid)
+                .map(|r| Arc::clone(&r.inline_diagnostics))
+            else {
+                continue;
+            };
+
+            // Collected into an owned Vec, and every scope name resolved,
+            // *before* borrowing buffer text below: `self.runtime_scope`
+            // needs `&mut self`, which can't overlap with either the
+            // immutable borrow `inline_diagnostics_for` holds on
+            // `self.state.decorations` or the one `text` will hold on
+            // `self.state.buffers`.
+            let entries: Vec<(usize, String, String)> = self
+                .state
+                .decorations
+                .inline_diagnostics_for(bid)
+                .iter()
+                .map(|e| (e.line, e.text.clone(), e.scope.clone()))
+                .collect();
+            let resolved: Vec<(usize, String, hume_engine::types::ScopeId)> = entries
+                .into_iter()
+                .map(|(line, text, scope_name)| (line, text, self.runtime_scope(&scope_name)))
+                .collect();
+
+            let text = self.state.buffers.get(bid).text();
+            let mut by_line: std::collections::HashMap<usize, Vec<InlineInsert>> =
+                std::collections::HashMap::new();
+            for (line, entry_text, scope) in resolved {
+                // End-of-line placement: the line's own trailing '\n' char
+                // resolves to a byte offset within `line` (never the next
+                // line — see `char_to_line_byte`'s doc comment on the same
+                // pattern used for inlay hints' `'after` anchor).
+                let line_newline = line_end_exclusive(text, line) - 1;
+                let (_, byte_offset) = char_to_line_byte(text, line_newline);
+                by_line.entry(line).or_default().push(InlineInsert {
+                    byte_offset,
+                    text: entry_text,
                     scope,
                 });
             }
