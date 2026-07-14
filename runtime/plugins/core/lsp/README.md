@@ -80,8 +80,8 @@ No collisions with HUME's default `g` goto trie (`g g e h l s`) at the time thes
 re-check `keymap/defaults.rs` if you rebind any of the native goto leaves.
 
 `lsp-fmt` and `diagnostics` are typed-command only (`:lsp-fmt`, `:diagnostics`) — no default key.
-All keybindings above, including `Ctrl+Space`, are bound by this plugin itself — with no
-`core:lsp` loaded or declared, none of these keys do anything.
+All keybindings above are bound by this plugin itself — with no `core:lsp` loaded or declared,
+none of these keys do anything.
 
 ## How it works
 
