@@ -170,6 +170,13 @@
 ;; exposed as the `lsp-rescan-servers` command, and called directly by
 ;; `servers.scm`'s install/uninstall commands right after they mutate disk —
 ;; no cross-plugin notify needed, both live here.
+;;
+;; This is the *only* registrar for managed (installed) servers, and the
+;; above is the *only* place it runs — load or lazy activation. Consequence:
+;; declaring core:lsp solely on its own downstream `on-lsp-attach` event
+;; self-deadlocks — nothing is registered until this runs, so nothing
+;; attaches, so the event that would trigger activation never fires. See
+;; docs/LSP-INSTALL.md "Registration model".
 (define (lsp/register-installed-servers!)
   (let ((sdir (lsp/servers-dir)))
     (when (path-exists? sdir)
