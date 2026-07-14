@@ -1,5 +1,5 @@
 //! Shared box-drawing + row rendering for the two popup overlays
-//! (`CompletionOverlay`, `PopupOverlay`). Each overlay owns its own
+//! (`MinibufCompletionOverlay`, `PopupOverlay`). Each overlay owns its own
 //! placement (bottom-anchored vs. cursor-anchored floating); once a
 //! position and outer size are resolved, painting the frame, scroll
 //! window, and rows is identical — that shared part lives here.
@@ -26,7 +26,7 @@ pub(crate) fn menu_inner_width(rows: &[String]) -> u16 {
 /// Outer footprint (including the 1-cell frame) for a box showing `rows`,
 /// windowed to at most `row_cap` visible rows. Shared by every write side
 /// that positions a menu/popup box via `resolve_popup_geometry` and by
-/// `CompletionOverlay`, which computes it inline against its own bottom-
+/// `MinibufCompletionOverlay`, which computes it inline against its own bottom-
 /// anchored placement.
 pub(crate) fn outer_dims(rows: &[String], row_cap: u16) -> (u16, u16) {
     let outer_w = menu_inner_width(rows) + 2;

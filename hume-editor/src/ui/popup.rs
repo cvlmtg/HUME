@@ -13,7 +13,7 @@
 //! - Framed with a 1-cell border on all sides, theme-scoped via `ui.popup`
 //!   (or `ui.menu` for menus) — box-drawing glyphs when the `popup-border`
 //!   setting is on, a plain background margin when it's off. Rendering
-//!   (frame, scroll window, rows) is shared with `CompletionOverlay` via
+//!   (frame, scroll window, rows) is shared with `MinibufCompletionOverlay` via
 //!   [`super::menu_box`].
 //!
 //! All geometry (wrapping + flip + clamp) is resolved once, per frame, by

@@ -110,7 +110,7 @@ impl Editor {
         // and read by every pane's providers (see `build_pane`). Highlight
         // data is per-pane (see `PaneHighlights`) — allocated fresh inside
         // `build_pane`.
-        let completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>> =
+        let completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::MinibufCompletionView>>> =
             Arc::new(RwLock::new(None));
         let popup_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>> =
             Arc::new(RwLock::new(None));
@@ -695,7 +695,7 @@ impl Editor {
         //     scroll/cursor math too, not just render.
         self.update_virtual_line_providers();
 
-        // 7. Sync completion-popup view to the shared Arc for `CompletionOverlay`.
+        // 7. Sync completion-popup view to the shared Arc for `MinibufCompletionOverlay`.
         self.sync_completion_view();
 
         // 8. Store the terminal area + divider setting: pane-focus/split
@@ -1418,8 +1418,8 @@ impl Editor {
         }
     }
 
-    /// Write the current completion state into the shared `CompletionView` Arc
-    /// so `CompletionOverlay` can render it during this frame.
+    /// Write the current completion state into the shared `MinibufCompletionView` Arc
+    /// so `MinibufCompletionOverlay` can render it during this frame.
     ///
     /// Called from `prepare_frame` after highlight data is synced.
     pub(super) fn sync_completion_view(&self) {
@@ -1449,7 +1449,7 @@ impl Editor {
                     pad + prompt_w + token_col
                 })
                 .unwrap_or(0);
-            crate::ui::completion_overlay::CompletionView {
+            crate::ui::completion_overlay::MinibufCompletionView {
                 rows: state.candidates.iter().map(|c| c.display.clone()).collect(),
                 selected: state.selected,
                 anchor_col,

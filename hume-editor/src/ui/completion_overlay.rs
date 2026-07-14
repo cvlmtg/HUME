@@ -1,7 +1,7 @@
 //! Completion popup overlay — renders the Tab-completion candidate list above
 //! the statusline while a completion session is active.
 //!
-//! The overlay reads a `CompletionView` snapshot from an `Arc<RwLock<_>>` that
+//! The overlay reads a `MinibufCompletionView` snapshot from an `Arc<RwLock<_>>` that
 //! `Editor` writes once per frame (in `prepare_frame`) before `EngineView::render`
 //! is called.  The snapshot pattern (same as `SharedHighlighter`) avoids any
 //! borrow-checker conflicts between the editor and the render pipeline.
@@ -23,8 +23,8 @@ use super::menu_box::{MAX_MENU_ROWS, draw_menu_box, outer_dims};
 /// Frame-stable snapshot of the completion popup content.
 ///
 /// Computed from `Editor.completion` in `prepare_frame`; stored in an
-/// `Arc<RwLock<_>>` shared with `CompletionOverlay`.
-pub(crate) struct CompletionView {
+/// `Arc<RwLock<_>>` shared with `MinibufCompletionOverlay`.
+pub(crate) struct MinibufCompletionView {
     /// Candidate display strings (one per row, already sorted).
     pub rows: Vec<String>,
     /// Index of the currently-selected row.
@@ -39,11 +39,11 @@ pub(crate) struct CompletionView {
 }
 
 /// Overlay that paints the completion popup on top of pane content.
-pub(crate) struct CompletionOverlay {
-    pub data: Arc<RwLock<Option<CompletionView>>>,
+pub(crate) struct MinibufCompletionOverlay {
+    pub data: Arc<RwLock<Option<MinibufCompletionView>>>,
 }
 
-impl OverlayProvider for CompletionOverlay {
+impl OverlayProvider for MinibufCompletionOverlay {
     fn is_active(&self) -> bool {
         self.data.read().expect("RwLock not poisoned").is_some()
     }

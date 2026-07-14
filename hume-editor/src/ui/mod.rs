@@ -19,7 +19,7 @@ use hume_engine::pipeline::BufferId;
 use hume_engine::providers::{HighlightTier, ProviderSet};
 use hume_engine::theme::ScopeRegistry;
 
-use completion_overlay::CompletionOverlay;
+use completion_overlay::MinibufCompletionOverlay;
 use highlight_providers::{PaneHighlights, ScopedHighlighter, SharedHighlighter};
 use inlay_hints::{InlayHintMap, InlayHintProvider};
 use popup::PopupOverlay;
@@ -63,7 +63,7 @@ pub(crate) struct PaneRenderHandles {
 /// `ProviderSet` (no gutter column).
 pub(crate) fn build_pane(
     registry: &mut ScopeRegistry,
-    completion_view: &Arc<RwLock<Option<completion_overlay::CompletionView>>>,
+    completion_view: &Arc<RwLock<Option<completion_overlay::MinibufCompletionView>>>,
     popup_view: &Arc<RwLock<Option<popup::PopupState>>>,
     menu_view: &Arc<RwLock<Option<popup::PopupState>>>,
     lsp_completion_view: &Arc<RwLock<Option<popup::PopupState>>>,
@@ -112,7 +112,7 @@ pub(crate) fn build_pane(
     providers.add_virtual_line_source(Box::new(PaneVirtualLines {
         data: Arc::clone(&virtual_line_map),
     }));
-    providers.add_overlay(Box::new(CompletionOverlay {
+    providers.add_overlay(Box::new(MinibufCompletionOverlay {
         data: Arc::clone(completion_view),
     }));
     // Registered after the completion overlay so a hover/signature-help

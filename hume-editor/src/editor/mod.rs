@@ -273,7 +273,7 @@ pub(crate) struct EditorState {
     /// selection menu) via its own `Arc` and pane registration.
     pub(crate) lsp_completion_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
     /// Shared completion-popup view: written by `prepare_frame`, read by provider.
-    pub(crate) completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>>,
+    pub(crate) completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::MinibufCompletionView>>>,
     /// Interned scope ids for the four diagnostic severities (`diagnostic.error`
     /// etc.), resolved lazily on first use — scope interning needs `&mut
     /// ScopeRegistry`, which lives on `Editor::view`, not `EditorState`.
