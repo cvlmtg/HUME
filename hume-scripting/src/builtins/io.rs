@@ -191,8 +191,8 @@ mod tests {
     /// Regression guard for the require-module bug documented in this
     /// module's doc comment: a plugin file loaded via `(require "path.scm")`
     /// is a separately-compiled module — exactly the shape of every real
-    /// `#:inline-output` PLUM command (`servers.scm`'s `lsp-servers`,
-    /// `grammars.scm`'s grammar-compile line).
+    /// `#:inline-output` plugin command (core:lsp's `servers.scm`'s
+    /// `lsp-servers`, core:plum's `grammars.scm`'s grammar-compile line).
     ///
     /// Defines a command inside a required module (mirroring how every real
     /// plugin command is defined) and dispatches it via `call_steel_cmd` — the

@@ -1,7 +1,7 @@
 ;;; core:lsp/lib.scm — shared helpers used by every feature file.
 
 (provide lsp/supports? lsp/supports-for-buffer? lsp/guard-capability lsp/report-error
-         lsp/visible-lines lsp/uri->display-path lsp/show-locations! lsp/text-edit->tuple
+         lsp/visible-lines lsp/show-locations! lsp/text-edit->tuple
          lsp/viewport-range lsp/string-utf16-length lsp/utf16-offset->char-index
          lsp/setup-trigger-chars!)
 

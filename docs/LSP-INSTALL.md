@@ -244,17 +244,16 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
   (activation triggered by typing one of those `:` commands — Lazy command stubs
   activate their plugin before arity marshalling, so `:lsp-install <lang>` on a
   not-yet-activated `core:lsp` works with no eager `(load-plugin "core:lsp")` needed).
-- **Last-wins registration.** `register-lsp-server!` changes from ignore-duplicate (today
-  reported as an error) to *replace* semantics, matching `define-language!`. `init.scm`
-  then reads naturally: `load-plugin` → scan auto-registers → later user
-  `register-lsp-server!` calls override. At init time replacement never races a running
-  client — nothing has spawned yet. At runtime there are two paths: `:reload-config`
-  re-registration applies on next spawn; `:lsp-install` over a server whose client is
-  running (reinstall/upgrade) first shuts that client down — the same path
-  `:lsp-uninstall` needs — then installs, registers, and re-attaches open buffers,
-  spawning fresh. Note `register-lsp-server!` is init-only today (registrations are
-  queued and flushed once after init); `:lsp-install` needs a runtime registration path
-  (step 2).
+- **Last-wins registration.** `register-lsp-server!` uses *replace* semantics, matching
+  `define-language!`. `init.scm` reads naturally: `load-plugin` → scan auto-registers →
+  later user `register-lsp-server!` calls override. At init time replacement never races
+  a running client — nothing has spawned yet. `register-lsp-server!` also works from
+  command context (queued, flushed end-of-eval) — not init-only — which is what
+  `:lsp-install`'s runtime registration path relies on. At runtime there are two paths:
+  `:reload-config` re-registration applies on next spawn; `:lsp-install` over a server
+  whose client is running (reinstall/upgrade) first shuts that client down — the same
+  path `:lsp-uninstall` needs — then installs, registers, and re-attaches open buffers,
+  spawning fresh.
 - **Binary resolution is managed-first by construction**: the scan registers the command as
   an *absolute path* (server dir + receipt's `bin-path`), so a managed install always spawns
   the pinned binary — no lookup-order logic in the bridge. Bare command names (from manual
