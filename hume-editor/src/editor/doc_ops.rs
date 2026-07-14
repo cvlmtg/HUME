@@ -62,8 +62,17 @@ fn record_lsp_edits(
     }
 }
 
-/// Apply an ungrouped edit to the focused buffer and propagate the resulting
+/// Apply an edit to the focused buffer and propagate the resulting
 /// `ChangeSet` to all other panes viewing the same buffer.
+///
+/// Routes into [`apply_doc_edit_grouped`] when an edit group is already open
+/// on this (pane, buffer) — an insert session, dot-repeat replay, or any
+/// edit applied mid-session (e.g. an LSP completion accept) must compose
+/// into that group rather than record a standalone undo revision; the two
+/// would otherwise go out of sync and the next grouped edit's
+/// `ChangeSet::compose` panics on a length mismatch. This is the single
+/// chokepoint every edit-applying caller goes through, so no caller needs
+/// its own open-group check.
 ///
 /// Uses `std::mem::take` on the active `SelectionSet` instead of `clone()`.
 /// The default state (cursor-at-0) is transient: it is overwritten by
@@ -78,6 +87,17 @@ pub(crate) fn apply_doc_edit(
     cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
 ) {
     if buffers.get(buf_id).is_read_only() {
+        return;
+    }
+    if pane_state[focused_pane_id][buf_id].edit_group.is_some() {
+        apply_doc_edit_grouped(
+            buffers,
+            decorations,
+            pane_state,
+            focused_pane_id,
+            buf_id,
+            cmd,
+        );
         return;
     }
     // O(1) clones — ropey uses structural sharing (reference-counted tree nodes).
@@ -179,6 +199,10 @@ pub(crate) fn apply_doc_undo(
     if buffers.get(buf_id).is_read_only() {
         return;
     }
+    debug_assert!(
+        pane_state[focused_pane_id][buf_id].edit_group.is_none(),
+        "apply_doc_undo called while an edit group is open on this buffer"
+    );
     // buf_pre/rope_pre are the current (post-edit) text: undo's CS maps
     // post-edit positions back to pre-edit, so non-acting panes' heads must be
     // translated through that CS.
@@ -205,6 +229,10 @@ pub(crate) fn apply_doc_redo(
     if buffers.get(buf_id).is_read_only() {
         return;
     }
+    debug_assert!(
+        pane_state[focused_pane_id][buf_id].edit_group.is_none(),
+        "apply_doc_redo called while an edit group is open on this buffer"
+    );
     let buf_pre = buffers.get(buf_id).text().clone();
     let rope_pre = buf_pre.rope().clone();
     if let Some((new_sels, cs)) = buffers.get_mut(buf_id).redo() {

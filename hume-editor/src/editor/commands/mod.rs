@@ -160,28 +160,18 @@ pub(super) fn run_native_body(
             );
         }
         MappableCommand::Edit { fun, .. } => {
-            // Route through the grouped path when an edit group is already open
-            // (insert session or dot-repeat replay) so the edit composes into the
-            // open group rather than creating a standalone undo revision.
-            if is_group_open_current(state, view) {
-                doc_ops::apply_doc_edit_grouped(
-                    &mut state.buffers,
-                    &state.decorations,
-                    &mut state.panes.state,
-                    focused,
-                    buf,
-                    fun,
-                );
-            } else {
-                doc_ops::apply_doc_edit(
-                    &mut state.buffers,
-                    &state.decorations,
-                    &mut state.panes.state,
-                    focused,
-                    buf,
-                    fun,
-                );
-            }
+            // `apply_doc_edit` itself routes into the grouped path when an
+            // edit group is already open (insert session or dot-repeat
+            // replay), so the edit composes into the open group rather than
+            // creating a standalone undo revision.
+            doc_ops::apply_doc_edit(
+                &mut state.buffers,
+                &state.decorations,
+                &mut state.panes.state,
+                focused,
+                buf,
+                fun,
+            );
         }
         MappableCommand::EditorCmd { fun, .. } => {
             if let Err(e) = fun(state, view, count, motion_mode) {

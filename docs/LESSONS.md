@@ -103,3 +103,64 @@ action, not a soft note. Before declaring the task done, either ask the
 question explicitly (AskUserQuestion) or state up front "did NOT do X —
 needs your decision" as its own line item in the report — never bury it as
 an aside inside an unrelated paragraph.
+
+---
+
+## L4 — Chokepoint invariant enforced only by a comment (2026-07)
+
+**Root cause:** "While an edit group is open (an active Insert session),
+every edit to that buffer must compose into it" is a real invariant — it
+already had *some* recognition in the codebase (`run_native_body` branches
+on `is_group_open_current`; buffer reload comments on the same hazard) — but
+it was never enforced at the one chokepoint (`doc_ops::apply_doc_edit`)
+every edit-applying caller goes through. A later LSP completion-accept path
+called the *ungrouped* `apply_doc_edit` while an Insert-session edit group
+was open. Nothing crashed at the accept itself — the buffer just changed
+length out from under the open group's tracked state. The very next grouped
+keystroke's `ChangeSet::compose` then panicked on a length mismatch,
+deterministically, one keystroke removed from the actual mistake.
+
+**Concrete instance:** type `DEFAULT_`, accept an LSP completion item
+`DEFAULT_WIDTH` (grows the token by 5 chars), type any character — panic in
+`hume-editing/src/changeset/mod.rs`'s `compose`. `lsp/edits.rs`'s
+`commit_changeset` applied the accept through the ungrouped path; the
+already-open insert-session group never saw it. A second, independent bug
+found during the same trace: `refilter_lsp_completion_after_edit`
+(`mappings/insert.rs`) sliced `anchor..head` with a comment claiming
+`head < anchor` "can't happen" — an arrow key moving the cursor before the
+anchor without dismissing the session proved it could, and did.
+
+Root-cause note for *why several manual reviews missed this*: each side was
+locally correct in isolation (the accept path was gen-checked; edit groups
+worked correctly for every native command); the bug was only visible in
+their interaction, and no test ever kept typing *after* an accept —
+every completion test stopped at the terminal action (assert text, assert
+session closed) and never drove another keystroke through it.
+
+**Prevention rules:**
+
+1. **Enforce invariants at the chokepoint, not by caller convention.** An
+   invariant that lives only in a comment or in one caller's `if` branch is
+   invisible to every other caller and every reviewer who didn't write that
+   branch. `apply_doc_edit` now checks `edit_group.is_some()` itself and
+   routes to the grouped path — no caller can bypass it again, by
+   construction, not by discipline. Backed by `debug_assert!`s in
+   `apply_doc_undo`/`apply_doc_redo` so any remaining bypass is loud instead
+   of a silent corruption three calls later.
+2. **Modal-flow tests must not stop at the terminal action.** After every
+   accept/apply/dismiss in a stateful multi-keystroke flow (completion,
+   paste cycling, pending register, etc.), keep interacting — type a char,
+   move, undo, Esc — and assert the editor stays consistent. A test that
+   only checks the terminal state systematically misses "what happens on
+   the *next* keystroke" bugs, which is exactly where this class of bug lives.
+3. When reviewing (or writing) a new caller of an existing chokepoint,
+   explicitly check it against every piece of state that can be *live* when
+   it runs — an open edit group, an open completion/paste session, a
+   pending macro recording — not just against the chokepoint's own contract.
+
+**Files:** `hume-editor/src/editor/doc_ops.rs` (`apply_doc_edit` routing,
+undo/redo asserts), `hume-editor/src/editor/commands/mod.rs` (collapsed
+caller-side branch), `hume-editor/src/editor/mappings/insert.rs` (refilter
+guard), `hume-editor/src/editor/tests/lsp_completion_menu.rs` and
+`lsp_completion_feature.rs` (type-after-accept / type-after-arrow-key
+regression tests).

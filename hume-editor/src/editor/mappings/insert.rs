@@ -371,9 +371,16 @@ impl Editor {
         let head = self.current_selections().primary().head();
         let anchor = session.anchor();
         // Backspace crossing the anchor already dismissed the session in
-        // `handle_completion_key`, before the edit ran — reaching here with
-        // `head < anchor` would mean a printable char somehow landed before
-        // the anchor, which can't happen through this key path.
+        // `handle_completion_key`, before the edit ran. But `head` can still
+        // land before `anchor` here — e.g. an arrow key moves the cursor
+        // without going through that dismissal check, and the next
+        // printable char reaches this point with a stale anchor. Dismiss
+        // rather than slice with an inverted or out-of-range span.
+        let len = self.doc().text().len_chars();
+        if head < anchor || head > len {
+            self.state.clear_lsp_completion();
+            return;
+        }
         let text = self.doc().text().slice(anchor..head).to_string();
         session.update_filter(&self.state, text.clone());
         // `on-completion-refilter` fires only while the server said

@@ -226,7 +226,7 @@ fn null_response_opens_no_session() {
 
 #[test]
 #[cfg(not(windows))]
-fn accept_applies_main_edit_and_additional_text_edits_as_two_undo_steps() {
+fn accept_applies_main_edit_and_additional_text_edits_as_one_undo_step() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     // Blank line 0 (the auto-import destination) + "foo" on line 1 (the
@@ -287,14 +287,74 @@ fn accept_applies_main_edit_and_additional_text_edits_as_two_undo_steps() {
     ed.handle_key(key('u'));
     assert_eq!(
         ed.doc().text().to_string(),
-        "\nbarfoo\n",
-        "additionalTextEdits undo in one step (apply-text-edits! transaction)"
+        "\nfoo\n",
+        "the main edit and additionalTextEdits both compose into the still-open \
+         insert-session edit group, so one undo reverts the whole session"
     );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn typing_after_an_accept_with_additional_text_edits_composes_into_the_same_group() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = file_dir.path().join("main.rs");
+    std::fs::write(&file, "\nfoo\n").unwrap();
+    let (mut ed, _guard, _requests) = setup(
+        &file,
+        tmp.path(),
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([{
+                    "label": "bar",
+                    "insertText": "bar",
+                    "additionalTextEdits": [
+                        {"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}},
+                         "newText": "use std::bar;\n"}
+                    ]
+                }]),
+            );
+        },
+    );
+    let bid = ed.focused_buffer_id();
+    let pid = ed.state.focused_pane_id;
+    let pbs = ed
+        .state
+        .panes
+        .state
+        .get_mut(pid)
+        .and_then(|by_buf| by_buf.get_mut(bid))
+        .expect("pane buffer state must exist");
+    pbs.selections = hume_editing::selection::SelectionSet::single(
+        hume_editing::selection::Selection::collapsed(1),
+    );
+
+    ed.feed_key(key('i'));
+    ed.drain_hooks();
+    ed.feed_key(key_ctrl(' '));
+    settle(&mut ed);
+    ed.feed_key(key_enter());
+    settle(&mut ed);
+
+    // The main edit and the additionalTextEdits both go through
+    // `apply-text-edits!` (the same chokepoint) while the insert session's
+    // edit group is open. The next keystroke must compose against their
+    // combined result, not panic on a stale `ChangeSet::compose` length.
+    ed.feed_key(key('X'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "use std::bar;\n\nbarXfoo\n",
+        "typing right after the accept must land after the inserted completion text"
+    );
+
+    ed.feed_key(key_esc());
     ed.handle_key(key('u'));
     assert_eq!(
         ed.doc().text().to_string(),
         "\nfoo\n",
-        "the main completion edit undoes as its own separate step"
+        "one undo reverts the whole session: main edit + additionalTextEdits + typed char"
     );
 }
 

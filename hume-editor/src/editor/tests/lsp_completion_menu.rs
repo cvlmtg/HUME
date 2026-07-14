@@ -192,6 +192,74 @@ fn ctrl_c_exits_insert_and_dismisses_the_session() {
     assert!(ed.state.lsp_completion_view.read().unwrap().is_none());
 }
 
+// ── Regression: typing after accept must not desync the edit group ──────────
+
+#[test]
+fn typing_after_accept_composes_into_the_open_edit_group_without_panicking() {
+    let mut ed = Editor::open(None).unwrap();
+    ed.feed_key(key('i'));
+    for ch in "DEFAULT_".chars() {
+        ed.feed_key(key(ch));
+    }
+    begin_session(&mut ed, &[("DEFAULT_WIDTH", None)]);
+
+    // Accept applies the completion's (longer) insert_text through
+    // `apply_text_edits` while the insert session's edit group is still
+    // open — that edit must compose into the group, not record a
+    // standalone revision, or the very next keystroke's `ChangeSet::compose`
+    // panics on a length mismatch.
+    ed.feed_key(key_enter());
+    assert!(
+        ed.state.lsp_completion.is_none(),
+        "session must close after accept"
+    );
+
+    ed.feed_key(key(','));
+    let text = ed.doc().text().to_string();
+    assert_eq!(text, "DEFAULT_WIDTH,\n");
+
+    // One undo reverts the whole insert session, including the completion
+    // accept — it composed into the same group as everything else typed.
+    ed.feed_key(key_esc());
+    ed.feed_key(key('u'));
+    let text = ed.doc().text().to_string();
+    assert_eq!(
+        text, "\n",
+        "undo must revert the entire session as one step"
+    );
+}
+
+#[test]
+fn typing_after_moving_the_cursor_before_the_anchor_dismisses_instead_of_panicking() {
+    let mut ed = Editor::open(None).unwrap();
+    ed.feed_key(key('i'));
+    for ch in "abc".chars() {
+        ed.feed_key(key(ch));
+    }
+    begin_session(&mut ed, &[("abc", None)]);
+
+    // Left isn't intercepted by `handle_completion_key` (only Tab/BackTab/
+    // Up/Down/Enter/Esc/Backspace are) — it's handled by the insert trie and
+    // returns before reaching the refilter guard, so the session survives
+    // with its anchor now stale relative to the cursor. Two presses land the
+    // cursor two chars before the anchor, so the very next char inserted
+    // still leaves `head < anchor` — the inverted-range case.
+    ed.feed_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+    ed.feed_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+    assert!(
+        ed.state.lsp_completion.is_some(),
+        "sanity: Left does not itself dismiss the session"
+    );
+
+    ed.feed_key(key('x'));
+    assert!(
+        ed.state.lsp_completion.is_none(),
+        "a stale anchor past the cursor must dismiss the session, not panic"
+    );
+    let text = ed.doc().text().to_string();
+    assert_eq!(text, "axbc\n");
+}
+
 // ── Regression: minibuffer `:e <Tab>` completion untouched ───────────────────
 
 #[test]

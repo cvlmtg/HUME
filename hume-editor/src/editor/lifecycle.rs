@@ -1216,7 +1216,7 @@ impl Editor {
                 let mut guard = plugin_map.write().expect("RwLock not poisoned");
                 guard.clear();
                 for (line, mut entries) in plugin_all {
-                    entries.sort_by(|a, b| b.2.cmp(&a.2));
+                    entries.sort_by_key(|e| std::cmp::Reverse(e.2));
                     entries.truncate(max_plugin_signs);
                     let signs: Vec<Sign> = entries
                         .into_iter()
