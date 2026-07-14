@@ -422,6 +422,48 @@ fn rescan_does_not_clobber_a_manually_registered_language() {
     );
 }
 
+/// The documented fix for `registration.scm`'s "same-eval blindness" gap:
+/// when a seeded server is *already installed before init.scm even runs*, an
+/// eager `(load-plugin "core:lsp")` queues a Register op for it from its own
+/// startup scan, in the very same eval as anything that follows. Queuing the
+/// user's own `register-lsp-server!` *after* that `load-plugin` line — not
+/// before — must win, because `register-lsp-server!` is last-wins over
+/// queue order, not over what the live registry said when the scan's
+/// no-clobber filter ran (which is necessarily before this override even
+/// exists). Differs from `rescan_does_not_clobber_a_manually_registered_language`
+/// above: there, the receipt is fabricated *after* init.scm's eval, so
+/// `load-plugin`'s own scan queues nothing competing for "rust" in that eval
+/// — it never exercises this same-eval race at all.
+#[test]
+#[cfg(not(windows))]
+fn register_lsp_server_after_eager_load_plugin_overrides_the_scans_own_registration() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    fabricate_server(
+        data_tmp.path(),
+        "rust-analyzer",
+        "2026-07-06",
+        "rust-analyzer",
+    );
+
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init(
+        &mut ed,
+        data_tmp.path(),
+        "(load-plugin \"core:stdlib\")\n\
+         (load-plugin \"core:lsp\")\n\
+         (register-lsp-server! \"rust\" #:command \"my-custom-rust-analyzer\" \
+         #:root-markers '(\"Cargo.toml\"))",
+    );
+
+    assert_eq!(
+        ed.lsp.config_command_for_test("rust"),
+        Some("my-custom-rust-analyzer".to_owned()),
+        "register-lsp-server! queued after load-plugin must win over the scan's \
+         own registration of the already-installed catalog server"
+    );
+}
+
 /// A lazily-declared core:lsp (`#:languages`) still registers an installed
 /// server once activated — the startup scan runs at activation time, not
 /// only at eager `(load-plugin "core:lsp")` — and the very buffer whose
@@ -1172,4 +1214,77 @@ fn lsp_install_real_rust_analyzer_e2e() {
             "the installed binary must be executable: {cmd}"
         );
     }
+}
+
+/// Regression for the reinstall/upgrade path: `lsp/install-server!` queues
+/// `unregister-lsp-server!` for every one of the server's languages before
+/// reinstalling, and that op applies only at end-of-eval. Before the
+/// `#:force-name` fix, the post-install rescan (same eval) filtered on
+/// `lsp-registered-for-language?`, which still read the *pre*-unregister
+/// (registered) state — so the rescan skipped the language, and the queued
+/// unregister landed with nothing behind it: the language ended up
+/// unregistered after a version-mismatch reinstall. This drives that exact
+/// path for real (a receipt whose version no longer matches the seeded
+/// catalog) and asserts `rust` is still registered afterward.
+///
+/// Gated by `HUME_REQUIRE_LIVE_LSP_INSTALL_E2E=1`; skipped otherwise.
+#[test]
+#[cfg(not(windows))]
+fn lsp_install_real_rust_analyzer_reinstall_after_version_bump_e2e() {
+    let require_live = std::env::var("HUME_REQUIRE_LIVE_LSP_INSTALL_E2E")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    if !require_live {
+        eprintln!(
+            "lsp_install_real_rust_analyzer_reinstall_after_version_bump_e2e: skipping \
+             (set HUME_REQUIRE_LIVE_LSP_INSTALL_E2E=1 to run live e2e)"
+        );
+        return;
+    }
+
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":lsp-install rust");
+    assert!(
+        ed.lsp.config_command_for_test("rust").is_some(),
+        "rust must be registered after the first install"
+    );
+
+    // Force the mismatch branch on the next :lsp-install: rewrite the
+    // receipt's version so it no longer matches the seeded catalog version,
+    // without touching the already-downloaded binary or its path.
+    let receipt_path = canonical_data_dir(data_tmp.path())
+        .join("servers")
+        .join("rust-analyzer")
+        .join("receipt.scm");
+    let receipt = std::fs::read_to_string(&receipt_path).unwrap();
+    let downgraded = receipt.replacen("(version . \"", "(version . \"0000-00-00-superseded-", 1);
+    std::fs::write(&receipt_path, downgraded).unwrap();
+
+    type_cmd(&mut ed, ":lsp-install rust");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("installing rust-analyzer"),
+        "the version mismatch must take the reinstall path, not \"up to date\": {log}"
+    );
+    let errors: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.as_str())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "reinstall-after-version-bump must not error: {errors:?}"
+    );
+    assert!(
+        ed.lsp.config_command_for_test("rust").is_some(),
+        "rust must still be registered after a version-mismatch reinstall — \
+         this is exactly what the #:force-name rescan fix guarantees"
+    );
 }

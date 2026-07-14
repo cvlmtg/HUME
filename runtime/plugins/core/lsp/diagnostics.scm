@@ -6,7 +6,7 @@
 
 (define (lsp/severity-glyph severity)
   (cond
-    ((equal? severity "error") "✗")
+    ((equal? severity "error") "✘")
     ((equal? severity "warning") "⚠")
     ((equal? severity "info") "ℹ")
     ((equal? severity "hint") "·")

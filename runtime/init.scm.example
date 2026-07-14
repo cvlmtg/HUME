@@ -47,10 +47,11 @@
 ;; for a seeded server.
 ;;
 ;; core:lsp can be declared lazily — the one-liner below activates on the first
-;; buffer with a detected language, the first lsp-* command typed, or the first
-;; server attach. Customize activation yourself (name specific #:languages,
-;; pick a subset of #:commands, ...) by passing those keywords explicitly instead —
-;; see README.md in runtime/plugins/core/lsp/ for the full trigger list.
+;; buffer with a detected language, or the first lsp-* command typed, whichever
+;; comes first (server attach is never itself a trigger). Customize activation
+;; yourself (name specific #:languages, pick a subset of #:commands, ...) by
+;; passing those keywords explicitly instead — see README.md in
+;; runtime/plugins/core/lsp/ for the full trigger list.
 ;;
 ;; (declare-plugin "core:lsp")
 ;;

@@ -398,7 +398,7 @@ fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op
     use crate::editor::host_impl::EditorHostImpl;
     use hume_scripting::host::EditorHost;
 
-    let dir = tempfile::tempdir().unwrap();
+    let dir = safe_tempdir();
     let file_b = dir.path().join("b.txt");
     std::fs::write(&file_b, "hello\n").unwrap();
 

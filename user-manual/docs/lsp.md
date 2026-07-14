@@ -19,10 +19,10 @@ instead — see [Registering a language server](#registering-a-language-server).
 (declare-plugin "core:lsp")
 ```
 
-Declaring is recommended — it keeps startup fast, and `core:lsp` activates the first time a
-registered server attaches to a buffer, any file with a recognized language opens, or you
-run one of its commands directly (including `:lsp-install`). If you use LSP in every
-session and would rather it load from the start, swap `declare-plugin` for `load-plugin`:
+Declaring is recommended — it keeps startup fast, and `core:lsp` activates the first time
+any file with a recognized language opens, or you run one of its commands directly
+(including `:lsp-install`). If you use LSP in every session and would rather it load from
+the start, swap `declare-plugin` for `load-plugin`:
 
 ```scheme
 (load-plugin "core:lsp")
@@ -135,11 +135,13 @@ through a package manager not yet supported (`cargo`, `pip`, `gem`, …). Instal
 and register it manually — see [Registering a language server](#registering-a-language-server)
 below.
 
-**A server is on disk but nothing attaches.** This means `core:lsp` hasn't run its scan
-this session yet — either the server was installed outside `:lsp-install` (copied in, or
-installed by an earlier HUME version) and `core:lsp` hasn't loaded or activated at all.
-Run `:lsp-rescan-servers`, add `(load-plugin "core:lsp")`, or add a `#:languages`/`#:commands`
-entry that triggers activation on a lazily declared `core:lsp` — see [Setup](#setup).
+**A server is on disk but nothing attaches.** This means `core:lsp`'s scan hasn't (yet)
+seen it — either `core:lsp` hasn't loaded or activated this session at all (a lazily
+declared `core:lsp` whose trigger hasn't fired yet), or the server appeared on disk after
+the scan already ran (installed outside `:lsp-install` — copied in, or installed by an
+earlier HUME version). Run `:lsp-rescan-servers`, add `(load-plugin "core:lsp")`, or add a
+`#:languages`/`#:commands` entry that triggers activation on a lazily declared `core:lsp`
+— see [Setup](#setup).
 
 **A server on your `$PATH` isn't the one HUME runs.** `:lsp-install` always spawns the managed
 copy, even when the same command name also resolves on `$PATH` — you'll see a note about this
@@ -155,6 +157,14 @@ catalog doesn't carry, or a `$PATH` copy you want to take precedence over a mana
 [managing-servers commands](#managing-servers) below (`:lsp-status`, `:lsp-stop`,
 `:lsp-restart`) are `core:lsp` commands, so a manually registered server still needs
 `core:lsp` loaded or declared to inspect, stop, or restart it. `register-lsp-server!` takes:
+
+**Ordering, if you eager-load with `(load-plugin "core:lsp")`:** put your `register-lsp-server!`
+calls *after* it, not before. `core:lsp` scans for already-installed servers the moment it
+loads, and a call you make afterward always overrides whatever that scan just registered —
+matching how the later of two registrations always wins. A call made *before* an eager
+`load-plugin` can be clobbered by that scan if the language you're overriding also has a
+seeded, installed server. This doesn't apply to a lazily `(declare-plugin "core:lsp")` — its scan runs later, on
+activation, well after your init.scm has finished, so order never matters there.
 
 | Argument | Meaning |
 |----------|---------|

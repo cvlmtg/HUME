@@ -115,16 +115,43 @@
 ;;; multi-language server; only root markers vary per language (see
 ;;; docs/LSP-INSTALL.md "Seeded data format"). Skipping an already-registered
 ;;; language is what makes a mid-session rescan (`:lsp-rescan-servers`, or
-;;; the rescan `:lsp-install` runs after installing) leave a user's own
-;;; manual `register-lsp-server!` override alone instead of
-;;; last-wins-clobbering it with the catalog default — the scan only needs
-;;; to pick up languages nothing has claimed yet. At load time the registry
-;;; is empty, so every language passes the filter and gets registered —
-;;; matching this being the scan's first pass over the catalog.
-(define (lsp/register-server-languages! name cmd)
+;;; the rescan `:lsp-install` runs after installing a server that was already
+;;; registered) leave a user's own manual `register-lsp-server!` override
+;;; alone instead of last-wins-clobbering it with the catalog default — the
+;;; scan only needs to pick up languages nothing has claimed yet. At load
+;;; time the registry is empty, so every language passes the filter and gets
+;;; registered — matching this being the scan's first pass over the catalog.
+;;;
+;;; `#:force?` skips that filter and registers every one of `name`'s
+;;; languages unconditionally. Needed right after `lsp/install-server!`
+;;; queues an `unregister-lsp-server!` for these same languages: that op
+;;; applies at end-of-eval, so `lsp-registered-for-language?` still reports
+;;; the *pre*-unregister (registered) state for the rest of this eval — the
+;;; unfiltered scan would see nothing to do, and the queued unregister would
+;;; land with no matching re-registration behind it. Only the install path
+;;; (which just issued that unregister itself) should pass `#:force? #t`.
+;;;
+;;; Same-eval blindness cuts the other way too, unrelated to `#:force?`: a
+;;; user's own `register-lsp-server!` placed *before* an eager
+;;; `(load-plugin "core:lsp")` in init.scm is a queued op that hasn't
+;;; applied yet when this scan's filter runs, so the filter doesn't see it
+;;; and the catalog default gets queued right behind it. This is not a bug
+;;; to fix here, though — `register-lsp-server!` is last-wins over the
+;;; *order ops are queued in*, not over what the live registry says at scan
+;;; time, so simply queuing the override *after* `load-plugin` (rather than
+;;; before) is a complete fix with no code change: the override then queues
+;;; strictly after the scan's op and always wins. Documented as the required
+;;; ordering for eager loading in README.md and
+;;; user-manual/docs/lsp.md#registering-a-language-server. The lazy
+;;; `(declare-plugin "core:lsp")` form is unaffected either way — its scan
+;;; runs on activation, always after init.scm has already finished.
+(define (lsp/register-server-languages! name cmd #:force? [force? #f])
   (let* ((fields   (hash-ref *lsp-servers* name))
-         (langs    (filter (lambda (lang-entry) (not (lsp-registered-for-language? (car lang-entry))))
-                           (cdr (lsp/field fields 'languages))))
+         (all-langs (cdr (lsp/field fields 'languages)))
+         (langs    (if force?
+                       all-langs
+                       (filter (lambda (lang-entry) (not (lsp-registered-for-language? (car lang-entry))))
+                               all-langs)))
          (args     (cdr (lsp/field fields 'args)))
          (settings-entries (cdr (lsp/field fields 'settings)))
          (settings (if (null? settings-entries) #f (lsp/settings->hash settings-entries))))
@@ -165,7 +192,12 @@
 ;; self-deadlocks — nothing is registered until this runs, so nothing
 ;; attaches, so the event that would trigger activation never fires. See
 ;; docs/LSP-INSTALL.md "Registration model".
-(define (lsp/register-installed-servers!)
+;;;
+;;; `#:force-name` names a single server (typically the one `servers.scm`'s
+;;; install path just installed) whose languages register unconditionally —
+;;; see `lsp/register-server-languages!`'s `#:force?` doc for why. Every
+;;; other server in the scan still gets the normal no-clobber filter.
+(define (lsp/register-installed-servers! #:force-name [force-name #f])
   (let ((sdir (lsp/servers-dir)))
     (when (path-exists? sdir)
       (for-each
@@ -181,7 +213,8 @@
               (else
                (lsp/register-server-languages!
                  name
-                 (path-join (lsp/server-dir name) (lsp/receipt-bin receipt)))))))
+                 (path-join (lsp/server-dir name) (lsp/receipt-bin receipt))
+                 #:force? (equal? name force-name))))))
         (filter (lambda (name) (and (lsp/valid-dir-entry? name) (not (equal? name ".install-lock"))))
                 (lsp/list-dir sdir))))))
 

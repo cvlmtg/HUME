@@ -709,6 +709,256 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
     }
 }
 
+/// Width-6 column returning 4 single-char cells — `(6 - 1) / 4 == 1`
+/// (integer division), leaving a 1-cell remainder that the exact-fill
+/// `SignColumn`/`LineNumberColumn` never produce on their own (see
+/// `sign_column.rs`: `max_signs == width - 1` always divides evenly).
+/// Exists purely to reproduce a leftover in a *non-first* gutter column.
+struct LeftoverGutter;
+impl GutterColumn for LeftoverGutter {
+    fn width(&self, _: usize) -> u8 {
+        6
+    }
+    fn render_row_cells(
+        &self,
+        _: RowKind,
+        _: &crate::providers::GutterRowCtx,
+    ) -> Vec<crate::providers::GutterCell> {
+        ["1", "2", "3", "4"]
+            .iter()
+            .map(|s| crate::providers::GutterCell {
+                content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed(s)),
+                scope: crate::types::Scope("ui.linenr").into(),
+            })
+            .collect()
+    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+}
+
+/// Single-cell width-2 column — exact-fills like the shipped
+/// `LineNumberColumn`, placed first so the leftover column below it is the
+/// *second* column, which is what exposes the bug (see next test's doc).
+struct ExactFillGutter;
+impl GutterColumn for ExactFillGutter {
+    fn width(&self, _: usize) -> u8 {
+        2
+    }
+    fn render_row_cells(
+        &self,
+        _: RowKind,
+        _: &crate::providers::GutterRowCtx,
+    ) -> Vec<crate::providers::GutterCell> {
+        vec![crate::providers::GutterCell {
+            content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed("N")),
+            scope: crate::types::Scope("ui.linenr").into(),
+        }]
+    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+}
+
+#[test]
+fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
+    // Regression: `compose_gutter`'s leftover-fill bound used to be
+    // `pane_rect.x + col_width`, correct only for the *first* column
+    // (where col_start == pane_rect.x). For any column after the first,
+    // that bound was smaller than the column's real right edge, so a
+    // leftover cell in a non-first column was never painted (stale glyph
+    // shows through) and `gutter_x` fell short of the column boundary,
+    // shifting every following column left.
+    //
+    // Column 0 (ExactFillGutter, width 2) exact-fills, landing gutter_x
+    // at col_start=2 for column 1 (LeftoverGutter, width 6, 4 cells):
+    // usable_per_cell = (6-1)/4 = 1, so the per-cell loop only advances
+    // gutter_x to 2+5=7, one short of the column's right edge at 8.
+    let graphemes = vec![simple_grapheme(0, 0, 1)];
+    let rows = [simple_row(0..1)];
+    let styles = vec![ResolvedStyle::default()];
+    let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![
+        (0, Box::new(ExactFillGutter)),
+        (1, Box::new(LeftoverGutter)),
+    ];
+    let visible = VisibleRange {
+        line_range: 0..1,
+        top_skip_rows: 0,
+        content_height: 1,
+        content_width: 2,
+        gutter_width: 8, // 2 (ExactFillGutter) + 6 (LeftoverGutter)
+        last_line_idx: 0,
+    };
+    let viewport = ViewportState::new(10, 1);
+    let pane_rect = ratatui::layout::Rect {
+        x: 0,
+        y: 0,
+        width: 10,
+        height: 1,
+    };
+    let mut buf = make_test_buf(10, 1);
+    for x in 0..10u16 {
+        set_cell(&mut buf, x, 0, "Z", ratatui::style::Style::default());
+    }
+    let theme = Theme::default();
+    let col_widths = vec![2u16, 6u16];
+    let rope = ropey::Rope::new();
+    let ctx = ComposeCtx {
+        gutter_columns: &gutter_columns,
+        visible: &visible,
+        viewport: &viewport,
+        mode: EditorMode::Normal,
+        primary_head_line: 0,
+        tab_width: 4,
+        tilde_style: ratatui::style::Style::default(),
+        indent_guide_style: ratatui::style::Style::default(),
+        pane_rect,
+        theme: &theme,
+        pane_bg: None,
+        rope: &rope,
+        tree: None,
+    };
+    let mut canvas = PaneCanvas::new(&mut buf, None);
+    compose_row(
+        &rows[0],
+        &graphemes,
+        &styles,
+        "X",
+        "",
+        0,
+        &col_widths,
+        &ctx,
+        &mut canvas,
+        None,
+    );
+
+    let sym = |x: u16| {
+        buf.cell(ratatui::layout::Position { x, y: 0 })
+            .unwrap()
+            .symbol()
+            .to_string()
+    };
+    assert_eq!(sym(0), "N", "column 0's only cell");
+    assert_eq!(sym(1), " ", "column 0's separator");
+    assert_eq!(sym(2), "1");
+    assert_eq!(sym(3), "2");
+    assert_eq!(sym(4), "3");
+    assert_eq!(sym(5), "4");
+    assert_eq!(sym(6), " ", "column 1's separator, after its last cell");
+    assert_eq!(
+        sym(7),
+        " ",
+        "column 1's leftover cell (gutter_width 8 - col_start 2 - 5 rendered = 1 leftover) \
+         must be painted blank, not left as the stale 'Z' marker"
+    );
+    assert_eq!(
+        sym(8),
+        "X",
+        "content must start exactly at gutter_width=8, not shifted left by the dropped leftover cell"
+    );
+}
+
+/// Width-20 single-cell column — `signcolumn` accepts up to 127 slots with
+/// no clamp against pane width anywhere in `layout.rs`; this simulates a
+/// configured gutter wider than the pane itself (e.g. `signcolumn
+/// always:40` in a narrow vsplit).
+struct HugeGutter;
+impl GutterColumn for HugeGutter {
+    fn width(&self, _: usize) -> u8 {
+        20
+    }
+    fn render_row_cells(
+        &self,
+        _: RowKind,
+        _: &crate::providers::GutterRowCtx,
+    ) -> Vec<crate::providers::GutterCell> {
+        vec![crate::providers::GutterCell {
+            content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed("N")),
+            scope: crate::types::Scope("ui.linenr").into(),
+        }]
+    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+}
+
+#[test]
+fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
+    // Regression: nothing clamped a gutter column's configured width against
+    // the pane's actual width, so a gutter wider than the pane (reachable
+    // via `signcolumn always:N` in a narrow vsplit) wrote straight through
+    // the pane's right edge into whatever the shared terminal buffer holds
+    // next to it — typically a neighbouring pane.
+    let graphemes = vec![simple_grapheme(0, 0, 1)];
+    let rows = [simple_row(0..1)];
+    let styles = vec![ResolvedStyle::default()];
+    let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![(0, Box::new(HugeGutter))];
+    let visible = VisibleRange {
+        line_range: 0..1,
+        top_skip_rows: 0,
+        content_height: 1,
+        content_width: 1,
+        gutter_width: 20,
+        last_line_idx: 0,
+    };
+    let viewport = ViewportState::new(6, 1);
+    let pane_rect = ratatui::layout::Rect {
+        x: 0,
+        y: 0,
+        width: 6,
+        height: 1,
+    };
+    let mut buf = make_test_buf(12, 1);
+    for x in 0..12u16 {
+        set_cell(&mut buf, x, 0, "Z", ratatui::style::Style::default());
+    }
+    let theme = Theme::default();
+    let col_widths = vec![20u16];
+    let rope = ropey::Rope::new();
+    let ctx = ComposeCtx {
+        gutter_columns: &gutter_columns,
+        visible: &visible,
+        viewport: &viewport,
+        mode: EditorMode::Normal,
+        primary_head_line: 0,
+        tab_width: 4,
+        tilde_style: ratatui::style::Style::default(),
+        indent_guide_style: ratatui::style::Style::default(),
+        pane_rect,
+        theme: &theme,
+        pane_bg: None,
+        rope: &rope,
+        tree: None,
+    };
+    let mut canvas = PaneCanvas::new(&mut buf, None);
+    compose_row(
+        &rows[0],
+        &graphemes,
+        &styles,
+        "X",
+        "",
+        0,
+        &col_widths,
+        &ctx,
+        &mut canvas,
+        None,
+    );
+
+    let sym = |x: u16| {
+        buf.cell(ratatui::layout::Position { x, y: 0 })
+            .unwrap()
+            .symbol()
+            .to_string()
+    };
+    for x in 6..12u16 {
+        assert_eq!(
+            sym(x),
+            "Z",
+            "column x={x} is past the pane's right edge (width 6) and must be untouched"
+        );
+    }
+}
+
 /// Gutter column returning a runtime-computed `Cow::Owned` icon — the
 /// shape a Steel-configured gutter icon would take.
 struct OwnedIconGutter;

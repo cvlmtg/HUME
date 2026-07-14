@@ -27,9 +27,16 @@ your `init.scm`, plus at least one `register-lsp-server!` call if you're not rel
 
 The zero-argument `declare-plugin` above reads `core:lsp`'s own `manifest.scm`, which
 declares the plugin with `#:languages '("*")` (any buffer with a detected language) plus
-every `lsp-*` command — so it activates on the first buffer with a language, the first
-`lsp-*` command you type, or the first server attach, whichever comes first.
-`(load-plugin "core:lsp")` also works if you'd rather load it eagerly.
+every `lsp-*` command — so it activates on the first buffer with a language, or the first
+`lsp-*` command you type, whichever comes first. Server attach is never itself a trigger —
+see the Caveat below. `(load-plugin "core:lsp")` also works if you'd rather load it eagerly —
+if you do, put any `register-lsp-server!` overrides *after* the `load-plugin` line: eager
+loading scans for already-installed servers immediately, in the same eval, and
+`register-lsp-server!` is last-wins, so a call placed after the scan always overrides what
+it just registered, while a call placed before it can be clobbered by that same scan (only
+matters when overriding a language that also has a seeded, installed server). The
+`declare-plugin` form above isn't affected either way — its scan runs on activation, always
+after init.scm has already finished.
 
 ## Customizing activation
 

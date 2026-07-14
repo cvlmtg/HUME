@@ -317,12 +317,65 @@ fn two_plugin_sources_on_the_same_line_keep_the_higher_priority_first() {
     );
 }
 
+/// Regression for consolidating sign-priority tie-breaking to a single
+/// decision point: two plugin sources at the *same* priority must resolve
+/// deterministically by source name (ascending), not by call order. The
+/// plugin merge's own sort (`update_sign_providers`) is priority-only now —
+/// on a tie it preserves the stable order set by the earlier
+/// `plugin_raw.sort_by` (source name) rather than inventing its own
+/// secondary key, so `SignColumn`'s sort (the only other place a
+/// same-priority decision could be made) never gets a say between two
+/// plugin sources — both arrive through the single plugin `SharedSignSource`
+/// with an identical `source_index`. `"vcs"` is armed before `"linter"` here
+/// specifically to prove the winner is name order, not call order.
+#[test]
+fn two_plugin_sources_at_equal_priority_resolve_by_source_name() {
+    let tmp = safe_tempdir();
+    let mut ed = Editor::open(None).unwrap();
+    ed.feed_key(key('i'));
+    for ch in "abcdefgh".chars() {
+        ed.feed_key(key(ch));
+    }
+    ed.feed_key(key_esc());
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("always:2".parse().unwrap());
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "arm" "" (lambda ()
+             (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b" 5)))
+             (set-signs! "linter" (current-buffer) (list (list 0 "!" "a" 5)))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm");
+
+    let pid = ed.state.focused_pane_id;
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(80, 25, &mut ctx);
+
+    let signs = plugin_signs(&ed, pid);
+    let line_signs = &signs[&0];
+    assert_eq!(
+        line_signs.len(),
+        2,
+        "both equal-priority signs survive with 2 slots"
+    );
+    assert_eq!(
+        line_signs[0].text, "!",
+        "equal priority — \"linter\" wins the tie by source name (alphabetically \
+         first), even though \"vcs\" was armed first"
+    );
+    assert_eq!(line_signs[1].text, "+");
+}
+
 /// With `signcolumn=always:2` the plugin merge keeps the top 2 signs per line
 /// (sorted by priority desc), so both sources survive to the render stage —
 /// the `SignColumn` then lays them out left-to-right in the 2-slot gutter.
 #[test]
 fn wider_signcolumn_keeps_multiple_signs_per_line() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = Editor::open(None).unwrap();
     ed.feed_key(key('i'));
     for ch in "abcdefgh".chars() {
@@ -360,6 +413,68 @@ fn wider_signcolumn_keeps_multiple_signs_per_line() {
         sign_column_width(&ed, pid),
         3,
         "always:2 = 2 sign slots + 1 padding = 3 cells"
+    );
+}
+
+/// Cross-map merge (a gap flagged in review, not previously covered):
+/// diagnostics and plugin signs are written to two separate maps by
+/// `update_sign_providers`, then merged by the engine's `SignColumn`, which
+/// holds one `SharedSignSource` per map (see `build_pane`). Every test above
+/// checks the two maps in isolation; this one drives the pane's actual
+/// registered `SignColumn` to prove a diagnostic sign and a plugin sign on
+/// the *same* line both survive into one render, in priority order.
+#[test]
+fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
+    let tmp = safe_tempdir();
+    let mut c = setup_with_diagnostics("abcdefgh\n", &[((0, 0), (0, 1), 1)]);
+
+    let bid = c.ed.focused_buffer_id();
+    c.ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("always:2".parse().unwrap());
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut c.ed,
+        &mut host,
+        r#"(define-command! "arm" "" (lambda ()
+             (set-signs! "linter" (current-buffer) (list (list 0 "!" "warn-scope" 20)))))"#,
+        tmp.path(),
+    );
+    c.ed.scripting = Some(host);
+    type_cmd(&mut c.ed, ":arm");
+
+    let mut ctx = RenderContext::new();
+    c.ed.prepare_frame(80, 25, &mut ctx);
+
+    let rope = c.ed.state.buffers.get(bid).text().rope().clone();
+    let gutter_ctx = hume_engine::providers::GutterRowCtx {
+        mode: hume_engine::types::EditorMode::Normal,
+        primary_head_line: 0,
+        rope: &rope,
+        tree: None,
+    };
+    let col = c.ed.view.panes[c.pid]
+        .providers
+        .gutter_columns()
+        .next()
+        .expect("sign column registered first");
+    let cells = col.render_row_cells(
+        hume_engine::types::RowKind::LineStart { line_idx: 0 },
+        &gutter_ctx,
+    );
+    assert_eq!(
+        cells.len(),
+        2,
+        "always:2 keeps 2 slots; both the diagnostic sign and the plugin sign must survive"
+    );
+    assert_eq!(
+        cells[0].as_str(),
+        "!",
+        "plugin sign priority 20 beats the diagnostic's fixed priority 10"
+    );
+    assert_eq!(
+        cells[1].as_str(),
+        "●",
+        "diagnostic sign occupies the second slot"
     );
 }
 

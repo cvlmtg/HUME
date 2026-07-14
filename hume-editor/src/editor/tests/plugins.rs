@@ -1363,13 +1363,24 @@ fn command_trigger_logs_trace_on_activation() {
 /// Helper: write `init_scm` to a temporary config dir, set `XDG_CONFIG_HOME`
 /// and `HUME_RUNTIME`, call `init_scripting` on a fresh Editor, restore env
 /// vars before returning.  Caller must keep the returned `Vec<TempDir>` alive.
+///
+/// `runtime_dir`: `None` points `HUME_RUNTIME` at a fresh empty tempdir (for
+/// synthetic-fixture tests with no shipped plugin sources) and includes it in
+/// the returned `Vec`; `Some(path)` points at `path` instead (typically the
+/// repo's real `runtime/` tree, for tests exercising a real shipped
+/// `manifest.scm`/plugin end to end) and does not add a tempdir for it, since
+/// the caller owns that path's lifetime.
 #[cfg(not(windows))]
-fn setup_editor_with_init_scripting(init_scm: &str) -> (Editor, Vec<tempfile::TempDir>) {
+fn setup_editor_with_init_scripting(
+    init_scm: &str,
+    runtime_dir: Option<&std::path::Path>,
+) -> (Editor, Vec<tempfile::TempDir>) {
     let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
 
     let config_tmp = tempfile::tempdir().unwrap();
-    let runtime_tmp = tempfile::tempdir().unwrap();
     let data_tmp = tempfile::tempdir().unwrap();
+    let runtime_tmp = runtime_dir.is_none().then(|| tempfile::tempdir().unwrap());
+    let runtime_path = runtime_dir.unwrap_or_else(|| runtime_tmp.as_ref().unwrap().path());
 
     let hume_config = config_tmp.path().join("hume");
     std::fs::create_dir_all(&hume_config).unwrap();
@@ -1377,7 +1388,7 @@ fn setup_editor_with_init_scripting(init_scm: &str) -> (Editor, Vec<tempfile::Te
 
     unsafe {
         std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
-        std::env::set_var("HUME_RUNTIME", runtime_tmp.path());
+        std::env::set_var("HUME_RUNTIME", runtime_path);
         std::env::set_var("XDG_DATA_HOME", data_tmp.path());
     }
 
@@ -1390,7 +1401,9 @@ fn setup_editor_with_init_scripting(init_scm: &str) -> (Editor, Vec<tempfile::Te
         std::env::remove_var("XDG_DATA_HOME");
     }
 
-    (ed, vec![config_tmp, runtime_tmp, data_tmp])
+    let mut dirs = vec![config_tmp, data_tmp];
+    dirs.extend(runtime_tmp);
+    (ed, dirs)
 }
 
 /// Keymap lint warns when a bind-key! targets a name not in the command registry.
@@ -1403,7 +1416,7 @@ fn keymap_lint_warns_on_unknown_command() {
     use crate::editor::Severity;
 
     let (ed, _dirs) =
-        setup_editor_with_init_scripting(r#"(bind-key! 'normal "Q" "bogus-unknown-cmd")"#);
+        setup_editor_with_init_scripting(r#"(bind-key! 'normal "Q" "bogus-unknown-cmd")"#, None);
 
     assert!(
         ed.state
@@ -1432,7 +1445,7 @@ fn keymap_lint_warns_on_unknown_command() {
 fn no_keymap_lint_warning_for_lsp_completion_trigger_without_core_lsp() {
     use crate::editor::Severity;
 
-    let (ed, _dirs) = setup_editor_with_init_scripting("");
+    let (ed, _dirs) = setup_editor_with_init_scripting("", None);
 
     assert!(
         !ed.state.message_log.entries().any(|e| {
@@ -1529,6 +1542,7 @@ fn define_command_collision_with_builtin_keeps_builtin() {
 
     let (ed, _dirs) = setup_editor_with_init_scripting(
         r#"(define-command! "move-right" "redefine" (lambda () (+ 1 0)))"#,
+        None,
     );
 
     // The built-in "move-right" must survive — not replaced by SteelBacked.
@@ -1766,8 +1780,6 @@ fn language_activation_lint_silent_for_wildcard() {
 fn core_vim_keybind_has_no_manifest_scm_zero_trigger_declare_errors() {
     use crate::editor::Severity;
 
-    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-
     let runtime_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("hume-editor/ must have a parent (the repo root)")
@@ -1782,30 +1794,10 @@ fn core_vim_keybind_has_no_manifest_scm_zero_trigger_declare_errors() {
         "sanity: core:vim-keybind must NOT ship a manifest.scm for this negative check to be meaningful"
     );
 
-    let config_tmp = tempfile::tempdir().unwrap();
-    let data_tmp = tempfile::tempdir().unwrap();
-    let hume_config = config_tmp.path().join("hume");
-    std::fs::create_dir_all(&hume_config).unwrap();
-    std::fs::write(
-        hume_config.join("init.scm"),
+    let (ed, _dirs) = setup_editor_with_init_scripting(
         r#"(declare-plugin "core:vim-keybind")"#,
-    )
-    .unwrap();
-
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
-        std::env::set_var("HUME_RUNTIME", &runtime_dir);
-        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
-    }
-
-    let mut ed = editor_from("-[a]>b\n");
-    ed.init_scripting();
-
-    unsafe {
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("HUME_RUNTIME");
-        std::env::remove_var("XDG_DATA_HOME");
-    }
+        Some(&runtime_dir),
+    );
 
     assert!(
         ed.state
@@ -1837,8 +1829,6 @@ fn core_lsp_real_manifest_scm_resolves_via_zero_trigger_declare() {
     use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
-    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-
     let runtime_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("hume-editor/ must have a parent (the repo root)")
@@ -1853,32 +1843,12 @@ fn core_lsp_real_manifest_scm_resolves_via_zero_trigger_declare() {
         "sanity: the real manifest.scm must exist at the expected repo path"
     );
 
-    let config_tmp = tempfile::tempdir().unwrap();
-    let data_tmp = tempfile::tempdir().unwrap();
-    let hume_config = config_tmp.path().join("hume");
-    std::fs::create_dir_all(&hume_config).unwrap();
-    std::fs::write(
-        hume_config.join("init.scm"),
+    let (ed, _dirs) = setup_editor_with_init_scripting(
         r#"(load-plugin "core:stdlib")
            (register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
            (declare-plugin "core:lsp")"#,
-    )
-    .unwrap();
-
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
-        std::env::set_var("HUME_RUNTIME", &runtime_dir);
-        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
-    }
-
-    let mut ed = editor_from("-[a]>b\n");
-    ed.init_scripting();
-
-    unsafe {
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("HUME_RUNTIME");
-        std::env::remove_var("XDG_DATA_HOME");
-    }
+        Some(&runtime_dir),
+    );
 
     let errors: Vec<String> = ed
         .state
@@ -1902,12 +1872,13 @@ fn core_lsp_real_manifest_scm_resolves_via_zero_trigger_declare() {
          declare resolves its manifest.scm"
     );
     assert!(
-        !ed.scripting
+        ed.scripting
             .as_ref()
             .unwrap()
             .activation_commands()
-            .is_empty(),
-        "manifest.scm's #:commands entries must be registered as activation stubs"
+            .contains_key("lsp-install"),
+        "manifest.scm's #:commands entries must be registered as activation stubs, \
+         including \"lsp-install\""
     );
     assert!(
         !ed.scripting
@@ -1932,8 +1903,6 @@ fn core_stdlib_real_manifest_scm_resolves_via_zero_trigger_declare() {
     use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
-    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-
     let runtime_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("hume-editor/ must have a parent (the repo root)")
@@ -1948,30 +1917,8 @@ fn core_stdlib_real_manifest_scm_resolves_via_zero_trigger_declare() {
         "sanity: the real manifest.scm must exist at the expected repo path"
     );
 
-    let config_tmp = tempfile::tempdir().unwrap();
-    let data_tmp = tempfile::tempdir().unwrap();
-    let hume_config = config_tmp.path().join("hume");
-    std::fs::create_dir_all(&hume_config).unwrap();
-    std::fs::write(
-        hume_config.join("init.scm"),
-        r#"(declare-plugin "core:stdlib")"#,
-    )
-    .unwrap();
-
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
-        std::env::set_var("HUME_RUNTIME", &runtime_dir);
-        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
-    }
-
-    let mut ed = editor_from("-[a]>b\n");
-    ed.init_scripting();
-
-    unsafe {
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("HUME_RUNTIME");
-        std::env::remove_var("XDG_DATA_HOME");
-    }
+    let (ed, _dirs) =
+        setup_editor_with_init_scripting(r#"(declare-plugin "core:stdlib")"#, Some(&runtime_dir));
 
     let errors: Vec<String> = ed
         .state
@@ -1995,12 +1942,13 @@ fn core_stdlib_real_manifest_scm_resolves_via_zero_trigger_declare() {
          declare resolves its manifest.scm"
     );
     assert!(
-        !ed.scripting
+        ed.scripting
             .as_ref()
             .unwrap()
             .activation_commands()
-            .is_empty(),
-        "manifest.scm's #:commands entries must be registered as activation stubs"
+            .contains_key("stdlib/all-single-char?"),
+        "manifest.scm's #:commands entries must be registered as activation stubs, \
+         including \"stdlib/all-single-char?\""
     );
 }
 
@@ -2017,8 +1965,6 @@ fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
     use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
-    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-
     let runtime_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("hume-editor/ must have a parent (the repo root)")
@@ -2033,30 +1979,8 @@ fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
         "sanity: the real manifest.scm must exist at the expected repo path"
     );
 
-    let config_tmp = tempfile::tempdir().unwrap();
-    let data_tmp = tempfile::tempdir().unwrap();
-    let hume_config = config_tmp.path().join("hume");
-    std::fs::create_dir_all(&hume_config).unwrap();
-    std::fs::write(
-        hume_config.join("init.scm"),
-        r#"(declare-plugin "core:plum")"#,
-    )
-    .unwrap();
-
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
-        std::env::set_var("HUME_RUNTIME", &runtime_dir);
-        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
-    }
-
-    let mut ed = editor_from("-[a]>b\n");
-    ed.init_scripting();
-
-    unsafe {
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("HUME_RUNTIME");
-        std::env::remove_var("XDG_DATA_HOME");
-    }
+    let (ed, _dirs) =
+        setup_editor_with_init_scripting(r#"(declare-plugin "core:plum")"#, Some(&runtime_dir));
 
     let errors: Vec<String> = ed
         .state
@@ -2080,12 +2004,13 @@ fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
          declare resolves its manifest.scm"
     );
     assert!(
-        !ed.scripting
+        ed.scripting
             .as_ref()
             .unwrap()
             .activation_commands()
-            .is_empty(),
-        "manifest.scm's #:commands entries must be registered as activation stubs"
+            .contains_key("plum-list"),
+        "manifest.scm's #:commands entries must be registered as activation stubs, \
+         including \"plum-list\""
     );
     assert!(
         !ed.scripting
@@ -2106,7 +2031,8 @@ fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
 fn keymap_lint_silent_for_known_command() {
     use crate::editor::Severity;
 
-    let (ed, _dirs) = setup_editor_with_init_scripting(r#"(bind-key! 'normal "Q" "move-down")"#);
+    let (ed, _dirs) =
+        setup_editor_with_init_scripting(r#"(bind-key! 'normal "Q" "move-down")"#, None);
 
     assert!(
         !ed.state

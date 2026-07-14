@@ -253,7 +253,7 @@ fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
         "row must include the diagnostic's message: {rows:?}"
     );
     assert!(
-        rows[0].contains('✗'),
+        rows[0].contains('✘'),
         "severity 1 (Error) must render as the error glyph: {rows:?}"
     );
     assert!(rows[1].contains("problem B"));

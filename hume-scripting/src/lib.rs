@@ -986,4 +986,53 @@ mod steel_stdlib_availability {
         host.eval_source(src, &mut null_host)
             .expect("uncaught native error one-hop propagation to outer handler failed");
     }
+
+    /// **Second known steel-core 0.8.2 limitation, distinct from the one
+    /// above**: `dynamic-wind`'s `after` thunk is *not* guaranteed to run
+    /// when its body raises an error that unwinds through an outer
+    /// `with-handler` — this reproduces the exact `run-inline-output!`
+    /// failure from the panic-pinning test above, wrapped in `dynamic-wind`
+    /// instead of catch-and-reraise. If `dynamic-wind` reliably ran cleanup
+    /// on error here, it would be a safe way to guarantee `declare-plugin`'s
+    /// manifest-branch cleanup (`%finish-manifest-declare!`) runs without
+    /// needing an inner with-handler at all — sidestepping the panic above
+    /// entirely. It doesn't: the cleanup thunk (`cleanup-ran`) never fires,
+    /// so this path is unsafe for anything that depends on cleanup actually
+    /// running, silently rather than loudly. This independently confirms
+    /// `project_steel_raii_vs_dynamicwind.md`'s decision to keep
+    /// cleanup-on-unwind in Rust (explicit push/pop), never in Steel
+    /// `dynamic-wind`. Pinned the same way as the test above: if a future
+    /// steel-core upgrade fixes this, `cleanup-ran` starts being `#t` and
+    /// this test starts failing (no error at all) rather than hitting the
+    /// "cleanup did not run" assertion — revisit then.
+    #[test]
+    #[cfg(unix)]
+    fn known_limitation_dynamic_wind_cleanup_does_not_run_across_an_outer_handlers_unwind() {
+        let mut host = ScriptingHost::new();
+        let mut null_host = NullHost;
+        let src = r#"
+            (define cleanup-ran #f)
+            (define (inner-fetch)
+              (dynamic-wind
+                (lambda () (void))
+                (lambda () (run-inline-output! "false" '()))
+                (lambda () (set! cleanup-ran #t))))
+
+            (define (tolerant-outer)
+              (with-handler (lambda (err) #f) (inner-fetch)))
+
+            (tolerant-outer)
+            (if cleanup-ran (begin) (error "cleanup did not run"))
+        "#;
+        let result = host.eval_source(src, &mut null_host);
+        let err = result.expect_err(
+            "dynamic-wind's cleanup thunk unexpectedly ran across the outer handler's unwind — \
+             if steel-core fixed this, declare-plugin's manifest branch could use dynamic-wind \
+             instead of catch-and-reraise to avoid the panic pinned above",
+        );
+        assert!(
+            err.contains("cleanup did not run"),
+            "expected the cleanup-did-not-run assertion to fire, got a different error: {err}"
+        );
+    }
 }

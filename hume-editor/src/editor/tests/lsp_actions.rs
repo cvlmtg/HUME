@@ -397,3 +397,92 @@ fn selecting_an_unresolved_action_without_resolve_support_reports_it() {
         "expected an unsupported-action message, got {msg:?}"
     );
 }
+
+/// Regression: `lsp/run-action`'s resolve branch used to re-enter itself
+/// unconditionally on a resolved action. A non-conforming server that
+/// resolves an action still lacking both "edit" and "command" would send
+/// a *second* `codeAction/resolve` request rather than reporting the
+/// action as unsupported — an unbounded round trip for a server that never
+/// produces a resolvable shape. `#:resolved?` bounds this to one attempt.
+#[test]
+#[cfg(not(windows))]
+fn selecting_an_unresolved_action_whose_resolve_is_still_bare_reports_it_once() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, _uri) = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _sid, requests) = setup_with_capabilities(
+        &file,
+        tmp.path(),
+        serde_json::json!({"codeActionProvider": {"resolveProvider": true}}),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/codeAction",
+                serde_json::json!([unresolved_action("Fix the thing")]),
+            );
+            // Only one canned response queued (FIFO) — a second resolve
+            // request sent by an unbounded recursion would go unanswered.
+            backend.respond_to("codeAction/resolve", unresolved_action("Fix the thing"));
+        },
+    );
+
+    run_actions(&mut ed);
+    ed.handle_key(key_enter());
+    ed.drain_pending_steel_calls();
+    ed.drain_lsp();
+    ed.drain_pending_steel_calls();
+
+    let resolve_requests = requests
+        .borrow()
+        .iter()
+        .filter(|(_sid, m, _params)| m == "codeAction/resolve")
+        .count();
+    assert_eq!(
+        resolve_requests, 1,
+        "a still-bare resolved action must not trigger a second codeAction/resolve"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("no edit or command"),
+        "expected an unsupported-action message after the single resolve, got {msg:?}"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn selecting_an_unresolved_action_whose_resolve_errors_reports_it() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, _uri) = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _sid, _requests) = setup_with_capabilities(
+        &file,
+        tmp.path(),
+        serde_json::json!({"codeActionProvider": {"resolveProvider": true}}),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/codeAction",
+                serde_json::json!([unresolved_action("Fix the thing")]),
+            );
+            backend.fail_with("codeAction/resolve", -32603, "resolve exploded");
+        },
+    );
+
+    run_actions(&mut ed);
+    ed.handle_key(key_enter());
+    ed.drain_pending_steel_calls();
+    ed.drain_lsp();
+    ed.drain_pending_steel_calls();
+
+    let errors: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.clone())
+        .collect();
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("code action") && e.contains("resolve exploded")),
+        "expected a reported codeAction/resolve error, got {errors:?}"
+    );
+}

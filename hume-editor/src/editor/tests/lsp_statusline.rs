@@ -1,6 +1,6 @@
 // Statusline diagnostics element: `StatusElement::Diagnostics`
 // reads the diagnostics store directly (never through Steel) and renders
-// `"✗ E ⚠ W"`, omitting either half when its count is zero and collapsing
+// `"✘ E ⚠ W"`, omitting either half when its count is zero and collapsing
 // to empty when both counts are zero.
 
 use std::path::Path;

@@ -135,6 +135,31 @@ const BOOTSTRAP: &str = r#"
 ; (typically a hash) the plugin body reads back via (plugin-config) whenever
 ; activation eventually runs it; on the manifest path, the caller's #:config wins
 ; over whatever the manifest itself passes.
+; Known limitation, investigated and left as-is: if a caller wraps this
+; zero-trigger form in their own with-handler, and the manifest.scm eval
+; raises, this inner handler's own `raise-error` re-raise hits steel-core
+; 0.8.2's "no open continuation" VM panic when caught by that outer handler
+; (same footgun as %activate-plugin-inline, see hume-scripting/src/lib.rs's
+; known_limitation_reraise_via_raise_error_inside_outer_tolerant_handler_corrupts_vm_stack).
+; Checked two alternatives empirically, neither is safe to adopt:
+;   - Re-raising via `error` instead of `raise-error` panics identically —
+;     the bug is about a handler lambda raising at all under this nesting,
+;     not about `raise-error` specifically.
+;   - Wrapping the eval in `dynamic-wind` instead avoids the panic, but its
+;     `after` cleanup thunk silently does not run when the body's error
+;     unwinds through an outer with-handler (see
+;     known_limitation_dynamic_wind_cleanup_does_not_run_across_an_outer_handlers_unwind
+;     in hume-scripting/src/lib.rs) — unacceptable here, since
+;     %finish-manifest-declare! must always clear `manifest_resolving` or
+;     every later zero-trigger declare-plugin call this session hard-errors.
+; The remaining option — catch, run cleanup, log, and return normally instead
+; of raising — would avoid the panic, but changes declare-plugin's tested
+; contract (manifest errors currently propagate as a Steel error to the
+; caller; four tests in builtins/plugins/tests.rs assert exactly this via
+; `.expect_err(...)`) for every caller, not just ones nesting with-handler.
+; Not worth trading a broadly-relied-on synchronous-error contract for
+; protection against a narrow, self-inflicted nesting pattern — leave as-is
+; pending an upstream steel-core fix.
 (define (declare-plugin name #:commands  [commands  '()]
                              #:events    [events    '()]
                              #:languages [languages '()]

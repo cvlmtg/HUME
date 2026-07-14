@@ -108,9 +108,12 @@ impl SignColumn {
 
 impl GutterColumn for SignColumn {
     fn width(&self, _last_line_idx: usize) -> u8 {
-        // Configured, not per-frame-recomputed: signs must not resize the
-        // gutter frame to frame (unlike LineNumberColumn's whole-file-max
-        // rule, which legitimately grows with the file).
+        // Returns the stored field verbatim — never recomputed inline here,
+        // unlike `LineNumberColumn::width()`'s whole-file-max rule, which
+        // derives its answer from `last_line_idx` on every call. `auto` mode
+        // still changes what's stored, just from outside this method: the
+        // caller recomputes and calls `set_width` once per frame (see that
+        // method's doc comment), so `width()` itself stays a plain getter.
         self.width
     }
 
@@ -138,7 +141,15 @@ impl GutterColumn for SignColumn {
             .collect();
         // Sort by (priority desc, source_index desc) — higher priority first,
         // ties resolve to the later-registered source (matches the documented
-        // tie-break rule).
+        // tie-break rule). This is the *only* place in the sign pipeline that
+        // makes an explicit same-priority tie-break decision: the editor's
+        // plugin-sign pre-merge (`Editor::update_sign_providers`,
+        // hume-editor/src/editor/lifecycle.rs) sorts by priority only and
+        // relies on this being the sole arbiter — it must stay that way, or a
+        // same-priority sign could be discarded upstream by a rule that
+        // disagrees with this one. Diagnostics' severity collapse (many
+        // diagnostics on a line -> the one worst) is a distinct, unrelated
+        // reduction that happens before a diagnostic ever becomes a `Sign`.
         collected.sort_by(|a, b| b.0.priority.cmp(&a.0.priority).then(b.1.cmp(&a.1)));
         collected.truncate(max_signs);
 

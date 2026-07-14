@@ -2,7 +2,9 @@ use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceRender, WrapMode};
 
 use super::{Completer, Completion, CompletionCtx, CompletionResult, theme_name_candidates};
-use crate::settings::{SHOW_NEWLINE_VALUES, TabStyle, all_setting_keys, setting_scopes};
+use crate::settings::{
+    SHOW_NEWLINE_VALUES, SignColumnConfig, TabStyle, all_setting_keys, setting_scopes,
+};
 
 // ── SetCompleter ──────────────────────────────────────────────────────────────
 
@@ -52,6 +54,7 @@ fn static_value_candidates(key: &str) -> Option<&'static [&'static str]> {
         "wrap-mode" => WrapMode::VALUES,
         "whitespace-space" | "whitespace-tab" => WhitespaceRender::VALUES,
         "whitespace-newline" => SHOW_NEWLINE_VALUES,
+        "signcolumn" => SignColumnConfig::VALUES,
         _ => return None,
     })
 }
@@ -294,6 +297,15 @@ mod tests {
     fn set_completer_value_whitespace_render() {
         let result = set_result("set buffer whitespace-space=");
         assert_eq!(names_of(&result), vec!["all", "none", "trailing"]);
+    }
+
+    #[test]
+    fn set_completer_value_signcolumn() {
+        let result = set_result("set buffer signcolumn=");
+        assert_eq!(
+            names_of(&result),
+            vec!["always", "always:1", "auto", "auto:1"]
+        );
     }
 
     #[test]

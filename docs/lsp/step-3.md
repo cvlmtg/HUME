@@ -67,7 +67,7 @@ Optional (decide here, it's cheap): `:set`-toggled visibility via `ProviderSet::
 
 ### U3 — Statusline diagnostics element
 
-**Goal** — error/warning counts for the focused buffer in the statusline, e.g. `✗ 3 ⚠ 12`, hidden when zero.
+**Goal** — error/warning counts for the focused buffer in the statusline, e.g. `✘ 3 ⚠ 12`, hidden when zero.
 
 **Depends** — C9. **Unlocks** — Step 3 milestone.
 

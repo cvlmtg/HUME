@@ -105,12 +105,10 @@ pub enum SignColumnMode {
     /// Always visible, regardless of whether any signs exist.
     #[default]
     Always,
-    /// Collapses to zero width when no signs exist.
+    /// Collapses to zero width when no signs are visible in the current
+    /// viewport (a sign elsewhere in the buffer, scrolled out of view,
+    /// does not keep the column open).
     Auto,
-}
-
-impl SignColumnMode {
-    pub const VALUES: &'static [&'static str] = &["always", "auto"];
 }
 
 impl fmt::Display for SignColumnMode {
@@ -1509,6 +1507,25 @@ mod tests {
     fn signcolumn_rejects_zero_columns() {
         assert!("always:0".parse::<SignColumnConfig>().is_err());
         assert!("auto:0".parse::<SignColumnConfig>().is_err());
+    }
+
+    #[test]
+    fn signcolumn_rejects_columns_above_127() {
+        assert!("always:128".parse::<SignColumnConfig>().is_err());
+        assert!("auto:255".parse::<SignColumnConfig>().is_err());
+    }
+
+    #[test]
+    fn signcolumn_values_round_trip_through_from_str() {
+        // Independent-oracle guard: every completion-offered value must
+        // actually parse, so `VALUES` can't silently drift from `FromStr`
+        // (mirrors `tab_style_values_round_trip_through_from_str`).
+        for v in SignColumnConfig::VALUES {
+            assert!(
+                v.parse::<SignColumnConfig>().is_ok(),
+                "'{v}' should parse as SignColumnConfig"
+            );
+        }
     }
 
     #[test]

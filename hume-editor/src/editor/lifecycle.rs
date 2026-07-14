@@ -1081,8 +1081,8 @@ impl Editor {
     }
 
     /// Write per-frame gutter sign data (diagnostics + plugin signs) to every
-    /// pane's own `Arc<RwLock<HashMap<line, Sign>>>` buffers, read by that
-    /// pane's `SharedSignSource`s. Stays visible in Insert mode — same
+    /// pane's own `Arc<RwLock<HashMap<line, Vec<Sign>>>>` buffers, read by
+    /// that pane's `SharedSignSource`s. Stays visible in Insert mode — same
     /// reasoning as [`Self::update_highlight_providers`]'s diagnostics
     /// section, which this runs right after.
     pub(super) fn update_sign_providers(&mut self) {
@@ -1174,11 +1174,25 @@ impl Editor {
             }
 
             // Plugin signs (`set-signs!`): top N signs per line by priority,
-            // where N = the buffer's configured `signcolumn` columns. Sorted
-            // by source name first so a tie between two different sources
-            // resolves deterministically rather than by `HashMap` iteration
-            // order. Signs beyond the N-slot budget are dropped here — the
-            // `SignColumn` merge downstream doesn't need to see them.
+            // where N = the buffer's configured `signcolumn` columns. Signs
+            // beyond the N-slot budget are dropped here — the `SignColumn`
+            // merge downstream doesn't need to see them. Pre-truncating to N
+            // here (rather than passing everything through) is memory
+            // bounding — an unbounded per-line Vec would get cloned every
+            // frame by `SharedSignSource::signs_for_line` — and is safe
+            // (never discards a true winner) only because the sort below is
+            // priority-only, deferring same-priority ordering entirely to
+            // the stable sort's input order rather than inventing a second
+            // explicit tie-break rule here. That input order is the one set
+            // by `plugin_raw.sort_by` just above (source name, ascending) —
+            // so a same-priority tie between two plugin sources resolves by
+            // source name, decided once, not re-decided here. The *only*
+            // remaining explicit priority-tie decision in the sign pipeline
+            // is `SignColumn::render_row_cells`'s own sort in
+            // hume-engine/src/builtins/sign_column.rs (which arbitrates
+            // between this plugin map and the diagnostics map above, by
+            // source-registration order) — this sort must stay priority-only
+            // so it never overrides that.
             let mut plugin_raw: Vec<(String, usize, String, String, i64)> = self
                 .state
                 .decorations
@@ -1208,7 +1222,7 @@ impl Editor {
                 let mut guard = plugin_map.write().expect("RwLock not poisoned");
                 guard.clear();
                 for (line, mut entries) in plugin_all {
-                    entries.sort_by(|a, b| b.2.cmp(&a.2).then(b.0.cmp(&a.0)));
+                    entries.sort_by(|a, b| b.2.cmp(&a.2));
                     entries.truncate(max_plugin_signs);
                     let signs: Vec<Sign> = entries
                         .into_iter()
@@ -1227,7 +1241,9 @@ impl Editor {
 
             // Compute sign column width from the buffer's `signcolumn` setting:
             // `always` keeps it visible at the configured width; `auto` collapses
-            // to zero when no signs exist.
+            // to zero when no signs are visible in the current viewport (diag_map/
+            // plugin_map above only hold visible-line entries — a sign elsewhere
+            // in the buffer, scrolled out of view, does not keep the column open).
             let has_signs = {
                 let diag_empty = diag_map.read().expect("RwLock not poisoned").is_empty();
                 let plugin_empty = plugin_map.read().expect("RwLock not poisoned").is_empty();

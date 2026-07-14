@@ -482,8 +482,16 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
 ///
 /// `ctx.pop_effect_marks(success)` does the same for every queued side effect
 /// (`register-lsp-server!`, `define-language!`, `set-buffer-language!`, LSP
-/// requests/notifies, grammar sweeps) — a `Failed` plugin must not leave any
-/// of these to be silently applied by some later, unrelated drain.
+/// requests/notifies, grammar sweeps) queued via `mark_effects`/`pop_effect_marks` —
+/// a `Failed` plugin must not leave any of these to be silently applied by some
+/// later, unrelated drain.
+///
+/// NOT rolled back: `register-hook!` records no owner and has no unregister path,
+/// and `bind-key!`/`bind-key-extend!` apply inline through the host with no undo.
+/// A `Failed` plugin's hook handler keeps firing, and its keybindings stay bound,
+/// even though the body that installed them never finished running. Pre-existing
+/// gap — full rollback of these would need per-plugin ownership tracking for hooks
+/// and keybindings, which doesn't exist yet.
 pub(crate) fn finish_lazy_activation(
     ctx: &mut SteelCtx,
     id_str: String,

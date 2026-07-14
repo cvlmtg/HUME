@@ -69,6 +69,10 @@ impl RecordingLspBackend {
         self.inner.respond_to(method, result);
     }
 
+    pub fn fail_with(&mut self, method: &str, code: i64, msg: &str) {
+        self.inner.fail_with(method, code, msg);
+    }
+
     pub fn push_from_server(&mut self, server: ServerId, msg: Message) {
         self.inner.push_from_server(server, msg);
     }

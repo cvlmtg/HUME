@@ -126,6 +126,14 @@ fn compose_gutter(
     canvas: &mut PaneCanvas,
 ) {
     let mut gutter_x = compose_ctx.pane_rect.x;
+    // A column's configured width (in particular `signcolumn`'s up-to-127
+    // slots) is never checked against the pane's actual width — `layout.rs`
+    // only clamps *content* width down to make room for the gutter, not the
+    // other way around. Without this bound, a gutter wider than the pane
+    // would write straight through the pane's right edge into whatever is
+    // drawn next to it in the shared terminal buffer (a neighbouring pane,
+    // most commonly).
+    let pane_right_edge = compose_ctx.pane_rect.x + compose_ctx.pane_rect.width;
     let gutter_ctx = GutterRowCtx {
         mode: compose_ctx.mode,
         primary_head_line: compose_ctx.primary_head_line,
@@ -137,6 +145,11 @@ fn compose_gutter(
         if col_width == 0 {
             continue;
         }
+        let col_start = gutter_x;
+        if col_start >= pane_right_edge {
+            continue;
+        }
+        let col_width = col_width.min(pane_right_edge - col_start);
         let cells = col_provider.render_row_cells(row_kind, &gutter_ctx);
         // Distribute `col_width` across `cells.len()` sub-cells. Only the
         // column's right padding (1 cell) is reserved — no separators between
@@ -166,28 +179,28 @@ fn compose_gutter(
                 None => scope_style,
             };
 
-            // Right-align within usable width. `usable` bounds how much of
-            // `text` may be written: a builtin column (only `LineNumberColumn`
-            // today) always fits, but a future plugin-supplied column isn't
-            // guaranteed to — `set_string` only clips to the terminal buffer,
-            // not to this column's width or the pane rect, so an overlong cell
-            // would otherwise bleed into the content area or the neighbouring
-            // pane. Truncate on grapheme-cluster boundaries (never raw
-            // chars/bytes — the project's text-boundary invariant) by
-            // accumulating display width until `usable` is exhausted.
-            let usable = usable_per_cell;
+            // Right-align within usable width. `usable_per_cell` bounds how
+            // much of `text` may be written: a builtin column (only
+            // `LineNumberColumn` today) always fits, but a future
+            // plugin-supplied column isn't guaranteed to — `set_string` only
+            // clips to the terminal buffer, not to this column's width or
+            // the pane rect, so an overlong cell would otherwise bleed into
+            // the content area or the neighbouring pane. Truncate on
+            // grapheme-cluster boundaries (never raw chars/bytes — the
+            // project's text-boundary invariant) by accumulating display
+            // width until `usable_per_cell` is exhausted.
             let mut truncated_len = text.len();
             let mut text_width = 0u16;
             for (byte_idx, g) in text.grapheme_indices(true) {
                 let w = unicode_display_width(g) as u16;
-                if text_width + w > usable {
+                if text_width + w > usable_per_cell {
                     truncated_len = byte_idx;
                     break;
                 }
                 text_width += w;
             }
             let text = &text[..truncated_len];
-            let pad = usable.saturating_sub(text_width);
+            let pad = usable_per_cell.saturating_sub(text_width);
             for px in 0..pad {
                 canvas.set_cell(gutter_x + px, y, " ", style);
             }
@@ -197,17 +210,21 @@ fn compose_gutter(
             if is_last {
                 let sep_x = gutter_x + pad + text_width;
                 canvas.set_cell(sep_x, y, " ", style);
-                gutter_x += usable + 1;
+                gutter_x += usable_per_cell + 1;
             } else {
-                gutter_x += usable;
+                gutter_x += usable_per_cell;
             }
             last_scope = cell.scope;
         }
-        // Any leftover width (e.g. a wide LineNumberColumn with a short
-        // number) fills as blanks under the last cell's scope — preserves
-        // the single-cell builtin behaviour where the whole column shared
-        // one scope.
-        if gutter_x < compose_ctx.pane_rect.x + col_width {
+        // Any leftover width (e.g. sub-cell widths that don't evenly divide
+        // col_width - 1) fills as blanks under the last cell's scope —
+        // preserves the single-cell builtin behaviour where the whole column
+        // shared one scope. Bounded by `col_start`, not `pane_rect.x`: for
+        // every column after the first, `pane_rect.x` is the pane's left
+        // edge, not this column's — using it here left leftover cells
+        // unpainted and `gutter_x` short of the column boundary for any
+        // non-first column with uneven leftover.
+        if gutter_x < col_start + col_width {
             let last_style: ratatui::style::Style = match last_scope {
                 crate::providers::GutterScope::Name(name) => {
                     compose_ctx.theme.resolve_by_name(name).into()
@@ -218,11 +235,15 @@ fn compose_gutter(
                 Some(bg) => ratatui::style::Style::default().bg(bg).patch(last_style),
                 None => last_style,
             };
-            while gutter_x < compose_ctx.pane_rect.x + col_width {
+            while gutter_x < col_start + col_width {
                 canvas.set_cell(gutter_x, y, " ", style);
                 gutter_x += 1;
             }
         }
+        // Providers are a public extension point; their cell-width math
+        // isn't guaranteed to sum to col_width exactly. Land on the column
+        // boundary regardless, so the next column never inherits any drift.
+        gutter_x = col_start + col_width;
     }
 }
 

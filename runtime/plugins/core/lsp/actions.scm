@@ -54,7 +54,13 @@
 ;;; "edit" key at all) only ever reaches the command branch. An action with
 ;;; neither key is lazily-resolved — send `codeAction/resolve` first, or
 ;;; report it as unsupported if the server never advertised resolve.
-(define (lsp/run-action action)
+;;;
+;;; `#:resolved?` bounds resolution to a single round trip: the resolve
+;;; callback's recursive call always passes `#:resolved? #t`, so a
+;;; non-conforming server that resolves an action still lacking both "edit"
+;;; and "command" hits the "no edit or command" report instead of
+;;; re-entering `codeAction/resolve` forever.
+(define (lsp/run-action action #:resolved? [resolved? #f])
   (cond
     ((or (hash-contains? action "edit") (hash-contains? action "command"))
      (when (hash-contains? action "edit")
@@ -62,13 +68,13 @@
      (when (hash-contains? action "command")
        (let ((cmd (hash-ref action "command")))
          (lsp/exec-command (if (string? cmd) action cmd)))))
-    ((lsp/action-resolve-provider?)
+    ((and (not resolved?) (lsp/action-resolve-provider?))
      (lsp-request #f "codeAction/resolve" action
        (lambda (err resolved)
          (cond
            (err (lsp/report-error "code action" err))
            ((void? resolved) (log! 'info "Code action has no edit or command"))
-           (else (lsp/run-action resolved))))))
+           (else (lsp/run-action resolved #:resolved? #t))))))
     (else (log! 'info "Code action has no edit or command"))))
 
 (define-command! "lsp-code-actions" "Show available code actions for the cursor or selection."

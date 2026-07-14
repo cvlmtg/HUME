@@ -87,8 +87,10 @@ pub(crate) struct SteelCtx<'a> {
     /// True when it is safe to write directly to stdout: either during init
     /// (before the alt-screen TUI is up) or inside an `#:inline-output` command
     /// body (alt-screen temporarily left). See `EditorHost::is_inline_output_command`.
-    /// Gates the print shims (`displayln`/`display`/`print`/`println`/
-    /// `newline`) via `%stdout-gate!` (`builtins::io::stdout_gate`).
+    /// Gates all ten steel-core print shims (`displayln`/`display`/`print`/
+    /// `println`/`newline`/`write`/`write-string`/`write-char`/
+    /// `simple-display`/`simple-displayln`) via `%stdout-gate!`
+    /// (`builtins::io::stdout_gate`) — see that module's doc comment.
     pub(crate) is_inline_output: bool,
     // ── Multi-buffer focus snapshot ──────────────────────────────────────────
     pub(crate) focused_pane_id: PaneId,
