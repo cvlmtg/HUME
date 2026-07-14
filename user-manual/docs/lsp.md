@@ -43,11 +43,13 @@ exactly what you list instead of the defaults:
                "lsp-status" "lsp-stop" "lsp-restart"))
 ```
 
-**Caveat**: `#:events '("on-lsp-attach")` by itself never activates on its own — nothing
+::: warning
+`#:events '("on-lsp-attach")` by itself never activates on its own — nothing
 is registered yet, so nothing attaches, so the event that would trigger activation never
 fires. List the languages you want servers for in `#:languages`, list the `lsp-*`
 commands in `#:commands` (as above), or load `core:lsp` eagerly — any one of these gets
 you a working `:lsp-install`.
+:::
 
 Opening a file whose language matches a registered server spawns it automatically (once per
 project root) and attaches.
@@ -158,13 +160,16 @@ catalog doesn't carry, or a `$PATH` copy you want to take precedence over a mana
 `:lsp-restart`) are `core:lsp` commands, so a manually registered server still needs
 `core:lsp` loaded or declared to inspect, stop, or restart it. `register-lsp-server!` takes:
 
-**Ordering, if you eager-load with `(load-plugin "core:lsp")`:** put your `register-lsp-server!`
+::: warning
+If you eager-load with `(load-plugin "core:lsp")`, put your `register-lsp-server!`
 calls *after* it, not before. `core:lsp` scans for already-installed servers the moment it
 loads, and a call you make afterward always overrides whatever that scan just registered —
 matching how the later of two registrations always wins. A call made *before* an eager
 `load-plugin` can be clobbered by that scan if the language you're overriding also has a
-seeded, installed server. This doesn't apply to a lazily `(declare-plugin "core:lsp")` — its scan runs later, on
-activation, well after your init.scm has finished, so order never matters there.
+seeded, installed server. This doesn't apply to a lazily `(declare-plugin "core:lsp")` — its
+scan runs later, on activation, well after your init.scm has finished, so order never
+matters there.
+:::
 
 | Argument | Meaning |
 |----------|---------|
@@ -183,11 +188,11 @@ Examples for a few commonly used servers:
 
 ;; Python — pyright
 (register-lsp-server! "python" #:command "pyright-langserver" #:args '("--stdio")
-                                #:root-markers '("pyproject.toml" "setup.py"))
+                               #:root-markers '("pyproject.toml" "setup.py"))
 
 ;; TypeScript / JavaScript — typescript-language-server
 (register-lsp-server! "typescript" #:command "typescript-language-server" #:args '("--stdio")
-                                    #:root-markers '("package.json" "tsconfig.json"))
+                                   #:root-markers '("package.json" "tsconfig.json"))
 
 ;; Go — gopls
 (register-lsp-server! "go" #:command "gopls" #:root-markers '("go.mod"))
@@ -263,7 +268,7 @@ returns its generated code:
       (lambda (err res)
         (cond
           (err (log! 'error (string-append "expand macro: "
-                                            (if (string? err) err (hash-ref err "message")))))
+                                           (if (string? err) err (hash-ref err "message")))))
           ((not res) (log! 'info "Not inside a macro"))
           (else (show-popup! (hash-ref res "expansion"))))))))
 ```
