@@ -23,7 +23,7 @@ your `init.scm`, plus at least one `register-lsp-server!` call if you're not rel
 (register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
 
 (declare-plugin "core:lsp"
-  #:events '("on-lsp-attach")
+  #:languages '("rust")
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"

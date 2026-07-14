@@ -17,7 +17,6 @@ instead — see [Registering a language server](#registering-a-language-server).
 (load-plugin "core:stdlib")   ; core:lsp depends on it
 
 (declare-plugin "core:lsp"
-  #:events '("on-lsp-attach")
   #:languages '("rust")   ; languages you want a server installed/attached for
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"

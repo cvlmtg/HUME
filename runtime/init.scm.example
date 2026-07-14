@@ -32,22 +32,24 @@
 ;;   (declare-plugin name keyword-args...) — lazy: load on first activation.
 ;; See plugins.md and core-plugins.md.
 
-;; (load-plugin "core:stdlib")         ; selection-query helpers other plugins need
+;; (load-plugin "core:stdlib")         ; helpers other plugins need
 ;; (load-plugin "core:plum")           ; plugin/grammar manager
 
+;; Third-party plugins, installed by :plum-install:
+;; (load-plugin "alice/my-theme")
+
+;; ── LSP ───────────────────────────────────────────────────────────────────────
 ;; Language servers — see user-manual/docs/lsp.md for setup and per-language examples.
 ;; core:lsp alone is enough: run :lsp-install (per language) to download, verify,
 ;; register, and attach a server automatically — no manual registration below needed
-;; for a seeded server. core:plum is not involved in language servers at all.
+;; for a seeded server.
 ;;
-;; core:lsp can be declared lazily, but #:events '("on-lsp-attach") alone never
-;; activates on its own — nothing is registered yet, so nothing attaches, so the event
-;; never fires. Name the languages you want servers installed for in #:languages so
-;; opening a matching file triggers activation directly, list the lsp-install/etc.
-;; commands in #:commands so typing one of them does, or just
+;; core:lsp can be declared lazily. Name the languages you want servers installed for
+in #:languages so opening a matching file triggers activation directly, list the
+;; lsp-install/etc. commands in #:commands so typing one of them does, or just
 ;; (load-plugin "core:lsp") eagerly:
+;;
 ;; (declare-plugin "core:lsp"
-;;   #:events '("on-lsp-attach")
 ;;   #:languages '("rust")
 ;;   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
 ;;                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
@@ -62,6 +64,3 @@
 ;; register-lsp-server! call with no core:lsp loaded gets a running server but no
 ;; way to inspect/stop/restart it from the command line:
 ;; (register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
-
-;; Third-party plugins, installed by :plum-install:
-;; (load-plugin "alice/my-theme")
