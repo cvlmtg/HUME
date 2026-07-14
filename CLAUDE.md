@@ -21,7 +21,7 @@ HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, w
 - **Terminal compatibility**: Require true color (24-bit) and synchronized output. Prefer kitty keyboard protocol but fall back gracefully to legacy encoding when unavailable. No shims for truly ancient terminals.
 - **Cross-platform**: macOS primary, Linux and Windows (Git Bash / WSL) secondary. Use `crossterm` or similar abstractions for platform differences — no platform-specific code unless behind `cfg` gates.
 - **Keep it simple**: This is a learning project. Prefer clarity over cleverness, and direct solutions over premature abstraction.
-- **Testing**: Every editing command, text object, and selection operation must be tested. No untested commands. Core editing logic uses state triples (`initial, op, expected` with cursor/selection markers). Renderer uses `insta` inline snapshots.
+- **Testing**: Every editing command, text object, and selection operation must be tested. No untested commands. Core editing logic uses state triples (`initial, op, expected` with cursor/selection markers). Renderer uses `insta` inline snapshots. Run `scripts/test-all.sh` before pushing — it matches CI exactly, including the network-gated live-grammar e2e tests (`HUME_REQUIRE_LIVE_GRAMMAR_E2E=1`) that a plain `cargo test` silently skips.
 - **Editing model**: Select-then-act. Keys bind to named commands, not to other key sequences. No key-to-key remapping.
 - **Scripting**: Steel (Scheme) for plugins and configuration. Rust handles performance-critical paths; Steel handles behavior and customization.
 
