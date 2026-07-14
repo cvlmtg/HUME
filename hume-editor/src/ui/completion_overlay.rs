@@ -13,9 +13,10 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 
 use hume_engine::providers::OverlayProvider;
-use hume_engine::render::fill_rect_bg;
 use hume_engine::theme::Theme;
 use hume_engine::types::Scope;
+
+use super::menu_box::{MAX_MENU_ROWS, draw_menu_box, outer_dims};
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -55,28 +56,10 @@ impl OverlayProvider for CompletionOverlay {
             return;
         }
 
-        let inner_rows = (view.rows.len() as u16).min(MAX_POPUP_ROWS);
-
-        // Compute the visible slice (scroll window to keep `selected` visible).
         let selected = view.selected.min(view.rows.len().saturating_sub(1));
-        let (scroll_offset, visible_rows) =
-            visible_window(&view.rows, selected, inner_rows as usize);
-
-        // Content width = widest candidate string.
-        let inner_w = visible_rows
-            .iter()
-            .map(|r| unicode_display_width(r))
-            .max()
-            .unwrap_or(0) as u16;
-
-        // Outer dimensions include a 1-cell frame on all sides.
-        let outer_h = (inner_rows + 2).min(pane_area.height);
-        let outer_w = (inner_w + 2).min(pane_area.width);
-
-        // Need room for at least one border row on each side plus one content row.
-        if outer_h < 3 || outer_w < 3 {
-            return;
-        }
+        let (outer_w, outer_h) = outer_dims(&view.rows, MAX_MENU_ROWS);
+        let outer_w = outer_w.min(pane_area.width);
+        let outer_h = outer_h.min(pane_area.height);
 
         // Position: just above the statusline.
         // Shift left by 1 so the text column aligns under the token in the input.
@@ -89,76 +72,14 @@ impl OverlayProvider for CompletionOverlay {
         let menu_style: Style = theme.resolve_by_name(Scope("ui.menu")).into();
         let selected_style: Style = theme.resolve_by_name(Scope("ui.menu.selected")).into();
 
-        // 1. Fill the entire outer rectangle with the popup background.
-        //    This gives a solid, opaque backdrop — no buffer content bleeds through.
-        //    For border=false it also acts as the visible 1-cell margin.
-        fill_rect_bg(
+        draw_menu_box(
             buf,
             Rect::new(popup_x, popup_y, outer_w, outer_h),
+            &view.rows,
+            Some(selected),
+            view.border,
             menu_style,
+            selected_style,
         );
-
-        // 2. Optionally overdraw the 1-cell frame with box-drawing characters.
-        if view.border {
-            let right = popup_x + outer_w - 1;
-            let bottom = popup_y + outer_h - 1;
-            // Number of ─ characters to fill between the two corner columns.
-            let fill_w = (outer_w - 2) as usize;
-            let horiz: String = "─".repeat(fill_w);
-
-            // Top and bottom edges.
-            buf.set_string(popup_x, popup_y, "┌", menu_style);
-            buf.set_string(popup_x + 1, popup_y, &horiz, menu_style);
-            buf.set_string(right, popup_y, "┐", menu_style);
-            buf.set_string(popup_x, bottom, "└", menu_style);
-            buf.set_string(popup_x + 1, bottom, &horiz, menu_style);
-            buf.set_string(right, bottom, "┘", menu_style);
-
-            // Left and right sides.
-            for row in 1..outer_h - 1 {
-                buf.set_string(popup_x, popup_y + row, "│", menu_style);
-                buf.set_string(right, popup_y + row, "│", menu_style);
-            }
-        }
-
-        // 3. Draw content rows inside the frame (y offset +1 for top border/padding).
-        let text_x = popup_x + 1;
-        for (i, row_text) in visible_rows.iter().enumerate() {
-            let y = popup_y + 1 + i as u16;
-            let row_idx = scroll_offset + i;
-
-            if row_idx == selected {
-                // Highlight the full inner width so the selection bar is uniform.
-                let inner_rect = Rect::new(text_x, y, outer_w.saturating_sub(2), 1);
-                fill_rect_bg(buf, inner_rect, selected_style);
-                buf.set_string(text_x, y, row_text, selected_style);
-            } else {
-                buf.set_string(text_x, y, row_text, menu_style);
-            }
-        }
     }
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/// Maximum number of visible popup rows (excluding the 1-cell frame).
-const MAX_POPUP_ROWS: u16 = 10;
-
-/// Return `(scroll_offset, visible_slice)` such that `selected` is inside
-/// the visible window of `max_height` entries.
-fn visible_window(rows: &[String], selected: usize, max_height: usize) -> (usize, &[String]) {
-    let total = rows.len();
-    if total <= max_height {
-        return (0, rows);
-    }
-    // Keep `selected` visible by anchoring the window.
-    let start = selected
-        .saturating_sub(max_height / 2)
-        .min(total - max_height);
-    (start, &rows[start..start + max_height])
-}
-
-/// Unicode display width (number of terminal columns) of a string.
-fn unicode_display_width(s: &str) -> usize {
-    unicode_width::UnicodeWidthStr::width(s)
 }

@@ -10,8 +10,11 @@
 //! - Max width: `min(60, pane_width - 4)`. Max height: ⅓ of the pane's
 //!   height (the hover-surface default threshold) — content taller
 //!   than that is the *caller's* problem (hover overflows to the drawer).
-//! - No border/padding options in v1 — one look, theme-scoped via
-//!   `ui.popup`.
+//! - Framed with a 1-cell border on all sides, theme-scoped via `ui.popup`
+//!   (or `ui.menu` for menus) — box-drawing glyphs when the `popup-border`
+//!   setting is on, a plain background margin when it's off. Rendering
+//!   (frame, scroll window, rows) is shared with `CompletionOverlay` via
+//!   [`super::menu_box`].
 //!
 //! All geometry (wrapping + flip + clamp) is resolved once, per frame, by
 //! the write side (`Editor::sync_popup_view`) — using the *specific* pane's
@@ -27,9 +30,10 @@ use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
 
 use hume_engine::providers::OverlayProvider;
-use hume_engine::render::fill_rect_bg;
 use hume_engine::theme::Theme;
 use hume_engine::types::Scope;
+
+use super::menu_box::draw_menu_box;
 
 /// Maximum popup width in terminal columns, before any pane-width clamp.
 pub(crate) const MAX_POPUP_WIDTH: u16 = 60;
@@ -57,11 +61,24 @@ pub(crate) struct PopupState {
     /// Pre-wrapped display lines (word-wrapped to the resolved max width for
     /// a plain popup; one line per item, unwrapped, for a menu).
     pub(crate) lines: Vec<String>,
-    /// Top-left screen cell to paint at (already flipped/clamped).
+    /// Top-left screen cell to paint at (already flipped/clamped) — the
+    /// outer frame corner, not the first content cell.
     pub(crate) x: u16,
     pub(crate) y: u16,
+    /// Outer footprint (including the 1-cell frame) the write side sized
+    /// `(x, y)` against. Each caller's row cap differs (hover: `max_height`
+    /// from `popup_anchor_and_bounds`; menus/LSP completion: `MAX_MENU_ROWS`
+    /// with a scroll window) — carrying the resolved size here, rather than
+    /// re-deriving it from `lines.len()` at render time, keeps the painted
+    /// box and the positioned box the same box.
+    pub(crate) outer_w: u16,
+    pub(crate) outer_h: u16,
     /// The highlighted row index, for menus. `None` for a plain popup.
     pub(crate) selected: Option<usize>,
+    /// Whether to draw box-drawing border glyphs around the popup (vs. a
+    /// plain background-filled 1-cell margin). Fed from the `popup-border`
+    /// setting.
+    pub(crate) border: bool,
 }
 
 /// Generic overlay that paints a `PopupState` snapshot. Used directly for
@@ -89,21 +106,15 @@ impl OverlayProvider for PopupOverlay {
             return;
         }
 
-        let width = state
-            .lines
-            .iter()
-            .map(|l| unicode_display_width(l))
-            .max()
-            .unwrap_or(0) as u16;
-        let height = state.lines.len() as u16;
+        let outer = Rect::new(state.x, state.y, state.outer_w, state.outer_h);
 
         // Defensive clip: the write side computed (x, y) against this same
         // pane's rect this same frame, so this should never trigger — but
         // painting outside the pane is worse than a dropped frame of content.
-        if state.x < pane_rect.x
-            || state.y < pane_rect.y
-            || state.x + width > pane_rect.x + pane_rect.width
-            || state.y + height > pane_rect.y + pane_rect.height
+        if outer.x < pane_rect.x
+            || outer.y < pane_rect.y
+            || outer.x + outer.width > pane_rect.x + pane_rect.width
+            || outer.y + outer.height > pane_rect.y + pane_rect.height
         {
             return;
         }
@@ -111,41 +122,31 @@ impl OverlayProvider for PopupOverlay {
         let style = theme.resolve_by_name(Scope(self.scope)).into();
         let selected_style = self
             .selected_scope
-            .map(|s| theme.resolve_by_name(Scope(s)).into());
-        fill_rect_bg(buf, Rect::new(state.x, state.y, width, height), style);
-        for (i, line) in state.lines.iter().enumerate() {
-            let row_style = if state.selected == Some(i) {
-                selected_style.unwrap_or(style)
-            } else {
-                style
-            };
-            if row_style != style {
-                fill_rect_bg(
-                    buf,
-                    Rect::new(state.x, state.y + i as u16, width, 1),
-                    row_style,
-                );
-            }
-            buf.set_string(state.x, state.y + i as u16, line, row_style);
-        }
+            .map(|s| theme.resolve_by_name(Scope(s)).into())
+            .unwrap_or(style);
+        draw_menu_box(
+            buf,
+            outer,
+            &state.lines,
+            state.selected,
+            state.border,
+            style,
+            selected_style,
+        );
     }
 }
 
-/// Resolve the fully-positioned `PopupState` for `lines` (already-wrapped
-/// display text) anchored near `anchor` (cursor cell, absolute screen
-/// coords) within `pane_rect`. Shared by every caller of this widget.
+/// Resolve the top-left corner for an already-sized `width` × `height` box
+/// (the outer footprint, including any frame) anchored near `anchor`
+/// (cursor cell, absolute screen coords) within `pane_rect`. Shared by every
+/// caller of this widget — callers pass their content size plus the 2-cell
+/// frame reserved for the border.
 pub(crate) fn resolve_popup_geometry(
-    lines: &[String],
+    width: u16,
+    height: u16,
     anchor: (u16, u16),
     pane_rect: Rect,
 ) -> (u16, u16) {
-    let width = lines
-        .iter()
-        .map(|l| unicode_display_width(l))
-        .max()
-        .unwrap_or(0) as u16;
-    let height = lines.len() as u16;
-
     let (anchor_x, anchor_y) = anchor;
     let space_below = (pane_rect.y + pane_rect.height).saturating_sub(anchor_y + 1);
     let space_above = anchor_y.saturating_sub(pane_rect.y);
@@ -306,9 +307,8 @@ mod tests {
 
     #[test]
     fn geometry_places_below_cursor_by_default() {
-        let lines = vec!["hi".to_string()];
         let pane = rect(0, 0, 40, 20);
-        let (x, y) = resolve_popup_geometry(&lines, (5, 5), pane);
+        let (x, y) = resolve_popup_geometry(2, 1, (5, 5), pane);
         assert_eq!((x, y), (5, 6), "one line below the cursor row");
     }
 
@@ -318,9 +318,8 @@ mod tests {
     /// condition, which would flip it above unnecessarily here.
     #[test]
     fn geometry_stays_below_when_content_fits_even_with_more_room_above() {
-        let lines: Vec<String> = (0..10).map(|i| format!("line{i}")).collect();
         let pane = rect(0, 0, 40, 100);
-        let (_, y) = resolve_popup_geometry(&lines, (5, 50), pane);
+        let (_, y) = resolve_popup_geometry(5, 10, (5, 50), pane);
         assert_eq!(
             y, 51,
             "content (height 10) fits in the 49 rows below — must not flip \
@@ -330,23 +329,20 @@ mod tests {
 
     #[test]
     fn geometry_flips_above_near_bottom_edge() {
-        let lines: Vec<String> = (0..5).map(|i| format!("line{i}")).collect();
         let pane = rect(0, 0, 40, 20);
         // Cursor near the bottom: only 2 rows below, 17 above — flip.
-        let (_, y) = resolve_popup_geometry(&lines, (5, 18), pane);
+        let (_, y) = resolve_popup_geometry(5, 5, (5, 18), pane);
         assert_eq!(y, 13, "flips to render entirely above the cursor row");
     }
 
     #[test]
     fn geometry_clamps_horizontally_at_right_edge() {
-        let line = "a very long popup line here";
-        let width = unicode_display_width(line) as u16;
-        let lines = vec![line.to_string()];
+        let width = unicode_display_width("a very long popup line here") as u16;
         // Pane wide enough to hold the content, but the anchor sits close
         // enough to the right edge that placing the popup there unclamped
         // would overflow.
         let pane = rect(0, 0, 32, 20);
-        let (x, _) = resolve_popup_geometry(&lines, (15, 5), pane);
+        let (x, _) = resolve_popup_geometry(width, 1, (15, 5), pane);
         assert!(
             x + width <= pane.x + pane.width,
             "popup must not cross the pane's right edge, got x={x}, width={width}"
@@ -355,9 +351,8 @@ mod tests {
 
     #[test]
     fn geometry_never_escapes_pane_bounds_even_at_corner() {
-        let lines = vec!["hello".to_string()];
         let pane = rect(2, 2, 10, 10);
-        let (x, y) = resolve_popup_geometry(&lines, (2, 2), pane);
+        let (x, y) = resolve_popup_geometry(5, 1, (2, 2), pane);
         assert!(x >= pane.x && x + 5 <= pane.x + pane.width);
         assert!(y >= pane.y && y < pane.y + pane.height);
     }

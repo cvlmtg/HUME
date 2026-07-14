@@ -3,10 +3,10 @@ source: hume-editor/src/editor/tests/lsp_completion_menu.rs
 expression: snap
 ---
 <fg=#808080,bg=#3a3a3a>  </><fg=#c8c8d2,bg=#3a3a3a>1</>
-<fg=#808080,bg=#1a1a1a>~   </><fg=#ffffff,bg=#50508c>foo  fn</>
-<fg=#808080,bg=#1a1a1a>~   </><fg=#b4b4c8,bg=#282832>foobar</>
-<fg=#808080,bg=#1a1a1a>~</>
-<fg=#808080,bg=#1a1a1a>~</>
-<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#b4b4c8,bg=#282832>┌───────────┐</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#b4b4c8,bg=#282832>│</><fg=#ffffff,bg=#50508c>foo  fn    </><fg=#b4b4c8,bg=#282832>│</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#b4b4c8,bg=#282832>│foobar     │</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#b4b4c8,bg=#282832>│food  field│</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#b4b4c8,bg=#282832>└───────────┘</>
 <fg=#808080,bg=#1a1a1a>~</>
 <fg=#000000,bg=#ffffff> 1:1                              │ </><fg=#00cdcd,bg=#ffffff>INS</>

@@ -1504,8 +1504,13 @@ impl Editor {
             content_width,
         )?;
         let anchor = (col + gutter_w + pane_rect.x, row + pane_rect.y);
-        let max_width = crate::ui::popup::MAX_POPUP_WIDTH.min(content_width.saturating_sub(4));
-        let max_height = (pane_rect.height / 3).max(1);
+        // Reserve 2 cells on each axis for the popup's 1-cell frame, so
+        // content + border together fit the same envelope this budget used
+        // to give to content alone.
+        let max_width = crate::ui::popup::MAX_POPUP_WIDTH
+            .min(content_width.saturating_sub(4))
+            .saturating_sub(2);
+        let max_height = (pane_rect.height / 3).max(1).saturating_sub(2).max(1);
         Some((anchor, pane_rect, max_width, max_height))
     }
 
@@ -1534,12 +1539,16 @@ impl Editor {
             let (anchor, pane_rect, max_width, max_height) =
                 self.popup_anchor_and_bounds(ctx, self.focused_cursor_char())?;
             let lines = crate::ui::popup::wrap_text(&model.text, max_width, max_height);
-            let (x, y) = crate::ui::popup::resolve_popup_geometry(&lines, anchor, pane_rect);
+            let (outer_w, outer_h) = crate::ui::menu_box::outer_dims(&lines, max_height);
+            let (x, y) = crate::ui::popup::resolve_popup_geometry(outer_w, outer_h, anchor, pane_rect);
             Some(crate::ui::popup::PopupState {
                 lines,
                 x,
                 y,
+                outer_w,
+                outer_h,
                 selected: None,
+                border: self.state.settings.popup_border,
             })
         });
 
@@ -1564,15 +1573,12 @@ impl Editor {
         }
 
         let resolved = self.state.menu.as_ref().and_then(|model| {
-            let (anchor, pane_rect, _max_width, max_height) =
+            let (anchor, pane_rect, _max_width, _max_height) =
                 self.popup_anchor_and_bounds(ctx, self.focused_cursor_char())?;
-            let lines: Vec<String> = model
-                .items
-                .iter()
-                .take(max_height as usize)
-                .cloned()
-                .collect();
-            let (x, y) = crate::ui::popup::resolve_popup_geometry(&lines, anchor, pane_rect);
+            let lines: Vec<String> = model.items.clone();
+            let (outer_w, outer_h) =
+                crate::ui::menu_box::outer_dims(&lines, crate::ui::menu_box::MAX_MENU_ROWS);
+            let (x, y) = crate::ui::popup::resolve_popup_geometry(outer_w, outer_h, anchor, pane_rect);
             let selected = if lines.is_empty() {
                 None
             } else {
@@ -1582,7 +1588,10 @@ impl Editor {
                 lines,
                 x,
                 y,
+                outer_w,
+                outer_h,
                 selected,
+                border: self.state.settings.popup_border,
             })
         });
 
@@ -1611,15 +1620,16 @@ impl Editor {
         }
 
         let resolved = self.state.lsp_completion.as_ref().and_then(|session| {
-            let (anchor, pane_rect, _max_width, max_height) =
+            let (anchor, pane_rect, _max_width, _max_height) =
                 self.popup_anchor_and_bounds(ctx, session.anchor())?;
             let lines: Vec<String> = session
-                .top(8)
+                .top(usize::MAX)
                 .iter()
-                .take(max_height as usize)
                 .map(completion_row_label)
                 .collect();
-            let (x, y) = crate::ui::popup::resolve_popup_geometry(&lines, anchor, pane_rect);
+            let (outer_w, outer_h) =
+                crate::ui::menu_box::outer_dims(&lines, crate::ui::menu_box::MAX_MENU_ROWS);
+            let (x, y) = crate::ui::popup::resolve_popup_geometry(outer_w, outer_h, anchor, pane_rect);
             let selected = if lines.is_empty() {
                 None
             } else {
@@ -1634,7 +1644,10 @@ impl Editor {
                 lines,
                 x,
                 y,
+                outer_w,
+                outer_h,
                 selected,
+                border: self.state.settings.popup_border,
             })
         });
 

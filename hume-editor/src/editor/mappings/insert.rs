@@ -313,14 +313,14 @@ impl Editor {
         }
     }
 
-    /// Moves the completion menu's selection by one row, clamped to the
-    /// displayed window (`completion_top(8)` — no scrolling past it, same
-    /// as the selection menu).
+    /// Moves the completion menu's selection by one row. The popup scrolls
+    /// to keep the selection visible, so the bound is the full ranked
+    /// candidate list, not just the visible window.
     fn move_completion_selection(&mut self, forward: bool) {
         let Some(session) = self.state.lsp_completion.as_ref() else {
             return;
         };
-        let n = session.top(8).len();
+        let n = session.top(usize::MAX).len();
         if n == 0 {
             return;
         }
