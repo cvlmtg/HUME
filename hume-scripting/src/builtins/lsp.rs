@@ -269,8 +269,13 @@ pub(crate) fn lsp_server_for_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelR
 /// (`lsp-server-for-buffer` reports *attachment*, which can't make that
 /// distinction). Reports state as of the last completed drain — an op
 /// queued earlier in the same eval hasn't applied yet.
+///
+/// Unlike its buffer/pane-touching siblings, this is a pure registry read
+/// (no `EditorHost` state beyond the LSP registry itself), so it carries no
+/// `require_cmd_ctx!` gate — callable during init/plugin load too. That lets
+/// `core:lsp`'s own load-time scan (`registration.scm`) query it directly to
+/// skip already-registered languages.
 pub(crate) fn lsp_registered_for_language(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "lsp-registered-for-language?");
     let language = string_arg(language, "lsp-registered-for-language? language")?;
     Ok(SteelVal::BoolV(
         ctx.host.lsp_registered_for_language(&language),
@@ -1115,6 +1120,27 @@ mod tests {
         assert!(
             err.to_string().contains("not available during init"),
             "got: {err}"
+        );
+    }
+
+    /// Unlike the buffer/pane-touching LSP builtins above,
+    /// `lsp-registered-for-language?` is a pure registry read and must stay
+    /// callable during init — `core:lsp`'s load-time scan
+    /// (`registration.scm`) calls it directly to skip already-registered
+    /// languages, with no `with-handler` fallback to catch a gate error.
+    ///
+    /// Fail oracle: reinstate `require_cmd_ctx!` in
+    /// `lsp_registered_for_language` → this returns `Err` instead of `Ok`.
+    #[test]
+    fn lsp_registered_for_language_is_callable_during_init() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        ctx.is_init = true;
+        let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
+        assert_eq!(
+            result.unwrap(),
+            SteelVal::BoolV(false),
+            "NullHost reports nothing registered"
         );
     }
 }

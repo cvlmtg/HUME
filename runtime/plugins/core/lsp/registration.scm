@@ -110,20 +110,6 @@
 
 ;; ── Registration ──────────────────────────────────────────────────────────────
 
-;;; `lsp-registered-for-language?` is gated to error outside a command/hook
-;;; dispatch (`require_cmd_ctx!` in lsp.rs) — it can't be called from this
-;;; scan's own top-level plugin-load invocation. Treat that gate error as
-;;; "not registered": at load time nothing has had a chance to register
-;;; anything yet anyway (a user's own `register-lsp-server!` calls in
-;;; init.scm run *after* `load-plugin`, last-wins-overriding the scan — see
-;;; docs/LSP.md's "Multiple servers per language" row), so registering
-;;; unconditionally there matches prior behavior. Only a mid-session call
-;;; (`:lsp-rescan-servers`, or the rescan `:lsp-install` runs after a
-;;; successful/up-to-date install) runs with real dispatch context and gets
-;;; the real check.
-(define (lsp/language-registered? lang)
-  (with-handler (lambda (err) #f) (lsp-registered-for-language? lang)))
-
 ;;; Register `name` for every language it serves that isn't registered yet,
 ;;; with `cmd` as the server command. `args`/`settings` are shared across a
 ;;; multi-language server; only root markers vary per language (see
@@ -132,10 +118,12 @@
 ;;; the rescan `:lsp-install` runs after installing) leave a user's own
 ;;; manual `register-lsp-server!` override alone instead of
 ;;; last-wins-clobbering it with the catalog default — the scan only needs
-;;; to pick up languages nothing has claimed yet.
+;;; to pick up languages nothing has claimed yet. At load time the registry
+;;; is empty, so every language passes the filter and gets registered —
+;;; matching this being the scan's first pass over the catalog.
 (define (lsp/register-server-languages! name cmd)
   (let* ((fields   (hash-ref *lsp-servers* name))
-         (langs    (filter (lambda (lang-entry) (not (lsp/language-registered? (car lang-entry))))
+         (langs    (filter (lambda (lang-entry) (not (lsp-registered-for-language? (car lang-entry))))
                            (cdr (lsp/field fields 'languages))))
          (args     (cdr (lsp/field fields 'args)))
          (settings-entries (cdr (lsp/field fields 'settings)))
