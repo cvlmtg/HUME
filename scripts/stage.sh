@@ -11,7 +11,7 @@ layout="$2"
 root="$(git rev-parse --show-toplevel)"
 version="$(cargo metadata --format-version 1 --no-deps \
     --manifest-path "$root/hume-editor/Cargo.toml" \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["version"])')"
+  | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(p["version"] for p in d["packages"] if p["name"] == "hume-editor"))')"
 sha="$(git rev-parse --short HEAD)"
 name="hume-${version}-${sha}-${target}"
 stage="$root/dist/stage/$name"
