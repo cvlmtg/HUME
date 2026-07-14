@@ -2,8 +2,8 @@ use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::{Selection, SelectionSet};
 /// Test DSL for HUME editing operations.
 ///
-/// We use a compact, human-readable string format to express editor state
-/// (buffer content + selections) inline in test source code.
+/// A compact, human-readable string format for editor state (buffer content
+/// + selections) inline in test source.
 ///
 /// # Marker format
 ///
@@ -22,22 +22,11 @@ use hume_editing::selection::{Selection, SelectionSet};
 /// hel-[l]>o\n      — cursor on 'l' (anchor == head == 3, same as 1-char forward selection)
 /// ```
 ///
-/// ## Key properties
-///
-/// - The text between `[` and `]` is **exactly** the selected text (inclusive of both
-///   anchor and head characters).
-/// - `-` always marks the **anchor** end; `>` / `<` always marks the **head** (cursor) end.
-///   The arrow direction shows which way the selection faces.
-/// - A cursor (anchor == head) is just a 1-char forward selection: `-[x]>`.
-/// - Multiple selections in one string: `-[he]>llo -[wor]>ld\n`
-///
-/// ## Cursor model
-///
-/// The cursor is *inclusive* — it sits **on** a character, not between characters.
-/// `head` is the char offset of the cursor character.
-///
-/// For `-[hell]>o world\n`: anchor=0, head=3 (cursor is on the second 'l').
-/// For `<[hell]-o world\n`: head=0, anchor=3 (cursor is on 'h').
+/// The cursor is *inclusive* — it sits on the head character, not between
+/// characters. The text between `[` and `]` is exactly the selected text
+/// (anchor and head both included); `-` always marks anchor, `>`/`<` always
+/// marks head, and the arrow direction shows which way the selection faces.
+/// Multiple selections in one string: `-[he]>llo -[wor]>ld\n`
 use hume_editing::text::Text;
 
 mod mock_host;

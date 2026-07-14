@@ -227,28 +227,22 @@ impl Editor {
 
         // ── Extend resolution overview ────────────────────────────────────────
         //
-        // "Should this command extend?" is answered in three stages, because
-        // extend depends on *which command* was resolved, and the Ctrl path
-        // changes which key is looked up — so we can't separate extend
-        // resolution from trie walking.
+        // "Should this command extend?" is resolved in three stages, since it
+        // depends on which command a key resolves to, and the Ctrl path
+        // changes which key gets looked up — extend resolution and trie
+        // walking can't be separated.
         //
-        //  Stage 1 (extend-trie override, below):
-        //      In sticky extend mode, try the extend trie first. It maps keys
-        //      to *replacement* commands (e.g. `o → flip-selections` instead
-        //      of `o → open-below`), dispatched with extend = false. A miss
-        //      falls through to the normal trie.
-        //
-        //  Stage 2 (Ctrl normalisation, further below):
-        //      Ctrl+key may strip CONTROL and re-walk with the bare key
-        //      (kitty one-shot extend). Whether to extend depends on whether
-        //      the *resolved bare-key command* is extendable — we don't know
-        //      that until the trie walk completes, so is_extendable() runs
-        //      here, producing `ctrl_extend`.
-        //
-        //  Stage 3 (final merge, after the trie walk):
-        //      Merges the two extend sources: sticky mode (EditorMode::Extend)
-        //      and one-shot Ctrl (ctrl_extend). This is the earliest point
-        //      where both inputs are available.
+        // Stage 1 (below): in sticky extend mode, try the extend trie first —
+        // it maps keys to *replacement* commands (e.g. `o → flip-selections`),
+        // dispatched with extend = false. A miss falls through to the normal
+        // trie.
+        // Stage 2 (further below): Ctrl+key may strip CONTROL and re-walk with
+        // the bare key (kitty one-shot extend); whether to extend depends on
+        // the resolved bare-key command's extendability, computed here as
+        // `ctrl_extend`.
+        // Stage 3 (after the trie walk): merges sticky mode
+        // (EditorMode::Extend) and one-shot Ctrl (ctrl_extend) — the earliest
+        // point both are known.
 
         // ── Stage 1: Extend-trie override ────────────────────────────────────
         //
@@ -287,32 +281,23 @@ impl Editor {
 
         // ── Stage 2: Ctrl-key normalisation + one-shot extend ────────────────
         //
-        // `ctrl_extend` is computed here — alongside the trie walk — because
-        // it depends on which command the key resolves to, and the Ctrl path
-        // changes what key is walked. Separating extend resolution from the
-        // trie walk would require walking twice or caching the result.
-        //
         // Two categories of CONTROL keys:
-        //
         // 1. Explicit Ctrl bindings (Ctrl+c, Ctrl+r, Ctrl+,, Ctrl+x, Ctrl+X):
-        //    Have a dedicated trie entry. Used as-is regardless of kitty mode.
+        //    have a dedicated trie entry, used as-is regardless of kitty mode.
+        // 2. Implicit Ctrl+motion (Ctrl+h/j/k/l/w/b, …): no explicit binding.
+        //    With kitty enabled, one-shot extend: strip CONTROL, look up the
+        //    bare key, dispatch extend=true. Without kitty, no-op — legacy
+        //    terminals can't reliably distinguish Ctrl+letter from control
+        //    codes.
         //
-        // 2. Implicit Ctrl+motion (Ctrl+h/j/k/l/w/b and similar motion keys):
-        //    No explicit trie binding. With kitty keyboard protocol enabled,
-        //    these become one-shot extend: strip CONTROL, look up the bare key,
-        //    and dispatch with extend=true (if the command has an extend variant).
-        //    Without kitty, these are a no-op — legacy terminals can't
-        //    distinguish Ctrl+letter from control codes reliably, so silently
-        //    running the bare motion would be surprising.
-        //
-        // Detection: try the key as-is in the trie first. If NoMatch and the key
-        // had CONTROL, strip CONTROL and retry only if kitty is enabled.
+        // Detection: try the key as-is first; on NoMatch with CONTROL set,
+        // strip it and retry only if kitty is enabled.
         //
         // REPORT_ALTERNATE_KEYS (enabled at init) makes the terminal send the
-        // shifted character directly — crossterm replaces the base keycode with
-        // the alternate and strips SHIFT. So Ctrl+} arrives as Char('}') with
-        // just CONTROL, and stripping CONTROL gives us the correct bare key.
-        // This is layout-independent: the terminal knows the real keyboard layout.
+        // shifted character directly — crossterm swaps in the alternate
+        // keycode and strips SHIFT, so Ctrl+} arrives as Char('}') with just
+        // CONTROL, and stripping CONTROL gives the correct bare key,
+        // independent of layout.
 
         // Trie walk + Ctrl normalisation in one pass.
         //

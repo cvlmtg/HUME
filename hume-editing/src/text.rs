@@ -338,28 +338,10 @@ impl CharCursor<'_> {
     }
 }
 
-// `From<&str>` is the right trait for infallible construction from a string
-// slice — as opposed to `FromStr`, which is reserved for *fallible* parsing
-// (it returns `Result`). Because our construction always succeeds (worst case
-// we append a '\n'), `From` is the correct choice.
-//
-// Implementing `From<&str>` automatically gives us:
-//   - `Text::from("text")` — explicit conversion
-//   - `"text".into()` where the target type is known to be `Text`
-//   - Blanket `impl Into<Text> for &str` (Rust derives this from From for free)
-//
-// Why not an inherent `from_str` method?
-//   An inherent `fn from_str(text: &str) -> Self` shadows the `FromStr` trait
-//   method of the same name without actually implementing the trait, making it
-//   look like a parse operation that *should* be fallible. The `From` trait
-//   signals "this is an infallible type conversion", which is exactly what we
-//   want here.
-//
-// Deref coercion note: `From` trait resolution does NOT trigger Rust's
-// automatic deref coercions — `Text::from(&my_string)` won't compile
-// because `&String ≠ &str` from the type-checker's perspective. Call sites
+// `From<&str>`, not `FromStr`, since construction here always succeeds
+// (worst case we append a '\n') — `FromStr` is reserved for fallible parsing.
+// Note `Text::from(&my_string)` won't compile (`&String != &str`); call sites
 // with a `String` must be explicit: `Text::from(my_string.as_str())`.
-// This is a common Rust surprise; the explicit call is also clearer to read.
 impl From<&str> for Text {
     fn from(text: &str) -> Self {
         let (normalized, line_ending) = normalize_crlf(text);

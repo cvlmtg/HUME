@@ -87,7 +87,7 @@ mod tests;
 
 /// Generate a named motion command.
 ///
-/// Two arms handle the two motion shapes that exist in this codebase:
+/// Two arms handle the two motion shapes in this codebase:
 ///
 /// **Direct** — the motion function takes only `(&Text, head)`:
 /// ```text
@@ -95,23 +95,19 @@ mod tests;
 /// ```
 ///
 /// **Curried** — the motion function needs an extra argument (a boundary
-/// predicate or a target-column hint). The macro generates the closure
+/// predicate or a target-column hint); the macro generates the closure
 /// `|b, h| inner(b, h, arg)`:
 /// ```text
 /// motion_cmd!(/// doc, cmd_move_down, move_down_inner(None));
 /// ```
 ///
-/// The curried arm is listed first so that `ident(expr)` syntax is tried
-/// before the bare-`expr` arm — without this ordering, `inner(arg)` would
-/// match the direct arm as an expression and generate a call-site type error.
+/// The curried arm is listed first so `ident(expr)` is tried before the
+/// bare-`expr` arm — otherwise `inner(arg)` would match the direct arm as an
+/// expression and generate a call-site type error.
 ///
-/// `$(#[$attr:meta])*` forwards doc comments (and any other attributes) from
-/// the invocation into the generated function. In Rust, `/// text` is
-/// syntactic sugar for `#[doc = "text"]`, so it is captured by `:meta`.
-///
-/// `#[allow(non_snake_case)]` is emitted unconditionally. It is a no-op for
-/// snake_case names and suppresses the expected warning for WORD variants
-/// (`cmd_next_WORD_start` etc.) without needing a separate macro arm.
+/// `#[allow(non_snake_case)]` is emitted unconditionally to suppress the
+/// expected warning for WORD variants (`cmd_next_WORD_start` etc.) without a
+/// separate macro arm.
 macro_rules! motion_cmd {
     // Curried arm: motion needs an extra argument — generates a closure.
     ($(#[$attr:meta])* $name:ident, $inner:ident($arg:expr)) => {

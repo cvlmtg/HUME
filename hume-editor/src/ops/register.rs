@@ -8,8 +8,8 @@ use hume_editing::text::Text;
 // ── Register name constants ────────────────────────────────────────────────────
 //
 // HUME uses mnemonic single-char register names rather than the cryptic Vim/
-// Helix convention (`"`, `+`, `_`). The key insight: 10 named registers (0-9)
-// are enough for real workflows, freeing letters for intuitive special names.
+// Helix convention (`"`, `+`, `_`) — 10 named registers (0-9) cover real
+// workflows, freeing letters for intuitive special names.
 //
 // User-facing register names:
 //   '0'–'9'  Named storage — text or macros (last write wins). Symmetric:
@@ -23,13 +23,13 @@ use hume_editing::text::Text;
 //   'b'      Black hole — writes discarded, reads return None.
 //   's'      Search register — last search pattern.
 //
-// Design intent: '0'–'9' are the deterministic, durable storage namespace —
-// scripted/macro/surgical use (write once, read back verbatim regardless of
-// intervening edits). 'k' + `[`/`]` address the kill ring, whose head shifts
-// with every d/c/y — interactive reach-back only, not durable storage.
+// '0'–'9' are the deterministic, durable storage namespace (write once, read
+// back verbatim regardless of intervening edits); 'k' + `[`/`]` address the
+// kill ring, whose head shifts with every d/c/y — interactive reach-back
+// only, not durable storage.
 //
-/// The kill-ring register (`k`) — paste reads the ring head; yank/delete/change push onto
-/// the ring without touching the clipboard. Older ring entries are reachable via `[`/`]`.
+/// The kill-ring register (`k`) — see the module doc above for how it
+/// differs from the durable `0`–`9` registers.
 pub(crate) const KILL_RING_REGISTER: char = 'k';
 
 /// The black-hole register (`b`) — writes are silently discarded, reads return `None`.

@@ -66,24 +66,20 @@ pub fn run_keys(
 ///
 /// Scripting initialisation (Steel VM boot + `init.scm`, ~150-200 ms) runs
 /// *before* the terminal enters raw mode / the alternate screen, so the
-/// user's shell stays visible during that window instead of an unthemed
-/// editor frame — the first frame the alt-screen ever shows is fully themed
-/// and (at most one poll later) syntax-highlighted. The kitty protocol is
-/// still probed first (on the normal screen, via `probe_kitty`) and applied
-/// via `set_kitty_support` before `init_scripting`, so the kitty-only default
-/// keybinds install before any user `bind-key!` call in `init.scm` can
-/// override them.
+/// user's shell stays visible during that window — the first alt-screen
+/// frame shown is fully themed and (at most one poll later)
+/// syntax-highlighted. The kitty protocol is probed first (on the normal
+/// screen) and applied via `set_kitty_support` before `init_scripting`, so
+/// kitty-only default keybinds install before any user `bind-key!` in
+/// `init.scm` can override them.
 ///
-/// One accepted side effect: keys typed into the terminal during the
-/// pre-alt-screen window echo to the shell (normal line discipline) and are
-/// not seen by the editor; any left in the input buffer are read once raw
-/// mode / the alt-screen are entered.
+/// Accepted side effect: keys typed during the pre-alt-screen window echo
+/// to the shell and aren't seen by the editor; any left in the input buffer
+/// are read once raw mode / the alt-screen are entered.
 ///
-/// The `TerminalGuard` ensures restore runs on every exit path: clean
-/// return, `?`-propagated error, and panic unwinding — including a panic
-/// during `init_scripting`, before the terminal was ever touched (`restore`
-/// is a harmless no-op on a terminal that was never put into raw mode / the
-/// alternate screen).
+/// `TerminalGuard` ensures restore runs on every exit path — clean return,
+/// `?`-propagated error, or panic — including a panic before the terminal
+/// was ever touched (`restore` is a harmless no-op then).
 pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     if let Err(e) = hume_platform::install_signal_handlers() {
         // Non-fatal: SIGTERM/SIGHUP will leak terminal state, but the editor

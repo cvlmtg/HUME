@@ -32,28 +32,21 @@ pub enum OptionValue {
 /// The editor interface exposed to scripting builtins during a Steel eval.
 ///
 /// Implemented by `EditorHostImpl<'a>` in the editor crate (or `MockHost` in
-/// tests).  `SteelCtx` holds `host: &'a mut dyn EditorHost`; builtins call
-/// these methods rather than borrowing individual editor-domain fields directly.
+/// tests). `SteelCtx` holds `host: &'a mut dyn EditorHost`; builtins call
+/// these methods rather than borrowing editor-domain fields directly.
 ///
-/// All methods take/return only `'static` types (owned `String`/`PathBuf`/`Vec`,
-/// `Copy` ids, scripting-owned enums) so that `SteelCtx<'static>` — the type
-/// projection required by Steel's `with_mut_reference` — is valid.
+/// All methods take/return only `'static` types (owned `String`/`PathBuf`/
+/// `Vec`, `Copy` ids, scripting-owned enums), since `SteelCtx<'static>` is the
+/// type projection Steel's `with_mut_reference` requires.
 ///
-/// # Init vs command mode
+/// Buffer/pane methods (`open_buffer`, `close_buffer`, `switch_to_buffer`,
+/// reads/enumeration) are command-mode only, guarded per-builtin by
+/// `require_cmd_ctx!`; init-only methods (`set_global_option`,
+/// `configure_statusline`, `bind_*`/`unbind_key`) use the reverse guard.
 ///
-/// Methods that operate on buffers/panes (`open_buffer`, `close_buffer`,
-/// `switch_to_buffer`, buffer reads/enumeration) are only reachable in command
-/// mode: the `require_cmd_ctx!` guard in each builtin prevents them from being
-/// called during init (`is_init = true`).  The init-only methods
-/// (`set_global_option`, `configure_statusline`, `bind_*`/`unbind_key`) are
-/// protected by the reverse guard.
-///
-/// # Focus snapshot
-///
-/// The focused buffer/pane ids are passed as explicit constructor arguments to
-/// `call_steel_cmd` and `fire_hook` rather than being queried via this trait.
-/// This keeps the `SteelCtx` snapshot stable: a builtin reading `ctx.focused_*`
-/// always sees the pre-command snapshot, not a live value that may change
+/// Focused buffer/pane ids are passed as explicit constructor args to
+/// `call_steel_cmd`/`fire_hook` rather than queried through this trait, so a
+/// builtin always sees the pre-command snapshot, not a value that can change
 /// mid-eval (e.g. after `switch-to-buffer!`).
 pub trait EditorHost {
     // ── Enumeration ─────────────────────────────────────────────────────────

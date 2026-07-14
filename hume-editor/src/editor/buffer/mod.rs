@@ -265,23 +265,21 @@ impl Buffer {
     ///
     /// This is the history-preserving reload path used by `:e!`. Unlike
     /// [`set_view_content`](Self::set_view_content) (which resets history) or
-    /// the full `Buffer` swap performed by `lifecycle::replace_buffer_in_place`
-    /// (which discards history), this treats the reload as an ordinary edit:
-    /// `u` after `:e!` shows the pre-reload buffer with its full prior undo
-    /// tree intact beneath, and `Ctrl-r` re-applies the reload.
+    /// the full `Buffer` swap in `lifecycle::replace_buffer_in_place` (which
+    /// discards history), this treats the reload as an ordinary edit: `u`
+    /// after `:e!` shows the pre-reload buffer with its full undo tree intact
+    /// beneath, and `Ctrl-r` re-applies the reload.
     ///
-    /// `pre_sels` is the cursor state before the reload (stored on the inverse
-    /// transaction — undo restores it); `post_sels` is the cursor state after
-    /// the reload (stored on the forward transaction — redo restores it). Both
-    /// are caller-computed; `post_sels` is typically the grapheme-snapped
+    /// `pre_sels` (stored on the inverse transaction, restored by undo) and
+    /// `post_sels` (stored on the forward transaction, restored by redo) are
+    /// both caller-computed — `post_sels` is typically the grapheme-snapped,
     /// clamped cursor the reload UI wants visible.
     ///
-    /// The `ChangeSet` pair is line-diff-derived
-    /// ([`changesets_from_line_diff`]) so the inverse carries only the
-    /// changed lines, not a full-buffer delete-all + insert-all. After
-    /// recording, `saved_revision` is bumped to the new revision so the
-    /// freshly-reloaded buffer is `!is_dirty()` — matching the old
-    /// buffer-swap behaviour where the fresh-from-disk doc was clean.
+    /// The `ChangeSet` pair is line-diff-derived ([`changesets_from_line_diff`])
+    /// so the inverse carries only the changed lines, not a full-buffer
+    /// delete-all + insert-all. `saved_revision` is bumped after recording so
+    /// the reloaded buffer is `!is_dirty()`, matching the old buffer-swap
+    /// behaviour.
     pub(crate) fn reload_from_text(
         &mut self,
         new_text: Text,

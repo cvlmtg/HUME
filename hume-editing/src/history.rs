@@ -70,9 +70,9 @@ struct Revision {
 ///
 /// ## Branching
 ///
-/// When the user undoes to state A and then makes a new edit C, the old redo
-/// path (B) is preserved as a sibling of C. No edit is ever discarded. The
-/// tree grows monotonically — revisions are never deleted.
+/// Undoing to state A then making a new edit C preserves the old redo path
+/// (B) as a sibling of C — no edit is ever discarded; the tree grows
+/// monotonically, revisions are never deleted.
 ///
 /// ```text
 ///  root

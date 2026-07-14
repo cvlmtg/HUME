@@ -5,79 +5,54 @@
 //! to the real process stdout by default. Calling any of them while HUME's
 //! alt-screen TUI owns the terminal would corrupt the rendered frame.
 //!
-//! Root cause of why a plain top-level shadow misses plugin code: in
-//! steel-core, these ten names are exports of prelude modules
-//! (`#%private/steel/print`, `#%private/steel/control`, and the parameters
-//! module that defines `write`/`write-string`/`write-char`/`simple-display`/
-//! `simple-displayln`), and steel-core prepends its prelude source to *every*
-//! compiled unit — including each `(require "path.scm")` plugin file (a
-//! separate compilation unit from HUME's top level). A top-level
-//! `(define displayln …)` or `register_value("displayln", …)` only rebinds
-//! the name in the host's own unit; every plugin unit still imports the
-//! original straight from the prelude — true regardless of the exact form
-//! the top-level-only rebind takes (a reserved-primitive-slot registration,
-//! a direct bare-name registration, or anything else scoped to one unit).
+//! Why a plain top-level shadow misses plugin code: these ten names are
+//! prelude exports, and steel-core prepends its prelude source to *every*
+//! compiled unit, including each `(require "path.scm")` plugin file (a
+//! separate compilation unit from HUME's top level). A top-level rebind —
+//! `(define displayln …)` or `register_value`, in any form scoped to one
+//! unit — only shadows the name in that unit; every plugin unit still
+//! imports the original straight from the prelude.
 //!
-//! The fix: HUME appends its own gated redefinitions of all ten names to
-//! steel-core's prelude string itself, via the public
-//! `Engine::set_prelude_string` (see `builtins/mod.rs::register_all`). Since
-//! the prelude lands in every unit, the shims shadow the imports inside
-//! every plugin module too, not just the top level.
+//! Fix: HUME appends its own gated redefinitions of all ten names to
+//! steel-core's prelude string itself via `Engine::set_prelude_string` (see
+//! `builtins/mod.rs::register_all`). Landing in every unit's prelude means
+//! the shims shadow the imports inside every plugin module too.
 //!
-//! One steel-core wrinkle this ran into (verified empirically against
-//! 0.8.2): a single `compile_and_run_raw_program` call cannot both capture a
-//! name's current value (`(define %raw-displayln displayln)`) and later
-//! redefine that same name (`(define displayln …)`) — steel-core rejects it
-//! at compile time ("variable redefined within the top level definition" /
-//! "cannot reference an identifier before its definition"). `register_all`
-//! therefore runs BOOTSTRAP (which captures the originals) and
-//! `PRINT_GATE_SHIMS` (which redefines the ten names) as two *separate*
-//! sequential `compile_and_run_raw_program` calls — by the second call,
-//! `displayln` etc. are just ordinary already-bound globals, so redefining
-//! them is a plain rebind, not a self-referential one. A required module
-//! compiles the prelude (with `PRINT_GATE_SHIMS` appended) and the plugin's
-//! own body as one unit without hitting this restriction, since the shim
-//! only *overwrites* the mangled import slot — it never references the
-//! original by name within that same unit.
+//! Two steel-core 0.8.2 wrinkles, both verified empirically:
+//! - A single `compile_and_run_raw_program` call cannot both capture a
+//!   name's current value and redefine that same name in the same unit
+//!   (rejected at compile time). `register_all` therefore runs BOOTSTRAP
+//!   (captures the originals) and `PRINT_GATE_SHIMS` (redefines the ten
+//!   names) as two separate sequential calls — by the second, the names are
+//!   ordinary already-bound globals, so redefining them is a plain rebind.
+//! - A required module's compiled unit cannot contain a call site invoking a
+//!   locally-shadowed prelude name with 2+ positional args (e.g. an
+//!   explicit-port `(display obj port)`) when that name's shim declares a
+//!   *mixed* fixed-plus-rest parameter list — reproduced independent of
+//!   naming, even with `case-lambda`. `PRINT_GATE_SHIMS` therefore uses a
+//!   *rest-only* parameter list for every shim, which dodges it; the
+//!   implicit 0/1-arg form (the actual plugin use case) works everywhere.
+//!   Residual gap: a plugin calling one of these names with an **explicit
+//!   port argument from inside its own required-module body** still hits
+//!   the limitation (no workaround short of patching steel-core; no real
+//!   HUME code does this today) — the explicit-port form works everywhere
+//!   else (top-level command bodies, `with-output-to-string`, etc).
 //!
-//! A second steel-core wrinkle, also verified empirically: a required
-//! module's compiled unit cannot contain a call site invoking a locally-
-//! shadowed prelude name with 2+ positional args (e.g. an explicit-port
-//! `(display obj port)`) when that name's shim declares a *mixed*
-//! fixed-plus-rest parameter list (`(obj . port)`) — steel-core raises the
-//! same "cannot reference an identifier before its definition" error,
-//! reproduced independent of naming and even with `case-lambda` in place of
-//! a rest-arg lambda. `PRINT_GATE_SHIMS` therefore uses a *rest-only*
-//! parameter list for every shim (`. args`, destructuring `(car args)` /
-//! `(cdr args)` by hand) — this dodges the limitation, and the implicit
-//! 0/1-arg form (the actual PLUM/plugin use case) works correctly in both
-//! the top level and required modules. One narrow residual gap remains: a
-//! plugin that calls one of these ten names with an **explicit port
-//! argument from inside its own required-module body** still hits the
-//! compiler limitation (no known workaround short of patching steel-core;
-//! no real HUME code does this today). The explicit-port form works
-//! correctly everywhere else — top-level command bodies, `with-output-to-
-//! string`, `call-with-output-string`, etc.
-//!
-//! Explicit-port calls (`(display obj port)`, `(write-string s port)`, …) are
-//! gated too, not just forwarded — `port` can itself be `(current-output-port)`
-//! (or the real stdout port some other way, e.g. from steel-core's own error
-//! printer), and that write is exactly as unsafe as the implicit-port case.
+//! Explicit-port calls are gated too, not just forwarded — `port` can itself
+//! be `(current-output-port)` (or the real stdout port via steel-core's own
+//! error printer), which is exactly as unsafe as the implicit-port case.
 //! [`stdout_gate`]'s Scheme-side caller, `%port-safe?`, checks the *supplied*
-//! port's identity against the captured real stdout port rather than always
-//! consulting `(current-output-port)` — a custom port (a string port, a pipe)
-//! is never the real stdout port and so always passes through ungated,
-//! regardless of gate state. `write-string`/`write-char` need this even
-//! though steel-core's own natives ignore the `(current-output-port)`
-//! parameter in their 1-arg form and default straight to real stdout — the
-//! shim explicitly threads `(current-output-port)` through so redirecting it
-//! (`with-output-to-string`) works, which also means the implicit 1-arg form
-//! is exactly as gate-relevant as `display`'s.
+//! port's identity against the captured real stdout port, so a custom port
+//! (string port, pipe) always passes through ungated. `write-string`/
+//! `write-char` need the gate too even though steel-core's natives ignore
+//! `(current-output-port)` in their 1-arg form and default straight to real
+//! stdout — the shim explicitly threads it through so redirection
+//! (`with-output-to-string`) works.
 //!
 //! This module provides only the gate check itself — [`stdout_gate`],
 //! registered as `%stdout-gate!` — called by each Scheme shim before it
-//! forwards to the captured original. See the `PRINT_GATE_SHIMS` Scheme
-//! constant in `builtins/mod.rs` for the shim definitions.
+//! forwards to the captured original. See `PRINT_GATE_SHIMS` in
+//! `builtins/mod.rs` for the shim definitions.
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;

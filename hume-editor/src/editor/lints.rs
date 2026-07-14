@@ -1,48 +1,40 @@
 //! Compile-time lints enforced as `cargo test` unit tests.
 //!
 //! Each lint scans a curated list of source files for patterns that violate an
-//! architectural rule.  Tests fail with a human-readable violation list so the
+//! architectural rule. Tests fail with a human-readable violation list so the
 //! offending line is easy to locate and fix.
 //!
 //! # Grapheme-cluster discipline
 //!
 //! All position advances in motion and selection code must go through
 //! `next_grapheme_boundary` / `prev_grapheme_boundary` — never raw
-//! `pos += 1` / `pos -= 1`.  Stepping by 1 skips over combining codepoints
-//! (e.g. `é` = U+0065 + U+0301) instead of advancing by a full grapheme
-//! cluster.
+//! `pos += 1` / `pos -= 1`, which skip over combining codepoints (e.g. `é` =
+//! U+0065 + U+0301) instead of advancing a full grapheme cluster.
 //!
 //! `no_raw_char_stepping_in_motion_code` recursively scans `src/ops/`,
-//! `hume-editing/src/lines.rs` + `hume-editing/src/word.rs`
-//! for the forbidden patterns.
+//! `hume-editing/src/lines.rs` + `hume-editing/src/word.rs` for the
+//! forbidden patterns.
 //!
-//! **Opt-out**: annotate a line with `// grapheme-safe: <reason>` where
-//! `<reason>` explains why raw arithmetic is safe (e.g. ASCII-only delimiter
-//! scanning, grapheme-boundary-aligned exclusive-to-inclusive conversion).
+//! **Opt-out**: annotate a line with `// grapheme-safe: <reason>` (e.g.
+//! ASCII-only delimiter scanning, grapheme-boundary-aligned bound conversion).
 //!
 //! # Single native-dispatch funnel
 //!
-//! All native command variants (`Motion`, `Selection`, `Edit`, `EditorCmd`) must
-//! be executed **exclusively** through `commands::run_native_body`
-//! (`src/editor/commands/mod.rs`).  That function is the single place that
-//! destructures a native variant to call its `fun` pointer; the surrounding
-//! `run_dispatch_pipeline` performs all post-dispatch bookkeeping: paste-session
-//! commit, jump-list update, dot-repeat recording, and `last_command` stamping.
+//! All native command variants (`Motion`, `Selection`, `Edit`, `EditorCmd`)
+//! must execute exclusively through `commands::run_native_body`
+//! (`src/editor/commands/mod.rs`) — the one place that destructures a native
+//! variant to call its `fun` pointer, with `run_dispatch_pipeline` doing all
+//! post-dispatch bookkeeping (paste-session commit, jump-list update,
+//! dot-repeat recording, `last_command` stamping) around it.
 //!
-//! The original regression: a second dispatch path copied only the bare `match`
-//! arms and none of the bookkeeping.  Commands ran correctly but silently dropped
-//! the whole side-effect cluster.
+//! `single_native_dispatch_funnel` scans the editor crate for any line
+//! binding a native `MappableCommand`'s `fun` field for execution outside
+//! `commands/mod.rs`.
 //!
-//! `single_native_dispatch_funnel` scans the editor crate for any line that
-//! binds the `fun` field of a native `MappableCommand` variant for execution.
-//! Only `src/editor/commands/mod.rs` is allowed to do that.
-//!
-//! **Opt-out**: annotate the violation line (or the line immediately above it)
-//! with `// single-funnel-exempt: <reason>`.  Use only when a deliberate second
-//! dispatch path is introduced with its own equivalent bookkeeping (which
-//! should be exceedingly rare).  The preceding-line form is the natural one:
-//! `cargo fmt` hoists trailing comments onto their own line, and a leading
-//! comment reads as "why the next line is exempt".
+//! **Opt-out**: annotate the violation line (or the line above it, so
+//! `cargo fmt` doesn't hoist a trailing comment) with
+//! `// single-funnel-exempt: <reason>`. Use only for a deliberate second
+//! dispatch path with its own equivalent bookkeeping — rare.
 
 #[cfg(test)]
 mod tests {

@@ -110,143 +110,102 @@ pub(crate) fn string_arg(val: SteelVal, ctx_name: &str) -> Result<String, SteelE
 /// Scheme bootstrap evaluated once during Steel engine init.
 ///
 /// Defines `load-plugin`, `declare-plugin` (plugin manifest), and the inline
-/// activation machinery (`%activate-plugin-inline`, `%dispatch-command`) in
-/// terms of the Rust builtins registered below and Steel's `eval-string`
-/// (imported from `steel/meta`).
+/// activation machinery (`%activate-plugin-inline`, `%dispatch-command`) atop
+/// the Rust builtins below and Steel's `eval-string` (from `steel/meta`).
 ///
-/// Inline activation: `%activate-plugin-inline` drives the mid-eval plugin load.
-/// `%begin-lazy-activation` (Rust) transitions the plugin to `Loading` and returns
-/// the `(require "<abs>")` string.  `eval-string` runs that require inside the live
-/// VM (same module pipeline as the engine API, but VM-aware — no `&mut Engine`
-/// needed).  `%finish-lazy-activation` (Rust) finalises the state.  `with-handler`
-/// from the stdlib guarantees the `Failed` transition on any body exception.
+/// Inline activation: `%begin-lazy-activation` (Rust) moves the plugin to
+/// `Loading` and returns its `(require "<abs>")` string; `eval-string` runs
+/// that inside the live VM (same module pipeline as the engine API, but
+/// VM-aware — no `&mut Engine` needed); `%finish-lazy-activation` (Rust)
+/// finalizes the state; `with-handler` guarantees the `Failed` transition on
+/// any body exception.
 ///
-/// `%dispatch-command` routes by command type:
-///   - activated plugin command → `command_table` lookup → apply closure inline;
-///   - lazy activation command  → activate inline, then retry;
-///   - native / unknown         → `%call-native!` (Rust, sync for native).
+/// `%dispatch-command` routes: activated plugin command → `command_table`
+/// lookup, apply inline; lazy-activation miss → activate inline, retry;
+/// native/unknown → `%call-native!`.
 //
-// declare-plugin — plugin manifest; activation entries forwarded to %declare-plugin!.
-// A zero-trigger call (no #:commands/#:events/#:languages) instead resolves and
-// evaluates <plugin-dir>/manifest.scm, where the plugin declares its own default
-// activation entries — see %begin-manifest-declare!. #:config is an opaque value
-// (typically a hash) the plugin body reads back via (plugin-config) whenever
-// activation eventually runs it; on the manifest path, the caller's #:config wins
-// over whatever the manifest itself passes.
-// Known limitation, investigated and left as-is: if a caller wraps this
-// zero-trigger form in their own with-handler, and the manifest.scm eval
-// raises, this inner handler's own `raise-error` re-raise hits steel-core
-// 0.8.2's "no open continuation" VM panic when caught by that outer handler
-// (same footgun as %activate-plugin-inline, see hume-scripting/src/lib.rs's
-// known_limitation_reraise_via_raise_error_inside_outer_tolerant_handler_corrupts_vm_stack).
-// Checked two alternatives empirically, neither is safe to adopt:
-//   - Re-raising via `error` instead of `raise-error` panics identically —
-//     the bug is about a handler lambda raising at all under this nesting,
-//     not about `raise-error` specifically.
-//   - Wrapping the eval in `dynamic-wind` instead avoids the panic, but its
-//     `after` cleanup thunk silently does not run when the body's error
-//     unwinds through an outer with-handler (see
-//     known_limitation_dynamic_wind_cleanup_does_not_run_across_an_outer_handlers_unwind
-//     in hume-scripting/src/lib.rs) — unacceptable here, since
-//     %finish-manifest-declare! must always clear `manifest_resolving` or
-//     every later zero-trigger declare-plugin call this session hard-errors.
-// The remaining option — catch, run cleanup, log, and return normally instead
-// of raising — would avoid the panic, but changes declare-plugin's tested
-// contract (manifest errors currently propagate as a Steel error to the
-// caller; four tests in builtins/plugins/tests.rs assert exactly this via
-// `.expect_err(...)`) for every caller, not just ones nesting with-handler.
-// Not worth trading a broadly-relied-on synchronous-error contract for
-// protection against a narrow, self-inflicted nesting pattern — leave as-is
-// pending an upstream steel-core fix.
+// declare-plugin — manifest; entries forwarded to %declare-plugin!. A
+// zero-trigger call (no #:commands/#:events/#:languages) instead evaluates
+// <plugin-dir>/manifest.scm for its own default entries (see
+// %begin-manifest-declare!); caller's #:config wins over the manifest's.
+// Known limitation, left as-is: a caller's own with-handler around a
+// zero-trigger call can hit steel-core 0.8.2's "no open continuation" VM
+// panic if manifest.scm raises (same footgun as %activate-plugin-inline;
+// see known_limitation_reraise_via_raise_error_inside_outer_tolerant_handler_corrupts_vm_stack
+// in lib.rs). `error` instead of `raise-error` panics identically;
+// `dynamic-wind` avoids the panic but its cleanup thunk silently skips
+// across an outer handler's unwind (see
+// known_limitation_dynamic_wind_cleanup_does_not_run_across_an_outer_handlers_unwind),
+// which would leave manifest_resolving stuck for every later call this
+// session. Swallowing the error instead would break declare-plugin's tested
+// propagate-to-caller contract (4 tests in builtins/plugins/tests.rs assert
+// it via .expect_err). Left pending an upstream steel-core fix.
 //
-// load-plugin — eager init-context activation; delegates to the shared
-// inline-activation helper after declaring/resolving the plugin.
-// Valid only during init.scm / :reload-config (enforced by %load-plugin!).
-// #:config is an opaque value (typically a hash) the plugin body reads back via
-// (plugin-config).
+// load-plugin — eager init-context activation; declares/resolves then
+// delegates to %activate-plugin-inline. Valid only during init.scm /
+// :reload-config (enforced by %load-plugin!). #:config as above.
 //
-// %activate-plugin-inline — shared activation helper used by both load-plugin
-// and %dispatch-command's lazy-miss path.
-// %begin-lazy-activation returns the (require "…") string for Declared plugins,
-// or #f for Loading/Loaded/Failed/absent (cycle guard + idempotency).
+// %activate-plugin-inline — shared by load-plugin and %dispatch-command's
+// lazy-miss path. %begin-lazy-activation returns the require string for
+// Declared plugins, #f otherwise (cycle guard + idempotency).
 //
 // define-command! — register a Steel lambda as a keymap command.
-//
-// Positional args: name (string), doc (string), proc (lambda).
-// Optional keyword args (after proc):
-//   #:repeatable #t    — pressing `.` replays this command at the new cursor.
-//                        Use only for self-contained buffer edits. Mutually
-//                        exclusive with #:inline-output.
+// Positional: name, doc, proc. Keyword (mutually exclusive):
+//   #:repeatable #t    — `.` replays this command at the new cursor;
+//                        self-contained buffer edits only.
 //   #:inline-output #t — bracket dispatch with an alt-screen exit so shell
-//                        output streams live to the terminal. Mutually exclusive
-//                        with #:repeatable.
+//                        output streams live.
 //
-// %dispatch-command — routes by command type:
-//   activated plugin command → apply closure inline (stays in Steel, synchronous);
-//   lazy activation miss      → activate inline, retry, then fall through to native;
-//   native / unknown          → %call-native! (Rust leaf, sync for native).
+// register-lsp-server! — queues a last-wins registration, applied (with any
+// already-open matching buffers attached) at the end of the current eval.
+// init-options/settings: Steel data, decoded to JSON at the boundary.
 //
-// register-lsp-server! — queues a last-wins LSP server registration, applied
-// (and any already-open matching buffers attached) at the end of the current
-// eval — init.scm top level, plugin activation, or a command/hook body.
-// init-options/settings are any Steel data (typically a hash), decoded to
-// JSON at the boundary.
+// lsp-request — generic LSP bridge. server: registered language name, or #f
+// for the focused buffer's attached server. callback: (lambda (err result)),
+// exactly one non-#f. #:allow-stale skips the staleness check.
 //
-// lsp-request — generic LSP bridge. server: a registered language name, or
-// #f for "the focused buffer's attached server". callback: (lambda (err
-// result) …) — exactly one of err/result is non-#f. #:allow-stale skips the
-// drop-if-buffer-moved-on staleness check.
+// debounce — trailing-edge: each call reschedules proc `ms` out, cancelling
+// any still-pending call from a prior invocation. Pure Scheme, no Rust
+// debouncer.
 //
-// debounce — trailing-edge: each call (re)schedules `proc` `ms` in the
-// future, cancelling whichever call from a previous invocation is still
-// pending. Pure Scheme over (after)/(cancel-timer!) — no Rust debouncer.
+// diagnostics-for-buffer — bounded, filtered pull. #:severity: floor symbol
+// ('error 'warning 'info 'hint) or #f for none. #:range: (list start end)
+// char-offset bound, or #f for the whole buffer.
 //
-// diagnostics-for-buffer — bounded, filtered pull over the diagnostics
-// store. #:severity: a floor symbol ('error 'warning 'info 'hint), or #f for
-// no floor (everything). #:range: a (list start end) char-offset bound, or
-// #f for the whole buffer.
-//
-// apply-text-edits! — one undoable transaction. edits: list of ((start-line
-// start-col) (end-line end-col) text), wire positions. #:expect-generation:
-// the text_gen the edits were computed against (the staleness tag) — #f
-// skips the check.
+// apply-text-edits! — one undoable transaction. edits: list of
+// ((start-line start-col) (end-line end-col) text), wire positions.
+// #:expect-generation: staleness tag to check against; #f skips it.
 //
 // apply-workspace-edit! — multi-file engine; reports the modified-buffer
-// count so the user can see the effect of e.g. a rename before saving.
+// count.
 //
-// prompt! — one-shot minibuffer prompt. on-confirm fires exactly once:
-// the confirmed text, or #f on Esc/cancel. No history, no completion — a
-// second prompt! while one is already open errors rather than stacking.
+// prompt! — one-shot minibuffer prompt; on-confirm fires once with the
+// confirmed text or #f on cancel. No history/completion — a second prompt!
+// while one is open errors rather than stacking.
 //
-// completion-begin! — starts a new completion session (replacing any open
-// one). items: list of decoded CompletionItem hashmaps. #:incomplete: the
-// server's isIncomplete flag, #f if the response was exhaustive.
+// completion-begin! — starts a session (replacing any open one). items:
+// decoded CompletionItem hashmaps. #:incomplete: server's isIncomplete flag.
 //
 // run-inline-output! — process-group-isolated spawn for #:inline-output
-// commands (see hume-platform::process::run_inline_output doc comment for
-// why this can't just be Steel's own spawn-process). Blocks; raises (naming
-// cmd and the exit code) on a nonzero exit or a signal-killed child (-1);
-// returns nothing meaningful on success — same contract as plum/run!, so
-// call sites (git-clone-rev, curl-fetch, npm-install!) read identically to
-// the old hardened builtins they replace, with no manual exit-code checks.
+// commands (see hume-platform::process::run_inline_output for why this
+// can't be Steel's own spawn-process). Blocks; raises on nonzero exit or a
+// signal-killed child. Same contract as plum/run!, so call sites need no
+// manual exit-code checks.
 //
-// show-popup! — cursor-anchored floating text panel. #:anchor is
-// reserved for future anchor kinds; 'cursor is the only value v1 accepts.
-// close-popup! needs no wrapper — no keyword defaults to supply.
+// show-popup! — cursor-anchored floating text panel. #:anchor is reserved;
+// 'cursor is the only v1 value.
 //
-// Variadic call! macro — desugars to %dispatch-command.
-// Defined here (not only in prelude.scm) so it is available in every Steel engine
-// context, including test harnesses that do not load the full prelude.
+// Variadic call! macro — desugars to %dispatch-command. Defined here (not
+// only prelude.scm) so test harnesses without the full prelude still have it.
 //
-// Gated print — capture steel-core's original displayln/display/print/
-// println/newline and the real stdout port ONCE, before PRINT_GATE_SHIMS (see
-// below) redefines the names. This runs against steel's *default* prelude
-// (set_prelude_string is only called after BOOTSTRAP evaluates — see
-// register_all), so these captures are guaranteed to be the originals.
+// Gated print — capture steel-core's original display*/print* fns and the
+// real stdout port ONCE, before PRINT_GATE_SHIMS redefines the names and
+// before set_prelude_string runs (register_all) — guaranteeing these are the
+// originals.
 //
 // %port-safe? — writing to `port` is TUI-safe unless it IS the real stdout
-// port, in which case defer to the gate. Shared by every shim's explicit-port
-// branch, not just the implicit (current-output-port) case %stdout-safe? covers.
+// port, in which case defer to the gate. Shared by every shim's
+// explicit-port branch.
 const BOOTSTRAP: &str = r#"
 (require-builtin steel/meta as hm.)
 
@@ -355,47 +314,26 @@ const BOOTSTRAP: &str = r#"
 (define (%stdout-safe?) (%port-safe? (current-output-port)))
 "#;
 
-// PRINT_GATE_SHIMS is appended to BOOTSTRAP itself (top level; nothing else
-// re-imports the print names into a top-level program) and, verbatim, to
-// steel-core's own prelude string via set_prelude_string — since the
-// prelude is prepended to every `(require "path.scm")` unit, this closes
-// the gap where required-module (i.e. every real plugin's) print calls used
-// to resolve straight to steel-core's raw, ungated originals instead of
-// HUME's gate. See io.rs's module doc for the root-cause writeup.
+// PRINT_GATE_SHIMS is appended both to BOOTSTRAP (top level) and, verbatim,
+// to steel-core's own prelude string via set_prelude_string — since the
+// prelude is prepended to every `(require "path.scm")` unit, this closes the
+// gap where required-module (every real plugin's) print calls would
+// otherwise resolve straight to steel-core's raw, ungated originals. See
+// io.rs's module doc for the full root-cause writeup and the rest-only
+// parameter-list requirement every shim below follows.
 //
 // Explicit-port forms (`(display obj port)`, …) consult `%port-safe?` on the
-// supplied port rather than forwarding unconditionally — a caller can pass
-// `(current-output-port)` itself (or steel-core's own error printer can), and
-// that IS the real stdout port whenever nothing has parameterized it away.
-// Only a genuinely custom port (`with-output-to-string`, a string port, …)
-// skips the gate; forwarding via `apply` still keeps the original
-// case-lambda's arity checking intact for those. One accepted side effect:
-// an explicit call to the real stdout port while the gate is closed now
-// silently suppresses (matching the implicit-port case) instead of raising
-// an arity error — the old "always forward" shape could not tell the two
-// apart.
-//
-// Every shim below uses a REST-ONLY parameter list (`. args`), never a fixed
-// leading parameter plus a rest parameter (`obj . port`). Verified
-// empirically against steel-core 0.8.2: a required-module unit that compiles
-// a call site invoking a locally-shadowed prelude name with 2+ positional
-// args, where that name's shim declares a MIXED fixed+rest parameter list,
-// hits a compiler limitation ("cannot reference an identifier before its
-// definition: ##argsN") — reproduced independent of naming, and even with
-// `case-lambda` in place of a rest-arg lambda. A rest-only parameter list
-// does not trigger it. The explicit-port (2-arg) call form still works
-// correctly through a rest-only shim, both at the top level and — for
-// the implicit 0/1-arg form specifically — inside required modules; see
-// io.rs's module doc for the one remaining narrow gap this leaves (explicit
-// port args from *inside* a plugin's own required-module body).
+// supplied port rather than forwarding unconditionally, since the caller (or
+// steel-core's own error printer) can pass `(current-output-port)` itself.
+// Accepted side effect: an explicit call to the real stdout port while the
+// gate is closed now silently suppresses instead of raising an arity error.
 //
 // `write-string`/`write-char` are shimmed even though their steel-core
-// originals are bound directly to the `#%raw-*` natives (no
-// `(current-output-port)` indirection in the implicit-arg case) — the
-// natives default to the real process stdout regardless, so the implicit
-// form is exactly as unsafe as `display`'s and needs the same gate.
-// `simple-display`/`simple-displayln` always resolve `(current-output-port)`
-// themselves and take no port argument, so they're gated like `displayln`.
+// originals bypass `(current-output-port)` in the implicit-arg case — they
+// default straight to real stdout regardless, so they're exactly as unsafe
+// as `display` and need the same gate. `simple-display`/`simple-displayln`
+// always resolve `(current-output-port)` themselves, so they're gated the
+// same way.
 const PRINT_GATE_SHIMS: &str = r#"
 (define (displayln . args) (when (%stdout-safe?) (apply %raw-displayln args)))
 (define (display . args)

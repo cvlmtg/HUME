@@ -1174,25 +1174,19 @@ impl Editor {
             }
 
             // Plugin signs (`set-signs!`): top N signs per line by priority,
-            // where N = the buffer's configured `signcolumn` columns. Signs
-            // beyond the N-slot budget are dropped here — the `SignColumn`
-            // merge downstream doesn't need to see them. Pre-truncating to N
-            // here (rather than passing everything through) is memory
-            // bounding — an unbounded per-line Vec would get cloned every
-            // frame by `SharedSignSource::signs_for_line` — and is safe
-            // (never discards a true winner) only because the sort below is
-            // priority-only, deferring same-priority ordering entirely to
-            // the stable sort's input order rather than inventing a second
-            // explicit tie-break rule here. That input order is the one set
-            // by `plugin_raw.sort_by` just above (source name, ascending) —
-            // so a same-priority tie between two plugin sources resolves by
-            // source name, decided once, not re-decided here. The *only*
-            // remaining explicit priority-tie decision in the sign pipeline
-            // is `SignColumn::render_row_cells`'s own sort in
-            // hume-engine/src/builtins/sign_column.rs (which arbitrates
-            // between this plugin map and the diagnostics map above, by
-            // source-registration order) — this sort must stay priority-only
-            // so it never overrides that.
+            // where N = the buffer's configured `signcolumn` columns.
+            // Pre-truncating to N here (rather than passing everything
+            // through downstream) bounds memory — an unbounded per-line Vec
+            // would get cloned every frame by
+            // `SharedSignSource::signs_for_line`. Safe only because the sort
+            // below is priority-only: same-priority ties resolve by the
+            // input order `plugin_raw.sort_by` set just above (source name,
+            // ascending), not a second tie-break rule invented here. The
+            // only other explicit priority-tie decision in the sign
+            // pipeline is `SignColumn::render_row_cells`'s own sort
+            // (hume-engine/src/builtins/sign_column.rs, arbitrates plugin vs
+            // diagnostics map by source-registration order) — this sort
+            // must stay priority-only so it never overrides that.
             let mut plugin_raw: Vec<(String, usize, String, String, i64)> = self
                 .state
                 .decorations
@@ -1743,17 +1737,16 @@ fn completion_row_label(item: &serde_json::Value) -> String {
 /// `start < end_char_excl` first.
 ///
 /// A single-line range yields one triple, byte-identical to converting
-/// `start`/`end_char_excl` directly with [`char_to_line_byte`]. A range that
-/// crosses one or more `\n`s yields one triple per touched line. The clip
-/// point is deliberately the `\n` char's own position, not
-/// `line_end_exclusive` — the latter is the *next* line's start, and
-/// converting it with `char_to_line_byte` would resolve to the wrong line
-/// (byte 0 of the line after), producing an inverted or nonsensical span.
+/// `start`/`end_char_excl` directly with [`char_to_line_byte`]. A multi-line
+/// range yields one triple per touched line. The clip point is deliberately
+/// the `\n` char's own position, not `line_end_exclusive` — the latter is
+/// the *next* line's start, which `char_to_line_byte` would resolve to the
+/// wrong line (byte 0 of the line after).
 ///
 /// Shared by [`push_match_highlight_lines`] (search/bracket matches, one
-/// scope for the whole provider) and [`push_priority_highlight_lines`]
-/// (diagnostics/extra highlights, one scope + priority per range) — the
-/// per-line splitting math is identical, only the tuple shape pushed differs.
+/// scope per provider) and [`push_priority_highlight_lines`]
+/// (diagnostics/extra highlights, one scope + priority per range) — same
+/// per-line splitting math, only the tuple shape differs.
 fn line_segments(
     buf: &hume_editing::text::Text,
     start: usize,

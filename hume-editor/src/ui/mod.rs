@@ -38,32 +38,28 @@ pub(crate) struct PaneRenderHandles {
     pub(crate) virtual_lines: VirtualLineMap,
 }
 
-/// Build a new pane viewing `buffer_id`: a sign column, a line-number
-/// gutter, the bracket-match / search-match / diagnostic / extra-highlight
-/// sources, the inlay-hint decoration, the virtual-line source, the
-/// completion popup overlay, the hover-popup overlay, the selection-menu
-/// overlay, the LSP completion-menu overlay, and `wrap_mode` seeded from the
-/// caller's current settings.
+/// Build a new pane viewing `buffer_id`: sign column, line-number gutter,
+/// bracket-match/search-match/diagnostic/extra-highlight sources, inlay-hint
+/// decoration, virtual-line source, completion/hover/selection-menu/LSP
+/// overlays, and `wrap_mode` seeded from the caller's current settings.
 ///
-/// Returns the pane together with its freshly-allocated [`PaneRenderHandles`]
-/// — every pane gets its own buffers (never shared with any other pane), so
-/// each pane's decorations are computed from that pane's own buffer and
-/// viewport. The caller stores them in `EditorState.panes.render` keyed by
-/// the new pane's id.
+/// Returns the pane with its freshly-allocated [`PaneRenderHandles`] — every
+/// pane gets its own buffers (never shared), so each pane's decorations come
+/// from that pane's own buffer and viewport. The caller stores them in
+/// `EditorState.panes.render` keyed by the new pane's id.
 ///
-/// The gutter column is added with its default style — `prepare_frame` syncs
+/// The gutter column is added with its default style; `prepare_frame` syncs
 /// the buffer-resolved `line-number-style` into every pane's gutter before
-/// each render (see `sync_line_number_style`), so the style seeded here never
-/// reaches a frame. Interning `bracket_scope`/`search_scope` here is safe even
-/// for panes built after the last bake (e.g. splits): `prepare_frame` calls
-/// `Theme::bake_if_stale` every frame, so any scope interned since the last
-/// bake is picked up before the next render.
+/// each render (see `sync_line_number_style`), so the seeded style never
+/// reaches a frame. Interning `bracket_scope`/`search_scope` here is safe
+/// even for panes built after the last bake (e.g. splits) — `prepare_frame`
+/// calls `Theme::bake_if_stale` every frame, picking up any scope interned
+/// since.
 ///
-/// Single source of truth for pane construction — every pane-creation site
-/// (`Editor::open`'s bootstrap pane, `commands::open_pane`) goes through this
-/// so all panes render identically and the provider list / `wrap_mode` seed
-/// can't drift apart. A pane built with `Pane::new` alone has an empty
-/// `ProviderSet` (no gutter column at all).
+/// Single source of truth for pane construction — every creation site
+/// (`Editor::open`'s bootstrap pane, `commands::open_pane`) goes through
+/// this, so panes render identically. `Pane::new` alone has an empty
+/// `ProviderSet` (no gutter column).
 pub(crate) fn build_pane(
     registry: &mut ScopeRegistry,
     completion_view: &Arc<RwLock<Option<completion_overlay::CompletionView>>>,

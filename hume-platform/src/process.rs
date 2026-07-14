@@ -354,18 +354,13 @@ pub fn unpack_gz(src: &Path, dest: &Path) -> io::Result<()> {
 /// already exist.
 ///
 /// `bin_path` (relative to `dest_dir`) is the server binary the caller
-/// expects the archive to contain. After extraction it is verified to exist
-/// — a defense against a seeded bin-path that no longer matches the
-/// archive's layout, mirroring `unpack_gz`'s guarantee that the produced
-/// path is exactly the caller's `dest`. On Unix, every regular file in the
-/// extracted tree (not just `bin_path`) is then chmod'd `0o755`: unlike
-/// `.gz` (always a bare executable), zip entries carry the archive's own
-/// stored permissions, CI-built release zips routinely strip the exec bit,
-/// and a server layout with a wrapper script or sibling helper binaries
-/// needs all of them executable, not only the seeded entry point. Every
-/// check and chmod goes through `symlink_metadata` — a symlink (wherever it
-/// points) is never followed, whether as `bin_path` itself or as an
-/// extracted-tree entry.
+/// expects; verified to exist after extraction, mirroring `unpack_gz`'s
+/// guarantee. On Unix, every regular file in the extracted tree (not just
+/// `bin_path`) is chmod'd `0o755` — unlike `.gz`, zip entries carry the
+/// archive's own stored permissions and CI-built release zips routinely
+/// strip the exec bit, so a layout with a wrapper script or sibling helpers
+/// needs all of them executable. Every check/chmod goes through
+/// `symlink_metadata` — a symlink is never followed.
 ///
 /// Zip-slip and symlink-entry protection is delegated to the system tool
 /// (modern Info-ZIP strips `../` entries; bsdtar refuses them by default) —

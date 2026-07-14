@@ -330,26 +330,20 @@ pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResu
 /// `(%load-plugin! "name" config)` — Rust primitive backing the Scheme-side
 /// `load-plugin` wrapper (eager).
 ///
-/// Top-level only: valid only at the top level of `init.scm`.  A plugin can
-/// never load another plugin — see `ensure_top_level`.
+/// Top-level only: a plugin can never load another plugin — see
+/// `ensure_top_level`.
 ///
-/// Stores `config` (the `#:config` value) unconditionally, overriding any prior
-/// value — repeat calls are expected to replace what the body sees on next load,
-/// unlike `declare-plugin`'s first-wins.  Read back by the body via `(plugin-config)`.
-/// This also intentionally supersedes a config recorded by an earlier
-/// `declare-plugin` for the same id: a bare `(load-plugin "x")` with no
-/// `#:config` after `(declare-plugin "x" #:config h)` runs the body with the
-/// empty default, not `h` — a plugin configured by a stale or forgotten
-/// earlier declare would be more surprising than one that just follows the
-/// most recent call.
+/// Stores `config` unconditionally, overriding any prior value (unlike
+/// `declare-plugin`'s first-wins) — a bare `(load-plugin "x")` after
+/// `(declare-plugin "x" #:config h)` runs the body with the empty default,
+/// not `h`, since the most recent call should always win. Read back by the
+/// body via `(plugin-config)`.
 ///
-/// If the plugin is not yet declared, resolves its path and registers it now:
-/// absent on disk → silent skip + record in `declared_plugins` for PLUM to
-/// install on the next `:plum-install`.
-///
-/// If already declared (lazy or otherwise), queues it for activation.
-/// If already `Loaded` or `Failed`, the `activate_plugin` idempotency guard
-/// handles it as a no-op.
+/// If not yet declared, resolves its path and registers it now: absent on
+/// disk → silent skip + record in `declared_plugins` for PLUM to install on
+/// the next `:plum-install`. If already declared, queues it for activation;
+/// if already `Loaded`/`Failed`, `activate_plugin`'s idempotency guard
+/// no-ops it.
 pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) -> SteelResult {
     ensure_top_level(ctx, "load-plugin")?;
     let id = PluginId::parse(&name).map_err(steel_parse_err)?;
@@ -466,32 +460,26 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
     Ok(SteelVal::StringV(require_program.into()))
 }
 
-/// `(%finish-lazy-activation id-str success?)` — Rust primitive for inline activation.
+/// `(%finish-lazy-activation id-str success?)` — Rust primitive for inline
+/// activation. Called from `%activate-plugin-inline` after
+/// `(hm.eval-string …)` completes or fails. Pops `plugin_stack` and
+/// transitions the plugin to `Loaded`/`Failed`; `drop_activations_for` runs
+/// on both paths to clean up expired activation entries.
 ///
-/// Called from `%activate-plugin-inline` after `(hm.eval-string …)` completes
-/// (or fails).  Pops `plugin_stack` and transitions the plugin to `Loaded`
-/// (success) or `Failed` (failure).
-/// `drop_activations_for` runs on both paths so expired activation entries are cleaned up.
-///
-/// On failure, any commands that a partially-evaluated body already registered via
-/// `define-command!` are rolled back: removed from `command_table`, `cmd_owners`,
-/// and the editor's `CommandRegistry`.  This prevents a `Failed` plugin from
-/// leaving callable orphan commands behind.  Steel globals defined before the
-/// error remain in the VM's symbol table (no rollback possible there) but are
-/// unreachable through HUME's command dispatch.
-///
+/// On failure, rolls back commands a partially-evaluated body already
+/// registered via `define-command!` (removed from `command_table`,
+/// `cmd_owners`, the editor's `CommandRegistry`) so a `Failed` plugin leaves
+/// no callable orphan commands — Steel globals defined before the error stay
+/// in the VM's symbol table but are unreachable through HUME's dispatch.
 /// `ctx.pop_effect_marks(success)` does the same for every queued side effect
-/// (`register-lsp-server!`, `define-language!`, `set-buffer-language!`, LSP
-/// requests/notifies, grammar sweeps) queued via `mark_effects`/`pop_effect_marks` —
-/// a `Failed` plugin must not leave any of these to be silently applied by some
+/// (`register-lsp-server!`, `define-language!`, LSP requests, grammar
+/// sweeps) queued via `mark_effects`, so none survive to be applied by a
 /// later, unrelated drain.
 ///
-/// NOT rolled back: `register-hook!` records no owner and has no unregister path,
-/// and `bind-key!`/`bind-key-extend!` apply inline through the host with no undo.
-/// A `Failed` plugin's hook handler keeps firing, and its keybindings stay bound,
-/// even though the body that installed them never finished running. Pre-existing
-/// gap — full rollback of these would need per-plugin ownership tracking for hooks
-/// and keybindings, which doesn't exist yet.
+/// NOT rolled back: `register-hook!` (no owner, no unregister path) and
+/// `bind-key!`/`bind-key-extend!` (apply inline, no undo) — a `Failed`
+/// plugin's hooks keep firing and its keybindings stay bound. Pre-existing
+/// gap; would need per-plugin ownership tracking for hooks/keybindings.
 pub(crate) fn finish_lazy_activation(
     ctx: &mut SteelCtx,
     id_str: String,

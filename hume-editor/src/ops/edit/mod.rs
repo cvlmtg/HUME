@@ -474,30 +474,21 @@ fn try_trim_blank_line(
 /// selection.
 ///
 /// This is auto-indent on Enter: the indent of the line containing each
-/// selection's `start` is copied verbatim onto the new line. No smart indent
-/// (no extra level after `{`, `:`, etc.) — tree-sitter `indent.scm` is a
-/// separate roadmap milestone. The copied indent is the *full* leading
-/// whitespace of the source line, computed on the pre-edit buffer.
+/// selection's `start` is copied verbatim onto the new line (no smart indent
+/// — tree-sitter `indent.scm` is a separate roadmap milestone). Computed on
+/// the pre-edit buffer.
 ///
 /// Cursor placement matches `insert_char`'s "stay on the original char" rule:
-/// - **Collapsed cursor**: lands on the first char after the inserted indent on
-///   the new line — i.e. the original char at `start`, now shifted down.
-/// - **Non-collapsed selection**: the selection is deleted first, so there is
-///   no "original char at `start`" to land on; the cursor ends up on the
-///   structural `\n` that the newline insert leaves at the original position.
+/// collapsed cursor lands on the first char after the inserted indent (the
+/// original char at `start`, shifted down); non-collapsed selection has no
+/// original char to land on, so the cursor ends up on the structural `\n`
+/// left at the original position.
 ///
-/// **Vim autoindent parity**: if `trim_blank` is set and a collapsed cursor
-/// sits on a blank, auto-indented line (whitespace only, no content), that
-/// whitespace is vacated instead of retained — matching vim's "the indent is
-/// deleted again" behavior (`:help autoindent`) when leaving such a line via
-/// Enter. The indent is still copied onto the *new* line as usual either way.
-///
-/// `trim_blank` is `false` for the *first* Enter on a line that was already
-/// blank before this insert session touched it (nothing to vacate — that
-/// whitespace is pre-existing content, not auto-inserted indent) and `true`
-/// once the caller's own auto-indent has landed there. The caller
-/// (`handle_insert`'s `KeyCode::Enter` arm) threads `EditorState::
-/// autoindent_pending` through as this flag.
+/// `trim_blank`: if set and a collapsed cursor sits on a blank, auto-indented
+/// line, that whitespace is vacated instead of retained — matching vim's
+/// `:help autoindent` behavior on Enter. `false` for the first Enter on an
+/// already-blank line (nothing to vacate yet); `true` once auto-indent has
+/// landed there (threaded through from `EditorState::autoindent_pending`).
 pub(crate) fn insert_newline_indent(
     buf: Text,
     sels: SelectionSet,
@@ -870,27 +861,13 @@ pub(crate) fn delete_selection_content(
     })
 }
 
-/// Paste `values` after/onto each selection (normal-mode `p`).
+/// Paste `values` after/onto each selection (normal-mode `p`). See
+/// [`paste_impl`] for the cursor/non-collapsed × charwise/linewise matrix;
+/// the replaced selection is discarded and not written to any register.
 ///
-/// **Cursor selections (`is_collapsed()`):**
-/// - Charwise content (not ending `\n`): inserts just after the cursor character;
-///   the pasted text is selected.
-/// - Linewise content (ending `\n`): inserts as new line(s) *below* the cursor's
-///   line; the pasted line(s) are selected.
-///
-/// **Non-collapsed selections:**
-/// - Charwise content: deletes the selected region, inserts inline; pasted text is selected.
-/// - Linewise content: each selection replaced independently. The selected fragment
-///   is deleted; retained text on the same line before/after is pushed onto its own
-///   line. Multiple selections on the same line each get their own replacement, with
-///   the unselected gaps between them becoming their own lines.
-///
-/// The replaced selection is discarded and not written to any register.
-///
-/// **Multi-cursor:** `values.len() == sels.len()` → N-to-N (each selection gets
-/// its own slot); otherwise all values joined and applied at every selection.
-///
-/// An empty `values` slice is a no-op.
+/// **Multi-cursor:** `values.len() == sels.len()` → N-to-N (each selection
+/// gets its own slot); otherwise all values joined and applied at every
+/// selection. An empty `values` slice is a no-op.
 pub(crate) fn paste_after(
     buf: Text,
     sels: SelectionSet,
@@ -899,16 +876,10 @@ pub(crate) fn paste_after(
     paste_impl(buf, sels, values, false)
 }
 
-/// Paste `values` before/onto each selection (normal-mode `P`).
-///
-/// **Cursor selections (`is_collapsed()`):**
-/// - Charwise content: inserts just before the cursor character; pasted text is selected.
-/// - Linewise content: inserts as new line(s) *above* the cursor's line; pasted lines are selected.
-///
-/// **Non-collapsed selections:** identical semantics to [`paste_after`] — the
-/// before/after distinction only applies to cursor selections.
-///
-/// An empty `values` slice is a no-op.
+/// Paste `values` before/onto each selection (normal-mode `P`) — mirrors
+/// [`paste_after`]; the before/after distinction only applies to cursor
+/// selections (see [`paste_impl`]'s matrix). An empty `values` slice is a
+/// no-op.
 pub(crate) fn paste_before(
     buf: Text,
     sels: SelectionSet,

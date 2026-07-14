@@ -238,23 +238,18 @@ impl ChangeSet {
 
     /// Apply this changeset to `buf`, producing a new buffer.
     ///
-    /// Clones the buffer's rope and mutates the clone via `Rope::remove`
-    /// and `Rope::insert` — each O(log n). Retain operations are free (the
-    /// chars are already in the rope). Total cost: O(k log n) for k
-    /// non-retain operations, compared to the O(n) cost of flattening the
-    /// rope to a `String` and rebuilding.
+    /// Clones the buffer's rope and mutates the clone via `Rope::remove`/
+    /// `Rope::insert` (each O(log n)); retains are free. Total cost O(k log n)
+    /// for k non-retain operations, vs. O(n) for flattening to a `String`
+    /// and rebuilding.
     ///
-    /// The changeset's positions are in **old-document space**. A running
-    /// `delta` translates them to the mutated rope's current coordinates,
-    /// the same pattern used throughout HUME's multi-selection editing.
+    /// Positions are in **old-document space**; a running `delta` translates
+    /// them to the mutated rope's current coordinates, the pattern used
+    /// throughout HUME's multi-selection editing.
     ///
-    /// # For plugin / external code
-    ///
-    /// If you are assembling a `Transaction` from outside the editor's named
-    /// commands, use [`crate::transaction::Transaction::apply`] instead — it
-    /// also validates the bundled selection against the post-edit buffer,
-    /// returning a clear error rather than silently accepting out-of-bounds
-    /// cursors.
+    /// Assembling a `Transaction` from outside the editor's named commands?
+    /// Use [`crate::transaction::Transaction::apply`] instead — it also
+    /// validates the bundled selection against the post-edit buffer.
     ///
     /// # Errors
     ///
@@ -320,18 +315,14 @@ impl ChangeSet {
     ///
     /// `assoc` controls what happens when `pos` falls exactly at an insertion
     /// point: `Before` keeps the position before the inserted text, `After`
-    /// moves it past.
-    ///
-    /// Positions inside a deleted region collapse to the start of the deletion
-    /// in the new document (the only sensible choice — the character is gone).
+    /// moves it past. Positions inside a deleted region collapse to the
+    /// start of the deletion (the character is gone).
     ///
     /// One-shot convenience over [`PosMapCursor`] — batch callers mapping
-    /// several sorted positions through the same changeset (e.g.
-    /// `SelectionSet::translate_in_place`) should use `PosMapCursor` directly
-    /// instead, so the walk isn't restarted from op 0 for every position.
-    /// No production caller needs a single one-off mapping yet — this exists
-    /// as the independent, hand-derived-expected-value oracle that pins
-    /// `PosMapCursor`'s per-query semantics in tests.
+    /// several sorted positions (e.g. `SelectionSet::translate_in_place`)
+    /// should use `PosMapCursor` directly instead, so the walk isn't
+    /// restarted per position. Test-only: exists as the independent oracle
+    /// that pins `PosMapCursor`'s per-query semantics.
     ///
     /// # Panics
     /// Panics (debug) if `pos > self.len_before`.
@@ -377,27 +368,17 @@ impl ChangeSet {
     /// boundaries; a range fully inside a deletion collapses to an empty
     /// range at the deletion point (caller may then drop it).
     ///
-    /// Two `PosMapCursor` passes — one over starts, one over ends — rather
-    /// than one interleaved pass: starts and ends are each individually
-    /// sorted but interleaved with each other, so two straightforward
-    /// O(ops + n) passes are simpler than one pass over a merged, tagged
-    /// list, at the same asymptotic cost.
-    ///
-    /// Sorted-by-start does *not* imply sorted-by-end: nested ranges (one
-    /// range fully containing another — e.g. two LSP diagnostics on the
-    /// same span, an outer "note" wrapping an inner "warning") have a
-    /// start order where the ends run backwards. `PosMapCursor::map` only
-    /// walks forward, so the ends pass is driven by an index permutation
-    /// sorted by end value — not by the input order — so the cursor always
-    /// sees non-decreasing queries regardless of how starts and ends
-    /// interleave. Mapped ends are scattered back to their original slot
-    /// before the final fixup below.
-    ///
-    /// A degenerate zero-width input range sitting exactly on an insertion
-    /// boundary would otherwise invert (`Assoc::After` pushes its start past
-    /// the insertion while `Assoc::Before` holds its end back) — a final
-    /// O(n) fixup clamps `end` to `start` in that case, collapsing to an
-    /// empty range rather than producing `end < start`.
+    /// Two `PosMapCursor` passes (starts, then ends) rather than one
+    /// interleaved pass — starts and ends are each individually sorted but
+    /// interleaved with each other, so two O(ops + n) passes are simpler
+    /// than merging a tagged list, at the same cost. Nested ranges
+    /// (sorted-by-start doesn't imply sorted-by-end, e.g. two LSP
+    /// diagnostics on the same span) mean the ends pass walks an index
+    /// permutation sorted by end value rather than input order, so the
+    /// cursor always sees non-decreasing queries; mapped ends are scattered
+    /// back to their original slot before a final O(n) fixup clamps `end` to
+    /// `start` where a degenerate zero-width range at an insertion boundary
+    /// would otherwise invert.
     ///
     /// # Panics
     /// Panics (debug) if `ranges` is not sorted by `start`, or any input has

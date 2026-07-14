@@ -7,36 +7,29 @@
 //! hardcoded default → EditorSettings (global) → BufferOverrides (per-buffer)
 //! ```
 //!
-//! [`EditorSettings`] holds concrete values for every setting. Its [`Default`]
-//! impl reproduces today's hardcoded defaults, so the editor behaves identically
-//! with no explicit configuration.
-//!
-//! [`BufferOverrides`] lives on each [`crate::editor::buffer::Text`] and
-//! stores `Option<T>` for every per-buffer-overridable setting. `None` means
-//! "inherit from global". Resolution happens at call time via the accessor
-//! methods on [`BufferOverrides`] — no pre-merged copy is kept.
+//! [`EditorSettings`] holds concrete values for every setting; its [`Default`]
+//! reproduces today's hardcoded defaults. [`BufferOverrides`] lives on each
+//! [`crate::editor::buffer::Text`] and stores `Option<T>` per overridable
+//! setting (`None` = inherit from global), resolved at call time via its
+//! accessor methods — no pre-merged copy is kept.
 //!
 //! ## Adding a setting
 //!
-//! Most settings are defined in a single [`define_settings!`] invocation that
+//! Most settings are defined in one [`define_settings!`] invocation that
 //! generates [`EditorSettings`], [`BufferOverrides`], their `Default` impls,
-//! accessor methods, and the [`apply_setting`]/`setting_scopes` dispatch.
-//! Adding a simple setting requires one entry in the macro and nothing else.
-//! `scope: [...]` on that entry is the single source of truth for which
-//! `:set` scopes (`global`/`buffer`/`pane`) the key accepts — `typed_set`
-//! (`editor::commands::typed_file`) looks it up via `setting_scopes(key)`
-//! rather than special-casing scopes per key. A setting placed in the
-//! `buffer{}` section always accepts `["global", "buffer"]`; whether `"pane"`
-//! is also listed is independent of section placement (see `wrap-mode`
-//! below) and requires a matching `if key == "..."` write arm in `typed_set`,
-//! since `apply_setting` has no pane-storage concept at all.
+//! accessors, and the [`apply_setting`]/`setting_scopes` dispatch — a simple
+//! setting needs one macro entry and nothing else. `scope: [...]` is the SSOT
+//! for which `:set` scopes (`global`/`buffer`/`pane`) a key accepts;
+//! `typed_set` looks it up via `setting_scopes(key)` rather than
+//! special-casing per key. `"pane"` scope needs a matching `if key == "..."`
+//! write arm in `typed_set` regardless of macro section placement, since
+//! `apply_setting` has no pane-storage concept.
 //!
-//! `language` is the one setting with no macro entry at all: it has no
-//! global default (folding it in would let `:set global language=…`
-//! silently succeed) and its write path needs `Editor`-level access
-//! (`OnLanguageSet` hook, registry lookup) that `apply_setting`'s
-//! `(&mut EditorSettings, &mut BufferOverrides)` signature doesn't have.
-//! It stays a small, explicit special case in `typed_set`.
+//! `language` has no macro entry: no global default (would let `:set global
+//! language=…` silently succeed) and its write path needs `Editor`-level
+//! access (`OnLanguageSet` hook, registry lookup) `apply_setting`'s
+//! `(&mut EditorSettings, &mut BufferOverrides)` signature doesn't have. It
+//! stays a small, explicit special case in `typed_set`.
 //!
 //! Settings with non-trivial resolution (`auto_pairs_ref`, whitespace
 //! sub-fields) are handled manually below the macro invocation.
@@ -288,9 +281,8 @@ macro_rules! option_value {
 /// - `manual_keys { … }` — `:set` keys whose values need custom resolution
 ///   (not a plain field write) and so get a hand-written `apply_setting` arm
 ///   below the macro invocation; format: `"key" => [scope, scope, ...];`.
-///   This is the sole source for those keys' entries in [`setting_scopes`]
-///   and [`all_setting_keys`] — the hand-written `apply_setting` arm is the
-///   only thing that can't be generated from it.
+///   Sole source for those keys' [`setting_scopes`]/[`all_setting_keys`]
+///   entries — only the `apply_setting` arm itself is hand-written.
 ///
 /// ## Parser kinds
 ///

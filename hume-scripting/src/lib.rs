@@ -1,42 +1,32 @@
 //! Steel scripting integration for HUME.
 //!
-//! The [`ScriptingHost`] owns the Steel [`Engine`] and runs entirely on the
-//! main event-loop thread — Steel's Engine is `!Send` by design (internal
-//! `Rc`/`RefCell`, non-atomic `im-rs` lists). This is a deliberate choice:
-//! edit commands are synchronous `(Buffer, SelectionSet) → (Buffer, SelectionSet)`
-//! operations on the hot-key path; an IPC round-trip per keystroke would be
-//! strictly worse than a direct function call.
+//! [`ScriptingHost`] owns the Steel [`Engine`] and runs entirely on the main
+//! event-loop thread — Steel's Engine is `!Send` (internal `Rc`/`RefCell`,
+//! non-atomic `im-rs` lists), and edit commands are synchronous hot-key-path
+//! operations where an IPC round-trip per keystroke would be strictly worse.
 //!
 //! ## Plugin loading pipeline
-//! - `(load-plugin name)` — **inline**. Valid only during init.scm (or
-//!   `:reload-config`); calling it from a command/hook body is a hard error.
-//!   Resolves the path, records the plugin, then activates it inline via
-//!   `%activate-plugin-inline` (body evaluated via `hm.eval-string` inside the
-//!   running VM — no `&mut Engine` borrow needed).  Self-declares: no prior
-//!   `declare-plugin` needed.
-//! - `(declare-plugin name #:commands #:events #:languages #:config)` — **lazy**.
-//!   The plugin **manifest**: records a `Declared` state + activation maps in
-//!   `LazyRegistry`; body is NOT run.  At least one of `#:commands`/`#:events`/
-//!   `#:languages` is required — a manifest with no activation entries can never
-//!   be activated and hard-errors.
-//! - `#:config` (on both `load-plugin` and `declare-plugin`) is an opaque value
-//!   (typically a hash) stored per-`PluginId`. The plugin body reads its own
-//!   config back via `(plugin-config)`, resolved from the top of `plugin_stack`
-//!   — identical for eager and lazy bodies, since both push there for the
-//!   duration of the eval.
-//! - Activation entries (command / event / language) are one-shot: the first one
-//!   exercised calls `%activate-plugin-inline` (body via `(require)`), flips state
-//!   to `Loaded`, and drops that plugin's entries from all activation maps.  The
-//!   body then typically registers **hooks** (`register-hook!`) that fire on every
-//!   subsequent event — hooks and activation entries are distinct.
-//! - Activation states: `Declared → Loading → Loaded | Failed`. `Loading` guards
-//!   re-entrant cycles (A→B→A); `Failed` does not retry until `:reload-config`.
-//! - PLUM (`core:plum`) reads `(declared-plugins)` (all declared names, `core:*`
-//!   included — PLUM filters those out itself for install decisions) to install
-//!   third-party plugins. Both `load-plugin` and `declare-plugin` record the name
-//!   in `declared_plugins` (persistent on `ScriptingHost`). Declaring a dep at
-//!   init top-level records it up front so PLUM can install it, even before any
-//!   plugin body runs.
+//! - `(load-plugin name)` — **inline**, init.scm/`:reload-config` only.
+//!   Resolves, records, and activates the plugin immediately via
+//!   `%activate-plugin-inline` (body run through `hm.eval-string` inside the
+//!   live VM, no `&mut Engine` needed). Self-declares.
+//! - `(declare-plugin name #:commands #:events #:languages #:config)` —
+//!   **lazy manifest**: records a `Declared` state + activation maps in
+//!   `LazyRegistry` without running the body. Requires at least one
+//!   activation trigger.
+//! - `#:config` (either form) is opaque data stored per-`PluginId`; the
+//!   plugin reads it back via `(plugin-config)`, resolved from the top of
+//!   `plugin_stack` for the duration of the eval.
+//! - Activation entries are one-shot: the first exercised entry runs the body
+//!   via `(require)`, flips state to `Loaded`, and drops that plugin's
+//!   entries from all activation maps. The body then typically registers
+//!   `register-hook!` callbacks for ongoing events — distinct from
+//!   activation entries.
+//! - States: `Declared → Loading → Loaded | Failed`. `Loading` guards
+//!   re-entrant cycles; `Failed` doesn't retry until `:reload-config`.
+//! - PLUM (`core:plum`) reads `(declared-plugins)` to install third-party
+//!   deps; both forms record their name in `declared_plugins` up front, even
+//!   before the body runs.
 //!
 //! ## Modules
 //! - `attribution.rs`: plugin attribution types (`PluginId`, `Owner`, `PluginStack`).
@@ -293,21 +283,18 @@ impl ScriptingHost {
     /// Pre-register native command names as callable Steel bindings.
     ///
     /// For each name, evaluates `(define name (lambda args (%dispatch-command
-    /// "name" args)))`. This makes bare `(move-left)`, `(collapse-selection)`
-    /// etc. callable from Steel without requiring `(call! "move-left")` — and,
-    /// since the wrapper is variadic, also `(move-down 3)` / `(move-down 0)`
-    /// (count `0` is the Scheme spelling of "no count typed", see
-    /// `parse_count_extend`).
+    /// "name" args)))` — makes bare `(move-left)` callable without
+    /// `(call! "move-left")`, and variadic, so `(move-down 3)` / `(move-down 0)`
+    /// work too (count `0` = "no count typed", see `parse_count_extend`).
     ///
-    /// Calls `%dispatch-command` directly rather than expanding the public
-    /// `call!` macro (`(call! name args...)` desugars to exactly this — see
-    /// `%dispatch-command`/`call!` in the bootstrap source) — a variadic lambda
-    /// already binds its args as the list `%dispatch-command` expects, so no
-    /// intermediate `(list ...)` call is needed.
+    /// Calls `%dispatch-command` directly rather than the public `call!` macro
+    /// (which desugars to exactly this) — the variadic lambda's args are
+    /// already the list `%dispatch-command` expects, no intermediate
+    /// `(list ...)` needed.
     ///
-    /// Called from `Editor::init_scripting` after `ScriptingHost::new` and
-    /// **before** any `eval_init` call, so that `init.scm` and plugins can use
-    /// bare command names without a `FreeIdentifier` compile error.
+    /// Called from `Editor::init_scripting`, after `ScriptingHost::new` and
+    /// before any `eval_init`, so init.scm/plugins can use bare command names
+    /// without a `FreeIdentifier` compile error.
     pub fn register_command_names(&mut self, names: &[&str]) {
         if names.is_empty() {
             return;
@@ -929,18 +916,14 @@ mod steel_stdlib_availability {
     }
 
     /// **Known steel-core 0.8.2 limitation, not a HUME bug**: re-raising a
-    /// native-builtin-sourced error (via `raise-error`) out of an inner
-    /// `with-handler`, when that re-raise is then caught by an *outer*
-    /// `with-handler`, corrupts the VM's continuation stack and panics with
-    /// "Failed to find an open continuation on the stack" — reproduced here
-    /// in isolation (originally hit for real via `grammars.scm`'s
-    /// `plum/resolve-query`, whose tolerant recursive `; inherits:` chain
-    /// resolution nests exactly this way; fixed there by never wrapping the
-    /// raising call in an inner catch-and-reraise — see
-    /// `plum/fetch-raw-query`'s doc comment). This test is a `#[should_panic]`
-    /// regression pin: if a future steel-core upgrade fixes the underlying
-    /// bug, this test starts failing (panic doesn't happen) and the workaround
-    /// in `grammars.scm` can be revisited/removed.
+    /// native-builtin error (via `raise-error`) from an inner `with-handler`,
+    /// caught by an *outer* `with-handler`, corrupts the VM's continuation
+    /// stack and panics "Failed to find an open continuation on the stack".
+    /// Originally hit via `grammars.scm`'s `plum/resolve-query` (see
+    /// `plum/fetch-raw-query`'s doc comment for the fix: never wrap the
+    /// raising call in an inner catch-and-reraise). `#[should_panic]`
+    /// regression pin — if a steel-core upgrade fixes this, revisit the
+    /// `grammars.scm` workaround.
     #[test]
     #[cfg(unix)]
     #[should_panic(expected = "Failed to find an open continuation on the stack")]
@@ -987,24 +970,17 @@ mod steel_stdlib_availability {
             .expect("uncaught native error one-hop propagation to outer handler failed");
     }
 
-    /// **Second known steel-core 0.8.2 limitation, distinct from the one
-    /// above**: `dynamic-wind`'s `after` thunk is *not* guaranteed to run
-    /// when its body raises an error that unwinds through an outer
-    /// `with-handler` — this reproduces the exact `run-inline-output!`
-    /// failure from the panic-pinning test above, wrapped in `dynamic-wind`
-    /// instead of catch-and-reraise. If `dynamic-wind` reliably ran cleanup
-    /// on error here, it would be a safe way to guarantee `declare-plugin`'s
-    /// manifest-branch cleanup (`%finish-manifest-declare!`) runs without
-    /// needing an inner with-handler at all — sidestepping the panic above
-    /// entirely. It doesn't: the cleanup thunk (`cleanup-ran`) never fires,
-    /// so this path is unsafe for anything that depends on cleanup actually
-    /// running, silently rather than loudly. This independently confirms
-    /// `project_steel_raii_vs_dynamicwind.md`'s decision to keep
-    /// cleanup-on-unwind in Rust (explicit push/pop), never in Steel
-    /// `dynamic-wind`. Pinned the same way as the test above: if a future
-    /// steel-core upgrade fixes this, `cleanup-ran` starts being `#t` and
-    /// this test starts failing (no error at all) rather than hitting the
-    /// "cleanup did not run" assertion — revisit then.
+    /// **Second known steel-core 0.8.2 limitation**: `dynamic-wind`'s
+    /// `after` thunk is not guaranteed to run when its body raises through an
+    /// outer `with-handler` — reproduces the panic-pinning test's failure,
+    /// wrapped in `dynamic-wind` instead of catch-and-reraise. This would
+    /// otherwise be a safe way to guarantee `declare-plugin`'s manifest
+    /// cleanup (`%finish-manifest-declare!`) runs without an inner handler,
+    /// but `cleanup-ran` never fires — confirms the decision (see
+    /// `project_steel_raii_vs_dynamicwind.md`) to keep cleanup-on-unwind in
+    /// Rust (explicit push/pop), never Steel `dynamic-wind`. Pinned like the
+    /// test above: a steel-core fix flips `cleanup-ran` to `#t` and this
+    /// starts failing — revisit then.
     #[test]
     #[cfg(unix)]
     fn known_limitation_dynamic_wind_cleanup_does_not_run_across_an_outer_handlers_unwind() {

@@ -132,36 +132,23 @@ impl Editor {
     /// undo tree and the primary cursor line/column across the reload.
     ///
     /// Unlike [`replace_buffer_in_place`](Self::replace_buffer_in_place) (which
-    /// swaps the whole `Buffer` and discards `History`), this records the
-    /// reload as an ordinary edit via [`Buffer::reload_from_text`]: `u` after
-    /// `:e!` reverts to the pre-reload buffer with its full prior undo tree
-    /// intact beneath; `Ctrl-r` re-applies the reload. The inverse `ChangeSet`
-    /// is line-diff-derived so it carries only the changed lines, not a
-    /// full-buffer delete-all + insert-all.
+    /// swaps the whole `Buffer` and discards `History`), this delegates to
+    /// [`Buffer::reload_from_text`] — see its doc for the history/undo mechanics.
     ///
     /// Each pane's primary cursor is captured as `(line, col)` before the
-    /// reload and restored against the new content. Multi-selections collapse
-    /// to the primary (they are stale against fresh content). The cursor is
-    /// clamped if the file shrank: past-end lines land on the new last line;
-    /// past-end columns land on the line's `\n`. Each pane's `top_line` is
-    /// clamped the same way.
+    /// reload and restored against the new content; multi-selections collapse
+    /// to the primary (stale against fresh content). Cursor and `top_line`
+    /// are clamped if the file shrank: past-end lines land on the new last
+    /// line, past-end columns on the line's `\n`.
     ///
-    /// The focused pane's pre- and post-reload selections are the ones written
-    /// into the history revision: undo restores the focused pane's pre-reload
-    /// cursor; redo restores the focused pane's clamped post-reload cursor.
-    /// Other panes viewing the same buffer are not stranded — their cursors
-    /// ride the inverse `ChangeSet` via `propagate_cs_to_panes` when the undo
-    /// runs, exactly as for any ordinary edit; only the explicit cursor restore
-    /// is focused-pane-specific.
+    /// Only the focused pane's pre/post selections are written into the
+    /// history revision (undo/redo restore its cursor); other panes on the
+    /// same buffer ride the inverse `ChangeSet` via `propagate_cs_to_panes`
+    /// like any edit.
     ///
-    /// State that survives (same buffer id, valid positions): jump list
-    /// (prune stays in the `close_buffer` path), per-buffer search state
-    /// (reload is treated as an edit — an active search persists and its match
-    /// cache re-builds lazily against the new revision). State that is dropped
-    /// as stale: in-progress edit groups / paste sessions, engine-side syntax
-    /// tree (re-detected and re-parsed downstream), and saved scrolls (a
-    /// shrunken file could otherwise leave a recalled scroll past the new last
-    /// line).
+    /// Survives the reload: jump list, per-buffer search state (match cache
+    /// rebuilds lazily). Dropped as stale: in-progress edit groups/paste
+    /// sessions, the engine-side syntax tree, and saved scrolls.
     ///
     /// Used by the no-arg `:e`/`:e!` reload branch.
     pub(crate) fn reload_buffer_in_place(&mut self, id: BufferId, mut new_doc: Buffer) {
