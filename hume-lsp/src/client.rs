@@ -576,8 +576,9 @@ pub fn server_request_response(
         // No settings blob exists — every item answers `null`,
         // same shape a server sees from a client with no matching config.
         "workspace/configuration" => Ok(workspace_configuration_response(params)),
-        // Answered separately by `apply_edit_request_response` (needs
-        // `&mut Editor`, unlike every other request this lookup answers).
+        // Acknowledged, no-op: these need no editor state to answer, unlike
+        // `workspace/applyEdit` (the one request this lookup can't handle —
+        // see `apply_edit_request_response`).
         "client/registerCapability"
         | "client/unregisterCapability"
         | "window/workDoneProgress/create" => Ok(serde_json::Value::Null),
