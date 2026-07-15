@@ -24,13 +24,29 @@ pub enum InboundEvent {
     },
 }
 
+/// Bound on the protocol-events channel. A server producing events faster
+/// than the editor drains them blocks the reader thread's `send`, which
+/// stops it reading stdout, which back-pressures the server on its own
+/// stdout pipe — a flooding server slows itself rather than growing memory
+/// unboundedly on the editor side.
+const EVENTS_CHANNEL_BOUND: usize = 1024;
+
+/// Bound on the stderr channel. stderr is Trace-level logging only — when
+/// full, `stderr_loop` drops the line (`try_send`) rather than blocking, so
+/// a chatty server can never stall the thread waiting for the editor to
+/// drain logs it may never read.
+const STDERR_CHANNEL_BOUND: usize = 256;
+
 /// A running server process plus its bridging threads.
 pub struct ServerHandle {
     /// Writer thread input; `None` after `Drop` closes it to signal the
     /// writer thread to exit.
     tx: Option<mpsc::Sender<Message>>,
-    /// Reader + stderr thread output.
-    rx: mpsc::Receiver<InboundEvent>,
+    /// Reader thread output (protocol messages + EOF); `None` after `Drop`
+    /// closes it to unblock a thread possibly stuck mid-`send`.
+    rx_events: Option<mpsc::Receiver<InboundEvent>>,
+    /// Stderr thread output; `None` after `Drop`, same reason as `rx_events`.
+    rx_stderr: Option<mpsc::Receiver<String>>,
     child: Child,
     /// Tracked separately (not lumped into `other_threads`) so `Drop` can
     /// give it a bounded window to flush any already-queued message (e.g. a
@@ -71,17 +87,17 @@ impl ServerHandle {
         let stdout = child.stdout.take().expect("piped stdout");
         let stderr = child.stderr.take().expect("piped stderr");
 
-        let (tx_events, rx_events) = mpsc::channel::<InboundEvent>();
+        let (tx_events, rx_events) = mpsc::sync_channel::<InboundEvent>(EVENTS_CHANNEL_BOUND);
+        let (tx_stderr, rx_stderr) = mpsc::sync_channel::<String>(STDERR_CHANNEL_BOUND);
         let (tx_out, rx_out) = mpsc::channel::<Message>();
 
         // If a later thread fails to spawn, the child (already running) must
         // not be orphaned: kill+reap it and join whatever threads did start
         // before propagating the error — `Child`'s own `Drop` does not kill,
         // so leaving this to unwind would leak the process.
-        let reader_tx = tx_events.clone();
         let reader = match thread::Builder::new()
             .name("hume-lsp-reader".into())
-            .spawn(move || reader_loop(BufReader::new(stdout), &reader_tx))
+            .spawn(move || reader_loop(BufReader::new(stdout), &tx_events))
         {
             Ok(t) => t,
             Err(e) => {
@@ -106,7 +122,7 @@ impl ServerHandle {
 
         let stderr_thread = match thread::Builder::new()
             .name("hume-lsp-stderr".into())
-            .spawn(move || stderr_loop(BufReader::new(stderr), &tx_events))
+            .spawn(move || stderr_loop(BufReader::new(stderr), &tx_stderr))
         {
             Ok(t) => t,
             Err(e) => {
@@ -125,7 +141,8 @@ impl ServerHandle {
 
         Ok(ServerHandle {
             tx: Some(tx_out),
-            rx: rx_events,
+            rx_events: Some(rx_events),
+            rx_stderr: Some(rx_stderr),
             child,
             writer: Some(writer),
             other_threads: vec![reader, stderr_thread],
@@ -140,12 +157,22 @@ impl ServerHandle {
         }
     }
 
-    /// Drains all events that have arrived since the last call, in arrival
-    /// order across both the reader and stderr threads.
+    /// Drains all events that have arrived since the last call: every
+    /// protocol message/EOF first, then every stderr line — no longer
+    /// strict arrival order across the two source threads (they're on
+    /// separate channels now), but stderr is log-only, so its ordering
+    /// relative to protocol traffic is cosmetic.
     pub fn try_recv_all(&mut self) -> Vec<InboundEvent> {
         let mut out = Vec::new();
-        while let Ok(ev) = self.rx.try_recv() {
-            out.push(ev);
+        if let Some(rx) = &self.rx_events {
+            while let Ok(ev) = rx.try_recv() {
+                out.push(ev);
+            }
+        }
+        if let Some(rx) = &self.rx_stderr {
+            while let Ok(line) = rx.try_recv() {
+                out.push(InboundEvent::Stderr(line));
+            }
         }
         out
     }
@@ -189,6 +216,15 @@ impl Drop for ServerHandle {
         // and stderr threads' blocking reads.
         let _ = self.child.kill();
         let _ = self.child.wait();
+        // Bounded channels: a reader/stderr thread can be blocked mid-`send`
+        // on a full channel — closing the child's pipes only unblocks a
+        // thread stuck in a blocking *read*, not one already past that and
+        // stuck pushing the result into a full channel. Dropping the
+        // receivers here makes any such blocked `send` return `Err`,
+        // letting the loop self-exit before the joins below; otherwise a
+        // flooded channel could hang `Drop` forever.
+        self.rx_events = None;
+        self.rx_stderr = None;
         if let Some(writer) = self.writer.take() {
             let _ = writer.join();
         }
@@ -211,7 +247,7 @@ fn needs_cmd_shim(cmd: &str) -> bool {
 
 /// Reads frames until EOF or a codec error, forwarding each as an event.
 /// Factored over `impl BufRead` so it's testable with in-memory pipes.
-fn reader_loop(mut r: impl BufRead, tx: &mpsc::Sender<InboundEvent>) {
+fn reader_loop(mut r: impl BufRead, tx: &mpsc::SyncSender<InboundEvent>) {
     loop {
         match codec::read_message(&mut r) {
             Ok(msg) => {
@@ -246,16 +282,18 @@ fn writer_loop(mut w: impl Write, rx: mpsc::Receiver<Message>) {
     }
 }
 
-/// Forwards each stderr line as an event. Unstructured text — never parsed,
-/// just relayed (the editor glue logs it).
-fn stderr_loop(r: impl BufRead, tx: &mpsc::Sender<InboundEvent>) {
+/// Forwards each stderr line. Unstructured text — never parsed, just
+/// relayed (the editor glue logs it). Uses `try_send`: a full channel drops
+/// the line rather than blocking (see `STDERR_CHANNEL_BOUND`) — stderr is
+/// Trace-level logging, not protocol traffic, so losing a line under a
+/// flood is an acceptable trade against ever stalling this thread.
+fn stderr_loop(r: impl BufRead, tx: &mpsc::SyncSender<String>) {
     for line in r.lines() {
         match line {
-            Ok(l) => {
-                if tx.send(InboundEvent::Stderr(l)).is_err() {
-                    return;
-                }
-            }
+            Ok(l) => match tx.try_send(l) {
+                Ok(()) | Err(mpsc::TrySendError::Full(_)) => {}
+                Err(mpsc::TrySendError::Disconnected(_)) => return,
+            },
             Err(_) => return,
         }
     }
@@ -279,7 +317,7 @@ mod tests {
         )
         .unwrap();
         let cursor = Cursor::new(buf);
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = mpsc::sync_channel(EVENTS_CHANNEL_BOUND);
         reader_loop(cursor, &tx);
 
         match rx.recv().unwrap() {
@@ -303,7 +341,7 @@ mod tests {
         // blank line that would terminate the header block — a genuine
         // truncation, distinct from the clean-exit case above.
         let cursor = Cursor::new(b"Content-Length: 5\r\n".to_vec());
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = mpsc::sync_channel(EVENTS_CHANNEL_BOUND);
         reader_loop(cursor, &tx);
         match rx.recv().unwrap() {
             InboundEvent::Eof { error } => assert!(error.is_some()),
@@ -315,7 +353,7 @@ mod tests {
     fn reader_loop_reports_codec_error_as_eof() {
         // No Content-Length header — read_message errors immediately.
         let cursor = Cursor::new(b"garbage\r\n\r\n{}".to_vec());
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = mpsc::sync_channel(EVENTS_CHANNEL_BOUND);
         reader_loop(cursor, &tx);
         match rx.recv().unwrap() {
             InboundEvent::Eof { error } => assert!(error.is_some()),
@@ -357,17 +395,90 @@ mod tests {
     #[test]
     fn stderr_loop_forwards_lines() {
         let cursor = Cursor::new(b"first line\nsecond line\n".to_vec());
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = mpsc::sync_channel(STDERR_CHANNEL_BOUND);
         stderr_loop(cursor, &tx);
-        match rx.recv().unwrap() {
-            InboundEvent::Stderr(l) => assert_eq!(l, "first line"),
-            _ => panic!("expected Stderr"),
-        }
-        match rx.recv().unwrap() {
-            InboundEvent::Stderr(l) => assert_eq!(l, "second line"),
-            _ => panic!("expected Stderr"),
-        }
+        assert_eq!(rx.recv().unwrap(), "first line");
+        assert_eq!(rx.recv().unwrap(), "second line");
         assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn stderr_flood_drops_lines_but_the_loop_terminates() {
+        // Bound of 2, 5 lines, receiver never drained during the loop —
+        // `try_send` must drop the overflow rather than block, so the loop
+        // still returns instead of hanging.
+        let cursor = Cursor::new(b"a\nb\nc\nd\ne\n".to_vec());
+        let (tx, rx) = mpsc::sync_channel(2);
+        stderr_loop(cursor, &tx);
+
+        let mut received = Vec::new();
+        while let Ok(line) = rx.try_recv() {
+            received.push(line);
+        }
+        assert_eq!(
+            received.len(),
+            2,
+            "only the channel's capacity should have been retained: {received:?}"
+        );
+    }
+
+    #[test]
+    fn stderr_loop_exits_when_the_receiver_is_gone() {
+        let cursor = Cursor::new(b"first line\nsecond line\n".to_vec());
+        let (tx, rx) = mpsc::sync_channel(STDERR_CHANNEL_BOUND);
+        drop(rx);
+        // Must return promptly on the Disconnected arm, not panic or loop.
+        stderr_loop(cursor, &tx);
+    }
+
+    #[test]
+    fn reader_loop_delivers_through_a_bounded_channel_in_order() {
+        // Capacity of 1 forces `reader_loop`'s `send` to block between the
+        // two messages until the reader below drains — this exercises the
+        // `SyncSender` blocking-when-full path (not just the non-blocking
+        // `try_recv` used elsewhere), without a real flooding process (which
+        // would need timing assertions and be flaky by construction —
+        // `Stdio::piped()`'s own pipe backpressure is what actually
+        // engages in production; this test only pins that `reader_loop`
+        // functions correctly against a bounded channel).
+        let mut buf = Vec::new();
+        codec::write_message(
+            &mut buf,
+            &Message::Notification {
+                method: "one".to_string(),
+                params: serde_json::Value::Null,
+            },
+        )
+        .unwrap();
+        codec::write_message(
+            &mut buf,
+            &Message::Notification {
+                method: "two".to_string(),
+                params: serde_json::Value::Null,
+            },
+        )
+        .unwrap();
+        let cursor = Cursor::new(buf);
+        let (tx, rx) = mpsc::sync_channel(1);
+        let handle = thread::spawn(move || reader_loop(cursor, &tx));
+
+        match rx.recv().unwrap() {
+            InboundEvent::Message(Message::Notification { method, .. }) => {
+                assert_eq!(method, "one")
+            }
+            other => panic!("expected 'one', got {other:?}"),
+        }
+        match rx.recv().unwrap() {
+            InboundEvent::Message(Message::Notification { method, .. }) => {
+                assert_eq!(method, "two")
+            }
+            other => panic!("expected 'two', got {other:?}"),
+        }
+        match rx.recv().unwrap() {
+            InboundEvent::Eof { error } => assert!(error.is_none()),
+            other => panic!("expected Eof, got {other:?}"),
+        }
+        handle.join().unwrap();
     }
 
     // ── wait_for_finish ──────────────────────────────────────────────────────
@@ -436,6 +547,34 @@ mod tests {
         }
 
         // Drop runs kill -> wait -> join; must return promptly, not hang.
+        drop(handle);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn drop_does_not_hang_when_stderr_floods_past_the_bound() {
+        // Regression for the Drop deadlock fixed alongside the bounded
+        // stderr channel: a thread blocked mid-`send` on a full channel is
+        // NOT unblocked by `child.kill()` alone (killing only ends a
+        // blocking *read*) — `Drop` must also close the receivers. On
+        // regression this test hangs (caught by the harness's own test
+        // timeout); on a correct `Drop` it returns promptly.
+        let root = std::env::current_dir().unwrap();
+        let mut handle =
+            ServerHandle::spawn("/bin/sh", &["-c".to_string(), "yes flood 1>&2".to_string()], &root)
+                .expect("spawn sh");
+
+        // Let stderr fill well past STDERR_CHANNEL_BOUND before draining.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        let events = handle.try_recv_all();
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, InboundEvent::Stderr(_))),
+            "expected at least one Stderr event from the flood"
+        );
+
         drop(handle);
     }
 
