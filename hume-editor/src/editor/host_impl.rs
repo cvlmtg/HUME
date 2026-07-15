@@ -795,6 +795,14 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         if self.state.buffers.try_get(bid).is_none() {
             return Err("completion-begin!: no such buffer".to_string());
         }
+        if items.is_empty() {
+            // Replaces any open session too — an isIncomplete re-request
+            // that comes back empty must close the menu, not leave the old
+            // one live.
+            self.state.clear_lsp_completion();
+            self.state.report(Severity::Info, "no completions".to_string());
+            return Ok(());
+        }
         let Some(session) = crate::editor::lsp::completion::CompletionSession::begin(
             self.state, bid, &items, incomplete,
         ) else {

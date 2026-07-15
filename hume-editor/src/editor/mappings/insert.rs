@@ -270,6 +270,16 @@ impl Editor {
 
     // ── LSP completion menu ─────────────────────────────────────────────
 
+    /// The open completion session — every call site sits behind
+    /// `handle_insert`'s `lsp_completion.is_some()` guard, so the session
+    /// is always present here.
+    fn open_completion_session(&self) -> &crate::editor::lsp::completion::CompletionSession {
+        self.state
+            .lsp_completion
+            .as_ref()
+            .expect("checked by handle_insert above")
+    }
+
     /// Intercepts a key while an LSP completion session is open.
     /// Returns `true` if fully handled (skip the rest of `handle_insert`
     /// this call) — `false` if it should still fall through to normal
@@ -290,21 +300,26 @@ impl Editor {
                 true
             }
             KeyCode::Esc => {
-                self.state.clear_lsp_completion();
-                true
+                if self.open_completion_session().top(1).is_empty() {
+                    // Nothing visibly open — consuming Esc here would
+                    // silently swallow it, forcing a second Esc to actually
+                    // leave Insert. Don't intercept: let it fall through to
+                    // the trie's exit-insert leaf, which reaches `set_mode`
+                    // and dismisses the session as a side effect of leaving
+                    // Insert (see `EditorState::set_mode`).
+                    false
+                } else {
+                    self.state.clear_lsp_completion();
+                    true
+                }
             }
             KeyCode::Backspace => {
-                let session = self
-                    .state
-                    .lsp_completion
-                    .as_ref()
-                    .expect("checked by handle_insert above");
                 // The char Backspace is about to delete is the one right
                 // before `head`. If `head` is already at (or before) the
                 // anchor, that char lies *outside* the completed token —
                 // crossing it, not just narrowing the filter.
                 let head = self.current_selections().primary().head();
-                if head <= session.anchor() {
+                if head <= self.open_completion_session().anchor() {
                     self.state.clear_lsp_completion();
                 }
                 false

@@ -127,6 +127,34 @@ fn esc_dismisses_the_session_but_keeps_typed_text_and_stays_in_insert() {
     assert_eq!(text, "f\n", "the typed filter char must not be reverted");
 }
 
+// ── Refilter to zero matches: doesn't trap Esc ───────────────────────────────
+
+#[test]
+fn typing_to_zero_matches_keeps_the_session_but_a_single_esc_still_exits_insert() {
+    let mut ed = Editor::open(None).unwrap();
+    ed.feed_key(key('i'));
+    begin_session(&mut ed, &[("foo", None)]);
+
+    // "z" isn't a subsequence of "foo" — the refiltered list is empty, but
+    // the session survives (typing more, then backspacing back, must be
+    // able to self-heal it — see `backspace_within_the_token_refilters_and_
+    // keeps_the_session_open`).
+    ed.feed_key(key('z'));
+    assert!(
+        ed.state.lsp_completion.is_some(),
+        "a transient zero-match refilter must not kill the session outright"
+    );
+
+    // Esc must not intercept-and-swallow while nothing is visibly shown —
+    // it falls through to the trie's exit-insert leaf, which reaches
+    // `set_mode` and dismisses the session as a side effect. A *single* Esc
+    // reaching Normal is the regression this guards: the bug was a second,
+    // invisible session trapping the first Esc.
+    ed.feed_key(key_esc());
+    assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Normal);
+    assert!(ed.state.lsp_completion.is_none());
+}
+
 // ── Backspace: within token refilters, past anchor dismisses ────────────────
 
 #[test]

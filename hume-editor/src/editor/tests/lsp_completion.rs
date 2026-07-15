@@ -250,6 +250,54 @@ fn a_buffer_edit_that_bypasses_update_filter_invalidates_the_session() {
     );
 }
 
+// ── Empty items: no session, not an invisible menu ────────────────────
+
+#[test]
+fn begin_with_empty_items_creates_no_session_and_reports_info() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer) (list))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert!(
+        ed.state.lsp_completion.is_none(),
+        "an empty items response must not open a session"
+    );
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "no completions",
+        "an empty items response must surface why no menu opened, not silently \
+         leave an invisible session trapping Esc"
+    );
+}
+
+#[test]
+fn begin_with_empty_items_clears_an_already_open_session() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "open" "" (lambda ()
+             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")))))
+           (define-command! "reopen-empty" "" (lambda ()
+             (completion-begin! (current-buffer) (list))))"#,
+    );
+    type_cmd(&mut ed, ":open");
+    assert!(ed.state.lsp_completion.is_some(), "sanity: session opened");
+
+    type_cmd(&mut ed, ":reopen-empty");
+    assert!(
+        ed.state.lsp_completion.is_none(),
+        "an isIncomplete re-request that comes back empty must close the open \
+         session, not leave the previous items live"
+    );
+}
+
 // ── on-completion-accept / on-completion-refilter ────────────────────
 
 #[test]
@@ -422,7 +470,7 @@ fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op
         lsp: None,
         timers: None,
     };
-    let result = impl_host.completion_begin(bid_b, vec![], false);
+    let result = impl_host.completion_begin(bid_b, vec![serde_json::json!({"label": "x"})], false);
     assert!(
         result.is_ok(),
         "unfocused-pane buffer must be a benign no-op, not an error: {result:?}"
