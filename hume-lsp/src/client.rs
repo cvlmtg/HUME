@@ -23,6 +23,7 @@ use crate::transport::InboundEvent;
 use crate::uri;
 
 use lsp_types::notification::Notification as _;
+use lsp_types::request::Request as _;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServerState {
@@ -311,7 +312,7 @@ impl LspClient {
             backend.send(
                 self.id,
                 Message::Notification {
-                    method: "$/cancelRequest".to_string(),
+                    method: lsp_types::notification::Cancel::METHOD.to_string(),
                     params: cancel_request_params(id),
                 },
             );
@@ -377,7 +378,7 @@ impl LspClient {
         self.pending.insert(
             id.clone(),
             RequestMeta {
-                method: "initialize".to_string(),
+                method: lsp_types::request::Initialize::METHOD.to_string(),
                 allow_stale: false,
                 deadline: Instant::now() + INITIALIZE_TIMEOUT,
             },
@@ -393,7 +394,7 @@ impl LspClient {
             self.id,
             Message::Request {
                 id,
-                method: "initialize".to_string(),
+                method: lsp_types::request::Initialize::METHOD.to_string(),
                 params,
             },
         );
@@ -491,7 +492,7 @@ impl LspClient {
         self.state = ServerState::Running;
 
         let mut send = vec![Message::Notification {
-            method: "initialized".to_string(),
+            method: lsp_types::notification::Initialized::METHOD.to_string(),
             params: serde_json::to_value(InitializedParams {})
                 .expect("InitializedParams always serializes"),
         }];
@@ -517,7 +518,7 @@ impl LspClient {
             self.pending.insert(
                 id.clone(),
                 RequestMeta {
-                    method: "shutdown".to_string(),
+                    method: lsp_types::request::Shutdown::METHOD.to_string(),
                     allow_stale: false,
                     deadline: Instant::now() + SHUTDOWN_TIMEOUT,
                 },
@@ -526,14 +527,14 @@ impl LspClient {
                 self.id,
                 Message::Request {
                     id,
-                    method: "shutdown".to_string(),
+                    method: lsp_types::request::Shutdown::METHOD.to_string(),
                     params: serde_json::Value::Null,
                 },
             );
             backend.send(
                 self.id,
                 Message::Notification {
-                    method: "exit".to_string(),
+                    method: lsp_types::notification::Exit::METHOD.to_string(),
                     params: serde_json::Value::Null,
                 },
             );
@@ -685,16 +686,19 @@ pub fn server_request_response(
     method: &str,
     params: &serde_json::Value,
 ) -> Result<serde_json::Value, ResponseError> {
+    use lsp_types::request::{
+        RegisterCapability, UnregisterCapability, WorkDoneProgressCreate, WorkspaceConfiguration,
+    };
     match method {
         // No settings blob exists — every item answers `null`,
         // same shape a server sees from a client with no matching config.
-        "workspace/configuration" => Ok(workspace_configuration_response(params)),
+        WorkspaceConfiguration::METHOD => Ok(workspace_configuration_response(params)),
         // Acknowledged, no-op: these need no editor state to answer, unlike
         // `workspace/applyEdit` (the one request this lookup can't handle —
         // see `apply_edit_request_response`).
-        "client/registerCapability"
-        | "client/unregisterCapability"
-        | "window/workDoneProgress/create" => Ok(serde_json::Value::Null),
+        RegisterCapability::METHOD | UnregisterCapability::METHOD | WorkDoneProgressCreate::METHOD => {
+            Ok(serde_json::Value::Null)
+        }
         other => Err(ResponseError {
             code: -32601,
             message: format!("method not found: {other}"),

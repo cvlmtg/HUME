@@ -7,6 +7,10 @@ use hume_editing::changeset::ChangeSet;
 use hume_engine::pipeline::BufferId;
 use hume_lsp::codec::Message;
 use hume_lsp::sync::{changeset_to_content_changes, wire_version};
+use lsp_types::notification::{
+    DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
+    Notification as _,
+};
 use ropey::Rope;
 
 use super::LspState;
@@ -65,7 +69,7 @@ impl Editor {
     /// attach). Queued instead of sent if the handshake hasn't completed —
     /// the spec forbids anything but `initialize` before `initialized`.
     pub(super) fn lsp_did_open(&mut self, bid: BufferId) {
-        self.send_doc_notification(bid, "textDocument/didOpen", |buf, uri| {
+        self.send_doc_notification(bid, DidOpenTextDocument::METHOD, |buf, uri| {
             serde_json::json!({
                 "textDocument": {
                     "uri": uri.as_str(),
@@ -83,7 +87,7 @@ impl Editor {
     pub(in crate::editor) fn lsp_did_save(&mut self, bid: BufferId) {
         self.send_doc_notification(
             bid,
-            "textDocument/didSave",
+            DidSaveTextDocument::METHOD,
             |_buf, uri| serde_json::json!({ "textDocument": { "uri": uri.as_str() } }),
         );
     }
@@ -97,7 +101,7 @@ impl Editor {
     pub(in crate::editor) fn lsp_did_close(&mut self, bid: BufferId) {
         self.send_doc_notification(
             bid,
-            "textDocument/didClose",
+            DidCloseTextDocument::METHOD,
             |_buf, uri| serde_json::json!({ "textDocument": { "uri": uri.as_str() } }),
         );
     }
@@ -108,7 +112,7 @@ impl Editor {
     /// *undo*, but the wire message here is simplest as a full-text sync.
     /// Queued while `Starting`, same as every other send site here.
     pub(in crate::editor) fn lsp_did_change_whole_document(&mut self, bid: BufferId) {
-        self.send_doc_notification(bid, "textDocument/didChange", |buf, uri| {
+        self.send_doc_notification(bid, DidChangeTextDocument::METHOD, |buf, uri| {
             serde_json::json!({
                 "textDocument": { "uri": uri.as_str(), "version": wire_version(buf.text_gen) },
                 "contentChanges": [{ "text": buf.text().to_string() }],
@@ -194,7 +198,7 @@ impl Editor {
                 client.send_or_queue(
                     backend.as_mut(),
                     Message::Notification {
-                        method: "textDocument/didChange".to_string(),
+                        method: DidChangeTextDocument::METHOD.to_string(),
                         params,
                     },
                 );

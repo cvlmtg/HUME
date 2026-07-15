@@ -26,6 +26,7 @@ use hume_lsp::codec::{Message, RequestId, ResponseError};
 #[cfg(test)]
 use hume_lsp::inline::InlineLspBackend;
 use hume_lsp::transport::InboundEvent;
+use lsp_types::request::Request as _;
 
 use super::Editor;
 use super::async_source::{AsyncSource, PENDING_POLL};
@@ -611,7 +612,7 @@ impl Editor {
             ClientAction::ServerRequest { id, method, params } => {
                 // `workspace/applyEdit` needs `&mut Editor` (the edit engine) —
                 // every other request answers from the pure lookup table.
-                let result = if method == "workspace/applyEdit" {
+                let result = if method == lsp_types::request::ApplyWorkspaceEdit::METHOD {
                     self.apply_edit_request_response(&params)
                 } else {
                     server_request_response(&method, &params)
@@ -799,7 +800,7 @@ impl Editor {
             // No callback is ever registered for the internal `shutdown`
             // request (it's fire-and-forget from `begin_shutdown`) — a
             // server-side error on it would otherwise vanish silently.
-            if meta.method == "shutdown"
+            if meta.method == lsp_types::request::Shutdown::METHOD
                 && let Outcome::Err(e) = &outcome
             {
                 self.report(
