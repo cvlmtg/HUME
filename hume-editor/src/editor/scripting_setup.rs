@@ -149,13 +149,15 @@ impl Editor {
         );
     }
 
-    /// Fire `OnTriggerChar (bid char-string)` — Insert mode, after `ch` has
-    /// already been inserted into `bid` (mappings/insert.rs), and only for
-    /// a char registered via `(register-trigger-chars! source chars)`.
-    pub(super) fn fire_hook_trigger_char(&mut self, bid: BufferId, ch: char) {
+    /// Fire `OnTriggerChar (bid char-string source)` — Insert mode, after
+    /// `ch` has already been inserted into `bid` (mappings/insert.rs), once
+    /// per source registered for `ch` under `bid`'s language via
+    /// `(register-trigger-chars! source language chars)`.
+    pub(super) fn fire_hook_trigger_char(&mut self, bid: BufferId, ch: char, source: &str) {
         let bid_val = SteelBufferId::new(bid).into_steel_val();
         let ch_val = SteelVal::StringV(ch.to_string().into());
-        self.fire_hook_silent(HookId::OnTriggerChar, &[bid_val, ch_val]);
+        let source_val = SteelVal::StringV(source.into());
+        self.fire_hook_silent(HookId::OnTriggerChar, &[bid_val, ch_val, source_val]);
     }
 
     /// Fire all Steel handlers for `hook_id`, passing `args` to each.

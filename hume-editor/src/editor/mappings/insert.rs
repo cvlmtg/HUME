@@ -158,8 +158,11 @@ impl Editor {
                         |b, s| insert_char(b, s, ch),
                     );
                 }
-                if inserted && self.state.is_trigger_char(ch) {
-                    self.fire_hook_trigger_char(buf, ch);
+                if inserted {
+                    let language = self.state.buffers.get(buf).language.clone();
+                    for source in self.state.trigger_sources_for(ch, language.as_deref()) {
+                        self.fire_hook_trigger_char(buf, ch, &source);
+                    }
                 }
             }
 

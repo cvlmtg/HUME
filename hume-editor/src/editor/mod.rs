@@ -246,11 +246,14 @@ pub(crate) struct EditorState {
     /// inline — same discipline as `pending_hooks`) by whichever completion
     /// fires, drained by `Editor::drain_pending_steel_calls`.
     pub(super) pending_steel_calls: Vec<(steel::rvals::SteelVal, Vec<steel::rvals::SteelVal>)>,
-    /// Chars that fire `OnTriggerChar` in Insert mode, keyed by the
-    /// registering `(register-trigger-chars! source chars)` source so one
-    /// source's set doesn't get clobbered by another's — checked as a union
-    /// across all sources.
-    pub(super) trigger_chars: std::collections::HashMap<String, Vec<char>>,
+    /// Chars that fire `OnTriggerChar` in Insert mode, keyed by
+    /// `(source, language)` — a `(register-trigger-chars! source language
+    /// chars)` call only ever replaces its own `(source, language)` entry,
+    /// so two languages sharing a source (e.g. completion's `"lsp-
+    /// completion"` source registered separately for `"rust"` and
+    /// `"python"`) never clobber each other. An empty `chars` removes the
+    /// entry entirely (matches `on-lsp-detach`'s clear-on-detach usage).
+    pub(super) trigger_chars: std::collections::HashMap<(String, String), Vec<char>>,
     /// Steel-writable decoration stores (inlay hints, signs, virtual
     /// lines, extra highlights) — the render providers read these.
     pub(super) decorations: decorations::DecorationStores,
@@ -343,11 +346,21 @@ impl EditorState {
         *self.drawer_view.write().expect("RwLock not poisoned") = resolved;
     }
 
-    /// `true` if `ch` was registered by any `(register-trigger-chars! source
-    /// chars)` call — the union-across-sources check `OnTriggerChar`'s fire
-    /// site (mappings/insert.rs) gates on.
-    pub(crate) fn is_trigger_char(&self, ch: char) -> bool {
-        self.trigger_chars.values().any(|chars| chars.contains(&ch))
+    /// Every source registered for `(ch, language)` — `OnTriggerChar`'s fire
+    /// site (mappings/insert.rs) fires once per entry, so two sources
+    /// registering the same char for the same language each get their own
+    /// hook fire. A buffer with no language (`language: None`) never
+    /// matches anything — trigger chars are always server-derived, and a
+    /// server attach implies a language.
+    pub(crate) fn trigger_sources_for(&self, ch: char, language: Option<&str>) -> Vec<String> {
+        let Some(language) = language else {
+            return Vec::new();
+        };
+        self.trigger_chars
+            .iter()
+            .filter(|((_, lang), chars)| lang == language && chars.contains(&ch))
+            .map(|((source, _), _)| source.clone())
+            .collect()
     }
 
     /// Single write path for all mode transitions.

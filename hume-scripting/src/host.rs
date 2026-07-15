@@ -307,13 +307,15 @@ pub trait EditorHost {
         let _ = id;
     }
 
-    /// `(register-trigger-chars! source chars)` — registers `chars` as
-    /// `OnTriggerChar`-firing chars for `source`, replacing that source's
-    /// previous set (a plugin's own reload doesn't accumulate duplicates).
-    /// Checked as a union across every source's set. Default no-op — test
-    /// hosts have no `EditorState` to register into.
-    fn register_trigger_chars(&mut self, source: String, chars: Vec<char>) {
-        let _ = (source, chars);
+    /// `(register-trigger-chars! source language chars)` — registers `chars`
+    /// as `OnTriggerChar`-firing chars for `(source, language)`, replacing
+    /// that exact pair's previous set (a plugin's own reload doesn't
+    /// accumulate duplicates; a second language attaching under the same
+    /// source doesn't clobber the first's). An empty `chars` removes the
+    /// entry. Default no-op — test hosts have no `EditorState` to register
+    /// into.
+    fn register_trigger_chars(&mut self, source: String, language: String, chars: Vec<char>) {
+        let _ = (source, language, chars);
     }
 
     // ── Decoration stores (default = no-op / empty) ──────────────────────

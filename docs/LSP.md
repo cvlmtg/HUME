@@ -209,7 +209,7 @@ Every Steel-visible surface Steps 1–3 introduce. Cards define the semantics; t
 | `on-lsp-detach` (buffer detached by `:lsp-stop`/`:lsp-restart`; args `(bid server-name)`) — a plugin's only signal to clear buffer-scoped state it derived from the now-gone server (e.g. inlay hints), since nothing keeps that state in sync once the buffer has no attached server | hook | quality pass, 2026-07-09 |
 | `on-diagnostics-changed` (signal only; pull via B5) | hook | B7 |
 | `on-viewport-change` (debounced) | hook | B7 |
-| `on-trigger-char` (typed char ∈ registered set, Insert mode) + `(register-trigger-chars! source chars)` | hook + builtin | B7 |
+| `on-trigger-char` `(bid char-string source)` — fires once per source registered for `char-string` under `bid`'s language, Insert mode + `(register-trigger-chars! source language chars)` — keyed `(source, language)`, empty `chars` removes the entry | hook + builtin | B7 |
 | `(completion-begin! bid items #:incomplete f)` / `(completion-update-filter! text)` / `(completion-top n)` / `(completion-accept! idx)` / `(completion-dismiss!)` | builtins | B8 |
 | `on-completion-accept` `(bid item)` — fires after `completion-accept!`'s main edit; `item` is the accepted item's raw JSON | hook | B10c |
 | `on-completion-refilter` `(bid filter-text)` — fires from the per-keystroke refilter path, only while the session's `isIncomplete` flag is set | hook | B10c |

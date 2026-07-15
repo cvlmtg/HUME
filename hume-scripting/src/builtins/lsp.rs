@@ -336,20 +336,23 @@ fn bid_arg(val: &SteelVal, ctx_name: &str) -> Result<hume_engine::pipeline::Buff
     })
 }
 
-/// `(register-trigger-chars! source chars)` — `chars` is a list of 1-char
-/// strings. Callable from any context, including command bodies and hook
-/// handlers — completion/signature-help register a server's trigger characters from inside an
-/// `on-lsp-attach` handler, which runs as plain command context (no
-/// `is_init`/`plugin_stack` gate applies here, unlike `register-hook!` /
+/// `(register-trigger-chars! source language chars)` — `chars` is a list of
+/// 1-char strings, registered for exactly `(source, language)`. Callable
+/// from any context, including command bodies and hook handlers —
+/// completion/signature-help register a server's trigger characters from
+/// inside an `on-lsp-attach` handler, which runs as plain command context
+/// (no `is_init`/`plugin_stack` gate applies here, unlike `register-hook!` /
 /// `on-lsp-notification`).
 pub(crate) fn register_trigger_chars(
     ctx: &mut SteelCtx,
     source: SteelVal,
+    language: SteelVal,
     chars: SteelVal,
 ) -> SteelResult {
     let source = string_arg(source, "register-trigger-chars! source")?;
+    let language = string_arg(language, "register-trigger-chars! language")?;
     let chars = chars_arg(chars, "register-trigger-chars! chars")?;
-    ctx.host.register_trigger_chars(source, chars);
+    ctx.host.register_trigger_chars(source, language, chars);
     Ok(SteelVal::Void)
 }
 

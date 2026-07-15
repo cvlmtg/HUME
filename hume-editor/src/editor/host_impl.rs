@@ -456,8 +456,12 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     }
 
     // ── Trigger chars ───────────────────────────────────────────────────
-    fn register_trigger_chars(&mut self, source: String, chars: Vec<char>) {
-        self.state.trigger_chars.insert(source, chars);
+    fn register_trigger_chars(&mut self, source: String, language: String, chars: Vec<char>) {
+        if chars.is_empty() {
+            self.state.trigger_chars.remove(&(source, language));
+        } else {
+            self.state.trigger_chars.insert((source, language), chars);
+        }
     }
 
     // ── Decoration stores ───────────────────────────────────────────────

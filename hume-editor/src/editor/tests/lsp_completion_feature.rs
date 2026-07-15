@@ -66,6 +66,12 @@ fn setup(
     ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
     let bid = ed.focused_buffer_id();
     ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
+    // This harness's `eval_init` never loads `languages.scm` (unlike the
+    // real `Editor::init_scripting` startup sequence), so `.rs` extension
+    // detection never ran — set the language explicitly to match the
+    // "rust" server key below, which on-lsp-attach's `server-name` arg
+    // (the language) must equal for register-trigger-chars! to route here.
+    ed.state.buffers.get_mut(bid).language = Some("rust".to_string());
 
     let mut client = LspClient::new(sid, PathBuf::from("."));
     client.start_handshake(ed.lsp.backend_mut());

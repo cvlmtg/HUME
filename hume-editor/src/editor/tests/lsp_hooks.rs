@@ -125,14 +125,16 @@ fn register_trigger_chars_from_inside_a_hook_handler_takes_effect() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     let sid = wire_starting_server(&mut ed);
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).language = Some("rust".to_string());
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-lsp-attach (lambda (bid server-name)
-             (register-trigger-chars! "test" '("."))))
-           (register-hook! 'on-trigger-char (lambda (bid ch) (call! "move-right")))"#,
+             (register-trigger-chars! "test" server-name '("."))))
+           (register-hook! 'on-trigger-char (lambda (bid ch source) (call! "move-right")))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -153,6 +155,127 @@ fn register_trigger_chars_from_inside_a_hook_handler_takes_effect() {
         "register-trigger-chars! called from inside a hook handler (command \
          context, not init/plugin-load) must still register the char and \
          fire the extra move-right"
+    );
+}
+
+/// R5's fix: `register-trigger-chars!` is keyed `(source, language)`, not
+/// globally per source — a second language attaching under the same source
+/// must not clobber the first's chars, and a char typed in the wrong
+/// language's buffer must not fire at all.
+#[test]
+fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber_each_other() {
+    use hume_editing::selection::Selection;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let bid_a = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid_a).language = Some("rust".to_string());
+
+    let mut backend = InlineLspBackend::new();
+    backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
+    backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
+    let sid_a = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid_b = backend.start("pylsp", &[], Path::new(".")).unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+
+    let mut client_a = LspClient::new(sid_a, PathBuf::from("."));
+    client_a.start_handshake(ed.lsp.backend_mut());
+    ed.lsp.insert_client_for_test(client_a);
+    ed.lsp
+        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid_a);
+    ed.state.buffers.get_mut(bid_a).lsp_server = Some(sid_a);
+
+    let mut client_b = LspClient::new(sid_b, PathBuf::from("."));
+    client_b.start_handshake(ed.lsp.backend_mut());
+    ed.lsp.insert_client_for_test(client_b);
+    ed.lsp
+        .insert_server_key_for_test("python".to_string(), PathBuf::from("."), sid_b);
+
+    let bid_b = ed.open_buffer(Buffer::new(
+        Text::from("x\n"),
+        SelectionSet::single(Selection::collapsed(0)),
+    ));
+    ed.state.buffers.get_mut(bid_b).language = Some("python".to_string());
+    ed.state.buffers.get_mut(bid_b).lsp_server = Some(sid_b);
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(register-hook! 'on-lsp-attach (lambda (bid server-name)
+             (register-trigger-chars! "test" server-name
+               (if (equal? server-name "rust") '(".") '(",")))))
+           (register-hook! 'on-trigger-char (lambda (bid ch source) (call! "move-right")))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    // Both buffers are already attached (lsp_server set above) before either
+    // handshake completes — the BecameRunning sweep fires on-lsp-attach for
+    // both, in whichever order the backend queued their responses.
+    for (sid, ev) in ed.lsp.backend_mut().drain() {
+        let actions = ed.lsp.client_for_test(sid).unwrap().on_event(ev);
+        for action in actions {
+            ed.dispatch_lsp_action(sid, action);
+        }
+    }
+    ed.drain_hooks();
+
+    // Buffer A ("rust", registered "."): "," must not fire, "." must.
+    // Parallel plain editor (no hook) isolates "did the extra move fire"
+    // from "was the char inserted", same pattern as the single-language
+    // trigger-char tests above.
+    ed.switch_to_buffer_without_jump(bid_a);
+    let mut plain_a = editor_from("-[a]>bcdef\n");
+    ed.feed_key(key('i'));
+    ed.drain_hooks();
+    plain_a.feed_key(key('i'));
+    ed.feed_key(key(','));
+    ed.drain_hooks();
+    plain_a.feed_key(key(','));
+    assert_eq!(
+        state(&ed),
+        state(&plain_a),
+        "\",\" is unregistered for \"rust\" and must not fire"
+    );
+    ed.feed_key(key('.'));
+    ed.drain_hooks();
+    plain_a.feed_key(key('.'));
+    assert_ne!(
+        state(&ed),
+        state(&plain_a),
+        "\".\" is registered for \"rust\" and must fire the extra move"
+    );
+    ed.feed_key(key_esc());
+    ed.drain_hooks();
+
+    // Buffer B ("python", registered ","): "." must not fire, "," must —
+    // proving "python"'s attach registering under the same "test" source
+    // didn't clobber "rust"'s "." entry (checked above), and that "rust"'s
+    // registration doesn't leak into "python"'s buffer either.
+    ed.switch_to_buffer_without_jump(bid_b);
+    let mut plain_b = Editor::for_testing(Buffer::new(
+        Text::from("x\n"),
+        SelectionSet::single(Selection::collapsed(0)),
+    ));
+    ed.feed_key(key('i'));
+    ed.drain_hooks();
+    plain_b.feed_key(key('i'));
+    ed.feed_key(key('.'));
+    ed.drain_hooks();
+    plain_b.feed_key(key('.'));
+    assert_eq!(
+        state(&ed),
+        state(&plain_b),
+        "\".\" is unregistered for \"python\" and must not fire"
+    );
+    ed.feed_key(key(','));
+    ed.drain_hooks();
+    plain_b.feed_key(key(','));
+    assert_ne!(
+        state(&ed),
+        state(&plain_b),
+        "\",\" is registered for \"python\" and must fire the extra move"
     );
 }
 
@@ -251,12 +374,14 @@ fn on_viewport_change_debounces_a_scroll_burst_into_one_fire() {
 fn on_trigger_char_fires_only_for_registered_chars_in_insert_mode_after_insertion() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).language = Some("rust".to_string());
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-trigger-chars! "test" '("."))
-           (register-hook! 'on-trigger-char (lambda (bid ch)
+        r#"(register-trigger-chars! "test" "rust" '("."))
+           (register-hook! 'on-trigger-char (lambda (bid ch source)
              (when (equal? ch ".")
                (call! "move-right"))))"#,
         tmp.path(),
@@ -303,12 +428,14 @@ fn on_trigger_char_fires_only_for_registered_chars_in_insert_mode_after_insertio
 fn on_trigger_char_does_not_fire_in_normal_mode() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[.]>bcdef\n");
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).language = Some("rust".to_string());
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-trigger-chars! "test" '("."))
-           (register-hook! 'on-trigger-char (lambda (bid ch) (call! "move-right")))"#,
+        r#"(register-trigger-chars! "test" "rust" '("."))
+           (register-hook! 'on-trigger-char (lambda (bid ch source) (call! "move-right")))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

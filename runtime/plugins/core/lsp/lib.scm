@@ -47,36 +47,29 @@
 ;;; `cap-key`/`source-name` name the capability and the
 ;;; `register-trigger-chars!` source; `extra-chars` are always-registered
 ;;; chars beyond whatever the server advertises (e.g. sighelp's dismiss
-;;; ")"); `on-trigger` is `(lambda (bid ch) ...)`, called only for a `ch` in
-;;; this feature's own set. Each call gets its own private `chars`,
-;;; captured by all three hook closures — a second feature calling this
-;;; never shares state with the first.
+;;; ")"); `on-trigger` is `(lambda (bid ch) ...)`, called only for a `ch`
+;;; registered under this feature's own `source-name`. No closure state:
+;;; `register-trigger-chars!` is keyed `(source, language)` on the Rust side
+;;; — `server-name` (the `on-lsp-attach`/`on-lsp-detach` arg) *is* the
+;;; registered language — so a second language attaching under the same
+;;; `source-name` gets its own entry instead of clobbering the first's.
 (define (lsp/setup-trigger-chars! cap-key source-name extra-chars on-trigger)
-  (let ((chars '()))
-    (register-hook! 'on-lsp-attach
-      (lambda (bid server-name)
-        (let ((caps (lsp-capabilities server-name)))
-          (when (and caps (hash-contains? caps cap-key))
-            (let* ((provider (hash-ref caps cap-key))
-                   (triggers (if (hash-contains? provider "triggerCharacters")
-                                 (hash-ref provider "triggerCharacters")
-                                 (list)))
-                   (all-chars (append extra-chars triggers)))
-              (set! chars all-chars)
-              (register-trigger-chars! source-name all-chars))))))
-    ;; `register-trigger-chars!` has no scoping narrower than `source-name`
-    ;; — global, not per-buffer/per-server. Clearing here on detach is the
-    ;; same "last call wins" semantics attach already has (a second
-    ;; still-running server sharing this source would have its chars
-    ;; clobbered the same way a second attach would clobber the first).
-    (register-hook! 'on-lsp-detach
-      (lambda (bid server-name)
-        (set! chars '())
-        (register-trigger-chars! source-name '())))
-    (register-hook! 'on-trigger-char
-      (lambda (bid ch)
-        (when (member ch chars)
-          (on-trigger bid ch))))))
+  (register-hook! 'on-lsp-attach
+    (lambda (bid server-name)
+      (let ((caps (lsp-capabilities server-name)))
+        (when (and caps (hash-contains? caps cap-key))
+          (let* ((provider (hash-ref caps cap-key))
+                 (triggers (if (hash-contains? provider "triggerCharacters")
+                               (hash-ref provider "triggerCharacters")
+                               (list))))
+            (register-trigger-chars! source-name server-name (append extra-chars triggers)))))))
+  (register-hook! 'on-lsp-detach
+    (lambda (bid server-name)
+      (register-trigger-chars! source-name server-name '())))
+  (register-hook! 'on-trigger-char
+    (lambda (bid ch source)
+      (when (equal? source source-name)
+        (on-trigger bid ch)))))
 
 ;;; One `'error` log line for a callback error — `err` is either a
 ;;; {"code" "message"} hashmap (protocol error) or the bare string

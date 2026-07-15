@@ -49,8 +49,10 @@ pub enum HookId {
     /// `(bid first-line last-line)`.
     OnViewportChange,
     /// Fires in Insert mode after a registered trigger char (see
-    /// `register-trigger-chars!`) has been inserted into the buffer. Args:
-    /// `(bid char-string)`.
+    /// `register-trigger-chars!`) has been inserted into the buffer — once
+    /// per source registered for that char under the buffer's language, so
+    /// two sources sharing a char each get their own fire. Args: `(bid
+    /// char-string source)`.
     OnTriggerChar,
     /// Fires after `completion-accept!` applies the item's main `textEdit`
     /// (or `insertText` fallback) — Steel handles `additionalTextEdits` and
