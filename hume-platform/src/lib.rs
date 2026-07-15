@@ -12,6 +12,9 @@
 //! - [`process`] — `std::process::Command` wrappers (the audit allow-list).
 //! - [`dirs`] — XDG/platform config, data, home, and runtime directories.
 //! - [`path`] — tilde/env-var expansion and path-separator utilities.
+//! - [`events`] — cross-thread wake primitive for the main event loop:
+//!   blocks on terminal input, an external wake from a background thread, or
+//!   a deadline, whichever comes first.
 //!
 //! All platform-conditional code (`#[cfg(unix)]`, `#[cfg(windows)]`) is
 //! hidden behind private sub-modules; every public function has a uniform
@@ -23,6 +26,7 @@ mod unix;
 mod windows;
 
 pub mod dirs;
+pub mod events;
 pub mod fs;
 pub mod io;
 pub mod path;
