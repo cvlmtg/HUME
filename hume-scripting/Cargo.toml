@@ -10,7 +10,7 @@ test-util = []
 [dependencies]
 hume-engine = { path = "../hume-engine" }
 hume-platform = { path = "../hume-platform" }
-steel-core = "0.8.2"
+steel-core = { version = "0.8.2", features = ["custom-hash"] }
 crossterm = "0.29"
 slotmap = "1"
 tempfile = "3"

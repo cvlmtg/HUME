@@ -10,13 +10,13 @@ use hume_engine::pipeline::{BufferId, PaneId};
 use slotmap::Key as _;
 use steel::{
     gc::ShareableMut as _,
-    rvals::{Custom, IntoSteelVal as _, SteelVal},
+    rvals::{Custom, IntoSteelVal as _, SteelVal, as_underlying_type},
 };
 
 // ── Wrapper types ─────────────────────────────────────────────────────────────
 
 /// Opaque Steel handle for a `BufferId`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct SteelBufferId(pub(crate) BufferId);
 
 impl SteelBufferId {
@@ -27,7 +27,7 @@ impl SteelBufferId {
 }
 
 /// Opaque Steel handle for a `PaneId`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub(crate) struct SteelPaneId(pub(crate) PaneId);
 
 impl SteelBufferId {
@@ -54,11 +54,27 @@ impl Custom for SteelBufferId {
     fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
         Some(Ok(format!("#<buffer-id {}>", self.0.data().as_ffi())))
     }
+
+    fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
+        as_underlying_type::<Self>(other).is_some_and(|o| o.0 == self.0)
+    }
+
+    fn try_as_dyn_hash(&self) -> Option<&dyn steel::rvals::DynHash> {
+        Some(self)
+    }
 }
 
 impl Custom for SteelPaneId {
     fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
         Some(Ok(format!("#<pane-id {}>", self.0.data().as_ffi())))
+    }
+
+    fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
+        as_underlying_type::<Self>(other).is_some_and(|o| o.0 == self.0)
+    }
+
+    fn try_as_dyn_hash(&self) -> Option<&dyn steel::rvals::DynHash> {
+        Some(self)
     }
 }
 
@@ -89,9 +105,11 @@ pub(crate) fn is_pane_id(val: SteelVal) -> bool {
 }
 
 // ── Value-equality builtins ───────────────────────────────────────────────────
-// Steel's `equal?` uses Arc-pointer equality for opaque Custom types, so two
-// SteelBufferId values wrapping the same BufferId are NOT `equal?` unless they
-// share the same Arc.  These builtins compare the inner IDs by value instead.
+// `equal?` and hash-keying now compare by value (see the `Custom::equality_hint`
+// / `try_as_dyn_hash` impls above) — a SteelBufferId can be used as a hash key
+// and `equal?` returns `#t` for two wrappings of the same BufferId. These
+// builtins are kept as an explicit, type-narrowed alternative for plugin code
+// that only wants to compare ids and reject any other value outright.
 
 pub(crate) fn downcast_buffer_id(val: &SteelVal) -> Option<BufferId> {
     if let SteelVal::Custom(v) = val {
@@ -195,6 +213,63 @@ mod tests {
         let id = SteelPaneId(PaneId::default());
         let s = id.fmt().unwrap().unwrap();
         assert!(s.starts_with("#<pane-id "), "got: {s}");
+    }
+
+    /// Exercises `equal?`'s real dispatch through a full Steel eval (not just
+    /// the Rust-level `PartialEq` derive, which never touches steel-core's
+    /// `equal?` machinery). Before `equality_hint`/`try_as_dyn_hash` were
+    /// implemented above, steel-core's default `equality_hint` returned `true`
+    /// for any same-type `Custom` pair regardless of contents, so this exact
+    /// eval used to report `(#t #t)` — same-value and different-value ids were
+    /// indistinguishable under `equal?`. It now reports `(#t #f)`.
+    #[test]
+    fn equal_compares_by_value_through_a_real_steel_eval() {
+        let mut engine = steel::steel_vm::engine::Engine::new();
+        crate::builtins::register_all(&mut engine);
+        let id = BufferId::default();
+        let other = {
+            // A distinct slotmap key: allocate through a fresh slotmap so it
+            // differs from `BufferId::default()`.
+            let mut sm: slotmap::SlotMap<BufferId, ()> = slotmap::SlotMap::with_key();
+            sm.insert(())
+        };
+        assert_ne!(id, other, "test setup: need two distinct BufferIds");
+
+        engine.register_value("a", SteelBufferId(id).into_steelval().unwrap());
+        engine.register_value("b", SteelBufferId(id).into_steelval().unwrap());
+        engine.register_value("c", SteelBufferId(other).into_steelval().unwrap());
+
+        let results = engine
+            .compile_and_run_raw_program("(list (equal? a b) (equal? a c))")
+            .expect("eval must succeed");
+        let list = results.into_iter().next().unwrap();
+        let SteelVal::ListV(items) = list else {
+            panic!("expected a list result");
+        };
+        let items: Vec<_> = items.into_iter().collect();
+        assert_eq!(
+            items,
+            vec![SteelVal::BoolV(true), SteelVal::BoolV(false)],
+            "equal? must be #t for two wrappings of the same BufferId and #f for \
+             different BufferIds"
+        );
+    }
+
+    /// A `SteelBufferId` must be usable as a Steel hash key: two distinct
+    /// wrappings of the same `BufferId` must hash-collide and `hash-ref` the
+    /// same entry — the concrete capability R3/D's per-buffer state needs.
+    #[test]
+    fn buffer_id_is_usable_as_a_steel_hash_key() {
+        let mut engine = steel::steel_vm::engine::Engine::new();
+        crate::builtins::register_all(&mut engine);
+        let id = BufferId::default();
+        engine.register_value("a", SteelBufferId(id).into_steelval().unwrap());
+        engine.register_value("b", SteelBufferId(id).into_steelval().unwrap());
+
+        let results = engine
+            .compile_and_run_raw_program("(hash-ref (hash-insert (hash) a 42) b)")
+            .expect("eval must succeed");
+        assert_eq!(results.into_iter().next().unwrap(), SteelVal::IntV(42));
     }
 
     #[test]

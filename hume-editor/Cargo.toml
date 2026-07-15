@@ -19,7 +19,7 @@ serde_json.workspace = true
 globset = "0.4"
 tree-sitter = "0.26.8"
 slotmap = "1"
-steel-core = "0.8.2"
+steel-core = { version = "0.8.2", features = ["custom-hash"] }
 ropey.workspace = true
 unicode-segmentation.workspace = true
 unicode-width.workspace = true
