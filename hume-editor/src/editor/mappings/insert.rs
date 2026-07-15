@@ -286,6 +286,18 @@ impl Editor {
     /// Insert-mode dispatch (printable chars always do; Backspace always
     /// does, after this decides whether the session survives the deletion).
     fn handle_completion_key(&mut self, key: KeyEvent) -> bool {
+        if self.open_completion_session().is_empty() {
+            // Filtered to nothing by continued typing, or an `isIncomplete`
+            // list awaiting an async re-request — either way no menu is
+            // visibly shown, so nothing here should intercept a key.
+            // Notably this covers Esc (falls through to the trie's
+            // exit-insert leaf, which dismisses the session as a side
+            // effect of leaving Insert — see `EditorState::set_mode` —
+            // rather than needing a second Esc to actually leave Insert)
+            // and Enter (inserts a newline instead of erroring on an
+            // out-of-range `accept(0)`).
+            return false;
+        }
         match key.code {
             KeyCode::Tab | KeyCode::Down => {
                 self.move_completion_selection(true);
@@ -300,18 +312,8 @@ impl Editor {
                 true
             }
             KeyCode::Esc => {
-                if self.open_completion_session().top(1).is_empty() {
-                    // Nothing visibly open — consuming Esc here would
-                    // silently swallow it, forcing a second Esc to actually
-                    // leave Insert. Don't intercept: let it fall through to
-                    // the trie's exit-insert leaf, which reaches `set_mode`
-                    // and dismisses the session as a side effect of leaving
-                    // Insert (see `EditorState::set_mode`).
-                    false
-                } else {
-                    self.state.clear_lsp_completion();
-                    true
-                }
+                self.state.clear_lsp_completion();
+                true
             }
             KeyCode::Backspace => {
                 // The char Backspace is about to delete is the one right

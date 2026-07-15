@@ -188,6 +188,14 @@ impl CompletionSession {
         self.bid
     }
 
+    /// Whether the current filter matches nothing. A session can be open
+    /// with this `true` — narrowed to empty by continued typing, or an
+    /// `isIncomplete` list awaiting an async re-request — in which case no
+    /// menu is visibly shown.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.filtered.is_empty()
+    }
+
     /// Returns `None` when `bid` isn't shown in the focused pane — a normal
     /// race (the async completion response landed after the user switched
     /// panes), not a caller bug, so this is silently absorbed by the caller

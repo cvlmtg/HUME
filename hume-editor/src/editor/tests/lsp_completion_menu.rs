@@ -193,7 +193,59 @@ fn esc_dismisses_the_session_but_keeps_typed_text_and_stays_in_insert() {
     assert_eq!(text, "f\n", "the typed filter char must not be reverted");
 }
 
-// ── Refilter to zero matches: doesn't trap Esc ───────────────────────────────
+// ── Refilter to zero matches: doesn't trap Esc/Enter/Tab ─────────────────────
+
+/// Regression: an open-but-empty session (narrowed to zero matches by
+/// continued typing) must not intercept Enter. Before the
+/// `handle_completion_key` empty-session guard, this hit `accept(0)` on an
+/// empty `filtered` list, reported an "index out of range" error, and
+/// swallowed the newline.
+#[test]
+fn enter_at_zero_matches_inserts_a_newline_instead_of_erroring() {
+    let mut ed = Editor::open(None).unwrap();
+    ed.feed_key(key('i'));
+    begin_session(&mut ed, &[("foo", None)]);
+
+    // "z" isn't a subsequence of "foo" — filtered to empty, session survives.
+    ed.feed_key(key('z'));
+    assert!(ed.state.lsp_completion.is_some(), "sanity: session survives");
+
+    ed.feed_key(key_enter());
+
+    assert_eq!(
+        ed.state.status_msg, None,
+        "must not report completion-accept!'s index-out-of-range error"
+    );
+    let text = ed.doc().text().to_string();
+    assert_eq!(text, "z\n\n", "Enter must insert a newline, not be swallowed");
+}
+
+/// Same regression for Tab: an empty session must not intercept it into a
+/// selection-move no-op (or, before the guard, its own would-be-dead
+/// `n == 0` early return) — Tab falls through to normal Insert dispatch,
+/// which inserts an indent (`\t` or spaces, depending on `tab-style`).
+#[test]
+fn tab_at_zero_matches_falls_through_to_normal_insert() {
+    let mut ed = Editor::open(None).unwrap();
+    ed.feed_key(key('i'));
+    begin_session(&mut ed, &[("foo", None)]);
+
+    ed.feed_key(key('z'));
+    assert!(ed.state.lsp_completion.is_some(), "sanity: session survives");
+    let before = ed.doc().text().to_string();
+
+    ed.feed_key(key_tab());
+
+    assert!(
+        ed.state.lsp_completion_ui.is_none(),
+        "Tab must not create selection UI for a menu that isn't shown"
+    );
+    let text = ed.doc().text().to_string();
+    assert_ne!(
+        text, before,
+        "Tab must fall through to normal Insert dispatch and change the buffer"
+    );
+}
 
 #[test]
 fn typing_to_zero_matches_keeps_the_session_but_a_single_esc_still_exits_insert() {
