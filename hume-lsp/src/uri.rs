@@ -277,30 +277,35 @@ mod tests {
 
     // ── round-trip ───────────────────────────────────────────────────────────
 
+    #[cfg(not(windows))]
     #[test]
     fn round_trip_plain_ascii_path() {
         let path = Path::new("/tmp/hello/world.rs");
         assert_eq!(round_trip(path), path);
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn round_trip_path_with_spaces() {
         let path = Path::new("/tmp/hello world/x file.rs");
         assert_eq!(round_trip(path), path);
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn round_trip_non_ascii_path() {
         let path = Path::new("/tmp/héllo/ö.rs");
         assert_eq!(round_trip(path), path);
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn round_trip_symbols_needing_escapes() {
         let path = Path::new("/tmp/a#b/c?d/e%f.rs");
         assert_eq!(round_trip(path), path);
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn round_trip_path_with_colon() {
         // ':' is a legal Unix filename byte and pchar-legal in a URI path
@@ -327,18 +332,21 @@ mod tests {
         assert_eq!(path_to_uri(path), Err(UriError::NotUtf8));
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn path_to_uri_produces_expected_string_for_plain_path() {
         let uri = path_to_uri(Path::new("/tmp/x.rs")).expect("path_to_uri");
         assert_eq!(uri.as_str(), "file:///tmp/x.rs");
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn path_to_uri_encodes_percent_and_hash_and_question_and_space() {
         let uri = path_to_uri(Path::new("/tmp/a b#c?d%e.rs")).expect("path_to_uri");
         assert_eq!(uri.as_str(), "file:///tmp/a%20b%23c%3Fd%25e.rs");
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn path_to_uri_leaves_colon_unescaped() {
         let uri = path_to_uri(Path::new("/tmp/weird:name.rs")).expect("path_to_uri");
@@ -434,6 +442,10 @@ mod tests {
         assert_eq!(uri_to_path(&uri), Err(UriError::NotFileScheme));
     }
 
+    // Windows: a non-localhost authority is read as a UNC server name
+    // instead of rejected — see
+    // uri_to_path_reconstructs_a_unc_path_from_a_non_localhost_authority.
+    #[cfg(not(windows))]
     #[test]
     fn uri_to_path_rejects_non_localhost_authority() {
         let uri = lsp_types::Uri::from_str("file://example.com/x").expect("parse");

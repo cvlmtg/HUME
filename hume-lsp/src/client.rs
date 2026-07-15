@@ -625,7 +625,11 @@ mod tests {
     #[test]
     #[allow(deprecated)] // asserting on the deliberately-still-populated compat field
     fn initialize_params_advertise_the_v1_capability_set() {
-        let params = build_initialize_params(&PathBuf::from("/tmp/proj"));
+        #[cfg(windows)]
+        let root = PathBuf::from(r"C:\tmp\proj");
+        #[cfg(not(windows))]
+        let root = PathBuf::from("/tmp/proj");
+        let params = build_initialize_params(&root);
 
         assert_eq!(params.process_id, Some(std::process::id()));
         assert!(params.root_uri.is_some());
