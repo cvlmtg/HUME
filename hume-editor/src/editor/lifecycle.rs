@@ -1612,7 +1612,8 @@ impl Editor {
                 self.popup_anchor_and_bounds(ctx, self.focused_cursor_char())?;
             let lines = crate::ui::popup::wrap_text(&model.text, max_width, max_height);
             let (outer_w, outer_h) = crate::ui::menu_box::outer_dims(&lines, max_height);
-            let (x, y) = crate::ui::popup::resolve_popup_geometry(outer_w, outer_h, anchor, pane_rect);
+            let (x, y, outer_w, outer_h) =
+                crate::ui::popup::resolve_popup_geometry(outer_w, outer_h, anchor, pane_rect);
             Some(crate::ui::popup::PopupState {
                 lines,
                 x,
@@ -1650,7 +1651,8 @@ impl Editor {
             let lines: Vec<String> = model.items.clone();
             let (outer_w, outer_h) =
                 crate::ui::menu_box::outer_dims(&lines, crate::ui::menu_box::MAX_MENU_ROWS);
-            let (x, y) = crate::ui::popup::resolve_popup_geometry(outer_w, outer_h, anchor, pane_rect);
+            let (x, y, outer_w, outer_h) =
+                crate::ui::popup::resolve_popup_geometry(outer_w, outer_h, anchor, pane_rect);
             let selected = if lines.is_empty() {
                 None
             } else {
@@ -1701,7 +1703,8 @@ impl Editor {
                 .collect();
             let (outer_w, outer_h) =
                 crate::ui::menu_box::outer_dims(&lines, crate::ui::menu_box::MAX_MENU_ROWS);
-            let (x, y) = crate::ui::popup::resolve_popup_geometry(outer_w, outer_h, anchor, pane_rect);
+            let (x, y, outer_w, outer_h) =
+                crate::ui::popup::resolve_popup_geometry(outer_w, outer_h, anchor, pane_rect);
             let selected = if lines.is_empty() {
                 None
             } else {

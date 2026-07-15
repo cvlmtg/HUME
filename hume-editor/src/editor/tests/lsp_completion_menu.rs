@@ -29,6 +29,72 @@ fn begin_session(ed: &mut Editor, items: &[(&str, Option<&str>)]) {
     ed.state.lsp_completion = Some(session);
 }
 
+// ── Pane-fit clamp: menu must render (clamped), never vanish ────────────────
+//
+// Regression coverage for `resolve_popup_geometry`'s size clamp: before it
+// existed, `sync_lsp_completion_view` sized the popup against the full
+// candidate list with no bound on the pane's actual width/height, and
+// `PopupOverlay`'s defensive bounds check silently dropped the *entire*
+// popup — not just the overflowing part — whenever the box didn't fit.
+
+#[test]
+fn completion_menu_clamps_to_a_short_pane_instead_of_vanishing() {
+    let mut ed = Editor::open(None).unwrap();
+    ed.feed_key(key('i'));
+    // MAX_MENU_ROWS is 10 — 12 items would size an unclamped box to
+    // 12 rows (+2 frame), taller than the short pane below.
+    let labels: Vec<String> = (0..12).map(|i| format!("item{i}")).collect();
+    let items: Vec<(&str, Option<&str>)> = labels.iter().map(|l| (l.as_str(), None)).collect();
+    begin_session(&mut ed, &items);
+
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(40, 6, &mut ctx);
+
+    let pane_rect = ed
+        .view
+        .pane_rect(ed.state.focused_pane_id)
+        .expect("focused pane has a rect after prepare_frame");
+    let view = ed.state.lsp_completion_view.read().unwrap();
+    let state = view
+        .as_ref()
+        .expect("popup must still render, clamped to fit, not vanish");
+    assert!(
+        state.outer_h <= pane_rect.height,
+        "outer_h {} must not exceed pane height {}",
+        state.outer_h,
+        pane_rect.height
+    );
+}
+
+#[test]
+fn completion_menu_clamps_to_a_narrow_pane_instead_of_vanishing() {
+    let mut ed = Editor::open(None).unwrap();
+    ed.feed_key(key('i'));
+    // A label wide enough to overflow the narrow pane below.
+    begin_session(
+        &mut ed,
+        &[("a_very_long_candidate_label_that_overflows_the_pane", None)],
+    );
+
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(20, 8, &mut ctx);
+
+    let pane_rect = ed
+        .view
+        .pane_rect(ed.state.focused_pane_id)
+        .expect("focused pane has a rect after prepare_frame");
+    let view = ed.state.lsp_completion_view.read().unwrap();
+    let state = view
+        .as_ref()
+        .expect("popup must still render, clamped to fit, not vanish");
+    assert!(
+        state.outer_w <= pane_rect.width,
+        "outer_w {} must not exceed pane width {}",
+        state.outer_w,
+        pane_rect.width
+    );
+}
+
 // ── Menu appears / typing narrows ─────────────────────────────────────────────
 
 #[test]
