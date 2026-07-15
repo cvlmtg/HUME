@@ -13,10 +13,11 @@ use super::edits;
 use super::introspect;
 use crate::editor::{Editor, EditorState};
 
-/// One item, typed via `lsp_types::CompletionItem` (the response round-trips
-/// through Steel first — `strip-snippet-item` rewrites `insertText`/
-/// `textEdit.newText` string values, so this parses post-Steel-mutation
-/// JSON, not the raw wire shape, but the type stays the same either way).
+/// One item, typed via `lsp_types::CompletionItem`. `insert_text`/`text_edit`
+/// have snippet syntax (`${n:default}`, `$n`) already stripped when the
+/// server declared `insertTextFormat: Snippet` — see [`strip_snippet`].
+/// `raw` keeps the pristine, unstripped JSON (Steel's `on-completion-accept`
+/// hook and `completionItem/resolve` both see the server's original text).
 pub(crate) struct StoredCompletionItem {
     pub(crate) label: String,
     /// Raw `CompletionItemKind` number — display-only (icon choice), no
@@ -61,7 +62,13 @@ impl StoredCompletionItem {
         let kind = v.get("kind").and_then(|x| x.as_i64());
         let sort_text = item.sort_text.unwrap_or_else(|| label.clone());
         let filter_text = item.filter_text.unwrap_or_else(|| label.clone());
+        let is_snippet = item.insert_text_format == Some(lsp_types::InsertTextFormat::SNIPPET);
         let insert_text = item.insert_text.unwrap_or_else(|| label.clone());
+        let insert_text = if is_snippet {
+            strip_snippet(&insert_text)
+        } else {
+            insert_text
+        };
         let text_edit = item.text_edit.map(|te| match te {
             lsp_types::CompletionTextEdit::Edit(te) => te,
             // Preserves the existing "use the narrower insert range" choice.
@@ -69,6 +76,16 @@ impl StoredCompletionItem {
                 range: ire.insert,
                 new_text: ire.new_text,
             },
+        });
+        let text_edit = text_edit.map(|te| {
+            if is_snippet {
+                lsp_types::TextEdit {
+                    new_text: strip_snippet(&te.new_text),
+                    ..te
+                }
+            } else {
+                te
+            }
         });
         Self {
             label,
@@ -102,10 +119,26 @@ impl StoredCompletionItem {
                 .map(str::to_string)
                 .unwrap_or_else(|| label.clone())
         };
+        let is_snippet = v.get("insertTextFormat").and_then(|x| x.as_i64()) == Some(2);
         let sort_text = string_or_label("sortText");
         let filter_text = string_or_label("filterText");
         let insert_text = string_or_label("insertText");
+        let insert_text = if is_snippet {
+            strip_snippet(&insert_text)
+        } else {
+            insert_text
+        };
         let text_edit = v.get("textEdit").and_then(text_edit_from_json_lenient);
+        let text_edit = text_edit.map(|te| {
+            if is_snippet {
+                lsp_types::TextEdit {
+                    new_text: strip_snippet(&te.new_text),
+                    ..te
+                }
+            } else {
+                te
+            }
+        });
         Some(Self {
             label,
             kind,
@@ -125,6 +158,46 @@ impl StoredCompletionItem {
             "detail": self.detail,
         })
     }
+}
+
+/// Rewrites `${n:default}` -> `default` (empty string if no `:default`) and
+/// bare `$n` -> "" (dropped) in an `insertTextFormat: Snippet` item's text —
+/// v1 has no snippet-expansion UI (no tabstop cycling), so inserting raw
+/// snippet syntax verbatim would show it literally in the buffer. No
+/// choices (`${n|a,b|}`), no nested placeholders, no `\$` escapes. Operates
+/// on `char`s (Unicode scalars), matching how this logic worked when it was
+/// Steel `string-ref`/`substring` — this is text-content transformation on
+/// server-provided strings, not motion/selection code over buffer
+/// positions, so grapheme-cluster stepping doesn't apply here.
+fn strip_snippet(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let n = chars.len();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < n {
+        if chars[i] == '$' && i + 1 < n && chars[i + 1] == '{' {
+            let close = chars[i + 2..]
+                .iter()
+                .position(|&c| c == '}')
+                .map(|p| i + 2 + p);
+            let body_end = close.unwrap_or(n);
+            let body: String = chars[i + 2..body_end].iter().collect();
+            if let Some(colon) = body.find(':') {
+                out.push_str(&body[colon + 1..]);
+            }
+            i = close.map_or(n, |c| c + 1);
+        } else if chars[i] == '$' && i + 1 < n && chars[i + 1].is_ascii_digit() {
+            let mut j = i + 1;
+            while j < n && chars[j].is_ascii_digit() {
+                j += 1;
+            }
+            i = j;
+        } else {
+            out.push(chars[i]);
+            i += 1;
+        }
+    }
+    out
 }
 
 /// Extracts `(range, newText)` from a `CompletionTextEdit` JSON value for
@@ -456,6 +529,128 @@ impl Editor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strip_snippet_default_placeholder_becomes_its_default_text() {
+        assert_eq!(strip_snippet("${1:foo}"), "foo");
+    }
+
+    #[test]
+    fn strip_snippet_bare_tabstop_is_dropped() {
+        assert_eq!(strip_snippet("before$0after"), "beforeafter");
+    }
+
+    #[test]
+    fn strip_snippet_multi_digit_tabstop_is_dropped() {
+        assert_eq!(strip_snippet("$12"), "");
+    }
+
+    #[test]
+    fn strip_snippet_empty_default_becomes_empty_string() {
+        assert_eq!(strip_snippet("${1:}"), "");
+    }
+
+    #[test]
+    fn strip_snippet_placeholder_with_no_colon_becomes_empty_string() {
+        assert_eq!(strip_snippet("${1}"), "");
+    }
+
+    #[test]
+    fn strip_snippet_unterminated_placeholder_consumes_to_end_of_string() {
+        assert_eq!(strip_snippet("${1:foo"), "foo");
+    }
+
+    #[test]
+    fn strip_snippet_the_lsp_md_documented_example() {
+        assert_eq!(
+            strip_snippet("for ${1:x} in ${2:iter} {\n    $0\n}"),
+            "for x in iter {\n    \n}"
+        );
+    }
+
+    #[test]
+    fn strip_snippet_leaves_plain_text_untouched() {
+        assert_eq!(strip_snippet("no snippet syntax here"), "no snippet syntax here");
+    }
+
+    #[test]
+    fn strip_snippet_a_dollar_followed_by_a_digit_is_always_a_tabstop_reference() {
+        // "$5" is a bare tabstop ref (dropped) even mid-word — "$5.00" is
+        // not special-cased as currency; only the digit run after `$` is
+        // consumed.
+        assert_eq!(strip_snippet("$5.00"), ".00");
+    }
+
+    #[test]
+    fn strip_snippet_a_dollar_with_no_following_brace_or_digit_is_copied_literally() {
+        assert_eq!(strip_snippet("price: $x"), "price: $x");
+    }
+
+    /// End-to-end: `from_typed` only strips when the server declared
+    /// `insertTextFormat: Snippet` (2) — a plain-text item's `$` literals
+    /// must survive untouched.
+    #[test]
+    fn from_typed_strips_snippet_insert_text_only_when_format_is_snippet() {
+        let v = serde_json::json!({
+            "label": "foo",
+            "insertText": "${1:foo}(${2:bar})",
+            "insertTextFormat": 2,
+        });
+        let item = StoredCompletionItem::from_json(&v).expect("well-formed item");
+        assert_eq!(item.insert_text, "foo(bar)");
+        assert_eq!(
+            item.raw.get("insertText").and_then(|v| v.as_str()),
+            Some("${1:foo}(${2:bar})"),
+            "raw must keep the pristine snippet text for on-completion-accept/resolve"
+        );
+    }
+
+    #[test]
+    fn from_typed_leaves_insert_text_untouched_without_snippet_format() {
+        let v = serde_json::json!({
+            "label": "foo",
+            "insertText": "$100 literal",
+        });
+        let item = StoredCompletionItem::from_json(&v).expect("well-formed item");
+        assert_eq!(item.insert_text, "$100 literal");
+    }
+
+    #[test]
+    fn from_typed_strips_snippet_text_edit_new_text() {
+        let v = serde_json::json!({
+            "label": "foo",
+            "insertTextFormat": 2,
+            "textEdit": {
+                "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 3}},
+                "newText": "${1:foo}",
+            },
+        });
+        let item = StoredCompletionItem::from_json(&v).expect("well-formed item");
+        assert_eq!(item.text_edit.unwrap().new_text, "foo");
+    }
+
+    /// `from_json_lenient` (the recovery path for an off-spec item) must
+    /// strip snippet syntax too — not just the strict `from_typed` path.
+    #[test]
+    fn from_json_lenient_also_strips_snippet_insert_text() {
+        // A non-numeric `kind` forces the whole item through the lenient
+        // fallback (same trick as `string_kind_recovers_via_lenient_fallback`
+        // below), while `insertTextFormat`/`insertText` stay well-formed.
+        let v = serde_json::json!({
+            "label": "foo",
+            "kind": "Function",
+            "insertTextFormat": 2,
+            "insertText": "${1:foo}",
+        });
+        assert_strict_parse_fails(&v);
+        let item = StoredCompletionItem::from_json(&v).expect("label present — must recover");
+        assert_eq!(item.insert_text, "foo");
+        assert_eq!(
+            item.raw.get("insertText").and_then(|v| v.as_str()),
+            Some("${1:foo}"),
+            "raw must keep the pristine snippet text"
+        );
+    }
 
     /// Independent oracle: strict `lsp_types::CompletionItem` deserialize
     /// really does reject `v` on its own — otherwise a test using this
