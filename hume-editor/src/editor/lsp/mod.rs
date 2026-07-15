@@ -170,6 +170,18 @@ impl LspState {
         }
     }
 
+    /// `true` while any server needs the statusline spinner animating —
+    /// mid-handshake (`Starting`) or reporting `$/progress` (indexing,
+    /// loading, ...). Single source of truth for the two sites that must
+    /// agree: `AsyncSource::next_wake` (*when* to wake for the next spinner
+    /// tick) and `drain_lsp` (*whether* to advance the frame once woken). If
+    /// they diverged, the spinner would freeze or wake without advancing.
+    pub(crate) fn has_animating_server(&self) -> bool {
+        self.servers
+            .values()
+            .any(|e| e.client.state() == ServerState::Starting || !e.progress.is_empty())
+    }
+
     /// Production constructor: one real server process per registration.
     /// `wake` is forwarded to every spawned server's reader/stderr threads,
     /// so the main loop wakes instead of polling for completion.
@@ -415,16 +427,13 @@ impl AsyncSource for LspState {
 
         // A server mid-handshake or reporting `$/progress` (indexing,
         // loading, ...) needs the statusline spinner to keep animating —
-        // wake at the spinner's own cadence. `Starting` is included here
-        // (not just progress) because the pending-poll arm that used to
-        // cover the handshake spinner is gone; without it the spinner would
-        // freeze against `initialize`'s 30s deadline. This mirrors
-        // `drain_lsp`'s own animate-the-spinner condition below.
-        let animating = self
-            .servers
-            .values()
-            .any(|e| e.client.state() == ServerState::Starting || !e.progress.is_empty());
-        let spinner = animating.then(|| now + SPINNER_INTERVAL);
+        // wake at the spinner's own cadence. `Starting` is included (not just
+        // progress) because the pending-poll arm that used to cover the
+        // handshake spinner is gone; without it the spinner would freeze
+        // against `initialize`'s 30s deadline.
+        let spinner = self
+            .has_animating_server()
+            .then(|| now + SPINNER_INTERVAL);
 
         [deadline, spinner].into_iter().flatten().min()
     }
@@ -507,12 +516,7 @@ impl Editor {
         // Advance the statusline loading spinner while any server is mid-
         // handshake or reporting `$/progress` — idle otherwise, so the
         // frame counter doesn't drift while there's nothing to animate.
-        let animating = self
-            .lsp
-            .servers
-            .values()
-            .any(|e| e.client.state() == ServerState::Starting || !e.progress.is_empty());
-        if animating {
+        if self.lsp.has_animating_server() {
             self.lsp.spinner.maybe_advance(now);
         }
 

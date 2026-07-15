@@ -75,8 +75,7 @@ impl<'a> EditorHostImpl<'a> {
     /// `Editor`, so it can't just call that method.
     fn clear_lsp_completion(&mut self) {
         if let Some(lsp) = self.lsp.as_deref_mut() {
-            lsp.completion = None;
-            lsp.completion_ui = None;
+            crate::editor::lsp::completion::clear_completion_state(lsp);
         }
         *self
             .state
@@ -895,7 +894,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         // accept never leaves a stale session lingering; the ui/view clear
         // matches `clear_lsp_completion`'s scope even though `completion`
         // itself is already `None` here (via `take` above).
-        lsp.completion_ui = None;
+        crate::editor::lsp::completion::clear_completion_state(lsp);
         *self
             .state
             .lsp_completion_view

@@ -340,6 +340,17 @@ impl CompletionSession {
     }
 }
 
+/// Clears `lsp`'s completion session + menu UI (not the shared view Arc —
+/// callers hold that separately: `Editor` via `state.lsp_completion_view`,
+/// `EditorHostImpl` via its own disjoint `state` borrow). Single definition
+/// of "what constitutes an open completion session", shared by
+/// `Editor::clear_lsp_completion`, `EditorHostImpl::clear_lsp_completion`,
+/// and `completion_accept`.
+pub(crate) fn clear_completion_state(lsp: &mut LspState) {
+    lsp.completion = None;
+    lsp.completion_ui = None;
+}
+
 impl Editor {
     // ── LSP completion menu ─────────────────────────────────────────────
 
@@ -349,8 +360,7 @@ impl Editor {
     /// `take_pending_lsp_completion_dismiss`. A no-op when no session is
     /// open.
     pub(crate) fn clear_lsp_completion(&mut self) {
-        self.lsp.completion = None;
-        self.lsp.completion_ui = None;
+        clear_completion_state(&mut self.lsp);
         *self
             .state
             .lsp_completion_view

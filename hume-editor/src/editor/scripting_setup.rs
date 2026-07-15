@@ -289,6 +289,12 @@ impl Editor {
             Ok(effects) => self.apply_script_effects(effects),
             Err(e) => self.report(Severity::Error, format!("steel call error: {e}")),
         }
+        // A call just run above (an LSP-request callback, a timer thunk) can
+        // itself dispatch a command that exits Insert, setting the flag the
+        // top-of-function consumption already passed. Consume it again so
+        // `prepare_frame`'s later `sync_lsp_completion_view` never repaints a
+        // session `set_mode` asked to close mid-drain.
+        self.take_pending_lsp_completion_dismiss();
     }
 
     // ── Scripting ─────────────────────────────────────────────────────────────
