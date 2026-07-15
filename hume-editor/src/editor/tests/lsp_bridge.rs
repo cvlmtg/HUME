@@ -27,7 +27,7 @@ fn setup_with(
     configure(&mut backend, sid);
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.state = ServerState::Running;
+    client.set_state_for_test(ServerState::Running);
     ed.lsp.insert_client_for_test(client);
     ed.lsp
         .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
@@ -501,7 +501,7 @@ fn didchange_reaches_the_wire_before_a_same_dispatch_request() {
         .unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(raw_backend));
     let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.state = ServerState::Running;
+    client.set_state_for_test(ServerState::Running);
     ed.lsp.insert_client_for_test(client);
     ed.lsp
         .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
@@ -580,7 +580,10 @@ fn lsp_request_against_a_crashed_server_fires_callback_with_err() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     let sid = setup_with(&mut ed, |_b, _sid| {});
-    ed.lsp.client_for_test(sid).unwrap().state = ServerState::Crashed;
+    ed.lsp
+        .client_for_test(sid)
+        .unwrap()
+        .set_state_for_test(ServerState::Crashed);
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(

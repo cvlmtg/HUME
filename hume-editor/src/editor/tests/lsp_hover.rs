@@ -29,7 +29,7 @@ fn eval_with_real_host(ed: &mut Editor, host: &mut ScriptingHost, source: &str, 
 
 /// Builds an editor with a real opened file attached to a scripted server
 /// whose handshake has fully completed (so `lsp-capabilities` decodes real
-/// data — a shortcut `client.state = Running` skips that, per
+/// data — a shortcut `client.set_state_for_test(Running)` skips that, per
 /// `lsp_introspect.rs`), then loads the real shipped `core:lsp` plugin.
 /// `lsp-position-params` requires `buf.path()` to be `Some`, so every hover
 /// test needs a real file — a bare `editor_from` buffer won't do.

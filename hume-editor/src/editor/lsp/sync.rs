@@ -183,7 +183,7 @@ impl Editor {
                     continue; // can't happen once attached, but never send into the void
                 };
                 let events =
-                    changeset_to_content_changes(&change.before, &change.cs, client.encoding);
+                    changeset_to_content_changes(&change.before, &change.cs, client.encoding());
                 if events.is_empty() {
                     continue;
                 }

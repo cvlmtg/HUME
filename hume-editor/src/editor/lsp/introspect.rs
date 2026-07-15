@@ -58,7 +58,7 @@ pub(super) fn resolve_server(
             }
         }
     };
-    match lsp.servers.get(&sid).map(|e| e.client.state) {
+    match lsp.servers.get(&sid).map(|e| e.client.state()) {
         Some(hume_lsp::client::ServerState::Starting | hume_lsp::client::ServerState::Running) => {
             Ok(sid) // send_or_queue handles Starting's deferred send correctly
         }
@@ -97,8 +97,8 @@ pub(crate) fn server_status(lsp: &LspState) -> Vec<hume_scripting::LspServerStat
             let language = e.language.clone()?;
             Some(hume_scripting::LspServerStatusEntry {
                 language,
-                root: e.client.root.clone(),
-                state: format!("{:?}", e.client.state),
+                root: e.client.root().to_path_buf(),
+                state: format!("{:?}", e.client.state()),
                 pending: e.client.pending_count(),
             })
         })
@@ -140,7 +140,7 @@ pub(crate) fn activity(state: &EditorState, lsp: &LspState, id: BufferId) -> Lsp
     let Some(entry) = lsp.servers.get(&sid) else {
         return LspActivity::Idle;
     };
-    if entry.client.state == hume_lsp::client::ServerState::Starting {
+    if entry.client.state() == hume_lsp::client::ServerState::Starting {
         return LspActivity::Starting;
     }
     match entry.progress.last() {
@@ -187,7 +187,7 @@ fn uri_and_encoding<'a>(
     let sid = buf.lsp_server?;
     let entry = lsp.servers.get(&sid)?;
     let uri = hume_lsp::uri::path_to_uri(path).ok()?;
-    Some((uri.as_str().to_string(), entry.client.encoding))
+    Some((uri.as_str().to_string(), entry.client.encoding()))
 }
 
 /// Ready-made `{"textDocument" {"uri"} "position" {"line" "character"}}`
@@ -224,7 +224,7 @@ pub(crate) fn encoding_for_buffer(
         .try_get(id)
         .and_then(|b| b.lsp_server)
         .and_then(|sid| lsp.servers.get(&sid))
-        .map(|e| e.client.encoding)
+        .map(|e| e.client.encoding())
         .unwrap_or(hume_editing::position_encoding::PositionEncoding::Utf16)
 }
 

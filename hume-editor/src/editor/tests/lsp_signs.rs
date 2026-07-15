@@ -515,7 +515,7 @@ fn reload_to_shorter_text_clears_stale_diagnostics_and_does_not_panic() {
             "message": "boom",
         }],
     });
-    ed.ingest_publish_diagnostics(sid, params);
+    ed.ingest_publish_diagnostics(sid, serde_json::from_value(params).unwrap());
     assert_eq!(
         ed.lsp.diagnostic_counts_for_test(bid),
         (1, 0),

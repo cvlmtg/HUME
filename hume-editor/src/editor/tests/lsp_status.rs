@@ -31,7 +31,7 @@ fn status_text_lists_a_running_server_with_root_and_pending_count() {
 
     let root = PathBuf::from("/tmp/hume-lsp-status-test");
     let mut client = LspClient::new(sid, root.clone());
-    client.state = ServerState::Running;
+    client.set_state_for_test(ServerState::Running);
     ed.lsp.insert_client_for_test(client);
     ed.lsp
         .insert_server_key_for_test("rust".to_string(), root.clone(), sid);
@@ -238,7 +238,7 @@ fn lsp_restart_does_not_duplicate_diagnostics_after_a_republish() {
             "message": "boom",
         }],
     });
-    ed.ingest_publish_diagnostics(old_sid, params.clone());
+    ed.ingest_publish_diagnostics(old_sid, serde_json::from_value(params.clone()).unwrap());
     assert_eq!(
         ed.lsp.diagnostic_counts_for_test(bid),
         (1, 0),
@@ -257,7 +257,7 @@ fn lsp_restart_does_not_duplicate_diagnostics_after_a_republish() {
     // The fresh server republishes the same diagnostic — this must replace
     // the old, now-detached server's entry, not stack alongside it.
     params["version"] = serde_json::json!(ed.state.buffers.get(bid).text_gen as i32);
-    ed.ingest_publish_diagnostics(new_sid, params);
+    ed.ingest_publish_diagnostics(new_sid, serde_json::from_value(params).unwrap());
 
     assert_eq!(
         ed.lsp.diagnostic_counts_for_test(bid),
@@ -299,10 +299,10 @@ fn log_message_error_type_is_reported_at_error_severity() {
 
     ed.dispatch_lsp_action(
         sid,
-        ClientAction::ServerNotification {
-            method: "window/logMessage".to_string(),
-            params: serde_json::json!({"type": 1, "message": "something broke"}),
-        },
+        ClientAction::LogMessage(
+            serde_json::from_value(serde_json::json!({"type": 1, "message": "something broke"}))
+                .unwrap(),
+        ),
     );
 
     let log = ed.state.message_log.format_for_display();
@@ -325,10 +325,10 @@ fn log_message_info_type_is_reported_at_trace_not_shown_as_status() {
 
     ed.dispatch_lsp_action(
         sid,
-        ClientAction::ServerNotification {
-            method: "window/logMessage".to_string(),
-            params: serde_json::json!({"type": 3, "message": "indexing"}),
-        },
+        ClientAction::LogMessage(
+            serde_json::from_value(serde_json::json!({"type": 3, "message": "indexing"}))
+                .unwrap(),
+        ),
     );
 
     let log = ed.state.message_log.format_for_display();
@@ -351,10 +351,9 @@ fn show_message_is_reported_at_info_severity() {
 
     ed.dispatch_lsp_action(
         sid,
-        ClientAction::ServerNotification {
-            method: "window/showMessage".to_string(),
-            params: serde_json::json!({"type": 3, "message": "ready"}),
-        },
+        ClientAction::ShowMessage(
+            serde_json::from_value(serde_json::json!({"type": 3, "message": "ready"})).unwrap(),
+        ),
     );
 
     // Info severity is never pushed to the persistent log (see
@@ -375,24 +374,28 @@ fn progress_report_events_are_dropped_without_any_log_line() {
 
     ed.dispatch_lsp_action(
         sid,
-        ClientAction::ServerNotification {
-            method: "$/progress".to_string(),
-            params: serde_json::json!({"token": "1", "value": {"kind": "begin", "title": "indexing"}}),
-        },
+        ClientAction::Progress(
+            serde_json::from_value(
+                serde_json::json!({"token": "1", "value": {"kind": "begin", "title": "indexing"}}),
+            )
+            .unwrap(),
+        ),
     );
     ed.dispatch_lsp_action(
         sid,
-        ClientAction::ServerNotification {
-            method: "$/progress".to_string(),
-            params: serde_json::json!({"token": "1", "value": {"kind": "report", "percentage": 50}}),
-        },
+        ClientAction::Progress(
+            serde_json::from_value(
+                serde_json::json!({"token": "1", "value": {"kind": "report", "percentage": 50}}),
+            )
+            .unwrap(),
+        ),
     );
     ed.dispatch_lsp_action(
         sid,
-        ClientAction::ServerNotification {
-            method: "$/progress".to_string(),
-            params: serde_json::json!({"token": "1", "value": {"kind": "end"}}),
-        },
+        ClientAction::Progress(
+            serde_json::from_value(serde_json::json!({"token": "1", "value": {"kind": "end"}}))
+                .unwrap(),
+        ),
     );
 
     let entries: Vec<_> = ed.state.message_log.entries().collect();
@@ -412,7 +415,7 @@ fn lsp_shutdown_all_transitions_every_running_client_to_dead() {
     let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let mut client = LspClient::new(sid, PathBuf::from("/tmp/hume-shutdown-test"));
-    client.state = ServerState::Running;
+    client.set_state_for_test(ServerState::Running);
     ed.lsp.insert_client_for_test(client);
 
     // Duration::ZERO means the grace-window loop's `Instant::now() < deadline`
@@ -423,7 +426,7 @@ fn lsp_shutdown_all_transitions_every_running_client_to_dead() {
         .lsp
         .client_for_test(sid)
         .expect("the client stays tracked (only its state changes) — lsp_stop is what deregisters");
-    assert_eq!(client.state, ServerState::Dead);
+    assert_eq!(client.state(), ServerState::Dead);
 }
 
 #[test]
@@ -446,7 +449,7 @@ fn lsp_shutdown_all_on_a_starting_client_skips_the_protocol_but_still_tears_down
         .client_for_test(sid)
         .expect("still tracked, but untouched by begin_shutdown");
     assert_eq!(
-        client.state,
+        client.state(),
         ServerState::Starting,
         "a Starting client's state must not change — it never got the shutdown/exit messages"
     );

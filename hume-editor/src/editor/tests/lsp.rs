@@ -25,7 +25,7 @@ fn wire_client(ed: &mut Editor, backend: InlineLspBackend, sid: ServerId) {
     // test) — a Starting client queues instead of sending, which would
     // leave every `send_request` below stuck unsent.
     let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.state = ServerState::Running;
+    client.set_state_for_test(ServerState::Running);
     ed.lsp.insert_client_for_test(client);
 }
 
@@ -299,6 +299,57 @@ fn crash_fails_in_flight_requests_immediately_instead_of_waiting_for_their_deadl
 }
 
 #[test]
+fn initialize_timeout_reports_a_crash_through_drain_lsp() {
+    // `take_completed`'s sweep producing the `Crashed` action for an expired
+    // `initialize` is covered in hume-lsp's own client tests; this covers
+    // the editor glue's side: `drain_lsp` actually dispatches that action.
+    let mut ed = editor_from("-[w]>ord\n");
+    let mut backend = InlineLspBackend::new(); // no scripted `initialize` response
+    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    let mut client = LspClient::new(sid, PathBuf::from("."));
+    client.start_handshake(ed.lsp.backend_mut());
+    ed.lsp.insert_client_for_test(client);
+
+    ed.lsp
+        .client_for_test(sid)
+        .unwrap()
+        .expire_pending_deadlines_for_test();
+
+    ed.drain_lsp();
+
+    assert_eq!(
+        ed.lsp.client_for_test(sid).unwrap().state(),
+        ServerState::Crashed
+    );
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("crashed") && log.contains("initialize timed out"),
+        "expected a crash+timeout log line, got: {log}"
+    );
+}
+
+#[test]
+fn shutdown_error_response_is_logged_at_trace() {
+    let mut ed = editor_from("-[w]>ord\n");
+    let mut backend = InlineLspBackend::new();
+    backend.fail_with("shutdown", -32603, "internal error");
+    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    wire_client(&mut ed, backend, sid);
+
+    let (client, backend) = ed.lsp.client_and_backend(sid).unwrap();
+    client.begin_shutdown(backend);
+
+    ed.drain_lsp();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("shutdown failed") && log.contains("internal error"),
+        "expected a shutdown-failure trace line, got: {log}"
+    );
+}
+
+#[test]
 fn server_request_action_gets_exactly_one_response() {
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
@@ -401,7 +452,7 @@ fn became_running_flushes_queued_messages_through_the_backend() {
         .lsp
         .client_for_test(sid)
         .expect("client must still be tracked after drain");
-    assert_eq!(client.state, hume_lsp::client::ServerState::Running);
+    assert_eq!(client.state(), hume_lsp::client::ServerState::Running);
 }
 
 // ── Server registration ────────────────────────────────────────────────
@@ -731,12 +782,15 @@ fn crashed_server_is_not_silently_reattached_to() {
         .expect("first buffer attached");
     assert_eq!(ed.lsp.server_count_for_test(), 1);
 
-    // Simulate a crash: the same state `on_event(Eof)`/
-    // `check_handshake_timeout` would transition to. Nothing removes a
-    // Crashed entry from `LspState.servers` on its own (only `:lsp-stop`/
-    // `:lsp-restart` do), so the corpse stays put for the next attach
-    // attempt to find.
-    ed.lsp.client_for_test(server_id).unwrap().state = hume_lsp::client::ServerState::Crashed;
+    // Simulate a crash: the same state `on_event(Eof)`/an expired
+    // `initialize` (via `take_completed`'s sweep) would transition to.
+    // Nothing removes a Crashed entry from `LspState.servers` on its own
+    // (only `:lsp-stop`/`:lsp-restart` do), so the corpse stays put for the
+    // next attach attempt to find.
+    ed.lsp
+        .client_for_test(server_id)
+        .unwrap()
+        .set_state_for_test(hume_lsp::client::ServerState::Crashed);
 
     ed.execute_typed("e", Some(file2.to_str().unwrap()))
         .unwrap();

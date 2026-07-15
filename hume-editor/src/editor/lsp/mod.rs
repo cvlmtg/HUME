@@ -56,7 +56,7 @@ struct CallbackEntry {
 
 /// Everything tracked per running (or starting) LSP server, one entry per
 /// `ServerId` — single source of truth, no separate (language, root) index:
-/// `client.root` already carries the workspace root, so an attach/resolve
+/// `client.root()` already carries the workspace root, so an attach/resolve
 /// lookup scans `LspState.servers` (at most a handful of entries running at
 /// once) instead of maintaining a second map that could drift out of sync
 /// with this one.
@@ -95,18 +95,6 @@ pub(crate) struct ProgressTask {
     #[allow(dead_code)]
     pub(crate) title: String,
     pub(crate) percentage: Option<u32>,
-}
-
-/// Normalizes a `$/progress` `token` (LSP's number-or-string) to a `String`
-/// key so `ServerEntry::progress` can look it up without carrying a
-/// `serde_json::Value` (which isn't `Eq`-comparable the way a plain string
-/// is, and every real token is one or the other).
-fn progress_token_key(token: &serde_json::Value) -> Option<String> {
-    match token {
-        serde_json::Value::String(s) => Some(s.clone()),
-        serde_json::Value::Number(n) => Some(n.to_string()),
-        _ => None,
-    }
 }
 
 pub(crate) struct LspState {
@@ -203,7 +191,7 @@ impl LspState {
     /// one call `insert_server_key_for_test` next.
     #[cfg(test)]
     pub(crate) fn insert_client_for_test(&mut self, client: LspClient) -> ServerId {
-        let id = client.id;
+        let id = client.id();
         self.servers.insert(
             id,
             ServerEntry {
@@ -232,7 +220,8 @@ impl LspState {
             .get_mut(&server_id)
             .expect("insert_client_for_test first");
         assert_eq!(
-            entry.client.root, root,
+            entry.client.root(),
+            root,
             "test key root must match the client's own root"
         );
         entry.language = Some(language);
@@ -396,7 +385,7 @@ impl AsyncSource for LspState {
             || self
                 .servers
                 .values()
-                .any(|e| e.client.state == ServerState::Starting || e.client.pending_count() > 0);
+                .any(|e| e.client.state() == ServerState::Starting || e.client.pending_count() > 0);
         if pending {
             return Some(now + PENDING_POLL);
         }
@@ -411,7 +400,7 @@ impl AsyncSource for LspState {
 
         self.servers
             .values()
-            .any(|e| e.client.state == ServerState::Running)
+            .any(|e| e.client.state() == ServerState::Running)
             .then(|| now + LSP_HEARTBEAT)
     }
 }
@@ -451,19 +440,16 @@ impl Editor {
         // matters. Ingested after the loop so a later action for the same
         // (server, uri) always wins regardless of arrival order within the
         // batch.
-        let mut diag_batch: HashMap<(ServerId, String), serde_json::Value> = HashMap::new();
+        let mut diag_batch: HashMap<(ServerId, lsp_types::Uri), lsp_types::PublishDiagnosticsParams> =
+            HashMap::new();
         for (server_id, ev) in events {
             let actions = match self.lsp.servers.get_mut(&server_id) {
                 Some(entry) => entry.client.on_event(ev),
                 None => continue,
             };
             for action in actions {
-                if let ClientAction::ServerNotification { method, params } = &action
-                    && method == "textDocument/publishDiagnostics"
-                {
-                    if let Some(uri) = params.get("uri").and_then(|v| v.as_str()) {
-                        diag_batch.insert((server_id, uri.to_string()), params.clone());
-                    }
+                if let ClientAction::Diagnostics(params) = action {
+                    diag_batch.insert((server_id, params.uri.clone()), params);
                     continue;
                 }
                 self.dispatch_lsp_action(server_id, action);
@@ -492,31 +478,23 @@ impl Editor {
             .lsp
             .servers
             .values()
-            .any(|e| e.client.state == ServerState::Starting || !e.progress.is_empty());
+            .any(|e| e.client.state() == ServerState::Starting || !e.progress.is_empty());
         if animating {
             self.lsp.spinner.maybe_advance(now);
         }
 
         let server_ids: Vec<ServerId> = self.lsp.servers.keys().copied().collect();
         for server_id in server_ids {
-            // A server that started but never answers `initialize` has no
-            // `RequestMeta`/`pending` entry of its own to expire via
-            // `take_completed` below — checked separately, same cadence.
-            if let Some(action) = self
-                .lsp
-                .servers
-                .get_mut(&server_id)
-                .and_then(|entry| entry.client.check_handshake_timeout(now))
-            {
-                self.dispatch_lsp_action(server_id, action);
-            }
             let LspState {
                 servers, backend, ..
             } = &mut self.lsp;
-            let completed = match servers.get_mut(&server_id) {
+            let (completed, actions) = match servers.get_mut(&server_id) {
                 Some(entry) => entry.client.take_completed(backend.as_mut(), now),
                 None => continue,
             };
+            for action in actions {
+                self.dispatch_lsp_action(server_id, action);
+            }
             for (id, meta, outcome) in completed {
                 self.dispatch_completed(server_id, id, meta, outcome);
             }
@@ -546,7 +524,7 @@ impl Editor {
                 servers, backend, ..
             } = &mut self.lsp;
             if let Some(entry) = servers.get_mut(&server_id)
-                && entry.client.state == ServerState::Running
+                && entry.client.state() == ServerState::Running
             {
                 entry.client.begin_shutdown(backend.as_mut());
                 awaiting_eof.insert(server_id);
@@ -584,7 +562,7 @@ impl Editor {
                     .lsp
                     .servers
                     .get(&server_id)
-                    .and_then(|e| e.client.caps.as_ref())
+                    .and_then(|e| e.client.capabilities())
                     .and_then(|caps| serde_json::to_value(caps).ok());
                 if let Some(json) = json
                     && let Some(entry) = self.lsp.servers.get_mut(&server_id)
@@ -642,6 +620,31 @@ impl Editor {
                     .backend
                     .send(server_id, Message::Response { id, result });
             }
+            ClientAction::Diagnostics(params) => {
+                // The uncoalesced single-notification path — `drain_lsp`'s
+                // batching loop intercepts and coalesces `Diagnostics`
+                // before dispatch, so this arm only fires for a test or any
+                // future caller that dispatches one directly.
+                if let Some(bid) = self.ingest_publish_diagnostics(server_id, params) {
+                    self.fire_hook_diagnostics_changed(bid);
+                }
+            }
+            ClientAction::Progress(params) => {
+                self.handle_progress(server_id, params);
+            }
+            ClientAction::LogMessage(params) => {
+                let name = self.lsp_server_name(server_id);
+                let severity = match params.typ {
+                    lsp_types::MessageType::ERROR => Severity::Error,
+                    lsp_types::MessageType::WARNING => Severity::Warning,
+                    _ => Severity::Trace, // Info/Log
+                };
+                self.report(severity, format!("{name}: {}", params.message));
+            }
+            ClientAction::ShowMessage(params) => {
+                let name = self.lsp_server_name(server_id);
+                self.report(Severity::Info, format!("{name}: {}", params.message));
+            }
             ClientAction::ServerNotification { method, params } => {
                 self.dispatch_server_notification(server_id, &method, params);
             }
@@ -650,6 +653,52 @@ impl Editor {
                 // never promote stderr to a higher severity.
                 let name = self.lsp_server_name(server_id);
                 self.report(Severity::Trace, format!("{name}: {line}"));
+            }
+        }
+    }
+
+    /// Typed handling of `$/progress`: begin/end logged at Trace; the task
+    /// itself is tracked on `ServerEntry.progress` for the statusline
+    /// spinner, with `report`s merged into it (absent fields mean
+    /// "unchanged" per the LSP spec).
+    fn handle_progress(&mut self, server_id: ServerId, params: lsp_types::ProgressParams) {
+        let name = self.lsp_server_name(server_id);
+        let token = match params.token {
+            lsp_types::NumberOrString::Number(n) => n.to_string(),
+            lsp_types::NumberOrString::String(s) => s,
+        };
+        // `ProgressParamsValue` has exactly one variant — irrefutable.
+        let lsp_types::ProgressParamsValue::WorkDone(progress) = params.value;
+        match progress {
+            lsp_types::WorkDoneProgress::Begin(begin) => {
+                self.report(Severity::Trace, format!("{name}: {} started", begin.title));
+                if let Some(entry) = self.lsp.servers.get_mut(&server_id) {
+                    entry.progress.push((
+                        token,
+                        ProgressTask {
+                            title: begin.title,
+                            percentage: begin.percentage,
+                        },
+                    ));
+                }
+            }
+            lsp_types::WorkDoneProgress::Report(report) => {
+                let Some(entry) = self.lsp.servers.get_mut(&server_id) else {
+                    return;
+                };
+                let Some((_, task)) = entry.progress.iter_mut().find(|(t, _)| *t == token) else {
+                    return; // report for an unknown token — nothing to merge into
+                };
+                // An absent percentage means "unchanged" per the LSP spec — merge, don't overwrite.
+                if let Some(percentage) = report.percentage {
+                    task.percentage = Some(percentage);
+                }
+            }
+            lsp_types::WorkDoneProgress::End(_) => {
+                self.report(Severity::Trace, format!("{name}: progress finished"));
+                if let Some(entry) = self.lsp.servers.get_mut(&server_id) {
+                    entry.progress.retain(|(t, _)| *t != token);
+                }
             }
         }
     }
@@ -703,8 +752,13 @@ impl Editor {
         introspect::server_language(&self.lsp, server_id)
     }
 
-    /// `textDocument/publishDiagnostics` never reaches here — `drain_lsp`
-    /// intercepts and coalesces it before dispatch (see the batching loop).
+    /// `textDocument/publishDiagnostics`, `$/progress`, `window/logMessage`,
+    /// and `window/showMessage` never reach here — `hume-lsp` classifies
+    /// them into typed `ClientAction` variants, handled directly in
+    /// `dispatch_lsp_action`. Only an unclassified method, or a known
+    /// method whose params failed to parse, arrives here — either goes to a
+    /// registered Steel `on-lsp-notification` handler, or an "unhandled
+    /// notification" Trace line if none is registered.
     fn dispatch_server_notification(
         &mut self,
         server_id: ServerId,
@@ -712,102 +766,25 @@ impl Editor {
         params: serde_json::Value,
     ) {
         let name = self.lsp_server_name(server_id);
-        match method {
-            "window/logMessage" => {
-                let text = params
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                // MessageType: 1=Error, 2=Warning, 3=Info, 4=Log.
-                let severity = match params.get("type").and_then(|v| v.as_i64()) {
-                    Some(1) => Severity::Error,
-                    Some(2) => Severity::Warning,
-                    _ => Severity::Trace, // Info/Log/malformed
-                };
-                self.report(severity, format!("{name}: {text}"));
-            }
-            "window/showMessage" => {
-                let text = params
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                self.report(Severity::Info, format!("{name}: {text}"));
-            }
-            "$/progress" => {
-                // begin/end logged at Trace; the task itself is tracked on
-                // `ServerEntry.progress` for the statusline spinner, with
-                // `report`s merged into it (absent fields mean "unchanged"
-                // per the LSP spec).
-                let Some(token) = params.get("token").and_then(progress_token_key) else {
-                    return; // malformed — nothing to key the task under
-                };
-                let value = params.get("value");
-                match value.and_then(|v| v.get("kind")).and_then(|v| v.as_str()) {
-                    Some("begin") => {
-                        let title = value
-                            .and_then(|v| v.get("title"))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("progress")
-                            .to_string();
-                        let percentage = value
-                            .and_then(|v| v.get("percentage"))
-                            .and_then(|v| v.as_u64())
-                            .map(|p| p as u32);
-                        self.report(Severity::Trace, format!("{name}: {title} started"));
-                        if let Some(entry) = self.lsp.servers.get_mut(&server_id) {
-                            entry
-                                .progress
-                                .push((token, ProgressTask { title, percentage }));
-                        }
-                    }
-                    Some("report") => {
-                        let Some(entry) = self.lsp.servers.get_mut(&server_id) else {
-                            return;
-                        };
-                        let Some((_, task)) =
-                            entry.progress.iter_mut().find(|(t, _)| *t == token)
-                        else {
-                            return; // report for an unknown token — nothing to merge into
-                        };
-                        // An absent percentage means "unchanged" per the LSP spec — merge, don't overwrite.
-                        if let Some(percentage) = value
-                            .and_then(|v| v.get("percentage"))
-                            .and_then(|v| v.as_u64())
-                        {
-                            task.percentage = Some(percentage as u32);
-                        }
-                    }
-                    Some("end") => {
-                        self.report(Severity::Trace, format!("{name}: progress finished"));
-                        if let Some(entry) = self.lsp.servers.get_mut(&server_id) {
-                            entry.progress.retain(|(t, _)| *t != token);
-                        }
-                    }
-                    _ => {} // malformed payload — never spam
-                }
-            }
-            other => {
-                let handlers = self
-                    .scripting
-                    .as_ref()
-                    .map(|h| h.lsp_notification_handlers_for(other))
-                    .unwrap_or_default();
-                if handlers.is_empty() {
-                    self.report(
-                        Severity::Trace,
-                        format!("{name}: unhandled notification {other}"),
-                    );
-                    return;
-                }
-                let server_val = match self.lsp_server_language(server_id) {
-                    Some(lang) => steel::rvals::SteelVal::StringV(lang.into()),
-                    None => steel::rvals::SteelVal::BoolV(false),
-                };
-                let params_val = hume_scripting::json::json_to_steel(&params);
-                for handler in handlers {
-                    self.queue_steel_call(handler, vec![server_val.clone(), params_val.clone()]);
-                }
-            }
+        let handlers = self
+            .scripting
+            .as_ref()
+            .map(|h| h.lsp_notification_handlers_for(method))
+            .unwrap_or_default();
+        if handlers.is_empty() {
+            self.report(
+                Severity::Trace,
+                format!("{name}: unhandled notification {method}"),
+            );
+            return;
+        }
+        let server_val = match self.lsp_server_language(server_id) {
+            Some(lang) => steel::rvals::SteelVal::StringV(lang.into()),
+            None => steel::rvals::SteelVal::BoolV(false),
+        };
+        let params_val = hume_scripting::json::json_to_steel(&params);
+        for handler in handlers {
+            self.queue_steel_call(handler, vec![server_val.clone(), params_val.clone()]);
         }
     }
 
@@ -819,6 +796,17 @@ impl Editor {
         outcome: Outcome,
     ) {
         let Some(entry) = self.lsp.callbacks.remove(&(server_id, id)) else {
+            // No callback is ever registered for the internal `shutdown`
+            // request (it's fire-and-forget from `begin_shutdown`) — a
+            // server-side error on it would otherwise vanish silently.
+            if meta.method == "shutdown"
+                && let Outcome::Err(e) = &outcome
+            {
+                self.report(
+                    Severity::Trace,
+                    format!("lsp: shutdown failed: {} ({})", e.message, e.code),
+                );
+            }
             return;
         };
 
@@ -850,7 +838,7 @@ impl Editor {
             .values()
             .filter_map(|e| e.language.as_deref().map(|lang| (lang, &e.client)))
             .collect();
-        servers.sort_by(|a, b| a.0.cmp(b.0).then_with(|| a.1.root.cmp(&b.1.root)));
+        servers.sort_by(|a, b| a.0.cmp(b.0).then_with(|| a.1.root().cmp(b.1.root())));
 
         let mut lines = Vec::new();
         if servers.is_empty() {
@@ -859,10 +847,10 @@ impl Editor {
         for (language, client) in servers {
             lines.push(format!(
                 "{language} @ {} — {:?}, {} in flight, encoding: {:?}",
-                client.root.display(),
-                client.state,
+                client.root().display(),
+                client.state(),
                 client.pending_count(),
-                client.encoding,
+                client.encoding(),
             ));
         }
 

@@ -22,6 +22,8 @@ use crate::codec::{IdAllocator, Message, RequestId, ResponseError};
 use crate::transport::InboundEvent;
 use crate::uri;
 
+use lsp_types::notification::Notification as _;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServerState {
     Starting,
@@ -48,14 +50,58 @@ pub enum ClientAction {
         method: String,
         params: serde_json::Value,
     },
-    /// A notification this module doesn't own the meaning of (window
-    /// messages, progress, publishDiagnostics, custom methods, ...).
+    /// `textDocument/publishDiagnostics`, classified and parsed.
+    Diagnostics(lsp_types::PublishDiagnosticsParams),
+    /// `$/progress`, classified and parsed.
+    Progress(lsp_types::ProgressParams),
+    /// `window/logMessage`, classified and parsed.
+    LogMessage(lsp_types::LogMessageParams),
+    /// `window/showMessage`, classified and parsed.
+    ShowMessage(lsp_types::ShowMessageParams),
+    /// A notification this module doesn't own the meaning of: an
+    /// unclassified method, or a known method whose params failed to parse
+    /// (surfaced here rather than dropped, so Steel's `on-lsp-notification`
+    /// can still observe it).
     ServerNotification {
         method: String,
         params: serde_json::Value,
     },
     /// One line of stderr output, forwarded for logging.
     Stderr(String),
+}
+
+/// Classifies a well-known notification method into a typed `ClientAction`,
+/// falling back to `ServerNotification` for an unknown method or params that
+/// fail to parse. Deserializes by reference so a malformed payload leaves
+/// `params` intact for the fallback — `from_value` would consume it.
+fn classify_notification(method: String, params: serde_json::Value) -> ClientAction {
+    use lsp_types::notification::{LogMessage, Progress, PublishDiagnostics, ShowMessage};
+    use serde::Deserialize as _;
+
+    match method.as_str() {
+        PublishDiagnostics::METHOD => {
+            if let Ok(p) = lsp_types::PublishDiagnosticsParams::deserialize(&params) {
+                return ClientAction::Diagnostics(p);
+            }
+        }
+        Progress::METHOD => {
+            if let Ok(p) = lsp_types::ProgressParams::deserialize(&params) {
+                return ClientAction::Progress(p);
+            }
+        }
+        LogMessage::METHOD => {
+            if let Ok(p) = lsp_types::LogMessageParams::deserialize(&params) {
+                return ClientAction::LogMessage(p);
+            }
+        }
+        ShowMessage::METHOD => {
+            if let Ok(p) = lsp_types::ShowMessageParams::deserialize(&params) {
+                return ClientAction::ShowMessage(p);
+            }
+        }
+        _ => {}
+    }
+    ClientAction::ServerNotification { method, params }
 }
 
 /// Everything but the outcome needed to route (or discard) a completed
@@ -90,33 +136,40 @@ fn cancel_request_params(id: &RequestId) -> serde_json::Value {
 }
 
 /// How long `initialize` may go unanswered before the client gives up and
-/// transitions to `Crashed` — independent of `lsp.request-timeout-ms` (a
-/// per-request setting): the handshake has no `RequestMeta`/`pending` entry
-/// of its own to piggyback that on, and a server that starts but never
-/// responds would otherwise pin the event loop at the 8ms Starting-poll
-/// cadence for the rest of the session with no way to notice or recover.
+/// transitions to `Crashed` — deliberately independent of
+/// `lsp.request-timeout-ms` (a per-request setting): a cold server's
+/// handshake legitimately outlasts the timeout an ordinary request would
+/// get.
 const INITIALIZE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// How long `shutdown` may go unanswered before its pending entry is swept
+/// as timed out. Never observed in production — `:lsp-stop` drains pending
+/// requests immediately and quit tears the transport down regardless — but
+/// every `pending` entry needs a deadline.
+const SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Per-server lifecycle state: handshake, negotiated encoding, and the
 /// queue of messages a caller tried to send before the handshake finished.
 pub struct LspClient {
-    pub id: ServerId,
-    pub state: ServerState,
-    pub caps: Option<ServerCapabilities>,
+    id: ServerId,
+    state: ServerState,
+    caps: Option<ServerCapabilities>,
     /// Negotiated position encoding; UTF-16 until `initialize` proves UTF-8.
-    /// A decode-once cache of `caps.position_encoding` (`handle_initialize_
-    /// response` is the only writer of either field) — kept separate so
-    /// callers don't re-derive it from the raw capability on every position
-    /// conversion, not an independent fact that could drift on its own.
-    pub encoding: PositionEncoding,
-    pub root: PathBuf,
+    /// A decode-once cache of `caps.position_encoding` — `handle_initialize_
+    /// response` is the only writer of either field, an invariant privacy
+    /// now enforces — kept separate so callers don't re-derive it from the
+    /// raw capability on every position conversion, not an independent fact
+    /// that could drift on its own.
+    encoding: PositionEncoding,
+    root: PathBuf,
     /// Messages (e.g. `didOpen`) that arrived while `Starting` — sent, in
     /// order, right after `initialized` once the handshake completes.
     queued: Vec<Message>,
+    /// Discriminates the `initialize` response in `on_event` — kept
+    /// separate from a method-string check so a Steel-issued `(lsp-request
+    /// "initialize" ...)` through the generic bridge (which mints its own
+    /// ordinary `pending` entry) can never be mistaken for the handshake.
     initialize_id: Option<RequestId>,
-    /// Set by `start_handshake`, cleared once `initialize` completes (either
-    /// way) — checked by `check_handshake_timeout`.
-    handshake_deadline: Option<Instant>,
     ids: IdAllocator,
     /// Requests awaiting a response, keyed by the id we sent.
     pending: HashMap<RequestId, RequestMeta>,
@@ -136,11 +189,38 @@ impl LspClient {
             root,
             queued: Vec::new(),
             initialize_id: None,
-            handshake_deadline: None,
             ids: IdAllocator::new(),
             pending: HashMap::new(),
             completed: Vec::new(),
         }
+    }
+
+    pub fn id(&self) -> ServerId {
+        self.id
+    }
+
+    pub fn state(&self) -> ServerState {
+        self.state
+    }
+
+    pub fn capabilities(&self) -> Option<&ServerCapabilities> {
+        self.caps.as_ref()
+    }
+
+    pub fn encoding(&self) -> PositionEncoding {
+        self.encoding
+    }
+
+    pub fn root(&self) -> &std::path::Path {
+        &self.root
+    }
+
+    /// Test-only, cross-crate: `hume-editor`'s tests need to force a
+    /// client's lifecycle state (e.g. simulate a crash, or skip straight to
+    /// `Running`) without a live handshake round-trip.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn set_state_for_test(&mut self, state: ServerState) {
+        self.state = state;
     }
 
     /// Sends a request and remembers `meta` for correlation. Requests are
@@ -172,7 +252,9 @@ impl LspClient {
     }
 
     /// Requests currently awaiting a response — the "N in flight" count for
-    /// `:lsp-status` and `lsp-server-status`.
+    /// `:lsp-status` and `lsp-server-status`. Includes the in-flight
+    /// `initialize`/`shutdown` handshake requests, since those are now
+    /// ordinary `pending` entries too.
     pub fn pending_count(&self) -> usize {
         self.pending.len()
     }
@@ -197,6 +279,18 @@ impl LspClient {
     /// callback along with the client.
     pub fn drain_pending(&mut self) -> Vec<(RequestId, RequestMeta)> {
         self.pending.drain().collect()
+    }
+
+    /// Forces every pending deadline into the past, so the next
+    /// `take_completed` sweep expires them without waiting out real time —
+    /// e.g. to drive an `initialize` timeout in an editor-level test without
+    /// an injectable clock.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn expire_pending_deadlines_for_test(&mut self) {
+        let past = Instant::now() - std::time::Duration::from_secs(1);
+        for meta in self.pending.values_mut() {
+            meta.deadline = past;
+        }
     }
 
     /// Drops `id`'s `Message::Request` from the Starting-queue, if it's
@@ -231,12 +325,21 @@ impl LspClient {
     /// `$/cancelRequest` sent here (colocated with the detection, so it's
     /// testable without an editor in the loop) — only once `Running`, same
     /// handshake-ordering reasoning as `cancel`.
+    ///
+    /// `initialize` piggybacks on this same sweep instead of a separate
+    /// timeout check: on expiry it is never pushed into the completed Vec
+    /// (no callback is ever registered for it — the handshake response is
+    /// handled synchronously in `on_event`) and instead surfaces as a
+    /// `Crashed` action, guarded so it reports exactly once even if the
+    /// deadline keeps getting swept after the state has already moved on
+    /// (e.g. an `Eof` raced it to `Crashed` first).
     pub fn take_completed(
         &mut self,
         backend: &mut dyn LspBackend,
         now: Instant,
-    ) -> Vec<(RequestId, RequestMeta, Outcome)> {
+    ) -> (Vec<(RequestId, RequestMeta, Outcome)>, Vec<ClientAction>) {
         let mut out = std::mem::take(&mut self.completed);
+        let mut actions = Vec::new();
         let timed_out: Vec<RequestId> = self
             .pending
             .iter()
@@ -244,24 +347,48 @@ impl LspClient {
             .map(|(id, _)| id.clone())
             .collect();
         for id in timed_out {
+            if self.initialize_id.as_ref() == Some(&id) {
+                self.pending.remove(&id);
+                self.initialize_id = None;
+                if self.state == ServerState::Starting {
+                    self.state = ServerState::Crashed;
+                    actions.push(ClientAction::Crashed {
+                        error: Some(format!(
+                            "initialize timed out after {}s",
+                            INITIALIZE_TIMEOUT.as_secs()
+                        )),
+                    });
+                }
+                continue;
+            }
             if let Some(meta) = self.pending.remove(&id) {
                 self.drop_from_queue(&id);
                 self.send_cancel_notification(backend, &id);
                 out.push((id, meta, Outcome::TimedOut));
             }
         }
-        out
+        (out, actions)
     }
 
     /// Builds `InitializeParams` and sends the request.
     pub fn start_handshake(&mut self, backend: &mut dyn LspBackend) {
         let id = self.ids.next();
         self.initialize_id = Some(id.clone());
-        self.handshake_deadline = Some(Instant::now() + INITIALIZE_TIMEOUT);
+        self.pending.insert(
+            id.clone(),
+            RequestMeta {
+                method: "initialize".to_string(),
+                allow_stale: false,
+                deadline: Instant::now() + INITIALIZE_TIMEOUT,
+            },
+        );
 
         let params = serde_json::to_value(build_initialize_params(&self.root))
             .expect("InitializeParams always serializes");
 
+        // Sent directly, never via `send_or_queue` — `initialize` is the one
+        // request legal on the wire before `initialized`; routing it through
+        // the Starting-queue would deadlock the handshake against itself.
         backend.send(
             self.id,
             Message::Request {
@@ -306,7 +433,7 @@ impl LspClient {
                 if self.initialize_id.as_ref() == Some(&id) =>
             {
                 self.initialize_id = None;
-                self.handshake_deadline = None;
+                self.pending.remove(&id);
                 self.handle_initialize_response(result)
             }
             InboundEvent::Message(Message::Response { id, result }) => {
@@ -323,36 +450,10 @@ impl LspClient {
                 vec![ClientAction::ServerRequest { id, method, params }]
             }
             InboundEvent::Message(Message::Notification { method, params }) => {
-                vec![ClientAction::ServerNotification { method, params }]
+                vec![classify_notification(method, params)]
             }
             InboundEvent::Stderr(line) => vec![ClientAction::Stderr(line)],
         }
-    }
-
-    /// Checks whether `initialize` has been outstanding past its own
-    /// deadline — the handshake has no `RequestMeta`/`pending` entry of its
-    /// own to piggyback the usual per-request timeout on, so this is a
-    /// separate check. Called from the same per-frame drain cadence as
-    /// `take_completed`. Transitions to `Crashed` and returns the action to
-    /// report exactly once (the `state != Starting` guard makes a second
-    /// call after that a no-op, same discipline as `on_event`'s `Eof` arm).
-    pub fn check_handshake_timeout(&mut self, now: Instant) -> Option<ClientAction> {
-        if self.state != ServerState::Starting {
-            return None;
-        }
-        if self
-            .handshake_deadline
-            .is_none_or(|deadline| now < deadline)
-        {
-            return None;
-        }
-        self.state = ServerState::Crashed;
-        Some(ClientAction::Crashed {
-            error: Some(format!(
-                "initialize timed out after {}s",
-                INITIALIZE_TIMEOUT.as_secs()
-            )),
-        })
     }
 
     fn handle_initialize_response(
@@ -406,13 +507,25 @@ impl LspClient {
     /// kill -> wait -> join, which reaps the process unconditionally) is
     /// always what actually ends a non-Running client — this is a
     /// best-effort protocol courtesy on top of that, never a substitute
-    /// for it, and never a synchronous round-trip.
+    /// for it, and never a synchronous round-trip. The `shutdown` response
+    /// now correlates through `pending`/`take_completed` like any other
+    /// request; a caller that drops the client immediately (e.g.
+    /// `:lsp-stop`) instead dispatches it as timed out via `drain_pending`.
     pub fn begin_shutdown(&mut self, backend: &mut dyn LspBackend) {
         if self.state == ServerState::Running {
+            let id = self.ids.next();
+            self.pending.insert(
+                id.clone(),
+                RequestMeta {
+                    method: "shutdown".to_string(),
+                    allow_stale: false,
+                    deadline: Instant::now() + SHUTDOWN_TIMEOUT,
+                },
+            );
             backend.send(
                 self.id,
                 Message::Request {
-                    id: self.ids.next(),
+                    id,
                     method: "shutdown".to_string(),
                     params: serde_json::Value::Null,
                 },
@@ -734,44 +847,111 @@ mod tests {
         }
     }
 
-    // ── check_handshake_timeout ──────────────────────────────────────────────
+    #[test]
+    fn handshake_failure_response_crashes() {
+        let mut backend = InlineLspBackend::new();
+        backend.fail_with("initialize", -32603, "boom");
+        let sid = backend.start("x", &[], std::path::Path::new(".")).unwrap();
+        let mut client = LspClient::new(sid, PathBuf::from("."));
+
+        client.start_handshake(&mut backend);
+        let (_id, ev) = backend.drain().into_iter().next().unwrap();
+        let actions = client.on_event(ev);
+
+        match &actions[..] {
+            [ClientAction::Crashed { error }] => {
+                assert!(error.as_ref().unwrap().contains("initialize failed"));
+            }
+            other => panic!("expected one Crashed action, got {other:?}"),
+        }
+        assert_eq!(client.state, ServerState::Crashed);
+        assert_eq!(
+            client.pending_count(),
+            0,
+            "the error path must also consume the initialize pending entry"
+        );
+    }
+
+    /// Pins that the `initialize` response is discriminated by the id stashed
+    /// in `initialize_id`, not by matching on the method string — a Steel
+    /// plugin issuing `(lsp-request "initialize" ...)` through the generic
+    /// bridge must get an ordinary correlated response, never be mistaken
+    /// for the handshake and hijack the client into `BecameRunning`/`Crashed`.
+    #[test]
+    fn generic_initialize_request_is_not_hijacked_by_the_handshake_discriminator() {
+        let (mut backend, mut client) = make_running_client();
+        backend.respond_to("initialize", serde_json::json!({"ok": true}));
+
+        let meta = RequestMeta {
+            method: "initialize".to_string(),
+            allow_stale: false,
+            deadline: Instant::now() + std::time::Duration::from_secs(10),
+        };
+        let sent_id = client.send_request(&mut backend, "initialize", serde_json::Value::Null, meta);
+
+        let (_sid, ev) = backend.drain().into_iter().next().unwrap();
+        let actions = client.on_event(ev);
+        assert!(
+            actions.is_empty(),
+            "a Steel-issued initialize response must correlate normally, not surface as a lifecycle action"
+        );
+        assert_eq!(client.state, ServerState::Running);
+
+        let (completed, actions) = client.take_completed(&mut backend, Instant::now());
+        assert!(actions.is_empty());
+        assert_eq!(completed.len(), 1);
+        assert_eq!(completed[0].0, sent_id);
+    }
+
+    // ── initialize timeout via take_completed's sweep ────────────────────────
 
     #[test]
-    fn check_handshake_timeout_is_none_before_the_deadline() {
+    fn initialize_sweep_is_quiet_before_the_deadline() {
         let mut backend = InlineLspBackend::new();
         let sid = backend.start("x", &[], std::path::Path::new(".")).unwrap();
         let mut client = LspClient::new(sid, PathBuf::from("."));
         client.start_handshake(&mut backend);
 
-        assert!(client.check_handshake_timeout(Instant::now()).is_none());
+        let (completed, actions) = client.take_completed(&mut backend, Instant::now());
+        assert!(completed.is_empty());
+        assert!(actions.is_empty());
         assert_eq!(client.state, ServerState::Starting);
     }
 
     #[test]
-    fn check_handshake_timeout_crashes_after_the_deadline() {
+    fn initialize_timeout_crashes_via_the_sweep() {
         let mut backend = InlineLspBackend::new();
         let sid = backend.start("x", &[], std::path::Path::new(".")).unwrap();
         let mut client = LspClient::new(sid, PathBuf::from("."));
         client.start_handshake(&mut backend);
 
         let past_deadline = Instant::now() + std::time::Duration::from_secs(31);
-        match client.check_handshake_timeout(past_deadline) {
-            Some(ClientAction::Crashed { error }) => {
-                assert!(error.unwrap().contains("initialize timed out"));
+        let (completed, actions) = client.take_completed(&mut backend, past_deadline);
+        assert!(
+            completed.is_empty(),
+            "the internal initialize entry must never appear as a completed request"
+        );
+        match &actions[..] {
+            [ClientAction::Crashed { error }] => {
+                assert!(error.as_ref().unwrap().contains("initialize timed out"));
             }
-            other => panic!("expected Crashed action, got {other:?}"),
+            other => panic!("expected one Crashed action, got {other:?}"),
         }
         assert_eq!(client.state, ServerState::Crashed);
 
-        // A second call after already Crashed must not report again.
-        assert!(client.check_handshake_timeout(past_deadline).is_none());
+        // A second sweep after already Crashed must not report again.
+        let (completed2, actions2) = client.take_completed(&mut backend, past_deadline);
+        assert!(completed2.is_empty());
+        assert!(actions2.is_empty());
     }
 
     #[test]
-    fn check_handshake_timeout_is_none_once_running() {
-        let (_backend, mut client) = make_running_client();
+    fn initialize_never_times_out_once_running() {
+        let (mut backend, mut client) = make_running_client();
         let far_future = Instant::now() + std::time::Duration::from_secs(1000);
-        assert!(client.check_handshake_timeout(far_future).is_none());
+        let (completed, actions) = client.take_completed(&mut backend, far_future);
+        assert!(completed.is_empty());
+        assert!(actions.is_empty());
     }
 
     #[test]
@@ -847,8 +1027,8 @@ mod tests {
         );
         assert_eq!(
             client.pending_count(),
-            1,
-            "pending entry recorded even though queued"
+            2,
+            "pending entry recorded even though queued (plus the in-flight initialize)"
         );
 
         // Handshake completes: BecameRunning flushes the queued hover request.
@@ -882,9 +1062,10 @@ mod tests {
             .find(|(_, ev)| matches!(ev, InboundEvent::Message(Message::Response { .. })))
             .expect("hover response");
         client.on_event(ev);
-        let completed = client.take_completed(&mut backend, Instant::now());
+        let (completed, actions) = client.take_completed(&mut backend, Instant::now());
         assert_eq!(completed.len(), 1);
         assert_eq!(completed[0].0, sent_id);
+        assert!(actions.is_empty());
     }
 
     #[test]
@@ -988,6 +1169,55 @@ mod tests {
         );
     }
 
+    #[test]
+    fn shutdown_response_surfaces_through_take_completed() {
+        let (mut backend, mut client) = make_running_client();
+        backend.respond_to("shutdown", serde_json::Value::Null);
+
+        client.begin_shutdown(&mut backend);
+        let (_sid, ev) = backend
+            .drain()
+            .into_iter()
+            .find(|(_, ev)| matches!(ev, InboundEvent::Message(Message::Response { .. })))
+            .expect("shutdown response");
+        let actions = client.on_event(ev);
+        assert!(actions.is_empty());
+
+        let (completed, actions) = client.take_completed(&mut backend, Instant::now());
+        assert!(actions.is_empty());
+        assert_eq!(completed.len(), 1);
+        let (_id, meta, outcome) = &completed[0];
+        assert_eq!(meta.method, "shutdown");
+        match outcome {
+            Outcome::Ok(v) => assert_eq!(*v, serde_json::Value::Null),
+            other => panic!("expected Ok(null), got {other:?}"),
+        }
+        assert_eq!(client.pending_count(), 0);
+    }
+
+    #[test]
+    fn shutdown_error_surfaces_as_err() {
+        let (mut backend, mut client) = make_running_client();
+        backend.fail_with("shutdown", -32603, "internal error");
+
+        client.begin_shutdown(&mut backend);
+        let (_sid, ev) = backend
+            .drain()
+            .into_iter()
+            .find(|(_, ev)| matches!(ev, InboundEvent::Message(Message::Response { .. })))
+            .expect("shutdown response");
+        client.on_event(ev);
+
+        let (completed, _actions) = client.take_completed(&mut backend, Instant::now());
+        assert_eq!(completed.len(), 1);
+        let (_id, meta, outcome) = &completed[0];
+        assert_eq!(meta.method, "shutdown");
+        match outcome {
+            Outcome::Err(e) => assert_eq!(e.message, "internal error"),
+            other => panic!("expected Err, got {other:?}"),
+        }
+    }
+
     fn make_running_client() -> (InlineLspBackend, LspClient) {
         let mut backend = InlineLspBackend::with_default_handshake();
         let sid = backend.start("x", &[], std::path::Path::new(".")).unwrap();
@@ -1023,8 +1253,9 @@ mod tests {
             "a correlated response produces no ClientAction — it's pulled via take_completed"
         );
 
-        let completed = client.take_completed(&mut backend, Instant::now());
+        let (completed, actions) = client.take_completed(&mut backend, Instant::now());
         assert_eq!(completed.len(), 1);
+        assert!(actions.is_empty());
         let (id, meta_out, outcome) = &completed[0];
         assert_eq!(*id, sent_id);
         assert_eq!(meta_out.method, "textDocument/hover");
@@ -1034,11 +1265,9 @@ mod tests {
         }
 
         // Pulled once — a second call finds nothing left.
-        assert!(
-            client
-                .take_completed(&mut backend, Instant::now())
-                .is_empty()
-        );
+        let (completed2, actions2) = client.take_completed(&mut backend, Instant::now());
+        assert!(completed2.is_empty());
+        assert!(actions2.is_empty());
     }
 
     #[test]
@@ -1076,11 +1305,9 @@ mod tests {
         );
         let (_sid, ev) = backend.drain().into_iter().next().unwrap();
         client.on_event(ev);
-        assert!(
-            client
-                .take_completed(&mut backend, Instant::now())
-                .is_empty()
-        );
+        let (completed, actions) = client.take_completed(&mut backend, Instant::now());
+        assert!(completed.is_empty());
+        assert!(actions.is_empty());
     }
 
     /// Minor regression: nothing but `initialize` is legal on the wire
@@ -1123,9 +1350,10 @@ mod tests {
             serde_json::Value::Null,
             meta2,
         );
-        let completed = client.take_completed(&mut backend, Instant::now());
+        let (completed, actions) = client.take_completed(&mut backend, Instant::now());
         assert_eq!(completed.len(), 1);
         assert!(matches!(completed[0].2, Outcome::TimedOut));
+        assert!(actions.is_empty());
         assert!(
             backend.sent.is_empty(),
             "a timeout while still Starting must not send $/cancelRequest either"
@@ -1196,8 +1424,9 @@ mod tests {
             meta,
         );
 
-        let completed = client.take_completed(&mut backend, Instant::now());
+        let (completed, actions) = client.take_completed(&mut backend, Instant::now());
         assert_eq!(completed.len(), 1);
+        assert!(actions.is_empty());
         let (returned_id, _meta, outcome) = &completed[0];
         assert_eq!(*returned_id, id);
         assert!(matches!(outcome, Outcome::TimedOut));
@@ -1211,11 +1440,9 @@ mod tests {
         }
 
         // Removed from pending — a second call must not report it again.
-        assert!(
-            client
-                .take_completed(&mut backend, Instant::now())
-                .is_empty()
-        );
+        let (completed2, actions2) = client.take_completed(&mut backend, Instant::now());
+        assert!(completed2.is_empty());
+        assert!(actions2.is_empty());
     }
 
     #[test]
@@ -1246,6 +1473,26 @@ mod tests {
         backend.push_from_server(
             client.id,
             Message::Notification {
+                method: "custom/thing".to_string(),
+                params: serde_json::json!({"anything": true}),
+            },
+        );
+        let (_sid, ev) = backend.drain().into_iter().next().unwrap();
+        let actions = client.on_event(ev);
+        match &actions[..] {
+            [ClientAction::ServerNotification { method, .. }] => {
+                assert_eq!(method, "custom/thing");
+            }
+            other => panic!("expected one ServerNotification action, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn publish_diagnostics_notification_classifies_as_typed_diagnostics() {
+        let (mut backend, mut client) = make_running_client();
+        backend.push_from_server(
+            client.id,
+            Message::Notification {
                 method: "textDocument/publishDiagnostics".to_string(),
                 params: serde_json::json!({"uri": "file:///a", "diagnostics": []}),
             },
@@ -1253,10 +1500,103 @@ mod tests {
         let (_sid, ev) = backend.drain().into_iter().next().unwrap();
         let actions = client.on_event(ev);
         match &actions[..] {
-            [ClientAction::ServerNotification { method, .. }] => {
-                assert_eq!(method, "textDocument/publishDiagnostics");
+            [ClientAction::Diagnostics(p)] => {
+                assert_eq!(p.uri.as_str(), "file:///a");
+                assert!(p.diagnostics.is_empty());
             }
-            other => panic!("expected one ServerNotification action, got {other:?}"),
+            other => panic!("expected one Diagnostics action, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn progress_log_and_show_message_classify_as_typed_variants() {
+        let (mut backend, mut client) = make_running_client();
+
+        backend.push_from_server(
+            client.id,
+            Message::Notification {
+                method: "$/progress".to_string(),
+                params: serde_json::json!({
+                    "token": "t1",
+                    "value": {"kind": "begin", "title": "Indexing"},
+                }),
+            },
+        );
+        let (_sid, ev) = backend.drain().into_iter().next().unwrap();
+        match &client.on_event(ev)[..] {
+            [ClientAction::Progress(p)] => {
+                assert_eq!(p.token, lsp_types::NumberOrString::String("t1".to_string()));
+            }
+            other => panic!("expected one Progress action, got {other:?}"),
+        }
+
+        backend.push_from_server(
+            client.id,
+            Message::Notification {
+                method: "window/logMessage".to_string(),
+                params: serde_json::json!({"type": 1, "message": "boom"}),
+            },
+        );
+        let (_sid, ev) = backend.drain().into_iter().next().unwrap();
+        match &client.on_event(ev)[..] {
+            [ClientAction::LogMessage(p)] => {
+                assert_eq!(p.message, "boom");
+                assert_eq!(p.typ, lsp_types::MessageType::ERROR);
+            }
+            other => panic!("expected one LogMessage action, got {other:?}"),
+        }
+
+        backend.push_from_server(
+            client.id,
+            Message::Notification {
+                method: "window/showMessage".to_string(),
+                params: serde_json::json!({"type": 3, "message": "hi"}),
+            },
+        );
+        let (_sid, ev) = backend.drain().into_iter().next().unwrap();
+        match &client.on_event(ev)[..] {
+            [ClientAction::ShowMessage(p)] => {
+                assert_eq!(p.message, "hi");
+                assert_eq!(p.typ, lsp_types::MessageType::INFO);
+            }
+            other => panic!("expected one ShowMessage action, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn malformed_known_method_falls_through_as_server_notification() {
+        let (mut backend, mut client) = make_running_client();
+
+        backend.push_from_server(
+            client.id,
+            Message::Notification {
+                method: "textDocument/publishDiagnostics".to_string(),
+                params: serde_json::json!({"uri": 42}),
+            },
+        );
+        let (_sid, ev) = backend.drain().into_iter().next().unwrap();
+        match &client.on_event(ev)[..] {
+            [ClientAction::ServerNotification { method, params }] => {
+                assert_eq!(method, "textDocument/publishDiagnostics");
+                assert_eq!(params, &serde_json::json!({"uri": 42}));
+            }
+            other => panic!("expected fallthrough ServerNotification, got {other:?}"),
+        }
+
+        backend.push_from_server(
+            client.id,
+            Message::Notification {
+                method: "$/progress".to_string(),
+                params: serde_json::json!({"token": {}}),
+            },
+        );
+        let (_sid, ev) = backend.drain().into_iter().next().unwrap();
+        match &client.on_event(ev)[..] {
+            [ClientAction::ServerNotification { method, params }] => {
+                assert_eq!(method, "$/progress");
+                assert_eq!(params, &serde_json::json!({"token": {}}));
+            }
+            other => panic!("expected fallthrough ServerNotification, got {other:?}"),
         }
     }
 

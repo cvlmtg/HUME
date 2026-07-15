@@ -69,7 +69,7 @@ fn setup(content: &str, publishes: &[&[DiagFixture]]) -> DiagCtx {
     // handshake — `Running` here so the `Diagnostics` element renders
     // counts rather than the `Starting` loading spinner. `insert_client_for_test`
     // otherwise leaves it at `LspClient::new`'s default `Starting`.
-    client.state = ServerState::Running;
+    client.set_state_for_test(ServerState::Running);
     ed.lsp.insert_client_for_test(client);
     ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
     let bid = ed.focused_buffer_id();
@@ -155,14 +155,13 @@ fn diagnostic_counts_update_across_a_corrected_publish() {
 // ── Loading spinner (Starting / $/progress) ───────────────────────────────
 
 /// A `$/progress` notification action for `dispatch_lsp_action`, bypassing
-/// the transport — this exercises `dispatch_server_notification`'s handling
-/// directly, the same way the other `lsp_*` test files drive
-/// `ClientAction::ServerNotification` without a live backend round-trip.
+/// the transport — this exercises `handle_progress`'s handling directly, the
+/// same way the other `lsp_*` test files drive typed `ClientAction` variants
+/// without a live backend round-trip.
 fn progress_action(token: &str, value: serde_json::Value) -> ClientAction {
-    ClientAction::ServerNotification {
-        method: "$/progress".to_string(),
-        params: serde_json::json!({"token": token, "value": value}),
-    }
+    ClientAction::Progress(
+        serde_json::from_value(serde_json::json!({"token": token, "value": value})).unwrap(),
+    )
 }
 
 #[test]
@@ -194,7 +193,7 @@ fn progress_begin_report_end_tracks_the_active_task() {
     let mut ed = Editor::open(None).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
-    client.state = ServerState::Running;
+    client.set_state_for_test(ServerState::Running);
     ed.lsp.insert_client_for_test(client);
     let bid = ed.focused_buffer_id();
     ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
@@ -253,7 +252,7 @@ fn crash_clears_progress_so_the_spinner_stops() {
     let mut ed = Editor::open(None).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
-    client.state = ServerState::Running;
+    client.set_state_for_test(ServerState::Running);
     ed.lsp.insert_client_for_test(client);
     let bid = ed.focused_buffer_id();
     ed.state.buffers.get_mut(bid).lsp_server = Some(sid);

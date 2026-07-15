@@ -251,7 +251,7 @@ fn diagnostics_changed_also_refreshes_hints() {
     let bid = ed.focused_buffer_id();
     ed.ingest_publish_diagnostics(
         sid,
-        serde_json::json!({"uri": hume_lsp::uri::path_to_uri(&std::fs::canonicalize(&file).unwrap()).unwrap().as_str(), "diagnostics": []}),
+        serde_json::from_value(serde_json::json!({"uri": hume_lsp::uri::path_to_uri(&std::fs::canonicalize(&file).unwrap()).unwrap().as_str(), "diagnostics": []})).unwrap(),
     );
     ed.fire_hook_diagnostics_changed(bid);
     settle_after_debounce(&mut ed);
@@ -284,7 +284,7 @@ fn no_viewport_seen_yet_skips_diagnostics_triggered_refresh() {
     // No fire_viewport_change call — the tracker has never seen this buffer.
     ed.ingest_publish_diagnostics(
         sid,
-        serde_json::json!({"uri": hume_lsp::uri::path_to_uri(&std::fs::canonicalize(&file).unwrap()).unwrap().as_str(), "diagnostics": []}),
+        serde_json::from_value(serde_json::json!({"uri": hume_lsp::uri::path_to_uri(&std::fs::canonicalize(&file).unwrap()).unwrap().as_str(), "diagnostics": []})).unwrap(),
     );
     ed.fire_hook_diagnostics_changed(bid);
     settle_after_debounce(&mut ed);

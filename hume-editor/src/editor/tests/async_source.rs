@@ -171,7 +171,7 @@ mod next_wake_covers_client_state {
         // coarser 200ms Running-idle heartbeat.
         let (mut ed, sid) = wired_editor();
         let mut client = LspClient::new(sid, PathBuf::from("."));
-        client.state = ServerState::Running;
+        client.set_state_for_test(ServerState::Running);
         ed.lsp.insert_client_for_test(client);
 
         let meta = RequestMeta {
@@ -189,7 +189,7 @@ mod next_wake_covers_client_state {
     fn wake_timeout_for_a_running_idle_client_is_bounded_by_the_heartbeat() {
         let (mut ed, sid) = wired_editor();
         let mut client = LspClient::new(sid, PathBuf::from("."));
-        client.state = ServerState::Running;
+        client.set_state_for_test(ServerState::Running);
         ed.lsp.insert_client_for_test(client);
 
         let timeout = ed

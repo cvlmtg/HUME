@@ -70,12 +70,15 @@ pub(crate) struct StoredDiag {
     pub(crate) message: String,
     pub(crate) code: Option<String>,
     pub(crate) source: Option<String>,
-    /// The original wire-shaped `Diagnostic` (`textDocument/codeAction`
-    /// needs to echo this back verbatim as `context.diagnostics` — the
-    /// server's quickfixes are gated on the client showing the diagnostic
-    /// it's fixing, and rebuilding this from `start`/`end`'s char offsets
-    /// would mean Steel fabricating wire positions itself, which the
-    /// encoding-safety rule forbids).
+    /// The original wire-shaped `Diagnostic`, serialized back from the
+    /// parsed `lsp_types::Diagnostic` (`textDocument/codeAction` needs to
+    /// echo this back verbatim as `context.diagnostics` — the server's
+    /// quickfixes are gated on the client showing the diagnostic it's
+    /// fixing, and rebuilding this from `start`/`end`'s char offsets would
+    /// mean Steel fabricating wire positions itself, which the
+    /// encoding-safety rule forbids). The roundtrip preserves every spec
+    /// field, including `data` (some servers need it echoed back for
+    /// `codeAction` too).
     pub(crate) raw: serde_json::Value,
 }
 
@@ -268,29 +271,20 @@ fn widen_zero_length(rope: &Rope, pos: usize) -> (usize, usize) {
 }
 
 impl Editor {
-    /// Ingests one already-coalesced `publishDiagnostics` payload (raw
-    /// JSON — the caller kept only the last one per (server, uri) within
-    /// this drain batch). Drops silently (one Trace line) when the URI
-    /// doesn't resolve to an open buffer — v1 never opens a buffer just to
-    /// hold diagnostics. Returns the buffer actually ingested into, so the
-    /// caller can fire `OnDiagnosticsChanged` once per touched buffer
-    /// — `None` on any drop path.
+    /// Ingests one already-coalesced, already-classified `publishDiagnostics`
+    /// payload (the caller kept only the last one per (server, uri) within
+    /// this drain batch — a malformed payload never reaches here, since
+    /// `hume-lsp` classifies it as a `ServerNotification` fallthrough
+    /// instead). Drops silently (one Trace line) when the URI doesn't
+    /// resolve to an open buffer — v1 never opens a buffer just to hold
+    /// diagnostics. Returns the buffer actually ingested into, so the caller
+    /// can fire `OnDiagnosticsChanged` once per touched buffer — `None` on
+    /// any drop path.
     pub(in crate::editor) fn ingest_publish_diagnostics(
         &mut self,
         server_id: ServerId,
-        params: serde_json::Value,
+        parsed: PublishDiagnosticsParams,
     ) -> Option<BufferId> {
-        let parsed: PublishDiagnosticsParams = match serde_json::from_value(params) {
-            Ok(p) => p,
-            Err(e) => {
-                self.report(
-                    Severity::Trace,
-                    format!("lsp: malformed publishDiagnostics: {e}"),
-                );
-                return None;
-            }
-        };
-
         let Ok(path) = hume_lsp::uri::uri_to_path(&parsed.uri) else {
             self.report(
                 Severity::Trace,
@@ -340,7 +334,7 @@ impl Editor {
             .lsp
             .servers
             .get(&server_id)
-            .map(|e| e.client.encoding)
+            .map(|e| e.client.encoding())
             .unwrap_or(hume_editing::PositionEncoding::Utf16);
         let rope = self.state.buffers.get(bid).text().rope().clone();
 

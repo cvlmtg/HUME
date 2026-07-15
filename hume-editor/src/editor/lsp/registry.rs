@@ -201,15 +201,16 @@ impl Editor {
         // buffer opened after a crash would silently attach to the corpse.
         let existing = self.lsp.servers.iter().find_map(|(&sid, entry)| {
             (entry.language.as_deref() == Some(language.as_str())
-                && entry.client.root == root
-                && entry.client.state != hume_lsp::client::ServerState::Crashed)
+                && entry.client.root() == root.as_path()
+                && entry.client.state() != hume_lsp::client::ServerState::Crashed)
                 .then_some(sid)
         });
 
         let server_id = if let Some(existing) = existing {
             existing
         } else if self.lsp.servers.values().any(|entry| {
-            entry.language.as_deref() == Some(language.as_str()) && entry.client.root == root
+            entry.language.as_deref() == Some(language.as_str())
+                && entry.client.root() == root.as_path()
         }) {
             // The only match for this (language, root) is Crashed — refuse
             // to silently attach to it; the buffer stays unattached until
@@ -257,7 +258,7 @@ impl Editor {
             .lsp
             .servers
             .get(&server_id)
-            .is_some_and(|e| e.client.state == hume_lsp::client::ServerState::Running)
+            .is_some_and(|e| e.client.state() == hume_lsp::client::ServerState::Running)
         {
             self.fire_hook_lsp_attach(bid, &language);
         }

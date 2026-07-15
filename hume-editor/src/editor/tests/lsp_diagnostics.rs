@@ -172,16 +172,49 @@ fn publish_for_an_unopened_file_is_dropped_without_spam() {
     );
 }
 
+#[test]
+fn malformed_publish_diagnostics_reaches_the_unhandled_notification_path() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
+    std::fs::write(&file, "one two three four\n").unwrap();
+
+    let mut ed = editor_from("-[w]>ord\n");
+    let mut backend = InlineLspBackend::new();
+    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    // `uri` and `diagnostics` both wrong-shaped — fails to parse as
+    // `PublishDiagnosticsParams`, so `hume-lsp` classifies it as a
+    // `ServerNotification` fallthrough instead of `Diagnostics`.
+    backend.push_from_server(
+        sid,
+        hume_lsp::codec::Message::Notification {
+            method: "textDocument/publishDiagnostics".to_string(),
+            params: serde_json::json!({"uri": 42, "diagnostics": "nope"}),
+        },
+    );
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    open_with_client(&mut ed, &file, sid);
+
+    ed.drain_lsp(); // must not panic
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("unhandled notification textDocument/publishDiagnostics"),
+        "expected an unhandled-notification trace line, got: {log}"
+    );
+}
+
 // ── Minor B — stale-versioned publishes are dropped ────────────────────────
 
-/// Extracts the `params` payload back out of a scripted `publishDiagnostics`
-/// notification `Message`, for tests that call `ingest_publish_diagnostics`
-/// directly (needed to exercise two separate ingest calls in sequence —
-/// batch coalescing would otherwise collapse two same-drain publishes into
-/// one before ingest ever saw the first).
-fn params_of(msg: hume_lsp::codec::Message) -> serde_json::Value {
+/// Extracts and parses the `params` payload back out of a scripted
+/// `publishDiagnostics` notification `Message`, for tests that call
+/// `ingest_publish_diagnostics` directly (needed to exercise two separate
+/// ingest calls in sequence — batch coalescing would otherwise collapse two
+/// same-drain publishes into one before ingest ever saw the first).
+fn params_of(msg: hume_lsp::codec::Message) -> lsp_types::PublishDiagnosticsParams {
     match msg {
-        hume_lsp::codec::Message::Notification { params, .. } => params,
+        hume_lsp::codec::Message::Notification { params, .. } => {
+            serde_json::from_value(params).unwrap()
+        }
         other => panic!("expected a Notification, got {other:?}"),
     }
 }
