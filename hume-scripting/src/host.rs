@@ -283,6 +283,15 @@ pub trait EditorHost {
         None
     }
 
+    /// `(viewport-range bid)` — the `(first_line last_line)` char-line span
+    /// currently visible for `id` (the focused pane's if shown there, else
+    /// the first pane showing it), or `None` if `id` isn't open in any pane.
+    /// Pane geometry, not LSP state — doesn't need an attached server.
+    fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)> {
+        let _ = id;
+        None
+    }
+
     // ── Timers (default = no timer support) ──────────────────────────────
     /// Schedules `thunk` — opaque to this trait, a raw Steel closure — to
     /// fire after `ms` milliseconds. Returns the new timer id, or `None` if

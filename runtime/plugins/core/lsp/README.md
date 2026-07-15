@@ -110,7 +110,7 @@ evaluates it only when `init.scm` calls `(declare-plugin "core:lsp")` with no ex
 activation entries. One `plugin.scm` entry `require`s a file per feature area (`hover.scm`, `goto.scm`,
 `diagnostics.scm`, `rename.scm`, `format.scm`, `actions.scm`, `sighelp.scm`,
 `completion.scm`, `inlay.scm`), plus a shared `lib.scm` (capability checks, error
-reporting, the viewport tracker, location-drawer helper), `registration.scm` (the seeded
+reporting, location-drawer helper), `registration.scm` (the seeded
 catalog, receipt/path helpers, and the scan), and `servers.scm` (install/uninstall — see
 below). Every feature file is the same three-line shape: send an `lsp-request`,
 transform the response, call a UI or store builtin.

@@ -111,7 +111,7 @@ Capabilities decode once at C5 handshake time (store the decoded SteelVal alongs
 
 **Done when** — all four callable from `init.scm`; `(lsp-capabilities …)` output for rust-analyzer eyeballed once (manual).
 
-**Traps** — `buffer-generation` takes the opaque bid value (`SteelBufferId`) — remember `equal?` is broken for those (LESSONS); provide values, let Steel compare ints from `buffer-generation`, not bids.
+**Traps** — `buffer-generation` takes the opaque bid value (`SteelBufferId`); prefer comparing the int it returns over comparing bids directly for staleness checks (`equal?`/hash-keying on bids themselves work by value, but a generation counter is the more direct staleness signal here).
 
 **Size** — ~80 source + ~80 test lines.
 

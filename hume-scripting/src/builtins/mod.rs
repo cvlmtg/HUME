@@ -570,6 +570,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
     );
     steel.register_fn_with_ctx(HUME_CTX, "lsp-position-params", lsp::lsp_position_params);
     steel.register_fn_with_ctx(HUME_CTX, "lsp-range-params", lsp::lsp_range_params);
+    steel.register_fn_with_ctx(HUME_CTX, "viewport-range", lsp::viewport_range);
     steel.register_fn_with_ctx(HUME_CTX, "buffer-generation", buffers::buffer_generation);
     steel.register_fn_with_ctx(
         HUME_CTX,

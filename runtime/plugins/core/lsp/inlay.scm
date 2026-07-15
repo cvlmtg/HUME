@@ -39,16 +39,15 @@
 ;;; Debounced (200ms) and re-run from both on-viewport-change and
 ;;; on-diagnostics-changed — servers refresh hints roughly when diagnostics
 ;;; do, and neither hook carries a stale-safe reason to skip the other.
-;;; Always re-reads the current viewport from lib.scm's tracker rather than
-;;; trusting an argument, so both call sites can share one signature; `#f`
-;;; before the first on-viewport-change event skips silently (the next
-;;; viewport event refreshes). Resolved against `bid`'s own attached
-;;; server, not the focused buffer's — a split can show a different
-;;; buffer/language in each pane, and both hooks fire per-buffer.
+;;; Always re-reads the live `(viewport-range bid)` rather than trusting an
+;;; argument, so both call sites can share one signature; `#f` (bid not
+;;; currently shown in any pane) skips silently. Resolved against `bid`'s
+;;; own attached server, not the focused buffer's — a split can show a
+;;; different buffer/language in each pane, and both hooks fire per-buffer.
 (define lsp/refresh-hints
   (debounce 200
     (lambda (bid)
-      (let ((range (lsp/viewport-range bid))
+      (let ((range (viewport-range bid))
             (server (lsp-server-for-buffer bid)))
         (when (and range server (get-option "lsp.inlay-hints")
                    (lsp/supports-for-buffer? bid "inlayHintProvider"))

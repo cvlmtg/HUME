@@ -71,7 +71,13 @@ fn setup_declared(
 
     let mut ed = Editor::open(None).unwrap();
     let file = file_dir.join("main.rs");
-    std::fs::write(&file, "fn main() {}\n").unwrap();
+    // 30 lines — comfortably taller than the default pane height's ⅓-cap
+    // (see lsp_hover.rs's `setup` for the full rationale): a 1-2 line
+    // fixture makes even trivial hover content overflow to the drawer once
+    // `(viewport-range bid)` resolves against real (if pre-`prepare_frame`
+    // default) pane geometry instead of a test-only #f fallback.
+    let filler = (0..29).map(|i| format!("// line {i}")).collect::<Vec<_>>().join("\n");
+    std::fs::write(&file, format!("fn main() {{}}\n{filler}\n")).unwrap();
 
     let mut backend = InlineLspBackend::new();
     backend.respond_to(

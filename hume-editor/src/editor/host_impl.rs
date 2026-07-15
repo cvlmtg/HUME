@@ -436,6 +436,10 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         crate::editor::lsp::introspect::range_params(self.state, self.lsp.as_deref()?, id)
     }
 
+    fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)> {
+        crate::editor::lsp::introspect::viewport_range(self.state, self.view, id)
+    }
+
     // ── Timers ──────────────────────────────────────────────────────────
     fn schedule_timer(&mut self, ms: u64, thunk: steel::rvals::SteelVal) -> Option<u64> {
         Some(

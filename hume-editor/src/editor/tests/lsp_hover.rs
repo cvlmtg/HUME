@@ -49,7 +49,14 @@ fn setup(
 
     let mut ed = Editor::open(None).unwrap();
     let file = file_dir.join("main.rs");
-    std::fs::write(&file, "fn main() {}\n").unwrap();
+    // 30 lines — comfortably taller than the default pane height's ⅓-cap
+    // (`Pane::new`'s default viewport is 24 rows tall; `(viewport-range bid)`
+    // resolves against this immediately, no `prepare_frame` needed), so a
+    // one-line hover response lands well under the popup/drawer threshold —
+    // a tiny 1-2 line fixture would make even trivial hover content overflow
+    // to the drawer, which isn't what these tests are checking.
+    let filler = (0..29).map(|i| format!("// line {i}")).collect::<Vec<_>>().join("\n");
+    std::fs::write(&file, format!("fn main() {{}}\n{filler}\n")).unwrap();
 
     let mut backend = InlineLspBackend::new();
     backend.respond_to("initialize", initialize_result);
@@ -198,8 +205,9 @@ fn error_reports_via_the_message_log() {
 fn tall_content_falls_back_to_the_drawer() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    // No on-viewport-change has fired in this test, so the popup/drawer
-    // threshold falls back to 15 lines (lib.scm) — 20 lines must overflow.
+    // The fixture file is ~30 lines against the default 24-row pane height,
+    // so the popup/drawer threshold (⅓ of visible lines) lands around 8 —
+    // 20 lines must overflow to the drawer regardless of the exact figure.
     let tall = (0..20)
         .map(|i| format!("line{i}"))
         .collect::<Vec<_>>()

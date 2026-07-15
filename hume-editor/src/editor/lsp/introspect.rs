@@ -4,7 +4,8 @@
 //! because they mutate the transport). These run through `EditorHostImpl`
 //! directly since a Steel caller needs the value back inline.
 
-use hume_engine::pipeline::BufferId;
+use hume_engine::pane::Pane;
+use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_lsp::backend::ServerId;
 
 use super::LspState;
@@ -314,4 +315,54 @@ pub(crate) fn range_params(
             "end": {"line": end_line, "character": end_char},
         },
     }))
+}
+
+/// `pane`'s visible `(first_line, last_line)` span, clamped to a buffer of
+/// `total_lines` — the single computation shared by `fire_hook_viewport_change`
+/// (pane -> its own range, for the `on-viewport-change` hook payload) and
+/// [`viewport_range`] (buffer -> the pane showing it, for the synchronous
+/// `(viewport-range bid)` builtin). `last_line` clamps to `total_lines - 1`
+/// (0 when the buffer is empty of lines) so it never points past the buffer's
+/// last valid line, even when the pane's viewport height exceeds the buffer.
+pub(crate) fn pane_visible_range(pane: &Pane, total_lines: usize) -> (usize, usize) {
+    let first_line = pane.viewport.top_line;
+    let last_line =
+        (first_line + pane.viewport.height as usize).min(total_lines.saturating_sub(1));
+    (first_line, last_line)
+}
+
+/// The pane currently showing buffer `id`: the focused pane if it shows `id`,
+/// else the first pane (by `SlotMap` iteration order) that does, else `None`
+/// if `id` isn't open in any pane. Mirrors [`pane_buffer_state`]'s
+/// focused-first/any-fallback policy, but resolves against `EngineView`'s
+/// live pane geometry rather than the seeded per-(pane,buffer) cursor state.
+fn pane_showing_buffer(state: &EditorState, view: &EngineView, id: BufferId) -> Option<PaneId> {
+    if view
+        .panes
+        .get(state.focused_pane_id)
+        .is_some_and(|p| p.buffer_id == id)
+    {
+        return Some(state.focused_pane_id);
+    }
+    view.panes
+        .iter()
+        .find(|(_, p)| p.buffer_id == id)
+        .map(|(pid, _)| pid)
+}
+
+/// `(viewport-range bid)` — the `(first_line last_line)` span currently
+/// visible for `id`, or `None` if `id` isn't shown in any pane (a background
+/// or hidden buffer). With the same buffer open in two panes, the focused
+/// pane's range wins — no less arbitrary than any other tie-break, since a
+/// per-buffer decoration store (inlay hints, the old Steel viewport tracker)
+/// can only hold one range per buffer regardless of how many panes show it.
+pub(crate) fn viewport_range(
+    state: &EditorState,
+    view: &EngineView,
+    id: BufferId,
+) -> Option<(usize, usize)> {
+    let pane_id = pane_showing_buffer(state, view, id)?;
+    let pane = view.panes.get(pane_id)?;
+    let total_lines = state.buffers.try_get(id)?.text().len_lines();
+    Some(pane_visible_range(pane, total_lines))
 }

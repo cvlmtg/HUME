@@ -175,7 +175,7 @@ The subsystems LSP touches, where they live, and what each step does with them. 
 
 ## Steel API index
 
-Every Steel-visible surface Steps 1–3 introduce. Cards define the semantics; this index is the lookup table (and the completeness check for F11's docs). Conventions: `bid` = buffer id value (opaque; compare via `(buffer-generation …)` ints, not `equal?` — see LESSONS on opaque types); positions produced by HUME builtins (B5 pulls, params helpers' inputs) are 0-based and **char-indexed** — raw wire positions appear only inside undecoded LSP response hashmaps, and only `goto-location!` (which accepts a raw `Location` hashmap) or the B5/B8 setters (which take response-shaped data) may consume them; Steel never converts encodings itself. Callbacks take `(err result)` — exactly one is non-`#f`.
+Every Steel-visible surface Steps 1–3 introduce. Cards define the semantics; this index is the lookup table (and the completeness check for F11's docs). Conventions: `bid` = buffer id value — `equal?` and hash-keying compare by the underlying id (steel-core `Custom::equality_hint`/`try_as_dyn_hash`), so plugin code may use ordinary `equal?` and hash-keyed per-buffer state directly; positions produced by HUME builtins (B5 pulls, params helpers' inputs) are 0-based and **char-indexed** — raw wire positions appear only inside undecoded LSP response hashmaps, and only `goto-location!` (which accepts a raw `Location` hashmap) or the B5/B8 setters (which take response-shaped data) may consume them; Steel never converts encodings itself. Callbacks take `(err result)` — exactly one is non-`#f`.
 
 | Surface | Kind | Task |
 |---------|------|------|
@@ -190,6 +190,7 @@ Every Steel-visible surface Steps 1–3 introduce. Cards define the semantics; t
 | `(lsp-server-for-buffer bid)` → server name or `#f` | builtin | B3 |
 | `(buffer-generation bid)` → int | builtin | B3 |
 | `(lsp-position-params bid)` / `(lsp-range-params bid)` → ready-made params hashmaps (encoding-correct) | builtin | B3 |
+| `(viewport-range bid)` → `(list first-line last-line)` currently visible for `bid` (focused pane if it shows `bid`, else the first pane showing it), or `#f` if `bid` isn't shown in any pane | builtin | B3 |
 | `(after ms thunk)` → timer id; `(cancel-timer! id)` | builtin | B4 |
 | `(debounce ms proc)` → debounced proc | builtin (bootstrap wrapper over `after`) | B4 |
 | `(set-inlay-hints! bid hints)` | builtin | B5 |

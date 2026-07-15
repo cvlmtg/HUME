@@ -2,7 +2,7 @@
 
 (provide lsp/supports? lsp/supports-for-buffer? lsp/guard-capability lsp/report-error
          lsp/visible-lines lsp/show-locations! lsp/text-edit->tuple
-         lsp/viewport-range lsp/string-utf16-length lsp/utf16-offset->char-index
+         lsp/string-utf16-length lsp/utf16-offset->char-index
          lsp/setup-trigger-chars!)
 
 ;; ── Capability guard ────────────────────────────────────────────────────────
@@ -125,43 +125,15 @@
         i
         (loop (+ i 1) n (+ units (if (>= (char->integer (string-ref s i)) #x10000) 2 1))))))
 
-;; ── Viewport tracker ────────────────────────────────────────────────────────
-;; No pane-geometry builtin exists — on-viewport-change is the only
-;; Steel-visible viewport source. Buffer-id SteelVals are NOT `equal?` across
-;; separate wrappings of the same underlying id (Arc-pointer equality), so
-;; per-buffer state is an assoc-list searched with `buffer-id=?`, never a
-;; hashmap keyed directly by a bid.
+;; ── Viewport ────────────────────────────────────────────────────────────────
+;; `(viewport-range bid)` is a synchronous Rust builtin (pane geometry read
+;; live off `EngineView`, not a Steel-side mirror) — see hover.scm's popup
+;; threshold and inlay.scm's refresh trigger for its two callers.
 
-(define *lsp-viewports* '())  ; list of (bid first last)
-
-(register-hook! 'on-viewport-change
-  (lambda (bid first last)
-    (set! *lsp-viewports*
-          (cons (list bid first last)
-                (filter (lambda (e) (not (buffer-id=? (list-ref e 0) bid)))
-                        *lsp-viewports*)))))
-
-;;; A closed buffer's entry would otherwise sit in `*lsp-viewports*` forever
-;;; — nothing else ever removes one.
-(register-hook! 'on-buffer-close
-  (lambda (bid)
-    (set! *lsp-viewports*
-          (filter (lambda (e) (not (buffer-id=? (list-ref e 0) bid)))
-                  *lsp-viewports*))))
-
-;;; `(first last)` visible line pair for `bid` as of the last
-;;; on-viewport-change fire, or `#f` before the first event for it.
-(define (lsp/viewport-range bid)
-  (let ((matches (filter (lambda (e) (buffer-id=? (list-ref e 0) bid)) *lsp-viewports*)))
-    (if (null? matches)
-        #f
-        (let ((entry (car matches)))
-          (list (list-ref entry 1) (list-ref entry 2))))))
-
-;;; Number of lines visible in `bid`'s pane as of the last on-viewport-change
-;;; fire, or `#f` before the first event for that buffer.
+;;; Number of lines currently visible in `bid`'s pane, or `#f` if `bid` isn't
+;;; shown in any pane.
 (define (lsp/visible-lines bid)
-  (let ((range (lsp/viewport-range bid)))
+  (let ((range (viewport-range bid)))
     (if range (+ 1 (- (cadr range) (car range))) #f)))
 
 ;; ── Location display + drawer ───────────────────────────────────────────────

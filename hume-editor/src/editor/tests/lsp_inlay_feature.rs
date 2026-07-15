@@ -242,8 +242,8 @@ fn diagnostics_changed_also_refreshes_hints() {
         .lsp_server
         .expect("buffer must be attached");
 
-    // Establish a viewport first — on-diagnostics-changed alone has no
-    // range to work with (lib.scm's tracker gates on this).
+    // Fire a real viewport-change first — the request count assertions
+    // below need a known baseline (1 request from this fire, not 0 or 2).
     fire_viewport_change(&mut ed);
     settle_after_debounce(&mut ed);
     assert_eq!(request_count(&requests, "textDocument/inlayHint"), 1);
@@ -265,7 +265,7 @@ fn diagnostics_changed_also_refreshes_hints() {
 
 #[test]
 #[cfg(not(windows))]
-fn no_viewport_seen_yet_skips_diagnostics_triggered_refresh() {
+fn hidden_buffer_skips_diagnostics_triggered_refresh() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = write_fixture_file(file_dir.path());
@@ -281,7 +281,15 @@ fn no_viewport_seen_yet_skips_diagnostics_triggered_refresh() {
         .expect("buffer must be attached");
     let bid = ed.focused_buffer_id();
 
-    // No fire_viewport_change call — the tracker has never seen this buffer.
+    // Switch the (only) pane to a second file — `bid` stays open in the
+    // buffer list (and stays attached to `sid`) but is no longer shown in
+    // any pane, so `(viewport-range bid)` must be `#f`.
+    let other_file = file_dir.path().join("other.rs");
+    std::fs::write(&other_file, "let y = 2;\n").unwrap();
+    ed.execute_typed("e", Some(other_file.to_str().unwrap()))
+        .unwrap();
+    assert_ne!(ed.focused_buffer_id(), bid, "test setup: pane must have switched");
+
     ed.ingest_publish_diagnostics(
         sid,
         serde_json::from_value(serde_json::json!({"uri": hume_lsp::uri::path_to_uri(&std::fs::canonicalize(&file).unwrap()).unwrap().as_str(), "diagnostics": []})).unwrap(),
@@ -289,7 +297,11 @@ fn no_viewport_seen_yet_skips_diagnostics_triggered_refresh() {
     ed.fire_hook_diagnostics_changed(bid);
     settle_after_debounce(&mut ed);
 
-    assert_eq!(request_count(&requests, "textDocument/inlayHint"), 0);
+    assert_eq!(
+        request_count(&requests, "textDocument/inlayHint"),
+        0,
+        "a buffer not shown in any pane must skip the refresh, viewport-range being #f"
+    );
 }
 
 #[test]

@@ -308,6 +308,25 @@ pub(crate) fn lsp_range_params(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult
     })
 }
 
+/// `(viewport-range bid)` → `(list first-line last-line)` currently visible
+/// for `bid` (the focused pane's if shown there, else the first pane showing
+/// it), or `#f` if `bid` isn't open in any pane. Pane geometry, not LSP
+/// state, but gated the same as its buffer/pane-touching siblings — it reads
+/// live view state, which only exists at command dispatch, hook fire, or a
+/// queued-call drain.
+pub(crate) fn viewport_range(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "viewport-range");
+    let id = bid_arg(&bid, "viewport-range")?;
+    Ok(match ctx.host.viewport_range(id) {
+        Some((first, last)) => {
+            let entries: Vec<SteelVal> =
+                vec![SteelVal::IntV(first as isize), SteelVal::IntV(last as isize)];
+            SteelVal::ListV(entries.into())
+        }
+        None => SteelVal::BoolV(false),
+    })
+}
+
 fn bid_arg(val: &SteelVal, ctx_name: &str) -> Result<hume_engine::pipeline::BufferId, SteelErr> {
     super::ids::downcast_buffer_id(val).ok_or_else(|| {
         SteelErr::new(

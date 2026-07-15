@@ -334,6 +334,82 @@ fn lsp_range_params_end_lands_on_a_grapheme_boundary_not_mid_cluster() {
 }
 
 #[test]
+fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let mut host = ScriptingHost::new();
+    // Captures the hook's own `(first last)` payload so the assertion
+    // compares two independently-reached values, not the builtin against
+    // itself — both paths share `introspect::pane_visible_range`, so this
+    // pins that they stay in sync, not just that the builtin returns
+    // *something*.
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define *captured* #f)
+           (register-hook! 'on-viewport-change
+             (lambda (bid first last) (set! *captured* (list first last))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    let pid = ed.state.focused_pane_id;
+    ed.fire_hook_viewport_change(pid);
+    ed.drain_hooks();
+
+    let host = ed.scripting.take().unwrap();
+    let fired = run_probe(
+        &mut ed,
+        host,
+        tmp.path(),
+        r#"(equal? *captured* (viewport-range (current-buffer)))"#,
+    );
+    assert!(
+        fired,
+        "viewport-range must agree with the on-viewport-change hook's own \
+         computation for the same pane"
+    );
+}
+
+#[test]
+fn viewport_range_is_false_for_a_buffer_not_shown_in_any_pane() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+
+    // `open_extra_files` opens a second buffer into the buffer list without
+    // switching any pane to show it — it stays paneless.
+    let extra = tmp.path().join("hidden.rs");
+    std::fs::write(&extra, "fn hidden() {}\n").unwrap();
+    ed.open_extra_files(std::slice::from_ref(&extra));
+    let hidden_bid = ed
+        .state
+        .buffers
+        .find_by_path(&std::fs::canonicalize(&extra).unwrap())
+        .expect("extra file must be open in the buffer list");
+    assert_ne!(
+        hidden_bid,
+        ed.focused_buffer_id(),
+        "test setup: the extra buffer must not be focused"
+    );
+
+    // Only two buffers exist, so "the one that isn't the focused buffer"
+    // unambiguously picks out the hidden one — relies on R4's equal?/hash
+    // fix (`equality_hint`) for buffer-id comparison across independently
+    // decoded `(buffers)` entries.
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(let ((hidden (car (filter (lambda (b) (not (equal? b (current-buffer)))) (buffers)))))
+             (equal? (viewport-range hidden) #f))"#,
+    );
+    assert!(
+        fired,
+        "a buffer not shown in any pane must yield #f from viewport-range"
+    );
+}
+
+#[test]
 fn lsp_position_params_is_false_for_an_unattached_buffer() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
