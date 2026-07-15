@@ -88,8 +88,8 @@ LSP server management:
 | `g D` | lsp-goto-declaration            |
 | `g y` | lsp-goto-type-definition        |
 | `g i` | lsp-goto-implementation         |
-| `g r` | lsp-references                  |
-| `g R` | lsp-rename                      |
+| `g R` | lsp-references                  |
+| `g r` | lsp-rename                      |
 | `g k` | lsp-hover                       |
 | `g a` | lsp-code-actions                |
 | `g n` | goto-next-diagnostic            |

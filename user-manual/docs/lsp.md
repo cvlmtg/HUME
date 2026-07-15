@@ -15,7 +15,6 @@ instead — see [Registering a language server](#registering-a-language-server).
 
 ```scheme
 (declare-plugin "core:stdlib")   ; core:lsp depends on it
-
 (declare-plugin "core:lsp")
 ```
 
@@ -210,8 +209,8 @@ Examples for a few commonly used servers:
 | `g D` | `lsp-goto-declaration`       | Jump to the symbol's declaration |
 | `g y` | `lsp-goto-type-definition`   | Jump to the symbol's type's definition |
 | `g i` | `lsp-goto-implementation`    | Jump to the symbol's implementation |
-| `g r` | `lsp-references`             | List every reference to the symbol |
-| `g R` | `lsp-rename`                 | Rename the symbol under the cursor everywhere it's used |
+| `g R` | `lsp-references`             | List every reference to the symbol |
+| `g r` | `lsp-rename`                 | Rename the symbol under the cursor everywhere it's used |
 | `g a` | `lsp-code-actions`           | Show fixes and refactors available at the cursor |
 | `g n` | `goto-next-diagnostic`       | Jump to the next error/warning after the cursor (wraps) |
 | `g p` | `goto-prev-diagnostic`       | Jump to the previous error/warning before the cursor (wraps) |
