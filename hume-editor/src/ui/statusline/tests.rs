@@ -211,10 +211,10 @@ fn readonly_element_renders_ro_label() {
 use crate::editor::lsp::introspect::LspActivity;
 
 #[test]
-fn diagnostics_element_starting_shows_spinner_and_label() {
+fn diagnostics_element_starting_shows_spinner() {
     let colors = crate::ui::theme::EditorColors::default();
     let (text, _) = DiagnosticsElement::format((LspActivity::Starting, 0, 0, 0), &colors);
-    assert_eq!(text.as_ref(), "⠋ starting…");
+    assert_eq!(text.as_ref(), "⠋ lsp");
 }
 
 #[test]
@@ -261,13 +261,34 @@ fn diagnostics_element_spinner_indexes_by_frame() {
 }
 
 #[test]
-fn diagnostics_element_idle_falls_back_to_counts() {
+fn diagnostics_element_idle_shows_counts_with_no_spinner() {
     let colors = crate::ui::theme::EditorColors::default();
     let data = (LspActivity::Idle, 3, 12, 0);
     let (text, _) = DiagnosticsElement::format(data, &colors);
     assert_eq!(
         text.as_ref(),
         format!("{DIAGNOSTICS_ERROR_GLYPH} 3 {DIAGNOSTICS_WARNING_GLYPH} 12")
+    );
+}
+
+/// A `$/progress` task in flight must not hide diagnostic counts already
+/// known for the buffer — the spinner and the counts render together.
+#[test]
+fn diagnostics_element_progress_and_counts_render_together() {
+    let colors = crate::ui::theme::EditorColors::default();
+    let data = (
+        LspActivity::Progress {
+            title: "Indexing".to_string(),
+            percentage: Some(45),
+        },
+        3,
+        12,
+        0,
+    );
+    let (text, _) = DiagnosticsElement::format(data, &colors);
+    assert_eq!(
+        text.as_ref(),
+        format!("⠋ 45% {DIAGNOSTICS_ERROR_GLYPH} 3 {DIAGNOSTICS_WARNING_GLYPH} 12")
     );
 }
 

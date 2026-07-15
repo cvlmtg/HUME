@@ -183,7 +183,7 @@ fn starting_server_renders_the_loading_spinner() {
     let colors = crate::ui::theme::EditorColors::default();
     let (text, _) =
         crate::ui::statusline::render_element(StatusElement::Diagnostics, &ed, &colors, "");
-    assert_eq!(text.as_ref(), "⠋ starting…");
+    assert_eq!(text.as_ref(), "⠋ lsp");
 }
 
 #[test]
@@ -277,7 +277,7 @@ fn crash_clears_progress_so_the_spinner_stops() {
 }
 
 #[test]
-fn loading_state_takes_priority_over_stale_diagnostic_counts() {
+fn loading_state_renders_alongside_diagnostic_counts() {
     let mut c = setup("abcdefgh\n", &[&[((0, 0), (0, 1), 1)]]);
     let bid = c.ed.focused_buffer_id();
     let sid = c
@@ -290,7 +290,7 @@ fn loading_state_takes_priority_over_stale_diagnostic_counts() {
     assert_ne!(
         c.ed.diagnostic_counts(bid),
         (0, 0),
-        "fixture must actually carry a stale count for this to be a meaningful check"
+        "fixture must actually carry a count for this to be a meaningful check"
     );
 
     // `setup` already leaves the client `Running` (see its doc comment) —
@@ -304,7 +304,7 @@ fn loading_state_takes_priority_over_stale_diagnostic_counts() {
     let (text, _) =
         crate::ui::statusline::render_element(StatusElement::Diagnostics, &c.ed, &colors, "");
     assert!(
-        text.contains("lsp") && !text.contains(DIAGNOSTICS_ERROR_GLYPH),
-        "loading must take priority over nonzero diagnostic counts, got {text:?}"
+        text.contains("lsp") && text.contains(DIAGNOSTICS_ERROR_GLYPH),
+        "a background progress task must not hide already-known diagnostic counts, got {text:?}"
     );
 }

@@ -17,9 +17,10 @@ const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '�
 pub(in crate::ui::statusline) struct DiagnosticsElement;
 
 impl StatuslineElement for DiagnosticsElement {
-    /// The focused buffer's LSP loading state (takes priority when the
-    /// server isn't ready yet), its `(errors, warnings)` counts, and the
-    /// current spinner animation frame.
+    /// The focused buffer's LSP loading state, its `(errors, warnings)`
+    /// counts, and the current spinner animation frame — rendered together
+    /// (spinner prefix + counts suffix) so a background progress task never
+    /// hides the counts the user already has.
     ///
     /// Diagnostic counts are read directly from the diagnostics store in
     /// Rust — the statusline renders every frame, so this never goes
@@ -43,19 +44,30 @@ impl StatuslineElement for DiagnosticsElement {
         colors: &EditorColors,
     ) -> (Cow<'static, str>, Style) {
         let spinner = SPINNER[frame % SPINNER.len()];
-        let label = match activity {
-            LspActivity::Starting => format!("{spinner} starting…"),
-            LspActivity::Progress { percentage, .. } => match percentage {
-                Some(p) => format!("{spinner} {p}%"),
-                None => format!("{spinner} lsp"),
-            },
-            // Idle: error/warning counts, empty when there are none.
-            LspActivity::Idle => match (errors, warnings) {
-                (0, 0) => String::new(),
-                (e, 0) => format!("{DIAGNOSTICS_ERROR_GLYPH} {e}"),
-                (0, w) => format!("{DIAGNOSTICS_WARNING_GLYPH} {w}"),
-                (e, w) => format!("{DIAGNOSTICS_ERROR_GLYPH} {e} {DIAGNOSTICS_WARNING_GLYPH} {w}"),
-            },
+        // `Starting` and a percentage-less `Progress` render identically —
+        // neither has anything more specific to show than "a server task is
+        // running".
+        let spinner_prefix = match activity {
+            LspActivity::Idle => None,
+            LspActivity::Starting | LspActivity::Progress { percentage: None, .. } => {
+                Some(format!("{spinner} lsp"))
+            }
+            LspActivity::Progress {
+                percentage: Some(p),
+                ..
+            } => Some(format!("{spinner} {p}%")),
+        };
+        let counts = match (errors, warnings) {
+            (0, 0) => None,
+            (e, 0) => Some(format!("{DIAGNOSTICS_ERROR_GLYPH} {e}")),
+            (0, w) => Some(format!("{DIAGNOSTICS_WARNING_GLYPH} {w}")),
+            (e, w) => Some(format!("{DIAGNOSTICS_ERROR_GLYPH} {e} {DIAGNOSTICS_WARNING_GLYPH} {w}")),
+        };
+        let label = match (spinner_prefix, counts) {
+            (Some(s), Some(c)) => format!("{s} {c}"),
+            (Some(s), None) => s,
+            (None, Some(c)) => c,
+            (None, None) => String::new(),
         };
         (Cow::Owned(label), colors.statusline)
     }
