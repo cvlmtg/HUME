@@ -205,6 +205,44 @@ fn backspace_past_the_anchor_dismisses_the_session() {
     );
 }
 
+// ── Tab/Shift+Tab: selection wraps at the boundaries ─────────────────────────
+
+#[test]
+fn tab_at_last_item_wraps_to_first() {
+    let mut ed = Editor::open(None).unwrap();
+    ed.feed_key(key('i'));
+    begin_session(&mut ed, &[("foo", None), ("bar", None), ("baz", None)]);
+
+    // Three items, indices 0..2. Two Tabs land on the last item (index 2);
+    // a third must wrap back to 0 instead of staying clamped at 2.
+    ed.feed_key(key_tab());
+    ed.feed_key(key_tab());
+    assert_eq!(ed.state.lsp_completion_ui.as_ref().unwrap().selected, 2);
+
+    ed.feed_key(key_tab());
+    assert_eq!(
+        ed.state.lsp_completion_ui.as_ref().unwrap().selected,
+        0,
+        "Tab past the last item must wrap to the first"
+    );
+}
+
+#[test]
+fn shift_tab_at_first_item_wraps_to_last() {
+    let mut ed = Editor::open(None).unwrap();
+    ed.feed_key(key('i'));
+    begin_session(&mut ed, &[("foo", None), ("bar", None), ("baz", None)]);
+
+    // No Tab pressed yet — `lsp_completion_ui` is lazily created on first
+    // move, defaulting to index 0, which is what BackTab must wrap from.
+    ed.feed_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT));
+    assert_eq!(
+        ed.state.lsp_completion_ui.as_ref().unwrap().selected,
+        2,
+        "Shift+Tab before the first item must wrap to the last"
+    );
+}
+
 // ── Mode change dismisses ──────────────────────────────────────────────────────
 
 #[test]

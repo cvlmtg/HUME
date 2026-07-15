@@ -344,11 +344,9 @@ impl Editor {
             .lsp_completion_ui
             .get_or_insert(crate::editor::lsp::completion::LspCompletionUi { selected: 0 });
         if forward {
-            if ui.selected + 1 < n {
-                ui.selected += 1;
-            }
-        } else if ui.selected > 0 {
-            ui.selected -= 1;
+            ui.selected = (ui.selected + 1) % n;
+        } else {
+            ui.selected = ui.selected.checked_sub(1).unwrap_or(n - 1);
         }
     }
 
