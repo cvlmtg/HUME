@@ -29,17 +29,11 @@ use hume_lsp::transport::InboundEvent;
 use lsp_types::request::Request as _;
 
 use super::Editor;
-use super::async_source::{AsyncSource, PENDING_POLL};
+use super::async_source::AsyncSource;
 use super::message_log::Severity;
 use diagnostics::DiagnosticsStore;
 pub(crate) use diagnostics::{DiagSeverity, StoredDiag};
 use registry::LspServerConfig;
-
-/// How often to poll while any LSP server is running, so idle-time server
-/// pushes (e.g. `publishDiagnostics` after the user stops typing) don't sit
-/// undrained until the next keypress — `event::read()` cannot be woken
-/// externally.
-const LSP_HEARTBEAT: Duration = Duration::from_millis(200);
 
 /// A Rust closure run with a completed request's outcome. `hume-lsp` never
 /// holds this — it only ever sees the `(ServerId, RequestId)` pair the
@@ -406,31 +400,33 @@ impl LspState {
 
 impl AsyncSource for LspState {
     fn next_wake(&self, now: Instant) -> Option<Instant> {
-        // Mid-handshake, the initialize response could land any moment —
-        // and after that, anything queued while `Starting` must flush
-        // promptly. A request in flight gets the same short cadence, not
-        // the coarser Running-idle heartbeat below.
-        let pending = self.backend.has_pending()
-            || self
-                .servers
-                .values()
-                .any(|e| e.client.state() == ServerState::Starting || e.client.pending_count() > 0);
-        if pending {
-            return Some(now + PENDING_POLL);
-        }
-
-        // A server reporting `$/progress` (indexing, loading, ...) needs the
-        // statusline spinner to keep animating — wake at the spinner's own
-        // cadence rather than falling through to the coarser idle heartbeat.
-        let loading = self.servers.values().any(|e| !e.progress.is_empty());
-        if loading {
-            return Some(now + SPINNER_INTERVAL);
-        }
-
-        self.servers
+        // Real deadlines only: response *arrival* no longer needs a wake
+        // here — the transport threads wake the event loop directly the
+        // moment a message lands (see `hume_platform::events`). What
+        // remains is the earliest pending-request timeout across every
+        // server (initialize/shutdown included — see
+        // `LspClient::earliest_deadline`), so a silent server's timeout
+        // sweep in `take_completed` still fires promptly.
+        let deadline = self
+            .servers
             .values()
-            .any(|e| e.client.state() == ServerState::Running)
-            .then(|| now + LSP_HEARTBEAT)
+            .filter_map(|e| e.client.earliest_deadline())
+            .min();
+
+        // A server mid-handshake or reporting `$/progress` (indexing,
+        // loading, ...) needs the statusline spinner to keep animating —
+        // wake at the spinner's own cadence. `Starting` is included here
+        // (not just progress) because the pending-poll arm that used to
+        // cover the handshake spinner is gone; without it the spinner would
+        // freeze against `initialize`'s 30s deadline. This mirrors
+        // `drain_lsp`'s own animate-the-spinner condition below.
+        let animating = self
+            .servers
+            .values()
+            .any(|e| e.client.state() == ServerState::Starting || !e.progress.is_empty());
+        let spinner = animating.then(|| now + SPINNER_INTERVAL);
+
+        [deadline, spinner].into_iter().flatten().min()
     }
 }
 

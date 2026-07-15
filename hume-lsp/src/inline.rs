@@ -68,6 +68,14 @@ impl InlineLspBackend {
         backend.respond_to("initialize", default_initialize_result());
         backend
     }
+
+    /// Any undrained event? Test-only introspection — not part of
+    /// `LspBackend` (production has no cheap way to peek an `mpsc::Receiver`
+    /// without consuming it; wake-up in production is arrival-driven via
+    /// `WakeCallback`, not this kind of poll).
+    pub fn has_pending(&self) -> bool {
+        !self.queue.is_empty()
+    }
 }
 
 impl Default for InlineLspBackend {
@@ -103,10 +111,6 @@ impl LspBackend for InlineLspBackend {
 
     fn drain(&mut self) -> Vec<(ServerId, InboundEvent)> {
         self.queue.drain(..).collect()
-    }
-
-    fn has_pending(&self) -> bool {
-        !self.queue.is_empty()
     }
 
     fn shutdown(&mut self, _server: ServerId) {}

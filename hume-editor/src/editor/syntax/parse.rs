@@ -62,8 +62,9 @@ impl Editor {
         // Post parse request.  tree stays None until the backend responds, so the
         // first painted frame after open is uncoloured.  Colour arrives on a later
         // frame once drain_done in reparse_stale_buffers installs the result.
-        // Accepted tradeoff for uniform-path simplicity; the 8 ms in-flight poll in
-        // the run loop (lifecycle.rs) makes the flash imperceptible interactively.
+        // Accepted tradeoff for uniform-path simplicity; the parse worker wakes
+        // the event loop the moment the parse lands (the platform waker, see
+        // hume_platform::events), so the flash is imperceptible interactively.
         // Tests: InlineParseBackend completes the parse inside post() — a single
         // reparse_stale_buffers call drains and installs the result.
         let text = self.state.buffers.get(bid).text().clone();

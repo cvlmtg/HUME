@@ -1,45 +1,42 @@
 //! Generalized event-loop wake: composes every asynchronous work source
-//! (parse worker, LSP backend, timer wheel) behind one `next_wake`
-//! predicate so `run`'s event-poll timeout doesn't hard-code a single
-//! source.
+//! (the LSP backend, the timer wheel) behind one `next_wake` predicate so
+//! `run`'s wait primitive doesn't hard-code a single source.
+//!
+//! Sources report *real deadlines only* — a request timeout, a `$/progress`
+//! spinner tick, a timer's fire time. Completion (an LSP response landing, a
+//! parse finishing) is no longer a deadline this module tracks at all: the
+//! background threads that produce it hold a `WakeCallback` and signal the
+//! event loop's wait primitive directly the moment they post a result (see
+//! `hume_platform::events`), so there is nothing left to poll for. The parse
+//! worker accordingly contributes no `AsyncSource` — it has no deadline of
+//! its own, only arrival-driven wakes.
 
 use std::time::{Duration, Instant};
 
-use hume_treesitter::parse_worker::ParseBackend;
-
 use super::Editor;
-
-/// Poll cadence used while a source's work may complete any moment (a parse
-/// or LSP response in flight) — not a real deadline, just a short recheck.
-pub(crate) const PENDING_POLL: Duration = Duration::from_millis(8);
 
 /// One source of asynchronous work the event loop must wake for.
 ///
-/// Implemented by the parse worker, the LSP backend, and the timer wheel.
+/// Implemented by the LSP backend and the timer wheel.
 pub(crate) trait AsyncSource {
     /// Next instant the event loop should wake for this source, if any.
     /// `None` means this source needs no wake — the loop may block on input.
     fn next_wake(&self, now: Instant) -> Option<Instant>;
 }
 
-impl AsyncSource for Box<dyn ParseBackend> {
-    fn next_wake(&self, now: Instant) -> Option<Instant> {
-        self.has_in_flight().then(|| now + PENDING_POLL)
-    }
-}
-
 impl Editor {
     /// One place to enumerate async sources. Adding a source = one line here
     /// plus its `AsyncSource` impl.
-    fn async_sources(&self) -> [&dyn AsyncSource; 3] {
-        [&self.parse_worker, &self.timer_wheel, &self.lsp]
+    fn async_sources(&self) -> [&dyn AsyncSource; 2] {
+        [&self.timer_wheel, &self.lsp]
     }
 
-    /// `Some(timeout)` => poll with it; `None` => block on `event::read()`.
+    /// `Some(timeout)` => wait with it; `None` => block indefinitely.
     ///
     /// `timeout` = time until the nearest source's wake instant. Idle (no
-    /// source has a wake instant) is `None`, a genuinely blocking read, so
-    /// the editor never busy-polls at rest.
+    /// source has a wake instant) is `None` — the wait primitive blocks
+    /// until real input or a background-thread wake, so the editor never
+    /// busy-polls at rest.
     pub(crate) fn wake_timeout(&self) -> Option<Duration> {
         let now = Instant::now();
         self.async_sources()

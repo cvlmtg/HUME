@@ -21,8 +21,6 @@ pub trait LspBackend {
     fn send(&mut self, server: ServerId, msg: Message);
     /// All events that arrived since the last drain, in arrival order.
     fn drain(&mut self) -> Vec<(ServerId, InboundEvent)>;
-    /// Any undrained event? Feeds the wake predicate.
-    fn has_pending(&self) -> bool;
     fn shutdown(&mut self, server: ServerId);
 }
 
@@ -79,14 +77,6 @@ impl LspBackend for ThreadedLspBackend {
             }
         }
         out
-    }
-
-    /// A raw `mpsc::Receiver` can't be peeked without consuming, and this
-    /// trait deliberately carries no request/response bookkeeping (that's
-    /// client-level state). Wake-up while servers are running is
-    /// driven by the editor-side `LspState`'s heartbeat deadline instead.
-    fn has_pending(&self) -> bool {
-        false
     }
 
     fn shutdown(&mut self, server: ServerId) {

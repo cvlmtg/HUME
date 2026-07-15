@@ -633,10 +633,6 @@ impl LspBackend for OrderedLogBackend {
         self.inner.drain()
     }
 
-    fn has_pending(&self) -> bool {
-        self.inner.has_pending()
-    }
-
     fn shutdown(&mut self, server: ServerId) {
         self.inner.shutdown(server);
     }
