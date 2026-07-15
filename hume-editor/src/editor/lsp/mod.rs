@@ -793,9 +793,10 @@ impl Editor {
     /// and `window/showMessage` never reach here — `hume-lsp` classifies
     /// them into typed `ClientAction` variants, handled directly in
     /// `dispatch_lsp_action`. Only an unclassified method, or a known
-    /// method whose params failed to parse, arrives here — either goes to a
-    /// registered Steel `on-lsp-notification` handler, or an "unhandled
-    /// notification" Trace line if none is registered.
+    /// method whose params fail both the strict parse and `hume-lsp`'s
+    /// lenient recovery, arrives here — either goes to a registered Steel
+    /// `on-lsp-notification` handler, or an "unhandled notification" Trace
+    /// line if none is registered.
     fn dispatch_server_notification(
         &mut self,
         server_id: ServerId,

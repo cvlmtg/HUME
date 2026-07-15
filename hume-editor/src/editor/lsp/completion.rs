@@ -38,13 +38,25 @@ pub(crate) struct StoredCompletionItem {
 }
 
 impl StoredCompletionItem {
-    /// Parses one item; `v` itself is never consumed, so `raw: v.clone()`
-    /// (below) still captures the full item, including fields this
-    /// projection drops. `Err` on a spec violation (e.g. a missing
-    /// `label`); callers skip the item and report a Trace line rather than
-    /// fabricating a placeholder.
+    /// Parses one item, strict first: `v` itself is never consumed, so
+    /// `raw: v.clone()` (below) still captures the full item, including
+    /// fields this projection drops. A strict deserialize into
+    /// `lsp_types::CompletionItem` rejects on *any* off-spec field (an
+    /// out-of-range `kind`, a malformed `textEdit`, ...), not just the ones
+    /// this store reads — [`Self::from_json_lenient`] then recovers what it
+    /// can straight from JSON. `Err` only when even that fails (`label`
+    /// itself missing/non-string); callers skip the item and report a Trace
+    /// line rather than fabricating a placeholder.
     pub(crate) fn from_json(v: &serde_json::Value) -> Result<Self, serde_json::Error> {
-        let item: lsp_types::CompletionItem = serde_json::from_value(v.clone())?;
+        match serde_json::from_value::<lsp_types::CompletionItem>(v.clone()) {
+            Ok(item) => Ok(Self::from_typed(item, v)),
+            Err(strict_err) => Self::from_json_lenient(v).ok_or(strict_err),
+        }
+    }
+
+    /// Builds from an already-typed item — the common case, when the whole
+    /// response round-trips through strict deserialize.
+    fn from_typed(item: lsp_types::CompletionItem, v: &serde_json::Value) -> Self {
         let label = item.label;
         let kind = v.get("kind").and_then(|x| x.as_i64());
         let sort_text = item.sort_text.unwrap_or_else(|| label.clone());
@@ -58,10 +70,46 @@ impl StoredCompletionItem {
                 new_text: ire.new_text,
             },
         });
-        Ok(Self {
+        Self {
             label,
             kind,
             detail: item.detail,
+            sort_text,
+            filter_text,
+            insert_text,
+            text_edit,
+            raw: v.clone(),
+        }
+    }
+
+    /// Raw-JSON fallback for an item that fails strict deserialize — reads
+    /// exactly the fields this store uses, tolerating an off-spec shape
+    /// anywhere else (a real-world server population: `$/progress` and
+    /// completion items are where spec drift concentrates, especially
+    /// outside the handful of mature, heavily-used servers). `None` only
+    /// when `label` is missing/non-string; every other field already
+    /// defaults sensibly.
+    fn from_json_lenient(v: &serde_json::Value) -> Option<Self> {
+        let label = v.get("label")?.as_str()?.to_string();
+        let kind = v.get("kind").and_then(|x| x.as_i64());
+        let detail = v
+            .get("detail")
+            .and_then(|x| x.as_str())
+            .map(str::to_string);
+        let string_or_label = |key: &str| -> String {
+            v.get(key)
+                .and_then(|x| x.as_str())
+                .map(str::to_string)
+                .unwrap_or_else(|| label.clone())
+        };
+        let sort_text = string_or_label("sortText");
+        let filter_text = string_or_label("filterText");
+        let insert_text = string_or_label("insertText");
+        let text_edit = v.get("textEdit").and_then(text_edit_from_json_lenient);
+        Some(Self {
+            label,
+            kind,
+            detail,
             sort_text,
             filter_text,
             insert_text,
@@ -77,6 +125,33 @@ impl StoredCompletionItem {
             "detail": self.detail,
         })
     }
+}
+
+/// Extracts `(range, newText)` from a `CompletionTextEdit` JSON value for
+/// [`StoredCompletionItem::from_json_lenient`] — either shape (`Edit`:
+/// `{"range", "newText"}`, or `InsertReplaceEdit`: `{"insert", "replace",
+/// "newText"}`, using the narrower `insert` range). Tolerates a
+/// malformed/partial shape by returning `None` — drops just the edit, not
+/// the whole item; `accept` then falls back to a word-range edit built from
+/// `insert_text`.
+fn text_edit_from_json_lenient(v: &serde_json::Value) -> Option<lsp_types::TextEdit> {
+    let range = v.get("range").or_else(|| v.get("insert"))?;
+    let new_text = v.get("newText")?.as_str()?.to_string();
+    let start = range.get("start")?;
+    let end = range.get("end")?;
+    Some(lsp_types::TextEdit {
+        range: lsp_types::Range {
+            start: lsp_types::Position {
+                line: start.get("line")?.as_u64()? as u32,
+                character: start.get("character")?.as_u64()? as u32,
+            },
+            end: lsp_types::Position {
+                line: end.get("line")?.as_u64()? as u32,
+                character: end.get("character")?.as_u64()? as u32,
+            },
+        },
+        new_text,
+    })
 }
 
 /// Case-insensitive (ASCII) subsequence check: every char of `needle` must
@@ -375,5 +450,90 @@ impl Editor {
         if std::mem::take(&mut self.state.lsp_completion_dismiss_pending) {
             self.clear_lsp_completion();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Independent oracle: strict `lsp_types::CompletionItem` deserialize
+    /// really does reject `v` on its own — otherwise a test using this
+    /// wouldn't be exercising `from_json_lenient` at all, just re-testing
+    /// the strict path.
+    fn assert_strict_parse_fails(v: &serde_json::Value) {
+        assert!(
+            serde_json::from_value::<lsp_types::CompletionItem>(v.clone()).is_err(),
+            "test input must be strict-parse-rejecting to exercise the lenient fallback: {v}"
+        );
+    }
+
+    #[test]
+    fn well_formed_item_never_touches_the_lenient_path() {
+        // Sanity check for the two tests below: a spec-compliant item must
+        // NOT need `from_json_lenient` — if this failed, `strict_parse_fails`
+        // in those tests wouldn't prove anything.
+        let v = serde_json::json!({"label": "ok", "kind": 3});
+        assert!(serde_json::from_value::<lsp_types::CompletionItem>(v.clone()).is_ok());
+        let item = StoredCompletionItem::from_json(&v).expect("well-formed item");
+        assert_eq!(item.label, "ok");
+        assert_eq!(item.kind, Some(3));
+    }
+
+    #[test]
+    fn string_kind_recovers_via_lenient_fallback() {
+        // A server sending a human-readable kind string instead of the LSP
+        // numeric enum: `CompletionItemKind` is a transparent i32 newtype,
+        // so a JSON string for `kind` fails strict deserialize of the whole
+        // item, not just that field.
+        let v = serde_json::json!({"label": "foo", "kind": "Function"});
+        assert_strict_parse_fails(&v);
+
+        let item = StoredCompletionItem::from_json(&v).expect("label present — must recover");
+        assert_eq!(item.label, "foo");
+        // The lenient reader can't make sense of a non-numeric kind either
+        // — dropped, not faked as some default kind.
+        assert_eq!(item.kind, None);
+        // Undefaulted text fields still fall back to `label`, same as the
+        // strict path's `unwrap_or_else(|| label.clone())`.
+        assert_eq!(item.sort_text, "foo");
+        assert_eq!(item.filter_text, "foo");
+        assert_eq!(item.insert_text, "foo");
+    }
+
+    #[test]
+    fn malformed_text_edit_recovers_the_item_without_the_edit() {
+        // `newText` missing fails both `CompletionTextEdit` union variants
+        // (`Edit`/`InsertAndReplace`), which fails the whole item's strict
+        // parse even though only the edit is broken.
+        let v = serde_json::json!({
+            "label": "bar",
+            "detail": "a detail",
+            "textEdit": {
+                "range": {
+                    "start": {"line": 1, "character": 2},
+                    "end": {"line": 1, "character": 5},
+                },
+            },
+        });
+        assert_strict_parse_fails(&v);
+
+        let item = StoredCompletionItem::from_json(&v).expect("label present — must recover");
+        assert_eq!(item.label, "bar");
+        assert_eq!(item.detail.as_deref(), Some("a detail"));
+        assert!(
+            item.text_edit.is_none(),
+            "a malformed textEdit must be dropped, not the whole item"
+        );
+    }
+
+    #[test]
+    fn missing_label_is_rejected_by_both_strict_and_lenient() {
+        let v = serde_json::json!({"kind": 1});
+        assert_strict_parse_fails(&v);
+        assert!(
+            StoredCompletionItem::from_json(&v).is_err(),
+            "no label recoverable — item must still be dropped"
+        );
     }
 }

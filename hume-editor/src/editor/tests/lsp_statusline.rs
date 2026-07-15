@@ -240,6 +240,44 @@ fn progress_begin_report_end_tracks_the_active_task() {
     );
 }
 
+/// A `$/progress` begin missing the (lsp_types-required) `title` — real
+/// servers treat it as optional in practice. Drives the *real* transport
+/// path (`push_from_server` + `drain_lsp`, not the `progress_action` helper
+/// above, which builds a `ClientAction::Progress` via a strict deserialize
+/// that would itself panic on this input) so `classify_notification`'s
+/// lenient recovery is what's under test, not a hand-built action.
+#[test]
+fn progress_begin_missing_title_still_animates_the_spinner() {
+    let mut backend = InlineLspBackend::new();
+    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    backend.push_from_server(
+        sid,
+        hume_lsp::codec::Message::Notification {
+            method: "$/progress".to_string(),
+            params: serde_json::json!({"token": "t1", "value": {"kind": "begin"}}),
+        },
+    );
+
+    let mut ed = Editor::open(None).unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
+    client.set_state_for_test(ServerState::Running);
+    ed.lsp.insert_client_for_test(client);
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
+
+    ed.drain_lsp();
+
+    assert!(
+        ed.lsp.has_animating_server(),
+        "a recovered progress task must still animate the spinner"
+    );
+    assert!(
+        matches!(ed.lsp_activity(bid), LspActivity::Progress { .. }),
+        "must classify as Progress, not fall through to ServerNotification"
+    );
+}
+
 /// A server that crashes mid-index must not leave the spinner animating for
 /// a task it will never finish — `ClientAction::Crashed` clears
 /// `ServerEntry.progress`, so `activity()` falls through to `Idle` even

@@ -60,7 +60,8 @@ pub enum ClientAction {
     /// `window/showMessage`, classified and parsed.
     ShowMessage(lsp_types::ShowMessageParams),
     /// A notification this module doesn't own the meaning of: an
-    /// unclassified method, or a known method whose params failed to parse
+    /// unclassified method, or a known method whose params fail both the
+    /// strict parse and `classify_notification`'s lenient recovery
     /// (surfaced here rather than dropped, so Steel's `on-lsp-notification`
     /// can still observe it).
     ServerNotification {
@@ -71,10 +72,13 @@ pub enum ClientAction {
     Stderr(String),
 }
 
-/// Classifies a well-known notification method into a typed `ClientAction`,
-/// falling back to `ServerNotification` for an unknown method or params that
-/// fail to parse. Deserializes by reference so a malformed payload leaves
-/// `params` intact for the fallback — `from_value` would consume it.
+/// Classifies a well-known notification method into a typed `ClientAction`.
+/// Tries a strict deserialize first; on failure, a narrow lenient recovery
+/// patches in a default for the one field each shape is known to omit in
+/// the wild (see the `recover_*` helpers below) and retries. Falls back to
+/// `ServerNotification` for an unknown method, or params neither pass
+/// parses — deserializes by reference so a malformed payload leaves
+/// `params` intact for that fallback (`from_value` would consume it).
 fn classify_notification(method: String, params: serde_json::Value) -> ClientAction {
     use lsp_types::notification::{LogMessage, Progress, PublishDiagnostics, ShowMessage};
     use serde::Deserialize as _;
@@ -89,9 +93,15 @@ fn classify_notification(method: String, params: serde_json::Value) -> ClientAct
             if let Ok(p) = lsp_types::ProgressParams::deserialize(&params) {
                 return ClientAction::Progress(p);
             }
+            if let Some(p) = recover_progress(&params) {
+                return ClientAction::Progress(p);
+            }
         }
         LogMessage::METHOD => {
             if let Ok(p) = lsp_types::LogMessageParams::deserialize(&params) {
+                return ClientAction::LogMessage(p);
+            }
+            if let Some(p) = recover_message(&params, lsp_types::MessageType::LOG) {
                 return ClientAction::LogMessage(p);
             }
         }
@@ -99,10 +109,51 @@ fn classify_notification(method: String, params: serde_json::Value) -> ClientAct
             if let Ok(p) = lsp_types::ShowMessageParams::deserialize(&params) {
                 return ClientAction::ShowMessage(p);
             }
+            if let Some(p) = recover_message(&params, lsp_types::MessageType::INFO) {
+                return ClientAction::ShowMessage(p);
+            }
         }
         _ => {}
     }
     ClientAction::ServerNotification { method, params }
+}
+
+/// Recovers a `$/progress` whose `WorkDoneProgress::Begin` omits the
+/// lsp_types-required `title` — observed from servers that treat it as
+/// optional in practice. Patches a placeholder title into a clone and
+/// re-runs the strict parse, so any *other* off-spec shape (an unkeyable
+/// `token`, an unknown `kind`) still yields `None` and falls through to
+/// `ServerNotification` — unchanged from before this recovery existed.
+fn recover_progress(params: &serde_json::Value) -> Option<lsp_types::ProgressParams> {
+    use serde::Deserialize as _;
+
+    let mut patched = params.clone();
+    let value = patched.get_mut("value")?;
+    if value.get("kind").and_then(|k| k.as_str()) == Some("begin") && value.get("title").is_none()
+    {
+        value
+            .as_object_mut()?
+            .insert("title".into(), serde_json::json!("progress"));
+    }
+    lsp_types::ProgressParams::deserialize(&patched).ok()
+}
+
+/// Recovers a `window/logMessage`/`window/showMessage` whose `type` is
+/// missing or not an integer — `MessageType` is a transparent `i32` newtype,
+/// so any integer parses; only the type tag itself is ever the problem.
+/// `message` staying missing/non-string is unrecoverable (it's the payload)
+/// and still falls through.
+fn recover_message<T>(params: &serde_json::Value, default_type: lsp_types::MessageType) -> Option<T>
+where
+    T: for<'de> serde::Deserialize<'de>,
+{
+    let mut patched = params.clone();
+    let obj = patched.as_object_mut()?;
+    let type_ok = obj.get("type").is_some_and(|t| t.is_i64() || t.is_u64());
+    if !type_ok {
+        obj.insert("type".into(), serde_json::to_value(default_type).ok()?);
+    }
+    T::deserialize(&patched).ok()
 }
 
 /// Everything but the outcome needed to route (or discard) a completed
@@ -1712,6 +1763,74 @@ mod tests {
                 assert_eq!(params, &serde_json::json!({"token": {}}));
             }
             other => panic!("expected fallthrough ServerNotification, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn progress_begin_missing_title_recovers_via_lenient_fallback() {
+        // A server that treats `title` as optional in practice, even though
+        // `WorkDoneProgressBegin::title` is spec-required — the strict parse
+        // fails, `recover_progress` patches in a placeholder and retries.
+        let (mut backend, mut client) = make_running_client();
+        backend.push_from_server(
+            client.id,
+            Message::Notification {
+                method: "$/progress".to_string(),
+                params: serde_json::json!({"token": "t1", "value": {"kind": "begin"}}),
+            },
+        );
+        let (_sid, ev) = backend.drain().into_iter().next().unwrap();
+        match &client.on_event(ev)[..] {
+            [ClientAction::Progress(p)] => {
+                assert_eq!(p.token, lsp_types::NumberOrString::String("t1".to_string()));
+                match &p.value {
+                    lsp_types::ProgressParamsValue::WorkDone(
+                        lsp_types::WorkDoneProgress::Begin(begin),
+                    ) => assert!(!begin.title.is_empty(), "must recover a non-empty title"),
+                    other => panic!("expected a Begin progress value, got {other:?}"),
+                }
+            }
+            other => panic!("expected one recovered Progress action, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn log_message_missing_type_recovers_via_lenient_fallback() {
+        let (mut backend, mut client) = make_running_client();
+        backend.push_from_server(
+            client.id,
+            Message::Notification {
+                method: "window/logMessage".to_string(),
+                params: serde_json::json!({"message": "boom"}),
+            },
+        );
+        let (_sid, ev) = backend.drain().into_iter().next().unwrap();
+        match &client.on_event(ev)[..] {
+            [ClientAction::LogMessage(p)] => {
+                assert_eq!(p.message, "boom");
+                assert_eq!(p.typ, lsp_types::MessageType::LOG);
+            }
+            other => panic!("expected one recovered LogMessage action, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn show_message_non_integer_type_recovers_via_lenient_fallback() {
+        let (mut backend, mut client) = make_running_client();
+        backend.push_from_server(
+            client.id,
+            Message::Notification {
+                method: "window/showMessage".to_string(),
+                params: serde_json::json!({"type": "info", "message": "hi"}),
+            },
+        );
+        let (_sid, ev) = backend.drain().into_iter().next().unwrap();
+        match &client.on_event(ev)[..] {
+            [ClientAction::ShowMessage(p)] => {
+                assert_eq!(p.message, "hi");
+                assert_eq!(p.typ, lsp_types::MessageType::INFO);
+            }
+            other => panic!("expected one recovered ShowMessage action, got {other:?}"),
         }
     }
 

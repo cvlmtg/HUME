@@ -327,6 +327,9 @@ fn writer_loop(mut w: impl Write, rx: mpsc::Receiver<Message>) {
 /// flood is an acceptable trade against ever stalling this thread. Wakes
 /// the main loop only on a forwarded line — a dropped (`Full`) line adds no
 /// observable data, and the send that filled the channel already woke it.
+/// Known risk: a server that crashes right after a burst fills the channel
+/// can have its most useful line — the one explaining *why* — dropped
+/// along with the flood, right when the log is most needed.
 fn stderr_loop(r: impl BufRead, tx: &mpsc::SyncSender<String>, wake: &WakeCallback) {
     for line in r.lines() {
         match line {
