@@ -12,6 +12,7 @@ use hume_lsp::backend::{LspBackend, ServerId};
 use hume_lsp::client::{LspClient, ServerState};
 use hume_lsp::codec::Message;
 use hume_lsp::inline::InlineLspBackend;
+use hume_lsp::test_util::{NotificationLog, RecordingLspBackend, RequestLog};
 use hume_lsp::transport::InboundEvent;
 use hume_scripting::ScriptingHost;
 
@@ -36,6 +37,27 @@ fn setup_with(
     sid
 }
 
+/// Same wiring as `setup_with`, but over `RecordingLspBackend` so outgoing
+/// requests/notifications (e.g. `$/cancelRequest`) stay observable after
+/// the backend is boxed into `LspState`.
+fn setup_with_recording(
+    ed: &mut Editor,
+    configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
+) -> (ServerId, NotificationLog, RequestLog) {
+    let (mut backend, log, requests) = RecordingLspBackend::new();
+    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    configure(&mut backend, sid);
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    let mut client = LspClient::new(sid, PathBuf::from("."));
+    client.set_state_for_test(ServerState::Running);
+    ed.lsp.insert_client_for_test(client);
+    ed.lsp
+        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
+    (sid, log, requests)
+}
+
 /// Evaluates `source` against a *real* editor host (unlike `MockHost`, this
 /// makes `define-command!`/`on-lsp-notification` register into the live
 /// editor) — same pattern as `lsp_status.rs`'s `eval_register`.
@@ -45,6 +67,149 @@ fn eval_with_real_host(ed: &mut Editor, host: &mut ScriptingHost, source: &str, 
     let mut ih = make_init_host(&mut ed.state, &mut ed.view);
     host.eval_init(&init_path, 10_000, &mut ih, Default::default())
         .expect("eval_init");
+}
+
+// ── #:supersede ──────────────────────────────────────────────────────────────
+
+/// Two `#:supersede "k"` requests queued in the same command dispatch (so
+/// both flush in one batch, the first still pending when the second sends)
+/// — the second must cancel the first: exactly one `$/cancelRequest` on the
+/// wire, the first callback never fires, the second does, and neither the
+/// callback nor the supersede-key entry leaks.
+#[test]
+#[cfg(not(windows))]
+fn supersede_cancels_the_prior_request_under_the_same_key() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let (_sid, notifications, _requests) = setup_with_recording(&mut ed, |b, _sid| {
+        b.respond_to("textDocument/completion", serde_json::json!({"marker": "A"}));
+        b.respond_to("textDocument/completion", serde_json::json!({"marker": "B"}));
+    });
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "test-cmd" "" (lambda ()
+             (lsp-request #f "textDocument/completion" (hash)
+               (lambda (err result) (log! 'trace (string-append "marker-" (hash-ref result "marker"))))
+               #:supersede "k")
+             (lsp-request #f "textDocument/completion" (hash)
+               (lambda (err result) (log! 'trace (string-append "marker-" (hash-ref result "marker"))))
+               #:supersede "k")))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":test-cmd");
+    ed.drain_lsp();
+    ed.drain_pending_steel_calls();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        !log.contains("marker-A"),
+        "the superseded request's callback must never fire: {log:?}"
+    );
+    assert!(
+        log.contains("marker-B"),
+        "the superseding request's callback must fire: {log:?}"
+    );
+
+    let cancels: Vec<_> = notifications
+        .borrow()
+        .iter()
+        .filter(|(method, _)| method == "$/cancelRequest")
+        .cloned()
+        .collect();
+    assert_eq!(
+        cancels.len(),
+        1,
+        "expected exactly one $/cancelRequest, got: {cancels:?}"
+    );
+    assert_eq!(cancels[0].1, serde_json::json!({"id": 1}));
+
+    assert_eq!(
+        ed.lsp.callback_count_for_test(),
+        0,
+        "the superseded request's callback must not leak"
+    );
+    assert_eq!(
+        ed.lsp.supersede_count_for_test(),
+        0,
+        "the supersede-key entry must be cleared once its request completes"
+    );
+}
+
+/// Two `lsp-request` calls with no `#:supersede` key must never cancel each
+/// other — both are independent, both fire.
+#[test]
+fn requests_without_a_supersede_key_do_not_cancel_each_other() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let (_sid, notifications, _requests) = setup_with_recording(&mut ed, |b, _sid| {
+        b.respond_to("textDocument/completion", serde_json::json!({"marker": "A"}));
+        b.respond_to("textDocument/completion", serde_json::json!({"marker": "B"}));
+    });
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "test-cmd" "" (lambda ()
+             (lsp-request #f "textDocument/completion" (hash)
+               (lambda (err result) (log! 'trace (string-append "marker-" (hash-ref result "marker")))))
+             (lsp-request #f "textDocument/completion" (hash)
+               (lambda (err result) (log! 'trace (string-append "marker-" (hash-ref result "marker")))))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":test-cmd");
+    ed.drain_lsp();
+    ed.drain_pending_steel_calls();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(log.contains("marker-A"), "both callbacks must fire: {log:?}");
+    assert!(log.contains("marker-B"), "both callbacks must fire: {log:?}");
+    assert!(
+        !notifications
+            .borrow()
+            .iter()
+            .any(|(method, _)| method == "$/cancelRequest"),
+        "no supersede key means no cancellation"
+    );
+}
+
+/// `:lsp-stop` must clear any tracked supersede-key entries for that
+/// server, alongside its existing timed-out-callback contract — otherwise a
+/// stopped server's stale request id could linger in the map forever.
+#[test]
+fn lsp_stop_clears_supersede_entries() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    setup_with(&mut ed, |_b, _sid| {
+        // No canned response — the request stays pending until :lsp-stop.
+    });
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "test-cmd" "" (lambda ()
+             (lsp-request #f "textDocument/completion" (hash)
+               (lambda (err result) (log! 'trace "fired"))
+               #:supersede "k")))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":test-cmd");
+    assert_eq!(ed.lsp.supersede_count_for_test(), 1, "sanity: key tracked");
+
+    ed.lsp_stop(Some("rust"));
+
+    assert_eq!(
+        ed.lsp.supersede_count_for_test(),
+        0,
+        "supersede entries for the stopped server must not linger"
+    );
 }
 
 #[test]

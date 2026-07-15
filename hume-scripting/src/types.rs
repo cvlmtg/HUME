@@ -111,6 +111,12 @@ pub struct PendingLspRequest {
     pub params: serde_json::Value,
     pub callback: SteelVal,
     pub allow_stale: bool,
+    /// If `Some(key)`, the bridge cancels the caller's own previous
+    /// still-pending request filed under `(server, key)` before sending
+    /// this one — an explicit opt-in, not automatic by method/buffer, so
+    /// two features issuing the same method concurrently never cancel each
+    /// other by accident.
+    pub supersede: Option<String>,
 }
 
 // Manual (not derived): `SteelVal` has no `Debug` impl. Placeholder the
@@ -123,6 +129,7 @@ impl std::fmt::Debug for PendingLspRequest {
             .field("params", &self.params)
             .field("callback", &"<closure>")
             .field("allow_stale", &self.allow_stale)
+            .field("supersede", &self.supersede)
             .finish()
     }
 }

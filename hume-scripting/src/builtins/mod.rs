@@ -162,7 +162,9 @@ pub(crate) fn string_arg(val: SteelVal, ctx_name: &str) -> Result<String, SteelE
 //
 // lsp-request — generic LSP bridge. server: registered language name, or #f
 // for the focused buffer's attached server. callback: (lambda (err result)),
-// exactly one non-#f. #:allow-stale skips the staleness check.
+// exactly one non-#f. #:allow-stale skips the staleness check. #:supersede
+// <key> cancels the caller's own previous still-pending request filed under
+// the same (server, key) — opt-in, not automatic by method/buffer.
 //
 // debounce — trailing-edge: each call reschedules proc `ms` out, cancelling
 // any still-pending call from a prior invocation. Pure Scheme, no Rust
@@ -259,8 +261,9 @@ const BOOTSTRAP: &str = r#"
                                         #:settings [settings #f])
   (%register-lsp-server! language command args root-markers init-options settings))
 
-(define (lsp-request server method params callback #:allow-stale [allow-stale #f])
-  (%lsp-request server method params callback allow-stale))
+(define (lsp-request server method params callback #:allow-stale [allow-stale #f]
+                                                     #:supersede [supersede #f])
+  (%lsp-request server method params callback allow-stale supersede))
 
 (define (debounce ms proc)
   (let ((pending (box #f)))

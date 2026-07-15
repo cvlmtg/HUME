@@ -82,6 +82,24 @@ impl Editor {
         let timeout_ms = self.state.settings.lsp_request_timeout_ms as u64;
         let deadline = Instant::now() + Duration::from_millis(timeout_ms);
 
+        // `#:supersede`: cancel the caller's own previous still-pending
+        // request filed under the same `(server, key)`, if any. Silent —
+        // the superseding caller has replaced that request's purpose, so
+        // firing its stale callback would deliver a result nobody wants and
+        // race the new one; removing the callback (not just cancelling) is
+        // what guarantees it never fires even if the response already
+        // landed in the client's `completed` queue (in which case `cancel`
+        // itself is a no-op — no spurious `$/cancelRequest` follows a
+        // response that already arrived).
+        if let Some(key) = &req.supersede
+            && let Some(old_id) = self.lsp.supersede.remove(&(server_id, key.clone()))
+        {
+            self.lsp.callbacks.remove(&(server_id, old_id.clone()));
+            if let Some((client, backend)) = self.lsp.client_and_backend(server_id) {
+                client.cancel(backend, old_id);
+            }
+        }
+
         // Cloned (SteelVal is Rc-based, cheap): the send-failure branch
         // below needs its own copy of the callback to fire immediately,
         // since the success-path closure already moved one in.
@@ -107,6 +125,9 @@ impl Editor {
             self.fail_lsp_request_callback(req.callback, &msg);
             return;
         };
+        if let Some(key) = req.supersede {
+            self.lsp.supersede.insert((server_id, key), id.clone());
+        }
         self.lsp
             .register_callback(server_id, id, stale_check, lsp_callback);
     }

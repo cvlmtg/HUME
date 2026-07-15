@@ -315,6 +315,10 @@ impl Editor {
             }
         }
         self.lsp.backend.shutdown(server_id);
+        // Belt over `dispatch_completed`'s cleanup above (via `drain_pending`):
+        // covers a request whose response arrived but was never drained
+        // before the client was dropped, so no id ever leaks past its server.
+        self.lsp.supersede.retain(|(sid, _), _| *sid != server_id);
         let diag_touched = self.lsp.diagnostics.remove_server(server_id);
 
         let bids: Vec<BufferId> = self

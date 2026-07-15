@@ -86,7 +86,11 @@
           (let* ((decoded (lsp/completion-response->items res))
                  (items (car decoded))
                  (incomplete (cadr decoded)))
-            (completion-begin! bid (map lsp/strip-snippet-item items) #:incomplete incomplete)))))))
+            (completion-begin! bid (map lsp/strip-snippet-item items) #:incomplete incomplete)))))
+    ;; Per-keystroke refiltering (`on-completion-refilter`) can re-issue this
+    ;; before the prior response lands — cancel it rather than let two
+    ;; in-flight completion requests race each other for the same session.
+    #:supersede "completion"))
 
 ;; ── Trigger entry points ─────────────────────────────────────────────────────
 ;; Two entry points reach the same request: Ctrl+Space (bound to this exact

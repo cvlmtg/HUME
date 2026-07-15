@@ -150,6 +150,7 @@ pub(crate) fn lsp_request(
     params: SteelVal,
     callback: SteelVal,
     allow_stale: SteelVal,
+    supersede: SteelVal,
 ) -> SteelResult {
     require_cmd_ctx!(ctx, "lsp-request");
     let server = optional_string_arg(server, "lsp-request server")?;
@@ -159,12 +160,14 @@ pub(crate) fn lsp_request(
         SteelVal::BoolV(b) => b,
         _ => steel::stop!(TypeMismatch => "lsp-request: #:allow-stale expected a bool"),
     };
+    let supersede = optional_string_arg(supersede, "lsp-request supersede")?;
     ctx.pending_lsp_requests.push(PendingLspRequest {
         server,
         method,
         params,
         callback,
         allow_stale,
+        supersede,
     });
     Ok(SteelVal::Void)
 }
@@ -1179,5 +1182,46 @@ mod tests {
             SteelVal::BoolV(false),
             "NullHost reports nothing registered"
         );
+    }
+
+    #[test]
+    fn lsp_request_queues_the_supersede_key() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = lsp_request(
+            &mut ctx,
+            SteelVal::BoolV(false),
+            "textDocument/completion".into_steelval().unwrap(),
+            list_of(&[]),
+            SteelVal::BoolV(false),
+            SteelVal::BoolV(false),
+            "completion".into_steelval().unwrap(),
+        );
+        assert!(result.is_ok());
+        // `pending_lsp_requests` lives directly on `SteelCtx` (not the
+        // harness's `HostBundle`), so it must be read before `ctx` drops.
+        assert_eq!(ctx.pending_lsp_requests.len(), 1);
+        assert_eq!(
+            ctx.pending_lsp_requests[0].supersede,
+            Some("completion".to_string())
+        );
+    }
+
+    #[test]
+    fn lsp_request_with_false_supersede_queues_none() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = lsp_request(
+            &mut ctx,
+            SteelVal::BoolV(false),
+            "textDocument/hover".into_steelval().unwrap(),
+            list_of(&[]),
+            SteelVal::BoolV(false),
+            SteelVal::BoolV(false),
+            SteelVal::BoolV(false),
+        );
+        assert!(result.is_ok());
+        assert_eq!(ctx.pending_lsp_requests.len(), 1);
+        assert_eq!(ctx.pending_lsp_requests[0].supersede, None);
     }
 }

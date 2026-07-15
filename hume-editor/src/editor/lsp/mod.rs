@@ -121,6 +121,13 @@ pub(crate) struct LspState {
     /// Insert-mode selection state for `completion` — separate from the
     /// session itself, cleared whenever the session ends.
     pub(in crate::editor) completion_ui: Option<completion::LspCompletionUi>,
+    /// `(server, supersede-key) -> the in-flight request id filed under that
+    /// key` — for `lsp-request`'s `#:supersede` option: a new request under
+    /// the same key cancels the previous one first. Entries are removed in
+    /// `dispatch_completed` (response/timeout/crash-drain/stop-drain all
+    /// funnel there) and swept per-server in `lsp_stop_one`, so an id can
+    /// never linger past the request it names.
+    supersede: HashMap<(ServerId, String), RequestId>,
 }
 
 /// How often the loading spinner advances a frame — independent of how
@@ -165,6 +172,7 @@ impl LspState {
             spinner: SpinnerClock::default(),
             completion: None,
             completion_ui: None,
+            supersede: HashMap::new(),
         }
     }
 
@@ -299,6 +307,14 @@ impl LspState {
     #[cfg(test)]
     pub(crate) fn callback_count_for_test(&self) -> usize {
         self.callbacks.len()
+    }
+
+    /// Number of tracked `#:supersede` keys — leak check: an entry must be
+    /// removed once its request finishes (response/timeout) or its server
+    /// stops, never orphaned.
+    #[cfg(test)]
+    pub(crate) fn supersede_count_for_test(&self) -> usize {
+        self.supersede.len()
     }
 
     /// Diagnostics visible in `range` (buffer-wide char offsets) for `bid`,
@@ -806,6 +822,13 @@ impl Editor {
         meta: RequestMeta,
         outcome: Outcome,
     ) {
+        // A tracked `#:supersede` entry for this id is finished with —
+        // response, timeout, crash-drain, and `:lsp-stop`-drain all arrive
+        // here, so this is the one chokepoint that can't miss any of them.
+        self.lsp
+            .supersede
+            .retain(|(sid, _), rid| !(*sid == server_id && *rid == id));
+
         let Some(entry) = self.lsp.callbacks.remove(&(server_id, id)) else {
             // No callback is ever registered for the internal `shutdown`
             // request (it's fire-and-forget from `begin_shutdown`) — a

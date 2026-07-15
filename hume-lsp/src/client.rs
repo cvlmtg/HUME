@@ -271,14 +271,14 @@ impl LspClient {
         self.pending.len()
     }
 
-    /// Best-effort cancellation: drops the pending entry (if still present)
-    /// and, only once the handshake has completed, notifies the server — a
-    /// no-op if the request already completed. Test-only: no production
-    /// caller cancels a request today (`drain_pending` covers teardown,
-    /// `take_completed`'s deadline sweep covers timeout) — kept for the
-    /// unit tests that exercise this path directly.
-    #[cfg(test)]
-    fn cancel(&mut self, backend: &mut dyn LspBackend, id: RequestId) {
+    /// Best-effort cancellation: drops the pending entry (if still present),
+    /// strips a still-queued Starting-phase send, and — only once the
+    /// handshake has completed — sends `$/cancelRequest`. A no-op if the
+    /// request already completed. Production caller: the editor bridge's
+    /// `#:supersede` path (a new request cancels the caller's previous
+    /// still-pending one filed under the same key); also exercised directly
+    /// by the unit tests below.
+    pub fn cancel(&mut self, backend: &mut dyn LspBackend, id: RequestId) {
         if self.pending.remove(&id).is_some() {
             self.drop_from_queue(&id);
             self.send_cancel_notification(backend, &id);
