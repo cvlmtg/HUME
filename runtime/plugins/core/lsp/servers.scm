@@ -285,28 +285,47 @@
 (define (lsp/resolve-lsp-lang-arg arg)
   (if (string? arg) arg (buffer-language (current-buffer))))
 
-;;; Install `name` if not already at the seeded version, reporting a
-;;; guided-retry hint on failure when a prior install dir existed (covers
-;;; the Windows locked-file case; a one-shot retry on Unix). Guarded by the
+;;; Runs `thunk` (typically an install/uninstall body) under the
 ;;; cross-process install lock (`<data>/servers/.install-lock`) — a second
 ;;; HUME process installing/uninstalling at the same time is refused, not
-;;; interleaved. `acquired?` short-circuits the install attempt when the
-;;; lock itself couldn't be taken (another process holds it); the install's
-;;; own with-handler releases it on failure, or the protected body's own
-;;; trailing call releases it on success — the lock is never left held
-;;; after this function returns.
+;;; interleaved — releasing it exactly once regardless of outcome. `what`
+;;; names the operation for the failure log line. Never re-raises `thunk`'s
+;;; error through an outer with-handler: a nested with-handler re-raising a
+;;; native-builtin error corrupts the Steel VM's continuation stack (see
+;;; LESSONS.md) — every failure path here terminates in a plain `log!`, not
+;;; a re-raise. Returns #t on success, #f on any failure — a lock the
+;;; caller couldn't acquire (another process holds it) and a `thunk` that
+;;; raised both collapse to the same #f; distinguishing them would need
+;;; richer plumbing this plugin has no caller for.
+(define (lsp/with-install-lock! what thunk)
+  (let ((acquired?
+          (with-handler
+            (lambda (err) (log! 'error (string-append "LSP: " (to-string err))) #f)
+            (begin (acquire-install-lock!) #t))))
+    (and acquired?
+         (with-handler
+           (lambda (err)
+             (release-install-lock!)
+             (log! 'error (string-append "LSP: " what " failed: " (to-string err)))
+             #f)
+           (begin (thunk) (release-install-lock!) #t)))))
+
+;;; Install `name` if not already at the seeded version, reporting a
+;;; guided-retry hint on failure when a prior install dir existed (covers
+;;; the Windows locked-file case; a one-shot retry on Unix).
 ;;;
 ;;; The post-install rescan (`lsp/register-installed-servers!`) sees
 ;;; `lsp/install-server!`'s queued `unregister-lsp-server!` for every one of
 ;;; `name`'s languages through `lsp-registered-for-language?`'s same-eval
 ;;; read-through, even though that op hasn't applied yet (queued ops apply
 ;;; at end-of-eval) — so the rescan's no-clobber filter correctly re-admits
-;;; those languages instead of skipping them. Run *outside* the install
-;;; with-handler: it runs only after `release-install-lock!`, so a failure
-;;; here is a distinct, uncaught error (reported by the command dispatcher,
-;;; see `Editor::run_steel_command` in hume-editor/src/editor/dispatch.rs)
-;;; rather than being mislabeled "install failed" or triggering a second,
-;;; ownership-blind `release-install-lock!` call.
+;;; those languages instead of skipping them. Run *outside*
+;;; `lsp/with-install-lock!`: it runs only after that combinator has already
+;;; released the lock, so a failure here is a distinct, uncaught error
+;;; (reported by the command dispatcher, see `Editor::run_steel_command` in
+;;; hume-editor/src/editor/dispatch.rs) rather than being mislabeled
+;;; "install failed" or triggering a second, ownership-blind
+;;; `release-install-lock!` call.
 (define (lsp/lsp-install-or-report! name)
   (let* ((receipt (lsp/read-receipt name))
          (source  (if (hash-contains? *lsp-sources* name)
@@ -318,25 +337,14 @@
           (log! 'info (string-append "LSP: " name " already installed (v"
                                      (lsp/receipt-version receipt) ") — up to date"))
           (lsp/register-installed-servers!))
-        (let* ((had-dir? (path-exists? (lsp/server-dir name)))
-               (acquired?
-                 (with-handler
-                   (lambda (err) (log! 'error (string-append "LSP: " (to-string err))) #f)
-                   (begin (acquire-install-lock!) #t))))
-          (when acquired?
-            (log! 'info (string-append "LSP: installing " name "..."))
-            (let ((installed?
-                    (with-handler
-                      (lambda (err)
-                        (release-install-lock!)
-                        (log! 'error (string-append "LSP: install failed: " (to-string err)))
-                        (when had-dir?
-                          (log! 'info "LSP: if the server was running it has now been shut down — run :lsp-install again"))
-                        #f)
-                      (begin (lsp/install-server! name) #t))))
-              (when installed?
-                (release-install-lock!)
-                (lsp/register-installed-servers!))))))))
+        (let ((had-dir? (path-exists? (lsp/server-dir name))))
+          (if (lsp/with-install-lock! (string-append "install " name)
+                (lambda ()
+                  (log! 'info (string-append "LSP: installing " name "..."))
+                  (lsp/install-server! name)))
+              (lsp/register-installed-servers!)
+              (when had-dir?
+                (log! 'info "LSP: if the server was running it has now been shut down — run :lsp-install again")))))))
 
 (define-command! "lsp-install"
   "Download and verify the language server for a language (default: the current buffer's language), then register it."
@@ -377,18 +385,9 @@
               (begin
                 (log! 'info (string-append "LSP: shutting down and removing " name "..."))
                 (after 0 (lambda ()
-                           (with-handler
-                             (lambda (err) (log! 'error (string-append "LSP: " (to-string err))))
-                             (begin
-                               (acquire-install-lock!)
-                               (with-handler
-                                 (lambda (err)
-                                   (release-install-lock!)
-                                   (log! 'error (string-append "LSP: uninstall failed: " (to-string err))))
-                                 (begin
-                                   (lsp/delete-dir dir)
-                                   (release-install-lock!)
-                                   (log! 'info (string-append "LSP: removed " name)))))))))
+                           (when (lsp/with-install-lock! (string-append "uninstall " name)
+                                   (lambda () (lsp/delete-dir dir)))
+                             (log! 'info (string-append "LSP: removed " name))))))
               (log! 'info (string-append "LSP: nothing to uninstall for " name))))))))
 
 (define-command! "lsp-servers"

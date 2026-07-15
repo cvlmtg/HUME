@@ -673,6 +673,49 @@ fn lsp_install_unsupported_asset_format_fails_loudly() {
     );
 }
 
+/// `lsp/with-install-lock!`'s failure branch (`thunk` raised) must still
+/// release the lock — a failed install must not permanently wedge every
+/// later `:lsp-install`/`:lsp-uninstall` behind a lock nothing will ever
+/// release.
+#[test]
+#[cfg(not(windows))]
+fn install_lock_is_released_after_a_failed_install() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    // Fails inside lsp/install-server! (lsp/install-blocker), i.e. inside
+    // lsp/with-install-lock!'s thunk — exercises the release-on-failure path,
+    // not the release-on-success path every other install test hits.
+    type_cmd(&mut ed, ":lsp-install ada");
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("unsupported asset format"),
+        "sanity: the install must actually have failed: {log}"
+    );
+
+    let lock_path = canonical_data_dir(data_tmp.path())
+        .join("servers")
+        .join(".install-lock");
+    assert!(
+        !lock_path.exists(),
+        "a failed install must release the cross-process lock, not leave it \
+         held forever: {}",
+        lock_path.display()
+    );
+
+    // A second, unrelated install must be able to acquire the lock — proves
+    // release actually happened, not just that the sentinel file is
+    // (coincidentally) absent.
+    type_cmd(&mut ed, ":lsp-install ada");
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        !log.contains("already in progress"),
+        "a later install must not find the lock still held: {log}"
+    );
+}
+
 /// A live `.install-lock` (as another HUME process mid-install would leave)
 /// must refuse the install loudly, before any network activity — never
 /// interleave with a concurrent install/uninstall. `acquire-install-lock!`
