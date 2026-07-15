@@ -124,15 +124,12 @@ pub(crate) enum LspActivity {
     /// Mid `initialize` handshake.
     Starting,
     /// A `$/progress` task (indexing, loading, ...) is in flight — the most
-    /// recently begun one, if the server is running more than one.
-    Progress {
-        // Not rendered (the statusline only shows the spinner + percentage);
-        // kept because the `$/progress` begin/report state machine is
-        // asserted against this in `lsp_statusline` tests.
-        #[allow(dead_code)]
-        title: String,
-        percentage: Option<u32>,
-    },
+    /// recently begun one, if the server is running more than one. Carries
+    /// no title: the statusline only shows the spinner + percentage
+    /// (`ui::statusline::elements::diagnostics`); the underlying task's
+    /// title is reachable via `LspState::progress_title_for_test` for tests
+    /// that need to assert the begin/report merge machine.
+    Progress { percentage: Option<u32> },
 }
 
 /// `id`'s attached server's current [`LspActivity`].
@@ -148,7 +145,6 @@ pub(crate) fn activity(state: &EditorState, lsp: &LspState, id: BufferId) -> Lsp
     }
     match entry.progress.last() {
         Some((_, task)) => LspActivity::Progress {
-            title: task.title.clone(),
             percentage: task.percentage,
         },
         None => LspActivity::Idle,

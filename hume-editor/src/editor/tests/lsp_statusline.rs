@@ -209,14 +209,12 @@ fn progress_begin_report_end_tracks_the_active_task() {
         progress_action("t1", serde_json::json!({"kind": "begin", "title": "Indexing"})),
     );
     match ed.lsp_activity(bid) {
-        LspActivity::Progress {
-            title, percentage, ..
-        } => {
-            assert_eq!(title, "Indexing");
+        LspActivity::Progress { percentage } => {
             assert_eq!(percentage, None, "begin carried no percentage");
         }
         _ => panic!("expected Progress after begin"),
     }
+    assert_eq!(ed.lsp.progress_title_for_test(sid), Some("Indexing"));
 
     // report: percentage arrives; title must persist (merged, not replaced —
     // an absent field means "unchanged" per the LSP spec).
@@ -225,14 +223,16 @@ fn progress_begin_report_end_tracks_the_active_task() {
         progress_action("t1", serde_json::json!({"kind": "report", "percentage": 45})),
     );
     match ed.lsp_activity(bid) {
-        LspActivity::Progress {
-            title, percentage, ..
-        } => {
-            assert_eq!(title, "Indexing", "title must survive an unrelated report");
+        LspActivity::Progress { percentage } => {
             assert_eq!(percentage, Some(45));
         }
         _ => panic!("expected Progress after report"),
     }
+    assert_eq!(
+        ed.lsp.progress_title_for_test(sid),
+        Some("Indexing"),
+        "title must survive an unrelated report"
+    );
 
     ed.dispatch_lsp_action(sid, progress_action("t1", serde_json::json!({"kind": "end"})));
     assert!(

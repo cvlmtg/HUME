@@ -88,6 +88,11 @@ struct ServerEntry {
 /// task being replaced wholesale.
 #[derive(Debug, Clone)]
 pub(crate) struct ProgressTask {
+    // Not read in production — the statusline only shows the spinner +
+    // percentage (`introspect::LspActivity::Progress` carries no title).
+    // Kept so the `$/progress` begin/report merge machine has something to
+    // assert against in tests, via `LspState::progress_title_for_test`.
+    #[allow(dead_code)]
     pub(crate) title: String,
     pub(crate) percentage: Option<u32>,
 }
@@ -273,6 +278,19 @@ impl LspState {
     #[cfg(test)]
     pub(crate) fn diagnostic_counts_for_test(&self, bid: BufferId) -> (usize, usize) {
         self.diagnostics.counts(bid)
+    }
+
+    /// The most recent active `$/progress` task's title for `server` — lets
+    /// tests assert the begin/report merge machine (title persists across a
+    /// `report` that omits it) without going through `LspActivity`, which
+    /// doesn't carry `title` (it's not rendered — see `introspect::activity`).
+    #[cfg(test)]
+    pub(crate) fn progress_title_for_test(&self, server: ServerId) -> Option<&str> {
+        self.servers
+            .get(&server)?
+            .progress
+            .last()
+            .map(|(_, task)| task.title.as_str())
     }
 
     /// Number of registered callbacks still awaiting dispatch — a leak

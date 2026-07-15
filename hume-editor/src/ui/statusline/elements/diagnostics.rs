@@ -49,12 +49,11 @@ impl StatuslineElement for DiagnosticsElement {
         // running".
         let spinner_prefix = match activity {
             LspActivity::Idle => None,
-            LspActivity::Starting | LspActivity::Progress { percentage: None, .. } => {
+            LspActivity::Starting | LspActivity::Progress { percentage: None } => {
                 Some(format!("{spinner} lsp"))
             }
             LspActivity::Progress {
                 percentage: Some(p),
-                ..
             } => Some(format!("{spinner} {p}%")),
         };
         let counts = match (errors, warnings) {

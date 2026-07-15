@@ -222,7 +222,6 @@ fn diagnostics_element_progress_with_percentage() {
     let colors = crate::ui::theme::EditorColors::default();
     let data = (
         LspActivity::Progress {
-            title: "Indexing".to_string(),
             percentage: Some(45),
         },
         0,
@@ -236,15 +235,7 @@ fn diagnostics_element_progress_with_percentage() {
 #[test]
 fn diagnostics_element_progress_with_no_percentage_shows_generic_label() {
     let colors = crate::ui::theme::EditorColors::default();
-    let data = (
-        LspActivity::Progress {
-            title: "rust-analyzer".to_string(),
-            percentage: None,
-        },
-        0,
-        0,
-        0,
-    );
+    let data = (LspActivity::Progress { percentage: None }, 0, 0, 0);
     let (text, _) = DiagnosticsElement::format(data, &colors);
     assert_eq!(text.as_ref(), "⠋ lsp");
 }
@@ -278,7 +269,6 @@ fn diagnostics_element_progress_and_counts_render_together() {
     let colors = crate::ui::theme::EditorColors::default();
     let data = (
         LspActivity::Progress {
-            title: "Indexing".to_string(),
             percentage: Some(45),
         },
         3,
