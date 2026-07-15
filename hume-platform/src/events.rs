@@ -122,22 +122,48 @@ mod imp {
         ))
     }
 
+    #[derive(Debug, PartialEq, Eq)]
+    enum InputKind {
+        Stdin,
+        Tty,
+        None,
+    }
+
     /// VERSION COUPLING: replicates crossterm 0.29's Unix event source
     /// input-fd choice (`terminal/sys/file_descriptor.rs::tty_fd`, roughly
-    /// lines 123-135): stdin if it's a terminal, else `/dev/tty`. We must
-    /// poll the same descriptor crossterm reads from, or input could arrive
-    /// on a descriptor we never wake for — a crossterm upgrade that changes
-    /// this choice would silently break input wakeups here.
+    /// lines 123-135): stdin if it's a terminal, else `/dev/tty`, else no
+    /// pollable input (headless). We must poll the same descriptor crossterm
+    /// reads from, or input could arrive on a descriptor we never wake for —
+    /// a crossterm upgrade that changes this choice would silently break
+    /// input wakeups here. Split out as a pure decision over the two facts
+    /// it depends on so the rule itself is unit-testable.
+    fn choose_input_kind(stdin_is_terminal: bool, tty_openable: bool) -> InputKind {
+        if stdin_is_terminal {
+            InputKind::Stdin
+        } else if tty_openable {
+            InputKind::Tty
+        } else {
+            InputKind::None
+        }
+    }
+
     fn input_source() -> io::Result<Option<InputSource>> {
-        if io::stdin().is_terminal() {
-            return Ok(Some(InputSource::Stdin(io::stdin())));
-        }
-        match std::fs::File::open("/dev/tty") {
-            Ok(f) => Ok(Some(InputSource::Tty(f))),
-            // Headless: no pollable input source. Not an error — `wait`
-            // simply never reports `Input`.
-            Err(_) => Ok(None),
-        }
+        let stdin_is_terminal = io::stdin().is_terminal();
+        // Only open /dev/tty when stdin isn't the input source (skip the
+        // open on the common terminal-stdin path). Open failure is headless,
+        // not an error — `wait` simply never reports `Input`.
+        let tty = if stdin_is_terminal {
+            None
+        } else {
+            std::fs::File::open("/dev/tty").ok()
+        };
+        Ok(match choose_input_kind(stdin_is_terminal, tty.is_some()) {
+            InputKind::Stdin => Some(InputSource::Stdin(io::stdin())),
+            InputKind::Tty => Some(InputSource::Tty(
+                tty.expect("tty_openable ⇒ Some, per choose_input_kind"),
+            )),
+            InputKind::None => None,
+        })
     }
 
     enum InputSource {
@@ -339,6 +365,33 @@ mod imp {
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        #[test]
+        fn choose_input_kind_matches_crossterm_rule() {
+            // Oracle: crossterm 0.29 tty_fd — stdin if it's a terminal, else
+            // /dev/tty, else headless.
+            assert_eq!(choose_input_kind(true, false), InputKind::Stdin);
+            assert_eq!(
+                choose_input_kind(true, true),
+                InputKind::Stdin,
+                "stdin wins even when /dev/tty is also openable",
+            );
+            assert_eq!(choose_input_kind(false, true), InputKind::Tty);
+            assert_eq!(
+                choose_input_kind(false, false),
+                InputKind::None,
+                "headless: no pollable input source",
+            );
+        }
+
+        #[test]
+        fn input_source_resolves_without_panic() {
+            // Under cargo's harness stdin is not a terminal, so this drives
+            // the else-branch and the `.expect` glue: result is Tty
+            // (controlling terminal present) or None (headless) — never an
+            // error, never a panic.
+            assert!(input_source().is_ok());
+        }
 
         #[test]
         fn wake_from_thread_returns_woken() {
