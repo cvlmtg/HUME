@@ -28,4 +28,4 @@ This project is driven by curiosity and the pure joy of hacking, not by deadline
 
 ## Quick start
 
-Check the [user manual](https://cvlmtg.github.io/HUME/) to see how to install **HUME** and how to use it effectively.
+Check the [user manual](https://cvlmtg.github.io/HUME/) to see how to install **HUME** and how to use it effectively, or start hume and then type `:tutor` for an interactive introduction.
