@@ -7,10 +7,30 @@
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;
 
 use crate::codec::{self, Message};
+
+/// Called by the reader/stderr threads after posting an event, so the
+/// editor's main loop wakes and drains it instead of rechecking on a poll
+/// cadence. Type-erased so this crate stays free of a `hume-platform`
+/// dependency — production wraps `hume_platform::events::EventWaker::wake`.
+pub type WakeCallback = Arc<dyn Fn() + Send + Sync>;
+
+/// Invokes a [`WakeCallback`] on drop — fires whether a thread exits
+/// normally or unwinds from a panic, so a dead transport thread still wakes
+/// the main loop once (the subsequent drain observes the disconnect via the
+/// existing channel). A normal exit firing one extra, spurious wake is
+/// harmless — callers already tolerate spurious wakes by design.
+struct WakeOnDrop(WakeCallback);
+
+impl Drop for WakeOnDrop {
+    fn drop(&mut self) {
+        (self.0)();
+    }
+}
 
 /// One event surfaced by the reader or stderr thread.
 #[derive(Debug)]
@@ -58,7 +78,14 @@ pub struct ServerHandle {
 
 impl ServerHandle {
     /// Spawns the process (cwd = `root`) and its three bridging threads.
-    pub fn spawn(cmd: &str, args: &[String], root: &Path) -> std::io::Result<ServerHandle> {
+    /// `wake` is called after the reader/stderr threads post an event, so
+    /// the editor's main loop wakes instead of polling for completion.
+    pub fn spawn(
+        cmd: &str,
+        args: &[String],
+        root: &Path,
+        wake: WakeCallback,
+    ) -> std::io::Result<ServerHandle> {
         #[cfg(windows)]
         let mut command = if needs_cmd_shim(cmd) {
             // npm-kind servers register a `.cmd` shim (e.g.
@@ -95,10 +122,13 @@ impl ServerHandle {
         // not be orphaned: kill+reap it and join whatever threads did start
         // before propagating the error — `Child`'s own `Drop` does not kill,
         // so leaving this to unwind would leak the process.
+        let reader_wake = Arc::clone(&wake);
         let reader = match thread::Builder::new()
             .name("hume-lsp-reader".into())
-            .spawn(move || reader_loop(BufReader::new(stdout), &tx_events))
-        {
+            .spawn(move || {
+                let _wake_on_drop = WakeOnDrop(Arc::clone(&reader_wake));
+                reader_loop(BufReader::new(stdout), &tx_events, &reader_wake)
+            }) {
             Ok(t) => t,
             Err(e) => {
                 let _ = child.kill();
@@ -120,24 +150,28 @@ impl ServerHandle {
             }
         };
 
-        let stderr_thread = match thread::Builder::new()
-            .name("hume-lsp-stderr".into())
-            .spawn(move || stderr_loop(BufReader::new(stderr), &tx_stderr))
-        {
-            Ok(t) => t,
-            Err(e) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                let _ = reader.join();
-                // The writer thread blocks on `for msg in rx_out` until its
-                // sender is dropped — `tx_out` isn't moved into `ServerHandle`
-                // on this failure path, so drop it explicitly to let the
-                // thread's loop end before joining.
-                drop(tx_out);
-                let _ = writer.join();
-                return Err(e);
-            }
-        };
+        let stderr_wake = Arc::clone(&wake);
+        let stderr_thread =
+            match thread::Builder::new()
+                .name("hume-lsp-stderr".into())
+                .spawn(move || {
+                    let _wake_on_drop = WakeOnDrop(Arc::clone(&stderr_wake));
+                    stderr_loop(BufReader::new(stderr), &tx_stderr, &stderr_wake)
+                }) {
+                Ok(t) => t,
+                Err(e) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = reader.join();
+                    // The writer thread blocks on `for msg in rx_out` until its
+                    // sender is dropped — `tx_out` isn't moved into `ServerHandle`
+                    // on this failure path, so drop it explicitly to let the
+                    // thread's loop end before joining.
+                    drop(tx_out);
+                    let _ = writer.join();
+                    return Err(e);
+                }
+            };
 
         Ok(ServerHandle {
             tx: Some(tx_out),
@@ -245,27 +279,31 @@ fn needs_cmd_shim(cmd: &str) -> bool {
     lower.ends_with(".cmd") || lower.ends_with(".bat")
 }
 
-/// Reads frames until EOF or a codec error, forwarding each as an event.
-/// Factored over `impl BufRead` so it's testable with in-memory pipes.
-fn reader_loop(mut r: impl BufRead, tx: &mpsc::SyncSender<InboundEvent>) {
+/// Reads frames until EOF or a codec error, forwarding each as an event and
+/// waking the main loop after every successful send. Factored over
+/// `impl BufRead` so it's testable with in-memory pipes.
+fn reader_loop(mut r: impl BufRead, tx: &mpsc::SyncSender<InboundEvent>, wake: &WakeCallback) {
     loop {
         match codec::read_message(&mut r) {
             Ok(msg) => {
                 if tx.send(InboundEvent::Message(msg)).is_err() {
                     return;
                 }
+                wake();
             }
             // A clean end-of-stream at a frame boundary is a voluntary
             // server exit, not a crash — report no error so the editor
             // glue doesn't log a spurious "server crashed".
             Err(codec::CodecError::Eof) => {
                 let _ = tx.send(InboundEvent::Eof { error: None });
+                wake();
                 return;
             }
             Err(e) => {
                 let _ = tx.send(InboundEvent::Eof {
                     error: Some(e.to_string()),
                 });
+                wake();
                 return;
             }
         }
@@ -286,12 +324,15 @@ fn writer_loop(mut w: impl Write, rx: mpsc::Receiver<Message>) {
 /// relayed (the editor glue logs it). Uses `try_send`: a full channel drops
 /// the line rather than blocking (see `STDERR_CHANNEL_BOUND`) — stderr is
 /// Trace-level logging, not protocol traffic, so losing a line under a
-/// flood is an acceptable trade against ever stalling this thread.
-fn stderr_loop(r: impl BufRead, tx: &mpsc::SyncSender<String>) {
+/// flood is an acceptable trade against ever stalling this thread. Wakes
+/// the main loop only on a forwarded line — a dropped (`Full`) line adds no
+/// observable data, and the send that filled the channel already woke it.
+fn stderr_loop(r: impl BufRead, tx: &mpsc::SyncSender<String>, wake: &WakeCallback) {
     for line in r.lines() {
         match line {
             Ok(l) => match tx.try_send(l) {
-                Ok(()) | Err(mpsc::TrySendError::Full(_)) => {}
+                Ok(()) => wake(),
+                Err(mpsc::TrySendError::Full(_)) => {}
                 Err(mpsc::TrySendError::Disconnected(_)) => return,
             },
             Err(_) => return,
@@ -304,6 +345,22 @@ mod tests {
     use super::*;
     use crate::codec::RequestId;
     use std::io::Cursor;
+
+    fn no_op_wake() -> WakeCallback {
+        Arc::new(|| {})
+    }
+
+    /// A [`WakeCallback`] that counts invocations via an `mpsc` channel —
+    /// `recv_timeout` gives a deterministic, non-polling way to assert a
+    /// wake fired (or didn't, within the timeout) without racing the
+    /// background thread that calls it.
+    fn counting_wake() -> (WakeCallback, mpsc::Receiver<()>) {
+        let (tx, rx) = mpsc::channel::<()>();
+        let wake: WakeCallback = Arc::new(move || {
+            let _ = tx.send(());
+        });
+        (wake, rx)
+    }
 
     #[test]
     fn reader_loop_forwards_messages_then_eof() {
@@ -318,7 +375,7 @@ mod tests {
         .unwrap();
         let cursor = Cursor::new(buf);
         let (tx, rx) = mpsc::sync_channel(EVENTS_CHANNEL_BOUND);
-        reader_loop(cursor, &tx);
+        reader_loop(cursor, &tx, &no_op_wake());
 
         match rx.recv().unwrap() {
             InboundEvent::Message(Message::Notification { method, .. }) => {
@@ -342,7 +399,7 @@ mod tests {
         // truncation, distinct from the clean-exit case above.
         let cursor = Cursor::new(b"Content-Length: 5\r\n".to_vec());
         let (tx, rx) = mpsc::sync_channel(EVENTS_CHANNEL_BOUND);
-        reader_loop(cursor, &tx);
+        reader_loop(cursor, &tx, &no_op_wake());
         match rx.recv().unwrap() {
             InboundEvent::Eof { error } => assert!(error.is_some()),
             _ => panic!("expected Eof"),
@@ -354,13 +411,41 @@ mod tests {
         // No Content-Length header — read_message errors immediately.
         let cursor = Cursor::new(b"garbage\r\n\r\n{}".to_vec());
         let (tx, rx) = mpsc::sync_channel(EVENTS_CHANNEL_BOUND);
-        reader_loop(cursor, &tx);
+        reader_loop(cursor, &tx, &no_op_wake());
         match rx.recv().unwrap() {
             InboundEvent::Eof { error } => assert!(error.is_some()),
             _ => panic!("expected Eof"),
         }
         // Exactly one event — the loop must not resynchronize and retry.
         assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn reader_loop_wakes_per_message_and_eof() {
+        let mut buf = Vec::new();
+        codec::write_message(
+            &mut buf,
+            &Message::Notification {
+                method: "one".to_string(),
+                params: serde_json::Value::Null,
+            },
+        )
+        .unwrap();
+        let cursor = Cursor::new(buf);
+        let (tx, _rx) = mpsc::sync_channel(EVENTS_CHANNEL_BOUND);
+        let (wake, rx_wake) = counting_wake();
+        reader_loop(cursor, &tx, &wake);
+
+        rx_wake
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("wake after message");
+        rx_wake
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("wake after Eof");
+        assert!(
+            rx_wake.try_recv().is_err(),
+            "exactly one message plus Eof should mean exactly two wakes"
+        );
     }
 
     #[test]
@@ -396,10 +481,45 @@ mod tests {
     fn stderr_loop_forwards_lines() {
         let cursor = Cursor::new(b"first line\nsecond line\n".to_vec());
         let (tx, rx) = mpsc::sync_channel(STDERR_CHANNEL_BOUND);
-        stderr_loop(cursor, &tx);
+        stderr_loop(cursor, &tx, &no_op_wake());
         assert_eq!(rx.recv().unwrap(), "first line");
         assert_eq!(rx.recv().unwrap(), "second line");
         assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn stderr_loop_wakes_on_forwarded_lines() {
+        let cursor = Cursor::new(b"first line\nsecond line\n".to_vec());
+        let (tx, _rx) = mpsc::sync_channel(STDERR_CHANNEL_BOUND);
+        let (wake, rx_wake) = counting_wake();
+        stderr_loop(cursor, &tx, &wake);
+        rx_wake
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("wake for first line");
+        rx_wake
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("wake for second line");
+        assert!(rx_wake.try_recv().is_err(), "exactly two lines, two wakes");
+    }
+
+    #[test]
+    fn stderr_flood_wakes_only_for_lines_that_were_actually_forwarded() {
+        // Bound of 2, 5 lines — 3 are dropped by `try_send`'s `Full` arm and
+        // must not wake (see `stderr_loop`'s doc): only 2 wakes expected.
+        let cursor = Cursor::new(b"a\nb\nc\nd\ne\n".to_vec());
+        let (tx, _rx) = mpsc::sync_channel(2);
+        let (wake, rx_wake) = counting_wake();
+        stderr_loop(cursor, &tx, &wake);
+        rx_wake
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("wake 1");
+        rx_wake
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("wake 2");
+        assert!(
+            rx_wake.try_recv().is_err(),
+            "dropped lines under the flood must not also wake"
+        );
     }
 
     #[test]
@@ -409,7 +529,7 @@ mod tests {
         // still returns instead of hanging.
         let cursor = Cursor::new(b"a\nb\nc\nd\ne\n".to_vec());
         let (tx, rx) = mpsc::sync_channel(2);
-        stderr_loop(cursor, &tx);
+        stderr_loop(cursor, &tx, &no_op_wake());
 
         let mut received = Vec::new();
         while let Ok(line) = rx.try_recv() {
@@ -428,7 +548,7 @@ mod tests {
         let (tx, rx) = mpsc::sync_channel(STDERR_CHANNEL_BOUND);
         drop(rx);
         // Must return promptly on the Disconnected arm, not panic or loop.
-        stderr_loop(cursor, &tx);
+        stderr_loop(cursor, &tx, &no_op_wake());
     }
 
     #[test]
@@ -460,7 +580,7 @@ mod tests {
         .unwrap();
         let cursor = Cursor::new(buf);
         let (tx, rx) = mpsc::sync_channel(1);
-        let handle = thread::spawn(move || reader_loop(cursor, &tx));
+        let handle = thread::spawn(move || reader_loop(cursor, &tx, &no_op_wake()));
 
         match rx.recv().unwrap() {
             InboundEvent::Message(Message::Notification { method, .. }) => {
@@ -514,7 +634,8 @@ mod tests {
     #[cfg(unix)]
     fn cat_echoes_frames_and_drop_reaps_without_hanging() {
         let root = std::env::current_dir().unwrap();
-        let mut handle = ServerHandle::spawn("/bin/cat", &[], &root).expect("spawn cat");
+        let mut handle =
+            ServerHandle::spawn("/bin/cat", &[], &root, no_op_wake()).expect("spawn cat");
 
         let sent = Message::Request {
             id: RequestId::Int(1),
@@ -552,6 +673,25 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
+    fn cat_echo_fires_waker() {
+        let root = std::env::current_dir().unwrap();
+        let (wake, rx_wake) = counting_wake();
+        let handle = ServerHandle::spawn("/bin/cat", &[], &root, wake).expect("spawn cat");
+
+        handle.send(Message::Notification {
+            method: "ping".to_string(),
+            params: serde_json::Value::Null,
+        });
+
+        rx_wake
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("reader thread must wake the loop after cat echoes the notification back");
+
+        drop(handle);
+    }
+
+    #[test]
+    #[cfg(unix)]
     fn drop_does_not_hang_when_stderr_floods_past_the_bound() {
         // Regression for the Drop deadlock fixed alongside the bounded
         // stderr channel: a thread blocked mid-`send` on a full channel is
@@ -560,18 +700,20 @@ mod tests {
         // regression this test hangs (caught by the harness's own test
         // timeout); on a correct `Drop` it returns promptly.
         let root = std::env::current_dir().unwrap();
-        let mut handle =
-            ServerHandle::spawn("/bin/sh", &["-c".to_string(), "yes flood 1>&2".to_string()], &root)
-                .expect("spawn sh");
+        let mut handle = ServerHandle::spawn(
+            "/bin/sh",
+            &["-c".to_string(), "yes flood 1>&2".to_string()],
+            &root,
+            no_op_wake(),
+        )
+        .expect("spawn sh");
 
         // Let stderr fill well past STDERR_CHANNEL_BOUND before draining.
         std::thread::sleep(std::time::Duration::from_millis(50));
 
         let events = handle.try_recv_all();
         assert!(
-            events
-                .iter()
-                .any(|e| matches!(e, InboundEvent::Stderr(_))),
+            events.iter().any(|e| matches!(e, InboundEvent::Stderr(_))),
             "expected at least one Stderr event from the flood"
         );
 

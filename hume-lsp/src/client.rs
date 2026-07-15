@@ -271,6 +271,16 @@ impl LspClient {
         self.pending.len()
     }
 
+    /// Earliest deadline among pending requests (`initialize`/`shutdown`
+    /// included — they are ordinary `pending` entries too). Feeds the
+    /// editor's wake predicate: with completion-driven wakes replacing the
+    /// old poll cadence, this deadline is what keeps the timeout sweep in
+    /// `take_completed` firing promptly even on a server that never
+    /// responds.
+    pub fn earliest_deadline(&self) -> Option<Instant> {
+        self.pending.values().map(|m| m.deadline).min()
+    }
+
     /// Best-effort cancellation: drops the pending entry (if still present),
     /// strips a still-queued Starting-phase send, and — only once the
     /// handshake has completed — sends `$/cancelRequest`. A no-op if the
@@ -714,9 +724,9 @@ pub fn server_request_response(
         // Acknowledged, no-op: these need no editor state to answer, unlike
         // `workspace/applyEdit` (the one request this lookup can't handle —
         // see `apply_edit_request_response`).
-        RegisterCapability::METHOD | UnregisterCapability::METHOD | WorkDoneProgressCreate::METHOD => {
-            Ok(serde_json::Value::Null)
-        }
+        RegisterCapability::METHOD
+        | UnregisterCapability::METHOD
+        | WorkDoneProgressCreate::METHOD => Ok(serde_json::Value::Null),
         other => Err(ResponseError {
             code: -32601,
             message: format!("method not found: {other}"),
@@ -875,9 +885,7 @@ mod tests {
         let sid = backend.start("x", &[], std::path::Path::new(".")).unwrap();
         let mut client = LspClient::new(sid, PathBuf::from("."));
 
-        client.set_init_options(Some(
-            serde_json::json!({"check": {"command": "clippy"}}),
-        ));
+        client.set_init_options(Some(serde_json::json!({"check": {"command": "clippy"}})));
         client.start_handshake(&mut backend);
 
         match &backend.sent[0] {
@@ -950,7 +958,8 @@ mod tests {
             allow_stale: false,
             deadline: Instant::now() + std::time::Duration::from_secs(10),
         };
-        let sent_id = client.send_request(&mut backend, "initialize", serde_json::Value::Null, meta);
+        let sent_id =
+            client.send_request(&mut backend, "initialize", serde_json::Value::Null, meta);
 
         let (_sid, ev) = backend.drain().into_iter().next().unwrap();
         let actions = client.on_event(ev);
@@ -1015,6 +1024,49 @@ mod tests {
         let (completed, actions) = client.take_completed(&mut backend, far_future);
         assert!(completed.is_empty());
         assert!(actions.is_empty());
+    }
+
+    // ── earliest_deadline ─────────────────────────────────────────────────────
+
+    #[test]
+    fn earliest_deadline_none_when_no_pending() {
+        let mut backend = InlineLspBackend::new();
+        let sid = backend.start("x", &[], std::path::Path::new(".")).unwrap();
+        let client = LspClient::new(sid, PathBuf::from("."));
+        assert_eq!(client.earliest_deadline(), None);
+    }
+
+    #[test]
+    fn earliest_deadline_is_min() {
+        let (mut backend, mut client) = make_running_client();
+        let now = Instant::now();
+
+        client.send_request(
+            &mut backend,
+            "foo",
+            serde_json::Value::Null,
+            RequestMeta {
+                method: "foo".to_string(),
+                allow_stale: false,
+                deadline: now + std::time::Duration::from_secs(5),
+            },
+        );
+        client.send_request(
+            &mut backend,
+            "bar",
+            serde_json::Value::Null,
+            RequestMeta {
+                method: "bar".to_string(),
+                allow_stale: false,
+                deadline: now + std::time::Duration::from_secs(1),
+            },
+        );
+
+        let earliest = client.earliest_deadline().expect("two pending requests");
+        assert!(
+            earliest < now + std::time::Duration::from_secs(5),
+            "must be the nearer (1s) deadline, not the farther (5s) one"
+        );
     }
 
     #[test]
