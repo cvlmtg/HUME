@@ -40,6 +40,13 @@
                            (let ((name (lsp-server-for-buffer (current-buffer))))
                              (if name name "server"))))))
 
+;; ── Popup dismissal ─────────────────────────────────────────────────────────
+;; A stale hover/signature-help popup must not linger once the user has
+;; moved on — close on any mode change (leaving Insert, entering Command,
+;; …). Shared popup widget, one registration for every feature that shows
+;; one: harmless no-op when nothing is open.
+(register-hook! 'on-mode-change (lambda (old-mode new-mode) (close-popup!)))
+
 ;; ── Trigger-char lifecycle ──────────────────────────────────────────────────
 
 ;;; Wires up the on-lsp-attach / on-lsp-detach / on-trigger-char trio a

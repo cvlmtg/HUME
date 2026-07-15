@@ -36,10 +36,10 @@
 
 ;; ── Dismiss ─────────────────────────────────────────────────────────────────
 ;; A stale hover popup must not linger once the user has moved on — close on
-;; any mode change (leaving Insert, entering Command, …) in addition to the
-;; top-of-next-hover close below. Shared popup widget: harmless no-op
-;; when nothing is open, and no other feature owns this popup yet.
-(register-hook! 'on-mode-change (lambda (old-mode new-mode) (close-popup!)))
+;; any mode change (leaving Insert, entering Command, …), in addition to the
+;; top-of-next-hover close below. The on-mode-change registration lives in
+;; lib.scm (shared popup widget — sighelp.scm uses the same close-on-mode-
+;; change dismissal, so one registration covers both).
 
 ;; ── Command ─────────────────────────────────────────────────────────────────
 

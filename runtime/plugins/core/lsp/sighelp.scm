@@ -1,7 +1,7 @@
 ;;; core:lsp/sighelp.scm — textDocument/signatureHelp.
 ;;;
 ;;; Dismiss on mode change (leaving Insert, entering Command, …) is already
-;;; handled by hover.scm's `on-mode-change` handler — `show-popup!`/
+;;; handled by lib.scm's `on-mode-change` handler — `show-popup!`/
 ;;; `close-popup!` is one shared widget, so that single registration
 ;;; covers every feature using it, including this one. No separate
 ;;; registration here.
