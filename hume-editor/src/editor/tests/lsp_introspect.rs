@@ -228,9 +228,8 @@ fn lsp_position_params_uses_the_negotiated_utf16_encoding_for_multibyte_chars() 
     let tmp = tempfile::tempdir().unwrap();
     // Buffer: "🎉" (char 0, one grapheme, 2 UTF-16 code units) then cursor on 'x' (char 1).
     let mut ed = editor_from("🎉-[x]>rest\n");
-    ed.doc_mut().set_path(Some(std::path::PathBuf::from(
-        "/tmp/fake-lsp-introspect.rs",
-    )));
+    ed.doc_mut()
+        .set_path(Some(tmp.path().join("fake-lsp-introspect.rs")));
     attach_running_server(&mut ed, serde_json::json!({"capabilities": {}})); // UTF-16 default
 
     let fired = run_probe(
@@ -252,9 +251,8 @@ fn lsp_position_params_uses_the_negotiated_utf16_encoding_for_multibyte_chars() 
 fn lsp_position_params_uses_the_negotiated_utf8_encoding_for_multibyte_chars() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("🎉-[x]>rest\n");
-    ed.doc_mut().set_path(Some(std::path::PathBuf::from(
-        "/tmp/fake-lsp-introspect-utf8.rs",
-    )));
+    ed.doc_mut()
+        .set_path(Some(tmp.path().join("fake-lsp-introspect-utf8.rs")));
     attach_running_server(
         &mut ed,
         serde_json::json!({"capabilities": {"positionEncoding": "utf-8"}}),
@@ -280,9 +278,8 @@ fn lsp_range_params_reflects_the_primary_selection() {
     // Selection covers "bcd" (chars 1..=3, inclusive head at 3): half-open
     // wire range must be [1, 4).
     let mut ed = editor_from("a<[bcd]-ef\n");
-    ed.doc_mut().set_path(Some(std::path::PathBuf::from(
-        "/tmp/fake-lsp-introspect-range.rs",
-    )));
+    ed.doc_mut()
+        .set_path(Some(tmp.path().join("fake-lsp-introspect-range.rs")));
     attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
 
     let fired = run_probe(
@@ -314,9 +311,8 @@ fn lsp_range_params_end_lands_on_a_grapheme_boundary_not_mid_cluster() {
     // (inclusive) covers "caf" plus é's first char only.
     let content = "caf\u{0065}\u{0301}\n";
     let mut ed = Editor::for_testing(Buffer::new(Text::from(content), SelectionSet::default()));
-    ed.doc_mut().set_path(Some(std::path::PathBuf::from(
-        "/tmp/fake-lsp-range-grapheme.rs",
-    )));
+    ed.doc_mut()
+        .set_path(Some(tmp.path().join("fake-lsp-range-grapheme.rs")));
     attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
 
     let bid = ed.focused_buffer_id();
