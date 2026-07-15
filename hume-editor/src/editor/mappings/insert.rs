@@ -337,10 +337,9 @@ impl Editor {
         let Some(session) = self.state.lsp_completion.as_ref() else {
             return;
         };
-        let n = session.top(usize::MAX).len();
-        if n == 0 {
-            return;
-        }
+        // `handle_completion_key`'s empty-session guard already returned
+        // before dispatching here, so `n` is always positive.
+        let n = session.len();
         let ui = self
             .state
             .lsp_completion_ui

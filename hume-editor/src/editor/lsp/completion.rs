@@ -188,6 +188,14 @@ impl CompletionSession {
         self.bid
     }
 
+    /// Number of candidates surviving the current filter — cheap count for
+    /// callers (menu navigation, the visible-menu check) that don't need the
+    /// items themselves; unlike `top(n).len()`, this doesn't serialize any
+    /// candidate to JSON.
+    pub(crate) fn len(&self) -> usize {
+        self.filtered.len()
+    }
+
     /// Whether the current filter matches nothing. A session can be open
     /// with this `true` — narrowed to empty by continued typing, or an
     /// `isIncomplete` list awaiting an async re-request — in which case no
