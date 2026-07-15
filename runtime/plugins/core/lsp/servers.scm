@@ -296,17 +296,16 @@
 ;;; trailing call releases it on success — the lock is never left held
 ;;; after this function returns.
 ;;;
-;;; The post-install rescan passes `#:force-name name` (see
-;;; `lsp/register-installed-servers!`) — `lsp/install-server!` just queued an
-;;; `unregister-lsp-server!` for every one of `name`'s languages, and that op
-;;; hasn't applied yet (queued ops apply at end-of-eval), so an unfiltered
-;;; rescan would see those languages as still registered and skip
-;;; re-registering them, leaving the queued unregister to land with nothing
-;;; behind it. Also run *outside* the install with-handler: it runs only
-;;; after `release-install-lock!`, so a failure here is a distinct,
-;;; uncaught error (reported by the command dispatcher, see
-;;; `Editor::run_steel_command` in hume-editor/src/editor/dispatch.rs) rather
-;;; than being mislabeled "install failed" or triggering a second,
+;;; The post-install rescan (`lsp/register-installed-servers!`) sees
+;;; `lsp/install-server!`'s queued `unregister-lsp-server!` for every one of
+;;; `name`'s languages through `lsp-registered-for-language?`'s same-eval
+;;; read-through, even though that op hasn't applied yet (queued ops apply
+;;; at end-of-eval) — so the rescan's no-clobber filter correctly re-admits
+;;; those languages instead of skipping them. Run *outside* the install
+;;; with-handler: it runs only after `release-install-lock!`, so a failure
+;;; here is a distinct, uncaught error (reported by the command dispatcher,
+;;; see `Editor::run_steel_command` in hume-editor/src/editor/dispatch.rs)
+;;; rather than being mislabeled "install failed" or triggering a second,
 ;;; ownership-blind `release-install-lock!` call.
 (define (lsp/lsp-install-or-report! name)
   (let* ((receipt (lsp/read-receipt name))
@@ -337,7 +336,7 @@
                       (begin (lsp/install-server! name) #t))))
               (when installed?
                 (release-install-lock!)
-                (lsp/register-installed-servers! #:force-name name))))))))
+                (lsp/register-installed-servers!))))))))
 
 (define-command! "lsp-install"
   "Download and verify the language server for a language (default: the current buffer's language), then register it."

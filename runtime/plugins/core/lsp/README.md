@@ -30,13 +30,10 @@ declares the plugin with `#:languages '("*")` (any buffer with a detected langua
 every `lsp-*` command — so it activates on the first buffer with a language, or the first
 `lsp-*` command you type, whichever comes first. Server attach is never itself a trigger —
 see the Caveat below. `(load-plugin "core:lsp")` also works if you'd rather load it eagerly —
-if you do, put any `register-lsp-server!` overrides *after* the `load-plugin` line: eager
-loading scans for already-installed servers immediately, in the same eval, and
-`register-lsp-server!` is last-wins, so a call placed after the scan always overrides what
-it just registered, while a call placed before it can be clobbered by that same scan (only
-matters when overriding a language that also has a seeded, installed server). The
-`declare-plugin` form above isn't affected either way — its scan runs on activation, always
-after init.scm has already finished.
+order doesn't matter either way: a `register-lsp-server!` override placed before or after the
+`load-plugin` line always wins over the catalog default, since the post-load scan reads
+through any registration queued earlier in the same eval and skips a language that override
+already claims.
 
 ## Customizing activation
 

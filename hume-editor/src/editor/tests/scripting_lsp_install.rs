@@ -422,18 +422,15 @@ fn rescan_does_not_clobber_a_manually_registered_language() {
     );
 }
 
-/// The documented fix for `registration.scm`'s "same-eval blindness" gap:
-/// when a seeded server is *already installed before init.scm even runs*, an
+/// When a seeded server is *already installed before init.scm even runs*, an
 /// eager `(load-plugin "core:lsp")` queues a Register op for it from its own
-/// startup scan, in the very same eval as anything that follows. Queuing the
-/// user's own `register-lsp-server!` *after* that `load-plugin` line — not
-/// before — must win, because `register-lsp-server!` is last-wins over
-/// queue order, not over what the live registry said when the scan's
-/// no-clobber filter ran (which is necessarily before this override even
-/// exists). Differs from `rescan_does_not_clobber_a_manually_registered_language`
-/// above: there, the receipt is fabricated *after* init.scm's eval, so
-/// `load-plugin`'s own scan queues nothing competing for "rust" in that eval
-/// — it never exercises this same-eval race at all.
+/// startup scan, in the very same eval as anything that follows. The user's
+/// own `register-lsp-server!` queued *after* that `load-plugin` line must
+/// win — `register-lsp-server!` is last-wins over queue order. Differs from
+/// `rescan_does_not_clobber_a_manually_registered_language` above: there,
+/// the receipt is fabricated *after* init.scm's eval, so `load-plugin`'s own
+/// scan queues nothing competing for "rust" in that eval — it never
+/// exercises this same-eval race at all.
 #[test]
 #[cfg(not(windows))]
 fn register_lsp_server_after_eager_load_plugin_overrides_the_scans_own_registration() {
@@ -461,6 +458,44 @@ fn register_lsp_server_after_eager_load_plugin_overrides_the_scans_own_registrat
         Some("my-custom-rust-analyzer".to_owned()),
         "register-lsp-server! queued after load-plugin must win over the scan's \
          own registration of the already-installed catalog server"
+    );
+}
+
+/// The R1 fix's whole point: unlike the sibling test above, this queues the
+/// override *before* the eager `load-plugin` line — the ordering that used
+/// to lose (the scan's no-clobber filter read the live, pre-drain registry,
+/// which didn't see this override yet, so the scan queued the catalog
+/// default right behind it, and that later queue position won). Now
+/// `lsp-registered-for-language?` reads through the pending op queue, so
+/// the scan's filter sees this earlier-queued registration and skips
+/// "rust" entirely — order no longer matters.
+#[test]
+#[cfg(not(windows))]
+fn register_lsp_server_before_eager_load_plugin_also_survives_the_scan() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    fabricate_server(
+        data_tmp.path(),
+        "rust-analyzer",
+        "2026-07-06",
+        "rust-analyzer",
+    );
+
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init(
+        &mut ed,
+        data_tmp.path(),
+        "(load-plugin \"core:stdlib\")\n\
+         (register-lsp-server! \"rust\" #:command \"my-custom-rust-analyzer\" \
+         #:root-markers '(\"Cargo.toml\"))\n\
+         (load-plugin \"core:lsp\")",
+    );
+
+    assert_eq!(
+        ed.lsp.config_command_for_test("rust"),
+        Some("my-custom-rust-analyzer".to_owned()),
+        "register-lsp-server! queued before load-plugin must survive the scan's \
+         no-clobber filter, which now reads through the same-eval pending queue"
     );
 }
 
@@ -1218,14 +1253,14 @@ fn lsp_install_real_rust_analyzer_e2e() {
 
 /// Regression for the reinstall/upgrade path: `lsp/install-server!` queues
 /// `unregister-lsp-server!` for every one of the server's languages before
-/// reinstalling, and that op applies only at end-of-eval. Before the
-/// `#:force-name` fix, the post-install rescan (same eval) filtered on
-/// `lsp-registered-for-language?`, which still read the *pre*-unregister
-/// (registered) state — so the rescan skipped the language, and the queued
-/// unregister landed with nothing behind it: the language ended up
-/// unregistered after a version-mismatch reinstall. This drives that exact
-/// path for real (a receipt whose version no longer matches the seeded
-/// catalog) and asserts `rust` is still registered afterward.
+/// reinstalling, and that op applies only at end-of-eval. The post-install
+/// rescan (same eval) filters on `lsp-registered-for-language?`, which reads
+/// through the pending op queue — so it sees that queued unregister and
+/// correctly re-admits the language for re-registration, rather than
+/// skipping it because the live (pre-drain) registry still shows it
+/// registered. This drives that exact path for real (a receipt whose
+/// version no longer matches the seeded catalog) and asserts `rust` is
+/// still registered afterward.
 ///
 /// Gated by `HUME_REQUIRE_LIVE_LSP_INSTALL_E2E=1`; skipped otherwise.
 #[test]
@@ -1285,6 +1320,6 @@ fn lsp_install_real_rust_analyzer_reinstall_after_version_bump_e2e() {
     assert!(
         ed.lsp.config_command_for_test("rust").is_some(),
         "rust must still be registered after a version-mismatch reinstall — \
-         this is exactly what the #:force-name rescan fix guarantees"
+         this is exactly what the rescan's same-eval read-through guarantees"
     );
 }

@@ -259,8 +259,11 @@ pub trait EditorHost {
     /// Whether `language` currently has a `register-lsp-server!` config
     /// (registered, not necessarily attached/running) — used by the
     /// `on-language-set` missing-server hint to distinguish "not installed"
-    /// from "still starting". Reports the state *as of the last completed
-    /// drain*: an op queued earlier in the same eval hasn't applied yet.
+    /// from "still starting". Reports state *as of the last completed
+    /// drain* — the `lsp-registered-for-language?` builtin overlays this
+    /// with `ctx.pending_lsp_server_ops` (ops queued this eval/init) before
+    /// falling back here, so same-eval visibility is handled at the builtin
+    /// layer, not this trait method.
     fn lsp_registered_for_language(&self, language: &str) -> bool {
         let _ = language;
         false

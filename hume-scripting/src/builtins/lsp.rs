@@ -51,8 +51,8 @@ fn optional_json_arg(val: SteelVal, ctx_name: &str) -> Result<Option<serde_json:
 /// Queues a last-wins registration: applied at the end of the *current*
 /// eval (see `Editor::apply_lsp_server_ops`), replacing any existing
 /// registration for `language` and attaching already-open matching buffers.
-/// Within the same eval, `lsp-registered-for-language?` still reports the
-/// *pre*-eval state — the op has not applied yet.
+/// `lsp-registered-for-language?` reads through this queue, so it reports
+/// this registration as live immediately, within the same eval.
 ///
 /// All list args must be lists of strings. Pushes a
 /// `PendingLspServerOp::Register` onto `ctx.pending_lsp_server_ops`.
@@ -270,8 +270,12 @@ pub(crate) fn lsp_server_for_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelR
 /// `on-language-set` missing-server hint: distinguishes "no server
 /// registered for this language" from "registered but still starting"
 /// (`lsp-server-for-buffer` reports *attachment*, which can't make that
-/// distinction). Reports state as of the last completed drain — an op
-/// queued earlier in the same eval hasn't applied yet.
+/// distinction). Reads through `ctx.pending_lsp_server_ops` (queued this
+/// eval/init, not yet applied) in queue order before falling back to the
+/// live registry — the last queued `Register`/`Unregister` for `language`
+/// wins, matching `Editor::apply_lsp_server_ops`'s own last-wins semantics
+/// exactly, so a same-eval registration is visible immediately instead of
+/// only after the next drain.
 ///
 /// Unlike its buffer/pane-touching siblings, this is a pure registry read
 /// (no `EditorHost` state beyond the LSP registry itself), so it carries no
@@ -280,8 +284,18 @@ pub(crate) fn lsp_server_for_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelR
 /// skip already-registered languages.
 pub(crate) fn lsp_registered_for_language(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
     let language = string_arg(language, "lsp-registered-for-language? language")?;
+    let mut pending: Option<bool> = None;
+    for op in ctx.pending_lsp_server_ops.iter() {
+        match op {
+            PendingLspServerOp::Register(reg) if reg.language == language => pending = Some(true),
+            PendingLspServerOp::Unregister { language: l } if *l == language => {
+                pending = Some(false)
+            }
+            _ => {}
+        }
+    }
     Ok(SteelVal::BoolV(
-        ctx.host.lsp_registered_for_language(&language),
+        pending.unwrap_or_else(|| ctx.host.lsp_registered_for_language(&language)),
     ))
 }
 
@@ -1203,6 +1217,94 @@ mod tests {
             result.unwrap(),
             SteelVal::BoolV(false),
             "NullHost reports nothing registered"
+        );
+    }
+
+    fn pending_register(language: &str) -> PendingLspServerOp {
+        PendingLspServerOp::Register(crate::PendingLspServerReg {
+            language: language.to_string(),
+            command: "rust-analyzer".to_string(),
+            args: Vec::new(),
+            root_markers: Vec::new(),
+            init_options: None,
+            settings: None,
+        })
+    }
+
+    fn pending_unregister(language: &str) -> PendingLspServerOp {
+        PendingLspServerOp::Unregister {
+            language: language.to_string(),
+        }
+    }
+
+    /// R1: `lsp-registered-for-language?` reads through `ctx.pending_lsp_server_ops`
+    /// before falling back to the host — a `Register` queued this eval must
+    /// be visible immediately, not only after the next drain.
+    #[test]
+    fn a_queued_register_reports_true_within_the_same_eval() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        ctx.pending_lsp_server_ops.push(pending_register("rust"));
+        let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
+        assert_eq!(result.unwrap(), SteelVal::BoolV(true));
+    }
+
+    /// Queue order, not queue presence, decides the answer — a later
+    /// `Unregister` overrides an earlier `Register` for the same language,
+    /// matching `Editor::apply_lsp_server_ops`'s own last-wins application
+    /// order exactly.
+    #[test]
+    fn register_then_unregister_in_queue_order_reports_false() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        ctx.pending_lsp_server_ops.push(pending_register("rust"));
+        ctx.pending_lsp_server_ops.push(pending_unregister("rust"));
+        let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
+        assert_eq!(result.unwrap(), SteelVal::BoolV(false));
+    }
+
+    /// The reverse order: this is exactly the install-path shape —
+    /// `lsp/install-server!` queues `Unregister` for every seeded language
+    /// before the post-install rescan queues `Register` behind it.
+    #[test]
+    fn unregister_then_register_in_queue_order_reports_true() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        ctx.pending_lsp_server_ops.push(pending_unregister("rust"));
+        ctx.pending_lsp_server_ops.push(pending_register("rust"));
+        let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
+        assert_eq!(result.unwrap(), SteelVal::BoolV(true));
+    }
+
+    /// A queued op for a *different* language must not affect the answer.
+    #[test]
+    fn a_queued_op_for_a_different_language_does_not_flip_the_answer() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        ctx.pending_lsp_server_ops.push(pending_register("python"));
+        let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
+        assert_eq!(
+            result.unwrap(),
+            SteelVal::BoolV(false),
+            "NullHost reports rust unregistered, and python's queued op is irrelevant"
+        );
+    }
+
+    /// `Stop`/`Restart`/`ShowStatus` never change registration state — only
+    /// `Register`/`Unregister` may flip the answer.
+    #[test]
+    fn a_stop_op_alone_does_not_flip_the_answer() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        ctx.pending_lsp_server_ops
+            .push(PendingLspServerOp::Stop {
+                language: Some("rust".to_string()),
+            });
+        let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
+        assert_eq!(
+            result.unwrap(),
+            SteelVal::BoolV(false),
+            "a Stop op must not be mistaken for an Unregister"
         );
     }
 

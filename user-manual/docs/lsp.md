@@ -157,18 +157,10 @@ catalog doesn't carry, or a `$PATH` copy you want to take precedence over a mana
 `register-lsp-server!` itself has no dependency on `core:lsp` — but the
 [managing-servers commands](#managing-servers) below (`:lsp-status`, `:lsp-stop`,
 `:lsp-restart`) are `core:lsp` commands, so a manually registered server still needs
-`core:lsp` loaded or declared to inspect, stop, or restart it. `register-lsp-server!` takes:
-
-::: warning
-If you eager-load with `(load-plugin "core:lsp")`, put your `register-lsp-server!`
-calls *after* it, not before. `core:lsp` scans for already-installed servers the moment it
-loads, and a call you make afterward always overrides whatever that scan just registered —
-matching how the later of two registrations always wins. A call made *before* an eager
-`load-plugin` can be clobbered by that scan if the language you're overriding also has a
-seeded, installed server. This doesn't apply to a lazily `(declare-plugin "core:lsp")` — its
-scan runs later, on activation, well after your init.scm has finished, so order never
-matters there.
-:::
+`core:lsp` loaded or declared to inspect, stop, or restart it. A manual `register-lsp-server!`
+call always overrides a seeded, installed server for the same language, whether it comes
+before or after `(load-plugin "core:lsp")` or `(declare-plugin "core:lsp")` in your init.scm —
+order doesn't matter. `register-lsp-server!` takes:
 
 | Argument | Meaning |
 |----------|---------|
