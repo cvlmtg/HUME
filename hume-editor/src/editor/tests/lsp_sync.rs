@@ -312,3 +312,52 @@ fn save_flushes_pending_change_before_did_save() {
         "the queued edit's didChange must reach the wire before didSave, got: {methods:?}"
     );
 }
+
+/// #:init-options registered through the real Steel path must reach the
+/// spawned server's `initialize` request as `initializationOptions` —
+/// end-to-end proof that `LspServerConfig.init_options` isn't dead weight.
+#[test]
+fn register_lsp_server_init_options_reach_the_initialize_request() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(tmp.path()).unwrap();
+    std::fs::write(root.join("Cargo.toml"), b"").unwrap();
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    let file = root.join("src/main.rs");
+    std::fs::write(&file, "hello world\n").unwrap();
+
+    let mut ed = editor_from("-[w]>ord\n");
+    let (backend, _notifications, requests) = RecordingLspBackend::with_default_handshake();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    ed.state
+        .languages
+        .register_identity("rust", &["rs"], &[], &[])
+        .unwrap();
+
+    let mut host = ScriptingHost::new();
+    eval_register(
+        &mut ed,
+        &mut host,
+        r#"(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml")
+                                       #:init-options (hash "check" (hash "command" "clippy")))"#,
+        tmp.path(),
+    );
+
+    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
+    ed.drain_lsp();
+
+    let recorded = requests.borrow();
+    let initialize_calls: Vec<_> = recorded
+        .iter()
+        .filter(|(_, method, _)| method == "initialize")
+        .collect();
+    assert_eq!(
+        initialize_calls.len(),
+        1,
+        "expected exactly one initialize request, got: {recorded:?}"
+    );
+    let (_, _, params) = initialize_calls[0];
+    assert_eq!(
+        params["initializationOptions"]["check"]["command"],
+        "clippy"
+    );
+}

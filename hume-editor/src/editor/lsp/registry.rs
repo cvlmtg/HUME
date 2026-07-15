@@ -13,9 +13,8 @@ pub(crate) struct LspServerConfig {
     pub(crate) command: String,
     pub(crate) args: Vec<String>,
     pub(crate) root_markers: Vec<String>,
-    /// Sent verbatim in the `initialize` request once the handshake gains
-    /// an init-options parameter.
-    #[allow(dead_code)]
+    /// Sent verbatim as `initializationOptions` in the `initialize` request
+    /// (`lsp_attach_buffer`'s spawn branch, via `LspClient::set_init_options`).
     pub(crate) init_options: Option<serde_json::Value>,
     /// Answered verbatim to `workspace/configuration` requests and sent as
     /// `didChangeConfiguration` after `initialized` — needs
@@ -225,6 +224,7 @@ impl Editor {
             match self.lsp.backend.start(&config.command, &config.args, &root) {
                 Ok(server_id) => {
                     let mut client = hume_lsp::client::LspClient::new(server_id, root);
+                    client.set_init_options(config.init_options.clone());
                     client.start_handshake(self.lsp.backend.as_mut());
                     self.lsp.servers.insert(
                         server_id,

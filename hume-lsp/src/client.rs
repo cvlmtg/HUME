@@ -163,6 +163,10 @@ pub struct LspClient {
     /// that could drift on its own.
     encoding: PositionEncoding,
     root: PathBuf,
+    /// `initializationOptions` for the `initialize` request — set via
+    /// `set_init_options` before `start_handshake` to take effect; `None`
+    /// omits the field entirely (never sent as `null`).
+    init_options: Option<serde_json::Value>,
     /// Messages (e.g. `didOpen`) that arrived while `Starting` — sent, in
     /// order, right after `initialized` once the handshake completes.
     queued: Vec<Message>,
@@ -188,6 +192,7 @@ impl LspClient {
             caps: None,
             encoding: PositionEncoding::Utf16,
             root,
+            init_options: None,
             queued: Vec::new(),
             initialize_id: None,
             ids: IdAllocator::new(),
@@ -206,6 +211,12 @@ impl LspClient {
 
     pub fn capabilities(&self) -> Option<&ServerCapabilities> {
         self.caps.as_ref()
+    }
+
+    /// Sets `initializationOptions` for the upcoming `initialize` request —
+    /// must be called before `start_handshake` to take effect.
+    pub fn set_init_options(&mut self, init_options: Option<serde_json::Value>) {
+        self.init_options = init_options;
     }
 
     pub fn encoding(&self) -> PositionEncoding {
@@ -384,8 +395,11 @@ impl LspClient {
             },
         );
 
-        let params = serde_json::to_value(build_initialize_params(&self.root))
-            .expect("InitializeParams always serializes");
+        let params = serde_json::to_value(build_initialize_params(
+            &self.root,
+            self.init_options.clone(),
+        ))
+        .expect("InitializeParams always serializes");
 
         // Sent directly, never via `send_or_queue` — `initialize` is the one
         // request legal on the wire before `initialized`; routing it through
@@ -545,7 +559,10 @@ impl LspClient {
 
 #[allow(deprecated)] // root_uri/root_path are deprecated in favor of workspace_folders,
 // but rootUri compatibility is deliberate (older servers still read it).
-fn build_initialize_params(root: &std::path::Path) -> InitializeParams {
+fn build_initialize_params(
+    root: &std::path::Path,
+    init_options: Option<serde_json::Value>,
+) -> InitializeParams {
     let root_uri = uri::path_to_uri(root).ok();
     let workspace_folders = root_uri.clone().map(|u| {
         let name = root
@@ -564,6 +581,7 @@ fn build_initialize_params(root: &std::path::Path) -> InitializeParams {
             name: "hume".to_string(),
             version: None,
         }),
+        initialization_options: init_options,
         ..Default::default()
     }
 }
@@ -746,7 +764,7 @@ mod tests {
         let root = PathBuf::from(r"C:\tmp\proj");
         #[cfg(not(windows))]
         let root = PathBuf::from("/tmp/proj");
-        let params = build_initialize_params(&root);
+        let params = build_initialize_params(&root, None);
 
         assert_eq!(params.process_id, Some(std::process::id()));
         assert!(params.root_uri.is_some());
@@ -848,6 +866,47 @@ mod tests {
                 }
             }
             other => panic!("expected one BecameRunning action, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn initialize_request_carries_initialization_options_when_set() {
+        let mut backend = InlineLspBackend::new();
+        let sid = backend.start("x", &[], std::path::Path::new(".")).unwrap();
+        let mut client = LspClient::new(sid, PathBuf::from("."));
+
+        client.set_init_options(Some(
+            serde_json::json!({"check": {"command": "clippy"}}),
+        ));
+        client.start_handshake(&mut backend);
+
+        match &backend.sent[0] {
+            (_, Message::Request { params, .. }) => {
+                assert_eq!(
+                    params["initializationOptions"]["check"]["command"],
+                    "clippy"
+                );
+            }
+            other => panic!("expected the initialize request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn initialize_request_omits_initialization_options_when_unset() {
+        let mut backend = InlineLspBackend::new();
+        let sid = backend.start("x", &[], std::path::Path::new(".")).unwrap();
+        let mut client = LspClient::new(sid, PathBuf::from("."));
+
+        client.start_handshake(&mut backend);
+
+        match &backend.sent[0] {
+            (_, Message::Request { params, .. }) => {
+                assert!(
+                    params.get("initializationOptions").is_none(),
+                    "expected the key to be absent, not null: {params:?}"
+                );
+            }
+            other => panic!("expected the initialize request, got {other:?}"),
         }
     }
 
