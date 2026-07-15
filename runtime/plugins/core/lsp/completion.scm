@@ -54,68 +54,14 @@
     (lsp/guard-capability "completionProvider"
       (lambda () (lsp/request-and-begin-completions bid)))))
 
-;; ── Post-accept: additionalTextEdits, resolve ────────────────────────────────
-;; Rust applies only the item's main edit (textEdit or insertText) before
-;; firing this — auto-import edits and anything only available via resolve
-;; are Steel's job from here.
-
-(define (lsp/completion-resolve-provider?)
-  (let ((caps (lsp-capabilities #f)))
-    (and caps
-         (hash-contains? caps "completionProvider")
-         (let ((cp (hash-ref caps "completionProvider")))
-           (and (hash-contains? cp "resolveProvider")
-                (equal? (hash-ref cp "resolveProvider") #t))))))
-
-;;; Rust already applied `item`'s main edit before this fires — an
-;;; `additionalTextEdits` entry on the *same line* as the main edit's end,
-;;; at or after its end column, still carries its pre-edit column and now
-;;; lands short/long by the main edit's UTF-16 length delta.
-;;; `end-line`/`end-char`/`delta` describe the main edit's already-applied
-;;; end position and length change; a different-line edit (the common
-;;; case — a top-of-file auto-import) is untouched. additionalTextEdits
-;;; never overlap the main edit (LSP spec), so one starting before the
-;;; main edit's end is entirely unaffected by it, never partially.
-(define (lsp/shift-additional-edit end-line end-char delta te)
-  (let* ((range (hash-ref te "range"))
-         (start (hash-ref range "start"))
-         (end (hash-ref range "end")))
-    (if (and (equal? (hash-ref start "line") end-line)
-             (>= (hash-ref start "character") end-char))
-        (hash-insert te "range"
-          (hash "start" (hash-insert start "character" (+ (hash-ref start "character") delta))
-                "end" (hash-insert end "character" (+ (hash-ref end "character") delta))))
-        te)))
-
-(define (lsp/apply-additional-edits! bid item)
-  (when (hash-contains? item "additionalTextEdits")
-    (let* ((edits (hash-ref item "additionalTextEdits"))
-           (edits
-             (if (hash-contains? item "textEdit")
-                 (let* ((te (hash-ref item "textEdit"))
-                        (main-range (hash-ref te "range"))
-                        (main-start (hash-ref main-range "start"))
-                        (main-end (hash-ref main-range "end"))
-                        (delta (- (lsp/string-utf16-length (hash-ref te "newText"))
-                                  (- (hash-ref main-end "character") (hash-ref main-start "character")))))
-                   (map (lambda (e)
-                          (lsp/shift-additional-edit
-                            (hash-ref main-end "line") (hash-ref main-end "character") delta e))
-                        edits))
-                 edits)))
-      (apply-text-edits! bid (map lsp/text-edit->tuple edits)))))
-
-(register-hook! 'on-completion-accept
-  (lambda (bid item)
-    (cond
-      ((hash-contains? item "additionalTextEdits") (lsp/apply-additional-edits! bid item))
-      ((lsp/completion-resolve-provider?)
-       (lsp-request #f "completionItem/resolve" item
-         (lambda (err resolved)
-           (cond
-             (err (lsp/report-error "completion resolve" err))
-             ((void? resolved) (begin))
-             (else (lsp/apply-additional-edits! bid resolved)))))))))
+;; ── on-completion-accept ─────────────────────────────────────────────────────
+;; Rust applies the main edit, any additionalTextEdits, and (when the item
+;; lacked additionalTextEdits but the server advertises resolveProvider) the
+;; completionItem/resolve round trip — all atomically, through the same
+;; ChangeSet the accept edit produced (see `CompletionSession::accept` and
+;; `edits::apply_resolved_additional_edits`, hume-editor/src/editor/lsp/).
+;; on-completion-accept remains a plain extension point for anything this
+;; store doesn't parse (e.g. `command`) — no default handler needed here.
 
 ;; ── isIncomplete re-request ──────────────────────────────────────────────────
 ;; Rust only fires this while the open session's isIncomplete flag is set —

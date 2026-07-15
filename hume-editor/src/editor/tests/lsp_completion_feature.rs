@@ -427,6 +427,275 @@ fn additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it() {
     );
 }
 
+/// Same shape as `additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it`,
+/// but with an astral-plane character (🎉, a UTF-16 surrogate pair — 2 wire
+/// units, 1 char) before both edits on the line. The atomic-batch path
+/// (`build_edit_changeset`) converts each edit's own wire position to a char
+/// offset independently via `wire_to_char` — no UTF-16-delta arithmetic
+/// between edits at all — so this proves that conversion is correct with an
+/// astral prefix on the line, not just plain ASCII.
+#[test]
+#[cfg(not(windows))]
+fn additional_edit_on_the_same_line_with_an_astral_prefix_lands_correctly() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    // "🎉foo.b XXX\n": 🎉 is char 0 (wire columns 0..2); "foo.b XXX" follows
+    // at char 1 (wire column 2).
+    let file = file_dir.path().join("main.rs");
+    std::fs::write(&file, "🎉foo.b XXX\n").unwrap();
+    let (mut ed, _guard, _requests) = setup(
+        &file,
+        tmp.path(),
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([{
+                    "label": "bar",
+                    "textEdit": {
+                        "range": {"start": {"line": 0, "character": 5}, "end": {"line": 0, "character": 7}},
+                        "newText": ".bar"
+                    },
+                    "additionalTextEdits": [
+                        {"range": {"start": {"line": 0, "character": 8}, "end": {"line": 0, "character": 11}},
+                         "newText": "YYY"}
+                    ]
+                }]),
+            );
+        },
+    );
+    // Char 6: right after "🎉foo.b" (1 + 5 = 6) — matches the server's
+    // textEdit end exactly.
+    let bid = ed.focused_buffer_id();
+    let pid = ed.state.focused_pane_id;
+    let pbs = ed
+        .state
+        .panes
+        .state
+        .get_mut(pid)
+        .and_then(|by_buf| by_buf.get_mut(bid))
+        .expect("pane buffer state must exist");
+    pbs.selections = hume_editing::selection::SelectionSet::single(
+        hume_editing::selection::Selection::collapsed(6),
+    );
+
+    ed.feed_key(key('i'));
+    ed.drain_hooks();
+    ed.feed_key(key_ctrl(' '));
+    settle(&mut ed);
+    ed.feed_key(key_enter());
+    settle(&mut ed);
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "🎉foo.bar YYY\n",
+        "both edits must land at their exact wire-converted positions despite the \
+         astral-plane prefix on the line"
+    );
+}
+
+/// The resolve-path counterpart to
+/// `additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it`
+/// — same fixture and expected result, but the additionalTextEdits arrive
+/// via `completionItem/resolve` instead of inline on the completion
+/// response, exercising `edits::apply_resolved_additional_edits`'
+/// `ChangeSet::map_ranges` position tracking instead of the inline atomic
+/// batch. Both land at the identical final text, proving the resolve path
+/// is exact, not an approximation.
+#[test]
+#[cfg(not(windows))]
+fn resolved_additional_edits_land_through_the_accept_edit_on_the_same_line() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = file_dir.path().join("main.rs");
+    std::fs::write(&file, "foo.b XXX\n").unwrap();
+    let (mut ed, _guard, _requests) = setup(
+        &file,
+        tmp.path(),
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([{
+                    "label": "bar",
+                    "textEdit": {
+                        "range": {"start": {"line": 0, "character": 3}, "end": {"line": 0, "character": 5}},
+                        "newText": ".bar"
+                    }
+                }]),
+            );
+            backend.respond_to(
+                "completionItem/resolve",
+                serde_json::json!({
+                    "label": "bar",
+                    "additionalTextEdits": [
+                        {"range": {"start": {"line": 0, "character": 6}, "end": {"line": 0, "character": 9}},
+                         "newText": "YYY"}
+                    ]
+                }),
+            );
+        },
+    );
+    let bid = ed.focused_buffer_id();
+    let pid = ed.state.focused_pane_id;
+    let pbs = ed
+        .state
+        .panes
+        .state
+        .get_mut(pid)
+        .and_then(|by_buf| by_buf.get_mut(bid))
+        .expect("pane buffer state must exist");
+    pbs.selections = hume_editing::selection::SelectionSet::single(
+        hume_editing::selection::Selection::collapsed(5),
+    );
+
+    ed.feed_key(key('i'));
+    ed.drain_hooks();
+    ed.feed_key(key_ctrl(' '));
+    settle(&mut ed);
+    // `key_enter()` runs accept synchronously (main edit lands, resolve
+    // request sent); the single `settle()` below drains the scripted
+    // backend's already-queued response and runs the (plain Rust, not
+    // Steel-queued) resolve callback inline — no second drain round needed,
+    // unlike a Steel `lsp-request` callback which only queues on response.
+    ed.feed_key(key_enter());
+    settle(&mut ed);
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "foo.bar YYY\n",
+        "a resolved additionalTextEdit on the same line as the main edit must land at \
+         the exact position, mapped through the accept ChangeSet — not approximated \
+         by a UTF-16 delta"
+    );
+}
+
+/// The staleness half of the resolve contract: a resolve response arriving
+/// after the user has typed more text must be dropped, not applied against
+/// stale positions (same discipline `stale_check` already gives every other
+/// `lsp-request`).
+#[test]
+#[cfg(not(windows))]
+fn resolved_additional_edits_are_dropped_after_a_post_accept_edit() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = file_dir.path().join("main.rs");
+    std::fs::write(&file, "\nfoo\n").unwrap();
+    let (mut ed, _guard, _requests) = setup(
+        &file,
+        tmp.path(),
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([{"label": "bar", "insertText": "bar"}]),
+            );
+            backend.respond_to(
+                "completionItem/resolve",
+                serde_json::json!({
+                    "label": "bar",
+                    "additionalTextEdits": [
+                        {"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}},
+                         "newText": "use std::bar;\n"}
+                    ]
+                }),
+            );
+        },
+    );
+    let bid = ed.focused_buffer_id();
+    let pid = ed.state.focused_pane_id;
+    let pbs = ed
+        .state
+        .panes
+        .state
+        .get_mut(pid)
+        .and_then(|by_buf| by_buf.get_mut(bid))
+        .expect("pane buffer state must exist");
+    pbs.selections = hume_editing::selection::SelectionSet::single(
+        hume_editing::selection::Selection::collapsed(1),
+    );
+
+    ed.feed_key(key('i'));
+    ed.drain_hooks();
+    ed.feed_key(key_ctrl(' '));
+    settle(&mut ed);
+    // `key_enter()`'s keybinding dispatch runs `accept_completion_selection`
+    // synchronously — the main edit lands and the resolve request is *sent*
+    // in this call, but its scripted response isn't drained until the next
+    // `drain_lsp`. Typing `X` right here, before any drain, bumps text_gen
+    // past what the resolve request's `stale_check` was armed with.
+    ed.feed_key(key_enter());
+    ed.feed_key(key('X'));
+
+    settle(&mut ed);
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "\nbarXfoo\n",
+        "a resolve response landing after further typing must be dropped — no \
+         \"use std::bar;\" must appear, and the typed X must survive untouched"
+    );
+}
+
+/// `:lsp-stop` sweeps every pending request via `LspClient::drain_pending`
+/// (the same generic teardown every in-flight `lsp-request` gets) — a
+/// resolve request in flight at stop time must not apply anything once its
+/// swept `Outcome::TimedOut` reaches the callback, and must not panic.
+#[test]
+#[cfg(not(windows))]
+fn resolve_does_not_apply_anything_after_lsp_stop() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = file_dir.path().join("main.rs");
+    std::fs::write(&file, "\nfoo\n").unwrap();
+    let (mut ed, _guard, requests) = setup(
+        &file,
+        tmp.path(),
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([{"label": "bar", "insertText": "bar"}]),
+            );
+            // Deliberately no scripted reply for completionItem/resolve —
+            // :lsp-stop must sweep it before any reply would matter.
+        },
+    );
+    let bid = ed.focused_buffer_id();
+    let pid = ed.state.focused_pane_id;
+    let pbs = ed
+        .state
+        .panes
+        .state
+        .get_mut(pid)
+        .and_then(|by_buf| by_buf.get_mut(bid))
+        .expect("pane buffer state must exist");
+    pbs.selections = hume_editing::selection::SelectionSet::single(
+        hume_editing::selection::Selection::collapsed(1),
+    );
+
+    ed.feed_key(key('i'));
+    ed.drain_hooks();
+    ed.feed_key(key_ctrl(' '));
+    settle(&mut ed);
+    ed.feed_key(key_enter()); // main edit lands, resolve request sent
+
+    assert_eq!(
+        request_count(&requests, "completionItem/resolve"),
+        1,
+        "sanity: resolve must have been sent before the stop"
+    );
+
+    ed.lsp_stop(Some("rust")); // sweeps the in-flight resolve as TimedOut
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "\nbarfoo\n",
+        "the main edit must stand, and the swept resolve must not apply anything \
+         (no panic, no phantom edit)"
+    );
+}
+
 #[test]
 #[cfg(not(windows))]
 fn resolve_sent_only_when_item_lacks_additional_text_edits_and_resolve_provider_present() {
@@ -460,6 +729,18 @@ fn resolve_sent_only_when_item_lacks_additional_text_edits_and_resolve_provider_
         request_count(&requests, "completionItem/resolve"),
         1,
         "an item with no additionalTextEdits, with resolveProvider present, must resolve"
+    );
+    let resolve_params = requests
+        .borrow()
+        .iter()
+        .find(|(_, m, _)| m == "completionItem/resolve")
+        .map(|(_, _, params)| params.clone())
+        .expect("resolve request must be present");
+    assert_eq!(
+        resolve_params,
+        serde_json::json!({"label": "bar", "insertText": "bar"}),
+        "completionItem/resolve params must be the raw (pristine) accepted item, not a \
+         Rust-projected subset"
     );
 }
 

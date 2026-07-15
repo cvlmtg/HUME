@@ -30,11 +30,19 @@ pub(crate) struct StoredCompletionItem {
     filter_text: String,
     insert_text: String,
     text_edit: Option<lsp_types::TextEdit>,
+    additional_text_edits: Vec<lsp_types::TextEdit>,
+    /// Distinguishes "server sent no `additionalTextEdits` key at all" from
+    /// "server sent an empty array" — an empty array still means "nothing
+    /// more to apply *and* don't bother resolving", same as a present-but-
+    /// empty list; only the key's absence means resolve might have more to
+    /// offer. See `CompletionSession::accept`'s resolve gate.
+    has_additional_text_edits: bool,
     /// The full response item, unparsed — handed to `on-completion-accept`
-    /// so Steel can read `additionalTextEdits`, `data` (for
-    /// `completionItem/resolve`), or any other field this store doesn't
+    /// so Steel can read `data` or any other field this store doesn't
     /// parse, without Rust needing to grow a reader for every LSP field a
-    /// feature might eventually want.
+    /// feature might eventually want. Deliberately the *pristine* item
+    /// (snippet syntax included) — Steel/resolve should see exactly what
+    /// the server sent, not this store's stripped/narrowed projection.
     raw: serde_json::Value,
 }
 
@@ -87,6 +95,12 @@ impl StoredCompletionItem {
                 te
             }
         });
+        // `Option<Vec<T>>` fields deserialize key-absent -> `None` (serde's
+        // built-in special case for `Option`, no `#[serde(default)]`
+        // needed), so `is_some()` here really does mean "the server sent
+        // this key" — not "the server sent a non-empty array".
+        let has_additional_text_edits = item.additional_text_edits.is_some();
+        let additional_text_edits = item.additional_text_edits.unwrap_or_default();
         Self {
             label,
             kind,
@@ -95,6 +109,8 @@ impl StoredCompletionItem {
             filter_text,
             insert_text,
             text_edit,
+            additional_text_edits,
+            has_additional_text_edits,
             raw: v.clone(),
         }
     }
@@ -139,6 +155,8 @@ impl StoredCompletionItem {
                 te
             }
         });
+        let has_additional_text_edits = v.get("additionalTextEdits").is_some();
+        let additional_text_edits = parse_additional_text_edits_lenient(v);
         Some(Self {
             label,
             kind,
@@ -147,6 +165,8 @@ impl StoredCompletionItem {
             filter_text,
             insert_text,
             text_edit,
+            additional_text_edits,
+            has_additional_text_edits,
             raw: v.clone(),
         })
     }
@@ -404,15 +424,28 @@ impl CompletionSession {
     }
 
     /// Applies `filtered[idx]`'s `textEdit` (falling back to `insertText`
-    /// over the whole identifier token when absent) as one undo step
-    /// through the edit engine, gen-checked against `generation_at_begin` —
-    /// a buffer edit that bypassed `update_filter` (so never re-stamped the
-    /// generation) rejects rather than applying against text the item
-    /// wasn't computed for.
+    /// over the whole identifier token when absent) plus any
+    /// `additionalTextEdits` — atomically, as one undo step — gen-checked
+    /// against `generation_at_begin`. All edits are wire positions computed
+    /// by the server against the *same* pre-accept document (LSP spec:
+    /// `additionalTextEdits` never overlap the main edit), so batching them
+    /// into one `ChangeSet` needs no relative position adjustment between
+    /// them — unlike a resolve response's edits (see below), which are
+    /// computed later, against that same pre-accept document, and so must
+    /// be mapped *forward* through this edit before they mean anything.
+    ///
+    /// If the item lacks `additionalTextEdits` entirely (not just an empty
+    /// array — see [`StoredCompletionItem::has_additional_text_edits`]) and
+    /// the server advertises `completionProvider.resolveProvider`, sends
+    /// `completionItem/resolve` and applies whatever it returns once the
+    /// response lands (via the ordinary `LspCallback`/`stale_check`
+    /// machinery every other `lsp-request` uses — dropped silently if the
+    /// buffer has moved past `generation_at_begin`'s successor by then,
+    /// same staleness discipline as any other LSP response).
     pub(crate) fn accept(
         &self,
         state: &mut EditorState,
-        lsp: &LspState,
+        lsp: &mut LspState,
         idx: usize,
     ) -> Result<(), String> {
         let &item_idx = self
@@ -467,25 +500,135 @@ impl CompletionSession {
                 }
             }
         };
-        edits::apply_text_edits(
+
+        // Captured *before* the edit lands — a resolve response (if one
+        // ends up sent below) is computed against this exact pre-accept
+        // document, and its wire positions must be decoded against it, not
+        // whatever the buffer holds once the response actually arrives.
+        let rope_pre = state.buffers.get(self.bid).text().rope().clone();
+
+        let mut all_edits = Vec::with_capacity(1 + item.additional_text_edits.len());
+        all_edits.push(text_edit);
+        all_edits.extend(item.additional_text_edits.iter().cloned());
+        let accept_cs = edits::apply_text_edits_returning_cs(
             state,
             lsp,
             self.bid,
-            vec![text_edit],
+            all_edits,
             Some(self.generation_at_begin),
         )?;
 
-        // Fire on-completion-accept with the raw item *after* the main
-        // edit lands — Steel reads `additionalTextEdits`/`data` from `item`
-        // and applies them itself (auto-import edits, resolve-on-accept);
-        // Rust never parses those fields.
+        // Fire on-completion-accept with the raw (pristine) item after the
+        // edit lands — an extension point for anything this store doesn't
+        // parse (e.g. `command`); Rust now owns additionalTextEdits/resolve.
         let bid_val = hume_scripting::SteelBufferId::new(self.bid).into_steel_val();
         let item_val = json_to_steel(&item.raw);
         state
             .pending_hooks
             .push((HookId::OnCompletionAccept, vec![bid_val, item_val]));
+
+        if !item.has_additional_text_edits {
+            self.maybe_send_resolve(state, lsp, item, rope_pre, accept_cs, encoding);
+        }
         Ok(())
     }
+
+    /// Sends `completionItem/resolve` when the server advertised
+    /// `completionProvider.resolveProvider` — best-effort: a resolution
+    /// error, timeout, or a server that's gone by send time only logs, it
+    /// never fails the accept that already landed.
+    fn maybe_send_resolve(
+        &self,
+        state: &mut EditorState,
+        lsp: &mut LspState,
+        item: &StoredCompletionItem,
+        rope_pre: ropey::Rope,
+        accept_cs: hume_editing::changeset::ChangeSet,
+        encoding: hume_editing::position_encoding::PositionEncoding,
+    ) {
+        let Some(server_id) = state.buffers.try_get(self.bid).and_then(|b| b.lsp_server) else {
+            return;
+        };
+        let resolve_provider = lsp
+            .servers
+            .get(&server_id)
+            .and_then(|e| e.capabilities_json.as_ref())
+            .and_then(|caps| caps.get("completionProvider"))
+            .and_then(|cp| cp.get("resolveProvider"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if !resolve_provider {
+            return;
+        }
+
+        // Same discipline `lsp-request` itself uses (bridge.rs): a request
+        // minted here must not reach the wire ahead of the didChange
+        // describing the edit `accept` just applied.
+        super::sync::flush_lsp_pending_changes(state, lsp);
+        let bid = self.bid;
+        let timeout_ms = state.settings.lsp_request_timeout_ms as u64;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+        let meta = hume_lsp::client::RequestMeta {
+            method: "completionItem/resolve".to_string(),
+            allow_stale: false,
+            deadline,
+        };
+        let gen_after = state.buffers.get(bid).text_gen;
+        let Some(id) = lsp.send_request(
+            server_id,
+            "completionItem/resolve",
+            item.raw.clone(),
+            meta,
+        ) else {
+            return; // server gone between the capability check and now
+        };
+        let callback: super::LspCallback = Box::new(move |editor, outcome| {
+            match outcome {
+                hume_lsp::client::Outcome::Ok(resolved) => {
+                    let resolved_edits = parse_additional_text_edits_lenient(&resolved);
+                    if let Err(e) = edits::apply_resolved_additional_edits(
+                        &mut editor.state,
+                        bid,
+                        &rope_pre,
+                        &accept_cs,
+                        encoding,
+                        &resolved_edits,
+                    ) {
+                        editor.report(
+                            crate::editor::Severity::Error,
+                            format!("lsp completion resolve: {e}"),
+                        );
+                    }
+                }
+                hume_lsp::client::Outcome::Err(e) => {
+                    editor.report(
+                        crate::editor::Severity::Error,
+                        format!("lsp completion resolve: {} ({})", e.message, e.code),
+                    );
+                }
+                hume_lsp::client::Outcome::TimedOut => {
+                    editor.report(
+                        crate::editor::Severity::Error,
+                        "lsp completion resolve: timeout".to_string(),
+                    );
+                }
+            }
+        });
+        lsp.register_callback(server_id, id, Some((bid, gen_after)), callback);
+    }
+}
+
+/// Lenient `additionalTextEdits` reader, shared by `from_json_lenient`
+/// (an off-spec completion item) and the `completionItem/resolve` response
+/// handler (which never goes through strict deserialize at all — a resolved
+/// item that's otherwise off-spec shouldn't lose a well-formed edit list
+/// over an unrelated malformed field elsewhere in the response).
+fn parse_additional_text_edits_lenient(resolved: &serde_json::Value) -> Vec<lsp_types::TextEdit> {
+    resolved
+        .get("additionalTextEdits")
+        .and_then(|x| x.as_array())
+        .map(|arr| arr.iter().filter_map(text_edit_from_json_lenient).collect())
+        .unwrap_or_default()
 }
 
 /// Clears `lsp`'s completion session + menu UI (not the shared view Arc —

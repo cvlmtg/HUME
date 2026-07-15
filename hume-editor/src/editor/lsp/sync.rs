@@ -15,6 +15,7 @@ use ropey::Rope;
 
 use super::LspState;
 use crate::editor::Editor;
+use crate::editor::EditorState;
 use crate::editor::buffer::Buffer;
 
 /// One text mutation queued for `didChange` conversion. `before` is the
@@ -136,73 +137,81 @@ impl Editor {
     /// missing any of those skips the send but never skips the remap, so a
     /// decoration-only buffer's positions don't silently drift.
     pub(in crate::editor) fn flush_lsp_pending_changes(&mut self) {
-        let with_pending: Vec<BufferId> = self
-            .state
-            .buffers
-            .iter()
-            .filter(|(_, buf)| !buf.lsp_pending.is_empty())
-            .map(|(id, _)| id)
-            .collect();
+        flush_lsp_pending_changes(&mut self.state, &mut self.lsp);
+    }
+}
 
-        for bid in with_pending {
-            let buf = self.state.buffers.get(bid);
-            // Resolved *before* taking the queue below, from the buffer's
-            // state at this instant — a missing server/path/URI just means
-            // there's nothing to send, not that the entries should be
-            // dropped unremapped.
-            let send_target = buf
-                .lsp_server
-                .and_then(|sid| Some((sid, hume_lsp::uri::path_to_uri(buf.path()?).ok()?)));
+/// Free-function body of [`Editor::flush_lsp_pending_changes`] — operates on
+/// disjoint `state`/`lsp` borrows only (no other `Editor` field), so it's
+/// also callable from `EditorHostImpl` (completion's accept path needs this
+/// same flush, synchronously, before sending a `completionItem/resolve`
+/// request — see `completion::CompletionSession::accept`).
+pub(crate) fn flush_lsp_pending_changes(state: &mut EditorState, lsp: &mut LspState) {
+    let with_pending: Vec<BufferId> = state
+        .buffers
+        .iter()
+        .filter(|(_, buf)| !buf.lsp_pending.is_empty())
+        .map(|(id, _)| id)
+        .collect();
 
-            let buf = self.state.buffers.get_mut(bid);
-            let pending = std::mem::take(&mut buf.lsp_pending);
+    for bid in with_pending {
+        let buf = state.buffers.get(bid);
+        // Resolved *before* taking the queue below, from the buffer's
+        // state at this instant — a missing server/path/URI just means
+        // there's nothing to send, not that the entries should be
+        // dropped unremapped.
+        let send_target = buf
+            .lsp_server
+            .and_then(|sid| Some((sid, hume_lsp::uri::path_to_uri(buf.path()?).ok()?)));
 
-            // Manual field split: the loop below interleaves a diagnostics
-            // remap with a client-routed send, so `servers`/`backend`/
-            // `diagnostics` all need to be borrowed independently out of
-            // `self.lsp` rather than through method calls on the whole struct.
-            let LspState {
-                servers,
-                backend,
-                diagnostics,
-                ..
-            } = &mut self.lsp;
+        let buf = state.buffers.get_mut(bid);
+        let pending = std::mem::take(&mut buf.lsp_pending);
 
-            for change in pending {
-                // Same source as the didChange conversion below — remap
-                // stored diagnostics through the identical ChangeSet before
-                // it's consumed, so both consumers see the exact
-                // same edit stream, including undo/redo. The char-offset
-                // decoration stores (inlay hints, extra highlights) go
-                // through the same chokepoint for the same reason — done
-                // unconditionally, whether or not this buffer has anywhere
-                // to send a didChange.
-                diagnostics.remap_through(bid, &change.cs);
-                self.state.decorations.remap_through(bid, &change.cs);
+        // Manual field split: the loop below interleaves a diagnostics
+        // remap with a client-routed send, so `servers`/`backend`/
+        // `diagnostics` all need to be borrowed independently out of
+        // `lsp` rather than through method calls on the whole struct.
+        let LspState {
+            servers,
+            backend,
+            diagnostics,
+            ..
+        } = lsp;
 
-                let Some((server_id, uri)) = &send_target else {
-                    continue; // no attached server (or no path/URI yet) — nothing to send
-                };
-                let Some(client) = servers.get_mut(server_id).map(|e| &mut e.client) else {
-                    continue; // can't happen once attached, but never send into the void
-                };
-                let events =
-                    changeset_to_content_changes(&change.before, &change.cs, client.encoding());
-                if events.is_empty() {
-                    continue;
-                }
-                let params = serde_json::json!({
-                    "textDocument": { "uri": uri.as_str(), "version": wire_version(change.version) },
-                    "contentChanges": events,
-                });
-                client.send_or_queue(
-                    backend.as_mut(),
-                    Message::Notification {
-                        method: DidChangeTextDocument::METHOD.to_string(),
-                        params,
-                    },
-                );
+        for change in pending {
+            // Same source as the didChange conversion below — remap
+            // stored diagnostics through the identical ChangeSet before
+            // it's consumed, so both consumers see the exact
+            // same edit stream, including undo/redo. The char-offset
+            // decoration stores (inlay hints, extra highlights) go
+            // through the same chokepoint for the same reason — done
+            // unconditionally, whether or not this buffer has anywhere
+            // to send a didChange.
+            diagnostics.remap_through(bid, &change.cs);
+            state.decorations.remap_through(bid, &change.cs);
+
+            let Some((server_id, uri)) = &send_target else {
+                continue; // no attached server (or no path/URI yet) — nothing to send
+            };
+            let Some(client) = servers.get_mut(server_id).map(|e| &mut e.client) else {
+                continue; // can't happen once attached, but never send into the void
+            };
+            let events =
+                changeset_to_content_changes(&change.before, &change.cs, client.encoding());
+            if events.is_empty() {
+                continue;
             }
+            let params = serde_json::json!({
+                "textDocument": { "uri": uri.as_str(), "version": wire_version(change.version) },
+                "contentChanges": events,
+            });
+            client.send_or_queue(
+                backend.as_mut(),
+                Message::Notification {
+                    method: DidChangeTextDocument::METHOD.to_string(),
+                    params,
+                },
+            );
         }
     }
 }

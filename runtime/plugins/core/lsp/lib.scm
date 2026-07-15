@@ -2,7 +2,7 @@
 
 (provide lsp/supports? lsp/supports-for-buffer? lsp/guard-capability lsp/report-error
          lsp/visible-lines lsp/show-locations! lsp/text-edit->tuple
-         lsp/string-utf16-length lsp/utf16-offset->char-index
+         lsp/utf16-offset->char-index
          lsp/setup-trigger-chars!)
 
 ;; ── Capability guard ────────────────────────────────────────────────────────
@@ -99,13 +99,6 @@
 ;; units for astral-plane chars (>= U+10000 — a surrogate pair, 2 units, but
 ;; 1 Steel char). Signature-help's offset-form parameter labels are the one
 ;; place a raw UTF-16 offset pair reaches Steel code directly.
-
-;;; Number of UTF-16 code units `s` would take on the wire.
-(define (lsp/string-utf16-length s)
-  (let loop ((i 0) (n (string-length s)) (units 0))
-    (if (>= i n)
-        units
-        (loop (+ i 1) n (+ units (if (>= (char->integer (string-ref s i)) #x10000) 2 1))))))
 
 ;;; `offset`: a UTF-16 code-unit offset into `s` -> the char index
 ;;; `string-ref`/`substring` expect. Stops at the first char whose

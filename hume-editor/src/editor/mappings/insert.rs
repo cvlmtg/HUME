@@ -364,7 +364,7 @@ impl Editor {
             return;
         };
         self.clear_lsp_completion();
-        if let Err(msg) = session.accept(&mut self.state, &self.lsp, selected) {
+        if let Err(msg) = session.accept(&mut self.state, &mut self.lsp, selected) {
             self.report(Severity::Error, msg);
         }
     }

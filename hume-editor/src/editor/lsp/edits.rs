@@ -7,7 +7,7 @@
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::grapheme::next_grapheme_boundary;
-use hume_editing::position_encoding::wire_to_char;
+use hume_editing::position_encoding::{PositionEncoding, wire_to_char};
 use hume_engine::pipeline::{BufferId, EngineView};
 
 use super::LspState;
@@ -61,7 +61,7 @@ fn build_edit_changeset(
     // `.reverse()` would keep ties in *original* order through the sort but
     // then flip that tie order via the whole-`Vec` reverse, applying them
     // backwards).
-    let mut char_edits: Vec<(usize, usize, &str)> = edits
+    let char_edits: Vec<(usize, usize, &str)> = edits
         .iter()
         .map(|e| {
             let start = wire_to_char(
@@ -79,6 +79,19 @@ fn build_edit_changeset(
             (start, end, e.new_text.as_str())
         })
         .collect();
+    build_changeset_from_char_edits(rope.len_chars(), char_edits)
+}
+
+/// Shared tail for [`build_edit_changeset`] (wire positions, converted to
+/// char offsets above) and the completion-resolve path (already char
+/// offsets, mapped forward through the accept edit) — sort, overlap-check,
+/// then walk once to build the `ChangeSet`. `edits` need not arrive sorted;
+/// `new_text` borrows from the caller's own edit list, so this never
+/// allocates a copy of the replacement text.
+fn build_changeset_from_char_edits(
+    len_before: usize,
+    mut char_edits: Vec<(usize, usize, &str)>,
+) -> Result<ChangeSet, String> {
     if let Some((start, end, _)) = char_edits.iter().find(|&&(start, end, _)| end < start) {
         return Err(format!(
             "text edit has a reversed range (end {end} before start {start})"
@@ -91,7 +104,7 @@ fn build_edit_changeset(
         }
     }
 
-    let mut b = ChangeSetBuilder::new(rope.len_chars());
+    let mut b = ChangeSetBuilder::new(len_before);
     for (start, end, text) in &char_edits {
         b.retain(start - b.old_pos());
         b.delete(end - start);
@@ -107,14 +120,19 @@ fn build_edit_changeset(
 /// queued LSP `didChange`, all for free). `bid` need not be the buffer
 /// shown in the focused pane — `pane_state::ensure` seeds a (possibly
 /// invisible) selection entry for it first, matching how any buffer opened
-/// in the background already gets one.
-fn commit_changeset(state: &mut EditorState, bid: BufferId, cs: ChangeSet) {
+/// in the background already gets one. Returns the applied `ChangeSet`
+/// (cloned before the move into `apply_doc_edit`'s closure) so a caller that
+/// needs to map further positions through this exact edit — completion's
+/// resolve path, mapping a *pre*-accept response's positions forward — can
+/// do so without rebuilding it.
+fn commit_changeset(state: &mut EditorState, bid: BufferId, cs: ChangeSet) -> ChangeSet {
     pane_state::ensure(
         &mut state.panes.state,
         &state.buffers,
         state.focused_pane_id,
         bid,
     );
+    let cs_for_return = cs.clone();
     doc_ops::apply_doc_edit(
         &mut state.buffers,
         &state.decorations,
@@ -130,6 +148,7 @@ fn commit_changeset(state: &mut EditorState, bid: BufferId, cs: ChangeSet) {
             (new_text, sels, cs)
         },
     );
+    cs_for_return
 }
 
 /// `(apply-text-edits! bid edits #:expect-generation gen)`.
@@ -140,7 +159,100 @@ pub(crate) fn apply_text_edits(
     edits: Vec<lsp_types::TextEdit>,
     expect_gen: Option<u64>,
 ) -> Result<(), String> {
+    apply_text_edits_returning_cs(state, lsp, bid, edits, expect_gen)?;
+    Ok(())
+}
+
+/// Same as [`apply_text_edits`] but hands back the applied `ChangeSet` —
+/// completion's accept path needs it to map a subsequent
+/// `completionItem/resolve` response's positions (computed against the
+/// pre-accept document) forward onto the buffer as it stands after this
+/// edit landed.
+pub(crate) fn apply_text_edits_returning_cs(
+    state: &mut EditorState,
+    lsp: &LspState,
+    bid: BufferId,
+    edits: Vec<lsp_types::TextEdit>,
+    expect_gen: Option<u64>,
+) -> Result<ChangeSet, String> {
     let cs = build_edit_changeset(state, lsp, bid, &edits, expect_gen)?;
+    Ok(commit_changeset(state, bid, cs))
+}
+
+/// Applies a `completionItem/resolve` response's `additionalTextEdits`
+/// (wire positions, computed by the server against the document as it stood
+/// *before* the completion's main edit landed) onto `bid`'s *current* text.
+/// `rope_pre`/`encoding` decode the response's wire positions into the char
+/// offsets they meant at request time; `accept_cs` (the main edit's own
+/// `ChangeSet`, from [`apply_text_edits_returning_cs`]) then maps those
+/// offsets forward onto the post-accept document — exact position tracking
+/// through the intervening edit, unlike the UTF-16-delta approximation this
+/// replaces. A caller must re-check the buffer's generation before calling
+/// this (the response can arrive after further edits) — this function does
+/// not gen-check itself, since by the time it runs the "expected" generation
+/// is `accept_cs`'s own postcondition, not a value the caller passes in.
+///
+/// A no-op (`Ok(())`) if `resolved_edits` is empty — matches
+/// `apply-text-edits!`'s convention of erroring on an empty list only when
+/// the caller has no legitimate empty-response case; here, an empty
+/// `additionalTextEdits` on resolve is normal (nothing more to apply).
+pub(crate) fn apply_resolved_additional_edits(
+    state: &mut EditorState,
+    bid: BufferId,
+    rope_pre: &ropey::Rope,
+    accept_cs: &ChangeSet,
+    encoding: PositionEncoding,
+    resolved_edits: &[lsp_types::TextEdit],
+) -> Result<(), String> {
+    if resolved_edits.is_empty() {
+        return Ok(());
+    }
+    let Some(buf) = state.buffers.try_get(bid) else {
+        return Err("no such buffer".to_string());
+    };
+    if buf.is_read_only() {
+        return Err("buffer is read-only".to_string());
+    }
+
+    let mut ranges: Vec<(usize, usize)> = resolved_edits
+        .iter()
+        .map(|e| {
+            let start = wire_to_char(
+                rope_pre,
+                e.range.start.line as usize,
+                e.range.start.character as usize,
+                encoding,
+            );
+            let end = wire_to_char(
+                rope_pre,
+                e.range.end.line as usize,
+                e.range.end.character as usize,
+                encoding,
+            );
+            (start, end)
+        })
+        .collect();
+    if let Some(&(start, end)) = ranges.iter().find(|&&(start, end)| end < start) {
+        return Err(format!(
+            "resolved edit has a reversed range (end {end} before start {start})"
+        ));
+    }
+    // `map_ranges` requires sorted-by-start input; sort the (range, text)
+    // pairing together so the mapped range still lines up with its own text
+    // afterward.
+    let mut indexed: Vec<usize> = (0..ranges.len()).collect();
+    indexed.sort_by_key(|&i| ranges[i].0);
+    ranges.sort_by_key(|&(start, _)| start);
+    accept_cs.map_ranges(&mut ranges);
+
+    let rope = state.buffers.get(bid).text().rope();
+    let len_before = rope.len_chars();
+    let char_edits: Vec<(usize, usize, &str)> = indexed
+        .into_iter()
+        .zip(ranges)
+        .map(|(orig_i, (start, end))| (start, end, resolved_edits[orig_i].new_text.as_str()))
+        .collect();
+    let cs = build_changeset_from_char_edits(len_before, char_edits)?;
     commit_changeset(state, bid, cs);
     Ok(())
 }
