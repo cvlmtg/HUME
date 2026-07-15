@@ -36,16 +36,21 @@
                "range" (hash "start" (hash "line" first "character" 0)
                               "end" (hash "line" (+ last 1) "character" 0))))))
 
-;;; Debounced (200ms) and re-run from both on-viewport-change and
+;;; Debounced (200ms) per buffer and re-run from both on-viewport-change and
 ;;; on-diagnostics-changed — servers refresh hints roughly when diagnostics
 ;;; do, and neither hook carries a stale-safe reason to skip the other.
-;;; Always re-reads the live `(viewport-range bid)` rather than trusting an
-;;; argument, so both call sites can share one signature; `#f` (bid not
-;;; currently shown in any pane) skips silently. Resolved against `bid`'s
-;;; own attached server, not the focused buffer's — a split can show a
-;;; different buffer/language in each pane, and both hooks fire per-buffer.
+;;; `debounce-by`, not `debounce`: a plain `debounce` shares one pending
+;;; timer across every call regardless of args, so a diagnostics batch that
+;;; touches two attached buffers back-to-back would have the second buffer's
+;;; call cancel the first's — keying per `bid` (this function's own first
+;;; arg) makes each buffer's refresh independent. Always re-reads the live
+;;; `(viewport-range bid)` rather than trusting an argument, so both call
+;;; sites can share one signature; `#f` (bid not currently shown in any
+;;; pane) skips silently. Resolved against `bid`'s own attached server, not
+;;; the focused buffer's — a split can show a different buffer/language in
+;;; each pane, and both hooks fire per-buffer.
 (define lsp/refresh-hints
-  (debounce 200
+  (debounce-by 200
     (lambda (bid)
       (let ((range (viewport-range bid))
             (server (lsp-server-for-buffer bid)))

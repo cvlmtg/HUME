@@ -272,6 +272,26 @@ const BOOTSTRAP: &str = r#"
         (when prev (cancel-timer! prev)))
       (set-box! pending (after ms (lambda () (apply proc args)))))))
 
+;; debounce-by — like `debounce`, but keyed per first-argument value instead
+;; of one shared pending timer: a call keyed `k1` never cancels a call keyed
+;; `k2`. Same trailing-edge semantics per key. Relies on the calling
+;; convention already used everywhere `debounce` wraps a single-bid handler
+;; (`(lambda (bid) ...)`) — the key is `(car args)`, not a separate keyfn
+;; argument, so swapping `debounce` for `debounce-by` at an existing call
+;; site needs no other change.
+(define (debounce-by ms proc)
+  (let ((pending (box (hash))))
+    (lambda args
+      (let* ((key (car args))
+             (table (unbox pending)))
+        (when (hash-contains? table key)
+          (cancel-timer! (hash-ref table key)))
+        (set-box! pending
+          (hash-insert (unbox pending) key
+            (after ms (lambda ()
+                        (set-box! pending (hash-remove (unbox pending) key))
+                        (apply proc args)))))))))
+
 (define (diagnostics-for-buffer bid #:severity [severity #f] #:range [range #f])
   (%diagnostics-for-buffer bid severity range))
 

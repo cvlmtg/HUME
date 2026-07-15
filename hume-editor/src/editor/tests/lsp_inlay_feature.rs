@@ -342,6 +342,105 @@ fn an_empty_response_clears_previously_stored_hints() {
     );
 }
 
+/// The debounce-bug regression this fix targets: two attached, visible
+/// buffers each get an `on-diagnostics-changed` fire within the same
+/// debounce window. A plain `debounce` shares one pending timer across
+/// every call regardless of args — buffer B's call would cancel buffer A's
+/// still-pending call, and only B would ever refresh. `debounce-by` keys
+/// per buffer, so both must refresh.
+#[test]
+#[cfg(not(windows))]
+fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file_a = write_fixture_file(file_dir.path());
+    let file_b = file_dir.path().join("main.py");
+    std::fs::write(&file_b, "x = 1\n").unwrap();
+
+    let _guard = RealRuntimeGuard::new();
+    let (mut backend, _notifications, requests) = RecordingLspBackend::new();
+    backend.respond_to(
+        "initialize",
+        serde_json::json!({"capabilities": {"inlayHintProvider": true}}),
+    );
+    backend.respond_to(
+        "initialize",
+        serde_json::json!({"capabilities": {"inlayHintProvider": true}}),
+    );
+    let sid_a = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid_b = backend.start("pylsp", &[], Path::new(".")).unwrap();
+    backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
+    backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
+
+    let mut ed = Editor::open(None).unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+
+    let mut client_a = LspClient::new(sid_a, PathBuf::from("."));
+    client_a.start_handshake(ed.lsp.backend_mut());
+    ed.lsp.insert_client_for_test(client_a);
+    ed.lsp
+        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid_a);
+
+    let mut client_b = LspClient::new(sid_b, PathBuf::from("."));
+    client_b.start_handshake(ed.lsp.backend_mut());
+    ed.lsp.insert_client_for_test(client_b);
+    ed.lsp
+        .insert_server_key_for_test("python".to_string(), PathBuf::from("."), sid_b);
+
+    ed.execute_typed("e", Some(file_a.to_str().unwrap()))
+        .unwrap();
+    let bid_a = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid_a).lsp_server = Some(sid_a);
+
+    ed.open_extra_files(std::slice::from_ref(&file_b));
+    let bid_b = ed
+        .state
+        .buffers
+        .find_by_path(&std::fs::canonicalize(&file_b).unwrap())
+        .expect("file_b opened via open_extra_files");
+    ed.state.buffers.get_mut(bid_b).lsp_server = Some(sid_b);
+    // Both buffers must be *shown* — `lsp/refresh-hints` skips a hidden bid.
+    open_pane(&mut ed.state, &mut ed.view, bid_b);
+
+    for (sid, ev) in ed.lsp.backend_mut().drain() {
+        let actions = ed.lsp.client_for_test(sid).unwrap().on_event(ev);
+        for action in actions {
+            ed.dispatch_lsp_action(sid, action);
+        }
+    }
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(load-plugin "core:lsp")"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    ed.state.settings.lsp_inlay_hints = true;
+
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(80, 25, &mut ctx);
+
+    // Both fires land inside the same 200ms debounce window — no settle in
+    // between.
+    ed.fire_hook_diagnostics_changed(bid_a);
+    ed.fire_hook_diagnostics_changed(bid_b);
+    settle_after_debounce(&mut ed);
+
+    let sent_to = |sid: ServerId| {
+        requests
+            .borrow()
+            .iter()
+            .any(|(s, m, _)| *s == sid && m == "textDocument/inlayHint")
+    };
+    assert!(
+        sent_to(sid_a),
+        "buffer A's refresh must not be cancelled by buffer B's fire in the same window"
+    );
+    assert!(sent_to(sid_b), "buffer B must also refresh");
+}
+
 /// Two buffers, each attached to its own server with different
 /// capabilities: buffer A ("rust", no inlayHintProvider) stays focused;
 /// buffer B ("python", inlayHintProvider: true) sits in a background pane.

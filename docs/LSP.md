@@ -192,7 +192,8 @@ Every Steel-visible surface Steps 1–3 introduce. Cards define the semantics; t
 | `(lsp-position-params bid)` / `(lsp-range-params bid)` → ready-made params hashmaps (encoding-correct) | builtin | B3 |
 | `(viewport-range bid)` → `(list first-line last-line)` currently visible for `bid` (focused pane if it shows `bid`, else the first pane showing it), or `#f` if `bid` isn't shown in any pane | builtin | B3 |
 | `(after ms thunk)` → timer id; `(cancel-timer! id)` | builtin | B4 |
-| `(debounce ms proc)` → debounced proc | builtin (bootstrap wrapper over `after`) | B4 |
+| `(debounce ms proc)` → debounced proc, one shared pending timer across all calls | builtin (bootstrap wrapper over `after`) | B4 |
+| `(debounce-by ms proc)` → debounced proc keyed per `(car args)` — independent pending timer per key, so a call keyed `k2` never cancels a still-pending call keyed `k1` | builtin (bootstrap wrapper over `after`) | B4 |
 | `(set-inlay-hints! bid hints)` | builtin | B5 |
 | `(set-signs! source bid signs)` | builtin | B5 |
 | `(set-virtual-lines! source bid lines)` — each entry `(line text)` or `(line text scope)`, `scope` added in U8b | builtin | B5 |
