@@ -439,7 +439,7 @@ mod tests {
         // Backdate the lock file's mtime past the 1h staleness threshold —
         // no real waiting required.
         let lock_path = servers.join(".install-lock");
-        let file = fs::File::open(&lock_path).unwrap();
+        let file = OpenOptions::new().write(true).open(&lock_path).unwrap();
         file.set_modified(std::time::SystemTime::now() - Duration::from_secs(60 * 60 + 1))
             .unwrap();
 
@@ -470,7 +470,7 @@ mod tests {
         acquire_install_lock(&mut ctx).expect("first acquire");
 
         let lock_path = servers.join(".install-lock");
-        let file = fs::File::open(&lock_path).unwrap();
+        let file = OpenOptions::new().write(true).open(&lock_path).unwrap();
         file.set_modified(std::time::SystemTime::now() + Duration::from_secs(60 * 60))
             .unwrap();
 

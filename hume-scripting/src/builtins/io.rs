@@ -198,7 +198,8 @@ mod tests {
 
         let mut host = ScriptingHost::new();
         let mut null_host = NullHost;
-        let src = format!(r#"(require "{}")"#, plugin_path.to_string_lossy());
+        let escaped_path = plugin_path.to_string_lossy().replace('\\', "\\\\");
+        let src = format!(r#"(require "{escaped_path}")"#);
         host.eval_source(&src, &mut null_host)
             .expect("requiring the plugin file must not error");
 
@@ -249,7 +250,8 @@ mod tests {
 
         let mut host = ScriptingHost::new();
         let mut null_host = NullHost;
-        let src = format!(r#"(require "{}")"#, plugin_path.to_string_lossy());
+        let escaped_path = plugin_path.to_string_lossy().replace('\\', "\\\\");
+        let src = format!(r#"(require "{escaped_path}")"#);
         host.eval_source(&src, &mut null_host)
             .expect("requiring the plugin file must not error");
 
@@ -299,7 +301,8 @@ mod tests {
 
         let mut host = ScriptingHost::new();
         let mut null_host = NullHost;
-        let src = format!(r#"(require "{}")"#, plugin_path.to_string_lossy());
+        let escaped_path = plugin_path.to_string_lossy().replace('\\', "\\\\");
+        let src = format!(r#"(require "{escaped_path}")"#);
         host.eval_source(&src, &mut null_host)
             .expect("requiring the plugin file must not error");
 

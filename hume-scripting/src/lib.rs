@@ -827,7 +827,7 @@ mod steel_stdlib_availability {
     #[test]
     fn spawn_process_round_trip_with_fs_ops_and_piped_stdout() {
         let dir = tempfile::tempdir().unwrap();
-        let base = dir.path().to_string_lossy().to_string();
+        let base = dir.path().to_string_lossy().replace('\\', "\\\\");
 
         let mut host = ScriptingHost::new();
         let mut null_host = NullHost;
@@ -895,7 +895,11 @@ mod steel_stdlib_availability {
     #[test]
     fn file_write_read_port_round_trip() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("probe.txt").to_string_lossy().to_string();
+        let path = dir
+            .path()
+            .join("probe.txt")
+            .to_string_lossy()
+            .replace('\\', "\\\\");
         let mut host = ScriptingHost::new();
         let mut null_host = NullHost;
         let src = format!(
