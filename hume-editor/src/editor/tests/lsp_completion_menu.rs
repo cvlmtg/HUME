@@ -9,7 +9,7 @@
 // and render path, not the filter/rank logic.
 
 use super::*;
-use crate::editor::lsp::completion::CompletionSession;
+use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
 use hume_engine::pipeline::RenderContext;
 use ratatui::layout::Rect;
 
@@ -25,7 +25,11 @@ fn begin_session(ed: &mut Editor, items: &[(&str, Option<&str>)]) {
             v
         })
         .collect();
-    let session = CompletionSession::begin(&ed.state, bid, &items_json, false).unwrap();
+    let items: Vec<StoredCompletionItem> = items_json
+        .iter()
+        .map(|v| StoredCompletionItem::from_json(v).expect("test item"))
+        .collect();
+    let session = CompletionSession::begin(&ed.state, bid, items, false).unwrap();
     ed.state.lsp_completion = Some(session);
 }
 

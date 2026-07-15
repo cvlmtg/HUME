@@ -9,24 +9,26 @@ use hume_scripting::hooks::HookId;
 use hume_scripting::json::json_to_steel;
 
 use super::LspState;
-use super::edits::{self, WireEdit};
+use super::edits;
 use super::introspect;
 use crate::editor::EditorState;
 
-/// One item as decoded straight from the response hashmap's JSON shape —
-/// raw `serde_json::Value` navigation rather than a typed `lsp_types`
-/// struct, since `CompletionTextEdit`'s `Edit`/`InsertAndReplace` union
-/// only ever needs its `range`/`newText`, not the rest of the LSP shape.
+/// One item, typed via `lsp_types::CompletionItem` (the response round-trips
+/// through Steel first — `strip-snippet-item` rewrites `insertText`/
+/// `textEdit.newText` string values, so this parses post-Steel-mutation
+/// JSON, not the raw wire shape, but the type stays the same either way).
 pub(crate) struct StoredCompletionItem {
     pub(crate) label: String,
     /// Raw `CompletionItemKind` number — display-only (icon choice), no
-    /// v1 reader maps it to a name.
+    /// v1 reader maps it to a name. Read straight from JSON rather than the
+    /// typed field: `CompletionItemKind` wraps a private `i32` with no
+    /// accessor.
     pub(crate) kind: Option<i64>,
     pub(crate) detail: Option<String>,
     sort_text: String,
     filter_text: String,
     insert_text: String,
-    text_edit: Option<WireEdit>,
+    text_edit: Option<lsp_types::TextEdit>,
     /// The full response item, unparsed — handed to `on-completion-accept`
     /// so Steel can read `additionalTextEdits`, `data` (for
     /// `completionItem/resolve`), or any other field this store doesn't
@@ -36,37 +38,36 @@ pub(crate) struct StoredCompletionItem {
 }
 
 impl StoredCompletionItem {
-    fn from_json(v: &serde_json::Value) -> Self {
-        let label = v
-            .get("label")
-            .and_then(|x| x.as_str())
-            .unwrap_or_default()
-            .to_string();
+    /// Parses one item; `v` itself is never consumed, so `raw: v.clone()`
+    /// (below) still captures the full item, including fields this
+    /// projection drops. `Err` on a spec violation (e.g. a missing
+    /// `label`); callers skip the item and report a Trace line rather than
+    /// fabricating a placeholder.
+    pub(crate) fn from_json(v: &serde_json::Value) -> Result<Self, serde_json::Error> {
+        let item: lsp_types::CompletionItem = serde_json::from_value(v.clone())?;
+        let label = item.label;
         let kind = v.get("kind").and_then(|x| x.as_i64());
-        let detail = v
-            .get("detail")
-            .and_then(|x| x.as_str())
-            .map(|s| s.to_string());
-        let string_or_label = |key: &str| -> String {
-            v.get(key)
-                .and_then(|x| x.as_str())
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| label.clone())
-        };
-        let sort_text = string_or_label("sortText");
-        let filter_text = string_or_label("filterText");
-        let insert_text = string_or_label("insertText");
-        let text_edit = v.get("textEdit").and_then(text_edit_from_json);
-        Self {
+        let sort_text = item.sort_text.unwrap_or_else(|| label.clone());
+        let filter_text = item.filter_text.unwrap_or_else(|| label.clone());
+        let insert_text = item.insert_text.unwrap_or_else(|| label.clone());
+        let text_edit = item.text_edit.map(|te| match te {
+            lsp_types::CompletionTextEdit::Edit(te) => te,
+            // Preserves the existing "use the narrower insert range" choice.
+            lsp_types::CompletionTextEdit::InsertAndReplace(ire) => lsp_types::TextEdit {
+                range: ire.insert,
+                new_text: ire.new_text,
+            },
+        });
+        Ok(Self {
             label,
             kind,
-            detail,
+            detail: item.detail,
             sort_text,
             filter_text,
             insert_text,
             text_edit,
             raw: v.clone(),
-        }
+        })
     }
 
     fn to_json(&self) -> serde_json::Value {
@@ -76,23 +77,6 @@ impl StoredCompletionItem {
             "detail": self.detail,
         })
     }
-}
-
-/// Extracts `(range, newText)` from a `CompletionTextEdit` JSON value —
-/// either shape (`Edit`: `{"range", "newText"}`, or `InsertReplaceEdit`:
-/// `{"insert", "replace", "newText"}`, using the narrower `insert` range).
-fn text_edit_from_json(v: &serde_json::Value) -> Option<WireEdit> {
-    let range = v.get("range").or_else(|| v.get("insert"))?;
-    let new_text = v.get("newText")?.as_str()?.to_string();
-    let start = range.get("start")?;
-    let end = range.get("end")?;
-    Some(WireEdit {
-        start_line: start.get("line")?.as_u64()? as usize,
-        start_char: start.get("character")?.as_u64()? as usize,
-        end_line: end.get("line")?.as_u64()? as usize,
-        end_char: end.get("character")?.as_u64()? as usize,
-        new_text,
-    })
 }
 
 /// Case-insensitive (ASCII) subsequence check: every char of `needle` must
@@ -211,13 +195,9 @@ impl CompletionSession {
     pub(crate) fn begin(
         state: &EditorState,
         bid: BufferId,
-        items_json: &[serde_json::Value],
+        items: Vec<StoredCompletionItem>,
         incomplete: bool,
     ) -> Option<Self> {
-        let items: Vec<StoredCompletionItem> = items_json
-            .iter()
-            .map(StoredCompletionItem::from_json)
-            .collect();
         let pid = state.focused_pane_id;
         let anchor = state
             .panes
@@ -294,7 +274,18 @@ impl CompletionSession {
         let item = &self.items[item_idx as usize];
         let encoding = introspect::encoding_for_buffer(state, lsp, self.bid);
         let cursor = self.anchor + self.filter.chars().count();
-        let wire_edit = match &item.text_edit {
+        // `char_to_wire` positions are internal rope-derived counters, not
+        // untrusted plugin input — a real rope can't exceed u32 lines/columns
+        // short of a multi-gigabyte single line, so `expect` here fails loud
+        // on a genuine invariant violation rather than silently truncating.
+        let to_position = |rope: &ropey::Rope, pos: usize| {
+            let (line, character) = char_to_wire(rope, pos, encoding);
+            lsp_types::Position {
+                line: u32::try_from(line).expect("line exceeds u32"),
+                character: u32::try_from(character).expect("character exceeds u32"),
+            }
+        };
+        let text_edit = match &item.text_edit {
             Some(te) => {
                 // The server's range was computed against the anchor..cursor
                 // span *at request time* — characters typed since (further
@@ -303,11 +294,10 @@ impl CompletionSession {
                 // inserted text. Only extend, never shrink: a cursor at or
                 // before the server's own end leaves its range untouched.
                 let rope = state.buffers.get(self.bid).text().rope();
-                let (end_line, end_char) = char_to_wire(rope, cursor, encoding);
+                let end = to_position(rope, cursor);
                 let mut te = te.clone();
-                if (end_line, end_char) > (te.end_line, te.end_char) {
-                    te.end_line = end_line;
-                    te.end_char = end_char;
+                if end > te.range.end {
+                    te.range.end = end;
                 }
                 te
             }
@@ -320,13 +310,11 @@ impl CompletionSession {
                 let text = state.buffers.get(self.bid).text();
                 let start = word_start_before(text, self.anchor);
                 let rope = text.rope();
-                let (start_line, start_char) = char_to_wire(rope, start, encoding);
-                let (end_line, end_char) = char_to_wire(rope, cursor, encoding);
-                WireEdit {
-                    start_line,
-                    start_char,
-                    end_line,
-                    end_char,
+                lsp_types::TextEdit {
+                    range: lsp_types::Range {
+                        start: to_position(rope, start),
+                        end: to_position(rope, cursor),
+                    },
                     new_text: item.insert_text.clone(),
                 }
             }
@@ -335,7 +323,7 @@ impl CompletionSession {
             state,
             lsp,
             self.bid,
-            vec![wire_edit],
+            vec![text_edit],
             Some(self.generation_at_begin),
         )?;
 

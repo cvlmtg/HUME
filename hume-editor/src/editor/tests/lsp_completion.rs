@@ -489,3 +489,85 @@ fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op
         ed.state.message_log.entries().collect::<Vec<_>>()
     );
 }
+
+/// A malformed item (missing the spec-required `label`) must not take down
+/// the whole batch — the well-formed item next to it still survives.
+#[test]
+fn malformed_item_is_skipped_with_a_trace_and_the_rest_survive() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer)
+               (list (hash "label" "good") (hash "kind" 1)))
+             (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "good",
+        "the malformed (label-less) item must not appear, but the good one must"
+    );
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Trace && e.text.contains("skipped malformed item")),
+        "must log a Trace entry for the skipped item, got: {:?}",
+        ed.state.message_log.entries().collect::<Vec<_>>()
+    );
+}
+
+/// Every item malformed must behave exactly like an empty response — no
+/// session, "no completions" reported — not a silently-empty open session.
+#[test]
+fn all_items_malformed_behaves_like_an_empty_response() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer) (list (hash "kind" 1) (hash "kind" 2)))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    assert!(
+        ed.state.lsp_completion.is_none(),
+        "an all-malformed items response must not open a session"
+    );
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "no completions",
+        "must be reported exactly like an empty items response"
+    );
+}
+
+/// `CompletionTextEdit::InsertAndReplace` must apply its narrower `insert`
+/// range, not the wider `replace` range — pins the union arm the hand-rolled
+/// parser used to special-case.
+#[test]
+fn insert_replace_text_edit_applies_the_narrower_insert_range() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer)
+               (list (hash "label" "x"
+                           "textEdit" (hash "insert" (hash "start" (hash "line" 0 "character" 1)
+                                                            "end" (hash "line" 0 "character" 3))
+                                            "replace" (hash "start" (hash "line" 0 "character" 1)
+                                                             "end" (hash "line" 0 "character" 6))
+                                            "newText" "XYZ"))))
+             (completion-accept! 0)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    // insert = [1,3) ("bc"), replace = [1,6) ("bcdef") — using replace would
+    // leave "aXYZ\n"; the narrower insert range must leave "def" behind.
+    assert_eq!(ed.doc().text().to_string(), "aXYZdef\n");
+}

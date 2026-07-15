@@ -16,28 +16,6 @@ use crate::editor::EditorState;
 use crate::editor::doc_ops;
 use crate::editor::pane_state;
 
-/// One text edit in wire (line/character) coordinates — the shape every LSP
-/// response with a `range` decodes to before it reaches HUME's char-offset
-/// world.
-#[derive(Clone)]
-pub(crate) struct WireEdit {
-    pub(crate) start_line: usize,
-    pub(crate) start_char: usize,
-    pub(crate) end_line: usize,
-    pub(crate) end_char: usize,
-    pub(crate) new_text: String,
-}
-
-fn text_edit_to_wire(te: lsp_types::TextEdit) -> WireEdit {
-    WireEdit {
-        start_line: te.range.start.line as usize,
-        start_char: te.range.start.character as usize,
-        end_line: te.range.end.line as usize,
-        end_char: te.range.end.character as usize,
-        new_text: te.new_text,
-    }
-}
-
 fn one_of_to_text_edit(
     oe: lsp_types::OneOf<lsp_types::TextEdit, lsp_types::AnnotatedTextEdit>,
 ) -> lsp_types::TextEdit {
@@ -58,7 +36,7 @@ fn build_edit_changeset(
     state: &EditorState,
     lsp: &LspState,
     bid: BufferId,
-    edits: &[WireEdit],
+    edits: &[lsp_types::TextEdit],
     expect_gen: Option<u64>,
 ) -> Result<ChangeSet, String> {
     let Some(buf) = state.buffers.try_get(bid) else {
@@ -86,8 +64,18 @@ fn build_edit_changeset(
     let mut char_edits: Vec<(usize, usize, &str)> = edits
         .iter()
         .map(|e| {
-            let start = wire_to_char(rope, e.start_line, e.start_char, encoding);
-            let end = wire_to_char(rope, e.end_line, e.end_char, encoding);
+            let start = wire_to_char(
+                rope,
+                e.range.start.line as usize,
+                e.range.start.character as usize,
+                encoding,
+            );
+            let end = wire_to_char(
+                rope,
+                e.range.end.line as usize,
+                e.range.end.character as usize,
+                encoding,
+            );
             (start, end, e.new_text.as_str())
         })
         .collect();
@@ -149,7 +137,7 @@ pub(crate) fn apply_text_edits(
     state: &mut EditorState,
     lsp: &LspState,
     bid: BufferId,
-    edits: Vec<WireEdit>,
+    edits: Vec<lsp_types::TextEdit>,
     expect_gen: Option<u64>,
 ) -> Result<(), String> {
     let cs = build_edit_changeset(state, lsp, bid, &edits, expect_gen)?;
@@ -258,9 +246,8 @@ pub(crate) fn apply_workspace_edit(
                 path.display()
             ));
         }
-        let wire_edits: Vec<WireEdit> = edits.into_iter().map(text_edit_to_wire).collect();
         let expect_gen = version.map(|v| v as u64);
-        let cs = build_edit_changeset(state, lsp, bid, &wire_edits, expect_gen)
+        let cs = build_edit_changeset(state, lsp, bid, &edits, expect_gen)
             .map_err(|e| format!("{}: {e}", path.display()))?;
         planned.push((bid, cs));
     }

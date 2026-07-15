@@ -583,19 +583,30 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         let Some(lsp) = self.lsp else {
             return Err("apply-text-edits!: no LSP state available".to_string());
         };
-        let wire_edits = edits
-            .into_iter()
-            .map(|(start_line, start_char, end_line, end_char, new_text)| {
-                crate::editor::lsp::edits::WireEdit {
-                    start_line,
-                    start_char,
-                    end_line,
-                    end_char,
-                    new_text,
-                }
-            })
-            .collect();
-        crate::editor::lsp::edits::apply_text_edits(self.state, lsp, bid, wire_edits, expect_gen)
+        // Untrusted plugin input, not an internal invariant — a position
+        // that doesn't fit `u32` is a malformed edit, reported as an error,
+        // never a panic.
+        let to_u32 = |v: usize| {
+            u32::try_from(v)
+                .map_err(|_| "apply-text-edits!: position exceeds u32 (malformed edit)".to_string())
+        };
+        let mut typed_edits = Vec::with_capacity(edits.len());
+        for (start_line, start_char, end_line, end_char, new_text) in edits {
+            typed_edits.push(lsp_types::TextEdit {
+                range: lsp_types::Range {
+                    start: lsp_types::Position {
+                        line: to_u32(start_line)?,
+                        character: to_u32(start_char)?,
+                    },
+                    end: lsp_types::Position {
+                        line: to_u32(end_line)?,
+                        character: to_u32(end_char)?,
+                    },
+                },
+                new_text,
+            });
+        }
+        crate::editor::lsp::edits::apply_text_edits(self.state, lsp, bid, typed_edits, expect_gen)
     }
 
     fn apply_workspace_edit(&mut self, edit: serde_json::Value) -> Result<usize, String> {
@@ -795,16 +806,29 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         if self.state.buffers.try_get(bid).is_none() {
             return Err("completion-begin!: no such buffer".to_string());
         }
-        if items.is_empty() {
+        // A malformed item (e.g. missing the spec-required `label`) is
+        // skipped, not fatal to the whole batch — one bad item from a
+        // misbehaving server must not silently drop every good one.
+        let mut parsed = Vec::with_capacity(items.len());
+        for v in &items {
+            match crate::editor::lsp::completion::StoredCompletionItem::from_json(v) {
+                Ok(item) => parsed.push(item),
+                Err(e) => self.state.report(
+                    Severity::Trace,
+                    format!("completion-begin!: skipped malformed item: {e}"),
+                ),
+            }
+        }
+        if parsed.is_empty() {
             // Replaces any open session too — an isIncomplete re-request
-            // that comes back empty must close the menu, not leave the old
-            // one live.
+            // that comes back empty (or entirely malformed) must close the
+            // menu, not leave the old one live.
             self.state.clear_lsp_completion();
             self.state.report(Severity::Info, "no completions".to_string());
             return Ok(());
         }
         let Some(session) = crate::editor::lsp::completion::CompletionSession::begin(
-            self.state, bid, &items, incomplete,
+            self.state, bid, parsed, incomplete,
         ) else {
             // Benign race: the async completion response landed after the
             // user switched away from `bid`'s pane. Not an error — raising
