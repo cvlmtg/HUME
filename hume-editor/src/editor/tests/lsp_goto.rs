@@ -221,6 +221,59 @@ fn multi_element_array_opens_the_drawer_and_row_select_jumps() {
     );
 }
 
+/// The multi-entry-array case exercises `lsp/location-display`'s row
+/// formatting (`lsp/normalize-location`), unlike the single-entry jump
+/// tests above (which only ever reach `goto-location!` directly) — the
+/// only path in core:lsp that reads a `LocationLink`'s `targetUri`/
+/// `targetSelectionRange` outside Rust's own dual-shape dispatch.
+#[test]
+#[cfg(not(windows))]
+fn multi_element_location_link_array_opens_the_drawer_and_row_select_jumps() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, uri) = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/definition",
+            serde_json::json!([
+                location_link(&uri, 0, 0),
+                location_link(&uri, 1, 4),
+                location_link(&uri, 2, 0)
+            ]),
+        );
+    });
+
+    run_goto(&mut ed, ":lsp-goto-definition");
+
+    let rows = {
+        let guard = ed.state.drawer_view.read().unwrap();
+        guard
+            .as_ref()
+            .expect("drawer must open for a multi-entry LocationLink array")
+            .rows
+            .clone()
+    };
+    assert_eq!(rows.len(), 3);
+    assert!(
+        rows[1].ends_with(":2:5"),
+        "row text must be built from targetSelectionRange (1-based line:col), got {:?}",
+        rows[1]
+    );
+
+    // Select row index 1 (the second entry, line 1).
+    ed.handle_key(key('j'));
+    ed.handle_key(key_enter());
+    ed.drain_pending_steel_calls();
+
+    assert_eq!(
+        ed.doc()
+            .text()
+            .char_to_line(ed.current_selections().primary().head()),
+        1,
+        "selecting a LocationLink drawer row must jump to targetSelectionRange's line"
+    );
+}
+
 #[test]
 #[cfg(not(windows))]
 fn location_link_array_prefers_target_selection_range() {

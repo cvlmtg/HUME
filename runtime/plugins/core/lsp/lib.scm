@@ -1,7 +1,7 @@
 ;;; core:lsp/lib.scm — shared helpers used by every feature file.
 
 (provide lsp/supports? lsp/supports-for-buffer? lsp/guard-capability lsp/report-error
-         lsp/visible-lines lsp/show-locations! lsp/text-edit->tuple
+         lsp/visible-lines lsp/show-locations! lsp/normalize-location lsp/text-edit->tuple
          lsp/utf16-offset->char-index
          lsp/setup-trigger-chars!)
 
@@ -131,20 +131,23 @@
 
 ;; ── Location display + drawer ───────────────────────────────────────────────
 ;; A `Location` is `{uri, range}`; a `LocationLink` is `{targetUri,
-;; targetSelectionRange | targetRange, …}` — `goto-location!` accepts
-;; either raw hashmap directly and does its own dual-shape extraction; these
-;; mirror that extraction only for the human-readable display string.
+;; targetSelectionRange | targetRange, …}`. `goto-location!` (a Rust
+;; builtin, callable by any plugin) accepts either raw shape directly and
+;; does its own dual-shape extraction — that tolerance stays there for
+;; boundary robustness. Everything on this side normalizes to `{uri, range}`
+;; once, at response ingress (`lsp/goto-response`/`lsp-references` map
+;; `lsp/normalize-location` over the response before this file ever sees
+;; it), so `lsp/location-display` needs no shape dispatch of its own.
 
-(define (lsp/location-uri loc)
-  (if (hash-contains? loc "uri") (hash-ref loc "uri") (hash-ref loc "targetUri")))
-
-(define (lsp/location-start loc)
-  (let ((range (if (hash-contains? loc "range")
-                    (hash-ref loc "range")
-                    (if (hash-contains? loc "targetSelectionRange")
+;;; A raw `Location` or `LocationLink` hashmap -> the single `{uri, range}`
+;;; shape every Steel-side consumer works with.
+(define (lsp/normalize-location loc)
+  (if (hash-contains? loc "uri")
+      loc
+      (hash "uri" (hash-ref loc "targetUri")
+            "range" (if (hash-contains? loc "targetSelectionRange")
                         (hash-ref loc "targetSelectionRange")
                         (hash-ref loc "targetRange")))))
-    (hash-ref range "start")))
 
 ;;; "path/to/file.rs" stripped of the "file://" scheme prefix — good enough
 ;;; for display, not for parsing back into a URI.
@@ -154,19 +157,19 @@
       uri))
 
 ;;; "path/to/file.rs:12:5" — 1-based line/col, matching every other editor's
-;;; location display convention (the wire values are 0-based).
+;;; location display convention (the wire values are 0-based). `loc` must
+;;; already be normalized (`{uri, range}`).
 (define (lsp/location-display loc)
-  (let* ((uri (lsp/location-uri loc))
-         (start (lsp/location-start loc)))
+  (let* ((uri (hash-ref loc "uri"))
+         (start (hash-ref (hash-ref loc "range") "start")))
     (string-append (lsp/uri->display-path uri) ":"
                    (number->string (+ 1 (hash-ref start "line"))) ":"
                    (number->string (+ 1 (hash-ref start "character"))))))
 
-;;; `locs`: a list of raw Location/LocationLink hashmaps (mixed shapes OK —
-;;; each row's own on-select jump uses the original hashmap, not a
-;;; re-derived one). Drawer rows are pre-formatted display strings;
-;;; `goto-location!` handles the shape dispatch, so this never touches wire
-;;; positions itself.
+;;; `locs`: a list of already-normalized `{uri, range}` hashmaps. Drawer rows
+;;; are pre-formatted display strings; `goto-location!` handles the shape
+;;; dispatch (a no-op here since `locs` is already `{uri, range}`), so this
+;;; never touches wire positions itself.
 (define (lsp/show-locations! locs)
   (show-drawer-list! (map lsp/location-display locs)
     (lambda (idx) (when idx (goto-location! (list-ref locs idx))))))

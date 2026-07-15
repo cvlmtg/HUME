@@ -16,9 +16,9 @@
     ((list? res)
      (cond
        ((null? res) (log! 'info "No definition found"))
-       ((= (length res) 1) (goto-location! (car res)))
-       (else (lsp/show-locations! res))))
-    (else (goto-location! res))))
+       ((= (length res) 1) (goto-location! (lsp/normalize-location (car res))))
+       (else (lsp/show-locations! (map lsp/normalize-location res)))))
+    (else (goto-location! (lsp/normalize-location res)))))
 
 (define (lsp/goto-request method cap)
   (lsp/guard-capability cap
@@ -57,4 +57,4 @@
               (err (lsp/report-error "references" err))
               ((void? res) (log! 'info "No references found"))
               ((null? res) (log! 'info "No references found"))
-              (else (lsp/show-locations! res)))))))))
+              (else (lsp/show-locations! (map lsp/normalize-location res))))))))))
