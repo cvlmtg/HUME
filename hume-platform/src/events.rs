@@ -362,9 +362,36 @@ mod imp {
         )
     }
 
+    /// Like `for_test(None)` but registers the real process-global SIGWINCH
+    /// handler onto the wake pipe, exactly as `event_wait_pair` does. Keeps
+    /// the real signal_hook wiring under test while leaving the controlling
+    /// tty out of the poll set — the tty's readiness is environment-dependent
+    /// and would otherwise race `Woken` against `Input`.
+    #[cfg(test)]
+    fn for_test_sigwinch() -> io::Result<(EventWait, EventWaker)> {
+        let (wake_read, wake_write) = UnixStream::pair()?;
+        wake_read.set_nonblocking(true)?;
+        wake_write.set_nonblocking(true)?;
+        let sig_pipe_end = wake_write.try_clone()?;
+        let sig_id = signal_hook::low_level::pipe::register(SIGWINCH, sig_pipe_end)?;
+        Ok((
+            EventWait {
+                input: None,
+                wake_read,
+                sig_id: Some(sig_id),
+            },
+            EventWaker(Arc::new(wake_write)),
+        ))
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        // Serializes every test that touches the process-global SIGWINCH
+        // registration; see for_test_sigwinch. Mirrors CWD_MUTEX in
+        // hume-editor tests.
+        static SIGWINCH_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
         #[test]
         fn choose_input_kind_matches_crossterm_rule() {
@@ -480,14 +507,17 @@ mod imp {
 
         #[test]
         fn sigwinch_wakes() {
-            // Process-global effect: raises SIGWINCH, which any other
-            // `EventWait` alive at the same time also observes (signal-hook
-            // supports multiple registrations per signal, each getting its
-            // own byte). SIGWINCH's default disposition is "ignore", so a
-            // stray delivery cannot terminate the process. If this ever
-            // flakes under CI parallelism, `#[ignore]` is the pre-approved
-            // fallback.
-            let (mut wait, _waker) = event_wait_pair().expect("event_wait_pair");
+            // Real SIGWINCH must wake the poll. `raise(SIGWINCH)` runs the
+            // signal-hook handler synchronously on this thread, writing a
+            // byte to the registered wake pipe before `wait` polls — so with
+            // no tty in the poll set the outcome is deterministically Woken.
+            // The mutex keeps any future SIGWINCH-registering test from
+            // overlapping (signal-hook delivers to every registered pipe
+            // process-wide).
+            let _guard = SIGWINCH_TEST_MUTEX
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let (mut wait, _waker) = for_test_sigwinch().expect("for_test_sigwinch");
             signal_hook::low_level::raise(SIGWINCH).expect("raise SIGWINCH");
             let outcome = wait.wait(Some(Duration::from_secs(1))).expect("wait");
             assert_eq!(outcome, WaitOutcome::Woken);
