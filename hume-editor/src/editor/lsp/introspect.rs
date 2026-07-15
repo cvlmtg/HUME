@@ -126,7 +126,12 @@ pub(crate) enum LspActivity {
     /// A `$/progress` task (indexing, loading, ...) is in flight — the most
     /// recently begun one, if the server is running more than one.
     Progress {
+        // Not rendered (the statusline only shows the spinner + percentage);
+        // kept because the `$/progress` begin/report state machine is
+        // asserted against these in `lsp_statusline` tests.
+        #[allow(dead_code)]
         title: String,
+        #[allow(dead_code)]
         message: Option<String>,
         percentage: Option<u32>,
     },

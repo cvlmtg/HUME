@@ -45,15 +45,10 @@ impl StatuslineElement for DiagnosticsElement {
         let spinner = SPINNER[frame % SPINNER.len()];
         let label = match activity {
             LspActivity::Starting => format!("{spinner} starting…"),
-            LspActivity::Progress {
-                title,
-                message,
-                percentage,
-            } => {
-                let message = message.map(|m| format!(": {m}")).unwrap_or_default();
-                let percentage = percentage.map(|p| format!(" {p}%")).unwrap_or_default();
-                format!("{spinner} {title}{message}{percentage}")
-            }
+            LspActivity::Progress { percentage, .. } => match percentage {
+                Some(p) => format!("{spinner} {p}%"),
+                None => format!("{spinner} lsp"),
+            },
             // Idle: error/warning counts, empty when there are none.
             LspActivity::Idle => match (errors, warnings) {
                 (0, 0) => String::new(),

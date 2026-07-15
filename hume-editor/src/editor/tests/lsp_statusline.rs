@@ -304,7 +304,7 @@ fn loading_state_takes_priority_over_stale_diagnostic_counts() {
     let (text, _) =
         crate::ui::statusline::render_element(StatusElement::Diagnostics, &c.ed, &colors, "");
     assert!(
-        text.contains("Indexing") && !text.contains(DIAGNOSTICS_ERROR_GLYPH),
+        text.contains("lsp") && !text.contains(DIAGNOSTICS_ERROR_GLYPH),
         "loading must take priority over nonzero diagnostic counts, got {text:?}"
     );
 }

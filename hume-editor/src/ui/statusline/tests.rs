@@ -231,7 +231,7 @@ fn diagnostics_element_progress_with_percentage() {
         0,
     );
     let (text, _) = DiagnosticsElement::format(data, &colors);
-    assert_eq!(text.as_ref(), "⠋ Indexing 45%");
+    assert_eq!(text.as_ref(), "⠋ 45%");
 }
 
 #[test]
@@ -248,7 +248,7 @@ fn diagnostics_element_progress_with_message_and_no_percentage() {
         0,
     );
     let (text, _) = DiagnosticsElement::format(data, &colors);
-    assert_eq!(text.as_ref(), "⠋ rust-analyzer: Roots Scanned");
+    assert_eq!(text.as_ref(), "⠋ lsp");
 }
 
 #[test]
