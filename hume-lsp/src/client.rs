@@ -13,7 +13,7 @@ use lsp_types::{
     HoverClientCapabilities, InitializeParams, InitializeResult, InitializedParams, MarkupKind,
     PositionEncodingKind, PublishDiagnosticsClientCapabilities, RenameClientCapabilities,
     ResourceOperationKind, ServerCapabilities, TextDocumentClientCapabilities,
-    TextDocumentSyncClientCapabilities, WorkspaceClientCapabilities,
+    TextDocumentSyncClientCapabilities, WindowClientCapabilities, WorkspaceClientCapabilities,
     WorkspaceEditClientCapabilities, WorkspaceFolder,
 };
 
@@ -548,6 +548,14 @@ fn build_client_capabilities() -> ClientCapabilities {
                 PositionEncodingKind::UTF8,
                 PositionEncodingKind::UTF16,
             ]),
+            ..Default::default()
+        }),
+        // rust-analyzer (and others) gate server-initiated `$/progress`
+        // (indexing/loading status) on this flag — without it, no progress
+        // notifications are sent at all, so the editor has no way to show
+        // load status beyond the sub-second `initialize` handshake.
+        window: Some(WindowClientCapabilities {
+            work_done_progress: Some(true),
             ..Default::default()
         }),
         ..Default::default()

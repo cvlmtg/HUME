@@ -199,6 +199,87 @@ fn readonly_element_renders_ro_label() {
     assert_eq!(text.as_ref(), "[RO]");
 }
 
+// ── Diagnostics element (format) ──────────────────────────────────────────
+//
+// `format` is deterministic (`Data` carries the spinner frame as a plain
+// `usize`, no clock involved), so these exercise it directly with synthetic
+// `Data` rather than through a full `Editor` fixture — see the
+// `StatuslineElement` trait's doc comment. Behavior driven by a live LSP
+// server (the `Starting` → `Progress` → `Idle` transitions themselves) is
+// covered in `editor::tests::lsp_statusline`.
+
+use crate::editor::lsp::introspect::LspActivity;
+
+#[test]
+fn diagnostics_element_starting_shows_spinner_and_label() {
+    let colors = crate::ui::theme::EditorColors::default();
+    let (text, _) = DiagnosticsElement::format((LspActivity::Starting, 0, 0, 0), &colors);
+    assert_eq!(text.as_ref(), "⠋ starting…");
+}
+
+#[test]
+fn diagnostics_element_progress_with_percentage() {
+    let colors = crate::ui::theme::EditorColors::default();
+    let data = (
+        LspActivity::Progress {
+            title: "Indexing".to_string(),
+            message: None,
+            percentage: Some(45),
+        },
+        0,
+        0,
+        0,
+    );
+    let (text, _) = DiagnosticsElement::format(data, &colors);
+    assert_eq!(text.as_ref(), "⠋ Indexing 45%");
+}
+
+#[test]
+fn diagnostics_element_progress_with_message_and_no_percentage() {
+    let colors = crate::ui::theme::EditorColors::default();
+    let data = (
+        LspActivity::Progress {
+            title: "rust-analyzer".to_string(),
+            message: Some("Roots Scanned".to_string()),
+            percentage: None,
+        },
+        0,
+        0,
+        0,
+    );
+    let (text, _) = DiagnosticsElement::format(data, &colors);
+    assert_eq!(text.as_ref(), "⠋ rust-analyzer: Roots Scanned");
+}
+
+#[test]
+fn diagnostics_element_spinner_indexes_by_frame() {
+    let colors = crate::ui::theme::EditorColors::default();
+    // Frame 3 selects the 4th glyph in the SPINNER table (⠋⠙⠹⠸…).
+    let (text, _) = DiagnosticsElement::format((LspActivity::Starting, 0, 0, 3), &colors);
+    assert!(
+        text.starts_with('⠸'),
+        "frame 3 should select the 4th spinner glyph, got {text:?}"
+    );
+}
+
+#[test]
+fn diagnostics_element_idle_falls_back_to_counts() {
+    let colors = crate::ui::theme::EditorColors::default();
+    let data = (LspActivity::Idle, 3, 12, 0);
+    let (text, _) = DiagnosticsElement::format(data, &colors);
+    assert_eq!(
+        text.as_ref(),
+        format!("{DIAGNOSTICS_ERROR_GLYPH} 3 {DIAGNOSTICS_WARNING_GLYPH} 12")
+    );
+}
+
+#[test]
+fn diagnostics_element_idle_with_no_diagnostics_is_empty() {
+    let colors = crate::ui::theme::EditorColors::default();
+    let (text, _) = DiagnosticsElement::format((LspActivity::Idle, 0, 0, 0), &colors);
+    assert!(text.is_empty(), "expected empty, got {text:?}");
+}
+
 // ── center_x arithmetic ───────────────────────────────────────────────────
 
 #[test]

@@ -115,6 +115,44 @@ pub(crate) fn server_for_buffer(
     server_language(lsp, sid)
 }
 
+/// A buffer's attached server's loading state — drives the statusline's
+/// loading spinner (`ui::statusline::elements::diagnostics`).
+pub(crate) enum LspActivity {
+    /// No attached server, a `Running` server with no progress task in
+    /// flight, or a `Crashed`/`Dead` one — nothing to animate.
+    Idle,
+    /// Mid `initialize` handshake.
+    Starting,
+    /// A `$/progress` task (indexing, loading, ...) is in flight — the most
+    /// recently begun one, if the server is running more than one.
+    Progress {
+        title: String,
+        message: Option<String>,
+        percentage: Option<u32>,
+    },
+}
+
+/// `id`'s attached server's current [`LspActivity`].
+pub(crate) fn activity(state: &EditorState, lsp: &LspState, id: BufferId) -> LspActivity {
+    let Some(sid) = state.buffers.try_get(id).and_then(|b| b.lsp_server) else {
+        return LspActivity::Idle;
+    };
+    let Some(entry) = lsp.servers.get(&sid) else {
+        return LspActivity::Idle;
+    };
+    if entry.client.state == hume_lsp::client::ServerState::Starting {
+        return LspActivity::Starting;
+    }
+    match entry.progress.last() {
+        Some((_, task)) => LspActivity::Progress {
+            title: task.title.clone(),
+            message: task.message.clone(),
+            percentage: task.percentage,
+        },
+        None => LspActivity::Idle,
+    }
+}
+
 /// Whether `language` currently has a `register-lsp-server!` config —
 /// registered, not necessarily attached/running. Distinguishes "no server
 /// registered" from "registered but still starting", which

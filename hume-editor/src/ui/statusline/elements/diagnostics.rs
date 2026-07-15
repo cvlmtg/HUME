@@ -4,31 +4,63 @@ use ratatui::style::Style;
 
 use super::StatuslineElement;
 use crate::editor::Editor;
+use crate::editor::lsp::introspect::LspActivity;
 use crate::ui::theme::EditorColors;
 
 pub(crate) const DIAGNOSTICS_ERROR_GLYPH: &str = "✘";
 pub(crate) const DIAGNOSTICS_WARNING_GLYPH: &str = "⚠";
 
+/// Braille spinner frames for the loading state, indexed by
+/// `frame % SPINNER.len()`.
+const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
 pub(in crate::ui::statusline) struct DiagnosticsElement;
 
 impl StatuslineElement for DiagnosticsElement {
-    /// `(errors, warnings)` for the focused buffer.
+    /// The focused buffer's LSP loading state (takes priority when the
+    /// server isn't ready yet), its `(errors, warnings)` counts, and the
+    /// current spinner animation frame.
     ///
-    /// Reads the diagnostics store directly in Rust — the statusline renders
-    /// every frame, so this never goes through Steel's `(diagnostic-counts …)`
-    /// builtin (that one is for plugins, not the render path).
-    type Data = (usize, usize);
+    /// Diagnostic counts are read directly from the diagnostics store in
+    /// Rust — the statusline renders every frame, so this never goes
+    /// through Steel's `(diagnostic-counts …)` builtin (that one is for
+    /// plugins, not the render path).
+    type Data = (LspActivity, usize, usize, usize);
 
     fn read(editor: &Editor) -> Self::Data {
-        editor.diagnostic_counts(editor.focused_buffer_id())
+        let bid = editor.focused_buffer_id();
+        let (errors, warnings) = editor.diagnostic_counts(bid);
+        (
+            editor.lsp_activity(bid),
+            errors,
+            warnings,
+            editor.lsp_spinner_frame(),
+        )
     }
 
-    fn format((errors, warnings): Self::Data, colors: &EditorColors) -> (Cow<'static, str>, Style) {
-        let label = match (errors, warnings) {
-            (0, 0) => String::new(),
-            (e, 0) => format!("{DIAGNOSTICS_ERROR_GLYPH} {e}"),
-            (0, w) => format!("{DIAGNOSTICS_WARNING_GLYPH} {w}"),
-            (e, w) => format!("{DIAGNOSTICS_ERROR_GLYPH} {e} {DIAGNOSTICS_WARNING_GLYPH} {w}"),
+    fn format(
+        (activity, errors, warnings, frame): Self::Data,
+        colors: &EditorColors,
+    ) -> (Cow<'static, str>, Style) {
+        let spinner = SPINNER[frame % SPINNER.len()];
+        let label = match activity {
+            LspActivity::Starting => format!("{spinner} starting…"),
+            LspActivity::Progress {
+                title,
+                message,
+                percentage,
+            } => {
+                let message = message.map(|m| format!(": {m}")).unwrap_or_default();
+                let percentage = percentage.map(|p| format!(" {p}%")).unwrap_or_default();
+                format!("{spinner} {title}{message}{percentage}")
+            }
+            // Idle: error/warning counts, empty when there are none.
+            LspActivity::Idle => match (errors, warnings) {
+                (0, 0) => String::new(),
+                (e, 0) => format!("{DIAGNOSTICS_ERROR_GLYPH} {e}"),
+                (0, w) => format!("{DIAGNOSTICS_WARNING_GLYPH} {w}"),
+                (e, w) => format!("{DIAGNOSTICS_ERROR_GLYPH} {e} {DIAGNOSTICS_WARNING_GLYPH} {w}"),
+            },
         };
         (Cow::Owned(label), colors.statusline)
     }

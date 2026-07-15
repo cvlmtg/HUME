@@ -73,6 +73,34 @@ struct ServerEntry {
     /// `(lsp-capabilities …)` builtin reads this rather than reconverting the typed
     /// caps on every call.
     capabilities_json: Option<serde_json::Value>,
+    /// Active `$/progress` tasks, in begin order — a server can run more
+    /// than one concurrently (e.g. rust-analyzer indexing + a flycheck run).
+    /// The statusline shows the most recent (last); a token is removed on
+    /// its `end` notification. Empty ⇒ nothing to show for this server.
+    progress: Vec<(String, ProgressTask)>,
+}
+
+/// One active work-done-progress task, built from a `begin` notification and
+/// updated in place by `report`s. `percentage`/`message` are optional per
+/// the LSP spec — a `report` omitting either leaves it unchanged, so fields
+/// are merged rather than the task being replaced wholesale.
+#[derive(Debug, Clone)]
+pub(crate) struct ProgressTask {
+    pub(crate) title: String,
+    pub(crate) message: Option<String>,
+    pub(crate) percentage: Option<u32>,
+}
+
+/// Normalizes a `$/progress` `token` (LSP's number-or-string) to a `String`
+/// key so `ServerEntry::progress` can look it up without carrying a
+/// `serde_json::Value` (which isn't `Eq`-comparable the way a plain string
+/// is, and every real token is one or the other).
+fn progress_token_key(token: &serde_json::Value) -> Option<String> {
+    match token {
+        serde_json::Value::String(s) => Some(s.clone()),
+        serde_json::Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    }
 }
 
 pub(crate) struct LspState {
@@ -86,6 +114,39 @@ pub(crate) struct LspState {
     /// Config recorded by `register-lsp-server!`, keyed by language.
     configs: HashMap<String, LspServerConfig>,
     diagnostics: DiagnosticsStore,
+    /// Drives the statusline loading spinner's animation frame. Advanced
+    /// (at most) once per `drain_lsp` call, gated on its own interval so
+    /// the animation speed doesn't depend on the event loop's wake cadence.
+    spinner: SpinnerClock,
+}
+
+/// How often the loading spinner advances a frame — independent of how
+/// often `drain_lsp` itself runs (`next_wake` may wake faster than this
+/// while a handshake or `$/progress` task is active).
+const SPINNER_INTERVAL: Duration = Duration::from_millis(100);
+
+/// Monotonic animation-frame counter for the statusline spinner
+/// (`elements/diagnostics.rs`'s loading state). `frame` is a plain `usize`
+/// so the render side (`format`) stays a deterministic, clock-free function
+/// of its inputs — only this clock needs a real `Instant`.
+#[derive(Default)]
+struct SpinnerClock {
+    frame: usize,
+    last_advance: Option<Instant>,
+}
+
+impl SpinnerClock {
+    /// Bumps `frame` by one if at least `SPINNER_INTERVAL` has elapsed since
+    /// the last advance (or this is the first call).
+    fn maybe_advance(&mut self, now: Instant) {
+        if self
+            .last_advance
+            .is_none_or(|last| now.saturating_duration_since(last) >= SPINNER_INTERVAL)
+        {
+            self.frame = self.frame.wrapping_add(1);
+            self.last_advance = Some(now);
+        }
+    }
 }
 
 impl LspState {
@@ -98,6 +159,7 @@ impl LspState {
             callbacks: HashMap::new(),
             configs: HashMap::new(),
             diagnostics: DiagnosticsStore::default(),
+            spinner: SpinnerClock::default(),
         }
     }
 
@@ -143,6 +205,7 @@ impl LspState {
                 language: None,
                 name: "lsp".to_string(),
                 capabilities_json: None,
+                progress: Vec::new(),
             },
         );
         id
@@ -319,6 +382,14 @@ impl AsyncSource for LspState {
             return Some(now + PENDING_POLL);
         }
 
+        // A server reporting `$/progress` (indexing, loading, ...) needs the
+        // statusline spinner to keep animating — wake at the spinner's own
+        // cadence rather than falling through to the coarser idle heartbeat.
+        let loading = self.servers.values().any(|e| !e.progress.is_empty());
+        if loading {
+            return Some(now + SPINNER_INTERVAL);
+        }
+
         self.servers
             .values()
             .any(|e| e.client.state == ServerState::Running)
@@ -333,6 +404,19 @@ impl Editor {
     /// callers outside it, like `ui::statusline`, go through this).
     pub(crate) fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {
         introspect::diagnostic_counts(&self.lsp, bid)
+    }
+
+    /// `bid`'s attached server's lifecycle/loading state — the statusline's
+    /// `Diagnostics` element reads this to decide whether to show the
+    /// loading spinner instead of counts. Same access rationale as
+    /// `diagnostic_counts` above.
+    pub(crate) fn lsp_activity(&self, bid: BufferId) -> introspect::LspActivity {
+        introspect::activity(&self.state, &self.lsp, bid)
+    }
+
+    /// Current animation frame for the statusline loading spinner.
+    pub(crate) fn lsp_spinner_frame(&self) -> usize {
+        self.lsp.spinner.frame
     }
 
     /// Per-frame drain: routes every backend event through its client's
@@ -381,6 +465,19 @@ impl Editor {
         }
 
         let now = Instant::now();
+
+        // Advance the statusline loading spinner while any server is mid-
+        // handshake or reporting `$/progress` — idle otherwise, so the
+        // frame counter doesn't drift while there's nothing to animate.
+        let animating = self
+            .lsp
+            .servers
+            .values()
+            .any(|e| e.client.state == ServerState::Starting || !e.progress.is_empty());
+        if animating {
+            self.lsp.spinner.maybe_advance(now);
+        }
+
         let server_ids: Vec<ServerId> = self.lsp.servers.keys().copied().collect();
         for server_id in server_ids {
             // A server that started but never answers `initialize` has no
@@ -505,6 +602,10 @@ impl Editor {
                 // already known, so there's nothing to wait for. Mirrors
                 // `:lsp-stop`'s own teardown (`lsp_stop_one`).
                 if let Some(entry) = self.lsp.servers.get_mut(&server_id) {
+                    // A crashed server can't finish whatever it was loading —
+                    // drop its tracked progress so the statusline spinner
+                    // doesn't keep animating for a server that's gone.
+                    entry.progress.clear();
                     for (id, meta) in entry.client.drain_pending() {
                         self.dispatch_completed(server_id, id, meta, Outcome::TimedOut);
                     }
@@ -614,25 +715,70 @@ impl Editor {
                 self.report(Severity::Info, format!("{name}: {text}"));
             }
             "$/progress" => {
-                // begin/end at Trace; per-report messages dropped entirely
-                // (OQ default) — a real progress bar is Future work.
-                match params
-                    .get("value")
-                    .and_then(|v| v.get("kind"))
-                    .and_then(|v| v.as_str())
-                {
+                // begin/end logged at Trace; the task itself is tracked on
+                // `ServerEntry.progress` for the statusline spinner, with
+                // `report`s merged into it (absent fields mean "unchanged"
+                // per the LSP spec).
+                let Some(token) = params.get("token").and_then(progress_token_key) else {
+                    return; // malformed — nothing to key the task under
+                };
+                let value = params.get("value");
+                match value.and_then(|v| v.get("kind")).and_then(|v| v.as_str()) {
                     Some("begin") => {
-                        let title = params
-                            .get("value")
+                        let title = value
                             .and_then(|v| v.get("title"))
                             .and_then(|v| v.as_str())
-                            .unwrap_or("progress");
+                            .unwrap_or("progress")
+                            .to_string();
+                        let message = value
+                            .and_then(|v| v.get("message"))
+                            .and_then(|v| v.as_str())
+                            .map(str::to_string);
+                        let percentage = value
+                            .and_then(|v| v.get("percentage"))
+                            .and_then(|v| v.as_u64())
+                            .map(|p| p as u32);
                         self.report(Severity::Trace, format!("{name}: {title} started"));
+                        if let Some(entry) = self.lsp.servers.get_mut(&server_id) {
+                            entry.progress.push((
+                                token,
+                                ProgressTask {
+                                    title,
+                                    message,
+                                    percentage,
+                                },
+                            ));
+                        }
+                    }
+                    Some("report") => {
+                        let Some(entry) = self.lsp.servers.get_mut(&server_id) else {
+                            return;
+                        };
+                        let Some((_, task)) =
+                            entry.progress.iter_mut().find(|(t, _)| *t == token)
+                        else {
+                            return; // report for an unknown token — nothing to merge into
+                        };
+                        // Absent fields mean "unchanged" per the LSP spec — merge, don't overwrite.
+                        if let Some(message) =
+                            value.and_then(|v| v.get("message")).and_then(|v| v.as_str())
+                        {
+                            task.message = Some(message.to_string());
+                        }
+                        if let Some(percentage) = value
+                            .and_then(|v| v.get("percentage"))
+                            .and_then(|v| v.as_u64())
+                        {
+                            task.percentage = Some(percentage as u32);
+                        }
                     }
                     Some("end") => {
                         self.report(Severity::Trace, format!("{name}: progress finished"));
+                        if let Some(entry) = self.lsp.servers.get_mut(&server_id) {
+                            entry.progress.retain(|(t, _)| *t != token);
+                        }
                     }
-                    _ => {} // "report", or a malformed payload — never spam
+                    _ => {} // malformed payload — never spam
                 }
             }
             other => {
@@ -831,5 +977,20 @@ mod tests {
             server_request_response("some/madeUpMethod", &serde_json::Value::Null).unwrap_err();
         assert_eq!(err.code, -32601);
         assert!(err.message.contains("some/madeUpMethod"));
+    }
+
+    #[test]
+    fn spinner_clock_advances_only_after_the_interval_elapses() {
+        let mut clock = SpinnerClock::default();
+        let t0 = Instant::now();
+
+        clock.maybe_advance(t0);
+        assert_eq!(clock.frame, 1, "first call always advances");
+
+        clock.maybe_advance(t0 + Duration::from_millis(50));
+        assert_eq!(clock.frame, 1, "below the interval — no advance");
+
+        clock.maybe_advance(t0 + SPINNER_INTERVAL);
+        assert_eq!(clock.frame, 2, "at/past the interval — advances by one");
     }
 }
