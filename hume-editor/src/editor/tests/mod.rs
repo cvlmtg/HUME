@@ -284,6 +284,7 @@ impl Editor {
             virtual_lines_synced: std::collections::HashMap::new(),
             lsp: super::lsp::LspState::new_inline(),
             tui_active: false,
+            event_wait: None,
         }
     }
 

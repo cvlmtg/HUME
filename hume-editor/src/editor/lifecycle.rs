@@ -15,6 +15,7 @@ use crate::editor::lsp::DiagSeverity;
 use crate::editor::search;
 use crate::ops::pair::find_bracket_pair;
 use hume_editing::lines::line_end_exclusive;
+use hume_platform::events::WaitOutcome;
 use hume_platform::terminal::Term;
 
 use super::{Editor, Mode};
@@ -110,8 +111,9 @@ impl Editor {
         // and read by every pane's providers (see `build_pane`). Highlight
         // data is per-pane (see `PaneHighlights`) — allocated fresh inside
         // `build_pane`.
-        let completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::MinibufCompletionView>>> =
-            Arc::new(RwLock::new(None));
+        let completion_view: Arc<
+            RwLock<Option<crate::ui::completion_overlay::MinibufCompletionView>>,
+        > = Arc::new(RwLock::new(None));
         let popup_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>> =
             Arc::new(RwLock::new(None));
         let menu_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>> =
@@ -158,6 +160,15 @@ impl Editor {
 
         let mut buffers = BufferStore::new();
         buffers.open(buffer_id, doc);
+
+        // The cross-thread waker: background threads (LSP transport, parse
+        // worker) call `wake()` after posting a result so the main loop
+        // wakes instead of polling for completion (see `run`'s event step).
+        // Works without a terminal too (headless): the wake side just never
+        // has anything to wait on.
+        let (event_wait, waker) = hume_platform::events::event_wait_pair()?;
+        let wake: std::sync::Arc<dyn Fn() + Send + Sync> =
+            std::sync::Arc::new(move || waker.wake());
 
         Ok(Self {
             state: super::EditorState {
@@ -244,15 +255,20 @@ impl Editor {
             kitty_enabled: false,
             scripting: None,
             builtin_cmd_names: std::collections::HashSet::new(),
-            parse_worker: Box::new(hume_treesitter::parse_worker::ThreadedParseBackend::new()),
+            parse_worker: Box::new(
+                hume_treesitter::parse_worker::ThreadedParseBackend::with_waker(
+                    std::sync::Arc::clone(&wake),
+                ),
+            ),
             parse_worker_disconnect_logged: false,
             timer_wheel: super::timers::TimerWheel::new(),
             timer_payloads: std::collections::HashMap::new(),
             viewport_debounce: std::collections::HashMap::new(),
             last_viewport_key: std::collections::HashMap::new(),
             virtual_lines_synced: std::collections::HashMap::new(),
-            lsp: super::lsp::LspState::new_threaded(),
+            lsp: super::lsp::LspState::new_threaded(std::sync::Arc::clone(&wake)),
             tui_active: false,
+            event_wait: Some(event_wait),
         })
     }
 
@@ -297,6 +313,12 @@ impl Editor {
         // inline-output bracket (mod.rs) checks this to skip alt-screen
         // toggling and the "press any key" block outside the event loop.
         self.tui_active = true;
+        // The cross-thread waker's wait side. Taken out of `self` (not
+        // restored — `run` owns the terminal for its whole lifetime) so the
+        // loop below can call `&mut self` methods freely while holding it.
+        let mut event_wait = self.event_wait.take().ok_or_else(|| {
+            io::Error::other("event loop requires an Editor built by Editor::open")
+        })?;
         // Render context lives here — allocated once, reused every frame.
         // It must be outside `self` so `render_into` can borrow `self`
         // immutably while `ctx` is borrowed mutably alongside it.
@@ -389,15 +411,35 @@ impl Editor {
             let _ = hume_platform::terminal::end_synchronized_update();
 
             // ── 3. Event ──────────────────────────────────────────────────────
-            // While any async source (parse worker, LSP backend, timer wheel)
-            // has pending work, poll with a bounded timeout so it's drained
-            // and painted without waiting for input. Idle falls through to
-            // the blocking read so we never burn CPU while the editor is at
-            // rest.
-            if let Some(timeout) = self.wake_timeout()
-                && !event::poll(timeout)?
-            {
-                continue;
+            // (a) Crossterm parses input in batches and can hold already-
+            // decoded events in its own internal queue, which the fd-level
+            // wait below cannot see — check it first, or a queued event
+            // could sit unhandled until the next physical keypress.
+            if !event::poll(Duration::from_millis(0))? {
+                // (b) Block until input, a wake from a background thread
+                // (parse worker, LSP transport, SIGWINCH), or the nearest
+                // async source's deadline — whichever comes first. Idle (no
+                // deadline) blocks indefinitely, so we never burn CPU while
+                // the editor is at rest.
+                match event_wait.wait(self.wake_timeout())? {
+                    // Woken/TimedOut: loop back to the top — `prepare_frame`
+                    // drains every async source regardless of why we woke,
+                    // and `term.size()` at loop top re-reads the viewport
+                    // (covers SIGWINCH; crossterm surfaces the actual
+                    // `Resize` event on a later poll/read).
+                    WaitOutcome::Woken | WaitOutcome::TimedOut => continue,
+                    WaitOutcome::Input => {
+                        // Readable isn't the same as "a complete event is
+                        // ready": crossterm may have only a partial escape
+                        // sequence buffered, or (Windows) the console record
+                        // that signaled us may be one crossterm filters out
+                        // entirely. No event ready here means a spurious
+                        // wake — re-loop rather than block in `event::read`.
+                        if !event::poll(Duration::from_millis(0))? {
+                            continue;
+                        }
+                    }
+                }
             }
             match event::read()? {
                 // Release events arrive only with kitty keyboard protocol

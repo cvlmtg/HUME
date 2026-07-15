@@ -276,7 +276,8 @@ pub(crate) struct EditorState {
     /// selection menu) via its own `Arc` and pane registration.
     pub(crate) lsp_completion_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
     /// Shared completion-popup view: written by `prepare_frame`, read by provider.
-    pub(crate) completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::MinibufCompletionView>>>,
+    pub(crate) completion_view:
+        Arc<RwLock<Option<crate::ui::completion_overlay::MinibufCompletionView>>>,
     /// Interned scope ids for the four diagnostic severities (`diagnostic.error`
     /// etc.), resolved lazily on first use — scope interning needs `&mut
     /// ScopeRegistry`, which lives on `Editor::view`, not `EditorState`.
@@ -447,6 +448,11 @@ pub(crate) struct Editor {
     /// toggle + "press any key to return" block) when there is no TUI to
     /// suspend and no interactive user to press a key.
     tui_active: bool,
+    /// The wake side of the cross-thread waker `run` blocks on. `Some` from
+    /// [`Editor::open`], taken by `run` itself; `None` from `for_testing` —
+    /// tests dispatch directly and never enter `run`, so there is nothing to
+    /// wait on and no per-test wake-pipe/event-handle to construct.
+    event_wait: Option<hume_platform::events::EventWait>,
 }
 
 impl Editor {

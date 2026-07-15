@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use hume_engine::pipeline::BufferId;
-use hume_lsp::backend::{LspBackend, ServerId, ThreadedLspBackend};
+use hume_lsp::backend::{LspBackend, ServerId, ThreadedLspBackend, WakeCallback};
 use hume_lsp::client::{
     ClientAction, LspClient, Outcome, RequestMeta, ServerState, server_request_response,
 };
@@ -177,8 +177,10 @@ impl LspState {
     }
 
     /// Production constructor: one real server process per registration.
-    pub(crate) fn new_threaded() -> Self {
-        Self::with_backend(Box::new(ThreadedLspBackend::new()))
+    /// `wake` is forwarded to every spawned server's reader/stderr threads,
+    /// so the main loop wakes instead of polling for completion.
+    pub(crate) fn new_threaded(wake: WakeCallback) -> Self {
+        Self::with_backend(Box::new(ThreadedLspBackend::with_waker(wake)))
     }
 
     /// Test constructor: scripted responses, no process, no threads.
@@ -467,8 +469,16 @@ impl Editor {
         // matters. Ingested after the loop so a later action for the same
         // (server, uri) always wins regardless of arrival order within the
         // batch.
-        let mut diag_batch: HashMap<(ServerId, lsp_types::Uri), lsp_types::PublishDiagnosticsParams> =
-            HashMap::new();
+        // clippy's `mutable_key_type` flags `lsp_types::Uri` for the `Cell`s
+        // inside its underlying `fluent_uri::Uri`'s parse-offset cache — but
+        // `Uri`'s `Hash`/`PartialEq`/`Eq` are hand-implemented against
+        // `.as_str()` only (lsp-types 0.97.0's uri.rs), which those cells
+        // never affect. A false positive for this specific type.
+        #[allow(clippy::mutable_key_type)]
+        let mut diag_batch: HashMap<
+            (ServerId, lsp_types::Uri),
+            lsp_types::PublishDiagnosticsParams,
+        > = HashMap::new();
         for (server_id, ev) in events {
             let actions = match self.lsp.servers.get_mut(&server_id) {
                 Some(entry) => entry.client.on_event(ev),
