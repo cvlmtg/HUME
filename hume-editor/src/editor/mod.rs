@@ -260,13 +260,16 @@ pub(crate) struct EditorState {
     /// take this and push exactly one `(callback text-or-#f)` call onto
     /// `pending_steel_calls`.
     pub(super) steel_prompt_callback: Option<steel::rvals::SteelVal>,
-    /// The LSP completion session (distinct from `completion`, the
-    /// minibuffer tab-completion popup) — a singleton, starting a new one
-    /// replaces the old.
-    pub(super) lsp_completion: Option<lsp::completion::CompletionSession>,
-    /// Insert-mode selection state for `lsp_completion` — separate from
-    /// the session itself, cleared whenever the session ends.
-    pub(super) lsp_completion_ui: Option<lsp::completion::LspCompletionUi>,
+    /// Set by `set_mode` on any exit from Insert — `set_mode` only has
+    /// `&mut EditorState` (many callers are free functions that never touch
+    /// `Editor`/`LspState`), but the LSP completion session it must dismiss
+    /// now lives on `LspState`. Consumed (session + ui + view all cleared)
+    /// by `Editor::take_pending_lsp_completion_dismiss`, called
+    /// unconditionally from `handle_key`, `handle_mouse`, `drain_hooks`, and
+    /// `drain_pending_steel_calls` — the last of which `prepare_frame` also
+    /// calls every frame, so no separate render-time call is needed. Same
+    /// deferral channel philosophy as `pending_hooks`.
+    pub(super) lsp_completion_dismiss_pending: bool,
     /// Shared view for the LSP completion menu — reuses the popup/selection
     /// menu's generic
     /// `PopupState`/`PopupOverlay` (selected-row styling, same as the
@@ -366,8 +369,12 @@ impl EditorState {
         // (they return before the trie's `exit-insert` runs), so this
         // catches every *other* way Insert ends (Ctrl+C, a mouse click, a
         // Steel-triggered mode change) while a session happens to be open.
+        // Deferred: the session lives on `LspState`, which `set_mode` (only
+        // `&mut EditorState`) can't reach — `Editor::
+        // take_pending_lsp_completion_dismiss` consumes this at every
+        // chokepoint before the next render.
         if old == Mode::Insert {
-            self.clear_lsp_completion();
+            self.lsp_completion_dismiss_pending = true;
         }
         self.mode = new;
         let old_val = mode_name(old)

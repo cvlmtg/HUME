@@ -43,6 +43,9 @@ impl Editor {
             MouseEventKind::ScrollDown => self.mouse_scroll_down(),
             _ => {}
         }
+        // A click can exit Insert (`mouse_left_down`'s `end_insert_session`)
+        // — dismiss a completion session synchronously, same as `handle_key`.
+        self.take_pending_lsp_completion_dismiss();
     }
 
     // ── Click ─────────────────────────────────────────────────────────────────

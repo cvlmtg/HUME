@@ -30,7 +30,7 @@ fn begin_session(ed: &mut Editor, items: &[(&str, Option<&str>)]) {
         .map(|v| StoredCompletionItem::from_json(v).expect("test item"))
         .collect();
     let session = CompletionSession::begin(&ed.state, bid, items, false).unwrap();
-    ed.state.lsp_completion = Some(session);
+    ed.lsp.completion = Some(session);
 }
 
 // ── Pane-fit clamp: menu must render (clamped), never vanish ────────────────
@@ -132,7 +132,7 @@ fn typing_narrows_the_filtered_items() {
     // snapshot test above).
     ed.feed_key(key('g'));
 
-    let session = ed.state.lsp_completion.as_ref().unwrap();
+    let session = ed.lsp.completion.as_ref().unwrap();
     let top: Vec<String> = session
         .top(10)
         .iter()
@@ -152,7 +152,7 @@ fn enter_applies_the_selected_edit_and_closes_the_session() {
     ed.feed_key(key_enter());
 
     assert!(
-        ed.state.lsp_completion.is_none(),
+        ed.lsp.completion.is_none(),
         "session must close after accept"
     );
     assert!(ed.state.lsp_completion_view.read().unwrap().is_none());
@@ -165,7 +165,7 @@ fn enter_with_no_session_inserts_a_newline_regression() {
     let mut ed = Editor::open(None).unwrap();
     ed.feed_key(key('i'));
     ed.feed_key(key('a'));
-    assert!(ed.state.lsp_completion.is_none(), "sanity: no session open");
+    assert!(ed.lsp.completion.is_none(), "sanity: no session open");
 
     ed.feed_key(key_enter());
 
@@ -187,7 +187,7 @@ fn esc_dismisses_the_session_but_keeps_typed_text_and_stays_in_insert() {
 
     ed.feed_key(key_esc());
 
-    assert!(ed.state.lsp_completion.is_none());
+    assert!(ed.lsp.completion.is_none());
     assert_eq!(
         ed.state.mode(),
         hume_engine::types::EditorMode::Insert,
@@ -212,7 +212,7 @@ fn enter_at_zero_matches_inserts_a_newline_instead_of_erroring() {
 
     // "z" isn't a subsequence of "foo" — filtered to empty, session survives.
     ed.feed_key(key('z'));
-    assert!(ed.state.lsp_completion.is_some(), "sanity: session survives");
+    assert!(ed.lsp.completion.is_some(), "sanity: session survives");
 
     ed.feed_key(key_enter());
 
@@ -235,13 +235,13 @@ fn tab_at_zero_matches_falls_through_to_normal_insert() {
     begin_session(&mut ed, &[("foo", None)]);
 
     ed.feed_key(key('z'));
-    assert!(ed.state.lsp_completion.is_some(), "sanity: session survives");
+    assert!(ed.lsp.completion.is_some(), "sanity: session survives");
     let before = ed.doc().text().to_string();
 
     ed.feed_key(key_tab());
 
     assert!(
-        ed.state.lsp_completion_ui.is_none(),
+        ed.lsp.completion_ui.is_none(),
         "Tab must not create selection UI for a menu that isn't shown"
     );
     let text = ed.doc().text().to_string();
@@ -263,7 +263,7 @@ fn typing_to_zero_matches_keeps_the_session_but_a_single_esc_still_exits_insert(
     // keeps_the_session_open`).
     ed.feed_key(key('z'));
     assert!(
-        ed.state.lsp_completion.is_some(),
+        ed.lsp.completion.is_some(),
         "a transient zero-match refilter must not kill the session outright"
     );
 
@@ -274,7 +274,7 @@ fn typing_to_zero_matches_keeps_the_session_but_a_single_esc_still_exits_insert(
     // invisible session trapping the first Esc.
     ed.feed_key(key_esc());
     assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Normal);
-    assert!(ed.state.lsp_completion.is_none());
+    assert!(ed.lsp.completion.is_none());
 }
 
 // ── Backspace: within token refilters, past anchor dismisses ────────────────
@@ -289,10 +289,10 @@ fn backspace_within_the_token_refilters_and_keeps_the_session_open() {
 
     ed.feed_key(key_backspace());
     assert!(
-        ed.state.lsp_completion.is_some(),
+        ed.lsp.completion.is_some(),
         "backspace within the token must not dismiss the session"
     );
-    let session = ed.state.lsp_completion.as_ref().unwrap();
+    let session = ed.lsp.completion.as_ref().unwrap();
     let top: Vec<String> = session
         .top(10)
         .iter()
@@ -317,7 +317,7 @@ fn backspace_past_the_anchor_dismisses_the_session() {
     ed.feed_key(key_backspace());
 
     assert!(
-        ed.state.lsp_completion.is_none(),
+        ed.lsp.completion.is_none(),
         "backspace at the anchor must dismiss the session"
     );
     let text = ed.doc().text().to_string();
@@ -339,11 +339,11 @@ fn tab_at_last_item_wraps_to_first() {
     // a third must wrap back to 0 instead of staying clamped at 2.
     ed.feed_key(key_tab());
     ed.feed_key(key_tab());
-    assert_eq!(ed.state.lsp_completion_ui.as_ref().unwrap().selected, 2);
+    assert_eq!(ed.lsp.completion_ui.as_ref().unwrap().selected, 2);
 
     ed.feed_key(key_tab());
     assert_eq!(
-        ed.state.lsp_completion_ui.as_ref().unwrap().selected,
+        ed.lsp.completion_ui.as_ref().unwrap().selected,
         0,
         "Tab past the last item must wrap to the first"
     );
@@ -359,7 +359,7 @@ fn shift_tab_at_first_item_wraps_to_last() {
     // move, defaulting to index 0, which is what BackTab must wrap from.
     ed.feed_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT));
     assert_eq!(
-        ed.state.lsp_completion_ui.as_ref().unwrap().selected,
+        ed.lsp.completion_ui.as_ref().unwrap().selected,
         2,
         "Shift+Tab before the first item must wrap to the last"
     );
@@ -376,7 +376,36 @@ fn ctrl_c_exits_insert_and_dismisses_the_session() {
     ed.feed_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
 
     assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Normal);
-    assert!(ed.state.lsp_completion.is_none());
+    assert!(ed.lsp.completion.is_none());
+    assert!(ed.state.lsp_completion_view.read().unwrap().is_none());
+}
+
+/// `set_mode` only has `&mut EditorState` — it can't reach `LspState`
+/// directly, so a mode change from outside the normal key/mouse dispatch
+/// path (e.g. a Steel builtin) can only set the deferred-dismiss flag. Pins
+/// that the session survives until the flag is actually consumed, and that
+/// `prepare_frame` (the render-time safety net) does consume it.
+#[test]
+fn mode_change_outside_key_dispatch_dismisses_the_session_by_the_next_frame() {
+    let mut ed = Editor::open(None).unwrap();
+    ed.feed_key(key('i'));
+    begin_session(&mut ed, &[("foo", None)]);
+    assert!(ed.lsp.completion.is_some(), "sanity: session open");
+
+    ed.state.set_mode(hume_engine::types::EditorMode::Normal);
+    assert!(
+        ed.lsp.completion.is_some(),
+        "the session must survive until the flag is consumed, not disappear on set_mode itself"
+    );
+    assert!(ed.state.lsp_completion_dismiss_pending);
+
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(40, 8, &mut ctx);
+
+    assert!(
+        ed.lsp.completion.is_none(),
+        "prepare_frame must consume the deferred dismissal before rendering"
+    );
     assert!(ed.state.lsp_completion_view.read().unwrap().is_none());
 }
 
@@ -398,7 +427,7 @@ fn typing_after_accept_composes_into_the_open_edit_group_without_panicking() {
     // panics on a length mismatch.
     ed.feed_key(key_enter());
     assert!(
-        ed.state.lsp_completion.is_none(),
+        ed.lsp.completion.is_none(),
         "session must close after accept"
     );
 
@@ -435,13 +464,13 @@ fn typing_after_moving_the_cursor_before_the_anchor_dismisses_instead_of_panicki
     ed.feed_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
     ed.feed_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
     assert!(
-        ed.state.lsp_completion.is_some(),
+        ed.lsp.completion.is_some(),
         "sanity: Left does not itself dismiss the session"
     );
 
     ed.feed_key(key('x'));
     assert!(
-        ed.state.lsp_completion.is_none(),
+        ed.lsp.completion.is_none(),
         "a stale anchor past the cursor must dismiss the session, not panic"
     );
     let text = ed.doc().text().to_string();
@@ -463,5 +492,5 @@ fn minibuffer_e_tab_completion_is_unaffected_by_the_lsp_completion_guard() {
     // Whatever the minibuffer's own completion produces, dispatch must not
     // have been intercepted or altered by the LSP completion guard (no
     // session exists in Command mode at all).
-    assert!(ed.state.lsp_completion.is_none());
+    assert!(ed.lsp.completion.is_none());
 }

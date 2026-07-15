@@ -184,6 +184,12 @@ impl Editor {
     /// the batch pass over pass) can livelock the editor.  The watchdog only
     /// bounds each individual eval, not this loop.
     pub(crate) fn drain_hooks(&mut self) {
+        // Any mode change queued between the last consumption point and now
+        // (a hook handler earlier this same batch, or something that ran
+        // before `drain_hooks` was even called) must not survive into the
+        // handler calls below. Unconditional, at the top, so no early-return
+        // branch below can skip it.
+        self.take_pending_lsp_completion_dismiss();
         let mut total_processed = 0usize;
         while !self.state.pending_hooks.is_empty() {
             let hooks = std::mem::take(&mut self.state.pending_hooks);
@@ -219,7 +225,7 @@ impl Editor {
                     let mut impl_host = EditorHostImpl {
                         state: &mut self.state,
                         view: &mut self.view,
-                        lsp: Some(&self.lsp),
+                        lsp: Some(&mut self.lsp),
                         timers: Some(super::timer_bridge::TimerHandle {
                             wheel: &mut self.timer_wheel,
                             payloads: &mut self.timer_payloads,
@@ -253,6 +259,10 @@ impl Editor {
     /// naturally re-triggering, so a single pass is enough — anything a
     /// callback itself queues lands in next frame's drain, not this one).
     pub(crate) fn drain_pending_steel_calls(&mut self) {
+        // Same reasoning as the top of `drain_hooks` — unconditional so no
+        // early-return branch below can skip it. `prepare_frame` calls this
+        // every frame, so no separate render-time consumption is needed.
+        self.take_pending_lsp_completion_dismiss();
         let calls = std::mem::take(&mut self.state.pending_steel_calls);
         if calls.is_empty() {
             return;
@@ -266,7 +276,7 @@ impl Editor {
             let mut impl_host = EditorHostImpl {
                 state: &mut self.state,
                 view: &mut self.view,
-                lsp: Some(&self.lsp),
+                lsp: Some(&mut self.lsp),
                 timers: Some(super::timer_bridge::TimerHandle {
                     wheel: &mut self.timer_wheel,
                     payloads: &mut self.timer_payloads,

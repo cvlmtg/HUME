@@ -26,7 +26,7 @@ impl Editor {
         // deliberately NOT fully handled here — they fall through to the
         // normal body below, then get refiltered by the post-edit hook at
         // the end of this function.
-        if self.state.lsp_completion.is_some() && self.handle_completion_key(key) {
+        if self.lsp.completion.is_some() && self.handle_completion_key(key) {
             return;
         }
 
@@ -263,7 +263,7 @@ impl Editor {
         // Only reached for keys the completion pre-guard let fall through
         // (printable chars, Backspace within the token) — refilter using
         // the buffer's new anchor..cursor text now that the edit landed.
-        if self.state.lsp_completion.is_some() {
+        if self.lsp.completion.is_some() {
             self.refilter_lsp_completion_after_edit(key);
         }
     }
@@ -271,11 +271,11 @@ impl Editor {
     // ── LSP completion menu ─────────────────────────────────────────────
 
     /// The open completion session — every call site sits behind
-    /// `handle_insert`'s `lsp_completion.is_some()` guard, so the session
+    /// `handle_insert`'s `lsp.completion.is_some()` guard, so the session
     /// is always present here.
     fn open_completion_session(&self) -> &crate::editor::lsp::completion::CompletionSession {
-        self.state
-            .lsp_completion
+        self.lsp
+            .completion
             .as_ref()
             .expect("checked by handle_insert above")
     }
@@ -312,7 +312,7 @@ impl Editor {
                 true
             }
             KeyCode::Esc => {
-                self.state.clear_lsp_completion();
+                self.clear_lsp_completion();
                 true
             }
             KeyCode::Backspace => {
@@ -322,7 +322,7 @@ impl Editor {
                 // crossing it, not just narrowing the filter.
                 let head = self.current_selections().primary().head();
                 if head <= self.open_completion_session().anchor() {
-                    self.state.clear_lsp_completion();
+                    self.clear_lsp_completion();
                 }
                 false
             }
@@ -334,15 +334,15 @@ impl Editor {
     /// to keep the selection visible, so the bound is the full ranked
     /// candidate list, not just the visible window.
     fn move_completion_selection(&mut self, forward: bool) {
-        let Some(session) = self.state.lsp_completion.as_ref() else {
+        let Some(session) = self.lsp.completion.as_ref() else {
             return;
         };
         // `handle_completion_key`'s empty-session guard already returned
         // before dispatching here, so `n` is always positive.
         let n = session.len();
         let ui = self
-            .state
-            .lsp_completion_ui
+            .lsp
+            .completion_ui
             .get_or_insert(crate::editor::lsp::completion::LspCompletionUi { selected: 0 });
         if forward {
             ui.selected = (ui.selected + 1) % n;
@@ -356,15 +356,11 @@ impl Editor {
     /// either way (success or failure), matching `EditorHostImpl`'s own
     /// completion_accept.
     fn accept_completion_selection(&mut self) {
-        let selected = self
-            .state
-            .lsp_completion_ui
-            .as_ref()
-            .map_or(0, |ui| ui.selected);
-        let Some(session) = self.state.lsp_completion.take() else {
+        let selected = self.lsp.completion_ui.as_ref().map_or(0, |ui| ui.selected);
+        let Some(session) = self.lsp.completion.take() else {
             return;
         };
-        self.state.clear_lsp_completion();
+        self.clear_lsp_completion();
         if let Err(msg) = session.accept(&mut self.state, &self.lsp, selected) {
             self.report(Severity::Error, msg);
         }
@@ -379,11 +375,13 @@ impl Editor {
         if !is_char && key.code != KeyCode::Backspace {
             return;
         }
-        let Some(mut session) = self.state.lsp_completion.take() else {
+        // Phase 1 — shared reads only: peek the anchor without taking the
+        // session, so no put-back is ever needed.
+        let Some(session) = self.lsp.completion.as_ref() else {
             return;
         };
-        let head = self.current_selections().primary().head();
         let anchor = session.anchor();
+        let head = self.current_selections().primary().head();
         // Backspace crossing the anchor already dismissed the session in
         // `handle_completion_key`, before the edit ran. But `head` can still
         // land before `anchor` here — e.g. an arrow key moves the cursor
@@ -392,21 +390,33 @@ impl Editor {
         // rather than slice with an inverted or out-of-range span.
         let len = self.doc().text().len_chars();
         if head < anchor || head > len {
-            self.state.clear_lsp_completion();
+            self.clear_lsp_completion();
             return;
         }
         let text = self.doc().text().slice(anchor..head).to_string();
-        session.update_filter(&self.state, text.clone());
+
+        // Phase 2 — disjoint-field destructure (the `client_and_backend`/
+        // `LspState` pattern): `update_filter` needs `&mut lsp.completion`
+        // and `&state` at once, which a whole-`self` method call can't do,
+        // but plain field access can.
+        let Editor { state, lsp, .. } = &mut *self;
+        let Some(session) = lsp.completion.as_mut() else {
+            return; // can't happen (checked above), but never assume it
+        };
+        session.update_filter(state, text.clone());
+        let incomplete = session.incomplete();
+        let bid = session.bid();
+
+        // Phase 3 — borrows from phase 2 have ended; back to whole-`self`.
         // `on-completion-refilter` fires only while the server said
         // `isIncomplete` — a complete list needs no re-request, so a normal
         // session stays hook-silent on every keystroke.
-        if session.incomplete() {
-            let bid_val = SteelBufferId::new(session.bid()).into_steel_val();
+        if incomplete {
+            let bid_val = SteelBufferId::new(bid).into_steel_val();
             let text_val = steel::rvals::SteelVal::StringV(text.into());
             self.fire_hook_silent(HookId::OnCompletionRefilter, &[bid_val, text_val]);
         }
-        self.state.lsp_completion = Some(session);
-        self.state.lsp_completion_ui = None;
+        self.lsp.completion_ui = None;
     }
 
     // ── Auto-pair helpers ─────────────────────────────────────────────────────

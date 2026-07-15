@@ -135,7 +135,7 @@ macro_rules! live_host {
         crate::editor::host_impl::EditorHostImpl {
             state: &mut $ed.state,
             view: &mut $ed.view,
-            lsp: Some(&$ed.lsp),
+            lsp: Some(&mut $ed.lsp),
             timers: Some(crate::editor::timer_bridge::TimerHandle {
                 wheel: &mut $ed.timer_wheel,
                 payloads: &mut $ed.timer_payloads,
@@ -257,8 +257,7 @@ impl Editor {
                 trigger_chars: std::collections::HashMap::new(),
                 decorations: super::decorations::DecorationStores::default(),
                 steel_prompt_callback: None,
-                lsp_completion: None,
-                lsp_completion_ui: None,
+                lsp_completion_dismiss_pending: false,
                 lsp_completion_view: Arc::new(RwLock::new(None)),
                 completion_view: Arc::new(RwLock::new(None)),
                 diagnostic_scopes: None,

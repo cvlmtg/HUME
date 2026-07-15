@@ -209,7 +209,7 @@ impl Editor {
             let mut impl_host = crate::editor::host_impl::EditorHostImpl {
                 state: &mut self.state,
                 view: &mut self.view,
-                lsp: Some(&self.lsp),
+                lsp: Some(&mut self.lsp),
                 timers: Some(timer_bridge::TimerHandle {
                     wheel: &mut self.timer_wheel,
                     payloads: &mut self.timer_payloads,

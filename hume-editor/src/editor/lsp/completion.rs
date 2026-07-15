@@ -11,7 +11,7 @@ use hume_scripting::json::json_to_steel;
 use super::LspState;
 use super::edits;
 use super::introspect;
-use crate::editor::EditorState;
+use crate::editor::{Editor, EditorState};
 
 /// One item, typed via `lsp_types::CompletionItem` (the response round-trips
 /// through Steel first — `strip-snippet-item` rewrites `insertText`/
@@ -340,19 +340,30 @@ impl CompletionSession {
     }
 }
 
-impl EditorState {
+impl Editor {
     // ── LSP completion menu ─────────────────────────────────────────────
 
     /// Ends any open completion session and clears its menu view — shared
-    /// by `set_mode` (any exit from Insert) and `mappings/insert.rs`'s key
-    /// handling (`Esc`, a Backspace crossing the anchor, a successful/failed
-    /// accept). A no-op when no session is open.
+    /// by every completion-key handler in `mappings/insert.rs` (`Esc`, a
+    /// Backspace crossing the anchor, a successful/failed accept) and by
+    /// `take_pending_lsp_completion_dismiss`. A no-op when no session is
+    /// open.
     pub(crate) fn clear_lsp_completion(&mut self) {
-        self.lsp_completion = None;
-        self.lsp_completion_ui = None;
+        self.lsp.completion = None;
+        self.lsp.completion_ui = None;
         *self
+            .state
             .lsp_completion_view
             .write()
             .expect("RwLock not poisoned") = None;
+    }
+
+    /// Consumes `set_mode`'s deferred dismissal, if one is pending — called
+    /// at every chokepoint between "a mode change could have happened" and
+    /// "the next render" (see the flag's own doc comment on `EditorState`).
+    pub(crate) fn take_pending_lsp_completion_dismiss(&mut self) {
+        if std::mem::take(&mut self.state.lsp_completion_dismiss_pending) {
+            self.clear_lsp_completion();
+        }
     }
 }

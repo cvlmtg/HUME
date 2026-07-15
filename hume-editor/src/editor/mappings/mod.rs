@@ -90,6 +90,11 @@ impl Editor {
         if let Some(pending) = self.state.pending_repeat.take() {
             self.replay_dot(pending.count);
         }
+
+        // Any mode change this dispatch made (`set_mode`'s Insert-exit arm)
+        // dismisses a completion session synchronously, before this
+        // function returns — same timing tests already assert on.
+        self.take_pending_lsp_completion_dismiss();
     }
 
     /// Handles one key while a selection menu is open. Returns `true`

@@ -31,7 +31,9 @@ pub(crate) struct EditorHostImpl<'a> {
     /// builtin (command dispatch, hook fire, queued-call drain) — `None`
     /// everywhere else (init evals, which `require_cmd_ctx!` already blocks
     /// LSP builtins from anyway), so those sites don't need to thread it in.
-    pub(crate) lsp: Option<&'a LspState>,
+    /// `&mut` (not `&`) because the LSP completion session lives on
+    /// `LspState` — the completion builtins need to write it.
+    pub(crate) lsp: Option<&'a mut LspState>,
     /// Same `Some`-at-three-sites shape as `lsp`, for the `(after …)` /
     /// `(cancel-timer! …)` — these mutate (schedule/cancel), so `&LspState`'s
     /// shared-borrow shape doesn't fit; `TimerHandle` bundles the two
@@ -66,6 +68,21 @@ impl<'a> EditorHostImpl<'a> {
             .state
             .get(self.state.focused_pane_id)?
             .get(buf_id)
+    }
+
+    /// The `EditorHostImpl`-local equivalent of `Editor::clear_lsp_completion`
+    /// — this struct holds disjoint `state`/`lsp` borrows, not a full
+    /// `Editor`, so it can't just call that method.
+    fn clear_lsp_completion(&mut self) {
+        if let Some(lsp) = self.lsp.as_deref_mut() {
+            lsp.completion = None;
+            lsp.completion_ui = None;
+        }
+        *self
+            .state
+            .lsp_completion_view
+            .write()
+            .expect("RwLock not poisoned") = None;
     }
 }
 
@@ -390,33 +407,34 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
 
     // ── LSP introspection ────────────────────────────────────────────────
     fn lsp_capabilities(&self, server: Option<&str>) -> Option<serde_json::Value> {
-        let lsp = self.lsp?;
+        let lsp = self.lsp.as_deref()?;
         let bid = crate::editor::commands::focused_buffer_id(self.state, self.view);
         crate::editor::lsp::introspect::capabilities(self.state, lsp, bid, server)
     }
 
     fn lsp_server_status(&self) -> Vec<hume_scripting::LspServerStatusEntry> {
         self.lsp
+            .as_deref()
             .map(crate::editor::lsp::introspect::server_status)
             .unwrap_or_default()
     }
 
     fn lsp_server_for_buffer(&self, id: BufferId) -> Option<String> {
-        crate::editor::lsp::introspect::server_for_buffer(self.state, self.lsp?, id)
+        crate::editor::lsp::introspect::server_for_buffer(self.state, self.lsp.as_deref()?, id)
     }
 
     fn lsp_registered_for_language(&self, language: &str) -> bool {
-        self.lsp.is_some_and(|lsp| {
+        self.lsp.as_deref().is_some_and(|lsp| {
             crate::editor::lsp::introspect::registered_for_language(lsp, language)
         })
     }
 
     fn lsp_position_params(&self, id: BufferId) -> Option<serde_json::Value> {
-        crate::editor::lsp::introspect::position_params(self.state, self.lsp?, id)
+        crate::editor::lsp::introspect::position_params(self.state, self.lsp.as_deref()?, id)
     }
 
     fn lsp_range_params(&self, id: BufferId) -> Option<serde_json::Value> {
-        crate::editor::lsp::introspect::range_params(self.state, self.lsp?, id)
+        crate::editor::lsp::introspect::range_params(self.state, self.lsp.as_deref()?, id)
     }
 
     // ── Timers ──────────────────────────────────────────────────────────
@@ -441,7 +459,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
 
     // ── Decoration stores ───────────────────────────────────────────────
     fn set_inlay_hints(&mut self, bid: BufferId, hints: Vec<(serde_json::Value, String, bool)>) {
-        let Some(lsp) = self.lsp else {
+        let Some(lsp) = self.lsp.as_deref() else {
             return;
         };
         let encoding = crate::editor::lsp::introspect::encoding_for_buffer(self.state, lsp, bid);
@@ -554,7 +572,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         severity_floor: Option<&str>,
         range: Option<(usize, usize)>,
     ) -> Result<Vec<serde_json::Value>, String> {
-        let Some(lsp) = self.lsp else {
+        let Some(lsp) = self.lsp.as_deref() else {
             return Ok(Vec::new());
         };
         crate::editor::lsp::introspect::diagnostics_for_buffer(
@@ -567,7 +585,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     }
 
     fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {
-        let Some(lsp) = self.lsp else {
+        let Some(lsp) = self.lsp.as_deref() else {
             return (0, 0);
         };
         crate::editor::lsp::introspect::diagnostic_counts(lsp, bid)
@@ -580,7 +598,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         edits: Vec<(usize, usize, usize, usize, String)>,
         expect_gen: Option<u64>,
     ) -> Result<(), String> {
-        let Some(lsp) = self.lsp else {
+        let Some(lsp) = self.lsp.as_deref() else {
             return Err("apply-text-edits!: no LSP state available".to_string());
         };
         // Untrusted plugin input, not an internal invariant — a position
@@ -610,7 +628,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     }
 
     fn apply_workspace_edit(&mut self, edit: serde_json::Value) -> Result<usize, String> {
-        let Some(lsp) = self.lsp else {
+        let Some(lsp) = self.lsp.as_deref() else {
             return Err("apply-workspace-edit!: no LSP state available".to_string());
         };
         let we: lsp_types::WorkspaceEdit =
@@ -626,7 +644,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         line: usize,
         character: usize,
     ) -> Result<(), String> {
-        let Some(lsp) = self.lsp else {
+        let Some(lsp) = self.lsp.as_deref() else {
             return Err("goto-location!: no LSP state available".to_string());
         };
         let uri: lsp_types::Uri = uri
@@ -646,7 +664,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         line: usize,
         col: usize,
     ) -> Result<(), String> {
-        let Some(lsp) = self.lsp else {
+        let Some(lsp) = self.lsp.as_deref() else {
             return Err("goto-location!: no LSP state available".to_string());
         };
         let target = crate::editor::lsp::edits::GotoTarget::Path {
@@ -663,7 +681,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         line: usize,
         col: usize,
     ) -> Result<(), String> {
-        let Some(lsp) = self.lsp else {
+        let Some(lsp) = self.lsp.as_deref() else {
             return Err("goto-location!: no LSP state available".to_string());
         };
         let target = crate::editor::lsp::edits::GotoTarget::Buffer { bid, line, col };
@@ -823,7 +841,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             // Replaces any open session too — an isIncomplete re-request
             // that comes back empty (or entirely malformed) must close the
             // menu, not leave the old one live.
-            self.state.clear_lsp_completion();
+            self.clear_lsp_completion();
             self.state.report(Severity::Info, "no completions".to_string());
             return Ok(());
         }
@@ -840,41 +858,54 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             );
             return Ok(());
         };
-        self.state.lsp_completion = Some(session);
+        let Some(lsp) = self.lsp.as_deref_mut() else {
+            return Err("completion-begin!: no LSP state available".to_string());
+        };
+        lsp.completion = Some(session);
         Ok(())
     }
 
     fn completion_update_filter(&mut self, text: String) -> Result<(), String> {
-        let Some(mut session) = self.state.lsp_completion.take() else {
+        let Some(lsp) = self.lsp.as_deref_mut() else {
+            return Err("completion-update-filter!: no LSP state available".to_string());
+        };
+        let Some(session) = lsp.completion.as_mut() else {
             return Err("completion-update-filter!: no active completion session".to_string());
         };
         session.update_filter(self.state, text);
-        self.state.lsp_completion = Some(session);
         Ok(())
     }
 
     fn completion_top(&self, n: usize) -> Vec<serde_json::Value> {
-        self.state
-            .lsp_completion
-            .as_ref()
+        self.lsp
+            .as_deref()
+            .and_then(|lsp| lsp.completion.as_ref())
             .map(|s| s.top(n))
             .unwrap_or_default()
     }
 
     fn completion_accept(&mut self, idx: usize) -> Result<(), String> {
-        let Some(session) = self.state.lsp_completion.take() else {
-            return Err("completion-accept!: no active completion session".to_string());
-        };
-        let Some(lsp) = self.lsp else {
+        let Some(lsp) = self.lsp.as_deref_mut() else {
             return Err("completion-accept!: no LSP state available".to_string());
         };
+        let Some(session) = lsp.completion.take() else {
+            return Err("completion-accept!: no active completion session".to_string());
+        };
         // Ends the session either way — success or failure — so a rejected
-        // accept never leaves a stale session lingering.
+        // accept never leaves a stale session lingering; the ui/view clear
+        // matches `clear_lsp_completion`'s scope even though `completion`
+        // itself is already `None` here (via `take` above).
+        lsp.completion_ui = None;
+        *self
+            .state
+            .lsp_completion_view
+            .write()
+            .expect("RwLock not poisoned") = None;
         session.accept(self.state, lsp, idx)
     }
 
     fn completion_dismiss(&mut self) {
-        self.state.lsp_completion = None;
+        self.clear_lsp_completion();
     }
 }
 

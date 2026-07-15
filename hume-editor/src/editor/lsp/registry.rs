@@ -337,12 +337,12 @@ impl Editor {
         // would keep showing (and let the user accept) suggestions from a
         // server that's no longer running for this buffer.
         if self
-            .state
-            .lsp_completion
+            .lsp
+            .completion
             .as_ref()
             .is_some_and(|session| bids.contains(&session.bid()))
         {
-            self.state.clear_lsp_completion();
+            self.clear_lsp_completion();
         }
         for bid in diag_touched {
             self.fire_hook_diagnostics_changed(bid);

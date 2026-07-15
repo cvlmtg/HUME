@@ -264,7 +264,7 @@ fn begin_with_empty_items_creates_no_session_and_reports_info() {
     );
     type_cmd(&mut ed, ":go");
     assert!(
-        ed.state.lsp_completion.is_none(),
+        ed.lsp.completion.is_none(),
         "an empty items response must not open a session"
     );
     assert_eq!(
@@ -288,11 +288,11 @@ fn begin_with_empty_items_clears_an_already_open_session() {
              (completion-begin! (current-buffer) (list))))"#,
     );
     type_cmd(&mut ed, ":open");
-    assert!(ed.state.lsp_completion.is_some(), "sanity: session opened");
+    assert!(ed.lsp.completion.is_some(), "sanity: session opened");
 
     type_cmd(&mut ed, ":reopen-empty");
     assert!(
-        ed.state.lsp_completion.is_none(),
+        ed.lsp.completion.is_none(),
         "an isIncomplete re-request that comes back empty must close the open \
          session, not leave the previous items live"
     );
@@ -477,7 +477,7 @@ fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op
     );
 
     assert!(
-        ed.state.lsp_completion.is_none(),
+        ed.lsp.completion.is_none(),
         "no session must be created for a buffer not shown in the focused pane"
     );
     assert!(
@@ -536,7 +536,7 @@ fn all_items_malformed_behaves_like_an_empty_response() {
     type_cmd(&mut ed, ":go");
 
     assert!(
-        ed.state.lsp_completion.is_none(),
+        ed.lsp.completion.is_none(),
         "an all-malformed items response must not open a session"
     );
     assert_eq!(

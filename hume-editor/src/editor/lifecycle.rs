@@ -226,8 +226,7 @@ impl Editor {
                 trigger_chars: std::collections::HashMap::new(),
                 decorations: super::decorations::DecorationStores::default(),
                 steel_prompt_callback: None,
-                lsp_completion: None,
-                lsp_completion_ui: None,
+                lsp_completion_dismiss_pending: false,
                 lsp_completion_view,
                 completion_view,
                 diagnostic_scopes: None,
@@ -676,6 +675,10 @@ impl Editor {
 
         // 5. Drain completed async work (parse results, LSP), then evaluate
         //    any Steel calls that work queued (LSP request/timer callbacks).
+        //    `drain_pending_steel_calls` also unconditionally consumes any
+        //    deferred LSP-completion dismissal (`set_mode`'s Insert-exit arm)
+        //    — this is what makes step 9's `sync_lsp_completion_view` below
+        //    always see an up-to-date session, with no separate call needed.
         self.drain_async_sources();
         self.drain_pending_steel_calls();
 
@@ -1682,7 +1685,7 @@ impl Editor {
     /// `EngineView::pane_rect`, which reads `last_pane_area` — only current
     /// after step 8 runs.
     pub(super) fn sync_lsp_completion_view(&self, ctx: &mut RenderContext) {
-        if self.state.lsp_completion.is_none()
+        if self.lsp.completion.is_none()
             && self
                 .state
                 .lsp_completion_view
@@ -1693,7 +1696,7 @@ impl Editor {
             return;
         }
 
-        let resolved = self.state.lsp_completion.as_ref().and_then(|session| {
+        let resolved = self.lsp.completion.as_ref().and_then(|session| {
             let (anchor, pane_rect, _max_width, _max_height) =
                 self.popup_anchor_and_bounds(ctx, session.anchor())?;
             let lines: Vec<String> = session
@@ -1708,11 +1711,7 @@ impl Editor {
             let selected = if lines.is_empty() {
                 None
             } else {
-                let idx = self
-                    .state
-                    .lsp_completion_ui
-                    .as_ref()
-                    .map_or(0, |ui| ui.selected);
+                let idx = self.lsp.completion_ui.as_ref().map_or(0, |ui| ui.selected);
                 Some(idx.min(lines.len() - 1))
             };
             Some(crate::ui::popup::PopupState {

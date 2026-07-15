@@ -113,6 +113,14 @@ pub(crate) struct LspState {
     /// (at most) once per `drain_lsp` call, gated on its own interval so
     /// the animation speed doesn't depend on the event loop's wake cadence.
     spinner: SpinnerClock,
+    /// The LSP completion session — a singleton, starting a new one
+    /// replaces the old. Lives here (not `EditorState`) so it dies with the
+    /// LSP subsystem (`:lsp-stop` clears it via `lsp_stop_one`) rather than
+    /// needing a second owner to reach across for that.
+    pub(in crate::editor) completion: Option<completion::CompletionSession>,
+    /// Insert-mode selection state for `completion` — separate from the
+    /// session itself, cleared whenever the session ends.
+    pub(in crate::editor) completion_ui: Option<completion::LspCompletionUi>,
 }
 
 /// How often the loading spinner advances a frame — independent of how
@@ -155,6 +163,8 @@ impl LspState {
             configs: HashMap::new(),
             diagnostics: DiagnosticsStore::default(),
             spinner: SpinnerClock::default(),
+            completion: None,
+            completion_ui: None,
         }
     }
 
