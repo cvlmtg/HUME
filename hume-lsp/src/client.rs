@@ -562,6 +562,44 @@ fn build_client_capabilities() -> ClientCapabilities {
     }
 }
 
+/// Answers a server-initiated request. Exhaustive by design — every request
+/// gets exactly one response, even the ones this v1 doesn't otherwise
+/// support. `workspace/applyEdit` is deliberately absent: it's the one
+/// server request that needs `&mut Editor` (the edit engine), so the editor
+/// glue answers it separately (`apply_edit_request_response`) rather than
+/// through this pure lookup table.
+pub fn server_request_response(
+    method: &str,
+    params: &serde_json::Value,
+) -> Result<serde_json::Value, ResponseError> {
+    match method {
+        // No settings blob exists — every item answers `null`,
+        // same shape a server sees from a client with no matching config.
+        "workspace/configuration" => Ok(workspace_configuration_response(params)),
+        // Answered separately by `apply_edit_request_response` (needs
+        // `&mut Editor`, unlike every other request this lookup answers).
+        "client/registerCapability"
+        | "client/unregisterCapability"
+        | "window/workDoneProgress/create" => Ok(serde_json::Value::Null),
+        other => Err(ResponseError {
+            code: -32601,
+            message: format!("method not found: {other}"),
+            data: None,
+        }),
+    }
+}
+
+/// One `null` per requested item — same length as `params.items`, per spec
+/// (the result array must line up positionally with the request).
+fn workspace_configuration_response(params: &serde_json::Value) -> serde_json::Value {
+    let item_count = params
+        .get("items")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.len())
+        .unwrap_or(0);
+    serde_json::Value::Array(vec![serde_json::Value::Null; item_count])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1259,5 +1297,45 @@ mod tests {
             ServerState::Dead,
             "state must stay Dead, not flip to Crashed"
         );
+    }
+
+    // ── server_request_response ──────────────────────────────────────────────
+
+    #[test]
+    fn workspace_configuration_answers_null_per_item() {
+        let params =
+            serde_json::json!({"items": [{"section": "rust-analyzer"}, {"section": "editor"}]});
+        let result = server_request_response("workspace/configuration", &params).unwrap();
+        assert_eq!(result, serde_json::json!([null, null]));
+    }
+
+    #[test]
+    fn workspace_configuration_with_no_items_answers_empty_array() {
+        let params = serde_json::json!({"items": []});
+        let result = server_request_response("workspace/configuration", &params).unwrap();
+        assert_eq!(result, serde_json::json!([]));
+    }
+
+    // workspace/applyEdit is answered separately (needs `&mut Editor`) — see
+    // hume-editor's `editor::tests::lsp_edits` for its coverage.
+
+    #[test]
+    fn register_and_unregister_capability_and_progress_create_answer_null() {
+        for method in [
+            "client/registerCapability",
+            "client/unregisterCapability",
+            "window/workDoneProgress/create",
+        ] {
+            let result = server_request_response(method, &serde_json::Value::Null).unwrap();
+            assert_eq!(result, serde_json::Value::Null, "method {method}");
+        }
+    }
+
+    #[test]
+    fn unknown_server_request_is_method_not_found() {
+        let err =
+            server_request_response("some/madeUpMethod", &serde_json::Value::Null).unwrap_err();
+        assert_eq!(err.code, -32601);
+        assert!(err.message.contains("some/madeUpMethod"));
     }
 }

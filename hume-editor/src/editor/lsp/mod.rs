@@ -19,7 +19,9 @@ use std::time::{Duration, Instant};
 
 use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::{LspBackend, ServerId, ThreadedLspBackend};
-use hume_lsp::client::{ClientAction, LspClient, Outcome, RequestMeta, ServerState};
+use hume_lsp::client::{
+    ClientAction, LspClient, Outcome, RequestMeta, ServerState, server_request_response,
+};
 use hume_lsp::codec::{Message, RequestId, ResponseError};
 #[cfg(test)]
 use hume_lsp::inline::InlineLspBackend;
@@ -881,103 +883,9 @@ impl Editor {
     }
 }
 
-/// Answers a server-initiated request. Exhaustive by design (answered in
-/// Rust, never surfaced to Steel) — every request gets exactly
-/// one response, even the ones this v1 doesn't otherwise support.
-fn server_request_response(
-    method: &str,
-    params: &serde_json::Value,
-) -> Result<serde_json::Value, ResponseError> {
-    match method {
-        // No settings blob exists — every item answers `null`,
-        // same shape a server sees from a client with no matching config.
-        "workspace/configuration" => Ok(workspace_configuration_response(params)),
-        // Answered separately by `apply_edit_request_response` (needs
-        // `&mut Editor`, unlike every other request this lookup answers).
-        "client/registerCapability"
-        | "client/unregisterCapability"
-        | "window/workDoneProgress/create" => Ok(serde_json::Value::Null),
-        other => Err(ResponseError {
-            code: -32601,
-            message: format!("method not found: {other}"),
-            data: None,
-        }),
-    }
-}
-
-/// One `null` per requested item — same length as `params.items`, per spec
-/// (the result array must line up positionally with the request).
-fn workspace_configuration_response(params: &serde_json::Value) -> serde_json::Value {
-    let item_count = params
-        .get("items")
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.len())
-        .unwrap_or(0);
-    serde_json::Value::Array(vec![serde_json::Value::Null; item_count])
-}
-
-/// `Buffer.text_gen` (a monotonic `u64` edit counter) -> the wire's `i32`
-/// document version. `text_gen` would need over two billion edits to a
-/// single buffer to overflow this — effectively unreachable — but a silent
-/// wraparound would desync diagnostics/didChange version correlation in a
-/// way that's very hard to diagnose, so this fails loudly instead of `as i32`.
-pub(super) fn wire_version(text_gen: u64) -> i32 {
-    i32::try_from(text_gen).expect("text_gen overflowed i32 — over 2 billion edits to one buffer")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn workspace_configuration_answers_null_per_item() {
-        let params =
-            serde_json::json!({"items": [{"section": "rust-analyzer"}, {"section": "editor"}]});
-        let result = server_request_response("workspace/configuration", &params).unwrap();
-        assert_eq!(result, serde_json::json!([null, null]));
-    }
-
-    #[test]
-    fn workspace_configuration_with_no_items_answers_empty_array() {
-        let params = serde_json::json!({"items": []});
-        let result = server_request_response("workspace/configuration", &params).unwrap();
-        assert_eq!(result, serde_json::json!([]));
-    }
-
-    #[test]
-    fn wire_version_passes_through_ordinary_values() {
-        assert_eq!(wire_version(0), 0);
-        assert_eq!(wire_version(42), 42);
-    }
-
-    #[test]
-    #[should_panic(expected = "overflowed i32")]
-    fn wire_version_panics_instead_of_silently_wrapping_past_i32_max() {
-        wire_version(i32::MAX as u64 + 1);
-    }
-
-    // `workspace/applyEdit` moved to `apply_edit_request_response` (needs
-    // `&mut Editor`) — see `editor::tests::lsp_edits` for its coverage.
-
-    #[test]
-    fn register_and_unregister_capability_and_progress_create_answer_null() {
-        for method in [
-            "client/registerCapability",
-            "client/unregisterCapability",
-            "window/workDoneProgress/create",
-        ] {
-            let result = server_request_response(method, &serde_json::Value::Null).unwrap();
-            assert_eq!(result, serde_json::Value::Null, "method {method}");
-        }
-    }
-
-    #[test]
-    fn unknown_server_request_is_method_not_found() {
-        let err =
-            server_request_response("some/madeUpMethod", &serde_json::Value::Null).unwrap_err();
-        assert_eq!(err.code, -32601);
-        assert!(err.message.contains("some/madeUpMethod"));
-    }
 
     #[test]
     fn spinner_clock_advances_only_after_the_interval_elapses() {

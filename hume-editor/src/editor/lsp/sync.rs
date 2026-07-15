@@ -6,7 +6,7 @@
 use hume_editing::changeset::ChangeSet;
 use hume_engine::pipeline::BufferId;
 use hume_lsp::codec::Message;
-use hume_lsp::sync::changeset_to_content_changes;
+use hume_lsp::sync::{changeset_to_content_changes, wire_version};
 use ropey::Rope;
 
 use super::LspState;
@@ -70,7 +70,7 @@ impl Editor {
                 "textDocument": {
                     "uri": uri.as_str(),
                     "languageId": buf.language.clone().expect("attached buffer always has a language"),
-                    "version": super::wire_version(buf.text_gen),
+                    "version": wire_version(buf.text_gen),
                     "text": buf.text().to_string(),
                 }
             })
@@ -110,7 +110,7 @@ impl Editor {
     pub(in crate::editor) fn lsp_did_change_whole_document(&mut self, bid: BufferId) {
         self.send_doc_notification(bid, "textDocument/didChange", |buf, uri| {
             serde_json::json!({
-                "textDocument": { "uri": uri.as_str(), "version": super::wire_version(buf.text_gen) },
+                "textDocument": { "uri": uri.as_str(), "version": wire_version(buf.text_gen) },
                 "contentChanges": [{ "text": buf.text().to_string() }],
             })
         });
@@ -188,7 +188,7 @@ impl Editor {
                     continue;
                 }
                 let params = serde_json::json!({
-                    "textDocument": { "uri": uri.as_str(), "version": super::wire_version(change.version) },
+                    "textDocument": { "uri": uri.as_str(), "version": wire_version(change.version) },
                     "contentChanges": events,
                 });
                 client.send_or_queue(

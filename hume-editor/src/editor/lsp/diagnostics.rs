@@ -10,6 +10,7 @@ use hume_editing::changeset::ChangeSet;
 use hume_editing::wire_to_char;
 use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
+use hume_lsp::sync::wire_version;
 use lsp_types::PublishDiagnosticsParams;
 use ropey::Rope;
 
@@ -326,7 +327,7 @@ impl Editor {
         // (already-remapped) stored diagnostics keep displaying meanwhile.
         // Absent version is always ingested (older/simpler servers omit it).
         if let Some(v) = parsed.version
-            && v != super::wire_version(self.state.buffers.get(bid).text_gen)
+            && v != wire_version(self.state.buffers.get(bid).text_gen)
         {
             self.report(
                 Severity::Trace,

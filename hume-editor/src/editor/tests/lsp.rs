@@ -319,7 +319,7 @@ fn server_request_action_gets_exactly_one_response() {
     // externally observable proof at this layer is that dispatch didn't
     // panic and drained cleanly. The dispatch table itself (every method,
     // including MethodNotFound) is exhaustively unit-tested directly in
-    // `editor::lsp::tests` against the pure `server_request_response`
+    // `hume_lsp::client::tests` against the pure `server_request_response`
     // function — that's the right altitude for table-shape assertions.
     assert!(ed.lsp.backend_mut().drain().is_empty());
 }

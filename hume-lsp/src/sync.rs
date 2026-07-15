@@ -93,6 +93,15 @@ pub fn apply_events_to_string_mirror(
     text
 }
 
+/// `Buffer.text_gen` (a monotonic `u64` edit counter) -> the wire's `i32`
+/// document version. `text_gen` would need over two billion edits to a
+/// single buffer to overflow this — effectively unreachable — but a silent
+/// wraparound would desync diagnostics/didChange version correlation in a
+/// way that's very hard to diagnose, so this fails loudly instead of `as i32`.
+pub fn wire_version(text_gen: u64) -> i32 {
+    i32::try_from(text_gen).expect("text_gen overflowed i32 — over 2 billion edits to one buffer")
+}
+
 /// `(line, character)` → byte offset in `text`, via plain string scanning
 /// (LF-only lines — HUME buffers never contain `\r`, it's normalized away
 /// on load; see `hume_editing::text`).
@@ -277,5 +286,19 @@ mod tests {
                 enc,
             );
         }
+    }
+
+    // ── wire_version ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn wire_version_passes_through_ordinary_values() {
+        assert_eq!(wire_version(0), 0);
+        assert_eq!(wire_version(42), 42);
+    }
+
+    #[test]
+    #[should_panic(expected = "overflowed i32")]
+    fn wire_version_panics_instead_of_silently_wrapping_past_i32_max() {
+        wire_version(i32::MAX as u64 + 1);
     }
 }
