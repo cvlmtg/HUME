@@ -83,13 +83,12 @@ struct ServerEntry {
 }
 
 /// One active work-done-progress task, built from a `begin` notification and
-/// updated in place by `report`s. `percentage`/`message` are optional per
-/// the LSP spec — a `report` omitting either leaves it unchanged, so fields
-/// are merged rather than the task being replaced wholesale.
+/// updated in place by `report`s. `percentage` is optional per the LSP spec —
+/// a `report` omitting it leaves it unchanged, so it's merged rather than the
+/// task being replaced wholesale.
 #[derive(Debug, Clone)]
 pub(crate) struct ProgressTask {
     pub(crate) title: String,
-    pub(crate) message: Option<String>,
     pub(crate) percentage: Option<u32>,
 }
 
@@ -732,24 +731,15 @@ impl Editor {
                             .and_then(|v| v.as_str())
                             .unwrap_or("progress")
                             .to_string();
-                        let message = value
-                            .and_then(|v| v.get("message"))
-                            .and_then(|v| v.as_str())
-                            .map(str::to_string);
                         let percentage = value
                             .and_then(|v| v.get("percentage"))
                             .and_then(|v| v.as_u64())
                             .map(|p| p as u32);
                         self.report(Severity::Trace, format!("{name}: {title} started"));
                         if let Some(entry) = self.lsp.servers.get_mut(&server_id) {
-                            entry.progress.push((
-                                token,
-                                ProgressTask {
-                                    title,
-                                    message,
-                                    percentage,
-                                },
-                            ));
+                            entry
+                                .progress
+                                .push((token, ProgressTask { title, percentage }));
                         }
                     }
                     Some("report") => {
@@ -761,12 +751,7 @@ impl Editor {
                         else {
                             return; // report for an unknown token — nothing to merge into
                         };
-                        // Absent fields mean "unchanged" per the LSP spec — merge, don't overwrite.
-                        if let Some(message) =
-                            value.and_then(|v| v.get("message")).and_then(|v| v.as_str())
-                        {
-                            task.message = Some(message.to_string());
-                        }
+                        // An absent percentage means "unchanged" per the LSP spec — merge, don't overwrite.
                         if let Some(percentage) = value
                             .and_then(|v| v.get("percentage"))
                             .and_then(|v| v.as_u64())

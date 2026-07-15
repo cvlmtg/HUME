@@ -128,11 +128,9 @@ pub(crate) enum LspActivity {
     Progress {
         // Not rendered (the statusline only shows the spinner + percentage);
         // kept because the `$/progress` begin/report state machine is
-        // asserted against these in `lsp_statusline` tests.
+        // asserted against this in `lsp_statusline` tests.
         #[allow(dead_code)]
         title: String,
-        #[allow(dead_code)]
-        message: Option<String>,
         percentage: Option<u32>,
     },
 }
@@ -151,7 +149,6 @@ pub(crate) fn activity(state: &EditorState, lsp: &LspState, id: BufferId) -> Lsp
     match entry.progress.last() {
         Some((_, task)) => LspActivity::Progress {
             title: task.title.clone(),
-            message: task.message.clone(),
             percentage: task.percentage,
         },
         None => LspActivity::Idle,
