@@ -12,6 +12,26 @@ use crate::injections::resolve_and_parse_injections;
 use crate::registry::LanguageConfig;
 use hume_editing::text::Text;
 
+/// Called by the worker thread after posting results, so the editor's main
+/// loop wakes and drains them instead of rechecking on a poll cadence.
+/// Type-erased so this crate stays free of a `hume-platform` dependency —
+/// production wraps `hume_platform::events::EventWaker::wake`.
+pub type WakeCallback = Arc<dyn Fn() + Send + Sync>;
+
+/// Invokes a [`WakeCallback`] on drop — fires whether the worker thread
+/// exits normally or unwinds from a panic, so a dead worker still wakes the
+/// main loop once (the subsequent drain observes the disconnect via the
+/// existing channel and reports it through `is_disconnected`). A normal
+/// exit firing one extra, spurious wake is harmless — callers already
+/// tolerate spurious wakes by design.
+struct WakeOnDrop(WakeCallback);
+
+impl Drop for WakeOnDrop {
+    fn drop(&mut self) {
+        (self.0)();
+    }
+}
+
 // Compile-time Send assertions — tree_sitter::Tree is Send+Sync;
 // tree_sitter::Parser is Send+!Sync (lives on the worker thread only).
 const _: fn() = || {
@@ -189,6 +209,7 @@ struct WorkerState {
     tx: mpsc::Sender<ParseDone>,
     parser: tree_sitter::Parser,
     cancel: Arc<AtomicBool>,
+    wake: WakeCallback,
 }
 
 impl WorkerState {
@@ -219,6 +240,7 @@ impl WorkerState {
                 if self.tx.send(done).is_err() {
                     return;
                 }
+                (self.wake)();
             }
 
             if disconnected {
@@ -286,6 +308,13 @@ pub struct ThreadedParseBackend {
 
 impl ThreadedParseBackend {
     pub fn new() -> Self {
+        Self::with_waker(Arc::new(|| {}))
+    }
+
+    /// Like [`Self::new`], but `wake` is called after every posted result
+    /// (and once more, harmlessly, when the worker thread exits) so the
+    /// editor's main loop wakes instead of polling for completion.
+    pub fn with_waker(wake: WakeCallback) -> Self {
         let (tx_req, rx_req) = mpsc::channel::<ParseRequest>();
         let (tx_done, rx_done) = mpsc::channel::<ParseDone>();
         let cancel = Arc::new(AtomicBool::new(false));
@@ -295,11 +324,15 @@ impl ThreadedParseBackend {
             tx: tx_done,
             parser: tree_sitter::Parser::new(),
             cancel: Arc::clone(&cancel),
+            wake: Arc::clone(&wake),
         };
 
         let thread = thread::Builder::new()
             .name("hume-parse-worker".into())
-            .spawn(move || state.run())
+            .spawn(move || {
+                let _wake_on_drop = WakeOnDrop(wake);
+                state.run()
+            })
             .expect("failed to spawn parse worker thread");
 
         Self {
@@ -722,5 +755,49 @@ mod tests {
             "rust parse must succeed after language switch"
         );
         assert!(Arc::ptr_eq(&done2.lang, &rust_lang));
+    }
+
+    // ── Wake callback ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn parse_completion_fires_waker() {
+        let (tx_wake, rx_wake) = std::sync::mpsc::channel::<()>();
+        let wake: super::WakeCallback = Arc::new(move || {
+            let _ = tx_wake.send(());
+        });
+        let mut worker = ThreadedParseBackend::with_waker(wake);
+        let lang = make_lang("json", "tree_sitter_json");
+
+        worker.post(ParseRequest {
+            bid: fresh_bid(),
+            text_gen: 1,
+            lang,
+            text: Text::from("{}\n"),
+            old_tree: None,
+            langs: empty_langs(),
+        });
+        worker
+            .rx_done
+            .recv_timeout(Duration::from_secs(5))
+            .expect("parse timed out");
+        rx_wake
+            .recv_timeout(Duration::from_secs(1))
+            .expect("waker must fire after the worker posts a result");
+    }
+
+    #[test]
+    fn wake_on_drop_fires_during_unwind() {
+        let (tx_wake, rx_wake) = std::sync::mpsc::channel::<()>();
+        let wake: super::WakeCallback = Arc::new(move || {
+            let _ = tx_wake.send(());
+        });
+        let handle = std::thread::spawn(move || {
+            let _guard = super::WakeOnDrop(wake);
+            panic!("simulated worker crash");
+        });
+        assert!(handle.join().is_err(), "thread should have panicked");
+        rx_wake
+            .recv_timeout(Duration::from_secs(1))
+            .expect("WakeOnDrop must fire its callback during unwind");
     }
 }
