@@ -7,6 +7,16 @@ use hume_engine::pipeline::BufferId;
 
 use crate::editor::{Editor, Severity};
 
+/// A `register-lsp-server!`-registered language name — the key
+/// `LspState.configs` and every attached `ServerEntry.language` use today.
+/// Registration identity is language, one-to-one with a running server (see
+/// docs/LSP.md's registry-shape decision row): a future multi-server-per-
+/// language design would key `LspState.servers` by a distinct registration
+/// name instead, with a `LanguageName -> [registration name]` map alongside
+/// it — this alias exists so that future re-key finds every language-keyed
+/// signature by type, not by re-reading every `String` in this module.
+pub(crate) type LanguageName = String;
+
 /// Config recorded by one `register-lsp-server!` call, keyed by language.
 #[derive(Debug, Clone)]
 pub(crate) struct LspServerConfig {

@@ -33,7 +33,7 @@ use super::async_source::AsyncSource;
 use super::message_log::Severity;
 use diagnostics::DiagnosticsStore;
 pub(crate) use diagnostics::{DiagSeverity, StoredDiag};
-use registry::LspServerConfig;
+use registry::{LanguageName, LspServerConfig};
 
 /// A Rust closure run with a completed request's outcome. `hume-lsp` never
 /// holds this — it only ever sees the `(ServerId, RequestId)` pair the
@@ -60,7 +60,7 @@ struct ServerEntry {
     /// The language this server was registered under
     /// (`register-lsp-server!`'s key) — `None` only for a client inserted
     /// directly by a test without going through `lsp_attach_buffer`.
-    language: Option<String>,
+    language: Option<LanguageName>,
     /// Display name (the registered `command`, e.g. `"rust-analyzer"`) —
     /// used to prefix stderr/log lines so `:messages` reads legibly
     /// with multiple servers running.
@@ -101,7 +101,7 @@ pub(crate) struct LspState {
     /// no separate token needs to be minted or round-tripped.
     callbacks: HashMap<(ServerId, RequestId), CallbackEntry>,
     /// Config recorded by `register-lsp-server!`, keyed by language.
-    configs: HashMap<String, LspServerConfig>,
+    configs: HashMap<LanguageName, LspServerConfig>,
     diagnostics: DiagnosticsStore,
     /// Drives the statusline loading spinner's animation frame. Advanced
     /// (at most) once per `drain_lsp` call, gated on its own interval so

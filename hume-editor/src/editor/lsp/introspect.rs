@@ -10,6 +10,7 @@ use hume_lsp::backend::ServerId;
 
 use super::LspState;
 use super::diagnostics::DiagSeverity;
+use super::registry::LanguageName;
 use crate::editor::EditorState;
 use crate::editor::pane_state::PaneBufferState;
 
@@ -72,7 +73,7 @@ pub(super) fn resolve_server(
 
 /// The registered language for `server_id` — reverse of `resolve_server`'s
 /// named path.
-pub(super) fn server_language(lsp: &LspState, server_id: ServerId) -> Option<String> {
+pub(super) fn server_language(lsp: &LspState, server_id: ServerId) -> Option<LanguageName> {
     lsp.servers.get(&server_id)?.language.clone()
 }
 
@@ -111,7 +112,7 @@ pub(crate) fn server_for_buffer(
     state: &EditorState,
     lsp: &LspState,
     id: BufferId,
-) -> Option<String> {
+) -> Option<LanguageName> {
     let sid = state.buffers.try_get(id)?.lsp_server?;
     server_language(lsp, sid)
 }
