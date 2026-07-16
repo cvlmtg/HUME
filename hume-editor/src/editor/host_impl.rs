@@ -20,7 +20,7 @@ use crate::editor::registry::MappableCommand;
 use crate::editor::timer_bridge::TimerHandle;
 use crate::settings::{BufferOverrides, SettingScope, apply_setting};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
-use hume_scripting::host::{BindMode, EditorHost, OptionValue};
+use hume_scripting::host::{BindMode, EditorHost, OptionValue, UiHost};
 
 use super::{EditorState, Severity};
 
@@ -86,6 +86,11 @@ impl<'a> EditorHostImpl<'a> {
 }
 
 impl<'a> EditorHost for EditorHostImpl<'a> {
+    // ── Optional capability accessors ────────────────────────────────────────
+    fn ui(&mut self) -> Option<&mut dyn UiHost> {
+        Some(self)
+    }
+
     // ── Enumeration ──────────────────────────────────────────────────────────
     fn buffer_ids(&self) -> Vec<BufferId> {
         self.state.buffers.iter().map(|(id, _)| id).collect()
@@ -699,33 +704,6 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         crate::editor::lsp::edits::selection_spans_full_line(self.state, bid)
     }
 
-    // ── Minibuffer prompt ────────────────────────────────────────────────
-    fn prompt(
-        &mut self,
-        label: String,
-        prefill: String,
-        callback: steel::rvals::SteelVal,
-    ) -> Result<(), String> {
-        // Not `self.state.minibuf.is_some()` — a `prompt!` called from a
-        // `:command`'s body runs while that command line's own minibuffer
-        // session is still open (it closes only after the command
-        // returns). `steel_prompt_callback` is only `Some` once a *prior*
-        // `prompt!` call has actually taken over the session.
-        if self.state.steel_prompt_callback.is_some() {
-            return Err("prompt!: a minibuffer session is already open".to_string());
-        }
-        let cursor = prefill.len();
-        self.state.minibuf = Some(crate::editor::MiniBuffer {
-            prompt: label,
-            input: prefill,
-            cursor,
-        });
-        self.state.steel_prompt_callback = Some(callback);
-        self.state.history.begin_session_all();
-        self.state.set_mode(crate::editor::Mode::Command);
-        Ok(())
-    }
-
     fn symbol_under_cursor(&self, bid: BufferId) -> String {
         let Some(buf) = self.state.buffers.try_get(bid) else {
             return String::new();
@@ -756,69 +734,6 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             return String::new();
         };
         text.slice(start..end + 1).to_string()
-    }
-
-    // ── Cursor-anchored popup ────────────────────────────────────────────
-    fn show_popup(&mut self, text: String, dismiss_on_key: bool) -> Result<(), String> {
-        self.state.popup = Some(crate::ui::popup::PopupModel {
-            text,
-            dismiss_on_key,
-        });
-        Ok(())
-    }
-
-    fn close_popup(&mut self) -> Result<(), String> {
-        self.state.popup = None;
-        Ok(())
-    }
-
-    // ── Selection menu ────────────────────────────────────────────────────
-    fn show_menu(
-        &mut self,
-        items: Vec<String>,
-        callback: steel::rvals::SteelVal,
-    ) -> Result<(), String> {
-        // Excludes Insert specifically, not an allowlist of Normal/Extend —
-        // a command triggered via `:name` runs while `mode()` still reports
-        // `Command` (mode reverts to Normal only after the command body
-        // returns), so an allowlist would reject the common `:`-triggered
-        // case too.
-        if self.state.mode() == hume_engine::types::EditorMode::Insert {
-            return Err("show-menu!: not available in Insert mode".to_string());
-        }
-        self.state.menu = Some(crate::ui::popup::MenuModel {
-            items,
-            selected: 0,
-            callback,
-        });
-        Ok(())
-    }
-
-    fn close_menu(&mut self) -> Result<(), String> {
-        self.state.menu = None;
-        Ok(())
-    }
-
-    // ── Bottom drawer ──────────────────────────────────────────────────────
-    fn show_drawer_list(
-        &mut self,
-        items: Vec<String>,
-        callback: steel::rvals::SteelVal,
-    ) -> Result<(), String> {
-        self.state.drawer = Some(crate::ui::drawer::DrawerModel {
-            items,
-            selected: 0,
-            scroll: 0,
-            callback,
-        });
-        self.state.sync_drawer_view();
-        Ok(())
-    }
-
-    fn close_drawer(&mut self) -> Result<(), String> {
-        self.state.drawer = None;
-        self.state.sync_drawer_view();
-        Ok(())
     }
 
     // ── Completion orchestration ────────────────────────────────────────
@@ -922,6 +837,98 @@ pub(crate) fn to_editor_bind_mode(mode: BindMode) -> crate::editor::keymap::Bind
         BindMode::Normal => crate::editor::keymap::BindMode::Normal,
         BindMode::Extend => crate::editor::keymap::BindMode::Extend,
         BindMode::Insert => crate::editor::keymap::BindMode::Insert,
+    }
+}
+
+impl<'a> UiHost for EditorHostImpl<'a> {
+    // ── Minibuffer prompt ────────────────────────────────────────────────
+    fn prompt(
+        &mut self,
+        label: String,
+        prefill: String,
+        callback: steel::rvals::SteelVal,
+    ) -> Result<(), String> {
+        // Not `self.state.minibuf.is_some()` — a `prompt!` called from a
+        // `:command`'s body runs while that command line's own minibuffer
+        // session is still open (it closes only after the command
+        // returns). `steel_prompt_callback` is only `Some` once a *prior*
+        // `prompt!` call has actually taken over the session.
+        if self.state.steel_prompt_callback.is_some() {
+            return Err("prompt!: a minibuffer session is already open".to_string());
+        }
+        let cursor = prefill.len();
+        self.state.minibuf = Some(crate::editor::MiniBuffer {
+            prompt: label,
+            input: prefill,
+            cursor,
+        });
+        self.state.steel_prompt_callback = Some(callback);
+        self.state.history.begin_session_all();
+        self.state.set_mode(crate::editor::Mode::Command);
+        Ok(())
+    }
+
+    // ── Cursor-anchored popup ────────────────────────────────────────────
+    fn show_popup(&mut self, text: String, dismiss_on_key: bool) -> Result<(), String> {
+        self.state.popup = Some(crate::ui::popup::PopupModel {
+            text,
+            dismiss_on_key,
+        });
+        Ok(())
+    }
+
+    fn close_popup(&mut self) -> Result<(), String> {
+        self.state.popup = None;
+        Ok(())
+    }
+
+    // ── Selection menu ────────────────────────────────────────────────────
+    fn show_menu(
+        &mut self,
+        items: Vec<String>,
+        callback: steel::rvals::SteelVal,
+    ) -> Result<(), String> {
+        // Excludes Insert specifically, not an allowlist of Normal/Extend —
+        // a command triggered via `:name` runs while `mode()` still reports
+        // `Command` (mode reverts to Normal only after the command body
+        // returns), so an allowlist would reject the common `:`-triggered
+        // case too.
+        if self.state.mode() == hume_engine::types::EditorMode::Insert {
+            return Err("show-menu!: not available in Insert mode".to_string());
+        }
+        self.state.menu = Some(crate::ui::popup::MenuModel {
+            items,
+            selected: 0,
+            callback,
+        });
+        Ok(())
+    }
+
+    fn close_menu(&mut self) -> Result<(), String> {
+        self.state.menu = None;
+        Ok(())
+    }
+
+    // ── Bottom drawer ──────────────────────────────────────────────────────
+    fn show_drawer_list(
+        &mut self,
+        items: Vec<String>,
+        callback: steel::rvals::SteelVal,
+    ) -> Result<(), String> {
+        self.state.drawer = Some(crate::ui::drawer::DrawerModel {
+            items,
+            selected: 0,
+            scroll: 0,
+            callback,
+        });
+        self.state.sync_drawer_view();
+        Ok(())
+    }
+
+    fn close_drawer(&mut self) -> Result<(), String> {
+        self.state.drawer = None;
+        self.state.sync_drawer_view();
+        Ok(())
     }
 }
 

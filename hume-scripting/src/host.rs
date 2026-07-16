@@ -55,6 +55,13 @@ pub fn unsupported(builtin: &str) -> String {
 }
 
 pub trait EditorHost {
+    // ── Optional capability accessors ────────────────────────────────────────
+    /// Cursor-anchored popup / selection menu / bottom drawer / minibuffer
+    /// prompt — `None` for hosts with no UI surface to drive (test stubs).
+    fn ui(&mut self) -> Option<&mut dyn UiHost> {
+        None
+    }
+
     // ── Enumeration ─────────────────────────────────────────────────────────
     /// All open buffer ids in open-order.
     fn buffer_ids(&self) -> Vec<BufferId>;
@@ -464,96 +471,11 @@ pub trait EditorHost {
         false
     }
 
-    // ── Minibuffer prompt (default = "not supported") ────────────────────
-    /// `(prompt! label #:prefill text on-confirm)` — opens a one-shot
-    /// Command-mode minibuffer session. `callback` fires exactly once, with
-    /// the confirmed text or `#f` on cancel — queued through the same
-    /// drained-at-frame-boundary path as every other Rust→Steel call, never
-    /// invoked inline. Errors if a minibuffer session is already open.
-    fn prompt(
-        &mut self,
-        label: String,
-        prefill: String,
-        callback: steel::rvals::SteelVal,
-    ) -> Result<(), String> {
-        let _ = (label, prefill, callback);
-        Err("prompt!: not supported by this host".to_string())
-    }
-
     /// `(symbol-under-cursor bid)` — the word at the primary cursor head,
     /// `""` on whitespace/punctuation.
     fn symbol_under_cursor(&self, bid: BufferId) -> String {
         let _ = bid;
         String::new()
-    }
-
-    // ── Cursor-anchored popup (default = "not supported") ────────────────
-    /// `(show-popup! text #:anchor 'cursor #:dismiss-on-key #f)` — shows
-    /// `text` in a floating panel anchored near the focused pane's cursor.
-    /// Geometry (wrap width, flip/clamp position) is resolved fresh every
-    /// frame by the host, not here — this just stores the raw content.
-    /// Replaces any popup already showing (no stacking). `dismiss_on_key`:
-    /// when true, the popup is cleared by the *next* key press (any key),
-    /// rather than only by `close-popup!`/`on-mode-change`.
-    fn show_popup(&mut self, text: String, dismiss_on_key: bool) -> Result<(), String> {
-        let _ = (text, dismiss_on_key);
-        Err("show-popup!: not supported by this host".to_string())
-    }
-
-    /// `(close-popup!)` — dismisses the popup. Idempotent: closing when none
-    /// is showing is not an error (only an unsupported *host* errors).
-    fn close_popup(&mut self) -> Result<(), String> {
-        Err("close-popup!: not supported by this host".to_string())
-    }
-
-    // ── Selection menu (default = "not supported") ───────────────────────
-    /// `(show-menu! items on-select)` — opens a selection menu near the
-    /// cursor. `on-select` fires exactly once: the chosen index, or `#f` on
-    /// dismissal — queued, never invoked inline. Replaces any menu already
-    /// open (no stacking). Hosts should reject this from Insert mode — a
-    /// menu that can't be driven is worse than no menu (note: a command
-    /// triggered via `:name` still runs with the *previous* mode active, so
-    /// this must be an Insert-specific rejection, not a Normal/Extend-only
-    /// allowlist).
-    fn show_menu(
-        &mut self,
-        items: Vec<String>,
-        callback: steel::rvals::SteelVal,
-    ) -> Result<(), String> {
-        let _ = (items, callback);
-        Err("show-menu!: not supported by this host".to_string())
-    }
-
-    /// `(close-menu!)` — dismisses the menu *without* invoking its callback
-    /// (caller-initiated close, distinct from the key-driven dismissal paths
-    /// which do call back with `#f`).
-    fn close_menu(&mut self) -> Result<(), String> {
-        Err("close-menu!: not supported by this host".to_string())
-    }
-
-    // ── Bottom drawer (default = "not supported") ────────────────────────
-    /// `(show-drawer-list! items on-select)` — opens a scrolling list in the
-    /// bottom chrome band. `items` are pre-formatted display strings; the
-    /// drawer never interprets their content — the jump (if any) is the
-    /// caller's job, typically `(goto-location! ...)` inside `on-select`.
-    /// `on-select` receives the chosen index and, unlike the popup/menu's
-    /// one-shot callback, may fire more than once: the drawer stays open
-    /// across `Enter` (Helix-style browse) until `Esc` or `close-drawer!`.
-    /// Replaces any drawer already open (no stacking).
-    fn show_drawer_list(
-        &mut self,
-        items: Vec<String>,
-        callback: steel::rvals::SteelVal,
-    ) -> Result<(), String> {
-        let _ = (items, callback);
-        Err("show-drawer-list!: not supported by this host".to_string())
-    }
-
-    /// `(close-drawer!)` — dismisses the drawer *without* invoking its
-    /// callback (caller-initiated close, distinct from `Esc`, which does
-    /// call back with `#f`).
-    fn close_drawer(&mut self) -> Result<(), String> {
-        Err("close-drawer!: not supported by this host".to_string())
     }
 
     // ── Completion orchestration (default = "not supported") ─────────────
@@ -594,4 +516,70 @@ pub trait EditorHost {
 
     /// `(completion-dismiss!)` — clears any open session; no-op if none.
     fn completion_dismiss(&mut self) {}
+}
+
+/// Cursor-anchored popup, selection menu, bottom drawer, and minibuffer
+/// prompt — accessed through [`EditorHost::ui`]. `None` from that accessor
+/// means "no UI surface to drive" (test stubs); every method here is
+/// required once a host does provide `UiHost`.
+pub trait UiHost {
+    /// `(prompt! label #:prefill text on-confirm)` — opens a one-shot
+    /// Command-mode minibuffer session. `callback` fires exactly once, with
+    /// the confirmed text or `#f` on cancel — queued through the same
+    /// drained-at-frame-boundary path as every other Rust→Steel call, never
+    /// invoked inline. Errors if a minibuffer session is already open.
+    fn prompt(
+        &mut self,
+        label: String,
+        prefill: String,
+        callback: steel::rvals::SteelVal,
+    ) -> Result<(), String>;
+
+    /// `(show-popup! text #:anchor 'cursor #:dismiss-on-key #f)` — shows
+    /// `text` in a floating panel anchored near the focused pane's cursor.
+    /// Geometry (wrap width, flip/clamp position) is resolved fresh every
+    /// frame by the host, not here — this just stores the raw content.
+    /// Replaces any popup already showing (no stacking). `dismiss_on_key`:
+    /// when true, the popup is cleared by the *next* key press (any key),
+    /// rather than only by `close-popup!`/`on-mode-change`.
+    fn show_popup(&mut self, text: String, dismiss_on_key: bool) -> Result<(), String>;
+
+    /// `(close-popup!)` — dismisses the popup. Idempotent: closing when none
+    /// is showing is not an error (only an unsupported *host* errors).
+    fn close_popup(&mut self) -> Result<(), String>;
+
+    /// `(show-menu! items on-select)` — opens a selection menu near the
+    /// cursor. `on-select` fires exactly once: the chosen index, or `#f` on
+    /// dismissal — queued, never invoked inline. Replaces any menu already
+    /// open (no stacking). Hosts should reject this from Insert mode — a
+    /// menu that can't be driven is worse than no menu (note: a command
+    /// triggered via `:name` still runs with the *previous* mode active, so
+    /// this must be an Insert-specific rejection, not a Normal/Extend-only
+    /// allowlist).
+    fn show_menu(&mut self, items: Vec<String>, callback: steel::rvals::SteelVal)
+    -> Result<(), String>;
+
+    /// `(close-menu!)` — dismisses the menu *without* invoking its callback
+    /// (caller-initiated close, distinct from the key-driven dismissal paths
+    /// which do call back with `#f`).
+    fn close_menu(&mut self) -> Result<(), String>;
+
+    /// `(show-drawer-list! items on-select)` — opens a scrolling list in the
+    /// bottom chrome band. `items` are pre-formatted display strings; the
+    /// drawer never interprets their content — the jump (if any) is the
+    /// caller's job, typically `(goto-location! ...)` inside `on-select`.
+    /// `on-select` receives the chosen index and, unlike the popup/menu's
+    /// one-shot callback, may fire more than once: the drawer stays open
+    /// across `Enter` (Helix-style browse) until `Esc` or `close-drawer!`.
+    /// Replaces any drawer already open (no stacking).
+    fn show_drawer_list(
+        &mut self,
+        items: Vec<String>,
+        callback: steel::rvals::SteelVal,
+    ) -> Result<(), String>;
+
+    /// `(close-drawer!)` — dismisses the drawer *without* invoking its
+    /// callback (caller-initiated close, distinct from `Esc`, which does
+    /// call back with `#f`).
+    fn close_drawer(&mut self) -> Result<(), String>;
 }

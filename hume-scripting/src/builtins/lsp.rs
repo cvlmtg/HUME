@@ -825,6 +825,8 @@ pub(crate) fn prompt(
     let label = string_arg(label, "prompt! label")?;
     let prefill = string_arg(prefill, "prompt! prefill")?;
     ctx.host
+        .ui()
+        .ok_or_else(|| conv_err(crate::host::unsupported("prompt!")))?
         .prompt(label, prefill, on_confirm)
         .map(|()| SteelVal::Void)
         .map_err(conv_err)

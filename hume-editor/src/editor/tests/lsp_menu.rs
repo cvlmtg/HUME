@@ -148,7 +148,7 @@ fn close_menu_drops_the_callback_without_invoking_it() {
     // dismiss the menu (with `#f`) before the command even runs — this
     // test wants to isolate `close_menu`'s own behavior from that intercept.
     use crate::editor::host_impl::EditorHostImpl;
-    use hume_scripting::host::EditorHost;
+    use hume_scripting::host::UiHost;
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
@@ -172,7 +172,7 @@ fn close_menu_drops_the_callback_without_invoking_it() {
 #[test]
 fn show_menu_rejected_outside_normal_extend_mode() {
     use crate::editor::host_impl::EditorHostImpl;
-    use hume_scripting::host::EditorHost;
+    use hume_scripting::host::UiHost;
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
     ed.feed_key(key('i')); // enter Insert mode
@@ -193,7 +193,7 @@ fn show_menu_rejected_outside_normal_extend_mode() {
 #[test]
 fn show_menu_accepted_in_normal_mode() {
     use crate::editor::host_impl::EditorHostImpl;
-    use hume_scripting::host::EditorHost;
+    use hume_scripting::host::UiHost;
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);

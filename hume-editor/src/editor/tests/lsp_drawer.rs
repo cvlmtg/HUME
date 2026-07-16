@@ -53,7 +53,7 @@ fn show_drawer_list_populates_model_and_view() {
 #[test]
 fn close_drawer_drops_the_callback_without_invoking_it() {
     use crate::editor::host_impl::EditorHostImpl;
-    use hume_scripting::host::EditorHost;
+    use hume_scripting::host::UiHost;
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);

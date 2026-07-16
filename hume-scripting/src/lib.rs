@@ -63,7 +63,7 @@ pub use builtins::ids::SteelBufferId;
 #[cfg(any(test, feature = "test-util"))]
 pub use builtins::sandbox::init_dirs;
 pub use hooks::HookId;
-pub use host::{BindMode, EditorHost, unsupported};
+pub use host::{BindMode, EditorHost, UiHost, unsupported};
 pub use keys::parse_key_stream;
 pub use log::LogLevel;
 pub use types::{
