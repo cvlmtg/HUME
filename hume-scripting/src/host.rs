@@ -355,7 +355,7 @@ pub trait BufferHost {
     /// bridge's own `#:allow-stale` staleness check is what motivated it.
     fn buffer_generation(&self, id: BufferId) -> Option<u64>;
 
-    /// `(viewport-range bid)` — the `(first_line last_line)` char-line span
+    /// `(viewport-range bid)` — the `(first_line . last_line)` char-line span
     /// currently visible for `id` (the focused pane's if shown there, else
     /// the first pane showing it), or `None` if `id` isn't open in any pane.
     /// Pane geometry, not LSP state — doesn't need an attached server.

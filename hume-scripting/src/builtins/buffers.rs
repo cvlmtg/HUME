@@ -9,7 +9,7 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::{IntoSteelVal, SteelVal};
 
-use super::args::{BidArg, usize_arg};
+use super::args::{BidArg, cons_pair, usize_arg};
 use super::errors::generic_err;
 use super::ids::{SteelBufferId, SteelPaneId};
 use crate::{SteelCtx, types::Effect};
@@ -241,22 +241,18 @@ pub(crate) fn char_index_to_line(ctx: &mut SteelCtx, idx: SteelVal) -> SteelResu
     }
 }
 
-/// `(viewport-range bid)` → `(list first-line last-line)` currently visible
+/// `(viewport-range bid)` → `(first-line . last-line)` currently visible
 /// for `bid` (the focused pane's if shown there, else the first pane showing
 /// it), or `#f` if `bid` isn't open in any pane. Reads live view state,
 /// which only exists at command dispatch, hook fire, or a queued-call drain.
 pub(crate) fn viewport_range(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
     let id = bid.0;
-    Ok(match ctx.host.buffers().viewport_range(id) {
+    match ctx.host.buffers().viewport_range(id) {
         Some((first, last)) => {
-            let entries: Vec<SteelVal> = vec![
-                SteelVal::IntV(first as isize),
-                SteelVal::IntV(last as isize),
-            ];
-            SteelVal::ListV(entries.into())
+            cons_pair(SteelVal::IntV(first as isize), SteelVal::IntV(last as isize))
         }
-        None => SteelVal::BoolV(false),
-    })
+        None => Ok(SteelVal::BoolV(false)),
+    }
 }
 
 /// `(selection-spans-full-line? bid)`.
