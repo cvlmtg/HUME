@@ -1423,11 +1423,17 @@ fn set_register_prefix_at_init_errors() {
 
 // ── init-mode guards for buffer lifecycle builtins ────────────────────────
 
-/// `(close-buffer! …)` called from init.scm must raise a Steel error rather
-/// than crashing.  The `require_cmd_ctx!` guard fires before the host method.
+/// `(close-buffer! …)` called from init.scm with a malformed `bid` must
+/// raise a Steel error rather than crashing. `bid` is a typed `BidArg`
+/// param, so steel-core decodes it before the registration wrapper's
+/// `cmd`-gate closure runs — a call that is both wrong-mode and wrong-typed
+/// (as here: init.scm has no way to construct a real buffer-id, cmd-gated
+/// builtins like `current-buffer` included) reports the type error, not the
+/// gate error. The gate itself is covered directly in `hume-scripting`'s
+/// `buffers::tests::close_buffer_blocked_in_init_mode`.
 ///
-/// Flip: remove `require_cmd_ctx!` from `close_buffer` and the eval returns
-/// Ok (or panics), not Err.
+/// Flip: accept any `SteelVal` (no `BidArg` decode) and the eval returns Ok
+/// (or panics), not Err.
 #[test]
 fn close_buffer_errors_in_init_mode() {
     let mut h = host();
@@ -1436,16 +1442,18 @@ fn close_buffer_errors_in_init_mode() {
         .eval_source("(close-buffer! (quote ()))", &mut mock)
         .unwrap_err();
     assert!(
-        err.contains("not available during init"),
-        "close-buffer! must raise init-guard error, got: {err}",
+        err.contains("expected buffer-id"),
+        "close-buffer! must raise a buffer-id type error, got: {err}",
     );
 }
 
-/// `(switch-to-buffer! …)` called from init.scm must raise a Steel error
-/// rather than crashing.  Mirrors `close_buffer_errors_in_init_mode`.
+/// `(switch-to-buffer! …)` called from init.scm with a malformed `bid` must
+/// raise a Steel error rather than crashing.  Mirrors
+/// `close_buffer_errors_in_init_mode` — see its doc for why this asserts
+/// the type error, not the gate error.
 ///
-/// Flip: remove `require_cmd_ctx!` from `switch_to_buffer` and the eval
-/// returns Ok (or panics), not Err.
+/// Flip: accept any `SteelVal` (no `BidArg` decode) and the eval returns Ok
+/// (or panics), not Err.
 #[test]
 fn switch_to_buffer_errors_in_init_mode() {
     let mut h = host();
@@ -1454,8 +1462,8 @@ fn switch_to_buffer_errors_in_init_mode() {
         .eval_source("(switch-to-buffer! (quote ()))", &mut mock)
         .unwrap_err();
     assert!(
-        err.contains("not available during init"),
-        "switch-to-buffer! must raise init-guard error, got: {err}",
+        err.contains("expected buffer-id"),
+        "switch-to-buffer! must raise a buffer-id type error, got: {err}",
     );
 }
 
