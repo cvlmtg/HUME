@@ -100,7 +100,7 @@ pub fn typed_plugin_status(
     _force: bool,
 ) -> Result<(), CommandError> {
     let out = if let Some(host) = ed.scripting.as_ref() {
-        host.lazy_status_string()
+        host.lazy_status_string(&ed.state.registry.lazy_stubs())
     } else {
         ed.report(Severity::Info, "Scripting disabled".to_string());
         return Ok(());

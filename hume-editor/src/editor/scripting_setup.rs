@@ -136,8 +136,7 @@ impl Editor {
         };
         let bid = pane.buffer_id;
         let total_lines = self.state.buffers.get(bid).text().len_lines();
-        let (first_line, last_line) =
-            super::lsp::introspect::pane_visible_range(pane, total_lines);
+        let (first_line, last_line) = super::lsp::introspect::pane_visible_range(pane, total_lines);
         let bid_val = SteelBufferId::new(bid).into_steel_val();
         self.fire_hook_silent(
             HookId::OnViewportChange,
@@ -396,15 +395,6 @@ impl Editor {
                 self.report(Severity::Error, format!("init.scm: {msg}"));
             }
         }
-        // Register lazy-command stubs for every #:commands activation entry
-        // declared during init.scm.  Must run after register_steel_cmds (eager
-        // plugins may have defined commands that would collide) and before
-        // scripting=Some so the borrow of &host is independent.
-        let activation_commands = host.activation_commands();
-        let collided = self.register_lazy_command_stubs(&activation_commands);
-        for name in collided {
-            host.drop_activation_command(&name);
-        }
         // Snapshot language activation entries before the second flush so the
         // post-init lint (below) can compare them against the final language registry.
         let lang_activations = host.activation_languages();
@@ -424,7 +414,8 @@ impl Editor {
         }
         self.scripting = Some(host);
         // Post-init lint: warn on keymap leaves that target an unknown command.
-        // Runs after register_lazy_command_stubs so Lazy stubs count as valid.
+        // Lazy stubs are registered live as each declare-plugin call runs during
+        // init.scm eval, so they already count as valid commands by this point.
         // Built-in keymaps only reference registered built-ins, so any warnings
         // here come from user bind-key! calls to typos / undeclared commands.
         {
@@ -477,39 +468,6 @@ impl Editor {
         for bid in open_bids {
             self.detect_and_set_language(bid);
         }
-    }
-
-    /// Register a `Lazy` stub for each command activation entry from the plugin manifests.
-    ///
-    /// Called after `register_steel_cmds` (eager plugins run first) so a
-    /// command defined eagerly is detected as a conflict before a lazy stub
-    /// for the same name would shadow it.
-    ///
-    /// Returns the names that were skipped due to collision so the caller can
-    /// remove their declare-time entries from the scripting host's activation
-    /// maps — preventing stale attribution that would mis-route a future dispatch.
-    pub(super) fn register_lazy_command_stubs(
-        &mut self,
-        activations: &std::collections::HashMap<String, hume_scripting::attribution::PluginId>,
-    ) -> Vec<String> {
-        let mut collided = Vec::new();
-        for (name, plugin) in activations {
-            if self.state.registry.contains(name) {
-                self.report(
-                    Severity::Error,
-                    format!("lazy command '{name}' conflicts with an existing command"),
-                );
-                collided.push(name.clone());
-            } else {
-                self.state
-                    .registry
-                    .register(super::registry::MappableCommand::Lazy {
-                        name: name.clone().into(),
-                        plugin: plugin.clone(),
-                    });
-            }
-        }
-        collided
     }
 }
 
