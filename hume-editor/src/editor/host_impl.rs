@@ -20,7 +20,9 @@ use crate::editor::registry::MappableCommand;
 use crate::editor::timer_bridge::TimerHandle;
 use crate::settings::{BufferOverrides, SettingScope, apply_setting};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
-use hume_scripting::host::{BindMode, CompletionHost, EditHost, EditorHost, OptionValue, UiHost};
+use hume_scripting::host::{
+    BindMode, CompletionHost, DecorationHost, EditHost, EditorHost, OptionValue, UiHost,
+};
 
 use super::{EditorState, Severity};
 
@@ -94,6 +96,9 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Some(self)
     }
     fn completions(&mut self) -> Option<&mut dyn CompletionHost> {
+        Some(self)
+    }
+    fn decorations(&mut self) -> Option<&mut dyn DecorationHost> {
         Some(self)
     }
 
@@ -475,7 +480,149 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         }
     }
 
-    // ── Decoration stores ───────────────────────────────────────────────
+    fn selection_spans_full_line(&self, bid: BufferId) -> bool {
+        crate::editor::lsp::edits::selection_spans_full_line(self.state, bid)
+    }
+
+    fn symbol_under_cursor(&self, bid: BufferId) -> String {
+        let Some(buf) = self.state.buffers.try_get(bid) else {
+            return String::new();
+        };
+        let pid = self.state.focused_pane_id;
+        let Some(pbs) = self
+            .state
+            .panes
+            .state
+            .get(pid)
+            .and_then(|by_buf| by_buf.get(bid))
+        else {
+            return String::new();
+        };
+        let text = buf.text();
+        let head = pbs.selections.primary().head();
+        let Some(ch) = text.char_at(head) else {
+            return String::new();
+        };
+        if hume_editing::word::classify_char(ch) != hume_editing::word::CharClass::Word {
+            return String::new();
+        }
+        let Some((start, end)) = crate::ops::text_object::inner_word_impl(
+            text,
+            head,
+            hume_editing::word::is_word_boundary,
+        ) else {
+            return String::new();
+        };
+        text.slice(start..end + 1).to_string()
+    }
+}
+
+impl<'a> CompletionHost for EditorHostImpl<'a> {
+    fn completion_begin(
+        &mut self,
+        bid: BufferId,
+        items: Vec<serde_json::Value>,
+        incomplete: bool,
+    ) -> Result<(), String> {
+        if self.state.buffers.try_get(bid).is_none() {
+            return Err("completion-begin!: no such buffer".to_string());
+        }
+        // A malformed item (e.g. missing the spec-required `label`) is
+        // skipped, not fatal to the whole batch — one bad item from a
+        // misbehaving server must not silently drop every good one.
+        let mut parsed = Vec::with_capacity(items.len());
+        for v in &items {
+            match crate::editor::lsp::completion::StoredCompletionItem::from_json(v) {
+                Ok(item) => parsed.push(item),
+                Err(e) => self.state.report(
+                    Severity::Trace,
+                    format!("completion-begin!: skipped malformed item: {e}"),
+                ),
+            }
+        }
+        if parsed.is_empty() {
+            // Replaces any open session too — an isIncomplete re-request
+            // that comes back empty (or entirely malformed) must close the
+            // menu, not leave the old one live.
+            self.clear_lsp_completion();
+            self.state
+                .report(Severity::Info, "no completions".to_string());
+            return Ok(());
+        }
+        let Some(session) = crate::editor::lsp::completion::CompletionSession::begin(
+            self.state, bid, parsed, incomplete,
+        ) else {
+            // Benign race: the async completion response landed after the
+            // user switched away from `bid`'s pane. Not an error — raising
+            // here would abort the whole drain_pending_steel_calls batch and
+            // drop every other queued LSP callback/timer this frame.
+            self.state.report(
+                Severity::Trace,
+                "completion-begin!: buffer not shown in focused pane — ignored".to_string(),
+            );
+            return Ok(());
+        };
+        let Some(lsp) = self.lsp.as_deref_mut() else {
+            return Err("completion-begin!: no LSP state available".to_string());
+        };
+        lsp.completion = Some(session);
+        Ok(())
+    }
+
+    fn completion_update_filter(&mut self, text: String) -> Result<(), String> {
+        let Some(lsp) = self.lsp.as_deref_mut() else {
+            return Err("completion-update-filter!: no LSP state available".to_string());
+        };
+        let Some(session) = lsp.completion.as_mut() else {
+            return Err("completion-update-filter!: no active completion session".to_string());
+        };
+        session.update_filter(self.state, text);
+        Ok(())
+    }
+
+    fn completion_top(&self, n: usize) -> Vec<serde_json::Value> {
+        self.lsp
+            .as_deref()
+            .and_then(|lsp| lsp.completion.as_ref())
+            .map(|s| s.top(n))
+            .unwrap_or_default()
+    }
+
+    fn completion_accept(&mut self, idx: usize) -> Result<(), String> {
+        let Some(lsp) = self.lsp.as_deref_mut() else {
+            return Err("completion-accept!: no LSP state available".to_string());
+        };
+        let Some(session) = lsp.completion.take() else {
+            return Err("completion-accept!: no active completion session".to_string());
+        };
+        // Ends the session either way — success or failure — so a rejected
+        // accept never leaves a stale session lingering; the ui/view clear
+        // matches `clear_lsp_completion`'s scope even though `completion`
+        // itself is already `None` here (via `take` above).
+        crate::editor::lsp::completion::clear_completion_state(lsp);
+        *self
+            .state
+            .lsp_completion_view
+            .write()
+            .expect("RwLock not poisoned") = None;
+        session.accept(self.state, lsp, idx)
+    }
+
+    fn completion_dismiss(&mut self) {
+        self.clear_lsp_completion();
+    }
+}
+
+/// Map scripting `BindMode` → editor `keymap::BindMode`.
+pub(crate) fn to_editor_bind_mode(mode: BindMode) -> crate::editor::keymap::BindMode {
+    match mode {
+        BindMode::Normal => crate::editor::keymap::BindMode::Normal,
+        BindMode::Extend => crate::editor::keymap::BindMode::Extend,
+        BindMode::Insert => crate::editor::keymap::BindMode::Insert,
+    }
+}
+
+impl<'a> DecorationHost for EditorHostImpl<'a> {
     fn set_inlay_hints(&mut self, bid: BufferId, hints: Vec<(serde_json::Value, String, bool)>) {
         let Some(lsp) = self.lsp.as_deref() else {
             return;
@@ -607,147 +754,6 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             return (0, 0);
         };
         crate::editor::lsp::introspect::diagnostic_counts(lsp, bid)
-    }
-
-    fn selection_spans_full_line(&self, bid: BufferId) -> bool {
-        crate::editor::lsp::edits::selection_spans_full_line(self.state, bid)
-    }
-
-    fn symbol_under_cursor(&self, bid: BufferId) -> String {
-        let Some(buf) = self.state.buffers.try_get(bid) else {
-            return String::new();
-        };
-        let pid = self.state.focused_pane_id;
-        let Some(pbs) = self
-            .state
-            .panes
-            .state
-            .get(pid)
-            .and_then(|by_buf| by_buf.get(bid))
-        else {
-            return String::new();
-        };
-        let text = buf.text();
-        let head = pbs.selections.primary().head();
-        let Some(ch) = text.char_at(head) else {
-            return String::new();
-        };
-        if hume_editing::word::classify_char(ch) != hume_editing::word::CharClass::Word {
-            return String::new();
-        }
-        let Some((start, end)) = crate::ops::text_object::inner_word_impl(
-            text,
-            head,
-            hume_editing::word::is_word_boundary,
-        ) else {
-            return String::new();
-        };
-        text.slice(start..end + 1).to_string()
-    }
-
-}
-
-impl<'a> CompletionHost for EditorHostImpl<'a> {
-    fn completion_begin(
-        &mut self,
-        bid: BufferId,
-        items: Vec<serde_json::Value>,
-        incomplete: bool,
-    ) -> Result<(), String> {
-        if self.state.buffers.try_get(bid).is_none() {
-            return Err("completion-begin!: no such buffer".to_string());
-        }
-        // A malformed item (e.g. missing the spec-required `label`) is
-        // skipped, not fatal to the whole batch — one bad item from a
-        // misbehaving server must not silently drop every good one.
-        let mut parsed = Vec::with_capacity(items.len());
-        for v in &items {
-            match crate::editor::lsp::completion::StoredCompletionItem::from_json(v) {
-                Ok(item) => parsed.push(item),
-                Err(e) => self.state.report(
-                    Severity::Trace,
-                    format!("completion-begin!: skipped malformed item: {e}"),
-                ),
-            }
-        }
-        if parsed.is_empty() {
-            // Replaces any open session too — an isIncomplete re-request
-            // that comes back empty (or entirely malformed) must close the
-            // menu, not leave the old one live.
-            self.clear_lsp_completion();
-            self.state.report(Severity::Info, "no completions".to_string());
-            return Ok(());
-        }
-        let Some(session) = crate::editor::lsp::completion::CompletionSession::begin(
-            self.state, bid, parsed, incomplete,
-        ) else {
-            // Benign race: the async completion response landed after the
-            // user switched away from `bid`'s pane. Not an error — raising
-            // here would abort the whole drain_pending_steel_calls batch and
-            // drop every other queued LSP callback/timer this frame.
-            self.state.report(
-                Severity::Trace,
-                "completion-begin!: buffer not shown in focused pane — ignored".to_string(),
-            );
-            return Ok(());
-        };
-        let Some(lsp) = self.lsp.as_deref_mut() else {
-            return Err("completion-begin!: no LSP state available".to_string());
-        };
-        lsp.completion = Some(session);
-        Ok(())
-    }
-
-    fn completion_update_filter(&mut self, text: String) -> Result<(), String> {
-        let Some(lsp) = self.lsp.as_deref_mut() else {
-            return Err("completion-update-filter!: no LSP state available".to_string());
-        };
-        let Some(session) = lsp.completion.as_mut() else {
-            return Err("completion-update-filter!: no active completion session".to_string());
-        };
-        session.update_filter(self.state, text);
-        Ok(())
-    }
-
-    fn completion_top(&self, n: usize) -> Vec<serde_json::Value> {
-        self.lsp
-            .as_deref()
-            .and_then(|lsp| lsp.completion.as_ref())
-            .map(|s| s.top(n))
-            .unwrap_or_default()
-    }
-
-    fn completion_accept(&mut self, idx: usize) -> Result<(), String> {
-        let Some(lsp) = self.lsp.as_deref_mut() else {
-            return Err("completion-accept!: no LSP state available".to_string());
-        };
-        let Some(session) = lsp.completion.take() else {
-            return Err("completion-accept!: no active completion session".to_string());
-        };
-        // Ends the session either way — success or failure — so a rejected
-        // accept never leaves a stale session lingering; the ui/view clear
-        // matches `clear_lsp_completion`'s scope even though `completion`
-        // itself is already `None` here (via `take` above).
-        crate::editor::lsp::completion::clear_completion_state(lsp);
-        *self
-            .state
-            .lsp_completion_view
-            .write()
-            .expect("RwLock not poisoned") = None;
-        session.accept(self.state, lsp, idx)
-    }
-
-    fn completion_dismiss(&mut self) {
-        self.clear_lsp_completion();
-    }
-}
-
-/// Map scripting `BindMode` → editor `keymap::BindMode`.
-pub(crate) fn to_editor_bind_mode(mode: BindMode) -> crate::editor::keymap::BindMode {
-    match mode {
-        BindMode::Normal => crate::editor::keymap::BindMode::Normal,
-        BindMode::Extend => crate::editor::keymap::BindMode::Extend,
-        BindMode::Insert => crate::editor::keymap::BindMode::Insert,
     }
 }
 

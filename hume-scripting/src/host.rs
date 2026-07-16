@@ -79,6 +79,12 @@ pub trait EditorHost {
     fn completions(&mut self) -> Option<&mut dyn CompletionHost> {
         None
     }
+    /// Inlay hints / signs / virtual lines / extra highlights / inline
+    /// diagnostics / diagnostic pull — `None` for hosts with no decoration
+    /// stores to write into.
+    fn decorations(&mut self) -> Option<&mut dyn DecorationHost> {
+        None
+    }
 
     // ── Enumeration ─────────────────────────────────────────────────────────
     /// All open buffer ids in open-order.
@@ -352,80 +358,6 @@ pub trait EditorHost {
         let _ = (source, language, chars);
     }
 
-    // ── Decoration stores (default = no-op / empty) ──────────────────────
-    /// `(set-inlay-hints! bid hints)` — replaces `bid`'s inlay hints
-    /// wholesale. Each entry is `(wire_position, text, before)`; the wire
-    /// position (raw decoded `{"line" "character"}`) is converted to a char
-    /// offset using `bid`'s attached server's negotiated encoding.
-    fn set_inlay_hints(&mut self, bid: BufferId, hints: Vec<(serde_json::Value, String, bool)>) {
-        let _ = (bid, hints);
-    }
-
-    /// `(set-signs! source bid signs)` — replaces `source`'s signs for `bid`
-    /// wholesale. Each entry is `(line, text, scope, priority)`.
-    fn set_signs(
-        &mut self,
-        source: String,
-        bid: BufferId,
-        signs: Vec<(usize, String, String, i64)>,
-    ) {
-        let _ = (source, bid, signs);
-    }
-
-    /// `(set-virtual-lines! source bid lines)` — replaces `source`'s virtual
-    /// lines for `bid` wholesale. Each entry is `(line, text)` or `(line
-    /// text scope)` — `scope` styles the whole line (`ui.virtual` fallback
-    /// when absent).
-    fn set_virtual_lines(
-        &mut self,
-        source: String,
-        bid: BufferId,
-        lines: Vec<(usize, String, Option<String>)>,
-    ) {
-        let _ = (source, bid, lines);
-    }
-
-    /// `(set-extra-highlights! source bid spans)` — replaces `source`'s
-    /// extra highlights for `bid` wholesale. Each entry is `(start, end,
-    /// scope)`, char offsets.
-    fn set_extra_highlights(
-        &mut self,
-        source: String,
-        bid: BufferId,
-        spans: Vec<(usize, usize, String)>,
-    ) {
-        let _ = (source, bid, spans);
-    }
-
-    /// `(set-inline-diagnostics! bid lines)` — replaces `bid`'s inline
-    /// diagnostic text wholesale (one owner, the diagnostics plugin — no
-    /// `source` multiplexing, unlike `set_virtual_lines`). Each entry is
-    /// `(line, text, scope)`; `text` is spliced in at the end of `line`.
-    fn set_inline_diagnostics(&mut self, bid: BufferId, lines: Vec<(usize, String, String)>) {
-        let _ = (bid, lines);
-    }
-
-    /// `(diagnostics-for-buffer bid #:severity floor #:range (start end))` —
-    /// decoded `{"start" "end" "line" "col" "severity" "message" "code"
-    /// "source"}` hashmaps, filtered then capped at 1000. `severity_floor`
-    /// is `None` for "no floor" (everything); `range` is `None` for the
-    /// whole buffer. `Err` on an unknown `#:severity` name.
-    fn diagnostics_for_buffer(
-        &self,
-        bid: BufferId,
-        severity_floor: Option<&str>,
-        range: Option<(usize, usize)>,
-    ) -> Result<Vec<serde_json::Value>, String> {
-        let _ = (bid, severity_floor, range);
-        Ok(Vec::new())
-    }
-
-    /// `(diagnostic-counts bid)` → `(errors . warnings)`.
-    fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {
-        let _ = bid;
-        (0, 0)
-    }
-
     /// `(selection-spans-full-line? bid)`.
     fn selection_spans_full_line(&self, bid: BufferId) -> bool {
         let _ = bid;
@@ -438,7 +370,6 @@ pub trait EditorHost {
         let _ = bid;
         String::new()
     }
-
 }
 
 /// Completion session orchestration — accessed through
@@ -469,6 +400,68 @@ pub trait CompletionHost {
 
     /// `(completion-dismiss!)` — clears any open session; no-op if none.
     fn completion_dismiss(&mut self);
+}
+
+/// Inlay hints, signs, virtual lines, extra highlights, inline diagnostics,
+/// and the diagnostic pull/count reads — accessed through
+/// [`EditorHost::decorations`].
+pub trait DecorationHost {
+    /// `(set-inlay-hints! bid hints)` — replaces `bid`'s inlay hints
+    /// wholesale. Each entry is `(wire_position, text, before)`; the wire
+    /// position (raw decoded `{"line" "character"}`) is converted to a char
+    /// offset using `bid`'s attached server's negotiated encoding.
+    fn set_inlay_hints(&mut self, bid: BufferId, hints: Vec<(serde_json::Value, String, bool)>);
+
+    /// `(set-signs! source bid signs)` — replaces `source`'s signs for `bid`
+    /// wholesale. Each entry is `(line, text, scope, priority)`.
+    fn set_signs(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        signs: Vec<(usize, String, String, i64)>,
+    );
+
+    /// `(set-virtual-lines! source bid lines)` — replaces `source`'s virtual
+    /// lines for `bid` wholesale. Each entry is `(line, text)` or `(line
+    /// text scope)` — `scope` styles the whole line (`ui.virtual` fallback
+    /// when absent).
+    fn set_virtual_lines(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        lines: Vec<(usize, String, Option<String>)>,
+    );
+
+    /// `(set-extra-highlights! source bid spans)` — replaces `source`'s
+    /// extra highlights for `bid` wholesale. Each entry is `(start, end,
+    /// scope)`, char offsets.
+    fn set_extra_highlights(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        spans: Vec<(usize, usize, String)>,
+    );
+
+    /// `(set-inline-diagnostics! bid lines)` — replaces `bid`'s inline
+    /// diagnostic text wholesale (one owner, the diagnostics plugin — no
+    /// `source` multiplexing, unlike `set_virtual_lines`). Each entry is
+    /// `(line, text, scope)`; `text` is spliced in at the end of `line`.
+    fn set_inline_diagnostics(&mut self, bid: BufferId, lines: Vec<(usize, String, String)>);
+
+    /// `(diagnostics-for-buffer bid #:severity floor #:range (start end))` —
+    /// decoded `{"start" "end" "line" "col" "severity" "message" "code"
+    /// "source"}` hashmaps, filtered then capped at 1000. `severity_floor`
+    /// is `None` for "no floor" (everything); `range` is `None` for the
+    /// whole buffer. `Err` on an unknown `#:severity` name.
+    fn diagnostics_for_buffer(
+        &self,
+        bid: BufferId,
+        severity_floor: Option<&str>,
+        range: Option<(usize, usize)>,
+    ) -> Result<Vec<serde_json::Value>, String>;
+
+    /// `(diagnostic-counts bid)` → `(errors . warnings)`.
+    fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize);
 }
 
 /// Cursor-anchored popup, selection menu, bottom drawer, and minibuffer
@@ -509,8 +502,11 @@ pub trait UiHost {
     /// triggered via `:name` still runs with the *previous* mode active, so
     /// this must be an Insert-specific rejection, not a Normal/Extend-only
     /// allowlist).
-    fn show_menu(&mut self, items: Vec<String>, callback: steel::rvals::SteelVal)
-    -> Result<(), String>;
+    fn show_menu(
+        &mut self,
+        items: Vec<String>,
+        callback: steel::rvals::SteelVal,
+    ) -> Result<(), String>;
 
     /// `(close-menu!)` — dismisses the menu *without* invoking its callback
     /// (caller-initiated close, distinct from the key-driven dismissal paths
@@ -556,8 +552,12 @@ pub trait EditHost {
 
     /// `(goto-location! target)`, raw `Location`/`LocationLink` shape —
     /// `uri` a wire URI string, `line`/`character` wire coordinates.
-    fn goto_location_wire(&mut self, uri: String, line: usize, character: usize)
-    -> Result<(), String>;
+    fn goto_location_wire(
+        &mut self,
+        uri: String,
+        line: usize,
+        character: usize,
+    ) -> Result<(), String>;
 
     /// `(goto-location! target)`, `(list target line col)` shape with a
     /// path or `file://` URI string target — already char-indexed.
@@ -570,6 +570,10 @@ pub trait EditHost {
 
     /// `(goto-location! target)`, `(list target line col)` shape with a
     /// `bid` target — already char-indexed.
-    fn goto_location_buffer(&mut self, bid: BufferId, line: usize, col: usize)
-    -> Result<(), String>;
+    fn goto_location_buffer(
+        &mut self,
+        bid: BufferId,
+        line: usize,
+        col: usize,
+    ) -> Result<(), String>;
 }

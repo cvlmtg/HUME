@@ -294,9 +294,9 @@ pub(crate) fn lsp_registered_for_language(ctx: &mut SteelCtx, language: SteelVal
             _ => {}
         }
     }
-    Ok(SteelVal::BoolV(
-        pending.unwrap_or_else(|| ctx.host.lsp_registered_for_language(&language)),
-    ))
+    Ok(SteelVal::BoolV(pending.unwrap_or_else(|| {
+        ctx.host.lsp_registered_for_language(&language)
+    })))
 }
 
 /// `(lsp-position-params bid)` → `{"textDocument" {"uri"} "position" {"line"
@@ -333,8 +333,10 @@ pub(crate) fn viewport_range(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     let id = bid_arg(&bid, "viewport-range")?;
     Ok(match ctx.host.viewport_range(id) {
         Some((first, last)) => {
-            let entries: Vec<SteelVal> =
-                vec![SteelVal::IntV(first as isize), SteelVal::IntV(last as isize)];
+            let entries: Vec<SteelVal> = vec![
+                SteelVal::IntV(first as isize),
+                SteelVal::IntV(last as isize),
+            ];
             SteelVal::ListV(entries.into())
         }
         None => SteelVal::BoolV(false),
@@ -462,7 +464,9 @@ pub(crate) fn set_inlay_hints(ctx: &mut SteelCtx, bid: SteelVal, hints: SteelVal
         };
         parsed.push((position_json, text, before));
     }
-    ctx.host.set_inlay_hints(id, parsed);
+    if let Some(decorations) = ctx.host.decorations() {
+        decorations.set_inlay_hints(id, parsed);
+    }
     Ok(SteelVal::Void)
 }
 
@@ -491,7 +495,9 @@ pub(crate) fn set_signs(
         let priority = int_arg(fields.next().expect("len checked"), "set-signs! priority")?;
         parsed.push((line, text, scope, priority));
     }
-    ctx.host.set_signs(source, id, parsed);
+    if let Some(decorations) = ctx.host.decorations() {
+        decorations.set_signs(source, id, parsed);
+    }
     Ok(SteelVal::Void)
 }
 
@@ -527,7 +533,9 @@ pub(crate) fn set_virtual_lines(
             .transpose()?;
         parsed.push((line, text, scope));
     }
-    ctx.host.set_virtual_lines(source, id, parsed);
+    if let Some(decorations) = ctx.host.decorations() {
+        decorations.set_virtual_lines(source, id, parsed);
+    }
     Ok(SteelVal::Void)
 }
 
@@ -564,7 +572,9 @@ pub(crate) fn set_inline_diagnostics(
         )?;
         parsed.push((line, text, scope));
     }
-    ctx.host.set_inline_diagnostics(id, parsed);
+    if let Some(decorations) = ctx.host.decorations() {
+        decorations.set_inline_diagnostics(id, parsed);
+    }
     Ok(SteelVal::Void)
 }
 
@@ -601,7 +611,9 @@ pub(crate) fn set_extra_highlights(
         )?;
         parsed.push((start, end, scope));
     }
-    ctx.host.set_extra_highlights(source, id, parsed);
+    if let Some(decorations) = ctx.host.decorations() {
+        decorations.set_extra_highlights(source, id, parsed);
+    }
     Ok(SteelVal::Void)
 }
 
@@ -647,10 +659,12 @@ pub(crate) fn diagnostics_for_buffer(
             Some((start, end))
         }
     };
-    let entries = ctx
-        .host
-        .diagnostics_for_buffer(id, floor.as_deref(), range)
-        .map_err(|e| conv_err(format!("diagnostics-for-buffer: {e}")))?;
+    let entries = match ctx.host.decorations() {
+        Some(decorations) => decorations
+            .diagnostics_for_buffer(id, floor.as_deref(), range)
+            .map_err(|e| conv_err(format!("diagnostics-for-buffer: {e}")))?,
+        None => Vec::new(),
+    };
     let list: Vec<SteelVal> = entries.iter().map(json_to_steel).collect();
     Ok(SteelVal::ListV(list.into()))
 }
@@ -660,7 +674,11 @@ pub(crate) fn diagnostics_for_buffer(
 pub(crate) fn diagnostic_counts(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "diagnostic-counts");
     let id = bid_arg(&bid, "diagnostic-counts")?;
-    let (errors, warnings) = ctx.host.diagnostic_counts(id);
+    let (errors, warnings) = ctx
+        .host
+        .decorations()
+        .map(|d| d.diagnostic_counts(id))
+        .unwrap_or((0, 0));
     let mut errors_val = SteelVal::IntV(errors as isize);
     let mut warnings_val = SteelVal::IntV(warnings as isize);
     steel::primitives::lists::cons(&mut errors_val, &mut warnings_val)
@@ -1323,10 +1341,9 @@ mod tests {
     fn a_stop_op_alone_does_not_flip_the_answer() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        ctx.pending_lsp_server_ops
-            .push(PendingLspServerOp::Stop {
-                language: Some("rust".to_string()),
-            });
+        ctx.pending_lsp_server_ops.push(PendingLspServerOp::Stop {
+            language: Some("rust".to_string()),
+        });
         let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
         assert_eq!(
             result.unwrap(),
