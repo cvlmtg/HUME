@@ -10,9 +10,8 @@
 //! in the editor crate.
 //!
 //! [`FailingRegisterHost`], [`InlineOutputHost`], and [`RecordingInlineOutputHost`]
-//! each embed a real `NullHost` and delegate every not-yet-capability-split
-//! `EditorHost` method to it, overriding only the one or two methods/accessors
-//! that make them distinct.
+//! each embed a real `NullHost` and delegate every capability accessor to it,
+//! overriding only the one or two accessors/methods that make them distinct.
 
 use std::path::{Path, PathBuf};
 
@@ -20,8 +19,8 @@ use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::host::{
-    BindMode, CommandHost, CursorHost, EditorHost, KeymapHost, LanguageHost, OptionValue,
-    OutputHost, SettingsHost,
+    BindMode, BufferHost, CommandHost, CursorHost, EditorHost, KeymapHost, LanguageHost,
+    OptionValue, OutputHost, SettingsHost,
 };
 use crate::types::SteelCmdDef;
 
@@ -44,6 +43,12 @@ impl EditorHost for NullHost {
     fn settings(&mut self) -> &mut dyn SettingsHost {
         self
     }
+    fn buffers(&mut self) -> &mut dyn BufferHost {
+        self
+    }
+}
+
+impl BufferHost for NullHost {
     fn buffer_ids(&self) -> Vec<BufferId> {
         vec![]
     }
@@ -73,6 +78,12 @@ impl EditorHost for NullHost {
     }
     fn switch_to_buffer(&mut self, _current: BufferId, _target: BufferId) -> Result<(), String> {
         Err("NullHost: switch_to_buffer not available".into())
+    }
+    fn buffer_generation(&self, _id: BufferId) -> Option<u64> {
+        None
+    }
+    fn viewport_range(&self, _id: BufferId) -> Option<(usize, usize)> {
+        None
     }
 }
 
@@ -203,35 +214,8 @@ impl EditorHost for FailingRegisterHost {
     fn settings(&mut self) -> &mut dyn SettingsHost {
         &mut self.inner
     }
-    fn buffer_ids(&self) -> Vec<BufferId> {
-        self.inner.buffer_ids()
-    }
-    fn pane_ids(&self) -> Vec<PaneId> {
-        self.inner.pane_ids()
-    }
-    fn buffer_exists(&self, id: BufferId) -> bool {
-        self.inner.buffer_exists(id)
-    }
-    fn buffer_path(&self, id: BufferId) -> Option<PathBuf> {
-        self.inner.buffer_path(id)
-    }
-    fn buffer_display_name(&self, id: BufferId) -> Option<String> {
-        self.inner.buffer_display_name(id)
-    }
-    fn buffer_is_dirty(&self, id: BufferId) -> Option<bool> {
-        self.inner.buffer_is_dirty(id)
-    }
-    fn buffer_stored_language(&self, id: BufferId) -> Option<String> {
-        self.inner.buffer_stored_language(id)
-    }
-    fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String> {
-        self.inner.open_buffer(path)
-    }
-    fn close_buffer(&mut self, id: BufferId) -> Result<BufferId, String> {
-        self.inner.close_buffer(id)
-    }
-    fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String> {
-        self.inner.switch_to_buffer(current, target)
+    fn buffers(&mut self) -> &mut dyn BufferHost {
+        &mut self.inner
     }
 }
 
@@ -288,38 +272,11 @@ impl EditorHost for InlineOutputHost {
     fn settings(&mut self) -> &mut dyn SettingsHost {
         &mut self.inner
     }
+    fn buffers(&mut self) -> &mut dyn BufferHost {
+        &mut self.inner
+    }
     fn output(&mut self) -> Option<&mut dyn OutputHost> {
         Some(self)
-    }
-    fn buffer_ids(&self) -> Vec<BufferId> {
-        self.inner.buffer_ids()
-    }
-    fn pane_ids(&self) -> Vec<PaneId> {
-        self.inner.pane_ids()
-    }
-    fn buffer_exists(&self, id: BufferId) -> bool {
-        self.inner.buffer_exists(id)
-    }
-    fn buffer_path(&self, id: BufferId) -> Option<PathBuf> {
-        self.inner.buffer_path(id)
-    }
-    fn buffer_display_name(&self, id: BufferId) -> Option<String> {
-        self.inner.buffer_display_name(id)
-    }
-    fn buffer_is_dirty(&self, id: BufferId) -> Option<bool> {
-        self.inner.buffer_is_dirty(id)
-    }
-    fn buffer_stored_language(&self, id: BufferId) -> Option<String> {
-        self.inner.buffer_stored_language(id)
-    }
-    fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String> {
-        self.inner.open_buffer(path)
-    }
-    fn close_buffer(&mut self, id: BufferId) -> Result<BufferId, String> {
-        self.inner.close_buffer(id)
-    }
-    fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String> {
-        self.inner.switch_to_buffer(current, target)
     }
 }
 
@@ -358,38 +315,11 @@ impl EditorHost for RecordingInlineOutputHost {
     fn settings(&mut self) -> &mut dyn SettingsHost {
         &mut self.inner
     }
+    fn buffers(&mut self) -> &mut dyn BufferHost {
+        &mut self.inner
+    }
     fn output(&mut self) -> Option<&mut dyn OutputHost> {
         Some(self)
-    }
-    fn buffer_ids(&self) -> Vec<BufferId> {
-        self.inner.buffer_ids()
-    }
-    fn pane_ids(&self) -> Vec<PaneId> {
-        self.inner.pane_ids()
-    }
-    fn buffer_exists(&self, id: BufferId) -> bool {
-        self.inner.buffer_exists(id)
-    }
-    fn buffer_path(&self, id: BufferId) -> Option<PathBuf> {
-        self.inner.buffer_path(id)
-    }
-    fn buffer_display_name(&self, id: BufferId) -> Option<String> {
-        self.inner.buffer_display_name(id)
-    }
-    fn buffer_is_dirty(&self, id: BufferId) -> Option<bool> {
-        self.inner.buffer_is_dirty(id)
-    }
-    fn buffer_stored_language(&self, id: BufferId) -> Option<String> {
-        self.inner.buffer_stored_language(id)
-    }
-    fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String> {
-        self.inner.open_buffer(path)
-    }
-    fn close_buffer(&mut self, id: BufferId) -> Result<BufferId, String> {
-        self.inner.close_buffer(id)
-    }
-    fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String> {
-        self.inner.switch_to_buffer(current, target)
     }
 }
 

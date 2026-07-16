@@ -120,49 +120,9 @@ pub trait EditorHost {
     /// required: every host has some notion (even if minimal defaults) of
     /// its settings.
     fn settings(&mut self) -> &mut dyn SettingsHost;
-
-    // ── Enumeration ─────────────────────────────────────────────────────────
-    /// All open buffer ids in open-order.
-    fn buffer_ids(&self) -> Vec<BufferId>;
-    /// All open pane ids.
-    fn pane_ids(&self) -> Vec<PaneId>;
-
-    // ── Buffer reads (None ⇒ unknown/stale id) ──────────────────────────────
-    fn buffer_exists(&self, id: BufferId) -> bool;
-    fn buffer_path(&self, id: BufferId) -> Option<PathBuf>;
-    fn buffer_display_name(&self, id: BufferId) -> Option<String>;
-    fn buffer_is_dirty(&self, id: BufferId) -> Option<bool>;
-    /// Language stored on the buffer (not accounting for pending `set-buffer-language!`).
-    fn buffer_stored_language(&self, id: BufferId) -> Option<String>;
-
-    // ── Buffer lifecycle ─────────────────────────────────────────────────────
-    /// Open a file at `path`, deduplicating if already open.
-    /// Returns the `BufferId` (new or existing).
-    fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String>;
-    /// Close `id`.  Returns the new live focused buffer id, or `Err` when `id`
-    /// does not name an open buffer.
-    fn close_buffer(&mut self, id: BufferId) -> Result<BufferId, String>;
-    /// Switch the focused pane to `target`, recording a jump entry.
-    fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String>;
-
-    /// Steel-side staleness token for buffer `id` (its `text_gen`, bumped by
-    /// every mutation) — `None` if `id` is unknown. Not LSP-specific (any
-    /// script can compare a saved value against a live read), but the LSP
-    /// bridge's own `#:allow-stale` staleness check is what motivated it.
-    fn buffer_generation(&self, id: BufferId) -> Option<u64> {
-        let _ = id;
-        None
-    }
-
-    /// `(viewport-range bid)` — the `(first_line last_line)` char-line span
-    /// currently visible for `id` (the focused pane's if shown there, else
-    /// the first pane showing it), or `None` if `id` isn't open in any pane.
-    /// Pane geometry, not LSP state — doesn't need an attached server.
-    fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)> {
-        let _ = id;
-        None
-    }
-
+    /// Buffer/pane enumeration, reads, lifecycle, and viewport geometry —
+    /// required: every host has some notion (even if empty) of open buffers.
+    fn buffers(&mut self) -> &mut dyn BufferHost;
 }
 
 /// Live cursor/selection reads — accessed through [`EditorHost::cursor`].
@@ -323,6 +283,45 @@ pub trait SettingsHost {
 
     /// Steel eval budget in milliseconds for command / hook execution.
     fn steel_command_budget_ms(&self) -> u64;
+}
+
+/// Buffer/pane enumeration, reads, lifecycle, and viewport geometry —
+/// accessed through [`EditorHost::buffers`].
+pub trait BufferHost {
+    /// All open buffer ids in open-order.
+    fn buffer_ids(&self) -> Vec<BufferId>;
+    /// All open pane ids.
+    fn pane_ids(&self) -> Vec<PaneId>;
+
+    // ── Buffer reads (None ⇒ unknown/stale id) ──────────────────────────────
+    fn buffer_exists(&self, id: BufferId) -> bool;
+    fn buffer_path(&self, id: BufferId) -> Option<PathBuf>;
+    fn buffer_display_name(&self, id: BufferId) -> Option<String>;
+    fn buffer_is_dirty(&self, id: BufferId) -> Option<bool>;
+    /// Language stored on the buffer (not accounting for pending `set-buffer-language!`).
+    fn buffer_stored_language(&self, id: BufferId) -> Option<String>;
+
+    // ── Buffer lifecycle ─────────────────────────────────────────────────────
+    /// Open a file at `path`, deduplicating if already open.
+    /// Returns the `BufferId` (new or existing).
+    fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String>;
+    /// Close `id`.  Returns the new live focused buffer id, or `Err` when `id`
+    /// does not name an open buffer.
+    fn close_buffer(&mut self, id: BufferId) -> Result<BufferId, String>;
+    /// Switch the focused pane to `target`, recording a jump entry.
+    fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String>;
+
+    /// Steel-side staleness token for buffer `id` (its `text_gen`, bumped by
+    /// every mutation) — `None` if `id` is unknown. Not LSP-specific (any
+    /// script can compare a saved value against a live read), but the LSP
+    /// bridge's own `#:allow-stale` staleness check is what motivated it.
+    fn buffer_generation(&self, id: BufferId) -> Option<u64>;
+
+    /// `(viewport-range bid)` — the `(first_line last_line)` char-line span
+    /// currently visible for `id` (the focused pane's if shown there, else
+    /// the first pane showing it), or `None` if `id` isn't open in any pane.
+    /// Pane geometry, not LSP state — doesn't need an attached server.
+    fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)>;
 }
 
 /// Completion session orchestration — accessed through

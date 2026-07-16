@@ -36,6 +36,7 @@ pub(crate) fn buffers(ctx: &mut SteelCtx) -> SteelResult {
     require_cmd_ctx!(ctx, "buffers");
     let list: Vec<SteelVal> = ctx
         .host
+        .buffers()
         .buffer_ids()
         .into_iter()
         .map(|id| SteelBufferId(id).into_steel_val())
@@ -49,6 +50,7 @@ pub(crate) fn panes(ctx: &mut SteelCtx) -> SteelResult {
     require_cmd_ctx!(ctx, "panes");
     let list: Vec<SteelVal> = ctx
         .host
+        .buffers()
         .pane_ids()
         .into_iter()
         .map(|id| SteelPaneId(id).into_steel_val())
@@ -68,10 +70,10 @@ pub(crate) fn buffer_path(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
             "buffer-path: expected buffer-id".into(),
         )
     })?;
-    if !ctx.host.buffer_exists(id) {
+    if !ctx.host.buffers().buffer_exists(id) {
         steel::stop!(Generic => "buffer-path: invalid buffer id {id:?}");
     }
-    match ctx.host.buffer_path(id) {
+    match ctx.host.buffers().buffer_path(id) {
         Some(p) => p
             .to_string_lossy()
             .into_owned()
@@ -91,6 +93,7 @@ pub(crate) fn buffer_name(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
         )
     })?;
     ctx.host
+        .buffers()
         .buffer_display_name(id)
         .ok_or_else(|| {
             SteelErr::new(
@@ -111,7 +114,7 @@ pub(crate) fn buffer_dirty(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
             "buffer-dirty?: expected buffer-id".into(),
         )
     })?;
-    let dirty = ctx.host.buffer_is_dirty(id).ok_or_else(|| {
+    let dirty = ctx.host.buffers().buffer_is_dirty(id).ok_or_else(|| {
         SteelErr::new(
             ErrorKind::Generic,
             format!("buffer-dirty?: invalid buffer id {id:?}"),
@@ -130,7 +133,7 @@ pub(crate) fn buffer_generation(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResul
             "buffer-generation: expected buffer-id".into(),
         )
     })?;
-    let generation = ctx.host.buffer_generation(id).ok_or_else(|| {
+    let generation = ctx.host.buffers().buffer_generation(id).ok_or_else(|| {
         SteelErr::new(
             ErrorKind::Generic,
             format!("buffer-generation: invalid buffer id {id:?}"),
@@ -151,6 +154,7 @@ pub(crate) fn open_buffer(ctx: &mut SteelCtx, path: String) -> SteelResult {
     require_cmd_ctx!(ctx, "open-buffer!");
     let bid = ctx
         .host
+        .buffers()
         .open_buffer(std::path::Path::new(&path))
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
     SteelBufferId(bid)
@@ -170,11 +174,12 @@ pub(crate) fn close_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
             "close-buffer!: expected buffer-id".into(),
         )
     })?;
-    if !ctx.host.buffer_exists(id) {
+    if !ctx.host.buffers().buffer_exists(id) {
         steel::stop!(Generic => "close-buffer!: invalid buffer id {id:?}");
     }
     let new_live = ctx
         .host
+        .buffers()
         .close_buffer(id)
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
     ctx.live_focused_buffer_id = new_live;
@@ -194,11 +199,12 @@ pub(crate) fn switch_to_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult
             "switch-to-buffer!: expected buffer-id".into(),
         )
     })?;
-    if !ctx.host.buffer_exists(target) {
+    if !ctx.host.buffers().buffer_exists(target) {
         steel::stop!(Generic => "switch-to-buffer!: invalid buffer id {target:?}");
     }
     let current = ctx.live_focused_buffer_id;
     ctx.host
+        .buffers()
         .switch_to_buffer(current, target)
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
     ctx.live_focused_buffer_id = target;
@@ -231,10 +237,10 @@ pub(crate) fn buffer_language(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult 
             "buffer-language: expected buffer-id".into(),
         )
     })?;
-    if !ctx.host.buffer_exists(id) {
+    if !ctx.host.buffers().buffer_exists(id) {
         steel::stop!(Generic => "buffer-language: invalid buffer id {id:?}");
     }
-    let fallback = ctx.host.buffer_stored_language(id);
+    let fallback = ctx.host.buffers().buffer_stored_language(id);
     let lang = effective_language(&ctx.pending_language_sets, id, fallback);
     match lang {
         Some(name) => name
@@ -325,10 +331,10 @@ pub(crate) fn set_buffer_language_steel(
             steel::stop!(TypeMismatch => "set-buffer-language!: expected string or #f, got {:?}", lang)
         }
     };
-    if !ctx.host.buffer_exists(id) {
+    if !ctx.host.buffers().buffer_exists(id) {
         steel::stop!(Generic => "set-buffer-language!: invalid buffer id {id:?}");
     }
-    let fallback = ctx.host.buffer_stored_language(id);
+    let fallback = ctx.host.buffers().buffer_stored_language(id);
     if effective_language(&ctx.pending_language_sets, id, fallback) == new_lang {
         return Ok(SteelVal::Void);
     }

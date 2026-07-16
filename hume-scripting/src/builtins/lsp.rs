@@ -350,7 +350,7 @@ pub(crate) fn lsp_range_params(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult
 pub(crate) fn viewport_range(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "viewport-range");
     let id = bid_arg(&bid, "viewport-range")?;
-    Ok(match ctx.host.viewport_range(id) {
+    Ok(match ctx.host.buffers().viewport_range(id) {
         Some((first, last)) => {
             let entries: Vec<SteelVal> = vec![
                 SteelVal::IntV(first as isize),

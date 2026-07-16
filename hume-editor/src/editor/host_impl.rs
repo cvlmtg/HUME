@@ -21,8 +21,9 @@ use crate::editor::timer_bridge::TimerHandle;
 use crate::settings::{BufferOverrides, SettingScope, apply_setting};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 use hume_scripting::host::{
-    BindMode, CommandHost, CompletionHost, CursorHost, DecorationHost, EditHost, EditorHost,
-    KeymapHost, LanguageHost, LspHost, OptionValue, OutputHost, SettingsHost, TimerHost, UiHost,
+    BindMode, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost, EditHost,
+    EditorHost, KeymapHost, LanguageHost, LspHost, OptionValue, OutputHost, SettingsHost,
+    TimerHost, UiHost,
 };
 
 use super::{EditorState, Severity};
@@ -131,7 +132,12 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     fn settings(&mut self) -> &mut dyn SettingsHost {
         self
     }
+    fn buffers(&mut self) -> &mut dyn BufferHost {
+        self
+    }
+}
 
+impl<'a> BufferHost for EditorHostImpl<'a> {
     // ── Enumeration ──────────────────────────────────────────────────────────
     fn buffer_ids(&self) -> Vec<BufferId> {
         self.state.buffers.iter().map(|(id, _)| id).collect()
@@ -204,7 +210,6 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)> {
         crate::editor::lsp::introspect::viewport_range(self.state, self.view, id)
     }
-
 }
 
 impl<'a> SettingsHost for EditorHostImpl<'a> {
@@ -993,7 +998,7 @@ mod tests {
     use std::path::Path;
 
     use hume_engine::pipeline::BufferId;
-    use hume_scripting::host::{EditorHost, LanguageHost};
+    use hume_scripting::host::{BufferHost, LanguageHost};
 
     use crate::editor::Editor;
     use crate::editor::scripting_setup::make_init_host;

@@ -16,8 +16,8 @@
 use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
 use hume_scripting::host::{
-    BindMode, CommandHost, CursorHost, EditorHost, KeymapHost, LanguageHost, OptionValue,
-    SettingsHost,
+    BindMode, BufferHost, CommandHost, CursorHost, EditorHost, KeymapHost, LanguageHost,
+    OptionValue, SettingsHost,
 };
 
 pub(crate) struct MockHost {
@@ -71,6 +71,12 @@ impl EditorHost for MockHost {
     fn settings(&mut self) -> &mut dyn SettingsHost {
         self
     }
+    fn buffers(&mut self) -> &mut dyn BufferHost {
+        self
+    }
+}
+
+impl BufferHost for MockHost {
     fn buffer_ids(&self) -> Vec<BufferId> {
         Vec::new()
     }
@@ -100,6 +106,12 @@ impl EditorHost for MockHost {
     }
     fn switch_to_buffer(&mut self, _current: BufferId, _target: BufferId) -> Result<(), String> {
         Err("MockHost: switch_to_buffer not available".into())
+    }
+    fn buffer_generation(&self, _id: BufferId) -> Option<u64> {
+        None
+    }
+    fn viewport_range(&self, _id: BufferId) -> Option<(usize, usize)> {
+        None
     }
 }
 
