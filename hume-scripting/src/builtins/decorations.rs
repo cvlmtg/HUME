@@ -8,7 +8,7 @@ use steel::rvals::SteelVal;
 use crate::SteelCtx;
 use crate::json::{json_to_steel, steel_to_json};
 
-use super::args::{BidArg, checked_fields, int_arg, string_arg, tuple_list, usize_arg};
+use super::args::{BidArg, cons_pair, int_arg, pair_fields, string_arg, tuple_list, usize_arg};
 use super::errors::generic_err;
 
 type SteelResult = Result<SteelVal, SteelErr>;
@@ -172,9 +172,7 @@ pub(crate) fn set_extra_highlights(
 
 /// `(%diagnostics-for-buffer bid severity range)` — the `diagnostics-for-buffer`
 /// Scheme wrapper supplies `#:severity`/`#:range` defaults. `severity`: a
-/// symbol or `#f`. `range`: a 2-element list `(start end)` or `#f` — a
-/// dotted pair isn't usable here (steel-core 0.8.2's `Pair`/`car`/`cdr` are
-/// crate-private, so a Rust builtin can't destructure one).
+/// symbol or `#f`. `range`: a `(start . end)` dotted pair or `#f`.
 pub(crate) fn diagnostics_for_buffer(
     ctx: &mut SteelCtx,
     bid: BidArg,
@@ -193,9 +191,9 @@ pub(crate) fn diagnostics_for_buffer(
     let range = match range {
         SteelVal::BoolV(false) => None,
         other => {
-            let fields = checked_fields(other, "diagnostics-for-buffer", 2..=2, "(start end)")?;
-            let start = usize_arg(fields[0].clone(), "diagnostics-for-buffer range start")?;
-            let end = usize_arg(fields[1].clone(), "diagnostics-for-buffer range end")?;
+            let (start, end) = pair_fields(other, "diagnostics-for-buffer", "(start . end)")?;
+            let start = usize_arg(start, "diagnostics-for-buffer range start")?;
+            let end = usize_arg(end, "diagnostics-for-buffer range end")?;
             Some((start, end))
         }
     };
@@ -209,8 +207,7 @@ pub(crate) fn diagnostics_for_buffer(
     Ok(SteelVal::ListV(list.into()))
 }
 
-/// `(diagnostic-counts bid)` → `(errors . warnings)` — a genuine dotted
-/// pair, built via steel-core's public `cons` (the only public pair API).
+/// `(diagnostic-counts bid)` → `(errors . warnings)` dotted pair.
 pub(crate) fn diagnostic_counts(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
     let id = bid.0;
     let (errors, warnings) = ctx
@@ -218,7 +215,5 @@ pub(crate) fn diagnostic_counts(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult 
         .decorations()
         .map(|d| d.diagnostic_counts(id))
         .unwrap_or((0, 0));
-    let mut errors_val = SteelVal::IntV(errors as isize);
-    let mut warnings_val = SteelVal::IntV(warnings as isize);
-    steel::primitives::lists::cons(&mut errors_val, &mut warnings_val)
+    cons_pair(SteelVal::IntV(errors as isize), SteelVal::IntV(warnings as isize))
 }
