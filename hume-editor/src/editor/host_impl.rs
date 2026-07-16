@@ -360,6 +360,43 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         self.state.registry.unregister(name);
     }
 
+    fn register_lazy_command(
+        &mut self,
+        name: &str,
+        plugin: &hume_scripting::PluginId,
+    ) -> Result<(), String> {
+        if let Some(MappableCommand::Lazy { plugin: owner, .. }) =
+            self.state.registry.get_mappable(name)
+        {
+            return if owner == plugin {
+                // Duplicate declare-plugin call for the same plugin — no-op,
+                // mirroring LazyRegistry::declare's old first-declaration-wins.
+                Ok(())
+            } else {
+                Err(format!("'{name}' already claimed by lazy plugin '{owner}'"))
+            };
+        }
+        if self.state.registry.contains(name) {
+            return Err(format!("'{name}' conflicts with an existing command"));
+        }
+        self.state.registry.register(MappableCommand::Lazy {
+            name: name.to_owned().into(),
+            plugin: plugin.clone(),
+        });
+        Ok(())
+    }
+
+    fn lazy_command_owner(&self, name: &str) -> Option<hume_scripting::PluginId> {
+        match self.state.registry.get_mappable(name) {
+            Some(MappableCommand::Lazy { plugin, .. }) => Some(plugin.clone()),
+            _ => None,
+        }
+    }
+
+    fn unregister_lazy_stubs_of(&mut self, plugin: &hume_scripting::PluginId) {
+        self.state.registry.unregister_lazy_stubs_of(plugin);
+    }
+
     fn is_valid_register_name(&self, ch: char) -> bool {
         crate::ops::register::is_valid_register_name(ch)
     }
@@ -407,7 +444,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
                 // as visual-row movement instead of buffer-line movement).
                 count,
                 extend,
-                steel_args: vec![],
+                arg_source: crate::editor::dispatch::ArgSource::Keymap,
             },
         );
         // Clear the prefix when we armed it, so it does not bleed into the

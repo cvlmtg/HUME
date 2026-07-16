@@ -231,6 +231,38 @@ impl CommandRegistry {
     pub(crate) fn len(&self) -> usize {
         self.commands.len()
     }
+
+    /// Every current `Lazy` stub as `(name, owning plugin)`.
+    ///
+    /// Used by `:plugin-status` (via `lazy_status_string`) to report which
+    /// commands a `Declared` plugin is still waiting on — the registry is the
+    /// sole owner of `Lazy` stubs, so this is the only source for that list.
+    pub(crate) fn lazy_stubs(&self) -> Vec<(String, hume_scripting::attribution::PluginId)> {
+        self.commands
+            .iter()
+            .filter_map(|(name, cmd)| match cmd {
+                Command::Mappable(MappableCommand::Lazy { plugin, .. }) => {
+                    Some((name.as_ref().to_string(), plugin.clone()))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Remove every remaining `Lazy` stub owned by `plugin`.
+    ///
+    /// Called by `finish_lazy_activation` (via `CommandHost::unregister_lazy_
+    /// stubs_of`) on both the success and failure path — never touches a
+    /// `SteelBacked` command, even one that just replaced a stub of the same
+    /// name for this plugin.
+    pub(crate) fn unregister_lazy_stubs_of(
+        &mut self,
+        plugin: &hume_scripting::attribution::PluginId,
+    ) {
+        self.commands.retain(|_, cmd| {
+            !matches!(cmd, Command::Mappable(MappableCommand::Lazy { plugin: p, .. }) if p == plugin)
+        });
+    }
 }
 
 // ── Test-only helpers ─────────────────────────────────────────────────────────

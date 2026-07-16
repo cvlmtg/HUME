@@ -254,9 +254,10 @@ pub(crate) enum MappableCommand {
     },
     /// A placeholder for a lazy plugin command that has not yet been loaded.
     ///
-    /// Registered by `register_lazy_command_stubs` after `init_scripting`.
-    /// When dispatched, the owning plugin's body is evaluated, the stub is
-    /// replaced by the real `SteelBacked` command, and dispatch re-runs.
+    /// Registered by `CommandHost::register_lazy_command` as `declare-plugin`
+    /// processes its `#:commands` entries. When dispatched, the owning
+    /// plugin's body is evaluated, the stub is replaced by the real
+    /// `SteelBacked` command, and dispatch re-runs.
     Lazy {
         name: Cow<'static, str>,
         plugin: hume_scripting::attribution::PluginId,
