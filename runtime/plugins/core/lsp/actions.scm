@@ -10,13 +10,13 @@
 
 (require "lib.scm")
 
-;;; The primary selection's char range, normalized to (start end) with
+;;; The primary selection's char range, normalized to (start . end) with
 ;;; end exclusive, for `diagnostics-for-buffer`'s `#:range` filter.
 (define (lsp/primary-selection-range)
   (let* ((primary (car (filter caddr (current-selections))))
          (a (car primary))
          (h (cadr primary)))
-    (list (min a h) (+ (max a h) 1))))
+    (cons (min a h) (+ (max a h) 1))))
 
 ;;; A CodeAction is disabled if it carries a truthy "disabled" field
 ;;; (LSP 3.16: `{"reason": string}`) — v1 doesn't pre-filter by `kind`, but

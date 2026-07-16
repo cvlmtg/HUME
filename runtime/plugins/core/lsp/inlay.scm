@@ -56,7 +56,7 @@
             (server (lsp-server-for-buffer bid)))
         (when (and range server (get-option "lsp.inlay-hints")
                    (lsp/supports-for-buffer? bid "inlayHintProvider"))
-          (let ((params (lsp/inlay-hint-params bid (car range) (cadr range))))
+          (let ((params (lsp/inlay-hint-params bid (car range) (cdr range))))
             (when params
               (lsp-request server "textDocument/inlayHint" params
                 (lambda (err res)

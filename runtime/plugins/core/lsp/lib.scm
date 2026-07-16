@@ -88,15 +88,15 @@
                        (if (string? err) err (hash-ref err "message")))))
 
 ;;; A `TextEdit` hashmap `{range: {start, end}, newText}` -> the
-;;; `((start-line start-col) (end-line end-col) text)` tuple shape
+;;; `((start-line . start-col) (end-line . end-col) text)` tuple shape
 ;;; `apply-text-edits!` expects. Shared by completion (additionalTextEdits)
 ;;; and formatting.
 (define (lsp/text-edit->tuple te)
   (let* ((range (hash-ref te "range"))
          (start (hash-ref range "start"))
          (end (hash-ref range "end")))
-    (list (list (hash-ref start "line") (hash-ref start "character"))
-          (list (hash-ref end "line") (hash-ref end "character"))
+    (list (cons (hash-ref start "line") (hash-ref start "character"))
+          (cons (hash-ref end "line") (hash-ref end "character"))
           (hash-ref te "newText"))))
 
 ;; ── UTF-16 offset conversion ────────────────────────────────────────────────
@@ -127,7 +127,7 @@
 ;;; shown in any pane.
 (define (lsp/visible-lines bid)
   (let ((range (viewport-range bid)))
-    (if range (+ 1 (- (cadr range) (car range))) #f)))
+    (if range (+ 1 (- (cdr range) (car range))) #f)))
 
 ;; ── Location display + drawer ───────────────────────────────────────────────
 ;; A `Location` is `{uri, range}`; a `LocationLink` is `{targetUri,
