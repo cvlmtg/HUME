@@ -51,10 +51,12 @@
 
 ;; ── Directory entry filter + listing ──────────────────────────────────────────
 
-;;; Return #t if `name` is a valid, traversable directory entry (not "." or "..").
-(define (lsp/valid-dir-entry? name)
-  (and (not (equal? name "."))
-       (not (equal? name ".."))))
+;;; Return #t if `name` is a server subdirectory of `parent` — filters out
+;;; stray non-directory entries (e.g. a Finder-dropped `.DS_Store`) that
+;;; `read-dir` returns alongside real server dirs and that would otherwise be
+;;; misread as an interrupted install (no `receipt.scm` inside a file).
+(define (lsp/valid-dir-entry? parent name)
+  (is-dir? (path-join parent name)))
 
 ;;; Sorted list of basenames in `dir`.
 (define (lsp/list-dir dir)
@@ -103,11 +105,11 @@
 ;;; `name`'s own languages right before calling this. No `#:force?` escape
 ;;; hatch needed: the filter is always correct, in queue order.
 ;;;
-;;; Same-eval visibility also fixes the load-order footgun this plugin used
-;;; to document: a user's own `register-lsp-server!` placed *before* an
-;;; eager `(load-plugin "core:lsp")` in init.scm now survives — the filter
-;;; sees that earlier-queued registration and skips the language, so the
-;;; catalog default never even queues behind it. Order no longer matters.
+;;; Same-eval visibility means load order doesn't matter: a user's own
+;;; `register-lsp-server!` placed *before* an eager `(load-plugin "core:lsp")`
+;;; in init.scm survives — the filter sees that earlier-queued registration
+;;; and skips the language, so the catalog default never even queues behind
+;;; it.
 (define (lsp/register-server-languages! name cmd)
   (let* ((fields   (hash-ref *lsp-servers* name))
          (langs    (filter (lambda (lang-entry) (not (lsp-registered-for-language? (car lang-entry))))
@@ -131,12 +133,12 @@
 ;; ── Startup server registration ───────────────────────────────────────────────
 ;;
 ;; Passive: registers already-installed servers only (a readable receipt
-;; naming a seeded server), no subprocess, no network. `.install-lock`
-;; (the cross-process install lock sentinel file `servers.scm` acquires
-;; around install/uninstall) lives directly under `servers-dir` alongside
-;; the per-server subdirectories — excluded here so a lock left behind by a
-;; crash (or present during a legitimate concurrent install elsewhere) is
-;; never misread as an interrupted or orphan server.
+;; naming a seeded server), no subprocess, no network. `lsp/valid-dir-entry?`
+;; restricts the scan to actual subdirectories of `servers-dir`, so
+;; non-directory entries there — `.install-lock` (the cross-process install
+;; lock sentinel file `servers.scm` acquires around install/uninstall) and
+;; any stray file (e.g. a Finder-dropped `.DS_Store`) — are never misread as
+;; an interrupted or orphan server.
 ;;
 ;; Runs at plugin load, or at lazy activation. Either way,
 ;; `apply_pending_lsp_server_reg` (hume-editor/src/editor/lsp/registry.rs)
@@ -181,7 +183,7 @@
                (lsp/register-server-languages!
                  name
                  (path-join (lsp/server-dir name) (lsp/receipt-bin receipt)))))))
-        (filter (lambda (name) (and (lsp/valid-dir-entry? name) (not (equal? name ".install-lock"))))
+        (filter (lambda (name) (lsp/valid-dir-entry? sdir name))
                 (lsp/list-dir sdir))))))
 
 (define-command! "lsp-rescan-servers"

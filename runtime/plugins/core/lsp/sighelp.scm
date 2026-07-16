@@ -62,11 +62,9 @@
   (lambda (bid ch)
     (if (equal? ch ")")
         (close-popup!)
-        ;; Unlike completion.scm's trigger path, this used to call
-        ;; lsp/sighelp-request directly with no capability guard — a
-        ;; stale trigger char left registered past detach (or a server
-        ;; that never advertised signatureHelpProvider in the first
-        ;; place) hit lsp-request's server-resolution failure and logged
-        ;; an Error on every matching keystroke instead of a polite skip.
+        ;; Guarded so a stale trigger char left registered past detach
+        ;; (or a server that never advertised signatureHelpProvider)
+        ;; skips politely instead of hitting lsp-request's
+        ;; server-resolution failure on every matching keystroke.
         (lsp/guard-capability "signatureHelpProvider"
           (lambda () (lsp/sighelp-request bid))))))

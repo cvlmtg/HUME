@@ -342,6 +342,28 @@ fn install_lock_sentinel_file_is_never_scanned_as_a_server_directory() {
     );
 }
 
+#[test]
+#[cfg(not(windows))]
+fn stray_non_directory_file_under_servers_dir_is_never_scanned_as_a_server() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
+    std::fs::create_dir_all(&servers_dir).unwrap();
+    // A file, not a directory, with no special-cased name — e.g. a
+    // Finder-dropped .DS_Store. Must be excluded on being a non-directory,
+    // not on matching a specific filename.
+    std::fs::write(servers_dir.join(".DS_Store"), b"").unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        !log.contains(".DS_Store") && !log.contains("interrupted install"),
+        "a stray non-directory file must never be scanned as an interrupted/orphan server: {log}"
+    );
+}
+
 /// Exposed for out-of-band installs (a server installed outside
 /// `:lsp-install`), and used internally by `servers.scm`'s own install and
 /// uninstall commands to pick up what they just wrote to disk.

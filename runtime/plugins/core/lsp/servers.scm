@@ -120,9 +120,9 @@
 
 ;;; Verify `path`'s sha256 digest matches `expected` (either the seeded
 ;;; data-file literal `"sha256:<hex>"` or bare hex; ASCII-case-insensitive).
-;;; On mismatch, deletes `path` and raises naming both digests — mirrors the
-;;; removed `verify-sha256!` builtin's contract, now split across the
-;;; sandbox-free `sha256-file` survivor (hashing only) and this compare step.
+;;; On mismatch, deletes `path` and raises naming both digests. Hashing is
+;;; the sandbox-free `sha256-file` builtin; the compare and delete-on-mismatch
+;;; happen here.
 (define (lsp/verify-sha256! path expected)
   (let* ((expected-hex (string-downcase
                           (if (starts-with? expected "sha256:")
@@ -213,8 +213,8 @@
          (archive (path-join dir asset))
          (url     (string-append "https://github.com/" repo "/releases/download/"
                                  version "/" asset)))
-    ;; The removed `curl-fetch` builtin created `archive`'s parent dir itself;
-    ;; `dir` was only ever purged by `lsp/delete-dir` above, never recreated.
+    ;; `dir` was only ever purged by `lsp/delete-dir` above, never recreated —
+    ;; `curl` needs the parent directory to already exist.
     (create-directory! dir)
     (run-inline-output! "curl" (list "-fsSL" "-o" archive "--" url))
     (lsp/verify-sha256! archive sha)
