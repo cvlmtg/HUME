@@ -21,7 +21,7 @@ use crate::editor::timer_bridge::TimerHandle;
 use crate::settings::{BufferOverrides, SettingScope, apply_setting};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 use hume_scripting::host::{
-    BindMode, CompletionHost, DecorationHost, EditHost, EditorHost, OptionValue, UiHost,
+    BindMode, CompletionHost, DecorationHost, EditHost, EditorHost, LspHost, OptionValue, UiHost,
 };
 
 use super::{EditorState, Severity};
@@ -99,6 +99,13 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Some(self)
     }
     fn decorations(&mut self) -> Option<&mut dyn DecorationHost> {
+        Some(self)
+    }
+    // `Some(self)` unconditionally, even though `self.lsp` is itself an
+    // `Option` — every method below already self-guards on `self.lsp.as_deref()`,
+    // and a conditional accessor here would change what "no attached server"
+    // vs. "no LSP state at all" reports at the Steel boundary.
+    fn lsp(&mut self) -> Option<&mut dyn LspHost> {
         Some(self)
     }
 
@@ -420,38 +427,6 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Some(self.buffer(id)?.text_gen)
     }
 
-    // ── LSP introspection ────────────────────────────────────────────────
-    fn lsp_capabilities(&self, server: Option<&str>) -> Option<serde_json::Value> {
-        let lsp = self.lsp.as_deref()?;
-        let bid = crate::editor::commands::focused_buffer_id(self.state, self.view);
-        crate::editor::lsp::introspect::capabilities(self.state, lsp, bid, server)
-    }
-
-    fn lsp_server_status(&self) -> Vec<hume_scripting::LspServerStatusEntry> {
-        self.lsp
-            .as_deref()
-            .map(crate::editor::lsp::introspect::server_status)
-            .unwrap_or_default()
-    }
-
-    fn lsp_server_for_buffer(&self, id: BufferId) -> Option<String> {
-        crate::editor::lsp::introspect::server_for_buffer(self.state, self.lsp.as_deref()?, id)
-    }
-
-    fn lsp_registered_for_language(&self, language: &str) -> bool {
-        self.lsp.as_deref().is_some_and(|lsp| {
-            crate::editor::lsp::introspect::registered_for_language(lsp, language)
-        })
-    }
-
-    fn lsp_position_params(&self, id: BufferId) -> Option<serde_json::Value> {
-        crate::editor::lsp::introspect::position_params(self.state, self.lsp.as_deref()?, id)
-    }
-
-    fn lsp_range_params(&self, id: BufferId) -> Option<serde_json::Value> {
-        crate::editor::lsp::introspect::range_params(self.state, self.lsp.as_deref()?, id)
-    }
-
     fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)> {
         crate::editor::lsp::introspect::viewport_range(self.state, self.view, id)
     }
@@ -619,6 +594,39 @@ pub(crate) fn to_editor_bind_mode(mode: BindMode) -> crate::editor::keymap::Bind
         BindMode::Normal => crate::editor::keymap::BindMode::Normal,
         BindMode::Extend => crate::editor::keymap::BindMode::Extend,
         BindMode::Insert => crate::editor::keymap::BindMode::Insert,
+    }
+}
+
+impl<'a> LspHost for EditorHostImpl<'a> {
+    fn lsp_capabilities(&self, server: Option<&str>) -> Option<serde_json::Value> {
+        let lsp = self.lsp.as_deref()?;
+        let bid = crate::editor::commands::focused_buffer_id(self.state, self.view);
+        crate::editor::lsp::introspect::capabilities(self.state, lsp, bid, server)
+    }
+
+    fn lsp_server_status(&self) -> Vec<hume_scripting::LspServerStatusEntry> {
+        self.lsp
+            .as_deref()
+            .map(crate::editor::lsp::introspect::server_status)
+            .unwrap_or_default()
+    }
+
+    fn lsp_server_for_buffer(&self, id: BufferId) -> Option<String> {
+        crate::editor::lsp::introspect::server_for_buffer(self.state, self.lsp.as_deref()?, id)
+    }
+
+    fn lsp_registered_for_language(&self, language: &str) -> bool {
+        self.lsp.as_deref().is_some_and(|lsp| {
+            crate::editor::lsp::introspect::registered_for_language(lsp, language)
+        })
+    }
+
+    fn lsp_position_params(&self, id: BufferId) -> Option<serde_json::Value> {
+        crate::editor::lsp::introspect::position_params(self.state, self.lsp.as_deref()?, id)
+    }
+
+    fn lsp_range_params(&self, id: BufferId) -> Option<serde_json::Value> {
+        crate::editor::lsp::introspect::range_params(self.state, self.lsp.as_deref()?, id)
     }
 }
 

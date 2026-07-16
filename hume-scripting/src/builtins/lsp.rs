@@ -219,10 +219,16 @@ pub(crate) fn on_lsp_notification(
 pub(crate) fn lsp_capabilities(ctx: &mut SteelCtx, server: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "lsp-capabilities");
     let server = optional_string_arg(server, "lsp-capabilities server")?;
-    Ok(match ctx.host.lsp_capabilities(server.as_deref()) {
-        Some(json) => json_to_steel(&json),
-        None => SteelVal::BoolV(false),
-    })
+    Ok(
+        match ctx
+            .host
+            .lsp()
+            .and_then(|lsp| lsp.lsp_capabilities(server.as_deref()))
+        {
+            Some(json) => json_to_steel(&json),
+            None => SteelVal::BoolV(false),
+        },
+    )
 }
 
 /// `(lsp-server-status)` → list of `{"language" "root" "state" "pending"}`.
@@ -230,7 +236,9 @@ pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
     require_cmd_ctx!(ctx, "lsp-server-status");
     let entries: Vec<SteelVal> = ctx
         .host
-        .lsp_server_status()
+        .lsp()
+        .map(|lsp| lsp.lsp_server_status())
+        .unwrap_or_default()
         .into_iter()
         .map(|e| {
             let mut map = steel::HashMap::new();
@@ -260,10 +268,12 @@ pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
 pub(crate) fn lsp_server_for_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "lsp-server-for-buffer");
     let id = bid_arg(&bid, "lsp-server-for-buffer")?;
-    Ok(match ctx.host.lsp_server_for_buffer(id) {
-        Some(lang) => SteelVal::StringV(lang.into()),
-        None => SteelVal::BoolV(false),
-    })
+    Ok(
+        match ctx.host.lsp().and_then(|lsp| lsp.lsp_server_for_buffer(id)) {
+            Some(lang) => SteelVal::StringV(lang.into()),
+            None => SteelVal::BoolV(false),
+        },
+    )
 }
 
 /// `(lsp-registered-for-language? language)` → bool. Registry query for the
@@ -294,9 +304,14 @@ pub(crate) fn lsp_registered_for_language(ctx: &mut SteelCtx, language: SteelVal
             _ => {}
         }
     }
-    Ok(SteelVal::BoolV(pending.unwrap_or_else(|| {
-        ctx.host.lsp_registered_for_language(&language)
-    })))
+    let registered = match pending {
+        Some(v) => v,
+        None => ctx
+            .host
+            .lsp()
+            .is_some_and(|lsp| lsp.lsp_registered_for_language(&language)),
+    };
+    Ok(SteelVal::BoolV(registered))
 }
 
 /// `(lsp-position-params bid)` → `{"textDocument" {"uri"} "position" {"line"
@@ -305,10 +320,12 @@ pub(crate) fn lsp_registered_for_language(ctx: &mut SteelCtx, language: SteelVal
 pub(crate) fn lsp_position_params(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "lsp-position-params");
     let id = bid_arg(&bid, "lsp-position-params")?;
-    Ok(match ctx.host.lsp_position_params(id) {
-        Some(json) => json_to_steel(&json),
-        None => SteelVal::BoolV(false),
-    })
+    Ok(
+        match ctx.host.lsp().and_then(|lsp| lsp.lsp_position_params(id)) {
+            Some(json) => json_to_steel(&json),
+            None => SteelVal::BoolV(false),
+        },
+    )
 }
 
 /// `(lsp-range-params bid)` → same shape but a `"range"` from the primary
@@ -316,10 +333,12 @@ pub(crate) fn lsp_position_params(ctx: &mut SteelCtx, bid: SteelVal) -> SteelRes
 pub(crate) fn lsp_range_params(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "lsp-range-params");
     let id = bid_arg(&bid, "lsp-range-params")?;
-    Ok(match ctx.host.lsp_range_params(id) {
-        Some(json) => json_to_steel(&json),
-        None => SteelVal::BoolV(false),
-    })
+    Ok(
+        match ctx.host.lsp().and_then(|lsp| lsp.lsp_range_params(id)) {
+            Some(json) => json_to_steel(&json),
+            None => SteelVal::BoolV(false),
+        },
+    )
 }
 
 /// `(viewport-range bid)` → `(list first-line last-line)` currently visible

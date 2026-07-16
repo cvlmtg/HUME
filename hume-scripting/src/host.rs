@@ -85,6 +85,12 @@ pub trait EditorHost {
     fn decorations(&mut self) -> Option<&mut dyn DecorationHost> {
         None
     }
+    /// LSP server introspection (capabilities, status, attachment,
+    /// registration, position/range params) — `None` for hosts with no LSP
+    /// bridge.
+    fn lsp(&mut self) -> Option<&mut dyn LspHost> {
+        None
+    }
 
     // ── Enumeration ─────────────────────────────────────────────────────────
     /// All open buffer ids in open-order.
@@ -272,57 +278,6 @@ pub trait EditorHost {
         None
     }
 
-    // ── LSP introspection (command mode; default = no LSP support) ──────────
-    /// Decoded `ServerCapabilities` for `server` (a registered language name,
-    /// or `None` for the focused buffer's attached server) — `None` if
-    /// unresolvable or the server hasn't finished its handshake yet.
-    fn lsp_capabilities(&self, server: Option<&str>) -> Option<serde_json::Value> {
-        let _ = server;
-        None
-    }
-
-    /// One entry per running (language, root) server.
-    fn lsp_server_status(&self) -> Vec<crate::types::LspServerStatusEntry> {
-        Vec::new()
-    }
-
-    /// The registered language for the server attached to buffer `id`, or
-    /// `None` if `id` is unknown or has no attached server.
-    fn lsp_server_for_buffer(&self, id: BufferId) -> Option<String> {
-        let _ = id;
-        None
-    }
-
-    /// Whether `language` currently has a `register-lsp-server!` config
-    /// (registered, not necessarily attached/running) — used by the
-    /// `on-language-set` missing-server hint to distinguish "not installed"
-    /// from "still starting". Reports state *as of the last completed
-    /// drain* — the `lsp-registered-for-language?` builtin overlays this
-    /// with `ctx.pending_lsp_server_ops` (ops queued this eval/init) before
-    /// falling back here, so same-eval visibility is handled at the builtin
-    /// layer, not this trait method.
-    fn lsp_registered_for_language(&self, language: &str) -> bool {
-        let _ = language;
-        false
-    }
-
-    /// Ready-made `{"textDocument" {"uri"} "position" {"line" "character"}}`
-    /// params for `id`'s primary cursor head, in its attached server's
-    /// negotiated encoding — `None` if `id` has no path, no attached server,
-    /// or isn't currently shown in any pane.
-    fn lsp_position_params(&self, id: BufferId) -> Option<serde_json::Value> {
-        let _ = id;
-        None
-    }
-
-    /// Same as [`lsp_position_params`](Self::lsp_position_params) but a
-    /// `{"textDocument" {"uri"} "range" {"start" "end"}}` shape from the
-    /// primary selection.
-    fn lsp_range_params(&self, id: BufferId) -> Option<serde_json::Value> {
-        let _ = id;
-        None
-    }
-
     /// `(viewport-range bid)` — the `(first_line last_line)` char-line span
     /// currently visible for `id` (the focused pane's if shown there, else
     /// the first pane showing it), or `None` if `id` isn't open in any pane.
@@ -462,6 +417,42 @@ pub trait DecorationHost {
 
     /// `(diagnostic-counts bid)` → `(errors . warnings)`.
     fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize);
+}
+
+/// LSP server introspection — accessed through [`EditorHost::lsp`].
+pub trait LspHost {
+    /// Decoded `ServerCapabilities` for `server` (a registered language name,
+    /// or `None` for the focused buffer's attached server) — `None` if
+    /// unresolvable or the server hasn't finished its handshake yet.
+    fn lsp_capabilities(&self, server: Option<&str>) -> Option<serde_json::Value>;
+
+    /// One entry per running (language, root) server.
+    fn lsp_server_status(&self) -> Vec<crate::types::LspServerStatusEntry>;
+
+    /// The registered language for the server attached to buffer `id`, or
+    /// `None` if `id` is unknown or has no attached server.
+    fn lsp_server_for_buffer(&self, id: BufferId) -> Option<String>;
+
+    /// Whether `language` currently has a `register-lsp-server!` config
+    /// (registered, not necessarily attached/running) — used by the
+    /// `on-language-set` missing-server hint to distinguish "not installed"
+    /// from "still starting". Reports state *as of the last completed
+    /// drain* — the `lsp-registered-for-language?` builtin overlays this
+    /// with `ctx.pending_lsp_server_ops` (ops queued this eval/init) before
+    /// falling back here, so same-eval visibility is handled at the builtin
+    /// layer, not this trait method.
+    fn lsp_registered_for_language(&self, language: &str) -> bool;
+
+    /// Ready-made `{"textDocument" {"uri"} "position" {"line" "character"}}`
+    /// params for `id`'s primary cursor head, in its attached server's
+    /// negotiated encoding — `None` if `id` has no path, no attached server,
+    /// or isn't currently shown in any pane.
+    fn lsp_position_params(&self, id: BufferId) -> Option<serde_json::Value>;
+
+    /// Same as [`lsp_position_params`](Self::lsp_position_params) but a
+    /// `{"textDocument" {"uri"} "range" {"start" "end"}}` shape from the
+    /// primary selection.
+    fn lsp_range_params(&self, id: BufferId) -> Option<serde_json::Value>;
 }
 
 /// Cursor-anchored popup, selection menu, bottom drawer, and minibuffer
