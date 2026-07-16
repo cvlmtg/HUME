@@ -201,8 +201,15 @@ pub(crate) fn string_arg(val: SteelVal, ctx_name: &str) -> Result<String, SteelE
 // key it is (see `gn`/`gp`'s diagnostic overlay) — default #f keeps the
 // existing on-mode-change-only dismissal (hover, signature help).
 //
-// Variadic call! macro — desugars to %dispatch-command. Defined here (not
-// only prelude.scm) so test harnesses without the full prelude still have it.
+// Variadic call! macro — desugars to %dispatch-command, the in-VM dispatcher
+// for calls originating inside Steel (call! from a plugin body, and the bare
+// command-name lambdas register_command_names defines). Keypress/`:`-line
+// dispatch does NOT go through this path — Editor::call_steel_cmd resolves
+// and activates the target directly, then applies its command_table closure
+// via call_function_with_args; %dispatch-command's own miss→activate→retry
+// exists only because a builtin can't re-enter the editor's Rust dispatcher
+// while the Engine is already borrowed. Defined here (not only prelude.scm)
+// so test harnesses without the full prelude still have it.
 //
 // Gated print — capture steel-core's original display*/print* fns and the
 // real stdout port ONCE, before PRINT_GATE_SHIMS redefines the names and

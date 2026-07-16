@@ -77,7 +77,7 @@ pub use types::{
 pub use watchdog::EvalWatchdog;
 
 // ── Internal re-exports (within-crate use) ────────────────────────────────────
-pub(crate) use activation::{run_steel_call, run_steel_session};
+pub(crate) use activation::run_steel_session;
 pub(crate) use context::SteelCtx;
 
 /// Steel global name under which the live [`SteelCtx`] reference is visible to
@@ -90,7 +90,7 @@ pub(crate) const HUME_CTX: &str = "*hume.ctx*";
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, atomic::AtomicBool};
 
-use steel::rvals::{IntoSteelVal as _, SteelVal};
+use steel::rvals::SteelVal;
 use steel::steel_vm::engine::Engine;
 
 use attribution::PluginStack;
@@ -359,24 +359,6 @@ impl ScriptingHost {
             .unwrap_or_default()
     }
 
-    /// A snapshot of the command activation entries declared during init.
-    pub fn activation_commands(&self) -> std::collections::HashMap<String, attribution::PluginId> {
-        self.registries.lazy_registry.activation_commands.clone()
-    }
-
-    /// Drop a single command activation entry and its pre-seeded ownership.
-    ///
-    /// Called when the editor's command registry already owns `name`, so no
-    /// `Lazy` stub was registered — the declare-time claim (seeded in
-    /// `declare_plugin`) must not linger in the activation maps.
-    pub fn drop_activation_command(&mut self, name: &str) {
-        self.registries
-            .lazy_registry
-            .activation_commands
-            .remove(name);
-        self.registries.cmd_owners.remove(name);
-    }
-
     /// A snapshot of the language activation entries declared during init (language → plugins).
     ///
     /// Used by the post-init lint in `init_scripting` to detect `#:languages` entries
@@ -448,8 +430,12 @@ impl ScriptingHost {
     }
 
     /// Format a human-readable plugin status table for `:plugin-status`.
-    pub fn lazy_status_string(&self) -> String {
-        self.registries.lazy_registry.format_status()
+    ///
+    /// `lazy_cmds` is the editor's current `Lazy`-stub list (`name`, owning
+    /// plugin) — this crate no longer tracks pending command activations
+    /// itself, so the caller supplies its live registry snapshot.
+    pub fn lazy_status_string(&self, lazy_cmds: &[(String, attribution::PluginId)]) -> String {
+        self.registries.lazy_registry.format_status(lazy_cmds)
     }
 
     /// Peek at pending messages without draining.  Only for test assertions.
@@ -567,14 +553,24 @@ impl ScriptingHost {
     ) -> Result<SteelCmdResult, String> {
         let budget_ms = host.settings().steel_command_budget_ms();
 
-        // Keypress dispatch routes through %dispatch-command so Lazy-miss
-        // auto-activation and command_table lookup use the same path as call!.
-        // The name and args are passed as values via a direct function call —
-        // nothing is spliced into source and nothing is compiled per dispatch.
-        let args_list = args
-            .into_steelval()
-            .map_err(|e| format!("call_steel_cmd: cannot convert args: {e}"))?;
-        let call_args = vec![SteelVal::StringV(name.into()), args_list];
+        // The editor already resolved any Lazy stub and activated its owning
+        // plugin before calling here (see Editor::run_steel_command), so
+        // `name` must already have a live closure in command_table. A miss
+        // means the editor's registry and this table have desynced — a bug,
+        // not a retry case — so this fails loudly rather than falling back to
+        // %dispatch-command's own miss-handling (that dispatcher is reserved
+        // for call!/bare-name calls originating inside the VM).
+        let proc = self
+            .registries
+            .command_table
+            .get(name)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "call_steel_cmd: '{name}' has no registered command body \
+                     — registry/command_table desync"
+                )
+            })?;
 
         let (result, wait_char_request, effects) = {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
@@ -586,14 +582,10 @@ impl ScriptingHost {
                 pending_char,
             );
 
-            let result = run_steel_call(
-                steel,
-                watchdog,
-                &mut steel_ctx,
-                "%dispatch-command",
-                call_args,
-                budget_ms,
-            );
+            let result = run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
+                steel.call_function_with_args(proc, args)?;
+                Ok(())
+            });
             let effects = steel_ctx.take_side_effects();
             (result, steel_ctx.wait_char_request, effects)
         };

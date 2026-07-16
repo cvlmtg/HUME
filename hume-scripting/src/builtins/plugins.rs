@@ -149,10 +149,16 @@ pub(crate) fn declare_plugin(
     let evt_strs = list_to_strings(events, "events")?;
     let lang_list = list_to_strings(languages, "languages")?;
 
-    // Captured before the collision-filter loop moves `cmd_list`.  Used below to
-    // distinguish "all commands collided" from "none were supplied" in the
-    // zero-entry error message.
-    let had_commands = !cmd_list.is_empty();
+    // Malformed name (not a collision) → hard error, same rule as
+    // define-command!.  A name that can't survive quoting is a typo — this
+    // check is independent of the plugin's on-disk path, so it runs
+    // regardless of whether the plugin turns out to be absent.
+    for cmd in &cmd_list {
+        if cmd.contains('"') || cmd.contains('\\') {
+            steel::stop!(Generic =>
+                "declare-plugin: command name '{}' must not contain '\"' or '\\'", cmd);
+        }
+    }
 
     let evt_list: Vec<HookId> = evt_strs
         .iter()
@@ -164,72 +170,30 @@ pub(crate) fn declare_plugin(
         })
         .collect::<Result<_, _>>()?;
 
-    // Filter colliding command names before writing any state.  Each collision
-    // logs a non-fatal Error (visible in :messages) and the name is dropped, so
-    // cmd_owners and activation_commands stay consistent.
-    let mut valid = Vec::with_capacity(cmd_list.len());
-    for cmd in cmd_list {
-        // Malformed name (not a collision) → hard error, same rule as
-        // define-command!.  A name that can't survive quoting is a typo.
-        if cmd.contains('"') || cmd.contains('\\') {
-            steel::stop!(Generic =>
-                "declare-plugin: command name '{}' must not contain '\"' or '\\'", cmd);
-        }
-        if ctx.builtin_cmd_names.contains(&cmd) {
-            ctx.log(
-                crate::log::LogLevel::Error,
-                format!("declare-plugin: command '{cmd}' conflicts with a built-in; activation entry ignored"),
-            );
-        } else if ctx
-            .registries
-            .lazy_registry
-            .activation_commands
-            .contains_key(&cmd)
-        {
-            ctx.log(
-                crate::log::LogLevel::Error,
-                format!("declare-plugin: command '{cmd}' already claimed by another lazy plugin; activation entry ignored"),
-            );
-        } else if ctx.registries.command_table.contains_key(&cmd) {
-            ctx.log(
-                crate::log::LogLevel::Error,
-                format!("declare-plugin: command '{cmd}' is already defined by an eager command; activation entry ignored"),
-            );
-        } else {
-            valid.push(cmd);
-        }
-    }
-    let cmd_list = valid;
-
-    // Hard error: no usable activation entries after collision filtering means
-    // the plugin can never be activated at runtime.  Use load-plugin instead.
+    // Hard error: nothing declared at all. Checked against the raw (unfiltered)
+    // lists, before path resolution — collision filtering only happens once the
+    // plugin is confirmed present on disk (see below), so a non-empty
+    // `cmd_list` always skips this branch regardless of what filtering later
+    // drops.
     if cmd_list.is_empty() && evt_list.is_empty() && lang_list.is_empty() {
-        let msg = if had_commands {
-            // User supplied #:commands entries but all were filtered by collision
-            // checks.  Telling them to "Add #:commands" would be misleading.
-            format!(
-                "declare-plugin: '{name}' declares no activation entries; \
-                 all #:commands entries conflicted with existing commands. \
-                 Fix the collision or use (load-plugin \"{name}\") for eager loading."
-            )
-        } else {
-            format!(
-                "declare-plugin: '{name}' declares no activation entries; it could never be activated. \
-                 Add #:commands/#:events/#:languages, or use (load-plugin \"{name}\") for eager loading."
-            )
-        };
-        return Err(steel_parse_err(msg));
+        return Err(steel_parse_err(format!(
+            "declare-plugin: '{name}' declares no activation entries; it could never be activated. \
+             Add #:commands/#:events/#:languages, or use (load-plugin \"{name}\") for eager loading."
+        )));
     }
 
     let path = resolve_path_for_name(&name, ctx.runtime_dir, ctx.data_dir)
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
 
-    // When the plugin file is absent on disk, LazyRegistry::declare would silently
-    // skip it (no activation entries, no state).  For user/ plugins, log Info — absent is
-    // expected before :plum-install.  For core: plugins, absent means a typo or
-    // broken HUME_RUNTIME; PLUM never installs core: plugins, so it can't catch
-    // the error.  `declared_plugins` is already recorded above for PLUM.
-    if path.is_none() {
+    // When the plugin file is absent on disk, it can never be activated —
+    // collision-checking (which claims the name in the editor's registry) would
+    // be pointless and would leave the name claimed with no path to clean it up
+    // via drop_activations_for's usual load/fail transition.  For user/ plugins,
+    // log Info — absent is expected before :plum-install.  For core: plugins,
+    // absent means a typo or broken HUME_RUNTIME; PLUM never installs core:
+    // plugins, so it can't catch the error.  `declared_plugins` is already
+    // recorded above for PLUM.
+    let Some(path) = path else {
         match &plugin_id {
             PluginId::Core(_) => log_absent_core(ctx, &name, "declare-plugin"),
             PluginId::User { .. } => ctx.log(
@@ -240,14 +204,50 @@ pub(crate) fn declare_plugin(
             ),
         }
         return Ok(SteelVal::Void);
+    };
+
+    // Filter colliding command names against the editor's live registry —
+    // reached only now that the plugin is confirmed on disk. Each collision
+    // logs a non-fatal Error (visible in :messages) and the name is dropped.
+    // `register_lazy_command` claims the name in the same registry
+    // `define-command!` and native commands live in, so this is the single
+    // check for "is this name available", replacing the old three-way
+    // builtin/activation_commands/command_table lookup.
+    let mut valid = Vec::with_capacity(cmd_list.len());
+    for cmd in cmd_list {
+        if ctx.builtin_cmd_names.contains(&cmd) {
+            ctx.log(
+                crate::log::LogLevel::Error,
+                format!("declare-plugin: command '{cmd}' conflicts with a built-in; activation entry ignored"),
+            );
+            continue;
+        }
+        match ctx.host.commands().register_lazy_command(&cmd, &plugin_id) {
+            Ok(()) => valid.push(cmd),
+            Err(msg) => ctx.log(
+                crate::log::LogLevel::Error,
+                format!("declare-plugin: {msg}; activation entry ignored"),
+            ),
+        }
+    }
+    let cmd_list = valid;
+
+    // Hard error: all supplied #:commands entries collided, and no #:events/
+    // #:languages entries either — the plugin has no usable activation entry
+    // left. The all-empty case already returned above, so reaching here means
+    // `cmd_list` was non-empty before filtering — the message always names
+    // the collision, never "none were supplied".
+    if cmd_list.is_empty() && evt_list.is_empty() && lang_list.is_empty() {
+        return Err(steel_parse_err(format!(
+            "declare-plugin: '{name}' declares no activation entries; \
+             all #:commands entries conflicted with existing commands. \
+             Fix the collision or use (load-plugin \"{name}\") for eager loading."
+        )));
     }
 
     // Pre-seed cmd_owners so (command-plugin "cmd") resolves correctly before
-    // the plugin body is evaluated (before activation).  Only reached when the
-    // plugin exists on disk: if it is absent, the early return above fires before
-    // this point and LazyRegistry::declare is never called — seeding here for a
-    // missing plugin would create orphan attribution entries that drop_activations_for
-    // can never clean up (it only fires on load/fail, not on absent-path skips).
+    // the plugin body is evaluated (before activation).  Only for accepted
+    // names — a filtered-out collision must not gain attribution here.
     for cmd in &cmd_list {
         ctx.registries
             .cmd_owners
@@ -256,7 +256,7 @@ pub(crate) fn declare_plugin(
 
     ctx.registries
         .lazy_registry
-        .declare(plugin_id, path, cmd_list, evt_list, lang_list);
+        .declare(plugin_id, Some(path), evt_list, lang_list);
 
     Ok(SteelVal::Void)
 }
@@ -500,6 +500,10 @@ pub(crate) fn finish_lazy_activation(
         .plugins
         .insert(id.clone(), new_state);
     ctx.registries.lazy_registry.drop_activations_for(&id);
+    // Drop any `Lazy` stub the plugin didn't replace via `define-command!` —
+    // on success, dead weight (the plugin is Loaded and won't re-run its
+    // body); on failure, frees the name for a later plugin to claim.
+    ctx.host.commands().unregister_lazy_stubs_of(&id);
 
     if !success {
         // Roll back any commands the failed body partially registered.
@@ -525,7 +529,7 @@ pub(crate) fn finish_lazy_activation(
 /// is a registered activation command, or `#f` if not.  Used by `%dispatch-command`
 /// to decide whether a `command_table` miss should trigger inline activation.
 pub(crate) fn lazy_command_owner(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    match ctx.registries.lazy_registry.activation_commands.get(&name) {
+    match ctx.host.commands().lazy_command_owner(&name) {
         Some(id) => Ok(SteelVal::StringV(id.to_string().into())),
         None => Ok(SteelVal::BoolV(false)),
     }

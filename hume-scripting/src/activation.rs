@@ -580,14 +580,18 @@ mod tests {
     // ── G4: self-ownership exemption ──────────────────────────────────────────
 
     /// A lazy plugin is allowed to call `define-command!` for its own activation
-    /// command inside its body, even though that name is still in
-    /// `activation_commands` at the time (it is only removed by
-    /// `drop_activations_for` *after* the body completes in `finish_lazy_activation`).
+    /// command inside its body, even though that name is still claimed as its
+    /// `Lazy` stub at the time (the stub is only removed by
+    /// `unregister_lazy_stubs_of` *after* the body completes in
+    /// `finish_lazy_activation`).
     ///
     /// Fail oracle: remove the `is_self` exemption from `define_command_inner` →
     /// the plugin's `define-command!` call is rejected → activation returns Err.
     #[test]
     fn lazy_plugin_can_define_its_own_activation_command() {
+        use crate::host::EditorHost;
+        use crate::null_host::LazyStubHost;
+
         let dir = TempDir::new().unwrap();
         let path = write_plugin(
             &dir,
@@ -596,17 +600,21 @@ mod tests {
         );
         let id = plugin_id("core:self-act");
         let mut host = ScriptingHost::new();
-        // Simulate declare-plugin having registered self-act-cmd as the activation entry.
-        host.registries
-            .lazy_registry
-            .activation_commands
-            .insert("self-act-cmd".to_string(), id.clone());
         host.registries
             .lazy_registry
             .plugins
             .insert(id.clone(), PluginState::Declared { path });
 
-        let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins());
+        // Simulate declare-plugin having claimed self-act-cmd as the
+        // activation entry — now tracked in the editor's registry (here,
+        // the stateful test host), not a scripting-crate map.
+        let mut editor_host = LazyStubHost::default();
+        editor_host
+            .commands()
+            .register_lazy_command("self-act-cmd", &id)
+            .expect("stub claim must succeed on a fresh host");
+
+        let result = host.activate_plugin_inline(&id, 10_000, &mut editor_host, &no_builtins());
 
         assert!(
             result.is_ok(),
