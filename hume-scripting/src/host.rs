@@ -91,6 +91,11 @@ pub trait EditorHost {
     fn lsp(&mut self) -> Option<&mut dyn LspHost> {
         None
     }
+    /// `(after …)` / `(cancel-timer! …)` scheduling — `None` for hosts with
+    /// no timer wheel (test stubs).
+    fn timers(&mut self) -> Option<&mut dyn TimerHost> {
+        None
+    }
 
     // ── Enumeration ─────────────────────────────────────────────────────────
     /// All open buffer ids in open-order.
@@ -287,21 +292,6 @@ pub trait EditorHost {
         None
     }
 
-    // ── Timers (default = no timer support) ──────────────────────────────
-    /// Schedules `thunk` — opaque to this trait, a raw Steel closure — to
-    /// fire after `ms` milliseconds. Returns the new timer id, or `None` if
-    /// this host has no timer wheel to schedule onto (test hosts).
-    fn schedule_timer(&mut self, ms: u64, thunk: steel::rvals::SteelVal) -> Option<u64> {
-        let _ = (ms, thunk);
-        None
-    }
-
-    /// Cancels a previously scheduled timer. A no-op if `id` already fired,
-    /// was already cancelled, or this host has no timer wheel.
-    fn cancel_timer(&mut self, id: u64) {
-        let _ = id;
-    }
-
     /// `(register-trigger-chars! source language chars)` — registers `chars`
     /// as `OnTriggerChar`-firing chars for `(source, language)`, replacing
     /// that exact pair's previous set (a plugin's own reload doesn't
@@ -453,6 +443,20 @@ pub trait LspHost {
     /// `{"textDocument" {"uri"} "range" {"start" "end"}}` shape from the
     /// primary selection.
     fn lsp_range_params(&self, id: BufferId) -> Option<serde_json::Value>;
+}
+
+/// Timer scheduling — accessed through [`EditorHost::timers`].
+pub trait TimerHost {
+    /// Schedules `thunk` — opaque to this trait, a raw Steel closure — to
+    /// fire after `ms` milliseconds. Returns the new timer id, or `None` if
+    /// this host has no timer wheel to schedule onto right now (`EditorHostImpl`
+    /// only carries one at three call sites — command dispatch, hook fire,
+    /// queued-call drain — not during init).
+    fn schedule_timer(&mut self, ms: u64, thunk: steel::rvals::SteelVal) -> Option<u64>;
+
+    /// Cancels a previously scheduled timer. A no-op if `id` already fired,
+    /// was already cancelled, or this host has no timer wheel right now.
+    fn cancel_timer(&mut self, id: u64);
 }
 
 /// Cursor-anchored popup, selection menu, bottom drawer, and minibuffer

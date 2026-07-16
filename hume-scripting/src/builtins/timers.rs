@@ -35,7 +35,7 @@ fn timer_id_arg(val: SteelVal, ctx_name: &str) -> Result<u64, SteelErr> {
 pub(crate) fn after(ctx: &mut SteelCtx, ms: SteelVal, thunk: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "after");
     let ms = ms_arg(ms, "after")?;
-    match ctx.host.schedule_timer(ms, thunk) {
+    match ctx.host.timers().and_then(|t| t.schedule_timer(ms, thunk)) {
         Some(id) => Ok(SteelVal::IntV(id as isize)),
         None => steel::stop!(Generic => "after: no timer support in this context"),
     }
@@ -46,7 +46,9 @@ pub(crate) fn after(ctx: &mut SteelCtx, ms: SteelVal, thunk: SteelVal) -> SteelR
 pub(crate) fn cancel_timer(ctx: &mut SteelCtx, id: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "cancel-timer!");
     let id = timer_id_arg(id, "cancel-timer!")?;
-    ctx.host.cancel_timer(id);
+    if let Some(timers) = ctx.host.timers() {
+        timers.cancel_timer(id);
+    }
     Ok(SteelVal::Void)
 }
 

@@ -21,7 +21,8 @@ use crate::editor::timer_bridge::TimerHandle;
 use crate::settings::{BufferOverrides, SettingScope, apply_setting};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 use hume_scripting::host::{
-    BindMode, CompletionHost, DecorationHost, EditHost, EditorHost, LspHost, OptionValue, UiHost,
+    BindMode, CompletionHost, DecorationHost, EditHost, EditorHost, LspHost, OptionValue,
+    TimerHost, UiHost,
 };
 
 use super::{EditorState, Severity};
@@ -106,6 +107,10 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     // and a conditional accessor here would change what "no attached server"
     // vs. "no LSP state at all" reports at the Steel boundary.
     fn lsp(&mut self) -> Option<&mut dyn LspHost> {
+        Some(self)
+    }
+    // Same unconditional-Some rationale as `lsp()` above.
+    fn timers(&mut self) -> Option<&mut dyn TimerHost> {
         Some(self)
     }
 
@@ -431,21 +436,6 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         crate::editor::lsp::introspect::viewport_range(self.state, self.view, id)
     }
 
-    // ── Timers ──────────────────────────────────────────────────────────
-    fn schedule_timer(&mut self, ms: u64, thunk: steel::rvals::SteelVal) -> Option<u64> {
-        Some(
-            self.timers
-                .as_mut()?
-                .schedule(std::time::Duration::from_millis(ms), thunk),
-        )
-    }
-
-    fn cancel_timer(&mut self, id: u64) {
-        if let Some(timers) = self.timers.as_mut() {
-            timers.cancel(id);
-        }
-    }
-
     // ── Trigger chars ───────────────────────────────────────────────────
     fn register_trigger_chars(&mut self, source: String, language: String, chars: Vec<char>) {
         if chars.is_empty() {
@@ -594,6 +584,22 @@ pub(crate) fn to_editor_bind_mode(mode: BindMode) -> crate::editor::keymap::Bind
         BindMode::Normal => crate::editor::keymap::BindMode::Normal,
         BindMode::Extend => crate::editor::keymap::BindMode::Extend,
         BindMode::Insert => crate::editor::keymap::BindMode::Insert,
+    }
+}
+
+impl<'a> TimerHost for EditorHostImpl<'a> {
+    fn schedule_timer(&mut self, ms: u64, thunk: steel::rvals::SteelVal) -> Option<u64> {
+        Some(
+            self.timers
+                .as_mut()?
+                .schedule(std::time::Duration::from_millis(ms), thunk),
+        )
+    }
+
+    fn cancel_timer(&mut self, id: u64) {
+        if let Some(timers) = self.timers.as_mut() {
+            timers.cancel(id);
+        }
     }
 }
 
