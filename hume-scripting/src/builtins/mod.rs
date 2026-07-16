@@ -5,8 +5,10 @@
 //! This must be called once during [`ScriptingHost::new`] before any
 //! `eval_init` call.
 
+pub(crate) mod args;
 pub(crate) mod buffers;
 pub(crate) mod commands;
+pub(crate) mod errors;
 pub(crate) mod fs;
 pub(crate) mod grammar;
 pub(crate) mod hooks;
