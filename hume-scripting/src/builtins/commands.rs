@@ -187,7 +187,7 @@ pub(crate) fn call_command_primitive(
 
     match ctx.host.commands().command_is_native(&name) {
         Ok(true) => {
-            if ctx.is_init {
+            if ctx.session == crate::context::EvalSession::Init {
                 ctx.log(
                     LogLevel::Warning,
                     format!("init.scm: skipped runtime command '{name}' — it can't run while loading config; bind it to a key or call it from a hook instead"),
@@ -425,7 +425,7 @@ mod tests {
     fn request_wait_char_outside_invocation_errors() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        ctx.is_init = true;
+        ctx.session = crate::context::EvalSession::Init;
         let err = request_wait_char(&mut ctx, "replace".to_string()).unwrap_err();
         assert!(
             err.to_string().contains("not available during init"),

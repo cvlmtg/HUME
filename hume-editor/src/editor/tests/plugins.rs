@@ -1664,11 +1664,11 @@ fn define_command_collision_with_builtin_keeps_builtin() {
 
 /// A lazy plugin whose body contains a top-level `(call! "move-right")` must
 /// have that command executed when the plugin is activated at runtime (command
-/// activation).  `activate_plugin_inline` runs with `is_init = false` so
-/// `%call-native!` dispatches synchronously via `run_command_sync`.
+/// activation).  `activate_plugin_inline` runs with `session = EvalSession::Runtime`
+/// so `%call-native!` dispatches synchronously via `run_command_sync`.
 ///
 /// Flip: change `new_activation` to `new_init` in `activate_plugin_inline`
-/// → `is_init = true` → `%call-native!` warns and skips → cursor stays.
+/// → `session = EvalSession::Init` → `%call-native!` warns and skips → cursor stays.
 #[test]
 #[cfg(not(windows))]
 fn lazy_plugin_call_bang_at_body_top_level_is_drained_on_runtime_activation() {

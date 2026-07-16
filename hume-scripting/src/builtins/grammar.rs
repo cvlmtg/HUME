@@ -56,7 +56,7 @@ pub(crate) fn compile_grammar(
     // `tree-sitter build` inherits stdio, so this is a real terminal write —
     // open the bracket first. Init-time compiles run pre-terminal (no screen
     // to enter, and `is_inline_output` is never set there anyway).
-    if !ctx.is_init
+    if ctx.session == crate::context::EvalSession::Runtime
         && let Some(output) = ctx.host.output()
     {
         output.ensure_inline_output_screen().map_err(|e| {
@@ -81,7 +81,7 @@ pub(crate) fn compile_grammar(
     // them with a bare tree-sitter exit code.
     let msg = format!("{msg}{}", windows_compiler_hint());
 
-    if ctx.is_init {
+    if ctx.session == crate::context::EvalSession::Init {
         ctx.log(LogLevel::Warning, msg);
         Ok(SteelVal::Void)
     } else {
@@ -113,7 +113,7 @@ mod tests {
 
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        ctx.is_init = true;
+        ctx.session = crate::context::EvalSession::Init;
         let result = compile_grammar(&mut ctx, src, out);
         assert!(result.is_ok(), "init mode must not raise: {result:?}");
     }
@@ -131,7 +131,7 @@ mod tests {
 
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        ctx.is_init = false;
+        ctx.session = crate::context::EvalSession::Runtime;
         assert!(compile_grammar(&mut ctx, src, out).is_err());
     }
 
@@ -150,7 +150,7 @@ mod tests {
         let mut host = RecordingInlineOutputHost::default();
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx_with_host(&mut host);
-        ctx.is_init = false;
+        ctx.session = crate::context::EvalSession::Runtime;
         let _ = compile_grammar(&mut ctx, src, out);
         drop(ctx);
         assert_eq!(host.ensure_calls, 1);
@@ -170,7 +170,7 @@ mod tests {
         let mut host = RecordingInlineOutputHost::default();
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx_with_host(&mut host);
-        ctx.is_init = true;
+        ctx.session = crate::context::EvalSession::Init;
         let _ = compile_grammar(&mut ctx, src, out);
         drop(ctx);
         assert_eq!(host.ensure_calls, 0);

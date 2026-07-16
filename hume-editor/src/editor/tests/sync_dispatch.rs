@@ -1679,8 +1679,8 @@ fn command_table_populated_after_define_command() {
 /// 3. The cursor did not move (command was skipped, not run).
 ///
 /// Fail oracle: reinstate `steel::stop!` in `call_command_primitive` for the
-/// `is_init` branch → eval returns `Err`, the `(set-option! …)` is never reached,
-/// assertions 1 and 2 fail.
+/// `EvalSession::Init` branch → eval returns `Err`, the `(set-option! …)` is
+/// never reached, assertions 1 and 2 fail.
 #[test]
 fn native_call_bang_at_init_top_level_warns_and_skips() {
     // Content is irrelevant — cursor stays at 0.

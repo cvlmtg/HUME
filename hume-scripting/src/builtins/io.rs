@@ -63,15 +63,15 @@ use crate::SteelCtx;
 /// stdout: init (before the alt-screen TUI is up) or an `#:inline-output`
 /// command body (alt-screen temporarily left). See `SteelCtx::is_inline_output`.
 fn stdout_is_safe(ctx: &SteelCtx) -> bool {
-    ctx.is_inline_output || ctx.is_init
+    ctx.is_inline_output || ctx.session == crate::context::EvalSession::Init
 }
 
 /// `(%stdout-gate!)` — called by each gated print shim (see
 /// `PRINT_GATE_SHIMS` in `builtins/mod.rs`) immediately before it would write
 /// to the real stdout. Returns `#f` (write must be suppressed) unless
 /// [`stdout_is_safe`]. When safe via `is_inline_output` specifically (not
-/// `is_init`, which prints pre-terminal with no bracket to open), lazily
-/// enters the alt-screen bracket on this, the first real write of the
+/// the init session, which prints pre-terminal with no bracket to open),
+/// lazily enters the alt-screen bracket on this, the first real write of the
 /// command body.
 pub(crate) fn stdout_gate(ctx: &mut SteelCtx) -> Result<SteelVal, SteelErr> {
     if !stdout_is_safe(ctx) {
@@ -101,20 +101,20 @@ mod tests {
     // distinguishes `||` from a wrong `&&`.
     //
     // Fail oracle: change `stdout_is_safe` to `ctx.is_inline_output &&
-    // ctx.is_init` → `neither_flag_set_is_unsafe` still passes, but the other
-    // two flip to `false` and fail.
+    // ctx.session == EvalSession::Init` → `neither_flag_set_is_unsafe` still
+    // passes, but the other two flip to `false` and fail.
 
     #[test]
     fn neither_flag_set_is_unsafe() {
         let mut h = SteelCtxTestHarness::new();
-        let ctx = h.ctx(); // NullHost: is_init=false, is_inline_output=false
+        let ctx = h.ctx(); // NullHost: EvalSession::Runtime, is_inline_output=false
         assert!(!stdout_is_safe(&ctx));
     }
 
     #[test]
-    fn is_init_alone_is_safe() {
+    fn init_session_alone_is_safe() {
         let mut h = SteelCtxTestHarness::new();
-        let ctx = h.ctx_init(); // is_init=true, is_inline_output=false
+        let ctx = h.ctx_init(); // EvalSession::Init, is_inline_output=false
         assert!(stdout_is_safe(&ctx));
     }
 
@@ -122,7 +122,7 @@ mod tests {
     fn is_inline_output_alone_is_safe() {
         let mut host = InlineOutputHost::default();
         let mut h = SteelCtxTestHarness::new();
-        let ctx = h.ctx_with_host(&mut host); // is_init=false, is_inline_output=true
+        let ctx = h.ctx_with_host(&mut host); // EvalSession::Runtime, is_inline_output=true
         assert!(stdout_is_safe(&ctx));
     }
 
@@ -137,13 +137,13 @@ mod tests {
         assert_eq!(result.unwrap(), SteelVal::BoolV(false));
     }
 
-    /// Gate open via `is_init` alone: returns `#t`, no bracket entry (there is
-    /// no alt-screen to leave before the terminal exists).
+    /// Gate open via the init session alone: returns `#t`, no bracket entry
+    /// (there is no alt-screen to leave before the terminal exists).
     #[test]
-    fn stdout_gate_returns_true_and_skips_ensure_when_open_via_is_init_only() {
+    fn stdout_gate_returns_true_and_skips_ensure_when_open_via_init_session_only() {
         let mut host = RecordingInlineOutputHost::default();
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx_init_with_host(&mut host); // is_init=true, is_inline_output=false
+        let mut ctx = h.ctx_init_with_host(&mut host); // EvalSession::Init, is_inline_output=false
         let result = stdout_gate(&mut ctx);
         assert_eq!(result.unwrap(), SteelVal::BoolV(true));
         drop(ctx);
@@ -156,7 +156,7 @@ mod tests {
     fn stdout_gate_returns_true_and_calls_ensure_when_open_via_is_inline_output() {
         let mut host = RecordingInlineOutputHost::default();
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx_with_host(&mut host); // is_init=false, is_inline_output=true
+        let mut ctx = h.ctx_with_host(&mut host); // EvalSession::Runtime, is_inline_output=true
         let result = stdout_gate(&mut ctx);
         assert_eq!(result.unwrap(), SteelVal::BoolV(true));
         drop(ctx);

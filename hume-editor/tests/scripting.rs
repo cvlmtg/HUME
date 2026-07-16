@@ -740,7 +740,7 @@ fn call_steel_cmd_watchdog_aborts_runaway() {
     );
 }
 
-/// Command bodies cannot mutate settings/keymap (is_init = false during
+/// Command bodies cannot mutate settings/keymap (`EvalMode::Command` during
 /// call_steel_cmd; init-only builtins raise Steel errors).  This test verifies
 /// that after a watchdog interrupt the settings remain at their pre-call values.
 /// Also verifies the budget is read from settings at call time.
@@ -781,8 +781,8 @@ fn call_steel_cmd_interrupt_leaves_settings_unchanged() {
 }
 
 /// Calling an init-only builtin from a Steel command body must raise a Steel
-/// error (not panic).  `is_init = false` during call_steel_cmd, and init-only
-/// builtins check this flag.
+/// error (not panic).  `call_steel_cmd` runs with `EvalMode::Command`, and
+/// init-only builtins gate on that.
 #[test]
 fn call_steel_cmd_set_option_from_body_returns_steel_error() {
     let mut h = host();
@@ -2535,8 +2535,8 @@ fn load_then_declare_ignored_with_soft_error() {
 /// `(load-plugin …)` inside an eager plugin body is rejected unconditionally —
 /// even when the dep is present on disk, the gate fires before path resolution.
 ///
-/// Flip: weaken the gate back to `!ctx.is_init` and the eager in-body call
-/// succeeds (is_init=true inside an eager body) instead of erroring.
+/// Flip: weaken `ensure_top_level` to also accept `EvalMode::PluginLoad` and
+/// the eager in-body call succeeds instead of erroring.
 #[test]
 #[cfg(not(windows))]
 fn load_plugin_in_plugin_body_rejected() {
@@ -2833,13 +2833,13 @@ fn arity1_list_command_accepts_list_arg() {
 }
 
 /// `(load-plugin …)` raises a Steel error when called from a command body
-/// (`is_init = false`, `plugin_stack` empty) — the `ensure_top_level` gate rejects it.
+/// (`EvalMode::Command`) — the `ensure_top_level` gate rejects it.
 ///
 /// Flip: remove `ensure_top_level` from `load_plugin` and the call returns `Ok`,
 /// silently queuing a load request that is never drained.
 #[test]
 fn load_plugin_runtime_guard_fires() {
-    // (load-plugin ...) from a command body (is_init=false) must be rejected.
+    // (load-plugin ...) from a command body (EvalMode::Command) must be rejected.
     let mut h = host();
     let mut mock = MockHost::new();
 

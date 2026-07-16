@@ -162,7 +162,7 @@ mod tests {
 
     // ── Init-only guard ───────────────────────────────────────────────────────
 
-    /// `bind-key!` is blocked in plain command mode (is_init=false, plugin_stack empty).
+    /// `bind-key!` is blocked in plain command mode (`EvalMode::Command`).
     ///
     /// Fail oracle: remove the guard → a plugin command body could rebind keys at runtime.
     #[test]
@@ -352,7 +352,7 @@ mod tests {
     // ── Plugin-load context (plugin_stack non-empty) ──────────────────────────
 
     /// When `plugin_stack` is non-empty (inside a plugin body), all four bind
-    /// builtins are permitted even with `is_init = false`.
+    /// builtins are permitted even in `EvalMode::PluginActivation`.
     #[test]
     fn bind_key_permitted_during_plugin_load() {
         use crate::attribution::PluginId;
@@ -360,7 +360,7 @@ mod tests {
         h.plugin_stack
             .push(PluginId::parse("core:myplugin").unwrap());
         {
-            let mut ctx = h.ctx(); // is_init=false, plugin_stack non-empty → allowed
+            let mut ctx = h.ctx(); // EvalMode::PluginActivation → allowed
             let result = bind_key(
                 &mut ctx,
                 SteelVal::SymbolV("normal".into()),

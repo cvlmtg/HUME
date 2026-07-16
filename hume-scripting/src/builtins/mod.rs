@@ -37,29 +37,37 @@ use super::HUME_CTX;
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-/// Return `Err` if we're inside an init eval (buffer/pane builtins are
-/// command-mode only).
+/// Return `Err` unless we're in a mode that can call buffer/pane builtins
+/// (`PluginActivation` or `Command` — never `Init` or `PluginLoad`).
 macro_rules! require_cmd_ctx {
     ($ctx:expr, $name:literal) => {
-        if $ctx.is_init {
-            steel::stop!(Generic => "{}: not available during init evaluation", $name);
+        match $ctx.mode() {
+            crate::context::EvalMode::Init | crate::context::EvalMode::PluginLoad => {
+                steel::stop!(Generic => "{}: not available during init evaluation", $name);
+            }
+            crate::context::EvalMode::PluginActivation | crate::context::EvalMode::Command => {}
         }
     };
 }
 pub(crate) use require_cmd_ctx;
 
-/// Return `Err` unless we're at init.scm top level or inside a plugin
-/// activation (`is_init` true, or `plugin_stack` non-empty) — the gate
-/// config builtins (`set-option!`, `bind-key!`, hook/LSP-server/language
-/// registration, …) share, permitting plugin-activation bodies but blocking
-/// plain command bodies. See `SteelCtx::is_init`'s doc for why this is a
-/// distinct, looser gate than `require_cmd_ctx!`'s.
+/// Return `Err` unless we're at init.scm top level or inside a plugin body
+/// (`Init`, `PluginLoad`, or `PluginActivation`) — the gate config builtins
+/// (`set-option!`, `bind-key!`, hook/LSP-server/language registration, …)
+/// share, permitting plugin bodies but blocking plain command bodies. See
+/// [`crate::context::EvalMode`]'s doc for why this is a distinct, looser
+/// gate than `require_cmd_ctx!`'s.
 macro_rules! require_config_ctx {
     ($ctx:expr, $name:expr) => {
-        if !$ctx.is_init && $ctx.plugin_stack.is_empty() {
-            steel::stop!(Generic =>
-                "{}: only valid during init.scm or plugin load, not from a Steel command body",
-                $name);
+        match $ctx.mode() {
+            crate::context::EvalMode::Command => {
+                steel::stop!(Generic =>
+                    "{}: only valid during init.scm or plugin load, not from a Steel command body",
+                    $name);
+            }
+            crate::context::EvalMode::Init
+            | crate::context::EvalMode::PluginLoad
+            | crate::context::EvalMode::PluginActivation => {}
         }
     };
 }

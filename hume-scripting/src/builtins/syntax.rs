@@ -88,7 +88,7 @@ pub(crate) fn register_grammar(
     let highlights_path = path_arg(highlights_path, "register-grammar! highlights-path")?;
     let injections_path = optional_path_arg(injections_path, "register-grammar! injections-path")?;
 
-    if ctx.is_init {
+    if ctx.session == crate::context::EvalSession::Init {
         ctx.effects
             .push(Effect::LanguageReg(PendingLanguageReg::Grammar {
                 name,

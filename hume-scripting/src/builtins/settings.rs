@@ -71,12 +71,12 @@ mod tests {
 
     /// `set-option!` is blocked in plain command mode (init/plugin-load only).
     ///
-    /// Fail oracle: remove the is_init guard → settings can be mutated from any
-    /// command body, bypassing the init-only contract.
+    /// Fail oracle: remove the require_config_ctx! guard → settings can be
+    /// mutated from any command body, bypassing the init-only contract.
     #[test]
     fn set_option_blocked_in_command_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx(); // is_init=false, plugin_stack empty
+        let mut ctx = h.ctx(); // EvalMode::Command
         let result = set_option(&mut ctx, "tab-width".into(), SteelVal::IntV(2));
         assert!(result.is_err(), "set-option! must error in command mode");
         let msg = result.unwrap_err().to_string();

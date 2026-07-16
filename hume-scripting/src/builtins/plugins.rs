@@ -37,24 +37,23 @@ fn log_absent_core(ctx: &mut SteelCtx, name: &str, verb: &str) {
 
 /// Gate for plugin-registration verbs (`load-plugin`, `declare-plugin`).
 ///
-/// Both verbs are valid only at the top level of `init.scm`.  A plugin can
-/// never load or declare another plugin — dependency declarations are the
-/// user's / plugin-manager's responsibility, not a plugin's.
-///
-/// At init.scm top level: `is_init = true` and `plugin_stack` is empty.
-/// Inside any eager plugin body: `is_init = true` but `plugin_stack` is non-empty.
-/// Inside any lazy/runtime plugin body: `is_init = false`.
+/// Both verbs are valid only at the top level of `init.scm` — i.e. only
+/// [`crate::context::EvalMode::Init`]. A plugin can never load or declare
+/// another plugin — dependency declarations are the user's / plugin-manager's
+/// responsibility, not a plugin's.
 fn ensure_top_level(ctx: &SteelCtx, verb: &str) -> Result<(), SteelErr> {
-    if !ctx.is_init || !ctx.plugin_stack.is_empty() {
-        return Err(SteelErr::new(
+    match ctx.mode() {
+        crate::context::EvalMode::Init => Ok(()),
+        crate::context::EvalMode::PluginLoad
+        | crate::context::EvalMode::PluginActivation
+        | crate::context::EvalMode::Command => Err(SteelErr::new(
             ErrorKind::Generic,
             format!(
                 "{verb}: can only be called at the top level of init.scm, \
                  not from a plugin body"
             ),
-        ));
+        )),
     }
-    Ok(())
 }
 
 // ── Builtins ──────────────────────────────────────────────────────────────────

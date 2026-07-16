@@ -1,8 +1,9 @@
 //! Multi-buffer Steel builtins — buffer/pane query and lifecycle ops.
 //!
-//! All builtins guard against init-eval context (`ctx.is_init = true`), where
-//! editor refs are not available.  Calling any of these from `init.scm` raises
-//! a Steel error instead of returning a meaningless default.
+//! All builtins guard against init-eval context (`EvalMode::Init` or
+//! `PluginLoad`, via `require_cmd_ctx!`), where editor refs are not
+//! available.  Calling any of these from `init.scm` raises a Steel error
+//! instead of returning a meaningless default.
 
 use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::{IntoSteelVal, SteelVal};

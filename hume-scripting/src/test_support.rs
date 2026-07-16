@@ -18,7 +18,7 @@ use crate::{HostBundle, ScriptingRegistries};
 /// Backing storage for [`SteelCtx`] in scripting-crate unit tests.
 ///
 /// Uses [`NullHost`] — sufficient for tests that only need to check that
-/// scripting guards (`is_init`, `require_cmd_ctx!`, etc.) fire correctly,
+/// scripting guards (`EvalMode`, `require_cmd_ctx!`, etc.) fire correctly,
 /// without real editor state.
 pub(crate) struct SteelCtxTestHarness {
     pub(crate) host: NullHost,
@@ -53,7 +53,7 @@ impl SteelCtxTestHarness {
         }
     }
 
-    /// Build a `SteelCtx` in init mode (`is_init = true`).
+    /// Build a `SteelCtx` in init mode (`session = EvalSession::Init`).
     pub(crate) fn ctx_init(&mut self) -> SteelCtx<'_> {
         let Self {
             host,
@@ -112,7 +112,8 @@ impl SteelCtxTestHarness {
         )
     }
 
-    /// Build a `SteelCtx` in activation mode (`is_init = false`, plugin body context).
+    /// Build a `SteelCtx` in activation mode (`session = EvalSession::Runtime`,
+    /// plugin body context).
     pub(crate) fn ctx_activation(&mut self) -> SteelCtx<'_> {
         let Self {
             host,
@@ -139,7 +140,7 @@ impl SteelCtxTestHarness {
         )
     }
 
-    /// Build a `SteelCtx` in command mode (`is_init = false`).
+    /// Build a `SteelCtx` in command mode (`session = EvalSession::Runtime`).
     pub(crate) fn ctx(&mut self) -> SteelCtx<'_> {
         let Self {
             host,

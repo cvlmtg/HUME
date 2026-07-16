@@ -384,7 +384,7 @@ mod tests {
     fn eval_string_nested_registers_command_in_command_table() {
         let mut host = ScriptingHost::new();
         // Eval a snippet that eval-strings a define-command! — the outer eval is
-        // init mode, so is_init=true allows define-command!.
+        // in EvalMode::Init, which allows define-command!.
         let program = r#"
 (hm.eval-string "(define-command! \"inner-cmd\" \"doc\" (lambda () 0))")
 "#;

@@ -11,7 +11,8 @@ use super::require_config_ctx;
 type SteelResult = Result<SteelVal, SteelErr>;
 
 /// `(register-hook! 'name proc)` — register `proc` as a handler for the
-/// named hook.  Must be called during init / plugin load (`is_init = true`).
+/// named hook.  Must be called during init or plugin load (`EvalMode::Init`,
+/// `PluginLoad`, or `PluginActivation`).
 ///
 /// `name` must be a symbol matching one of the known hook names:
 /// `on-buffer-open`, `on-buffer-close`, `on-buffer-save`, `on-mode-change`,
@@ -49,12 +50,13 @@ mod tests {
 
     /// `register-hook!` is blocked in plain command mode (init/plugin-load only).
     ///
-    /// Fail oracle: remove the is_init guard → the hook is silently registered
-    /// from a command body, allowing plugins to change global behaviour at runtime.
+    /// Fail oracle: remove the require_config_ctx! guard → the hook is
+    /// silently registered from a command body, allowing plugins to change
+    /// global behaviour at runtime.
     #[test]
     fn register_hook_blocked_in_command_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx(); // is_init=false, plugin_stack empty
+        let mut ctx = h.ctx(); // EvalMode::Command
         let result = register_hook(
             &mut ctx,
             SteelVal::SymbolV("on-buffer-open".into()),
@@ -140,7 +142,7 @@ mod tests {
         h.plugin_stack
             .push(PluginId::parse("core:myplugin").unwrap());
         {
-            let mut ctx = h.ctx(); // is_init=false but plugin_stack non-empty → allowed
+            let mut ctx = h.ctx(); // EvalMode::PluginActivation → allowed
             let result = register_hook(
                 &mut ctx,
                 SteelVal::SymbolV("on-buffer-open".into()),

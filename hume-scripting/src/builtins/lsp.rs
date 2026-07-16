@@ -385,7 +385,7 @@ fn bid_arg(val: &SteelVal, ctx_name: &str) -> Result<hume_engine::pipeline::Buff
 /// from any context, including command bodies and hook handlers —
 /// completion/signature-help register a server's trigger characters from
 /// inside an `on-lsp-attach` handler, which runs as plain command context
-/// (no `is_init`/`plugin_stack` gate applies here, unlike `register-hook!` /
+/// (no `EvalMode` gate applies here, unlike `register-hook!` /
 /// `on-lsp-notification`).
 pub(crate) fn register_trigger_chars(
     ctx: &mut SteelCtx,
@@ -1244,7 +1244,7 @@ mod tests {
     fn lsp_stop_rejects_init_context() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        ctx.is_init = true;
+        ctx.session = crate::context::EvalSession::Init;
         let err = lsp_stop(&mut ctx, SteelVal::BoolV(false)).unwrap_err();
         assert!(
             err.to_string().contains("not available during init"),
@@ -1273,7 +1273,7 @@ mod tests {
     fn lsp_restart_rejects_init_context() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        ctx.is_init = true;
+        ctx.session = crate::context::EvalSession::Init;
         let err = lsp_restart(&mut ctx, SteelVal::BoolV(false)).unwrap_err();
         assert!(
             err.to_string().contains("not available during init"),
@@ -1297,7 +1297,7 @@ mod tests {
     fn lsp_show_status_rejects_init_context() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        ctx.is_init = true;
+        ctx.session = crate::context::EvalSession::Init;
         let err = lsp_show_status(&mut ctx).unwrap_err();
         assert!(
             err.to_string().contains("not available during init"),
@@ -1317,7 +1317,7 @@ mod tests {
     fn lsp_registered_for_language_is_callable_during_init() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        ctx.is_init = true;
+        ctx.session = crate::context::EvalSession::Init;
         let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
         assert_eq!(
             result.unwrap(),

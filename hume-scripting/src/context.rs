@@ -27,8 +27,8 @@ pub(crate) struct SteelCtx<'a> {
     // ── Editor interface ───────────────────────────────────────────────────────
     /// Access to all live editor state during evaluation.
     ///
-    /// In init mode (`is_init = true`), `host.buffers()`'s methods are
-    /// guarded by `require_cmd_ctx!` and never called; the init-only methods
+    /// In `EvalSession::Init`, `host.buffers()`'s methods are guarded by
+    /// `require_cmd_ctx!` and never called; the init-only methods
     /// (`host.settings().set_global_option`, `host.keymap().bind_key`,
     /// `host.settings().configure_statusline`) are always safe.
     pub(crate) host: &'a mut dyn EditorHost,
@@ -65,19 +65,10 @@ pub(crate) struct SteelCtx<'a> {
     /// Pending char from a WaitChar keymap node.
     pub(crate) pending_char: Option<char>,
     // ── Mode discriminant ────────────────────────────────────────────────────
-    /// `true` during `eval_source_raw` (init.scm); `false` during
-    /// `call_steel_cmd` (command dispatch) and `activate_plugin_inline`
-    /// (runtime-activated plugin bodies, which use `SteelCtx::new_activation`).
-    ///
-    /// Config builtins (`set-option!`, `bind-key!`, etc.) gate on
-    /// `!is_init && plugin_stack.is_empty()`: permitted during plugin
-    /// activation (plugin_stack non-empty) even when `is_init` is `false`,
-    /// but blocked from plain command bodies (plugin_stack empty, is_init false).
-    ///
-    /// Registration verbs (`load-plugin`, `declare-plugin`) use the stricter
-    /// `!is_init || !plugin_stack.is_empty()` gate: both must be false, i.e.
-    /// only the init.scm top level (is_init=true, stack empty) is allowed.
-    pub(crate) is_init: bool,
+    /// Which entry point started this eval session. Set once at construction;
+    /// see [`EvalMode`] for the effective legality context builtins gate on,
+    /// which also depends on the live `plugin_stack`.
+    pub(crate) session: EvalSession,
     /// True when it is safe to write directly to stdout: either during init
     /// (before the alt-screen TUI is up) or inside an `#:inline-output` command
     /// body (alt-screen temporarily left). See `EditorHost::is_inline_output_command`.
@@ -109,6 +100,44 @@ pub(crate) struct SteelCtx<'a> {
     pub(crate) manifest_resolving: Option<crate::attribution::PluginId>,
 }
 
+/// Which entry point started this eval session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EvalSession {
+    /// `eval_source_raw` — init.scm, before the TUI is up.
+    Init,
+    /// `call_steel_cmd` / `fire_hook` / `run_steel_calls` / `activate_plugin_inline`.
+    Runtime,
+}
+
+/// Effective legality context that builtins gate on, derived per call from
+/// `session` × whether `plugin_stack` is currently non-empty (a plugin body
+/// is executing, possibly nested inside a command or init eval). `plugin_stack`
+/// is pushed/popped mid-eval by `begin_lazy_activation`/`finish_lazy_activation`
+/// (`builtins/plugins.rs`), so this is derived fresh via [`SteelCtx::mode`]
+/// rather than stored — a single stored 3-variant enum can't distinguish the
+/// init-top-level state from the eager-plugin-load-during-init state, which
+/// have different gate outcomes (see the table below).
+///
+/// | State                              | `require_cmd_ctx!` | `require_config_ctx!` | `ensure_top_level` |
+/// |-------------------------------------|:---:|:---:|:---:|
+/// | `Init` (init.scm top level)         | ✗ | ✓ | ✓ |
+/// | `PluginLoad` (eager, during init)   | ✗ | ✓ | ✗ |
+/// | `PluginActivation` (lazy, runtime)  | ✓ | ✓ | ✗ |
+/// | `Command` (plain command/hook body) | ✓ | ✗ | ✗ |
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EvalMode {
+    /// init.scm top level: `EvalSession::Init`, `plugin_stack` empty.
+    Init,
+    /// Inside an eager `load-plugin` body during init: `EvalSession::Init`,
+    /// `plugin_stack` non-empty.
+    PluginLoad,
+    /// Inside a lazily-activated plugin body at runtime: `EvalSession::Runtime`,
+    /// `plugin_stack` non-empty.
+    PluginActivation,
+    /// Plain command / hook body: `EvalSession::Runtime`, `plugin_stack` empty.
+    Command,
+}
+
 impl CustomReference for SteelCtx<'_> {}
 steel::custom_reference!(SteelCtx<'a>);
 
@@ -131,7 +160,7 @@ impl<'a> SteelCtx<'a> {
             current_register_prefix: None,
             wait_char_request: None,
             pending_char: None,
-            is_init: true,
+            session: EvalSession::Init,
             is_inline_output: false,
             focused_pane_id: PaneId::default(),
             focused_buffer_id: BufferId::default(),
@@ -143,18 +172,29 @@ impl<'a> SteelCtx<'a> {
 
     /// For Rust-side runtime plugin activation (lazy command/event/language activations).
     ///
-    /// Identical to `new_init` but with `is_init = false`: native `(call! …)` calls
-    /// inside the plugin body are allowed (they run synchronously via `run_command_sync`),
-    /// while `(load-plugin …)` and `(declare-plugin …)` are rejected (registration
-    /// verbs are init.scm top-level only; a plugin can never load another plugin).
+    /// Identical to `new_init` but with `session = EvalSession::Runtime`: native
+    /// `(call! …)` calls inside the plugin body are allowed (they run synchronously
+    /// via `run_command_sync`), while `(load-plugin …)` and `(declare-plugin …)` are
+    /// rejected (registration verbs are init.scm top-level only; a plugin can never
+    /// load another plugin).
     pub(super) fn new_activation(
         host: &'a mut dyn EditorHost,
         host_bundle: HostBundle<'a>,
         builtin_cmd_names: std::collections::HashSet<String>,
     ) -> Self {
         Self {
-            is_init: false,
+            session: EvalSession::Runtime,
             ..Self::new_init(host, host_bundle, builtin_cmd_names)
+        }
+    }
+
+    /// The effective legality context builtins gate on — see [`EvalMode`].
+    pub(crate) fn mode(&self) -> EvalMode {
+        match (self.session, self.plugin_stack.is_empty()) {
+            (EvalSession::Init, true) => EvalMode::Init,
+            (EvalSession::Init, false) => EvalMode::PluginLoad,
+            (EvalSession::Runtime, false) => EvalMode::PluginActivation,
+            (EvalSession::Runtime, true) => EvalMode::Command,
         }
     }
 
@@ -210,7 +250,7 @@ impl<'a> SteelCtx<'a> {
             current_register_prefix: None,
             wait_char_request: None,
             pending_char,
-            is_init: false,
+            session: EvalSession::Runtime,
             is_inline_output,
             focused_pane_id,
             focused_buffer_id,
@@ -229,36 +269,68 @@ mod tests {
 
     // ── Mode discriminant ─────────────────────────────────────────────────────
 
-    /// `new_init` sets `is_init = true`.
+    /// `new_init` sets `session = EvalSession::Init`.
     ///
-    /// Fail oracle: swap `is_init: true` → `false` in `new_init` → assert fires.
+    /// Fail oracle: swap `EvalSession::Init` → `Runtime` in `new_init` → assert fires.
     #[test]
-    fn new_init_has_is_init_true() {
+    fn new_init_has_init_session() {
         let mut h = SteelCtxTestHarness::new();
         let ctx = h.ctx_init();
-        assert!(ctx.is_init, "new_init must set is_init = true");
+        assert_eq!(
+            ctx.session,
+            EvalSession::Init,
+            "new_init must set session = EvalSession::Init"
+        );
     }
 
-    /// `new_command` sets `is_init = false`.
+    /// `new_command` sets `session = EvalSession::Runtime`.
     ///
-    /// Fail oracle: swap `is_init: false` → `true` in `new_command` → assert fires.
+    /// Fail oracle: swap `EvalSession::Runtime` → `Init` in `new_command` → assert fires.
     #[test]
-    fn new_command_has_is_init_false() {
+    fn new_command_has_runtime_session() {
         let mut h = SteelCtxTestHarness::new();
         let ctx = h.ctx();
-        assert!(!ctx.is_init, "new_command must set is_init = false");
+        assert_eq!(
+            ctx.session,
+            EvalSession::Runtime,
+            "new_command must set session = EvalSession::Runtime"
+        );
     }
 
-    /// `new_activation` sets `is_init = false` (same as command mode).
+    /// `new_activation` sets `session = EvalSession::Runtime` (same as command mode).
     ///
     /// Runtime-activated plugin bodies use `new_activation` so `(call! …)` is
-    /// allowed inside them.  Fail oracle: set `is_init: true` → plugin bodies
-    /// would be blocked from calling native commands.
+    /// allowed inside them.  Fail oracle: set `session: EvalSession::Init` →
+    /// plugin bodies would be blocked from calling native commands.
     #[test]
-    fn new_activation_has_is_init_false() {
+    fn new_activation_has_runtime_session() {
         let mut h = SteelCtxTestHarness::new();
         let ctx = h.ctx_activation();
-        assert!(!ctx.is_init, "new_activation must set is_init = false");
+        assert_eq!(
+            ctx.session,
+            EvalSession::Runtime,
+            "new_activation must set session = EvalSession::Runtime"
+        );
+    }
+
+    /// `mode()` derives the correct `EvalMode` for all four `(session,
+    /// plugin_stack)` states. Independent oracle: expected variants come from
+    /// the truth table in `EvalMode`'s doc, not from `mode()`'s own logic.
+    ///
+    /// Fail oracle: swap any two arms in `SteelCtx::mode`'s match → one of
+    /// these four assertions fires.
+    #[test]
+    fn mode_derives_from_session_and_plugin_stack() {
+        use crate::attribution::PluginId;
+
+        let mut h = SteelCtxTestHarness::new();
+        assert_eq!(h.ctx_init().mode(), EvalMode::Init);
+        assert_eq!(h.ctx().mode(), EvalMode::Command);
+
+        h.plugin_stack
+            .push(PluginId::parse("core:test-plugin").unwrap());
+        assert_eq!(h.ctx_init().mode(), EvalMode::PluginLoad);
+        assert_eq!(h.ctx_activation().mode(), EvalMode::PluginActivation);
     }
 
     // ── Terminal safety ───────────────────────────────────────────────────────
