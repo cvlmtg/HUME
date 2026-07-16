@@ -19,7 +19,8 @@ pub trait LspBackend {
     /// client layer's job — this is transport-level only.
     fn start(&mut self, cmd: &str, args: &[String], root: &Path) -> std::io::Result<ServerId>;
     fn send(&mut self, server: ServerId, msg: Message);
-    /// All events that arrived since the last drain, in arrival order.
+    /// All events that arrived since the last drain. Arrival order is
+    /// preserved per server; cross-server interleaving is unspecified.
     fn drain(&mut self) -> Vec<(ServerId, InboundEvent)>;
     fn shutdown(&mut self, server: ServerId);
 }

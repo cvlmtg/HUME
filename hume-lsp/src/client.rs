@@ -296,14 +296,23 @@ impl LspClient {
     /// wire or was queued (or dropped, for a dead/crashed connection), so
     /// `take_completed`'s deadline/timeout handling covers a request that's
     /// still queued exactly like one already on the wire.
+    ///
+    /// A Crashed/Dead connection has its `meta.deadline` clamped to now: the
+    /// send is silently dropped (see `send_or_queue`) and nothing will ever
+    /// answer it, so the caller's whole requested timeout — routinely tens
+    /// of seconds — must not stand between it and the `TimedOut` outcome
+    /// `take_completed`'s sweep already delivers for a request that expires.
     pub fn send_request(
         &mut self,
         backend: &mut dyn LspBackend,
         method: &str,
         params: serde_json::Value,
-        meta: RequestMeta,
+        mut meta: RequestMeta,
     ) -> RequestId {
         let id = self.ids.next();
+        if matches!(self.state, ServerState::Crashed | ServerState::Dead) {
+            meta.deadline = Instant::now();
+        }
         self.pending.insert(id.clone(), meta);
         let msg = Message::Request {
             id: id.clone(),
@@ -1290,6 +1299,52 @@ mod tests {
                 method: "textDocument/didOpen".to_string(),
                 params: serde_json::Value::Null,
             },
+        );
+    }
+
+    /// A request filed against an already-Crashed client is silently dropped
+    /// on the wire (see `send_or_queue`) and nothing will ever answer it —
+    /// its `meta.deadline` must be clamped to now so `take_completed`'s sweep
+    /// resolves it as `TimedOut` on the very next tick, instead of leaving
+    /// the caller waiting out the deadline it asked for (routinely tens of
+    /// seconds) for a request that was doomed the moment it was sent.
+    #[test]
+    fn send_request_after_crashed_times_out_immediately_via_the_sweep() {
+        let mut backend = InlineLspBackend::new();
+        let sid = backend.start("x", &[], std::path::Path::new(".")).unwrap();
+        let mut client = LspClient::new(sid, PathBuf::from("."));
+
+        client.on_event(InboundEvent::Eof {
+            error: Some("server exited".to_string()),
+        });
+        assert_eq!(client.state, ServerState::Crashed);
+
+        let far_future = Instant::now() + std::time::Duration::from_secs(30);
+        let meta = RequestMeta {
+            method: "textDocument/hover".to_string(),
+            allow_stale: false,
+            deadline: far_future,
+        };
+        let id = client.send_request(
+            &mut backend,
+            "textDocument/hover",
+            serde_json::Value::Null,
+            meta,
+        );
+
+        assert!(
+            client.earliest_deadline().expect("still pending") <= Instant::now(),
+            "deadline must be clamped to now, not left at the caller's far-future value"
+        );
+
+        let (completed, actions) = client.take_completed(&mut backend, Instant::now());
+        assert!(actions.is_empty());
+        assert_eq!(completed.len(), 1);
+        let (returned_id, _meta, outcome) = &completed[0];
+        assert_eq!(*returned_id, id);
+        assert!(
+            matches!(outcome, Outcome::TimedOut),
+            "expected TimedOut, got {outcome:?}"
         );
     }
 
