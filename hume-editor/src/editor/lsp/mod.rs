@@ -431,9 +431,7 @@ impl AsyncSource for LspState {
         // progress) because the pending-poll arm that used to cover the
         // handshake spinner is gone; without it the spinner would freeze
         // against `initialize`'s 30s deadline.
-        let spinner = self
-            .has_animating_server()
-            .then(|| now + SPINNER_INTERVAL);
+        let spinner = self.has_animating_server().then(|| now + SPINNER_INTERVAL);
 
         [deadline, spinner].into_iter().flatten().min()
     }

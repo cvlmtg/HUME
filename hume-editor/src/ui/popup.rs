@@ -381,7 +381,10 @@ mod tests {
         let pane = rect(0, 0, 20, 20);
         let (x, _, w, _) = resolve_popup_geometry(50, 1, (5, 5), pane);
         assert_eq!(w, 20, "width must clamp to the full pane width");
-        assert_eq!(x, 0, "clamped box has nowhere to go but the pane's left edge");
+        assert_eq!(
+            x, 0,
+            "clamped box has nowhere to go but the pane's left edge"
+        );
     }
 
     /// Same as above for height: a box taller than a short/split pane must
@@ -391,6 +394,9 @@ mod tests {
         let pane = rect(0, 0, 40, 8);
         let (_, y, _, h) = resolve_popup_geometry(5, 20, (5, 3), pane);
         assert_eq!(h, 8, "height must clamp to the full pane height");
-        assert_eq!(y, 0, "clamped box has nowhere to go but the pane's top edge");
+        assert_eq!(
+            y, 0,
+            "clamped box has nowhere to go but the pane's top edge"
+        );
     }
 }

@@ -125,10 +125,7 @@ impl StoredCompletionItem {
     fn from_json_lenient(v: &serde_json::Value) -> Option<Self> {
         let label = v.get("label")?.as_str()?.to_string();
         let kind = v.get("kind").and_then(|x| x.as_i64());
-        let detail = v
-            .get("detail")
-            .and_then(|x| x.as_str())
-            .map(str::to_string);
+        let detail = v.get("detail").and_then(|x| x.as_str()).map(str::to_string);
         let string_or_label = |key: &str| -> String {
             v.get(key)
                 .and_then(|x| x.as_str())
@@ -574,44 +571,39 @@ impl CompletionSession {
             deadline,
         };
         let gen_after = state.buffers.get(bid).text_gen;
-        let Some(id) = lsp.send_request(
-            server_id,
-            "completionItem/resolve",
-            item.raw.clone(),
-            meta,
-        ) else {
+        let Some(id) =
+            lsp.send_request(server_id, "completionItem/resolve", item.raw.clone(), meta)
+        else {
             return; // server gone between the capability check and now
         };
-        let callback: super::LspCallback = Box::new(move |editor, outcome| {
-            match outcome {
-                hume_lsp::client::Outcome::Ok(resolved) => {
-                    let resolved_edits = parse_additional_text_edits_lenient(&resolved);
-                    if let Err(e) = edits::apply_resolved_additional_edits(
-                        &mut editor.state,
-                        bid,
-                        &rope_pre,
-                        &accept_cs,
-                        encoding,
-                        &resolved_edits,
-                    ) {
-                        editor.report(
-                            crate::editor::Severity::Error,
-                            format!("lsp completion resolve: {e}"),
-                        );
-                    }
-                }
-                hume_lsp::client::Outcome::Err(e) => {
+        let callback: super::LspCallback = Box::new(move |editor, outcome| match outcome {
+            hume_lsp::client::Outcome::Ok(resolved) => {
+                let resolved_edits = parse_additional_text_edits_lenient(&resolved);
+                if let Err(e) = edits::apply_resolved_additional_edits(
+                    &mut editor.state,
+                    bid,
+                    &rope_pre,
+                    &accept_cs,
+                    encoding,
+                    &resolved_edits,
+                ) {
                     editor.report(
                         crate::editor::Severity::Error,
-                        format!("lsp completion resolve: {} ({})", e.message, e.code),
+                        format!("lsp completion resolve: {e}"),
                     );
                 }
-                hume_lsp::client::Outcome::TimedOut => {
-                    editor.report(
-                        crate::editor::Severity::Error,
-                        "lsp completion resolve: timeout".to_string(),
-                    );
-                }
+            }
+            hume_lsp::client::Outcome::Err(e) => {
+                editor.report(
+                    crate::editor::Severity::Error,
+                    format!("lsp completion resolve: {} ({})", e.message, e.code),
+                );
+            }
+            hume_lsp::client::Outcome::TimedOut => {
+                editor.report(
+                    crate::editor::Severity::Error,
+                    "lsp completion resolve: timeout".to_string(),
+                );
             }
         });
         lsp.register_callback(server_id, id, Some((bid, gen_after)), callback);
@@ -713,7 +705,10 @@ mod tests {
 
     #[test]
     fn strip_snippet_leaves_plain_text_untouched() {
-        assert_eq!(strip_snippet("no snippet syntax here"), "no snippet syntax here");
+        assert_eq!(
+            strip_snippet("no snippet syntax here"),
+            "no snippet syntax here"
+        );
     }
 
     #[test]

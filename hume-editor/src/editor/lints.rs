@@ -469,8 +469,11 @@ mod tests {
         let Ok(rd) = std::fs::read_dir(&plugins_root) else {
             panic!("cannot read {}", plugins_root.display());
         };
-        let mut plugin_dirs: Vec<std::path::PathBuf> =
-            rd.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+        let mut plugin_dirs: Vec<std::path::PathBuf> = rd
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.is_dir())
+            .collect();
         plugin_dirs.sort();
 
         for dir in plugin_dirs {
@@ -486,7 +489,9 @@ mod tests {
                 .unwrap_or_else(|e| panic!("cannot read {}: {e}", manifest_path.display()));
 
             let declared: std::collections::BTreeSet<String> =
-                manifest_declared_commands(&manifest_src).into_iter().collect();
+                manifest_declared_commands(&manifest_src)
+                    .into_iter()
+                    .collect();
             let defined: std::collections::BTreeSet<String> =
                 defined_commands(&dir).into_iter().collect();
 

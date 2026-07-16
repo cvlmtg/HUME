@@ -129,8 +129,7 @@ fn recover_progress(params: &serde_json::Value) -> Option<lsp_types::ProgressPar
 
     let mut patched = params.clone();
     let value = patched.get_mut("value")?;
-    if value.get("kind").and_then(|k| k.as_str()) == Some("begin") && value.get("title").is_none()
-    {
+    if value.get("kind").and_then(|k| k.as_str()) == Some("begin") && value.get("title").is_none() {
         value
             .as_object_mut()?
             .insert("title".into(), serde_json::json!("progress"));

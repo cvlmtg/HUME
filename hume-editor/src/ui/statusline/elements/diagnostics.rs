@@ -60,7 +60,9 @@ impl StatuslineElement for DiagnosticsElement {
             (0, 0) => None,
             (e, 0) => Some(format!("{DIAGNOSTICS_ERROR_GLYPH} {e}")),
             (0, w) => Some(format!("{DIAGNOSTICS_WARNING_GLYPH} {w}")),
-            (e, w) => Some(format!("{DIAGNOSTICS_ERROR_GLYPH} {e} {DIAGNOSTICS_WARNING_GLYPH} {w}")),
+            (e, w) => Some(format!(
+                "{DIAGNOSTICS_ERROR_GLYPH} {e} {DIAGNOSTICS_WARNING_GLYPH} {w}"
+            )),
         };
         let label = match (spinner_prefix, counts) {
             (Some(s), Some(c)) => format!("{s} {c}"),

@@ -327,8 +327,7 @@ pub(crate) fn range_params(
 /// last valid line, even when the pane's viewport height exceeds the buffer.
 pub(crate) fn pane_visible_range(pane: &Pane, total_lines: usize) -> (usize, usize) {
     let first_line = pane.viewport.top_line;
-    let last_line =
-        (first_line + pane.viewport.height as usize).min(total_lines.saturating_sub(1));
+    let last_line = (first_line + pane.viewport.height as usize).min(total_lines.saturating_sub(1));
     (first_line, last_line)
 }
 
