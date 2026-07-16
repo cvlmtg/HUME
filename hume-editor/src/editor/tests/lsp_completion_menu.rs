@@ -221,7 +221,10 @@ fn enter_at_zero_matches_inserts_a_newline_instead_of_erroring() {
         "must not report completion-accept!'s index-out-of-range error"
     );
     let text = ed.doc().text().to_string();
-    assert_eq!(text, "z\n\n", "Enter must insert a newline, not be swallowed");
+    assert_eq!(
+        text, "z\n\n",
+        "Enter must insert a newline, not be swallowed"
+    );
 }
 
 /// Same regression for Tab: an empty session must not intercept it into a

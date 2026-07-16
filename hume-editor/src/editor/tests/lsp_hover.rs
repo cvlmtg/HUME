@@ -55,7 +55,10 @@ fn setup(
     // one-line hover response lands well under the popup/drawer threshold —
     // a tiny 1-2 line fixture would make even trivial hover content overflow
     // to the drawer, which isn't what these tests are checking.
-    let filler = (0..29).map(|i| format!("// line {i}")).collect::<Vec<_>>().join("\n");
+    let filler = (0..29)
+        .map(|i| format!("// line {i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
     std::fs::write(&file, format!("fn main() {{}}\n{filler}\n")).unwrap();
 
     let mut backend = InlineLspBackend::new();

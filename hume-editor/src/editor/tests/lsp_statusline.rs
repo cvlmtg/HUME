@@ -205,7 +205,10 @@ fn progress_begin_report_end_tracks_the_active_task() {
 
     ed.dispatch_lsp_action(
         sid,
-        progress_action("t1", serde_json::json!({"kind": "begin", "title": "Indexing"})),
+        progress_action(
+            "t1",
+            serde_json::json!({"kind": "begin", "title": "Indexing"}),
+        ),
     );
     match ed.lsp_activity(bid) {
         LspActivity::Progress { percentage } => {
@@ -219,7 +222,10 @@ fn progress_begin_report_end_tracks_the_active_task() {
     // an absent field means "unchanged" per the LSP spec).
     ed.dispatch_lsp_action(
         sid,
-        progress_action("t1", serde_json::json!({"kind": "report", "percentage": 45})),
+        progress_action(
+            "t1",
+            serde_json::json!({"kind": "report", "percentage": 45}),
+        ),
     );
     match ed.lsp_activity(bid) {
         LspActivity::Progress { percentage } => {
@@ -233,7 +239,10 @@ fn progress_begin_report_end_tracks_the_active_task() {
         "title must survive an unrelated report"
     );
 
-    ed.dispatch_lsp_action(sid, progress_action("t1", serde_json::json!({"kind": "end"})));
+    ed.dispatch_lsp_action(
+        sid,
+        progress_action("t1", serde_json::json!({"kind": "end"})),
+    );
     assert!(
         matches!(ed.lsp_activity(bid), LspActivity::Idle),
         "the task must be dropped once its `end` arrives"
@@ -297,7 +306,10 @@ fn crash_clears_progress_so_the_spinner_stops() {
 
     ed.dispatch_lsp_action(
         sid,
-        progress_action("t1", serde_json::json!({"kind": "begin", "title": "Indexing"})),
+        progress_action(
+            "t1",
+            serde_json::json!({"kind": "begin", "title": "Indexing"}),
+        ),
     );
     assert!(matches!(ed.lsp_activity(bid), LspActivity::Progress { .. }));
 
@@ -317,13 +329,12 @@ fn crash_clears_progress_so_the_spinner_stops() {
 fn loading_state_renders_alongside_diagnostic_counts() {
     let mut c = setup("abcdefgh\n", &[&[((0, 0), (0, 1), 1)]]);
     let bid = c.ed.focused_buffer_id();
-    let sid = c
-        .ed
-        .state
-        .buffers
-        .get(bid)
-        .lsp_server
-        .expect("setup attaches a server");
+    let sid =
+        c.ed.state
+            .buffers
+            .get(bid)
+            .lsp_server
+            .expect("setup attaches a server");
     assert_ne!(
         c.ed.diagnostic_counts(bid),
         (0, 0),
@@ -334,7 +345,10 @@ fn loading_state_renders_alongside_diagnostic_counts() {
     // the server is now (re)loading, e.g. mid `:lsp-restart` reindex.
     c.ed.dispatch_lsp_action(
         sid,
-        progress_action("t1", serde_json::json!({"kind": "begin", "title": "Indexing"})),
+        progress_action(
+            "t1",
+            serde_json::json!({"kind": "begin", "title": "Indexing"}),
+        ),
     );
 
     let colors = crate::ui::theme::EditorColors::default();

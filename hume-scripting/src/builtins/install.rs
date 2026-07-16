@@ -129,9 +129,9 @@ pub(crate) fn unpack_zip(
     // `unzip`/`tar` inherit stdio (see `hume_platform::process::unpack_zip`'s
     // doc), so this is a real terminal write — open the bracket first.
     if let Some(output) = ctx.host.output() {
-        output
-            .ensure_inline_output_screen()
-            .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("unpack-zip: {e}")))?;
+        output.ensure_inline_output_screen().map_err(|e| {
+            SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("unpack-zip: {e}"))
+        })?;
     }
     hume_platform::process::unpack_zip(&src_path, &dest_path, Path::new(&bin_path))
         .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("unpack-zip: {e}")))?;

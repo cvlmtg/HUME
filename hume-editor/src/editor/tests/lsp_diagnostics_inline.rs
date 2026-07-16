@@ -191,7 +191,11 @@ fn diagnostics_on_different_lines_get_independent_entries() {
         entries,
         vec![
             (1, " problem A".to_string(), "diagnostic.error".to_string()),
-            (3, " problem B".to_string(), "diagnostic.warning".to_string()),
+            (
+                3,
+                " problem B".to_string(),
+                "diagnostic.warning".to_string()
+            ),
         ]
     );
 }

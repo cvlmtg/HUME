@@ -302,7 +302,10 @@ fn context_diagnostics_echoes_the_raw_diagnostic_overlapping_the_cursor() {
     let (mut ed, _guard, sid, requests) = setup(&file, tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/codeAction", serde_json::Value::Null);
     });
-    ed.ingest_publish_diagnostics(sid, serde_json::from_value(diagnostic_params(&uri)).unwrap());
+    ed.ingest_publish_diagnostics(
+        sid,
+        serde_json::from_value(diagnostic_params(&uri)).unwrap(),
+    );
 
     run_actions(&mut ed);
 
