@@ -514,7 +514,7 @@ pub(crate) fn finish_lazy_activation(
         for name in orphans {
             ctx.registries.command_table.remove(&name);
             ctx.registries.cmd_owners.remove(&name);
-            ctx.host.unregister_command(&name);
+            ctx.host.commands().unregister_command(&name);
         }
     }
 

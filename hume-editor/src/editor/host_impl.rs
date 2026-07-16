@@ -21,8 +21,8 @@ use crate::editor::timer_bridge::TimerHandle;
 use crate::settings::{BufferOverrides, SettingScope, apply_setting};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 use hume_scripting::host::{
-    BindMode, CompletionHost, CursorHost, DecorationHost, EditHost, EditorHost, LspHost,
-    OptionValue, OutputHost, TimerHost, UiHost,
+    BindMode, CommandHost, CompletionHost, CursorHost, DecorationHost, EditHost, EditorHost,
+    LspHost, OptionValue, OutputHost, TimerHost, UiHost,
 };
 
 use super::{EditorState, Severity};
@@ -117,6 +117,9 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Some(self)
     }
     fn cursor(&mut self) -> &mut dyn CursorHost {
+        self
+    }
+    fn commands(&mut self) -> &mut dyn CommandHost {
         self
     }
 
@@ -290,7 +293,31 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         self.state.languages.has_grammar(language)
     }
 
-    // ── Command registration (init-only) ────────────────────────────────────
+    // ── Budget ────────────────────────────────────────────────────────────────
+    fn steel_command_budget_ms(&self) -> u64 {
+        self.state.settings.steel_command_budget_ms as u64
+    }
+
+    fn buffer_generation(&self, id: BufferId) -> Option<u64> {
+        Some(self.buffer(id)?.text_gen)
+    }
+
+    fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)> {
+        crate::editor::lsp::introspect::viewport_range(self.state, self.view, id)
+    }
+
+    // ── Trigger chars ───────────────────────────────────────────────────
+    fn register_trigger_chars(&mut self, source: String, language: String, chars: Vec<char>) {
+        if chars.is_empty() {
+            self.state.trigger_chars.remove(&(source, language));
+        } else {
+            self.state.trigger_chars.insert((source, language), chars);
+        }
+    }
+
+}
+
+impl<'a> CommandHost for EditorHostImpl<'a> {
     fn register_command(&mut self, def: hume_scripting::SteelCmdDef) -> Result<(), String> {
         match self.state.registry.get_mappable(&def.name) {
             Some(MappableCommand::Lazy { .. }) | None => {
@@ -315,17 +342,10 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         self.state.registry.unregister(name);
     }
 
-    // ── Register validation ───────────────────────────────────────────────────
     fn is_valid_register_name(&self, ch: char) -> bool {
         crate::ops::register::is_valid_register_name(ch)
     }
 
-    // ── Budget ────────────────────────────────────────────────────────────────
-    fn steel_command_budget_ms(&self) -> u64 {
-        self.state.settings.steel_command_budget_ms as u64
-    }
-
-    // ── Synchronous command dispatch ─────────────────────────────────────────
     fn command_is_native(&self, name: &str) -> Result<bool, String> {
         self.state
             .registry
@@ -379,24 +399,6 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         }
         Ok(())
     }
-
-    fn buffer_generation(&self, id: BufferId) -> Option<u64> {
-        Some(self.buffer(id)?.text_gen)
-    }
-
-    fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)> {
-        crate::editor::lsp::introspect::viewport_range(self.state, self.view, id)
-    }
-
-    // ── Trigger chars ───────────────────────────────────────────────────
-    fn register_trigger_chars(&mut self, source: String, language: String, chars: Vec<char>) {
-        if chars.is_empty() {
-            self.state.trigger_chars.remove(&(source, language));
-        } else {
-            self.state.trigger_chars.insert((source, language), chars);
-        }
-    }
-
 }
 
 impl<'a> CursorHost for EditorHostImpl<'a> {

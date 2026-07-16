@@ -64,8 +64,8 @@ pub use builtins::ids::SteelBufferId;
 pub use builtins::sandbox::init_dirs;
 pub use hooks::HookId;
 pub use host::{
-    BindMode, CompletionHost, CursorHost, DecorationHost, EditHost, EditorHost, LspHost,
-    OutputHost, TimerHost, UiHost, unsupported,
+    BindMode, CommandHost, CompletionHost, CursorHost, DecorationHost, EditHost, EditorHost,
+    LspHost, OutputHost, TimerHost, UiHost, unsupported,
 };
 pub use keys::parse_key_stream;
 pub use log::LogLevel;

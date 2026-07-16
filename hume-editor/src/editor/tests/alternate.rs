@@ -1,5 +1,5 @@
 use super::*;
-use hume_scripting::host::EditorHost;
+use hume_scripting::host::CommandHost;
 use pretty_assertions::assert_eq;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

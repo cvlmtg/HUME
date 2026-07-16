@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
 
-use crate::host::{BindMode, CursorHost, EditorHost, OptionValue, OutputHost};
+use crate::host::{BindMode, CommandHost, CursorHost, EditorHost, OptionValue, OutputHost};
 use crate::types::SteelCmdDef;
 
 #[derive(Default)]
@@ -27,6 +27,9 @@ pub(crate) struct NullHost;
 
 impl EditorHost for NullHost {
     fn cursor(&mut self) -> &mut dyn CursorHost {
+        self
+    }
+    fn commands(&mut self) -> &mut dyn CommandHost {
         self
     }
     fn buffer_ids(&self) -> Vec<BufferId> {
@@ -106,11 +109,14 @@ impl EditorHost for NullHost {
     fn has_grammar(&self, _language: &str) -> bool {
         false
     }
-    fn is_valid_register_name(&self, _ch: char) -> bool {
-        false
-    }
     fn steel_command_budget_ms(&self) -> u64 {
         10_000
+    }
+}
+
+impl CommandHost for NullHost {
+    fn is_valid_register_name(&self, _ch: char) -> bool {
+        false
     }
     fn command_is_native(&self, _name: &str) -> Result<bool, String> {
         // No registry — treat every command as Steel/forward-raw.
@@ -163,6 +169,9 @@ impl EditorHost for FailingRegisterHost {
     fn cursor(&mut self) -> &mut dyn CursorHost {
         &mut self.inner
     }
+    fn commands(&mut self) -> &mut dyn CommandHost {
+        self
+    }
     fn buffer_ids(&self) -> Vec<BufferId> {
         self.inner.buffer_ids()
     }
@@ -240,11 +249,14 @@ impl EditorHost for FailingRegisterHost {
     fn has_grammar(&self, language: &str) -> bool {
         self.inner.has_grammar(language)
     }
-    fn is_valid_register_name(&self, ch: char) -> bool {
-        self.inner.is_valid_register_name(ch)
-    }
     fn steel_command_budget_ms(&self) -> u64 {
         self.inner.steel_command_budget_ms()
+    }
+}
+
+impl CommandHost for FailingRegisterHost {
+    fn is_valid_register_name(&self, ch: char) -> bool {
+        self.inner.is_valid_register_name(ch)
     }
     fn command_is_native(&self, name: &str) -> Result<bool, String> {
         self.inner.command_is_native(name)
@@ -283,133 +295,7 @@ impl EditorHost for InlineOutputHost {
     fn cursor(&mut self) -> &mut dyn CursorHost {
         &mut self.inner
     }
-    fn output(&mut self) -> Option<&mut dyn OutputHost> {
-        Some(self)
-    }
-    fn buffer_ids(&self) -> Vec<BufferId> {
-        self.inner.buffer_ids()
-    }
-    fn pane_ids(&self) -> Vec<PaneId> {
-        self.inner.pane_ids()
-    }
-    fn buffer_exists(&self, id: BufferId) -> bool {
-        self.inner.buffer_exists(id)
-    }
-    fn buffer_path(&self, id: BufferId) -> Option<PathBuf> {
-        self.inner.buffer_path(id)
-    }
-    fn buffer_display_name(&self, id: BufferId) -> Option<String> {
-        self.inner.buffer_display_name(id)
-    }
-    fn buffer_is_dirty(&self, id: BufferId) -> Option<bool> {
-        self.inner.buffer_is_dirty(id)
-    }
-    fn buffer_stored_language(&self, id: BufferId) -> Option<String> {
-        self.inner.buffer_stored_language(id)
-    }
-    fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String> {
-        self.inner.open_buffer(path)
-    }
-    fn close_buffer(&mut self, id: BufferId) -> Result<BufferId, String> {
-        self.inner.close_buffer(id)
-    }
-    fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String> {
-        self.inner.switch_to_buffer(current, target)
-    }
-    fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
-        self.inner.set_global_option(key, value)
-    }
-    fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
-        self.inner.get_option(key, bid)
-    }
-    fn configure_statusline(
-        &mut self,
-        l: Vec<String>,
-        c: Vec<String>,
-        r: Vec<String>,
-    ) -> Result<(), String> {
-        self.inner.configure_statusline(l, c, r)
-    }
-    fn bind_key(
-        &mut self,
-        mode: BindMode,
-        keys: &[KeyEvent],
-        cmd: &str,
-        fe: bool,
-    ) -> Result<(), String> {
-        self.inner.bind_key(mode, keys, cmd, fe)
-    }
-    fn bind_wait_char(
-        &mut self,
-        mode: BindMode,
-        keys: &[KeyEvent],
-        cmd: &str,
-    ) -> Result<(), String> {
-        self.inner.bind_wait_char(mode, keys, cmd)
-    }
-    fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String> {
-        self.inner.unbind_key(mode, keys)
-    }
-    fn attach_grammar(
-        &mut self,
-        name: &str,
-        gp: &Path,
-        sym: &str,
-        hl: &Path,
-        inj: Option<&Path>,
-    ) -> Result<(), String> {
-        self.inner.attach_grammar(name, gp, sym, hl, inj)
-    }
-    fn has_grammar(&self, language: &str) -> bool {
-        self.inner.has_grammar(language)
-    }
-    fn is_valid_register_name(&self, ch: char) -> bool {
-        self.inner.is_valid_register_name(ch)
-    }
-    fn steel_command_budget_ms(&self) -> u64 {
-        self.inner.steel_command_budget_ms()
-    }
-    fn command_is_native(&self, name: &str) -> Result<bool, String> {
-        self.inner.command_is_native(name)
-    }
-    fn run_command_sync(
-        &mut self,
-        name: &str,
-        count: Option<usize>,
-        extend: bool,
-        register: Option<char>,
-    ) -> Result<(), String> {
-        self.inner.run_command_sync(name, count, extend, register)
-    }
-    fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String> {
-        self.inner.register_command(def)
-    }
-    fn unregister_command(&mut self, name: &str) {
-        self.inner.unregister_command(name)
-    }
-}
-
-impl OutputHost for InlineOutputHost {
-    fn is_inline_output_command(&self) -> bool {
-        true
-    }
-    fn ensure_inline_output_screen(&mut self) -> Result<(), String> {
-        Ok(())
-    }
-}
-
-/// Like [`InlineOutputHost`] but also counts calls to
-/// `ensure_inline_output_screen` — lets a test assert a builtin opens the
-/// inline-output bracket exactly when (and only when) it has real terminal
-/// output to produce, without a real terminal.
-#[derive(Default)]
-pub(crate) struct RecordingInlineOutputHost {
-    inner: NullHost,
-    pub(crate) ensure_calls: usize,
-}
-
-impl EditorHost for RecordingInlineOutputHost {
-    fn cursor(&mut self) -> &mut dyn CursorHost {
+    fn commands(&mut self) -> &mut dyn CommandHost {
         &mut self.inner
     }
     fn output(&mut self) -> Option<&mut dyn OutputHost> {
@@ -492,29 +378,119 @@ impl EditorHost for RecordingInlineOutputHost {
     fn has_grammar(&self, language: &str) -> bool {
         self.inner.has_grammar(language)
     }
-    fn is_valid_register_name(&self, ch: char) -> bool {
-        self.inner.is_valid_register_name(ch)
-    }
     fn steel_command_budget_ms(&self) -> u64 {
         self.inner.steel_command_budget_ms()
     }
-    fn command_is_native(&self, name: &str) -> Result<bool, String> {
-        self.inner.command_is_native(name)
+}
+
+impl OutputHost for InlineOutputHost {
+    fn is_inline_output_command(&self) -> bool {
+        true
     }
-    fn run_command_sync(
+    fn ensure_inline_output_screen(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+/// Like [`InlineOutputHost`] but also counts calls to
+/// `ensure_inline_output_screen` — lets a test assert a builtin opens the
+/// inline-output bracket exactly when (and only when) it has real terminal
+/// output to produce, without a real terminal.
+#[derive(Default)]
+pub(crate) struct RecordingInlineOutputHost {
+    inner: NullHost,
+    pub(crate) ensure_calls: usize,
+}
+
+impl EditorHost for RecordingInlineOutputHost {
+    fn cursor(&mut self) -> &mut dyn CursorHost {
+        &mut self.inner
+    }
+    fn commands(&mut self) -> &mut dyn CommandHost {
+        &mut self.inner
+    }
+    fn output(&mut self) -> Option<&mut dyn OutputHost> {
+        Some(self)
+    }
+    fn buffer_ids(&self) -> Vec<BufferId> {
+        self.inner.buffer_ids()
+    }
+    fn pane_ids(&self) -> Vec<PaneId> {
+        self.inner.pane_ids()
+    }
+    fn buffer_exists(&self, id: BufferId) -> bool {
+        self.inner.buffer_exists(id)
+    }
+    fn buffer_path(&self, id: BufferId) -> Option<PathBuf> {
+        self.inner.buffer_path(id)
+    }
+    fn buffer_display_name(&self, id: BufferId) -> Option<String> {
+        self.inner.buffer_display_name(id)
+    }
+    fn buffer_is_dirty(&self, id: BufferId) -> Option<bool> {
+        self.inner.buffer_is_dirty(id)
+    }
+    fn buffer_stored_language(&self, id: BufferId) -> Option<String> {
+        self.inner.buffer_stored_language(id)
+    }
+    fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String> {
+        self.inner.open_buffer(path)
+    }
+    fn close_buffer(&mut self, id: BufferId) -> Result<BufferId, String> {
+        self.inner.close_buffer(id)
+    }
+    fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String> {
+        self.inner.switch_to_buffer(current, target)
+    }
+    fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
+        self.inner.set_global_option(key, value)
+    }
+    fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
+        self.inner.get_option(key, bid)
+    }
+    fn configure_statusline(
+        &mut self,
+        l: Vec<String>,
+        c: Vec<String>,
+        r: Vec<String>,
+    ) -> Result<(), String> {
+        self.inner.configure_statusline(l, c, r)
+    }
+    fn bind_key(
+        &mut self,
+        mode: BindMode,
+        keys: &[KeyEvent],
+        cmd: &str,
+        fe: bool,
+    ) -> Result<(), String> {
+        self.inner.bind_key(mode, keys, cmd, fe)
+    }
+    fn bind_wait_char(
+        &mut self,
+        mode: BindMode,
+        keys: &[KeyEvent],
+        cmd: &str,
+    ) -> Result<(), String> {
+        self.inner.bind_wait_char(mode, keys, cmd)
+    }
+    fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String> {
+        self.inner.unbind_key(mode, keys)
+    }
+    fn attach_grammar(
         &mut self,
         name: &str,
-        count: Option<usize>,
-        extend: bool,
-        register: Option<char>,
+        gp: &Path,
+        sym: &str,
+        hl: &Path,
+        inj: Option<&Path>,
     ) -> Result<(), String> {
-        self.inner.run_command_sync(name, count, extend, register)
+        self.inner.attach_grammar(name, gp, sym, hl, inj)
     }
-    fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String> {
-        self.inner.register_command(def)
+    fn has_grammar(&self, language: &str) -> bool {
+        self.inner.has_grammar(language)
     }
-    fn unregister_command(&mut self, name: &str) {
-        self.inner.unregister_command(name)
+    fn steel_command_budget_ms(&self) -> u64 {
+        self.inner.steel_command_budget_ms()
     }
 }
 

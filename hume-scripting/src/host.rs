@@ -106,6 +106,10 @@ pub trait EditorHost {
     /// Live cursor/selection reads — required: every host has some notion
     /// (even if only "nothing is focused") of the focused buffer's cursor.
     fn cursor(&mut self) -> &mut dyn CursorHost;
+    /// Command registry queries, synchronous native dispatch, and
+    /// registration — required: every host has some notion of its command
+    /// set, even if empty.
+    fn commands(&mut self) -> &mut dyn CommandHost;
 
     // ── Enumeration ─────────────────────────────────────────────────────────
     /// All open buffer ids in open-order.
@@ -174,69 +178,9 @@ pub trait EditorHost {
     ) -> Result<(), String>;
     fn has_grammar(&self, language: &str) -> bool;
 
-    // ── Register validation ──────────────────────────────────────────────────
-    fn is_valid_register_name(&self, ch: char) -> bool;
-
     // ── Budget ───────────────────────────────────────────────────────────────
     /// Steel eval budget in milliseconds for command / hook execution.
     fn steel_command_budget_ms(&self) -> u64;
-
-    // ── Synchronous command dispatch ─────────────────────────────────────────
-    /// Returns `Ok(true)` if `name` is a native (Rust-registered) command —
-    /// `Motion`, `Selection`, `Edit`, or `EditorCmd` — whose only valid `call!`
-    /// args are `count` and `extend`. Returns `Ok(false)` for Steel-defined
-    /// commands (`SteelBacked`, `Lazy`) that accept arbitrary positional args.
-    /// Returns `Err(msg)` if the name is unknown.
-    ///
-    /// Read-only: never executes the command. Hosts without a registry (test
-    /// stubs) return `Ok(false)` to treat all commands as Steel/forward-raw.
-    fn command_is_native(&self, name: &str) -> Result<bool, String>;
-
-    /// Execute a named native command synchronously.
-    ///
-    /// All four native variants (`Motion`, `Selection`, `Edit`, `EditorCmd`) apply
-    /// their effect immediately; a subsequent read in the same eval sees the new
-    /// state. Non-native names (`SteelBacked`, `Lazy`) return `Err` — the
-    /// implementation self-guards, so the caller need not pre-check via
-    /// `command_is_native` (though doing so avoids a wasted lookup).
-    ///
-    /// `count`: `None` means "as if no count was typed" — for `move-down`/`move-up`
-    /// this selects visual-row movement instead of buffer-line movement (every other
-    /// native command treats `None` the same as `Some(1)`). `parse_count_extend`
-    /// decodes a Steel-side count of `0` to `None`.
-    ///
-    /// `register` arms `state.register_prefix` before dispatch so register-aware
-    /// commands (`yank`, `delete`, `paste-after`, etc.) route to the right
-    /// destination. Pass `None` when no explicit register was set.
-    ///
-    /// Returns `Ok(())` on success (includes `EditorCmd` errors, which are reported
-    /// to the user and treated as success for the Steel caller).
-    /// Returns `Err(msg)` when the name is not found or is not a native command.
-    ///
-    /// Valid only in command mode; guarded by `require_cmd_ctx!` in the caller.
-    fn run_command_sync(
-        &mut self,
-        name: &str,
-        count: Option<usize>,
-        extend: bool,
-        register: Option<char>,
-    ) -> Result<(), String>;
-
-    // ── Command registration (init-only) ────────────────────────────────────
-    /// Register a Steel command in the editor's `CommandRegistry`.
-    ///
-    /// Called inline from `define-command!` during init or plugin load.
-    /// Overwrites a `Lazy` stub for the same name (expected path: a lazy plugin
-    /// body's `define-command!` replaces the activation command stub).
-    /// Returns `Err(msg)` if the name conflicts with any non-Lazy existing command.
-    fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String>;
-
-    /// Remove a previously registered Steel command from the `CommandRegistry`.
-    ///
-    /// Called by `finish_lazy_activation` on the failure path to roll back
-    /// commands that a partially-evaluated plugin body registered before erroring.
-    /// No-op if the name is not present.
-    fn unregister_command(&mut self, name: &str);
 
     /// Steel-side staleness token for buffer `id` (its `text_gen`, bumped by
     /// every mutation) — `None` if `id` is unknown. Not LSP-specific (any
@@ -298,6 +242,68 @@ pub trait CursorHost {
 
     /// `(selection-spans-full-line? bid)`.
     fn selection_spans_full_line(&self, bid: BufferId) -> bool;
+}
+
+/// Command registry queries, synchronous native dispatch, and Steel command
+/// registration — accessed through [`EditorHost::commands`].
+pub trait CommandHost {
+    /// Returns `Ok(true)` if `name` is a native (Rust-registered) command —
+    /// `Motion`, `Selection`, `Edit`, or `EditorCmd` — whose only valid `call!`
+    /// args are `count` and `extend`. Returns `Ok(false)` for Steel-defined
+    /// commands (`SteelBacked`, `Lazy`) that accept arbitrary positional args.
+    /// Returns `Err(msg)` if the name is unknown.
+    ///
+    /// Read-only: never executes the command. Hosts without a registry (test
+    /// stubs) return `Ok(false)` to treat all commands as Steel/forward-raw.
+    fn command_is_native(&self, name: &str) -> Result<bool, String>;
+
+    /// Execute a named native command synchronously.
+    ///
+    /// All four native variants (`Motion`, `Selection`, `Edit`, `EditorCmd`) apply
+    /// their effect immediately; a subsequent read in the same eval sees the new
+    /// state. Non-native names (`SteelBacked`, `Lazy`) return `Err` — the
+    /// implementation self-guards, so the caller need not pre-check via
+    /// `command_is_native` (though doing so avoids a wasted lookup).
+    ///
+    /// `count`: `None` means "as if no count was typed" — for `move-down`/`move-up`
+    /// this selects visual-row movement instead of buffer-line movement (every other
+    /// native command treats `None` the same as `Some(1)`). `parse_count_extend`
+    /// decodes a Steel-side count of `0` to `None`.
+    ///
+    /// `register` arms `state.register_prefix` before dispatch so register-aware
+    /// commands (`yank`, `delete`, `paste-after`, etc.) route to the right
+    /// destination. Pass `None` when no explicit register was set.
+    ///
+    /// Returns `Ok(())` on success (includes `EditorCmd` errors, which are reported
+    /// to the user and treated as success for the Steel caller).
+    /// Returns `Err(msg)` when the name is not found or is not a native command.
+    ///
+    /// Valid only in command mode; guarded by `require_cmd_ctx!` in the caller.
+    fn run_command_sync(
+        &mut self,
+        name: &str,
+        count: Option<usize>,
+        extend: bool,
+        register: Option<char>,
+    ) -> Result<(), String>;
+
+    /// Register a Steel command in the editor's `CommandRegistry`.
+    ///
+    /// Called inline from `define-command!` during init or plugin load.
+    /// Overwrites a `Lazy` stub for the same name (expected path: a lazy plugin
+    /// body's `define-command!` replaces the activation command stub).
+    /// Returns `Err(msg)` if the name conflicts with any non-Lazy existing command.
+    fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String>;
+
+    /// Remove a previously registered Steel command from the `CommandRegistry`.
+    ///
+    /// Called by `finish_lazy_activation` on the failure path to roll back
+    /// commands that a partially-evaluated plugin body registered before erroring.
+    /// No-op if the name is not present.
+    fn unregister_command(&mut self, name: &str);
+
+    /// Whether `ch` names a valid register (`0`–`9`, `k`, `c`, `b`).
+    fn is_valid_register_name(&self, ch: char) -> bool;
 }
 
 /// Completion session orchestration — accessed through

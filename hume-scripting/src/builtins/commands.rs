@@ -144,6 +144,7 @@ fn define_command_inner(
     // otherwise a failed define would leave entries that the plugin-failure
     // rollback would then "clean up" by unregistering a command it never owned.
     ctx.host
+        .commands()
         .register_command(SteelCmdDef {
             name: name.clone(),
             doc,
@@ -184,7 +185,7 @@ pub(crate) fn call_command_primitive(
 ) -> SteelResult {
     let args_vec = steel_list_to_vec(args)?;
 
-    match ctx.host.command_is_native(&name) {
+    match ctx.host.commands().command_is_native(&name) {
         Ok(true) => {
             if ctx.is_init {
                 ctx.log(
@@ -196,6 +197,7 @@ pub(crate) fn call_command_primitive(
             let (count, extend) = parse_count_extend(&args_vec)
                 .map_err(|e| SteelErr::new(ErrorKind::Generic, format!("%call-native!: {e}")))?;
             ctx.host
+                .commands()
                 .run_command_sync(&name, count, extend, ctx.current_register_prefix)
                 .map(|()| SteelVal::Void)
                 .map_err(|e| SteelErr::new(ErrorKind::Generic, format!("%call-native!: {e}")))
@@ -339,7 +341,7 @@ pub(crate) fn set_register_prefix(ctx: &mut SteelCtx, name: String) -> SteelResu
         _ => steel::stop!(Generic =>
             "set-register-prefix!: expected a single-character register name, got {:?}", name),
     };
-    if !ctx.host.is_valid_register_name(reg) {
+    if !ctx.host.commands().is_valid_register_name(reg) {
         steel::stop!(Generic =>
             "set-register-prefix!: invalid register '{}'; valid: 0-9, k, c, b", reg);
     }

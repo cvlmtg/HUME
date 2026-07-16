@@ -15,7 +15,7 @@
 
 use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
-use hume_scripting::host::{BindMode, CursorHost, EditorHost, OptionValue};
+use hume_scripting::host::{BindMode, CommandHost, CursorHost, EditorHost, OptionValue};
 
 pub(crate) struct MockHost {
     pub(crate) settings: hume::settings::EditorSettings,
@@ -54,6 +54,9 @@ impl Default for MockHost {
 
 impl EditorHost for MockHost {
     fn cursor(&mut self) -> &mut dyn CursorHost {
+        self
+    }
+    fn commands(&mut self) -> &mut dyn CommandHost {
         self
     }
     fn buffer_ids(&self) -> Vec<BufferId> {
@@ -174,11 +177,14 @@ impl EditorHost for MockHost {
     fn has_grammar(&self, language: &str) -> bool {
         self.grammars.contains(language)
     }
-    fn is_valid_register_name(&self, ch: char) -> bool {
-        hume::ops::register::is_valid_register_name(ch)
-    }
     fn steel_command_budget_ms(&self) -> u64 {
         self.settings.steel_command_budget_ms as u64
+    }
+}
+
+impl CommandHost for MockHost {
+    fn is_valid_register_name(&self, ch: char) -> bool {
+        hume::ops::register::is_valid_register_name(ch)
     }
     fn command_is_native(&self, name: &str) -> Result<bool, String> {
         Ok(self.native_names.contains(name))

@@ -493,7 +493,7 @@ fn select_word_nearest_no_oscillation_on_repeated_j() {
 /// movement instead — see `steel_call_move_down_zero_count_moves_visual_row`.
 #[test]
 fn run_command_sync_some_count_moves_buffer_line() {
-    use hume_scripting::host::EditorHost;
+    use hume_scripting::host::CommandHost;
 
     let mut ed = visual_test_editor(0);
     {
