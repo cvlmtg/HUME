@@ -12,7 +12,8 @@ use steel::rvals::SteelVal;
 use crate::SteelCtx;
 use crate::host::unsupported;
 
-use super::{conv_err, list_to_strings, require_cmd_ctx, string_arg};
+use super::args::{list_to_strings, string_arg};
+use super::errors::generic_err;
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -25,7 +26,6 @@ pub(crate) fn show_popup(
     anchor: SteelVal,
     dismiss_on_key: SteelVal,
 ) -> SteelResult {
-    require_cmd_ctx!(ctx, "show-popup!");
     let text = string_arg(text, "show-popup! text")?;
     let anchor = string_arg(anchor, "show-popup! #:anchor")?;
     if anchor != "cursor" {
@@ -37,45 +37,42 @@ pub(crate) fn show_popup(
     };
     ctx.host
         .ui()
-        .ok_or_else(|| conv_err(unsupported("show-popup!")))?
+        .ok_or_else(|| generic_err(unsupported("show-popup!")))?
         .show_popup(text, dismiss_on_key)
         .map(|()| SteelVal::Void)
-        .map_err(conv_err)
+        .map_err(generic_err)
 }
 
 /// `(%close-popup!)`.
 pub(crate) fn close_popup(ctx: &mut SteelCtx) -> SteelResult {
-    require_cmd_ctx!(ctx, "close-popup!");
     ctx.host
         .ui()
-        .ok_or_else(|| conv_err(unsupported("close-popup!")))?
+        .ok_or_else(|| generic_err(unsupported("close-popup!")))?
         .close_popup()
         .map(|()| SteelVal::Void)
-        .map_err(conv_err)
+        .map_err(generic_err)
 }
 
 /// `(show-menu! items on-select)` — no keyword defaults, so this registers
 /// directly (no `%`-prefix wrapper needed).
 pub(crate) fn show_menu(ctx: &mut SteelCtx, items: SteelVal, on_select: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "show-menu!");
     let items = list_to_strings(items, "show-menu! items")?;
     ctx.host
         .ui()
-        .ok_or_else(|| conv_err(unsupported("show-menu!")))?
+        .ok_or_else(|| generic_err(unsupported("show-menu!")))?
         .show_menu(items, on_select)
         .map(|()| SteelVal::Void)
-        .map_err(conv_err)
+        .map_err(generic_err)
 }
 
 /// `(close-menu!)`.
 pub(crate) fn close_menu(ctx: &mut SteelCtx) -> SteelResult {
-    require_cmd_ctx!(ctx, "close-menu!");
     ctx.host
         .ui()
-        .ok_or_else(|| conv_err(unsupported("close-menu!")))?
+        .ok_or_else(|| generic_err(unsupported("close-menu!")))?
         .close_menu()
         .map(|()| SteelVal::Void)
-        .map_err(conv_err)
+        .map_err(generic_err)
 }
 
 /// `(show-drawer-list! items on-select)`.
@@ -84,23 +81,21 @@ pub(crate) fn show_drawer_list(
     items: SteelVal,
     on_select: SteelVal,
 ) -> SteelResult {
-    require_cmd_ctx!(ctx, "show-drawer-list!");
     let items = list_to_strings(items, "show-drawer-list! items")?;
     ctx.host
         .ui()
-        .ok_or_else(|| conv_err(unsupported("show-drawer-list!")))?
+        .ok_or_else(|| generic_err(unsupported("show-drawer-list!")))?
         .show_drawer_list(items, on_select)
         .map(|()| SteelVal::Void)
-        .map_err(conv_err)
+        .map_err(generic_err)
 }
 
 /// `(close-drawer!)`.
 pub(crate) fn close_drawer(ctx: &mut SteelCtx) -> SteelResult {
-    require_cmd_ctx!(ctx, "close-drawer!");
     ctx.host
         .ui()
-        .ok_or_else(|| conv_err(unsupported("close-drawer!")))?
+        .ok_or_else(|| generic_err(unsupported("close-drawer!")))?
         .close_drawer()
         .map(|()| SteelVal::Void)
-        .map_err(conv_err)
+        .map_err(generic_err)
 }
