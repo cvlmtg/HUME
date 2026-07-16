@@ -11,7 +11,7 @@ use super::{
     ids::{SteelBufferId, SteelPaneId, downcast_buffer_id},
     require_cmd_ctx,
 };
-use crate::SteelCtx;
+use crate::{SteelCtx, types::Effect};
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -213,18 +213,23 @@ pub(crate) fn switch_to_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult
 
 // ── Language builtins ─────────────────────────────────────────────────────────
 
-/// Reverse-scan `pending` for the last `set-buffer-language!` call for `id`;
-/// fall back to `fallback` (the buffer's stored language).
+/// Reverse-scan the effect log for the last `set-buffer-language!` call for
+/// `id` queued so far this eval; fall back to `fallback` (the buffer's
+/// stored language).
 fn effective_language(
-    pending: &[(hume_engine::pipeline::BufferId, Option<String>)],
+    effects: &[Effect],
     id: hume_engine::pipeline::BufferId,
     fallback: Option<String>,
 ) -> Option<String> {
-    pending
+    effects
         .iter()
         .rev()
-        .find(|(bid, _)| *bid == id)
-        .map(|(_, lang)| lang.clone())
+        .find_map(|effect| match effect {
+            Effect::SetBufferLanguage { buffer, language } if *buffer == id => {
+                Some(language.clone())
+            }
+            _ => None,
+        })
         .unwrap_or(fallback)
 }
 
@@ -241,7 +246,7 @@ pub(crate) fn buffer_language(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult 
         steel::stop!(Generic => "buffer-language: invalid buffer id {id:?}");
     }
     let fallback = ctx.host.buffers().buffer_stored_language(id);
-    let lang = effective_language(&ctx.pending_language_sets, id, fallback);
+    let lang = effective_language(ctx.effects, id, fallback);
     match lang {
         Some(name) => name
             .into_steelval()
@@ -335,10 +340,13 @@ pub(crate) fn set_buffer_language_steel(
         steel::stop!(Generic => "set-buffer-language!: invalid buffer id {id:?}");
     }
     let fallback = ctx.host.buffers().buffer_stored_language(id);
-    if effective_language(&ctx.pending_language_sets, id, fallback) == new_lang {
+    if effective_language(ctx.effects, id, fallback) == new_lang {
         return Ok(SteelVal::Void);
     }
-    ctx.pending_language_sets.push((id, new_lang));
+    ctx.effects.push(Effect::SetBufferLanguage {
+        buffer: id,
+        language: new_lang,
+    });
     Ok(SteelVal::Void)
 }
 

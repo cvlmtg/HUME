@@ -7,10 +7,7 @@ use hume_engine::pipeline::{BufferId, PaneId};
 use super::attribution::PluginStack;
 use super::host::EditorHost;
 use super::log::LogLevel;
-use super::types::{
-    HookResult, PendingLanguageReg, PendingLanguageSets, PendingLspNotify, PendingLspRequest,
-    PendingLspServerOp,
-};
+use super::types::Effect;
 use super::{HostBundle, ScriptingRegistries};
 
 /// Context struct borrowed into the Steel engine for the duration of each eval
@@ -43,12 +40,11 @@ pub(crate) struct SteelCtx<'a> {
     pub(crate) registries: &'a mut ScriptingRegistries,
     /// Log messages accumulated by `(log! …)`.
     pub(crate) pending_messages: &'a mut Vec<(LogLevel, String)>,
-    /// Language identity registrations queued by `(define-language! …)` during init.
-    pub(crate) pending_language_regs: &'a mut Vec<PendingLanguageReg>,
-    /// LSP server registrations/unregistrations queued by
-    /// `(register-lsp-server! …)` / `(unregister-lsp-server! …)` during this
-    /// eval, applied at the end-of-eval drain (see `types::PendingLspServerOp`).
-    pub(crate) pending_lsp_server_ops: &'a mut Vec<PendingLspServerOp>,
+    /// Side effects queued by Steel builtins this eval (and any eval this one
+    /// is nested inside), in the exact order they were pushed. Persistent on
+    /// `ScriptingHost`, borrowed here; each eval entry point drains its own
+    /// contribution back out (see `types::Effect`).
+    pub(crate) effects: &'a mut Vec<Effect>,
     /// Where PLUM installs third-party plugins (`$XDG_DATA_HOME/hume/`).
     pub(crate) data_dir: Option<&'a std::path::Path>,
     /// Where core plugins, themes, and docs live.
@@ -66,9 +62,6 @@ pub(crate) struct SteelCtx<'a> {
     pub(crate) current_register_prefix: Option<char>,
     /// WaitChar command requested by `(request-wait-char! …)`.
     pub(crate) wait_char_request: Option<String>,
-    /// `set-buffer-language!` calls deferred during this eval; drained by the
-    /// consumer (mappings.rs / fire_hook_silent) after the eval returns.
-    pub(crate) pending_language_sets: PendingLanguageSets,
     /// Pending char from a WaitChar keymap node.
     pub(crate) pending_char: Option<char>,
     // ── Mode discriminant ────────────────────────────────────────────────────
@@ -100,21 +93,13 @@ pub(crate) struct SteelCtx<'a> {
     /// Starts equal to `focused_buffer_id`; updated by `switch-to-buffer!` and
     /// `close-buffer!` so subsequent builtins see the new current buffer.
     pub(crate) live_focused_buffer_id: BufferId,
-    /// Language names for which a grammar was just attached; flushed into
-    /// `SteelCmdResult.grammar_sweeps` / `HookResult.grammar_sweeps`.
-    pub(crate) pending_grammar_sweeps: Vec<String>,
-    /// `(lsp-request …)` calls queued this eval; flushed into
-    /// `SteelCmdResult`/`HookResult.pending_lsp_requests` and sent by
-    /// `Editor::flush_pending_lsp_requests` right after.
-    pub(crate) pending_lsp_requests: Vec<PendingLspRequest>,
-    /// `(lsp-notify …)` calls queued this eval; flushed the same way.
-    pub(crate) pending_lsp_notifies: Vec<PendingLspNotify>,
-    /// Effect-queue length snapshots, one per currently-nested plugin body
+    /// Effect-log length snapshots, one per currently-nested plugin body
     /// (`begin_lazy_activation` pushes, `finish_lazy_activation` pops — LIFO,
     /// matching `plugin_stack`). Lets a failed body's queued effects be
-    /// rolled back without touching whatever the enclosing eval already
-    /// queued before the nested activation began.
-    pub(crate) activation_effect_marks: Vec<EffectMarks>,
+    /// rolled back (truncating `effects` back to the mark) without touching
+    /// whatever the enclosing eval already queued before the nested
+    /// activation began.
+    pub(crate) activation_effect_marks: Vec<usize>,
     /// Set for the duration of a `manifest.scm` eval driven by a zero-trigger
     /// `(declare-plugin "id")` — the id being resolved. `%begin-manifest-declare!`
     /// sets it, `%finish-manifest-declare!` clears it. Guards against a manifest
@@ -122,22 +107,6 @@ pub(crate) struct SteelCtx<'a> {
     /// a manifest whose own `declare-plugin` is itself zero-trigger (which would
     /// otherwise recurse into manifest resolution forever).
     pub(crate) manifest_resolving: Option<crate::attribution::PluginId>,
-}
-
-/// Snapshot of every effect-queue length at the point a plugin body begins
-/// evaluating (`begin_lazy_activation`). On a failed activation,
-/// `finish_lazy_activation` truncates each queue back to its mark — undoing
-/// whatever the partially-evaluated body queued — the same way D2 rolls back
-/// `define-command!` calls. `pending_messages` is deliberately excluded: a
-/// failed plugin's `log!` output stays visible for debugging.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct EffectMarks {
-    pending_language_regs: usize,
-    pending_lsp_server_ops: usize,
-    pending_language_sets: usize,
-    pending_grammar_sweeps: usize,
-    pending_lsp_requests: usize,
-    pending_lsp_notifies: usize,
 }
 
 impl CustomReference for SteelCtx<'_> {}
@@ -154,24 +123,19 @@ impl<'a> SteelCtx<'a> {
             plugin_stack: host_bundle.plugin_stack,
             registries: host_bundle.registries,
             pending_messages: host_bundle.pending_messages,
-            pending_language_regs: host_bundle.pending_language_regs,
-            pending_lsp_server_ops: host_bundle.pending_lsp_server_ops,
+            effects: host_bundle.effects,
             data_dir: host_bundle.data_dir,
             runtime_dir: host_bundle.runtime_dir,
             builtin_cmd_names,
             interrupt_flag: host_bundle.interrupt_flag,
             current_register_prefix: None,
             wait_char_request: None,
-            pending_language_sets: Vec::new(),
             pending_char: None,
             is_init: true,
             is_inline_output: false,
             focused_pane_id: PaneId::default(),
             focused_buffer_id: BufferId::default(),
             live_focused_buffer_id: BufferId::default(),
-            pending_grammar_sweeps: Vec::new(),
-            pending_lsp_requests: Vec::new(),
-            pending_lsp_notifies: Vec::new(),
             activation_effect_marks: Vec::new(),
             manifest_resolving: None,
         }
@@ -200,57 +164,26 @@ impl<'a> SteelCtx<'a> {
         self.pending_messages.push((level, msg));
     }
 
-    /// Drain the four per-eval side-effect accumulators into a [`HookResult`],
-    /// leaving empty `Vec`s behind. Shared tail for `call_steel_cmd`,
-    /// `fire_hook`, and `run_steel_calls` — the single place that knows which
-    /// fields make up "this eval's side effects".
-    pub(crate) fn take_side_effects(&mut self) -> HookResult {
-        HookResult {
-            pending_language_sets: std::mem::take(&mut self.pending_language_sets),
-            grammar_sweeps: std::mem::take(&mut self.pending_grammar_sweeps),
-            pending_lsp_requests: std::mem::take(&mut self.pending_lsp_requests),
-            pending_lsp_notifies: std::mem::take(&mut self.pending_lsp_notifies),
-        }
-    }
-
-    /// Snapshot every effect queue's current length and push it — called by
+    /// Snapshot the effect log's current length and push it — called by
     /// `begin_lazy_activation` right after it pushes `plugin_stack`, so the
     /// two stacks stay in lockstep (LIFO, one mark per currently-nested body).
     pub(crate) fn mark_effects(&mut self) {
-        self.activation_effect_marks.push(EffectMarks {
-            pending_language_regs: self.pending_language_regs.len(),
-            pending_lsp_server_ops: self.pending_lsp_server_ops.len(),
-            pending_language_sets: self.pending_language_sets.len(),
-            pending_grammar_sweeps: self.pending_grammar_sweeps.len(),
-            pending_lsp_requests: self.pending_lsp_requests.len(),
-            pending_lsp_notifies: self.pending_lsp_notifies.len(),
-        });
+        self.activation_effect_marks.push(self.effects.len());
     }
 
-    /// Pop the most recent mark and, on `success == false`, truncate every
-    /// effect queue back to it — discarding whatever the failed body queued
+    /// Pop the most recent mark and, on `success == false`, truncate the
+    /// effect log back to it — discarding whatever the failed body queued
     /// before it errored. Called by `finish_lazy_activation` right after it
     /// pops `plugin_stack`. `pending_messages` is untouched: a failed
     /// plugin's `log!` output stays visible for debugging.
     pub(crate) fn pop_effect_marks(&mut self, success: bool) {
-        let Some(marks) = self.activation_effect_marks.pop() else {
+        let Some(mark) = self.activation_effect_marks.pop() else {
             return;
         };
         if success {
             return;
         }
-        self.pending_language_regs
-            .truncate(marks.pending_language_regs);
-        self.pending_lsp_server_ops
-            .truncate(marks.pending_lsp_server_ops);
-        self.pending_language_sets
-            .truncate(marks.pending_language_sets);
-        self.pending_grammar_sweeps
-            .truncate(marks.pending_grammar_sweeps);
-        self.pending_lsp_requests
-            .truncate(marks.pending_lsp_requests);
-        self.pending_lsp_notifies
-            .truncate(marks.pending_lsp_notifies);
+        self.effects.truncate(mark);
     }
 
     pub(crate) fn new_command(
@@ -269,24 +202,19 @@ impl<'a> SteelCtx<'a> {
             plugin_stack: host_bundle.plugin_stack,
             registries: host_bundle.registries,
             pending_messages: host_bundle.pending_messages,
-            pending_language_regs: host_bundle.pending_language_regs,
-            pending_lsp_server_ops: host_bundle.pending_lsp_server_ops,
+            effects: host_bundle.effects,
             data_dir: host_bundle.data_dir,
             runtime_dir: host_bundle.runtime_dir,
             builtin_cmd_names: std::collections::HashSet::new(),
             interrupt_flag: host_bundle.interrupt_flag,
             current_register_prefix: None,
             wait_char_request: None,
-            pending_language_sets: Vec::new(),
             pending_char,
             is_init: false,
             is_inline_output,
             focused_pane_id,
             focused_buffer_id,
             live_focused_buffer_id: focused_buffer_id,
-            pending_grammar_sweeps: Vec::new(),
-            pending_lsp_requests: Vec::new(),
-            pending_lsp_notifies: Vec::new(),
             activation_effect_marks: Vec::new(),
             manifest_resolving: None,
         }

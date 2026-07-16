@@ -4,7 +4,7 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::json::{json_to_steel, steel_to_json};
-use crate::types::{PendingLspNotify, PendingLspRequest, PendingLspServerOp};
+use crate::types::{Effect, PendingLspNotify, PendingLspRequest, PendingLspServerOp};
 use crate::{PendingLspServerReg, SteelCtx};
 
 use super::{conv_err, list_to_strings, require_cmd_ctx, require_config_ctx, string_arg};
@@ -49,13 +49,13 @@ fn optional_json_arg(val: SteelVal, ctx_name: &str) -> Result<Option<serde_json:
 /// Callable from init.scm, plugin activation, or a command/hook body —
 /// unlike `%define-language!`, this is not gated to init/activation-only.
 /// Queues a last-wins registration: applied at the end of the *current*
-/// eval (see `Editor::apply_lsp_server_ops`), replacing any existing
+/// eval (see `Editor::apply_lsp_server_op`), replacing any existing
 /// registration for `language` and attaching already-open matching buffers.
-/// `lsp-registered-for-language?` reads through this queue, so it reports
-/// this registration as live immediately, within the same eval.
+/// `lsp-registered-for-language?` reads through the effect log, so it
+/// reports this registration as live immediately, within the same eval.
 ///
-/// All list args must be lists of strings. Pushes a
-/// `PendingLspServerOp::Register` onto `ctx.pending_lsp_server_ops`.
+/// All list args must be lists of strings. Pushes an
+/// `Effect::LspServerOp(PendingLspServerOp::Register)`.
 pub(crate) fn register_lsp_server(
     ctx: &mut SteelCtx,
     language: SteelVal,
@@ -72,21 +72,23 @@ pub(crate) fn register_lsp_server(
     let init_options = optional_json_arg(init_options, "register-lsp-server! init-options")?;
     let settings = optional_json_arg(settings, "register-lsp-server! settings")?;
 
-    ctx.pending_lsp_server_ops
-        .push(PendingLspServerOp::Register(PendingLspServerReg {
-            language,
-            command,
-            args,
-            root_markers,
-            init_options,
-            settings,
-        }));
+    ctx.effects
+        .push(Effect::LspServerOp(PendingLspServerOp::Register(
+            PendingLspServerReg {
+                language,
+                command,
+                args,
+                root_markers,
+                init_options,
+                settings,
+            },
+        )));
     Ok(SteelVal::Void)
 }
 
 /// `(unregister-lsp-server! language)` — queues removal of `language`'s
 /// registration and shutdown of any running clients for it, applied at the
-/// end of the current eval (see `Editor::apply_lsp_server_ops`).
+/// end of the current eval (see `Editor::apply_lsp_server_op`).
 ///
 /// Idempotent: unregistering a language with no registration and/or no
 /// running clients is not an error — `:lsp-uninstall` of an already-removed
@@ -100,20 +102,22 @@ pub(crate) fn register_lsp_server(
 /// process.
 pub(crate) fn unregister_lsp_server(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
     let language = string_arg(language, "unregister-lsp-server! language")?;
-    ctx.pending_lsp_server_ops
-        .push(PendingLspServerOp::Unregister { language });
+    ctx.effects
+        .push(Effect::LspServerOp(PendingLspServerOp::Unregister {
+            language,
+        }));
     Ok(SteelVal::Void)
 }
 
 /// `(lsp-stop! language)` — `language` a string, or `#f` for "the focused
 /// buffer's attached server". Queues a stop, applied at the end of the
-/// current eval (see `Editor::apply_lsp_server_ops`); the report of how many
+/// current eval (see `Editor::apply_lsp_server_op`); the report of how many
 /// servers stopped is emitted by that same drain.
 pub(crate) fn lsp_stop(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "lsp-stop!");
     let language = optional_string_arg(language, "lsp-stop! language")?;
-    ctx.pending_lsp_server_ops
-        .push(PendingLspServerOp::Stop { language });
+    ctx.effects
+        .push(Effect::LspServerOp(PendingLspServerOp::Stop { language }));
     Ok(SteelVal::Void)
 }
 
@@ -122,8 +126,10 @@ pub(crate) fn lsp_stop(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
 pub(crate) fn lsp_restart(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "lsp-restart!");
     let language = optional_string_arg(language, "lsp-restart! language")?;
-    ctx.pending_lsp_server_ops
-        .push(PendingLspServerOp::Restart { language });
+    ctx.effects
+        .push(Effect::LspServerOp(PendingLspServerOp::Restart {
+            language,
+        }));
     Ok(SteelVal::Void)
 }
 
@@ -131,18 +137,18 @@ pub(crate) fn lsp_restart(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult
 /// applied at the end of the current eval.
 pub(crate) fn lsp_show_status(ctx: &mut SteelCtx) -> SteelResult {
     require_cmd_ctx!(ctx, "lsp-show-status!");
-    ctx.pending_lsp_server_ops
-        .push(PendingLspServerOp::ShowStatus);
+    ctx.effects
+        .push(Effect::LspServerOp(PendingLspServerOp::ShowStatus));
     Ok(SteelVal::Void)
 }
 
 /// `(%lsp-request server method params callback allow-stale)`. The
 /// `lsp-request` Scheme wrapper (BOOTSTRAP) supplies `#:allow-stale`'s
-/// default. Queues a `PendingLspRequest`, flushed and actually sent by
-/// `Editor::flush_pending_lsp_requests` right after this eval returns —
-/// `SteelCtx` has no route to the transport (crate fence), and queuing
-/// keeps every LSP send on one chokepoint regardless of which eval kind
-/// (command, hook, or a queued callback) triggered it.
+/// default. Pushes an `Effect::LspRequest`, sent by `Editor::send_one_lsp_request`
+/// right after this eval returns — `SteelCtx` has no route to the transport
+/// (crate fence), and queuing keeps every LSP send on one chokepoint
+/// regardless of which eval kind (command, hook, or a queued callback)
+/// triggered it.
 pub(crate) fn lsp_request(
     ctx: &mut SteelCtx,
     server: SteelVal,
@@ -161,14 +167,14 @@ pub(crate) fn lsp_request(
         _ => steel::stop!(TypeMismatch => "lsp-request: #:allow-stale expected a bool"),
     };
     let supersede = optional_string_arg(supersede, "lsp-request supersede")?;
-    ctx.pending_lsp_requests.push(PendingLspRequest {
+    ctx.effects.push(Effect::LspRequest(PendingLspRequest {
         server,
         method,
         params,
         callback,
         allow_stale,
         supersede,
-    });
+    }));
     Ok(SteelVal::Void)
 }
 
@@ -185,11 +191,11 @@ pub(crate) fn lsp_notify(
     let server = optional_string_arg(server, "lsp-notify server")?;
     let method = string_arg(method, "lsp-notify method")?;
     let params = json_params(params, "lsp-notify params")?;
-    ctx.pending_lsp_notifies.push(PendingLspNotify {
+    ctx.effects.push(Effect::LspNotify(PendingLspNotify {
         server,
         method,
         params,
-    });
+    }));
     Ok(SteelVal::Void)
 }
 
@@ -280,10 +286,10 @@ pub(crate) fn lsp_server_for_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelR
 /// `on-language-set` missing-server hint: distinguishes "no server
 /// registered for this language" from "registered but still starting"
 /// (`lsp-server-for-buffer` reports *attachment*, which can't make that
-/// distinction). Reads through `ctx.pending_lsp_server_ops` (queued this
-/// eval/init, not yet applied) in queue order before falling back to the
+/// distinction). Reads through the `Effect::LspServerOp` entries queued this
+/// eval/init, not yet applied, in emission order before falling back to the
 /// live registry — the last queued `Register`/`Unregister` for `language`
-/// wins, matching `Editor::apply_lsp_server_ops`'s own last-wins semantics
+/// wins, matching `Editor::apply_lsp_server_op`'s own last-wins semantics
 /// exactly, so a same-eval registration is visible immediately instead of
 /// only after the next drain.
 ///
@@ -295,7 +301,10 @@ pub(crate) fn lsp_server_for_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelR
 pub(crate) fn lsp_registered_for_language(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
     let language = string_arg(language, "lsp-registered-for-language? language")?;
     let mut pending: Option<bool> = None;
-    for op in ctx.pending_lsp_server_ops.iter() {
+    for effect in ctx.effects.iter() {
+        let Effect::LspServerOp(op) = effect else {
+            continue;
+        };
         match op {
             PendingLspServerOp::Register(reg) if reg.language == language => pending = Some(true),
             PendingLspServerOp::Unregister { language: l } if *l == language => {
@@ -986,12 +995,37 @@ mod tests {
             .unwrap()
     }
 
+    /// `Effect::LspServerOp` entries queued so far, in emission order.
+    fn lsp_server_ops(h: &SteelCtxTestHarness) -> Vec<&PendingLspServerOp> {
+        h.effects
+            .iter()
+            .filter_map(|e| match e {
+                Effect::LspServerOp(op) => Some(op),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// `Effect::LspRequest` entries queued so far on a live `ctx`, in
+    /// emission order — `ctx.effects` (not the harness) since these tests
+    /// read before `ctx` drops.
+    fn lsp_requests<'a>(ctx: &'a SteelCtx) -> Vec<&'a PendingLspRequest> {
+        ctx.effects
+            .iter()
+            .filter_map(|e| match e {
+                Effect::LspRequest(req) => Some(req),
+                _ => None,
+            })
+            .collect()
+    }
+
     /// Unwraps the single queued op as a `Register`, panicking with a message
     /// naming the actual variant otherwise — so a misrouted `Unregister`
     /// fails loudly instead of silently indexing the wrong data.
     fn expect_register(h: &SteelCtxTestHarness) -> &crate::PendingLspServerReg {
-        assert_eq!(h.pending_lsp_server_ops.len(), 1);
-        match &h.pending_lsp_server_ops[0] {
+        let ops = lsp_server_ops(h);
+        assert_eq!(ops.len(), 1);
+        match ops[0] {
             PendingLspServerOp::Register(reg) => reg,
             other => panic!("expected Register, got {other:?}"),
         }
@@ -1113,8 +1147,9 @@ mod tests {
         let result = unregister_lsp_server(&mut ctx, "rust".into_steelval().unwrap());
         assert!(result.is_ok());
         drop(ctx);
-        assert_eq!(h.pending_lsp_server_ops.len(), 1);
-        match &h.pending_lsp_server_ops[0] {
+        let ops = lsp_server_ops(&h);
+        assert_eq!(ops.len(), 1);
+        match ops[0] {
             PendingLspServerOp::Unregister { language } => assert_eq!(language, "rust"),
             other => panic!("expected Unregister, got {other:?}"),
         }
@@ -1160,17 +1195,18 @@ mod tests {
         .unwrap();
         drop(ctx);
 
-        assert_eq!(h.pending_lsp_server_ops.len(), 3);
+        let ops = lsp_server_ops(&h);
+        assert_eq!(ops.len(), 3);
         assert!(matches!(
-            &h.pending_lsp_server_ops[0],
+            ops[0],
             PendingLspServerOp::Register(reg) if reg.args.is_empty()
         ));
         assert!(matches!(
-            &h.pending_lsp_server_ops[1],
+            ops[1],
             PendingLspServerOp::Unregister { language } if language == "rust"
         ));
         assert!(matches!(
-            &h.pending_lsp_server_ops[2],
+            ops[2],
             PendingLspServerOp::Register(reg) if reg.args == vec!["--new-flag".to_string()]
         ));
     }
@@ -1184,8 +1220,9 @@ mod tests {
         let result = lsp_stop(&mut ctx, "rust".into_steelval().unwrap());
         assert!(result.is_ok());
         drop(ctx);
-        assert_eq!(h.pending_lsp_server_ops.len(), 1);
-        match &h.pending_lsp_server_ops[0] {
+        let ops = lsp_server_ops(&h);
+        assert_eq!(ops.len(), 1);
+        match ops[0] {
             PendingLspServerOp::Stop { language } => assert_eq!(language.as_deref(), Some("rust")),
             other => panic!("expected Stop, got {other:?}"),
         }
@@ -1197,7 +1234,7 @@ mod tests {
         let mut ctx = h.ctx();
         lsp_stop(&mut ctx, SteelVal::BoolV(false)).unwrap();
         drop(ctx);
-        match &h.pending_lsp_server_ops[0] {
+        match lsp_server_ops(&h)[0] {
             PendingLspServerOp::Stop { language } => assert_eq!(*language, None),
             other => panic!("expected Stop, got {other:?}"),
         }
@@ -1222,8 +1259,9 @@ mod tests {
         let result = lsp_restart(&mut ctx, "rust".into_steelval().unwrap());
         assert!(result.is_ok());
         drop(ctx);
-        assert_eq!(h.pending_lsp_server_ops.len(), 1);
-        match &h.pending_lsp_server_ops[0] {
+        let ops = lsp_server_ops(&h);
+        assert_eq!(ops.len(), 1);
+        match ops[0] {
             PendingLspServerOp::Restart { language } => {
                 assert_eq!(language.as_deref(), Some("rust"))
             }
@@ -1250,11 +1288,9 @@ mod tests {
         let result = lsp_show_status(&mut ctx);
         assert!(result.is_ok());
         drop(ctx);
-        assert_eq!(h.pending_lsp_server_ops.len(), 1);
-        assert!(matches!(
-            &h.pending_lsp_server_ops[0],
-            PendingLspServerOp::ShowStatus
-        ));
+        let ops = lsp_server_ops(&h);
+        assert_eq!(ops.len(), 1);
+        assert!(matches!(ops[0], PendingLspServerOp::ShowStatus));
     }
 
     #[test]
@@ -1290,45 +1326,46 @@ mod tests {
         );
     }
 
-    fn pending_register(language: &str) -> PendingLspServerOp {
-        PendingLspServerOp::Register(crate::PendingLspServerReg {
+    fn pending_register(language: &str) -> Effect {
+        Effect::LspServerOp(PendingLspServerOp::Register(crate::PendingLspServerReg {
             language: language.to_string(),
             command: "rust-analyzer".to_string(),
             args: Vec::new(),
             root_markers: Vec::new(),
             init_options: None,
             settings: None,
+        }))
+    }
+
+    fn pending_unregister(language: &str) -> Effect {
+        Effect::LspServerOp(PendingLspServerOp::Unregister {
+            language: language.to_string(),
         })
     }
 
-    fn pending_unregister(language: &str) -> PendingLspServerOp {
-        PendingLspServerOp::Unregister {
-            language: language.to_string(),
-        }
-    }
-
-    /// R1: `lsp-registered-for-language?` reads through `ctx.pending_lsp_server_ops`
-    /// before falling back to the host — a `Register` queued this eval must
-    /// be visible immediately, not only after the next drain.
+    /// R1: `lsp-registered-for-language?` reads through the `Effect::LspServerOp`
+    /// entries queued this eval before falling back to the host — a
+    /// `Register` queued this eval must be visible immediately, not only
+    /// after the next drain.
     #[test]
     fn a_queued_register_reports_true_within_the_same_eval() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        ctx.pending_lsp_server_ops.push(pending_register("rust"));
+        ctx.effects.push(pending_register("rust"));
         let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
         assert_eq!(result.unwrap(), SteelVal::BoolV(true));
     }
 
     /// Queue order, not queue presence, decides the answer — a later
     /// `Unregister` overrides an earlier `Register` for the same language,
-    /// matching `Editor::apply_lsp_server_ops`'s own last-wins application
+    /// matching `Editor::apply_lsp_server_op`'s own last-wins application
     /// order exactly.
     #[test]
     fn register_then_unregister_in_queue_order_reports_false() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        ctx.pending_lsp_server_ops.push(pending_register("rust"));
-        ctx.pending_lsp_server_ops.push(pending_unregister("rust"));
+        ctx.effects.push(pending_register("rust"));
+        ctx.effects.push(pending_unregister("rust"));
         let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
         assert_eq!(result.unwrap(), SteelVal::BoolV(false));
     }
@@ -1340,8 +1377,8 @@ mod tests {
     fn unregister_then_register_in_queue_order_reports_true() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        ctx.pending_lsp_server_ops.push(pending_unregister("rust"));
-        ctx.pending_lsp_server_ops.push(pending_register("rust"));
+        ctx.effects.push(pending_unregister("rust"));
+        ctx.effects.push(pending_register("rust"));
         let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
         assert_eq!(result.unwrap(), SteelVal::BoolV(true));
     }
@@ -1351,7 +1388,7 @@ mod tests {
     fn a_queued_op_for_a_different_language_does_not_flip_the_answer() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        ctx.pending_lsp_server_ops.push(pending_register("python"));
+        ctx.effects.push(pending_register("python"));
         let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
         assert_eq!(
             result.unwrap(),
@@ -1366,9 +1403,10 @@ mod tests {
     fn a_stop_op_alone_does_not_flip_the_answer() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        ctx.pending_lsp_server_ops.push(PendingLspServerOp::Stop {
-            language: Some("rust".to_string()),
-        });
+        ctx.effects
+            .push(Effect::LspServerOp(PendingLspServerOp::Stop {
+                language: Some("rust".to_string()),
+            }));
         let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
         assert_eq!(
             result.unwrap(),
@@ -1391,13 +1429,9 @@ mod tests {
             "completion".into_steelval().unwrap(),
         );
         assert!(result.is_ok());
-        // `pending_lsp_requests` lives directly on `SteelCtx` (not the
-        // harness's `HostBundle`), so it must be read before `ctx` drops.
-        assert_eq!(ctx.pending_lsp_requests.len(), 1);
-        assert_eq!(
-            ctx.pending_lsp_requests[0].supersede,
-            Some("completion".to_string())
-        );
+        let requests = lsp_requests(&ctx);
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].supersede, Some("completion".to_string()));
     }
 
     #[test]
@@ -1414,7 +1448,8 @@ mod tests {
             SteelVal::BoolV(false),
         );
         assert!(result.is_ok());
-        assert_eq!(ctx.pending_lsp_requests.len(), 1);
-        assert_eq!(ctx.pending_lsp_requests[0].supersede, None);
+        let requests = lsp_requests(&ctx);
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].supersede, None);
     }
 }

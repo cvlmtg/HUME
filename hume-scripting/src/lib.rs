@@ -71,7 +71,7 @@ pub use host::{
 pub use keys::parse_key_stream;
 pub use log::LogLevel;
 pub use types::{
-    HookResult, LspServerStatusEntry, PendingLanguageReg, PendingLspNotify, PendingLspRequest,
+    Effect, LspServerStatusEntry, PendingLanguageReg, PendingLspNotify, PendingLspRequest,
     PendingLspServerOp, PendingLspServerReg, SteelCmdDef, SteelCmdResult,
 };
 pub use watchdog::EvalWatchdog;
@@ -142,8 +142,7 @@ pub(crate) struct HostBundle<'a> {
     pub(crate) registries: &'a mut ScriptingRegistries,
     plugin_stack: &'a mut PluginStack,
     pending_messages: &'a mut Vec<(LogLevel, String)>,
-    pending_language_regs: &'a mut Vec<PendingLanguageReg>,
-    pending_lsp_server_ops: &'a mut Vec<PendingLspServerOp>,
+    effects: &'a mut Vec<Effect>,
     data_dir: Option<&'a std::path::Path>,
     runtime_dir: Option<&'a std::path::Path>,
     /// Owned `Arc` clone: `new_init`/`new_command` consume it via move into
@@ -174,17 +173,12 @@ pub struct ScriptingHost {
     /// Log messages accumulated by `(log! …)` since the last drain.
     /// Drained by the editor via `take_pending_messages()`.
     pending_messages: Vec<(LogLevel, String)>,
-    /// Language identity registrations queued by `(define-language! …)`.
-    /// Drained after every eval — see `Editor::apply_script_effects` (runtime)
-    /// and `Editor::flush_pending_language_regs` (the init.scm boundary,
-    /// which calls the same apply function).
-    pending_language_regs: Vec<PendingLanguageReg>,
-    /// LSP server registrations/unregistrations queued by
-    /// `(register-lsp-server! …)` / `(unregister-lsp-server! …)`, in call
-    /// order. Drained after every eval — see `Editor::apply_script_effects`
-    /// (runtime) and `Editor::flush_pending_lsp_server_ops` (the init.scm
-    /// boundary, which calls the same apply function).
-    pending_lsp_server_ops: Vec<PendingLspServerOp>,
+    /// Side effects queued by Steel builtins, in push order. Each eval entry
+    /// point (`call_steel_cmd`, `fire_hook`, `run_steel_calls`, `eval_init`,
+    /// `activate_plugin_inline`) drains exactly what it pushed back out on
+    /// success (`Vec<Effect>`) and truncates back to its start length on
+    /// error — see `types::Effect`.
+    effects: Vec<Effect>,
     /// `$XDG_DATA_HOME/hume/` — where PLUM installs user/third-party plugins.
     data_dir: Option<PathBuf>,
     /// The runtime directory (core plugins, themes, docs), or `None` if absent.
@@ -226,8 +220,7 @@ impl ScriptingHost {
             },
             plugin_stack: PluginStack::default(),
             pending_messages: Vec::new(),
-            pending_language_regs: Vec::new(),
-            pending_lsp_server_ops: Vec::new(),
+            effects: Vec::new(),
             data_dir,
             runtime_dir,
             interrupt_flag: Arc::new(AtomicBool::new(false)),
@@ -256,8 +249,7 @@ impl ScriptingHost {
             registries,
             plugin_stack,
             pending_messages,
-            pending_language_regs,
-            pending_lsp_server_ops,
+            effects,
             data_dir,
             runtime_dir,
             interrupt_flag,
@@ -271,8 +263,7 @@ impl ScriptingHost {
                 registries,
                 plugin_stack,
                 pending_messages,
-                pending_language_regs,
-                pending_lsp_server_ops,
+                effects,
                 data_dir: data_dir.as_deref(),
                 runtime_dir: runtime_dir.as_deref(),
                 interrupt_flag: Arc::clone(interrupt_flag),
@@ -330,17 +321,6 @@ impl ScriptingHost {
     /// Drain all accumulated log messages since the last drain.
     pub fn take_pending_messages(&mut self) -> Vec<(LogLevel, String)> {
         std::mem::take(&mut self.pending_messages)
-    }
-
-    /// Drain all pending language identity/grammar registrations.
-    pub fn take_pending_language_regs(&mut self) -> Vec<PendingLanguageReg> {
-        std::mem::take(&mut self.pending_language_regs)
-    }
-
-    /// Drain all pending LSP server registration/unregistration ops, in
-    /// call order.
-    pub fn take_pending_lsp_server_ops(&mut self) -> Vec<PendingLspServerOp> {
-        std::mem::take(&mut self.pending_lsp_server_ops)
     }
 
     /// Returns `true` if no handlers are registered for `hook_id`.
@@ -444,6 +424,14 @@ impl ScriptingHost {
         &self.pending_messages
     }
 
+    /// Peek at the effect log without draining.  Only for test assertions —
+    /// production code always goes through an eval entry point's own
+    /// atomic drain (`take_eval_effects`).
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn effects_for_test(&self) -> &[Effect] {
+        &self.effects
+    }
+
     /// Override the data directory.  Used only in tests that need a predictable
     /// plugin install location.
     #[cfg(any(test, feature = "test-util"))]
@@ -496,6 +484,7 @@ impl ScriptingHost {
         host: &mut dyn EditorHost,
     ) -> Result<(), String> {
         self.eval_source_raw(source, builtin_names, 10_000, host)
+            .map(|_| ())
     }
 
     // ── Eval machinery ────────────────────────────────────────────────────────
@@ -503,24 +492,47 @@ impl ScriptingHost {
     /// Evaluate `init.scm` at `path`, giving builtins access to editor state
     /// (settings, keymap) via `host` for the duration of the call.
     ///
-    /// - Returns `Ok(())` if the file does not exist (missing config is normal)
-    ///   or if eval succeeds.  Commands defined during eval are registered into
-    ///   the `CommandRegistry` inline via `host.register_command`.
+    /// - Returns `Ok(effects)` if the file does not exist (missing config is
+    ///   normal — `effects` is empty) or if eval succeeds, with every effect
+    ///   this file's eval queued, in emission order.  Commands defined during
+    ///   eval are registered into the `CommandRegistry` inline via
+    ///   `host.register_command`.
     /// - Returns `Err(message)` if the file exists but fails to parse or
-    ///   evaluate.  The caller is responsible for surfacing the error.
+    ///   evaluate; whatever this eval queued before the error is discarded
+    ///   (atomic — see `take_eval_effects`).  The caller is responsible for
+    ///   surfacing the error.
     pub fn eval_init(
         &mut self,
         path: &Path,
         budget_ms: u64,
         host: &mut dyn EditorHost,
         builtin_names: std::collections::HashSet<String>,
-    ) -> Result<(), String> {
+    ) -> Result<Vec<Effect>, String> {
         let source = match hume_platform::fs::read_to_string(path) {
             Ok(s) => s,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(e) => return Err(format!("reading {}: {e}", path.display())),
         };
         self.eval_source_raw(source, builtin_names, budget_ms, host)
+    }
+
+    /// Shared tail for every eval entry point's atomicity contract: on
+    /// success, drain exactly the effects this eval pushed (`effects_start`
+    /// onward) and return them; on error, truncate the log back to
+    /// `effects_start` — discarding whatever the failed eval queued — and
+    /// propagate the error. An eval's effects land atomically or not at all.
+    fn take_eval_effects(
+        &mut self,
+        effects_start: usize,
+        result: Result<(), String>,
+    ) -> Result<Vec<Effect>, String> {
+        match result {
+            Ok(()) => Ok(self.effects.split_off(effects_start)),
+            Err(e) => {
+                self.effects.truncate(effects_start);
+                Err(e)
+            }
+        }
     }
 
     /// Invoke a Steel proc by its internal name and return the list of
@@ -572,7 +584,8 @@ impl ScriptingHost {
                 )
             })?;
 
-        let (result, wait_char_request, effects) = {
+        let effects_start = self.effects.len();
+        let (result, wait_char_request) = {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
             let mut steel_ctx = SteelCtx::new_command(
                 host,
@@ -586,11 +599,10 @@ impl ScriptingHost {
                 steel.call_function_with_args(proc, args)?;
                 Ok(())
             });
-            let effects = steel_ctx.take_side_effects();
-            (result, steel_ctx.wait_char_request, effects)
+            (result, steel_ctx.wait_char_request)
         };
 
-        result?;
+        let effects = self.take_eval_effects(effects_start, result)?;
         Ok(SteelCmdResult {
             wait_char_request,
             effects,
@@ -612,16 +624,17 @@ impl ScriptingHost {
         focused_pane_id: hume_engine::pipeline::PaneId,
         focused_buffer_id: hume_engine::pipeline::BufferId,
         host: &'a mut dyn EditorHost,
-    ) -> Result<HookResult, String> {
+    ) -> Result<Vec<Effect>, String> {
         // Collect handler procs before borrowing self mutably for the SteelCtx.
         let handler_procs: Vec<SteelVal> = self.registries.hooks.handlers_for(hook_id).to_vec();
         if handler_procs.is_empty() {
-            return Ok(HookResult::default());
+            return Ok(Vec::new());
         }
 
         let budget_ms = host.settings().steel_command_budget_ms();
 
-        let (result, effects) = {
+        let effects_start = self.effects.len();
+        let result = {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
             let mut steel_ctx =
                 SteelCtx::new_command(host, bundle, focused_pane_id, focused_buffer_id, None);
@@ -630,17 +643,15 @@ impl ScriptingHost {
             // program, no per-fire globals.  The first handler error aborts
             // the remaining handlers, matching the composite-program semantics
             // this replaced.
-            let result = run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
+            run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
                 for proc in handler_procs {
                     steel.call_function_with_args(proc, args.to_vec())?;
                 }
                 Ok(())
-            });
-            (result, steel_ctx.take_side_effects())
+            })
         };
 
-        result?;
-        Ok(effects)
+        self.take_eval_effects(effects_start, result)
     }
 
     /// Calls each `(proc, args)` pair directly, in order, inside one
@@ -660,29 +671,28 @@ impl ScriptingHost {
         focused_pane_id: hume_engine::pipeline::PaneId,
         focused_buffer_id: hume_engine::pipeline::BufferId,
         host: &'a mut dyn EditorHost,
-    ) -> Result<HookResult, String> {
+    ) -> Result<Vec<Effect>, String> {
         if calls.is_empty() {
-            return Ok(HookResult::default());
+            return Ok(Vec::new());
         }
 
         let budget_ms = host.settings().steel_command_budget_ms();
 
-        let (result, effects) = {
+        let effects_start = self.effects.len();
+        let result = {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
             let mut steel_ctx =
                 SteelCtx::new_command(host, bundle, focused_pane_id, focused_buffer_id, None);
 
-            let result = run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
+            run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
                 for (proc, args) in calls {
                     steel.call_function_with_args(proc, args)?;
                 }
                 Ok(())
-            });
-            (result, steel_ctx.take_side_effects())
+            })
         };
 
-        result?;
-        Ok(effects)
+        self.take_eval_effects(effects_start, result)
     }
 }
 
@@ -697,6 +707,7 @@ impl ScriptingHost {
     /// for normal tests that complete quickly).
     pub fn eval_source(&mut self, source: &str, host: &mut dyn EditorHost) -> Result<(), String> {
         self.eval_source_raw(source.to_owned(), Default::default(), 10_000, host)
+            .map(|_| ())
     }
 
     /// Like [`eval_source`] but arms a real [`EvalWatchdog`] with the
@@ -714,6 +725,7 @@ impl ScriptingHost {
             budget.as_millis() as u64,
             host,
         )
+        .map(|_| ())
     }
 }
 

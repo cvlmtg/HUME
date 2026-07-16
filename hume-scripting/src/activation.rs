@@ -31,7 +31,7 @@ use crate::ScriptingHost;
 use crate::attribution;
 use crate::context::SteelCtx;
 use crate::host::EditorHost;
-use crate::types::HookResult;
+use crate::types::Effect;
 use crate::watchdog::EvalWatchdog;
 
 // ── run_steel ──────────────────────────────────��──────────────────────────────
@@ -116,16 +116,23 @@ impl ScriptingHost {
     /// `%activate-plugin-inline` helper (VM-aware `hm.eval-string`, no
     /// `&mut Engine` borrow).  `(define-command! …)` calls register commands
     /// directly into the editor's `CommandRegistry` via `host.register_command`.
+    ///
+    /// Returns the effects this eval queued (atomically — see
+    /// `ScriptingHost::take_eval_effects`).
     pub(crate) fn eval_source_raw(
         &mut self,
         source: String,
         builtin_names: HashSet<String>,
         budget_ms: u64,
         host: &mut dyn EditorHost,
-    ) -> Result<(), String> {
-        let (steel, watchdog, bundle) = self.steel_and_bundle();
-        let mut steel_ctx = SteelCtx::new_init(host, bundle, builtin_names);
-        run_steel(steel, watchdog, &mut steel_ctx, source, budget_ms)
+    ) -> Result<Vec<Effect>, String> {
+        let effects_start = self.effects.len();
+        let result = {
+            let (steel, watchdog, bundle) = self.steel_and_bundle();
+            let mut steel_ctx = SteelCtx::new_init(host, bundle, builtin_names);
+            run_steel(steel, watchdog, &mut steel_ctx, source, budget_ms)
+        };
+        self.take_eval_effects(effects_start, result)
     }
 
     /// Activate a plugin inline via `%activate-plugin-inline` using `run_steel_call`.
@@ -136,29 +143,39 @@ impl ScriptingHost {
     /// the same `ctx.registries` as any concurrent eval.  `define-command!` calls
     /// inside the body register directly into `host.register_command` inline.
     ///
-    /// Returns the activating body's queued per-eval side effects (`register-lsp-server!`,
+    /// Returns the activating body's queued effects (`register-lsp-server!`,
     /// `set-buffer-language!`, etc.) so the caller can apply them immediately —
     /// otherwise they'd sit unapplied until some unrelated later drain, which can
     /// skip attaching the very buffer that triggered this activation.
+    ///
+    /// A failed activation's own effects are already rolled back by the
+    /// BOOTSTRAP `%activate-plugin-inline` wrapper's `%begin-lazy-activation`/
+    /// `%finish-lazy-activation` mark/pop (`ctx.pop_effect_marks`) before the
+    /// error reaches here; the outer `take_eval_effects` truncate is a no-op
+    /// in that case, but keeps this entry point's atomicity contract uniform
+    /// with every other one.
     pub fn activate_plugin_inline(
         &mut self,
         id: &attribution::PluginId,
         budget_ms: u64,
         host: &mut dyn EditorHost,
         builtin_names: &HashSet<String>,
-    ) -> Result<HookResult, String> {
+    ) -> Result<Vec<Effect>, String> {
         let args = vec![SteelVal::StringV(id.to_string().into())];
-        let (steel, watchdog, bundle) = self.steel_and_bundle();
-        let mut steel_ctx = SteelCtx::new_activation(host, bundle, builtin_names.clone());
-        run_steel_call(
-            steel,
-            watchdog,
-            &mut steel_ctx,
-            "%activate-plugin-inline",
-            args,
-            budget_ms,
-        )?;
-        Ok(steel_ctx.take_side_effects())
+        let effects_start = self.effects.len();
+        let result = {
+            let (steel, watchdog, bundle) = self.steel_and_bundle();
+            let mut steel_ctx = SteelCtx::new_activation(host, bundle, builtin_names.clone());
+            run_steel_call(
+                steel,
+                watchdog,
+                &mut steel_ctx,
+                "%activate-plugin-inline",
+                args,
+                budget_ms,
+            )
+        };
+        self.take_eval_effects(effects_start, result)
     }
 }
 
@@ -541,12 +558,10 @@ mod tests {
 
     /// A plugin body that queues an LSP server registration and a language
     /// registration and then errors: both must be rolled back from the
-    /// host's persistent queues, not left for some later unrelated drain to
-    /// silently apply.
+    /// effect log, not left for some later unrelated drain to silently apply.
     ///
     /// Fail oracle: without `SteelCtx::pop_effect_marks` truncating on
-    /// failure, both `take_pending_lsp_server_ops()` and
-    /// `take_pending_language_regs()` come back non-empty.
+    /// failure, `effects_for_test()` comes back non-empty.
     #[test]
     fn queued_effects_before_failure_are_rolled_back() {
         let dir = TempDir::new().unwrap();
@@ -568,12 +583,8 @@ mod tests {
 
         assert!(result.is_err(), "activation must fail on intentional error");
         assert!(
-            host.take_pending_lsp_server_ops().is_empty(),
-            "failed activation must not leave a queued LSP server op behind"
-        );
-        assert!(
-            host.take_pending_language_regs().is_empty(),
-            "failed activation must not leave a queued language registration behind"
+            host.effects_for_test().is_empty(),
+            "failed activation must not leave a queued LSP server op or language registration behind"
         );
     }
 

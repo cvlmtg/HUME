@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use crate::{PendingLanguageReg, SteelCtx};
+use crate::{Effect, PendingLanguageReg, SteelCtx};
 
 use super::{list_to_strings, require_config_ctx};
 
@@ -37,10 +37,9 @@ fn optional_path_arg(val: SteelVal, ctx_name: &str) -> Result<Option<PathBuf>, S
 
 /// `(%define-language! name extensions globs shebangs)` — init-only.
 ///
-/// All three list args must be lists of strings. Pushes a `PendingLanguageReg::Identity`
-/// onto `ctx.pending_language_regs`; `Editor::apply_pending_language_regs` applies
-/// them after every eval (`Editor::apply_script_effects`) as well as at the
-/// `eval_init` boundary (`Editor::flush_pending_language_regs`).
+/// All three list args must be lists of strings. Pushes an
+/// `Effect::LanguageReg(PendingLanguageReg::Identity)`; `Editor::apply_pending_language_regs`
+/// applies it as part of `Editor::apply_script_effects`.
 pub(crate) fn define_language(
     ctx: &mut SteelCtx,
     name: SteelVal,
@@ -57,13 +56,13 @@ pub(crate) fn define_language(
     let extensions = list_to_strings(exts_val, "%define-language! extensions")?;
     let globs = list_to_strings(globs_val, "%define-language! globs")?;
     let shebangs = list_to_strings(shebangs_val, "%define-language! shebangs")?;
-    ctx.pending_language_regs
-        .push(PendingLanguageReg::Identity {
+    ctx.effects
+        .push(Effect::LanguageReg(PendingLanguageReg::Identity {
             name,
             extensions,
             globs,
             shebangs,
-        });
+        }));
     Ok(SteelVal::Void)
 }
 
@@ -72,10 +71,9 @@ pub(crate) fn define_language(
 /// `register-grammar!` macro (`prelude.scm`) supplies `#f` when the caller
 /// omits it.
 ///
-/// - **Init mode**: queues a `PendingLanguageReg::Grammar`; applied after
-///   `eval_init` completes via `apply_pending_language_regs`.
-/// - **Command mode**: attaches immediately via the editor host, rebakes the
-///   theme, and queues a buffer sweep.
+/// - **Init mode**: pushes an `Effect::LanguageReg(PendingLanguageReg::Grammar)`.
+/// - **Command mode**: attaches immediately via the editor host and pushes
+///   an `Effect::GrammarSweep` to sweep already-open buffers afterward.
 pub(crate) fn register_grammar(
     ctx: &mut SteelCtx,
     name: SteelVal,
@@ -91,13 +89,14 @@ pub(crate) fn register_grammar(
     let injections_path = optional_path_arg(injections_path, "register-grammar! injections-path")?;
 
     if ctx.is_init {
-        ctx.pending_language_regs.push(PendingLanguageReg::Grammar {
-            name,
-            grammar_path,
-            symbol,
-            highlights_path,
-            injections_path,
-        });
+        ctx.effects
+            .push(Effect::LanguageReg(PendingLanguageReg::Grammar {
+                name,
+                grammar_path,
+                symbol,
+                highlights_path,
+                injections_path,
+            }));
         return Ok(SteelVal::Void);
     }
 
@@ -114,7 +113,7 @@ pub(crate) fn register_grammar(
             injections_path.as_deref(),
         )
         .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
-    ctx.pending_grammar_sweeps.push(name);
+    ctx.effects.push(Effect::GrammarSweep(name));
     Ok(SteelVal::Void)
 }
 
@@ -136,6 +135,17 @@ mod tests {
 
     fn empty_list() -> SteelVal {
         Vec::<SteelVal>::new().into_steelval().unwrap()
+    }
+
+    /// `Effect::LanguageReg` entries queued so far, in emission order.
+    fn lang_regs(h: &SteelCtxTestHarness) -> Vec<&PendingLanguageReg> {
+        h.effects
+            .iter()
+            .filter_map(|e| match e {
+                Effect::LanguageReg(reg) => Some(reg),
+                _ => None,
+            })
+            .collect()
     }
 
     // ── %define-language! ────────────────────────────────────────────────────
@@ -186,7 +196,7 @@ mod tests {
 
     /// `%define-language!` in init mode queues a `PendingLanguageReg::Identity`.
     ///
-    /// Fail oracle: make the call a no-op → `pending_language_regs` stays empty →
+    /// Fail oracle: make the call a no-op → the effect log stays empty →
     /// last assert fires.
     #[test]
     fn define_language_queues_pending_reg() {
@@ -205,9 +215,9 @@ mod tests {
                 "%define-language! must succeed in init mode"
             );
         }
-        assert_eq!(h.pending_language_regs.len(), 1);
+        assert_eq!(lang_regs(&h).len(), 1);
         assert!(
-            matches!(&h.pending_language_regs[0], PendingLanguageReg::Identity { name, .. } if name == "Rust"),
+            matches!(lang_regs(&h)[0], PendingLanguageReg::Identity { name, .. } if name == "Rust"),
             "pending reg must be an Identity entry with name 'Rust'"
         );
     }
@@ -228,7 +238,7 @@ mod tests {
             assert!(result.is_ok());
         }
         assert!(matches!(
-            &h.pending_language_regs[0],
+            lang_regs(&h)[0],
             PendingLanguageReg::Identity { name, .. } if name == "python"
         ));
     }
@@ -238,7 +248,7 @@ mod tests {
     /// In init mode, `register-grammar!` queues a `PendingLanguageReg::Grammar`
     /// instead of calling the host immediately.
     ///
-    /// Fail oracle: call host immediately in init mode → `pending_language_regs`
+    /// Fail oracle: call host immediately in init mode → the effect log
     /// stays empty → last assert fires.
     #[test]
     fn register_grammar_init_mode_queues_pending_reg() {
@@ -255,9 +265,9 @@ mod tests {
             );
             assert!(result.is_ok(), "register-grammar! in init must succeed");
         }
-        assert_eq!(h.pending_language_regs.len(), 1);
+        assert_eq!(lang_regs(&h).len(), 1);
         assert!(
-            matches!(&h.pending_language_regs[0], PendingLanguageReg::Grammar { name, .. } if name == "rust"),
+            matches!(lang_regs(&h)[0], PendingLanguageReg::Grammar { name, .. } if name == "rust"),
             "pending reg must be a Grammar entry with name 'rust'"
         );
     }
@@ -266,7 +276,7 @@ mod tests {
     /// NullHost returns Err, proving the call reached the host.
     ///
     /// Fail oracle: always queue in init path even for command mode → host is never
-    /// called → the error would be absent and `pending_language_regs` would be non-empty.
+    /// called → the error would be absent and the effect log would be non-empty.
     #[test]
     fn register_grammar_command_mode_calls_host() {
         let mut h = SteelCtxTestHarness::new();
@@ -288,7 +298,7 @@ mod tests {
         }
         // Nothing queued — command mode calls the host directly.
         assert!(
-            h.pending_language_regs.is_empty(),
+            lang_regs(&h).is_empty(),
             "command mode must not queue pending regs"
         );
     }
@@ -313,7 +323,7 @@ mod tests {
             );
             assert!(result.is_ok());
         }
-        match &h.pending_language_regs[0] {
+        match lang_regs(&h)[0] {
             PendingLanguageReg::Grammar {
                 injections_path, ..
             } => assert_eq!(

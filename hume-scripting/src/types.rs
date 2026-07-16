@@ -25,10 +25,9 @@ pub struct SteelCmdDef {
     pub repeatable: bool,
 }
 
-/// Language identity registration queued by `(define-language! …)` and
-/// applied via `Editor::apply_pending_language_regs`, drained after every
-/// eval (`Editor::apply_script_effects`) as well as at the `eval_init`
-/// boundary (`Editor::flush_pending_language_regs`).
+/// Language identity registration queued by `(define-language! …)`, applied
+/// via `Editor::apply_pending_language_regs` as part of `Effect::LanguageReg`
+/// application (`Editor::apply_script_effects`).
 #[derive(Debug)]
 pub enum PendingLanguageReg {
     Identity {
@@ -63,13 +62,12 @@ pub struct PendingLspServerReg {
 /// An LSP server registration, unregistration, stop/restart, or status-view
 /// request queued during any eval (init.scm, plugin activation, or a
 /// command/hook body) and applied — in order — by
-/// `Editor::apply_lsp_server_ops` at the end of that eval.
+/// `Editor::apply_lsp_server_op` as part of `Effect::LspServerOp` application.
 ///
-/// One ordered queue (not separate `Vec`s per op) because a reinstall emits
-/// `Unregister` then `Register` within the same eval and that interleaving
-/// must be preserved; `Stop`/`Restart`/`ShowStatus` ride the same queue
-/// because they too need `&mut Editor`, which the Steel-eval-time
-/// `EditorHost` impl doesn't hold.
+/// `Stop`/`Restart`/`ShowStatus` ride the same op enum as `Register`/
+/// `Unregister` because they too need `&mut Editor`, which the Steel-eval-time
+/// `EditorHost` impl doesn't hold — a reinstall's `Unregister` then `Register`
+/// stay ordered because they're both entries in the same [`Effect`] log.
 #[derive(Debug)]
 pub enum PendingLspServerOp {
     Register(PendingLspServerReg),
@@ -91,14 +89,9 @@ pub struct LspServerStatusEntry {
     pub pending: usize,
 }
 
-/// `set-buffer-language!` calls deferred during a command or hook eval.
-/// Each entry is `(buffer_id, language_name_or_none)`.
-pub type PendingLanguageSets = Vec<(BufferId, Option<String>)>;
-
 /// `(lsp-request server method params callback #:allow-stale bool)` calls
-/// queued during a command, hook, or queued-Steel-call eval and flushed by
-/// `Editor::flush_pending_lsp_requests` right after — the same per-eval
-/// drain shape `pending_language_sets` and `PendingLspServerOp` use.
+/// queued during a command, hook, or queued-Steel-call eval and sent by
+/// `Editor::send_one_lsp_request` as part of `Effect::LspRequest` application.
 ///
 /// `server` is a registered language name, or `None` for "the focused
 /// buffer's attached server". `params` is already decoded to JSON via
@@ -147,20 +140,33 @@ pub struct PendingLspNotify {
 #[derive(Debug)]
 pub struct SteelCmdResult {
     pub wait_char_request: Option<String>,
-    pub effects: HookResult,
+    pub effects: Vec<Effect>,
 }
 
-/// Per-eval side effects queued by Steel builtins and drained after the eval
-/// returns — shared by [`super::ScriptingHost::call_steel_cmd`],
-/// [`super::ScriptingHost::fire_hook`], and
-/// [`super::ScriptingHost::run_steel_calls`], all of which funnel through
-/// [`super::context::SteelCtx::take_side_effects`].
-#[derive(Debug, Default)]
-pub struct HookResult {
-    pub pending_language_sets: PendingLanguageSets,
-    /// Language names for which `(register-grammar! …)` just attached a grammar;
-    /// drained by the executor into `sweep_buffers_for_grammars`.
-    pub grammar_sweeps: Vec<String>,
-    pub pending_lsp_requests: Vec<PendingLspRequest>,
-    pub pending_lsp_notifies: Vec<PendingLspNotify>,
+/// One side effect queued by a Steel builtin during an eval — a mutation
+/// that needs `&mut Editor` state the Steel-eval-time `EditorHost` doesn't
+/// hold, so it's logged instead of applied inline.
+///
+/// Every eval entry point ([`super::ScriptingHost::call_steel_cmd`],
+/// [`super::ScriptingHost::fire_hook`], [`super::ScriptingHost::run_steel_calls`],
+/// [`super::ScriptingHost::eval_init`], [`super::ScriptingHost::activate_plugin_inline`])
+/// returns the effects it queued, in the exact order Steel builtins pushed
+/// them (`SteelCtx::effects`, backed by the persistent `ScriptingHost::effects`
+/// log). The editor applies them in that same order — a single ordered log,
+/// not five separate channels with a hardcoded apply order.
+#[derive(Debug)]
+pub enum Effect {
+    LanguageReg(PendingLanguageReg),
+    LspServerOp(PendingLspServerOp),
+    SetBufferLanguage {
+        buffer: BufferId,
+        language: Option<String>,
+    },
+    /// A language name for which `(register-grammar! …)` just attached a
+    /// grammar in command mode; the executor sweeps open buffers of that
+    /// language (and buffers with injection sites) via
+    /// `sweep_buffers_for_grammars`.
+    GrammarSweep(String),
+    LspRequest(PendingLspRequest),
+    LspNotify(PendingLspNotify),
 }
