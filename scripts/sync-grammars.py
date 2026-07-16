@@ -13,6 +13,7 @@ languages.toml at that commit, and rewrites:
 Idempotent: running twice produces byte-identical files.
 """
 
+import json
 import sys
 from pathlib import Path
 
@@ -23,7 +24,6 @@ from sync_common import (  # noqa: E402
     read_sexpr,
     scheme_list,
     scheme_str,
-    sexpr_dumps,
     write_generated_file,
 )
 
@@ -86,17 +86,17 @@ LSP_SERVERS_HEADER = """\
 ;;;    (languages (lang-name root-marker…)…)
 ;;;    (command . cmd)
 ;;;    (args arg…)
-;;;    (settings entry…))
+;;;    (settings . json-string))
 ;;;
-;;; Absent/empty fields are the empty tail — (args), (settings) — never #f.
-;;; A settings entry is one of:
-;;;   (key . scalar)      — string/number/bool leaf
-;;;   (key . #(elem…))    — a JSON array (#() when empty)
-;;;   (key entry…)        — a nested JSON object ((key) when empty)
-;;; The #(...) vector form is what distinguishes an empty array from an
-;;; empty object — both would render as `(key)` otherwise. All fields are
-;;; fully canonicalised; no defaults are applied at read time.
-;;; Read via the R7RS idiom from any plugin:
+;;; `args` is the empty tail `(args)` (never #f) when the server takes none.
+;;; `settings` is the *entire* tail `(settings)` (never a dotted pair) when
+;;; the server has no seeded settings; otherwise `(settings . "...")`, a
+;;; single canonical (sort_keys) JSON-encoded string — the runtime catalog
+;;; loader (`core:lsp/registration.scm`) parses it with the `(json-parse)`
+;;; builtin at load time, once, rather than every plugin needing its own
+;;; nested-alist/vector-array reader for a JSON object embedded as Scheme
+;;; data. All fields are fully canonicalised; no defaults are applied at
+;;; read time. Read via the R7RS idiom from any plugin:
 ;;;
 ;;;   (define *lsp-servers*
 ;;;     (call-with-input-file
@@ -361,15 +361,17 @@ def emit_lsp_servers(servers: dict[str, dict]) -> list[str]:
             for lang_tuple in s["languages"]
         )
         args_sexpr = " ".join(scheme_str(a) for a in s["args"])
-        settings_sexpr = (
-            sexpr_dumps(s["settings"], vector_arrays=True) if s["settings"] else ""
+        settings_field = (
+            " (settings . {})".format(scheme_str(json.dumps(s["settings"], sort_keys=True)))
+            if s["settings"]
+            else " (settings)"
         )
-        row = " ({} (languages {}) (command . {}) (args{}) (settings{}))".format(
+        row = " ({} (languages {}) (command . {}) (args{}){})".format(
             scheme_str(name),
             langs_sexpr,
             scheme_str(s["command"]),
             f" {args_sexpr}" if args_sexpr else "",
-            f" {settings_sexpr}" if settings_sexpr else "",
+            settings_field,
         )
         rows.append(row)
     return ["("] + rows + [")"]

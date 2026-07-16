@@ -264,6 +264,7 @@ A few extra functions cover things Scheme has no way to know on its own:
 | `(data-dir)` | HUME's data directory, or `#f` if unavailable |
 | `(runtime-dir)` | HUME's runtime directory, or `#f` if unavailable |
 | `(path-join seg…)` | Join path segments with the OS-native separator |
+| `(json-parse str)` | Decode a JSON string into hashmaps/lists/strings/numbers/booleans — errors on malformed input |
 
 Only install or overwrite files under `(data-dir)` unless you have a specific reason to go elsewhere — that's where HUME expects a plugin's own data (installed grammars, downloaded servers, plugin state) to live.
 

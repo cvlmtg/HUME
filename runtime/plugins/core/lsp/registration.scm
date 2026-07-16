@@ -5,7 +5,6 @@
 ;;; there is no cross-plugin require to route around (see docs/ROADMAP.md
 ;;; "Plugin namespace isolation").
 
-(require-builtin steel/vectors)
 (provide lsp/register-installed-servers! lsp/field lsp/servers-dir lsp/server-dir
          lsp/receipt-path lsp/read-receipt lsp/receipt-bin lsp/receipt-version
          lsp/servers-catalog)
@@ -13,7 +12,12 @@
 ;; ── Server catalog ────────────────────────────────────────────────────────────
 ;;
 ;; Hash: name → server-entry fields, the tagged-alist tail from
-;; lsp-servers.scm: (languages ...) (command . cmd) (args ...) (settings ...).
+;; lsp-servers.scm: (languages ...) (command . cmd) (args ...)
+;; (settings . json-string-or-absent) — settings is a single canonical JSON
+;; string (empty tail `(settings)` when the server has none), decoded with
+;; `(json-parse)` at the one place it's consumed
+;; (`lsp/register-server-languages!`), not walked into a hash at load time
+;; for every entry regardless of whether it's ever installed.
 ;; Exposed read-only via `lsp/servers-catalog` — `servers.scm` needs it to
 ;; resolve `:lsp-install <lang>` and list `:lsp-servers`; this file needs it
 ;; to turn a receipt's bin path into a full registration.
@@ -78,36 +82,6 @@
 (define (lsp/receipt-bin receipt) (cdr (lsp/field receipt 'bin)))
 (define (lsp/receipt-version receipt) (cdr (lsp/field receipt 'version)))
 
-;; ── Settings conversion ───────────────────────────────────────────────────────
-;;
-;; Seeded settings are nested alists whose entries take one of three shapes
-;; (see docs/LSP-INSTALL.md "Seeded data format"): `(key . scalar)`,
-;; `(key . #(elem…))` for a JSON array, or `(key entry…)` for a nested
-;; object. `steel_to_json` has no case for a raw vector, so every `#(...)`
-;; must become a Steel list before it can reach `#:settings`.
-
-;;; Convert a #(...) vector into a Steel list.
-(define (lsp/vector->steel-list v)
-  (let loop ((i (- (vector-length v) 1)) (acc '()))
-    (if (< i 0) acc (loop (- i 1) (cons (vector-ref v i) acc)))))
-
-;;; Convert a settings entry list into a Steel hash suitable for `#:settings`.
-(define (lsp/settings->hash entries)
-  (let loop ((entries entries) (h (hash)))
-    (cond
-      ((null? entries) h)
-      ((not (pair? (car entries)))
-       (error (string-append "lsp/settings->hash: malformed settings entry: "
-                             (to-string (car entries)))))
-      (else
-       (let* ((entry (car entries))
-              (key   (car entry))
-              (value (if (list? entry)
-                         (lsp/settings->hash (cdr entry))
-                         (let ((v (cdr entry)))
-                           (if (vector? v) (lsp/vector->steel-list v) v)))))
-         (loop (cdr entries) (hash-insert h key value)))))))
-
 ;; ── Registration ──────────────────────────────────────────────────────────────
 
 ;;; Register `name` for every language it serves that isn't registered yet,
@@ -139,8 +113,12 @@
          (langs    (filter (lambda (lang-entry) (not (lsp-registered-for-language? (car lang-entry))))
                             (cdr (lsp/field fields 'languages))))
          (args     (cdr (lsp/field fields 'args)))
-         (settings-entries (cdr (lsp/field fields 'settings)))
-         (settings (if (null? settings-entries) #f (lsp/settings->hash settings-entries))))
+         ;; `(settings . "json")` when the server has seeded settings,
+         ;; `(settings)` (empty tail) otherwise — `cdr` gives the JSON
+         ;; string or '() respectively, matching every other empty-tail
+         ;; field in this catalog (see lsp-servers.scm's own header).
+         (settings-json (cdr (lsp/field fields 'settings)))
+         (settings (if (null? settings-json) #f (json-parse settings-json))))
     (for-each
       (lambda (lang-entry)
         (register-lsp-server! (car lang-entry)

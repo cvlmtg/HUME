@@ -14,6 +14,7 @@ pub(crate) mod ids;
 pub(crate) mod install;
 pub(crate) mod interrupt;
 pub(crate) mod io;
+pub(crate) mod json;
 pub(crate) mod keymap_bind;
 pub(crate) mod lsp;
 pub(crate) mod panes;
@@ -528,6 +529,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_fn("buffer-id?", ids::is_buffer_id);
     steel.register_fn("pane-id?", ids::is_pane_id);
     steel.register_fn("buffer-id=?", ids::buffer_id_equal);
+    steel.register_fn("json-parse", json::json_parse);
     steel.register_fn("pane-id=?", ids::pane_id_equal);
 
     // Multi-buffer read-only builtins

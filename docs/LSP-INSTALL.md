@@ -121,7 +121,7 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
    ("jsx"        "package.json" "jsconfig.json"))
   (command . "typescript-language-server")
   (args "--stdio")
-  (settings (hostInfo . "hume") (typescript (inlayHints …)))))
+  (settings . "{\"hostInfo\": \"hume\", \"typescript\": {\"inlayHints\": {…}}}")))
 ```
 
 - **Languages live only in this file.** Helix language names match `languages.scm` (same
@@ -132,14 +132,18 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
   so the scan can never produce conflicting registrations.
 - Every entry uses one shape: an absent/empty value is the empty tail (`(args)`,
   `(settings)`), never `#f` — consumers read one encoding.
-- `settings` / `init-options` are nested alists whose entries take one of three shapes —
-  `(key . scalar)`, `(key . #(elem…))` for a JSON array (`#()` when empty), or
-  `(key entry…)` for a nested object (`(key)` when empty). The `#(...)` vector form is
-  what disambiguates an empty array from an empty object; both would otherwise read as
-  `(key)`. The plugin converts this to a Steel hash and JSON-encodes it at the existing
-  `steel_to_json` boundary. The sync script translates Helix's TOML `config.*` tables and
-  JSON arrays into this shape (`scripts/sync_common.py`'s `sexpr_dumps`,
-  `vector_arrays=True`).
+- `settings` is a single canonical (`sort_keys`) JSON-encoded string when the server has
+  seeded settings — `(settings . "...")`, the *entire* tail is `(settings)` (never a
+  dotted pair) when it doesn't. The sync script emits it with a plain `json.dumps`; the
+  plugin decodes it with the `(json-parse)` Steel builtin (`hume-scripting/src/builtins/
+  json.rs`, wrapping the same `json_to_steel` conversion `lsp-request` responses already
+  use) at the one place it's consumed (`lsp/register-server-languages!`), not walked into
+  a Steel hash for every catalog entry at load regardless of whether it's ever installed.
+  This replaced an earlier nested-alist-plus-`#(...)`-vector encoding that needed a
+  hand-rolled Scheme-side walker (`lsp/settings->hash`) and a
+  Python-side array/object-disambiguation hack (`vector_arrays=True`) purely because plain
+  sexpr syntax can't tell an empty JSON array from an empty JSON object — a JSON string
+  has no such ambiguity.
 
 **`lsp-sources.scm`** (install, from mason-pin) — per-kind record shapes:
 

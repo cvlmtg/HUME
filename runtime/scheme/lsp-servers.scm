@@ -6,17 +6,17 @@
 ;;;    (languages (lang-name root-marker…)…)
 ;;;    (command . cmd)
 ;;;    (args arg…)
-;;;    (settings entry…))
+;;;    (settings . json-string))
 ;;;
-;;; Absent/empty fields are the empty tail — (args), (settings) — never #f.
-;;; A settings entry is one of:
-;;;   (key . scalar)      — string/number/bool leaf
-;;;   (key . #(elem…))    — a JSON array (#() when empty)
-;;;   (key entry…)        — a nested JSON object ((key) when empty)
-;;; The #(...) vector form is what distinguishes an empty array from an
-;;; empty object — both would render as `(key)` otherwise. All fields are
-;;; fully canonicalised; no defaults are applied at read time.
-;;; Read via the R7RS idiom from any plugin:
+;;; `args` is the empty tail `(args)` (never #f) when the server takes none.
+;;; `settings` is the *entire* tail `(settings)` (never a dotted pair) when
+;;; the server has no seeded settings; otherwise `(settings . "...")`, a
+;;; single canonical (sort_keys) JSON-encoded string — the runtime catalog
+;;; loader (`core:lsp/registration.scm`) parses it with the `(json-parse)`
+;;; builtin at load time, once, rather than every plugin needing its own
+;;; nested-alist/vector-array reader for a JSON object embedded as Scheme
+;;; data. All fields are fully canonicalised; no defaults are applied at
+;;; read time. Read via the R7RS idiom from any plugin:
 ;;;
 ;;;   (define *lsp-servers*
 ;;;     (call-with-input-file
@@ -32,12 +32,12 @@
 ;;; Full sync: run scripts/sync-grammars.py after updating helix-pin.scm.
 
 (
- ("actions-language-server" (languages ("github-action")) (command . "actions-languageserver") (args "--stdio") (settings (actions-language-server (sessionToken . ""))))
+ ("actions-language-server" (languages ("github-action")) (command . "actions-languageserver") (args "--stdio") (settings . "{\"actions-language-server\": {\"sessionToken\": \"\"}}"))
  ("ada-gpr-language-server" (languages ("gpr" "alire.toml")) (command . "ada_language_server") (args "--language-gpr") (settings))
  ("ada-language-server" (languages ("ada" "alire.toml")) (command . "ada_language_server") (args) (settings))
  ("amber-lsp" (languages ("amber")) (command . "amber-lsp") (args) (settings))
  ("asm-lsp" (languages ("nasm") ("gas")) (command . "asm-lsp") (args) (settings))
- ("astro-ls" (languages ("astro")) (command . "astro-ls") (args "--stdio") (settings (typescript (tsdk . "node_modules/typescript/lib"))))
+ ("astro-ls" (languages ("astro")) (command . "astro-ls") (args "--stdio") (settings . "{\"typescript\": {\"tsdk\": \"node_modules/typescript/lib\"}}"))
  ("awk-language-server" (languages ("awk")) (command . "awk-language-server") (args) (settings))
  ("bash-language-server" (languages ("bash")) (command . "bash-language-server") (args "start") (settings))
  ("bass" (languages ("bass")) (command . "bass") (args "--lsp") (settings))
@@ -70,7 +70,7 @@
  ("earthlyls" (languages ("earthfile" "Earthfile")) (command . "earthlyls") (args) (settings))
  ("ebnfer" (languages ("ebnf")) (command . "ebnfer") (args) (settings))
  ("eiffel-language-server" (languages ("eiffel")) (command . "eiffel-language-server") (args) (settings))
- ("elixir-ls" (languages ("elixir" "mix.exs" "mix.lock") ("heex" "mix.exs" "mix.lock")) (command . "elixir-ls") (args) (settings (elixirLS (dialyzerEnabled . #f))))
+ ("elixir-ls" (languages ("elixir" "mix.exs" "mix.lock") ("heex" "mix.exs" "mix.lock")) (command . "elixir-ls") (args) (settings . "{\"elixirLS\": {\"dialyzerEnabled\": false}}"))
  ("elm-language-server" (languages ("elm" "elm.json")) (command . "elm-language-server") (args) (settings))
  ("elvish" (languages ("elvish")) (command . "elvish") (args "-lsp") (settings))
  ("ember-language-server" (languages ("glimmer" "package.json" "ember-cli-build.js")) (command . "ember-language-server") (args "--stdio") (settings))
@@ -80,10 +80,10 @@
  ("forc" (languages ("sway" "Forc.toml" "Forc.lock")) (command . "forc") (args "lsp") (settings))
  ("forth-lsp" (languages ("forth")) (command . "forth-lsp") (args) (settings))
  ("fortls" (languages ("fortran" "fpm.toml")) (command . "fortls") (args "--lowercase_intrinsics") (settings))
- ("fsharp-ls" (languages ("fsharp" "*.slnx" "*.sln" "*.fsproj")) (command . "fsautocomplete") (args) (settings (AutomaticWorkspaceInit . #t)))
+ ("fsharp-ls" (languages ("fsharp" "*.slnx" "*.sln" "*.fsproj")) (command . "fsautocomplete") (args) (settings . "{\"AutomaticWorkspaceInit\": true}"))
  ("gleam" (languages ("gleam" "gleam.toml")) (command . "gleam") (args "lsp") (settings))
  ("glsl_analyzer" (languages ("glsl")) (command . "glsl_analyzer") (args) (settings))
- ("gopls" (languages ("go" "go.work" "go.mod") ("gomod") ("gotmpl") ("gowork")) (command . "gopls") (args) (settings (hints (assignVariableTypes . #t) (compositeLiteralFields . #t) (constantValues . #t) (functionTypeParameters . #t) (parameterNames . #t) (rangeVariableTypes . #t))))
+ ("gopls" (languages ("go" "go.work" "go.mod") ("gomod") ("gotmpl") ("gowork")) (command . "gopls") (args) (settings . "{\"hints\": {\"assignVariableTypes\": true, \"compositeLiteralFields\": true, \"constantValues\": true, \"functionTypeParameters\": true, \"parameterNames\": true, \"rangeVariableTypes\": true}}"))
  ("graphql-language-service" (languages ("graphql")) (command . "graphql-lsp") (args "server" "-m" "stream") (settings))
  ("hare-lsp" (languages ("hare")) (command . "hare-lsp") (args "-S") (settings))
  ("haskell-language-server" (languages ("haskell" "Setup.hs" "stack.yaml" "cabal.project" "hie.yaml") ("haskell-literate" "Setup.hs" "stack.yaml" "cabal.project" "hie.yaml") ("cabal" "cabal.project" "Setup.hs")) (command . "haskell-language-server-wrapper") (args "--lsp") (settings))
@@ -103,12 +103,12 @@
  ("kotlin-language-server" (languages ("kotlin" "settings.gradle" "settings.gradle.kts")) (command . "kotlin-language-server") (args) (settings))
  ("koto-ls" (languages ("koto")) (command . "koto-ls") (args) (settings))
  ("lean" (languages ("lean" "lakefile.lean" "lakefile.toml")) (command . "lake") (args "serve") (settings))
- ("lua-language-server" (languages ("lua" ".luarc.json" ".luacheckrc" ".stylua.toml" "selene.toml" ".git")) (command . "lua-language-server") (args) (settings (Lua (hint (arrayIndex . "Enable") (await . #t) (enable . #t) (paramName . "All") (paramType . #t) (setType . #t)))))
+ ("lua-language-server" (languages ("lua" ".luarc.json" ".luacheckrc" ".stylua.toml" "selene.toml" ".git")) (command . "lua-language-server") (args) (settings . "{\"Lua\": {\"hint\": {\"arrayIndex\": \"Enable\", \"await\": true, \"enable\": true, \"paramName\": \"All\", \"paramType\": true, \"setType\": true}}}"))
  ("luau" (languages ("luau" "aftman.toml" "default.project.json" "wally.toml" "rokit.toml" "selene.toml" ".darklua.json" "foreman.toml" ".luaurc")) (command . "luau-lsp") (args "lsp") (settings))
  ("markdoc-ls" (languages ("markdoc")) (command . "markdoc-ls") (args "--stdio") (settings))
  ("marksman" (languages ("markdown" ".marksman.toml")) (command . "marksman") (args "server") (settings))
  ("mesonlsp" (languages ("meson")) (command . "mesonlsp") (args "--lsp") (settings))
- ("metals" (languages ("scala" "build.sbt" "build.sc" "build.gradle" "build.gradle.kts" "pom.xml" ".scala-build")) (command . "metals") (args) (settings (isHttpEnabled . #t) (metals (inlayHints (hintsInPatternMatch (enable . #t)) (typeParameters (enable . #t))))))
+ ("metals" (languages ("scala" "build.sbt" "build.sc" "build.gradle" "build.gradle.kts" "pom.xml" ".scala-build")) (command . "metals") (args) (settings . "{\"isHttpEnabled\": true, \"metals\": {\"inlayHints\": {\"hintsInPatternMatch\": {\"enable\": true}, \"typeParameters\": {\"enable\": true}}}}"))
  ("mint" (languages ("mint")) (command . "mint") (args "tool" "ls") (settings))
  ("mojo-lsp-server" (languages ("mojo" "pixi.toml" "pixi.lock")) (command . "pixi") (args "run" "mojo-lsp-server") (settings))
  ("neocmakelsp" (languages ("cmake")) (command . "neocmakelsp") (args "stdio") (settings))
@@ -123,8 +123,8 @@
  ("perlnavigator" (languages ("perl")) (command . "perlnavigator") (args "--stdio") (settings))
  ("pest-language-server" (languages ("pest")) (command . "pest-language-server") (args) (settings))
  ("pkl-lsp" (languages ("pkl")) (command . "pkl-lsp") (args) (settings))
- ("pony-lsp" (languages ("ponylang" "corral.json" "lock.json")) (command . "pony-lsp") (args "--stdio") (settings (defines . #()) (ponypath . #())))
- ("prisma-language-server" (languages ("prisma" "package.json")) (command . "prisma-language-server") (args "--stdio") (settings (prisma (enableDiagnostics . #t))))
+ ("pony-lsp" (languages ("ponylang" "corral.json" "lock.json")) (command . "pony-lsp") (args "--stdio") (settings . "{\"defines\": [], \"ponypath\": []}"))
+ ("prisma-language-server" (languages ("prisma" "package.json")) (command . "prisma-language-server") (args "--stdio") (settings . "{\"prisma\": {\"enableDiagnostics\": true}}"))
  ("purescript-language-server" (languages ("purescript" "spago.yaml" "spago.dhall" "bower.json")) (command . "purescript-language-server") (args "--stdio") (settings))
  ("pylsp" (languages ("snakemake" "Snakefile" "config.yaml" "environment.yaml" "workflow/")) (command . "pylsp") (args) (settings))
  ("qmlls" (languages ("qml")) (command . "qmlls") (args) (settings))
@@ -139,7 +139,7 @@
  ("roslyn-language-server" (languages ("c-sharp" "*.slnx" "*.sln" "*.csproj")) (command . "roslyn-language-server") (args "--stdio" "--autoLoadProjects") (settings))
  ("rshtml-analyzer" (languages ("rshtml" "Cargo.lock" "Cargo.toml")) (command . "rshtml-analyzer") (args "--stdio") (settings))
  ("ruby-lsp" (languages ("ruby")) (command . "ruby-lsp") (args) (settings))
- ("rust-analyzer" (languages ("rust" "Cargo.toml" "Cargo.lock")) (command . "rust-analyzer") (args) (settings (files (watcher . "server")) (inlayHints (bindingModeHints (enable . #f)) (closingBraceHints (minLines . 10)) (closureReturnTypeHints (enable . "with_block")) (discriminantHints (enable . "fieldless")) (lifetimeElisionHints (enable . "skip_trivial")) (typeHints (hideClosureInitialization . #f)))))
+ ("rust-analyzer" (languages ("rust" "Cargo.toml" "Cargo.lock")) (command . "rust-analyzer") (args) (settings . "{\"files\": {\"watcher\": \"server\"}, \"inlayHints\": {\"bindingModeHints\": {\"enable\": false}, \"closingBraceHints\": {\"minLines\": 10}, \"closureReturnTypeHints\": {\"enable\": \"with_block\"}, \"discriminantHints\": {\"enable\": \"fieldless\"}, \"lifetimeElisionHints\": {\"enable\": \"skip_trivial\"}, \"typeHints\": {\"hideClosureInitialization\": false}}}"))
  ("serve-d" (languages ("d")) (command . "serve-d") (args) (settings))
  ("slangd" (languages ("slang")) (command . "slangd") (args) (settings))
  ("slint-lsp" (languages ("slint")) (command . "slint-lsp") (args) (settings))
@@ -150,8 +150,8 @@
  ("spade-language-server" (languages ("spade" "swim.toml")) (command . "spade-language-server") (args) (settings))
  ("starpls" (languages ("starlark")) (command . "starpls") (args) (settings))
  ("styx" (languages ("styx")) (command . "styx") (args "lsp") (settings))
- ("svelteserver" (languages ("svelte")) (command . "svelteserver") (args "--stdio") (settings (configuration (javascript (inlayHints (enumMemberValues (enabled . #t)) (functionLikeReturnTypes (enabled . #t)) (parameterNames (enabled . "all")) (parameterTypes (enabled . #t)) (propertyDeclarationTypes (enabled . #t)) (variableTypes (enabled . #t)))) (typescript (inlayHints (enumMemberValues (enabled . #t)) (functionLikeReturnTypes (enabled . #t)) (parameterNames (enabled . "all")) (parameterTypes (enabled . #t)) (propertyDeclarationTypes (enabled . #t)) (variableTypes (enabled . #t)))))))
- ("svlangserver" (languages ("systemverilog")) (command . "svlangserver") (args) (settings (systemverilog (includeIndexing . #("*.{v,vh,sv,svh}" "**/*.{v,vh,sv,svh}")))))
+ ("svelteserver" (languages ("svelte")) (command . "svelteserver") (args "--stdio") (settings . "{\"configuration\": {\"javascript\": {\"inlayHints\": {\"enumMemberValues\": {\"enabled\": true}, \"functionLikeReturnTypes\": {\"enabled\": true}, \"parameterNames\": {\"enabled\": \"all\"}, \"parameterTypes\": {\"enabled\": true}, \"propertyDeclarationTypes\": {\"enabled\": true}, \"variableTypes\": {\"enabled\": true}}}, \"typescript\": {\"inlayHints\": {\"enumMemberValues\": {\"enabled\": true}, \"functionLikeReturnTypes\": {\"enabled\": true}, \"parameterNames\": {\"enabled\": \"all\"}, \"parameterTypes\": {\"enabled\": true}, \"propertyDeclarationTypes\": {\"enabled\": true}, \"variableTypes\": {\"enabled\": true}}}}}"))
+ ("svlangserver" (languages ("systemverilog")) (command . "svlangserver") (args) (settings . "{\"systemverilog\": {\"includeIndexing\": [\"*.{v,vh,sv,svh}\", \"**/*.{v,vh,sv,svh}\"]}}"))
  ("swipl" (languages ("prolog")) (command . "swipl") (args "-g" "use_module(library(lsp_server))" "-g" "lsp_server:main" "-t" "halt" "--" "stdio") (settings))
  ("systemd-lsp" (languages ("systemd")) (command . "systemd-lsp") (args) (settings))
  ("taplo" (languages ("toml") ("jjconfig") ("miseconfig") ("cross-config") ("git-cliff-config")) (command . "taplo") (args "lsp" "stdio") (settings))
@@ -164,16 +164,16 @@
  ("tinymist" (languages ("typst")) (command . "tinymist") (args) (settings))
  ("ts_query_ls" (languages ("tsq")) (command . "ts_query_ls") (args) (settings))
  ("ty" (languages ("python" "pyproject.toml" "setup.py" "poetry.lock" "pyrightconfig.json")) (command . "ty") (args "server") (settings))
- ("typescript-language-server" (languages ("javascript" "package.json" "jsconfig.json") ("jsx" "package.json" "jsconfig.json") ("typescript" "package.json" "tsconfig.json") ("tsx" "package.json" "tsconfig.json") ("gjs" "package.json" "ember-cli-build.js") ("gts" "package.json" "ember-cli-build.js")) (command . "typescript-language-server") (args "--stdio") (settings (hostInfo . "hume") (javascript (inlayHints (includeInlayEnumMemberValueHints . #t) (includeInlayFunctionLikeReturnTypeHints . #t) (includeInlayFunctionParameterTypeHints . #t) (includeInlayParameterNameHints . "all") (includeInlayParameterNameHintsWhenArgumentMatchesName . #t) (includeInlayPropertyDeclarationTypeHints . #t) (includeInlayVariableTypeHints . #t))) (typescript (inlayHints (includeInlayEnumMemberValueHints . #t) (includeInlayFunctionLikeReturnTypeHints . #t) (includeInlayFunctionParameterTypeHints . #t) (includeInlayParameterNameHints . "all") (includeInlayParameterNameHintsWhenArgumentMatchesName . #t) (includeInlayPropertyDeclarationTypeHints . #t) (includeInlayVariableTypeHints . #t)))))
+ ("typescript-language-server" (languages ("javascript" "package.json" "jsconfig.json") ("jsx" "package.json" "jsconfig.json") ("typescript" "package.json" "tsconfig.json") ("tsx" "package.json" "tsconfig.json") ("gjs" "package.json" "ember-cli-build.js") ("gts" "package.json" "ember-cli-build.js")) (command . "typescript-language-server") (args "--stdio") (settings . "{\"hostInfo\": \"hume\", \"javascript\": {\"inlayHints\": {\"includeInlayEnumMemberValueHints\": true, \"includeInlayFunctionLikeReturnTypeHints\": true, \"includeInlayFunctionParameterTypeHints\": true, \"includeInlayParameterNameHints\": \"all\", \"includeInlayParameterNameHintsWhenArgumentMatchesName\": true, \"includeInlayPropertyDeclarationTypeHints\": true, \"includeInlayVariableTypeHints\": true}}, \"typescript\": {\"inlayHints\": {\"includeInlayEnumMemberValueHints\": true, \"includeInlayFunctionLikeReturnTypeHints\": true, \"includeInlayFunctionParameterTypeHints\": true, \"includeInlayParameterNameHints\": \"all\", \"includeInlayParameterNameHintsWhenArgumentMatchesName\": true, \"includeInlayPropertyDeclarationTypeHints\": true, \"includeInlayVariableTypeHints\": true}}}"))
  ("typespec" (languages ("typespec" "tspconfig.yaml")) (command . "tsp-server") (args "--stdio") (settings))
  ("vala-language-server" (languages ("vala")) (command . "vala-language-server") (args) (settings))
  ("verible-verilog-ls" (languages ("verilog")) (command . "verible-verilog-ls") (args) (settings))
  ("vhdl_ls" (languages ("vhdl")) (command . "vhdl_ls") (args) (settings))
  ("vlang-language-server" (languages ("v" "v.mod")) (command . "v-analyzer") (args) (settings))
- ("vscode-css-language-server" (languages ("css") ("scss") ("less")) (command . "vscode-css-language-server") (args "--stdio") (settings (css (validate (enable . #t))) (provideFormatter . #t)))
- ("vscode-html-language-server" (languages ("html")) (command . "vscode-html-language-server") (args "--stdio") (settings (provideFormatter . #t)))
- ("vscode-json-language-server" (languages ("json") ("jsonc") ("json-ld")) (command . "vscode-json-language-server") (args "--stdio") (settings (json (validate (enable . #t))) (provideFormatter . #t)))
- ("vuels" (languages ("vue" "package.json")) (command . "vue-language-server") (args "--stdio") (settings (typescript (tsdk . "node_modules/typescript/lib/"))))
+ ("vscode-css-language-server" (languages ("css") ("scss") ("less")) (command . "vscode-css-language-server") (args "--stdio") (settings . "{\"css\": {\"validate\": {\"enable\": true}}, \"provideFormatter\": true}"))
+ ("vscode-html-language-server" (languages ("html")) (command . "vscode-html-language-server") (args "--stdio") (settings . "{\"provideFormatter\": true}"))
+ ("vscode-json-language-server" (languages ("json") ("jsonc") ("json-ld")) (command . "vscode-json-language-server") (args "--stdio") (settings . "{\"json\": {\"validate\": {\"enable\": true}}, \"provideFormatter\": true}"))
+ ("vuels" (languages ("vue" "package.json")) (command . "vue-language-server") (args "--stdio") (settings . "{\"typescript\": {\"tsdk\": \"node_modules/typescript/lib/\"}}"))
  ("wasm-language-tools" (languages ("wat")) (command . "wat_server") (args) (settings))
  ("wgsl-analyzer" (languages ("wgsl")) (command . "wgsl-analyzer") (args) (settings))
  ("wikitext-lsp" (languages ("wikitext")) (command . "wikitext-lsp") (args "--stdio") (settings))
