@@ -230,7 +230,7 @@ pub(crate) fn encoding_for_buffer(
         .unwrap_or(hume_editing::position_encoding::PositionEncoding::Utf16)
 }
 
-/// `(diagnostics-for-buffer bid #:severity floor #:range (start end))` —
+/// `(diagnostics-for-buffer bid #:severity floor #:range (start . end))` —
 /// decoded, filtered, capped-at-1000 hashmaps. `start`/`end`
 /// are char offsets; `line`/`col` are the char-indexed start position,
 /// ready for `goto-location!` shape 2. Errors loudly on an unknown
@@ -322,7 +322,8 @@ pub(crate) fn range_params(
 /// `total_lines` — the single computation shared by `fire_hook_viewport_change`
 /// (pane -> its own range, for the `on-viewport-change` hook payload) and
 /// [`viewport_range`] (buffer -> the pane showing it, for the synchronous
-/// `(viewport-range bid)` builtin). `last_line` clamps to `total_lines - 1`
+/// `(viewport-range bid)` builtin, which wraps this pair in a dotted-pair
+/// wire value). `last_line` clamps to `total_lines - 1`
 /// (0 when the buffer is empty of lines) so it never points past the buffer's
 /// last valid line, even when the pane's viewport height exceeds the buffer.
 pub(crate) fn pane_visible_range(pane: &Pane, total_lines: usize) -> (usize, usize) {
@@ -350,7 +351,7 @@ fn pane_showing_buffer(state: &EditorState, view: &EngineView, id: BufferId) -> 
         .map(|(pid, _)| pid)
 }
 
-/// `(viewport-range bid)` — the `(first_line last_line)` span currently
+/// `(viewport-range bid)` — the `(first_line . last_line)` span currently
 /// visible for `id`, or `None` if `id` isn't shown in any pane (a background
 /// or hidden buffer). With the same buffer open in two panes, the focused
 /// pane's range wins — no less arbitrary than any other tie-break, since a

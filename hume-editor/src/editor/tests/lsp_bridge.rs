@@ -694,7 +694,7 @@ fn didchange_reaches_the_wire_before_a_same_dispatch_request() {
         &mut ed,
         &mut host,
         r#"(define-command! "test-cmd" "" (lambda ()
-             (apply-text-edits! (current-buffer) (list (list (list 0 0) (list 0 0) "Z")))
+             (apply-text-edits! (current-buffer) (list (list (cons 0 0) (cons 0 0) "Z")))
              (lsp-request #f "textDocument/hover" (hash) (lambda (err result) (begin)))))"#,
         tmp.path(),
     );

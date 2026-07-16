@@ -63,7 +63,7 @@ fn apply_text_edits_single_edit() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (apply-text-edits! (current-buffer)
-               (list (list (list 0 1) (list 0 3) "XY")))))"#,
+               (list (list (cons 0 1) (cons 0 3) "XY")))))"#,
     );
     type_cmd(&mut ed, ":go");
     assert_eq!(ed.doc().text().to_string(), "aXYdef\n");
@@ -83,8 +83,8 @@ fn apply_text_edits_multiple_edits_same_line_apply_descending() {
              ; corrupt each other's offsets (the classic ascending-with-
              ; fixups bug).
              (apply-text-edits! (current-buffer)
-               (list (list (list 0 0) (list 0 1) "Z")
-                     (list (list 0 4) (list 0 5) "W")))))"#,
+               (list (list (cons 0 0) (cons 0 1) "Z")
+                     (list (cons 0 4) (cons 0 5) "W")))))"#,
     );
     type_cmd(&mut ed, ":go");
     assert_eq!(ed.doc().text().to_string(), "ZbcdWf\n");
@@ -105,8 +105,8 @@ fn apply_text_edits_same_position_inserts_apply_in_array_order() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (apply-text-edits! (current-buffer)
-               (list (list (list 0 0) (list 0 0) "1")
-                     (list (list 0 0) (list 0 0) "2")))))"#,
+               (list (list (cons 0 0) (cons 0 0) "1")
+                     (list (cons 0 0) (cons 0 0) "2")))))"#,
     );
     type_cmd(&mut ed, ":go");
     assert_eq!(
@@ -126,8 +126,8 @@ fn apply_text_edits_adjacent_not_overlapping_accepted() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (apply-text-edits! (current-buffer)
-               (list (list (list 0 0) (list 0 2) "AA")
-                     (list (list 0 2) (list 0 4) "BB")))))"#,
+               (list (list (cons 0 0) (cons 0 2) "AA")
+                     (list (cons 0 2) (cons 0 4) "BB")))))"#,
     );
     type_cmd(&mut ed, ":go");
     assert_eq!(ed.doc().text().to_string(), "AABBef\n");
@@ -143,8 +143,8 @@ fn apply_text_edits_overlapping_rejected() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (apply-text-edits! (current-buffer)
-               (list (list (list 0 0) (list 0 3) "A")
-                     (list (list 0 2) (list 0 5) "B")))))"#,
+               (list (list (cons 0 0) (cons 0 3) "A")
+                     (list (cons 0 2) (cons 0 5) "B")))))"#,
     );
     type_cmd(&mut ed, ":go");
     assert_eq!(
@@ -164,7 +164,7 @@ fn apply_text_edits_reversed_range_rejected() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (apply-text-edits! (current-buffer)
-               (list (list (list 0 3) (list 0 0) "X")))))"#,
+               (list (list (cons 0 3) (cons 0 0) "X")))))"#,
     );
     type_cmd(&mut ed, ":go");
     assert_eq!(
@@ -184,8 +184,8 @@ fn apply_text_edits_is_one_undo_step() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (apply-text-edits! (current-buffer)
-               (list (list (list 0 0) (list 0 1) "Z")
-                     (list (list 0 5) (list 0 6) "W")))))"#,
+               (list (list (cons 0 0) (cons 0 1) "Z")
+                     (list (cons 0 5) (cons 0 6) "W")))))"#,
     );
     type_cmd(&mut ed, ":go");
     assert_eq!(ed.doc().text().to_string(), "Zbcdew\n".replace('w', "W"));
@@ -216,7 +216,7 @@ fn apply_text_edits_version_mismatch_rejected() {
         &format!(
             r#"(define-command! "go" "" (lambda ()
                  (apply-text-edits! (current-buffer)
-                   (list (list (list 0 0) (list 0 1) "Z"))
+                   (list (list (cons 0 0) (cons 0 1) "Z"))
                    #:expect-generation {stale_gen})))"#
         ),
     );

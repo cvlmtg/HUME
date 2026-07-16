@@ -408,7 +408,7 @@ fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
            (define-command! "floored" "" (lambda ()
              (log! 'info (to-string (length (diagnostics-for-buffer (current-buffer) #:severity 'warning))))))
            (define-command! "ranged" "" (lambda ()
-             (log! 'info (to-string (length (diagnostics-for-buffer (current-buffer) #:range (list 5 10)))))))"#,
+             (log! 'info (to-string (length (diagnostics-for-buffer (current-buffer) #:range (cons 5 10)))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

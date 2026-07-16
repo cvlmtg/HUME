@@ -340,7 +340,7 @@ fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     let mut host = ScriptingHost::new();
-    // Captures the hook's own `(first last)` payload so the assertion
+    // Captures the hook's own `(first . last)` payload so the assertion
     // compares two independently-reached values, not the builtin against
     // itself — both paths share `introspect::pane_visible_range`, so this
     // pins that they stay in sync, not just that the builtin returns
@@ -350,7 +350,7 @@ fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
         &mut host,
         r#"(define *captured* #f)
            (register-hook! 'on-viewport-change
-             (lambda (bid first last) (set! *captured* (list first last))))"#,
+             (lambda (bid first last) (set! *captured* (cons first last))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
