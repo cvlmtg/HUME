@@ -478,8 +478,11 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
 /// in the VM's symbol table but are unreachable through HUME's dispatch.
 /// `ctx.pop_effect_marks(success)` does the same for every queued side effect
 /// (`register-lsp-server!`, `define-language!`, LSP requests, grammar
-/// sweeps) queued via `mark_effects`, so none survive to be applied by a
-/// later, unrelated drain.
+/// sweeps) queued via `mark_effects` — with one exception: an effect already
+/// committed by an activation nested *inside* this body (i.e. this body
+/// itself called into another plugin's inline activation, which finished
+/// successfully) survives this failure too, because that nested plugin's
+/// `Loaded` state is never rolled back either. See `pop_effect_marks`.
 ///
 /// NOT rolled back: `register-hook!` (no owner, no unregister path) and
 /// `bind-key!`/`bind-key-extend!` (apply inline, no undo) — a `Failed`

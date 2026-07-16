@@ -291,7 +291,8 @@ impl Editor {
         let (wait_char_cmd, effects) = match result {
             Ok(r) => (r.wait_char_request, r.effects),
             Err(e) => {
-                self.report(Severity::Error, e);
+                self.apply_script_effects(e.effects);
+                self.report(Severity::Error, e.message);
                 return false;
             }
         };

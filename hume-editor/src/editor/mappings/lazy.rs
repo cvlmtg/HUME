@@ -24,7 +24,10 @@ impl Editor {
         };
         match result {
             Ok(effects) => self.apply_script_effects(effects),
-            Err(e) => self.report(Severity::Error, e),
+            Err(e) => {
+                self.apply_script_effects(e.effects);
+                self.report(Severity::Error, e.message);
+            }
         }
     }
 

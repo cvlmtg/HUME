@@ -170,3 +170,38 @@ pub enum Effect {
     LspRequest(PendingLspRequest),
     LspNotify(PendingLspNotify),
 }
+
+/// One entry in the shared effect log (`ScriptingHost::effects`).
+#[derive(Debug)]
+pub(crate) struct QueuedEffect {
+    pub(crate) effect: Effect,
+    /// Set by `SteelCtx::pop_effect_marks(true)` when the plugin activation
+    /// that queued this effect finishes successfully. Committed effects
+    /// survive an enclosing eval's failure — see `ScriptingHost::take_eval_effects`.
+    pub(crate) committed: bool,
+}
+
+/// A failed eval, carrying effects committed by nested successful plugin
+/// activations (see `QueuedEffect`). Callers MUST apply `effects` (in order)
+/// before reporting `message` — a committed activation's effects are
+/// delivered regardless of the enclosing eval's fate.
+#[derive(Debug)]
+pub struct EvalError {
+    pub message: String,
+    pub effects: Vec<Effect>,
+}
+
+impl From<String> for EvalError {
+    fn from(message: String) -> Self {
+        Self {
+            message,
+            effects: Vec::new(),
+        }
+    }
+}
+
+impl std::fmt::Display for EvalError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}

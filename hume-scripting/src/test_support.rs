@@ -12,7 +12,7 @@ use crate::builtins::dirs::ScriptDirs;
 use crate::context::SteelCtx;
 use crate::log::LogLevel;
 use crate::null_host::NullHost;
-use crate::types::Effect;
+use crate::types::QueuedEffect;
 use crate::{HostBundle, ScriptingRegistries};
 
 /// Backing storage for [`SteelCtx`] in scripting-crate unit tests.
@@ -25,7 +25,7 @@ pub(crate) struct SteelCtxTestHarness {
     pub(crate) plugin_stack: PluginStack,
     pub(crate) registries: ScriptingRegistries,
     pub(crate) pending_messages: Vec<(LogLevel, String)>,
-    pub(crate) effects: Vec<Effect>,
+    pub(crate) effects: Vec<QueuedEffect>,
     pub(crate) dirs: ScriptDirs,
     pub(crate) interrupt_flag: Arc<AtomicBool>,
 }

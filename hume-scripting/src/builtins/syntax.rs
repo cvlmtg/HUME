@@ -30,13 +30,12 @@ pub(crate) fn define_language(
     let extensions = list_to_strings(exts_val, "%define-language! extensions")?;
     let globs = list_to_strings(globs_val, "%define-language! globs")?;
     let shebangs = list_to_strings(shebangs_val, "%define-language! shebangs")?;
-    ctx.effects
-        .push(Effect::LanguageReg(PendingLanguageReg::Identity {
-            name,
-            extensions,
-            globs,
-            shebangs,
-        }));
+    ctx.push_effect(Effect::LanguageReg(PendingLanguageReg::Identity {
+        name,
+        extensions,
+        globs,
+        shebangs,
+    }));
     Ok(SteelVal::Void)
 }
 
@@ -63,14 +62,13 @@ pub(crate) fn register_grammar(
     let injections_path = optional_path_arg(injections_path, "register-grammar! injections-path")?;
 
     if ctx.session == crate::context::EvalSession::Init {
-        ctx.effects
-            .push(Effect::LanguageReg(PendingLanguageReg::Grammar {
-                name,
-                grammar_path,
-                symbol,
-                highlights_path,
-                injections_path,
-            }));
+        ctx.push_effect(Effect::LanguageReg(PendingLanguageReg::Grammar {
+            name,
+            grammar_path,
+            symbol,
+            highlights_path,
+            injections_path,
+        }));
         return Ok(SteelVal::Void);
     }
 
@@ -87,7 +85,7 @@ pub(crate) fn register_grammar(
             injections_path.as_deref(),
         )
         .map_err(generic_err)?;
-    ctx.effects.push(Effect::GrammarSweep(name));
+    ctx.push_effect(Effect::GrammarSweep(name));
     Ok(SteelVal::Void)
 }
 
@@ -115,7 +113,7 @@ mod tests {
     fn lang_regs(h: &SteelCtxTestHarness) -> Vec<&PendingLanguageReg> {
         h.effects
             .iter()
-            .filter_map(|e| match e {
+            .filter_map(|e| match &e.effect {
                 Effect::LanguageReg(reg) => Some(reg),
                 _ => None,
             })

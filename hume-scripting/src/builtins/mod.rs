@@ -521,6 +521,6 @@ mod tests {
                 &mut null_host,
             )
             .expect_err("set-option! must be rejected from a command body");
-        assert!(err.contains("command body"), "got: {err}");
+        assert!(err.message.contains("command body"), "got: {err:?}");
     }
 }

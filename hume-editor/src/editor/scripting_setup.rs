@@ -236,7 +236,10 @@ impl Editor {
                 self.flush_script_messages();
                 match result {
                     Ok(effects) => self.apply_script_effects(effects),
-                    Err(e) => self.report(Severity::Error, format!("hook error: {e}")),
+                    Err(e) => {
+                        self.apply_script_effects(e.effects);
+                        self.report(Severity::Error, format!("hook error: {}", e.message));
+                    }
                 }
             }
         }
@@ -287,7 +290,10 @@ impl Editor {
         self.flush_script_messages();
         match result {
             Ok(effects) => self.apply_script_effects(effects),
-            Err(e) => self.report(Severity::Error, format!("steel call error: {e}")),
+            Err(e) => {
+                self.apply_script_effects(e.effects);
+                self.report(Severity::Error, format!("steel call error: {}", e.message));
+            }
         }
         // A call just run above (an LSP-request callback, a timer thunk) can
         // itself dispatch a command that exits Insert, setting the flag the
@@ -368,10 +374,13 @@ impl Editor {
             };
             match result {
                 Ok(effects) => self.apply_script_effects(effects),
-                Err(msg) => self.report(
-                    Severity::Error,
-                    format!("runtime/scheme/prelude.scm: {msg}"),
-                ),
+                Err(e) => {
+                    self.apply_script_effects(e.effects);
+                    self.report(
+                        Severity::Error,
+                        format!("runtime/scheme/prelude.scm: {}", e.message),
+                    );
+                }
             }
         }
         // Load languages.scm between prelude and init.scm so (define-language! …)
@@ -385,10 +394,13 @@ impl Editor {
             };
             match result {
                 Ok(effects) => self.apply_script_effects(effects),
-                Err(msg) => self.report(
-                    Severity::Error,
-                    format!("runtime/scheme/languages.scm: {msg}"),
-                ),
+                Err(e) => {
+                    self.apply_script_effects(e.effects);
+                    self.report(
+                        Severity::Error,
+                        format!("runtime/scheme/languages.scm: {}", e.message),
+                    );
+                }
             }
         }
         {
@@ -399,7 +411,10 @@ impl Editor {
             };
             match result {
                 Ok(effects) => self.apply_script_effects(effects),
-                Err(msg) => self.report(Severity::Error, format!("init.scm: {msg}")),
+                Err(e) => {
+                    self.apply_script_effects(e.effects);
+                    self.report(Severity::Error, format!("init.scm: {}", e.message));
+                }
             }
         }
         // Snapshot language activation entries for the post-init lint below —

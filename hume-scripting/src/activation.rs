@@ -31,7 +31,7 @@ use crate::ScriptingHost;
 use crate::attribution;
 use crate::context::SteelCtx;
 use crate::host::EditorHost;
-use crate::types::Effect;
+use crate::types::{Effect, EvalError};
 use crate::watchdog::EvalWatchdog;
 
 // ── run_steel ──────────────────────────────────��──────────────────────────────
@@ -117,7 +117,8 @@ impl ScriptingHost {
     /// `&mut Engine` borrow).  `(define-command! …)` calls register commands
     /// directly into the editor's `CommandRegistry` via `host.register_command`.
     ///
-    /// Returns the effects this eval queued (atomically — see
+    /// Returns the effects this eval queued (atomically on success; on error,
+    /// only effects committed by a nested successful plugin activation — see
     /// `ScriptingHost::take_eval_effects`).
     pub(crate) fn eval_source_raw(
         &mut self,
@@ -125,7 +126,7 @@ impl ScriptingHost {
         builtin_names: HashSet<String>,
         budget_ms: u64,
         host: &mut dyn EditorHost,
-    ) -> Result<Vec<Effect>, String> {
+    ) -> Result<Vec<Effect>, EvalError> {
         let effects_start = self.effects.len();
         let result = {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
@@ -151,16 +152,16 @@ impl ScriptingHost {
     /// A failed activation's own effects are already rolled back by the
     /// BOOTSTRAP `%activate-plugin-inline` wrapper's `%begin-lazy-activation`/
     /// `%finish-lazy-activation` mark/pop (`ctx.pop_effect_marks`) before the
-    /// error reaches here; the outer `take_eval_effects` truncate is a no-op
-    /// in that case, but keeps this entry point's atomicity contract uniform
-    /// with every other one.
+    /// error reaches here — except any effects committed by a nested
+    /// successful plugin activation, which `pop_effect_marks` keeps and which
+    /// `take_eval_effects` salvages onto the returned `EvalError`.
     pub fn activate_plugin_inline(
         &mut self,
         id: &attribution::PluginId,
         budget_ms: u64,
         host: &mut dyn EditorHost,
         builtin_names: &HashSet<String>,
-    ) -> Result<Vec<Effect>, String> {
+    ) -> Result<Vec<Effect>, EvalError> {
         let args = vec![SteelVal::StringV(id.to_string().into())];
         let effects_start = self.effects.len();
         let result = {
@@ -585,6 +586,185 @@ mod tests {
         assert!(
             host.effects_for_test().is_empty(),
             "failed activation must not leave a queued LSP server op or language registration behind"
+        );
+    }
+
+    // ── Committed-effects salvage across enclosing eval failure ──────────────
+
+    /// A command dispatched via `call_steel_cmd` `call!`s a lazy command owned
+    /// by plugin B; B activates inline mid-body and finishes successfully
+    /// (queuing `register-lsp-server!` and committing `Loaded`), then the
+    /// outer command errors afterward. B's committed effect must survive —
+    /// discarding it while B stays permanently `Loaded` would mean its LSP
+    /// server never registers (activation is one-shot). Effects the outer
+    /// command itself queued, before and after the nested activation, must
+    /// NOT survive.
+    ///
+    /// Fail oracle: revert `take_eval_effects`'s `Err` arm to a flat
+    /// `self.effects.truncate(effects_start)` → `e.effects` comes back empty
+    /// even though B is `Loaded`.
+    #[test]
+    fn committed_activation_effects_survive_failed_outer_command() {
+        use crate::host::EditorHost;
+        use crate::null_host::LazyStubHost;
+        use crate::types::{Effect, PendingLspServerOp};
+
+        let dir = TempDir::new().unwrap();
+        let path = write_plugin(
+            &dir,
+            "b.scm",
+            r#"(register-lsp-server! "b-lang" #:command "b-lsp")
+               (define-command! "b-cmd" "doc" (lambda () 0))"#,
+        );
+        let id_b = plugin_id("core:b");
+        let mut host = ScriptingHost::new();
+        host.registries
+            .lazy_registry
+            .plugins
+            .insert(id_b.clone(), PluginState::Declared { path });
+
+        let mut editor_host = LazyStubHost::default();
+        editor_host
+            .commands()
+            .register_lazy_command("b-cmd", &id_b)
+            .expect("stub claim must succeed on a fresh host");
+
+        host.eval_source(
+            r#"(define-command! "outer-a" "doc"
+                 (lambda ()
+                   (register-lsp-server! "before" #:command "x")
+                   (call! "b-cmd")
+                   (register-lsp-server! "after" #:command "y")
+                   (error "intentional outer failure")))"#,
+            &mut editor_host,
+        )
+        .expect("defining outer-a must not error");
+
+        let result = host.call_steel_cmd(
+            "outer-a",
+            None,
+            vec![],
+            hume_engine::pipeline::PaneId::default(),
+            hume_engine::pipeline::BufferId::default(),
+            &mut editor_host,
+        );
+
+        let err = result.expect_err("outer-a's intentional error must propagate");
+        assert!(
+            err.message.contains("intentional outer failure"),
+            "got: {}",
+            err.message
+        );
+        assert_eq!(
+            err.effects.len(),
+            1,
+            "only B's committed register-lsp-server! must survive; got: {:?}",
+            err.effects
+        );
+        assert!(
+            matches!(
+                &err.effects[0],
+                Effect::LspServerOp(PendingLspServerOp::Register(reg)) if reg.language == "b-lang"
+            ),
+            "surviving effect must be B's 'b-lang' registration, not 'before'/'after'; got: {:?}",
+            err.effects[0]
+        );
+        assert!(
+            matches!(
+                host.registries.lazy_registry.plugins.get(&id_b),
+                Some(PluginState::Loaded)
+            ),
+            "B must be Loaded — its activation succeeded before A's own failure"
+        );
+        assert!(
+            host.effects_for_test().is_empty(),
+            "the effect log must be fully drained after take_eval_effects"
+        );
+    }
+
+    /// One level deeper: plugin C activates successfully inside plugin B's
+    /// body (via `call!` to a command C owns), and B then fails. C's
+    /// committed `register-lsp-server!` must survive B's own rollback — C is
+    /// `Loaded` and its effect is irreversible-by-omission, same reasoning as
+    /// the outer-command case above, but exercised through nested
+    /// `pop_effect_marks` calls instead of `take_eval_effects` alone.
+    #[test]
+    fn nested_activation_commit_survives_enclosing_plugin_failure() {
+        use crate::host::EditorHost;
+        use crate::null_host::LazyStubHost;
+        use crate::types::{Effect, PendingLspServerOp};
+
+        let dir = TempDir::new().unwrap();
+        let path_c = write_plugin(
+            &dir,
+            "c.scm",
+            r#"(register-lsp-server! "c-lang" #:command "c-lsp")
+               (define-command! "c-cmd" "doc" (lambda () 0))"#,
+        );
+        let path_b = write_plugin(
+            &dir,
+            "b.scm",
+            r#"(register-lsp-server! "b-lang" #:command "b-lsp")
+               (call! "c-cmd")
+               (error "b fails")"#,
+        );
+        let id_b = plugin_id("core:b");
+        let id_c = plugin_id("core:c");
+        let mut host = ScriptingHost::new();
+        host.registries
+            .lazy_registry
+            .plugins
+            .insert(id_b.clone(), PluginState::Declared { path: path_b });
+        host.registries
+            .lazy_registry
+            .plugins
+            .insert(id_c.clone(), PluginState::Declared { path: path_c });
+
+        let mut editor_host = LazyStubHost::default();
+        editor_host
+            .commands()
+            .register_lazy_command("c-cmd", &id_c)
+            .expect("stub claim must succeed on a fresh host");
+
+        let result = host.activate_plugin_inline(&id_b, 10_000, &mut editor_host, &no_builtins());
+
+        let err = result.expect_err("B's intentional error must propagate");
+        assert!(err.message.contains("b fails"), "got: {}", err.message);
+        assert_eq!(
+            err.effects.len(),
+            1,
+            "only C's committed register-lsp-server! must survive; got: {:?}",
+            err.effects
+        );
+        assert!(
+            matches!(
+                &err.effects[0],
+                Effect::LspServerOp(PendingLspServerOp::Register(reg)) if reg.language == "c-lang"
+            ),
+            "surviving effect must be C's 'c-lang' registration, not B's 'b-lang'; got: {:?}",
+            err.effects[0]
+        );
+        assert!(
+            matches!(
+                host.registries.lazy_registry.plugins.get(&id_b),
+                Some(PluginState::Failed)
+            ),
+            "B must be Failed"
+        );
+        assert!(
+            matches!(
+                host.registries.lazy_registry.plugins.get(&id_c),
+                Some(PluginState::Loaded)
+            ),
+            "C must be Loaded — its activation succeeded before B's own failure"
+        );
+        assert!(
+            host.registries.command_table.contains_key("c-cmd"),
+            "C's command must remain registered — C is Loaded, not rolled back"
+        );
+        assert!(
+            host.effects_for_test().is_empty(),
+            "the effect log must be fully drained after take_eval_effects"
         );
     }
 

@@ -69,8 +69,8 @@ pub use host::{
 pub use keys::parse_key_stream;
 pub use log::LogLevel;
 pub use types::{
-    Effect, LspServerStatusEntry, PendingLanguageReg, PendingLspNotify, PendingLspRequest,
-    PendingLspServerOp, PendingLspServerReg, SteelCmdDef, SteelCmdResult,
+    Effect, EvalError, LspServerStatusEntry, PendingLanguageReg, PendingLspNotify,
+    PendingLspRequest, PendingLspServerOp, PendingLspServerReg, SteelCmdDef, SteelCmdResult,
 };
 pub use watchdog::EvalWatchdog;
 
@@ -140,7 +140,7 @@ pub(crate) struct HostBundle<'a> {
     pub(crate) registries: &'a mut ScriptingRegistries,
     plugin_stack: &'a mut PluginStack,
     pending_messages: &'a mut Vec<(LogLevel, String)>,
-    effects: &'a mut Vec<Effect>,
+    effects: &'a mut Vec<types::QueuedEffect>,
     dirs: &'a builtins::dirs::ScriptDirs,
     /// Owned `Arc` clone: `new_init`/`new_command` consume it via move into
     /// `SteelCtx::interrupt_flag`, avoiding a second clone at eval time.
@@ -173,9 +173,10 @@ pub struct ScriptingHost {
     /// Side effects queued by Steel builtins, in push order. Each eval entry
     /// point (`call_steel_cmd`, `fire_hook`, `run_steel_calls`, `eval_init`,
     /// `activate_plugin_inline`) drains exactly what it pushed back out on
-    /// success (`Vec<Effect>`) and truncates back to its start length on
-    /// error — see `types::Effect`.
-    effects: Vec<Effect>,
+    /// success (`Vec<Effect>`). On error it drains only the entries committed
+    /// by a nested successful plugin activation (`QueuedEffect::committed`) —
+    /// see `take_eval_effects` and `types::EvalError`.
+    effects: Vec<types::QueuedEffect>,
     /// Data/runtime directories (raw + display form) and the install-lock
     /// root, computed once at construction.
     dirs: builtins::dirs::ScriptDirs,
@@ -419,8 +420,8 @@ impl ScriptingHost {
     /// production code always goes through an eval entry point's own
     /// atomic drain (`take_eval_effects`).
     #[cfg(any(test, feature = "test-util"))]
-    pub fn effects_for_test(&self) -> &[Effect] {
-        &self.effects
+    pub fn effects_for_test(&self) -> Vec<&Effect> {
+        self.effects.iter().map(|e| &e.effect).collect()
     }
 
     /// Override the data directory.  Used only in tests that need a predictable
@@ -477,6 +478,7 @@ impl ScriptingHost {
     ) -> Result<(), String> {
         self.eval_source_raw(source, builtin_names, 10_000, host)
             .map(|_| ())
+            .map_err(|e| e.message)
     }
 
     // ── Eval machinery ────────────────────────────────────────────────────────
@@ -489,41 +491,51 @@ impl ScriptingHost {
     ///   this file's eval queued, in emission order.  Commands defined during
     ///   eval are registered into the `CommandRegistry` inline via
     ///   `host.register_command`.
-    /// - Returns `Err(message)` if the file exists but fails to parse or
-    ///   evaluate; whatever this eval queued before the error is discarded
-    ///   (atomic — see `take_eval_effects`).  The caller is responsible for
-    ///   surfacing the error.
+    /// - Returns `Err(EvalError)` if the file exists but fails to parse or
+    ///   evaluate; the failed eval's own queued effects are discarded, except
+    ///   any committed by a nested successful plugin activation, which are
+    ///   salvaged onto the error (see `take_eval_effects`).  The caller is
+    ///   responsible for applying `EvalError::effects` and surfacing the error.
     pub fn eval_init(
         &mut self,
         path: &Path,
         budget_ms: u64,
         host: &mut dyn EditorHost,
         builtin_names: std::collections::HashSet<String>,
-    ) -> Result<Vec<Effect>, String> {
+    ) -> Result<Vec<Effect>, EvalError> {
         let source = match hume_platform::fs::read_to_string(path) {
             Ok(s) => s,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => return Err(format!("reading {}: {e}", path.display())),
+            Err(e) => return Err(format!("reading {}: {e}", path.display()).into()),
         };
         self.eval_source_raw(source, builtin_names, budget_ms, host)
     }
 
     /// Shared tail for every eval entry point's atomicity contract: on
     /// success, drain exactly the effects this eval pushed (`effects_start`
-    /// onward) and return them; on error, truncate the log back to
-    /// `effects_start` — discarding whatever the failed eval queued — and
-    /// propagate the error. An eval's effects land atomically or not at all.
+    /// onward) and return them. On error, drain the same range but keep only
+    /// the entries committed by a nested successful plugin activation
+    /// (`QueuedEffect::committed`, set by `SteelCtx::pop_effect_marks`) —
+    /// those effects are salvaged into the returned `EvalError` so the caller
+    /// can still apply them, since the activation that queued them already
+    /// committed irreversible state (`PluginState::Loaded`). Everything else
+    /// the failed eval queued is discarded.
     fn take_eval_effects(
         &mut self,
         effects_start: usize,
         result: Result<(), String>,
-    ) -> Result<Vec<Effect>, String> {
+    ) -> Result<Vec<Effect>, EvalError> {
+        let tail = self.effects.split_off(effects_start);
         match result {
-            Ok(()) => Ok(self.effects.split_off(effects_start)),
-            Err(e) => {
-                self.effects.truncate(effects_start);
-                Err(e)
-            }
+            Ok(()) => Ok(tail.into_iter().map(|e| e.effect).collect()),
+            Err(message) => Err(EvalError {
+                message,
+                effects: tail
+                    .into_iter()
+                    .filter(|e| e.committed)
+                    .map(|e| e.effect)
+                    .collect(),
+            }),
         }
     }
 
@@ -554,7 +566,7 @@ impl ScriptingHost {
         focused_pane_id: hume_engine::pipeline::PaneId,
         focused_buffer_id: hume_engine::pipeline::BufferId,
         host: &'a mut dyn EditorHost,
-    ) -> Result<SteelCmdResult, String> {
+    ) -> Result<SteelCmdResult, EvalError> {
         let budget_ms = host.settings().steel_command_budget_ms();
 
         // The editor already resolved any Lazy stub and activated its owning
@@ -616,7 +628,7 @@ impl ScriptingHost {
         focused_pane_id: hume_engine::pipeline::PaneId,
         focused_buffer_id: hume_engine::pipeline::BufferId,
         host: &'a mut dyn EditorHost,
-    ) -> Result<Vec<Effect>, String> {
+    ) -> Result<Vec<Effect>, EvalError> {
         // Collect handler procs before borrowing self mutably for the SteelCtx.
         let handler_procs: Vec<SteelVal> = self.registries.hooks.handlers_for(hook_id).to_vec();
         if handler_procs.is_empty() {
@@ -663,7 +675,7 @@ impl ScriptingHost {
         focused_pane_id: hume_engine::pipeline::PaneId,
         focused_buffer_id: hume_engine::pipeline::BufferId,
         host: &'a mut dyn EditorHost,
-    ) -> Result<Vec<Effect>, String> {
+    ) -> Result<Vec<Effect>, EvalError> {
         if calls.is_empty() {
             return Ok(Vec::new());
         }
@@ -700,6 +712,7 @@ impl ScriptingHost {
     pub fn eval_source(&mut self, source: &str, host: &mut dyn EditorHost) -> Result<(), String> {
         self.eval_source_raw(source.to_owned(), Default::default(), 10_000, host)
             .map(|_| ())
+            .map_err(|e| e.message)
     }
 
     /// Like [`eval_source`] but arms a real [`EvalWatchdog`] with the
@@ -718,6 +731,7 @@ impl ScriptingHost {
             host,
         )
         .map(|_| ())
+        .map_err(|e| e.message)
     }
 }
 

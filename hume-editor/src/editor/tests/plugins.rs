@@ -428,8 +428,8 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     let err =
         init_err.expect_err("eval_init must fail: declare-plugin rejects 'foo' at declare time");
     assert!(
-        err.contains("no activation entries") || err.contains("conflicted"),
-        "error must explain the cause; got: {err}"
+        err.message.contains("no activation entries") || err.message.contains("conflicted"),
+        "error must explain the cause; got: {err:?}"
     );
 
     ed.scripting = Some(host);

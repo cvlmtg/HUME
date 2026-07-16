@@ -4,23 +4,20 @@
 use super::*;
 use crate::editor::scripting_setup::make_init_host;
 use hume_scripting::attribution::PluginId;
-use hume_scripting::{Effect, PendingLanguageReg, PendingLspServerOp, ScriptingHost};
+use hume_scripting::{Effect, PendingLanguageReg, PendingLspServerOp, PluginStatus, ScriptingHost};
 
 /// Writes a lazy `user/efx` plugin at `<dir>/plugins/user/efx/plugin.scm`
-/// with `body` as its content, and a matching `init.scm` that declares it
-/// with a single `#:commands` trigger (declaring is required to reach
-/// `Declared` state; the trigger itself is never dispatched by these tests —
-/// activation is driven directly via `ScriptingHost::activate_plugin_inline`).
-fn write_efx_plugin(dir: &std::path::Path, body: &str) -> std::path::PathBuf {
+/// with `plugin_body` as its content, and `init_src` as `init.scm`'s content.
+fn write_efx_plugin(
+    dir: &std::path::Path,
+    plugin_body: &str,
+    init_src: &str,
+) -> std::path::PathBuf {
     let plugin_dir = dir.join("plugins").join("user").join("efx");
     std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(plugin_dir.join("plugin.scm"), body).unwrap();
+    std::fs::write(plugin_dir.join("plugin.scm"), plugin_body).unwrap();
     let init_path = dir.join("init.scm");
-    std::fs::write(
-        &init_path,
-        r#"(declare-plugin "user/efx" #:commands '("efx-noop"))"#,
-    )
-    .unwrap();
+    std::fs::write(&init_path, init_src).unwrap();
     init_path
 }
 
@@ -54,6 +51,7 @@ fn effect_log_preserves_emission_order_across_kinds() {
            (set-buffer-language! (car (buffers)) "widget")
            (%define-language! "widget" '("widget") '() '())
            (define-command! "efx-noop" "" (lambda () 0))"#,
+        r#"(declare-plugin "user/efx" #:commands '("efx-noop"))"#,
     );
 
     let mut ed = editor_from("-[a]>bcdef\n");
@@ -130,11 +128,12 @@ fn effect_log_preserves_emission_order_across_kinds() {
 /// its own independent rollback via `pop_effect_marks`, already covered by
 /// `hume-scripting`'s `queued_effects_before_failure_are_rolled_back`). A
 /// command body that queues a `register-lsp-server!` effect and then errors
-/// must leave nothing behind in the log — `ScriptingHost::take_eval_effects`
-/// truncates back to the eval's start on `Err`, not just on success.
+/// must leave nothing behind in the log — with no nested activation to
+/// commit anything, `ScriptingHost::take_eval_effects` has nothing to
+/// salvage on `Err`, so the whole eval's own uncommitted entries are dropped.
 ///
-/// Flip: in `take_eval_effects`, drop the `self.effects.truncate(effects_start)`
-/// call from the `Err` arm — this test starts failing because
+/// Flip: in `take_eval_effects`, salvage every entry regardless of
+/// `committed` on the `Err` arm — this test starts failing because
 /// `host.effects_for_test()` comes back non-empty (the queued
 /// `register-lsp-server!` survives the error).
 #[test]
@@ -167,5 +166,137 @@ fn failed_command_eval_effects_do_not_leak() {
         host.effects_for_test().is_empty(),
         "the failed command's queued register-lsp-server! effect must not survive; got: {:?}",
         host.effects_for_test()
+    );
+}
+
+/// Full dispatch pipeline (`Editor::run_steel_command`'s `Err` arm), not just
+/// `ScriptingHost` directly: `:outer-fail` `call!`s a lazy command owned by
+/// plugin `user/efx`. The plugin activates inline mid-body, committing
+/// `Loaded` and queuing `register-lsp-server!` for "widget", then the outer
+/// command errors. The editor must still apply the plugin's committed effect
+/// — otherwise `user/efx` is permanently `Loaded` with its LSP server never
+/// registered, since activation is one-shot. The outer command's own effects
+/// (queued before and after the nested activation) must not apply.
+///
+/// Fail oracle: drop the `self.apply_script_effects(e.effects)` call from
+/// `run_steel_command`'s `Err` arm — `config_command_for_test("widget")`
+/// comes back `None` even though the plugin is `Loaded`.
+#[test]
+#[cfg(not(windows))]
+fn failed_command_delivers_committed_activation_effects() {
+    let dir = safe_tempdir();
+    let init_path = write_efx_plugin(
+        dir.path(),
+        r#"(register-lsp-server! "widget" #:command "widget-lsp")
+           (define-command! "b-cmd" "" (lambda () 0))"#,
+        r#"(declare-plugin "user/efx" #:commands '("b-cmd"))
+           (define-command! "outer-fail" ""
+             (lambda ()
+               (register-lsp-server! "before" #:command "x")
+               (call! "b-cmd")
+               (register-lsp-server! "after" #:command "y")
+               (error "intentional outer failure")))"#,
+    );
+
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+    {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init must succeed");
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":outer-fail");
+
+    assert_eq!(
+        ed.lsp.config_command_for_test("widget"),
+        Some("widget-lsp".to_string()),
+        "the activated plugin's committed effect must apply despite the outer command's failure"
+    );
+    assert_eq!(
+        ed.lsp.config_command_for_test("before"),
+        None,
+        "the outer command's own pre-activation effect must not apply"
+    );
+    assert_eq!(
+        ed.lsp.config_command_for_test("after"),
+        None,
+        "the outer command's own post-activation effect must not apply"
+    );
+
+    let plugin_id = PluginId::User {
+        user: "user".to_string(),
+        repo: "efx".to_string(),
+    };
+    assert_eq!(
+        ed.scripting.as_ref().unwrap().plugin_status(&plugin_id),
+        Some(PluginStatus::Loaded),
+        "user/efx must be Loaded — its activation succeeded before outer-fail's own failure"
+    );
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("intentional outer failure"),
+        "the outer command's error must still be reported: {log:?}"
+    );
+}
+
+/// Pins the salvage contract at the exact boundary `init_scripting` uses:
+/// `eval_init` returning `Err(EvalError)` when `load-plugin` (eager
+/// activation) already committed effects before a later top-level error.
+/// The caller (mirroring `init_scripting`'s error arm) must apply
+/// `EvalError::effects` before reporting.
+#[test]
+#[cfg(not(windows))]
+fn failed_init_eval_salvages_eager_plugin_effects() {
+    let dir = safe_tempdir();
+    let init_path = write_efx_plugin(
+        dir.path(),
+        r#"(register-lsp-server! "widget" #:command "widget-lsp")"#,
+        r#"(load-plugin "user/efx")
+           (error "init fails")"#,
+    );
+
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+    let err = {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect_err("eval_init must fail on the top-level error");
+
+    assert_eq!(
+        err.effects.len(),
+        1,
+        "load-plugin's committed register-lsp-server! must be salvaged; got: {:?}",
+        err.effects
+    );
+    assert!(
+        matches!(
+            &err.effects[0],
+            Effect::LspServerOp(PendingLspServerOp::Register(reg)) if reg.language == "widget"
+        ),
+        "salvaged effect must be the widget registration; got: {:?}",
+        err.effects[0]
+    );
+
+    ed.apply_script_effects(err.effects);
+    assert_eq!(
+        ed.lsp.config_command_for_test("widget"),
+        Some("widget-lsp".to_string()),
+        "applying the salvaged effect must register the LSP server"
+    );
+
+    let plugin_id = PluginId::User {
+        user: "user".to_string(),
+        repo: "efx".to_string(),
+    };
+    assert_eq!(
+        host.plugin_status(&plugin_id),
+        Some(PluginStatus::Loaded),
+        "user/efx must be Loaded — load-plugin's activation succeeded before the top-level error"
     );
 }

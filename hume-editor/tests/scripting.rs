@@ -167,7 +167,7 @@ fn get_option_unknown_key_errors() {
             &mut mock,
         )
         .unwrap_err();
-    assert!(err.contains("unknown setting"), "got: {err}");
+    assert!(err.message.contains("unknown setting"), "got: {err:?}");
 }
 
 // ── bind-key! ─────────────────────────────────────────────────────────────
@@ -726,7 +726,7 @@ fn call_steel_cmd_watchdog_aborts_runaway() {
         .unwrap_err();
 
     assert!(
-        err.contains("interrupted"),
+        err.message.contains("interrupted"),
         "expected 'interrupted', got: {err}"
     );
     assert!(
@@ -771,7 +771,7 @@ fn call_steel_cmd_interrupt_leaves_settings_unchanged() {
         .unwrap_err();
 
     assert!(
-        err.contains("interrupted"),
+        err.message.contains("interrupted"),
         "expected 'interrupted', got: {err}"
     );
     assert_eq!(
@@ -806,7 +806,7 @@ fn call_steel_cmd_set_option_from_body_returns_steel_error() {
         .unwrap_err();
 
     assert!(
-        err.contains("set-option!"),
+        err.message.contains("set-option!"),
         "error must name the failing builtin; got: {err}"
     );
     // Mutation never happened, so the setting is unchanged.
@@ -924,7 +924,7 @@ fn call_bang_arity_mismatch_surfaces_steel_error() {
         .unwrap_err();
 
     assert!(
-        !err.is_empty(),
+        !err.message.is_empty(),
         "expected a Steel arity error, got empty string"
     );
 }
@@ -1133,7 +1133,7 @@ fn register_hook_errors_in_command_mode() {
         )
         .unwrap_err();
     assert!(
-        err.contains("only valid during init.scm or plugin load"),
+        err.message.contains("only valid during init.scm or plugin load"),
         "got: {err}"
     );
 }
@@ -1379,7 +1379,7 @@ fn set_register_prefix_invalid_name_errors() {
         )
         .unwrap_err();
     assert!(
-        err.contains("invalid register"),
+        err.message.contains("invalid register"),
         "expected register-name error, got: {err}"
     );
 }
@@ -1405,7 +1405,7 @@ fn set_register_prefix_multichar_name_errors() {
         )
         .unwrap_err();
     assert!(
-        err.contains("single-character"),
+        err.message.contains("single-character"),
         "expected single-char error, got: {err}"
     );
 }
@@ -1497,7 +1497,7 @@ fn language_builtins_error_on_stale_buffer_id() {
         )
         .unwrap_err();
     assert!(
-        err.contains("buffer-language: invalid buffer id"),
+        err.message.contains("buffer-language: invalid buffer id"),
         "buffer-language must reject a stale id; got: {err}"
     );
 
@@ -1512,7 +1512,7 @@ fn language_builtins_error_on_stale_buffer_id() {
         )
         .unwrap_err();
     assert!(
-        err.contains("set-buffer-language!: invalid buffer id"),
+        err.message.contains("set-buffer-language!: invalid buffer id"),
         "set-buffer-language! must reject a stale id; got: {err}"
     );
 }
@@ -2568,7 +2568,7 @@ fn load_plugin_in_plugin_body_rejected() {
         panic!("load-plugin inside a plugin body must be rejected");
     };
     assert!(
-        msg.contains("top level") || msg.contains("init.scm"),
+        msg.message.contains("top level") || msg.message.contains("init.scm"),
         "error must mention top-level restriction; got: {msg}"
     );
 }
@@ -2600,7 +2600,7 @@ fn declare_plugin_in_plugin_body_rejected() {
         panic!("declare-plugin inside a plugin body must be rejected");
     };
     assert!(
-        msg.contains("top level") || msg.contains("init.scm"),
+        msg.message.contains("top level") || msg.message.contains("init.scm"),
         "error must mention top-level restriction; got: {msg}"
     );
 }
@@ -2636,7 +2636,7 @@ fn declare_plugin_no_triggers_no_manifest_hard_error_scripting_level() {
     );
     let msg = result.unwrap_err();
     assert!(
-        msg.contains("manifest.scm"),
+        msg.message.contains("manifest.scm"),
         "error must name the missing manifest.scm; got: {msg}"
     );
 }
@@ -2671,7 +2671,7 @@ fn declare_plugin_bang_no_triggers_hard_error_scripting_level() {
     );
     let msg = result.unwrap_err();
     assert!(
-        msg.contains("no activation entries") || msg.contains("never be activated"),
+        msg.message.contains("no activation entries") || msg.message.contains("never be activated"),
         "error must describe the zero-entry problem; got: {msg}"
     );
 }
@@ -2798,7 +2798,7 @@ fn arity1_list_command_rejects_false_arg() {
         )
         .unwrap_err();
     assert!(
-        err.contains("requires a non-empty list"),
+        err.message.contains("requires a non-empty list"),
         "expected list-required error, got: {err}"
     );
 }
@@ -2868,7 +2868,7 @@ fn load_plugin_runtime_guard_fires() {
         )
         .unwrap_err();
     assert!(
-        err.contains("top level") || err.contains("init.scm"),
+        err.message.contains("top level") || err.message.contains("init.scm"),
         "error must mention top-level restriction; got: {err}"
     );
 }

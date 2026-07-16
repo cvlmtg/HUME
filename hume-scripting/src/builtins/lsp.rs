@@ -44,17 +44,16 @@ pub(crate) fn register_lsp_server(
     let init_options = optional_json_arg(init_options, "register-lsp-server! init-options")?;
     let settings = optional_json_arg(settings, "register-lsp-server! settings")?;
 
-    ctx.effects
-        .push(Effect::LspServerOp(PendingLspServerOp::Register(
-            PendingLspServerReg {
-                language,
-                command,
-                args,
-                root_markers,
-                init_options,
-                settings,
-            },
-        )));
+    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Register(
+        PendingLspServerReg {
+            language,
+            command,
+            args,
+            root_markers,
+            init_options,
+            settings,
+        },
+    )));
     Ok(SteelVal::Void)
 }
 
@@ -74,10 +73,9 @@ pub(crate) fn register_lsp_server(
 /// process.
 pub(crate) fn unregister_lsp_server(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
     let language = string_arg(language, "unregister-lsp-server! language")?;
-    ctx.effects
-        .push(Effect::LspServerOp(PendingLspServerOp::Unregister {
-            language,
-        }));
+    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Unregister {
+        language,
+    }));
     Ok(SteelVal::Void)
 }
 
@@ -87,8 +85,7 @@ pub(crate) fn unregister_lsp_server(ctx: &mut SteelCtx, language: SteelVal) -> S
 /// servers stopped is emitted by that same drain.
 pub(crate) fn lsp_stop(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
     let language = optional_string_arg(language, "lsp-stop! language")?;
-    ctx.effects
-        .push(Effect::LspServerOp(PendingLspServerOp::Stop { language }));
+    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Stop { language }));
     Ok(SteelVal::Void)
 }
 
@@ -96,18 +93,16 @@ pub(crate) fn lsp_stop(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
 /// stop-then-respawn, applied at the end of the current eval.
 pub(crate) fn lsp_restart(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
     let language = optional_string_arg(language, "lsp-restart! language")?;
-    ctx.effects
-        .push(Effect::LspServerOp(PendingLspServerOp::Restart {
-            language,
-        }));
+    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Restart {
+        language,
+    }));
     Ok(SteelVal::Void)
 }
 
 /// `(lsp-show-status!)` — queues opening the `[lsp-status]` read-only view,
 /// applied at the end of the current eval.
 pub(crate) fn lsp_show_status(ctx: &mut SteelCtx) -> SteelResult {
-    ctx.effects
-        .push(Effect::LspServerOp(PendingLspServerOp::ShowStatus));
+    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::ShowStatus));
     Ok(SteelVal::Void)
 }
 
@@ -135,7 +130,7 @@ pub(crate) fn lsp_request(
         _ => steel::stop!(TypeMismatch => "lsp-request: #:allow-stale expected a bool"),
     };
     let supersede = optional_string_arg(supersede, "lsp-request supersede")?;
-    ctx.effects.push(Effect::LspRequest(PendingLspRequest {
+    ctx.push_effect(Effect::LspRequest(PendingLspRequest {
         server,
         method,
         params,
@@ -158,7 +153,7 @@ pub(crate) fn lsp_notify(
     let server = optional_string_arg(server, "lsp-notify server")?;
     let method = string_arg(method, "lsp-notify method")?;
     let params = json_params(params, "lsp-notify params")?;
-    ctx.effects.push(Effect::LspNotify(PendingLspNotify {
+    ctx.push_effect(Effect::LspNotify(PendingLspNotify {
         server,
         method,
         params,
@@ -264,8 +259,8 @@ pub(crate) fn lsp_server_for_buffer(ctx: &mut SteelCtx, bid: BidArg) -> SteelRes
 pub(crate) fn lsp_registered_for_language(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
     let language = string_arg(language, "lsp-registered-for-language? language")?;
     let mut pending: Option<bool> = None;
-    for effect in ctx.effects.iter() {
-        let Effect::LspServerOp(op) = effect else {
+    for queued in ctx.effects.iter() {
+        let Effect::LspServerOp(op) = &queued.effect else {
             continue;
         };
         match op {
@@ -330,7 +325,7 @@ mod tests {
     fn lsp_server_ops(h: &SteelCtxTestHarness) -> Vec<&PendingLspServerOp> {
         h.effects
             .iter()
-            .filter_map(|e| match e {
+            .filter_map(|e| match &e.effect {
                 Effect::LspServerOp(op) => Some(op),
                 _ => None,
             })
@@ -343,7 +338,7 @@ mod tests {
     fn lsp_requests<'a>(ctx: &'a SteelCtx) -> Vec<&'a PendingLspRequest> {
         ctx.effects
             .iter()
-            .filter_map(|e| match e {
+            .filter_map(|e| match &e.effect {
                 Effect::LspRequest(req) => Some(req),
                 _ => None,
             })
@@ -682,7 +677,7 @@ mod tests {
     fn a_queued_register_reports_true_within_the_same_eval() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        ctx.effects.push(pending_register("rust"));
+        ctx.push_effect(pending_register("rust"));
         let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
         assert_eq!(result.unwrap(), SteelVal::BoolV(true));
     }
@@ -695,8 +690,8 @@ mod tests {
     fn register_then_unregister_in_queue_order_reports_false() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        ctx.effects.push(pending_register("rust"));
-        ctx.effects.push(pending_unregister("rust"));
+        ctx.push_effect(pending_register("rust"));
+        ctx.push_effect(pending_unregister("rust"));
         let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
         assert_eq!(result.unwrap(), SteelVal::BoolV(false));
     }
@@ -708,8 +703,8 @@ mod tests {
     fn unregister_then_register_in_queue_order_reports_true() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        ctx.effects.push(pending_unregister("rust"));
-        ctx.effects.push(pending_register("rust"));
+        ctx.push_effect(pending_unregister("rust"));
+        ctx.push_effect(pending_register("rust"));
         let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
         assert_eq!(result.unwrap(), SteelVal::BoolV(true));
     }
@@ -719,7 +714,7 @@ mod tests {
     fn a_queued_op_for_a_different_language_does_not_flip_the_answer() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        ctx.effects.push(pending_register("python"));
+        ctx.push_effect(pending_register("python"));
         let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
         assert_eq!(
             result.unwrap(),
@@ -734,10 +729,9 @@ mod tests {
     fn a_stop_op_alone_does_not_flip_the_answer() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        ctx.effects
-            .push(Effect::LspServerOp(PendingLspServerOp::Stop {
-                language: Some("rust".to_string()),
-            }));
+        ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Stop {
+            language: Some("rust".to_string()),
+        }));
         let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
         assert_eq!(
             result.unwrap(),

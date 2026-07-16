@@ -162,14 +162,14 @@ pub(crate) fn switch_to_buffer(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
 /// `id` queued so far this eval; fall back to `fallback` (the buffer's
 /// stored language).
 fn effective_language(
-    effects: &[Effect],
+    effects: &[crate::types::QueuedEffect],
     id: hume_engine::pipeline::BufferId,
     fallback: Option<String>,
 ) -> Option<String> {
     effects
         .iter()
         .rev()
-        .find_map(|effect| match effect {
+        .find_map(|queued| match &queued.effect {
             Effect::SetBufferLanguage { buffer, language } if *buffer == id => {
                 Some(language.clone())
             }
@@ -292,7 +292,7 @@ pub(crate) fn set_buffer_language_steel(
     if effective_language(ctx.effects, id, fallback) == new_lang {
         return Ok(SteelVal::Void);
     }
-    ctx.effects.push(Effect::SetBufferLanguage {
+    ctx.push_effect(Effect::SetBufferLanguage {
         buffer: id,
         language: new_lang,
     });

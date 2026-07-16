@@ -289,8 +289,8 @@ fn smart_change_to_eol_without_stdlib_errors_at_load() {
     }
     .expect_err("'smart change-to-eol without core:stdlib must fail eval_init");
     assert!(
-        err.contains("core:stdlib"),
-        "error must name the missing dependency; got: {err}"
+        err.message.contains("core:stdlib"),
+        "error must name the missing dependency; got: {err:?}"
     );
 }
 

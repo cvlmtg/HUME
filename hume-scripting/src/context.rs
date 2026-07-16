@@ -7,7 +7,7 @@ use hume_engine::pipeline::{BufferId, PaneId};
 use super::attribution::PluginStack;
 use super::host::EditorHost;
 use super::log::LogLevel;
-use super::types::Effect;
+use super::types::{Effect, QueuedEffect};
 use super::{HostBundle, ScriptingRegistries};
 
 /// Context struct borrowed into the Steel engine for the duration of each eval
@@ -44,8 +44,8 @@ pub(crate) struct SteelCtx<'a> {
     /// Side effects queued by Steel builtins this eval (and any eval this one
     /// is nested inside), in the exact order they were pushed. Persistent on
     /// `ScriptingHost`, borrowed here; each eval entry point drains its own
-    /// contribution back out (see `types::Effect`).
-    pub(crate) effects: &'a mut Vec<Effect>,
+    /// contribution back out (see `types::Effect`, `push_effect`).
+    pub(crate) effects: &'a mut Vec<QueuedEffect>,
     /// Data/runtime directories (raw + display form) and the install-lock
     /// root, computed once by `ScriptingHost::new`.
     pub(crate) dirs: &'a crate::builtins::dirs::ScriptDirs,
@@ -86,10 +86,10 @@ pub(crate) struct SteelCtx<'a> {
     pub(crate) live_focused_buffer_id: BufferId,
     /// Effect-log length snapshots, one per currently-nested plugin body
     /// (`begin_lazy_activation` pushes, `finish_lazy_activation` pops — LIFO,
-    /// matching `plugin_stack`). Lets a failed body's queued effects be
-    /// rolled back (truncating `effects` back to the mark) without touching
-    /// whatever the enclosing eval already queued before the nested
-    /// activation began.
+    /// matching `plugin_stack`). Lets a failed body's own queued effects be
+    /// rolled back — while keeping any entries a nested successful activation
+    /// already committed — without touching whatever the enclosing eval
+    /// queued before this activation began. See `pop_effect_marks`.
     pub(crate) activation_effect_marks: Vec<usize>,
     /// Set for the duration of a `manifest.scm` eval driven by a zero-trigger
     /// `(declare-plugin "id")` — the id being resolved. `%begin-manifest-declare!`
@@ -203,6 +203,15 @@ impl<'a> SteelCtx<'a> {
         self.pending_messages.push((level, msg));
     }
 
+    /// Queue `effect` (uncommitted). All builtins push through here so the
+    /// `committed` flag has a single origin — see `pop_effect_marks`.
+    pub(crate) fn push_effect(&mut self, effect: Effect) {
+        self.effects.push(QueuedEffect {
+            effect,
+            committed: false,
+        });
+    }
+
     /// Snapshot the effect log's current length and push it — called by
     /// `begin_lazy_activation` right after it pushes `plugin_stack`, so the
     /// two stacks stay in lockstep (LIFO, one mark per currently-nested body).
@@ -210,19 +219,36 @@ impl<'a> SteelCtx<'a> {
         self.activation_effect_marks.push(self.effects.len());
     }
 
-    /// Pop the most recent mark and, on `success == false`, truncate the
-    /// effect log back to it — discarding whatever the failed body queued
-    /// before it errored. Called by `finish_lazy_activation` right after it
-    /// pops `plugin_stack`. `pending_messages` is untouched: a failed
-    /// plugin's `log!` output stays visible for debugging.
+    /// Pop the most recent mark.
+    ///
+    /// On `success == true`, marks every entry at `[mark..]` as committed —
+    /// including entries already committed by an activation nested deeper
+    /// inside this one. Committed effects survive a later enclosing failure
+    /// (see `ScriptingHost::take_eval_effects`), because activation itself
+    /// (the `PluginState::Loaded` transition, commands registered inline) is
+    /// never rolled back once this body finishes successfully.
+    ///
+    /// On `success == false`, discards whatever this body queued — except
+    /// entries already committed by a nested successful activation, which are
+    /// kept in place (order preserved). Marks are LIFO and both branches only
+    /// touch `[mark..]`, so outer marks and any `effects_start` snapshot
+    /// taken before this activation began stay valid indices.
+    ///
+    /// Called by `finish_lazy_activation` right after it pops `plugin_stack`.
+    /// `pending_messages` is untouched: a failed plugin's `log!` output stays
+    /// visible for debugging.
     pub(crate) fn pop_effect_marks(&mut self, success: bool) {
         let Some(mark) = self.activation_effect_marks.pop() else {
             return;
         };
         if success {
+            for entry in &mut self.effects[mark..] {
+                entry.committed = true;
+            }
             return;
         }
-        self.effects.truncate(mark);
+        let tail = self.effects.split_off(mark);
+        self.effects.extend(tail.into_iter().filter(|e| e.committed));
     }
 
     pub(crate) fn new_command(
@@ -414,5 +440,72 @@ mod tests {
         assert_eq!(h.pending_messages.len(), 2);
         assert_eq!(h.pending_messages[0].0, LogLevel::Info);
         assert_eq!(h.pending_messages[1].0, LogLevel::Warning);
+    }
+
+    // ── Effect commit/rollback ────────────────────────────────────────────────
+
+    /// `pop_effect_marks(true)` marks every entry pushed since the mark as
+    /// committed, and leaves anything pushed before the mark untouched.
+    ///
+    /// Fail oracle: mark all of `effects` (not just `[mark..]`) as committed
+    /// → the pre-mark entry ends up committed too → the first assert fires.
+    #[test]
+    fn pop_effect_marks_success_commits_marked_range() {
+        let mut h = SteelCtxTestHarness::new();
+        {
+            let mut ctx = h.ctx();
+            ctx.push_effect(Effect::GrammarSweep("before".into()));
+            ctx.mark_effects();
+            ctx.push_effect(Effect::GrammarSweep("after".into()));
+            ctx.pop_effect_marks(true);
+        }
+        assert!(
+            !h.effects[0].committed,
+            "entry pushed before the mark must stay uncommitted"
+        );
+        assert!(
+            h.effects[1].committed,
+            "entry pushed after the mark must be committed on success"
+        );
+    }
+
+    /// Nested marks: A1 (no mark), mark B, B1, mark C, C1/C2, pop(true) commits
+    /// C1/C2, B2, pop(false). B's own entries (B1, B2) are dropped but C1/C2 —
+    /// already committed by the nested activation that finished inside B —
+    /// survive B's failure, in their original order, alongside untouched A1.
+    ///
+    /// Fail oracle: revert `pop_effect_marks`'s failure branch to
+    /// `self.effects.truncate(mark)` → C1/C2 vanish along with B1/B2 → the
+    /// log ends up `["a1"]` instead of `["a1", "c1", "c2"]`.
+    #[test]
+    fn pop_effect_marks_failure_keeps_committed_entries_in_order() {
+        let mut h = SteelCtxTestHarness::new();
+        {
+            let mut ctx = h.ctx();
+            ctx.push_effect(Effect::GrammarSweep("a1".into()));
+            ctx.mark_effects(); // B begins
+            ctx.push_effect(Effect::GrammarSweep("b1".into()));
+            ctx.mark_effects(); // C begins, nested inside B
+            ctx.push_effect(Effect::GrammarSweep("c1".into()));
+            ctx.push_effect(Effect::GrammarSweep("c2".into()));
+            ctx.pop_effect_marks(true); // C succeeds — commits c1, c2
+            ctx.push_effect(Effect::GrammarSweep("b2".into()));
+            ctx.pop_effect_marks(false); // B fails — drops b1/b2, keeps c1/c2
+        }
+        let names: Vec<&str> = h
+            .effects
+            .iter()
+            .map(|e| match &e.effect {
+                Effect::GrammarSweep(name) => name.as_str(),
+                other => panic!("expected GrammarSweep, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            names,
+            vec!["a1", "c1", "c2"],
+            "b1/b2 must be dropped, c1/c2 kept in original order, a1 untouched"
+        );
+        assert!(!h.effects[0].committed, "a1 was never inside a mark");
+        assert!(h.effects[1].committed && h.effects[2].committed, "c1/c2 stay committed");
     }
 }
