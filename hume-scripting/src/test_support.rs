@@ -3,12 +3,12 @@
 //! Lives in the scripting crate because it needs access to private types
 //! (`SteelCtx`, `HostBundle`).
 
-use std::path::PathBuf;
 use std::sync::{Arc, atomic::AtomicBool};
 
 use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::attribution::PluginStack;
+use crate::builtins::dirs::ScriptDirs;
 use crate::context::SteelCtx;
 use crate::log::LogLevel;
 use crate::null_host::NullHost;
@@ -26,8 +26,7 @@ pub(crate) struct SteelCtxTestHarness {
     pub(crate) registries: ScriptingRegistries,
     pub(crate) pending_messages: Vec<(LogLevel, String)>,
     pub(crate) effects: Vec<Effect>,
-    pub(crate) data_dir: Option<PathBuf>,
-    pub(crate) runtime_dir: Option<PathBuf>,
+    pub(crate) dirs: ScriptDirs,
     pub(crate) interrupt_flag: Arc<AtomicBool>,
 }
 
@@ -47,8 +46,7 @@ impl SteelCtxTestHarness {
             },
             pending_messages: Vec::new(),
             effects: Vec::new(),
-            data_dir: None,
-            runtime_dir: None,
+            dirs: ScriptDirs::new(None, None),
             interrupt_flag: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -61,8 +59,7 @@ impl SteelCtxTestHarness {
             registries,
             pending_messages,
             effects,
-            data_dir,
-            runtime_dir,
+            dirs,
             interrupt_flag,
         } = self;
         SteelCtx::new_init(
@@ -72,8 +69,7 @@ impl SteelCtxTestHarness {
                 plugin_stack,
                 pending_messages,
                 effects,
-                data_dir: data_dir.as_deref(),
-                runtime_dir: runtime_dir.as_deref(),
+                dirs: &*dirs,
                 interrupt_flag: Arc::clone(interrupt_flag),
             },
             Default::default(),
@@ -92,8 +88,7 @@ impl SteelCtxTestHarness {
             registries,
             pending_messages,
             effects,
-            data_dir,
-            runtime_dir,
+            dirs,
             interrupt_flag,
             ..
         } = self;
@@ -104,8 +99,7 @@ impl SteelCtxTestHarness {
                 plugin_stack,
                 pending_messages,
                 effects,
-                data_dir: data_dir.as_deref(),
-                runtime_dir: runtime_dir.as_deref(),
+                dirs: &*dirs,
                 interrupt_flag: Arc::clone(interrupt_flag),
             },
             Default::default(),
@@ -121,8 +115,7 @@ impl SteelCtxTestHarness {
             registries,
             pending_messages,
             effects,
-            data_dir,
-            runtime_dir,
+            dirs,
             interrupt_flag,
         } = self;
         SteelCtx::new_activation(
@@ -132,8 +125,7 @@ impl SteelCtxTestHarness {
                 plugin_stack,
                 pending_messages,
                 effects,
-                data_dir: data_dir.as_deref(),
-                runtime_dir: runtime_dir.as_deref(),
+                dirs: &*dirs,
                 interrupt_flag: Arc::clone(interrupt_flag),
             },
             Default::default(),
@@ -148,8 +140,7 @@ impl SteelCtxTestHarness {
             registries,
             pending_messages,
             effects,
-            data_dir,
-            runtime_dir,
+            dirs,
             interrupt_flag,
         } = self;
         SteelCtx::new_command(
@@ -159,8 +150,7 @@ impl SteelCtxTestHarness {
                 plugin_stack,
                 pending_messages,
                 effects,
-                data_dir: data_dir.as_deref(),
-                runtime_dir: runtime_dir.as_deref(),
+                dirs: &*dirs,
                 interrupt_flag: Arc::clone(interrupt_flag),
             },
             PaneId::default(),
@@ -181,8 +171,7 @@ impl SteelCtxTestHarness {
             registries,
             pending_messages,
             effects,
-            data_dir,
-            runtime_dir,
+            dirs,
             interrupt_flag,
             ..
         } = self;
@@ -193,8 +182,7 @@ impl SteelCtxTestHarness {
                 plugin_stack,
                 pending_messages,
                 effects,
-                data_dir: data_dir.as_deref(),
-                runtime_dir: runtime_dir.as_deref(),
+                dirs: &*dirs,
                 interrupt_flag: Arc::clone(interrupt_flag),
             },
             PaneId::default(),
