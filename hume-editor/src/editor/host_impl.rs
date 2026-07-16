@@ -20,7 +20,7 @@ use crate::editor::registry::MappableCommand;
 use crate::editor::timer_bridge::TimerHandle;
 use crate::settings::{BufferOverrides, SettingScope, apply_setting};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
-use hume_scripting::host::{BindMode, EditHost, EditorHost, OptionValue, UiHost};
+use hume_scripting::host::{BindMode, CompletionHost, EditHost, EditorHost, OptionValue, UiHost};
 
 use super::{EditorState, Severity};
 
@@ -91,6 +91,9 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Some(self)
     }
     fn edits(&mut self) -> Option<&mut dyn EditHost> {
+        Some(self)
+    }
+    fn completions(&mut self) -> Option<&mut dyn CompletionHost> {
         Some(self)
     }
 
@@ -642,7 +645,9 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         text.slice(start..end + 1).to_string()
     }
 
-    // ── Completion orchestration ────────────────────────────────────────
+}
+
+impl<'a> CompletionHost for EditorHostImpl<'a> {
     fn completion_begin(
         &mut self,
         bid: BufferId,

@@ -29,6 +29,12 @@ pub enum OptionValue {
     Str(String),
 }
 
+/// "X: not supported by this host" — the single source for capability-absence
+/// errors, replacing the trait-default bodies the capability-trait split removed.
+pub fn unsupported(builtin: &str) -> String {
+    format!("{builtin}: not supported by this host")
+}
+
 /// The editor interface exposed to scripting builtins during a Steel eval.
 ///
 /// Implemented by `EditorHostImpl<'a>` in the editor crate (or `MockHost` in
@@ -48,12 +54,14 @@ pub enum OptionValue {
 /// `call_steel_cmd`/`fire_hook` rather than queried through this trait, so a
 /// builtin always sees the pre-command snapshot, not a value that can change
 /// mid-eval (e.g. after `switch-to-buffer!`).
-/// "X: not supported by this host" — the single source for capability-absence
-/// errors, replacing the trait-default bodies the capability-trait split removed.
-pub fn unsupported(builtin: &str) -> String {
-    format!("{builtin}: not supported by this host")
-}
-
+///
+/// Capability accessors: a handful of core concerns (buffers, settings,
+/// keymap, language/grammar, command dispatch, live cursor reads) stay
+/// directly on this trait as required methods; everything else (UI widgets,
+/// LSP introspection, decorations, timers, edits, completion) lives behind an
+/// optional accessor returning `Option<&mut dyn CapabilityTrait>` — `None`
+/// means the host has no such capability, and the one call site per method
+/// maps that to the same behavior the old trait-default body produced.
 pub trait EditorHost {
     // ── Optional capability accessors ────────────────────────────────────────
     /// Cursor-anchored popup / selection menu / bottom drawer / minibuffer
@@ -64,6 +72,11 @@ pub trait EditorHost {
     /// LSP-driven text edits, workspace edits, and go-to-location — `None`
     /// for hosts with no editable buffers/panes to route them to.
     fn edits(&mut self) -> Option<&mut dyn EditHost> {
+        None
+    }
+    /// Completion session orchestration — `None` for hosts with no
+    /// completion popup to drive.
+    fn completions(&mut self) -> Option<&mut dyn CompletionHost> {
         None
     }
 
@@ -426,7 +439,11 @@ pub trait EditorHost {
         String::new()
     }
 
-    // ── Completion orchestration (default = "not supported") ─────────────
+}
+
+/// Completion session orchestration — accessed through
+/// [`EditorHost::completions`].
+pub trait CompletionHost {
     /// `(completion-begin! bid items #:incomplete f)` — `items` is a list of
     /// decoded `CompletionItem` hashmaps (JSON already converted by the
     /// caller). Starting a session replaces any session already open.
@@ -435,35 +452,23 @@ pub trait EditorHost {
         bid: BufferId,
         items: Vec<serde_json::Value>,
         incomplete: bool,
-    ) -> Result<(), String> {
-        let _ = (bid, items, incomplete);
-        Err("completion-begin!: not supported by this host".to_string())
-    }
+    ) -> Result<(), String>;
 
     /// `(completion-update-filter! text)` — re-ranks the open session
     /// against `text`; Rust-side work only, safe to call every keystroke.
-    fn completion_update_filter(&mut self, text: String) -> Result<(), String> {
-        let _ = text;
-        Err("completion-update-filter!: not supported by this host".to_string())
-    }
+    fn completion_update_filter(&mut self, text: String) -> Result<(), String>;
 
     /// `(completion-top n)` — up to `n` ranked items as hashmaps, `[]` with
     /// no open session.
-    fn completion_top(&self, n: usize) -> Vec<serde_json::Value> {
-        let _ = n;
-        Vec::new()
-    }
+    fn completion_top(&self, n: usize) -> Vec<serde_json::Value>;
 
     /// `(completion-accept! idx)` — applies `idx`'s item (an index into the
     /// ranked/filtered list, not the raw response order) and ends the
     /// session, success or failure.
-    fn completion_accept(&mut self, idx: usize) -> Result<(), String> {
-        let _ = idx;
-        Err("completion-accept!: not supported by this host".to_string())
-    }
+    fn completion_accept(&mut self, idx: usize) -> Result<(), String>;
 
     /// `(completion-dismiss!)` — clears any open session; no-op if none.
-    fn completion_dismiss(&mut self) {}
+    fn completion_dismiss(&mut self);
 }
 
 /// Cursor-anchored popup, selection menu, bottom drawer, and minibuffer

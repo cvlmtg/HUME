@@ -444,7 +444,7 @@ fn scripted_1k_item_session_stays_under_the_p8_budget() {
 fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op() {
     use crate::editor::commands::open_pane;
     use crate::editor::host_impl::EditorHostImpl;
-    use hume_scripting::host::EditorHost;
+    use hume_scripting::host::CompletionHost;
 
     let dir = safe_tempdir();
     let file_b = dir.path().join("b.txt");

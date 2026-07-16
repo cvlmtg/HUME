@@ -874,6 +874,8 @@ pub(crate) fn completion_begin(
         parsed.push(steel_to_json(&entry).map_err(conv_err)?);
     }
     ctx.host
+        .completions()
+        .ok_or_else(|| conv_err(crate::host::unsupported("completion-begin!")))?
         .completion_begin(id, parsed, incomplete)
         .map(|()| SteelVal::Void)
         .map_err(conv_err)
@@ -884,6 +886,8 @@ pub(crate) fn completion_update_filter(ctx: &mut SteelCtx, text: SteelVal) -> St
     require_cmd_ctx!(ctx, "completion-update-filter!");
     let text = string_arg(text, "completion-update-filter! text")?;
     ctx.host
+        .completions()
+        .ok_or_else(|| conv_err(crate::host::unsupported("completion-update-filter!")))?
         .completion_update_filter(text)
         .map(|()| SteelVal::Void)
         .map_err(conv_err)
@@ -893,7 +897,11 @@ pub(crate) fn completion_update_filter(ctx: &mut SteelCtx, text: SteelVal) -> St
 pub(crate) fn completion_top(ctx: &mut SteelCtx, n: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "completion-top");
     let n = usize_arg(n, "completion-top")?;
-    let items = ctx.host.completion_top(n);
+    let items = ctx
+        .host
+        .completions()
+        .map(|c| c.completion_top(n))
+        .unwrap_or_default();
     let list: Vec<SteelVal> = items.iter().map(json_to_steel).collect();
     Ok(SteelVal::ListV(list.into()))
 }
@@ -904,6 +912,8 @@ pub(crate) fn completion_accept(ctx: &mut SteelCtx, idx: SteelVal) -> SteelResul
     require_cmd_ctx!(ctx, "completion-accept!");
     let idx = usize_arg(idx, "completion-accept!")?;
     ctx.host
+        .completions()
+        .ok_or_else(|| conv_err(crate::host::unsupported("completion-accept!")))?
         .completion_accept(idx)
         .map(|()| SteelVal::Void)
         .map_err(conv_err)
@@ -912,7 +922,9 @@ pub(crate) fn completion_accept(ctx: &mut SteelCtx, idx: SteelVal) -> SteelResul
 /// `(completion-dismiss!)`.
 pub(crate) fn completion_dismiss(ctx: &mut SteelCtx) -> SteelResult {
     require_cmd_ctx!(ctx, "completion-dismiss!");
-    ctx.host.completion_dismiss();
+    if let Some(completions) = ctx.host.completions() {
+        completions.completion_dismiss();
+    }
     Ok(SteelVal::Void)
 }
 
