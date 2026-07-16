@@ -25,12 +25,12 @@
 //! their first character, and the filename is truncated with `…` as a last
 //! resort.  It renders as empty for scratch and synthetic buffers.
 
-use steel::rerrs::{ErrorKind, SteelErr};
+use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 
-use super::require_config_ctx;
+use super::errors::generic_err;
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -44,23 +44,13 @@ fn extract_string_list(val: &SteelVal, section: &str) -> Result<Vec<String>, Ste
             .iter()
             .map(|v| match v {
                 SteelVal::StringV(s) => Ok(s.to_string()),
-                _ => Err(SteelErr::new(
-                    ErrorKind::TypeMismatch,
-                    format!(
-                        "configure-statusline!: {section} section expects a list of \
-                                 strings, got {:?}",
-                        v
-                    ),
-                )),
+                _ => steel::stop!(TypeMismatch =>
+                    "configure-statusline!: {} section expects a list of strings, got {:?}",
+                    section, v),
             })
             .collect(),
-        _ => Err(SteelErr::new(
-            ErrorKind::TypeMismatch,
-            format!(
-                "configure-statusline!: {section} section must be a list, got {:?}",
-                val
-            ),
-        )),
+        _ => steel::stop!(TypeMismatch =>
+            "configure-statusline!: {} section must be a list, got {:?}", section, val),
     }
 }
 
@@ -78,14 +68,13 @@ pub(crate) fn configure_statusline(
     center: SteelVal,
     right: SteelVal,
 ) -> SteelResult {
-    require_config_ctx!(ctx, "configure-statusline!");
     let left = extract_string_list(&left, "left")?;
     let center = extract_string_list(&center, "center")?;
     let right = extract_string_list(&right, "right")?;
     ctx.host
         .settings()
         .configure_statusline(left, center, right)
-        .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
+        .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
 
@@ -117,8 +106,7 @@ mod tests {
     #[test]
     fn configure_statusline_blocked_in_command_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        let result = configure_statusline(&mut ctx, empty_list(), empty_list(), empty_list());
+        let result = super::super::errors::require_config(&h.ctx(), "configure-statusline!");
         assert!(
             result.is_err(),
             "configure-statusline! must error in command mode"

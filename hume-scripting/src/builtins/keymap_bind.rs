@@ -8,7 +8,7 @@ use crate::SteelCtx;
 use crate::host::BindMode;
 use crate::keys::parse_key_sequence;
 
-use super::require_config_ctx;
+use super::errors::generic_err;
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -43,21 +43,19 @@ fn bind_inner(
     kind: BindKind,
     force_extend: bool,
 ) -> SteelResult {
-    require_config_ctx!(ctx, fn_name);
     let mode = mode_from_symbol(&mode, fn_name)?;
-    let keys = parse_key_sequence(&key_str)
-        .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
+    let keys = parse_key_sequence(&key_str).map_err(generic_err)?;
     match kind {
         BindKind::Normal => ctx
             .host
             .keymap()
             .bind_key(mode, &keys, &cmd_name, force_extend)
-            .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?,
+            .map_err(generic_err)?,
         BindKind::WaitChar => ctx
             .host
             .keymap()
             .bind_wait_char(mode, &keys, &cmd_name)
-            .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?,
+            .map_err(generic_err)?,
     }
     Ok(SteelVal::Void)
 }
@@ -120,14 +118,12 @@ pub(crate) fn bind_key_extend(
 /// Removes the binding for `key-sequence` in `mode`. Silent no-op if the
 /// sequence is already unbound. Only valid during `init.scm` or plugin load.
 pub(crate) fn unbind_key(ctx: &mut SteelCtx, mode: SteelVal, key_str: String) -> SteelResult {
-    require_config_ctx!(ctx, "unbind-key!");
     let mode = mode_from_symbol(&mode, "unbind-key!")?;
-    let keys = parse_key_sequence(&key_str)
-        .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
+    let keys = parse_key_sequence(&key_str).map_err(generic_err)?;
     ctx.host
         .keymap()
         .unbind_key(mode, &keys)
-        .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
+        .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
 
@@ -161,20 +157,19 @@ mod tests {
     use crate::test_support::SteelCtxTestHarness;
 
     // ── Init-only guard ───────────────────────────────────────────────────────
+    //
+    // All four bind builtins below are `config`-gated in `builtins!`'s
+    // registration table — the gate lives in the registration wrapper
+    // closure, not the body, so these test the gate primitive directly.
 
     /// `bind-key!` is blocked in plain command mode (`EvalMode::Command`).
     ///
-    /// Fail oracle: remove the guard → a plugin command body could rebind keys at runtime.
+    /// Fail oracle: change `bind-key!`'s table entry from `config` to `open`
+    /// → a plugin command body could rebind keys at runtime.
     #[test]
     fn bind_key_blocked_in_command_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        let result = bind_key(
-            &mut ctx,
-            SteelVal::SymbolV("normal".into()),
-            "z".into(),
-            "move-right".into(),
-        );
+        let result = super::super::errors::require_config(&h.ctx(), "bind-key!");
         assert!(result.is_err(), "bind-key! must error in command mode");
         let msg = result.unwrap_err().to_string();
         assert!(
@@ -187,13 +182,7 @@ mod tests {
     #[test]
     fn bind_key_extend_blocked_in_command_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        let result = bind_key_extend(
-            &mut ctx,
-            SteelVal::SymbolV("normal".into()),
-            "z".into(),
-            "move-right".into(),
-        );
+        let result = super::super::errors::require_config(&h.ctx(), "bind-key-extend!");
         assert!(
             result.is_err(),
             "bind-key-extend! must error in command mode"
@@ -204,8 +193,7 @@ mod tests {
     #[test]
     fn unbind_key_blocked_in_command_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        let result = unbind_key(&mut ctx, SteelVal::SymbolV("normal".into()), "z".into());
+        let result = super::super::errors::require_config(&h.ctx(), "unbind-key!");
         assert!(result.is_err(), "unbind-key! must error in command mode");
         let msg = result.unwrap_err().to_string();
         assert!(
@@ -218,13 +206,7 @@ mod tests {
     #[test]
     fn bind_wait_char_blocked_in_command_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        let result = bind_wait_char(
-            &mut ctx,
-            SteelVal::SymbolV("normal".into()),
-            "f".into(),
-            "wait-f".into(),
-        );
+        let result = super::super::errors::require_config(&h.ctx(), "bind-wait-char!");
         assert!(
             result.is_err(),
             "bind-wait-char! must error in command mode"

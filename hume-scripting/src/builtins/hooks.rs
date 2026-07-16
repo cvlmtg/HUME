@@ -6,8 +6,6 @@ use steel::rvals::SteelVal;
 use crate::SteelCtx;
 use crate::hooks::HookId;
 
-use super::require_config_ctx;
-
 type SteelResult = Result<SteelVal, SteelErr>;
 
 /// `(register-hook! 'name proc)` — register `proc` as a handler for the
@@ -24,7 +22,6 @@ type SteelResult = Result<SteelVal, SteelErr>;
 /// first matching transition; the body then calls `(register-hook! 'on-language-set …)`
 /// to install a *hook* that reacts on every subsequent transition.
 pub(crate) fn register_hook(ctx: &mut SteelCtx, name: SteelVal, proc: SteelVal) -> SteelResult {
-    require_config_ctx!(ctx, "register-hook!");
     let name_str = match &name {
         SteelVal::SymbolV(s) => s.to_string(),
         _ => steel::stop!(TypeMismatch => "register-hook!: expected a symbol, got {:?}", name),
@@ -50,18 +47,13 @@ mod tests {
 
     /// `register-hook!` is blocked in plain command mode (init/plugin-load only).
     ///
-    /// Fail oracle: remove the require_config_ctx! guard → the hook is
-    /// silently registered from a command body, allowing plugins to change
-    /// global behaviour at runtime.
+    /// Fail oracle: change `register-hook!`'s table entry from `config` to
+    /// `open` → the hook is silently registered from a command body, allowing
+    /// plugins to change global behaviour at runtime.
     #[test]
     fn register_hook_blocked_in_command_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx(); // EvalMode::Command
-        let result = register_hook(
-            &mut ctx,
-            SteelVal::SymbolV("on-buffer-open".into()),
-            SteelVal::BoolV(true),
-        );
+        let result = super::super::errors::require_config(&h.ctx(), "register-hook!"); // EvalMode::Command
         assert!(result.is_err(), "register-hook! must error in command mode");
         let msg = result.unwrap_err().to_string();
         assert!(

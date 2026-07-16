@@ -28,10 +28,10 @@
 //! (call! "my-plugin-cmd" "arg1")      ; Steel command with one arg
 //! ```
 
-use steel::rerrs::{ErrorKind, SteelErr};
+use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use super::{require_cmd_ctx, require_config_ctx};
+use super::errors::generic_err;
 use crate::SteelCtx;
 use crate::attribution::Owner;
 use crate::log::LogLevel;
@@ -87,7 +87,6 @@ fn define_command_inner(
              — shell-out commands must not participate in dot-repeat");
     }
     let builtin_name = "define-command!";
-    require_config_ctx!(ctx, builtin_name);
     if name.contains('"') || name.contains('\\') {
         steel::stop!(Generic =>
             "{}: command name '{}' must not contain '\"' or '\\'", builtin_name, name);
@@ -153,7 +152,7 @@ fn define_command_inner(
             inline_output,
             repeatable,
         })
-        .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
+        .map_err(generic_err)?;
     let current_owner = ctx.plugin_stack.current_owner();
     ctx.registries.command_table.insert(name.clone(), proc);
     ctx.registries
@@ -195,12 +194,12 @@ pub(crate) fn call_command_primitive(
                 return Ok(SteelVal::Void);
             }
             let (count, extend) = parse_count_extend(&args_vec)
-                .map_err(|e| SteelErr::new(ErrorKind::Generic, format!("%call-native!: {e}")))?;
+                .map_err(|e| generic_err(format!("%call-native!: {e}")))?;
             ctx.host
                 .commands()
                 .run_command_sync(&name, count, extend, ctx.current_register_prefix)
                 .map(|()| SteelVal::Void)
-                .map_err(|e| SteelErr::new(ErrorKind::Generic, format!("%call-native!: {e}")))
+                .map_err(|e| generic_err(format!("%call-native!: {e}")))
         }
         Ok(false) => {
             ctx.log(
@@ -283,7 +282,6 @@ fn steel_list_to_vec(val: SteelVal) -> Result<Vec<SteelVal>, steel::rerrs::Steel
 ///
 /// Only valid inside a `SteelBacked` command invocation.
 pub(crate) fn request_wait_char(ctx: &mut SteelCtx, cmd: String) -> SteelResult {
-    require_cmd_ctx!(ctx, "request-wait-char!");
     ctx.wait_char_request = Some(cmd);
     Ok(SteelVal::Void)
 }
@@ -334,7 +332,6 @@ pub(crate) fn pending_char(ctx: &mut SteelCtx) -> SteelResult {
 ///
 /// Only valid inside a `SteelBacked` command or hook invocation.
 pub(crate) fn set_register_prefix(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    require_cmd_ctx!(ctx, "set-register-prefix!");
     let mut chars = name.chars();
     let reg = match (chars.next(), chars.next()) {
         (Some(c), None) => c,
@@ -426,7 +423,7 @@ mod tests {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
         ctx.session = crate::context::EvalSession::Init;
-        let err = request_wait_char(&mut ctx, "replace".to_string()).unwrap_err();
+        let err = super::super::errors::require_cmd(&ctx, "request-wait-char!").unwrap_err();
         assert!(
             err.to_string().contains("not available during init"),
             "got: {err}"

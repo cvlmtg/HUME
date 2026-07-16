@@ -6,7 +6,7 @@ use steel::rvals::SteelVal;
 use crate::SteelCtx;
 use crate::host::OptionValue;
 
-use super::{require_cmd_ctx, require_config_ctx};
+use super::errors::generic_err;
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -22,8 +22,6 @@ type SteelResult = Result<SteelVal, SteelErr>;
 /// Valid during `init.scm` or any plugin activation (init or runtime); raises
 /// a Steel error if called from a plain command body.
 pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> SteelResult {
-    require_config_ctx!(ctx, "set-option!");
-
     // Accept string, bool, or integer for `value` and convert to the string
     // representation that the settings layer expects.
     let value_str = match &value {
@@ -37,7 +35,7 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
     ctx.host
         .settings()
         .set_global_option(&key, &value_str)
-        .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
+        .map_err(generic_err)?;
 
     Ok(SteelVal::Void)
 }
@@ -50,12 +48,11 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
 /// just init/plugin-load, since features read settings (e.g. `tab-width`,
 /// `lsp.inlay-hints`) while composing a request, not just at startup.
 pub(crate) fn get_option(ctx: &mut SteelCtx, key: String) -> SteelResult {
-    require_cmd_ctx!(ctx, "get-option");
     let value = ctx
         .host
         .settings()
         .get_option(&key, ctx.focused_buffer_id)
-        .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
+        .map_err(generic_err)?;
     Ok(match value {
         OptionValue::Bool(b) => SteelVal::BoolV(b),
         OptionValue::Int(n) => SteelVal::IntV(n as isize),
@@ -69,15 +66,17 @@ mod tests {
     use crate::test_support::SteelCtxTestHarness;
     use steel::rvals::IntoSteelVal as _;
 
-    /// `set-option!` is blocked in plain command mode (init/plugin-load only).
+    /// `set-option!` is blocked in plain command mode (init/plugin-load only)
+    /// — gated at registration time (`config` kind in `builtins!`'s table),
+    /// not in the body, so this tests the gate primitive directly.
     ///
-    /// Fail oracle: remove the require_config_ctx! guard → settings can be
-    /// mutated from any command body, bypassing the init-only contract.
+    /// Fail oracle: change `set-option!`'s table entry from `config` to
+    /// `open` → settings could be mutated from any command body, bypassing
+    /// the init-only contract.
     #[test]
     fn set_option_blocked_in_command_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx(); // EvalMode::Command
-        let result = set_option(&mut ctx, "tab-width".into(), SteelVal::IntV(2));
+        let result = super::super::errors::require_config(&h.ctx(), "set-option!"); // EvalMode::Command
         assert!(result.is_err(), "set-option! must error in command mode");
         let msg = result.unwrap_err().to_string();
         assert!(
@@ -149,16 +148,17 @@ mod tests {
     }
 
     /// `get-option` is blocked during init eval (the opposite gate from
-    /// `set-option!`: it's a command-mode read, not an init-time write).
+    /// `set-option!`: it's a command-mode read, not an init-time write) —
+    /// gated at registration time (`cmd` kind), tested via the gate
+    /// primitive directly.
     ///
-    /// Fail oracle: remove the `require_cmd_ctx!` guard → readable during
-    /// init, where there is no meaningful focused buffer to resolve
-    /// overrides against.
+    /// Fail oracle: change `get-option`'s table entry from `cmd` to `open` →
+    /// readable during init, where there is no meaningful focused buffer to
+    /// resolve overrides against.
     #[test]
     fn get_option_blocked_in_init_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx_init();
-        let result = get_option(&mut ctx, "tab-width".into());
+        let result = super::super::errors::require_cmd(&h.ctx_init(), "get-option");
         assert!(result.is_err(), "get-option must error during init eval");
         let msg = result.unwrap_err().to_string();
         assert!(
