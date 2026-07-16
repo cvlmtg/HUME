@@ -8,18 +8,27 @@
 //! validation) where the host mutators are never reached.  Tests that need working
 //! mutations (bind-key!, set-option!, attach-grammar!, …) must use `MockHost`
 //! in the editor crate.
+//!
+//! [`FailingRegisterHost`], [`InlineOutputHost`], and [`RecordingInlineOutputHost`]
+//! each embed a real `NullHost` and delegate every not-yet-capability-split
+//! `EditorHost` method to it, overriding only the one or two methods/accessors
+//! that make them distinct.
 
 use std::path::{Path, PathBuf};
 
 use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
 
-use crate::host::{BindMode, EditorHost, OptionValue, OutputHost};
+use crate::host::{BindMode, CursorHost, EditorHost, OptionValue, OutputHost};
 use crate::types::SteelCmdDef;
 
+#[derive(Default)]
 pub(crate) struct NullHost;
 
 impl EditorHost for NullHost {
+    fn cursor(&mut self) -> &mut dyn CursorHost {
+        self
+    }
     fn buffer_ids(&self) -> Vec<BufferId> {
         vec![]
     }
@@ -120,6 +129,9 @@ impl EditorHost for NullHost {
         Ok(())
     }
     fn unregister_command(&mut self, _name: &str) {}
+}
+
+impl CursorHost for NullHost {
     fn current_line_number(&self) -> Option<usize> {
         None
     }
@@ -129,6 +141,12 @@ impl EditorHost for NullHost {
     fn char_index_to_line(&self, _idx: usize) -> Option<usize> {
         None
     }
+    fn symbol_under_cursor(&self, _bid: BufferId) -> String {
+        String::new()
+    }
+    fn selection_spans_full_line(&self, _bid: BufferId) -> bool {
+        false
+    }
 }
 
 /// Like [`NullHost`] but `register_command` fails.
@@ -136,44 +154,50 @@ impl EditorHost for NullHost {
 /// Exercises the `define-command!` path where the editor-side registry rejects
 /// the name (e.g. it shadows a native command): the builtin must propagate the
 /// error *without* recording the command in `command_table`/`cmd_owners`.
-pub(crate) struct FailingRegisterHost;
+#[derive(Default)]
+pub(crate) struct FailingRegisterHost {
+    inner: NullHost,
+}
 
 impl EditorHost for FailingRegisterHost {
+    fn cursor(&mut self) -> &mut dyn CursorHost {
+        &mut self.inner
+    }
     fn buffer_ids(&self) -> Vec<BufferId> {
-        NullHost.buffer_ids()
+        self.inner.buffer_ids()
     }
     fn pane_ids(&self) -> Vec<PaneId> {
-        NullHost.pane_ids()
+        self.inner.pane_ids()
     }
     fn buffer_exists(&self, id: BufferId) -> bool {
-        NullHost.buffer_exists(id)
+        self.inner.buffer_exists(id)
     }
     fn buffer_path(&self, id: BufferId) -> Option<PathBuf> {
-        NullHost.buffer_path(id)
+        self.inner.buffer_path(id)
     }
     fn buffer_display_name(&self, id: BufferId) -> Option<String> {
-        NullHost.buffer_display_name(id)
+        self.inner.buffer_display_name(id)
     }
     fn buffer_is_dirty(&self, id: BufferId) -> Option<bool> {
-        NullHost.buffer_is_dirty(id)
+        self.inner.buffer_is_dirty(id)
     }
     fn buffer_stored_language(&self, id: BufferId) -> Option<String> {
-        NullHost.buffer_stored_language(id)
+        self.inner.buffer_stored_language(id)
     }
     fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String> {
-        NullHost.open_buffer(path)
+        self.inner.open_buffer(path)
     }
     fn close_buffer(&mut self, id: BufferId) -> Result<BufferId, String> {
-        NullHost.close_buffer(id)
+        self.inner.close_buffer(id)
     }
     fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String> {
-        NullHost.switch_to_buffer(current, target)
+        self.inner.switch_to_buffer(current, target)
     }
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
-        NullHost.set_global_option(key, value)
+        self.inner.set_global_option(key, value)
     }
     fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
-        NullHost.get_option(key, bid)
+        self.inner.get_option(key, bid)
     }
     fn configure_statusline(
         &mut self,
@@ -181,7 +205,7 @@ impl EditorHost for FailingRegisterHost {
         c: Vec<String>,
         r: Vec<String>,
     ) -> Result<(), String> {
-        NullHost.configure_statusline(l, c, r)
+        self.inner.configure_statusline(l, c, r)
     }
     fn bind_key(
         &mut self,
@@ -190,7 +214,7 @@ impl EditorHost for FailingRegisterHost {
         cmd: &str,
         fe: bool,
     ) -> Result<(), String> {
-        NullHost.bind_key(mode, keys, cmd, fe)
+        self.inner.bind_key(mode, keys, cmd, fe)
     }
     fn bind_wait_char(
         &mut self,
@@ -198,10 +222,10 @@ impl EditorHost for FailingRegisterHost {
         keys: &[KeyEvent],
         cmd: &str,
     ) -> Result<(), String> {
-        NullHost.bind_wait_char(mode, keys, cmd)
+        self.inner.bind_wait_char(mode, keys, cmd)
     }
     fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String> {
-        NullHost.unbind_key(mode, keys)
+        self.inner.unbind_key(mode, keys)
     }
     fn attach_grammar(
         &mut self,
@@ -211,19 +235,19 @@ impl EditorHost for FailingRegisterHost {
         hl: &Path,
         inj: Option<&Path>,
     ) -> Result<(), String> {
-        NullHost.attach_grammar(name, gp, sym, hl, inj)
+        self.inner.attach_grammar(name, gp, sym, hl, inj)
     }
     fn has_grammar(&self, language: &str) -> bool {
-        NullHost.has_grammar(language)
+        self.inner.has_grammar(language)
     }
     fn is_valid_register_name(&self, ch: char) -> bool {
-        NullHost.is_valid_register_name(ch)
+        self.inner.is_valid_register_name(ch)
     }
     fn steel_command_budget_ms(&self) -> u64 {
-        NullHost.steel_command_budget_ms()
+        self.inner.steel_command_budget_ms()
     }
     fn command_is_native(&self, name: &str) -> Result<bool, String> {
-        NullHost.command_is_native(name)
+        self.inner.command_is_native(name)
     }
     fn run_command_sync(
         &mut self,
@@ -232,7 +256,7 @@ impl EditorHost for FailingRegisterHost {
         extend: bool,
         register: Option<char>,
     ) -> Result<(), String> {
-        NullHost.run_command_sync(name, count, extend, register)
+        self.inner.run_command_sync(name, count, extend, register)
     }
     fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String> {
         Err(format!(
@@ -241,16 +265,7 @@ impl EditorHost for FailingRegisterHost {
         ))
     }
     fn unregister_command(&mut self, name: &str) {
-        NullHost.unregister_command(name)
-    }
-    fn current_line_number(&self) -> Option<usize> {
-        NullHost.current_line_number()
-    }
-    fn current_selections(&self) -> Option<Vec<(usize, usize, bool)>> {
-        NullHost.current_selections()
-    }
-    fn char_index_to_line(&self, idx: usize) -> Option<usize> {
-        NullHost.char_index_to_line(idx)
+        self.inner.unregister_command(name)
     }
 }
 
@@ -259,44 +274,53 @@ impl EditorHost for FailingRegisterHost {
 /// Exercises the `SteelCtx::new_command` wiring that reads the flag off the
 /// host (see `context.rs` tests) without pulling in the editor crate's real
 /// `EditorHostImpl`.
-pub(crate) struct InlineOutputHost;
+#[derive(Default)]
+pub(crate) struct InlineOutputHost {
+    inner: NullHost,
+}
 
 impl EditorHost for InlineOutputHost {
+    fn cursor(&mut self) -> &mut dyn CursorHost {
+        &mut self.inner
+    }
+    fn output(&mut self) -> Option<&mut dyn OutputHost> {
+        Some(self)
+    }
     fn buffer_ids(&self) -> Vec<BufferId> {
-        NullHost.buffer_ids()
+        self.inner.buffer_ids()
     }
     fn pane_ids(&self) -> Vec<PaneId> {
-        NullHost.pane_ids()
+        self.inner.pane_ids()
     }
     fn buffer_exists(&self, id: BufferId) -> bool {
-        NullHost.buffer_exists(id)
+        self.inner.buffer_exists(id)
     }
     fn buffer_path(&self, id: BufferId) -> Option<PathBuf> {
-        NullHost.buffer_path(id)
+        self.inner.buffer_path(id)
     }
     fn buffer_display_name(&self, id: BufferId) -> Option<String> {
-        NullHost.buffer_display_name(id)
+        self.inner.buffer_display_name(id)
     }
     fn buffer_is_dirty(&self, id: BufferId) -> Option<bool> {
-        NullHost.buffer_is_dirty(id)
+        self.inner.buffer_is_dirty(id)
     }
     fn buffer_stored_language(&self, id: BufferId) -> Option<String> {
-        NullHost.buffer_stored_language(id)
+        self.inner.buffer_stored_language(id)
     }
     fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String> {
-        NullHost.open_buffer(path)
+        self.inner.open_buffer(path)
     }
     fn close_buffer(&mut self, id: BufferId) -> Result<BufferId, String> {
-        NullHost.close_buffer(id)
+        self.inner.close_buffer(id)
     }
     fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String> {
-        NullHost.switch_to_buffer(current, target)
+        self.inner.switch_to_buffer(current, target)
     }
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
-        NullHost.set_global_option(key, value)
+        self.inner.set_global_option(key, value)
     }
     fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
-        NullHost.get_option(key, bid)
+        self.inner.get_option(key, bid)
     }
     fn configure_statusline(
         &mut self,
@@ -304,7 +328,7 @@ impl EditorHost for InlineOutputHost {
         c: Vec<String>,
         r: Vec<String>,
     ) -> Result<(), String> {
-        NullHost.configure_statusline(l, c, r)
+        self.inner.configure_statusline(l, c, r)
     }
     fn bind_key(
         &mut self,
@@ -313,7 +337,7 @@ impl EditorHost for InlineOutputHost {
         cmd: &str,
         fe: bool,
     ) -> Result<(), String> {
-        NullHost.bind_key(mode, keys, cmd, fe)
+        self.inner.bind_key(mode, keys, cmd, fe)
     }
     fn bind_wait_char(
         &mut self,
@@ -321,10 +345,10 @@ impl EditorHost for InlineOutputHost {
         keys: &[KeyEvent],
         cmd: &str,
     ) -> Result<(), String> {
-        NullHost.bind_wait_char(mode, keys, cmd)
+        self.inner.bind_wait_char(mode, keys, cmd)
     }
     fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String> {
-        NullHost.unbind_key(mode, keys)
+        self.inner.unbind_key(mode, keys)
     }
     fn attach_grammar(
         &mut self,
@@ -334,22 +358,19 @@ impl EditorHost for InlineOutputHost {
         hl: &Path,
         inj: Option<&Path>,
     ) -> Result<(), String> {
-        NullHost.attach_grammar(name, gp, sym, hl, inj)
+        self.inner.attach_grammar(name, gp, sym, hl, inj)
     }
     fn has_grammar(&self, language: &str) -> bool {
-        NullHost.has_grammar(language)
+        self.inner.has_grammar(language)
     }
     fn is_valid_register_name(&self, ch: char) -> bool {
-        NullHost.is_valid_register_name(ch)
+        self.inner.is_valid_register_name(ch)
     }
     fn steel_command_budget_ms(&self) -> u64 {
-        NullHost.steel_command_budget_ms()
-    }
-    fn output(&mut self) -> Option<&mut dyn OutputHost> {
-        Some(self)
+        self.inner.steel_command_budget_ms()
     }
     fn command_is_native(&self, name: &str) -> Result<bool, String> {
-        NullHost.command_is_native(name)
+        self.inner.command_is_native(name)
     }
     fn run_command_sync(
         &mut self,
@@ -358,22 +379,13 @@ impl EditorHost for InlineOutputHost {
         extend: bool,
         register: Option<char>,
     ) -> Result<(), String> {
-        NullHost.run_command_sync(name, count, extend, register)
+        self.inner.run_command_sync(name, count, extend, register)
     }
     fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String> {
-        NullHost.register_command(def)
+        self.inner.register_command(def)
     }
     fn unregister_command(&mut self, name: &str) {
-        NullHost.unregister_command(name)
-    }
-    fn current_line_number(&self) -> Option<usize> {
-        NullHost.current_line_number()
-    }
-    fn current_selections(&self) -> Option<Vec<(usize, usize, bool)>> {
-        NullHost.current_selections()
-    }
-    fn char_index_to_line(&self, idx: usize) -> Option<usize> {
-        NullHost.char_index_to_line(idx)
+        self.inner.unregister_command(name)
     }
 }
 
@@ -392,45 +404,52 @@ impl OutputHost for InlineOutputHost {
 /// output to produce, without a real terminal.
 #[derive(Default)]
 pub(crate) struct RecordingInlineOutputHost {
+    inner: NullHost,
     pub(crate) ensure_calls: usize,
 }
 
 impl EditorHost for RecordingInlineOutputHost {
+    fn cursor(&mut self) -> &mut dyn CursorHost {
+        &mut self.inner
+    }
+    fn output(&mut self) -> Option<&mut dyn OutputHost> {
+        Some(self)
+    }
     fn buffer_ids(&self) -> Vec<BufferId> {
-        NullHost.buffer_ids()
+        self.inner.buffer_ids()
     }
     fn pane_ids(&self) -> Vec<PaneId> {
-        NullHost.pane_ids()
+        self.inner.pane_ids()
     }
     fn buffer_exists(&self, id: BufferId) -> bool {
-        NullHost.buffer_exists(id)
+        self.inner.buffer_exists(id)
     }
     fn buffer_path(&self, id: BufferId) -> Option<PathBuf> {
-        NullHost.buffer_path(id)
+        self.inner.buffer_path(id)
     }
     fn buffer_display_name(&self, id: BufferId) -> Option<String> {
-        NullHost.buffer_display_name(id)
+        self.inner.buffer_display_name(id)
     }
     fn buffer_is_dirty(&self, id: BufferId) -> Option<bool> {
-        NullHost.buffer_is_dirty(id)
+        self.inner.buffer_is_dirty(id)
     }
     fn buffer_stored_language(&self, id: BufferId) -> Option<String> {
-        NullHost.buffer_stored_language(id)
+        self.inner.buffer_stored_language(id)
     }
     fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String> {
-        NullHost.open_buffer(path)
+        self.inner.open_buffer(path)
     }
     fn close_buffer(&mut self, id: BufferId) -> Result<BufferId, String> {
-        NullHost.close_buffer(id)
+        self.inner.close_buffer(id)
     }
     fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String> {
-        NullHost.switch_to_buffer(current, target)
+        self.inner.switch_to_buffer(current, target)
     }
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
-        NullHost.set_global_option(key, value)
+        self.inner.set_global_option(key, value)
     }
     fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
-        NullHost.get_option(key, bid)
+        self.inner.get_option(key, bid)
     }
     fn configure_statusline(
         &mut self,
@@ -438,7 +457,7 @@ impl EditorHost for RecordingInlineOutputHost {
         c: Vec<String>,
         r: Vec<String>,
     ) -> Result<(), String> {
-        NullHost.configure_statusline(l, c, r)
+        self.inner.configure_statusline(l, c, r)
     }
     fn bind_key(
         &mut self,
@@ -447,7 +466,7 @@ impl EditorHost for RecordingInlineOutputHost {
         cmd: &str,
         fe: bool,
     ) -> Result<(), String> {
-        NullHost.bind_key(mode, keys, cmd, fe)
+        self.inner.bind_key(mode, keys, cmd, fe)
     }
     fn bind_wait_char(
         &mut self,
@@ -455,10 +474,10 @@ impl EditorHost for RecordingInlineOutputHost {
         keys: &[KeyEvent],
         cmd: &str,
     ) -> Result<(), String> {
-        NullHost.bind_wait_char(mode, keys, cmd)
+        self.inner.bind_wait_char(mode, keys, cmd)
     }
     fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String> {
-        NullHost.unbind_key(mode, keys)
+        self.inner.unbind_key(mode, keys)
     }
     fn attach_grammar(
         &mut self,
@@ -468,22 +487,19 @@ impl EditorHost for RecordingInlineOutputHost {
         hl: &Path,
         inj: Option<&Path>,
     ) -> Result<(), String> {
-        NullHost.attach_grammar(name, gp, sym, hl, inj)
+        self.inner.attach_grammar(name, gp, sym, hl, inj)
     }
     fn has_grammar(&self, language: &str) -> bool {
-        NullHost.has_grammar(language)
+        self.inner.has_grammar(language)
     }
     fn is_valid_register_name(&self, ch: char) -> bool {
-        NullHost.is_valid_register_name(ch)
+        self.inner.is_valid_register_name(ch)
     }
     fn steel_command_budget_ms(&self) -> u64 {
-        NullHost.steel_command_budget_ms()
-    }
-    fn output(&mut self) -> Option<&mut dyn OutputHost> {
-        Some(self)
+        self.inner.steel_command_budget_ms()
     }
     fn command_is_native(&self, name: &str) -> Result<bool, String> {
-        NullHost.command_is_native(name)
+        self.inner.command_is_native(name)
     }
     fn run_command_sync(
         &mut self,
@@ -492,22 +508,13 @@ impl EditorHost for RecordingInlineOutputHost {
         extend: bool,
         register: Option<char>,
     ) -> Result<(), String> {
-        NullHost.run_command_sync(name, count, extend, register)
+        self.inner.run_command_sync(name, count, extend, register)
     }
     fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String> {
-        NullHost.register_command(def)
+        self.inner.register_command(def)
     }
     fn unregister_command(&mut self, name: &str) {
-        NullHost.unregister_command(name)
-    }
-    fn current_line_number(&self) -> Option<usize> {
-        NullHost.current_line_number()
-    }
-    fn current_selections(&self) -> Option<Vec<(usize, usize, bool)>> {
-        NullHost.current_selections()
-    }
-    fn char_index_to_line(&self, idx: usize) -> Option<usize> {
-        NullHost.char_index_to_line(idx)
+        self.inner.unregister_command(name)
     }
 }
 

@@ -21,8 +21,8 @@ use crate::editor::timer_bridge::TimerHandle;
 use crate::settings::{BufferOverrides, SettingScope, apply_setting};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 use hume_scripting::host::{
-    BindMode, CompletionHost, DecorationHost, EditHost, EditorHost, LspHost, OptionValue,
-    OutputHost, TimerHost, UiHost,
+    BindMode, CompletionHost, CursorHost, DecorationHost, EditHost, EditorHost, LspHost,
+    OptionValue, OutputHost, TimerHost, UiHost,
 };
 
 use super::{EditorState, Severity};
@@ -115,6 +115,9 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     }
     fn output(&mut self) -> Option<&mut dyn OutputHost> {
         Some(self)
+    }
+    fn cursor(&mut self) -> &mut dyn CursorHost {
+        self
     }
 
     // ── Enumeration ──────────────────────────────────────────────────────────
@@ -377,7 +380,26 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-    // ── Live cursor read ─────────────────────────────────────────────────────
+    fn buffer_generation(&self, id: BufferId) -> Option<u64> {
+        Some(self.buffer(id)?.text_gen)
+    }
+
+    fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)> {
+        crate::editor::lsp::introspect::viewport_range(self.state, self.view, id)
+    }
+
+    // ── Trigger chars ───────────────────────────────────────────────────
+    fn register_trigger_chars(&mut self, source: String, language: String, chars: Vec<char>) {
+        if chars.is_empty() {
+            self.state.trigger_chars.remove(&(source, language));
+        } else {
+            self.state.trigger_chars.insert((source, language), chars);
+        }
+    }
+
+}
+
+impl<'a> CursorHost for EditorHostImpl<'a> {
     fn current_line_number(&self) -> Option<usize> {
         let pbs = self.focused_pane_buffer_state()?;
         self.char_index_to_line(pbs.selections.primary().head())
@@ -402,27 +424,6 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             return None;
         }
         Some(text.char_to_line(idx) + 1)
-    }
-
-    fn buffer_generation(&self, id: BufferId) -> Option<u64> {
-        Some(self.buffer(id)?.text_gen)
-    }
-
-    fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)> {
-        crate::editor::lsp::introspect::viewport_range(self.state, self.view, id)
-    }
-
-    // ── Trigger chars ───────────────────────────────────────────────────
-    fn register_trigger_chars(&mut self, source: String, language: String, chars: Vec<char>) {
-        if chars.is_empty() {
-            self.state.trigger_chars.remove(&(source, language));
-        } else {
-            self.state.trigger_chars.insert((source, language), chars);
-        }
-    }
-
-    fn selection_spans_full_line(&self, bid: BufferId) -> bool {
-        crate::editor::lsp::edits::selection_spans_full_line(self.state, bid)
     }
 
     fn symbol_under_cursor(&self, bid: BufferId) -> String {
@@ -455,6 +456,10 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             return String::new();
         };
         text.slice(start..end + 1).to_string()
+    }
+
+    fn selection_spans_full_line(&self, bid: BufferId) -> bool {
+        crate::editor::lsp::edits::selection_spans_full_line(self.state, bid)
     }
 }
 

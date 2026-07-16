@@ -857,7 +857,9 @@ pub(crate) fn goto_location(ctx: &mut SteelCtx, loc: SteelVal) -> SteelResult {
 pub(crate) fn selection_spans_full_line(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "selection-spans-full-line?");
     let id = bid_arg(&bid, "selection-spans-full-line?")?;
-    Ok(SteelVal::BoolV(ctx.host.selection_spans_full_line(id)))
+    Ok(SteelVal::BoolV(
+        ctx.host.cursor().selection_spans_full_line(id),
+    ))
 }
 
 // ── Minibuffer prompt ───────────────────────────────────────────────────
@@ -886,7 +888,9 @@ pub(crate) fn prompt(
 pub(crate) fn symbol_under_cursor(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "symbol-under-cursor");
     let id = bid_arg(&bid, "symbol-under-cursor")?;
-    Ok(SteelVal::StringV(ctx.host.symbol_under_cursor(id).into()))
+    Ok(SteelVal::StringV(
+        ctx.host.cursor().symbol_under_cursor(id).into(),
+    ))
 }
 
 // ── Completion orchestration ────────────────────────────────────────────

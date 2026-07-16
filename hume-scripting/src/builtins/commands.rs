@@ -591,7 +591,7 @@ mod tests {
             Ok(SteelVal::Void)
         }
         let mut h = SteelCtxTestHarness::new();
-        let mut host = crate::null_host::FailingRegisterHost;
+        let mut host = crate::null_host::FailingRegisterHost::default();
         {
             let mut ctx = h.ctx_init_with_host(&mut host);
             let err = define_command(

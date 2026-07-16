@@ -252,7 +252,7 @@ pub(crate) fn buffer_language(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult 
 /// earlier in the same Steel eval (e.g. after `(move-left)`).
 pub(crate) fn current_line_number(ctx: &mut SteelCtx) -> SteelResult {
     require_cmd_ctx!(ctx, "current-line-number");
-    match ctx.host.current_line_number() {
+    match ctx.host.cursor().current_line_number() {
         Some(n) => Ok(SteelVal::IntV(n as isize)),
         None => Ok(SteelVal::BoolV(false)),
     }
@@ -264,7 +264,7 @@ pub(crate) fn current_line_number(ctx: &mut SteelCtx) -> SteelResult {
 /// or `#f` when the focused (pane, buffer) has no seeded pane state.
 pub(crate) fn current_selections(ctx: &mut SteelCtx) -> SteelResult {
     require_cmd_ctx!(ctx, "current-selections");
-    match ctx.host.current_selections() {
+    match ctx.host.cursor().current_selections() {
         Some(sels) => {
             let list: Vec<SteelVal> = sels
                 .into_iter()
@@ -299,7 +299,7 @@ pub(crate) fn char_index_to_line(ctx: &mut SteelCtx, idx: SteelVal) -> SteelResu
             ));
         }
     };
-    match ctx.host.char_index_to_line(idx) {
+    match ctx.host.cursor().char_index_to_line(idx) {
         Some(line) => Ok(SteelVal::IntV(line as isize)),
         None => Ok(SteelVal::BoolV(false)),
     }

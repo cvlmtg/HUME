@@ -15,7 +15,7 @@
 
 use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
-use hume_scripting::host::{BindMode, EditorHost, OptionValue};
+use hume_scripting::host::{BindMode, CursorHost, EditorHost, OptionValue};
 
 pub(crate) struct MockHost {
     pub(crate) settings: hume::settings::EditorSettings,
@@ -53,6 +53,9 @@ impl Default for MockHost {
 }
 
 impl EditorHost for MockHost {
+    fn cursor(&mut self) -> &mut dyn CursorHost {
+        self
+    }
     fn buffer_ids(&self) -> Vec<BufferId> {
         Vec::new()
     }
@@ -198,6 +201,9 @@ impl EditorHost for MockHost {
     fn unregister_command(&mut self, name: &str) {
         self.registered_cmds.retain(|d| d.name != name);
     }
+}
+
+impl CursorHost for MockHost {
     fn current_line_number(&self) -> Option<usize> {
         None
     }
@@ -206,6 +212,12 @@ impl EditorHost for MockHost {
     }
     fn char_index_to_line(&self, _idx: usize) -> Option<usize> {
         None
+    }
+    fn symbol_under_cursor(&self, _bid: BufferId) -> String {
+        String::new()
+    }
+    fn selection_spans_full_line(&self, _bid: BufferId) -> bool {
+        false
     }
 }
 

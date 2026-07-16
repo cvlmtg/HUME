@@ -103,6 +103,9 @@ pub trait EditorHost {
     fn output(&mut self) -> Option<&mut dyn OutputHost> {
         None
     }
+    /// Live cursor/selection reads — required: every host has some notion
+    /// (even if only "nothing is focused") of the focused buffer's cursor.
+    fn cursor(&mut self) -> &mut dyn CursorHost;
 
     // ── Enumeration ─────────────────────────────────────────────────────────
     /// All open buffer ids in open-order.
@@ -235,28 +238,6 @@ pub trait EditorHost {
     /// No-op if the name is not present.
     fn unregister_command(&mut self, name: &str);
 
-    // ── Live cursor read ─────────────────────────────────────────────────────
-    /// Line number (1-indexed) of the primary cursor in the focused buffer.
-    ///
-    /// Returns `None` when the focused (pane, buffer) has no seeded pane state
-    /// (stale or never-focused ids).
-    fn current_line_number(&self) -> Option<usize>;
-
-    /// All selections in the focused buffer as `(anchor, head, primary)` triples —
-    /// raw 0-indexed char offsets, inclusive model (anchor == head is a 1-char
-    /// selection), direction preserved (anchor > head for backward selections),
-    /// sorted by selection start, with exactly one triple flagged primary.
-    ///
-    /// Returns `None` when the focused (pane, buffer) has no seeded pane state.
-    fn current_selections(&self) -> Option<Vec<(usize, usize, bool)>>;
-
-    /// 1-indexed line number containing the 0-indexed char offset `idx` in the
-    /// focused buffer.
-    ///
-    /// Returns `None` when the focused buffer id is stale (buffer no longer
-    /// exists) or when `idx` is out of range (> `len_chars()`).
-    fn char_index_to_line(&self, idx: usize) -> Option<usize>;
-
     /// Steel-side staleness token for buffer `id` (its `text_gen`, bumped by
     /// every mutation) — `None` if `id` is unknown. Not LSP-specific (any
     /// script can compare a saved value against a live read), but the LSP
@@ -286,18 +267,37 @@ pub trait EditorHost {
         let _ = (source, language, chars);
     }
 
-    /// `(selection-spans-full-line? bid)`.
-    fn selection_spans_full_line(&self, bid: BufferId) -> bool {
-        let _ = bid;
-        false
-    }
+}
+
+/// Live cursor/selection reads — accessed through [`EditorHost::cursor`].
+pub trait CursorHost {
+    /// Line number (1-indexed) of the primary cursor in the focused buffer.
+    ///
+    /// Returns `None` when the focused (pane, buffer) has no seeded pane state
+    /// (stale or never-focused ids).
+    fn current_line_number(&self) -> Option<usize>;
+
+    /// All selections in the focused buffer as `(anchor, head, primary)` triples —
+    /// raw 0-indexed char offsets, inclusive model (anchor == head is a 1-char
+    /// selection), direction preserved (anchor > head for backward selections),
+    /// sorted by selection start, with exactly one triple flagged primary.
+    ///
+    /// Returns `None` when the focused (pane, buffer) has no seeded pane state.
+    fn current_selections(&self) -> Option<Vec<(usize, usize, bool)>>;
+
+    /// 1-indexed line number containing the 0-indexed char offset `idx` in the
+    /// focused buffer.
+    ///
+    /// Returns `None` when the focused buffer id is stale (buffer no longer
+    /// exists) or when `idx` is out of range (> `len_chars()`).
+    fn char_index_to_line(&self, idx: usize) -> Option<usize>;
 
     /// `(symbol-under-cursor bid)` — the word at the primary cursor head,
     /// `""` on whitespace/punctuation.
-    fn symbol_under_cursor(&self, bid: BufferId) -> String {
-        let _ = bid;
-        String::new()
-    }
+    fn symbol_under_cursor(&self, bid: BufferId) -> String;
+
+    /// `(selection-spans-full-line? bid)`.
+    fn selection_spans_full_line(&self, bid: BufferId) -> bool;
 }
 
 /// Completion session orchestration — accessed through

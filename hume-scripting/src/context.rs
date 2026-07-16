@@ -342,7 +342,7 @@ mod tests {
     #[test]
     fn new_command_reads_inline_output_true_from_host() {
         use crate::null_host::InlineOutputHost;
-        let mut host = InlineOutputHost;
+        let mut host = InlineOutputHost::default();
         let mut h = SteelCtxTestHarness::new();
         let ctx = h.ctx_with_host(&mut host);
         assert!(

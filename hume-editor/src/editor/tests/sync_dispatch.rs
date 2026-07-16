@@ -3,7 +3,7 @@ use super::*;
 use crate::editor::host_impl::EditorHostImpl;
 use crate::testing::MockHost;
 use hume_scripting::ScriptingHost;
-use hume_scripting::host::EditorHost;
+use hume_scripting::host::{CursorHost, EditorHost};
 
 // ── Unit tests: run_command_sync ──────────────────────────────────────────────
 

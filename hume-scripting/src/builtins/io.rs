@@ -120,7 +120,7 @@ mod tests {
 
     #[test]
     fn is_inline_output_alone_is_safe() {
-        let mut host = InlineOutputHost;
+        let mut host = InlineOutputHost::default();
         let mut h = SteelCtxTestHarness::new();
         let ctx = h.ctx_with_host(&mut host); // is_init=false, is_inline_output=true
         assert!(stdout_is_safe(&ctx));
