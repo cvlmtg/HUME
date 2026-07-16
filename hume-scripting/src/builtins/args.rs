@@ -182,6 +182,31 @@ pub(crate) fn tuple_list<T>(
         .collect()
 }
 
+// ── Dotted-pair decoders/encoders ────────────────────────────────────────────
+
+/// Unpacks `val` as a dotted pair `(car . cdr)` — the shared decode for wire
+/// shapes that are semantically a 2-tuple (a position, a range). Rejects a
+/// proper 2-element list: the wire format is a pair, not a list.
+pub(crate) fn pair_fields(
+    val: SteelVal,
+    ctx_name: &str,
+    shape: &str,
+) -> Result<(SteelVal, SteelVal), SteelErr> {
+    match val {
+        SteelVal::Pair(p) => Ok((p.car(), p.cdr())),
+        _ => steel::stop!(Generic => "{}: each entry must be {}", ctx_name, shape),
+    }
+}
+
+/// Builds a dotted pair `(a . b)` — the shared encode counterpart to
+/// `pair_fields`, via steel-core's public `cons` primitive (the only public
+/// pair-construction API; the `Pair` type itself is unnameable outside
+/// steel-core).
+pub(crate) fn cons_pair(a: SteelVal, b: SteelVal) -> Result<SteelVal, SteelErr> {
+    let (mut a, mut b) = (a, b);
+    steel::primitives::lists::cons(&mut a, &mut b)
+}
+
 // ── FromSteelVal newtypes ────────────────────────────────────────────────────
 //
 // Used as typed params in builtin signatures — steel-core's
@@ -384,6 +409,34 @@ mod tests {
             string_arg(fields[0].clone(), "f")
         });
         assert!(result.is_err());
+    }
+
+    // ── pair_fields / cons_pair ──────────────────────────────────────────────
+
+    #[test]
+    fn cons_pair_then_pair_fields_round_trips() {
+        let pair = cons_pair(SteelVal::IntV(3), SteelVal::IntV(7)).unwrap();
+        let (car, cdr) = pair_fields(pair, "f", "(a . b)").unwrap();
+        assert_eq!(car, SteelVal::IntV(3));
+        assert_eq!(cdr, SteelVal::IntV(7));
+    }
+
+    #[test]
+    fn pair_fields_rejects_proper_list() {
+        let err = pair_fields(list_of(&["a", "b"]), "position", "(line . col)").unwrap_err();
+        assert!(
+            err.to_string().contains("(line . col)"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn pair_fields_rejects_non_pair_scalar() {
+        let err = pair_fields(SteelVal::IntV(3), "position", "(line . col)").unwrap_err();
+        assert!(
+            err.to_string().contains("(line . col)"),
+            "got: {err}"
+        );
     }
 
     // ── BidArg ────────────────────────────────────────────────────────────────
