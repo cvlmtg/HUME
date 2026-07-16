@@ -715,6 +715,8 @@ pub(crate) fn apply_text_edits(
         parsed.push((start_line, start_char, end_line, end_char, new_text));
     }
     ctx.host
+        .edits()
+        .ok_or_else(|| conv_err(crate::host::unsupported("apply-text-edits!")))?
         .apply_text_edits(id, parsed, expect_gen)
         .map(|()| SteelVal::Void)
         .map_err(conv_err)
@@ -726,7 +728,12 @@ pub(crate) fn apply_text_edits(
 pub(crate) fn apply_workspace_edit(ctx: &mut SteelCtx, wsedit: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "apply-workspace-edit!");
     let json = steel_to_json(&wsedit).map_err(conv_err)?;
-    let count = ctx.host.apply_workspace_edit(json).map_err(conv_err)?;
+    let count = ctx
+        .host
+        .edits()
+        .ok_or_else(|| conv_err(crate::host::unsupported("apply-workspace-edit!")))?
+        .apply_workspace_edit(json)
+        .map_err(conv_err)?;
     Ok(SteelVal::IntV(count as isize))
 }
 
@@ -770,6 +777,8 @@ pub(crate) fn goto_location(ctx: &mut SteelCtx, loc: SteelVal) -> SteelResult {
                 .ok_or_else(|| conv_err("goto-location!: missing range.start.character"))?
                 as usize;
             ctx.host
+                .edits()
+                .ok_or_else(|| conv_err(crate::host::unsupported("goto-location!")))?
                 .goto_location_wire(uri, line, character)
                 .map(|()| SteelVal::Void)
                 .map_err(conv_err)
@@ -787,12 +796,16 @@ pub(crate) fn goto_location(ctx: &mut SteelCtx, loc: SteelVal) -> SteelResult {
             let col = usize_arg(it.next().expect("len checked"), "goto-location! col")?;
             if let Some(bid) = super::ids::downcast_buffer_id(&target) {
                 ctx.host
+                    .edits()
+                    .ok_or_else(|| conv_err(crate::host::unsupported("goto-location!")))?
                     .goto_location_buffer(bid, line, col)
                     .map(|()| SteelVal::Void)
                     .map_err(conv_err)
             } else {
                 let s = string_arg(target, "goto-location! target")?;
                 ctx.host
+                    .edits()
+                    .ok_or_else(|| conv_err(crate::host::unsupported("goto-location!")))?
                     .goto_location_path(s, line, col)
                     .map(|()| SteelVal::Void)
                     .map_err(conv_err)

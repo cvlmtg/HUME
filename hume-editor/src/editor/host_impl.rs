@@ -20,7 +20,7 @@ use crate::editor::registry::MappableCommand;
 use crate::editor::timer_bridge::TimerHandle;
 use crate::settings::{BufferOverrides, SettingScope, apply_setting};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
-use hume_scripting::host::{BindMode, EditorHost, OptionValue, UiHost};
+use hume_scripting::host::{BindMode, EditHost, EditorHost, OptionValue, UiHost};
 
 use super::{EditorState, Severity};
 
@@ -88,6 +88,9 @@ impl<'a> EditorHostImpl<'a> {
 impl<'a> EditorHost for EditorHostImpl<'a> {
     // ── Optional capability accessors ────────────────────────────────────────
     fn ui(&mut self) -> Option<&mut dyn UiHost> {
+        Some(self)
+    }
+    fn edits(&mut self) -> Option<&mut dyn EditHost> {
         Some(self)
     }
 
@@ -603,103 +606,6 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         crate::editor::lsp::introspect::diagnostic_counts(lsp, bid)
     }
 
-    // ── Edit + navigation primitives ────────────────────────────────────
-    fn apply_text_edits(
-        &mut self,
-        bid: BufferId,
-        edits: Vec<(usize, usize, usize, usize, String)>,
-        expect_gen: Option<u64>,
-    ) -> Result<(), String> {
-        let Some(lsp) = self.lsp.as_deref() else {
-            return Err("apply-text-edits!: no LSP state available".to_string());
-        };
-        // Untrusted plugin input, not an internal invariant — a position
-        // that doesn't fit `u32` is a malformed edit, reported as an error,
-        // never a panic.
-        let to_u32 = |v: usize| {
-            u32::try_from(v)
-                .map_err(|_| "apply-text-edits!: position exceeds u32 (malformed edit)".to_string())
-        };
-        let mut typed_edits = Vec::with_capacity(edits.len());
-        for (start_line, start_char, end_line, end_char, new_text) in edits {
-            typed_edits.push(lsp_types::TextEdit {
-                range: lsp_types::Range {
-                    start: lsp_types::Position {
-                        line: to_u32(start_line)?,
-                        character: to_u32(start_char)?,
-                    },
-                    end: lsp_types::Position {
-                        line: to_u32(end_line)?,
-                        character: to_u32(end_char)?,
-                    },
-                },
-                new_text,
-            });
-        }
-        crate::editor::lsp::edits::apply_text_edits(self.state, lsp, bid, typed_edits, expect_gen)
-    }
-
-    fn apply_workspace_edit(&mut self, edit: serde_json::Value) -> Result<usize, String> {
-        let Some(lsp) = self.lsp.as_deref() else {
-            return Err("apply-workspace-edit!: no LSP state available".to_string());
-        };
-        let we: lsp_types::WorkspaceEdit =
-            serde_json::from_value(edit).map_err(|e| format!("malformed WorkspaceEdit: {e}"))?;
-        let summary =
-            crate::editor::lsp::edits::apply_workspace_edit(self.state, self.view, lsp, we)?;
-        Ok(summary.buffers_modified)
-    }
-
-    fn goto_location_wire(
-        &mut self,
-        uri: String,
-        line: usize,
-        character: usize,
-    ) -> Result<(), String> {
-        let Some(lsp) = self.lsp.as_deref() else {
-            return Err("goto-location!: no LSP state available".to_string());
-        };
-        let uri: lsp_types::Uri = uri
-            .parse()
-            .map_err(|_| format!("goto-location!: bad uri {uri:?}"))?;
-        let target = crate::editor::lsp::edits::GotoTarget::Wire {
-            uri,
-            line,
-            character,
-        };
-        crate::editor::lsp::edits::goto_location(self.state, self.view, lsp, target)
-    }
-
-    fn goto_location_path(
-        &mut self,
-        path_or_uri: String,
-        line: usize,
-        col: usize,
-    ) -> Result<(), String> {
-        let Some(lsp) = self.lsp.as_deref() else {
-            return Err("goto-location!: no LSP state available".to_string());
-        };
-        let target = crate::editor::lsp::edits::GotoTarget::Path {
-            path_or_uri,
-            line,
-            col,
-        };
-        crate::editor::lsp::edits::goto_location(self.state, self.view, lsp, target)
-    }
-
-    fn goto_location_buffer(
-        &mut self,
-        bid: BufferId,
-        line: usize,
-        col: usize,
-    ) -> Result<(), String> {
-        let Some(lsp) = self.lsp.as_deref() else {
-            return Err("goto-location!: no LSP state available".to_string());
-        };
-        let target = crate::editor::lsp::edits::GotoTarget::Buffer { bid, line, col };
-        crate::editor::lsp::edits::goto_location(self.state, self.view, lsp, target)
-    }
-
     fn selection_spans_full_line(&self, bid: BufferId) -> bool {
         crate::editor::lsp::edits::selection_spans_full_line(self.state, bid)
     }
@@ -837,6 +743,105 @@ pub(crate) fn to_editor_bind_mode(mode: BindMode) -> crate::editor::keymap::Bind
         BindMode::Normal => crate::editor::keymap::BindMode::Normal,
         BindMode::Extend => crate::editor::keymap::BindMode::Extend,
         BindMode::Insert => crate::editor::keymap::BindMode::Insert,
+    }
+}
+
+impl<'a> EditHost for EditorHostImpl<'a> {
+    // ── Edit + navigation primitives ────────────────────────────────────
+    fn apply_text_edits(
+        &mut self,
+        bid: BufferId,
+        edits: Vec<(usize, usize, usize, usize, String)>,
+        expect_gen: Option<u64>,
+    ) -> Result<(), String> {
+        let Some(lsp) = self.lsp.as_deref() else {
+            return Err("apply-text-edits!: no LSP state available".to_string());
+        };
+        // Untrusted plugin input, not an internal invariant — a position
+        // that doesn't fit `u32` is a malformed edit, reported as an error,
+        // never a panic.
+        let to_u32 = |v: usize| {
+            u32::try_from(v)
+                .map_err(|_| "apply-text-edits!: position exceeds u32 (malformed edit)".to_string())
+        };
+        let mut typed_edits = Vec::with_capacity(edits.len());
+        for (start_line, start_char, end_line, end_char, new_text) in edits {
+            typed_edits.push(lsp_types::TextEdit {
+                range: lsp_types::Range {
+                    start: lsp_types::Position {
+                        line: to_u32(start_line)?,
+                        character: to_u32(start_char)?,
+                    },
+                    end: lsp_types::Position {
+                        line: to_u32(end_line)?,
+                        character: to_u32(end_char)?,
+                    },
+                },
+                new_text,
+            });
+        }
+        crate::editor::lsp::edits::apply_text_edits(self.state, lsp, bid, typed_edits, expect_gen)
+    }
+
+    fn apply_workspace_edit(&mut self, edit: serde_json::Value) -> Result<usize, String> {
+        let Some(lsp) = self.lsp.as_deref() else {
+            return Err("apply-workspace-edit!: no LSP state available".to_string());
+        };
+        let we: lsp_types::WorkspaceEdit =
+            serde_json::from_value(edit).map_err(|e| format!("malformed WorkspaceEdit: {e}"))?;
+        let summary =
+            crate::editor::lsp::edits::apply_workspace_edit(self.state, self.view, lsp, we)?;
+        Ok(summary.buffers_modified)
+    }
+
+    fn goto_location_wire(
+        &mut self,
+        uri: String,
+        line: usize,
+        character: usize,
+    ) -> Result<(), String> {
+        let Some(lsp) = self.lsp.as_deref() else {
+            return Err("goto-location!: no LSP state available".to_string());
+        };
+        let uri: lsp_types::Uri = uri
+            .parse()
+            .map_err(|_| format!("goto-location!: bad uri {uri:?}"))?;
+        let target = crate::editor::lsp::edits::GotoTarget::Wire {
+            uri,
+            line,
+            character,
+        };
+        crate::editor::lsp::edits::goto_location(self.state, self.view, lsp, target)
+    }
+
+    fn goto_location_path(
+        &mut self,
+        path_or_uri: String,
+        line: usize,
+        col: usize,
+    ) -> Result<(), String> {
+        let Some(lsp) = self.lsp.as_deref() else {
+            return Err("goto-location!: no LSP state available".to_string());
+        };
+        let target = crate::editor::lsp::edits::GotoTarget::Path {
+            path_or_uri,
+            line,
+            col,
+        };
+        crate::editor::lsp::edits::goto_location(self.state, self.view, lsp, target)
+    }
+
+    fn goto_location_buffer(
+        &mut self,
+        bid: BufferId,
+        line: usize,
+        col: usize,
+    ) -> Result<(), String> {
+        let Some(lsp) = self.lsp.as_deref() else {
+            return Err("goto-location!: no LSP state available".to_string());
+        };
+        let target = crate::editor::lsp::edits::GotoTarget::Buffer { bid, line, col };
+        crate::editor::lsp::edits::goto_location(self.state, self.view, lsp, target)
     }
 }
 
