@@ -11,6 +11,26 @@ use super::{Editor, InlineOutputDispatch, Severity, commands, timer_bridge};
 
 // ── Command dispatch context ──────────────────────────────────────────────────
 
+/// Where a Steel-backed dispatch's positional lambda args come from.
+///
+/// The two origins marshal differently (see [`Editor::run_steel_command`]):
+/// keymap dispatch injects `count`/`extend` by the target lambda's declared
+/// arity; the `:` command line injects its typed argument (or a fixed `1`
+/// when none was typed) and rejects any arity it can't satisfy with a single
+/// value. A plain `Option<String>` on [`CmdCtx`] couldn't distinguish "not a
+/// `:` dispatch" from "`:` dispatch with no typed arg" — the latter still
+/// needs the minibuf marshalling rules (e.g. one arg for a variadic command,
+/// not the two a keymap dispatch would inject), so the origin itself must be
+/// explicit.
+#[derive(Debug, Clone)]
+pub(crate) enum ArgSource {
+    /// Keymap trie leaf or dot-repeat replay.
+    Keymap,
+    /// The `:` command line, carrying the (possibly absent) typed argument —
+    /// already `%`/`#`-expanded by the caller.
+    Minibuf(Option<String>),
+}
+
 /// Per-dispatch context assembled by the key handler and passed through
 /// [`Editor::dispatch`].
 #[derive(Debug, Clone)]
@@ -26,9 +46,9 @@ pub(crate) struct CmdCtx {
     pub count: Option<usize>,
     /// Whether this command runs in Extend mode.
     pub extend: bool,
-    /// Pre-computed Steel lambda arguments (supplied by keymap trie leaf).
-    /// Empty for native commands and keymap-navigated Steel commands.
-    pub steel_args: Vec<steel::rvals::SteelVal>,
+    /// Where this dispatch's Steel lambda arguments come from. `Keymap` for
+    /// native commands too (unused there — only Steel-backed dispatch reads it).
+    pub arg_source: ArgSource,
 }
 
 impl Editor {
@@ -133,13 +153,12 @@ impl Editor {
         let focused_pane_id = self.state.focused_pane_id;
         let focused_buffer_id = self.focused_buffer_id();
 
-        let scripting = match self.scripting.as_mut() {
-            Some(s) => s,
-            None => return false,
-        };
-
         // Re-query: a Lazy stub is now SteelBacked after activation above;
-        // a SteelBacked entry is unchanged.
+        // a SteelBacked entry is unchanged. Pure registry metadata — resolved
+        // (and its arity/arg-count errors reported) before the `scripting`
+        // guard below, so a `:cmd` arity mismatch is reported even in the
+        // (test-only) case where a SteelBacked entry exists in the registry
+        // but no scripting host is installed.
         let (inline_output, cmd_arity, cmd_is_variadic) =
             match self.state.registry.get_mappable(name) {
                 Some(MappableCommand::SteelBacked {
@@ -157,29 +176,53 @@ impl Editor {
                 }
             };
 
-        // Inject count and extend as leading lambda args based on declared arity.
-        let steel_args = &ctx.steel_args;
-        if steel_args.is_empty() && cmd_arity > 2 {
-            self.report(
-                Severity::Error,
-                format!(
-                    "{name}: lambda declares {cmd_arity} required params; \
-                     keymap injection supplies at most 2 (count, extend)"
-                ),
-            );
-            return false;
-        }
-        let effective_args = if steel_args.is_empty() {
-            match (cmd_arity, cmd_is_variadic) {
-                (0, false) => vec![],
-                (1, false) => vec![steel::rvals::SteelVal::IntV(count as isize)],
-                _ => vec![
-                    steel::rvals::SteelVal::IntV(count as isize),
-                    steel::rvals::SteelVal::BoolV(extend),
-                ],
+        // Marshal Steel lambda args — the rules differ by dispatch origin.
+        let effective_args = match &ctx.arg_source {
+            ArgSource::Keymap => {
+                // Inject count and extend as leading lambda args based on declared arity.
+                if cmd_arity > 2 {
+                    self.report(
+                        Severity::Error,
+                        format!(
+                            "{name}: lambda declares {cmd_arity} required params; \
+                             keymap injection supplies at most 2 (count, extend)"
+                        ),
+                    );
+                    return false;
+                }
+                match (cmd_arity, cmd_is_variadic) {
+                    (0, false) => vec![],
+                    (1, false) => vec![steel::rvals::SteelVal::IntV(count as isize)],
+                    _ => vec![
+                        steel::rvals::SteelVal::IntV(count as isize),
+                        steel::rvals::SteelVal::BoolV(extend),
+                    ],
+                }
             }
-        } else {
-            steel_args.clone()
+            ArgSource::Minibuf(arg) => {
+                // Any mappable command can be invoked from the command line with
+                // an implicit count of 1. This means `:clear-search`, `:undo`, etc.
+                // all work without needing typed-command wrappers.
+                if cmd_arity == 0 && !cmd_is_variadic {
+                    vec![]
+                } else if cmd_arity == 1 || cmd_is_variadic {
+                    match arg {
+                        // No arg typed: default count=1 for count-type lambdas;
+                        // string-type lambdas reject IntV(1) via their own
+                        // (string? x) guard.
+                        Some(s) => vec![steel::rvals::SteelVal::StringV(s.clone().into())],
+                        None => vec![steel::rvals::SteelVal::IntV(1)],
+                    }
+                } else {
+                    self.report(
+                        Severity::Error,
+                        format!(
+                            "{name}: requires {cmd_arity} args; the minibuffer can only supply 1"
+                        ),
+                    );
+                    return false;
+                }
+            }
         };
 
         // Alt-screen bracketing for inline-output commands is lazy: entering
@@ -205,6 +248,9 @@ impl Editor {
             InlineOutputDispatch::Inactive
         };
 
+        let Some(scripting) = self.scripting.as_mut() else {
+            return false;
+        };
         let result = {
             let mut impl_host = crate::editor::host_impl::EditorHostImpl {
                 state: &mut self.state,

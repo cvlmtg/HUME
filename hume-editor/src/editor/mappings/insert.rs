@@ -3,6 +3,7 @@ use hume_editing::lines::leading_whitespace_end;
 use hume_scripting::SteelBufferId;
 use hume_scripting::hooks::HookId;
 
+use super::super::dispatch::ArgSource;
 use super::super::keymap::WalkResult;
 use super::super::registry::MappableCommand;
 use super::super::{Editor, Severity, commands, doc_ops};
@@ -56,7 +57,7 @@ impl Editor {
                     self.state.last_command = Some(name);
                     return;
                 }
-                self.execute_keymap_command(cmd.name, Some(1), false, vec![]);
+                self.execute_keymap_command(cmd.name, Some(1), false, ArgSource::Keymap);
                 return;
             }
             WalkResult::NoMatch => {}

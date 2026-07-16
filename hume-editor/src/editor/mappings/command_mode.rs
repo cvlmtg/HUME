@@ -1,9 +1,9 @@
 use crossterm::event::KeyEvent;
 
 use super::super::commands::typed_goto_line;
+use super::super::dispatch::ArgSource;
 use super::super::minibuf::MiniBufferEvent;
 use super::super::minibuf::history::{HistoryDir, HistoryKind};
-use super::super::registry::MappableCommand;
 use super::super::{Editor, Mode, Severity};
 use crate::editor::error::CommandError;
 
@@ -339,52 +339,19 @@ impl Editor {
             if let Err(e) = fun(self, expanded.as_deref(), force) {
                 self.report(Severity::Error, e.message().to_owned());
             }
-        } else if let Some(mut mappable) = self.state.registry.get_mappable(cmd).cloned() {
+        } else if self.state.registry.get_mappable(cmd).is_some() {
             // Any mappable command can be invoked from the command line with
             // an implicit count of 1. This means `:clear-search`, `:undo`, etc.
-            // all work without needing typed-command wrappers.
-            //
-            // Lazy stubs are activated before arity marshalling so `:bar arg`
-            // does not silently drop `arg` on the first call.
-            if let MappableCommand::Lazy { plugin, .. } = &mappable {
-                let plugin = plugin.clone();
-                if !self.activate_lazy_plugin(&plugin, cmd) {
-                    self.report(Severity::Warning, format!("Unknown command: {cmd}"));
-                    return;
-                }
-                match self.state.registry.get_mappable(cmd).cloned() {
-                    Some(m) => mappable = m,
-                    None => {
-                        self.report(Severity::Warning, format!("Unknown command: {cmd}"));
-                        return;
-                    }
-                }
-            }
-            let steel_args = if let MappableCommand::SteelBacked {
-                arity, is_variadic, ..
-            } = &mappable
-            {
-                use steel::rvals::SteelVal;
-                if *arity == 0 && !*is_variadic {
-                    vec![]
-                } else if *arity == 1 || *is_variadic {
-                    match expanded {
-                        Some(ref s) => vec![SteelVal::StringV(s.clone().into())],
-                        // No arg typed: default count=1 for count-type lambdas; string-type
-                        // lambdas reject IntV(1) via their own (string? x) guard.
-                        None => vec![SteelVal::IntV(1)],
-                    }
-                } else {
-                    self.report(
-                        Severity::Error,
-                        format!(":{cmd} requires {arity} args; the minibuffer can only supply 1"),
-                    );
-                    return;
-                }
-            } else {
-                vec![]
-            };
-            self.execute_keymap_command(cmd.to_owned().into(), Some(1), false, steel_args);
+            // all work without needing typed-command wrappers. Lazy-stub
+            // activation and Steel-backed arg marshalling both happen inside
+            // dispatch (`Editor::run_steel_command`) via `ArgSource::Minibuf`,
+            // so `:bar arg` cannot silently drop `arg` on the first call.
+            self.execute_keymap_command(
+                cmd.to_owned().into(),
+                Some(1),
+                false,
+                ArgSource::Minibuf(expanded),
+            );
         } else {
             self.report(Severity::Warning, format!("Unknown command: {cmd}"));
         }

@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use super::super::commands;
-use super::super::dispatch::CmdCtx;
+use super::super::dispatch::{ArgSource, CmdCtx};
 use super::super::{Editor, Severity};
 use hume_editing::selection::Selection;
 
@@ -16,7 +16,7 @@ impl Editor {
         name: Cow<'static, str>,
         count: Option<usize>,
         extend: bool,
-        steel_args: Vec<steel::rvals::SteelVal>,
+        arg_source: ArgSource,
     ) {
         let Some(reg_cmd) = self.state.registry.get_mappable(name.as_ref()).cloned() else {
             self.report(Severity::Warning, format!("unknown command: {name}"));
@@ -26,7 +26,7 @@ impl Editor {
         let ctx = CmdCtx {
             count,
             extend,
-            steel_args,
+            arg_source,
         };
         self.dispatch(reg_cmd, ctx);
     }
