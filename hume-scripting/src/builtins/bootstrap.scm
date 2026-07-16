@@ -1,0 +1,126 @@
+(require-builtin steel/meta as hm.)
+
+(define (declare-plugin name #:commands  [commands  '()]
+                             #:events    [events    '()]
+                             #:languages [languages '()]
+                             #:config    [config    (hash)])
+  (if (and (null? commands) (null? events) (null? languages))
+      (let ((prog (%begin-manifest-declare! name config)))
+        (when prog
+          (with-handler
+            (lambda (e) (%finish-manifest-declare! name #f) (raise-error e))
+            (begin (hm.eval-string prog) (%finish-manifest-declare! name #t)))))
+      (%declare-plugin! name commands events languages config)))
+
+(define (load-plugin name #:config [config (hash)])
+  (%load-plugin! name config)
+  (%activate-plugin-inline name))
+
+(define (%activate-plugin-inline id)
+  (let ((prog (%begin-lazy-activation id)))
+    (when prog
+      (with-handler
+        (lambda (e) (%finish-lazy-activation id #f) (raise-error e))
+        (begin (hm.eval-string prog) (%finish-lazy-activation id #t))))))
+
+(define (define-command! name doc proc
+                         #:repeatable    [repeatable    #f]
+                         #:inline-output [inline-output #f])
+  (%define-command! name doc proc repeatable inline-output))
+
+(define (%dispatch-command name args)
+  (let ((proc (%lookup-plugin-proc name)))
+    (if proc
+        (apply proc args)
+        (let ((owner (%lazy-command-owner name)))
+          (if owner
+              (begin
+                (%activate-plugin-inline owner)
+                (let ((proc2 (%lookup-plugin-proc name)))
+                  (if proc2 (apply proc2 args) (%call-native! name args))))
+              (%call-native! name args))))))
+
+(define (register-lsp-server! language #:command command
+                                        #:args [args '()]
+                                        #:root-markers [root-markers '()]
+                                        #:init-options [init-options #f]
+                                        #:settings [settings #f])
+  (%register-lsp-server! language command args root-markers init-options settings))
+
+(define (lsp-request server method params callback #:allow-stale [allow-stale #f]
+                                                     #:supersede [supersede #f])
+  (%lsp-request server method params callback allow-stale supersede))
+
+(define (debounce ms proc)
+  (let ((pending (box #f)))
+    (lambda args
+      (let ((prev (unbox pending)))
+        (when prev (cancel-timer! prev)))
+      (set-box! pending (after ms (lambda () (apply proc args)))))))
+
+;; debounce-by — like `debounce`, but keyed per first-argument value instead
+;; of one shared pending timer: a call keyed `k1` never cancels a call keyed
+;; `k2`. Same trailing-edge semantics per key. Relies on the calling
+;; convention already used everywhere `debounce` wraps a single-bid handler
+;; (`(lambda (bid) ...)`) — the key is `(car args)`, not a separate keyfn
+;; argument, so swapping `debounce` for `debounce-by` at an existing call
+;; site needs no other change.
+(define (debounce-by ms proc)
+  (let ((pending (box (hash))))
+    (lambda args
+      (let* ((key (car args))
+             (table (unbox pending)))
+        (when (hash-contains? table key)
+          (cancel-timer! (hash-ref table key)))
+        (set-box! pending
+          (hash-insert (unbox pending) key
+            (after ms (lambda ()
+                        (set-box! pending (hash-remove (unbox pending) key))
+                        (apply proc args)))))))))
+
+(define (diagnostics-for-buffer bid #:severity [severity #f] #:range [range #f])
+  (%diagnostics-for-buffer bid severity range))
+
+(define (apply-text-edits! bid edits #:expect-generation [gen #f])
+  (%apply-text-edits! bid edits gen))
+
+(define (apply-workspace-edit! wsedit)
+  (let ((n (%apply-workspace-edit! wsedit)))
+    (log! 'info (to-string n " buffers modified — :wa writes all"))
+    n))
+
+(define (prompt! label on-confirm #:prefill [prefill ""])
+  (%prompt! label prefill on-confirm))
+
+(define (completion-begin! bid items #:incomplete [incomplete #f])
+  (%completion-begin! bid items incomplete))
+
+(define (run-inline-output! cmd args #:cwd [cwd #f])
+  (let ([code (%run-inline-output! cmd args cwd)])
+    (unless (= code 0)
+      (error (string-append cmd ": failed (exit " (number->string code) ")")))))
+
+(define (show-popup! text #:anchor [anchor 'cursor] #:dismiss-on-key [dismiss-on-key #f])
+  (%show-popup! text anchor dismiss-on-key))
+
+(define-syntax call!
+  (syntax-rules ()
+    ((_ name args ...)
+     (%dispatch-command name (list args ...)))))
+
+(define %raw-displayln displayln)
+(define %raw-display display)
+(define %raw-print print)
+(define %raw-println println)
+(define %raw-newline newline)
+(define %raw-write write)
+(define %raw-write-string write-string)
+(define %raw-write-char write-char)
+(define %raw-simple-display simple-display)
+(define %raw-simple-displayln simple-displayln)
+(define %stdout-port (current-output-port))
+(define (%port-safe? port)
+  (if (eq? port %stdout-port)
+      (%stdout-gate!)
+      #t))
+(define (%stdout-safe?) (%port-safe? (current-output-port)))
