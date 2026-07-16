@@ -35,33 +35,42 @@ pub fn unsupported(builtin: &str) -> String {
     format!("{builtin}: not supported by this host")
 }
 
-/// The editor interface exposed to scripting builtins during a Steel eval.
+/// The editor interface exposed to scripting builtins during a Steel eval, as
+/// a capability directory: every domain method lives on one of the 13
+/// capability traits in this module (`BufferHost`, `SettingsHost`,
+/// `KeymapHost`, `LanguageHost`, `CommandHost`, `CursorHost`, `UiHost`,
+/// `LspHost`, `EditHost`, `DecorationHost`, `CompletionHost`, `TimerHost`,
+/// `OutputHost`), reached through an accessor on this trait — `EditorHost`
+/// itself declares no domain methods.
 ///
 /// Implemented by `EditorHostImpl<'a>` in the editor crate (or `MockHost` in
 /// tests). `SteelCtx` holds `host: &'a mut dyn EditorHost`; builtins call
-/// these methods rather than borrowing editor-domain fields directly.
+/// `ctx.host.<accessor>().<method>(...)` rather than borrowing editor-domain
+/// fields directly.
 ///
-/// All methods take/return only `'static` types (owned `String`/`PathBuf`/
-/// `Vec`, `Copy` ids, scripting-owned enums), since `SteelCtx<'static>` is the
-/// type projection Steel's `with_mut_reference` requires.
+/// All methods (on `EditorHost` and every capability trait) take/return only
+/// `'static` types (owned `String`/`PathBuf`/`Vec`, `Copy` ids, scripting-owned
+/// enums), since `SteelCtx<'static>` is the type projection Steel's
+/// `with_mut_reference` requires.
 ///
-/// Buffer/pane methods (`open_buffer`, `close_buffer`, `switch_to_buffer`,
+/// `BufferHost` methods (`open_buffer`, `close_buffer`, `switch_to_buffer`,
 /// reads/enumeration) are command-mode only, guarded per-builtin by
-/// `require_cmd_ctx!`; init-only methods (`set_global_option`,
-/// `configure_statusline`, `bind_*`/`unbind_key`) use the reverse guard.
+/// `require_cmd_ctx!`; init-only methods (`SettingsHost::set_global_option`,
+/// `SettingsHost::configure_statusline`, `KeymapHost::bind_*`/`unbind_key`)
+/// use the reverse guard.
 ///
 /// Focused buffer/pane ids are passed as explicit constructor args to
 /// `call_steel_cmd`/`fire_hook` rather than queried through this trait, so a
 /// builtin always sees the pre-command snapshot, not a value that can change
 /// mid-eval (e.g. after `switch-to-buffer!`).
 ///
-/// Capability accessors: a handful of core concerns (buffers, settings,
-/// keymap, language/grammar, command dispatch, live cursor reads) stay
-/// directly on this trait as required methods; everything else (UI widgets,
-/// LSP introspection, decorations, timers, edits, completion) lives behind an
-/// optional accessor returning `Option<&mut dyn CapabilityTrait>` — `None`
+/// Six accessors are required — `buffers`, `settings`, `keymap`, `language`,
+/// `commands`, `cursor` — because every host has *some* notion of them, even
+/// if minimal (an empty buffer list, a rejecting command registry). The other
+/// seven are optional, returning `Option<&mut dyn CapabilityTrait>`: `None`
 /// means the host has no such capability, and the one call site per method
-/// maps that to the same behavior the old trait-default body produced.
+/// maps that to the same behavior the pre-split trait-default body produced
+/// (a `"not supported by this host"` error, or a benign empty/no-op value).
 pub trait EditorHost {
     // ── Optional capability accessors ────────────────────────────────────────
     /// Cursor-anchored popup / selection menu / bottom drawer / minibuffer

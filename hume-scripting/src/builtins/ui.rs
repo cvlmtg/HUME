@@ -3,7 +3,8 @@
 //! LSP is the first client of these widgets, not their owner — any plugin
 //! can call `show-popup!`. `hume-editor`'s `EditorHostImpl` is the only
 //! implementation that actually renders anything; other hosts (tests,
-//! `MockHost`) get the trait's "not supported" default.
+//! `MockHost`) have no `UiHost`, so `ctx.host.ui()` returns `None` and each
+//! builtin surfaces `unsupported(...)` instead.
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;

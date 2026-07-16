@@ -30,9 +30,10 @@ pub(crate) struct SteelCtx<'a> {
     // ── Editor interface ───────────────────────────────────────────────────────
     /// Access to all live editor state during evaluation.
     ///
-    /// In init mode (`is_init = true`), the host's buffer/pane methods are
+    /// In init mode (`is_init = true`), `host.buffers()`'s methods are
     /// guarded by `require_cmd_ctx!` and never called; the init-only methods
-    /// (`set_global_option`, `bind_key`, `configure_statusline`) are always safe.
+    /// (`host.settings().set_global_option`, `host.keymap().bind_key`,
+    /// `host.settings().configure_statusline`) are always safe.
     pub(crate) host: &'a mut dyn EditorHost,
     // ── Persistent state borrowed from ScriptingHost ──────────────────────────
     /// Plugin attribution stack; identifies whose mutation is being recorded.
