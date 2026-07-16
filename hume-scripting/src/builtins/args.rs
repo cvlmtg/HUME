@@ -228,9 +228,7 @@ impl FromSteelVal for BidArg {
     }
 }
 
-/// A decoded `(line col)` wire position — a 2-element list, not a `(line
-/// . col)` dotted pair (steel-core 0.8.2's `Pair`/`car`/`cdr` are
-/// crate-private, unreachable from a Rust builtin).
+/// A decoded `(line . col)` wire position — a dotted pair.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PosArg {
     pub(crate) line: usize,
@@ -239,16 +237,17 @@ pub(crate) struct PosArg {
 
 impl FromSteelVal for PosArg {
     fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
-        let fields = checked_fields(val.clone(), "position", 2..=2, "(line col)")?;
+        let (line, col) = pair_fields(val.clone(), "position", "(line . col)")?;
         Ok(PosArg {
-            line: usize_arg(fields[0].clone(), "position")?,
-            col: usize_arg(fields[1].clone(), "position")?,
+            line: usize_arg(line, "position")?,
+            col: usize_arg(col, "position")?,
         })
     }
 }
 
-/// A decoded `((start-line start-col) (end-line end-col) text)` LSP text
-/// edit entry, wire positions.
+/// A decoded `((start-line . start-col) (end-line . end-col) text)` LSP
+/// text edit entry — outer 3-tuple is a list, inner positions are dotted
+/// pairs.
 #[derive(Debug)]
 pub(crate) struct TextEditArg {
     pub(crate) start: PosArg,
@@ -262,7 +261,7 @@ impl FromSteelVal for TextEditArg {
             val.clone(),
             "text edit",
             3..=3,
-            "((start-line start-col) (end-line end-col) text)",
+            "((start-line . start-col) (end-line . end-col) text)",
         )?;
         Ok(TextEditArg {
             start: PosArg::from_steelval(&fields[0])?,
@@ -462,34 +461,41 @@ mod tests {
 
     // ── PosArg ────────────────────────────────────────────────────────────────
 
+    fn pos_pair(line: isize, col: isize) -> SteelVal {
+        cons_pair(SteelVal::IntV(line), SteelVal::IntV(col)).unwrap()
+    }
+
     #[test]
-    fn pos_arg_decodes_line_col() {
-        let val: SteelVal = vec![SteelVal::IntV(3), SteelVal::IntV(7)]
-            .into_steelval()
-            .unwrap();
-        let pos = PosArg::from_steelval(&val).unwrap();
+    fn pos_arg_decodes_line_col_pair() {
+        let pos = PosArg::from_steelval(&pos_pair(3, 7)).unwrap();
         assert_eq!((pos.line, pos.col), (3, 7));
     }
 
     #[test]
-    fn pos_arg_rejects_wrong_arity() {
-        let val: SteelVal = vec![SteelVal::IntV(3)].into_steelval().unwrap();
-        assert!(PosArg::from_steelval(&val).is_err());
+    fn pos_arg_rejects_proper_list() {
+        let val: SteelVal = vec![SteelVal::IntV(3), SteelVal::IntV(7)]
+            .into_steelval()
+            .unwrap();
+        let err = PosArg::from_steelval(&val).unwrap_err();
+        assert!(err.to_string().contains("(line . col)"), "got: {err}");
+    }
+
+    #[test]
+    fn pos_arg_rejects_non_pair_scalar() {
+        assert!(PosArg::from_steelval(&SteelVal::IntV(3)).is_err());
     }
 
     // ── TextEditArg ───────────────────────────────────────────────────────────
 
     #[test]
     fn text_edit_arg_decodes_start_end_text() {
-        let start: SteelVal = vec![SteelVal::IntV(0), SteelVal::IntV(0)]
-            .into_steelval()
-            .unwrap();
-        let end: SteelVal = vec![SteelVal::IntV(0), SteelVal::IntV(3)]
-            .into_steelval()
-            .unwrap();
-        let val: SteelVal = vec![start, end, SteelVal::StringV("abc".into())]
-            .into_steelval()
-            .unwrap();
+        let val: SteelVal = vec![
+            pos_pair(0, 0),
+            pos_pair(0, 3),
+            SteelVal::StringV("abc".into()),
+        ]
+        .into_steelval()
+        .unwrap();
         let edit = TextEditArg::from_steelval(&val).unwrap();
         assert_eq!((edit.start.line, edit.start.col), (0, 0));
         assert_eq!((edit.end.line, edit.end.col), (0, 3));
@@ -498,14 +504,13 @@ mod tests {
 
     #[test]
     fn text_edit_arg_rejects_malformed_position() {
-        let bad_start: SteelVal = vec![SteelVal::IntV(0)].into_steelval().unwrap(); // wrong arity
-        let end: SteelVal = vec![SteelVal::IntV(0), SteelVal::IntV(3)]
+        let bad_start: SteelVal = vec![SteelVal::IntV(0), SteelVal::IntV(0)] // proper list, not a pair
             .into_steelval()
             .unwrap();
-        let val: SteelVal = vec![bad_start, end, SteelVal::StringV("abc".into())]
+        let val: SteelVal = vec![bad_start, pos_pair(0, 3), SteelVal::StringV("abc".into())]
             .into_steelval()
             .unwrap();
         let err = TextEditArg::from_steelval(&val).unwrap_err();
-        assert!(err.to_string().contains("(line col)"), "got: {err}");
+        assert!(err.to_string().contains("(line . col)"), "got: {err}");
     }
 }

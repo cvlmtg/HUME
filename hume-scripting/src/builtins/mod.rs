@@ -166,8 +166,9 @@ macro_rules! builtins {
 // char-offset bound, or #f for the whole buffer.
 //
 // apply-text-edits! — one undoable transaction. edits: list of
-// ((start-line start-col) (end-line end-col) text), wire positions.
-// #:expect-generation: staleness tag to check against; #f skips it.
+// ((start-line . start-col) (end-line . end-col) text), wire positions as
+// dotted pairs. #:expect-generation: staleness tag to check against; #f
+// skips it.
 //
 // apply-workspace-edit! — multi-file engine; reports the modified-buffer
 // count.

@@ -16,7 +16,8 @@ use super::errors::generic_err;
 type SteelResult = Result<SteelVal, SteelErr>;
 
 /// `(%apply-text-edits! bid edits expect-gen)` — `edits`: list of `((start-
-/// line start-col) (end-line end-col) text)`, wire positions.
+/// line . start-col) (end-line . end-col) text)`, wire positions as dotted
+/// pairs.
 ///
 /// `edits` decodes manually via `TextEditArg::from_steelval` per entry
 /// rather than a typed `Vec<TextEditArg>` param — steel-core's blanket
