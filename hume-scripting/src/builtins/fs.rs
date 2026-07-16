@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use steel::rerrs::SteelErr;
 use steel::rvals::{IntoSteelVal, SteelVal};
 
-use super::conv_err;
+use super::errors::generic_err;
 
 // ── data-dir / runtime-dir ───────────────────────────────────────────────────
 
@@ -37,7 +37,7 @@ fn dir_builtin(
             .to_string_lossy()
             .as_ref()
             .into_steelval()
-            .map_err(conv_err),
+            .map_err(generic_err),
         None => Ok(SteelVal::BoolV(false)),
     }
 }
@@ -88,7 +88,7 @@ pub(crate) fn path_join(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
         .to_string_lossy()
         .as_ref()
         .into_steelval()
-        .map_err(conv_err)
+        .map_err(generic_err)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

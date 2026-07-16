@@ -27,8 +27,9 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 use crate::SteelCtx;
 use crate::log::LogLevel;
 
+use super::args::{list_to_strings, string_arg};
+use super::errors::generic_err;
 use super::sandbox::with_data_servers;
-use super::{list_to_strings, string_arg};
 
 const INSTALL_LOCK_FILE_NAME: &str = ".install-lock";
 
@@ -61,13 +62,9 @@ pub(crate) fn hume_target(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 /// `sha256sum`/`certutil`) that a Scheme rewrite would only make worse.
 pub(crate) fn sha256_file(ctx: &mut SteelCtx, path: String) -> Result<SteelVal, SteelErr> {
     ctx.log(LogLevel::Trace, format!("sha256-file: hashing {path}"));
-    let digest = hume_platform::process::sha256_file(Path::new(&path)).map_err(|e| {
-        SteelErr::new(
-            steel::rerrs::ErrorKind::Generic,
-            format!("sha256-file: cannot hash '{path}': {e}"),
-        )
-    })?;
-    digest.into_steelval().map_err(super::conv_err)
+    let digest = hume_platform::process::sha256_file(Path::new(&path))
+        .map_err(|e| generic_err(format!("sha256-file: cannot hash '{path}': {e}")))?;
+    digest.into_steelval().map_err(generic_err)
 }
 
 /// `(unpack-gz src dest)` — decode the single-file gzip archive at `src`
@@ -115,10 +112,9 @@ pub(crate) fn unpack_zip(
     let src_path = PathBuf::from(&src);
     let dest_path = PathBuf::from(&dest_dir);
     hume_platform::fs::create_dir_all(&dest_path).map_err(|e| {
-        SteelErr::new(
-            steel::rerrs::ErrorKind::Generic,
-            format!("unpack-zip: cannot create dest dir '{dest_dir}': {e}"),
-        )
+        generic_err(format!(
+            "unpack-zip: cannot create dest dir '{dest_dir}': {e}"
+        ))
     })?;
 
     ctx.log(
@@ -129,12 +125,12 @@ pub(crate) fn unpack_zip(
     // `unzip`/`tar` inherit stdio (see `hume_platform::process::unpack_zip`'s
     // doc), so this is a real terminal write — open the bracket first.
     if let Some(output) = ctx.host.output() {
-        output.ensure_inline_output_screen().map_err(|e| {
-            SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("unpack-zip: {e}"))
-        })?;
+        output
+            .ensure_inline_output_screen()
+            .map_err(|e| generic_err(format!("unpack-zip: {e}")))?;
     }
     hume_platform::process::unpack_zip(&src_path, &dest_path, Path::new(&bin_path))
-        .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("unpack-zip: {e}")))?;
+        .map_err(|e| generic_err(format!("unpack-zip: {e}")))?;
     Ok(SteelVal::Void)
 }
 
@@ -166,10 +162,7 @@ pub(crate) fn acquire_install_lock(ctx: &mut SteelCtx) -> Result<SteelVal, Steel
             return Ok(SteelVal::Void);
         };
         if create_err.kind() != std::io::ErrorKind::AlreadyExists {
-            return Err(SteelErr::new(
-                steel::rerrs::ErrorKind::Generic,
-                format!("acquire-install-lock!: {create_err}"),
-            ));
+            steel::stop!(Generic => "acquire-install-lock!: {}", create_err);
         }
         // `duration_since` errors (rather than defaulting to "unknown") on a
         // future mtime — clock skew or a networked/synced filesystem — which
@@ -180,27 +173,22 @@ pub(crate) fn acquire_install_lock(ctx: &mut SteelCtx) -> Result<SteelVal, Steel
             .and_then(|modified| SystemTime::now().duration_since(modified).ok())
             .is_some_and(|age| age > STALE_INSTALL_LOCK_AGE);
         if !is_stale {
-            return Err(SteelErr::new(
-                steel::rerrs::ErrorKind::Generic,
-                "acquire-install-lock!: another install/uninstall is already in progress"
-                    .to_string(),
-            ));
+            steel::stop!(Generic =>
+                "acquire-install-lock!: another install/uninstall is already in progress");
         }
         ctx.log(
             LogLevel::Warning,
             "acquire-install-lock!: stale lock (older than 1h) — replacing".to_string(),
         );
         std::fs::remove_file(&lock_path).map_err(|e| {
-            SteelErr::new(
-                steel::rerrs::ErrorKind::Generic,
-                format!("acquire-install-lock!: cannot remove stale lock: {e}"),
-            )
+            generic_err(format!(
+                "acquire-install-lock!: cannot remove stale lock: {e}"
+            ))
         })?;
         create_lock_file(&lock_path).map_err(|e| {
-            SteelErr::new(
-                steel::rerrs::ErrorKind::Generic,
-                format!("acquire-install-lock!: cannot create lock after removing stale one: {e}"),
-            )
+            generic_err(format!(
+                "acquire-install-lock!: cannot create lock after removing stale one: {e}"
+            ))
         })?;
         Ok(SteelVal::Void)
     })?
@@ -234,21 +222,13 @@ pub(crate) fn run_inline_output(
     // The child inherits stdio, so this is a real terminal write — open the
     // bracket before spawning it.
     if let Some(output) = ctx.host.output() {
-        output.ensure_inline_output_screen().map_err(|e| {
-            SteelErr::new(
-                steel::rerrs::ErrorKind::Generic,
-                format!("run-inline-output!: {e}"),
-            )
-        })?;
+        output
+            .ensure_inline_output_screen()
+            .map_err(|e| generic_err(format!("run-inline-output!: {e}")))?;
     }
 
-    let status =
-        hume_platform::process::run_inline_output(&cmd, &args, cwd.as_deref()).map_err(|e| {
-            SteelErr::new(
-                steel::rerrs::ErrorKind::Generic,
-                format!("run-inline-output!: cannot run '{cmd}': {e}"),
-            )
-        })?;
+    let status = hume_platform::process::run_inline_output(&cmd, &args, cwd.as_deref())
+        .map_err(|e| generic_err(format!("run-inline-output!: cannot run '{cmd}': {e}")))?;
 
     // `-1` for a signal-killed child (no exit code) — matches the sentinel a
     // real exit code can never produce, since process exit codes are u8-wide.
@@ -264,10 +244,7 @@ pub(crate) fn release_install_lock() -> Result<SteelVal, SteelErr> {
         match std::fs::remove_file(&lock_path) {
             Ok(()) => Ok(SteelVal::Void),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(SteelVal::Void),
-            Err(e) => Err(SteelErr::new(
-                steel::rerrs::ErrorKind::Generic,
-                format!("release-install-lock!: {e}"),
-            )),
+            Err(e) => Err(generic_err(format!("release-install-lock!: {e}"))),
         }
     })?
 }

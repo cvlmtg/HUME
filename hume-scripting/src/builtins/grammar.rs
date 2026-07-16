@@ -21,6 +21,8 @@ use steel::rvals::SteelVal;
 use crate::SteelCtx;
 use crate::log::LogLevel;
 
+use super::errors::generic_err;
+
 /// Suffix appended to a grammar-compile failure message when no C compiler
 /// was found on `PATH` — empty on non-Windows, where a compiler is either
 /// preinstalled or the platform-native error is already clear enough.
@@ -59,12 +61,9 @@ pub(crate) fn compile_grammar(
     if ctx.session == crate::context::EvalSession::Runtime
         && let Some(output) = ctx.host.output()
     {
-        output.ensure_inline_output_screen().map_err(|e| {
-            SteelErr::new(
-                steel::rerrs::ErrorKind::Generic,
-                format!("compile-grammar!: {e}"),
-            )
-        })?;
+        output
+            .ensure_inline_output_screen()
+            .map_err(|e| generic_err(format!("compile-grammar!: {e}")))?;
     }
 
     let result = hume_platform::process::tree_sitter_build(&src_path, &out_path);
@@ -85,7 +84,7 @@ pub(crate) fn compile_grammar(
         ctx.log(LogLevel::Warning, msg);
         Ok(SteelVal::Void)
     } else {
-        Err(SteelErr::new(steel::rerrs::ErrorKind::Generic, msg))
+        Err(generic_err(msg))
     }
 }
 

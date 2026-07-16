@@ -59,6 +59,8 @@ use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 
+use super::errors::generic_err;
+
 /// Whether it is currently safe to write directly to the real process
 /// stdout: init (before the alt-screen TUI is up) or an `#:inline-output`
 /// command body (alt-screen temporarily left). See `SteelCtx::is_inline_output`.
@@ -82,7 +84,7 @@ pub(crate) fn stdout_gate(ctx: &mut SteelCtx) -> Result<SteelVal, SteelErr> {
     {
         output
             .ensure_inline_output_screen()
-            .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("print: {e}")))?;
+            .map_err(|e| generic_err(format!("print: {e}")))?;
     }
     Ok(SteelVal::BoolV(true))
 }

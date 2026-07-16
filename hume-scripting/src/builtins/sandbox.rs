@@ -21,7 +21,7 @@
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 
-use steel::rerrs::{ErrorKind, SteelErr};
+use steel::rerrs::SteelErr;
 
 // ── Permanent dirs TLS ────────────────────────────────────────────────────────
 
@@ -104,11 +104,8 @@ pub(crate) fn runtime_dir_display() -> Option<PathBuf> {
 pub(crate) fn with_data_servers<R>(f: impl FnOnce(&Path) -> R) -> Result<R, SteelErr> {
     with_dirs(|dirs| match dirs.data_servers.as_deref() {
         Some(p) => Ok(f(p)),
-        None => Err(SteelErr::new(
-            ErrorKind::Generic,
-            "no data directory — HOME/APPDATA unset; server install operations unavailable"
-                .to_string(),
-        )),
+        None => steel::stop!(Generic =>
+            "no data directory — HOME/APPDATA unset; server install operations unavailable"),
     })
 }
 

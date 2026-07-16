@@ -12,7 +12,8 @@ use steel::rvals::SteelVal;
 
 use crate::json::json_to_steel;
 
-use super::{conv_err, string_arg};
+use super::args::string_arg;
+use super::errors::generic_err;
 
 /// `(json-parse str)` -> the decoded value, via the same `json_to_steel`
 /// mapping `lsp-request` responses already use. No context gate — pure data
@@ -23,7 +24,7 @@ use super::{conv_err, string_arg};
 pub(crate) fn json_parse(s: SteelVal) -> Result<SteelVal, SteelErr> {
     let s = string_arg(s, "json-parse")?;
     let value: serde_json::Value =
-        serde_json::from_str(&s).map_err(|e| conv_err(format!("json-parse: {e}")))?;
+        serde_json::from_str(&s).map_err(|e| generic_err(format!("json-parse: {e}")))?;
     Ok(json_to_steel(&value))
 }
 
