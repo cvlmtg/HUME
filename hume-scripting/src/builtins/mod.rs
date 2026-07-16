@@ -8,6 +8,7 @@
 pub(crate) mod args;
 pub(crate) mod buffers;
 pub(crate) mod commands;
+pub(crate) mod dirs;
 pub(crate) mod errors;
 pub(crate) mod fs;
 pub(crate) mod grammar;
@@ -21,7 +22,6 @@ pub(crate) mod keymap_bind;
 pub(crate) mod lsp;
 pub(crate) mod panes;
 pub(crate) mod plugins;
-pub(crate) mod sandbox;
 pub(crate) mod settings;
 pub(crate) mod statusline;
 pub(crate) mod syntax;
