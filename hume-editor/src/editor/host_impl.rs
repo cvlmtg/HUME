@@ -22,7 +22,7 @@ use crate::settings::{BufferOverrides, SettingScope, apply_setting};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 use hume_scripting::host::{
     BindMode, CommandHost, CompletionHost, CursorHost, DecorationHost, EditHost, EditorHost,
-    LspHost, OptionValue, OutputHost, TimerHost, UiHost,
+    LanguageHost, LspHost, OptionValue, OutputHost, TimerHost, UiHost,
 };
 
 use super::{EditorState, Severity};
@@ -120,6 +120,9 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         self
     }
     fn commands(&mut self) -> &mut dyn CommandHost {
+        self
+    }
+    fn language(&mut self) -> &mut dyn LanguageHost {
         self
     }
 
@@ -267,7 +270,22 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-    // ── Language / grammar ────────────────────────────────────────────────────
+    // ── Budget ────────────────────────────────────────────────────────────────
+    fn steel_command_budget_ms(&self) -> u64 {
+        self.state.settings.steel_command_budget_ms as u64
+    }
+
+    fn buffer_generation(&self, id: BufferId) -> Option<u64> {
+        Some(self.buffer(id)?.text_gen)
+    }
+
+    fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)> {
+        crate::editor::lsp::introspect::viewport_range(self.state, self.view, id)
+    }
+
+}
+
+impl<'a> LanguageHost for EditorHostImpl<'a> {
     fn attach_grammar(
         &mut self,
         name: &str,
@@ -289,24 +307,11 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             .map_err(|e| format!("register-grammar! '{name}': {e}"))?;
         Ok(())
     }
+
     fn has_grammar(&self, language: &str) -> bool {
         self.state.languages.has_grammar(language)
     }
 
-    // ── Budget ────────────────────────────────────────────────────────────────
-    fn steel_command_budget_ms(&self) -> u64 {
-        self.state.settings.steel_command_budget_ms as u64
-    }
-
-    fn buffer_generation(&self, id: BufferId) -> Option<u64> {
-        Some(self.buffer(id)?.text_gen)
-    }
-
-    fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)> {
-        crate::editor::lsp::introspect::viewport_range(self.state, self.view, id)
-    }
-
-    // ── Trigger chars ───────────────────────────────────────────────────
     fn register_trigger_chars(&mut self, source: String, language: String, chars: Vec<char>) {
         if chars.is_empty() {
             self.state.trigger_chars.remove(&(source, language));
@@ -314,7 +319,6 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             self.state.trigger_chars.insert((source, language), chars);
         }
     }
-
 }
 
 impl<'a> CommandHost for EditorHostImpl<'a> {
@@ -980,7 +984,7 @@ mod tests {
     use std::path::Path;
 
     use hume_engine::pipeline::BufferId;
-    use hume_scripting::host::EditorHost;
+    use hume_scripting::host::{EditorHost, LanguageHost};
 
     use crate::editor::Editor;
     use crate::editor::scripting_setup::make_init_host;

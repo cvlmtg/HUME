@@ -19,7 +19,9 @@ use std::path::{Path, PathBuf};
 use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
 
-use crate::host::{BindMode, CommandHost, CursorHost, EditorHost, OptionValue, OutputHost};
+use crate::host::{
+    BindMode, CommandHost, CursorHost, EditorHost, LanguageHost, OptionValue, OutputHost,
+};
 use crate::types::SteelCmdDef;
 
 #[derive(Default)]
@@ -30,6 +32,9 @@ impl EditorHost for NullHost {
         self
     }
     fn commands(&mut self) -> &mut dyn CommandHost {
+        self
+    }
+    fn language(&mut self) -> &mut dyn LanguageHost {
         self
     }
     fn buffer_ids(&self) -> Vec<BufferId> {
@@ -96,6 +101,12 @@ impl EditorHost for NullHost {
     fn unbind_key(&mut self, _mode: BindMode, _keys: &[KeyEvent]) -> Result<(), String> {
         Err("NullHost: unbind_key not available".into())
     }
+    fn steel_command_budget_ms(&self) -> u64 {
+        10_000
+    }
+}
+
+impl LanguageHost for NullHost {
     fn attach_grammar(
         &mut self,
         _name: &str,
@@ -109,9 +120,7 @@ impl EditorHost for NullHost {
     fn has_grammar(&self, _language: &str) -> bool {
         false
     }
-    fn steel_command_budget_ms(&self) -> u64 {
-        10_000
-    }
+    fn register_trigger_chars(&mut self, _source: String, _language: String, _chars: Vec<char>) {}
 }
 
 impl CommandHost for NullHost {
@@ -172,6 +181,9 @@ impl EditorHost for FailingRegisterHost {
     fn commands(&mut self) -> &mut dyn CommandHost {
         self
     }
+    fn language(&mut self) -> &mut dyn LanguageHost {
+        &mut self.inner
+    }
     fn buffer_ids(&self) -> Vec<BufferId> {
         self.inner.buffer_ids()
     }
@@ -235,19 +247,6 @@ impl EditorHost for FailingRegisterHost {
     }
     fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String> {
         self.inner.unbind_key(mode, keys)
-    }
-    fn attach_grammar(
-        &mut self,
-        name: &str,
-        gp: &Path,
-        sym: &str,
-        hl: &Path,
-        inj: Option<&Path>,
-    ) -> Result<(), String> {
-        self.inner.attach_grammar(name, gp, sym, hl, inj)
-    }
-    fn has_grammar(&self, language: &str) -> bool {
-        self.inner.has_grammar(language)
     }
     fn steel_command_budget_ms(&self) -> u64 {
         self.inner.steel_command_budget_ms()
@@ -298,6 +297,9 @@ impl EditorHost for InlineOutputHost {
     fn commands(&mut self) -> &mut dyn CommandHost {
         &mut self.inner
     }
+    fn language(&mut self) -> &mut dyn LanguageHost {
+        &mut self.inner
+    }
     fn output(&mut self) -> Option<&mut dyn OutputHost> {
         Some(self)
     }
@@ -364,19 +366,6 @@ impl EditorHost for InlineOutputHost {
     }
     fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String> {
         self.inner.unbind_key(mode, keys)
-    }
-    fn attach_grammar(
-        &mut self,
-        name: &str,
-        gp: &Path,
-        sym: &str,
-        hl: &Path,
-        inj: Option<&Path>,
-    ) -> Result<(), String> {
-        self.inner.attach_grammar(name, gp, sym, hl, inj)
-    }
-    fn has_grammar(&self, language: &str) -> bool {
-        self.inner.has_grammar(language)
     }
     fn steel_command_budget_ms(&self) -> u64 {
         self.inner.steel_command_budget_ms()
@@ -409,6 +398,9 @@ impl EditorHost for RecordingInlineOutputHost {
     fn commands(&mut self) -> &mut dyn CommandHost {
         &mut self.inner
     }
+    fn language(&mut self) -> &mut dyn LanguageHost {
+        &mut self.inner
+    }
     fn output(&mut self) -> Option<&mut dyn OutputHost> {
         Some(self)
     }
@@ -475,19 +467,6 @@ impl EditorHost for RecordingInlineOutputHost {
     }
     fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String> {
         self.inner.unbind_key(mode, keys)
-    }
-    fn attach_grammar(
-        &mut self,
-        name: &str,
-        gp: &Path,
-        sym: &str,
-        hl: &Path,
-        inj: Option<&Path>,
-    ) -> Result<(), String> {
-        self.inner.attach_grammar(name, gp, sym, hl, inj)
-    }
-    fn has_grammar(&self, language: &str) -> bool {
-        self.inner.has_grammar(language)
     }
     fn steel_command_budget_ms(&self) -> u64 {
         self.inner.steel_command_budget_ms()

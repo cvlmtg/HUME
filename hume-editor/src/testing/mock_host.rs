@@ -15,7 +15,7 @@
 
 use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
-use hume_scripting::host::{BindMode, CommandHost, CursorHost, EditorHost, OptionValue};
+use hume_scripting::host::{BindMode, CommandHost, CursorHost, EditorHost, LanguageHost, OptionValue};
 
 pub(crate) struct MockHost {
     pub(crate) settings: hume::settings::EditorSettings,
@@ -57,6 +57,9 @@ impl EditorHost for MockHost {
         self
     }
     fn commands(&mut self) -> &mut dyn CommandHost {
+        self
+    }
+    fn language(&mut self) -> &mut dyn LanguageHost {
         self
     }
     fn buffer_ids(&self) -> Vec<BufferId> {
@@ -163,6 +166,12 @@ impl EditorHost for MockHost {
         self.keymap.unbind_user(to_editor_bind_mode(mode), keys);
         Ok(())
     }
+    fn steel_command_budget_ms(&self) -> u64 {
+        self.settings.steel_command_budget_ms as u64
+    }
+}
+
+impl LanguageHost for MockHost {
     fn attach_grammar(
         &mut self,
         name: &str,
@@ -177,9 +186,7 @@ impl EditorHost for MockHost {
     fn has_grammar(&self, language: &str) -> bool {
         self.grammars.contains(language)
     }
-    fn steel_command_budget_ms(&self) -> u64 {
-        self.settings.steel_command_budget_ms as u64
-    }
+    fn register_trigger_chars(&mut self, _source: String, _language: String, _chars: Vec<char>) {}
 }
 
 impl CommandHost for MockHost {

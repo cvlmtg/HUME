@@ -387,7 +387,9 @@ pub(crate) fn register_trigger_chars(
     let source = string_arg(source, "register-trigger-chars! source")?;
     let language = string_arg(language, "register-trigger-chars! language")?;
     let chars = chars_arg(chars, "register-trigger-chars! chars")?;
-    ctx.host.register_trigger_chars(source, language, chars);
+    ctx.host
+        .language()
+        .register_trigger_chars(source, language, chars);
     Ok(SteelVal::Void)
 }
 

@@ -105,6 +105,7 @@ pub(crate) fn register_grammar(
     // The host (`EditorHostImpl::attach_grammar`) owns the `register-grammar! '<name>':`
     // prefix; just lift its String error into a SteelErr without re-prefixing.
     ctx.host
+        .language()
         .attach_grammar(
             &name,
             &grammar_path,
@@ -120,7 +121,7 @@ pub(crate) fn register_grammar(
 /// `(language-has-grammar? name)` — returns `#t` if `name` has an attached grammar.
 pub(crate) fn language_has_grammar(ctx: &mut SteelCtx, name: SteelVal) -> SteelResult {
     let name = string_arg(name, "language-has-grammar?")?;
-    Ok(SteelVal::BoolV(ctx.host.has_grammar(&name)))
+    Ok(SteelVal::BoolV(ctx.host.language().has_grammar(&name)))
 }
 
 #[cfg(test)]

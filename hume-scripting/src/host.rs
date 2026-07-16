@@ -110,6 +110,9 @@ pub trait EditorHost {
     /// registration — required: every host has some notion of its command
     /// set, even if empty.
     fn commands(&mut self) -> &mut dyn CommandHost;
+    /// Grammar attachment and trigger-char registration — required: every
+    /// host has some notion (even if empty) of its language/grammar set.
+    fn language(&mut self) -> &mut dyn LanguageHost;
 
     // ── Enumeration ─────────────────────────────────────────────────────────
     /// All open buffer ids in open-order.
@@ -167,17 +170,6 @@ pub trait EditorHost {
     ) -> Result<(), String>;
     fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String>;
 
-    // ── Language / grammar (command mode) ───────────────────────────────────
-    fn attach_grammar(
-        &mut self,
-        name: &str,
-        grammar_path: &Path,
-        symbol: &str,
-        highlights_path: &Path,
-        injections_path: Option<&Path>,
-    ) -> Result<(), String>;
-    fn has_grammar(&self, language: &str) -> bool;
-
     // ── Budget ───────────────────────────────────────────────────────────────
     /// Steel eval budget in milliseconds for command / hook execution.
     fn steel_command_budget_ms(&self) -> u64;
@@ -198,17 +190,6 @@ pub trait EditorHost {
     fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)> {
         let _ = id;
         None
-    }
-
-    /// `(register-trigger-chars! source language chars)` — registers `chars`
-    /// as `OnTriggerChar`-firing chars for `(source, language)`, replacing
-    /// that exact pair's previous set (a plugin's own reload doesn't
-    /// accumulate duplicates; a second language attaching under the same
-    /// source doesn't clobber the first's). An empty `chars` removes the
-    /// entry. Default no-op — test hosts have no `EditorState` to register
-    /// into.
-    fn register_trigger_chars(&mut self, source: String, language: String, chars: Vec<char>) {
-        let _ = (source, language, chars);
     }
 
 }
@@ -304,6 +285,29 @@ pub trait CommandHost {
 
     /// Whether `ch` names a valid register (`0`–`9`, `k`, `c`, `b`).
     fn is_valid_register_name(&self, ch: char) -> bool;
+}
+
+/// Grammar attachment and trigger-char registration — accessed through
+/// [`EditorHost::language`].
+pub trait LanguageHost {
+    fn attach_grammar(
+        &mut self,
+        name: &str,
+        grammar_path: &Path,
+        symbol: &str,
+        highlights_path: &Path,
+        injections_path: Option<&Path>,
+    ) -> Result<(), String>;
+
+    fn has_grammar(&self, language: &str) -> bool;
+
+    /// `(register-trigger-chars! source language chars)` — registers `chars`
+    /// as `OnTriggerChar`-firing chars for `(source, language)`, replacing
+    /// that exact pair's previous set (a plugin's own reload doesn't
+    /// accumulate duplicates; a second language attaching under the same
+    /// source doesn't clobber the first's). An empty `chars` removes the
+    /// entry.
+    fn register_trigger_chars(&mut self, source: String, language: String, chars: Vec<char>);
 }
 
 /// Completion session orchestration — accessed through
