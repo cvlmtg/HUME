@@ -29,7 +29,6 @@ use crate::log::LogLevel;
 
 use super::args::{list_to_strings, string_arg};
 use super::errors::generic_err;
-use super::sandbox::with_data_servers;
 
 const INSTALL_LOCK_FILE_NAME: &str = ".install-lock";
 
@@ -156,42 +155,40 @@ fn create_lock_file(path: &Path) -> std::io::Result<()> {
 /// A live (or indeterminate-age) lock already exists, or the lock file
 /// can't be created/replaced.
 pub(crate) fn acquire_install_lock(ctx: &mut SteelCtx) -> Result<SteelVal, SteelErr> {
-    with_data_servers(|servers_dir| {
-        let lock_path = servers_dir.join(INSTALL_LOCK_FILE_NAME);
-        let Err(create_err) = create_lock_file(&lock_path) else {
-            return Ok(SteelVal::Void);
-        };
-        if create_err.kind() != std::io::ErrorKind::AlreadyExists {
-            steel::stop!(Generic => "acquire-install-lock!: {}", create_err);
-        }
-        // `duration_since` errors (rather than defaulting to "unknown") on a
-        // future mtime — clock skew or a networked/synced filesystem — which
-        // is exactly the case that must NOT be treated as stale.
-        let is_stale = std::fs::metadata(&lock_path)
-            .and_then(|m| m.modified())
-            .ok()
-            .and_then(|modified| SystemTime::now().duration_since(modified).ok())
-            .is_some_and(|age| age > STALE_INSTALL_LOCK_AGE);
-        if !is_stale {
-            steel::stop!(Generic =>
-                "acquire-install-lock!: another install/uninstall is already in progress");
-        }
-        ctx.log(
-            LogLevel::Warning,
-            "acquire-install-lock!: stale lock (older than 1h) — replacing".to_string(),
-        );
-        std::fs::remove_file(&lock_path).map_err(|e| {
-            generic_err(format!(
-                "acquire-install-lock!: cannot remove stale lock: {e}"
-            ))
-        })?;
-        create_lock_file(&lock_path).map_err(|e| {
-            generic_err(format!(
-                "acquire-install-lock!: cannot create lock after removing stale one: {e}"
-            ))
-        })?;
-        Ok(SteelVal::Void)
-    })?
+    let lock_path = ctx.dirs.servers_dir()?.join(INSTALL_LOCK_FILE_NAME);
+    let Err(create_err) = create_lock_file(&lock_path) else {
+        return Ok(SteelVal::Void);
+    };
+    if create_err.kind() != std::io::ErrorKind::AlreadyExists {
+        steel::stop!(Generic => "acquire-install-lock!: {}", create_err);
+    }
+    // `duration_since` errors (rather than defaulting to "unknown") on a
+    // future mtime — clock skew or a networked/synced filesystem — which
+    // is exactly the case that must NOT be treated as stale.
+    let is_stale = std::fs::metadata(&lock_path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|modified| SystemTime::now().duration_since(modified).ok())
+        .is_some_and(|age| age > STALE_INSTALL_LOCK_AGE);
+    if !is_stale {
+        steel::stop!(Generic =>
+            "acquire-install-lock!: another install/uninstall is already in progress");
+    }
+    ctx.log(
+        LogLevel::Warning,
+        "acquire-install-lock!: stale lock (older than 1h) — replacing".to_string(),
+    );
+    std::fs::remove_file(&lock_path).map_err(|e| {
+        generic_err(format!(
+            "acquire-install-lock!: cannot remove stale lock: {e}"
+        ))
+    })?;
+    create_lock_file(&lock_path).map_err(|e| {
+        generic_err(format!(
+            "acquire-install-lock!: cannot create lock after removing stale one: {e}"
+        ))
+    })?;
+    Ok(SteelVal::Void)
 }
 
 /// `(%run-inline-output! cmd args cwd)` — spawn `cmd` with `args` (a list of
@@ -238,15 +235,13 @@ pub(crate) fn run_inline_output(
 /// `(release-install-lock!)` — remove `<data>/servers/.install-lock`.
 /// Idempotent: a missing lock (already released, or never acquired) is not
 /// an error.
-pub(crate) fn release_install_lock() -> Result<SteelVal, SteelErr> {
-    with_data_servers(|servers_dir| {
-        let lock_path = servers_dir.join(INSTALL_LOCK_FILE_NAME);
-        match std::fs::remove_file(&lock_path) {
-            Ok(()) => Ok(SteelVal::Void),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(SteelVal::Void),
-            Err(e) => Err(generic_err(format!("release-install-lock!: {e}"))),
-        }
-    })?
+pub(crate) fn release_install_lock(ctx: &mut SteelCtx) -> Result<SteelVal, SteelErr> {
+    let lock_path = ctx.dirs.servers_dir()?.join(INSTALL_LOCK_FILE_NAME);
+    match std::fs::remove_file(&lock_path) {
+        Ok(()) => Ok(SteelVal::Void),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(SteelVal::Void),
+        Err(e) => Err(generic_err(format!("release-install-lock!: {e}"))),
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -254,15 +249,18 @@ pub(crate) fn release_install_lock() -> Result<SteelVal, SteelErr> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::builtins::dirs::ScriptDirs;
     use crate::null_host::RecordingInlineOutputHost;
     use crate::test_support::SteelCtxTestHarness;
     use std::fs;
     use tempfile::TempDir;
 
-    fn setup(tmp: &TempDir) -> PathBuf {
+    /// Point `h`'s directory state at a fresh `<tmp>/hume/servers/` and
+    /// return the canonical servers path.
+    fn setup(h: &mut SteelCtxTestHarness, tmp: &TempDir) -> PathBuf {
         let data_dir = tmp.path().join("hume");
-        super::super::sandbox::init_dirs(Some(data_dir.clone()), None);
-        data_dir.join("servers")
+        h.dirs = ScriptDirs::new(Some(data_dir.clone()), None);
+        std::fs::canonicalize(data_dir.join("servers")).unwrap()
     }
 
     // ── hume-target ────────────────────────────────────────────────────────
@@ -388,8 +386,8 @@ mod tests {
     #[test]
     fn acquire_install_lock_succeeds_when_no_lock_exists() {
         let tmp = TempDir::new().unwrap();
-        let servers = setup(&tmp);
         let mut h = SteelCtxTestHarness::new();
+        let servers = setup(&mut h, &tmp);
         let mut ctx = h.ctx();
         assert!(acquire_install_lock(&mut ctx).is_ok());
         assert!(servers.join(".install-lock").exists());
@@ -398,8 +396,8 @@ mod tests {
     #[test]
     fn acquire_install_lock_fails_loudly_on_a_second_live_acquire() {
         let tmp = TempDir::new().unwrap();
-        setup(&tmp);
         let mut h = SteelCtxTestHarness::new();
+        setup(&mut h, &tmp);
         let mut ctx = h.ctx();
         acquire_install_lock(&mut ctx).expect("first acquire");
         let err = acquire_install_lock(&mut ctx).unwrap_err();
@@ -412,8 +410,8 @@ mod tests {
     #[test]
     fn acquire_install_lock_replaces_a_stale_lock_with_a_warning() {
         let tmp = TempDir::new().unwrap();
-        let servers = setup(&tmp);
         let mut h = SteelCtxTestHarness::new();
+        let servers = setup(&mut h, &tmp);
         let mut ctx = h.ctx();
         acquire_install_lock(&mut ctx).expect("first acquire");
 
@@ -445,8 +443,8 @@ mod tests {
     #[test]
     fn acquire_install_lock_treats_a_future_mtime_lock_as_live() {
         let tmp = TempDir::new().unwrap();
-        let servers = setup(&tmp);
         let mut h = SteelCtxTestHarness::new();
+        let servers = setup(&mut h, &tmp);
         let mut ctx = h.ctx();
         acquire_install_lock(&mut ctx).expect("first acquire");
 
@@ -469,19 +467,27 @@ mod tests {
     #[test]
     fn release_install_lock_is_idempotent() {
         let tmp = TempDir::new().unwrap();
-        setup(&tmp);
-        assert!(release_install_lock().is_ok(), "no lock ever acquired");
-        assert!(release_install_lock().is_ok(), "second release call");
+        let mut h = SteelCtxTestHarness::new();
+        setup(&mut h, &tmp);
+        let mut ctx = h.ctx();
+        assert!(
+            release_install_lock(&mut ctx).is_ok(),
+            "no lock ever acquired"
+        );
+        assert!(
+            release_install_lock(&mut ctx).is_ok(),
+            "second release call"
+        );
     }
 
     #[test]
     fn release_install_lock_removes_the_file_so_a_later_acquire_succeeds_immediately() {
         let tmp = TempDir::new().unwrap();
-        let servers = setup(&tmp);
         let mut h = SteelCtxTestHarness::new();
+        let servers = setup(&mut h, &tmp);
         let mut ctx = h.ctx();
         acquire_install_lock(&mut ctx).expect("first acquire");
-        assert!(release_install_lock().is_ok());
+        assert!(release_install_lock(&mut ctx).is_ok());
         assert!(!servers.join(".install-lock").exists());
         assert!(
             acquire_install_lock(&mut ctx).is_ok(),

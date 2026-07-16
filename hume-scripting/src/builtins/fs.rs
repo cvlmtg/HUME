@@ -13,26 +13,21 @@
 //! | `runtime-dir`   | `() → string \| #f`            | Runtime dir, or `#f` if absent               |
 //! | `path-join`     | `string… → string`             | OS-native join; no sandbox, no filesystem access |
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use steel::rerrs::SteelErr;
 use steel::rvals::{IntoSteelVal, SteelVal};
+
+use crate::SteelCtx;
 
 use super::errors::generic_err;
 
 // ── data-dir / runtime-dir ───────────────────────────────────────────────────
 
-/// Shared body for `(data-dir)`/`(runtime-dir)`: both take no args and return
-/// `dir()`'s display-form path as a string, or `#f` if `dir()` is `None`.
-fn dir_builtin(
-    args: &[SteelVal],
-    name: &'static str,
-    dir: impl FnOnce() -> Option<PathBuf>,
-) -> Result<SteelVal, SteelErr> {
-    if !args.is_empty() {
-        steel::stop!(ArityMismatch => "{name} expects 0 args, got {}", args.len());
-    }
-    match dir() {
+/// Shared body for `(data-dir)`/`(runtime-dir)`: return `dir`'s display-form
+/// path as a string, or `#f` if `dir` is `None`.
+fn dir_builtin(dir: Option<&Path>) -> Result<SteelVal, SteelErr> {
+    match dir {
         Some(p) => p
             .to_string_lossy()
             .as_ref()
@@ -48,8 +43,8 @@ fn dir_builtin(
 /// The returned path is the display form (no `\\?\` extended-length prefix on
 /// Windows) so Scheme plugins can safely join segments with `(path-join …)`
 /// or, if necessary, plain string concatenation.
-pub(crate) fn data_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
-    dir_builtin(args, "data-dir", super::sandbox::data_dir_display)
+pub(crate) fn data_dir(ctx: &mut SteelCtx) -> Result<SteelVal, SteelErr> {
+    dir_builtin(ctx.dirs.data_dir_display.as_deref())
 }
 
 /// `(runtime-dir)` — returns the HUME runtime directory as a string, or `#f`
@@ -57,8 +52,8 @@ pub(crate) fn data_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 ///
 /// The returned path is the display form (no `\\?\` extended-length prefix on
 /// Windows).
-pub(crate) fn runtime_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
-    dir_builtin(args, "runtime-dir", super::sandbox::runtime_dir_display)
+pub(crate) fn runtime_dir(ctx: &mut SteelCtx) -> Result<SteelVal, SteelErr> {
+    dir_builtin(ctx.dirs.runtime_dir_display.as_deref())
 }
 
 // ── path-join ─────────────────────────────────────────────────────────────────
@@ -96,14 +91,16 @@ pub(crate) fn path_join(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::builtins::dirs::ScriptDirs;
+    use crate::test_support::SteelCtxTestHarness;
     use tempfile::TempDir;
 
-    use super::super::sandbox::init_dirs;
-
-    fn setup(tmp: &TempDir) {
+    fn harness_with_data_dir(tmp: &TempDir) -> SteelCtxTestHarness {
         let data_dir = tmp.path().join("hume");
         std::fs::create_dir_all(&data_dir).unwrap();
-        init_dirs(Some(data_dir), None);
+        let mut h = SteelCtxTestHarness::new();
+        h.dirs = ScriptDirs::new(Some(data_dir), None);
+        h
     }
 
     // ── path-join ────────────────────────────────────────────────────────────
@@ -150,9 +147,10 @@ mod tests {
     #[test]
     fn data_dir_no_unc_prefix() {
         let tmp = TempDir::new().unwrap();
-        setup(&tmp);
+        let mut h = harness_with_data_dir(&tmp);
+        let mut ctx = h.ctx();
 
-        let result = data_dir(&[]).unwrap();
+        let result = data_dir(&mut ctx).unwrap();
         let s = match result {
             SteelVal::StringV(s) => s.to_string(),
             other => panic!("expected string, got {other:?}"),
@@ -160,6 +158,39 @@ mod tests {
         assert!(
             !s.starts_with(r"\\?\"),
             "data-dir must not return an extended-length UNC path, got: {s}"
+        );
+    }
+
+    /// End-to-end through the real registration table (`builtins::mod`'s
+    /// `builtins!` table registers `data-dir` as a ctx-injected `open`
+    /// builtin, not the old context-free `FuncV`) — proves `(data-dir)`
+    /// still resolves to `ctx.dirs` after the move out of `register_value`.
+    /// `eval_source` only reports success/failure, not a return value, so
+    /// the result is round-tripped through `log!` and read back from the
+    /// message log.
+    #[test]
+    fn data_dir_resolves_through_real_registration() {
+        let tmp = TempDir::new().unwrap();
+        let data_dir = tmp.path().join("hume");
+        std::fs::create_dir_all(&data_dir).unwrap();
+
+        let mut host = crate::ScriptingHost::new();
+        host.set_data_dir(data_dir.clone());
+        let mut null_host = crate::null_host::NullHost;
+        host.eval_source(r#"(log! 'info (data-dir))"#, &mut null_host)
+            .expect("(data-dir) must evaluate through the real registration table");
+
+        // macOS TempDir paths are under /var, which is itself a symlink to
+        // /private/var — canonicalize the *expected* side so the comparison
+        // isn't platform-dependent (see memory feedback_macos_tempfile_canonicalize).
+        let expected = std::fs::canonicalize(&data_dir).unwrap();
+        let msgs = host.take_pending_messages();
+        assert!(
+            msgs.iter()
+                .any(|(_, msg)| msg == &expected.to_string_lossy()),
+            "expected a log message equal to {:?}, got: {:?}",
+            expected,
+            msgs
         );
     }
 }

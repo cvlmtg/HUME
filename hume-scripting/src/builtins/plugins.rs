@@ -175,7 +175,12 @@ pub(crate) fn declare_plugin(
         )));
     }
 
-    let path = resolve_path_for_name(&name, ctx.runtime_dir, ctx.data_dir).map_err(generic_err)?;
+    let path = resolve_path_for_name(
+        &name,
+        ctx.dirs.runtime_dir.as_deref(),
+        ctx.dirs.data_dir.as_deref(),
+    )
+    .map_err(generic_err)?;
 
     // When the plugin file is absent on disk, it can never be activated —
     // collision-checking (which claims the name in the editor's registry) would
@@ -311,7 +316,12 @@ pub(crate) fn resolve_path_for_name(
 /// plugin file exists on disk, or `#f` if absent.  Raises a Steel error for
 /// malformed names.
 pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    let path = resolve_path_for_name(&name, ctx.runtime_dir, ctx.data_dir).map_err(generic_err)?;
+    let path = resolve_path_for_name(
+        &name,
+        ctx.dirs.runtime_dir.as_deref(),
+        ctx.dirs.data_dir.as_deref(),
+    )
+    .map_err(generic_err)?;
     match path {
         Some(p) => Ok(SteelVal::StringV(p.to_string_lossy().into_owned().into())),
         None => Ok(SteelVal::BoolV(false)),
@@ -369,8 +379,12 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) ->
     }
 
     if !ctx.registries.lazy_registry.plugins.contains_key(&id) {
-        let path =
-            resolve_path_for_name(&name, ctx.runtime_dir, ctx.data_dir).map_err(generic_err)?;
+        let path = resolve_path_for_name(
+            &name,
+            ctx.dirs.runtime_dir.as_deref(),
+            ctx.dirs.data_dir.as_deref(),
+        )
+        .map_err(generic_err)?;
         match path {
             Some(p) => {
                 ctx.registries
@@ -582,7 +596,11 @@ pub(crate) fn begin_manifest_declare(
         ctx.registries.declared_plugins.push(name.clone());
     }
 
-    let Some(dir) = plugin_dir_for_id(&plugin_id, ctx.runtime_dir, ctx.data_dir) else {
+    let Some(dir) = plugin_dir_for_id(
+        &plugin_id,
+        ctx.dirs.runtime_dir.as_deref(),
+        ctx.dirs.data_dir.as_deref(),
+    ) else {
         return Ok(SteelVal::BoolV(false));
     };
     if !path_exists(&dir).map_err(generic_err)? {

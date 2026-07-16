@@ -471,7 +471,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open  "unpack-gz" install::unpack_gz(src: String, dest: String);
         open  "unpack-zip" install::unpack_zip(src: String, dest_dir: String, bin_path: String);
         open  "acquire-install-lock!" install::acquire_install_lock();
-        plain "release-install-lock!" install::release_install_lock();
+        open  "release-install-lock!" install::release_install_lock();
         open  "%run-inline-output!" install::run_inline_output(cmd: String, args_val: SteelVal, cwd_val: SteelVal);
 
         // Logging — push messages to the editor message log
@@ -586,15 +586,18 @@ pub(crate) fn register_all(steel: &mut Engine) {
         plain "focus-pane!" panes::focus_pane(pid: SteelVal);
         plain "pane-buffer" panes::pane_buffer(pid: SteelVal);
         plain "pane-set-buffer!" panes::pane_set_buffer(pid: SteelVal, bid: SteelVal);
+
+        // Editor-integration directory info, read from `ctx.dirs` (computed
+        // once by `ScriptingHost::new`). Callable from anywhere (`open`) —
+        // same reach as the context-free builtins these replaced.
+        open "data-dir" fs::data_dir();
+        open "runtime-dir" fs::runtime_dir();
     }
 
-    // Context-free builtins: editor-integration info that reads from
-    // SCRIPT_DIRS TLS, plus path-join's Windows UNC-prefix stripping.
-    // General filesystem access is Steel's own steel/filesystem stdlib.
-    // Raw `&[SteelVal]` FuncV builtins don't fit the typed-arity table above.
+    // Context-free builtins that don't fit the typed-arity table above: raw
+    // `&[SteelVal]` FuncV, no SteelCtx. `path-join` is a pure string helper;
+    // `hume-target` reads platform info, not directory state.
     steel.register_value("hume-target", SteelVal::FuncV(install::hume_target));
-    steel.register_value("data-dir", SteelVal::FuncV(fs::data_dir));
-    steel.register_value("runtime-dir", SteelVal::FuncV(fs::runtime_dir));
     steel.register_value("path-join", SteelVal::FuncV(fs::path_join));
 
     // Evaluate the Scheme bootstrap (defines `load-plugin`, and — at its
