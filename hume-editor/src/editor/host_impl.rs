@@ -22,7 +22,7 @@ use crate::settings::{BufferOverrides, SettingScope, apply_setting};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 use hume_scripting::host::{
     BindMode, CompletionHost, DecorationHost, EditHost, EditorHost, LspHost, OptionValue,
-    TimerHost, UiHost,
+    OutputHost, TimerHost, UiHost,
 };
 
 use super::{EditorState, Severity};
@@ -111,6 +111,9 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     }
     // Same unconditional-Some rationale as `lsp()` above.
     fn timers(&mut self) -> Option<&mut dyn TimerHost> {
+        Some(self)
+    }
+    fn output(&mut self) -> Option<&mut dyn OutputHost> {
         Some(self)
     }
 
@@ -317,33 +320,6 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     // ── Budget ────────────────────────────────────────────────────────────────
     fn steel_command_budget_ms(&self) -> u64 {
         self.state.settings.steel_command_budget_ms as u64
-    }
-
-    // ── Terminal safety ──────────────────────────────────────────────────────
-    fn is_inline_output_command(&self) -> bool {
-        !matches!(
-            self.state.inline_output,
-            super::InlineOutputDispatch::Inactive
-        )
-    }
-
-    fn ensure_inline_output_screen(&mut self) -> Result<(), String> {
-        // Only `Armed` needs action: `Entered` already left the alt-screen,
-        // `Headless`/`Inactive` have no bracket to enter at all.
-        let super::InlineOutputDispatch::Armed { kitty, mouse, name } = &self.state.inline_output
-        else {
-            return Ok(());
-        };
-        let (kitty, mouse, name) = (*kitty, *mouse, name.clone());
-        hume_platform::terminal::enter_inline_output(kitty, mouse)
-            .map_err(|e| format!("inline-output enter failed: {e}"))?;
-        hume_platform::terminal::print_running_banner(&name);
-        self.state.inline_output = super::InlineOutputDispatch::Entered;
-        #[cfg(test)]
-        {
-            self.state.inline_output_entered = true;
-        }
-        Ok(())
     }
 
     // ── Synchronous command dispatch ─────────────────────────────────────────
@@ -584,6 +560,34 @@ pub(crate) fn to_editor_bind_mode(mode: BindMode) -> crate::editor::keymap::Bind
         BindMode::Normal => crate::editor::keymap::BindMode::Normal,
         BindMode::Extend => crate::editor::keymap::BindMode::Extend,
         BindMode::Insert => crate::editor::keymap::BindMode::Insert,
+    }
+}
+
+impl<'a> OutputHost for EditorHostImpl<'a> {
+    fn is_inline_output_command(&self) -> bool {
+        !matches!(
+            self.state.inline_output,
+            super::InlineOutputDispatch::Inactive
+        )
+    }
+
+    fn ensure_inline_output_screen(&mut self) -> Result<(), String> {
+        // Only `Armed` needs action: `Entered` already left the alt-screen,
+        // `Headless`/`Inactive` have no bracket to enter at all.
+        let super::InlineOutputDispatch::Armed { kitty, mouse, name } = &self.state.inline_output
+        else {
+            return Ok(());
+        };
+        let (kitty, mouse, name) = (*kitty, *mouse, name.clone());
+        hume_platform::terminal::enter_inline_output(kitty, mouse)
+            .map_err(|e| format!("inline-output enter failed: {e}"))?;
+        hume_platform::terminal::print_running_banner(&name);
+        self.state.inline_output = super::InlineOutputDispatch::Entered;
+        #[cfg(test)]
+        {
+            self.state.inline_output_entered = true;
+        }
+        Ok(())
     }
 }
 

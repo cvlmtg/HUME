@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
 
-use crate::host::{BindMode, EditorHost, OptionValue};
+use crate::host::{BindMode, EditorHost, OptionValue, OutputHost};
 use crate::types::SteelCmdDef;
 
 pub(crate) struct NullHost;
@@ -345,8 +345,8 @@ impl EditorHost for InlineOutputHost {
     fn steel_command_budget_ms(&self) -> u64 {
         NullHost.steel_command_budget_ms()
     }
-    fn is_inline_output_command(&self) -> bool {
-        true
+    fn output(&mut self) -> Option<&mut dyn OutputHost> {
+        Some(self)
     }
     fn command_is_native(&self, name: &str) -> Result<bool, String> {
         NullHost.command_is_native(name)
@@ -374,6 +374,15 @@ impl EditorHost for InlineOutputHost {
     }
     fn char_index_to_line(&self, idx: usize) -> Option<usize> {
         NullHost.char_index_to_line(idx)
+    }
+}
+
+impl OutputHost for InlineOutputHost {
+    fn is_inline_output_command(&self) -> bool {
+        true
+    }
+    fn ensure_inline_output_screen(&mut self) -> Result<(), String> {
+        Ok(())
     }
 }
 
@@ -470,12 +479,8 @@ impl EditorHost for RecordingInlineOutputHost {
     fn steel_command_budget_ms(&self) -> u64 {
         NullHost.steel_command_budget_ms()
     }
-    fn is_inline_output_command(&self) -> bool {
-        true
-    }
-    fn ensure_inline_output_screen(&mut self) -> Result<(), String> {
-        self.ensure_calls += 1;
-        Ok(())
+    fn output(&mut self) -> Option<&mut dyn OutputHost> {
+        Some(self)
     }
     fn command_is_native(&self, name: &str) -> Result<bool, String> {
         NullHost.command_is_native(name)
@@ -503,5 +508,15 @@ impl EditorHost for RecordingInlineOutputHost {
     }
     fn char_index_to_line(&self, idx: usize) -> Option<usize> {
         NullHost.char_index_to_line(idx)
+    }
+}
+
+impl OutputHost for RecordingInlineOutputHost {
+    fn is_inline_output_command(&self) -> bool {
+        true
+    }
+    fn ensure_inline_output_screen(&mut self) -> Result<(), String> {
+        self.ensure_calls += 1;
+        Ok(())
     }
 }

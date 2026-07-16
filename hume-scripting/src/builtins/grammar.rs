@@ -56,8 +56,10 @@ pub(crate) fn compile_grammar(
     // `tree-sitter build` inherits stdio, so this is a real terminal write —
     // open the bracket first. Init-time compiles run pre-terminal (no screen
     // to enter, and `is_inline_output` is never set there anyway).
-    if !ctx.is_init {
-        ctx.host.ensure_inline_output_screen().map_err(|e| {
+    if !ctx.is_init
+        && let Some(output) = ctx.host.output()
+    {
+        output.ensure_inline_output_screen().map_err(|e| {
             SteelErr::new(
                 steel::rerrs::ErrorKind::Generic,
                 format!("compile-grammar!: {e}"),

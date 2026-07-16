@@ -96,6 +96,13 @@ pub trait EditorHost {
     fn timers(&mut self) -> Option<&mut dyn TimerHost> {
         None
     }
+    /// Terminal-safety state around `#:inline-output` commands — `None` for
+    /// hosts with no live TUI to protect (test stubs), which is equivalent to
+    /// the old defaults (`is_inline_output_command` false, `ensure_inline_
+    /// output_screen` a no-op success).
+    fn output(&mut self) -> Option<&mut dyn OutputHost> {
+        None
+    }
 
     // ── Enumeration ─────────────────────────────────────────────────────────
     /// All open buffer ids in open-order.
@@ -170,30 +177,6 @@ pub trait EditorHost {
     // ── Budget ───────────────────────────────────────────────────────────────
     /// Steel eval budget in milliseconds for command / hook execution.
     fn steel_command_budget_ms(&self) -> u64;
-
-    // ── Terminal safety ──────────────────────────────────────────────────────
-    /// True while the command currently being dispatched is `#:inline-output`
-    /// (raw stdout writes are safe — either the alt-screen has been left for
-    /// the duration of its body, or there is no TUI to protect at all).
-    /// Defaults to `false` so hosts that never run under the live TUI (test
-    /// stubs) need no override.
-    fn is_inline_output_command(&self) -> bool {
-        false
-    }
-
-    /// Called by a builtin just before it writes its first byte of terminal
-    /// output (`displayln`, a subprocess with inherited stdio, …). Enters the
-    /// inline-output alt-screen bracket lazily — on the first real output,
-    /// not eagerly at dispatch — so a command whose body only logs never
-    /// flashes an empty screen or blocks on an unnecessary keypress. Safe to
-    /// call more than once per command body: only the first call (per
-    /// dispatch) does anything.
-    ///
-    /// Defaults to `Ok(())` so hosts with no terminal to protect (test stubs)
-    /// need no override.
-    fn ensure_inline_output_screen(&mut self) -> Result<(), String> {
-        Ok(())
-    }
 
     // ── Synchronous command dispatch ─────────────────────────────────────────
     /// Returns `Ok(true)` if `name` is a native (Rust-registered) command —
@@ -571,4 +554,22 @@ pub trait EditHost {
         line: usize,
         col: usize,
     ) -> Result<(), String>;
+}
+
+/// Terminal-safety state around `#:inline-output` commands — accessed
+/// through [`EditorHost::output`].
+pub trait OutputHost {
+    /// True while the command currently being dispatched is `#:inline-output`
+    /// (raw stdout writes are safe — either the alt-screen has been left for
+    /// the duration of its body, or there is no TUI to protect at all).
+    fn is_inline_output_command(&self) -> bool;
+
+    /// Called by a builtin just before it writes its first byte of terminal
+    /// output (`displayln`, a subprocess with inherited stdio, …). Enters the
+    /// inline-output alt-screen bracket lazily — on the first real output,
+    /// not eagerly at dispatch — so a command whose body only logs never
+    /// flashes an empty screen or blocks on an unnecessary keypress. Safe to
+    /// call more than once per command body: only the first call (per
+    /// dispatch) does anything.
+    fn ensure_inline_output_screen(&mut self) -> Result<(), String>;
 }

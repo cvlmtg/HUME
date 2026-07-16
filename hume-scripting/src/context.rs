@@ -260,7 +260,9 @@ impl<'a> SteelCtx<'a> {
         pending_char: Option<char>,
     ) -> Self {
         // Read before `host` is moved into the struct below.
-        let is_inline_output = host.is_inline_output_command();
+        let is_inline_output = host
+            .output()
+            .is_some_and(|output| output.is_inline_output_command());
         Self {
             host,
             plugin_stack: host_bundle.plugin_stack,

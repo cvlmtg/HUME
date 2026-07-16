@@ -128,9 +128,11 @@ pub(crate) fn unpack_zip(
 
     // `unzip`/`tar` inherit stdio (see `hume_platform::process::unpack_zip`'s
     // doc), so this is a real terminal write — open the bracket first.
-    ctx.host
-        .ensure_inline_output_screen()
-        .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("unpack-zip: {e}")))?;
+    if let Some(output) = ctx.host.output() {
+        output
+            .ensure_inline_output_screen()
+            .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("unpack-zip: {e}")))?;
+    }
     hume_platform::process::unpack_zip(&src_path, &dest_path, Path::new(&bin_path))
         .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("unpack-zip: {e}")))?;
     Ok(SteelVal::Void)
@@ -231,12 +233,14 @@ pub(crate) fn run_inline_output(
 
     // The child inherits stdio, so this is a real terminal write — open the
     // bracket before spawning it.
-    ctx.host.ensure_inline_output_screen().map_err(|e| {
-        SteelErr::new(
-            steel::rerrs::ErrorKind::Generic,
-            format!("run-inline-output!: {e}"),
-        )
-    })?;
+    if let Some(output) = ctx.host.output() {
+        output.ensure_inline_output_screen().map_err(|e| {
+            SteelErr::new(
+                steel::rerrs::ErrorKind::Generic,
+                format!("run-inline-output!: {e}"),
+            )
+        })?;
+    }
 
     let status =
         hume_platform::process::run_inline_output(&cmd, &args, cwd.as_deref()).map_err(|e| {

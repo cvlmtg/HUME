@@ -77,8 +77,10 @@ pub(crate) fn stdout_gate(ctx: &mut SteelCtx) -> Result<SteelVal, SteelErr> {
     if !stdout_is_safe(ctx) {
         return Ok(SteelVal::BoolV(false));
     }
-    if ctx.is_inline_output {
-        ctx.host
+    if ctx.is_inline_output
+        && let Some(output) = ctx.host.output()
+    {
+        output
             .ensure_inline_output_screen()
             .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("print: {e}")))?;
     }
