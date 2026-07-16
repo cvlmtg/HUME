@@ -11,6 +11,7 @@ pub(crate) mod commands;
 pub(crate) mod completion;
 pub(crate) mod decorations;
 pub(crate) mod dirs;
+pub(crate) mod edits;
 pub(crate) mod errors;
 pub(crate) mod fs;
 pub(crate) mod grammar;
@@ -386,9 +387,9 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "diagnostic-counts" decorations::diagnostic_counts(bid: args::BidArg);
 
         // Edit + navigation primitives.
-        cmd "%apply-text-edits!" lsp::apply_text_edits(bid: args::BidArg, edits: SteelVal, expect_gen: SteelVal);
-        cmd "%apply-workspace-edit!" lsp::apply_workspace_edit(wsedit: SteelVal);
-        cmd "goto-location!" lsp::goto_location(loc: SteelVal);
+        cmd "%apply-text-edits!" edits::apply_text_edits(bid: args::BidArg, edits: SteelVal, expect_gen: SteelVal);
+        cmd "%apply-workspace-edit!" edits::apply_workspace_edit(wsedit: SteelVal);
+        cmd "goto-location!" edits::goto_location(loc: SteelVal);
         cmd "selection-spans-full-line?" lsp::selection_spans_full_line(bid: args::BidArg);
 
         // Minibuffer prompt.
