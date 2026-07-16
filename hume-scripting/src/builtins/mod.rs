@@ -8,6 +8,7 @@
 pub(crate) mod args;
 pub(crate) mod buffers;
 pub(crate) mod commands;
+pub(crate) mod completion;
 pub(crate) mod decorations;
 pub(crate) mod dirs;
 pub(crate) mod errors;
@@ -373,7 +374,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "lsp-range-params" lsp::lsp_range_params(bid: args::BidArg);
         cmd "viewport-range" lsp::viewport_range(bid: args::BidArg);
         cmd "buffer-generation" buffers::buffer_generation(bid: args::BidArg);
-        open "register-trigger-chars!" lsp::register_trigger_chars(source: SteelVal, language: SteelVal, chars: SteelVal);
+        open "register-trigger-chars!" completion::register_trigger_chars(source: SteelVal, language: SteelVal, chars: SteelVal);
 
         // Decoration stores + diagnostics pull.
         cmd "set-inlay-hints!" decorations::set_inlay_hints(bid: args::BidArg, hints: SteelVal);
@@ -395,11 +396,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "symbol-under-cursor" lsp::symbol_under_cursor(bid: args::BidArg);
 
         // Completion orchestration.
-        cmd "%completion-begin!" lsp::completion_begin(bid: args::BidArg, items: SteelVal, incomplete: SteelVal);
-        cmd "completion-update-filter!" lsp::completion_update_filter(text: SteelVal);
-        cmd "completion-top" lsp::completion_top(n: SteelVal);
-        cmd "completion-accept!" lsp::completion_accept(idx: SteelVal);
-        cmd "completion-dismiss!" lsp::completion_dismiss();
+        cmd "%completion-begin!" completion::completion_begin(bid: args::BidArg, items: SteelVal, incomplete: SteelVal);
+        cmd "completion-update-filter!" completion::completion_update_filter(text: SteelVal);
+        cmd "completion-top" completion::completion_top(n: SteelVal);
+        cmd "completion-accept!" completion::completion_accept(idx: SteelVal);
+        cmd "completion-dismiss!" completion::completion_dismiss();
 
         // Cursor-anchored popup widget.
         cmd "%show-popup!" ui::show_popup(text: SteelVal, anchor: SteelVal, dismiss_on_key: SteelVal);
