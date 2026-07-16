@@ -30,90 +30,68 @@ pub(crate) mod ui;
 
 use std::borrow::Cow;
 
-use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 use steel::steel_vm::engine::Engine;
 use steel::steel_vm::register_fn::RegisterFn;
 
 use super::HUME_CTX;
 
-// ── Shared helpers ────────────────────────────────────────────────────────────
+// ── Declarative registration table ───────────────────────────────────────────
 
-/// Return `Err` unless we're in a mode that can call buffer/pane builtins
-/// (`PluginActivation` or `Command` — never `Init` or `PluginLoad`).
-macro_rules! require_cmd_ctx {
-    ($ctx:expr, $name:literal) => {
-        match $ctx.mode() {
-            crate::context::EvalMode::Init | crate::context::EvalMode::PluginLoad => {
-                steel::stop!(Generic => "{}: not available during init evaluation", $name);
-            }
-            crate::context::EvalMode::PluginActivation | crate::context::EvalMode::Command => {}
-        }
-    };
-}
-pub(crate) use require_cmd_ctx;
-
-/// Return `Err` unless we're at init.scm top level or inside a plugin body
-/// (`Init`, `PluginLoad`, or `PluginActivation`) — the gate config builtins
-/// (`set-option!`, `bind-key!`, hook/LSP-server/language registration, …)
-/// share, permitting plugin bodies but blocking plain command bodies. See
-/// [`crate::context::EvalMode`]'s doc for why this is a distinct, looser
-/// gate than `require_cmd_ctx!`'s.
-macro_rules! require_config_ctx {
-    ($ctx:expr, $name:expr) => {
-        match $ctx.mode() {
-            crate::context::EvalMode::Command => {
-                steel::stop!(Generic =>
-                    "{}: only valid during init.scm or plugin load, not from a Steel command body",
-                    $name);
-            }
-            crate::context::EvalMode::Init
-            | crate::context::EvalMode::PluginLoad
-            | crate::context::EvalMode::PluginActivation => {}
-        }
-    };
-}
-pub(crate) use require_config_ctx;
-
-/// Map an `IntoSteelVal` conversion failure to a Steel `ConversionError`.
-pub(crate) fn conv_err(e: impl std::fmt::Display) -> SteelErr {
-    SteelErr::new(steel::rerrs::ErrorKind::ConversionError, e.to_string())
-}
-
-/// Extract a `Vec<String>` from a Steel list value.
+/// Declarative builtin-registration table. Each entry is
+/// `<kind> "<steel-name>" <rust-path>(<arg>: <Type>, …);` where `<kind>` is:
+/// - `cmd`    — ctx-taking, gated by [`errors::require_cmd`] (buffer/pane/editor-state builtins)
+/// - `config` — ctx-taking, gated by [`errors::require_config`] (init/plugin-load-only verbs)
+/// - `open`   — ctx-taking, ungated (no legality gate, or a bespoke one the fn checks itself)
+/// - `plain`  — no `&mut SteelCtx` param at all (context-free predicates, pane stubs)
 ///
-/// Returns a typed error if the value is not a `ListV` or if any element is not
-/// a string.  `param` names the argument for the error message.
-pub(crate) fn list_to_strings(val: SteelVal, param: &str) -> Result<Vec<String>, SteelErr> {
-    match val {
-        SteelVal::ListV(list) => list
-            .iter()
-            .map(|v| match v {
-                SteelVal::StringV(s) => Ok(s.to_string()),
-                _ => Err(SteelErr::new(
-                    steel::rerrs::ErrorKind::TypeMismatch,
-                    format!("{param}: list must contain only strings"),
-                )),
-            })
-            .collect(),
-        _ => Err(SteelErr::new(
-            steel::rerrs::ErrorKind::TypeMismatch,
-            format!("{param}: expected a list"),
-        )),
-    }
-}
-
-/// Extract a `String` from a single positional `SteelVal` argument (the
-/// calling convention `register_fn_with_ctx` builtins use — one Rust param
-/// per Steel arg, not a `&[SteelVal]` slice). Accepts both strings and
-/// symbols, since Scheme callers often pass unquoted symbol literals where a
-/// string is semantically expected.
-pub(crate) fn string_arg(val: SteelVal, ctx_name: &str) -> Result<String, SteelErr> {
-    match val {
-        SteelVal::StringV(s) => Ok(s.to_string()),
-        SteelVal::SymbolV(s) => Ok(s.to_string()),
-        _ => steel::stop!(TypeMismatch => "{}: expected a string", ctx_name),
-    }
+/// The declared arg types are load-bearing, not documentation: each entry
+/// expands to a closure with exactly that parameter list, so a mismatch
+/// against the real function's signature is a compile error — a
+/// compile-time link between a builtin's registered name and its gate.
+macro_rules! builtins {
+    (@one cmd, $steel:expr, $name:literal, $($modpath:ident)::+, ($($arg:ident : $ty:ty),*)) => {
+        $steel.register_fn_with_ctx(
+            HUME_CTX,
+            $name,
+            move |ctx: &mut crate::context::SteelCtx $(, $arg: $ty)*| {
+                crate::builtins::errors::require_cmd(ctx, $name)?;
+                $($modpath)::+(ctx $(, $arg)*)
+            },
+        );
+    };
+    (@one config, $steel:expr, $name:literal, $($modpath:ident)::+, ($($arg:ident : $ty:ty),*)) => {
+        $steel.register_fn_with_ctx(
+            HUME_CTX,
+            $name,
+            move |ctx: &mut crate::context::SteelCtx $(, $arg: $ty)*| {
+                crate::builtins::errors::require_config(ctx, $name)?;
+                $($modpath)::+(ctx $(, $arg)*)
+            },
+        );
+    };
+    (@one open, $steel:expr, $name:literal, $($modpath:ident)::+, ($($arg:ident : $ty:ty),*)) => {
+        $steel.register_fn_with_ctx(
+            HUME_CTX,
+            $name,
+            move |ctx: &mut crate::context::SteelCtx $(, $arg: $ty)*| {
+                $($modpath)::+(ctx $(, $arg)*)
+            },
+        );
+    };
+    (@one plain, $steel:expr, $name:literal, $($modpath:ident)::+, ($($arg:ident : $ty:ty),*)) => {
+        $steel.register_fn(
+            $name,
+            move |$($arg: $ty),*| {
+                $($modpath)::+($($arg),*)
+            },
+        );
+    };
+    ($steel:expr, $($kind:ident $name:literal $($modpath:ident)::+ ( $($arg:ident : $ty:ty),* $(,)? ) ;)*) => {
+        $(
+            builtins!(@one $kind, $steel, $name, $($modpath)::+, ($($arg : $ty),*));
+        )*
+    };
 }
 
 // ── Bootstrap Scheme ──────────────────────────────────────────────────────────
@@ -424,283 +402,197 @@ pub(crate) fn register_all(steel: &mut Engine) {
     // is injected at eval / dispatch time via steel.update_value.
     steel.register_value(HUME_CTX, SteelVal::Void);
 
-    // Context-injected builtins: Steel auto-injects the HUME_CTX global as
-    // the first `&mut SteelCtx` argument via register_fn_with_ctx.
+    builtins! { steel,
+        // Config / settings
+        config "set-option!" settings::set_option(key: String, value: SteelVal);
+        cmd    "get-option" settings::get_option(key: String);
+        config "configure-statusline!" statusline::configure_statusline(left: SteelVal, center: SteelVal, right: SteelVal);
 
-    // Config / settings
-    steel.register_fn_with_ctx(HUME_CTX, "set-option!", settings::set_option);
-    steel.register_fn_with_ctx(HUME_CTX, "get-option", settings::get_option);
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "configure-statusline!",
-        statusline::configure_statusline,
-    );
+        // Step budget
+        open "hume/yield!" interrupt::hume_yield();
 
-    // Step budget
-    steel.register_fn_with_ctx(HUME_CTX, "hume/yield!", interrupt::hume_yield);
+        // Keymap
+        config "bind-key!" keymap_bind::bind_key(mode: SteelVal, key_str: String, cmd_name: String);
+        config "bind-key-extend!" keymap_bind::bind_key_extend(mode: SteelVal, key_str: String, cmd_name: String);
+        config "unbind-key!" keymap_bind::unbind_key(mode: SteelVal, key_str: String);
+        config "bind-wait-char!" keymap_bind::bind_wait_char(mode: SteelVal, key_str: String, cmd_name: String);
+        cmd    "set-register-prefix!" commands::set_register_prefix(name: String);
 
-    // Keymap
-    steel.register_fn_with_ctx(HUME_CTX, "bind-key!", keymap_bind::bind_key);
-    steel.register_fn_with_ctx(HUME_CTX, "bind-key-extend!", keymap_bind::bind_key_extend);
-    steel.register_fn_with_ctx(HUME_CTX, "unbind-key!", keymap_bind::unbind_key);
-    steel.register_fn_with_ctx(HUME_CTX, "bind-wait-char!", keymap_bind::bind_wait_char);
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "set-register-prefix!",
-        commands::set_register_prefix,
-    );
+        // Plugin lifecycle
+        open "%declare-plugin!" plugins::declare_plugin(name: String, commands: SteelVal, events: SteelVal, languages: SteelVal, config: SteelVal);
+        open "resolve-plugin-path" plugins::resolve_plugin_path(name: String);
 
-    // Plugin lifecycle
-    steel.register_fn_with_ctx(HUME_CTX, "%declare-plugin!", plugins::declare_plugin);
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "resolve-plugin-path",
-        plugins::resolve_plugin_path,
-    );
+        // Plugin introspection and explicit activation
+        open "loaded-plugins" plugins::loaded_plugins();
+        open "declared-plugins" plugins::declared_plugins();
+        open "plugin-config" plugins::plugin_config();
+        open "%load-plugin!" plugins::load_plugin(name: String, config: SteelVal);
 
-    // Plugin introspection and explicit activation
-    steel.register_fn_with_ctx(HUME_CTX, "loaded-plugins", plugins::loaded_plugins);
-    steel.register_fn_with_ctx(HUME_CTX, "declared-plugins", plugins::declared_plugins);
-    steel.register_fn_with_ctx(HUME_CTX, "plugin-config", plugins::plugin_config);
-    steel.register_fn_with_ctx(HUME_CTX, "%load-plugin!", plugins::load_plugin);
+        // Inline activation primitives — called from the %activate-plugin-inline
+        // Scheme helper to drive mid-eval plugin loading without &mut Engine.
+        open "%begin-lazy-activation" plugins::begin_lazy_activation(id_str: String);
+        open "%finish-lazy-activation" plugins::finish_lazy_activation(id_str: String, success: bool);
+        open "%lazy-command-owner" plugins::lazy_command_owner(name: String);
 
-    // Inline activation primitives — called from the %activate-plugin-inline
-    // Scheme helper to drive mid-eval plugin loading without &mut Engine.
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "%begin-lazy-activation",
-        plugins::begin_lazy_activation,
-    );
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "%finish-lazy-activation",
-        plugins::finish_lazy_activation,
-    );
-    steel.register_fn_with_ctx(HUME_CTX, "%lazy-command-owner", plugins::lazy_command_owner);
+        // Manifest resolution — zero-trigger declare-plugin routes here to eval
+        // <plugin-dir>/manifest.scm so the plugin can declare its own defaults.
+        open "%begin-manifest-declare!" plugins::begin_manifest_declare(name: String, config: SteelVal);
+        open "%finish-manifest-declare!" plugins::finish_manifest_declare(name: String, success: bool);
 
-    // Manifest resolution — zero-trigger declare-plugin routes here to eval
-    // <plugin-dir>/manifest.scm so the plugin can declare its own defaults.
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "%begin-manifest-declare!",
-        plugins::begin_manifest_declare,
-    );
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "%finish-manifest-declare!",
-        plugins::finish_manifest_declare,
-    );
+        // Hook registration — init-only
+        config "register-hook!" hooks::register_hook(name: SteelVal, proc: SteelVal);
 
-    // Hook registration — init-only
-    steel.register_fn_with_ctx(HUME_CTX, "register-hook!", hooks::register_hook);
+        // Steel command definition. %define-command! is the native primitive;
+        // the (define-command! …) Steel wrapper in BOOTSTRAP exposes keyword
+        // args (#:repeatable, #:inline-output).
+        config "%define-command!" commands::define_command(name: String, doc: String, proc: SteelVal, repeatable: bool, inline_output: bool);
+        // %call-native! is the Rust leaf for native/unknown dispatch; the variadic
+        // (call! name args…) macro desugars to (%dispatch-command …) which routes
+        // activated plugin commands inline in Steel and falls back here for everything else.
+        open "%call-native!" commands::call_command_primitive(name: String, args: SteelVal);
+        // %lookup-plugin-proc: returns the Steel closure for an activated plugin command,
+        // or #f. Called by %dispatch-command in Steel to decide inline-apply vs. %call-native!.
+        open "%lookup-plugin-proc" commands::lookup_plugin_proc(name: String);
+        cmd  "request-wait-char!" commands::request_wait_char(cmd: String);
+        open "pending-char" commands::pending_char();
+        open "command-plugin" commands::command_plugin(name: String);
 
-    // Steel command definition.
-    // %define-command! is the native primitive; the (define-command! …) Steel wrapper
-    // in BOOTSTRAP exposes keyword args (#:repeatable, #:inline-output).
-    steel.register_fn_with_ctx(HUME_CTX, "%define-command!", commands::define_command);
-    // %call-native! is the Rust leaf for native/unknown dispatch; the variadic
-    // (call! name args…) macro desugars to (%dispatch-command …) which routes
-    // activated plugin commands inline in Steel and falls back here for everything else.
-    steel.register_fn_with_ctx(HUME_CTX, "%call-native!", commands::call_command_primitive);
-    // %lookup-plugin-proc: returns the Steel closure for an activated plugin command,
-    // or #f. Called by %dispatch-command in Steel to decide inline-apply vs. %call-native!.
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "%lookup-plugin-proc",
-        commands::lookup_plugin_proc,
-    );
-    steel.register_fn_with_ctx(HUME_CTX, "request-wait-char!", commands::request_wait_char);
-    steel.register_fn_with_ctx(HUME_CTX, "pending-char", commands::pending_char);
-    steel.register_fn_with_ctx(HUME_CTX, "command-plugin", commands::command_plugin);
+        // Grammar compilation — sandbox-free, full-trust plugin model. Kept as a
+        // Rust builtin only for the Windows compiler-selection dance (see
+        // grammar.rs's module doc); `grammar-output-path` moved to Scheme.
+        open "compile-grammar!" grammar::compile_grammar(src: String, out: String);
 
-    // Grammar compilation — sandbox-free, full-trust plugin model. Kept as a
-    // Rust builtin only for the Windows compiler-selection dance (see
-    // grammar.rs's module doc); `grammar-output-path` moved to Scheme.
-    steel.register_fn_with_ctx(HUME_CTX, "compile-grammar!", grammar::compile_grammar);
+        // LSP server install pipeline — sha256 hashing, archive unpacking,
+        // platform id, cross-process install lock (see docs/LSP-INSTALL.md).
+        // Sandbox-free — full-trust plugin model. `verify-sha256!`/`exe-on-path?`
+        // /`git-clone`/`curl-fetch`/`npm-install!` moved to Scheme + Steel's own
+        // `steel/process` stdlib (`which`, `spawn-process`).
+        open  "sha256-file" install::sha256_file(path: String);
+        open  "unpack-gz" install::unpack_gz(src: String, dest: String);
+        open  "unpack-zip" install::unpack_zip(src: String, dest_dir: String, bin_path: String);
+        open  "acquire-install-lock!" install::acquire_install_lock();
+        plain "release-install-lock!" install::release_install_lock();
+        open  "%run-inline-output!" install::run_inline_output(cmd: String, args_val: SteelVal, cwd_val: SteelVal);
 
-    // LSP server install pipeline — sha256 hashing, archive unpacking,
-    // platform id, cross-process install lock (see docs/LSP-INSTALL.md).
-    // Sandbox-free — full-trust plugin model. `verify-sha256!`/`exe-on-path?`
-    // /`git-clone`/`curl-fetch`/`npm-install!` moved to Scheme + Steel's own
-    // `steel/process` stdlib (`which`, `spawn-process`).
-    steel.register_value("hume-target", SteelVal::FuncV(install::hume_target));
-    steel.register_fn_with_ctx(HUME_CTX, "sha256-file", install::sha256_file);
-    steel.register_fn_with_ctx(HUME_CTX, "unpack-gz", install::unpack_gz);
-    steel.register_fn_with_ctx(HUME_CTX, "unpack-zip", install::unpack_zip);
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "acquire-install-lock!",
-        install::acquire_install_lock,
-    );
-    steel.register_fn("release-install-lock!", install::release_install_lock);
-    steel.register_fn_with_ctx(HUME_CTX, "%run-inline-output!", install::run_inline_output);
+        // Logging — push messages to the editor message log
+        open "log!" crate::log::log_msg(severity: SteelVal, message: String);
 
-    // Logging — push messages to the editor message log
-    steel.register_fn_with_ctx(HUME_CTX, "log!", crate::log::log_msg);
+        // %stdout-gate! is the Rust leaf behind the gated print shims (displayln,
+        // display, print, println, newline) — see io.rs and PRINT_GATE_SHIMS above.
+        open "%stdout-gate!" io::stdout_gate();
 
-    // %stdout-gate! is the Rust leaf behind the gated print shims (displayln,
-    // display, print, println, newline) — see io.rs and PRINT_GATE_SHIMS above.
-    steel.register_fn_with_ctx(HUME_CTX, "%stdout-gate!", io::stdout_gate);
+        // Opaque ID predicates and equality — context-free; no SteelCtx needed.
+        plain "buffer-id?" ids::is_buffer_id(val: SteelVal);
+        plain "pane-id?" ids::is_pane_id(val: SteelVal);
+        plain "buffer-id=?" ids::buffer_id_equal(a: SteelVal, b: SteelVal);
+        plain "json-parse" json::json_parse(s: SteelVal);
+        plain "pane-id=?" ids::pane_id_equal(a: SteelVal, b: SteelVal);
 
-    // Opaque ID predicates and equality — context-free; no SteelCtx needed.
-    steel.register_fn("buffer-id?", ids::is_buffer_id);
-    steel.register_fn("pane-id?", ids::is_pane_id);
-    steel.register_fn("buffer-id=?", ids::buffer_id_equal);
-    steel.register_fn("json-parse", json::json_parse);
-    steel.register_fn("pane-id=?", ids::pane_id_equal);
+        // Multi-buffer read-only builtins
+        cmd "current-buffer" buffers::current_buffer();
+        cmd "current-pane" buffers::current_pane();
+        cmd "buffers" buffers::buffers();
+        cmd "panes" buffers::panes();
+        cmd "buffer-path" buffers::buffer_path(bid: args::BidArg);
+        cmd "buffer-name" buffers::buffer_name(bid: args::BidArg);
+        cmd "buffer-dirty?" buffers::buffer_dirty(bid: args::BidArg);
+        // Live cursor read — reflects synchronous edits in the same eval.
+        cmd "current-line-number" buffers::current_line_number();
+        cmd "current-selections" buffers::current_selections();
+        cmd "char-index->line" buffers::char_index_to_line(idx: SteelVal);
 
-    // Multi-buffer read-only builtins
-    steel.register_fn_with_ctx(HUME_CTX, "current-buffer", buffers::current_buffer);
-    steel.register_fn_with_ctx(HUME_CTX, "current-pane", buffers::current_pane);
-    steel.register_fn_with_ctx(HUME_CTX, "buffers", buffers::buffers);
-    steel.register_fn_with_ctx(HUME_CTX, "panes", buffers::panes);
-    steel.register_fn_with_ctx(HUME_CTX, "buffer-path", buffers::buffer_path);
-    steel.register_fn_with_ctx(HUME_CTX, "buffer-name", buffers::buffer_name);
-    steel.register_fn_with_ctx(HUME_CTX, "buffer-dirty?", buffers::buffer_dirty);
-    // Live cursor read — reflects synchronous edits in the same eval.
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "current-line-number",
-        buffers::current_line_number,
-    );
-    steel.register_fn_with_ctx(HUME_CTX, "current-selections", buffers::current_selections);
-    steel.register_fn_with_ctx(HUME_CTX, "char-index->line", buffers::char_index_to_line);
+        // Multi-buffer mutating builtins
+        cmd "open-buffer!" buffers::open_buffer(path: String);
+        cmd "close-buffer!" buffers::close_buffer(bid: args::BidArg);
+        cmd "switch-to-buffer!" buffers::switch_to_buffer(bid: args::BidArg);
 
-    // Multi-buffer mutating builtins
-    steel.register_fn_with_ctx(HUME_CTX, "open-buffer!", buffers::open_buffer);
-    steel.register_fn_with_ctx(HUME_CTX, "close-buffer!", buffers::close_buffer);
-    steel.register_fn_with_ctx(HUME_CTX, "switch-to-buffer!", buffers::switch_to_buffer);
+        // Language identity and grammar builtins
+        config "%define-language!" syntax::define_language(name: SteelVal, exts_val: SteelVal, globs_val: SteelVal, shebangs_val: SteelVal);
+        open   "%register-grammar!" syntax::register_grammar(name: SteelVal, grammar_path: SteelVal, symbol: SteelVal, highlights_path: SteelVal, injections_path: SteelVal);
 
-    // Language identity and grammar builtins
-    steel.register_fn_with_ctx(HUME_CTX, "%define-language!", syntax::define_language);
-    steel.register_fn_with_ctx(HUME_CTX, "%register-grammar!", syntax::register_grammar);
+        // LSP server registration — last-wins, queued (like language regs) and
+        // applied at the end of the current eval, from init, plugin activation,
+        // or a command/hook body.
+        open "%register-lsp-server!" lsp::register_lsp_server(language: SteelVal, command: SteelVal, args_val: SteelVal, root_markers_val: SteelVal, init_options: SteelVal, settings: SteelVal);
+        open "unregister-lsp-server!" lsp::unregister_lsp_server(language: SteelVal);
+        // Lifecycle — stop/restart a running server, or open the status view.
+        cmd "lsp-stop!" lsp::lsp_stop(language: SteelVal);
+        cmd "lsp-restart!" lsp::lsp_restart(language: SteelVal);
+        cmd "lsp-show-status!" lsp::lsp_show_status();
+        // Generic LSP bridge — any protocol method reachable from Steel.
+        cmd "%lsp-request" lsp::lsp_request(server: SteelVal, method: SteelVal, params: SteelVal, callback: SteelVal, allow_stale: SteelVal, supersede: SteelVal);
+        cmd "lsp-notify" lsp::lsp_notify(server: SteelVal, method: SteelVal, params: SteelVal);
+        config "on-lsp-notification" lsp::on_lsp_notification(method: SteelVal, handler: SteelVal);
+        // Introspection
+        cmd  "lsp-capabilities" lsp::lsp_capabilities(server: SteelVal);
+        cmd  "lsp-server-status" lsp::lsp_server_status();
+        cmd  "lsp-server-for-buffer" lsp::lsp_server_for_buffer(bid: args::BidArg);
+        open "lsp-registered-for-language?" lsp::lsp_registered_for_language(language: SteelVal);
+        cmd "lsp-position-params" lsp::lsp_position_params(bid: args::BidArg);
+        cmd "lsp-range-params" lsp::lsp_range_params(bid: args::BidArg);
+        cmd "viewport-range" lsp::viewport_range(bid: args::BidArg);
+        cmd "buffer-generation" buffers::buffer_generation(bid: args::BidArg);
+        open "register-trigger-chars!" lsp::register_trigger_chars(source: SteelVal, language: SteelVal, chars: SteelVal);
 
-    // LSP server registration — last-wins, queued (like language regs) and
-    // applied at the end of the current eval, from init, plugin activation,
-    // or a command/hook body.
-    steel.register_fn_with_ctx(HUME_CTX, "%register-lsp-server!", lsp::register_lsp_server);
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "unregister-lsp-server!",
-        lsp::unregister_lsp_server,
-    );
-    // Lifecycle — stop/restart a running server, or open the status view.
-    // Command-context only (core:lsp's `:lsp-status`/`:lsp-stop`/`:lsp-restart`
-    // typed commands are the only callers).
-    steel.register_fn_with_ctx(HUME_CTX, "lsp-stop!", lsp::lsp_stop);
-    steel.register_fn_with_ctx(HUME_CTX, "lsp-restart!", lsp::lsp_restart);
-    steel.register_fn_with_ctx(HUME_CTX, "lsp-show-status!", lsp::lsp_show_status);
-    // Generic LSP bridge — any protocol method reachable from Steel.
-    steel.register_fn_with_ctx(HUME_CTX, "%lsp-request", lsp::lsp_request);
-    steel.register_fn_with_ctx(HUME_CTX, "lsp-notify", lsp::lsp_notify);
-    steel.register_fn_with_ctx(HUME_CTX, "on-lsp-notification", lsp::on_lsp_notification);
-    // Introspection
-    steel.register_fn_with_ctx(HUME_CTX, "lsp-capabilities", lsp::lsp_capabilities);
-    steel.register_fn_with_ctx(HUME_CTX, "lsp-server-status", lsp::lsp_server_status);
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "lsp-server-for-buffer",
-        lsp::lsp_server_for_buffer,
-    );
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "lsp-registered-for-language?",
-        lsp::lsp_registered_for_language,
-    );
-    steel.register_fn_with_ctx(HUME_CTX, "lsp-position-params", lsp::lsp_position_params);
-    steel.register_fn_with_ctx(HUME_CTX, "lsp-range-params", lsp::lsp_range_params);
-    steel.register_fn_with_ctx(HUME_CTX, "viewport-range", lsp::viewport_range);
-    steel.register_fn_with_ctx(HUME_CTX, "buffer-generation", buffers::buffer_generation);
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "register-trigger-chars!",
-        lsp::register_trigger_chars,
-    );
+        // Decoration stores + diagnostics pull.
+        cmd "set-inlay-hints!" lsp::set_inlay_hints(bid: args::BidArg, hints: SteelVal);
+        cmd "set-signs!" lsp::set_signs(source: SteelVal, bid: args::BidArg, signs: SteelVal);
+        cmd "set-virtual-lines!" lsp::set_virtual_lines(source: SteelVal, bid: args::BidArg, lines: SteelVal);
+        cmd "set-inline-diagnostics!" lsp::set_inline_diagnostics(bid: args::BidArg, lines: SteelVal);
+        cmd "set-extra-highlights!" lsp::set_extra_highlights(source: SteelVal, bid: args::BidArg, spans: SteelVal);
+        cmd "%diagnostics-for-buffer" lsp::diagnostics_for_buffer(bid: args::BidArg, severity: SteelVal, range: SteelVal);
+        cmd "diagnostic-counts" lsp::diagnostic_counts(bid: args::BidArg);
 
-    // Decoration stores + diagnostics pull.
-    steel.register_fn_with_ctx(HUME_CTX, "set-inlay-hints!", lsp::set_inlay_hints);
-    steel.register_fn_with_ctx(HUME_CTX, "set-signs!", lsp::set_signs);
-    steel.register_fn_with_ctx(HUME_CTX, "set-virtual-lines!", lsp::set_virtual_lines);
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "set-inline-diagnostics!",
-        lsp::set_inline_diagnostics,
-    );
-    steel.register_fn_with_ctx(HUME_CTX, "set-extra-highlights!", lsp::set_extra_highlights);
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "%diagnostics-for-buffer",
-        lsp::diagnostics_for_buffer,
-    );
-    steel.register_fn_with_ctx(HUME_CTX, "diagnostic-counts", lsp::diagnostic_counts);
+        // Edit + navigation primitives.
+        cmd "%apply-text-edits!" lsp::apply_text_edits(bid: args::BidArg, edits: SteelVal, expect_gen: SteelVal);
+        cmd "%apply-workspace-edit!" lsp::apply_workspace_edit(wsedit: SteelVal);
+        cmd "goto-location!" lsp::goto_location(loc: SteelVal);
+        cmd "selection-spans-full-line?" lsp::selection_spans_full_line(bid: args::BidArg);
 
-    // Edit + navigation primitives.
-    steel.register_fn_with_ctx(HUME_CTX, "%apply-text-edits!", lsp::apply_text_edits);
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "%apply-workspace-edit!",
-        lsp::apply_workspace_edit,
-    );
-    steel.register_fn_with_ctx(HUME_CTX, "goto-location!", lsp::goto_location);
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "selection-spans-full-line?",
-        lsp::selection_spans_full_line,
-    );
+        // Minibuffer prompt.
+        cmd "%prompt!" lsp::prompt(label: SteelVal, prefill: SteelVal, on_confirm: SteelVal);
+        cmd "symbol-under-cursor" lsp::symbol_under_cursor(bid: args::BidArg);
 
-    // Minibuffer prompt.
-    steel.register_fn_with_ctx(HUME_CTX, "%prompt!", lsp::prompt);
-    steel.register_fn_with_ctx(HUME_CTX, "symbol-under-cursor", lsp::symbol_under_cursor);
+        // Completion orchestration.
+        cmd "%completion-begin!" lsp::completion_begin(bid: args::BidArg, items: SteelVal, incomplete: SteelVal);
+        cmd "completion-update-filter!" lsp::completion_update_filter(text: SteelVal);
+        cmd "completion-top" lsp::completion_top(n: SteelVal);
+        cmd "completion-accept!" lsp::completion_accept(idx: SteelVal);
+        cmd "completion-dismiss!" lsp::completion_dismiss();
 
-    // Completion orchestration.
-    steel.register_fn_with_ctx(HUME_CTX, "%completion-begin!", lsp::completion_begin);
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "completion-update-filter!",
-        lsp::completion_update_filter,
-    );
-    steel.register_fn_with_ctx(HUME_CTX, "completion-top", lsp::completion_top);
-    steel.register_fn_with_ctx(HUME_CTX, "completion-accept!", lsp::completion_accept);
-    steel.register_fn_with_ctx(HUME_CTX, "completion-dismiss!", lsp::completion_dismiss);
+        // Cursor-anchored popup widget.
+        cmd "%show-popup!" ui::show_popup(text: SteelVal, anchor: SteelVal, dismiss_on_key: SteelVal);
+        cmd "close-popup!" ui::close_popup();
 
-    // Cursor-anchored popup widget.
-    steel.register_fn_with_ctx(HUME_CTX, "%show-popup!", ui::show_popup);
-    steel.register_fn_with_ctx(HUME_CTX, "close-popup!", ui::close_popup);
+        // Selection menu widget.
+        cmd "show-menu!" ui::show_menu(items: SteelVal, on_select: SteelVal);
+        cmd "close-menu!" ui::close_menu();
 
-    // Selection menu widget.
-    steel.register_fn_with_ctx(HUME_CTX, "show-menu!", ui::show_menu);
-    steel.register_fn_with_ctx(HUME_CTX, "close-menu!", ui::close_menu);
+        // Class B bottom drawer.
+        cmd "show-drawer-list!" ui::show_drawer_list(items: SteelVal, on_select: SteelVal);
+        cmd "close-drawer!" ui::close_drawer();
 
-    // Class B bottom drawer.
-    steel.register_fn_with_ctx(HUME_CTX, "show-drawer-list!", ui::show_drawer_list);
-    steel.register_fn_with_ctx(HUME_CTX, "close-drawer!", ui::close_drawer);
+        // Timers — not LSP-specific, but added as part of the LSP work.
+        cmd "after" timers::after(ms: SteelVal, thunk: SteelVal);
+        cmd "cancel-timer!" timers::cancel_timer(id: SteelVal);
+        open "language-has-grammar?" syntax::language_has_grammar(name: SteelVal);
+        cmd "buffer-language" buffers::buffer_language(bid: args::BidArg);
+        cmd "set-buffer-language!" buffers::set_buffer_language_steel(bid: args::BidArg, lang: SteelVal);
 
-    // Timers — not LSP-specific, but added as part of the LSP work.
-    steel.register_fn_with_ctx(HUME_CTX, "after", timers::after);
-    steel.register_fn_with_ctx(HUME_CTX, "cancel-timer!", timers::cancel_timer);
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "language-has-grammar?",
-        syntax::language_has_grammar,
-    );
-    steel.register_fn_with_ctx(HUME_CTX, "buffer-language", buffers::buffer_language);
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "set-buffer-language!",
-        buffers::set_buffer_language_steel,
-    );
-
-    // Pane stubs — reserved names for M9+ :split feature.
-    // These never use SteelCtx so they register as plain register_fn.
-    steel.register_fn("open-pane!", panes::open_pane);
-    steel.register_fn("close-pane!", panes::close_pane);
-    steel.register_fn("focus-pane!", panes::focus_pane);
-    steel.register_fn("pane-buffer", panes::pane_buffer);
-    steel.register_fn("pane-set-buffer!", panes::pane_set_buffer);
+        // Pane stubs — reserved names for M9+ :split feature.
+        // These never use SteelCtx so they register as plain register_fn.
+        plain "open-pane!" panes::open_pane(bid: SteelVal);
+        plain "close-pane!" panes::close_pane(pid: SteelVal);
+        plain "focus-pane!" panes::focus_pane(pid: SteelVal);
+        plain "pane-buffer" panes::pane_buffer(pid: SteelVal);
+        plain "pane-set-buffer!" panes::pane_set_buffer(pid: SteelVal, bid: SteelVal);
+    }
 
     // Context-free builtins: editor-integration info that reads from
     // SCRIPT_DIRS TLS, plus path-join's Windows UNC-prefix stripping.
     // General filesystem access is Steel's own steel/filesystem stdlib.
+    // Raw `&[SteelVal]` FuncV builtins don't fit the typed-arity table above.
+    steel.register_value("hume-target", SteelVal::FuncV(install::hume_target));
     steel.register_value("data-dir", SteelVal::FuncV(fs::data_dir));
     steel.register_value("runtime-dir", SteelVal::FuncV(fs::runtime_dir));
     steel.register_value("path-join", SteelVal::FuncV(fs::path_join));
@@ -741,4 +633,55 @@ pub(crate) fn register_all(steel: &mut Engine) {
         "{}{PRINT_GATE_SHIMS}",
         steel::compiler::modules::PRELUDE_STRING
     )));
+}
+
+#[cfg(test)]
+mod tests {
+    // These two tests exercise a `cmd` and a `config` table entry through a
+    // real `ScriptingHost` (register_all → Steel dispatch → the wrapper
+    // closure's gate call) rather than calling `errors::require_cmd`/
+    // `require_config` directly — proving the registration table's kind tags
+    // actually wire a builtin to its gate, which the per-builtin unit tests
+    // (calling the gate primitive with the builtin's name as a string) can't
+    // catch on their own: a `cmd` entry mistyped as `open` would silently
+    // stop gating without failing any of those.
+
+    /// A `cmd`-gated builtin (`current-buffer`) called from init.scm — where
+    /// `register_all`'s wrapper closure is the only place the gate lives —
+    /// must still raise "not available during init".
+    #[test]
+    fn cmd_gated_builtin_rejected_from_init_through_real_registration() {
+        let mut host = crate::ScriptingHost::new();
+        let mut null_host = crate::null_host::NullHost;
+        let err = host
+            .eval_source("(current-buffer)", &mut null_host)
+            .expect_err("current-buffer must be rejected during init.scm eval");
+        assert!(err.contains("not available during init"), "got: {err}");
+    }
+
+    /// A `config`-gated builtin (`set-option!`) called from inside a command
+    /// body (`EvalMode::Command`, dispatched via the real `call_steel_cmd`
+    /// path) must still raise "not from a Steel command body".
+    #[test]
+    fn config_gated_builtin_rejected_from_command_body_through_real_registration() {
+        let mut host = crate::ScriptingHost::new();
+        let mut null_host = crate::null_host::NullHost;
+        host.eval_source(
+            r#"(define-command! "probe-set-option" "doc" (lambda () (set-option! "tab-width" "4")))"#,
+            &mut null_host,
+        )
+        .expect("defining the probe command must not error");
+
+        let err = host
+            .call_steel_cmd(
+                "probe-set-option",
+                None,
+                vec![],
+                hume_engine::pipeline::PaneId::default(),
+                hume_engine::pipeline::BufferId::default(),
+                &mut null_host,
+            )
+            .expect_err("set-option! must be rejected from a command body");
+        assert!(err.contains("command body"), "got: {err}");
+    }
 }
