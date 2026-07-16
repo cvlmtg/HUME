@@ -1,39 +1,14 @@
 //! Language-identity and grammar Steel builtins.
 
-use std::path::PathBuf;
-
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::{Effect, PendingLanguageReg, SteelCtx};
 
-use super::{list_to_strings, require_config_ctx};
+use super::args::{list_to_strings, optional_path_arg, path_arg, string_arg};
+use super::errors::generic_err;
 
 type SteelResult = Result<SteelVal, SteelErr>;
-
-fn string_arg(val: SteelVal, ctx_name: &str) -> Result<String, SteelErr> {
-    match val {
-        SteelVal::StringV(s) => Ok(s.to_string()),
-        SteelVal::SymbolV(s) => Ok(s.to_string()),
-        _ => steel::stop!(TypeMismatch => "{}: expected a string", ctx_name),
-    }
-}
-
-fn path_arg(val: SteelVal, ctx_name: &str) -> Result<PathBuf, SteelErr> {
-    match val {
-        SteelVal::StringV(s) => Ok(PathBuf::from(s.as_str())),
-        _ => steel::stop!(TypeMismatch => "{}: expected a string path", ctx_name),
-    }
-}
-
-/// A path argument that may be `#f` (absent).
-fn optional_path_arg(val: SteelVal, ctx_name: &str) -> Result<Option<PathBuf>, SteelErr> {
-    match val {
-        SteelVal::BoolV(false) => Ok(None),
-        SteelVal::StringV(s) => Ok(Some(PathBuf::from(s.as_str()))),
-        _ => steel::stop!(TypeMismatch => "{}: expected a string path or #f", ctx_name),
-    }
-}
 
 /// `(%define-language! name extensions globs shebangs)` — init-only.
 ///
@@ -47,7 +22,6 @@ pub(crate) fn define_language(
     globs_val: SteelVal,
     shebangs_val: SteelVal,
 ) -> SteelResult {
-    require_config_ctx!(ctx, "%define-language!");
     let name = match &name {
         SteelVal::StringV(s) => s.to_string(),
         SteelVal::SymbolV(s) => s.to_string(),
@@ -112,7 +86,7 @@ pub(crate) fn register_grammar(
             &highlights_path,
             injections_path.as_deref(),
         )
-        .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
+        .map_err(generic_err)?;
     ctx.effects.push(Effect::GrammarSweep(name));
     Ok(SteelVal::Void)
 }
@@ -150,21 +124,18 @@ mod tests {
 
     // ── %define-language! ────────────────────────────────────────────────────
 
-    /// `%define-language!` is blocked in plain command mode.
+    /// `%define-language!` is blocked in plain command mode — gated at
+    /// registration time (`config` kind in `builtins!`'s table), not in the
+    /// body, so this tests the gate primitive directly rather than calling
+    /// `define_language` (which no longer has a body-level guard to hit).
     ///
-    /// Fail oracle: remove the guard → language identity can be defined at runtime,
-    /// corrupting the language registry.
+    /// Fail oracle: change `%define-language!`'s table entry from `config` to
+    /// `open` → language identity could be defined at runtime, corrupting the
+    /// language registry.
     #[test]
     fn define_language_blocked_in_command_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        let result = define_language(
-            &mut ctx,
-            str_val("Rust"),
-            empty_list(),
-            empty_list(),
-            empty_list(),
-        );
+        let result = super::super::errors::require_config(&h.ctx(), "%define-language!");
         assert!(
             result.is_err(),
             "%define-language! must error in command mode"

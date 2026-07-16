@@ -5,21 +5,17 @@
 //! `%load-plugin!` backs the Scheme `load-plugin` wrapper (eager).
 //! Both wrappers are defined in the bootstrap; see `builtins/mod.rs`.
 
-use steel::rerrs::{ErrorKind, SteelErr};
+use steel::rerrs::SteelErr;
 use steel::rvals::{IntoSteelVal, SteelVal};
 
 use crate::{SteelCtx, attribution::PluginId, hooks::HookId, lazy::PluginState};
 
-use super::list_to_strings;
+use super::args::list_to_strings;
+use super::errors::generic_err;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 type SteelResult = Result<SteelVal, SteelErr>;
-
-/// Convert a `PluginId::parse` error string into a Steel `Generic` error.
-fn steel_parse_err(e: String) -> SteelErr {
-    SteelErr::new(ErrorKind::Generic, e)
-}
 
 /// Log an `Error` for a `core:` plugin that is absent from the runtime dir.
 ///
@@ -46,13 +42,11 @@ fn ensure_top_level(ctx: &SteelCtx, verb: &str) -> Result<(), SteelErr> {
         crate::context::EvalMode::Init => Ok(()),
         crate::context::EvalMode::PluginLoad
         | crate::context::EvalMode::PluginActivation
-        | crate::context::EvalMode::Command => Err(SteelErr::new(
-            ErrorKind::Generic,
-            format!(
-                "{verb}: can only be called at the top level of init.scm, \
-                 not from a plugin body"
-            ),
-        )),
+        | crate::context::EvalMode::Command => {
+            steel::stop!(Generic =>
+                "{}: can only be called at the top level of init.scm, not from a plugin body",
+                verb);
+        }
     }
 }
 
@@ -89,7 +83,7 @@ pub(crate) fn declare_plugin(
     config: SteelVal,
 ) -> SteelResult {
     ensure_top_level(ctx, "declare-plugin")?;
-    let plugin_id = PluginId::parse(&name).map_err(steel_parse_err)?;
+    let plugin_id = PluginId::parse(&name).map_err(generic_err)?;
 
     // A manifest.scm being resolved by %begin-manifest-declare! may only ever
     // declare the plugin it was resolved for — otherwise a manifest for
@@ -98,7 +92,7 @@ pub(crate) fn declare_plugin(
     if let Some(expected) = &ctx.manifest_resolving
         && *expected != plugin_id
     {
-        return Err(steel_parse_err(format!(
+        return Err(generic_err(format!(
             "declare-plugin: manifest.scm for '{expected}' must declare '{expected}', not '{name}'"
         )));
     }
@@ -164,7 +158,7 @@ pub(crate) fn declare_plugin(
         .map(|s| {
             HookId::from_symbol(s).ok_or_else(|| {
                 let valid = HookId::all_names().collect::<Vec<_>>().join(", ");
-                steel_parse_err(format!("events: unknown hook '{}'; valid: {}", s, valid))
+                generic_err(format!("events: unknown hook '{}'; valid: {}", s, valid))
             })
         })
         .collect::<Result<_, _>>()?;
@@ -175,14 +169,13 @@ pub(crate) fn declare_plugin(
     // `cmd_list` always skips this branch regardless of what filtering later
     // drops.
     if cmd_list.is_empty() && evt_list.is_empty() && lang_list.is_empty() {
-        return Err(steel_parse_err(format!(
+        return Err(generic_err(format!(
             "declare-plugin: '{name}' declares no activation entries; it could never be activated. \
              Add #:commands/#:events/#:languages, or use (load-plugin \"{name}\") for eager loading."
         )));
     }
 
-    let path = resolve_path_for_name(&name, ctx.runtime_dir, ctx.data_dir)
-        .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
+    let path = resolve_path_for_name(&name, ctx.runtime_dir, ctx.data_dir).map_err(generic_err)?;
 
     // When the plugin file is absent on disk, it can never be activated —
     // collision-checking (which claims the name in the editor's registry) would
@@ -237,7 +230,7 @@ pub(crate) fn declare_plugin(
     // `cmd_list` was non-empty before filtering — the message always names
     // the collision, never "none were supplied".
     if cmd_list.is_empty() && evt_list.is_empty() && lang_list.is_empty() {
-        return Err(steel_parse_err(format!(
+        return Err(generic_err(format!(
             "declare-plugin: '{name}' declares no activation entries; \
              all #:commands entries conflicted with existing commands. \
              Fix the collision or use (load-plugin \"{name}\") for eager loading."
@@ -318,8 +311,7 @@ pub(crate) fn resolve_path_for_name(
 /// plugin file exists on disk, or `#f` if absent.  Raises a Steel error for
 /// malformed names.
 pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    let path = resolve_path_for_name(&name, ctx.runtime_dir, ctx.data_dir)
-        .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
+    let path = resolve_path_for_name(&name, ctx.runtime_dir, ctx.data_dir).map_err(generic_err)?;
     match path {
         Some(p) => Ok(SteelVal::StringV(p.to_string_lossy().into_owned().into())),
         None => Ok(SteelVal::BoolV(false)),
@@ -345,7 +337,7 @@ pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResu
 /// no-ops it.
 pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) -> SteelResult {
     ensure_top_level(ctx, "load-plugin")?;
-    let id = PluginId::parse(&name).map_err(steel_parse_err)?;
+    let id = PluginId::parse(&name).map_err(generic_err)?;
 
     // load-plugin always overrides: unlike declare-plugin's first-wins, a repeat
     // (re)load intentionally replaces the config the body will see next activation.
@@ -377,8 +369,8 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) ->
     }
 
     if !ctx.registries.lazy_registry.plugins.contains_key(&id) {
-        let path = resolve_path_for_name(&name, ctx.runtime_dir, ctx.data_dir)
-            .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
+        let path =
+            resolve_path_for_name(&name, ctx.runtime_dir, ctx.data_dir).map_err(generic_err)?;
         match path {
             Some(p) => {
                 ctx.registries
@@ -415,7 +407,7 @@ const MAX_ACTIVATION_DEPTH: usize = 16;
 /// Returns `#f` for the cycle/idempotency guard (Loading/Loaded/Failed/absent) so
 /// `%activate-plugin-inline` becomes a no-op without error.
 pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> SteelResult {
-    let id = PluginId::parse(&id_str).map_err(steel_parse_err)?;
+    let id = PluginId::parse(&id_str).map_err(generic_err)?;
 
     let path = match ctx.registries.lazy_registry.plugins.get(&id) {
         Some(PluginState::Declared { path }) => path.clone(),
@@ -484,7 +476,7 @@ pub(crate) fn finish_lazy_activation(
     id_str: String,
     success: bool,
 ) -> SteelResult {
-    let id = PluginId::parse(&id_str).map_err(steel_parse_err)?;
+    let id = PluginId::parse(&id_str).map_err(generic_err)?;
 
     ctx.plugin_stack.pop();
     ctx.pop_effect_marks(success);
@@ -564,7 +556,7 @@ pub(crate) fn begin_manifest_declare(
             name);
     }
 
-    let plugin_id = PluginId::parse(&name).map_err(steel_parse_err)?;
+    let plugin_id = PluginId::parse(&name).map_err(generic_err)?;
 
     // Same idempotency rule as %declare-plugin!: Loaded → soft error, else first wins.
     match ctx.registries.lazy_registry.plugins.get(&plugin_id) {
@@ -593,7 +585,7 @@ pub(crate) fn begin_manifest_declare(
     let Some(dir) = plugin_dir_for_id(&plugin_id, ctx.runtime_dir, ctx.data_dir) else {
         return Ok(SteelVal::BoolV(false));
     };
-    if !path_exists(&dir).map_err(steel_parse_err)? {
+    if !path_exists(&dir).map_err(generic_err)? {
         match &plugin_id {
             PluginId::Core(_) => log_absent_core(ctx, &name, "declare-plugin"),
             PluginId::User { .. } => ctx.log(
@@ -607,8 +599,8 @@ pub(crate) fn begin_manifest_declare(
     }
 
     let manifest_path = dir.join("manifest.scm");
-    if !path_exists(&manifest_path).map_err(steel_parse_err)? {
-        return Err(steel_parse_err(format!(
+    if !path_exists(&manifest_path).map_err(generic_err)? {
+        return Err(generic_err(format!(
             "declare-plugin: '{name}' has no manifest.scm; add #:commands/#:events/#:languages \
              to declare it explicitly, or use (load-plugin \"{name}\") for eager loading."
         )));
@@ -616,7 +608,7 @@ pub(crate) fn begin_manifest_declare(
 
     let abs_str = manifest_path.to_string_lossy();
     if abs_str.contains('"') {
-        return Err(steel_parse_err(format!(
+        return Err(generic_err(format!(
             "plugin manifest path contains '\"' — cannot embed in require: {}",
             manifest_path.display()
         )));
@@ -648,11 +640,11 @@ pub(crate) fn finish_manifest_declare(
     name: String,
     success: bool,
 ) -> SteelResult {
-    let id = PluginId::parse(&name).map_err(steel_parse_err)?;
+    let id = PluginId::parse(&name).map_err(generic_err)?;
     ctx.manifest_resolving = None;
 
     if success && !ctx.registries.lazy_registry.plugins.contains_key(&id) {
-        return Err(steel_parse_err(format!(
+        return Err(generic_err(format!(
             "declare-plugin: manifest.scm for '{name}' did not declare '{name}' — a \
              manifest.scm must call (declare-plugin \"{name}\" …) with at least one \
              activation entry"
@@ -675,8 +667,7 @@ pub(crate) fn loaded_plugins(ctx: &mut SteelCtx) -> SteelResult {
         .filter(|(_, state)| matches!(state, PluginState::Loaded))
         .map(|(id, _)| SteelVal::StringV(id.to_string().into()))
         .collect();
-    vals.into_steelval()
-        .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
+    vals.into_steelval().map_err(generic_err)
 }
 
 /// `(declared-plugins)` — return a Steel list of every declared plugin name,
@@ -689,15 +680,14 @@ pub(crate) fn declared_plugins(ctx: &mut SteelCtx) -> SteelResult {
         .iter()
         .map(|s| SteelVal::StringV(s.as_str().into()))
         .collect();
-    vals.into_steelval()
-        .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
+    vals.into_steelval().map_err(generic_err)
 }
 
 /// Empty Steel hash — the `(plugin-config)` default when no config was passed.
 fn empty_config() -> SteelResult {
     std::collections::HashMap::<String, SteelVal>::new()
         .into_steelval()
-        .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
+        .map_err(generic_err)
 }
 
 /// `(plugin-config)` — return the calling plugin's `#:config` value, or an
