@@ -311,63 +311,6 @@ pub(crate) fn lsp_range_params(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
     )
 }
 
-/// `(viewport-range bid)` → `(list first-line last-line)` currently visible
-/// for `bid` (the focused pane's if shown there, else the first pane showing
-/// it), or `#f` if `bid` isn't open in any pane. Pane geometry, not LSP
-/// state, but gated the same as its buffer/pane-touching siblings — it reads
-/// live view state, which only exists at command dispatch, hook fire, or a
-/// queued-call drain.
-pub(crate) fn viewport_range(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
-    let id = bid.0;
-    Ok(match ctx.host.buffers().viewport_range(id) {
-        Some((first, last)) => {
-            let entries: Vec<SteelVal> = vec![
-                SteelVal::IntV(first as isize),
-                SteelVal::IntV(last as isize),
-            ];
-            SteelVal::ListV(entries.into())
-        }
-        None => SteelVal::BoolV(false),
-    })
-}
-
-/// `(selection-spans-full-line? bid)`.
-pub(crate) fn selection_spans_full_line(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
-    let id = bid.0;
-    Ok(SteelVal::BoolV(
-        ctx.host.cursor().selection_spans_full_line(id),
-    ))
-}
-
-// ── Minibuffer prompt ───────────────────────────────────────────────────
-
-/// `(%prompt! label prefill on-confirm)` — the `prompt!` Scheme wrapper
-/// supplies `#:prefill`'s default. `on-confirm` fires exactly once, later
-/// (queued, never inline) — with the confirmed text, or `#f` on cancel.
-pub(crate) fn prompt(
-    ctx: &mut SteelCtx,
-    label: SteelVal,
-    prefill: SteelVal,
-    on_confirm: SteelVal,
-) -> SteelResult {
-    let label = string_arg(label, "prompt! label")?;
-    let prefill = string_arg(prefill, "prompt! prefill")?;
-    ctx.host
-        .ui()
-        .ok_or_else(|| generic_err(crate::host::unsupported("prompt!")))?
-        .prompt(label, prefill, on_confirm)
-        .map(|()| SteelVal::Void)
-        .map_err(generic_err)
-}
-
-/// `(symbol-under-cursor bid)`.
-pub(crate) fn symbol_under_cursor(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
-    let id = bid.0;
-    Ok(SteelVal::StringV(
-        ctx.host.cursor().symbol_under_cursor(id).into(),
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

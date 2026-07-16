@@ -373,7 +373,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "lsp-registered-for-language?" lsp::lsp_registered_for_language(language: SteelVal);
         cmd "lsp-position-params" lsp::lsp_position_params(bid: args::BidArg);
         cmd "lsp-range-params" lsp::lsp_range_params(bid: args::BidArg);
-        cmd "viewport-range" lsp::viewport_range(bid: args::BidArg);
+        cmd "viewport-range" buffers::viewport_range(bid: args::BidArg);
         cmd "buffer-generation" buffers::buffer_generation(bid: args::BidArg);
         open "register-trigger-chars!" completion::register_trigger_chars(source: SteelVal, language: SteelVal, chars: SteelVal);
 
@@ -390,11 +390,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "%apply-text-edits!" edits::apply_text_edits(bid: args::BidArg, edits: SteelVal, expect_gen: SteelVal);
         cmd "%apply-workspace-edit!" edits::apply_workspace_edit(wsedit: SteelVal);
         cmd "goto-location!" edits::goto_location(loc: SteelVal);
-        cmd "selection-spans-full-line?" lsp::selection_spans_full_line(bid: args::BidArg);
+        cmd "selection-spans-full-line?" buffers::selection_spans_full_line(bid: args::BidArg);
 
         // Minibuffer prompt.
-        cmd "%prompt!" lsp::prompt(label: SteelVal, prefill: SteelVal, on_confirm: SteelVal);
-        cmd "symbol-under-cursor" lsp::symbol_under_cursor(bid: args::BidArg);
+        cmd "%prompt!" ui::prompt(label: SteelVal, prefill: SteelVal, on_confirm: SteelVal);
+        cmd "symbol-under-cursor" buffers::symbol_under_cursor(bid: args::BidArg);
 
         // Completion orchestration.
         cmd "%completion-begin!" completion::completion_begin(bid: args::BidArg, items: SteelVal, incomplete: SteelVal);
