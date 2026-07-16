@@ -12,7 +12,7 @@
 "ui.menu.scroll" = { fg = "muted", bg = "surface" }
 "ui.drawer" = { fg = "fg", bg = "surface" }
 "ui.help" = { fg = "fg", bg = "surface" }
-"ui.selection" = { fg = "fg", bg = "bright_muted" }
+"ui.selection" = { fg = "bg", bg = "fg" }
 "ui.selection.primary" = { fg = "fg", bg = "plum" }
 "ui.selection.search" = { fg = "bg", bg = "sand" }
 "ui.cursor" = { fg = "fg", bg = "muted" }
