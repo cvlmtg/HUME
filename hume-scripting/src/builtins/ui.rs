@@ -10,10 +10,9 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
-use crate::host::unsupported;
 
 use super::args::{list_to_strings, string_arg};
-use super::errors::generic_err;
+use super::errors::{generic_err, require_cap};
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -35,9 +34,7 @@ pub(crate) fn show_popup(
         SteelVal::BoolV(b) => b,
         _ => steel::stop!(TypeMismatch => "show-popup!: #:dismiss-on-key expected a bool"),
     };
-    ctx.host
-        .ui()
-        .ok_or_else(|| generic_err(unsupported("show-popup!")))?
+    require_cap(ctx.host.ui(), "show-popup!")?
         .show_popup(text, dismiss_on_key)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -45,9 +42,7 @@ pub(crate) fn show_popup(
 
 /// `(%close-popup!)`.
 pub(crate) fn close_popup(ctx: &mut SteelCtx) -> SteelResult {
-    ctx.host
-        .ui()
-        .ok_or_else(|| generic_err(unsupported("close-popup!")))?
+    require_cap(ctx.host.ui(), "close-popup!")?
         .close_popup()
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -57,9 +52,7 @@ pub(crate) fn close_popup(ctx: &mut SteelCtx) -> SteelResult {
 /// directly (no `%`-prefix wrapper needed).
 pub(crate) fn show_menu(ctx: &mut SteelCtx, items: SteelVal, on_select: SteelVal) -> SteelResult {
     let items = list_to_strings(items, "show-menu! items")?;
-    ctx.host
-        .ui()
-        .ok_or_else(|| generic_err(unsupported("show-menu!")))?
+    require_cap(ctx.host.ui(), "show-menu!")?
         .show_menu(items, on_select)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -67,9 +60,7 @@ pub(crate) fn show_menu(ctx: &mut SteelCtx, items: SteelVal, on_select: SteelVal
 
 /// `(close-menu!)`.
 pub(crate) fn close_menu(ctx: &mut SteelCtx) -> SteelResult {
-    ctx.host
-        .ui()
-        .ok_or_else(|| generic_err(unsupported("close-menu!")))?
+    require_cap(ctx.host.ui(), "close-menu!")?
         .close_menu()
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -82,9 +73,7 @@ pub(crate) fn show_drawer_list(
     on_select: SteelVal,
 ) -> SteelResult {
     let items = list_to_strings(items, "show-drawer-list! items")?;
-    ctx.host
-        .ui()
-        .ok_or_else(|| generic_err(unsupported("show-drawer-list!")))?
+    require_cap(ctx.host.ui(), "show-drawer-list!")?
         .show_drawer_list(items, on_select)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -92,9 +81,7 @@ pub(crate) fn show_drawer_list(
 
 /// `(close-drawer!)`.
 pub(crate) fn close_drawer(ctx: &mut SteelCtx) -> SteelResult {
-    ctx.host
-        .ui()
-        .ok_or_else(|| generic_err(unsupported("close-drawer!")))?
+    require_cap(ctx.host.ui(), "close-drawer!")?
         .close_drawer()
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -111,9 +98,7 @@ pub(crate) fn prompt(
 ) -> SteelResult {
     let label = string_arg(label, "prompt! label")?;
     let prefill = string_arg(prefill, "prompt! prefill")?;
-    ctx.host
-        .ui()
-        .ok_or_else(|| generic_err(unsupported("prompt!")))?
+    require_cap(ctx.host.ui(), "prompt!")?
         .prompt(label, prefill, on_confirm)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)

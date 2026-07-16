@@ -8,7 +8,7 @@ use crate::SteelCtx;
 use crate::json::{json_to_steel, steel_to_json};
 
 use super::args::{BidArg, chars_arg, list_items, string_arg, usize_arg};
-use super::errors::generic_err;
+use super::errors::{generic_err, require_cap};
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -52,9 +52,7 @@ pub(crate) fn completion_begin(
     for entry in list_items(items, "completion-begin! items")? {
         parsed.push(steel_to_json(&entry).map_err(generic_err)?);
     }
-    ctx.host
-        .completions()
-        .ok_or_else(|| generic_err(crate::host::unsupported("completion-begin!")))?
+    require_cap(ctx.host.completions(), "completion-begin!")?
         .completion_begin(id, parsed, incomplete)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -63,9 +61,7 @@ pub(crate) fn completion_begin(
 /// `(completion-update-filter! text)`.
 pub(crate) fn completion_update_filter(ctx: &mut SteelCtx, text: SteelVal) -> SteelResult {
     let text = string_arg(text, "completion-update-filter! text")?;
-    ctx.host
-        .completions()
-        .ok_or_else(|| generic_err(crate::host::unsupported("completion-update-filter!")))?
+    require_cap(ctx.host.completions(), "completion-update-filter!")?
         .completion_update_filter(text)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -87,9 +83,7 @@ pub(crate) fn completion_top(ctx: &mut SteelCtx, n: SteelVal) -> SteelResult {
 /// (`completion-top`'s order), not the raw response order.
 pub(crate) fn completion_accept(ctx: &mut SteelCtx, idx: SteelVal) -> SteelResult {
     let idx = usize_arg(idx, "completion-accept!")?;
-    ctx.host
-        .completions()
-        .ok_or_else(|| generic_err(crate::host::unsupported("completion-accept!")))?
+    require_cap(ctx.host.completions(), "completion-accept!")?
         .completion_accept(idx)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)

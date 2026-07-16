@@ -11,7 +11,7 @@ use crate::json::steel_to_json;
 use super::args::{
     BidArg, TextEditArg, checked_fields, list_items, optional_usize_arg, string_arg, usize_arg,
 };
-use super::errors::generic_err;
+use super::errors::{generic_err, require_cap};
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -46,9 +46,7 @@ pub(crate) fn apply_text_edits(
             ))
         })
         .collect::<Result<Vec<_>, SteelErr>>()?;
-    ctx.host
-        .edits()
-        .ok_or_else(|| generic_err(crate::host::unsupported("apply-text-edits!")))?
+    require_cap(ctx.host.edits(), "apply-text-edits!")?
         .apply_text_edits(id, parsed, expect_gen)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -59,10 +57,7 @@ pub(crate) fn apply_text_edits(
 /// the `apply-workspace-edit!` Scheme wrapper reports that count.
 pub(crate) fn apply_workspace_edit(ctx: &mut SteelCtx, wsedit: SteelVal) -> SteelResult {
     let json = steel_to_json(&wsedit).map_err(generic_err)?;
-    let count = ctx
-        .host
-        .edits()
-        .ok_or_else(|| generic_err(crate::host::unsupported("apply-workspace-edit!")))?
+    let count = require_cap(ctx.host.edits(), "apply-workspace-edit!")?
         .apply_workspace_edit(json)
         .map_err(generic_err)?;
     Ok(SteelVal::IntV(count as isize))
@@ -106,9 +101,7 @@ pub(crate) fn goto_location(ctx: &mut SteelCtx, loc: SteelVal) -> SteelResult {
                 .and_then(|v| v.as_u64())
                 .ok_or_else(|| generic_err("goto-location!: missing range.start.character"))?
                 as usize;
-            ctx.host
-                .edits()
-                .ok_or_else(|| generic_err(crate::host::unsupported("goto-location!")))?
+            require_cap(ctx.host.edits(), "goto-location!")?
                 .goto_location_wire(uri, line, character)
                 .map(|()| SteelVal::Void)
                 .map_err(generic_err)
@@ -119,17 +112,13 @@ pub(crate) fn goto_location(ctx: &mut SteelCtx, loc: SteelVal) -> SteelResult {
             let line = usize_arg(fields[1].clone(), "goto-location! line")?;
             let col = usize_arg(fields[2].clone(), "goto-location! col")?;
             if let Some(bid) = super::ids::downcast_buffer_id(&target) {
-                ctx.host
-                    .edits()
-                    .ok_or_else(|| generic_err(crate::host::unsupported("goto-location!")))?
+                require_cap(ctx.host.edits(), "goto-location!")?
                     .goto_location_buffer(bid, line, col)
                     .map(|()| SteelVal::Void)
                     .map_err(generic_err)
             } else {
                 let s = string_arg(target, "goto-location! target")?;
-                ctx.host
-                    .edits()
-                    .ok_or_else(|| generic_err(crate::host::unsupported("goto-location!")))?
+                require_cap(ctx.host.edits(), "goto-location!")?
                     .goto_location_path(s, line, col)
                     .map(|()| SteelVal::Void)
                     .map_err(generic_err)
@@ -137,5 +126,37 @@ pub(crate) fn goto_location(ctx: &mut SteelCtx, loc: SteelVal) -> SteelResult {
         }
         _ => steel::stop!(TypeMismatch =>
             "goto-location!: expected a Location hashmap or (list target line col)"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::SteelCtxTestHarness;
+    use hume_engine::pipeline::BufferId;
+    use steel::rvals::IntoSteelVal as _;
+
+    /// `apply_text_edits` on a host with no `EditHost` capability (`NullHost`,
+    /// the harness default) surfaces `require_cap`'s canonical message,
+    /// naming the builtin — locks the message contract `require_cap`
+    /// centralizes across `edits.rs`/`completion.rs`/`ui.rs`.
+    ///
+    /// Fail oracle: `require_cap` drops the `name` interpolation → the
+    /// second assert fires (message no longer identifies the builtin).
+    #[test]
+    fn apply_text_edits_without_edit_host_names_the_builtin() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let empty_edits: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
+        let err = apply_text_edits(
+            &mut ctx,
+            BidArg(BufferId::default()),
+            empty_edits,
+            SteelVal::BoolV(false),
+        )
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("not supported by this host"), "got: {msg}");
+        assert!(msg.contains("apply-text-edits!"), "got: {msg}");
     }
 }

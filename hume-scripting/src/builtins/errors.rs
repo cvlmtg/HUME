@@ -18,6 +18,17 @@ pub(crate) fn generic_err(msg: impl std::fmt::Display) -> SteelErr {
     SteelErr::new(ErrorKind::Generic, msg.to_string())
 }
 
+/// Maps a missing optional host capability (`ctx.host.edits()`,
+/// `.completions()`, `.ui()`, …, each `Option<&mut dyn Capability>`) to the
+/// canonical "not supported by this host" error — see [`crate::host::unsupported`]
+/// and the [`crate::host::EditorHost`] trait doc.
+pub(crate) fn require_cap<'a, T: ?Sized>(
+    cap: Option<&'a mut T>,
+    name: &str,
+) -> Result<&'a mut T, SteelErr> {
+    cap.ok_or_else(|| generic_err(crate::host::unsupported(name)))
+}
+
 /// Strips a leading `%` from a registered Steel name for use in a gate
 /// message. Several primitives (`%apply-text-edits!`, `%prompt!`, …) are
 /// registered under an internal `%`-prefixed name but wrapped by a BOOTSTRAP
