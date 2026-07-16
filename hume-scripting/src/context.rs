@@ -46,10 +46,9 @@ pub(crate) struct SteelCtx<'a> {
     /// `ScriptingHost`, borrowed here; each eval entry point drains its own
     /// contribution back out (see `types::Effect`).
     pub(crate) effects: &'a mut Vec<Effect>,
-    /// Where PLUM installs third-party plugins (`$XDG_DATA_HOME/hume/`).
-    pub(crate) data_dir: Option<&'a std::path::Path>,
-    /// Where core plugins, themes, and docs live.
-    pub(crate) runtime_dir: Option<&'a std::path::Path>,
+    /// Data/runtime directories (raw + display form) and the install-lock
+    /// root, computed once by `ScriptingHost::new`.
+    pub(crate) dirs: &'a crate::builtins::dirs::ScriptDirs,
     // ── Transient per-eval state (owned) ──────────────────────────────────────
     /// Built-in command names known at eval start.  `define-command!` checks
     /// against this to prevent shadowing core commands.
@@ -154,8 +153,7 @@ impl<'a> SteelCtx<'a> {
             registries: host_bundle.registries,
             pending_messages: host_bundle.pending_messages,
             effects: host_bundle.effects,
-            data_dir: host_bundle.data_dir,
-            runtime_dir: host_bundle.runtime_dir,
+            dirs: host_bundle.dirs,
             builtin_cmd_names,
             interrupt_flag: host_bundle.interrupt_flag,
             current_register_prefix: None,
@@ -244,8 +242,7 @@ impl<'a> SteelCtx<'a> {
             registries: host_bundle.registries,
             pending_messages: host_bundle.pending_messages,
             effects: host_bundle.effects,
-            data_dir: host_bundle.data_dir,
-            runtime_dir: host_bundle.runtime_dir,
+            dirs: host_bundle.dirs,
             builtin_cmd_names: std::collections::HashSet::new(),
             interrupt_flag: host_bundle.interrupt_flag,
             current_register_prefix: None,
