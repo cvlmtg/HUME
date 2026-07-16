@@ -768,6 +768,115 @@ mod tests {
         );
     }
 
+    // ── Hook rollback on activation failure ───────────────────────────────────
+
+    /// A plugin body that registers a hook and then errors: the hook must not
+    /// survive — a `Failed` plugin's hooks must stop firing.
+    ///
+    /// Fail oracle: without `HookRegistry::remove_owned_by` in
+    /// `finish_lazy_activation`, `has_hook_handlers` comes back `true`.
+    #[test]
+    fn hook_registered_before_failure_is_rolled_back() {
+        use crate::hooks::HookId;
+
+        let dir = TempDir::new().unwrap();
+        let path = write_plugin(
+            &dir,
+            "hook_fail.scm",
+            r#"(register-hook! 'on-buffer-save (lambda (bid) 0))
+               (error "intentional mid-body error")"#,
+        );
+        let id = plugin_id("core:hookfail");
+        let mut host = ScriptingHost::new();
+        host.registries
+            .lazy_registry
+            .plugins
+            .insert(id.clone(), PluginState::Declared { path });
+
+        let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins());
+
+        assert!(result.is_err(), "activation must fail on intentional error");
+        assert!(
+            matches!(
+                host.registries.lazy_registry.plugins.get(&id),
+                Some(PluginState::Failed)
+            ),
+            "plugin must be Failed after mid-body error"
+        );
+        assert!(
+            !host.has_hook_handlers(HookId::OnBufferSave),
+            "a Failed plugin's hook must not survive rollback"
+        );
+    }
+
+    /// One level deeper: plugin C registers a hook and activates successfully
+    /// inside plugin B's body, and B then fails afterward. C's hook must
+    /// survive B's rollback — rollback is by owner identity, not by eval-scoped
+    /// position, so B's failure can never touch C's entries.
+    ///
+    /// Fail oracle: if rollback matched by something other than plugin
+    /// identity (e.g. "everything registered since B started"), C's hook
+    /// would be wrongly removed too.
+    #[test]
+    fn nested_activation_hook_survives_enclosing_plugin_failure() {
+        use crate::host::EditorHost;
+        use crate::hooks::HookId;
+        use crate::null_host::LazyStubHost;
+
+        let dir = TempDir::new().unwrap();
+        let path_c = write_plugin(
+            &dir,
+            "hook_c.scm",
+            r#"(register-hook! 'on-buffer-save (lambda (bid) 0))
+               (define-command! "hc-cmd" "doc" (lambda () 0))"#,
+        );
+        let path_b = write_plugin(
+            &dir,
+            "hook_b.scm",
+            r#"(call! "hc-cmd")
+               (error "b fails")"#,
+        );
+        let id_b = plugin_id("core:hb");
+        let id_c = plugin_id("core:hc");
+        let mut host = ScriptingHost::new();
+        host.registries
+            .lazy_registry
+            .plugins
+            .insert(id_b.clone(), PluginState::Declared { path: path_b });
+        host.registries
+            .lazy_registry
+            .plugins
+            .insert(id_c.clone(), PluginState::Declared { path: path_c });
+
+        let mut editor_host = LazyStubHost::default();
+        editor_host
+            .commands()
+            .register_lazy_command("hc-cmd", &id_c)
+            .expect("stub claim must succeed on a fresh host");
+
+        let result = host.activate_plugin_inline(&id_b, 10_000, &mut editor_host, &no_builtins());
+
+        assert!(result.is_err(), "B's intentional error must propagate");
+        assert!(
+            matches!(
+                host.registries.lazy_registry.plugins.get(&id_b),
+                Some(PluginState::Failed)
+            ),
+            "B must be Failed"
+        );
+        assert!(
+            matches!(
+                host.registries.lazy_registry.plugins.get(&id_c),
+                Some(PluginState::Loaded)
+            ),
+            "C must be Loaded — its activation succeeded before B's own failure"
+        );
+        assert!(
+            host.has_hook_handlers(HookId::OnBufferSave),
+            "C's hook must survive B's failure — rollback is scoped to B's own id"
+        );
+    }
+
     // ── G4: self-ownership exemption ──────────────────────────────────────────
 
     /// A lazy plugin is allowed to call `define-command!` for its own activation

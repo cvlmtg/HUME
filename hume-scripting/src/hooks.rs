@@ -8,6 +8,8 @@ use std::collections::HashMap;
 
 use steel::rvals::SteelVal;
 
+use crate::attribution::PluginId;
+
 // ── HookId ────────────────────────────────────────────────────────────────────
 
 /// Identifier for each editor lifecycle event plugins can observe.
@@ -106,20 +108,32 @@ impl HookId {
 
 // ── HookRegistry ──────────────────────────────────────────────────────────────
 
+/// A single hook handler plus the plugin whose body registered it (`None` —
+/// top-level `init.scm`/user config, never rolled back). The owner drives
+/// per-plugin rollback when a plugin activation fails — see `remove_owned_by`.
+#[derive(Debug)]
+pub(crate) struct HookEntry {
+    pub(crate) owner: Option<PluginId>,
+    pub(crate) proc: SteelVal,
+}
+
 /// Persistent per-hook handler lists, held on [`super::ScriptingHost`].
 #[derive(Debug, Default)]
 pub(crate) struct HookRegistry {
-    handlers: HashMap<HookId, Vec<SteelVal>>,
+    handlers: HashMap<HookId, Vec<HookEntry>>,
 }
 
 impl HookRegistry {
-    /// Append `proc` to the handler list for `hook_id`.
-    pub(crate) fn register(&mut self, hook_id: HookId, proc: SteelVal) {
-        self.handlers.entry(hook_id).or_default().push(proc);
+    /// Append `proc` (attributed to `owner`) to the handler list for `hook_id`.
+    pub(crate) fn register(&mut self, hook_id: HookId, owner: Option<PluginId>, proc: SteelVal) {
+        self.handlers
+            .entry(hook_id)
+            .or_default()
+            .push(HookEntry { owner, proc });
     }
 
-    /// Return the handlers for `hook_id` in registration order.
-    pub(crate) fn handlers_for(&self, hook_id: HookId) -> &[SteelVal] {
+    /// Return the handler entries for `hook_id` in registration order.
+    pub(crate) fn handlers_for(&self, hook_id: HookId) -> &[HookEntry] {
         self.handlers
             .get(&hook_id)
             .map(Vec::as_slice)
@@ -129,6 +143,16 @@ impl HookRegistry {
     /// `true` if no handlers are registered for `hook_id` (fast early-exit path).
     pub(crate) fn is_empty_for(&self, hook_id: HookId) -> bool {
         self.handlers.get(&hook_id).is_none_or(Vec::is_empty)
+    }
+
+    /// Remove every handler owned by `owner`, across all hook ids — called by
+    /// `finish_lazy_activation` on activation failure so a `Failed` plugin's
+    /// hooks stop firing. Entries with `owner: None` (top-level) are never
+    /// matched.
+    pub(crate) fn remove_owned_by(&mut self, owner: &PluginId) {
+        for entries in self.handlers.values_mut() {
+            entries.retain(|e| e.owner.as_ref() != Some(owner));
+        }
     }
 }
 
@@ -200,5 +224,46 @@ mod tests {
             names.len(),
             "HOOKS has a duplicate symbol name"
         );
+    }
+
+    // ── Owner tracking / rollback ─────────────────────────────────────────────
+
+    fn pid(s: &str) -> PluginId {
+        PluginId::parse(s).unwrap()
+    }
+
+    /// `register` records the given owner on the stored entry.
+    ///
+    /// Fail oracle: if `register` dropped `owner` on the floor, this would
+    /// read back `None` regardless of what was passed in.
+    #[test]
+    fn register_records_owner() {
+        let mut reg = HookRegistry::default();
+        reg.register(HookId::OnBufferSave, Some(pid("core:a")), SteelVal::IntV(1));
+        assert_eq!(
+            reg.handlers_for(HookId::OnBufferSave)[0].owner,
+            Some(pid("core:a"))
+        );
+    }
+
+    /// `remove_owned_by` removes only entries owned by the given plugin,
+    /// leaving other owners (including `None`, top-level registrations)
+    /// untouched.
+    ///
+    /// Fail oracle: revert `remove_owned_by` to a no-op → all three entries
+    /// survive → the length assert fires.
+    #[test]
+    fn remove_owned_by_removes_only_matching_owner() {
+        let mut reg = HookRegistry::default();
+        reg.register(HookId::OnBufferSave, Some(pid("core:a")), SteelVal::IntV(1));
+        reg.register(HookId::OnBufferSave, Some(pid("core:b")), SteelVal::IntV(2));
+        reg.register(HookId::OnBufferSave, None, SteelVal::IntV(3));
+
+        reg.remove_owned_by(&pid("core:a"));
+
+        let survivors = reg.handlers_for(HookId::OnBufferSave);
+        assert_eq!(survivors.len(), 2, "only core:a's entry must be removed");
+        assert_eq!(survivors[0].owner, Some(pid("core:b")));
+        assert_eq!(survivors[1].owner, None);
     }
 }

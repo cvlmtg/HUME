@@ -97,7 +97,7 @@ use lazy::{LazyRegistry, PluginState};
 
 // ── ScriptingRegistries ───────────────────────────────────────────────────────
 
-/// The five persistent registry fields bundled as a unit so they can be
+/// The persistent registry fields bundled as a unit so they can be
 /// borrowed as a single `&mut ScriptingRegistries` — disjoint from the
 /// Steel VM (`steel`) and the rest of `ScriptingHost`.
 pub(crate) struct ScriptingRegistries {
@@ -128,6 +128,13 @@ pub(crate) struct ScriptingRegistries {
     /// dispatch for any method Rust doesn't already special-case
     /// (window/logMessage, window/showMessage, $/progress, publishDiagnostics).
     pub(crate) lsp_notification_handlers: std::collections::HashMap<String, Vec<SteelVal>>,
+    /// Keybindings applied inline by `bind-key!` / `bind-key-extend!` /
+    /// `bind-wait-char!`, tagged with the plugin whose body applied them.
+    /// Only populated for plugin-owned binds — top-level `init.scm` binds are
+    /// never recorded here, never rolled back (same as `cmd_owners`' implicit
+    /// `Owner::User` case). Consulted by `finish_lazy_activation` to unbind a
+    /// failed plugin's keys via `KeymapHost::unbind_key`.
+    pub(crate) key_bindings: Vec<(PluginId, host::BindMode, Vec<crossterm::event::KeyEvent>)>,
 }
 
 // ── HostBundle ────────────────────────────────────────────────────────────────
@@ -160,8 +167,8 @@ pub(crate) struct HostBundle<'a> {
 pub struct ScriptingHost {
     /// The Scheme VM — always called `steel` (never bare "engine", which refers to the `engine/` crate).
     steel: Engine,
-    /// The four persistent registries borrowed as a unit into `SteelCtx`,
-    /// disjoint from `steel` so the VM and command/hook state can be borrowed
+    /// The persistent registries borrowed as a unit into `SteelCtx`, disjoint
+    /// from `steel` so the VM and command/hook state can be borrowed
     /// simultaneously (NLL field-split).
     pub(crate) registries: ScriptingRegistries,
     /// Attribution stack: `stack.last()` is the plugin currently executing.
@@ -212,6 +219,7 @@ impl ScriptingHost {
                 command_table: std::collections::HashMap::new(),
                 plugin_configs: std::collections::HashMap::new(),
                 lsp_notification_handlers: std::collections::HashMap::new(),
+                key_bindings: Vec::new(),
             },
             plugin_stack: PluginStack::default(),
             pending_messages: Vec::new(),
@@ -630,7 +638,13 @@ impl ScriptingHost {
         host: &'a mut dyn EditorHost,
     ) -> Result<Vec<Effect>, EvalError> {
         // Collect handler procs before borrowing self mutably for the SteelCtx.
-        let handler_procs: Vec<SteelVal> = self.registries.hooks.handlers_for(hook_id).to_vec();
+        let handler_procs: Vec<SteelVal> = self
+            .registries
+            .hooks
+            .handlers_for(hook_id)
+            .iter()
+            .map(|e| e.proc.clone())
+            .collect();
         if handler_procs.is_empty() {
             return Ok(Vec::new());
         }

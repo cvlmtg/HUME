@@ -36,8 +36,10 @@ pub(crate) struct SteelCtx<'a> {
     // ── Persistent state borrowed from ScriptingHost ──────────────────────────
     /// Plugin attribution stack; identifies whose mutation is being recorded.
     pub(crate) plugin_stack: &'a mut PluginStack,
-    /// The four persistent registries: cmd_owners, hooks, lazy_registry,
-    /// declared_plugins. Borrowed as a unit, disjoint from `steel`.
+    /// The persistent registries (`cmd_owners`, `hooks`, `lazy_registry`,
+    /// `declared_plugins`, `command_table`, `plugin_configs`,
+    /// `lsp_notification_handlers`, `key_bindings`). Borrowed as a unit,
+    /// disjoint from `steel`.
     pub(crate) registries: &'a mut ScriptingRegistries,
     /// Log messages accumulated by `(log! …)`.
     pub(crate) pending_messages: &'a mut Vec<(LogLevel, String)>,

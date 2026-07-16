@@ -1048,6 +1048,86 @@ fn native_command_survives_failed_shadowing_plugin() {
     );
 }
 
+/// A lazy plugin activated via `call!` whose body binds a key and then errors:
+/// the binding must not survive — a `Failed` plugin leaves no dangling
+/// keybinding pointing at a command that (if it was also rolled back, or was
+/// never valid) can no longer be dispatched.
+///
+/// Flip: drop the `key_bindings` unbind loop from `finish_lazy_activation` →
+/// `lookup_command` still returns `Some(("some-cmd", false))` after failure.
+#[test]
+#[cfg(not(windows))]
+fn plugin_keybinding_rolled_back_on_failed_activation() {
+    use crate::editor::keymap::BindMode;
+    use hume_scripting::attribution::PluginId;
+
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin "user/tp" #:commands '("bar"))
+           (define-command! "trigger" "doc" (lambda () (call! "bar")))"#,
+        r#"(bind-key! 'normal "Q" "some-cmd") (error "boom")"#,
+    );
+
+    type_cmd(&mut ed, ":trigger");
+
+    let id = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Failed)
+        ),
+        "plugin must be Failed after intentional error"
+    );
+    assert!(
+        ed.state
+            .keymap
+            .lookup_command(BindMode::Normal, &[key('Q')])
+            .is_none(),
+        "the failed plugin's bind-key! must be unbound, not left dangling"
+    );
+}
+
+/// A lazy plugin activated via `call!` whose body registers a hook and then
+/// errors: the hook must not survive — a `Failed` plugin's hooks must stop
+/// firing.
+///
+/// Flip: drop `hooks.remove_owned_by` from `finish_lazy_activation` →
+/// `has_hook_handlers` still reports `true` after failure.
+#[test]
+#[cfg(not(windows))]
+fn plugin_hook_rolled_back_on_failed_activation() {
+    use hume_scripting::attribution::PluginId;
+
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin "user/tp" #:commands '("bar"))
+           (define-command! "trigger" "doc" (lambda () (call! "bar")))"#,
+        r#"(register-hook! 'on-buffer-save (lambda (bid) 0)) (error "boom")"#,
+    );
+
+    type_cmd(&mut ed, ":trigger");
+
+    let id = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Failed)
+        ),
+        "plugin must be Failed after intentional error"
+    );
+    assert!(
+        !ed.scripting
+            .as_ref()
+            .unwrap()
+            .has_hook_handlers(HookId::OnBufferSave),
+        "the failed plugin's register-hook! must not survive rollback"
+    );
+}
+
 // ── Phase 3b lazy plugin loading — language/filetype activations ──────────────
 
 /// `#:languages` plugin activates on first matching language set; its

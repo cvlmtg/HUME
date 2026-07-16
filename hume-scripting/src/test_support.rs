@@ -43,6 +43,7 @@ impl SteelCtxTestHarness {
                 command_table: std::collections::HashMap::new(),
                 plugin_configs: std::collections::HashMap::new(),
                 lsp_notification_handlers: std::collections::HashMap::new(),
+                key_bindings: Vec::new(),
             },
             pending_messages: Vec::new(),
             effects: Vec::new(),

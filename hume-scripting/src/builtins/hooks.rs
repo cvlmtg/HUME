@@ -35,7 +35,8 @@ pub(crate) fn register_hook(ctx: &mut SteelCtx, name: SteelVal, proc: SteelVal) 
             HookId::all_names().collect::<Vec<_>>().join(", ")
         ),
     };
-    ctx.registries.hooks.register(hook_id, proc);
+    let owner = ctx.plugin_stack.current().cloned();
+    ctx.registries.hooks.register(hook_id, owner, proc);
     Ok(SteelVal::Void)
 }
 
@@ -123,6 +124,12 @@ mod tests {
             1,
             "one handler must be registered for on-buffer-save"
         );
+        assert!(
+            h.registries.hooks.handlers_for(HookId::OnBufferSave)[0]
+                .owner
+                .is_none(),
+            "a top-level (non-plugin) registration must have no owner"
+        );
     }
 
     /// `register-hook!` is also valid during plugin activation (plugin_stack non-empty).
@@ -146,5 +153,10 @@ mod tests {
             );
         }
         assert!(!h.registries.hooks.is_empty_for(HookId::OnBufferOpen));
+        assert_eq!(
+            h.registries.hooks.handlers_for(HookId::OnBufferOpen)[0].owner,
+            Some(PluginId::parse("core:myplugin").unwrap()),
+            "a plugin-body registration must be attributed to the currently-executing plugin"
+        );
     }
 }

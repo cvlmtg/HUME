@@ -471,11 +471,24 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
 /// transitions the plugin to `Loaded`/`Failed`; `drop_activations_for` runs
 /// on both paths to clean up expired activation entries.
 ///
-/// On failure, rolls back commands a partially-evaluated body already
-/// registered via `define-command!` (removed from `command_table`,
-/// `cmd_owners`, the editor's `CommandRegistry`) so a `Failed` plugin leaves
-/// no callable orphan commands — Steel globals defined before the error stay
-/// in the VM's symbol table but are unreachable through HUME's dispatch.
+/// On failure, rolls back everything the partially-evaluated body registered,
+/// so a `Failed` plugin leaves no live footprint:
+///   - commands (`define-command!`): removed from `command_table`,
+///     `cmd_owners`, and the editor's `CommandRegistry` — Steel globals
+///     defined before the error stay in the VM's symbol table but are
+///     unreachable through HUME's dispatch;
+///   - hooks (`register-hook!`): every handler tagged with this plugin's id
+///     is dropped via `HookRegistry::remove_owned_by`, so a `Failed`
+///     plugin's hooks stop firing;
+///   - key bindings (`bind-key!` / `bind-key-extend!` / `bind-wait-char!`):
+///     every key this plugin bound is unbound via the `key_bindings` ledger
+///     and `KeymapHost::unbind_key`. This *unbinds* rather than *restores*
+///     whatever the key was bound to before — `bind-key!` overwrites
+///     silently with no collision detection (rebinding is a legitimate,
+///     common operation), so there is no prior binding to snapshot without
+///     much heavier machinery. A plugin that shadows an existing key and
+///     then fails leaves that key unbound, not reverted. Accepted scope.
+///
 /// `ctx.pop_effect_marks(success)` does the same for every queued side effect
 /// (`register-lsp-server!`, `define-language!`, LSP requests, grammar
 /// sweeps) queued via `mark_effects` — with one exception: an effect already
@@ -484,10 +497,12 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
 /// successfully) survives this failure too, because that nested plugin's
 /// `Loaded` state is never rolled back either. See `pop_effect_marks`.
 ///
-/// NOT rolled back: `register-hook!` (no owner, no unregister path) and
-/// `bind-key!`/`bind-key-extend!` (apply inline, no undo) — a `Failed`
-/// plugin's hooks keep firing and its keybindings stay bound. Pre-existing
-/// gap; would need per-plugin ownership tracking for hooks/keybindings.
+/// Hooks and key bindings need none of that committed-flag machinery: they
+/// mutate persistent registries immediately and permanently the instant the
+/// builtin runs, each tagged with a static owner set once at registration —
+/// rollback removes entries *by identity* (`owner == this id`), never by
+/// eval-scoped position, so a nested plugin's own entries (a different
+/// owner) are simply never matched.
 pub(crate) fn finish_lazy_activation(
     ctx: &mut SteelCtx,
     id_str: String,
@@ -527,6 +542,24 @@ pub(crate) fn finish_lazy_activation(
             ctx.registries.command_table.remove(&name);
             ctx.registries.cmd_owners.remove(&name);
             ctx.host.commands().unregister_command(&name);
+        }
+
+        // Roll back hooks the failed body registered.
+        ctx.registries.hooks.remove_owned_by(&id);
+
+        // Roll back key bindings the failed body made.
+        let orphan_binds: Vec<_> = ctx
+            .registries
+            .key_bindings
+            .iter()
+            .filter(|(owner, _, _)| owner == &id)
+            .map(|(_, mode, keys)| (*mode, keys.clone()))
+            .collect();
+        ctx.registries
+            .key_bindings
+            .retain(|(owner, _, _)| owner != &id);
+        for (mode, keys) in orphan_binds {
+            let _ = ctx.host.keymap().unbind_key(mode, &keys);
         }
     }
 

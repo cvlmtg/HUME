@@ -57,6 +57,12 @@ fn bind_inner(
             .bind_wait_char(mode, &keys, &cmd_name)
             .map_err(generic_err)?,
     }
+    // Record the owner so a failed plugin activation can unbind this key —
+    // see `finish_lazy_activation`. Only tracked for plugin-owned binds;
+    // top-level init.scm binds are permanent, never rolled back.
+    if let Some(owner) = ctx.plugin_stack.current().cloned() {
+        ctx.registries.key_bindings.push((owner, mode, keys));
+    }
     Ok(SteelVal::Void)
 }
 
