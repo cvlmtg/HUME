@@ -1,7 +1,9 @@
-//! The generic LSP bridge: flushes `(lsp-request …)` / `(lsp-notify …)`
-//! calls Steel queued this eval, resolving `server` and (for requests)
-//! wiring the callback to fire through the queued-Steel-call mechanism once
-//! a response, error, or timeout arrives.
+//! The generic LSP bridge: sends `(lsp-request …)` / `(lsp-notify …)` calls
+//! Steel queued this eval, one at a time as `Editor::apply_script_effects`
+//! encounters each `Effect::LspRequest`/`Effect::LspNotify` in emission
+//! order, resolving `server` and (for requests) wiring the callback to fire
+//! through the queued-Steel-call mechanism once a response, error, or
+//! timeout arrives.
 
 use std::time::{Duration, Instant};
 
@@ -16,29 +18,6 @@ use super::Editor;
 use crate::editor::message_log::Severity;
 
 impl Editor {
-    /// Sends every `(lsp-request …)` / `(lsp-notify …)` call an eval just
-    /// queued. Shared tail for `call_steel_cmd`'s call site, `drain_hooks`,
-    /// and `drain_pending_steel_calls` — the three places a `SteelCmdResult`
-    /// or `HookResult` comes back with these two fields to dispatch.
-    ///
-    /// Flushes queued `didChange` notifications first: these three call
-    /// sites can run between one `prepare_frame`'s `drain_lsp` and the next
-    /// (e.g. a trigger-char hook firing right after the edit that triggered
-    /// it), so a request minted here — often positioned against the very
-    /// text that edit just produced — must not reach the wire ahead of the
-    /// didChange describing that edit.
-    pub(in crate::editor) fn flush_pending_lsp_calls(
-        &mut self,
-        requests: Vec<PendingLspRequest>,
-        notifies: Vec<PendingLspNotify>,
-    ) {
-        if !requests.is_empty() || !notifies.is_empty() {
-            self.flush_lsp_pending_changes();
-        }
-        self.flush_pending_lsp_requests(requests);
-        self.flush_pending_lsp_notifies(notifies);
-    }
-
     /// Resolves `server` — a registered language name, or `None` for "the
     /// focused buffer's attached server" — to a running `ServerId`. Shared
     /// with the introspection builtins via `super::introspect::resolve_server`.
@@ -60,16 +39,12 @@ impl Editor {
         Some((bid, self.state.buffers.get(bid).text_gen))
     }
 
-    /// Sends every queued `(lsp-request …)` call. Errors (unknown/ambiguous
-    /// server) are reported and drop that one request — one bad call must
-    /// not lose the rest of the batch.
-    fn flush_pending_lsp_requests(&mut self, requests: Vec<PendingLspRequest>) {
-        for req in requests {
-            self.send_one_lsp_request(req);
-        }
-    }
-
-    fn send_one_lsp_request(&mut self, req: PendingLspRequest) {
+    /// Sends one queued `(lsp-request …)` call. Called from
+    /// `Editor::apply_script_effects` for each `Effect::LspRequest`, in
+    /// emission order — after `flush_lsp_pending_changes` so a request
+    /// minted against text just edited doesn't reach the wire ahead of the
+    /// `didChange` describing that edit.
+    pub(in crate::editor) fn send_one_lsp_request(&mut self, req: PendingLspRequest) {
         let server_id = match self.resolve_lsp_server(req.server.as_deref()) {
             Ok(id) => id,
             Err(e) => {
@@ -147,28 +122,28 @@ impl Editor {
         );
     }
 
-    /// Sends every queued `(lsp-notify …)` call. Same server resolution as
-    /// requests; no callback, so a resolution error is the only failure mode.
-    fn flush_pending_lsp_notifies(&mut self, notifies: Vec<PendingLspNotify>) {
-        for notif in notifies {
-            let server_id = match self.resolve_lsp_server(notif.server.as_deref()) {
-                Ok(id) => id,
-                Err(e) => {
-                    self.report(Severity::Error, format!("lsp-notify: {e}"));
-                    continue;
-                }
-            };
-            let Some((client, backend)) = self.lsp.client_and_backend(server_id) else {
-                continue;
-            };
-            client.send_or_queue(
-                backend,
-                hume_lsp::codec::Message::Notification {
-                    method: notif.method,
-                    params: notif.params,
-                },
-            );
-        }
+    /// Sends one queued `(lsp-notify …)` call. Same server resolution as
+    /// `send_one_lsp_request`; no callback, so a resolution error is the
+    /// only failure mode. Called from `Editor::apply_script_effects` for
+    /// each `Effect::LspNotify`.
+    pub(in crate::editor) fn send_one_lsp_notify(&mut self, notif: PendingLspNotify) {
+        let server_id = match self.resolve_lsp_server(notif.server.as_deref()) {
+            Ok(id) => id,
+            Err(e) => {
+                self.report(Severity::Error, format!("lsp-notify: {e}"));
+                return;
+            }
+        };
+        let Some((client, backend)) = self.lsp.client_and_backend(server_id) else {
+            return;
+        };
+        client.send_or_queue(
+            backend,
+            hume_lsp::codec::Message::Notification {
+                method: notif.method,
+                params: notif.params,
+            },
+        );
     }
 }
 

@@ -75,7 +75,10 @@ impl Editor {
         self.set_buffer_language(bid, detected);
     }
 
-    /// Register languages from a drained `pending_language_regs` vec.
+    /// Register languages from a maximal run of consecutive
+    /// `Effect::LanguageReg` entries (`Editor::apply_script_effects` groups
+    /// them so a large run — e.g. `languages.scm`'s ~700 `define-language!`
+    /// calls — rebuilds the glob matcher once, not once per entry).
     /// Fail-soft: glob-set build failures are logged as warnings, editor continues.
     pub(super) fn apply_pending_language_regs(
         &mut self,
@@ -145,14 +148,5 @@ impl Editor {
         if !grammar_sweeps.is_empty() {
             self.sweep_buffers_for_grammars(grammar_sweeps);
         }
-    }
-
-    /// Drain `host.pending_language_regs` and apply them. Called at the
-    /// `eval_init` boundary (`init_scripting`) — the runtime path drains
-    /// through `Editor::apply_script_effects` instead, which calls the same
-    /// `apply_pending_language_regs` after every eval.
-    pub(super) fn flush_pending_language_regs(&mut self, host: &mut hume_scripting::ScriptingHost) {
-        let regs = host.take_pending_language_regs();
-        self.apply_pending_language_regs(regs);
     }
 }

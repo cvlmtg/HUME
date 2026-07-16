@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use hume_engine::pipeline::BufferId;
 
 use hume_scripting::SteelBufferId;
-use hume_scripting::{HookResult, hooks::HookId};
+use hume_scripting::{Effect, hooks::HookId};
 use steel::rvals::SteelVal;
 
 use super::{Editor, Severity, host_impl::EditorHostImpl, theme};
@@ -18,43 +18,43 @@ use super::{Editor, Severity, host_impl::EditorHostImpl, theme};
 const MAX_HOOK_DRAIN_HOOKS: usize = 1000;
 
 impl Editor {
-    /// Apply a `HookResult`'s queued side effects: drain any queued language
-    /// registrations and LSP server registrations/unregistrations,
-    /// send/notify any queued LSP calls, apply deferred `set-buffer-language!`
-    /// calls, and sweep buffers for newly attached grammars. Shared tail for
-    /// `call_steel_cmd`'s call site, `drain_hooks`, and `drain_pending_steel_calls`.
-    pub(crate) fn apply_script_effects(&mut self, effects: HookResult) {
-        // Language regs drain first: a `define-language!` queued earlier in
-        // this same eval must register the identity before the LSP-server-ops
-        // and `pending_language_sets` drains below, so a same-eval
-        // `set-buffer-language!` for that language detects it immediately.
-        // LSP server ops drain next: `register-lsp-server!` queued earlier
-        // in this same eval must apply before the `pending_language_sets`
-        // loop below, so a `set-buffer-language!` in the same eval attaches
-        // through the new config directly rather than waiting a drain cycle.
-        // Both queues are persistent on the host (unlike `HookResult`'s
-        // per-eval fields), so they're pulled with the same two-phase take
-        // `flush_script_messages` uses.
-        let lang_regs =
-            self.take_from_host(hume_scripting::ScriptingHost::take_pending_language_regs);
-        self.apply_pending_language_regs(lang_regs);
-
-        let lsp_server_ops =
-            self.take_from_host(hume_scripting::ScriptingHost::take_pending_lsp_server_ops);
-        self.apply_lsp_server_ops(lsp_server_ops);
-
-        let HookResult {
-            pending_language_sets,
-            grammar_sweeps,
-            pending_lsp_requests,
-            pending_lsp_notifies,
-        } = effects;
-        self.flush_pending_lsp_calls(pending_lsp_requests, pending_lsp_notifies);
-        for (bid, lang) in pending_language_sets {
-            self.set_buffer_language(bid, lang);
-        }
-        if !grammar_sweeps.is_empty() {
-            self.sweep_buffers_for_grammars(grammar_sweeps);
+    /// Apply every effect a Steel eval queued, in the exact order the
+    /// script emitted them (`hume_scripting::Effect`) — one ordered log, not
+    /// separate channels with a hardcoded apply order. Consecutive
+    /// `Effect::LanguageReg` entries are grouped into one
+    /// `apply_pending_language_regs` call so a large run (e.g.
+    /// `languages.scm`'s ~700 `define-language!` calls) rebuilds the glob
+    /// matcher once, not once per entry; every other effect kind applies one
+    /// at a time. Shared tail for `call_steel_cmd`'s call site, `drain_hooks`,
+    /// `drain_pending_steel_calls`, and `init_scripting`.
+    pub(crate) fn apply_script_effects(&mut self, effects: Vec<Effect>) {
+        let mut effects: std::collections::VecDeque<Effect> = effects.into();
+        while let Some(effect) = effects.pop_front() {
+            match effect {
+                Effect::LanguageReg(reg) => {
+                    let mut batch = vec![reg];
+                    while matches!(effects.front(), Some(Effect::LanguageReg(_))) {
+                        let Some(Effect::LanguageReg(next)) = effects.pop_front() else {
+                            unreachable!("front() just confirmed a LanguageReg variant")
+                        };
+                        batch.push(next);
+                    }
+                    self.apply_pending_language_regs(batch);
+                }
+                Effect::LspServerOp(op) => self.apply_lsp_server_op(op),
+                Effect::SetBufferLanguage { buffer, language } => {
+                    self.set_buffer_language(buffer, language)
+                }
+                Effect::GrammarSweep(name) => self.sweep_buffers_for_grammars(vec![name]),
+                Effect::LspRequest(req) => {
+                    self.flush_lsp_pending_changes();
+                    self.send_one_lsp_request(req);
+                }
+                Effect::LspNotify(notify) => {
+                    self.flush_lsp_pending_changes();
+                    self.send_one_lsp_notify(notify);
+                }
+            }
         }
     }
 
@@ -362,14 +362,16 @@ impl Editor {
         // during init evals.
         if let Some(prelude_path) = host.runtime_dir().map(|rt| rt.join("scheme/prelude.scm")) {
             let init_budget = self.state.settings.steel_init_budget_ms as u64;
-            let mut ih = make_init_host(&mut self.state, &mut self.view);
-            if let Err(msg) =
+            let result = {
+                let mut ih = make_init_host(&mut self.state, &mut self.view);
                 host.eval_init(&prelude_path, init_budget, &mut ih, builtin_names.clone())
-            {
-                self.report(
+            };
+            match result {
+                Ok(effects) => self.apply_script_effects(effects),
+                Err(msg) => self.report(
                     Severity::Error,
                     format!("runtime/scheme/prelude.scm: {msg}"),
-                );
+                ),
             }
         }
         // Load languages.scm between prelude and init.scm so (define-language! …)
@@ -377,33 +379,34 @@ impl Editor {
         let langs_path = host.runtime_dir().map(|rt| rt.join("scheme/languages.scm"));
         if let Some(langs_path) = langs_path {
             let init_budget = self.state.settings.steel_init_budget_ms as u64;
-            let mut ih = make_init_host(&mut self.state, &mut self.view);
-            if let Err(msg) =
+            let result = {
+                let mut ih = make_init_host(&mut self.state, &mut self.view);
                 host.eval_init(&langs_path, init_budget, &mut ih, builtin_names.clone())
-            {
-                self.report(
+            };
+            match result {
+                Ok(effects) => self.apply_script_effects(effects),
+                Err(msg) => self.report(
                     Severity::Error,
                     format!("runtime/scheme/languages.scm: {msg}"),
-                );
+                ),
             }
-            self.flush_pending_language_regs(&mut host);
         }
         {
             let init_budget = self.state.settings.steel_init_budget_ms as u64;
-            let mut ih = make_init_host(&mut self.state, &mut self.view);
-            if let Err(msg) = host.eval_init(&init_path, init_budget, &mut ih, builtin_names) {
-                self.report(Severity::Error, format!("init.scm: {msg}"));
+            let result = {
+                let mut ih = make_init_host(&mut self.state, &mut self.view);
+                host.eval_init(&init_path, init_budget, &mut ih, builtin_names)
+            };
+            match result {
+                Ok(effects) => self.apply_script_effects(effects),
+                Err(msg) => self.report(Severity::Error, format!("init.scm: {msg}")),
             }
         }
-        // Snapshot language activation entries before the second flush so the
-        // post-init lint (below) can compare them against the final language registry.
+        // Snapshot language activation entries for the post-init lint below —
+        // every eval's effects (identities, grammars, LSP server ops) are
+        // already applied above, each right after its own eval, so
+        // `self.state.languages` is fully populated by this point.
         let lang_activations = host.activation_languages();
-        // Second flush: picks up any (define-language! …) calls from init.scm /
-        // plugins that ran during init.scm.
-        self.flush_pending_language_regs(&mut host);
-        // Picks up any (register-lsp-server! …) / (unregister-lsp-server! …)
-        // calls from init.scm / plugins.
-        self.flush_pending_lsp_server_ops(&mut host);
         // Pick up any (set-option! "history-capacity" N) calls from init.scm.
         self.state
             .history

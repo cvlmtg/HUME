@@ -50,12 +50,14 @@ pub(crate) fn resolve_root(file: &Path, markers: &[String], cwd: &Path) -> PathB
 }
 
 impl Editor {
-    /// Applies one queued op, in order — shared by the init-boundary flush
-    /// (`flush_pending_lsp_server_ops`) and the runtime drain inside
-    /// `Editor::apply_script_effects`, so there is exactly one apply path
+    /// Applies one queued op. Called by `Editor::apply_script_effects` for
+    /// each `Effect::LspServerOp`, in emission order — the one apply path
     /// for LSP server registration/unregistration regardless of which eval
     /// queued it.
-    fn apply_lsp_server_op(&mut self, op: hume_scripting::PendingLspServerOp) {
+    pub(in crate::editor) fn apply_lsp_server_op(
+        &mut self,
+        op: hume_scripting::PendingLspServerOp,
+    ) {
         match op {
             hume_scripting::PendingLspServerOp::Register(reg) => {
                 self.apply_pending_lsp_server_reg(reg);
@@ -151,31 +153,6 @@ impl Editor {
         for bid in bids {
             self.lsp_attach_buffer(bid);
         }
-    }
-
-    /// Applies every queued op, in order. Shared tail for the init-boundary
-    /// flush (`flush_pending_lsp_server_ops`) and the runtime drain inside
-    /// `Editor::apply_script_effects`.
-    pub(in crate::editor) fn apply_lsp_server_ops(
-        &mut self,
-        ops: Vec<hume_scripting::PendingLspServerOp>,
-    ) {
-        for op in ops {
-            self.apply_lsp_server_op(op);
-        }
-    }
-
-    /// Drain `host`'s queued LSP server ops and apply them. Mirrors
-    /// `flush_pending_language_regs`'s Rust-side twin — called once, at the
-    /// end of `init.scm` (the runtime path drains through
-    /// `Editor::apply_script_effects` instead, which calls the same
-    /// `apply_lsp_server_ops` after every eval).
-    pub(in crate::editor) fn flush_pending_lsp_server_ops(
-        &mut self,
-        host: &mut hume_scripting::ScriptingHost,
-    ) {
-        let ops = host.take_pending_lsp_server_ops();
-        self.apply_lsp_server_ops(ops);
     }
 
     /// Attaches buffer `bid` to its language's registered server, spawning
