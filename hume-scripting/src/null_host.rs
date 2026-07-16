@@ -20,7 +20,8 @@ use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::host::{
-    BindMode, CommandHost, CursorHost, EditorHost, LanguageHost, OptionValue, OutputHost,
+    BindMode, CommandHost, CursorHost, EditorHost, KeymapHost, LanguageHost, OptionValue,
+    OutputHost,
 };
 use crate::types::SteelCmdDef;
 
@@ -35,6 +36,9 @@ impl EditorHost for NullHost {
         self
     }
     fn language(&mut self) -> &mut dyn LanguageHost {
+        self
+    }
+    fn keymap(&mut self) -> &mut dyn KeymapHost {
         self
     }
     fn buffer_ids(&self) -> Vec<BufferId> {
@@ -81,6 +85,12 @@ impl EditorHost for NullHost {
     ) -> Result<(), String> {
         Err("NullHost: configure_statusline not available".into())
     }
+    fn steel_command_budget_ms(&self) -> u64 {
+        10_000
+    }
+}
+
+impl KeymapHost for NullHost {
     fn bind_key(
         &mut self,
         _mode: BindMode,
@@ -100,9 +110,6 @@ impl EditorHost for NullHost {
     }
     fn unbind_key(&mut self, _mode: BindMode, _keys: &[KeyEvent]) -> Result<(), String> {
         Err("NullHost: unbind_key not available".into())
-    }
-    fn steel_command_budget_ms(&self) -> u64 {
-        10_000
     }
 }
 
@@ -184,6 +191,9 @@ impl EditorHost for FailingRegisterHost {
     fn language(&mut self) -> &mut dyn LanguageHost {
         &mut self.inner
     }
+    fn keymap(&mut self) -> &mut dyn KeymapHost {
+        &mut self.inner
+    }
     fn buffer_ids(&self) -> Vec<BufferId> {
         self.inner.buffer_ids()
     }
@@ -227,26 +237,6 @@ impl EditorHost for FailingRegisterHost {
         r: Vec<String>,
     ) -> Result<(), String> {
         self.inner.configure_statusline(l, c, r)
-    }
-    fn bind_key(
-        &mut self,
-        mode: BindMode,
-        keys: &[KeyEvent],
-        cmd: &str,
-        fe: bool,
-    ) -> Result<(), String> {
-        self.inner.bind_key(mode, keys, cmd, fe)
-    }
-    fn bind_wait_char(
-        &mut self,
-        mode: BindMode,
-        keys: &[KeyEvent],
-        cmd: &str,
-    ) -> Result<(), String> {
-        self.inner.bind_wait_char(mode, keys, cmd)
-    }
-    fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String> {
-        self.inner.unbind_key(mode, keys)
     }
     fn steel_command_budget_ms(&self) -> u64 {
         self.inner.steel_command_budget_ms()
@@ -300,6 +290,9 @@ impl EditorHost for InlineOutputHost {
     fn language(&mut self) -> &mut dyn LanguageHost {
         &mut self.inner
     }
+    fn keymap(&mut self) -> &mut dyn KeymapHost {
+        &mut self.inner
+    }
     fn output(&mut self) -> Option<&mut dyn OutputHost> {
         Some(self)
     }
@@ -346,26 +339,6 @@ impl EditorHost for InlineOutputHost {
         r: Vec<String>,
     ) -> Result<(), String> {
         self.inner.configure_statusline(l, c, r)
-    }
-    fn bind_key(
-        &mut self,
-        mode: BindMode,
-        keys: &[KeyEvent],
-        cmd: &str,
-        fe: bool,
-    ) -> Result<(), String> {
-        self.inner.bind_key(mode, keys, cmd, fe)
-    }
-    fn bind_wait_char(
-        &mut self,
-        mode: BindMode,
-        keys: &[KeyEvent],
-        cmd: &str,
-    ) -> Result<(), String> {
-        self.inner.bind_wait_char(mode, keys, cmd)
-    }
-    fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String> {
-        self.inner.unbind_key(mode, keys)
     }
     fn steel_command_budget_ms(&self) -> u64 {
         self.inner.steel_command_budget_ms()
@@ -401,6 +374,9 @@ impl EditorHost for RecordingInlineOutputHost {
     fn language(&mut self) -> &mut dyn LanguageHost {
         &mut self.inner
     }
+    fn keymap(&mut self) -> &mut dyn KeymapHost {
+        &mut self.inner
+    }
     fn output(&mut self) -> Option<&mut dyn OutputHost> {
         Some(self)
     }
@@ -447,26 +423,6 @@ impl EditorHost for RecordingInlineOutputHost {
         r: Vec<String>,
     ) -> Result<(), String> {
         self.inner.configure_statusline(l, c, r)
-    }
-    fn bind_key(
-        &mut self,
-        mode: BindMode,
-        keys: &[KeyEvent],
-        cmd: &str,
-        fe: bool,
-    ) -> Result<(), String> {
-        self.inner.bind_key(mode, keys, cmd, fe)
-    }
-    fn bind_wait_char(
-        &mut self,
-        mode: BindMode,
-        keys: &[KeyEvent],
-        cmd: &str,
-    ) -> Result<(), String> {
-        self.inner.bind_wait_char(mode, keys, cmd)
-    }
-    fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String> {
-        self.inner.unbind_key(mode, keys)
     }
     fn steel_command_budget_ms(&self) -> u64 {
         self.inner.steel_command_budget_ms()

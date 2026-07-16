@@ -50,10 +50,12 @@ fn bind_inner(
     match kind {
         BindKind::Normal => ctx
             .host
+            .keymap()
             .bind_key(mode, &keys, &cmd_name, force_extend)
             .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?,
         BindKind::WaitChar => ctx
             .host
+            .keymap()
             .bind_wait_char(mode, &keys, &cmd_name)
             .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?,
     }
@@ -123,6 +125,7 @@ pub(crate) fn unbind_key(ctx: &mut SteelCtx, mode: SteelVal, key_str: String) ->
     let keys = parse_key_sequence(&key_str)
         .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
     ctx.host
+        .keymap()
         .unbind_key(mode, &keys)
         .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
     Ok(SteelVal::Void)

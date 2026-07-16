@@ -15,7 +15,9 @@
 
 use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
-use hume_scripting::host::{BindMode, CommandHost, CursorHost, EditorHost, LanguageHost, OptionValue};
+use hume_scripting::host::{
+    BindMode, CommandHost, CursorHost, EditorHost, KeymapHost, LanguageHost, OptionValue,
+};
 
 pub(crate) struct MockHost {
     pub(crate) settings: hume::settings::EditorSettings,
@@ -60,6 +62,9 @@ impl EditorHost for MockHost {
         self
     }
     fn language(&mut self) -> &mut dyn LanguageHost {
+        self
+    }
+    fn keymap(&mut self) -> &mut dyn KeymapHost {
         self
     }
     fn buffer_ids(&self) -> Vec<BufferId> {
@@ -134,6 +139,12 @@ impl EditorHost for MockHost {
         };
         Ok(())
     }
+    fn steel_command_budget_ms(&self) -> u64 {
+        self.settings.steel_command_budget_ms as u64
+    }
+}
+
+impl KeymapHost for MockHost {
     fn bind_key(
         &mut self,
         mode: BindMode,
@@ -165,9 +176,6 @@ impl EditorHost for MockHost {
     fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String> {
         self.keymap.unbind_user(to_editor_bind_mode(mode), keys);
         Ok(())
-    }
-    fn steel_command_budget_ms(&self) -> u64 {
-        self.settings.steel_command_budget_ms as u64
     }
 }
 

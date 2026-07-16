@@ -113,6 +113,9 @@ pub trait EditorHost {
     /// Grammar attachment and trigger-char registration — required: every
     /// host has some notion (even if empty) of its language/grammar set.
     fn language(&mut self) -> &mut dyn LanguageHost;
+    /// Keymap binding/unbinding — required: every host has some notion (even
+    /// if empty) of its key bindings.
+    fn keymap(&mut self) -> &mut dyn KeymapHost;
 
     // ── Enumeration ─────────────────────────────────────────────────────────
     /// All open buffer ids in open-order.
@@ -153,22 +156,6 @@ pub trait EditorHost {
         center: Vec<String>,
         right: Vec<String>,
     ) -> Result<(), String>;
-
-    // ── Keymap (init-only) ───────────────────────────────────────────────────
-    fn bind_key(
-        &mut self,
-        mode: BindMode,
-        keys: &[KeyEvent],
-        cmd: &str,
-        force_extend: bool,
-    ) -> Result<(), String>;
-    fn bind_wait_char(
-        &mut self,
-        mode: BindMode,
-        keys: &[KeyEvent],
-        cmd: &str,
-    ) -> Result<(), String>;
-    fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String>;
 
     // ── Budget ───────────────────────────────────────────────────────────────
     /// Steel eval budget in milliseconds for command / hook execution.
@@ -308,6 +295,26 @@ pub trait LanguageHost {
     /// source doesn't clobber the first's). An empty `chars` removes the
     /// entry.
     fn register_trigger_chars(&mut self, source: String, language: String, chars: Vec<char>);
+}
+
+/// Keymap binding/unbinding — accessed through [`EditorHost::keymap`].
+pub trait KeymapHost {
+    fn bind_key(
+        &mut self,
+        mode: BindMode,
+        keys: &[KeyEvent],
+        cmd: &str,
+        force_extend: bool,
+    ) -> Result<(), String>;
+
+    fn bind_wait_char(
+        &mut self,
+        mode: BindMode,
+        keys: &[KeyEvent],
+        cmd: &str,
+    ) -> Result<(), String>;
+
+    fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String>;
 }
 
 /// Completion session orchestration — accessed through

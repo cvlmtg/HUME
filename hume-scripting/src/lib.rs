@@ -65,7 +65,7 @@ pub use builtins::sandbox::init_dirs;
 pub use hooks::HookId;
 pub use host::{
     BindMode, CommandHost, CompletionHost, CursorHost, DecorationHost, EditHost, EditorHost,
-    LanguageHost, LspHost, OutputHost, TimerHost, UiHost, unsupported,
+    KeymapHost, LanguageHost, LspHost, OutputHost, TimerHost, UiHost, unsupported,
 };
 pub use keys::parse_key_stream;
 pub use log::LogLevel;

@@ -22,7 +22,7 @@ use crate::settings::{BufferOverrides, SettingScope, apply_setting};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 use hume_scripting::host::{
     BindMode, CommandHost, CompletionHost, CursorHost, DecorationHost, EditHost, EditorHost,
-    LanguageHost, LspHost, OptionValue, OutputHost, TimerHost, UiHost,
+    KeymapHost, LanguageHost, LspHost, OptionValue, OutputHost, TimerHost, UiHost,
 };
 
 use super::{EditorState, Severity};
@@ -123,6 +123,9 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         self
     }
     fn language(&mut self) -> &mut dyn LanguageHost {
+        self
+    }
+    fn keymap(&mut self) -> &mut dyn KeymapHost {
         self
     }
 
@@ -234,7 +237,23 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-    // ── Keymap ────────────────────────────────────────────────────────────────
+
+    // ── Budget ────────────────────────────────────────────────────────────────
+    fn steel_command_budget_ms(&self) -> u64 {
+        self.state.settings.steel_command_budget_ms as u64
+    }
+
+    fn buffer_generation(&self, id: BufferId) -> Option<u64> {
+        Some(self.buffer(id)?.text_gen)
+    }
+
+    fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)> {
+        crate::editor::lsp::introspect::viewport_range(self.state, self.view, id)
+    }
+
+}
+
+impl<'a> KeymapHost for EditorHostImpl<'a> {
     fn bind_key(
         &mut self,
         mode: BindMode,
@@ -250,6 +269,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         );
         Ok(())
     }
+
     fn bind_wait_char(
         &mut self,
         mode: BindMode,
@@ -263,26 +283,13 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         );
         Ok(())
     }
+
     fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String> {
         self.state
             .keymap
             .unbind_user(to_editor_bind_mode(mode), keys);
         Ok(())
     }
-
-    // ── Budget ────────────────────────────────────────────────────────────────
-    fn steel_command_budget_ms(&self) -> u64 {
-        self.state.settings.steel_command_budget_ms as u64
-    }
-
-    fn buffer_generation(&self, id: BufferId) -> Option<u64> {
-        Some(self.buffer(id)?.text_gen)
-    }
-
-    fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)> {
-        crate::editor::lsp::introspect::viewport_range(self.state, self.view, id)
-    }
-
 }
 
 impl<'a> LanguageHost for EditorHostImpl<'a> {
