@@ -12,6 +12,26 @@
 //!
 //! Uses `hume::` paths throughout; `extern crate self as hume` in `lib.rs`
 //! makes those resolve correctly in the lib-crate context too.
+//!
+//! # Design rule: delegate, record, or faithfully mirror — never approximate
+//!
+//! Every method here is (a) a thin wrapper over a *real* production
+//! structure/function it holds (`self.settings`, `self.keymap`, `hume::
+//! settings::setting_value`, `hume::ops::register::is_valid_register_name`),
+//! (b) pure recording of whatever the test already told it (`dispatched_
+//! native`, `native_names`), or (c) a reduced but faithful mirror of a real
+//! decision, restated in the exact terms this mock actually tracks
+//! (`register_command`/`register_lazy_command` reject a name already present
+//! in `registered_cmds`/`lazy_cmds`, matching `CommandRegistry`'s real
+//! collision rule one-for-one; `attach_grammar` checks the same bad-path
+//! failure the real host hits, without doing real tree-sitter compilation).
+//! What must never happen is an *invented* approximation that only
+//! coincidentally agrees with the real decision today — every check here
+//! traces back to a specific real rule it mirrors, cited at the call site.
+//! A test whose scenario needs behavior finer-grained than what's mirrored
+//! (e.g. native/typed-command collisions, real grammar parsing) uses a real
+//! `Editor` + `EditorHostImpl` instead (see
+//! `hume-editor/src/editor/tests/plugins.rs`).
 
 use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
@@ -34,6 +54,8 @@ pub(crate) struct MockHost {
     /// Record of every `run_command_sync` call: `(name, count, extend, register)`.
     /// `count` is `None` when the Steel side passed `0` ("no count typed").
     pub(crate) dispatched_native: Vec<(String, Option<usize>, bool, Option<char>)>,
+    /// Lazy activation stubs registered via `register_lazy_command`.
+    pub(crate) lazy_cmds: std::collections::HashMap<String, hume_scripting::PluginId>,
 }
 
 impl MockHost {
@@ -45,6 +67,7 @@ impl MockHost {
             registered_cmds: Vec::new(),
             native_names: std::collections::HashSet::new(),
             dispatched_native: Vec::new(),
+            lazy_cmds: std::collections::HashMap::new(),
         }
     }
 }
@@ -199,14 +222,32 @@ impl KeymapHost for MockHost {
 }
 
 impl LanguageHost for MockHost {
+    // Checks the same bad-path failure mode `attach_grammar_errs_for_bad_path`
+    // (host_impl.rs) pins on the real host, without doing real tree-sitter
+    // grammar/query compilation — that's expensive and this lightweight mock
+    // has no reason to perform it. A path that exists but doesn't actually
+    // parse as a valid grammar/query still succeeds here; no test needs that
+    // finer-grained failure through `MockHost` today.
     fn attach_grammar(
         &mut self,
         name: &str,
-        _grammar_path: &std::path::Path,
+        grammar_path: &std::path::Path,
         _symbol: &str,
-        _highlights_path: &std::path::Path,
+        highlights_path: &std::path::Path,
         _injections_path: Option<&std::path::Path>,
     ) -> Result<(), String> {
+        if !grammar_path.exists() {
+            return Err(format!(
+                "register-grammar! '{name}': grammar library not found: {}",
+                grammar_path.display()
+            ));
+        }
+        if !highlights_path.exists() {
+            return Err(format!(
+                "register-grammar! '{name}': highlights query not found: {}",
+                highlights_path.display()
+            ));
+        }
         self.grammars.insert(name.to_owned());
         Ok(())
     }
@@ -235,11 +276,44 @@ impl CommandHost for MockHost {
         Ok(())
     }
     fn register_command(&mut self, def: hume_scripting::SteelCmdDef) -> Result<(), String> {
+        // Mirrors `EditorHostImpl::register_command` (host_impl.rs), reduced
+        // to what this mock actually tracks: a name already in
+        // `registered_cmds` is a SteelBacked/native/typed conflict (the real
+        // host's `Some(_) => Err` branch); a name only in `lazy_cmds` is a
+        // `Lazy` stub, which the real `CommandRegistry::register` allows
+        // overwriting (`Some(Lazy) | None => Ok`) — so clear it here too.
+        if self.registered_cmds.iter().any(|d| d.name == def.name) {
+            return Err(format!(
+                "define-command!: '{}' conflicts with existing command",
+                def.name
+            ));
+        }
+        self.lazy_cmds.remove(&def.name);
         self.registered_cmds.push(def);
         Ok(())
     }
     fn unregister_command(&mut self, name: &str) {
         self.registered_cmds.retain(|d| d.name != name);
+    }
+    fn register_lazy_command(
+        &mut self,
+        name: &str,
+        plugin: &hume_scripting::PluginId,
+    ) -> Result<(), String> {
+        // Deliberately permissive, like `register_command` above — collision
+        // detection is `CommandRegistry`'s decision; testing it here would be
+        // a second copy of the same rules that can silently drift from the
+        // real behavior it's meant to prove. Tests that need real collision
+        // semantics use a real `Editor` + `EditorHostImpl` instead (see
+        // `hume-editor/src/editor/tests/plugins.rs`).
+        self.lazy_cmds.insert(name.to_owned(), plugin.clone());
+        Ok(())
+    }
+    fn lazy_command_owner(&self, name: &str) -> Option<hume_scripting::PluginId> {
+        self.lazy_cmds.get(name).cloned()
+    }
+    fn unregister_lazy_stubs_of(&mut self, plugin: &hume_scripting::PluginId) {
+        self.lazy_cmds.retain(|_, p| p != plugin);
     }
 }
 
@@ -266,5 +340,119 @@ fn to_editor_bind_mode(mode: BindMode) -> hume::KeymapBindMode {
         BindMode::Normal => hume::KeymapBindMode::Normal,
         BindMode::Extend => hume::KeymapBindMode::Extend,
         BindMode::Insert => hume::KeymapBindMode::Insert,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cmd_def(name: &str) -> hume_scripting::SteelCmdDef {
+        hume_scripting::SteelCmdDef {
+            name: name.to_string(),
+            doc: String::new(),
+            arity: 0,
+            is_variadic: false,
+            inline_output: false,
+            repeatable: false,
+        }
+    }
+
+    #[test]
+    fn register_command_rejects_duplicate_name() {
+        let mut mock = MockHost::new();
+        mock.register_command(cmd_def("dup"))
+            .expect("first registration must succeed");
+
+        let err = mock
+            .register_command(cmd_def("dup"))
+            .expect_err("second registration of the same name must be rejected");
+        assert!(
+            err.contains("dup") && err.contains("conflicts with existing command"),
+            "unexpected message: {err}"
+        );
+        assert_eq!(
+            mock.registered_cmds.len(),
+            1,
+            "the rejected redefinition must not be recorded"
+        );
+    }
+
+    #[test]
+    fn register_command_overwrites_lazy_stub() {
+        let mut mock = MockHost::new();
+        let plugin = hume_scripting::PluginId::parse("core:test").unwrap();
+        mock.register_lazy_command("bar", &plugin).unwrap();
+        assert!(mock.lazy_command_owner("bar").is_some());
+
+        mock.register_command(cmd_def("bar"))
+            .expect("defining over a Lazy stub must succeed");
+
+        assert!(
+            mock.lazy_command_owner("bar").is_none(),
+            "the Lazy stub must be cleared once the real command is defined"
+        );
+    }
+
+    #[test]
+    fn attach_grammar_rejects_missing_grammar_path() {
+        let mut mock = MockHost::new();
+        let dir = tempfile::tempdir().unwrap();
+        let highlights = dir.path().join("highlights.scm");
+        std::fs::write(&highlights, "").unwrap();
+
+        let err = mock
+            .attach_grammar(
+                "rust",
+                std::path::Path::new("/no/such/lib.dylib"),
+                "rust_language",
+                &highlights,
+                None,
+            )
+            .expect_err("missing grammar path must be rejected");
+        assert!(
+            err.contains("grammar library not found"),
+            "unexpected message: {err}"
+        );
+        assert!(
+            !mock.has_grammar("rust"),
+            "a failed attach must not be recorded"
+        );
+    }
+
+    #[test]
+    fn attach_grammar_rejects_missing_highlights_path() {
+        let mut mock = MockHost::new();
+        let dir = tempfile::tempdir().unwrap();
+        let grammar = dir.path().join("lib.dylib");
+        std::fs::write(&grammar, "").unwrap();
+
+        let err = mock
+            .attach_grammar(
+                "rust",
+                &grammar,
+                "rust_language",
+                std::path::Path::new("/no/such/highlights.scm"),
+                None,
+            )
+            .expect_err("missing highlights path must be rejected");
+        assert!(
+            err.contains("highlights query not found"),
+            "unexpected message: {err}"
+        );
+    }
+
+    #[test]
+    fn attach_grammar_succeeds_when_both_paths_exist() {
+        let mut mock = MockHost::new();
+        let dir = tempfile::tempdir().unwrap();
+        let grammar = dir.path().join("lib.dylib");
+        let highlights = dir.path().join("highlights.scm");
+        std::fs::write(&grammar, "").unwrap();
+        std::fs::write(&highlights, "").unwrap();
+
+        mock.attach_grammar("rust", &grammar, "rust_language", &highlights, None)
+            .expect("both paths existing must succeed");
+        assert!(mock.has_grammar("rust"));
     }
 }
