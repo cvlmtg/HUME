@@ -20,7 +20,6 @@ pub(crate) mod io;
 pub(crate) mod json;
 pub(crate) mod keymap_bind;
 pub(crate) mod lsp;
-pub(crate) mod panes;
 pub(crate) mod plugins;
 pub(crate) mod settings;
 pub(crate) mod statusline;
@@ -43,7 +42,7 @@ use super::HUME_CTX;
 /// - `cmd`    — ctx-taking, gated by [`errors::require_cmd`] (buffer/pane/editor-state builtins)
 /// - `config` — ctx-taking, gated by [`errors::require_config`] (init/plugin-load-only verbs)
 /// - `open`   — ctx-taking, ungated (no legality gate, or a bespoke one the fn checks itself)
-/// - `plain`  — no `&mut SteelCtx` param at all (context-free predicates, pane stubs)
+/// - `plain`  — no `&mut SteelCtx` param at all (context-free predicates)
 ///
 /// The declared arg types are load-bearing, not documentation: each entry
 /// expands to a closure with exactly that parameter list, so a mismatch
@@ -419,14 +418,6 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "language-has-grammar?" syntax::language_has_grammar(name: SteelVal);
         cmd "buffer-language" buffers::buffer_language(bid: args::BidArg);
         cmd "set-buffer-language!" buffers::set_buffer_language_steel(bid: args::BidArg, lang: SteelVal);
-
-        // Pane stubs — reserved names for M9+ :split feature.
-        // These never use SteelCtx so they register as plain register_fn.
-        plain "open-pane!" panes::open_pane(bid: SteelVal);
-        plain "close-pane!" panes::close_pane(pid: SteelVal);
-        plain "focus-pane!" panes::focus_pane(pid: SteelVal);
-        plain "pane-buffer" panes::pane_buffer(pid: SteelVal);
-        plain "pane-set-buffer!" panes::pane_set_buffer(pid: SteelVal, bid: SteelVal);
 
         // Editor-integration directory info, read from `ctx.dirs` (computed
         // once by `ScriptingHost::new`). Callable from anywhere (`open`) —
