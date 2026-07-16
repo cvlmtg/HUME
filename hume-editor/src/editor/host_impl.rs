@@ -22,7 +22,7 @@ use crate::settings::{BufferOverrides, SettingScope, apply_setting};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 use hume_scripting::host::{
     BindMode, CommandHost, CompletionHost, CursorHost, DecorationHost, EditHost, EditorHost,
-    KeymapHost, LanguageHost, LspHost, OptionValue, OutputHost, TimerHost, UiHost,
+    KeymapHost, LanguageHost, LspHost, OptionValue, OutputHost, SettingsHost, TimerHost, UiHost,
 };
 
 use super::{EditorState, Severity};
@@ -128,6 +128,9 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     fn keymap(&mut self) -> &mut dyn KeymapHost {
         self
     }
+    fn settings(&mut self) -> &mut dyn SettingsHost {
+        self
+    }
 
     // ── Enumeration ──────────────────────────────────────────────────────────
     fn buffer_ids(&self) -> Vec<BufferId> {
@@ -194,7 +197,17 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-    // ── Settings ─────────────────────────────────────────────────────────────
+    fn buffer_generation(&self, id: BufferId) -> Option<u64> {
+        Some(self.buffer(id)?.text_gen)
+    }
+
+    fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)> {
+        crate::editor::lsp::introspect::viewport_range(self.state, self.view, id)
+    }
+
+}
+
+impl<'a> SettingsHost for EditorHostImpl<'a> {
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
         let mut dummy = BufferOverrides::default();
         apply_setting(
@@ -205,13 +218,13 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             &mut dummy,
         )
     }
+
     fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
         let overrides = self.state.buffers.try_get(bid).map(|b| &b.overrides);
         crate::settings::setting_value(key, &self.state.settings, overrides)
             .ok_or_else(|| format!("get-option: unknown setting '{key}'"))
     }
 
-    // ── Statusline ────────────────────────────────────────────────────────────
     fn configure_statusline(
         &mut self,
         left: Vec<String>,
@@ -237,20 +250,9 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-
-    // ── Budget ────────────────────────────────────────────────────────────────
     fn steel_command_budget_ms(&self) -> u64 {
         self.state.settings.steel_command_budget_ms as u64
     }
-
-    fn buffer_generation(&self, id: BufferId) -> Option<u64> {
-        Some(self.buffer(id)?.text_gen)
-    }
-
-    fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)> {
-        crate::editor::lsp::introspect::viewport_range(self.state, self.view, id)
-    }
-
 }
 
 impl<'a> KeymapHost for EditorHostImpl<'a> {

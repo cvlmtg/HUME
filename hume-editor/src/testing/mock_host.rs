@@ -17,6 +17,7 @@ use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
 use hume_scripting::host::{
     BindMode, CommandHost, CursorHost, EditorHost, KeymapHost, LanguageHost, OptionValue,
+    SettingsHost,
 };
 
 pub(crate) struct MockHost {
@@ -67,6 +68,9 @@ impl EditorHost for MockHost {
     fn keymap(&mut self) -> &mut dyn KeymapHost {
         self
     }
+    fn settings(&mut self) -> &mut dyn SettingsHost {
+        self
+    }
     fn buffer_ids(&self) -> Vec<BufferId> {
         Vec::new()
     }
@@ -97,6 +101,9 @@ impl EditorHost for MockHost {
     fn switch_to_buffer(&mut self, _current: BufferId, _target: BufferId) -> Result<(), String> {
         Err("MockHost: switch_to_buffer not available".into())
     }
+}
+
+impl SettingsHost for MockHost {
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
         use hume::settings::{BufferOverrides, SettingScope, apply_setting};
         let mut dummy = BufferOverrides::default();

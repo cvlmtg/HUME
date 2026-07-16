@@ -21,7 +21,7 @@ use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::host::{
     BindMode, CommandHost, CursorHost, EditorHost, KeymapHost, LanguageHost, OptionValue,
-    OutputHost,
+    OutputHost, SettingsHost,
 };
 use crate::types::SteelCmdDef;
 
@@ -39,6 +39,9 @@ impl EditorHost for NullHost {
         self
     }
     fn keymap(&mut self) -> &mut dyn KeymapHost {
+        self
+    }
+    fn settings(&mut self) -> &mut dyn SettingsHost {
         self
     }
     fn buffer_ids(&self) -> Vec<BufferId> {
@@ -71,6 +74,9 @@ impl EditorHost for NullHost {
     fn switch_to_buffer(&mut self, _current: BufferId, _target: BufferId) -> Result<(), String> {
         Err("NullHost: switch_to_buffer not available".into())
     }
+}
+
+impl SettingsHost for NullHost {
     fn set_global_option(&mut self, _key: &str, _value: &str) -> Result<(), String> {
         Err("NullHost: set_global_option not available".into())
     }
@@ -194,6 +200,9 @@ impl EditorHost for FailingRegisterHost {
     fn keymap(&mut self) -> &mut dyn KeymapHost {
         &mut self.inner
     }
+    fn settings(&mut self) -> &mut dyn SettingsHost {
+        &mut self.inner
+    }
     fn buffer_ids(&self) -> Vec<BufferId> {
         self.inner.buffer_ids()
     }
@@ -223,23 +232,6 @@ impl EditorHost for FailingRegisterHost {
     }
     fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String> {
         self.inner.switch_to_buffer(current, target)
-    }
-    fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
-        self.inner.set_global_option(key, value)
-    }
-    fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
-        self.inner.get_option(key, bid)
-    }
-    fn configure_statusline(
-        &mut self,
-        l: Vec<String>,
-        c: Vec<String>,
-        r: Vec<String>,
-    ) -> Result<(), String> {
-        self.inner.configure_statusline(l, c, r)
-    }
-    fn steel_command_budget_ms(&self) -> u64 {
-        self.inner.steel_command_budget_ms()
     }
 }
 
@@ -293,6 +285,9 @@ impl EditorHost for InlineOutputHost {
     fn keymap(&mut self) -> &mut dyn KeymapHost {
         &mut self.inner
     }
+    fn settings(&mut self) -> &mut dyn SettingsHost {
+        &mut self.inner
+    }
     fn output(&mut self) -> Option<&mut dyn OutputHost> {
         Some(self)
     }
@@ -325,23 +320,6 @@ impl EditorHost for InlineOutputHost {
     }
     fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String> {
         self.inner.switch_to_buffer(current, target)
-    }
-    fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
-        self.inner.set_global_option(key, value)
-    }
-    fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
-        self.inner.get_option(key, bid)
-    }
-    fn configure_statusline(
-        &mut self,
-        l: Vec<String>,
-        c: Vec<String>,
-        r: Vec<String>,
-    ) -> Result<(), String> {
-        self.inner.configure_statusline(l, c, r)
-    }
-    fn steel_command_budget_ms(&self) -> u64 {
-        self.inner.steel_command_budget_ms()
     }
 }
 
@@ -377,6 +355,9 @@ impl EditorHost for RecordingInlineOutputHost {
     fn keymap(&mut self) -> &mut dyn KeymapHost {
         &mut self.inner
     }
+    fn settings(&mut self) -> &mut dyn SettingsHost {
+        &mut self.inner
+    }
     fn output(&mut self) -> Option<&mut dyn OutputHost> {
         Some(self)
     }
@@ -409,23 +390,6 @@ impl EditorHost for RecordingInlineOutputHost {
     }
     fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String> {
         self.inner.switch_to_buffer(current, target)
-    }
-    fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
-        self.inner.set_global_option(key, value)
-    }
-    fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
-        self.inner.get_option(key, bid)
-    }
-    fn configure_statusline(
-        &mut self,
-        l: Vec<String>,
-        c: Vec<String>,
-        r: Vec<String>,
-    ) -> Result<(), String> {
-        self.inner.configure_statusline(l, c, r)
-    }
-    fn steel_command_budget_ms(&self) -> u64 {
-        self.inner.steel_command_budget_ms()
     }
 }
 

@@ -116,6 +116,10 @@ pub trait EditorHost {
     /// Keymap binding/unbinding — required: every host has some notion (even
     /// if empty) of its key bindings.
     fn keymap(&mut self) -> &mut dyn KeymapHost;
+    /// Global settings, statusline config, and the Steel eval budget —
+    /// required: every host has some notion (even if minimal defaults) of
+    /// its settings.
+    fn settings(&mut self) -> &mut dyn SettingsHost;
 
     // ── Enumeration ─────────────────────────────────────────────────────────
     /// All open buffer ids in open-order.
@@ -140,26 +144,6 @@ pub trait EditorHost {
     fn close_buffer(&mut self, id: BufferId) -> Result<BufferId, String>;
     /// Switch the focused pane to `target`, recording a jump entry.
     fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String>;
-
-    // ── Settings (init-only; only Global scope from scripts) ─────────────────
-    fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String>;
-    /// `(get-option key)` — the effective value of `key`: `bid`'s buffer
-    /// override if one is set, else the global default. `Err` for an
-    /// unknown key. Callable from any context (no init/plugin-load gate,
-    /// unlike `set_global_option`).
-    fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String>;
-
-    // ── Statusline (init-only; editor parses names → StatusElement) ──────────
-    fn configure_statusline(
-        &mut self,
-        left: Vec<String>,
-        center: Vec<String>,
-        right: Vec<String>,
-    ) -> Result<(), String>;
-
-    // ── Budget ───────────────────────────────────────────────────────────────
-    /// Steel eval budget in milliseconds for command / hook execution.
-    fn steel_command_budget_ms(&self) -> u64;
 
     /// Steel-side staleness token for buffer `id` (its `text_gen`, bumped by
     /// every mutation) — `None` if `id` is unknown. Not LSP-specific (any
@@ -315,6 +299,30 @@ pub trait KeymapHost {
     ) -> Result<(), String>;
 
     fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String>;
+}
+
+/// Global settings, statusline config, and the Steel eval budget —
+/// accessed through [`EditorHost::settings`].
+pub trait SettingsHost {
+    /// Init-only; only `Global` scope from scripts.
+    fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String>;
+
+    /// `(get-option key)` — the effective value of `key`: `bid`'s buffer
+    /// override if one is set, else the global default. `Err` for an
+    /// unknown key. Callable from any context (no init/plugin-load gate,
+    /// unlike `set_global_option`).
+    fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String>;
+
+    /// Init-only; the editor parses element names into `StatusElement`.
+    fn configure_statusline(
+        &mut self,
+        left: Vec<String>,
+        center: Vec<String>,
+        right: Vec<String>,
+    ) -> Result<(), String>;
+
+    /// Steel eval budget in milliseconds for command / hook execution.
+    fn steel_command_budget_ms(&self) -> u64;
 }
 
 /// Completion session orchestration — accessed through

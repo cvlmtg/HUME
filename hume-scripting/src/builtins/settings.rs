@@ -35,6 +35,7 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
     };
 
     ctx.host
+        .settings()
         .set_global_option(&key, &value_str)
         .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
 
@@ -52,6 +53,7 @@ pub(crate) fn get_option(ctx: &mut SteelCtx, key: String) -> SteelResult {
     require_cmd_ctx!(ctx, "get-option");
     let value = ctx
         .host
+        .settings()
         .get_option(&key, ctx.focused_buffer_id)
         .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
     Ok(match value {

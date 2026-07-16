@@ -83,6 +83,7 @@ pub(crate) fn configure_statusline(
     let center = extract_string_list(&center, "center")?;
     let right = extract_string_list(&right, "right")?;
     ctx.host
+        .settings()
         .configure_statusline(left, center, right)
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
     Ok(SteelVal::Void)

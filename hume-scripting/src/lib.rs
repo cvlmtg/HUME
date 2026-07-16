@@ -65,7 +65,7 @@ pub use builtins::sandbox::init_dirs;
 pub use hooks::HookId;
 pub use host::{
     BindMode, CommandHost, CompletionHost, CursorHost, DecorationHost, EditHost, EditorHost,
-    KeymapHost, LanguageHost, LspHost, OutputHost, TimerHost, UiHost, unsupported,
+    KeymapHost, LanguageHost, LspHost, OutputHost, SettingsHost, TimerHost, UiHost, unsupported,
 };
 pub use keys::parse_key_stream;
 pub use log::LogLevel;
@@ -564,7 +564,7 @@ impl ScriptingHost {
         focused_buffer_id: hume_engine::pipeline::BufferId,
         host: &'a mut dyn EditorHost,
     ) -> Result<SteelCmdResult, String> {
-        let budget_ms = host.steel_command_budget_ms();
+        let budget_ms = host.settings().steel_command_budget_ms();
 
         // Keypress dispatch routes through %dispatch-command so Lazy-miss
         // auto-activation and command_table lookup use the same path as call!.
@@ -626,7 +626,7 @@ impl ScriptingHost {
             return Ok(HookResult::default());
         }
 
-        let budget_ms = host.steel_command_budget_ms();
+        let budget_ms = host.settings().steel_command_budget_ms();
 
         let (result, effects) = {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
@@ -672,7 +672,7 @@ impl ScriptingHost {
             return Ok(HookResult::default());
         }
 
-        let budget_ms = host.steel_command_budget_ms();
+        let budget_ms = host.settings().steel_command_budget_ms();
 
         let (result, effects) = {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
