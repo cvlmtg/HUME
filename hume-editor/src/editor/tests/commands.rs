@@ -1,4 +1,5 @@
 use super::*;
+use crate::editor::dispatch::ArgSource;
 use pretty_assertions::assert_eq;
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -1684,7 +1685,7 @@ fn delete_in_insert_mode_stamps_marker() {
     let mut ed = editor_from("-[a]>b\n");
     ed.feed_key(key('i')); // enter Insert, last_command = Some("enter-insert")
     // Dispatch delete by name — 'd' in Insert self-inserts.
-    ed.execute_keymap_command("delete".into(), Some(1), false, vec![]);
+    ed.execute_keymap_command("delete".into(), Some(1), false, ArgSource::Keymap);
     assert_eq!(
         ed.state.last_command.as_deref(),
         Some("delete"),

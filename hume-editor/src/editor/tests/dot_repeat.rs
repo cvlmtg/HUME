@@ -1,4 +1,5 @@
 use super::*;
+use crate::editor::dispatch::ArgSource;
 use pretty_assertions::assert_eq;
 
 // ── Dot-repeat tests ──────────────────────────────────────────────────────────
@@ -633,7 +634,7 @@ fn steel_dot_repeatable_round_trip() {
     );
 
     // Run the repeatable Steel command.
-    ed.execute_keymap_command("del-sel".into(), Some(1), false, vec![]);
+    ed.execute_keymap_command("del-sel".into(), Some(1), false, ArgSource::Keymap);
     // "foo" deleted; buffer is " bar\n".
     assert_eq!(ed.doc().text().to_string(), " bar\n", "first run");
 
@@ -685,7 +686,7 @@ fn steel_command_is_not_repeatable() {
     );
 
     // Run the Steel command — it calls (call! "delete") internally.
-    ed.execute_keymap_command("del-sel".into(), Some(1), false, vec![]);
+    ed.execute_keymap_command("del-sel".into(), Some(1), false, ArgSource::Keymap);
 
     // last_repeatable_action must still be "delete", not "del-sel".
     assert_eq!(
@@ -725,7 +726,7 @@ fn non_repeatable_steel_does_not_hijack_dot() {
     );
 
     // Run the non-repeatable Steel command.
-    ed.execute_keymap_command("noop-move".into(), Some(1), false, vec![]);
+    ed.execute_keymap_command("noop-move".into(), Some(1), false, ArgSource::Keymap);
 
     // last_repeatable_action must still be "delete".
     assert_eq!(
@@ -790,12 +791,10 @@ fn lazy_repeatable_round_trip() {
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed");
-    let activation_commands = host.activation_commands();
-    ed.register_lazy_command_stubs(&activation_commands);
     ed.scripting = Some(host);
 
     // First dispatch: Lazy miss → plugin activates → SteelBacked runs.
-    ed.execute_keymap_command("tp-del".into(), Some(1), false, vec![]);
+    ed.execute_keymap_command("tp-del".into(), Some(1), false, ArgSource::Keymap);
     assert_eq!(ed.doc().text().to_string(), " bar\n");
 
     // The re-query must see the now-activated SteelBacked repeatable entry.

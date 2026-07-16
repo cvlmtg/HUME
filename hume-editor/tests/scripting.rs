@@ -2082,10 +2082,12 @@ fn lazy_load_stays_declared_body_not_evaluated() {
 }
 
 /// `(declare-plugin "user/tp" #:commands '("my-cmd"))` → plugin stays lazy,
-/// `activation_commands["my-cmd"]` maps to the plugin, body not evaluated.
+/// the host's `Lazy` stub for "my-cmd" maps to the plugin, body not evaluated.
 #[test]
 #[cfg(not(windows))]
 fn on_command_trigger_populates_registry_body_not_evaluated() {
+    use hume_scripting::host::CommandHost;
+
     let (dir, init_path) = plugin_fixture(
         r#"(declare-plugin "user/tp" #:commands '("my-cmd"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
@@ -2108,9 +2110,9 @@ fn on_command_trigger_populates_registry_body_not_evaluated() {
         h.plugin_status(&id)
     );
     assert_eq!(
-        h.activation_commands().get("my-cmd"),
-        Some(&id),
-        "activation_commands must map my-cmd to the plugin"
+        mock.lazy_command_owner("my-cmd"),
+        Some(id.clone()),
+        "the host's Lazy stub for my-cmd must map to the plugin"
     );
     assert!(
         !mock.registered_cmds.iter().any(|d| d.name == "tp-cmd"),
@@ -2209,6 +2211,8 @@ fn eager_plugin_body_error_aborts_init() {
 #[test]
 #[cfg(not(windows))]
 fn manifest_collision_with_builtin_logs_error_continues() {
+    use hume_scripting::host::CommandHost;
+
     let (dir, init_path) = plugin_fixture(
         r#"(declare-plugin "user/tp" #:commands '("move-right" "my-cmd"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
@@ -2234,12 +2238,12 @@ fn manifest_collision_with_builtin_logs_error_continues() {
     );
     // Colliding activation entry not written; valid one is.
     assert!(
-        !h.activation_commands().contains_key("move-right"),
-        "colliding activation entry must not appear in activation_commands"
+        mock.lazy_command_owner("move-right").is_none(),
+        "colliding activation entry must not appear as a Lazy stub"
     );
     assert!(
-        h.activation_commands().contains_key("my-cmd"),
-        "valid activation entry must appear in activation_commands"
+        mock.lazy_command_owner("my-cmd").is_some(),
+        "valid activation entry must appear as a Lazy stub"
     );
     // Plugin stays Declared (body not evaluated), with the remaining activation entry.
     let id = attribution::PluginId::User {
@@ -2272,85 +2276,16 @@ fn manifest_collision_with_builtin_logs_error_continues() {
         "non-colliding activation entry must not log any Error"
     );
     assert!(
-        h2.activation_commands().contains_key("not-a-builtin"),
-        "non-colliding activation entry must appear in activation_commands"
+        mock2.lazy_command_owner("not-a-builtin").is_some(),
+        "non-colliding activation entry must appear as a Lazy stub"
     );
 }
 
-/// Two plugins both declare `#:commands '("bar")` → second declaration's
-/// activation entry is dropped, a `Severity::Error` is logged, first-writer-wins, init
-/// continues.
-///
-/// Flip: both plugins are Declared; only the first plugin owns the activation entry.
-#[test]
-#[cfg(not(windows))]
-fn manifest_collision_lazy_vs_lazy_logs_error_continues() {
-    let dir = tempfile::tempdir().unwrap();
-    let pa = dir.path().join("plugins").join("user").join("pa");
-    let pb = dir.path().join("plugins").join("user").join("pb");
-    std::fs::create_dir_all(&pa).unwrap();
-    std::fs::create_dir_all(&pb).unwrap();
-    std::fs::write(
-        pa.join("plugin.scm"),
-        r#"(define-command! "tp-a" "doc" (lambda () (+ 1 0)))"#,
-    )
-    .unwrap();
-    std::fs::write(
-        pb.join("plugin.scm"),
-        r#"(define-command! "tp-b" "doc" (lambda () (+ 1 0)))"#,
-    )
-    .unwrap();
-    let init_path = dir.path().join("init.scm");
-    std::fs::write(
-        &init_path,
-        r#"
-(declare-plugin "user/pa" #:commands '("bar"))
-(declare-plugin "user/pb" #:commands '("bar" "pb-only"))
-"#,
-    )
-    .unwrap();
-
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
-    let mut mock = MockHost::new();
-
-    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
-        .expect("lazy-vs-lazy collision must NOT abort init");
-
-    // Error logged for pb's duplicate activation entry.
-    assert!(
-        h.peek_pending_messages().iter().any(|(sev, msg)| {
-            matches!(sev, hume_scripting::LogLevel::Error)
-                && msg.contains("bar")
-                && msg.contains("already claimed")
-        }),
-        "expected an Error about 'bar' already claimed; got: {:?}",
-        h.peek_pending_messages()
-    );
-    // First-writer (pa) owns the activation entry.
-    let pa_id = attribution::PluginId::User {
-        user: "user".to_string(),
-        repo: "pa".to_string(),
-    };
-    assert_eq!(
-        h.activation_commands().get("bar"),
-        Some(&pa_id),
-        "activation_commands[\"bar\"] must point to pa (first-writer-wins)"
-    );
-    // Both plugins are Declared — pb stays declared even though its activation entry was dropped.
-    let pb_id = attribution::PluginId::User {
-        user: "user".to_string(),
-        repo: "pb".to_string(),
-    };
-    assert!(
-        matches!(h.plugin_status(&pa_id), Some(PluginStatus::Declared)),
-        "pa must be Declared"
-    );
-    assert!(
-        matches!(h.plugin_status(&pb_id), Some(PluginStatus::Declared)),
-        "pb must be Declared even with its activation entry dropped"
-    );
-}
+// `manifest_collision_lazy_vs_lazy_logs_error_continues` moved to
+// `hume-editor/src/editor/tests/plugins.rs` as
+// `lazy_stub_collision_lazy_vs_lazy_first_writer_wins` — it needs real
+// `CommandRegistry` collision detection (a real `Editor` + `EditorHostImpl`),
+// which `MockHost` (this file's host) deliberately does not reimplement.
 
 /// After a lazy declare, `cmd_owners["bar"]` maps to the plugin id — not to
 /// `"hume"` — even before the plugin body is evaluated.
@@ -2384,11 +2319,13 @@ fn cmd_owners_pre_seeded_before_activation() {
     );
 }
 
-/// `activate_plugin` drops the plugin's `activation_commands` entry after the
-/// plugin body is evaluated successfully.
+/// `activate_plugin` drops the plugin's `Lazy` stub after the plugin body is
+/// evaluated successfully.
 #[test]
 #[cfg(not(windows))]
 fn activate_plugin_drops_command_trigger_on_loaded() {
+    use hume_scripting::host::CommandHost;
+
     let (dir, init_path) = plugin_fixture(
         r#"(declare-plugin "user/tp" #:commands '("my-cmd"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
@@ -2400,10 +2337,10 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("init must succeed");
 
-    // Activation entry is present before activation.
+    // Lazy stub is present before activation.
     assert!(
-        h.activation_commands().contains_key("my-cmd"),
-        "activation entry must be present before activation"
+        mock.lazy_command_owner("my-cmd").is_some(),
+        "Lazy stub must be present before activation"
     );
 
     let id = attribution::PluginId::User {
@@ -2413,10 +2350,10 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
     h.activate_plugin_inline(&id, 10_000, &mut mock, &Default::default())
         .expect("activate_plugin_inline must succeed");
 
-    // Activation entry is removed after activation.
+    // Lazy stub is removed after activation.
     assert!(
-        !h.activation_commands().contains_key("my-cmd"),
-        "activation entry must be removed after activation"
+        mock.lazy_command_owner("my-cmd").is_none(),
+        "Lazy stub must be removed after activation"
     );
 }
 
@@ -2503,6 +2440,8 @@ fn activate_plugin_drops_language_activation_on_loaded() {
 #[test]
 #[cfg(not(windows))]
 fn declare_then_load_activates_and_logs_soft_error() {
+    use hume_scripting::host::CommandHost;
+
     let (dir, init_path) = plugin_fixture(
         "(declare-plugin \"user/tp\" #:commands '(\"my-cmd\"))\n(load-plugin \"user/tp\")",
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
@@ -2525,8 +2464,8 @@ fn declare_then_load_activates_and_logs_soft_error() {
         h.plugin_status(&id)
     );
     assert!(
-        !h.activation_commands().contains_key("my-cmd"),
-        "activation command entry must be cleared after activation"
+        mock.lazy_command_owner("my-cmd").is_none(),
+        "Lazy stub must be cleared after activation"
     );
     assert!(
         mock.registered_cmds.iter().any(|d| d.name == "tp-cmd"),
@@ -2553,6 +2492,8 @@ fn declare_then_load_activates_and_logs_soft_error() {
 #[test]
 #[cfg(not(windows))]
 fn load_then_declare_ignored_with_soft_error() {
+    use hume_scripting::host::CommandHost;
+
     let (dir, init_path) = plugin_fixture(
         "(load-plugin \"user/tp\")\n(declare-plugin \"user/tp\" #:commands '(\"my-cmd\"))",
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
@@ -2584,10 +2525,10 @@ fn load_then_declare_ignored_with_soft_error() {
         "expected a soft error about load-then-declare contradiction; got: {:?}",
         h.peek_pending_messages()
     );
-    // The declare was ignored: no activation entry for "my-cmd" should be registered.
+    // The declare was ignored: no Lazy stub for "my-cmd" should be registered.
     assert!(
-        !h.activation_commands().contains_key("my-cmd"),
-        "my-cmd must not be registered as an activation entry — declare was ignored"
+        mock.lazy_command_owner("my-cmd").is_none(),
+        "my-cmd must not be registered as a Lazy stub — declare was ignored"
     );
 }
 

@@ -1,4 +1,5 @@
 use super::*;
+use crate::editor::dispatch::ArgSource;
 use crate::editor::registry::MappableCommand;
 use crate::editor::scripting_setup::make_init_host;
 use hume_scripting::{PluginStatus, ScriptingHost, hooks::HookId};
@@ -35,14 +36,13 @@ fn setup_lazy_editor(init_body: &str, plugin_body: &str) -> (Editor, tempfile::T
     }
     .expect("eval_init must succeed in setup_lazy_editor");
 
-    let activation_commands: std::collections::HashMap<_, _> = host.activation_commands();
-    ed.register_lazy_command_stubs(&activation_commands);
     ed.scripting = Some(host);
     (ed, dir)
 }
 
-/// After `eval_init` + `register_lazy_command_stubs`, a `Lazy` stub is present
-/// for the declared command name.
+/// After `eval_init`, a `Lazy` stub is present for the declared command name —
+/// `declare-plugin` registers it directly via `CommandHost::register_lazy_command`
+/// as the manifest is processed, with no separate post-init pass.
 ///
 /// Flip: without the stub registration, `get_mappable("bar")` would be `None`.
 #[test]
@@ -378,15 +378,14 @@ fn key_press_activates_lazy_plugin_via_keymap() {
 }
 
 /// Eager-plugin-command collision: an eager plugin defines "foo", then a lazy
-/// plugin declares `#:commands '("foo")`.  The collision is now caught at
-/// `declare-plugin` time (not at stub registration): the declaration fails
-/// with "no activation entries", the eager SteelBacked command survives, and
-/// no orphan entry is left in `activation_commands`.
+/// plugin declares `#:commands '("foo")`.  The collision is caught at
+/// `declare-plugin` time, directly against the editor's live registry: the
+/// declaration fails with "no activation entries", the eager SteelBacked
+/// command survives, and no `Lazy` stub is ever registered for "foo".
 ///
-/// Flip: remove the `command_table` check from `declare_plugin`'s filter loop
-/// → declare-plugin succeeds, "foo" leaks into `activation_commands`, the
-/// plugin is stuck `Declared`, and the first assertion (eval_init returns Err)
-/// flips to Ok.
+/// Flip: remove the eager-command check from `declare_plugin`'s filter loop
+/// → declare-plugin succeeds, "foo" registers as a `Lazy` stub shadowing the
+/// eager command, and the first assertion (eval_init returns Err) flips to Ok.
 #[test]
 #[cfg(not(windows))]
 fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
@@ -433,14 +432,6 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
         "error must explain the cause; got: {err}"
     );
 
-    // activation_commands must be clean — no orphan entry for "foo".
-    let activation_commands = host.activation_commands();
-    assert!(
-        !activation_commands.contains_key("foo"),
-        "activation_commands must not contain orphan 'foo'; got: {activation_commands:?}"
-    );
-    // Stub registration is a no-op (nothing in activation_commands).
-    ed.register_lazy_command_stubs(&activation_commands);
     ed.scripting = Some(host);
 
     // The eager command still registered correctly before the error.
@@ -451,6 +442,109 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
         ),
         "eager 'foo' must survive as SteelBacked; got: {:?}",
         ed.state.registry.get_mappable("foo").map(|c| c.name())
+    );
+}
+
+/// Two plugins both declare `#:commands '("bar")` — the collision is caught
+/// at `declare-plugin` time against the editor's live registry: the second
+/// plugin's "bar" entry is dropped (logged as an Error, first-writer-wins),
+/// and both plugins remain `Declared` (neither is stuck or hard-errored).
+///
+/// Ported from a `MockHost`-driven version in `hume-editor/tests/scripting.rs`
+/// to a real `Editor` + `EditorHostImpl` — collision detection is
+/// `CommandRegistry`'s decision, and testing it through a hand-rolled
+/// `MockHost` copy of the same rules risked silently drifting from the real
+/// behavior it was meant to prove.
+///
+/// Flip: remove the `register_lazy_command` collision check → "bar" would
+/// register twice, the second `Lazy { plugin: pb, .. }` silently overwriting
+/// the first in the registry, so pa's real ownership would be lost with no
+/// error logged.
+#[test]
+#[cfg(not(windows))]
+fn lazy_stub_collision_lazy_vs_lazy_first_writer_wins() {
+    let dir = {
+        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        tempfile::tempdir().unwrap()
+    };
+    let pa_dir = dir.path().join("plugins").join("user").join("pa");
+    let pb_dir = dir.path().join("plugins").join("user").join("pb");
+    std::fs::create_dir_all(&pa_dir).unwrap();
+    std::fs::create_dir_all(&pb_dir).unwrap();
+    std::fs::write(
+        pa_dir.join("plugin.scm"),
+        r#"(define-command! "tp-a" "doc" (lambda () (+ 1 0)))"#,
+    )
+    .unwrap();
+    std::fs::write(
+        pb_dir.join("plugin.scm"),
+        r#"(define-command! "tp-b" "doc" (lambda () (+ 1 0)))"#,
+    )
+    .unwrap();
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(
+        &init_path,
+        "(declare-plugin \"user/pa\" #:commands '(\"bar\"))\n\
+         (declare-plugin \"user/pb\" #:commands '(\"bar\" \"pb-only\"))",
+    )
+    .unwrap();
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+    {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("lazy-vs-lazy collision must NOT abort init");
+
+    // Error logged for pb's duplicate "bar" entry. `eval_init` queues log
+    // messages on the host (`ctx.log`) rather than writing `ed.state.
+    // message_log` directly — only `Editor::init_scripting`'s tail code
+    // flushes that queue, which this test bypasses by calling `eval_init`
+    // directly, so check the host's queue itself.
+    assert!(
+        host.peek_pending_messages().iter().any(|(sev, msg)| {
+            matches!(sev, hume_scripting::LogLevel::Error)
+                && msg.contains("bar")
+                && msg.contains("already claimed")
+        }),
+        "expected an Error about 'bar' already claimed; got: {:?}",
+        host.peek_pending_messages()
+    );
+    ed.scripting = Some(host);
+
+    // First-writer (pa) owns the "bar" stub.
+    use hume_scripting::attribution::PluginId;
+    let pa_id = PluginId::User {
+        user: "user".to_string(),
+        repo: "pa".to_string(),
+    };
+    let pb_id = PluginId::User {
+        user: "user".to_string(),
+        repo: "pb".to_string(),
+    };
+    assert!(
+        matches!(
+            ed.state.registry.get_mappable("bar"),
+            Some(MappableCommand::Lazy { plugin, .. }) if *plugin == pa_id
+        ),
+        "bar's Lazy stub must be owned by pa (first-writer-wins)"
+    );
+    // Both plugins are Declared — pb stays declared even though its "bar" entry was dropped.
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&pa_id),
+            Some(PluginStatus::Declared)
+        ),
+        "pa must be Declared"
+    );
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&pb_id),
+            Some(PluginStatus::Declared)
+        ),
+        "pb must be Declared even with its 'bar' entry dropped"
     );
 }
 
@@ -833,8 +927,6 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed");
-    let activation_commands = host.activation_commands();
-    ed.register_lazy_command_stubs(&activation_commands);
     ed.scripting = Some(host);
 
     let id_a = PluginId::User {
@@ -1501,8 +1593,6 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed");
-    let activation_commands: std::collections::HashMap<_, _> = host.activation_commands();
-    ed.register_lazy_command_stubs(&activation_commands);
     ed.scripting = Some(host);
 
     type_cmd(&mut ed, ":bar");
@@ -1872,12 +1962,11 @@ fn core_lsp_real_manifest_scm_resolves_via_zero_trigger_declare() {
          declare resolves its manifest.scm"
     );
     assert!(
-        ed.scripting
-            .as_ref()
-            .unwrap()
-            .activation_commands()
-            .contains_key("lsp-install"),
-        "manifest.scm's #:commands entries must be registered as activation stubs, \
+        matches!(
+            ed.state.registry.get_mappable("lsp-install"),
+            Some(MappableCommand::Lazy { .. })
+        ),
+        "manifest.scm's #:commands entries must be registered as Lazy stubs, \
          including \"lsp-install\""
     );
     assert!(
@@ -1942,12 +2031,11 @@ fn core_stdlib_real_manifest_scm_resolves_via_zero_trigger_declare() {
          declare resolves its manifest.scm"
     );
     assert!(
-        ed.scripting
-            .as_ref()
-            .unwrap()
-            .activation_commands()
-            .contains_key("stdlib/all-single-char?"),
-        "manifest.scm's #:commands entries must be registered as activation stubs, \
+        matches!(
+            ed.state.registry.get_mappable("stdlib/all-single-char?"),
+            Some(MappableCommand::Lazy { .. })
+        ),
+        "manifest.scm's #:commands entries must be registered as Lazy stubs, \
          including \"stdlib/all-single-char?\""
     );
 }
@@ -2004,12 +2092,11 @@ fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
          declare resolves its manifest.scm"
     );
     assert!(
-        ed.scripting
-            .as_ref()
-            .unwrap()
-            .activation_commands()
-            .contains_key("plum-list"),
-        "manifest.scm's #:commands entries must be registered as activation stubs, \
+        matches!(
+            ed.state.registry.get_mappable("plum-list"),
+            Some(MappableCommand::Lazy { .. })
+        ),
+        "manifest.scm's #:commands entries must be registered as Lazy stubs, \
          including \"plum-list\""
     );
     assert!(
@@ -2048,18 +2135,19 @@ fn keymap_lint_silent_for_known_command() {
     );
 }
 
-// ── register_lazy_command_stubs — collision cleanup ───────────────────────────
+// ── CommandHost::register_lazy_command — collision rejection ─────────────────
 
-/// When a declared lazy command collides with an already-registered name,
-/// `register_lazy_command_stubs` must return that name as "collided" and NOT
+/// When a lazy command's claimed name collides with an already-registered
+/// name, `CommandHost::register_lazy_command` must return `Err` and NOT
 /// register a `Lazy` stub for it.
 ///
-/// Flip: if collision detection were removed, `get_mappable("move-right")`
-/// would return `Some(Lazy {..})` (shadowing the built-in) and `collided`
-/// would be empty — both assertions would fire.
+/// Flip: if collision detection were removed, the call would return `Ok` and
+/// `get_mappable("move-right")` would return `Some(Lazy {..})`, shadowing the
+/// built-in — both assertions would fire.
 #[test]
-fn lazy_stub_collision_returned_and_stub_not_registered() {
+fn lazy_stub_collision_rejected_and_stub_not_registered() {
     use hume_scripting::attribution::PluginId;
+    use hume_scripting::host::EditorHost;
 
     let mut ed = editor_from("-[a]>b\n");
     let plugin = PluginId::User {
@@ -2068,15 +2156,14 @@ fn lazy_stub_collision_returned_and_stub_not_registered() {
     };
 
     // "move-right" is a native built-in guaranteed to be in the registry.
-    let activations: std::collections::HashMap<String, PluginId> =
-        [("move-right".to_string(), plugin)].into_iter().collect();
+    let result = {
+        let mut host = make_init_host(&mut ed.state, &mut ed.view);
+        host.commands().register_lazy_command("move-right", &plugin)
+    };
 
-    let collided = ed.register_lazy_command_stubs(&activations);
-
-    assert_eq!(
-        collided,
-        vec!["move-right".to_string()],
-        "colliding name must be returned"
+    assert!(
+        result.is_err(),
+        "claiming a name already taken by a built-in must be rejected; got Ok"
     );
     assert!(
         !matches!(
@@ -2084,14 +2171,6 @@ fn lazy_stub_collision_returned_and_stub_not_registered() {
             Some(crate::editor::registry::MappableCommand::Lazy { .. })
         ),
         "built-in must not be shadowed by a Lazy stub after collision"
-    );
-    assert!(
-        ed.state.message_log.entries().any(|e| {
-            e.severity == crate::editor::Severity::Error
-                && e.text.contains("move-right")
-                && e.text.contains("conflicts with an existing command")
-        }),
-        "collision must produce an Error message"
     );
 }
 
@@ -2184,5 +2263,223 @@ fn core_stdlib_selection_commands() {
     assert!(
         result.is_ok(),
         "stdlib selection command assertions must all pass: {result:?}"
+    );
+}
+
+// ── Retrospective issue 2: one registry, one dispatcher — new coverage ───────
+
+/// A lazy command's first dispatch leaves identical bookkeeping whether
+/// triggered via keypress-style dispatch or the `:` command line — both are
+/// an "outer" `Editor::dispatch` call for the same command name, so both
+/// stamp `last_command`/jump/paste bookkeeping identically.
+///
+/// Not compared against a `call!`-from-another-command path: `call!`'s
+/// bookkeeping is deliberately outer-name-wins (see `dispatch.rs`'s
+/// `run_steel_command` — "Outer-name-wins: stamp the outer command so `.`
+/// replays it, not any inner command the body dispatched via `call!`") — a
+/// command reached via an outer wrapper stamps the WRAPPER's name, not the
+/// inner command's, so a 3-way keypress/`:`/`call!` identity claim would be
+/// asserting behavior the system deliberately does not have.
+///
+/// Fail oracle: if lazy activation's AFTER-stage bookkeeping (jump/paste/
+/// last_command) diverged between the two entry points — e.g. one skipped
+/// the repeatable-action stamp — one of the two snapshots would differ.
+#[test]
+#[cfg(not(windows))]
+fn lazy_command_first_dispatch_parity_keypress_vs_minibuf() {
+    let (mut ed_key, _dir_key) = setup_lazy_editor(
+        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
+        r#"(define-command! "bar" "" (lambda () (call! "delete")) #:repeatable #t)"#,
+    );
+    let before_key = snapshot_bookkeeping(&ed_key);
+    ed_key.execute_keymap_command("bar".into(), Some(1), false, ArgSource::Keymap);
+    let snap_key = snapshot_bookkeeping(&ed_key);
+
+    let (mut ed_mb, _dir_mb) = setup_lazy_editor(
+        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
+        r#"(define-command! "bar" "" (lambda () (call! "delete")) #:repeatable #t)"#,
+    );
+    let before_mb = snapshot_bookkeeping(&ed_mb);
+    type_cmd(&mut ed_mb, ":bar");
+    let snap_mb = snapshot_bookkeeping(&ed_mb);
+
+    assert_eq!(
+        before_key, before_mb,
+        "pre-condition: both fresh editors must start identical"
+    );
+    assert_eq!(
+        snap_key, snap_mb,
+        "lazy command's first dispatch must leave identical bookkeeping via \
+         keypress vs `:` line"
+    );
+    // Both paths must have actually activated the plugin and run the command.
+    assert_eq!(ed_key.doc().text().to_string(), "b\n");
+    assert_eq!(ed_mb.doc().text().to_string(), "b\n");
+}
+
+/// `:cmd arg` on a lazy command's very first dispatch must forward `arg` to
+/// the lambda — pins the ordering `Editor::run_steel_command` now depends on:
+/// activation (which replaces the `Lazy` stub with `SteelBacked`) must
+/// complete before `ArgSource::Minibuf` marshalling reads the resolved arity.
+///
+/// Fail oracle: if activation ran after arg marshalling instead of before,
+/// the stub's `Lazy` arity (not yet resolved) would be used instead of the
+/// real lambda's arity, and the forwarded arg would never reach `call!`.
+#[test]
+#[cfg(not(windows))]
+fn lazy_command_first_call_minibuf_arg_forwarded() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin "user/tp" #:commands '("echo-arg"))"#,
+        r#"(define-command! "echo-arg" "" (lambda (x) (when (string? x) (call! x))))"#,
+    );
+    let before = state(&ed);
+
+    // The typed arg "move-right" is a native command name — echo-arg forwards
+    // it straight to `call!`, so a cursor move is observable proof the arg
+    // arrived, not just that some command ran.
+    type_cmd(&mut ed, ":echo-arg move-right");
+
+    assert_ne!(
+        state(&ed),
+        before,
+        "first :echo-arg dispatch must forward the typed arg (\"move-right\") \
+         to the lambda"
+    );
+    assert!(
+        matches!(
+            ed.state.registry.get_mappable("echo-arg"),
+            Some(MappableCommand::SteelBacked { .. })
+        ),
+        "echo-arg stub must have activated on first dispatch"
+    );
+}
+
+/// Keypress dispatch of a `SteelBacked` command whose `command_table` entry
+/// is missing must fail loudly, naming the desync — never silently no-op or
+/// fall back to `%dispatch-command`'s own miss handling (that dispatcher is
+/// reserved for `call!`/bare-name calls originating inside the VM).
+///
+/// This state (registry entry present, no `command_table` entry) cannot
+/// arise from `define-command!` in production — it simulates a desync
+/// directly to pin `call_steel_cmd`'s fail-fast guard.
+///
+/// Fail oracle: if `call_steel_cmd` fell back to invoking `%dispatch-command`
+/// on a `command_table` miss (the pre-consolidation behavior), this would
+/// silently report "unknown command" via the native/call! fallback instead
+/// of naming the desync explicitly.
+#[test]
+fn keypress_dispatch_command_table_desync_reports_error() {
+    let mut ed = editor_from("-[a]>b\n");
+    ed.state.registry.register(MappableCommand::SteelBacked {
+        name: "ghost-cmd".to_owned().into(),
+        doc: std::borrow::Cow::Borrowed(""),
+        arity: 0,
+        is_variadic: false,
+        inline_output: false,
+        repeatable: false,
+    });
+    // A fresh scripting host's command_table has no entry for "ghost-cmd" —
+    // it never went through define-command!, simulating a registry/table desync.
+    ed.scripting = Some(ScriptingHost::new());
+
+    let before = state(&ed);
+    ed.execute_keymap_command("ghost-cmd".into(), Some(1), false, ArgSource::Keymap);
+
+    assert_eq!(
+        state(&ed),
+        before,
+        "a desync must not silently execute anything"
+    );
+    assert!(
+        ed.state.message_log.entries().any(|e| {
+            e.severity == crate::editor::Severity::Error
+                && e.text.contains("ghost-cmd")
+                && e.text.contains("desync")
+        }),
+        "desync must be reported loudly; messages: {:?}",
+        ed.state
+            .message_log
+            .entries()
+            .map(|e| e.text.clone())
+            .collect::<Vec<_>>()
+    );
+}
+
+/// A failed activation removes EVERY remaining `Lazy` stub of that plugin —
+/// not just the one that triggered the activation. Extends
+/// `body_error_removes_stub_and_marks_failed` (single-command case) to a
+/// plugin declaring two commands, only one of which is dispatched.
+///
+/// Before `CommandHost::unregister_lazy_stubs_of` was called from
+/// `finish_lazy_activation`, a sibling stub survived as a dangling `Lazy`
+/// entry pointing at a now-`Failed` plugin until it was itself dispatched
+/// (and only then cleaned up by the per-dispatch loop guard) — a behavior
+/// improvement this test pins.
+///
+/// Fail oracle: revert to only unregistering the dispatched stub (the old
+/// per-dispatch loop guard alone) → `stub-b` survives as `Lazy` after
+/// `stub-a`'s activation fails.
+#[test]
+#[cfg(not(windows))]
+fn failed_activation_removes_all_of_the_plugins_stubs_not_just_the_dispatched_one() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin "user/tp" #:commands '("stub-a" "stub-b"))"#,
+        r#"(error "intentional plugin failure")"#,
+    );
+    assert!(
+        matches!(
+            ed.state.registry.get_mappable("stub-a"),
+            Some(MappableCommand::Lazy { .. })
+        ),
+        "stub-a must be present before dispatch"
+    );
+    assert!(
+        matches!(
+            ed.state.registry.get_mappable("stub-b"),
+            Some(MappableCommand::Lazy { .. })
+        ),
+        "stub-b must be present before dispatch"
+    );
+
+    type_cmd(&mut ed, ":stub-a");
+
+    assert!(
+        ed.state.registry.get_mappable("stub-a").is_none(),
+        "the dispatched stub must be gone after failed activation"
+    );
+    assert!(
+        ed.state.registry.get_mappable("stub-b").is_none(),
+        "a sibling stub of the same failed plugin must ALSO be gone \
+         immediately — not left dangling until it is itself dispatched"
+    );
+}
+
+/// `:plugin-status` reports a `Declared` plugin's pending `cmd:` activation
+/// entries sourced from the editor's live `Lazy` stubs — the plumbing
+/// `lazy_status_string`/`format_status` now require since this crate no
+/// longer tracks pending command activations itself.
+///
+/// Fail oracle: if `typed_plugin_status` stopped passing `registry.lazy_stubs()`
+/// through, `:plugin-status` would show no `cmd:` entries for any `Declared`
+/// plugin regardless of what it actually declared.
+#[test]
+#[cfg(not(windows))]
+fn plugin_status_shows_pending_command_from_live_registry_stubs() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
+        r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
+    );
+
+    type_cmd(&mut ed, ":plugin-status");
+
+    assert_eq!(
+        ed.doc().display_name(),
+        "[plugin-status]",
+        ":plugin-status must open the [plugin-status] read-only view"
+    );
+    let out = ed.doc().text().to_string();
+    assert!(
+        out.contains("user/tp") && out.contains("cmd:bar"),
+        ":plugin-status must show the pending cmd:bar entry for user/tp; got: {out:?}"
     );
 }

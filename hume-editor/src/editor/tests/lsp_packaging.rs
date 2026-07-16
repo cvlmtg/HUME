@@ -49,10 +49,11 @@ fn eval_with_real_host(ed: &mut Editor, host: &mut ScriptingHost, source: &str, 
 
 /// Mirrors `lsp_hover.rs`'s `setup`, but declares `core:lsp` lazily
 /// (`declare_src`, normally `DECLARE_LSP`) instead of `(load-plugin
-/// "core:lsp")`, and registers the lazy command stubs so a `:`-command
-/// dispatch can trigger activation — mirrors `tests/plugins.rs`'s
-/// `setup_lazy_editor` for the stub-registration step, combined with the
-/// real-runtime staging every other F-card test uses.
+/// "core:lsp")` — `declare-plugin` registers the `Lazy` stub directly via
+/// `CommandHost::register_lazy_command` as `eval_with_real_host` runs, so a
+/// `:`-command dispatch can trigger activation with no separate
+/// stub-registration step — combined with the real-runtime staging every
+/// other F-card test uses.
 ///
 /// The handshake below (draining the backend's `initialize` response and
 /// dispatching `BecameRunning`) fires `on-lsp-attach` *before* `ed.scripting`
@@ -76,7 +77,10 @@ fn setup_declared(
     // fixture makes even trivial hover content overflow to the drawer once
     // `(viewport-range bid)` resolves against real (if pre-`prepare_frame`
     // default) pane geometry instead of a test-only #f fallback.
-    let filler = (0..29).map(|i| format!("// line {i}")).collect::<Vec<_>>().join("\n");
+    let filler = (0..29)
+        .map(|i| format!("// line {i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
     std::fs::write(&file, format!("fn main() {{}}\n{filler}\n")).unwrap();
 
     let mut backend = InlineLspBackend::new();
@@ -105,8 +109,6 @@ fn setup_declared(
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(&mut ed, &mut host, declare_src, tmp);
-    let activation_commands = host.activation_commands();
-    ed.register_lazy_command_stubs(&activation_commands);
     ed.scripting = Some(host);
 
     (ed, guard)
@@ -150,9 +152,10 @@ fn declared_but_undispatched_plugin_is_declared_not_loaded() {
 /// the real plugin body from disk, replaces the lazy stub, and runs the real
 /// hover request through to a populated popup.
 ///
-/// Flip: without `register_lazy_command_stubs`, `:lsp-hover` would be an
-/// unknown command and this would report an error, not show a popup; without
-/// the real activation wiring, `plugin_status` would stay `Declared`.
+/// Flip: without `CommandHost::register_lazy_command` claiming the stub at
+/// declare time, `:lsp-hover` would be an unknown command and this would
+/// report an error, not show a popup; without the real activation wiring,
+/// `plugin_status` would stay `Declared`.
 #[test]
 #[cfg(not(windows))]
 fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
