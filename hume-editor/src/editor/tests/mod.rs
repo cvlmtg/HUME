@@ -814,6 +814,7 @@ mod pane_sync;
 mod per_pane_jumps;
 mod plugins;
 mod render_snapshot;
+mod scripting_effects;
 mod scripting_grammar;
 mod scripting_lsp_install;
 mod search;
