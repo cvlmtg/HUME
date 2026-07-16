@@ -727,7 +727,7 @@ fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
 
     let data_tmp = tempfile::tempdir().unwrap();
     // `load_plum` points XDG_DATA_HOME at data_tmp — the real data dir is
-    // XDG_DATA_HOME/hume (see sandbox.rs's init_dirs).
+    // XDG_DATA_HOME/hume (see dirs.rs's ScriptDirs::new).
     let data_dir = data_tmp.path().join("hume");
     // Seed a stale, non-empty source dir exactly like a prior clone-succeeded/
     // compile-failed install would leave behind — git-clone-rev refuses to

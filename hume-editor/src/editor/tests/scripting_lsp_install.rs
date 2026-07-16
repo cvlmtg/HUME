@@ -17,8 +17,8 @@ use std::path::{Path, PathBuf};
 use super::*;
 use crate::editor::Severity;
 
-/// Canonicalizes `root` (mirrors what `hume_scripting`'s `init_dirs` does
-/// internally) and returns `<root>/hume` — the actual directory `(data-dir)`
+/// Canonicalizes `root` (mirrors what `hume_scripting`'s `ScriptDirs::new`
+/// does internally) and returns `<root>/hume` — the actual directory `(data-dir)`
 /// resolves to. macOS temp dirs are symlinks (`/var/folders` ->
 /// `/private/var/folders`); comparing against the raw tempdir path would
 /// mismatch what a registered command's absolute path actually contains.

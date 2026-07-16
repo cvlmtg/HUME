@@ -887,7 +887,6 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
 
     let mut host = ScriptingHost::new();
     host.set_data_dir(data_dir.clone());
-    hume_scripting::init_dirs(Some(data_dir.clone()), None);
     let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::new(
         hume_editing::text::Text::empty(),
         hume_editing::selection::SelectionSet::default(),
