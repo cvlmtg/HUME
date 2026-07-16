@@ -1,18 +1,18 @@
-//! LSP server registration Steel builtin.
+//! LSP server lifecycle (register/unregister/stop/restart/status), the
+//! generic request/notify bridge, and read-only introspection. Decorations,
+//! completion, edit/navigation primitives, and the minibuffer prompt live in
+//! their own modules — LSP is a client of those, not their owner.
 
 use steel::rerrs::SteelErr;
-use steel::rvals::{FromSteelVal, SteelVal};
+use steel::rvals::SteelVal;
 
-use crate::json::{json_to_steel, steel_to_json};
+use crate::json::json_to_steel;
 use crate::types::{Effect, PendingLspNotify, PendingLspRequest, PendingLspServerOp};
 use crate::{PendingLspServerReg, SteelCtx};
 
 use super::args::{
-    BidArg, TextEditArg, chars_arg, checked_fields, int_arg, json_params, list_items,
-    list_to_strings, optional_json_arg, optional_string_arg, optional_usize_arg, string_arg,
-    tuple_list, usize_arg,
+    BidArg, json_params, list_to_strings, optional_json_arg, optional_string_arg, string_arg,
 };
-use super::errors::generic_err;
 
 type SteelResult = Result<SteelVal, SteelErr>;
 

@@ -8,7 +8,9 @@ use steel::rvals::{FromSteelVal, SteelVal};
 use crate::SteelCtx;
 use crate::json::steel_to_json;
 
-use super::args::{BidArg, TextEditArg, checked_fields, list_items, optional_usize_arg, string_arg, usize_arg};
+use super::args::{
+    BidArg, TextEditArg, checked_fields, list_items, optional_usize_arg, string_arg, usize_arg,
+};
 use super::errors::generic_err;
 
 type SteelResult = Result<SteelVal, SteelErr>;
