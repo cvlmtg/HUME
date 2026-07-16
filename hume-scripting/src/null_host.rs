@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
 
+use crate::attribution::PluginId;
 use crate::host::{
     BindMode, BufferHost, CommandHost, CursorHost, EditorHost, KeymapHost, LanguageHost,
     OptionValue, OutputHost, SettingsHost,
@@ -168,6 +169,13 @@ impl CommandHost for NullHost {
         Ok(())
     }
     fn unregister_command(&mut self, _name: &str) {}
+    fn register_lazy_command(&mut self, _name: &str, _plugin: &PluginId) -> Result<(), String> {
+        Ok(())
+    }
+    fn lazy_command_owner(&self, _name: &str) -> Option<PluginId> {
+        None
+    }
+    fn unregister_lazy_stubs_of(&mut self, _plugin: &PluginId) {}
 }
 
 impl CursorHost for NullHost {
@@ -243,6 +251,15 @@ impl CommandHost for FailingRegisterHost {
     }
     fn unregister_command(&mut self, name: &str) {
         self.inner.unregister_command(name)
+    }
+    fn register_lazy_command(&mut self, name: &str, plugin: &PluginId) -> Result<(), String> {
+        self.inner.register_lazy_command(name, plugin)
+    }
+    fn lazy_command_owner(&self, name: &str) -> Option<PluginId> {
+        self.inner.lazy_command_owner(name)
+    }
+    fn unregister_lazy_stubs_of(&mut self, plugin: &PluginId) {
+        self.inner.unregister_lazy_stubs_of(plugin)
     }
 }
 
@@ -330,5 +347,95 @@ impl OutputHost for RecordingInlineOutputHost {
     fn ensure_inline_output_screen(&mut self) -> Result<(), String> {
         self.ensure_calls += 1;
         Ok(())
+    }
+}
+
+/// Like [`NullHost`] but tracks command-name claims like a minimal
+/// `CommandRegistry`, for tests that exercise `declare-plugin`/`define-command!`
+/// collision detection without a real editor.
+///
+/// Distinguishes two kinds of claim, mirroring the editor's registry:
+/// `defined` (a `SteelBacked`/native name — permanent for the test) and `lazy`
+/// (a `Lazy` stub's owning plugin, replaceable by that same plugin's own
+/// `define-command!`). `NullHost::register_command`'s "always Ok" behavior
+/// would make every declare-plugin collision test pass vacuously, so this
+/// host is required wherever a test needs `declare-plugin`/`define-command!`
+/// to actually collide.
+#[derive(Default)]
+pub(crate) struct LazyStubHost {
+    inner: NullHost,
+    defined: std::collections::HashSet<String>,
+    lazy: std::collections::HashMap<String, PluginId>,
+}
+
+impl EditorHost for LazyStubHost {
+    fn cursor(&mut self) -> &mut dyn CursorHost {
+        &mut self.inner
+    }
+    fn commands(&mut self) -> &mut dyn CommandHost {
+        self
+    }
+    fn language(&mut self) -> &mut dyn LanguageHost {
+        &mut self.inner
+    }
+    fn keymap(&mut self) -> &mut dyn KeymapHost {
+        &mut self.inner
+    }
+    fn settings(&mut self) -> &mut dyn SettingsHost {
+        &mut self.inner
+    }
+    fn buffers(&mut self) -> &mut dyn BufferHost {
+        &mut self.inner
+    }
+}
+
+impl CommandHost for LazyStubHost {
+    fn is_valid_register_name(&self, ch: char) -> bool {
+        self.inner.is_valid_register_name(ch)
+    }
+    fn command_is_native(&self, name: &str) -> Result<bool, String> {
+        self.inner.command_is_native(name)
+    }
+    fn run_command_sync(
+        &mut self,
+        name: &str,
+        count: Option<usize>,
+        extend: bool,
+        register: Option<char>,
+    ) -> Result<(), String> {
+        self.inner.run_command_sync(name, count, extend, register)
+    }
+    fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String> {
+        if self.defined.contains(&def.name) {
+            return Err(format!("'{}' conflicts with existing command", def.name));
+        }
+        // A SteelBacked define overwrites a same-name Lazy stub — mirrors
+        // CommandRegistry::register allowing Some(Lazy) | None.
+        self.lazy.remove(&def.name);
+        self.defined.insert(def.name);
+        Ok(())
+    }
+    fn unregister_command(&mut self, name: &str) {
+        self.defined.remove(name);
+    }
+    fn register_lazy_command(&mut self, name: &str, plugin: &PluginId) -> Result<(), String> {
+        if self.defined.contains(name) {
+            return Err(format!("'{name}' conflicts with an existing command"));
+        }
+        if let Some(owner) = self.lazy.get(name) {
+            return if owner == plugin {
+                Ok(())
+            } else {
+                Err(format!("'{name}' already claimed by lazy plugin '{owner}'"))
+            };
+        }
+        self.lazy.insert(name.to_string(), plugin.clone());
+        Ok(())
+    }
+    fn lazy_command_owner(&self, name: &str) -> Option<PluginId> {
+        self.lazy.get(name).cloned()
+    }
+    fn unregister_lazy_stubs_of(&mut self, plugin: &PluginId) {
+        self.lazy.retain(|_, p| p != plugin);
     }
 }

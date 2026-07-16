@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
 
+use crate::attribution::PluginId;
 use crate::types::SteelCmdDef;
 
 /// Key-binding mode, as recognised by `bind-key!`/`unbind-key!`.
@@ -225,6 +226,33 @@ pub trait CommandHost {
 
     /// Whether `ch` names a valid register (`0`–`9`, `k`, `c`, `b`).
     fn is_valid_register_name(&self, ch: char) -> bool;
+
+    /// Register a `Lazy` activation stub for `name`, owned by `plugin`.
+    ///
+    /// Called from `declare-plugin`'s `#:commands` processing, once per
+    /// accepted command name, so the editor's `CommandRegistry` is the single
+    /// place a name is claimed — no separate scripting-side activation map.
+    ///
+    /// Returns `Err(msg)` if `name` is already claimed by any existing
+    /// command (native, `SteelBacked`, or another plugin's `Lazy` stub); the
+    /// message names the conflicting owner so the declare-time log is as
+    /// specific as before this method existed.
+    fn register_lazy_command(&mut self, name: &str, plugin: &PluginId) -> Result<(), String>;
+
+    /// The plugin that owns `name`'s `Lazy` stub, or `None` if `name` is not a
+    /// pending lazy activation entry (already activated, never declared, or a
+    /// non-lazy command).
+    fn lazy_command_owner(&self, name: &str) -> Option<PluginId>;
+
+    /// Remove every remaining `Lazy` stub owned by `plugin`.
+    ///
+    /// Called by `finish_lazy_activation` on both the success and failure
+    /// path: on success, any stub the plugin body didn't itself replace via
+    /// `define-command!` is dead weight (the plugin is now `Loaded` and will
+    /// never re-run its body); on failure, every stub the plugin ever claimed
+    /// must be freed so a later plugin can claim the name. Never removes a
+    /// `SteelBacked` command — only `Lazy` entries.
+    fn unregister_lazy_stubs_of(&mut self, plugin: &PluginId);
 }
 
 /// Grammar attachment and trigger-char registration — accessed through
