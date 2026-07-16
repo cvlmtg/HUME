@@ -1,17 +1,17 @@
 //! Multi-buffer Steel builtins — buffer/pane query and lifecycle ops.
 //!
 //! All builtins guard against init-eval context (`EvalMode::Init` or
-//! `PluginLoad`, via `require_cmd_ctx!`), where editor refs are not
-//! available.  Calling any of these from `init.scm` raises a Steel error
-//! instead of returning a meaningless default.
+//! `PluginLoad`) via the `cmd`-gated `builtins!` registration table entry,
+//! where editor refs are not available.  Calling any of these from
+//! `init.scm` raises a Steel error instead of returning a meaningless
+//! default.
 
-use steel::rerrs::{ErrorKind, SteelErr};
+use steel::rerrs::SteelErr;
 use steel::rvals::{IntoSteelVal, SteelVal};
 
-use super::{
-    ids::{SteelBufferId, SteelPaneId, downcast_buffer_id},
-    require_cmd_ctx,
-};
+use super::args::{BidArg, usize_arg};
+use super::errors::generic_err;
+use super::ids::{SteelBufferId, SteelPaneId};
 use crate::{SteelCtx, types::Effect};
 
 type SteelResult = Result<SteelVal, SteelErr>;
@@ -20,13 +20,11 @@ type SteelResult = Result<SteelVal, SteelErr>;
 
 /// `(current-buffer)` → BufferId of the focused buffer at dispatch time.
 pub(crate) fn current_buffer(ctx: &mut SteelCtx) -> SteelResult {
-    require_cmd_ctx!(ctx, "current-buffer");
     Ok(SteelBufferId(ctx.focused_buffer_id).into_steel_val())
 }
 
 /// `(current-pane)` → PaneId of the focused pane at dispatch time.
 pub(crate) fn current_pane(ctx: &mut SteelCtx) -> SteelResult {
-    require_cmd_ctx!(ctx, "current-pane");
     Ok(SteelPaneId(ctx.focused_pane_id).into_steel_val())
 }
 
@@ -34,7 +32,6 @@ pub(crate) fn current_pane(ctx: &mut SteelCtx) -> SteelResult {
 
 /// `(buffers)` → list of all open BufferIds in open-order.
 pub(crate) fn buffers(ctx: &mut SteelCtx) -> SteelResult {
-    require_cmd_ctx!(ctx, "buffers");
     let list: Vec<SteelVal> = ctx
         .host
         .buffers()
@@ -42,13 +39,11 @@ pub(crate) fn buffers(ctx: &mut SteelCtx) -> SteelResult {
         .into_iter()
         .map(|id| SteelBufferId(id).into_steel_val())
         .collect();
-    list.into_steelval()
-        .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
+    list.into_steelval().map_err(generic_err)
 }
 
 /// `(panes)` → list of all open PaneIds.
 pub(crate) fn panes(ctx: &mut SteelCtx) -> SteelResult {
-    require_cmd_ctx!(ctx, "panes");
     let list: Vec<SteelVal> = ctx
         .host
         .buffers()
@@ -56,21 +51,14 @@ pub(crate) fn panes(ctx: &mut SteelCtx) -> SteelResult {
         .into_iter()
         .map(|id| SteelPaneId(id).into_steel_val())
         .collect();
-    list.into_steelval()
-        .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
+    list.into_steelval().map_err(generic_err)
 }
 
 // ── Buffer property builtins ───────────────────────────────────────────────────
 
 /// `(buffer-path bid)` → absolute path string, or `#f` for unsaved buffers.
-pub(crate) fn buffer_path(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "buffer-path");
-    let id = downcast_buffer_id(&bid).ok_or_else(|| {
-        SteelErr::new(
-            ErrorKind::TypeMismatch,
-            "buffer-path: expected buffer-id".into(),
-        )
-    })?;
+pub(crate) fn buffer_path(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+    let id = bid.0;
     if !ctx.host.buffers().buffer_exists(id) {
         steel::stop!(Generic => "buffer-path: invalid buffer id {id:?}");
     }
@@ -79,67 +67,42 @@ pub(crate) fn buffer_path(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
             .to_string_lossy()
             .into_owned()
             .into_steelval()
-            .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string())),
+            .map_err(generic_err),
         None => Ok(SteelVal::BoolV(false)),
     }
 }
 
 /// `(buffer-name bid)` → display name (filename or `"*scratch*"`).
-pub(crate) fn buffer_name(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "buffer-name");
-    let id = downcast_buffer_id(&bid).ok_or_else(|| {
-        SteelErr::new(
-            ErrorKind::TypeMismatch,
-            "buffer-name: expected buffer-id".into(),
-        )
-    })?;
+pub(crate) fn buffer_name(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+    let id = bid.0;
     ctx.host
         .buffers()
         .buffer_display_name(id)
-        .ok_or_else(|| {
-            SteelErr::new(
-                ErrorKind::Generic,
-                format!("buffer-name: invalid buffer id {id:?}"),
-            )
-        })?
+        .ok_or_else(|| generic_err(format!("buffer-name: invalid buffer id {id:?}")))?
         .into_steelval()
-        .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
+        .map_err(generic_err)
 }
 
 /// `(buffer-dirty? bid)` → `#t` if the buffer has unsaved edits.
-pub(crate) fn buffer_dirty(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "buffer-dirty?");
-    let id = downcast_buffer_id(&bid).ok_or_else(|| {
-        SteelErr::new(
-            ErrorKind::TypeMismatch,
-            "buffer-dirty?: expected buffer-id".into(),
-        )
-    })?;
-    let dirty = ctx.host.buffers().buffer_is_dirty(id).ok_or_else(|| {
-        SteelErr::new(
-            ErrorKind::Generic,
-            format!("buffer-dirty?: invalid buffer id {id:?}"),
-        )
-    })?;
+pub(crate) fn buffer_dirty(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+    let id = bid.0;
+    let dirty = ctx
+        .host
+        .buffers()
+        .buffer_is_dirty(id)
+        .ok_or_else(|| generic_err(format!("buffer-dirty?: invalid buffer id {id:?}")))?;
     Ok(SteelVal::BoolV(dirty))
 }
 
 /// `(buffer-generation bid)` → int — bumped by every mutation to `bid`.
 /// Steel-side staleness token; not LSP-specific despite the motivation.
-pub(crate) fn buffer_generation(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "buffer-generation");
-    let id = downcast_buffer_id(&bid).ok_or_else(|| {
-        SteelErr::new(
-            ErrorKind::TypeMismatch,
-            "buffer-generation: expected buffer-id".into(),
-        )
-    })?;
-    let generation = ctx.host.buffers().buffer_generation(id).ok_or_else(|| {
-        SteelErr::new(
-            ErrorKind::Generic,
-            format!("buffer-generation: invalid buffer id {id:?}"),
-        )
-    })?;
+pub(crate) fn buffer_generation(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+    let id = bid.0;
+    let generation = ctx
+        .host
+        .buffers()
+        .buffer_generation(id)
+        .ok_or_else(|| generic_err(format!("buffer-generation: invalid buffer id {id:?}")))?;
     Ok(SteelVal::IntV(generation as isize))
 }
 
@@ -152,37 +115,24 @@ pub(crate) fn buffer_generation(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResul
 /// not switch the focused pane — call `(switch-to-buffer! bid)` separately
 /// if desired.
 pub(crate) fn open_buffer(ctx: &mut SteelCtx, path: String) -> SteelResult {
-    require_cmd_ctx!(ctx, "open-buffer!");
     let bid = ctx
         .host
         .buffers()
         .open_buffer(std::path::Path::new(&path))
-        .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
-    SteelBufferId(bid)
-        .into_steelval()
-        .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
+        .map_err(generic_err)?;
+    SteelBufferId(bid).into_steelval().map_err(generic_err)
 }
 
 /// `(close-buffer! bid)` → void.
 ///
 /// Closes the buffer identified by `bid`. Raises a Steel error for an invalid
 /// or unknown `bid`.
-pub(crate) fn close_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "close-buffer!");
-    let id = downcast_buffer_id(&bid).ok_or_else(|| {
-        SteelErr::new(
-            ErrorKind::TypeMismatch,
-            "close-buffer!: expected buffer-id".into(),
-        )
-    })?;
+pub(crate) fn close_buffer(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+    let id = bid.0;
     if !ctx.host.buffers().buffer_exists(id) {
         steel::stop!(Generic => "close-buffer!: invalid buffer id {id:?}");
     }
-    let new_live = ctx
-        .host
-        .buffers()
-        .close_buffer(id)
-        .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
+    let new_live = ctx.host.buffers().close_buffer(id).map_err(generic_err)?;
     ctx.live_focused_buffer_id = new_live;
     Ok(SteelVal::Void)
 }
@@ -192,14 +142,8 @@ pub(crate) fn close_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
 /// Redirects the focused pane to the buffer identified by `bid`, recording
 /// the current position in the jump list. Raises a Steel error for an invalid
 /// or unknown `bid`.
-pub(crate) fn switch_to_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "switch-to-buffer!");
-    let target = downcast_buffer_id(&bid).ok_or_else(|| {
-        SteelErr::new(
-            ErrorKind::TypeMismatch,
-            "switch-to-buffer!: expected buffer-id".into(),
-        )
-    })?;
+pub(crate) fn switch_to_buffer(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+    let target = bid.0;
     if !ctx.host.buffers().buffer_exists(target) {
         steel::stop!(Generic => "switch-to-buffer!: invalid buffer id {target:?}");
     }
@@ -207,7 +151,7 @@ pub(crate) fn switch_to_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult
     ctx.host
         .buffers()
         .switch_to_buffer(current, target)
-        .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
+        .map_err(generic_err)?;
     ctx.live_focused_buffer_id = target;
     Ok(SteelVal::Void)
 }
@@ -235,23 +179,15 @@ fn effective_language(
 }
 
 /// `(buffer-language bid)` → string or `#f`.
-pub(crate) fn buffer_language(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "buffer-language");
-    let id = downcast_buffer_id(&bid).ok_or_else(|| {
-        SteelErr::new(
-            ErrorKind::TypeMismatch,
-            "buffer-language: expected buffer-id".into(),
-        )
-    })?;
+pub(crate) fn buffer_language(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+    let id = bid.0;
     if !ctx.host.buffers().buffer_exists(id) {
         steel::stop!(Generic => "buffer-language: invalid buffer id {id:?}");
     }
     let fallback = ctx.host.buffers().buffer_stored_language(id);
     let lang = effective_language(ctx.effects, id, fallback);
     match lang {
-        Some(name) => name
-            .into_steelval()
-            .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string())),
+        Some(name) => name.into_steelval().map_err(generic_err),
         None => Ok(SteelVal::BoolV(false)),
     }
 }
@@ -263,7 +199,6 @@ pub(crate) fn buffer_language(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult 
 /// Reads live state — reflects any synchronous edits or motions that ran
 /// earlier in the same Steel eval (e.g. after `(move-left)`).
 pub(crate) fn current_line_number(ctx: &mut SteelCtx) -> SteelResult {
-    require_cmd_ctx!(ctx, "current-line-number");
     match ctx.host.cursor().current_line_number() {
         Some(n) => Ok(SteelVal::IntV(n as isize)),
         None => Ok(SteelVal::BoolV(false)),
@@ -275,7 +210,6 @@ pub(crate) fn current_line_number(ctx: &mut SteelCtx) -> SteelResult {
 /// when backward), sorted by selection start, exactly one `primary?` = `#t` —
 /// or `#f` when the focused (pane, buffer) has no seeded pane state.
 pub(crate) fn current_selections(ctx: &mut SteelCtx) -> SteelResult {
-    require_cmd_ctx!(ctx, "current-selections");
     match ctx.host.cursor().current_selections() {
         Some(sels) => {
             let list: Vec<SteelVal> = sels
@@ -287,11 +221,10 @@ pub(crate) fn current_selections(ctx: &mut SteelCtx) -> SteelResult {
                         SteelVal::BoolV(primary),
                     ]
                     .into_steelval()
-                    .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
+                    .map_err(generic_err)
                 })
                 .collect::<Result<_, _>>()?;
-            list.into_steelval()
-                .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
+            list.into_steelval().map_err(generic_err)
         }
         None => Ok(SteelVal::BoolV(false)),
     }
@@ -301,16 +234,7 @@ pub(crate) fn current_selections(ctx: &mut SteelCtx) -> SteelResult {
 /// offset `idx`, or `#f` when the focused buffer id is stale (buffer no
 /// longer exists) or `idx` is out of range (> buffer length in chars).
 pub(crate) fn char_index_to_line(ctx: &mut SteelCtx, idx: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "char-index->line");
-    let idx = match idx {
-        SteelVal::IntV(n) if n >= 0 => n as usize,
-        _ => {
-            return Err(SteelErr::new(
-                ErrorKind::TypeMismatch,
-                "char-index->line: expected non-negative integer".into(),
-            ));
-        }
-    };
+    let idx = usize_arg(idx, "char-index->line")?;
     match ctx.host.cursor().char_index_to_line(idx) {
         Some(line) => Ok(SteelVal::IntV(line as isize)),
         None => Ok(SteelVal::BoolV(false)),
@@ -320,16 +244,10 @@ pub(crate) fn char_index_to_line(ctx: &mut SteelCtx, idx: SteelVal) -> SteelResu
 /// `(set-buffer-language! bid lang-or-#f)` — deferred; applied after the eval returns.
 pub(crate) fn set_buffer_language_steel(
     ctx: &mut SteelCtx,
-    bid: SteelVal,
+    bid: BidArg,
     lang: SteelVal,
 ) -> SteelResult {
-    require_cmd_ctx!(ctx, "set-buffer-language!");
-    let id = downcast_buffer_id(&bid).ok_or_else(|| {
-        SteelErr::new(
-            ErrorKind::TypeMismatch,
-            "set-buffer-language!: expected buffer-id".into(),
-        )
-    })?;
+    let id = bid.0;
     let new_lang = match &lang {
         SteelVal::StringV(s) => Some(s.to_string()),
         SteelVal::BoolV(false) => None,
@@ -354,28 +272,29 @@ pub(crate) fn set_buffer_language_steel(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::builtins::ids::SteelBufferId;
     use crate::test_support::SteelCtxTestHarness;
     use hume_engine::pipeline::BufferId;
-    use steel::rvals::IntoSteelVal;
 
-    fn default_bid() -> SteelVal {
-        SteelBufferId(BufferId::default())
-            .into_steelval()
-            .expect("SteelBufferId IntoSteelVal")
+    fn default_bid() -> BidArg {
+        BidArg(BufferId::default())
     }
 
-    // ── require_cmd_ctx! guard (init mode rejection) ─────────────────────────
+    // ── Gate (init mode rejection) ────────────────────────────────────────────
+    //
+    // Every builtin below is `cmd`-gated in `builtins!`'s registration table —
+    // the gate lives in the registration wrapper closure, not the function
+    // body, so these test the gate primitive directly rather than calling the
+    // builtin (which no longer has a body-level guard to hit).
 
     /// `current-buffer` is blocked in init mode.
     ///
-    /// Fail oracle: remove `require_cmd_ctx!` → `focused_buffer_id` (which is
-    /// Default in init) would be returned, silently giving wrong data.
+    /// Fail oracle: change `current-buffer`'s table entry from `cmd` to
+    /// `open` → `focused_buffer_id` (which is Default in init) would be
+    /// returned, silently giving wrong data.
     #[test]
     fn current_buffer_blocked_in_init_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx_init();
-        let result = current_buffer(&mut ctx);
+        let result = super::super::errors::require_cmd(&h.ctx_init(), "current-buffer");
         assert!(result.is_err(), "current-buffer must error in init mode");
         let msg = result.unwrap_err().to_string();
         assert!(
@@ -388,56 +307,63 @@ mod tests {
     #[test]
     fn current_pane_blocked_in_init_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx_init();
-        assert!(current_pane(&mut ctx).is_err());
+        assert!(super::super::errors::require_cmd(&h.ctx_init(), "current-pane").is_err());
     }
 
     /// `buffers` is blocked in init mode.
     #[test]
     fn buffers_blocked_in_init_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx_init();
-        assert!(buffers(&mut ctx).is_err());
+        assert!(super::super::errors::require_cmd(&h.ctx_init(), "buffers").is_err());
     }
 
     /// `panes` is blocked in init mode.
     #[test]
     fn panes_blocked_in_init_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx_init();
-        assert!(panes(&mut ctx).is_err());
+        assert!(super::super::errors::require_cmd(&h.ctx_init(), "panes").is_err());
     }
 
     /// `buffer-path` is blocked in init mode.
     #[test]
     fn buffer_path_blocked_in_init_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx_init();
-        assert!(buffer_path(&mut ctx, default_bid()).is_err());
+        assert!(super::super::errors::require_cmd(&h.ctx_init(), "buffer-path").is_err());
     }
 
     /// `buffer-name` is blocked in init mode.
     #[test]
     fn buffer_name_blocked_in_init_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx_init();
-        assert!(buffer_name(&mut ctx, default_bid()).is_err());
+        assert!(super::super::errors::require_cmd(&h.ctx_init(), "buffer-name").is_err());
     }
 
     /// `buffer-dirty?` is blocked in init mode.
     #[test]
     fn buffer_dirty_blocked_in_init_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx_init();
-        assert!(buffer_dirty(&mut ctx, default_bid()).is_err());
+        assert!(super::super::errors::require_cmd(&h.ctx_init(), "buffer-dirty?").is_err());
+    }
+
+    /// `close-buffer!` is blocked in init mode.
+    #[test]
+    fn close_buffer_blocked_in_init_mode() {
+        let mut h = SteelCtxTestHarness::new();
+        assert!(super::super::errors::require_cmd(&h.ctx_init(), "close-buffer!").is_err());
+    }
+
+    /// `switch-to-buffer!` is blocked in init mode.
+    #[test]
+    fn switch_to_buffer_blocked_in_init_mode() {
+        let mut h = SteelCtxTestHarness::new();
+        assert!(super::super::errors::require_cmd(&h.ctx_init(), "switch-to-buffer!").is_err());
     }
 
     /// `set-buffer-language!` is blocked in init mode.
     #[test]
     fn set_buffer_language_blocked_in_init_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx_init();
-        let result = set_buffer_language_steel(&mut ctx, default_bid(), SteelVal::BoolV(false));
+        let result = super::super::errors::require_cmd(&h.ctx_init(), "set-buffer-language!");
         assert!(
             result.is_err(),
             "set-buffer-language! must error in init mode"
@@ -448,63 +374,28 @@ mod tests {
     #[test]
     fn current_line_number_blocked_in_init_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx_init();
-        assert!(current_line_number(&mut ctx).is_err());
+        assert!(super::super::errors::require_cmd(&h.ctx_init(), "current-line-number").is_err());
     }
 
     /// `current-selections` is blocked in init mode.
     #[test]
     fn current_selections_blocked_in_init_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx_init();
-        assert!(current_selections(&mut ctx).is_err());
+        assert!(super::super::errors::require_cmd(&h.ctx_init(), "current-selections").is_err());
     }
 
     /// `char-index->line` is blocked in init mode.
     #[test]
     fn char_index_to_line_blocked_in_init_mode() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx_init();
-        assert!(char_index_to_line(&mut ctx, SteelVal::IntV(0)).is_err());
+        assert!(super::super::errors::require_cmd(&h.ctx_init(), "char-index->line").is_err());
     }
 
     // ── Type errors (wrong arg type) ──────────────────────────────────────────
-
-    /// `buffer-path` rejects a non-BufferId argument.
-    ///
-    /// Fail oracle: remove the `downcast_buffer_id` check → any SteelVal would be
-    /// accepted and a default BufferId would be used silently.
-    #[test]
-    fn buffer_path_wrong_type_errors() {
-        let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        let result = buffer_path(&mut ctx, SteelVal::StringV("not-an-id".into()));
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("expected buffer-id")
-        );
-    }
-
-    /// `buffer-name` rejects a non-BufferId argument.
-    #[test]
-    fn buffer_name_wrong_type_errors() {
-        let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        let result = buffer_name(&mut ctx, SteelVal::IntV(0));
-        assert!(result.is_err());
-    }
-
-    /// `buffer-dirty?` rejects a non-BufferId argument.
-    #[test]
-    fn buffer_dirty_wrong_type_errors() {
-        let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        let result = buffer_dirty(&mut ctx, SteelVal::BoolV(true));
-        assert!(result.is_err());
-    }
+    //
+    // `buffer-path`/`buffer-name`/`buffer-dirty?` no longer decode `bid`
+    // in-body (it's a typed `BidArg` param) — that decode-failure path is
+    // covered once, centrally, by `args::tests::bid_arg_rejects_non_buffer_id`.
 
     /// `char-index->line` rejects a non-integer and a negative integer argument.
     ///
@@ -520,7 +411,7 @@ mod tests {
             result
                 .unwrap_err()
                 .to_string()
-                .contains("expected non-negative integer")
+                .contains("expected a non-negative integer")
         );
 
         let mut ctx = h.ctx();
