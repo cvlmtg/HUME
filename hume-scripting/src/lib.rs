@@ -60,8 +60,6 @@ pub(crate) mod watchdog;
 pub use attribution::PluginId;
 pub use builtins::commands::parse_count_extend;
 pub use builtins::ids::SteelBufferId;
-#[cfg(any(test, feature = "test-util"))]
-pub use builtins::sandbox::init_dirs;
 pub use hooks::HookId;
 pub use host::{
     BindMode, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost, EditHost,
@@ -87,7 +85,7 @@ pub(crate) const HUME_CTX: &str = "*hume.ctx*";
 
 // ── Internal imports ──────────────────────────────────────────────────────────
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, atomic::AtomicBool};
 
 use steel::rvals::SteelVal;
@@ -143,8 +141,7 @@ pub(crate) struct HostBundle<'a> {
     plugin_stack: &'a mut PluginStack,
     pending_messages: &'a mut Vec<(LogLevel, String)>,
     effects: &'a mut Vec<Effect>,
-    data_dir: Option<&'a std::path::Path>,
-    runtime_dir: Option<&'a std::path::Path>,
+    dirs: &'a builtins::dirs::ScriptDirs,
     /// Owned `Arc` clone: `new_init`/`new_command` consume it via move into
     /// `SteelCtx::interrupt_flag`, avoiding a second clone at eval time.
     interrupt_flag: Arc<AtomicBool>,
@@ -179,10 +176,9 @@ pub struct ScriptingHost {
     /// success (`Vec<Effect>`) and truncates back to its start length on
     /// error — see `types::Effect`.
     effects: Vec<Effect>,
-    /// `$XDG_DATA_HOME/hume/` — where PLUM installs user/third-party plugins.
-    data_dir: Option<PathBuf>,
-    /// The runtime directory (core plugins, themes, docs), or `None` if absent.
-    runtime_dir: Option<PathBuf>,
+    /// Data/runtime directories (raw + display form) and the install-lock
+    /// root, computed once at construction.
+    dirs: builtins::dirs::ScriptDirs,
     /// Shared interrupt flag.  Set to `true` by the watchdog to signal that
     /// `(hume/yield!)` calls should abort the running script.  Reset to
     /// `false` after every eval — command dispatch, hook fires, and plugin
@@ -199,12 +195,10 @@ impl ScriptingHost {
     /// Resolves base directories eagerly so builtins can use them without
     /// re-reading environment variables on every call.
     pub fn new() -> Self {
-        let data_dir = hume_platform::dirs::data_dir();
-        let runtime_dir = hume_platform::dirs::runtime_dir();
-        // Initialize the fs builtin directory TLS before the Steel engine registers
-        // builtins — the `data-dir` / `runtime-dir` / sandbox functions read
-        // from this TLS whenever they are called.
-        builtins::sandbox::init_dirs(data_dir.clone(), runtime_dir.clone());
+        let dirs = builtins::dirs::ScriptDirs::new(
+            hume_platform::dirs::data_dir(),
+            hume_platform::dirs::runtime_dir(),
+        );
         let mut steel = Engine::new();
         builtins::register_all(&mut steel);
         Self {
@@ -221,8 +215,7 @@ impl ScriptingHost {
             plugin_stack: PluginStack::default(),
             pending_messages: Vec::new(),
             effects: Vec::new(),
-            data_dir,
-            runtime_dir,
+            dirs,
             interrupt_flag: Arc::new(AtomicBool::new(false)),
             watchdog: EvalWatchdog::new(),
         }
@@ -250,8 +243,7 @@ impl ScriptingHost {
             plugin_stack,
             pending_messages,
             effects,
-            data_dir,
-            runtime_dir,
+            dirs,
             interrupt_flag,
             watchdog,
             ..
@@ -264,8 +256,7 @@ impl ScriptingHost {
                 plugin_stack,
                 pending_messages,
                 effects,
-                data_dir: data_dir.as_deref(),
-                runtime_dir: runtime_dir.as_deref(),
+                dirs: &*dirs,
                 interrupt_flag: Arc::clone(interrupt_flag),
             },
         )
@@ -310,12 +301,12 @@ impl ScriptingHost {
 
     /// Runtime directory for core plugins, themes, and docs.
     pub fn runtime_dir(&self) -> Option<&Path> {
-        self.runtime_dir.as_deref()
+        self.dirs.runtime_dir.as_deref()
     }
 
     /// Data directory for user/third-party plugins.
     pub fn data_dir(&self) -> Option<&Path> {
-        self.data_dir.as_deref()
+        self.dirs.data_dir.as_deref()
     }
 
     /// Drain all accumulated log messages since the last drain.
@@ -433,10 +424,11 @@ impl ScriptingHost {
     }
 
     /// Override the data directory.  Used only in tests that need a predictable
-    /// plugin install location.
+    /// plugin install location. Rebuilds the whole `ScriptDirs` so the
+    /// display form and install-lock root stay in sync with the override.
     #[cfg(any(test, feature = "test-util"))]
     pub fn set_data_dir(&mut self, dir: std::path::PathBuf) {
-        self.data_dir = Some(dir);
+        self.dirs = builtins::dirs::ScriptDirs::new(Some(dir), self.dirs.runtime_dir.clone());
     }
 
     #[cfg(any(test, feature = "test-util"))]
