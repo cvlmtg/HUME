@@ -82,8 +82,14 @@ fn supersede_cancels_the_prior_request_under_the_same_key() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     let (_sid, notifications, _requests) = setup_with_recording(&mut ed, |b, _sid| {
-        b.respond_to("textDocument/completion", serde_json::json!({"marker": "A"}));
-        b.respond_to("textDocument/completion", serde_json::json!({"marker": "B"}));
+        b.respond_to(
+            "textDocument/completion",
+            serde_json::json!({"marker": "A"}),
+        );
+        b.respond_to(
+            "textDocument/completion",
+            serde_json::json!({"marker": "B"}),
+        );
     });
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -146,8 +152,14 @@ fn requests_without_a_supersede_key_do_not_cancel_each_other() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     let (_sid, notifications, _requests) = setup_with_recording(&mut ed, |b, _sid| {
-        b.respond_to("textDocument/completion", serde_json::json!({"marker": "A"}));
-        b.respond_to("textDocument/completion", serde_json::json!({"marker": "B"}));
+        b.respond_to(
+            "textDocument/completion",
+            serde_json::json!({"marker": "A"}),
+        );
+        b.respond_to(
+            "textDocument/completion",
+            serde_json::json!({"marker": "B"}),
+        );
     });
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -167,8 +179,14 @@ fn requests_without_a_supersede_key_do_not_cancel_each_other() {
     ed.drain_pending_steel_calls();
 
     let log = ed.state.message_log.format_for_display();
-    assert!(log.contains("marker-A"), "both callbacks must fire: {log:?}");
-    assert!(log.contains("marker-B"), "both callbacks must fire: {log:?}");
+    assert!(
+        log.contains("marker-A"),
+        "both callbacks must fire: {log:?}"
+    );
+    assert!(
+        log.contains("marker-B"),
+        "both callbacks must fire: {log:?}"
+    );
     assert!(
         !notifications
             .borrow()
@@ -642,10 +660,10 @@ impl LspBackend for OrderedLogBackend {
 /// `didChange`) and then immediately fires an `lsp-request` — the same
 /// shape as a trigger-char hook firing right after the edit that triggered
 /// it — must put the `didChange` on the wire *before* the request. Before
-/// the fix, `flush_pending_lsp_calls` sent the request straight away and
-/// left the queued edit sitting in `Buffer.lsp_pending` until the next
-/// frame's `prepare_frame`, so the request reached the server ahead of the
-/// edit it was computed against.
+/// the fix, `send_one_lsp_request` sent the request straight away and left
+/// the queued edit sitting in `Buffer.lsp_pending` until the next frame's
+/// `prepare_frame`, so the request reached the server ahead of the edit it
+/// was computed against.
 #[test]
 #[cfg(not(windows))]
 fn didchange_reaches_the_wire_before_a_same_dispatch_request() {

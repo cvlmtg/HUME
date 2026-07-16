@@ -14,12 +14,12 @@ use hume_scripting::ScriptingHost;
 fn eval_register(ed: &mut Editor, host: &mut ScriptingHost, source: &str, tmp: &Path) {
     let init_path = tmp.join("init.scm");
     std::fs::write(&init_path, source).unwrap();
-    {
+    let effects = {
         let mut ih = make_init_host(&mut ed.state, &mut ed.view);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init");
-    ed.flush_pending_lsp_server_ops(host);
+    ed.apply_script_effects(effects);
 }
 
 #[test]
@@ -326,8 +326,7 @@ fn log_message_info_type_is_reported_at_trace_not_shown_as_status() {
     ed.dispatch_lsp_action(
         sid,
         ClientAction::LogMessage(
-            serde_json::from_value(serde_json::json!({"type": 3, "message": "indexing"}))
-                .unwrap(),
+            serde_json::from_value(serde_json::json!({"type": 3, "message": "indexing"})).unwrap(),
         ),
     );
 

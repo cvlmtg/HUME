@@ -1800,10 +1800,10 @@ fn language_trigger_lint_silent_for_known_language() {
 /// appearing BEFORE `define-language! "foo"` in the same init.scm must not warn.
 ///
 /// A declare-time check would see "foo" absent from the live registry and falsely
-/// reject it.  The post-init placement (after the second flush) makes the check
-/// order-independent.
+/// reject it.  The post-init placement (after every eval's effects are applied)
+/// makes the check order-independent.
 ///
-/// Flip: move the lint before the second `flush_pending_language_regs` call →
+/// Flip: move the lint before `init.scm`'s `apply_script_effects` call →
 /// "foo" is not yet in `state.languages` → lint emits a spurious Warning →
 /// assertion fires.
 #[test]

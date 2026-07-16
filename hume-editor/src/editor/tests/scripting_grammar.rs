@@ -892,17 +892,20 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
         hume_editing::text::Text::empty(),
         hume_editing::selection::SelectionSet::default(),
     ));
-    {
+    let effects = {
         let mut ih = make_init_host(&mut ed.state, &mut ed.view);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed");
 
-    // Passive registration populated pending_language_regs.
-    let regs = host.take_pending_language_regs();
+    // Passive registration populated the effect log with LanguageReg entries.
+    let regs: Vec<_> = effects
+        .iter()
+        .filter(|e| matches!(e, hume_scripting::Effect::LanguageReg(_)))
+        .collect();
     assert!(
         !regs.is_empty(),
-        "passive grammar registration must populate pending_language_regs"
+        "passive grammar registration must populate the effect log"
     );
     // Unknown (call!) produced a warning, did not abort.
     let msgs = host.take_pending_messages();

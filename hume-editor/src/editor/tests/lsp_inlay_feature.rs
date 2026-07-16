@@ -90,10 +90,10 @@ fn fire_viewport_change(ed: &mut Editor) {
 
 /// The debounced thunk itself is only *queued* by `drain_due_timers`
 /// (`queue_steel_call`) — actually running it, and thus actually sending
-/// the wire request, waits for `drain_pending_steel_calls`. That call's
-/// own `flush_pending_lsp_calls` sends the request and the scripted
-/// backend auto-queues its response synchronously, but nothing drains
-/// *that* within the same call — an extra `drain_lsp` +
+/// the wire request, waits for `drain_pending_steel_calls`. That call's own
+/// `apply_script_effects` (via `send_one_lsp_request`) sends the request and
+/// the scripted backend auto-queues its response synchronously, but nothing
+/// drains *that* within the same call — an extra `drain_lsp` +
 /// `drain_pending_steel_calls` round is needed to actually invoke the
 /// response callback. `prepare_frame` does exactly this pair internally
 /// every real frame; a test not calling it needs the pair explicitly.
@@ -288,7 +288,11 @@ fn hidden_buffer_skips_diagnostics_triggered_refresh() {
     std::fs::write(&other_file, "let y = 2;\n").unwrap();
     ed.execute_typed("e", Some(other_file.to_str().unwrap()))
         .unwrap();
-    assert_ne!(ed.focused_buffer_id(), bid, "test setup: pane must have switched");
+    assert_ne!(
+        ed.focused_buffer_id(),
+        bid,
+        "test setup: pane must have switched"
+    );
 
     ed.ingest_publish_diagnostics(
         sid,

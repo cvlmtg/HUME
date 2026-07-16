@@ -39,9 +39,12 @@ fn attach_running_server(ed: &mut Editor, initialize_result: serde_json::Value) 
 fn eval_with_real_host(ed: &mut Editor, host: &mut ScriptingHost, source: &str, tmp: &Path) {
     let init_path = tmp.join("init.scm");
     std::fs::write(&init_path, source).unwrap();
-    let mut ih = make_init_host(&mut ed.state, &mut ed.view);
-    host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-        .expect("eval_init");
+    let effects = {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init");
+    ed.apply_script_effects(effects);
 }
 
 /// Runs `body` as a Steel command; the command moves the cursor iff `body`'s
@@ -156,7 +159,6 @@ fn lsp_registered_for_language_reflects_registration() {
         r#"(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '())"#,
         tmp.path(),
     );
-    ed.flush_pending_lsp_server_ops(&mut host);
 
     let fired = run_probe(
         &mut ed,
