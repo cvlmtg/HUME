@@ -191,7 +191,7 @@ Every Steel-visible surface Steps 1–3 introduce. Cards define the semantics; t
 | `(lsp-server-for-buffer bid)` → server name or `#f` | builtin | B3 |
 | `(buffer-generation bid)` → int | builtin | B3 |
 | `(lsp-position-params bid)` / `(lsp-range-params bid)` → ready-made params hashmaps (encoding-correct) | builtin | B3 |
-| `(viewport-range bid)` → `(list first-line last-line)` currently visible for `bid` (focused pane if it shows `bid`, else the first pane showing it), or `#f` if `bid` isn't shown in any pane | builtin | B3 |
+| `(viewport-range bid)` → `(first-line . last-line)` currently visible for `bid` (focused pane if it shows `bid`, else the first pane showing it), or `#f` if `bid` isn't shown in any pane | builtin | B3 |
 | `(after ms thunk)` → timer id; `(cancel-timer! id)` | builtin | B4 |
 | `(debounce ms proc)` → debounced proc, one shared pending timer across all calls | builtin (bootstrap wrapper over `after`) | B4 |
 | `(debounce-by ms proc)` → debounced proc keyed per `(car args)` — independent pending timer per key, so a call keyed `k2` never cancels a still-pending call keyed `k1` | builtin (bootstrap wrapper over `after`) | B4 |
@@ -200,9 +200,9 @@ Every Steel-visible surface Steps 1–3 introduce. Cards define the semantics; t
 | `(set-virtual-lines! source bid lines)` — each entry `(line text)` or `(line text scope)`, `scope` added in U8b | builtin | B5 |
 | `(set-inline-diagnostics! bid lines)` — each entry `(line text scope)`; one owner per buffer (no `source` arg, unlike `set-virtual-lines!`) — text spliced at end-of-line via a second `InlineDecoration` provider, same shape as U9's inlay hints | builtin | U8 |
 | `(set-extra-highlights! source bid spans)` | builtin | B5 |
-| `(diagnostics-for-buffer bid #:severity floor #:range (list start end))` — a 2-elem list, not `(start . end)`: steel-core 0.8.2's `Pair`/`car`/`cdr` are crate-private, unreachable from a Rust builtin | builtin | B5 |
-| `(diagnostic-counts bid)` → `(errors . warnings)` (this direction is fine — `cons` to build a pair is public; only destructuring one from Rust isn't) | builtin | B5 |
-| `(apply-text-edits! bid edits #:expect-generation gen)` — `edits`: list of `((start-line start-col) (end-line end-col) text)`, 2-elem lists not dotted pairs (same reason as B5's `#:range`) | builtin | B6 |
+| `(diagnostics-for-buffer bid #:severity floor #:range (start . end))` | builtin | B5 |
+| `(diagnostic-counts bid)` → `(errors . warnings)` | builtin | B5 |
+| `(apply-text-edits! bid edits #:expect-generation gen)` — `edits`: list of `((start-line . start-col) (end-line . end-col) text)` | builtin | B6 |
 | `(apply-workspace-edit! wsedit)` | builtin | B6 |
 | `(goto-location! loc)` | builtin | B6 |
 | `(selection-spans-full-line? bid)` → bool (F8's range-format gate) | builtin | B6 |
