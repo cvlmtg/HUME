@@ -27,10 +27,11 @@ pub(crate) struct SteelCtx<'a> {
     // ── Editor interface ───────────────────────────────────────────────────────
     /// Access to all live editor state during evaluation.
     ///
-    /// In `EvalSession::Init`, `host.buffers()`'s methods are guarded by
-    /// `require_cmd_ctx!` and never called; the init-only methods
-    /// (`host.settings().set_global_option`, `host.keymap().bind_key`,
-    /// `host.settings().configure_statusline`) are always safe.
+    /// In `EvalSession::Init`, `host.buffers()`'s methods are gated by the
+    /// `cmd` kind in `builtins!`'s registration table and never called; the
+    /// init-only methods (`host.settings().set_global_option`,
+    /// `host.keymap().bind_key`, `host.settings().configure_statusline`) are
+    /// always safe.
     pub(crate) host: &'a mut dyn EditorHost,
     // ── Persistent state borrowed from ScriptingHost ──────────────────────────
     /// Plugin attribution stack; identifies whose mutation is being recorded.
@@ -118,7 +119,7 @@ pub(crate) enum EvalSession {
 /// init-top-level state from the eager-plugin-load-during-init state, which
 /// have different gate outcomes (see the table below).
 ///
-/// | State                              | `require_cmd_ctx!` | `require_config_ctx!` | `ensure_top_level` |
+/// | State                              | `require_cmd` (`cmd` kind) | `require_config` (`config` kind) | `ensure_top_level` |
 /// |-------------------------------------|:---:|:---:|:---:|
 /// | `Init` (init.scm top level)         | ✗ | ✓ | ✓ |
 /// | `PluginLoad` (eager, during init)   | ✗ | ✓ | ✗ |

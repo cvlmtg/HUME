@@ -18,8 +18,8 @@ use crate::{HostBundle, ScriptingRegistries};
 /// Backing storage for [`SteelCtx`] in scripting-crate unit tests.
 ///
 /// Uses [`NullHost`] — sufficient for tests that only need to check that
-/// scripting guards (`EvalMode`, `require_cmd_ctx!`, etc.) fire correctly,
-/// without real editor state.
+/// scripting guards (`EvalMode`, `errors::require_cmd`/`require_config`,
+/// etc.) fire correctly, without real editor state.
 pub(crate) struct SteelCtxTestHarness {
     pub(crate) host: NullHost,
     pub(crate) plugin_stack: PluginStack,

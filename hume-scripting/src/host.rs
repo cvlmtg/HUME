@@ -55,10 +55,11 @@ pub fn unsupported(builtin: &str) -> String {
 /// `with_mut_reference` requires.
 ///
 /// `BufferHost` methods (`open_buffer`, `close_buffer`, `switch_to_buffer`,
-/// reads/enumeration) are command-mode only, guarded per-builtin by
-/// `require_cmd_ctx!`; init-only methods (`SettingsHost::set_global_option`,
+/// reads/enumeration) are command-mode only, gated per-builtin by the `cmd`
+/// kind in `builtins!`'s registration table (`errors::require_cmd`);
+/// init-only methods (`SettingsHost::set_global_option`,
 /// `SettingsHost::configure_statusline`, `KeymapHost::bind_*`/`unbind_key`)
-/// use the reverse guard.
+/// use the `config` kind (`errors::require_config`), the reverse guard.
 ///
 /// Focused buffer/pane ids are passed as explicit constructor args to
 /// `call_steel_cmd`/`fire_hook` rather than queried through this trait, so a
@@ -200,7 +201,7 @@ pub trait CommandHost {
     /// to the user and treated as success for the Steel caller).
     /// Returns `Err(msg)` when the name is not found or is not a native command.
     ///
-    /// Valid only in command mode; guarded by `require_cmd_ctx!` in the caller.
+    /// Valid only in command mode; gated by the caller's `cmd`-kind registration.
     fn run_command_sync(
         &mut self,
         name: &str,
