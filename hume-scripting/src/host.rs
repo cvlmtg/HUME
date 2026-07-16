@@ -48,6 +48,12 @@ pub enum OptionValue {
 /// `call_steel_cmd`/`fire_hook` rather than queried through this trait, so a
 /// builtin always sees the pre-command snapshot, not a value that can change
 /// mid-eval (e.g. after `switch-to-buffer!`).
+/// "X: not supported by this host" — the single source for capability-absence
+/// errors, replacing the trait-default bodies the capability-trait split removed.
+pub fn unsupported(builtin: &str) -> String {
+    format!("{builtin}: not supported by this host")
+}
+
 pub trait EditorHost {
     // ── Enumeration ─────────────────────────────────────────────────────────
     /// All open buffer ids in open-order.
