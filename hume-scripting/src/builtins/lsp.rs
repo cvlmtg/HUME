@@ -1,48 +1,20 @@
 //! LSP server registration Steel builtin.
 
 use steel::rerrs::SteelErr;
-use steel::rvals::SteelVal;
+use steel::rvals::{FromSteelVal, SteelVal};
 
 use crate::json::{json_to_steel, steel_to_json};
 use crate::types::{Effect, PendingLspNotify, PendingLspRequest, PendingLspServerOp};
 use crate::{PendingLspServerReg, SteelCtx};
 
-use super::{conv_err, list_to_strings, require_cmd_ctx, require_config_ctx, string_arg};
+use super::args::{
+    BidArg, TextEditArg, chars_arg, checked_fields, int_arg, json_params, list_items,
+    list_to_strings, optional_json_arg, optional_string_arg, optional_usize_arg, string_arg,
+    tuple_list, usize_arg,
+};
+use super::errors::generic_err;
 
 type SteelResult = Result<SteelVal, SteelErr>;
-
-/// A string arg that may be `#f` (absent) — `lsp-request`/`lsp-notify`'s
-/// `server` parameter: a registered language name, or "the focused buffer's
-/// attached server".
-fn optional_string_arg(val: SteelVal, ctx_name: &str) -> Result<Option<String>, SteelErr> {
-    match val {
-        SteelVal::BoolV(false) => Ok(None),
-        other => Ok(Some(string_arg(other, ctx_name)?)),
-    }
-}
-
-/// Converts `val` to the wire-shaped JSON a request/notification `params`
-/// (or `#:init-options`/`#:settings` blob) expects — always an object (or
-/// array), never a bare scalar. Rejects a bool explicitly: `(lsp-position-
-/// params bid)`/`(lsp-range-params bid)` return `#f` when `bid` has no
-/// attached server or isn't shown in any pane, and callers pass that result
-/// straight through — without this check it would silently reach the wire
-/// as `params: false` instead of erroring at the boundary.
-fn json_params(val: SteelVal, ctx_name: &str) -> Result<serde_json::Value, SteelErr> {
-    if matches!(val, SteelVal::BoolV(_)) {
-        steel::stop!(TypeMismatch => "{ctx_name}: expected a hashmap, got a boolean");
-    }
-    steel_to_json(&val).map_err(|e| super::conv_err(format!("{ctx_name}: {e}")))
-}
-
-/// A blob arg that may be `#f` (absent) or any Steel data convertible to
-/// JSON (typically a hashmap built with `(hash …)`).
-fn optional_json_arg(val: SteelVal, ctx_name: &str) -> Result<Option<serde_json::Value>, SteelErr> {
-    match val {
-        SteelVal::BoolV(false) => Ok(None),
-        other => Ok(Some(json_params(other, ctx_name)?)),
-    }
-}
 
 /// `(%register-lsp-server! language command args root-markers init-options settings)`
 ///
@@ -114,7 +86,6 @@ pub(crate) fn unregister_lsp_server(ctx: &mut SteelCtx, language: SteelVal) -> S
 /// current eval (see `Editor::apply_lsp_server_op`); the report of how many
 /// servers stopped is emitted by that same drain.
 pub(crate) fn lsp_stop(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "lsp-stop!");
     let language = optional_string_arg(language, "lsp-stop! language")?;
     ctx.effects
         .push(Effect::LspServerOp(PendingLspServerOp::Stop { language }));
@@ -124,7 +95,6 @@ pub(crate) fn lsp_stop(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
 /// `(lsp-restart! language)` — same argument shape as `lsp-stop!`. Queues a
 /// stop-then-respawn, applied at the end of the current eval.
 pub(crate) fn lsp_restart(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "lsp-restart!");
     let language = optional_string_arg(language, "lsp-restart! language")?;
     ctx.effects
         .push(Effect::LspServerOp(PendingLspServerOp::Restart {
@@ -136,7 +106,6 @@ pub(crate) fn lsp_restart(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult
 /// `(lsp-show-status!)` — queues opening the `[lsp-status]` read-only view,
 /// applied at the end of the current eval.
 pub(crate) fn lsp_show_status(ctx: &mut SteelCtx) -> SteelResult {
-    require_cmd_ctx!(ctx, "lsp-show-status!");
     ctx.effects
         .push(Effect::LspServerOp(PendingLspServerOp::ShowStatus));
     Ok(SteelVal::Void)
@@ -158,7 +127,6 @@ pub(crate) fn lsp_request(
     allow_stale: SteelVal,
     supersede: SteelVal,
 ) -> SteelResult {
-    require_cmd_ctx!(ctx, "lsp-request");
     let server = optional_string_arg(server, "lsp-request server")?;
     let method = string_arg(method, "lsp-request method")?;
     let params = json_params(params, "lsp-request params")?;
@@ -187,7 +155,6 @@ pub(crate) fn lsp_notify(
     method: SteelVal,
     params: SteelVal,
 ) -> SteelResult {
-    require_cmd_ctx!(ctx, "lsp-notify");
     let server = optional_string_arg(server, "lsp-notify server")?;
     let method = string_arg(method, "lsp-notify method")?;
     let params = json_params(params, "lsp-notify params")?;
@@ -210,7 +177,6 @@ pub(crate) fn on_lsp_notification(
     method: SteelVal,
     handler: SteelVal,
 ) -> SteelResult {
-    require_config_ctx!(ctx, "on-lsp-notification");
     let method = string_arg(method, "on-lsp-notification method")?;
     ctx.registries
         .lsp_notification_handlers
@@ -223,7 +189,6 @@ pub(crate) fn on_lsp_notification(
 /// `(lsp-capabilities server)` → decoded `ServerCapabilities` hashmap, or
 /// `#f` if `server` doesn't resolve or hasn't finished its handshake.
 pub(crate) fn lsp_capabilities(ctx: &mut SteelCtx, server: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "lsp-capabilities");
     let server = optional_string_arg(server, "lsp-capabilities server")?;
     Ok(
         match ctx
@@ -239,7 +204,6 @@ pub(crate) fn lsp_capabilities(ctx: &mut SteelCtx, server: SteelVal) -> SteelRes
 
 /// `(lsp-server-status)` → list of `{"language" "root" "state" "pending"}`.
 pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
-    require_cmd_ctx!(ctx, "lsp-server-status");
     let entries: Vec<SteelVal> = ctx
         .host
         .lsp()
@@ -271,9 +235,8 @@ pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
 }
 
 /// `(lsp-server-for-buffer bid)` → registered language name, or `#f`.
-pub(crate) fn lsp_server_for_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "lsp-server-for-buffer");
-    let id = bid_arg(&bid, "lsp-server-for-buffer")?;
+pub(crate) fn lsp_server_for_buffer(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+    let id = bid.0;
     Ok(
         match ctx.host.lsp().and_then(|lsp| lsp.lsp_server_for_buffer(id)) {
             Some(lang) => SteelVal::StringV(lang.into()),
@@ -294,10 +257,10 @@ pub(crate) fn lsp_server_for_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelR
 /// only after the next drain.
 ///
 /// Unlike its buffer/pane-touching siblings, this is a pure registry read
-/// (no `EditorHost` state beyond the LSP registry itself), so it carries no
-/// `require_cmd_ctx!` gate — callable during init/plugin load too. That lets
-/// `core:lsp`'s own load-time scan (`registration.scm`) query it directly to
-/// skip already-registered languages.
+/// (no `EditorHost` state beyond the LSP registry itself), so its table
+/// entry is `open` kind — no gate, callable during init/plugin load too.
+/// That lets `core:lsp`'s own load-time scan (`registration.scm`) query it
+/// directly to skip already-registered languages.
 pub(crate) fn lsp_registered_for_language(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
     let language = string_arg(language, "lsp-registered-for-language? language")?;
     let mut pending: Option<bool> = None;
@@ -326,9 +289,8 @@ pub(crate) fn lsp_registered_for_language(ctx: &mut SteelCtx, language: SteelVal
 /// `(lsp-position-params bid)` → `{"textDocument" {"uri"} "position" {"line"
 /// "character"}}` from `bid`'s primary cursor head, or `#f` if unavailable
 /// (no attached server, no path, or not shown in any pane).
-pub(crate) fn lsp_position_params(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "lsp-position-params");
-    let id = bid_arg(&bid, "lsp-position-params")?;
+pub(crate) fn lsp_position_params(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+    let id = bid.0;
     Ok(
         match ctx.host.lsp().and_then(|lsp| lsp.lsp_position_params(id)) {
             Some(json) => json_to_steel(&json),
@@ -339,9 +301,8 @@ pub(crate) fn lsp_position_params(ctx: &mut SteelCtx, bid: SteelVal) -> SteelRes
 
 /// `(lsp-range-params bid)` → same shape but a `"range"` from the primary
 /// selection.
-pub(crate) fn lsp_range_params(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "lsp-range-params");
-    let id = bid_arg(&bid, "lsp-range-params")?;
+pub(crate) fn lsp_range_params(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+    let id = bid.0;
     Ok(
         match ctx.host.lsp().and_then(|lsp| lsp.lsp_range_params(id)) {
             Some(json) => json_to_steel(&json),
@@ -356,9 +317,8 @@ pub(crate) fn lsp_range_params(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult
 /// state, but gated the same as its buffer/pane-touching siblings — it reads
 /// live view state, which only exists at command dispatch, hook fire, or a
 /// queued-call drain.
-pub(crate) fn viewport_range(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "viewport-range");
-    let id = bid_arg(&bid, "viewport-range")?;
+pub(crate) fn viewport_range(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+    let id = bid.0;
     Ok(match ctx.host.buffers().viewport_range(id) {
         Some((first, last)) => {
             let entries: Vec<SteelVal> = vec![
@@ -368,15 +328,6 @@ pub(crate) fn viewport_range(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
             SteelVal::ListV(entries.into())
         }
         None => SteelVal::BoolV(false),
-    })
-}
-
-fn bid_arg(val: &SteelVal, ctx_name: &str) -> Result<hume_engine::pipeline::BufferId, SteelErr> {
-    super::ids::downcast_buffer_id(val).ok_or_else(|| {
-        SteelErr::new(
-            steel::rerrs::ErrorKind::TypeMismatch,
-            format!("{ctx_name}: expected buffer-id"),
-        )
     })
 }
 
@@ -402,98 +353,43 @@ pub(crate) fn register_trigger_chars(
     Ok(SteelVal::Void)
 }
 
-fn chars_arg(val: SteelVal, ctx_name: &str) -> Result<Vec<char>, SteelErr> {
-    list_to_strings(val, ctx_name)?
-        .into_iter()
-        .map(|s| {
-            let mut it = s.chars();
-            match (it.next(), it.next()) {
-                (Some(c), None) => Ok(c),
-                _ => steel::stop!(Generic =>
-                    "{}: each entry must be exactly one character, got {:?}", ctx_name, s),
-            }
-        })
-        .collect()
-}
-
 // ── Decoration stores + diagnostics pull ───────────────────────────────
-
-fn list_items(val: SteelVal, ctx_name: &str) -> Result<Vec<SteelVal>, SteelErr> {
-    match val {
-        SteelVal::ListV(list) => Ok(list.into_iter().collect()),
-        _ => steel::stop!(TypeMismatch => "{}: expected a list", ctx_name),
-    }
-}
-
-fn usize_arg(val: SteelVal, ctx_name: &str) -> Result<usize, SteelErr> {
-    match val {
-        SteelVal::IntV(n) if n >= 0 => Ok(n as usize),
-        _ => steel::stop!(TypeMismatch => "{}: expected a non-negative integer", ctx_name),
-    }
-}
-
-fn int_arg(val: SteelVal, ctx_name: &str) -> Result<i64, SteelErr> {
-    match val {
-        SteelVal::IntV(n) => Ok(n as i64),
-        _ => steel::stop!(TypeMismatch => "{}: expected an integer", ctx_name),
-    }
-}
-
-/// Errors unless `fields` has exactly `n` elements — the shared shape check
-/// for every setter's fixed-arity entry list.
-fn exact_fields(
-    fields: Vec<SteelVal>,
-    n: usize,
-    ctx_name: &str,
-    shape: &str,
-) -> Result<Vec<SteelVal>, SteelErr> {
-    if fields.len() != n {
-        steel::stop!(Generic => "{}: each entry must be {}", ctx_name, shape);
-    }
-    Ok(fields)
-}
 
 /// `(set-inlay-hints! bid hints)` — `hints`: list of `(position text
 /// 'before|'after)`, `position` a wire `{"line" "character"}` hashmap.
-pub(crate) fn set_inlay_hints(ctx: &mut SteelCtx, bid: SteelVal, hints: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "set-inlay-hints!");
-    let id = bid_arg(&bid, "set-inlay-hints!")?;
-    let mut parsed = Vec::new();
-    for entry in list_items(hints, "set-inlay-hints! hints")? {
-        let fields = exact_fields(
-            list_items(entry, "set-inlay-hints! hint entry")?,
-            3,
-            "set-inlay-hints!",
-            "(position text 'before|'after)",
-        )?;
-        let mut fields = fields.into_iter();
-        let position = fields.next().expect("len checked");
-        let text = fields.next().expect("len checked");
-        let before_or_after = fields.next().expect("len checked");
-        let position_json = steel_to_json(&position)
-            .map_err(|e| super::conv_err(format!("set-inlay-hints! position: {e}")))?;
-        // Validated here, at the boundary, rather than left to the host
-        // side's extraction — a malformed position must error loudly, not
-        // silently drop the hint (host_impl.rs's `set_inlay_hints` treats
-        // this shape as already guaranteed).
-        let has_valid_position = position_json.get("line").is_some_and(|v| v.is_u64())
-            && position_json.get("character").is_some_and(|v| v.is_u64());
-        if !has_valid_position {
-            steel::stop!(Generic =>
-                "set-inlay-hints!: position must be a hashmap with numeric 'line' and 'character' keys, got {}",
-                position_json
-            );
-        }
-        let text = string_arg(text, "set-inlay-hints! text")?;
-        let before = match &before_or_after {
-            SteelVal::SymbolV(s) if s.as_str() == "before" => true,
-            SteelVal::SymbolV(s) if s.as_str() == "after" => false,
-            _ => {
-                steel::stop!(Generic => "set-inlay-hints!: third element must be 'before or 'after")
+pub(crate) fn set_inlay_hints(ctx: &mut SteelCtx, bid: BidArg, hints: SteelVal) -> SteelResult {
+    let id = bid.0;
+    let parsed = tuple_list(
+        hints,
+        "set-inlay-hints! hints",
+        3..=3,
+        "(position text 'before|'after)",
+        |fields| {
+            let position_json = steel_to_json(&fields[0])
+                .map_err(|e| generic_err(format!("set-inlay-hints! position: {e}")))?;
+            // Validated here, at the boundary, rather than left to the host
+            // side's extraction — a malformed position must error loudly, not
+            // silently drop the hint (host_impl.rs's `set_inlay_hints` treats
+            // this shape as already guaranteed).
+            let has_valid_position = position_json.get("line").is_some_and(|v| v.is_u64())
+                && position_json.get("character").is_some_and(|v| v.is_u64());
+            if !has_valid_position {
+                steel::stop!(Generic =>
+                    "set-inlay-hints!: position must be a hashmap with numeric 'line' and 'character' keys, got {}",
+                    position_json
+                );
             }
-        };
-        parsed.push((position_json, text, before));
-    }
+            let text = string_arg(fields[1].clone(), "set-inlay-hints! text")?;
+            let before = match &fields[2] {
+                SteelVal::SymbolV(s) if s.as_str() == "before" => true,
+                SteelVal::SymbolV(s) if s.as_str() == "after" => false,
+                _ => {
+                    steel::stop!(Generic => "set-inlay-hints!: third element must be 'before or 'after")
+                }
+            };
+            Ok((position_json, text, before))
+        },
+    )?;
     if let Some(decorations) = ctx.host.decorations() {
         decorations.set_inlay_hints(id, parsed);
     }
@@ -504,27 +400,25 @@ pub(crate) fn set_inlay_hints(ctx: &mut SteelCtx, bid: SteelVal, hints: SteelVal
 pub(crate) fn set_signs(
     ctx: &mut SteelCtx,
     source: SteelVal,
-    bid: SteelVal,
+    bid: BidArg,
     signs: SteelVal,
 ) -> SteelResult {
-    require_cmd_ctx!(ctx, "set-signs!");
     let source = string_arg(source, "set-signs! source")?;
-    let id = bid_arg(&bid, "set-signs!")?;
-    let mut parsed = Vec::new();
-    for entry in list_items(signs, "set-signs! signs")? {
-        let fields = exact_fields(
-            list_items(entry, "set-signs! entry")?,
-            4,
-            "set-signs!",
-            "(line text scope priority)",
-        )?;
-        let mut fields = fields.into_iter();
-        let line = usize_arg(fields.next().expect("len checked"), "set-signs! line")?;
-        let text = string_arg(fields.next().expect("len checked"), "set-signs! text")?;
-        let scope = string_arg(fields.next().expect("len checked"), "set-signs! scope")?;
-        let priority = int_arg(fields.next().expect("len checked"), "set-signs! priority")?;
-        parsed.push((line, text, scope, priority));
-    }
+    let id = bid.0;
+    let parsed = tuple_list(
+        signs,
+        "set-signs! signs",
+        4..=4,
+        "(line text scope priority)",
+        |fields| {
+            Ok((
+                usize_arg(fields[0].clone(), "set-signs! line")?,
+                string_arg(fields[1].clone(), "set-signs! text")?,
+                string_arg(fields[2].clone(), "set-signs! scope")?,
+                int_arg(fields[3].clone(), "set-signs! priority")?,
+            ))
+        },
+    )?;
     if let Some(decorations) = ctx.host.decorations() {
         decorations.set_signs(source, id, parsed);
     }
@@ -536,33 +430,26 @@ pub(crate) fn set_signs(
 pub(crate) fn set_virtual_lines(
     ctx: &mut SteelCtx,
     source: SteelVal,
-    bid: SteelVal,
+    bid: BidArg,
     lines: SteelVal,
 ) -> SteelResult {
-    require_cmd_ctx!(ctx, "set-virtual-lines!");
     let source = string_arg(source, "set-virtual-lines! source")?;
-    let id = bid_arg(&bid, "set-virtual-lines!")?;
-    let mut parsed = Vec::new();
-    for entry in list_items(lines, "set-virtual-lines! lines")? {
-        let fields = list_items(entry, "set-virtual-lines! entry")?;
-        if fields.len() != 2 && fields.len() != 3 {
-            steel::stop!(Generic => "set-virtual-lines!: each entry must be (line text) or (line text scope)");
-        }
-        let mut fields = fields.into_iter();
-        let line = usize_arg(
-            fields.next().expect("len checked"),
-            "set-virtual-lines! line",
-        )?;
-        let text = string_arg(
-            fields.next().expect("len checked"),
-            "set-virtual-lines! text",
-        )?;
-        let scope = fields
-            .next()
-            .map(|v| string_arg(v, "set-virtual-lines! scope"))
-            .transpose()?;
-        parsed.push((line, text, scope));
-    }
+    let id = bid.0;
+    let parsed = tuple_list(
+        lines,
+        "set-virtual-lines! lines",
+        2..=3,
+        "(line text) or (line text scope)",
+        |fields| {
+            let line = usize_arg(fields[0].clone(), "set-virtual-lines! line")?;
+            let text = string_arg(fields[1].clone(), "set-virtual-lines! text")?;
+            let scope = fields
+                .get(2)
+                .map(|v| string_arg(v.clone(), "set-virtual-lines! scope"))
+                .transpose()?;
+            Ok((line, text, scope))
+        },
+    )?;
     if let Some(decorations) = ctx.host.decorations() {
         decorations.set_virtual_lines(source, id, parsed);
     }
@@ -574,34 +461,23 @@ pub(crate) fn set_virtual_lines(
 /// `set-virtual-lines!` — the diagnostics plugin is the only client).
 pub(crate) fn set_inline_diagnostics(
     ctx: &mut SteelCtx,
-    bid: SteelVal,
+    bid: BidArg,
     lines: SteelVal,
 ) -> SteelResult {
-    require_cmd_ctx!(ctx, "set-inline-diagnostics!");
-    let id = bid_arg(&bid, "set-inline-diagnostics!")?;
-    let mut parsed = Vec::new();
-    for entry in list_items(lines, "set-inline-diagnostics! lines")? {
-        let fields = exact_fields(
-            list_items(entry, "set-inline-diagnostics! entry")?,
-            3,
-            "set-inline-diagnostics!",
-            "(line text scope)",
-        )?;
-        let mut fields = fields.into_iter();
-        let line = usize_arg(
-            fields.next().expect("len checked"),
-            "set-inline-diagnostics! line",
-        )?;
-        let text = string_arg(
-            fields.next().expect("len checked"),
-            "set-inline-diagnostics! text",
-        )?;
-        let scope = string_arg(
-            fields.next().expect("len checked"),
-            "set-inline-diagnostics! scope",
-        )?;
-        parsed.push((line, text, scope));
-    }
+    let id = bid.0;
+    let parsed = tuple_list(
+        lines,
+        "set-inline-diagnostics! lines",
+        3..=3,
+        "(line text scope)",
+        |fields| {
+            Ok((
+                usize_arg(fields[0].clone(), "set-inline-diagnostics! line")?,
+                string_arg(fields[1].clone(), "set-inline-diagnostics! text")?,
+                string_arg(fields[2].clone(), "set-inline-diagnostics! scope")?,
+            ))
+        },
+    )?;
     if let Some(decorations) = ctx.host.decorations() {
         decorations.set_inline_diagnostics(id, parsed);
     }
@@ -612,35 +488,24 @@ pub(crate) fn set_inline_diagnostics(
 pub(crate) fn set_extra_highlights(
     ctx: &mut SteelCtx,
     source: SteelVal,
-    bid: SteelVal,
+    bid: BidArg,
     spans: SteelVal,
 ) -> SteelResult {
-    require_cmd_ctx!(ctx, "set-extra-highlights!");
     let source = string_arg(source, "set-extra-highlights! source")?;
-    let id = bid_arg(&bid, "set-extra-highlights!")?;
-    let mut parsed = Vec::new();
-    for entry in list_items(spans, "set-extra-highlights! spans")? {
-        let fields = exact_fields(
-            list_items(entry, "set-extra-highlights! entry")?,
-            3,
-            "set-extra-highlights!",
-            "(start end scope)",
-        )?;
-        let mut fields = fields.into_iter();
-        let start = usize_arg(
-            fields.next().expect("len checked"),
-            "set-extra-highlights! start",
-        )?;
-        let end = usize_arg(
-            fields.next().expect("len checked"),
-            "set-extra-highlights! end",
-        )?;
-        let scope = string_arg(
-            fields.next().expect("len checked"),
-            "set-extra-highlights! scope",
-        )?;
-        parsed.push((start, end, scope));
-    }
+    let id = bid.0;
+    let parsed = tuple_list(
+        spans,
+        "set-extra-highlights! spans",
+        3..=3,
+        "(start end scope)",
+        |fields| {
+            Ok((
+                usize_arg(fields[0].clone(), "set-extra-highlights! start")?,
+                usize_arg(fields[1].clone(), "set-extra-highlights! end")?,
+                string_arg(fields[2].clone(), "set-extra-highlights! scope")?,
+            ))
+        },
+    )?;
     if let Some(decorations) = ctx.host.decorations() {
         decorations.set_extra_highlights(source, id, parsed);
     }
@@ -654,12 +519,11 @@ pub(crate) fn set_extra_highlights(
 /// crate-private, so a Rust builtin can't destructure one).
 pub(crate) fn diagnostics_for_buffer(
     ctx: &mut SteelCtx,
-    bid: SteelVal,
+    bid: BidArg,
     severity: SteelVal,
     range: SteelVal,
 ) -> SteelResult {
-    require_cmd_ctx!(ctx, "diagnostics-for-buffer");
-    let id = bid_arg(&bid, "diagnostics-for-buffer")?;
+    let id = bid.0;
     let floor = match severity {
         SteelVal::BoolV(false) => None,
         SteelVal::SymbolV(s) => Some(s.to_string()),
@@ -671,28 +535,16 @@ pub(crate) fn diagnostics_for_buffer(
     let range = match range {
         SteelVal::BoolV(false) => None,
         other => {
-            let fields = exact_fields(
-                list_items(other, "diagnostics-for-buffer #:range")?,
-                2,
-                "diagnostics-for-buffer",
-                "(start end)",
-            )?;
-            let mut fields = fields.into_iter();
-            let start = usize_arg(
-                fields.next().expect("len checked"),
-                "diagnostics-for-buffer range start",
-            )?;
-            let end = usize_arg(
-                fields.next().expect("len checked"),
-                "diagnostics-for-buffer range end",
-            )?;
+            let fields = checked_fields(other, "diagnostics-for-buffer", 2..=2, "(start end)")?;
+            let start = usize_arg(fields[0].clone(), "diagnostics-for-buffer range start")?;
+            let end = usize_arg(fields[1].clone(), "diagnostics-for-buffer range end")?;
             Some((start, end))
         }
     };
     let entries = match ctx.host.decorations() {
         Some(decorations) => decorations
             .diagnostics_for_buffer(id, floor.as_deref(), range)
-            .map_err(|e| conv_err(format!("diagnostics-for-buffer: {e}")))?,
+            .map_err(|e| generic_err(format!("diagnostics-for-buffer: {e}")))?,
         None => Vec::new(),
     };
     let list: Vec<SteelVal> = entries.iter().map(json_to_steel).collect();
@@ -701,9 +553,8 @@ pub(crate) fn diagnostics_for_buffer(
 
 /// `(diagnostic-counts bid)` → `(errors . warnings)` — a genuine dotted
 /// pair, built via steel-core's public `cons` (the only public pair API).
-pub(crate) fn diagnostic_counts(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "diagnostic-counts");
-    let id = bid_arg(&bid, "diagnostic-counts")?;
+pub(crate) fn diagnostic_counts(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+    let id = bid.0;
     let (errors, warnings) = ctx
         .host
         .decorations()
@@ -716,72 +567,55 @@ pub(crate) fn diagnostic_counts(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResul
 
 // ── Edit + navigation primitives ───────────────────────────────────────
 
-/// `(line col)` — a 2-element list, not a `(line . col)` dotted pair; see
-/// `set-inlay-hints!`'s analogous choice (steel-core 0.8.2's `Pair`/`car`/
-/// `cdr` are crate-private, unreachable from a Rust builtin).
-fn position_pair(val: SteelVal, ctx_name: &str) -> Result<(usize, usize), SteelErr> {
-    let fields = exact_fields(list_items(val, ctx_name)?, 2, ctx_name, "(line col)")?;
-    let mut it = fields.into_iter();
-    let line = usize_arg(it.next().expect("len checked"), ctx_name)?;
-    let col = usize_arg(it.next().expect("len checked"), ctx_name)?;
-    Ok((line, col))
-}
-
-fn optional_gen_arg(val: SteelVal) -> Result<Option<u64>, SteelErr> {
-    match val {
-        SteelVal::BoolV(false) => Ok(None),
-        SteelVal::IntV(n) if n >= 0 => Ok(Some(n as u64)),
-        _ => steel::stop!(TypeMismatch => "expect-generation must be a non-negative integer or #f"),
-    }
-}
-
 /// `(%apply-text-edits! bid edits expect-gen)` — `edits`: list of `((start-
 /// line start-col) (end-line end-col) text)`, wire positions.
+///
+/// `edits` decodes manually via `TextEditArg::from_steelval` per entry
+/// rather than a typed `Vec<TextEditArg>` param — steel-core's blanket
+/// `FromSteelVal for Vec<T>` impl discards the inner per-element error on
+/// failure, replacing it with a generic message; decoding manually keeps
+/// `TextEditArg`'s specific shape-error text.
 pub(crate) fn apply_text_edits(
     ctx: &mut SteelCtx,
-    bid: SteelVal,
+    bid: BidArg,
     edits: SteelVal,
     expect_gen: SteelVal,
 ) -> SteelResult {
-    require_cmd_ctx!(ctx, "apply-text-edits!");
-    let id = bid_arg(&bid, "apply-text-edits!")?;
-    let expect_gen = optional_gen_arg(expect_gen)?;
-    let mut parsed = Vec::new();
-    for entry in list_items(edits, "apply-text-edits! edits")? {
-        let fields = exact_fields(
-            list_items(entry, "apply-text-edits! entry")?,
-            3,
-            "apply-text-edits!",
-            "((start-line start-col) (end-line end-col) text)",
-        )?;
-        let mut it = fields.into_iter();
-        let (start_line, start_char) =
-            position_pair(it.next().expect("len checked"), "apply-text-edits! start")?;
-        let (end_line, end_char) =
-            position_pair(it.next().expect("len checked"), "apply-text-edits! end")?;
-        let new_text = string_arg(it.next().expect("len checked"), "apply-text-edits! text")?;
-        parsed.push((start_line, start_char, end_line, end_char, new_text));
-    }
+    let id = bid.0;
+    let expect_gen =
+        optional_usize_arg(expect_gen, "apply-text-edits! expect-gen")?.map(|n| n as u64);
+    let parsed = list_items(edits, "apply-text-edits! edits")?
+        .iter()
+        .map(|entry| {
+            let edit = TextEditArg::from_steelval(entry)?;
+            Ok((
+                edit.start.line,
+                edit.start.col,
+                edit.end.line,
+                edit.end.col,
+                edit.text,
+            ))
+        })
+        .collect::<Result<Vec<_>, SteelErr>>()?;
     ctx.host
         .edits()
-        .ok_or_else(|| conv_err(crate::host::unsupported("apply-text-edits!")))?
+        .ok_or_else(|| generic_err(crate::host::unsupported("apply-text-edits!")))?
         .apply_text_edits(id, parsed, expect_gen)
         .map(|()| SteelVal::Void)
-        .map_err(conv_err)
+        .map_err(generic_err)
 }
 
 /// `(%apply-workspace-edit! wsedit)` — `wsedit`: the decoded `WorkspaceEdit`
 /// hashmap (JSON↔SteelVal shape). Returns the number of buffers modified;
 /// the `apply-workspace-edit!` Scheme wrapper reports that count.
 pub(crate) fn apply_workspace_edit(ctx: &mut SteelCtx, wsedit: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "apply-workspace-edit!");
-    let json = steel_to_json(&wsedit).map_err(conv_err)?;
+    let json = steel_to_json(&wsedit).map_err(generic_err)?;
     let count = ctx
         .host
         .edits()
-        .ok_or_else(|| conv_err(crate::host::unsupported("apply-workspace-edit!")))?
+        .ok_or_else(|| generic_err(crate::host::unsupported("apply-workspace-edit!")))?
         .apply_workspace_edit(json)
-        .map_err(conv_err)?;
+        .map_err(generic_err)?;
     Ok(SteelVal::IntV(count as isize))
 }
 
@@ -792,10 +626,9 @@ pub(crate) fn apply_workspace_edit(ctx: &mut SteelCtx, wsedit: SteelVal) -> Stee
 /// target line col)` with char-indexed `line`/`col` and `target` a `bid`, a
 /// path string, or a `file://` URI string.
 pub(crate) fn goto_location(ctx: &mut SteelCtx, loc: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "goto-location!");
     match &loc {
         SteelVal::HashMapV(_) => {
-            let json = steel_to_json(&loc).map_err(conv_err)?;
+            let json = steel_to_json(&loc).map_err(generic_err)?;
             let (uri, range) = if let Some(uri) = json.get("targetUri") {
                 (
                     uri,
@@ -805,58 +638,52 @@ pub(crate) fn goto_location(ctx: &mut SteelCtx, loc: SteelVal) -> SteelResult {
             } else {
                 (
                     json.get("uri")
-                        .ok_or_else(|| conv_err("goto-location!: missing uri"))?,
+                        .ok_or_else(|| generic_err("goto-location!: missing uri"))?,
                     json.get("range"),
                 )
             };
             let uri = uri
                 .as_str()
-                .ok_or_else(|| conv_err("goto-location!: uri must be a string"))?
+                .ok_or_else(|| generic_err("goto-location!: uri must be a string"))?
                 .to_string();
-            let range = range.ok_or_else(|| conv_err("goto-location!: missing range"))?;
+            let range = range.ok_or_else(|| generic_err("goto-location!: missing range"))?;
             let line = range
                 .pointer("/start/line")
                 .and_then(|v| v.as_u64())
-                .ok_or_else(|| conv_err("goto-location!: missing range.start.line"))?
+                .ok_or_else(|| generic_err("goto-location!: missing range.start.line"))?
                 as usize;
             let character = range
                 .pointer("/start/character")
                 .and_then(|v| v.as_u64())
-                .ok_or_else(|| conv_err("goto-location!: missing range.start.character"))?
+                .ok_or_else(|| generic_err("goto-location!: missing range.start.character"))?
                 as usize;
             ctx.host
                 .edits()
-                .ok_or_else(|| conv_err(crate::host::unsupported("goto-location!")))?
+                .ok_or_else(|| generic_err(crate::host::unsupported("goto-location!")))?
                 .goto_location_wire(uri, line, character)
                 .map(|()| SteelVal::Void)
-                .map_err(conv_err)
+                .map_err(generic_err)
         }
         SteelVal::ListV(_) => {
-            let fields = exact_fields(
-                list_items(loc.clone(), "goto-location!")?,
-                3,
-                "goto-location!",
-                "(target line col)",
-            )?;
-            let mut it = fields.into_iter();
-            let target = it.next().expect("len checked");
-            let line = usize_arg(it.next().expect("len checked"), "goto-location! line")?;
-            let col = usize_arg(it.next().expect("len checked"), "goto-location! col")?;
+            let fields = checked_fields(loc.clone(), "goto-location!", 3..=3, "(target line col)")?;
+            let target = fields[0].clone();
+            let line = usize_arg(fields[1].clone(), "goto-location! line")?;
+            let col = usize_arg(fields[2].clone(), "goto-location! col")?;
             if let Some(bid) = super::ids::downcast_buffer_id(&target) {
                 ctx.host
                     .edits()
-                    .ok_or_else(|| conv_err(crate::host::unsupported("goto-location!")))?
+                    .ok_or_else(|| generic_err(crate::host::unsupported("goto-location!")))?
                     .goto_location_buffer(bid, line, col)
                     .map(|()| SteelVal::Void)
-                    .map_err(conv_err)
+                    .map_err(generic_err)
             } else {
                 let s = string_arg(target, "goto-location! target")?;
                 ctx.host
                     .edits()
-                    .ok_or_else(|| conv_err(crate::host::unsupported("goto-location!")))?
+                    .ok_or_else(|| generic_err(crate::host::unsupported("goto-location!")))?
                     .goto_location_path(s, line, col)
                     .map(|()| SteelVal::Void)
-                    .map_err(conv_err)
+                    .map_err(generic_err)
             }
         }
         _ => steel::stop!(TypeMismatch =>
@@ -865,9 +692,8 @@ pub(crate) fn goto_location(ctx: &mut SteelCtx, loc: SteelVal) -> SteelResult {
 }
 
 /// `(selection-spans-full-line? bid)`.
-pub(crate) fn selection_spans_full_line(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "selection-spans-full-line?");
-    let id = bid_arg(&bid, "selection-spans-full-line?")?;
+pub(crate) fn selection_spans_full_line(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+    let id = bid.0;
     Ok(SteelVal::BoolV(
         ctx.host.cursor().selection_spans_full_line(id),
     ))
@@ -884,21 +710,19 @@ pub(crate) fn prompt(
     prefill: SteelVal,
     on_confirm: SteelVal,
 ) -> SteelResult {
-    require_cmd_ctx!(ctx, "prompt!");
     let label = string_arg(label, "prompt! label")?;
     let prefill = string_arg(prefill, "prompt! prefill")?;
     ctx.host
         .ui()
-        .ok_or_else(|| conv_err(crate::host::unsupported("prompt!")))?
+        .ok_or_else(|| generic_err(crate::host::unsupported("prompt!")))?
         .prompt(label, prefill, on_confirm)
         .map(|()| SteelVal::Void)
-        .map_err(conv_err)
+        .map_err(generic_err)
 }
 
 /// `(symbol-under-cursor bid)`.
-pub(crate) fn symbol_under_cursor(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "symbol-under-cursor");
-    let id = bid_arg(&bid, "symbol-under-cursor")?;
+pub(crate) fn symbol_under_cursor(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+    let id = bid.0;
     Ok(SteelVal::StringV(
         ctx.host.cursor().symbol_under_cursor(id).into(),
     ))
@@ -911,43 +735,40 @@ pub(crate) fn symbol_under_cursor(ctx: &mut SteelCtx, bid: SteelVal) -> SteelRes
 /// decoded `CompletionItem` hashmaps.
 pub(crate) fn completion_begin(
     ctx: &mut SteelCtx,
-    bid: SteelVal,
+    bid: BidArg,
     items: SteelVal,
     incomplete: SteelVal,
 ) -> SteelResult {
-    require_cmd_ctx!(ctx, "completion-begin!");
-    let id = bid_arg(&bid, "completion-begin!")?;
+    let id = bid.0;
     let incomplete = match incomplete {
         SteelVal::BoolV(b) => b,
         _ => steel::stop!(TypeMismatch => "completion-begin!: #:incomplete expected a bool"),
     };
     let mut parsed = Vec::new();
     for entry in list_items(items, "completion-begin! items")? {
-        parsed.push(steel_to_json(&entry).map_err(conv_err)?);
+        parsed.push(steel_to_json(&entry).map_err(generic_err)?);
     }
     ctx.host
         .completions()
-        .ok_or_else(|| conv_err(crate::host::unsupported("completion-begin!")))?
+        .ok_or_else(|| generic_err(crate::host::unsupported("completion-begin!")))?
         .completion_begin(id, parsed, incomplete)
         .map(|()| SteelVal::Void)
-        .map_err(conv_err)
+        .map_err(generic_err)
 }
 
 /// `(completion-update-filter! text)`.
 pub(crate) fn completion_update_filter(ctx: &mut SteelCtx, text: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "completion-update-filter!");
     let text = string_arg(text, "completion-update-filter! text")?;
     ctx.host
         .completions()
-        .ok_or_else(|| conv_err(crate::host::unsupported("completion-update-filter!")))?
+        .ok_or_else(|| generic_err(crate::host::unsupported("completion-update-filter!")))?
         .completion_update_filter(text)
         .map(|()| SteelVal::Void)
-        .map_err(conv_err)
+        .map_err(generic_err)
 }
 
 /// `(completion-top n)`.
 pub(crate) fn completion_top(ctx: &mut SteelCtx, n: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "completion-top");
     let n = usize_arg(n, "completion-top")?;
     let items = ctx
         .host
@@ -961,19 +782,17 @@ pub(crate) fn completion_top(ctx: &mut SteelCtx, n: SteelVal) -> SteelResult {
 /// `(completion-accept! idx)` — `idx` indexes the ranked/filtered list
 /// (`completion-top`'s order), not the raw response order.
 pub(crate) fn completion_accept(ctx: &mut SteelCtx, idx: SteelVal) -> SteelResult {
-    require_cmd_ctx!(ctx, "completion-accept!");
     let idx = usize_arg(idx, "completion-accept!")?;
     ctx.host
         .completions()
-        .ok_or_else(|| conv_err(crate::host::unsupported("completion-accept!")))?
+        .ok_or_else(|| generic_err(crate::host::unsupported("completion-accept!")))?
         .completion_accept(idx)
         .map(|()| SteelVal::Void)
-        .map_err(conv_err)
+        .map_err(generic_err)
 }
 
 /// `(completion-dismiss!)`.
 pub(crate) fn completion_dismiss(ctx: &mut SteelCtx) -> SteelResult {
-    require_cmd_ctx!(ctx, "completion-dismiss!");
     if let Some(completions) = ctx.host.completions() {
         completions.completion_dismiss();
     }
@@ -1245,7 +1064,7 @@ mod tests {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
         ctx.session = crate::context::EvalSession::Init;
-        let err = lsp_stop(&mut ctx, SteelVal::BoolV(false)).unwrap_err();
+        let err = super::super::errors::require_cmd(&ctx, "lsp-stop!").unwrap_err();
         assert!(
             err.to_string().contains("not available during init"),
             "got: {err}"
@@ -1274,7 +1093,7 @@ mod tests {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
         ctx.session = crate::context::EvalSession::Init;
-        let err = lsp_restart(&mut ctx, SteelVal::BoolV(false)).unwrap_err();
+        let err = super::super::errors::require_cmd(&ctx, "lsp-restart!").unwrap_err();
         assert!(
             err.to_string().contains("not available during init"),
             "got: {err}"
@@ -1298,7 +1117,7 @@ mod tests {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
         ctx.session = crate::context::EvalSession::Init;
-        let err = lsp_show_status(&mut ctx).unwrap_err();
+        let err = super::super::errors::require_cmd(&ctx, "lsp-show-status!").unwrap_err();
         assert!(
             err.to_string().contains("not available during init"),
             "got: {err}"
@@ -1311,8 +1130,8 @@ mod tests {
     /// (`registration.scm`) calls it directly to skip already-registered
     /// languages, with no `with-handler` fallback to catch a gate error.
     ///
-    /// Fail oracle: reinstate `require_cmd_ctx!` in
-    /// `lsp_registered_for_language` → this returns `Err` instead of `Ok`.
+    /// Fail oracle: change `lsp-registered-for-language?`'s table entry from
+    /// `open` to `cmd` → this returns `Err` instead of `Ok`.
     #[test]
     fn lsp_registered_for_language_is_callable_during_init() {
         let mut h = SteelCtxTestHarness::new();
