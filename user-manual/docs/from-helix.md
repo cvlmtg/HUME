@@ -82,12 +82,16 @@ Both editors share the same foundations — multiple cursors, `;` to collapse, `
 | Trim whitespace at edges | `_` | `_` |
 | Select within (regex per selection) | `s` | `s` |
 | Select all search matches | no dedicated key — `%` (select whole buffer) then `s` (sub-select regex matches) | `m /` |
-| Use selection as search pattern | `*` (adds word-boundary anchors; `Alt-*` for the literal selection) | `Ctrl+/` (kitty only) |
+| Search selection, auto word-boundary anchors | `*` | *(none)* |
+| Search word under cursor (Vim-style) | *(unbound)* | `*` |
+| Search selection literally, no anchors | `Alt-*` | `Ctrl+/` (kitty only) |
 
 ::: warning
-HUME's `*` is not the same operation as Helix's — it's Vim-style, searching the whole word under the cursor rather than the literal selection. `Ctrl+/` is HUME's equivalent of Helix's `*`.
+HUME's `*` is not the same operation as Helix's `*`. Helix's `*` searches the literal current selection (or just the character under a collapsed cursor), adding `\b` anchors only when that text looks like a word — it never expands past what's already selected. HUME's `*` is Vim-style: it always expands to the whole word under the cursor first, ignoring any existing selection, then searches with `\b` anchors.
 
-To get Helix's exact `*` back on the `*` key, rebind it to `search-selection` in your `init.scm`:
+HUME's `Ctrl+/` is the closer match — to Helix's `Alt-*` (literal selection, no anchors). HUME has no equivalent of Helix's `*` (selection-based search with automatic boundary detection).
+
+To put `Ctrl+/`'s behavior on the `*` key instead — matching Helix's `Alt-*`, not `*` — rebind it in your `init.scm`:
 
 ```scheme
 (bind-key! 'normal "*" "search-selection")
