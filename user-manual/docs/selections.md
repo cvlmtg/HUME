@@ -60,7 +60,6 @@ There is no paragraph text object; use the `{` and `}` paragraph motions.
 | `;` | Collapse selection to head and exit Extend mode |
 | `Ctrl+;` | Collapse selection to anchor and exit Extend mode (kitty only) |
 | `Ctrl+e` | Swap anchor and head of each selection (any mode; works on legacy terminals too) |
-| `o` (in Extend mode) | Flip which end is the head |
 
 ## Multiple selections
 

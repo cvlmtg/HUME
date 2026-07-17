@@ -20,8 +20,10 @@
 //! The keymap stores only base command names. Extend mode is resolved at
 //! dispatch time via a `MotionMode` parameter — no separate extend-variant
 //! command names are needed. The sparse `extend` trie in [`Keymap`] holds
-//! per-key overrides (e.g. `o → flip-selections`) that take priority in
-//! extend mode before falling through to the normal trie with `extend = true`.
+//! per-key overrides that take priority in extend mode before falling
+//! through to the normal trie with `extend = true`. It ships empty by
+//! default — plugins (e.g. `core:vim-keybind`'s `o → flip-selections`) are
+//! the usual source of entries.
 //!
 //! # Wait-char bindings
 //!
@@ -274,7 +276,8 @@ pub enum BindMode {
 #[derive(Clone)]
 pub struct Keymap {
     pub(super) normal: KeyTrie,
-    /// Sparse extend-mode overrides (e.g. `o → flip-selections`).
+    /// Sparse extend-mode overrides. Empty by default; plugins populate it
+    /// (e.g. `core:vim-keybind`'s `o → flip-selections`).
     ///
     /// Checked before the normal trie when the editor is in Extend mode.
     /// A match dispatches directly with `extend = false` — these are

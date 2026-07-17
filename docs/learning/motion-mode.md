@@ -74,9 +74,9 @@ Extend → anchor = old_anchor, head = new_head (anchor stays, head moves)
 
 A few anchor-manipulation commands sit beside this framework without being a
 new mode. Overshooting a target can be corrected by simply walking the head
-back — the same motion, reversed, shrinks it back down. `o` (and `Ctrl+e`)
-instead flip which end of the selection is the head and which is the anchor,
-which is what you want when you'd rather grow or shrink from the *other* end.
+back — the same motion, reversed, shrinks it back down. `Ctrl+e` instead
+flips which end of the selection is the head and which is the anchor, which
+is what you want when you'd rather grow or shrink from the *other* end.
 `Ctrl+;` collapses the selection onto its anchor, discarding the head. None of
 these invent a separate command for the moved pair; all reuse the same
 positions the existing selection already carries.

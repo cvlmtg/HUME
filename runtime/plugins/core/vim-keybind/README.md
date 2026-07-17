@@ -1,7 +1,7 @@
 # core:vim-keybind
 
-Vim muscle-memory keybindings — line-motion keys plus C/D/G composites HUME doesn't bind
-natively.
+Vim muscle-memory keybindings — line-motion keys, C/D/G composites HUME doesn't bind
+natively, and the visual-mode `o` flip alias.
 
 ## Usage
 
@@ -18,20 +18,26 @@ activates it. Loading it eagerly guarantees it's already up before this check ru
 
 ## Keys
 
-| Key      | Command                            | Native equivalent |
-|----------|--------------------------------------|--------------------|
-| `0`      | goto-line-start                     | `g h`              |
-| `^`      | goto-first-nonblank                 | `g s`              |
-| `$`      | goto-line-end                       | `g l`              |
-| `Ctrl+6` | goto-alternate-file                 | `:b#`              |
-| `C`      | vim-change-to-eol-or-copy-line*     | `ctrl-g l c`       |
-| `D`      | vim-delete-to-eol                   | `ctrl-g l d`       |
-| `G`      | goto-last-line                      | `g e`              |
+| Key               | Command                            | Native equivalent  |
+|-------------------|------------------------------------|--------------------|
+| `0`               | goto-line-start                    | `g h`              |
+| `^`               | goto-first-nonblank                | `g s`              |
+| `$`               | goto-line-end                      | `g l`              |
+| `Ctrl+6`          | goto-alternate-file                | `:b#`              |
+| `C`               | vim-change-to-eol-or-copy-line*    | `ctrl-g l c`       |
+| `D`               | vim-delete-to-eol                  | `ctrl-g l d`       |
+| `G`               | goto-last-line                     | `g e`              |
+| `o` (Extend mode) | flip-selections                    | `Ctrl+e`           |
+|-------------------|------------------------------------|--------------------|
 
 \* `C` is context-sensitive: on a bare cursor it's vim's change-to-end-of-line; with a real
 (multi-char) selection already active, it instead falls back to HUME's native
 `copy-selection-on-next-line`, so that command stays reachable without giving up vim muscle
 memory for the common (bare-cursor) case.
+
+`o` restores vim's visual-mode "flip the selection" gesture in Extend mode. HUME's native
+`Ctrl+e` already flips in any mode — including Normal — and works on legacy terminals, so `o`
+is purely a muscle-memory alias, not new capability.
 
 ## Config
 

@@ -52,7 +52,7 @@ Opt-in GUI-style paste split: `p` / `P` paste the kill-ring head, `Ctrl+V` / `Ct
 
 ## core:vim-keybind
 
-Vim muscle-memory keys: `$`, `^`, `0`, and the alternate-file toggle, plus `C`, `D` (delete to end of line), and `G` (go to last line). Requires `core:stdlib` loaded eagerly first — not just declared; this plugin checks for it at its own load time.
+Vim muscle-memory keys: `$`, `^`, `0`, and the alternate-file toggle, plus `C`, `D` (delete to end of line), `G` (go to last line), and `o` in Extend mode (flip anchor and head — vim's visual-mode `o`; HUME's native `Ctrl+e` already flips in any mode, so this is a muscle-memory alias). Requires `core:stdlib` loaded eagerly first — not just declared; this plugin checks for it at its own load time.
 
 By default (`'smart`), `C` is context-sensitive: on a bare cursor it's vim's change to end of line; with an active (multi-char) selection it instead runs the default command, `copy-selection-on-next-line`, so that command stays reachable without giving up vim muscle memory for the common case. Pass `#:config` to change this:
 

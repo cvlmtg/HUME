@@ -26,6 +26,12 @@
 (bind-key! 'normal "^" "goto-first-nonblank")
 (bind-key! 'normal "$" "goto-line-end")
 
+;; ── Flip selection ────────────────────────────────────────────────────────────
+;; Vim visual-mode `o` swaps which end of the selection is the head. HUME's
+;; native `Ctrl+e` already does this in any mode (and on legacy terminals),
+;; so this is purely the vim muscle-memory alias.
+(bind-key! 'extend "o" "flip-selections")
+
 ;; ── Alternate buffer ──────────────────────────────────────────────────────────
 ;; Ctrl+6 is the portable form of vim's Ctrl+^ (same keycap/bytes on US
 ;; layouts). Kitty protocol delivers Char('6')+CONTROL; legacy 0x1E is not

@@ -76,7 +76,7 @@ Both editors share the same foundations — multiple cursors, `;` to collapse, `
 | Copy selection on line below | `C` | `C` (duplicates each selection to the same column on the next line, adding a multi-cursor — column-style editing via multi-cursor, not a rectangular visual block) |
 | Copy selection on line above | `Alt-C` | (unbound) |
 | Remove primary selection | `Alt-,` | `Ctrl+,` |
-| Flip selections | `Alt-;` (Normal and Select mode) | `Ctrl+e` (Normal and Extend mode); `o` (Extend mode only) |
+| Flip selections | `Alt-;` (Normal and Select mode) | `Ctrl+e` (Normal and Extend mode) |
 | Merge consecutive selections | `Alt-_` (touching selections only); `Alt--` merges all into one span | automatic — adjacent selections never persist |
 | Align selections | `&` | `&` |
 | Trim whitespace at edges | `_` | `_` |

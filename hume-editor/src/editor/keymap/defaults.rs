@@ -304,7 +304,7 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
 
     // ── Extend mode ───────────────────────────────────────────────────────────
     t.bind_leaf(key!('e'), cmd!("toggle-extend"));
-    // Ctrl+e flips anchor↔head (same as `o` in Extend mode). Unlike Ctrl+;,
+    // Ctrl+e flips anchor↔head, in both Normal and Extend mode. Unlike Ctrl+;,
     // this emits a real control byte (0x05), so it works on legacy terminals
     // that don't support the kitty keyboard protocol. In Extend mode it falls
     // through to here with extend=true; flip-selections ignores MotionMode.
@@ -385,8 +385,6 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!('a'), cmd!("insert-at-selection-end"));
     t.bind_leaf(key!('I'), cmd!("insert-at-line-start"));
     t.bind_leaf(key!('A'), cmd!("insert-at-line-end"));
-    // `o` in normal mode: open line below.
-    // `o` in extend mode: flip selections (extend pairing in the registry).
     t.bind_leaf(key!('o'), cmd!("open-line-below"));
     t.bind_leaf(key!('O'), cmd!("open-line-above"));
 
@@ -402,12 +400,11 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
 /// the normal trie with `extend = true` — the extend-variant resolution in
 /// `execute_keymap_command` then applies as usual.
 ///
-/// Default: `o → flip-selections` (mirrors Helix/Kakoune: `Alt+o` in extend
-/// mode flips the selection direction).
+/// Empty by default: `Ctrl+e` already flips selections in both Normal and
+/// Extend mode (see `default_normal_keymap`), so no Extend-only override is
+/// needed. Plugins (e.g. `core:vim-keybind`'s vim-style `o`) may add entries.
 pub(super) fn default_extend_keymap() -> KeyTrie {
-    let mut t = KeyTrie::new("extend");
-    t.bind_leaf(key!('o'), cmd!("flip-selections"));
-    t
+    KeyTrie::new("extend")
 }
 
 // ── Default Insert keymap ─────────────────────────────────────────────────────

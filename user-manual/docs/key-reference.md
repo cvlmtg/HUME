@@ -198,7 +198,6 @@ Insert mode handles auto-pair insertion: typing `(`, `[`, `{`, `"`, `'`, or `` `
 
 | Key | Action |
 |-----|--------|
-| `o` | Flip anchor and head |
 | All other keys | Same as Normal mode, but motions extend or shrink the selection |
 
 The status bar shows `EXT` in Extend mode.

@@ -111,6 +111,26 @@ fn plugin_rebinds_line_and_alternate_motions() {
     );
 }
 
+// ── `o` flip (Extend mode) ──────────────────────────────────────────────────────
+
+/// The plugin's `(bind-key! 'extend "o" "flip-selections")` restores vim
+/// visual-mode `o` — swap anchor and head — in Extend mode. Native HUME
+/// already covers this via `Ctrl+e` (see `tests/commands.rs`'s `ctrl_e_*`
+/// tests); this only checks the plugin's own binding wires up correctly.
+#[test]
+#[cfg(not(windows))]
+fn o_in_extend_mode_flips_selection() {
+    let (mut ed, _guard, _dir) = setup_vim_keybind_editor("-[hell]>o\n");
+    ed.state.mode = Mode::Extend;
+
+    ed.handle_key(key('o'));
+
+    // anchor and head are swapped — selection is now backward.
+    assert_eq!(state(&ed), "<[hell]-o\n");
+    // extend mode is still active (flip doesn't exit it).
+    assert_eq!(ed.state.mode, Mode::Extend);
+}
+
 // ── C / D / G ─────────────────────────────────────────────────────────────────
 
 #[test]

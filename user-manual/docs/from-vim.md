@@ -84,6 +84,7 @@ HUME's idiom for line motions is the `g` prefix: `g h` (start), `g l` (end), `g 
 | `G` | `g e` | `G` |
 | `gg` | `g g` | `g g` |
 | `C` / `D` | `ctrl-g l c` / `ctrl-g l d` (kitty terminals only) | `C` (change to end of line on a bare cursor; with a selection, falls back to the default `copy-selection-on-next-line`) / `D` |
+| `o` (visual mode) | `Ctrl+e` (flips anchor and head, any mode) | `o` (in Extend mode) |
 
 ## Commands you already know
 

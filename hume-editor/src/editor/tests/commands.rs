@@ -1330,22 +1330,21 @@ fn plain_comma_still_keeps_primary_selection() {
     assert_eq!(state(&ed), "-[h]>ello world\n");
 }
 
-// ── `o` in extend mode flips the selection ────────────────────────────────────
+// ── `o` in extend mode ─────────────────────────────────────────────────────────
 
-/// In extend mode `o` must swap anchor and head (Vim visual-mode `o`), letting
-/// the user extend the selection in the opposite direction. In normal mode `o`
-/// must still open a line below — the extend branch must not shadow it.
+/// The default Extend override trie is empty, so `o` in Extend mode falls
+/// through to the Normal trie (with extend=true) like any other unbound-in-Extend
+/// key — same as `o` in Normal mode, `open-line-below`. The vim-style flip
+/// alias lives only in `core:vim-keybind` (see `tests/vim_keybind.rs`).
 #[test]
-fn o_in_extend_mode_flips_selection() {
+fn o_in_extend_mode_falls_through_to_open_line_below() {
     let mut ed = editor_from("-[hell]>o\n");
     ed.state.mode = Mode::Extend;
 
     ed.handle_key(key('o'));
 
-    // anchor and head are swapped — selection is now backward.
-    assert_eq!(state(&ed), "<[hell]-o\n");
-    // extend mode is still active (flip doesn't exit it).
-    assert_eq!(ed.state.mode, Mode::Extend);
+    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.doc().text().to_string(), "hello\n\n");
 }
 
 #[test]
@@ -1361,8 +1360,8 @@ fn o_in_normal_mode_still_opens_line_below() {
 
 // ── `Ctrl+e` flips the selection in Normal AND Extend mode ───────────────────
 
-/// `Ctrl+e` in Normal mode must swap anchor and head — same effect as `o` in
-/// Extend mode. This works on legacy terminals because `Ctrl+e` emits 0x05.
+/// `Ctrl+e` in Normal mode must swap anchor and head. This works on legacy
+/// terminals because `Ctrl+e` emits 0x05.
 #[test]
 fn ctrl_e_in_normal_mode_flips_selection() {
     let mut ed = editor_from("-[hell]>o\n");
@@ -1377,8 +1376,8 @@ fn ctrl_e_in_normal_mode_flips_selection() {
 }
 
 /// `Ctrl+e` in Extend mode also flips (it falls through to the Normal trie with
-/// extend=true; `cmd_flip_selections` ignores MotionMode, so the result is the
-/// same as `o`). Extend mode must remain active after the flip.
+/// extend=true; `cmd_flip_selections` ignores MotionMode). Extend mode must
+/// remain active after the flip.
 #[test]
 fn ctrl_e_in_extend_mode_flips_selection() {
     let mut ed = editor_from("-[hell]>o\n");
