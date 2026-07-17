@@ -273,12 +273,17 @@ mod imp {
                 }
                 let input_r = pfds[0].revents().unwrap_or(PollFlags::empty());
                 let wake_r = pfds[1].revents().unwrap_or(PollFlags::empty());
+                // A hung-up tty reports POLLIN|POLLHUP together (readable
+                // just means a read would return EOF) — closed must win, or
+                // `wait` reports live `Input` forever and the run loop spins
+                // re-polling a dead fd instead of ever reaching its `Err`
+                // exit path.
+                let input_closed = input_r
+                    .intersects(PollFlags::POLLERR | PollFlags::POLLHUP | PollFlags::POLLNVAL);
                 Ok(RawReady {
-                    input: input_r.contains(PollFlags::POLLIN),
+                    input: input_r.contains(PollFlags::POLLIN) && !input_closed,
                     wake: wake_r.contains(PollFlags::POLLIN),
-                    input_closed: input_r
-                        .intersects(PollFlags::POLLERR | PollFlags::POLLHUP | PollFlags::POLLNVAL)
-                        && !input_r.contains(PollFlags::POLLIN),
+                    input_closed,
                 })
             }
             None => {
@@ -487,6 +492,43 @@ mod imp {
             let ready_again =
                 wait_on_fds(None, wake_read.as_fd(), Some(Duration::from_secs(1))).expect("poll");
             assert!(ready_again.wake, "wake pipe must still work after a drain");
+        }
+
+        #[test]
+        fn hung_up_input_is_classified_closed_not_input() {
+            // Peer drop leaves the read end POLLIN|POLLHUP on this platform
+            // (verified: socketpair and pty both report both flags on
+            // hangup, with or without a pending byte) — closed must win, or
+            // the run loop spins forever on a dead fd.
+            let (input_read, mut input_write) = UnixStream::pair().expect("input pair");
+            let (wake_read, _wake_write) = UnixStream::pair().expect("wake pair");
+            input_write.write_all(b"x").expect("write input");
+            drop(input_write);
+
+            let ready = wait_on_fds(
+                Some(input_read.as_fd()),
+                wake_read.as_fd(),
+                Some(Duration::from_secs(1)),
+            )
+            .expect("poll");
+            assert!(ready.input_closed, "hung-up input must be reported closed");
+            assert!(
+                !ready.input,
+                "a closed fd must not also be reported as live input"
+            );
+        }
+
+        #[test]
+        fn wait_errors_on_hung_up_input() {
+            let (input_read, input_write) = UnixStream::pair().expect("input pair");
+            drop(input_write);
+
+            let (mut wait, _waker) = for_test(Some(input_read));
+            let outcome = wait.wait(Some(Duration::from_secs(1)));
+            assert!(
+                outcome.is_err(),
+                "wait() must error (terminal input closed) instead of looping on a dead fd, got {outcome:?}"
+            );
         }
 
         #[test]
