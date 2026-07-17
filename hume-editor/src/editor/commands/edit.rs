@@ -9,11 +9,12 @@ use crate::ops::register::{
     BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, KILL_RING_REGISTER, yank_selections,
 };
 use crate::ops::surround::wrap_each_selection;
-use hume_editing::selection::Selection;
+use hume_editing::selection::{Selection, SelectionSet};
 
 use super::super::{EditorState, Severity, doc_ops, register_ops};
 use super::{
-    apply_focused_edit, apply_focused_edit_grouped, begin_insert_session, focused_buffer_id,
+    apply_focused_edit, apply_focused_edit_grouped, apply_focused_motion, begin_insert_session,
+    doc, focused_buffer_id, pin_insert_anchors,
 };
 use crate::editor::error::CommandError;
 /// Commands that keep Smart-p in "ring" mode: bare `p`/`P` reads the ring
@@ -70,24 +71,59 @@ pub fn cmd_change(
     };
     begin_insert_session(state, view);
     apply_focused_edit_grouped(state, view, delete_selection_content);
-    // Pin the insertion anchors so Esc can select the typed replacement.
+    pin_insert_anchors(state, view);
+    // Auto-select the typed replacement on exit only when the setting is on
+    // (`mii` can still recover it later regardless — see `pin_insert_anchors`).
     // Gated on the group actually being open (skips read-only buffers, and
-    // re-captures correctly on dot-repeat replay, which pre-opens the group)
-    // and on the setting.
-    if super::doc(state, view)
+    // re-captures correctly on dot-repeat replay, which pre-opens the group).
+    if doc(state, view)
         .overrides
         .select_changed_text(&state.settings)
         && super::is_group_open_current(state, view)
     {
-        let anchors: Vec<usize> = super::current_selections(state, view)
-            .iter_sorted()
-            .map(|s| s.head())
-            .collect();
         let pid = state.focused_pane_id;
         let bid = focused_buffer_id(state, view);
-        state.panes.state[pid][bid].pinned_anchors = Some(anchors);
+        state.panes.state[pid][bid].select_on_exit = true;
     }
     state.route_kill(yanked);
+    Ok(())
+}
+
+/// Select the span(s) typed during the most recently completed insert
+/// session (`i`/`a`/`o`/`O`/`A`/`I`/`c`/…), bound at `mii`.
+///
+/// Reports [`Severity::Info`] and leaves selections untouched if there is no
+/// stashed insertion, or if a later mutation (any edit, undo, or redo) has
+/// moved the buffer's `text_gen` past the stamp — see
+/// [`crate::editor::buffer::LastInsert`].
+pub fn cmd_select_last_insertion(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    _count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    let buf = doc(state, view);
+    let fresh = buf
+        .last_insert
+        .as_ref()
+        .filter(|last| last.text_gen == buf.text_gen)
+        .map(|last| last.spans.clone());
+    let Some(spans) = fresh else {
+        state.report(Severity::Info, "no last insertion".to_string());
+        return Ok(());
+    };
+    // Non-empty by construction: `end_insert_session` only ever stashes a
+    // non-empty `spans` vec (see `pin_insert_anchors`'s caller). The last
+    // span is spatially last (stashed in ascending-start order) — primary
+    // there, matching the entry command's own cursor placement.
+    let primary = spans.len() - 1;
+    let selections: Vec<Selection> = spans
+        .into_iter()
+        .map(|(anchor, head)| Selection::new(anchor, head))
+        .collect();
+    apply_focused_motion(state, view, move |_b, _sels| {
+        SelectionSet::from_vec(selections, primary)
+    });
     Ok(())
 }
 

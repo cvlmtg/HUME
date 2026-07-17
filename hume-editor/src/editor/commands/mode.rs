@@ -16,6 +16,7 @@ use super::super::replay::PendingRepeat;
 use super::super::{EditorState, MiniBuffer, Mode};
 use super::{
     apply_focused_edit_grouped, apply_focused_motion, begin_insert_session, end_insert_session,
+    pin_insert_anchors,
 };
 use crate::editor::error::CommandError;
 
@@ -31,6 +32,7 @@ pub fn cmd_insert_before(
         sels.map(|s| Selection::collapsed(s.start()))
     });
     begin_insert_session(state, view);
+    pin_insert_anchors(state, view);
     Ok(())
 }
 
@@ -44,6 +46,7 @@ pub fn cmd_insert_after(
         cmd_move_right(b, s, 1, MotionMode::Move)
     });
     begin_insert_session(state, view);
+    pin_insert_anchors(state, view);
     Ok(())
 }
 
@@ -57,6 +60,7 @@ pub fn cmd_insert_at_line_start(
         cmd_goto_first_nonblank(b, s, 1, MotionMode::Move)
     });
     begin_insert_session(state, view);
+    pin_insert_anchors(state, view);
     Ok(())
 }
 
@@ -84,6 +88,7 @@ pub fn cmd_insert_at_line_end(
         })
     });
     begin_insert_session(state, view);
+    pin_insert_anchors(state, view);
     state.mark_insert_step_back();
     Ok(())
 }
@@ -100,6 +105,7 @@ pub fn cmd_insert_at_selection_start(
         sels.map(|sel| Selection::collapsed(sel.start()))
     });
     begin_insert_session(state, view);
+    pin_insert_anchors(state, view);
     Ok(())
 }
 
@@ -132,6 +138,7 @@ pub fn cmd_insert_at_selection_end(
         })
     });
     begin_insert_session(state, view);
+    pin_insert_anchors(state, view);
     state.mark_insert_step_back();
     Ok(())
 }
@@ -153,6 +160,9 @@ pub fn cmd_open_line_below(
         cmd_goto_line_newline(b, s, 1, MotionMode::Move)
     });
     apply_focused_edit_grouped(state, view, |b, s| insert_char(b, s, '\n'));
+    // Pin after the structural newline, not before — the anchor must mark
+    // the start of typed content, not the blank line's own `\n`.
+    pin_insert_anchors(state, view);
     Ok(())
 }
 
@@ -170,6 +180,9 @@ pub fn cmd_open_line_above(
     });
     apply_focused_edit_grouped(state, view, |b, s| insert_char(b, s, '\n'));
     apply_focused_motion(state, view, |b, s| cmd_move_left(b, s, 1, MotionMode::Move));
+    // Pin after the newline + the move back onto the new blank line — same
+    // reasoning as `cmd_open_line_below`.
+    pin_insert_anchors(state, view);
     Ok(())
 }
 

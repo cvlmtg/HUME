@@ -77,6 +77,7 @@ macro_rules! key {
 /// ```text
 /// m ─┬─ i ─┬─ w  → inner-word
 ///    │      ├─ (  → inner-paren
+///    │      ├─ i  → select-last-insertion
 ///    │      └─ …
 ///    ├─ a ─┬─ w  → around-word
 ///    │      ├─ (  → around-paren
@@ -118,6 +119,11 @@ fn build_text_object_trie() -> KeyTrie {
             around_trie.bind_leaf(k, cmd!(around_name));
         }
     }
+    // `mii` — select the text typed during the last completed insert
+    // session. No `mai` counterpart: an insertion has no "around" — there
+    // are no delimiters or adjacent structure to widen into, unlike every
+    // other object in `objects` above.
+    inner_trie.bind_leaf(key!('i'), cmd!("select-last-insertion"));
 
     // ── Surround sub-trie ────────────────────────────────────────────────
     // `ms` + char selects the surrounding delimiters as two cursor

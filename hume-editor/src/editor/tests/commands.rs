@@ -123,6 +123,220 @@ fn c_setting_false_keeps_current_behavior() {
     assert_eq!(state(&ed), "hi-[o]>\n");
 }
 
+// ── `mii` (select-last-insertion) ────────────────────────────────────────────
+
+fn mii(ed: &mut Editor) {
+    ed.handle_key(key('m'));
+    ed.handle_key(key('i'));
+    ed.handle_key(key('i'));
+}
+
+#[test]
+fn mii_after_insert_before_selects_typed_text() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('h'));
+    ed.handle_key(key('i'));
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "hi-[h]>ello\n"); // plain `i` leaves a collapsed cursor
+    mii(&mut ed);
+    assert_eq!(state(&ed), "-[hi]>hello\n");
+}
+
+#[test]
+fn mii_after_insert_after_selects_typed_text() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('a'));
+    ed.handle_key(key('X'));
+    ed.handle_key(key('Y'));
+    ed.handle_key(key_esc());
+    mii(&mut ed);
+    assert_eq!(state(&ed), "h-[XY]>ello\n");
+}
+
+/// `A` steps the cursor back one grapheme on exit (cosmetic), but the span
+/// `mii` reconstructs must cover everything typed, not just up to the
+/// stepped-back cursor.
+#[test]
+fn mii_after_capital_a_selects_full_typed_run_despite_step_back() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('A'));
+    for ch in " world".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "hello worl-[d]>\n"); // step-back cursor
+    mii(&mut ed);
+    assert_eq!(state(&ed), "hello-[ world]>\n");
+}
+
+/// `o` opens the new line before pinning — the anchor must mark the start of
+/// typed content, never the structural newline `o` itself inserted.
+#[test]
+fn mii_after_o_excludes_structural_newline() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('o'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('b'));
+    ed.handle_key(key('c'));
+    ed.handle_key(key_esc());
+    mii(&mut ed);
+    assert_eq!(state(&ed), "hello\n-[abc]>\n");
+}
+
+#[test]
+fn mii_after_capital_o_excludes_structural_newline() {
+    let mut ed = editor_from("foo\n-[b]>ar\n");
+    ed.handle_key(key('O'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key('y'));
+    ed.handle_key(key('z'));
+    ed.handle_key(key_esc());
+    mii(&mut ed);
+    assert_eq!(state(&ed), "foo\n-[xyz]>\nbar\n");
+}
+
+/// `mii` recomputes the span independently of `select-changed-text` — after
+/// `c` already selected the replacement, `mii` must select the identical
+/// range (a regression check that generalizing the pin capture didn't change
+/// `c`'s own behavior). The selection is perturbed between `c`'s exit and
+/// `mii` so the final assertion can only pass if `mii` actively recomputed
+/// the span — not because `c`'s own selection was simply left untouched.
+#[test]
+fn mii_after_c_matches_select_changed_text_result() {
+    let mut ed = editor_from("-[hell]>o\n");
+    ed.handle_key(key('c'));
+    ed.handle_key(key('h'));
+    ed.handle_key(key('i'));
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "-[hi]>o\n");
+    ed.handle_key(key(';')); // collapse to head — "h-[i]>o\n"
+    assert_eq!(state(&ed), "h-[i]>o\n");
+    mii(&mut ed);
+    assert_eq!(state(&ed), "-[hi]>o\n");
+}
+
+/// With `select-changed-text` off, `c` leaves a collapsed cursor — but `mii`
+/// still recovers the typed span, since pinning no longer depends on the
+/// setting (only auto-select-on-exit does).
+#[test]
+fn mii_works_after_c_with_setting_off() {
+    let mut ed = editor_from("-[hell]>o\n");
+    ed.state.settings.select_changed_text = false;
+    ed.handle_key(key('c'));
+    ed.handle_key(key('h'));
+    ed.handle_key(key('i'));
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "hi-[o]>\n");
+    mii(&mut ed);
+    assert_eq!(state(&ed), "-[hi]>o\n");
+}
+
+#[test]
+fn mii_multi_cursor_selects_each_span_primary_is_last() {
+    let mut ed = editor_from("-[foo]> -[bar]>\n");
+    ed.handle_key(key('c'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key('y'));
+    ed.handle_key(key_esc());
+    mii(&mut ed);
+    assert_eq!(state(&ed), "-[xy]> -[xy]>\n");
+    // Primary must have relocated to the last (rightmost) span.
+    ed.handle_key(key(','));
+    assert_eq!(state(&ed), "xy -[xy]>\n");
+}
+
+#[test]
+fn mii_reports_info_when_nothing_ever_typed() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key_esc());
+    mii(&mut ed);
+    assert_eq!(ed.state.status_msg.as_deref(), Some("no last insertion"));
+}
+
+#[test]
+fn mii_reports_info_when_fully_backspaced_away() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_backspace());
+    ed.handle_key(key_esc());
+    mii(&mut ed);
+    assert_eq!(ed.state.status_msg.as_deref(), Some("no last insertion"));
+}
+
+/// Any mutation after the session — including one that has nothing to do
+/// with inserting — bumps `text_gen` past the stash's stamp.
+#[test]
+fn mii_stash_goes_stale_after_a_later_edit() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "x-[h]>ello\n");
+    ed.handle_key(key('d')); // unrelated edit — never touches `last_insert`
+    mii(&mut ed);
+    assert_eq!(ed.state.status_msg.as_deref(), Some("no last insertion"));
+}
+
+#[test]
+fn mii_stash_goes_stale_after_undo() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    ed.handle_key(key('u'));
+    mii(&mut ed);
+    assert_eq!(ed.state.status_msg.as_deref(), Some("no last insertion"));
+}
+
+/// A selection-count mismatch mid-session (cursors merging via Backspace)
+/// drops the pins entirely — `mii` must find nothing stashed.
+#[test]
+fn mii_reports_info_when_cursors_merge_mid_session() {
+    let mut ed = editor_from("-[a]>-[b]>\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key_backspace());
+    ed.handle_key(key_esc());
+    mii(&mut ed);
+    assert_eq!(ed.state.status_msg.as_deref(), Some("no last insertion"));
+}
+
+/// A read-only buffer never opens an edit group, so `i` is refused outright —
+/// `mii` must find nothing stashed rather than panicking or stale-reading.
+#[test]
+fn mii_reports_info_on_read_only_buffer() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.doc_mut().read_only = true;
+    ed.handle_key(key('i'));
+    assert_eq!(
+        ed.state.mode,
+        Mode::Normal,
+        "read-only buffer refuses Insert"
+    );
+    mii(&mut ed);
+    assert_eq!(ed.state.status_msg.as_deref(), Some("no last insertion"));
+}
+
+/// The span's end must land on a grapheme boundary, never mid-cluster —
+/// `prev_grapheme_boundary` on a base+combining-mark run steps back to the
+/// start of the whole cluster (position 0), not to the invalid position
+/// between the base char and its combining mark. The resulting selection
+/// covers the base char only (HUME's "1-char selection" is one `char`
+/// (codepoint), not one rendered grapheme) — this is the exact formula
+/// `c`'s `select-changed-text` already uses, reused unchanged here.
+#[test]
+fn mii_span_end_never_lands_mid_grapheme_cluster() {
+    let mut ed = editor_from("-[\n]>");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('e'));
+    ed.handle_key(key('\u{301}')); // combining acute accent
+    ed.handle_key(key_esc());
+    mii(&mut ed);
+    assert_eq!(state(&ed), "-[e]>\u{301}\n");
+}
+
 // ── Undo/redo boundary messages ────────────────────────────────────────────
 
 #[test]

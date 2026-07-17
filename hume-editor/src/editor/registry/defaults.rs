@@ -642,6 +642,17 @@ impl CommandRegistry {
         )
         .repeatable()
         .reg(self);
+        // Bound at `mii`. An `EditorCmd`, not a `Selection`, because it reads
+        // buffer state (`Buffer::last_insert`) beyond the current `Text` +
+        // `SelectionSet` — no `around` counterpart; see the doc comment on
+        // `cmd_select_last_insertion` itself.
+        ecmd(
+            "select-last-insertion",
+            "Select the text typed during the most recently completed insert session.",
+            cmd_select_last_insertion,
+        )
+        .extendable()
+        .reg(self);
         ecmd(
             "yank",
             "Copy selections to the clipboard and kill ring without deleting.",

@@ -15,6 +15,22 @@ pub(crate) mod lifecycle;
 pub(crate) mod store;
 use hume_treesitter::registry::BufferSyntax;
 
+// ── LastInsert ────────────────────────────────────────────────────────────────
+
+/// The span(s) typed during the most recently completed insert session,
+/// stamped with the buffer's `text_gen` at capture time.
+///
+/// `mii` (`select-last-insertion`) compares `text_gen` against the buffer's
+/// live generation before using `spans` — any intervening mutation (an edit,
+/// undo, or redo, all of which bump `text_gen`) invalidates it rather than
+/// trying to remap positions through the change.
+pub(crate) struct LastInsert {
+    /// One inclusive `(start, end)` char range per selection that was active
+    /// during the session, sorted by `start`.
+    pub(crate) spans: Vec<(usize, usize)>,
+    pub(crate) text_gen: u64,
+}
+
 // ── Buffer ────────────────────────────────────────────────────────────────────
 
 /// Content-only document: text, undo history, search state, and per-buffer overrides.
@@ -84,6 +100,10 @@ pub(crate) struct Buffer {
     /// edits (`doc_ops.rs`'s five apply functions); drained by the LSP
     /// per-frame flush. Always empty when `lsp_server` is `None`.
     pub(crate) lsp_pending: Vec<super::lsp::sync::LspPendingChange>,
+    /// Spans typed during the most recently completed insert session, for
+    /// `mii` (`select-last-insertion`). `None` before any session completes,
+    /// or once `text_gen` has moved past the stamp (see [`LastInsert`]).
+    pub(crate) last_insert: Option<LastInsert>,
 }
 
 impl Buffer {
@@ -115,6 +135,7 @@ impl Buffer {
             label: None,
             lsp_server: None,
             lsp_pending: Vec::new(),
+            last_insert: None,
         }
     }
 

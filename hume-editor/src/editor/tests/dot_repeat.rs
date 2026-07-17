@@ -56,6 +56,29 @@ fn dot_repeat_c_selects_replayed_replacement() {
     assert_eq!(state(&ed), "hi -[hi]>\n");
 }
 
+/// Pinning for `mii` is unconditional (not gated on `select-changed-text`),
+/// so a replayed `i` (not just `c`) must re-pin correctly too — `mii` after
+/// `.` must select the *replayed* insertion, not the original one.
+#[test]
+fn mii_after_dot_repeat_selects_replayed_insertion() {
+    let mut ed = editor_from("-[x]>\n");
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key('a'));
+    ed.feed_key(key('b'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "abx\n");
+
+    ed.feed_key(key('w')); // select 'x'
+    ed.feed_key(key('.')); // repeat insert "ab" before 'x'
+    assert_eq!(ed.doc().text().to_string(), "ababx\n");
+
+    ed.feed_key(key('m'));
+    ed.feed_key(key('i'));
+    ed.feed_key(key('i'));
+    assert_eq!(state(&ed), "ab-[ab]>x\n");
+}
+
 /// `i` + typed text + Esc inserts at the selection start. `.` should replay that insert.
 #[test]
 fn dot_repeats_insert_before() {

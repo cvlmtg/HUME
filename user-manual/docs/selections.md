@@ -47,6 +47,8 @@ Two shortcuts select the inner word directly:
 
 There is no paragraph text object; use the `{` and `}` paragraph motions.
 
+`m i i` selects the text you most recently typed before leaving Insert mode — however you entered it (`i`, `a`, `o`, `O`, `A`, `I`, `c`). Type something, press `Esc`, then `m i i` to act on what you just wrote. It stops working as soon as you make another change to the buffer (including undo/redo). There is no `m a i` — an insertion has no delimiters or surrounding structure to select "around".
+
 ## Select all
 
 | Key | Effect |

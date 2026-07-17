@@ -72,12 +72,20 @@ pub(crate) struct PaneBufferState {
     /// Meaningful only while `paste_group.is_some()`; read by `[`/`]` so cycling
     /// re-pastes in the same direction as the opening `p`/`P`.
     pub paste_before: bool,
-    /// Anchors of the runs typed during a `c`-entered insert session — one per
+    /// Anchors of the run typed during the open insert session — one per
     /// selection, sorted, kept in post-edit coordinates by
-    /// `apply_doc_edit_grouped`. `Some` only while `edit_group` is open for a
-    /// change session with `select-changed-text` enabled; consumed by
-    /// `end_insert_session` on exit.
+    /// `apply_doc_edit_grouped`. `Some` from the moment the session's entry
+    /// command positions the cursor (`pin_insert_anchors`) until
+    /// `end_insert_session` consumes it on exit, for every insert entry
+    /// (`i`/`a`/`o`/`O`/`A`/`I`/`c`/…), not just `c`.
     pub pinned_anchors: Option<Vec<usize>>,
+    /// Whether `end_insert_session` should select the typed span (rather than
+    /// just stash it for `mii`) on exit. Set only by `cmd_change`, gated on
+    /// the `select-changed-text` setting. Lives here (not on `InsertSession`)
+    /// because dot-repeat replay never creates an `InsertSession` — see
+    /// `begin_insert_session`'s replay-signal guard — so a flag needed at
+    /// exit must survive on state that isn't cleared by that guard.
+    pub select_on_exit: bool,
 }
 
 // ── Construction helpers ──────────────────────────────────────────────────────

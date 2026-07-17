@@ -25,7 +25,7 @@ use slotmap::SecondaryMap;
 
 use super::registry::MappableCommand;
 
-use super::buffer::Buffer;
+use super::buffer::{Buffer, LastInsert};
 use super::dispatch::CmdCtx;
 use super::doc_ops;
 use super::jump_list::JumpEntry;
@@ -690,6 +690,34 @@ fn is_group_open_current(state: &EditorState, view: &EngineView) -> bool {
         .is_some()
 }
 
+/// Pin each current selection's head as an insertion anchor, so `mii`
+/// (`select-last-insertion`) — and, for a `c`-entered session with
+/// `select-changed-text` on, `end_insert_session` itself — can later
+/// reconstruct the span(s) typed since.
+///
+/// No-op if no edit group is open (read-only buffer, where
+/// `begin_insert_session` already refused to enter Insert). Call after the
+/// cursor has been positioned at the insertion point — for `o`/`O`, after the
+/// structural newline has been inserted — so the anchor marks the start of
+/// typed text only, never the newline or the pre-edit selection.
+///
+/// `apply_doc_edit_grouped` (doc_ops.rs) maps the pinned anchors through
+/// every subsequent grouped edit; a cursor-motion key during the session
+/// clears them (`mappings/insert.rs`); a fresh `begin_edit_group` clears them
+/// too, so a later session never inherits stale pins.
+fn pin_insert_anchors(state: &mut EditorState, view: &EngineView) {
+    if !is_group_open_current(state, view) {
+        return;
+    }
+    let anchors: Vec<usize> = current_selections(state, view)
+        .iter_sorted()
+        .map(|s| s.head())
+        .collect();
+    let pid = state.focused_pane_id;
+    let bid = focused_buffer_id(state, view);
+    state.panes.state[pid][bid].pinned_anchors = Some(anchors);
+}
+
 /// Open a new edit group on the focused (pane, buffer) pair.
 pub(super) fn begin_edit_group_current(state: &mut EditorState, view: &EngineView) {
     let pid = state.focused_pane_id;
@@ -849,32 +877,63 @@ pub(super) fn end_insert_session(state: &mut EditorState, view: &EngineView) {
     ) {
         action.insert_keys = session.keystrokes;
     }
-    // `c`-entered sessions (see `cmd_change`) pin one anchor per selection so
-    // Esc can select the typed replacement — Kakoune append's mechanic:
-    // retreat the head one grapheme, guarded by `head > anchor` (nothing
-    // typed / all backspaced away collapses instead of producing a
-    // backwards or zero-width range). A count mismatch (selections merged
-    // mid-session, e.g. via Backspace) falls back to `step_back`/collapse —
-    // pins and `step_back` are mutually exclusive today since `cmd_change`
-    // never marks step-back, but the `else if` makes pins authoritative
-    // should that change.
-    let pinned = {
+    // Every insert entry pins one anchor per selection via
+    // `pin_insert_anchors` — reconstruct each selection's typed span here as
+    // `(anchor, head - 1 grapheme)`, guarded by `head > anchor` (nothing
+    // typed / all backspaced away yields `None`, never a backwards or
+    // zero-width range). A count mismatch (selections merged mid-session,
+    // e.g. via Backspace) drops the pins entirely — `spans` stays `None`, so
+    // this session contributes nothing to the `mii` stash and (for `c`)
+    // falls back to a collapsed cursor.
+    let (pinned, select_on_exit) = {
         let pid = state.focused_pane_id;
         let bid = focused_buffer_id(state, view);
-        state.panes.state[pid][bid].pinned_anchors.take()
+        let pbs = &mut state.panes.state[pid][bid];
+        (
+            pbs.pinned_anchors.take(),
+            std::mem::take(&mut pbs.select_on_exit),
+        )
     };
     let valid_pins = pinned.filter(|a| a.len() == current_selections(state, view).len());
-    if let Some(anchors) = valid_pins {
-        apply_focused_motion(state, view, move |b, sels| {
-            let mut anchors = anchors.into_iter();
-            sels.map(|sel| {
-                let anchor = anchors.next().expect("length checked above");
+    let spans: Option<Vec<Option<(usize, usize)>>> = valid_pins.map(|anchors| {
+        let buf = doc(state, view).text();
+        current_selections(state, view)
+            .iter_sorted()
+            .zip(anchors.iter())
+            .map(|(sel, &anchor)| {
                 let head = sel.head();
-                if head > anchor {
-                    Selection::new(anchor, hume_editing::grapheme::prev_grapheme_boundary(b, head))
-                } else {
-                    Selection::collapsed(head)
-                }
+                (head > anchor).then(|| {
+                    (
+                        anchor,
+                        hume_editing::grapheme::prev_grapheme_boundary(buf, head),
+                    )
+                })
+            })
+            .collect()
+    });
+
+    // Stash whatever was actually typed for `mii`, regardless of entry
+    // command — independent of `select_on_exit` below, which only decides
+    // whether Esc *also* selects it immediately.
+    if let Some(spans) = &spans {
+        let stashed: Vec<(usize, usize)> = spans.iter().flatten().copied().collect();
+        if !stashed.is_empty() {
+            let bid = focused_buffer_id(state, view);
+            let buf = state.buffers.get_mut(bid);
+            let text_gen = buf.text_gen;
+            buf.last_insert = Some(LastInsert {
+                spans: stashed,
+                text_gen,
+            });
+        }
+    }
+
+    if let Some(spans) = spans.filter(|_| select_on_exit) {
+        apply_focused_motion(state, view, move |_b, sels| {
+            let mut spans = spans.into_iter();
+            sels.map(|sel| match spans.next().expect("length checked above") {
+                Some((anchor, end)) => Selection::new(anchor, end),
+                None => Selection::collapsed(sel.head()),
             })
         });
     } else if step_back {

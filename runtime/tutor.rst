@@ -1012,6 +1012,21 @@ Since ``miw`` and ``miW`` are very frequent operations, HUME adds
 a couple of shortcuts: ``mm`` for the inner word and ``MM`` for the
 inner WORD.
 
+``mii`` is different from the rest of this table: it selects
+whatever text you most recently typed in Insert mode, however you
+entered it (``i``, ``a``, ``o``, ``O``, ``A``, ``I``, or ``c``).
+There is no ``mai`` — an insertion has no delimiters to select
+"around".
+
+Exercise
+~~~~~~~~
+
+Press ``A`` on the line below, type " — reviewed", press ``Esc``,
+then press ``mii`` — " — reviewed" is selected again, even though
+plain ``A`` alone would have left just a cursor:
+
+Q3 results
+
 Exercise
 ~~~~~~~~
 
@@ -1063,6 +1078,8 @@ Summary
 | Ctrl+n / N    | extend to next / previous match         |
 +---------------+-----------------------------------------+
 | mi<d> / ma<d> | inner / around text object              |
++---------------+-----------------------------------------+
+| mii           | select the last text typed in Insert    |
 +---------------+-----------------------------------------+
 | ms<d>         | select surrounding delimiter pair       |
 +---------------+-----------------------------------------+

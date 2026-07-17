@@ -283,9 +283,10 @@ pub(crate) fn begin_edit_group(
     let doc = buffers.get(buf_id);
     let pbs = &mut pane_state[focused_pane_id][buf_id];
     doc.begin_edit_group(&mut pbs.edit_group, sels);
-    // A fresh group never inherits pins from a previous session (interactive
-    // or replay-preopened) — `cmd_change` is the only site that sets these.
+    // A fresh group never inherits pins (or the select-on-exit flag) from a
+    // previous session (interactive or replay-preopened).
     pbs.pinned_anchors = None;
+    pbs.select_on_exit = false;
 }
 
 /// Close the current edit group and record it as a single undo step.
