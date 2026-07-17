@@ -488,11 +488,19 @@ server.listen(8080)
 | c | delete the selection and enter Insert mode |
 +---+--------------------------------------------+
 
+Type your replacement, then press ``Esc``. Unlike other ways of
+leaving Insert mode, ``Esc`` after ``c`` selects the text you just
+typed instead of leaving a plain cursor after it — so you can act
+on the replacement again right away (delete it, search for it, and
+so on). If you press ``Esc`` without typing anything, the cursor is
+left where the change began. This is controlled by the
+``select-changed-text`` option (on by default).
+
 Exercise
 ~~~~~~~~
 
 Navigate to "yesterday" using ``w``, then press ``c`` and type
-"Monday", then press ``Esc``:
+"Monday", then press ``Esc`` — "Monday" is now selected:
 
 The deadline was yesterday.
 
@@ -959,6 +967,18 @@ extend the selection through the underscore ("parse_"), then
 fn parse_header(input: &str) -> Header {
 fn parse_body(input: &str) -> Body {
 fn parse_footer(input: &str) -> Footer {
+
+Exercise
+~~~~~~~~
+
+Because the text you just changed with ``c`` stays selected, you can
+search for it right away. Change "TODO" to "FIXME" below (``w`` to
+select it, ``c``, type "FIXME", ``Esc``), then press ``Ctrl+/`` and
+``n`` to jump to the next "FIXME":
+
+TODO: validate input before saving
+FIXME: handle the timeout case
+FIXME: retry after a transient failure
 
 7.2 Text Objects
 ----------------
