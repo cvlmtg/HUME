@@ -1,4 +1,5 @@
 use super::MotionMode;
+use crate::ops::text_object::extend_to_adjacent_run;
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
@@ -298,19 +299,44 @@ pub(super) fn select_prev_word(
 ///
 /// If `motion` returns `None` (no next/previous word), the iteration stops
 /// early for that selection and the last selection is kept unchanged.
+///
+/// When `around` is set, the final word span is grown to include its
+/// surrounding whitespace (trailing, or leading when there's no trailing —
+/// see [`extend_to_adjacent_run`]) once the loop is done, exactly as `maw`
+/// would from the destination word. A selection the loop never actually
+/// moved (motion returned `None` on the first iteration, e.g. `w` at EOF) is
+/// left untouched — there is no word to grow around.
 pub(super) fn apply_word_select(
     buf: &Text,
     sels: SelectionSet,
     count: usize,
+    around: bool,
+    is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
     motion: impl Fn(&Text, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
     let result = sels.map(|sel| {
         let mut current = sel;
+        let mut moved = false;
         for _ in 0..count {
             match motion(buf, current.head()) {
-                Some((anchor, head)) => current = Selection::new(anchor, head),
+                Some((anchor, head)) => {
+                    current = Selection::new(anchor, head);
+                    moved = true;
+                }
                 None => break, // no more words — stop early, keep last selection
             }
+        }
+        if around
+            && moved
+            && let Some((start, end)) = extend_to_adjacent_run(
+                buf,
+                current.start(),
+                current.end(),
+                |c| c == CharClass::Space,
+                is_boundary,
+            )
+        {
+            current = Selection::new(start, end);
         }
         current
     });
@@ -365,24 +391,29 @@ pub(super) fn apply_word_select_extend(
 type IsBoundary = fn(CharClass, CharClass) -> bool;
 type SelectWord = fn(&Text, usize, IsBoundary) -> Option<(usize, usize)>;
 
-/// Shared dispatch for the four word-select commands below: branches on
+/// Shared dispatch for the eight word-select commands below: branches on
 /// `mode` (fresh re-anchor for `Move`, grow/shrink for `Extend` — see
 /// [`apply_word_select`]/[`apply_word_select_extend`]), parameterized by
 /// direction (`select_word`: [`select_next_word`] or [`select_prev_word`])
 /// and word class (`is_boundary`: [`is_word_boundary`] or
 /// [`is_uppercase_word_boundary`]).
+///
+/// `around` only affects the `Move` arm — [`apply_word_select_extend`]
+/// always keeps bare-word anchor units, regardless of
+/// `word-selects-whitespace` (see the `_around` command wrappers below).
 fn word_select_cmd(
     buf: &Text,
     sels: SelectionSet,
     count: usize,
     mode: MotionMode,
+    around: bool,
     is_boundary: IsBoundary,
     select_word: SelectWord,
 ) -> SelectionSet {
     match mode {
-        MotionMode::Move => {
-            apply_word_select(buf, sels, count, |b, pos| select_word(b, pos, is_boundary))
-        }
+        MotionMode::Move => apply_word_select(buf, sels, count, around, is_boundary, |b, pos| {
+            select_word(b, pos, is_boundary)
+        }),
         MotionMode::Extend => apply_word_select_extend(buf, sels, count, is_boundary, |b, pos| {
             select_word(b, pos, is_boundary)
         }),
@@ -397,7 +428,36 @@ pub(crate) fn cmd_select_next_word(
     count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
-    word_select_cmd(buf, sels, count, mode, is_word_boundary, select_next_word)
+    word_select_cmd(
+        buf,
+        sels,
+        count,
+        mode,
+        false,
+        is_word_boundary,
+        select_next_word,
+    )
+}
+
+/// Select or extend to the next word (`w`), covering surrounding whitespace
+/// on `Move` — used when `word-selects-whitespace` is on. See
+/// [`cmd_select_next_word`].
+#[allow(non_snake_case)]
+pub(crate) fn cmd_select_next_word_around(
+    buf: &Text,
+    sels: SelectionSet,
+    count: usize,
+    mode: MotionMode,
+) -> SelectionSet {
+    word_select_cmd(
+        buf,
+        sels,
+        count,
+        mode,
+        true,
+        is_word_boundary,
+        select_next_word,
+    )
 }
 
 /// Select or extend to the next WORD (`W`): like `w` but treats word+punct as one class.
@@ -413,6 +473,27 @@ pub(crate) fn cmd_select_next_uppercase_word(
         sels,
         count,
         mode,
+        false,
+        is_uppercase_word_boundary,
+        select_next_word,
+    )
+}
+
+/// Select or extend to the next WORD (`W`), covering surrounding whitespace
+/// on `Move`. See [`cmd_select_next_word_around`].
+#[allow(non_snake_case)]
+pub(crate) fn cmd_select_next_uppercase_word_around(
+    buf: &Text,
+    sels: SelectionSet,
+    count: usize,
+    mode: MotionMode,
+) -> SelectionSet {
+    word_select_cmd(
+        buf,
+        sels,
+        count,
+        mode,
+        true,
         is_uppercase_word_boundary,
         select_next_word,
     )
@@ -426,7 +507,35 @@ pub(crate) fn cmd_select_prev_word(
     count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
-    word_select_cmd(buf, sels, count, mode, is_word_boundary, select_prev_word)
+    word_select_cmd(
+        buf,
+        sels,
+        count,
+        mode,
+        false,
+        is_word_boundary,
+        select_prev_word,
+    )
+}
+
+/// Select or extend to the previous word (`b`), covering surrounding
+/// whitespace on `Move`. See [`cmd_select_next_word_around`].
+#[allow(non_snake_case)]
+pub(crate) fn cmd_select_prev_word_around(
+    buf: &Text,
+    sels: SelectionSet,
+    count: usize,
+    mode: MotionMode,
+) -> SelectionSet {
+    word_select_cmd(
+        buf,
+        sels,
+        count,
+        mode,
+        true,
+        is_word_boundary,
+        select_prev_word,
+    )
 }
 
 /// Select or extend to the previous WORD (`B`): like `b` but treats word+punct as one class.
@@ -442,6 +551,27 @@ pub(crate) fn cmd_select_prev_uppercase_word(
         sels,
         count,
         mode,
+        false,
+        is_uppercase_word_boundary,
+        select_prev_word,
+    )
+}
+
+/// Select or extend to the previous WORD (`B`), covering surrounding
+/// whitespace on `Move`. See [`cmd_select_next_word_around`].
+#[allow(non_snake_case)]
+pub(crate) fn cmd_select_prev_uppercase_word_around(
+    buf: &Text,
+    sels: SelectionSet,
+    count: usize,
+    mode: MotionMode,
+) -> SelectionSet {
+    word_select_cmd(
+        buf,
+        sels,
+        count,
+        mode,
+        true,
         is_uppercase_word_boundary,
         select_prev_word,
     )
