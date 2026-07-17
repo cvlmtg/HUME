@@ -134,6 +134,13 @@ pub(crate) enum MappableCommand {
         #[allow(dead_code)]
         doc: Cow<'static, str>,
         fun: fn(&Text, SelectionSet, usize, MotionMode) -> SelectionSet,
+        /// Alternate body used in place of `fun` when the focused buffer
+        /// resolves `word-selects-whitespace` to true (see
+        /// `run_native_body`'s dispatch swap). `None` for every motion except
+        /// the word motions (`select-next-word` et al.), which swap in their
+        /// `_around` twin — same signature, covers the destination word's
+        /// surrounding whitespace on `Move` only.
+        around_fun: Option<fn(&Text, SelectionSet, usize, MotionMode) -> SelectionSet>,
         /// Whether this motion always records a jump list entry before executing,
         /// regardless of how far the cursor moves. Used for goto commands.
         jump: bool,
@@ -160,6 +167,12 @@ pub(crate) enum MappableCommand {
         #[allow(dead_code)]
         doc: Cow<'static, str>,
         fun: fn(&Text, SelectionSet, usize, MotionMode) -> SelectionSet,
+        /// Alternate body used in place of `fun` when the focused buffer
+        /// resolves `word-selects-whitespace` to true. `None` for every
+        /// selection command except `select-word`/`select-uppercase-word`
+        /// (`mm`/`MM`), which swap to their around-word body. See
+        /// `Motion::around_fun`.
+        around_fun: Option<fn(&Text, SelectionSet, usize, MotionMode) -> SelectionSet>,
         /// Whether this command always records a jump list entry before executing,
         /// regardless of how far the cursor moves. Used for `select-all` (`%`).
         jump: bool,

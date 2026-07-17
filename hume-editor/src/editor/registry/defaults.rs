@@ -8,7 +8,9 @@ use crate::ops::motion::{
     cmd_goto_first_line, cmd_goto_first_nonblank, cmd_goto_last_line, cmd_goto_line_end,
     cmd_goto_line_start, cmd_move_left, cmd_move_right, cmd_next_paragraph, cmd_prev_paragraph,
     cmd_select_line, cmd_select_line_backward, cmd_select_next_uppercase_word,
-    cmd_select_next_word, cmd_select_prev_uppercase_word, cmd_select_prev_word,
+    cmd_select_next_uppercase_word_around, cmd_select_next_word, cmd_select_next_word_around,
+    cmd_select_prev_uppercase_word, cmd_select_prev_uppercase_word_around, cmd_select_prev_word,
+    cmd_select_prev_word_around,
 };
 use crate::ops::selection_cmd::{
     cmd_collapse_selection_to_head, cmd_copy_selection_on_next_line,
@@ -26,7 +28,8 @@ use crate::ops::text_object::{
     cmd_around_single_quote, cmd_around_uppercase_word, cmd_around_word, cmd_inner_angle,
     cmd_inner_argument, cmd_inner_backtick, cmd_inner_brace, cmd_inner_bracket,
     cmd_inner_double_quote, cmd_inner_line, cmd_inner_paren, cmd_inner_single_quote,
-    cmd_inner_uppercase_word, cmd_inner_word,
+    cmd_inner_uppercase_word, cmd_inner_word, cmd_select_uppercase_word_around,
+    cmd_select_word_around,
 };
 
 use super::{CommandRegistry, EditorCmdFn, MappableCommand, TypedCommand};
@@ -40,6 +43,7 @@ impl CommandRegistry {
                     name: Cow::Borrowed($name),
                     doc: Cow::Borrowed($doc),
                     fun: $fun,
+                    around_fun: None,
                     jump: true,
                     reaching: false,
                 })
@@ -49,6 +53,20 @@ impl CommandRegistry {
                     name: Cow::Borrowed($name),
                     doc: Cow::Borrowed($doc),
                     fun: $fun,
+                    around_fun: None,
+                    jump: false,
+                    reaching: true,
+                })
+            };
+            // Word motions: `around_fun` swaps in for `fun` when
+            // `word-selects-whitespace` is on (see `run_native_body`). All
+            // four are `reaching` — see the plain `reaching` arm above.
+            ($name:literal, $doc:literal, $fun:expr, $around_fun:expr, reaching) => {
+                self.register(MappableCommand::Motion {
+                    name: Cow::Borrowed($name),
+                    doc: Cow::Borrowed($doc),
+                    fun: $fun,
+                    around_fun: Some($around_fun),
                     jump: false,
                     reaching: true,
                 })
@@ -58,6 +76,7 @@ impl CommandRegistry {
                     name: Cow::Borrowed($name),
                     doc: Cow::Borrowed($doc),
                     fun: $fun,
+                    around_fun: None,
                     jump: false,
                     reaching: false,
                 })
@@ -69,6 +88,7 @@ impl CommandRegistry {
                     name: Cow::Borrowed($name),
                     doc: Cow::Borrowed($doc),
                     fun: $fun,
+                    around_fun: None,
                     jump: false,
                 })
             };
@@ -77,7 +97,23 @@ impl CommandRegistry {
                     name: Cow::Borrowed($name),
                     doc: Cow::Borrowed($doc),
                     fun: $fun,
+                    around_fun: None,
                     jump: true,
+                })
+            };
+            // `mm`/`MM` (select-word/select-uppercase-word): `around_fun`
+            // swaps in for `fun` when `word-selects-whitespace` is on. Tried
+            // last — the `jump` arm above must win when the 4th argument is
+            // literally the identifier `jump`, since a bare identifier also
+            // parses as a valid `expr` and macro_rules does not backtrack
+            // across arms once one matches.
+            ($name:literal, $doc:literal, $fun:expr, $around_fun:expr) => {
+                self.register(MappableCommand::Selection {
+                    name: Cow::Borrowed($name),
+                    doc: Cow::Borrowed($doc),
+                    fun: $fun,
+                    around_fun: Some($around_fun),
+                    jump: false,
                 })
             };
         }
@@ -255,28 +291,35 @@ impl CommandRegistry {
         // All four are reaching: Move mode anchors the selection on a word
         // reached by navigating away from the cursor. Not safe to replay
         // positionally — dot-repeat would advance past the intended word.
+        // Each carries an `_around` twin that covers the destination word's
+        // surrounding whitespace on Move — swapped in by `run_native_body`
+        // when `word-selects-whitespace` is on.
         motion!(
             "select-next-word",
             "Select the next word.",
             cmd_select_next_word,
+            cmd_select_next_word_around,
             reaching
         );
         motion!(
             "select-next-uppercase-word",
             "Select the next uppercase word (whitespace-delimited).",
             cmd_select_next_uppercase_word,
+            cmd_select_next_uppercase_word_around,
             reaching
         );
         motion!(
             "select-prev-word",
             "Select the previous word.",
             cmd_select_prev_word,
+            cmd_select_prev_word_around,
             reaching
         );
         motion!(
             "select-prev-uppercase-word",
             "Select the previous uppercase word (whitespace-delimited).",
             cmd_select_prev_uppercase_word,
+            cmd_select_prev_uppercase_word_around,
             reaching
         );
 
@@ -397,6 +440,22 @@ impl CommandRegistry {
             "around-uppercase-word",
             "Select uppercase word plus surrounding whitespace.",
             cmd_around_uppercase_word
+        );
+        // `mm`/`MM`: select the word/WORD under the cursor. Unlike
+        // `inner-word`/`around-word` (`miw`/`maw`, never flag-affected),
+        // these swap to their around-word body when `word-selects-whitespace`
+        // is on — see `Selection::around_fun`.
+        selection!(
+            "select-word",
+            "Select the word under the cursor.",
+            cmd_inner_word,
+            cmd_select_word_around
+        );
+        selection!(
+            "select-uppercase-word",
+            "Select the uppercase word (WORD) under the cursor.",
+            cmd_inner_uppercase_word,
+            cmd_select_uppercase_word_around
         );
 
         // ── Text objects — brackets ───────────────────────────────────────────
