@@ -961,6 +961,105 @@ pub(crate) fn replace_selections(
     })
 }
 
+/// Which case transform [`transform_case`] applies.
+enum CaseTransform {
+    Lower,
+    Upper,
+    /// Title Case: uppercase the first letter of each word, lowercase the
+    /// rest. A "word" is a maximal run of alphanumeric graphemes — this is
+    /// the simplest definition that gives sensible results without a full
+    /// word-motion classifier, though it means an apostrophe counts as a
+    /// word break (`don't` → `Don'T`).
+    Capitalize,
+}
+
+/// Transform the case of every grapheme in each selection, preserving
+/// selection span and direction. Shared implementation for
+/// `make-text-lowercase` / `make-text-uppercase` / `make-text-capitalized`.
+///
+/// Mirrors [`replace_selections`]'s selection walk: retain the gap before the
+/// selection, then loop grapheme-by-grapheme, skipping (retaining) `\n` to
+/// preserve line structure. Unlike `replace_selections`, each grapheme's own
+/// text is re-inserted (case-mapped) rather than substituted with a fixed
+/// char, and `insert` (not `insert_char`) is used since Unicode case mapping
+/// can change the char count (e.g. `ß` → `SS`).
+fn transform_case(
+    buf: Text,
+    sels: SelectionSet,
+    kind: CaseTransform,
+) -> (Text, SelectionSet, ChangeSet) {
+    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+        let sel_start = sel.start();
+        let sel_end = sel.end();
+
+        b.retain(sel_start - b.old_pos());
+        let new_sel_start = b.new_pos();
+
+        // Tracks whether the previous grapheme was part of a word, so
+        // Capitalize can detect word-initial position. Reset per selection —
+        // each selection capitalizes independently.
+        let mut in_word = false;
+        let mut pos = sel_start;
+        loop {
+            let next = next_grapheme_boundary(buf, pos);
+            if buf.char_at(pos) == Some('\n') {
+                b.retain(next - pos);
+                in_word = false;
+            } else {
+                let grapheme: String = buf.slice(pos..next).chars().collect();
+                let mapped = match kind {
+                    CaseTransform::Lower => grapheme.to_lowercase(),
+                    CaseTransform::Upper => grapheme.to_uppercase(),
+                    CaseTransform::Capitalize => {
+                        let is_word_char = buf.char_at(pos).is_some_and(char::is_alphanumeric);
+                        let mapped = if is_word_char && !in_word {
+                            grapheme.to_uppercase()
+                        } else {
+                            grapheme.to_lowercase()
+                        };
+                        in_word = is_word_char;
+                        mapped
+                    }
+                };
+                b.delete(next - pos);
+                b.insert(&mapped);
+            }
+            if pos >= sel_end {
+                break;
+            }
+            pos = next;
+        }
+        let new_sel_end = b.new_pos() - 1;
+
+        let forward = sel.anchor() <= sel.head();
+        new_sels.push(Selection::directed(new_sel_start, new_sel_end, forward));
+    })
+}
+
+/// Lowercase the text in each selection.
+pub(crate) fn make_text_lowercase(
+    buf: Text,
+    sels: SelectionSet,
+) -> (Text, SelectionSet, ChangeSet) {
+    transform_case(buf, sels, CaseTransform::Lower)
+}
+
+/// Uppercase the text in each selection.
+pub(crate) fn make_text_uppercase(
+    buf: Text,
+    sels: SelectionSet,
+) -> (Text, SelectionSet, ChangeSet) {
+    transform_case(buf, sels, CaseTransform::Upper)
+}
+
+/// Capitalize each word in each selection (Title Case).
+pub(crate) fn make_text_capitalized(
+    buf: Text,
+    sels: SelectionSet,
+) -> (Text, SelectionSet, ChangeSet) {
+    transform_case(buf, sels, CaseTransform::Capitalize)
+}
+
 /// Join lines inside each selection and select the inserted spaces.
 ///
 /// For each selection:

@@ -2,6 +2,7 @@ use std::borrow::Cow;
 
 use crate::ops::edit::{
     delete_char_backward, delete_char_forward, delete_selection, delete_word_backward,
+    make_text_capitalized, make_text_lowercase, make_text_uppercase,
 };
 use crate::ops::motion::{
     cmd_goto_first_line, cmd_goto_first_nonblank, cmd_goto_last_line, cmd_goto_line_end,
@@ -551,6 +552,24 @@ impl CommandRegistry {
             "delete-word-backward",
             "Delete the word before each cursor.",
             delete_word_backward
+        );
+        edit!(
+            "make-text-lowercase",
+            "Lowercase the text in each selection.",
+            make_text_lowercase,
+            repeatable
+        );
+        edit!(
+            "make-text-uppercase",
+            "Uppercase the text in each selection.",
+            make_text_uppercase,
+            repeatable
+        );
+        edit!(
+            "make-text-capitalized",
+            "Capitalize each word in every selection (Title Case).",
+            make_text_capitalized,
+            repeatable
         );
 
         use super::super::commands::*;

@@ -177,7 +177,10 @@ fn build_uppercase_match_trie() -> KeyTrie {
 ///    ├─ e  → goto-last-line
 ///    ├─ h  → goto-line-start
 ///    ├─ l  → goto-line-end
-///    └─ s  → goto-first-nonblank
+///    ├─ s  → goto-first-nonblank
+///    ├─ u  → make-text-lowercase
+///    ├─ U  → make-text-uppercase
+///    └─ C  → make-text-capitalized
 /// ```
 fn build_goto_trie() -> KeyTrie {
     let mut t = KeyTrie::new("goto");
@@ -186,6 +189,9 @@ fn build_goto_trie() -> KeyTrie {
     t.bind_leaf(key!('h'), cmd!("goto-line-start"));
     t.bind_leaf(key!('l'), cmd!("goto-line-end"));
     t.bind_leaf(key!('s'), cmd!("goto-first-nonblank"));
+    t.bind_leaf(key!('u'), cmd!("make-text-lowercase"));
+    t.bind_leaf(key!('U'), cmd!("make-text-uppercase"));
+    t.bind_leaf(key!('C'), cmd!("make-text-capitalized"));
     t
 }
 

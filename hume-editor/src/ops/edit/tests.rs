@@ -2005,6 +2005,99 @@ fn smart_replace_non_pair_replacement_is_literal() {
     );
 }
 
+// ── make_text_lowercase / make_text_uppercase / make_text_capitalized ──────
+
+#[test]
+fn lowercase_uppercase_selection() {
+    assert_state!(
+        "-[HELLO]> world\n",
+        |(buf, sels)| make_text_lowercase(buf, sels),
+        "-[hello]> world\n"
+    );
+}
+
+#[test]
+fn lowercase_mixed_case_selection() {
+    assert_state!(
+        "-[HeLLo]>\n",
+        |(buf, sels)| make_text_lowercase(buf, sels),
+        "-[hello]>\n"
+    );
+}
+
+#[test]
+fn uppercase_lowercase_selection() {
+    assert_state!(
+        "-[hello]> world\n",
+        |(buf, sels)| make_text_uppercase(buf, sels),
+        "-[HELLO]> world\n"
+    );
+}
+
+#[test]
+fn uppercase_preserves_backward_selection_direction() {
+    // Backward selection anchor=5, head=0; direction preserved after transform.
+    assert_state!(
+        "<[hello]-\n",
+        |(buf, sels)| make_text_uppercase(buf, sels),
+        "<[HELLO]-\n"
+    );
+}
+
+#[test]
+fn uppercase_multiline_selection_skips_newline() {
+    // The '\n' between lines is retained; each line's content is uppercased
+    // independently, so line structure is unaffected.
+    assert_state!(
+        "-[hello\nworld]>\n",
+        |(buf, sels)| make_text_uppercase(buf, sels),
+        "-[HELLO\nWORLD]>\n"
+    );
+}
+
+#[test]
+fn capitalize_multi_word_selection() {
+    // Each word's first letter is uppercased, the rest lowercased (Title Case).
+    assert_state!(
+        "-[hELLO wORLD]>\n",
+        |(buf, sels)| make_text_capitalized(buf, sels),
+        "-[Hello World]>\n"
+    );
+}
+
+#[test]
+fn capitalize_single_char_cursor() {
+    // A one-char selection is a one-word selection: it is its own word start,
+    // so it is uppercased with no special-casing needed.
+    assert_state!(
+        "-[h]>i\n",
+        |(buf, sels)| make_text_capitalized(buf, sels),
+        "-[H]>i\n"
+    );
+}
+
+#[test]
+fn capitalize_non_word_chars_break_words() {
+    // '-' is not alphanumeric, so it breaks the word run: each side of it
+    // gets its own capital letter.
+    assert_state!(
+        "-[abc-def]>\n",
+        |(buf, sels)| make_text_capitalized(buf, sels),
+        "-[Abc-Def]>\n"
+    );
+}
+
+#[test]
+fn capitalize_multiline_selection_resets_word_state_at_newline() {
+    // Word state resets across the skipped '\n', so the first word of the
+    // second line is capitalized independently of the first line's ending.
+    assert_state!(
+        "-[hello\nworld]>\n",
+        |(buf, sels)| make_text_capitalized(buf, sels),
+        "-[Hello\nWorld]>\n"
+    );
+}
+
 // ── join_lines_select_spaces ───────────────────────────────────────────────
 
 #[test]

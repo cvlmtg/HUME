@@ -148,6 +148,9 @@ Press `g` then a second key:
 | `g h` | Go to line start |
 | `g l` | Go to line end |
 | `g s` | Go to first non-blank on line |
+| `g u` | Lowercase the selection |
+| `g U` | Uppercase the selection |
+| `g C` | Capitalize each word in the selection |
 
 ## View prefix (`z`)
 
