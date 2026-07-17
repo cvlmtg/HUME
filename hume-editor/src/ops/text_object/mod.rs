@@ -235,7 +235,7 @@ fn around_word_impl(
 /// `next_pos`/`prev_start` are grapheme-boundary steps (not `±1`) so combining
 /// sequences (e.g. e + combining accent) are handled correctly; see
 /// `next_grapheme_boundary`/`prev_grapheme_boundary`.
-fn extend_to_adjacent_run(
+pub(crate) fn extend_to_adjacent_run(
     buf: &Text,
     start: usize,
     end: usize,
@@ -435,6 +435,44 @@ pub(crate) fn cmd_around_uppercase_word(
     apply_text_object_by_mode(buf, sels, mode, |b, pos| {
         around_word_impl(b, pos, is_uppercase_word_boundary)
     })
+}
+
+/// Select the word under the cursor (`mm`), covering its surrounding
+/// whitespace like [`cmd_around_word`] — used when `word-selects-whitespace`
+/// is on. Extend mode keeps bare (inner-word) units, matching the word
+/// motions' anchor-unit behaviour.
+pub(crate) fn cmd_select_word_around(
+    buf: &Text,
+    sels: SelectionSet,
+    _count: usize,
+    mode: MotionMode,
+) -> SelectionSet {
+    match mode {
+        MotionMode::Move => apply_text_object(buf, sels, |b, pos| {
+            around_word_impl(b, pos, is_word_boundary)
+        }),
+        MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| {
+            inner_word_impl(b, pos, is_word_boundary)
+        }),
+    }
+}
+
+/// Select the WORD under the cursor (`MM`); see [`cmd_select_word_around`].
+#[allow(non_snake_case)]
+pub(crate) fn cmd_select_uppercase_word_around(
+    buf: &Text,
+    sels: SelectionSet,
+    _count: usize,
+    mode: MotionMode,
+) -> SelectionSet {
+    match mode {
+        MotionMode::Move => apply_text_object(buf, sels, |b, pos| {
+            around_word_impl(b, pos, is_uppercase_word_boundary)
+        }),
+        MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| {
+            inner_word_impl(b, pos, is_uppercase_word_boundary)
+        }),
+    }
 }
 
 // ── Brackets ───────────────────────────────────────────────────────────────────
