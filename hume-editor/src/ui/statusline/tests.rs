@@ -167,7 +167,8 @@ fn language_element_empty_when_none() {
 #[test]
 fn language_element_renders_bracketed() {
     let mut ed = test_editor();
-    ed.doc_mut().language = Some("rust".to_string());
+    let lang = ed.state.languages.intern("rust");
+    ed.doc_mut().language = Some(lang);
     let colors = crate::ui::theme::EditorColors::default();
     let (text, _) = render_element(StatusElement::Language, &ed, &colors, "");
     assert_eq!(text.as_ref(), "[rust]");

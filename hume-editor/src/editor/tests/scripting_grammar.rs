@@ -135,7 +135,8 @@ fn attach_then_set_language_attaches_syntax() {
             &mut ed.view.registry,
         )
         .unwrap();
-    ed.set_buffer_language(bid, Some("json".to_owned()));
+    let lang = ed.state.languages.intern("json");
+    ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers();
     assert!(
         ed.state.buffers.get(bid).syntax.is_some(),
@@ -168,7 +169,8 @@ fn clear_language_detaches_syntax_keeps_identity() {
             &mut ed.view.registry,
         )
         .unwrap();
-    ed.set_buffer_language(bid, Some("json".to_owned()));
+    let lang = ed.state.languages.intern("json");
+    ed.set_buffer_language(bid, Some(lang));
     assert!(ed.state.buffers.get(bid).syntax.is_some());
 
     ed.set_buffer_language(bid, None);
@@ -198,7 +200,8 @@ fn sweep_attaches_syntax_on_matching_language() {
         .register_identity("json", &["json"], &[], &[])
         .unwrap();
     // Set language BEFORE grammar is attached — no syntax yet.
-    ed.set_buffer_language(bid, Some("json".to_owned()));
+    let lang = ed.state.languages.intern("json");
+    ed.set_buffer_language(bid, Some(lang));
     assert!(
         ed.state.buffers.get(bid).syntax.is_none(),
         "no grammar → parser must be absent"
@@ -215,7 +218,8 @@ fn sweep_attaches_syntax_on_matching_language() {
             &mut ed.view.registry,
         )
         .unwrap();
-    ed.sweep_buffers_for_grammars(vec!["json".to_owned()]);
+    let json_id = ed.state.languages.intern("json");
+    ed.sweep_buffers_for_grammars(vec![json_id]);
     assert!(
         ed.state.buffers.get(bid).syntax.is_some(),
         "sweep must attach parser when language matches"
@@ -233,11 +237,13 @@ fn sweep_no_op_for_nonmatching_language() {
         .register_identity("json", &["json"], &[], &[])
         .unwrap();
     // Set language but don't attach grammar yet — parser stays absent.
-    ed.set_buffer_language(bid, Some("json".to_owned()));
+    let lang = ed.state.languages.intern("json");
+    ed.set_buffer_language(bid, Some(lang));
     assert!(ed.state.buffers.get(bid).syntax.is_none());
 
     // Sweep for a different language — must leave the json buffer untouched.
-    ed.sweep_buffers_for_grammars(vec!["rust".to_owned()]);
+    let rust_id = ed.state.languages.intern("rust");
+    ed.sweep_buffers_for_grammars(vec![rust_id]);
     assert!(
         ed.state.buffers.get(bid).syntax.is_none(),
         "wrong-language sweep must not attach parser for json buffer",
@@ -255,7 +261,8 @@ fn sweep_no_op_for_nonmatching_language() {
             &mut ed.view.registry,
         )
         .unwrap();
-    ed.sweep_buffers_for_grammars(vec!["json".to_owned()]);
+    let json_id = ed.state.languages.intern("json");
+    ed.sweep_buffers_for_grammars(vec![json_id]);
     assert!(
         ed.state.buffers.get(bid).syntax.is_some(),
         "correct-language sweep must attach parser"
@@ -283,7 +290,8 @@ fn reparse_advances_parsed_gen_after_edit() {
             &mut ed.view.registry,
         )
         .unwrap();
-    ed.set_buffer_language(bid, Some("json".to_owned()));
+    let lang = ed.state.languages.intern("json");
+    ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drain the initial parse result
 
     // setup_buffer_syntax sets parsed_gen = text_gen (after drain).
@@ -370,7 +378,8 @@ fn reparse_detaches_when_buffer_exceeds_max_bytes() {
             &mut ed.view.registry,
         )
         .unwrap();
-    ed.set_buffer_language(bid, Some("json".to_owned()));
+    let lang = ed.state.languages.intern("json");
+    ed.set_buffer_language(bid, Some(lang));
     assert!(
         ed.state.buffers.get(bid).syntax.is_some(),
         "syntax must be set initially"
@@ -427,7 +436,8 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
         .languages
         .register_identity("json", &["json"], &[], &[])
         .unwrap();
-    ed.set_buffer_language(bid, Some("json".to_owned()));
+    let lang = ed.state.languages.intern("json");
+    ed.set_buffer_language(bid, Some(lang));
     assert!(
         ed.state.buffers.get(bid).syntax.is_none(),
         "no grammar attached yet"
@@ -513,7 +523,8 @@ fn replace_buffer_in_place_clears_engine_syntax_state() {
             &mut ed.view.registry,
         )
         .unwrap();
-    ed.set_buffer_language(bid, Some("json".to_owned()));
+    let lang = ed.state.languages.intern("json");
+    ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers();
     assert!(
         ed.view.buffers[bid].syntax.is_some(),
@@ -568,7 +579,8 @@ fn reparse_reattaches_after_shrink_under_cap() {
             &mut ed.view.registry,
         )
         .unwrap();
-    ed.set_buffer_language(bid, Some("json".to_owned()));
+    let lang = ed.state.languages.intern("json");
+    ed.set_buffer_language(bid, Some(lang));
     assert!(
         ed.state.buffers.get(bid).syntax.is_some(),
         "syntax must be set initially"
@@ -642,7 +654,8 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
             &mut ed.view.registry,
         )
         .unwrap();
-    ed.set_buffer_language(bid, Some("json".to_owned()));
+    let lang = ed.state.languages.intern("json");
+    ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers();
 
     assert!(
@@ -714,7 +727,8 @@ fn parse_worker_result_is_async_then_installed() {
             &mut ed.view.registry,
         )
         .unwrap();
-    ed.set_buffer_language(bid, Some("json".to_owned()));
+    let lang = ed.state.languages.intern("json");
+    ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drain initial parse result
 
     let gen0 = ed.state.buffers.get(bid).text_gen;
@@ -788,7 +802,8 @@ fn grammar_swap_clears_stale_in_flight() {
             &mut ed.view.registry,
         )
         .unwrap();
-    ed.set_buffer_language(bid, Some("json".to_owned()));
+    let lang = ed.state.languages.intern("json");
+    ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drain json parse result
 
     // Attach rust grammar and sweep — this should clear any json in-flight and post fresh.
@@ -804,7 +819,8 @@ fn grammar_swap_clears_stale_in_flight() {
             &mut ed.view.registry,
         )
         .unwrap();
-    ed.set_buffer_language(bid, Some("rust".to_owned()));
+    let lang = ed.state.languages.intern("rust");
+    ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drain rust parse result
 
     assert!(
@@ -1069,7 +1085,8 @@ fn install_real_json_grammar_e2e() {
         .languages
         .register_identity("json", &["json"], &[], &[])
         .unwrap();
-    ed.set_buffer_language(bid, Some("json".to_owned()));
+    let lang = ed.state.languages.intern("json");
+    ed.set_buffer_language(bid, Some(lang));
     ed.scripting = Some(host);
 
     type_cmd(&mut ed, ":attach-json");
@@ -1166,7 +1183,8 @@ fn rust_function_highlight_snapshot() {
     // Bake after scopes are interned so theme.resolve() returns correct styles.
     ed.view.theme.bake(&ed.view.registry);
 
-    ed.set_buffer_language(bid, Some("rust".to_owned()));
+    let lang = ed.state.languages.intern("rust");
+    ed.set_buffer_language(bid, Some(lang));
     // Drain the parse result posted synchronously inside setup_buffer_syntax
     // (InlineParseBackend completes the parse inside post; drain installs the tree).
     ed.reparse_stale_buffers();

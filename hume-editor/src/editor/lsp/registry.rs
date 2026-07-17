@@ -146,7 +146,9 @@ impl Editor {
             .buffers
             .iter()
             .filter(|(_, buf)| {
-                buf.language.as_deref() == Some(language.as_str()) && buf.lsp_server.is_none()
+                buf.language
+                    .is_some_and(|id| self.state.languages.name_of(id) == language)
+                    && buf.lsp_server.is_none()
             })
             .map(|(bid, _)| bid)
             .collect();
@@ -170,9 +172,10 @@ impl Editor {
         let Some(path) = buf.path().map(Path::to_path_buf) else {
             return;
         };
-        let Some(language) = buf.language.clone() else {
+        let Some(lang_id) = buf.language else {
             return;
         };
+        let language = self.state.languages.name_of(lang_id).to_owned();
         let Some(config) = self.lsp.configs.get(&language).cloned() else {
             return;
         };

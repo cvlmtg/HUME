@@ -75,7 +75,8 @@ fn markdown_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
         .unwrap();
     attach(&mut ed, "rust", "tree_sitter_rust", false);
 
-    ed.set_buffer_language(bid, Some("markdown".to_owned()));
+    let lang = ed.state.languages.intern("markdown");
+    ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drains the initial full parse
     (ed, bid)
 }
@@ -858,7 +859,8 @@ fn plum_install_grammar_resolves_helix_inherits_chain() {
         "resolved highlights.scm must contain real tree-sitter capture patterns, got: {hl_content:?}"
     );
 
-    ed.set_buffer_language(bid, Some("tsx".to_owned()));
+    let lang = ed.state.languages.intern("tsx");
+    ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers();
     assert!(
         ed.state.buffers.get(bid).syntax.is_some(),

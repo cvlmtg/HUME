@@ -169,7 +169,12 @@ impl Editor {
                     );
                 }
                 if inserted {
-                    let language = self.state.buffers.get(buf).language.clone();
+                    let language = self
+                        .state
+                        .buffers
+                        .get(buf)
+                        .language
+                        .map(|id| self.state.languages.name_of(id).to_owned());
                     for source in self.state.trigger_sources_for(ch, language.as_deref()) {
                         self.fire_hook_trigger_char(buf, ch, &source);
                     }

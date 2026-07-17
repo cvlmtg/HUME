@@ -13,7 +13,7 @@ use hume_platform::io::FileMeta;
 mod file_open;
 pub(crate) mod lifecycle;
 pub(crate) mod store;
-use hume_treesitter::registry::BufferSyntax;
+use hume_treesitter::registry::{BufferSyntax, LanguageId};
 
 // ── LastInsert ────────────────────────────────────────────────────────────────
 
@@ -73,9 +73,9 @@ pub(crate) struct Buffer {
     /// Per-buffer setting overrides. `None` fields inherit from
     /// [`crate::settings::EditorSettings`].
     pub(crate) overrides: BufferOverrides,
-    /// Detected or explicitly set language identity (e.g. `"rust"`, `"json"`).
+    /// Detected or explicitly set language identity (e.g. `rust`, `json`).
     /// `None` for unrecognised filetypes and scratch buffers.
-    pub(crate) language: Option<String>,
+    pub(crate) language: Option<LanguageId>,
     /// Monotonically increasing counter, bumped on every text mutation.
     /// `reparse_stale_buffers` skips a buffer when this equals
     /// `syntax.parsed_gen`.

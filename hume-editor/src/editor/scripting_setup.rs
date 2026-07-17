@@ -43,9 +43,17 @@ impl Editor {
                 }
                 Effect::LspServerOp(op) => self.apply_lsp_server_op(op),
                 Effect::SetBufferLanguage { buffer, language } => {
-                    self.set_buffer_language(buffer, language)
+                    let lang_id = language.map(|name| self.state.languages.intern(&name));
+                    self.set_buffer_language(buffer, lang_id)
                 }
-                Effect::GrammarSweep(name) => self.sweep_buffers_for_grammars(vec![name]),
+                Effect::GrammarSweep(name) => {
+                    let id = self
+                        .state
+                        .languages
+                        .id_of(&name)
+                        .expect("GrammarSweep is only emitted right after attach_grammar interns the name");
+                    self.sweep_buffers_for_grammars(vec![id])
+                }
                 Effect::LspRequest(req) => {
                     self.flush_lsp_pending_changes();
                     self.send_one_lsp_request(req);

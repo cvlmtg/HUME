@@ -12,7 +12,10 @@ impl StatuslineElement for LanguageElement {
     type Data = Option<String>;
 
     fn read(editor: &Editor) -> Self::Data {
-        editor.doc().language.clone()
+        editor
+            .doc()
+            .language
+            .map(|id| editor.state.languages.name_of(id).to_owned())
     }
 
     fn format(lang: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, Style) {

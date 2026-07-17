@@ -121,7 +121,8 @@ fn hook_feedback_loop_is_cut_off_by_drain_cap() {
 
     // Kick off the ping-pong: aaa → handler sets bbb → handler sets aaa → …
     let bid = ed.focused_buffer_id();
-    ed.set_buffer_language(bid, Some("aaa".to_string()));
+    let lang = ed.state.languages.intern("aaa");
+    ed.set_buffer_language(bid, Some(lang));
     ed.drain_hooks(); // must return, not hang
 
     assert!(
@@ -170,7 +171,8 @@ fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
     ed.scripting = Some(host);
 
     let bid = ed.focused_buffer_id();
-    ed.set_buffer_language(bid, Some("start".to_string()));
+    let lang = ed.state.languages.intern("start");
+    ed.set_buffer_language(bid, Some(lang));
     ed.drain_hooks(); // must return promptly, not after 2^100 evals
 
     assert!(

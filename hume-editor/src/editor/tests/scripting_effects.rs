@@ -116,8 +116,8 @@ fn effect_log_preserves_emission_order_across_kinds() {
         "LSP server config must be registered"
     );
     assert_eq!(
-        ed.state.buffers.get(bid).language.as_deref(),
-        Some("widget"),
+        ed.state.buffers.get(bid).language,
+        ed.state.languages.id_of("widget"),
         "buffer language must be set"
     );
 }

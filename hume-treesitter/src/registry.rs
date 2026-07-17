@@ -357,6 +357,11 @@ impl LanguageRegistry {
         self.glob_lang_ids.get(i).map(|&id| self.name_of(id))
     }
 
+    /// Language id for glob match index `i` (from `GlobSet::matches`).
+    pub fn glob_lang_id(&self, i: usize) -> Option<LanguageId> {
+        self.glob_lang_ids.get(i).copied()
+    }
+
     /// Look up a language by shebang substring (e.g. `"python"`).
     pub fn by_shebang(&self, token: &str) -> Option<LanguageId> {
         self.shebang_to_id.get(token).copied()
@@ -467,12 +472,6 @@ impl LanguageRegistry {
         self.grammars.get(id.0 as usize)?.as_ref()
     }
 
-    /// The grammar bundle attached to `name`, if any.
-    pub fn grammar_by_name(&self, name: &str) -> Option<&Arc<GrammarBundle>> {
-        let id = self.id_of(name)?;
-        self.grammar(id)
-    }
-
     /// Snapshot of grammared languages, keyed by name. Handed to the parse
     /// worker so it can resolve an injection language name (a
     /// dynamically-discovered info string) to its grammar without touching
@@ -516,12 +515,12 @@ impl LanguageRegistry {
 /// Detect the language for a buffer given its path and first line.
 ///
 /// Priority: glob match (most-specific / last-registered) → file extension →
-/// shebang. Returns the language name string, or `None` if unrecognised.
+/// shebang. Returns the language id, or `None` if unrecognised.
 pub fn detect_language(
     path: Option<&std::path::Path>,
     first_line: Option<&str>,
     registry: &LanguageRegistry,
-) -> Option<String> {
+) -> Option<LanguageId> {
     if let Some(path) = path {
         let file_name = path
             .file_name()
@@ -530,29 +529,29 @@ pub fn detect_language(
         if let Some(name_path) = file_name {
             let matches = registry.compiled_globs().matches(name_path);
             if let Some(&last_idx) = matches.last()
-                && let Some(name) = registry.glob_lang_name(last_idx)
+                && let Some(id) = registry.glob_lang_id(last_idx)
             {
-                return Some(name.to_owned());
+                return Some(id);
             }
         }
 
         if let Some(ext) = path.extension().and_then(|e| e.to_str())
             && let Some(id) = registry.by_extension(ext)
         {
-            return Some(registry.name_of(id).to_owned());
+            return Some(id);
         }
     }
 
     if let Some(line) = first_line
-        && let Some(name) = detect_shebang(line, registry)
+        && let Some(id) = detect_shebang(line, registry)
     {
-        return Some(name);
+        return Some(id);
     }
 
     None
 }
 
-fn detect_shebang(line: &str, registry: &LanguageRegistry) -> Option<String> {
+fn detect_shebang(line: &str, registry: &LanguageRegistry) -> Option<LanguageId> {
     let after_bang = line.strip_prefix("#!")?;
     let mut tokens = after_bang.split_whitespace();
     let interpreter_path = tokens.next()?;
@@ -568,9 +567,7 @@ fn detect_shebang(line: &str, registry: &LanguageRegistry) -> Option<String> {
             .to_str()?
     };
 
-    registry
-        .by_shebang(interpreter)
-        .map(|id| registry.name_of(id).to_owned())
+    registry.by_shebang(interpreter)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -761,8 +758,8 @@ mod tests {
     fn detect_language_by_extension() {
         let mut reg = LanguageRegistry::new();
         reg.register_identity("rust", &["rs"], &[], &[]).unwrap();
-        let name = detect_language(Some(Path::new("foo.rs")), None, &reg);
-        assert_eq!(name.as_deref(), Some("rust"));
+        let id = detect_language(Some(Path::new("foo.rs")), None, &reg);
+        assert_eq!(id, reg.id_of("rust"));
         // Flip: wrong extension must not detect.
         let no_match = detect_language(Some(Path::new("foo.py")), None, &reg);
         assert!(no_match.is_none());
@@ -773,8 +770,8 @@ mod tests {
         let mut reg = LanguageRegistry::new();
         reg.register_identity("makefile", &[], &["Makefile", "GNUmakefile"], &[])
             .unwrap();
-        let name = detect_language(Some(Path::new("/project/Makefile")), None, &reg);
-        assert_eq!(name.as_deref(), Some("makefile"));
+        let id = detect_language(Some(Path::new("/project/Makefile")), None, &reg);
+        assert_eq!(id, reg.id_of("makefile"));
         let no_match = detect_language(Some(Path::new("/project/other")), None, &reg);
         assert!(no_match.is_none());
     }
@@ -787,11 +784,11 @@ mod tests {
         reg.register_identity("tsconfig", &[], &["tsconfig.json", "*.config.json"], &[])
             .unwrap();
         reg.register_identity("json", &["json"], &[], &[]).unwrap();
-        let name = detect_language(Some(Path::new("tsconfig.json")), None, &reg);
-        assert_eq!(name.as_deref(), Some("tsconfig"));
+        let id = detect_language(Some(Path::new("tsconfig.json")), None, &reg);
+        assert_eq!(id, reg.id_of("tsconfig"));
         // Flip: without the glob match, a plain .json should detect as json.
         let plain = detect_language(Some(Path::new("other.json")), None, &reg);
-        assert_eq!(plain.as_deref(), Some("json"));
+        assert_eq!(plain, reg.id_of("json"));
     }
 
     #[test]
@@ -802,8 +799,8 @@ mod tests {
         reg.register_identity("strict-json", &[], &["*.json"], &[])
             .unwrap();
         assert_eq!(
-            detect_language(Some(Path::new("config.json")), None, &reg).as_deref(),
-            Some("strict-json"),
+            detect_language(Some(Path::new("config.json")), None, &reg),
+            reg.id_of("strict-json"),
         );
 
         let mut reg2 = LanguageRegistry::new();
@@ -812,8 +809,8 @@ mod tests {
         reg2.register_identity("generic-json", &[], &["*.json"], &[])
             .unwrap();
         assert_eq!(
-            detect_language(Some(Path::new("config.json")), None, &reg2).as_deref(),
-            Some("generic-json"),
+            detect_language(Some(Path::new("config.json")), None, &reg2),
+            reg2.id_of("generic-json"),
         );
     }
 
@@ -822,12 +819,12 @@ mod tests {
         let mut reg = LanguageRegistry::new();
         reg.register_identity("python", &["py"], &[], &["python3", "python"])
             .unwrap();
-        let name = detect_language(
+        let id = detect_language(
             Some(Path::new("script")),
             Some("#!/usr/bin/env python3"),
             &reg,
         );
-        assert_eq!(name.as_deref(), Some("python"));
+        assert_eq!(id, reg.id_of("python"));
         // Flip: wrong shebang must not match.
         let no_match = detect_language(Some(Path::new("script")), Some("#!/bin/bash"), &reg);
         assert!(no_match.is_none());
@@ -839,11 +836,11 @@ mod tests {
         reg.register_identity("bash", &["sh"], &[], &["bash"])
             .unwrap();
         // Extension wins over shebang.
-        let name = detect_language(Some(Path::new("run.sh")), Some("#!/bin/bash"), &reg);
-        assert_eq!(name.as_deref(), Some("bash"));
+        let id = detect_language(Some(Path::new("run.sh")), Some("#!/bin/bash"), &reg);
+        assert_eq!(id, reg.id_of("bash"));
         // Without extension, shebang is used.
-        let name2 = detect_language(Some(Path::new("run")), Some("#!/bin/bash"), &reg);
-        assert_eq!(name2.as_deref(), Some("bash"));
+        let id2 = detect_language(Some(Path::new("run")), Some("#!/bin/bash"), &reg);
+        assert_eq!(id2, reg.id_of("bash"));
     }
 
     #[test]
@@ -864,12 +861,12 @@ mod tests {
         reg.register_identity("c", &["c"], &[], &[]).unwrap();
         reg.register_identity("cpp", &["C"], &[], &[]).unwrap();
         assert_eq!(
-            detect_language(Some(Path::new("foo.c")), None, &reg).as_deref(),
-            Some("c"),
+            detect_language(Some(Path::new("foo.c")), None, &reg),
+            reg.id_of("c"),
         );
         assert_eq!(
-            detect_language(Some(Path::new("foo.C")), None, &reg).as_deref(),
-            Some("cpp"),
+            detect_language(Some(Path::new("foo.C")), None, &reg),
+            reg.id_of("cpp"),
         );
         // Sanity: unrelated extension is still None.
         assert!(detect_language(Some(Path::new("foo.rs")), None, &reg).is_none());

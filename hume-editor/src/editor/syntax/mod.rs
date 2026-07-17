@@ -8,7 +8,7 @@
 mod parse;
 
 use hume_engine::pipeline::BufferId;
-use hume_treesitter::registry::detect_language;
+use hume_treesitter::registry::{LanguageId, detect_language};
 use steel::rvals::IntoSteelVal as _;
 
 use super::Editor;
@@ -22,22 +22,19 @@ impl Editor {
     /// On change: writes `Buffer.language`, fires `OnLanguageSet` with `(bid, name-or-#f)`.
     /// All write paths (detection at open, `:set buffer language=`, Steel API) go
     /// through this function.
-    pub(super) fn set_buffer_language(&mut self, bid: BufferId, new_lang: Option<String>) {
+    pub(super) fn set_buffer_language(&mut self, bid: BufferId, new_lang: Option<LanguageId>) {
         if self.state.buffers.get(bid).language == new_lang {
             return;
         }
-        let lang_val = match new_lang.as_deref() {
+        let lang_name = new_lang.map(|id| self.state.languages.name_of(id).to_owned());
+        let lang_val = match lang_name.as_deref() {
             Some(name) => name.into_steelval().expect("str into_steelval"),
             None => false.into_steelval().expect("bool into_steelval"),
         };
-        // Clone before moving into the buffer so `activate_lazy_language_plugins`
-        // can borrow the name after the write — a plugin reading buffer-language
-        // during its own activation then sees the new value.
-        let activate_name = new_lang.clone();
         self.state.buffers.get_mut(bid).language = new_lang;
         // Activate language-matched plugins after the write so handlers are
         // registered in time for the OnLanguageSet fire below.
-        if let Some(name) = activate_name.as_deref() {
+        if let Some(name) = lang_name.as_deref() {
             self.activate_lazy_language_plugins(name);
             // A lazy plugin's own body can call `set-buffer-language!` on
             // this same buffer (applied inline via `apply_script_effects`
@@ -46,7 +43,7 @@ impl Editor {
             // value. Ours is stale: bail out rather than fire a second,
             // out-of-order `OnLanguageSet` and re-derive syntax/LSP state
             // for a language the buffer no longer has.
-            if self.state.buffers.get(bid).language != activate_name {
+            if self.state.buffers.get(bid).language != new_lang {
                 return;
             }
         }
@@ -86,7 +83,7 @@ impl Editor {
     ) {
         use hume_scripting::PendingLanguageReg;
         let mut any_identity = false;
-        let mut grammar_sweeps: Vec<String> = Vec::new();
+        let mut grammar_sweeps: Vec<LanguageId> = Vec::new();
         for reg in regs {
             match reg {
                 PendingLanguageReg::Identity {
@@ -130,7 +127,12 @@ impl Editor {
                         injections_path.as_deref(),
                         &mut self.view.registry,
                     ) {
-                        Ok(_) => grammar_sweeps.push(name),
+                        Ok(_) => grammar_sweeps.push(
+                            self.state
+                                .languages
+                                .id_of(&name)
+                                .expect("attach_grammar interns the name"),
+                        ),
                         Err(e) => self.state.message_log.push(
                             super::Severity::Warning,
                             format!("register-grammar! '{}': {}", name, e),

@@ -155,7 +155,8 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         self.buffer(id).map(|buf| buf.is_dirty())
     }
     fn buffer_stored_language(&self, id: BufferId) -> Option<String> {
-        self.buffer(id)?.language.clone()
+        let lang_id = self.buffer(id)?.language?;
+        Some(self.state.languages.name_of(lang_id).to_owned())
     }
 
     // ── Buffer lifecycle ─────────────────────────────────────────────────────

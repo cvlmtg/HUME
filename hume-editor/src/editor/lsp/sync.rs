@@ -70,11 +70,18 @@ impl Editor {
     /// attach). Queued instead of sent if the handshake hasn't completed —
     /// the spec forbids anything but `initialize` before `initialized`.
     pub(super) fn lsp_did_open(&mut self, bid: BufferId) {
-        self.send_doc_notification(bid, DidOpenTextDocument::METHOD, |buf, uri| {
+        let language_id = self
+            .state
+            .buffers
+            .get(bid)
+            .language
+            .map(|id| self.state.languages.name_of(id).to_owned())
+            .expect("attached buffer always has a language");
+        self.send_doc_notification(bid, DidOpenTextDocument::METHOD, move |buf, uri| {
             serde_json::json!({
                 "textDocument": {
                     "uri": uri.as_str(),
-                    "languageId": buf.language.clone().expect("attached buffer always has a language"),
+                    "languageId": language_id,
                     "version": wire_version(buf.text_gen),
                     "text": buf.text().to_string(),
                 }

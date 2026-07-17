@@ -201,11 +201,12 @@ fn set_buffer_language_reentrant_activation_uses_final_value() {
     );
     let bid = ed.focused_buffer_id();
 
-    ed.set_buffer_language(bid, Some("rust".to_owned()));
+    let lang = ed.state.languages.intern("rust");
+    ed.set_buffer_language(bid, Some(lang));
 
     assert_eq!(
-        ed.state.buffers.get(bid).language.as_deref(),
-        Some("python"),
+        ed.state.buffers.get(bid).language,
+        ed.state.languages.id_of("python"),
         "the plugin's own set-buffer-language! call inside its activation body must win"
     );
     assert_eq!(
@@ -1176,7 +1177,8 @@ fn language_trigger_activates_on_set() {
 
     let before = state(&ed);
     let bid = ed.focused_buffer_id();
-    ed.set_buffer_language(bid, Some("rust".into()));
+    let lang = ed.state.languages.intern("rust");
+    ed.set_buffer_language(bid, Some(lang));
     ed.drain_hooks();
 
     assert_ne!(
@@ -1221,7 +1223,8 @@ fn language_trigger_idempotent_on_round_trip() {
     };
     let bid = ed.focused_buffer_id();
 
-    ed.set_buffer_language(bid, Some("rust".into())); // first set — activates
+    let lang = ed.state.languages.intern("rust");
+    ed.set_buffer_language(bid, Some(lang)); // first set — activates
     ed.drain_hooks();
     assert!(
         ed.scripting
@@ -1233,9 +1236,11 @@ fn language_trigger_idempotent_on_round_trip() {
     );
 
     let after_first = state(&ed);
-    ed.set_buffer_language(bid, Some("toml".into())); // round-trip out
+    let lang = ed.state.languages.intern("toml");
+    ed.set_buffer_language(bid, Some(lang)); // round-trip out
     ed.drain_hooks();
-    ed.set_buffer_language(bid, Some("rust".into())); // round-trip back — handler runs, no re-activation
+    let lang = ed.state.languages.intern("rust");
+    ed.set_buffer_language(bid, Some(lang)); // round-trip back — handler runs, no re-activation
     ed.drain_hooks();
 
     assert_ne!(
@@ -1315,7 +1320,8 @@ fn language_trigger_one_to_many_activates_all() {
         repo: "tp2".to_string(),
     };
     let bid = ed.focused_buffer_id();
-    ed.set_buffer_language(bid, Some("rust".into()));
+    let lang = ed.state.languages.intern("rust");
+    ed.set_buffer_language(bid, Some(lang));
 
     assert!(
         matches!(
@@ -1360,7 +1366,8 @@ fn language_trigger_does_not_fire_on_unrelated_language() {
     };
     let bid = ed.focused_buffer_id();
 
-    ed.set_buffer_language(bid, Some("toml".into())); // unrelated language
+    let lang = ed.state.languages.intern("toml");
+    ed.set_buffer_language(bid, Some(lang)); // unrelated language
 
     assert!(
         matches!(
@@ -1410,7 +1417,8 @@ fn language_wildcard_trigger_activates_on_any_language() {
 
     let before = state(&ed);
     let bid = ed.focused_buffer_id();
-    ed.set_buffer_language(bid, Some("toml".into()));
+    let lang = ed.state.languages.intern("toml");
+    ed.set_buffer_language(bid, Some(lang));
     ed.drain_hooks();
 
     assert_ne!(
@@ -1476,7 +1484,8 @@ fn language_wildcard_and_specific_entry_coexist() {
         repo: "tp2".to_string(),
     };
     let bid = ed.focused_buffer_id();
-    ed.set_buffer_language(bid, Some("toml".into()));
+    let lang = ed.state.languages.intern("toml");
+    ed.set_buffer_language(bid, Some(lang));
 
     assert!(
         matches!(

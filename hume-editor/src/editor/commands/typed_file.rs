@@ -142,16 +142,14 @@ pub fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(),
                 let new_lang = if value.is_empty() {
                     None
                 } else {
-                    Some(value.to_owned())
+                    if ed.state.languages.by_name(value).is_none() {
+                        ed.report(
+                            Severity::Warning,
+                            format!("language '{value}' is not registered"),
+                        );
+                    }
+                    Some(ed.state.languages.intern(value))
                 };
-                if let Some(ref name) = new_lang
-                    && ed.state.languages.by_name(name).is_none()
-                {
-                    ed.report(
-                        Severity::Warning,
-                        format!("language '{name}' is not registered"),
-                    );
-                }
                 ed.set_buffer_language(bid, new_lang);
                 Ok(())
             }

@@ -117,7 +117,8 @@ fn register_trigger_chars_from_inside_a_hook_handler_takes_effect() {
     let mut ed = editor_from("-[a]>bcdef\n");
     let sid = wire_starting_server(&mut ed);
     let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).language = Some("rust".to_string());
+    let lang = ed.state.languages.intern("rust");
+    ed.state.buffers.get_mut(bid).language = Some(lang);
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -160,7 +161,8 @@ fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     let bid_a = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid_a).language = Some("rust".to_string());
+    let lang = ed.state.languages.intern("rust");
+    ed.state.buffers.get_mut(bid_a).language = Some(lang);
 
     let mut backend = InlineLspBackend::new();
     backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
@@ -186,7 +188,8 @@ fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber
         Text::from("x\n"),
         SelectionSet::single(Selection::collapsed(0)),
     ));
-    ed.state.buffers.get_mut(bid_b).language = Some("python".to_string());
+    let lang = ed.state.languages.intern("python");
+    ed.state.buffers.get_mut(bid_b).language = Some(lang);
     ed.state.buffers.get_mut(bid_b).lsp_server = Some(sid_b);
 
     let mut host = ScriptingHost::new();
@@ -366,7 +369,8 @@ fn on_trigger_char_fires_only_for_registered_chars_in_insert_mode_after_insertio
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).language = Some("rust".to_string());
+    let lang = ed.state.languages.intern("rust");
+    ed.state.buffers.get_mut(bid).language = Some(lang);
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
@@ -420,7 +424,8 @@ fn on_trigger_char_does_not_fire_in_normal_mode() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[.]>bcdef\n");
     let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).language = Some("rust".to_string());
+    let lang = ed.state.languages.intern("rust");
+    ed.state.buffers.get_mut(bid).language = Some(lang);
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use hume_engine::pipeline::BufferId;
 use hume_engine::syntax_layers::{SyntaxLayer, SyntaxLayers};
 use hume_treesitter::parse_worker::{ParseDone, ParseOutcome, ParseRequest};
-use hume_treesitter::registry::{BufferSyntax, GrammarBundle};
+use hume_treesitter::registry::{BufferSyntax, GrammarBundle, LanguageId};
 
 use crate::editor::{Editor, Severity};
 
@@ -24,11 +24,10 @@ impl Editor {
         self.parse_worker.remove_in_flight(bid);
 
         // Resolve language → grammar bundle.
-        let lang_name = match self.state.buffers.get(bid).language.clone() {
-            Some(n) => n,
-            None => return,
+        let Some(lang_id) = self.state.buffers.get(bid).language else {
+            return;
         };
-        let bundle = match self.state.languages.grammar_by_name(&lang_name) {
+        let bundle = match self.state.languages.grammar(lang_id) {
             Some(b) => Arc::clone(b),
             None => return,
         };
@@ -229,8 +228,7 @@ impl Editor {
                         .buffers
                         .get(bid)
                         .language
-                        .as_deref()
-                        .is_some_and(|l| self.state.languages.has_grammar(l))
+                        .is_some_and(|l| self.state.languages.grammar(l).is_some())
                 {
                     self.setup_buffer_syntax(bid);
                 }
@@ -420,8 +418,8 @@ impl Editor {
     /// injection sites in an already-open buffer of a different language
     /// (e.g. markdown fenced code blocks) without that buffer's own language
     /// ever appearing in `names`.
-    pub(in crate::editor) fn sweep_buffers_for_grammars(&mut self, names: Vec<String>) {
-        if names.is_empty() {
+    pub(in crate::editor) fn sweep_buffers_for_grammars(&mut self, ids: Vec<LanguageId>) {
+        if ids.is_empty() {
             return;
         }
         let bids: Vec<BufferId> = self
@@ -429,15 +427,12 @@ impl Editor {
             .buffers
             .iter()
             .filter(|(_, buf)| {
-                let matches_name = buf
-                    .language
-                    .as_deref()
-                    .is_some_and(|lang| names.iter().any(|n| n == lang));
+                let matches_id = buf.language.is_some_and(|lang| ids.contains(&lang));
                 let root_has_injections = buf
                     .syntax
                     .as_ref()
                     .is_some_and(|syn| syn.bundle.injections.is_some());
-                matches_name || root_has_injections
+                matches_id || root_has_injections
             })
             .map(|(bid, _)| bid)
             .collect();
@@ -495,7 +490,8 @@ mod tests {
                 &mut ed.view.registry,
             )
             .expect("attach json grammar");
-        ed.set_buffer_language(bid, Some("json".to_owned()));
+        let lang = ed.state.languages.intern("json");
+        ed.set_buffer_language(bid, Some(lang));
         ed.reparse_stale_buffers(); // drains the initial full parse
         let gen0 = ed.state.buffers.get(bid).text_gen;
         Some((ed, bid, gen0))
