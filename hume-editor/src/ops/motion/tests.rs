@@ -1265,6 +1265,25 @@ fn select_next_word_around_count_2_expands_only_final_span() {
 }
 
 #[test]
+fn select_next_word_around_second_press_advances_past_first_word() {
+    // Forward counterpart of select_prev_word_around_second_press_advances_past_first_word:
+    // locks in that chaining two SEPARATE `w` presses (not a single count=2
+    // call) still advances correctly when the first press's around-expansion
+    // pushes head into trailing whitespace. Forward search is naturally
+    // immune to the backward bug (see apply_word_select's doc comment) since
+    // it just continues scanning from wherever head is, but this pins that
+    // guarantee down with a cross-call test the way the backward fix needed.
+    assert_state!(
+        "-[o]>ne two three four\n",
+        |(buf, sels)| {
+            let s1 = cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move); // "two "
+            cmd_select_next_word_around(&buf, s1, 1, MotionMode::Move) // must be "three ", not "two " again
+        },
+        "one two -[three ]>four\n"
+    );
+}
+
+#[test]
 fn select_next_word_around_multi_cursor_overlap_merges() {
     // Cursor 1 lands on "bar" and picks up its trailing space (no trailing
     // space of "baz" to compete with yet). Cursor 2 lands on "baz" and,
@@ -1332,6 +1351,44 @@ fn select_prev_uppercase_word_around_trailing() {
         "hello.world -[bar]>\n",
         |(buf, sels)| cmd_select_prev_uppercase_word_around(&buf, sels, 1, MotionMode::Move),
         "-[hello.world ]>bar\n"
+    );
+}
+
+#[test]
+fn select_prev_word_around_second_press_advances_past_first_word() {
+    // Regression: the first `b` absorbs "three"'s trailing space, landing
+    // head ON that space (one past "three", not inside it). A second press
+    // must not be fooled by that into re-selecting "three" again — it must
+    // advance to "two". Before the fix, the second press's search origin was
+    // `current.head()` (the trailing space), which falls outside "three"'s
+    // own bounds, so `select_prev_word`'s "am I still on the word I just
+    // found" check missed and returned "three" a second time — `b` got
+    // stuck. The fix searches from `current.start()` for backward motions,
+    // which stays correctly "on" three's bounds and lets prev_word_start
+    // naturally find "two".
+    assert_state!(
+        "one two three -[f]>our\n",
+        |(buf, sels)| {
+            let s1 = cmd_select_prev_word_around(&buf, sels, 1, MotionMode::Move); // "three "
+            cmd_select_prev_word_around(&buf, s1, 1, MotionMode::Move) // must be "two ", not "three " again
+        },
+        "one -[two ]>three four\n"
+    );
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn select_prev_uppercase_word_around_second_press_advances_past_first_word() {
+    // Same regression as select_prev_word_around_second_press_advances_past_first_word,
+    // for B: "three.x" is one WORD (punctuation merged in); a second press
+    // must advance to "two", not re-select "three.x".
+    assert_state!(
+        "one two three.x -[f]>our\n",
+        |(buf, sels)| {
+            let s1 = cmd_select_prev_uppercase_word_around(&buf, sels, 1, MotionMode::Move); // "three.x "
+            cmd_select_prev_uppercase_word_around(&buf, s1, 1, MotionMode::Move) // must be "two ", not "three.x " again
+        },
+        "one -[two ]>three.x four\n"
     );
 }
 

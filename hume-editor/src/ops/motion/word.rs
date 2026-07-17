@@ -306,11 +306,28 @@ pub(super) fn select_prev_word(
 /// would from the destination word. A selection the loop never actually
 /// moved (motion returned `None` on the first iteration, e.g. `w` at EOF) is
 /// left untouched — there is no word to grow around.
+///
+/// `backward` selects which edge of the current selection each hop searches
+/// from. Forward motions (`w`/`W`) always search from `head()` — scanning
+/// forward from wherever the last hop landed is correct regardless of
+/// whether that head sits on real content or on whitespace absorbed by a
+/// prior around-expansion. Backward motions (`b`/`B`) need `start()`
+/// instead: `select_prev_word` detects "did I land back on the word I'm
+/// already sitting in" by checking whether the search origin falls inside
+/// that word's bounds, and an around-expanded selection's `head()` can sit
+/// in the word's *trailing* whitespace — just outside those bounds — which
+/// defeats the check and re-returns the same word every subsequent press.
+/// `start()` never drifts into trailing whitespace (only a *leading*
+/// expansion can move it, and that only pulls it further from the found
+/// word, which keeps the check working), so it's the origin that stays
+/// correct across repeated backward presses on both bare and around
+/// selections.
 pub(super) fn apply_word_select(
     buf: &Text,
     sels: SelectionSet,
     count: usize,
     around: bool,
+    backward: bool,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
     motion: impl Fn(&Text, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
@@ -318,7 +335,12 @@ pub(super) fn apply_word_select(
         let mut current = sel;
         let mut moved = false;
         for _ in 0..count {
-            match motion(buf, current.head()) {
+            let origin = if backward {
+                current.start()
+            } else {
+                current.head()
+            };
+            match motion(buf, origin) {
                 Some((anchor, head)) => {
                     current = Selection::new(anchor, head);
                     moved = true;
@@ -398,22 +420,29 @@ type SelectWord = fn(&Text, usize, IsBoundary) -> Option<(usize, usize)>;
 /// and word class (`is_boundary`: [`is_word_boundary`] or
 /// [`is_uppercase_word_boundary`]).
 ///
-/// `around` only affects the `Move` arm — [`apply_word_select_extend`]
-/// always keeps bare-word anchor units, regardless of
-/// `word-selects-whitespace` (see the `_around` command wrappers below).
+/// `around` and `backward` only affect the `Move` arm — see
+/// [`apply_word_select`]'s doc for what each does.
+/// [`apply_word_select_extend`] always keeps bare-word anchor units,
+/// regardless of `word-selects-whitespace`, and its `head()`-based chaining
+/// has no analogous backward/forward asymmetry (see the `_around` command
+/// wrappers below).
+#[allow(clippy::too_many_arguments)]
 fn word_select_cmd(
     buf: &Text,
     sels: SelectionSet,
     count: usize,
     mode: MotionMode,
     around: bool,
+    backward: bool,
     is_boundary: IsBoundary,
     select_word: SelectWord,
 ) -> SelectionSet {
     match mode {
-        MotionMode::Move => apply_word_select(buf, sels, count, around, is_boundary, |b, pos| {
-            select_word(b, pos, is_boundary)
-        }),
+        MotionMode::Move => {
+            apply_word_select(buf, sels, count, around, backward, is_boundary, |b, pos| {
+                select_word(b, pos, is_boundary)
+            })
+        }
         MotionMode::Extend => apply_word_select_extend(buf, sels, count, is_boundary, |b, pos| {
             select_word(b, pos, is_boundary)
         }),
@@ -433,6 +462,7 @@ pub(crate) fn cmd_select_next_word(
         sels,
         count,
         mode,
+        false,
         false,
         is_word_boundary,
         select_next_word,
@@ -455,6 +485,7 @@ pub(crate) fn cmd_select_next_word_around(
         count,
         mode,
         true,
+        false,
         is_word_boundary,
         select_next_word,
     )
@@ -473,6 +504,7 @@ pub(crate) fn cmd_select_next_uppercase_word(
         sels,
         count,
         mode,
+        false,
         false,
         is_uppercase_word_boundary,
         select_next_word,
@@ -494,6 +526,7 @@ pub(crate) fn cmd_select_next_uppercase_word_around(
         count,
         mode,
         true,
+        false,
         is_uppercase_word_boundary,
         select_next_word,
     )
@@ -513,6 +546,7 @@ pub(crate) fn cmd_select_prev_word(
         count,
         mode,
         false,
+        true,
         is_word_boundary,
         select_prev_word,
     )
@@ -533,6 +567,7 @@ pub(crate) fn cmd_select_prev_word_around(
         count,
         mode,
         true,
+        true,
         is_word_boundary,
         select_prev_word,
     )
@@ -552,6 +587,7 @@ pub(crate) fn cmd_select_prev_uppercase_word(
         count,
         mode,
         false,
+        true,
         is_uppercase_word_boundary,
         select_prev_word,
     )
@@ -571,6 +607,7 @@ pub(crate) fn cmd_select_prev_uppercase_word_around(
         sels,
         count,
         mode,
+        true,
         true,
         is_uppercase_word_boundary,
         select_prev_word,

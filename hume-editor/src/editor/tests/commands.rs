@@ -3049,6 +3049,23 @@ fn b_default_selects_trailing_space() {
     assert_eq!(state(&ed), "foo -[bar ]>baz\n");
 }
 
+/// Regression: pressing `b` twice in a row must walk back through two
+/// distinct words, not get stuck re-selecting the same one. The first press
+/// absorbs "three"'s trailing space (default around-word), landing head on
+/// that space; a naive second press searching from head would be fooled
+/// into re-finding "three" instead of advancing to "two" — see
+/// apply_word_select's `backward` parameter in ops/motion/word.rs.
+#[test]
+fn b_b_walks_back_through_distinct_words() {
+    let mut ed = editor_from("one two three -[f]>our\n");
+    ed.feed_key(key('b'));
+    assert_eq!(state(&ed), "one two -[three ]>four\n");
+    ed.feed_key(key('b'));
+    assert_eq!(state(&ed), "one -[two ]>three four\n");
+    ed.feed_key(key('b'));
+    assert_eq!(state(&ed), "-[one ]>two three four\n");
+}
+
 #[test]
 fn mm_default_matches_around_word() {
     let mut ed = editor_from("-[h]>ello world\n");
