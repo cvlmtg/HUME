@@ -57,6 +57,15 @@ impl Editor {
                     self.state.last_command = Some(name);
                     return;
                 }
+                // Any cursor-motion command (arrows, Home/End, …) invalidates
+                // a pinned "typed run" — its anchor would otherwise select
+                // across text the cursor jumped away from. exit-insert is the
+                // finalizer itself and must not clear the pins it consumes.
+                if cmd.name.as_ref() != "exit-insert" {
+                    let pid = self.state.focused_pane_id;
+                    let bid = self.focused_buffer_id();
+                    self.state.panes.state[pid][bid].pinned_anchors = None;
+                }
                 self.execute_keymap_command(cmd.name, Some(1), false, ArgSource::Keymap);
                 return;
             }

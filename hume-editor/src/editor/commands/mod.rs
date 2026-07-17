@@ -849,7 +849,35 @@ pub(super) fn end_insert_session(state: &mut EditorState, view: &EngineView) {
     ) {
         action.insert_keys = session.keystrokes;
     }
-    if step_back {
+    // `c`-entered sessions (see `cmd_change`) pin one anchor per selection so
+    // Esc can select the typed replacement — Kakoune append's mechanic:
+    // retreat the head one grapheme, guarded by `head > anchor` (nothing
+    // typed / all backspaced away collapses instead of producing a
+    // backwards or zero-width range). A count mismatch (selections merged
+    // mid-session, e.g. via Backspace) falls back to `step_back`/collapse —
+    // pins and `step_back` are mutually exclusive today since `cmd_change`
+    // never marks step-back, but the `else if` makes pins authoritative
+    // should that change.
+    let pinned = {
+        let pid = state.focused_pane_id;
+        let bid = focused_buffer_id(state, view);
+        state.panes.state[pid][bid].pinned_anchors.take()
+    };
+    let valid_pins = pinned.filter(|a| a.len() == current_selections(state, view).len());
+    if let Some(anchors) = valid_pins {
+        apply_focused_motion(state, view, move |b, sels| {
+            let mut anchors = anchors.into_iter();
+            sels.map(|sel| {
+                let anchor = anchors.next().expect("length checked above");
+                let head = sel.head();
+                if head > anchor {
+                    Selection::new(anchor, hume_editing::grapheme::prev_grapheme_boundary(b, head))
+                } else {
+                    Selection::collapsed(head)
+                }
+            })
+        });
+    } else if step_back {
         apply_focused_motion(state, view, |b, sels| {
             sels.map(|sel| {
                 let head = sel.head();
@@ -859,7 +887,7 @@ pub(super) fn end_insert_session(state: &mut EditorState, view: &EngineView) {
                 } else {
                     head
                 };
-                hume_editing::selection::Selection::collapsed(new_head)
+                Selection::collapsed(new_head)
             })
         });
     }

@@ -36,6 +36,93 @@ fn c_groups_delete_and_insert_into_one_undo_step() {
     assert!(!ed.doc().can_undo());
 }
 
+// ── `c` leaves the typed replacement selected (select-changed-text) ──────────
+
+#[test]
+fn c_type_esc_selects_replacement() {
+    let mut ed = editor_from("-[hell]>o\n");
+    ed.handle_key(key('c'));
+    ed.handle_key(key('h'));
+    ed.handle_key(key('i'));
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "-[hi]>o\n");
+}
+
+#[test]
+fn c_esc_without_typing_stays_collapsed() {
+    let mut ed = editor_from("-[hell]>o\n");
+    ed.handle_key(key('c'));
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "-[o]>\n");
+}
+
+#[test]
+fn c_multi_cursor_selects_each_replacement() {
+    let mut ed = editor_from("-[foo]> -[bar]>\n");
+    ed.handle_key(key('c'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key('y'));
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "-[xy]> -[xy]>\n");
+}
+
+#[test]
+fn c_backspace_past_run_start_clamps() {
+    let mut ed = editor_from("a-[foo]>b\n");
+    ed.handle_key(key('c'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_backspace());
+    ed.handle_key(key_backspace());
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "-[b]>\n");
+}
+
+#[test]
+fn c_enter_mid_session_selects_across_newline() {
+    let mut ed = editor_from("-[foo]>\n");
+    ed.handle_key(key('c'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key_enter());
+    ed.handle_key(key('b'));
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "-[a\nb]>\n");
+}
+
+#[test]
+fn c_auto_pair_excludes_trailing_closer() {
+    let mut ed = editor_from("-[foo]>\n");
+    ed.handle_key(key('c'));
+    ed.handle_key(key('('));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "-[(x]>)\n");
+}
+
+/// Regression: a cursor motion during the session (arrows etc.) must
+/// invalidate the pin — otherwise Esc would select across text the cursor
+/// moved away from, using a stale anchor.
+#[test]
+fn c_arrow_mid_session_cancels_selection() {
+    let mut ed = editor_from("-[foo]>\n");
+    ed.handle_key(key('c'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('b'));
+    ed.handle_key(key_left());
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "a-[b]>\n");
+}
+
+#[test]
+fn c_setting_false_keeps_current_behavior() {
+    let mut ed = editor_from("-[hell]>o\n");
+    ed.state.settings.select_changed_text = false;
+    ed.handle_key(key('c'));
+    ed.handle_key(key('h'));
+    ed.handle_key(key('i'));
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "hi-[o]>\n");
+}
+
 // ── Undo/redo boundary messages ────────────────────────────────────────────
 
 #[test]

@@ -72,6 +72,7 @@ These options have a global default that new buffers inherit, and a per-buffer o
 | `tab-style` | `hard` \| `soft` | `hard` | What `Tab` inserts: `hard` = literal `\t`; `soft` = spaces to next tab stop |
 | `line-number-style` | `absolute` \| `relative` \| `hybrid` | `hybrid` | Line number display in the gutter |
 | `auto-pairs-enabled` | bool | `#t` | Enable auto-pair insertion |
+| `select-changed-text` | bool | `#t` | After `c` (change), leaving Insert mode selects the text you just typed |
 | `signcolumn` | `always[:N]` \| `auto[:N]` | `always:1` | Gutter column for plugin-supplied signs (diagnostics, etc). `N` is the number of sign slots (1–127, default 1); `auto` collapses the column to zero width when no signs are visible |
 | `whitespace-space` | `none` \| `all` \| `trailing` | `none` | When to render space indicators. Also reveals invisible Unicode spaces (non-breaking and ideographic) with a distinct `⍽` marker |
 | `whitespace-tab` | `none` \| `all` \| `trailing` | `none` | When to render tab indicators |

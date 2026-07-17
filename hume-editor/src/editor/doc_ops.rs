@@ -137,6 +137,9 @@ pub(crate) fn apply_doc_edit_grouped(
     let pbs = &mut pane_state[focused_pane_id][buf_id];
     let (new_sels, cs) = doc.apply_edit_grouped(sels, &mut pbs.edit_group, cmd);
     pbs.selections = new_sels;
+    if let Some(anchors) = pbs.pinned_anchors.as_mut() {
+        cs.map_positions(anchors, hume_editing::changeset::Assoc::Before);
+    }
     propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &buf_pre);
     let text_gen = buffers.get(buf_id).text_gen;
     record_syntax_edits(buffers, buf_id, text_gen, &cs, &rope_pre);
@@ -280,6 +283,9 @@ pub(crate) fn begin_edit_group(
     let doc = buffers.get(buf_id);
     let pbs = &mut pane_state[focused_pane_id][buf_id];
     doc.begin_edit_group(&mut pbs.edit_group, sels);
+    // A fresh group never inherits pins from a previous session (interactive
+    // or replay-preopened) — `cmd_change` is the only site that sets these.
+    pbs.pinned_anchors = None;
 }
 
 /// Close the current edit group and record it as a single undo step.

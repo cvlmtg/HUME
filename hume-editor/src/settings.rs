@@ -598,6 +598,12 @@ define_settings! {
         "auto-pairs-enabled" => auto_pairs_enabled: bool = true,
             scope: ["global", "buffer"],
             parser: bool;
+        // After `c` (change), leaving Insert mode selects the text just
+        // typed — see `cmd_change` and `end_insert_session`'s pinned-anchor
+        // finalization.
+        "select-changed-text" => select_changed_text: bool = true,
+            scope: ["global", "buffer"],
+            parser: bool;
         "signcolumn" => signcolumn: SignColumnConfig = SignColumnConfig::default(),
             scope: ["global", "buffer"],
             parser: from_str;
@@ -775,6 +781,7 @@ mod tests {
         assert_eq!(s.wrap_mode, WrapMode::Indent { width: 0 });
         assert_eq!(s.line_number_style, LineNumberStyle::Hybrid);
         assert!(s.auto_pairs_enabled);
+        assert!(s.select_changed_text);
         assert!(s.pane_dividers);
         assert_eq!(s.signcolumn, SignColumnConfig::default());
     }
@@ -786,6 +793,7 @@ mod tests {
         assert!(ov.tab_style.is_none());
         assert!(ov.line_number_style.is_none());
         assert!(ov.auto_pairs_enabled.is_none());
+        assert!(ov.select_changed_text.is_none());
         assert!(ov.auto_pairs.is_none());
         assert!(ov.whitespace_space.is_none());
         assert!(ov.whitespace_tab.is_none());
@@ -1123,6 +1131,15 @@ mod tests {
     }
 
     #[test]
+    fn set_global_select_changed_text() {
+        assert!(
+            !global("select-changed-text", "false")
+                .unwrap()
+                .select_changed_text
+        );
+    }
+
+    #[test]
     fn set_global_whitespace_space() {
         assert_eq!(
             global("whitespace-space", "all").unwrap().whitespace.space,
@@ -1235,6 +1252,13 @@ mod tests {
         let ov = buffer("auto-pairs-enabled", "false").unwrap();
         let (enabled, _) = ov.auto_pairs_ref(&global);
         assert!(!enabled);
+    }
+
+    #[test]
+    fn set_buffer_select_changed_text() {
+        let global = EditorSettings::default();
+        let ov = buffer("select-changed-text", "false").unwrap();
+        assert!(!ov.select_changed_text(&global));
     }
 
     #[test]
@@ -1407,6 +1431,7 @@ mod tests {
             "popup-border",
             "pane-dividers",
             "auto-pairs-enabled",
+            "select-changed-text",
         ] {
             assert!(is_bool_setting(key), "'{key}' should be a bool setting");
         }

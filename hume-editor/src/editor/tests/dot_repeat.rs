@@ -37,6 +37,25 @@ fn dot_repeats_change_with_insert() {
     assert_eq!(ed.doc().text().to_string(), "hi hi\n");
 }
 
+/// A replayed `c` also ends with the replacement selected — the anchor
+/// capture in `cmd_change` re-fires on replay (gated on the group being
+/// open, which `replay_dot` pre-opens), same as the interactive path.
+#[test]
+fn dot_repeat_c_selects_replayed_replacement() {
+    let mut ed = editor_from("-[foo]> bar\n");
+
+    ed.feed_key(key('c'));
+    ed.feed_key(key('h'));
+    ed.feed_key(key('i'));
+    ed.feed_key(key_esc());
+
+    ed.feed_key(key('w'));
+    ed.feed_key(key('.'));
+
+    assert_eq!(ed.doc().text().to_string(), "hi hi\n");
+    assert_eq!(state(&ed), "hi -[hi]>\n");
+}
+
 /// `i` + typed text + Esc inserts at the selection start. `.` should replay that insert.
 #[test]
 fn dot_repeats_insert_before() {

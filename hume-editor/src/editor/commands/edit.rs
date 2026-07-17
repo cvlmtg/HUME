@@ -70,6 +70,23 @@ pub fn cmd_change(
     };
     begin_insert_session(state, view);
     apply_focused_edit_grouped(state, view, delete_selection_content);
+    // Pin the insertion anchors so Esc can select the typed replacement.
+    // Gated on the group actually being open (skips read-only buffers, and
+    // re-captures correctly on dot-repeat replay, which pre-opens the group)
+    // and on the setting.
+    if super::doc(state, view)
+        .overrides
+        .select_changed_text(&state.settings)
+        && super::is_group_open_current(state, view)
+    {
+        let anchors: Vec<usize> = super::current_selections(state, view)
+            .iter_sorted()
+            .map(|s| s.head())
+            .collect();
+        let pid = state.focused_pane_id;
+        let bid = focused_buffer_id(state, view);
+        state.panes.state[pid][bid].pinned_anchors = Some(anchors);
+    }
     state.route_kill(yanked);
     Ok(())
 }

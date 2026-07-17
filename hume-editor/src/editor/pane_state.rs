@@ -72,6 +72,12 @@ pub(crate) struct PaneBufferState {
     /// Meaningful only while `paste_group.is_some()`; read by `[`/`]` so cycling
     /// re-pastes in the same direction as the opening `p`/`P`.
     pub paste_before: bool,
+    /// Anchors of the runs typed during a `c`-entered insert session — one per
+    /// selection, sorted, kept in post-edit coordinates by
+    /// `apply_doc_edit_grouped`. `Some` only while `edit_group` is open for a
+    /// change session with `select-changed-text` enabled; consumed by
+    /// `end_insert_session` on exit.
+    pub pinned_anchors: Option<Vec<usize>>,
 }
 
 // ── Construction helpers ──────────────────────────────────────────────────────

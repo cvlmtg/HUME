@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- After changing text with `c`, leaving Insert mode now selects the text you just typed. Controlled by the new `select-changed-text` option (default on).
+
 ## [0.9.0] - 2026-07-15
 
 First tagged release. HUME has been under active development for a while;
