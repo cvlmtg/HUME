@@ -23,15 +23,14 @@ fn write_efx_plugin(
 
 /// One eval (a lazy plugin's activation body) emits, in this exact order:
 /// `register-lsp-server!` → `set-buffer-language!` → `define-language!` —
-/// deliberately NOT the old per-kind grouping order (language regs → LSP
-/// server ops → LSP calls → buffer-language sets) a pre-refactor reader
-/// might expect. The returned log must reflect the exact push order
-/// (proving builtins share one `Vec<Effect>`, not per-kind queues that
-/// `apply_script_effects` would have to regroup), and applying that log
-/// must still land all three: language identity registered, LSP server
+/// deliberately not grouped by kind (language regs, then LSP ops, then
+/// buffer-language sets). The returned log must reflect the exact push
+/// order (proving builtins share one `Vec<Effect>`, not per-kind queues
+/// that `apply_script_effects` would have to regroup), and applying that
+/// log must still land all three: language identity registered, LSP server
 /// config recorded, buffer's language field set — none of which depends on
-/// `define-language!` having run first, which is precisely why the old
-/// grouped scheme could get away with reordering.
+/// `define-language!` having run first, so a per-kind grouping scheme could
+/// silently get away with reordering these.
 ///
 /// Fail oracle: reintroduce separate per-kind accumulators in `SteelCtx`
 /// (e.g. a dedicated `pending_lsp_server_ops` alongside `effects`) — a

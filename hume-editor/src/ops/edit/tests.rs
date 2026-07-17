@@ -2112,10 +2112,10 @@ fn uppercase_grows_selection_when_case_mapping_changes_char_count() {
 
 // Case mapping is context-sensitive: Greek sigma (Σ/σ) lowercases to the
 // final form 'ς' only at a word's end, and to 'σ' everywhere else. Mapping
-// grapheme-by-grapheme (the pre-rewrite implementation) strips the
-// surrounding context that check needs, so it silently falls back to the
-// default 'σ' even when the grapheme is at a word's end — correct mid-word
-// only by accident, wrong at word-final position.
+// grapheme-by-grapheme strips the surrounding context that check needs, so
+// it silently falls back to the default 'σ' even when the grapheme is at a
+// word's end — correct mid-word only by accident, wrong at word-final
+// position.
 
 #[test]
 fn lowercase_resolves_mid_word_sigma_by_context() {
@@ -2128,8 +2128,8 @@ fn lowercase_resolves_mid_word_sigma_by_context() {
 
 #[test]
 fn lowercase_resolves_word_final_sigma_by_context() {
-    // Regression case: the pre-rewrite per-grapheme loop yields "οοσ" here
-    // (default mapping, no final-sigma context) instead of "οος".
+    // A per-grapheme loop yields "οοσ" here (default mapping, no
+    // final-sigma context) instead of "οος".
     assert_state!(
         "-[ΟΟΣ]>\n",
         |(buf, sels)| make_text_lowercase(buf, sels),
@@ -2164,8 +2164,8 @@ fn capitalize_resolves_mid_word_sigma_by_context() {
 
 #[test]
 fn capitalize_resolves_word_final_sigma_by_context() {
-    // Regression case: the pre-rewrite per-grapheme loop yields "Οοσ" here
-    // instead of "Οος" (same default-mapping bug as lowercase).
+    // A per-grapheme loop yields "Οοσ" here instead of "Οος" (same
+    // default-mapping trap as lowercase).
     assert_state!(
         "-[ΟΟΣ]>\n",
         |(buf, sels)| make_text_capitalized(buf, sels),
@@ -2382,17 +2382,16 @@ fn align_primary_unchanged() {
 
 #[test]
 fn align_remove_tab_before_selection() {
-    // Regression: the old avail count used `== Some(' ')`, so a tab in the
-    // whitespace run before a selection broke the reverse-scan chain early,
-    // yielding avail=0 and silently skipping all removal.
+    // The avail count's reverse scan must treat a tab as whitespace, not a
+    // chain-breaker — checking `== Some(' ')` alone would stop the scan at
+    // the tab and yield avail=0, silently skipping all removal.
     //
     // Buffer " =\n  \t=\n":
     //   Line 0: ' '+'=' (primary '=' at grapheme col 1)  → target_col=1
     //   Line 1: ' ',' ','\t','=' (secondary '=' at grapheme col 3) → amount=-2
     //
-    // Old code: reverse scan hits '\t' first, stops, avail=0 → remove=0 (bug).
-    // New code: '\t' matches, scan continues through spaces, avail=3,
-    //           remove=min(2, 3-1)=2 → removes ' '+'\t' → '=' lands at col 1. ✓
+    // Reverse scan continues through the tab and spaces, avail=3,
+    // remove=min(2, 3-1)=2 → removes ' '+'\t' → '=' lands at col 1. ✓
     use crate::ops::edit::align_selections;
     use hume_editing::selection::SelectionSet;
     let buf = hume_editing::text::Text::from(" =\n  \t=\n");

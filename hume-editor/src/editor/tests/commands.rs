@@ -217,7 +217,7 @@ fn mii_after_c_matches_select_changed_text_result() {
 }
 
 /// With `select-changed-text` off, `c` leaves a collapsed cursor — but `mii`
-/// still recovers the typed span, since pinning no longer depends on the
+/// still recovers the typed span, since pinning doesn't depend on the
 /// setting (only auto-select-on-exit does).
 #[test]
 fn mii_works_after_c_with_setting_off() {
@@ -1113,10 +1113,9 @@ fn a_after_select_line_stays_on_same_line() {
     assert_eq!(state(&ed), "foo\nbar-[\n]>baz\n");
 }
 
-/// `A` on an empty line must stay on the `\n` of that line — not step onto the
-/// next line.  Regression: the old two-motion implementation applied an
-/// unconditional `move_right` after `goto_line_end`, which advanced past the
-/// `\n` on empty lines.
+/// `A` on an empty line must stay on the `\n` of that line — not step onto
+/// the next line. An unconditional `move_right` after `goto_line_end` would
+/// advance past the `\n` on empty lines.
 #[test]
 fn capital_a_on_empty_line_stays_on_same_line() {
     let mut ed = editor_from("foo\n-[\n]>bar\n");
@@ -1127,7 +1126,7 @@ fn capital_a_on_empty_line_stays_on_same_line() {
 }
 
 /// `A` on a non-empty line must still position after the last content character
-/// (on the trailing `\n` slot) — unchanged from before.
+/// (on the trailing `\n` slot).
 #[test]
 fn capital_a_on_nonempty_line_is_unchanged() {
     let mut ed = editor_from("-[h]>ello\nworld\n");

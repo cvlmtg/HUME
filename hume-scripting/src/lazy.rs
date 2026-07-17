@@ -122,8 +122,8 @@ impl LazyRegistry {
     /// from the maps, so `Loaded`/`Failed` rows show no activations.
     ///
     /// `lazy_cmds` is the editor's current `Lazy`-stub list (`name`, owning
-    /// plugin) — the sole source of pending command activations, since this
-    /// registry no longer tracks them itself.
+    /// plugin) — the sole source of pending command activations; this
+    /// registry does not track them itself.
     ///
     /// Returns `""` if no plugins are declared; the caller reports "No plugins
     /// declared" rather than opening an empty scratch view.

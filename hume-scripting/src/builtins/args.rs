@@ -3,8 +3,7 @@
 //! the shared list/tuple decoders every multi-field setter builds on.
 //!
 //! No other module hand-rolls one of these decodes — enforced by
-//! `rg 'expect\("len checked"\)' hume-scripting/src` returning empty (the
-//! pattern every ad-hoc decoder used before this module existed).
+//! `rg 'expect\("len checked"\)' hume-scripting/src` returning empty.
 
 use std::ops::RangeInclusive;
 use std::path::PathBuf;
@@ -214,9 +213,9 @@ pub(crate) fn cons_pair(a: SteelVal, b: SteelVal) -> Result<SteelVal, SteelErr> 
 // `from_steelval` failure automatically, so these messages carry no
 // `ctx_name` of their own.
 
-/// A decoded `BufferId` argument. Replaces the inline
+/// A decoded `BufferId` argument. Avoids the inline
 /// `downcast_buffer_id(...).ok_or_else(...)` pattern every buffer-touching
-/// builtin used to repeat.
+/// builtin would otherwise repeat.
 #[derive(Debug)]
 pub(crate) struct BidArg(pub(crate) BufferId);
 

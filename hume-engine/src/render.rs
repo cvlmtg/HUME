@@ -109,10 +109,8 @@ impl<'a> PaneCanvas<'a> {
 ///
 /// Shared by `compose_row` (real buffer/wrap/virtual rows) and
 /// `render_tilde_fillers` (`RowKind::Filler` rows) so a filler row's gutter
-/// is never silently blank — before this was pulled out, only `compose_row`
-/// called it, and `render_tilde_fillers` skipped the gutter loop entirely,
-/// leaving `LineNumberColumn`'s blank-for-Filler result correct only by
-/// accident (a custom column would never be consulted for filler rows).
+/// is never silently blank — a custom column must be consulted for filler
+/// rows too, not just `LineNumberColumn`'s blank-for-Filler default.
 ///
 /// `col_widths` must already be populated by the caller (one entry per
 /// gutter column) — see `compose_row`'s doc comment for why it isn't folded

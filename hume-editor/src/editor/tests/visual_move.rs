@@ -569,9 +569,9 @@ fn steel_call_move_down_ignores_outer_keystrokes_count() {
 /// to `None` through `parse_count_extend` — the count-forwarding contract
 /// documented in `plugins.md`'s "Calling other commands" section.
 ///
-/// Fail oracle: before this change, `run_steel_command` injected
-/// `ctx.count.unwrap_or(1)`, so the lambda would see `1` and always move the
-/// buffer line (head 81), never 76.
+/// Fail oracle: a `run_steel_command` that injects `ctx.count.unwrap_or(1)`
+/// instead of `0` would make the lambda see `1` and always move the buffer
+/// line (head 81), never 76.
 #[test]
 fn steel_wrapper_bare_dispatch_moves_visual_row() {
     use crate::editor::host_impl::EditorHostImpl;

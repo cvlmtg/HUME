@@ -23,9 +23,7 @@ use crate::settings::TabStyle;
 //   5. Assemble and merge the new SelectionSet.
 //
 // Rather than repeat this 5-step frame across every function, `apply_edit`
-// extracts it and delegates the per-selection work to a closure. This is the
-// standard higher-order-function pattern: the frame is the "algorithm", the
-// closure is the "policy".
+// extracts it and delegates the per-selection work to a closure.
 //
 // The ChangeSet is returned so the undo system can call `cs.invert(&old_buf)`
 // to produce the inverse transaction. The caller (Document) holds the pre-edit

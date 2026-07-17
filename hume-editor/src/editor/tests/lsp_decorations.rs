@@ -102,10 +102,10 @@ fn set_inlay_hints_replaces_wholesale_not_appends() {
     assert_eq!(hints[0].text, "second");
 }
 
-/// Regression: a malformed position (missing `line`/`character`, or a
-/// non-numeric value) must error loudly at the `set-inlay-hints!` boundary
-/// rather than being silently dropped by the host's extraction — a plugin
-/// author's typo used to just produce fewer hints with no explanation.
+/// A malformed position (missing `line`/`character`, or a non-numeric value)
+/// must error loudly at the `set-inlay-hints!` boundary rather than being
+/// silently dropped by the host's extraction — silent extraction would leave
+/// a plugin author's typo producing fewer hints with no explanation.
 #[test]
 fn set_inlay_hints_errors_loudly_on_a_malformed_position() {
     let tmp = tempfile::tempdir().unwrap();
@@ -433,10 +433,10 @@ fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
     );
 }
 
-/// Regression: an unknown `#:severity` name (e.g. a typo like `'warn` for
-/// `'warning`) must error loudly rather than silently returning nothing
-/// that qualifies — the old behavior was indistinguishable from "no
-/// diagnostics at that floor".
+/// An unknown `#:severity` name (e.g. a typo like `'warn` for `'warning`)
+/// must error loudly rather than silently returning nothing that qualifies
+/// — a silent empty result is indistinguishable from "no diagnostics at
+/// that floor".
 #[test]
 fn diagnostics_for_buffer_errors_loudly_on_an_unknown_severity_name() {
     let tmp = tempfile::tempdir().unwrap();

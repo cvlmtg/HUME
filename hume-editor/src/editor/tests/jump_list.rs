@@ -210,10 +210,9 @@ fn ctrl_i_works_when_current_is_same_line_as_last_jump() {
 }
 
 /// `%` (select-all) records a jump so Ctrl-o returns to the pre-`%` position.
-///
-/// Before this fix, `select-all` was a `Selection` command with no jump flag,
-/// so the dispatch path never captured a pre-command snapshot and Ctrl-o would
-/// land at whatever stale entry was already in the list.
+/// `select-all` needs a jump flag on its `Selection` command registration —
+/// without it, the dispatch path never captures a pre-command snapshot and
+/// Ctrl-o lands at whatever stale entry was already in the list.
 #[test]
 fn select_all_records_jump() {
     // Start on line 5 of a 20-line buffer.

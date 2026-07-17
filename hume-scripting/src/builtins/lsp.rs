@@ -408,8 +408,8 @@ mod tests {
         assert_eq!(reg.settings, Some(serde_json::json!({"b": 2})));
     }
 
-    /// `register-lsp-server!` is no longer init/activation-only — it must
-    /// queue successfully from a plain command-mode context too, so that
+    /// `register-lsp-server!` must queue successfully from a plain
+    /// command-mode context, not just init/activation, so that
     /// `:lsp-install`'s runtime registration path works.
     #[test]
     fn queues_a_pending_registration_from_command_mode() {

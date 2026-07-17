@@ -321,7 +321,7 @@ fn change_to_eol_off_does_not_require_stdlib() {
     .expect("'off change-to-eol must load without core:stdlib");
 }
 
-// ── Defaults no longer bind these keys without the plugin ─────────────────────
+// ── Defaults do not bind these keys without the plugin ─────────────────────
 
 #[test]
 fn without_plugin_dollar_caret_zero_ctrl6_are_noops() {

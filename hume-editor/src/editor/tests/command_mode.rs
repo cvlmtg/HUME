@@ -952,9 +952,9 @@ fn cursor_is_at_end_after_recall() {
 
 /// `:b#` (no space) must switch to the alternate buffer via the minibuf path.
 /// The alternate must be reachable even when it has no file name — the
-/// `[buffers]` view opened by `:ls` is the canonical pathless case (bug:
-/// `:b#` used to error with "Alternate buffer has no file name" because the
-/// arg was expanded to the alternate's path before `:b` saw it). Also covers
+/// `[buffers]` view opened by `:ls` is the canonical pathless case, so the
+/// arg must not be expanded to the alternate's path before `:b` sees it
+/// (that would error with "Alternate buffer has no file name"). Also covers
 /// the `:buffer#` full-alias form.
 #[test]
 #[cfg(not(windows))]

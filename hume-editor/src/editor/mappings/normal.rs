@@ -226,25 +226,6 @@ impl Editor {
             }
         }
 
-        // ── Extend resolution overview ────────────────────────────────────────
-        //
-        // "Should this command extend?" is resolved in three stages, since it
-        // depends on which command a key resolves to, and the Ctrl path
-        // changes which key gets looked up — extend resolution and trie
-        // walking can't be separated.
-        //
-        // Stage 1 (below): in sticky extend mode, try the extend trie first —
-        // it maps keys to *replacement* commands (e.g. `o → flip-selections`),
-        // dispatched with extend = false. A miss falls through to the normal
-        // trie.
-        // Stage 2 (further below): Ctrl+key may strip CONTROL and re-walk with
-        // the bare key (kitty one-shot extend); whether to extend depends on
-        // the resolved bare-key command's extendability, computed here as
-        // `ctrl_extend`.
-        // Stage 3 (after the trie walk): merges sticky mode
-        // (EditorMode::Extend) and one-shot Ctrl (ctrl_extend) — the earliest
-        // point both are known.
-
         // ── Stage 1: Extend-trie override ────────────────────────────────────
         //
         // We walk with [pending_keys..., key] without committing the push yet —

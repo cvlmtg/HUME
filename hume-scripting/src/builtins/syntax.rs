@@ -125,7 +125,7 @@ mod tests {
     /// `%define-language!` is blocked in plain command mode — gated at
     /// registration time (`config` kind in `builtins!`'s table), not in the
     /// body, so this tests the gate primitive directly rather than calling
-    /// `define_language` (which no longer has a body-level guard to hit).
+    /// `define_language` (its body has no guard to hit).
     ///
     /// Fail oracle: change `%define-language!`'s table entry from `config` to
     /// `open` → language identity could be defined at runtime, corrupting the

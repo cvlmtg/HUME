@@ -412,13 +412,13 @@ impl LspState {
 
 impl AsyncSource for LspState {
     fn next_wake(&self, now: Instant) -> Option<Instant> {
-        // Real deadlines only: response *arrival* no longer needs a wake
-        // here — the transport threads wake the event loop directly the
-        // moment a message lands (see `hume_platform::events`). What
-        // remains is the earliest pending-request timeout across every
-        // server (initialize/shutdown included — see
-        // `LspClient::earliest_deadline`), so a silent server's timeout
-        // sweep in `take_completed` still fires promptly.
+        // Real deadlines only: response *arrival* needs no wake here — the
+        // transport threads wake the event loop directly the moment a
+        // message lands (see `hume_platform::events`). What remains is the
+        // earliest pending-request timeout across every server
+        // (initialize/shutdown included — see `LspClient::earliest_deadline`),
+        // so a silent server's timeout sweep in `take_completed` still
+        // fires promptly.
         let deadline = self
             .servers
             .values()
@@ -427,10 +427,9 @@ impl AsyncSource for LspState {
 
         // A server mid-handshake or reporting `$/progress` (indexing,
         // loading, ...) needs the statusline spinner to keep animating —
-        // wake at the spinner's own cadence. `Starting` is included (not just
-        // progress) because the pending-poll arm that used to cover the
-        // handshake spinner is gone; without it the spinner would freeze
-        // against `initialize`'s 30s deadline.
+        // wake at the spinner's own cadence. `Starting` is included (not
+        // just progress): without it the spinner freezes against
+        // `initialize`'s 30s deadline.
         let spinner = self.has_animating_server().then(|| now + SPINNER_INTERVAL);
 
         [deadline, spinner].into_iter().flatten().min()

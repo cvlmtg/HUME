@@ -4,10 +4,10 @@
 //!
 //! Sources report *real deadlines only* — a request timeout, a `$/progress`
 //! spinner tick, a timer's fire time. Completion (an LSP response landing, a
-//! parse finishing) is no longer a deadline this module tracks at all: the
-//! background threads that produce it hold a `WakeCallback` and signal the
-//! event loop's wait primitive directly the moment they post a result (see
-//! `hume_platform::events`), so there is nothing left to poll for. The parse
+//! parse finishing) is not a deadline this module tracks: the background
+//! threads that produce it hold a `WakeCallback` and signal the event
+//! loop's wait primitive directly the moment they post a result (see
+//! `hume_platform::events`), so there is nothing to poll for. The parse
 //! worker accordingly contributes no `AsyncSource` — it has no deadline of
 //! its own, only arrival-driven wakes.
 

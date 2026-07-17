@@ -231,9 +231,9 @@ mod tests {
 
     #[test]
     fn command_completer_non_ascii_name_does_not_panic() {
-        // Regression: the old `name[..prefix.len()]` byte-slice would panic when
-        // `prefix.len()` lands mid-codepoint in a non-ASCII command/alias name.
-        // Here "naïve-cmd" has 'ï' at bytes 2-3; a 1-byte prefix "n" must not panic.
+        // A byte-slice `name[..prefix.len()]` panics when `prefix.len()` lands
+        // mid-codepoint in a non-ASCII command/alias name. Here "naïve-cmd"
+        // has 'ï' at bytes 2-3; a 1-byte prefix "n" must not panic.
         use std::borrow::Cow;
         let mut reg = CommandRegistry::with_defaults();
         fn noop(

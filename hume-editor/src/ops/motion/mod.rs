@@ -80,10 +80,8 @@ mod tests;
 //
 // Pure motions do not modify the buffer, so `buf` passes through unchanged.
 //
-// Every named command is structurally identical: call `apply_motion` with a
-// mode and a motion function, return `(buf, new_sels)`. The `motion_cmd!`
-// macro captures that skeleton so the table below is just data — name, mode,
-// motion — with no repeated scaffolding.
+// The `motion_cmd!` macro below generates each command, so the table is just
+// data — name, mode, motion — with no repeated scaffolding.
 
 /// Generate a named motion command.
 ///

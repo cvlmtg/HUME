@@ -762,13 +762,12 @@ impl GutterColumn for ExactFillGutter {
 
 #[test]
 fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
-    // Regression: `compose_gutter`'s leftover-fill bound used to be
-    // `pane_rect.x + col_width`, correct only for the *first* column
-    // (where col_start == pane_rect.x). For any column after the first,
-    // that bound was smaller than the column's real right edge, so a
-    // leftover cell in a non-first column was never painted (stale glyph
-    // shows through) and `gutter_x` fell short of the column boundary,
-    // shifting every following column left.
+    // `compose_gutter`'s leftover-fill bound must be the column's real right
+    // edge, not `pane_rect.x + col_width` — that's only correct for the
+    // *first* column (where col_start == pane_rect.x). For any column after
+    // the first, a bound that small leaves a leftover cell in a non-first
+    // column unpainted (stale glyph shows through) and `gutter_x` falls
+    // short of the column boundary, shifting every following column left.
     //
     // Column 0 (ExactFillGutter, width 2) exact-fills, landing gutter_x
     // at col_start=2 for column 1 (LeftoverGutter, width 6, 4 cells):
@@ -1247,8 +1246,8 @@ fn clear_row_span_empty_range_no_panic() {
 // ── fused dim (compose path) ───────────────────────────────────────
 
 /// `dim` on `PaneCanvas` must blend each written cell's fg/bg toward the
-/// target inline — replacing the old `dim_rect` post-pass. Verifies the
-/// same lerp oracle (255→0 at 0.5 ⇒ 128) holds through `compose_row`.
+/// target inline. Verifies the same lerp oracle (255→0 at 0.5 ⇒ 128) holds
+/// through `compose_row`.
 #[test]
 fn compose_row_dims_cells_inline() {
     use ratatui::style::Color;

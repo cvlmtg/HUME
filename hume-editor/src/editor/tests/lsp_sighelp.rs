@@ -144,15 +144,13 @@ fn signature_help_response(
     })
 }
 
-/// Detach regression: `*sighelp-chars*`/`"lsp-sighelp"`'s trigger-char
-/// registration is global, set once at attach and (before this fix) never
-/// cleared. Unlike completion.scm, the `on-trigger-char` handler here used
-/// to call `lsp/sighelp-request` with no `lsp/guard-capability` check at
-/// all — so a trigger char left registered past `:lsp-stop` hit
-/// `lsp-request`'s server-resolution failure and logged an Error, not a
-/// polite Info skip, on every matching keystroke. `on-lsp-detach` clears
-/// the registration and the request path is now capability-guarded too —
-/// together, a true no-op.
+/// Detach must be a true no-op: `*sighelp-chars*`/`"lsp-sighelp"`'s
+/// trigger-char registration is global, set once at attach, so
+/// `on-lsp-detach` must clear it. The `on-trigger-char` handler also needs
+/// its own `lsp/guard-capability` check (unlike completion.scm, which
+/// doesn't need one) — without it, a trigger char left registered past
+/// `:lsp-stop` would hit `lsp-request`'s server-resolution failure and log
+/// an Error, not a polite Info skip, on every matching keystroke.
 #[test]
 #[cfg(not(windows))]
 fn detach_clears_sighelp_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {

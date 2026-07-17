@@ -786,10 +786,11 @@ fn split_at_minimum_height_still_splits() {
 }
 
 /// A zero-height render area (e.g. a terminal reporting height 0 on early
-/// startup) must not panic. `EngineView::render` used to hand the statusline
-/// (and tab bar) provider a synthesized `Rect` claiming a row regardless of
-/// `area.height`; the provider's `Buffer::set_string` calls then wrote
-/// out-of-bounds and panicked, unlike the background fill which clamps.
+/// startup) must not panic. `EngineView::render` must guard the statusline
+/// (and tab bar) provider's synthesized `Rect` on `area.height` — an
+/// unguarded `Rect` claiming a row regardless of `area.height` would send
+/// the provider's `Buffer::set_string` calls out-of-bounds and panic, unlike
+/// the background fill which clamps.
 ///
 /// Fail oracle: drop the `area.height > 0` guard around the chrome-row
 /// rendering in `EngineView::render` — this test panics instead of returning
@@ -1168,14 +1169,14 @@ fn wrap_toggle_affects_only_focused_pane() {
     );
 }
 
-// ── Geometry regression guards (post-review fixes) ─────────────────────────────
+// ── Geometry regression guards ─────────────────────────────────────────────────
 //
-// `EngineView` no longer caches a `pane_rects` snapshot across frames — every
-// consumer (pane-focus commands, `fits_split`, the bar-cursor lookup)
-// recomputes from the live layout tree plus the terminal area cached by the
-// last `prepare_frame`. These guard the bug the cache used to allow: a
-// close/split earlier in the same macro-replay batch invalidating geometry
-// that a later command in the same batch would otherwise still trust.
+// `EngineView` must not cache a `pane_rects` snapshot across frames — every
+// consumer (pane-focus commands, `fits_split`, the bar-cursor lookup) must
+// recompute from the live layout tree plus the terminal area cached by the
+// last `prepare_frame`. A cache would let a close/split earlier in the same
+// macro-replay batch invalidate geometry that a later command in the same
+// batch would otherwise still trust.
 
 /// Closing a pane and then focusing the next one, with no `prepare_frame` in
 /// between (exactly what a macro-replay batch does — several commands run
@@ -1515,13 +1516,13 @@ fn split_different_buffer_keeps_empty_jump_list() {
 
 // ── Per-pane highlight isolation ────────────────────────────────────────────
 //
-// `update_highlight_providers` used to write into two globally-shared Arcs
-// (`bracket_hl_data`/`search_hl_data`) read by every pane's `SharedHighlighter`,
-// computed only from the *focused* buffer/viewport. A pane viewing a different
-// buffer (or the same buffer scrolled elsewhere) rendered the focused pane's
-// highlight bytes onto its own unrelated text. These tests lock the fix:
-// each pane now owns its own highlight buffers (`PaneHighlights`), computed
-// from that pane's own buffer and viewport.
+// `update_highlight_providers` must not write into globally-shared highlight
+// state read by every pane's `SharedHighlighter` — each pane owns its own
+// highlight buffers (`PaneHighlights`), computed from that pane's own buffer
+// and viewport. Global, focused-buffer-only state would render the focused
+// pane's highlight bytes (bracket/search matches) onto every other pane's
+// unrelated text, including one viewing a different buffer or the same
+// buffer scrolled elsewhere.
 
 /// A search match in the focused pane's buffer must never appear in a
 /// different pane viewing an unrelated buffer.

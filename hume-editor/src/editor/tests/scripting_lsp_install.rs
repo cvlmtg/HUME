@@ -402,12 +402,11 @@ fn lsp_rescan_servers_command_registers_newly_installed() {
 /// A mid-session rescan (`:lsp-rescan-servers`, or the one `:lsp-install`
 /// runs after a successful/up-to-date install) must never clobber a
 /// language the user registered by hand — only languages nothing has
-/// claimed yet get the catalog default. Before this test, the scan
-/// re-registered every catalog language unconditionally, which would
-/// silently replace a manual `register-lsp-server!` override (documented
-/// workflow: a local build, a version the catalog doesn't carry, or a
-/// `$PATH` copy the user wants to take precedence — see
-/// user-manual/docs/lsp.md) the next time anything triggered a rescan.
+/// claimed yet get the catalog default. An unconditional re-registration
+/// of every catalog language would silently replace a manual
+/// `register-lsp-server!` override (documented workflow: a local build, a
+/// version the catalog doesn't carry, or a `$PATH` copy the user wants to
+/// take precedence — see user-manual/docs/lsp.md) on the next rescan.
 #[test]
 #[cfg(not(windows))]
 fn rescan_does_not_clobber_a_manually_registered_language() {
@@ -483,14 +482,11 @@ fn register_lsp_server_after_eager_load_plugin_overrides_the_scans_own_registrat
     );
 }
 
-/// The R1 fix's whole point: unlike the sibling test above, this queues the
-/// override *before* the eager `load-plugin` line — the ordering that used
-/// to lose (the scan's no-clobber filter read the live, pre-drain registry,
-/// which didn't see this override yet, so the scan queued the catalog
-/// default right behind it, and that later queue position won). Now
-/// `lsp-registered-for-language?` reads through the pending op queue, so
-/// the scan's filter sees this earlier-queued registration and skips
-/// "rust" entirely — order no longer matters.
+/// Unlike the sibling test above, this queues the override *before* the
+/// eager `load-plugin` line. `lsp-registered-for-language?` reads through
+/// the pending op queue, so the scan's no-clobber filter sees this
+/// earlier-queued registration and skips "rust" entirely regardless of
+/// call order.
 #[test]
 #[cfg(not(windows))]
 fn register_lsp_server_before_eager_load_plugin_also_survives_the_scan() {
@@ -1054,8 +1050,7 @@ fn lsp_servers_command_runs_without_error() {
 
 // ── :lsp-status / :lsp-stop / :lsp-restart ─────────────────────────────────────
 //
-// These used to be unconditional Rust builtins (present with zero plugins
-// loaded); they now live in core:lsp, dispatched through Steel to the
+// These live in core:lsp, dispatched through Steel to the
 // `lsp-show-status!`/`lsp-stop!`/`lsp-restart!` builtins.
 
 #[test]
@@ -1195,10 +1190,11 @@ fn discovery_hint_does_not_fire_for_npm_kind_when_npm_missing_from_path() {
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
-    // svlangserver (npm-kind, language "systemverilog") used to report
-    // installable unconditionally — the hint could suggest a :lsp-install
-    // that immediately fails `lsp/preflight!`'s own npm-on-$PATH check.
-    // Force $PATH to a directory with no npm binary in it.
+    // svlangserver (npm-kind, language "systemverilog") must not report
+    // installable unconditionally — reporting installable regardless of npm
+    // availability could suggest a :lsp-install that immediately fails
+    // `lsp/preflight!`'s own npm-on-$PATH check. Force $PATH to a directory
+    // with no npm binary in it.
     let empty_path_dir = tempfile::tempdir().unwrap();
     let original_path = std::env::var("PATH").unwrap();
     unsafe {

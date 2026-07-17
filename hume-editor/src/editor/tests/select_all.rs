@@ -91,9 +91,9 @@ fn star_on_cursor_expands_to_word() {
 }
 
 /// `*` on a partial-word selection expands to the whole word under the head —
-/// it must NOT search the literal partial text. Regression test: previously
-/// this produced `\bell\b` (from the literal "ell" substring), which can
-/// never match anything, because `\b` doesn't exist inside "hello".
+/// it must NOT search the literal partial text. Searching the literal
+/// substring would produce `\bell\b` (from "ell"), which can never match
+/// anything, because `\b` doesn't exist inside "hello".
 #[test]
 fn star_on_partial_selection_expands_to_word() {
     // "hello world\n", selection covers "ell" (head on the second 'l').

@@ -490,17 +490,10 @@ mod tests {
     // ── ensure_cursor_visible (wrap) top/bottom margin enforcement ───────────
     //
     // 10 lines of "ab\n". Under Soft{width:2}, "ab" fills the wrap column
-    // exactly → 1 display row per line. Total: 10 display rows. Using the
-    // wrapped code path (Soft is_wrapping=true) even though no line wraps.
-    // Viewport height=8, margin=2.
-    //
-    // Top test: cursor at line 3, viewport top also at line 3 → display_row=0.
-    //   scroll_backward(target=2) walks back 2 lines → top_line=1.
-    //   cursor lands at display_row=2 = margin.
-    //
-    // Bottom test: cursor at line 7, viewport top=0 → display_row=7 ≥ 6.
-    //   scroll_backward(target=5) walks back 5 lines → top_line=2.
-    //   cursor lands at display_row=5 = height-1-margin.
+    // exactly → 1 display row per line, exercising the wrapped code path
+    // (Soft is_wrapping=true) even though no line actually wraps. Viewport
+    // height=8, margin=2. Checks that scrolling lands the cursor exactly on
+    // the margin, both scrolling up (top) and down (bottom).
 
     #[test]
     fn wrap_cursor_within_top_margin_scrolls_up() {

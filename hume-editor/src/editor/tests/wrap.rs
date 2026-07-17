@@ -126,8 +126,9 @@ fn typed_set_pane_invalid_wrap_mode_value_errors() {
 
 // ── `:wrap` toggle ───────────────────────────────────────────────────────────
 
-/// Flip: before this fix, toggling on always hardcoded `Indent`, so this
-/// would fail with `Soft { width: 0 } != Indent { width: 0 }`.
+/// Flip: toggling `:wrap` back on must restore the configured mode, not
+/// hardcode `Indent` — a hardcoded toggle would fail here with
+/// `Soft { width: 0 } != Indent { width: 0 }`.
 #[test]
 fn wrap_toggle_restores_configured_mode_not_hardcoded_indent() {
     let mut ed = editor_from("-[a]>b\n");

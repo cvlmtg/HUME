@@ -403,8 +403,8 @@ impl ScriptingHost {
     /// Format a human-readable plugin status table for `:plugin-status`.
     ///
     /// `lazy_cmds` is the editor's current `Lazy`-stub list (`name`, owning
-    /// plugin) — this crate no longer tracks pending command activations
-    /// itself, so the caller supplies its live registry snapshot.
+    /// plugin) — this crate doesn't track pending command activations itself,
+    /// so the caller supplies its live registry snapshot.
     pub fn lazy_status_string(&self, lazy_cmds: &[(String, attribution::PluginId)]) -> String {
         self.registries.lazy_registry.format_status(lazy_cmds)
     }
@@ -881,8 +881,8 @@ mod steel_stdlib_availability {
     /// Pins a real gotcha `plum/run!` (Phase 1 helper) depends on: `child-stderr`
     /// (and by extension `child-stdin`/`child-stdout`) must be captured
     /// *before* calling `wait` — calling it after returns `#f` even though the
-    /// stream was piped. Also pins the stdin-close-for-EOF pattern that
-    /// replaces the old `Command::output()`-style non-inherited-stdin default.
+    /// stream was piped. Also pins the stdin-close-for-EOF pattern needed
+    /// since stdin is not inherited by default.
     #[test]
     #[cfg(unix)]
     fn child_stderr_must_be_captured_before_wait() {
@@ -947,7 +947,7 @@ mod steel_stdlib_availability {
     /// native-builtin error (via `raise-error`) from an inner `with-handler`,
     /// caught by an *outer* `with-handler`, corrupts the VM's continuation
     /// stack and panics "Failed to find an open continuation on the stack".
-    /// Originally hit via `grammars.scm`'s `plum/resolve-query` (see
+    /// Also reachable via `grammars.scm`'s `plum/resolve-query` (see
     /// `plum/fetch-raw-query`'s doc comment for the fix: never wrap the
     /// raising call in an inner catch-and-reraise). `#[should_panic]`
     /// regression pin — if a steel-core upgrade fixes this, revisit the

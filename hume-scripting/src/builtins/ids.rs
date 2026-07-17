@@ -217,11 +217,11 @@ mod tests {
 
     /// Exercises `equal?`'s real dispatch through a full Steel eval (not just
     /// the Rust-level `PartialEq` derive, which never touches steel-core's
-    /// `equal?` machinery). Before `equality_hint`/`try_as_dyn_hash` were
-    /// implemented above, steel-core's default `equality_hint` returned `true`
-    /// for any same-type `Custom` pair regardless of contents, so this exact
-    /// eval used to report `(#t #t)` — same-value and different-value ids were
-    /// indistinguishable under `equal?`. It now reports `(#t #f)`.
+    /// `equal?` machinery). Without `equality_hint`/`try_as_dyn_hash`
+    /// (implemented above), steel-core's default `equality_hint` returns `true`
+    /// for any same-type `Custom` pair regardless of contents, making
+    /// same-value and different-value ids indistinguishable under `equal?`.
+    /// With them, this eval correctly reports `(#t #f)`.
     #[test]
     fn equal_compares_by_value_through_a_real_steel_eval() {
         let mut engine = steel::steel_vm::engine::Engine::new();

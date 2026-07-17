@@ -1606,8 +1606,6 @@ fn extend_select_next_word_anchor_ending_in_combining_cluster_stays_whole() {
     // classifies as `Punctuation` (not `Word`), so the anchor's own word gets
     // misread as just that trailing mark and truncated to "foo café-[´ bar]>"
     // instead of keeping "café" whole.
-    //
-    // "foo cafe\u{0301} bar\n": f=0,o=1,o=2,' '=3,c=4,a=5,f=6,e=7,´=8,' '=9,b=10,a=11,r=12,'\n'=13.
     assert_state!(
         "foo <[cafe\u{0301}]- bar\n",
         |(buf, sels)| cmd_select_next_word(&buf, sels, 1, MotionMode::Extend),
@@ -1632,7 +1630,6 @@ fn extend_select_next_word_whitespace_anchor_is_single_position() {
     // When the anchor sits on whitespace, its "unit" is just that one
     // position (not a word) — growing toward the next word doesn't try to
     // preserve or extend the whitespace run.
-    // "a   b\n": a=0,' '=1,' '=2,' '=3,b=4,'\n'=5. Anchor collapsed at idx2.
     assert_state!(
         "a -[ ]> b\n",
         |(buf, sels)| cmd_select_next_word(&buf, sels, 1, MotionMode::Extend),
@@ -1905,10 +1902,10 @@ fn line_extend_backward_after_flip_grows_over_old_span() {
 
 #[test]
 fn extend_select_line_backward_selection_shrinks_from_last_line() {
-    // Regression: the old clamp checked whether the selection's END sat on
-    // the trailing `\n`, which fires here even though the HEAD (the end
-    // that's actually moving) is nowhere near the last line. A head-relative
-    // clamp must let this shrink instead of no-op'ing.
+    // The clamp must be head-relative: the selection's END sits on the
+    // trailing `\n` here, but the HEAD (the end that's actually moving) is
+    // nowhere near the last line, so an end-relative clamp would wrongly
+    // no-op instead of letting this shrink.
     assert_state!(
         "<[a\nb\nc\n]-",
         |(buf, sels)| cmd_select_line(&buf, sels, 1, MotionMode::Extend),

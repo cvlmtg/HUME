@@ -425,11 +425,11 @@ fn scripted_1k_item_session_stays_under_the_p8_budget() {
     );
 }
 
-/// Regression: `completion-begin!` for a buffer that isn't shown in the
-/// focused pane — the normal shape of an async LSP completion response
-/// landing after the user switched panes — must be a benign no-op (Trace
-/// log, no session created), not an error. Erroring here used to abort the
-/// whole `drain_pending_steel_calls` batch and drop every other queued
+/// `completion-begin!` for a buffer that isn't shown in the focused pane —
+/// the normal shape of an async LSP completion response landing after the
+/// user switched panes — must be a benign no-op (Trace log, no session
+/// created), not an error: an error here would abort the whole
+/// `drain_pending_steel_calls` batch and drop every other queued
 /// callback/timer for the frame.
 #[test]
 fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op() {
@@ -538,8 +538,8 @@ fn all_items_malformed_behaves_like_an_empty_response() {
 }
 
 /// `CompletionTextEdit::InsertAndReplace` must apply its narrower `insert`
-/// range, not the wider `replace` range — pins the union arm the hand-rolled
-/// parser used to special-case.
+/// range, not the wider `replace` range — pins the union arm the parser
+/// needs to handle explicitly.
 #[test]
 fn insert_replace_text_edit_applies_the_narrower_insert_range() {
     let tmp = tempfile::tempdir().unwrap();

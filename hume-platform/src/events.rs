@@ -2,12 +2,11 @@
 //!
 //! [`EventWait::wait`] blocks the main thread until terminal input is
 //! (probably) ready, a background thread calls [`EventWaker::wake`], or a
-//! deadline elapses. This replaces the old fixed poll-cadence wakeups
-//! (`PENDING_POLL`/`LSP_HEARTBEAT` in `hume-editor`) with arrival-driven
-//! wakes plus real deadlines only: background threads (the LSP transport,
-//! the parse worker) hold a cloned [`EventWaker`] and call `wake()` right
-//! after posting a result, so the loop drains it on the next iteration
-//! instead of rechecking every few milliseconds.
+//! deadline elapses. Wakes are arrival-driven plus real deadlines only:
+//! background threads (the LSP transport, the parse worker) hold a cloned
+//! [`EventWaker`] and call `wake()` right after posting a result, so the
+//! loop drains it on the next iteration instead of rechecking every few
+//! milliseconds.
 //!
 //! Backed by `poll(2)` over `[tty fd, self-pipe]` on Unix and
 //! `WaitForMultipleObjects` over `[console handle, auto-reset event]` on
@@ -279,15 +278,10 @@ mod imp {
                 // re-polling a dead fd instead of ever reaching its `Err`
                 // exit path.
                 //
-                // Known tradeoff, not an oversight: this means bytes still
-                // buffered at the moment of hangup are dropped rather than
-                // drained (`wait` errors before the caller's `event::read`
-                // ever runs). Poll flags alone can't distinguish "real
-                // pending bytes" from "closed fd that always reports POLLIN
-                // because an EOF read never blocks" — fixing that needs an
-                // actual read/FIONREAD probe here, not a flag tweak. Not
-                // worth it today: HUME has no PTY-driven automation that
-                // writes-then-closes.
+                // Known tradeoff: bytes still buffered at hangup are dropped,
+                // since poll flags alone can't distinguish "real pending
+                // bytes" from "closed fd, EOF read never blocks." Draining
+                // them needs an actual read/FIONREAD probe, not a flag tweak.
                 let input_closed = input_r
                     .intersects(PollFlags::POLLERR | PollFlags::POLLHUP | PollFlags::POLLNVAL);
                 Ok(RawReady {

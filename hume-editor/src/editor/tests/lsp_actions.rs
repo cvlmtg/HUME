@@ -391,7 +391,7 @@ fn selecting_an_unresolved_action_without_resolve_support_reports_it() {
     );
 }
 
-/// Regression: `lsp/run-action`'s resolve branch used to re-enter itself
+/// `lsp/run-action`'s resolve branch must not re-enter itself
 /// unconditionally on a resolved action. A non-conforming server that
 /// resolves an action still lacking both "edit" and "command" would send
 /// a *second* `codeAction/resolve` request rather than reporting the

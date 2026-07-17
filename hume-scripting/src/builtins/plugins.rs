@@ -208,8 +208,8 @@ pub(crate) fn declare_plugin(
     // logs a non-fatal Error (visible in :messages) and the name is dropped.
     // `register_lazy_command` claims the name in the same registry
     // `define-command!` and native commands live in, so this is the single
-    // check for "is this name available", replacing the old three-way
-    // builtin/activation_commands/command_table lookup.
+    // check for "is this name available" across builtin, activation, and
+    // command-table names.
     let mut valid = Vec::with_capacity(cmd_list.len());
     for cmd in cmd_list {
         if ctx.builtin_cmd_names.contains(&cmd) {
@@ -481,14 +481,13 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
 ///     is dropped via `HookRegistry::remove_owned_by`, so a `Failed`
 ///     plugin's hooks stop firing;
 ///   - key bindings (`bind-key!` / `bind-key-extend!` / `bind-wait-char!` /
-///     `unbind-key!`): nothing to undo — these never applied. The builtins
-///     queue an `Effect::BindKey`/`BindWaitChar`/`UnbindKey` rather than
-///     mutating the keymap inline, so `ctx.pop_effect_marks(success)` below
-///     drops a failed body's binds along with everything else it queued. No
-///     ledger, no unbind pass, no owner tag. And because a failed plugin's
-///     bind is never *applied* rather than *un-applied*, a plugin that would
-///     have shadowed an existing binding and then fails leaves that binding
-///     untouched — nothing was overwritten, so there is nothing to restore.
+///     `unbind-key!`): these queue an `Effect::BindKey`/`BindWaitChar`/
+///     `UnbindKey` rather than mutating the keymap inline, so
+///     `ctx.pop_effect_marks(success)` below drops a failed body's binds
+///     along with everything else it queued — no ledger, no unbind pass, no
+///     owner tag needed. A plugin that would have shadowed an existing
+///     binding and then fails leaves that binding untouched, since the
+///     shadowing bind was never applied in the first place.
 ///
 /// `ctx.pop_effect_marks(success)` does the same for every queued side effect
 /// (`register-lsp-server!`, `define-language!`, LSP requests, grammar

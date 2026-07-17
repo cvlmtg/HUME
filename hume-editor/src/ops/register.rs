@@ -7,9 +7,8 @@ use hume_editing::text::Text;
 
 // ── Register name constants ────────────────────────────────────────────────────
 //
-// HUME uses mnemonic single-char register names rather than the cryptic Vim/
-// Helix convention (`"`, `+`, `_`) — 10 named registers (0-9) cover real
-// workflows, freeing letters for intuitive special names.
+// HUME uses mnemonic single-char register names — 10 named registers (0-9)
+// cover real workflows, freeing letters for intuitive special names.
 //
 // User-facing register names:
 //   '0'–'9'  Named storage — text or macros (last write wins). Symmetric:
@@ -23,10 +22,8 @@ use hume_editing::text::Text;
 //   'b'      Black hole — writes discarded, reads return None.
 //   's'      Search register — last search pattern.
 //
-// '0'–'9' are the deterministic, durable storage namespace (write once, read
-// back verbatim regardless of intervening edits); 'k' + `[`/`]` address the
-// kill ring, whose head shifts with every d/c/y — interactive reach-back
-// only, not durable storage.
+// '0'–'9' are durable storage; 'k' + `[`/`]` address the kill ring, whose
+// head shifts with every d/c/y.
 //
 /// The kill-ring register (`k`) — see the module doc above for how it
 /// differs from the durable `0`–`9` registers.

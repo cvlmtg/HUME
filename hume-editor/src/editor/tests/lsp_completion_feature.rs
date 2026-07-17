@@ -887,13 +887,13 @@ fn refilter_on_complete_session_does_not_re_request() {
     );
 }
 
-/// Detach regression: `*completion-chars*`/`"lsp-completion"`'s trigger-char
-/// registration is global, set once at attach and (before this fix) never
-/// cleared — a trigger char left registered past `:lsp-stop` would still
-/// reach `lsp/guard-capability`, which resolves the focused buffer's own
+/// Detach must be a true no-op, not a per-keystroke log:
+/// `*completion-chars*`/`"lsp-completion"`'s trigger-char registration is
+/// global, set once at attach, so `on-lsp-detach` must clear it — a trigger
+/// char left registered past `:lsp-stop` would still reach
+/// `lsp/guard-capability`, which resolves the focused buffer's own
 /// (now-detached) server and logs "not supported by server" on every
-/// matching keystroke. `on-lsp-detach` clears the registration, so the char
-/// no longer matches at all — a true no-op, not a per-keystroke log.
+/// matching keystroke.
 #[test]
 #[cfg(not(windows))]
 fn detach_clears_completion_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {

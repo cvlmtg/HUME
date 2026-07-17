@@ -178,9 +178,8 @@ mod tests {
     /// same path `Editor::run_steel_command` uses — with a host reporting
     /// `is_inline_output_command() == true`. If the required module's
     /// `displayln` call resolved to steel-core's raw prelude version instead
-    /// of the gated shim (the bug this test used to reproduce, before the
-    /// prelude-injection fix), `ensure_calls` stays 0 despite the dispatch
-    /// succeeding — the exact silent-bypass shape of the bug.
+    /// of the gated shim, `ensure_calls` stays 0 despite the dispatch
+    /// succeeding — the exact silent-bypass shape this test guards against.
     #[test]
     fn required_module_displayln_call_reaches_the_gate() {
         use crate::ScriptingHost;
@@ -278,8 +277,8 @@ mod tests {
 
     /// The write-family names (`write`, `write-string`, `write-char`,
     /// `simple-display`, `simple-displayln`) reach the gate from inside a
-    /// required module too — these were previously unshimmed, leaving every
-    /// one of them an ungated path to the real stdout.
+    /// required module too — an unshimmed member of this family would be an
+    /// ungated path to the real stdout.
     #[test]
     fn required_module_write_family_reaches_the_gate() {
         use crate::ScriptingHost;

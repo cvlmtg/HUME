@@ -46,10 +46,10 @@ fn exit_insert_via_esc_fires_on_mode_change() {
     );
 }
 
-/// A left mouse click while in Insert mode must fire `OnModeChange` for the
-/// Insert→Normal transition.  The click path calls `end_insert_session` which
-/// now goes through the funnel; the formerly-redundant `set_mode(Normal)` after
-/// it has been removed, so the hook fires exactly once.
+/// A left mouse click while in Insert mode must fire `OnModeChange` exactly
+/// once for the Insert→Normal transition. The click path calls
+/// `end_insert_session`, which goes through the funnel on its own — a
+/// separate `set_mode(Normal)` after it would double-fire the hook.
 #[test]
 fn mouse_click_in_insert_fires_on_mode_change() {
     use crate::testing::MockHost;

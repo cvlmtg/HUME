@@ -400,8 +400,7 @@ fn dot_repeat_navigation_not_in_recipe() {
 }
 
 /// `j d` (navigate then delete a collapsed single-char selection) records an
-/// empty recipe. `.` replays just the delete on whatever the current selection is
-/// — backward-compatible behavior, identical to before this change.
+/// empty recipe. `.` replays just the delete on whatever the current selection is.
 #[test]
 fn dot_repeat_collapsed_cursor_empty_recipe() {
     let mut ed = editor_from("-[a]>aa\nbbb\nccc\n");

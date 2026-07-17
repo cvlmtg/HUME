@@ -119,18 +119,17 @@ macro_rules! builtins {
 // zero-trigger call (no #:commands/#:events/#:languages) instead evaluates
 // <plugin-dir>/manifest.scm for its own default entries (see
 // %begin-manifest-declare!); caller's #:config wins over the manifest's.
-// Known limitation, left as-is: a caller's own with-handler around a
-// zero-trigger call can hit steel-core 0.8.2's "no open continuation" VM
-// panic if manifest.scm raises (same footgun as %activate-plugin-inline;
-// see known_limitation_reraise_via_raise_error_inside_outer_tolerant_handler_corrupts_vm_stack
-// in lib.rs). `error` instead of `raise-error` panics identically;
-// `dynamic-wind` avoids the panic but its cleanup thunk silently skips
-// across an outer handler's unwind (see
+// Known limitation, left as-is: a caller's with-handler around a
+// zero-trigger call can hit steel-core 0.8.2's "no open continuation" panic
+// if manifest.scm raises (same footgun as %activate-plugin-inline; see
+// known_limitation_reraise_via_raise_error_inside_outer_tolerant_handler_corrupts_vm_stack
+// in lib.rs). `error` panics identically; `dynamic-wind` avoids the panic but
+// its cleanup thunk skips across an outer handler's unwind (see
 // known_limitation_dynamic_wind_cleanup_does_not_run_across_an_outer_handlers_unwind),
-// which would leave manifest_resolving stuck for every later call this
-// session. Swallowing the error instead would break declare-plugin's tested
-// propagate-to-caller contract (4 tests in builtins/plugins/tests.rs assert
-// it via .expect_err). Left pending an upstream steel-core fix.
+// leaving manifest_resolving stuck for the rest of the session. Swallowing
+// the error would break declare-plugin's tested propagate-to-caller contract
+// (4 tests in builtins/plugins/tests.rs, via .expect_err). Pending an
+// upstream steel-core fix.
 //
 // load-plugin — eager init-context activation; declares/resolves then
 // delegates to %activate-plugin-inline. Valid only during init.scm /
@@ -193,11 +192,11 @@ macro_rules! builtins {
 // existing on-mode-change-only dismissal (hover, signature help).
 //
 // Variadic call! macro — desugars to %dispatch-command, the in-VM dispatcher
-// for calls originating inside Steel (call! from a plugin body, and the bare
+// for calls originating inside Steel (call! from a plugin body, or the bare
 // command-name lambdas register_command_names defines). Keypress/`:`-line
-// dispatch does NOT go through this path — Editor::call_steel_cmd resolves
-// and activates the target directly, then applies its command_table closure
-// via call_function_with_args; %dispatch-command's own miss→activate→retry
+// dispatch skips this path: Editor::call_steel_cmd resolves and activates
+// the target directly, applying its command_table closure via
+// call_function_with_args. %dispatch-command's own miss→activate→retry
 // exists only because a builtin can't re-enter the editor's Rust dispatcher
 // while the Engine is already borrowed. Defined here (not only prelude.scm)
 // so test harnesses without the full prelude still have it.

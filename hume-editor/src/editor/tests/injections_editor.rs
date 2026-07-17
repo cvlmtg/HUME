@@ -498,9 +498,10 @@ fn plum_cleanup_removes_orphan_plugin_directory() {
 // ---------------------------------------------------------------------------
 
 /// `:plum-install-grammar` with no argument and no buffer language must warn
-/// with the "no grammar name given" message — not the opaque install-failure
-/// this used to log when the dead `(equal? name "")` guard let a `#f` name
-/// fall through into the install pipeline.
+/// with the "no grammar name given" message. A `(equal? name "")` guard is
+/// dead here — `name` is `#f`, not `""` — so it must not be relied on to
+/// catch this; letting a `#f` name fall through produces an opaque
+/// install-failure warning instead.
 #[test]
 #[cfg(not(windows))]
 fn plum_install_grammar_no_arg_no_language_warns() {

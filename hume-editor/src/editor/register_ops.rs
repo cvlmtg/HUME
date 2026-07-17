@@ -84,7 +84,7 @@ pub(crate) fn write_register(
         // only when the previous value does not already end in one (linewise).
         // This matches how paste consumes each value independently and correctly
         // handles mixed selections (e.g. ["line\n", "word"] → "line\nword",
-        // not "line\n\nword" which the old all-or-nothing join produced).
+        // not "line\n\nword").
         let mut blob = String::new();
         for (i, v) in values.iter().enumerate() {
             if i > 0 && !is_register_linewise(&values[i - 1]) {

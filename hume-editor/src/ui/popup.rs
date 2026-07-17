@@ -372,10 +372,9 @@ mod tests {
     }
 
     /// A box wider than the pane must be clamped to the pane's width, not
-    /// merely repositioned — before this clamp existed, an over-wide box
-    /// kept its full requested width and `PopupOverlay`'s bounds check
-    /// silently dropped the whole popup rather than ever painting a clamped
-    /// one.
+    /// merely repositioned — an unclamped over-wide box fails
+    /// `PopupOverlay`'s bounds check and the whole popup is silently
+    /// dropped instead of painting a clamped one.
     #[test]
     fn geometry_clamps_width_to_pane_when_content_is_wider() {
         let pane = rect(0, 0, 20, 20);

@@ -314,7 +314,7 @@ mod tests {
     // Every builtin below is `cmd`-gated in `builtins!`'s registration table —
     // the gate lives in the registration wrapper closure, not the function
     // body, so these test the gate primitive directly rather than calling the
-    // builtin (which no longer has a body-level guard to hit).
+    // builtin (its body has no guard to hit).
 
     /// `current-buffer` is blocked in init mode.
     ///
@@ -423,9 +423,9 @@ mod tests {
 
     // ── Type errors (wrong arg type) ──────────────────────────────────────────
     //
-    // `buffer-path`/`buffer-name`/`buffer-dirty?` no longer decode `bid`
-    // in-body (it's a typed `BidArg` param) — that decode-failure path is
-    // covered once, centrally, by `args::tests::bid_arg_rejects_non_buffer_id`.
+    // `buffer-path`/`buffer-name`/`buffer-dirty?` don't decode `bid` in-body
+    // (it's a typed `BidArg` param) — that decode-failure path is covered
+    // once, centrally, by `args::tests::bid_arg_rejects_non_buffer_id`.
 
     /// `char-index->line` rejects a non-integer and a negative integer argument.
     ///

@@ -163,8 +163,7 @@ mod tests {
 
     /// End-to-end through the real registration table (`builtins::mod`'s
     /// `builtins!` table registers `data-dir` as a ctx-injected `open`
-    /// builtin, not the old context-free `FuncV`) — proves `(data-dir)`
-    /// still resolves to `ctx.dirs` after the move out of `register_value`.
+    /// builtin) — proves `(data-dir)` resolves to `ctx.dirs` through that path.
     /// `eval_source` only reports success/failure, not a return value, so
     /// the result is round-tripped through `log!` and read back from the
     /// message log.

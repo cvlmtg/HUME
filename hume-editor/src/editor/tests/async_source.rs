@@ -1,6 +1,6 @@
 // Generalized event-loop wake (`wake_timeout`) and the timer wheel's
 // integration with it as a real AsyncSource. Response/completion arrival is
-// no longer a poll cadence this module tracks — background threads wake the
+// not a poll cadence this module tracks — background threads wake the
 // event loop's wait primitive directly (see `hume_platform::events`), so
 // `wake_timeout` reports real deadlines only: the timer wheel's own
 // schedule, and the LSP source's earliest pending-request deadline / spinner
@@ -12,11 +12,11 @@ use super::*;
 use hume_treesitter::parse_worker::{ParseBackend, ParseDone, ParseRequest};
 
 /// A `ParseBackend` double that reports work permanently in flight, without
-/// spinning a real thread. The parse worker no longer contributes an
-/// `AsyncSource` at all (see `in_flight_parse_no_longer_forces_a_wake`
-/// below) — this double now exists purely to prove that `has_in_flight()`
-/// returning `true` has no effect on `wake_timeout` whatsoever, arrival
-/// being wake-driven instead.
+/// spinning a real thread. The parse worker does not contribute an
+/// `AsyncSource` (see `in_flight_parse_no_longer_forces_a_wake` below) —
+/// this double exists purely to prove that `has_in_flight()` returning
+/// `true` has no effect on `wake_timeout` whatsoever, arrival being
+/// wake-driven instead.
 struct AlwaysPendingBackend;
 
 impl ParseBackend for AlwaysPendingBackend {
@@ -54,9 +54,8 @@ fn wake_timeout_is_none_when_idle() {
 
 #[test]
 fn in_flight_parse_no_longer_forces_a_wake() {
-    // Regression pin: the parse worker used to force an 8ms poll cadence
-    // whenever `has_in_flight()` was true. It no longer contributes an
-    // `AsyncSource` at all — parse completion wakes the loop through the
+    // The parse worker must not contribute an `AsyncSource` regardless of
+    // `has_in_flight()` — parse completion wakes the loop through the
     // platform waker, not a deadline — so this must stay `None`.
     let mut ed = editor_from("-[w]>ord\n");
     ed.parse_worker = Box::new(AlwaysPendingBackend);
@@ -168,10 +167,9 @@ mod next_wake_covers_client_state {
     #[test]
     fn starting_client_wakes_at_spinner_cadence() {
         // Mid-handshake, the initialize response could land any moment, and
-        // the statusline spinner must keep animating while it waits — the
-        // pending-poll arm that used to cover this is gone, so `Starting`
-        // must be folded into the spinner-cadence condition directly (this
-        // is the regression test for that fold).
+        // the statusline spinner must keep animating while it waits, so
+        // `Starting` must be folded into the spinner-cadence condition
+        // directly rather than relying on a separate pending-poll arm.
         let (mut ed, sid) = wired_editor();
         ed.lsp
             .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));

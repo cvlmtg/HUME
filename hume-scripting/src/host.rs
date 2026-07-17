@@ -109,9 +109,8 @@ pub trait EditorHost {
         None
     }
     /// Terminal-safety state around `#:inline-output` commands — `None` for
-    /// hosts with no live TUI to protect (test stubs), which is equivalent to
-    /// the old defaults (`is_inline_output_command` false, `ensure_inline_
-    /// output_screen` a no-op success).
+    /// hosts with no live TUI to protect (test stubs): `is_inline_output_command`
+    /// reads false and `ensure_inline_output_screen` is a no-op success.
     fn output(&mut self) -> Option<&mut dyn OutputHost> {
         None
     }
@@ -234,8 +233,7 @@ pub trait CommandHost {
     ///
     /// Returns `Err(msg)` if `name` is already claimed by any existing
     /// command (native, `SteelBacked`, or another plugin's `Lazy` stub); the
-    /// message names the conflicting owner so the declare-time log is as
-    /// specific as before this method existed.
+    /// message names the conflicting owner for a specific declare-time log.
     fn register_lazy_command(&mut self, name: &str, plugin: &PluginId) -> Result<(), String>;
 
     /// The plugin that owns `name`'s `Lazy` stub, or `None` if `name` is not a

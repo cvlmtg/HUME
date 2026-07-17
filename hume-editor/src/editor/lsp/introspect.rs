@@ -355,8 +355,8 @@ fn pane_showing_buffer(state: &EditorState, view: &EngineView, id: BufferId) -> 
 /// visible for `id`, or `None` if `id` isn't shown in any pane (a background
 /// or hidden buffer). With the same buffer open in two panes, the focused
 /// pane's range wins — no less arbitrary than any other tie-break, since a
-/// per-buffer decoration store (inlay hints, the old Steel viewport tracker)
-/// can only hold one range per buffer regardless of how many panes show it.
+/// per-buffer decoration store (inlay hints) can only hold one range per
+/// buffer regardless of how many panes show it.
 pub(crate) fn viewport_range(
     state: &EditorState,
     view: &EngineView,

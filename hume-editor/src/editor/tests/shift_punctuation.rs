@@ -32,9 +32,8 @@ fn colon_enters_command_mode_when_shift_set() {
     assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "");
 }
 
-/// Regression guard: the alphabetic SHIFT case that the old `is_alphabetic`
-/// branch already handled must still work after broadening the strip to all
-/// chars. `A` delivered as Char('A') + SHIFT must resolve to the `A` binding
+/// Broadening the SHIFT strip to all chars must not break the alphabetic
+/// case. `A` delivered as Char('A') + SHIFT must resolve to the `A` binding
 /// (insert-at-line-end), entering Insert mode.
 #[test]
 fn shift_a_still_inserts_at_line_end() {

@@ -55,8 +55,7 @@ pub(crate) fn hume_target(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 ///
 /// No sandbox check and no compare/delete logic — full-trust plugin model
 /// (see `docs/ROADMAP.md`'s plugin trust model decision). Compare-and-delete-
-/// on-mismatch, previously done here in the removed `verify-sha256!`
-/// builtin, now lives in Scheme (`lsp/verify-sha256!` in `servers.scm`) —
+/// on-mismatch lives in Scheme (`lsp/verify-sha256!` in `servers.scm`) —
 /// this is a thin wrapper over the platform tool selection (`shasum`/
 /// `sha256sum`/`certutil`) that a Scheme rewrite would only make worse.
 pub(crate) fn sha256_file(ctx: &mut SteelCtx, path: String) -> Result<SteelVal, SteelErr> {

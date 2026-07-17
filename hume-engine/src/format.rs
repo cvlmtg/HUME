@@ -990,17 +990,13 @@ mod tests {
 
     #[test]
     fn soft_wrap_defers_tab_whole_to_next_row_when_it_would_straddle_column() {
-        // tab_width=4 (do_format's fixed value). "abcd" fills cols 0..4
-        // (current_col=4, already tab-stop-aligned), so the tab needs cols
-        // 4..8 (its full 4-column expansion) — straddling wrap_width=6. Soft
-        // wrap must defer the whole tab to the next row rather than
-        // truncating its expansion mid-tab.
-        //
-        // Column 4 is chosen so the tab's expansion is congruent whether
-        // measured from its original column (4) or its post-wrap column (0)
-        // — both are tab-stop-aligned, so this test doesn't also exercise
-        // the (separate) post-wrap width recompute; see
-        // `soft_wrap_recomputes_tab_width_at_post_wrap_column` for that case.
+        // "abcd" fills cols 0..4, tab-stop-aligned, so the tab's full
+        // 4-column expansion (cols 4..8) straddles wrap_width=6. Soft wrap
+        // must defer the whole tab to the next row rather than truncating
+        // its expansion mid-tab. Column 4 keeps the tab tab-stop-aligned
+        // both pre- and post-wrap, so this doesn't also exercise the
+        // (separate) post-wrap width recompute — see
+        // `soft_wrap_recomputes_tab_width_at_post_wrap_column` for that.
         let (rows, graphemes) = do_format("abcd\tef", WrapMode::Soft { width: 6 });
         assert_eq!(rows.len(), 2, "must wrap into exactly 2 rows");
 
@@ -1033,19 +1029,16 @@ mod tests {
 
     #[test]
     fn soft_wrap_exact_fit_row_keeps_eol_sentinel_on_same_row() {
-        // "abcde\n" wrapped at width 5 fits exactly (current_col reaches 5,
-        // never exceeding it mid-loop, so no content wrap triggers). The EOL
-        // sentinel emitted after the main loop bypasses `maybe_wrap` entirely
-        // (see the "End-of-line sentinel" comment), so it lands at col 5 —
-        // one column past the wrap boundary — without pushing a *wrap*
-        // continuation row for line 0. This pins that behavior: a cursor on
-        // the trailing '\n' of an exactly-full soft-wrapped row still renders
-        // on that row, not a phantom wrap row.
+        // "abcde\n" wrapped at width 5 fits exactly, so no content wrap
+        // triggers. The EOL sentinel, emitted after the main loop, bypasses
+        // `maybe_wrap` entirely (see the "End-of-line sentinel" comment) and
+        // lands at col 5 without pushing a wrap continuation row. Pins that a
+        // cursor on the trailing '\n' of an exactly-full soft-wrapped row
+        // still renders on that row, not a phantom wrap row.
         //
-        // "abcde\n" is still 2 ropey lines ("abcde\n" + a trailing empty
-        // line, same as plain "hello\n" in `eol_sentinel_emitted_on_non_empty_line`)
-        // — row 1 here is that phantom trailing line's own sentinel, not a
-        // continuation of line 0.
+        // Row 1 here is the trailing empty ropey line's own sentinel (same
+        // as plain "hello\n" in `eol_sentinel_emitted_on_non_empty_line`),
+        // not a continuation of line 0.
         let (rows, graphemes) = do_format("abcde\n", WrapMode::Soft { width: 5 });
         assert_eq!(rows.len(), 2, "line 0's row + the phantom trailing line");
         assert_eq!(

@@ -26,10 +26,8 @@ use crate::text::Text;
 /// The inverse Transaction's `selection` is the pre-edit selection because
 /// that is where cursors land after applying the inverse changeset. The
 /// history manager stores `inverse`; applying it later restores both text
-/// and cursor state in one step. This is also why `invert(&old_buf)` must be
-/// called before discarding `old_buf` (as shown above): `invert` reads the
-/// original rope to reconstruct deleted text, and that content is gone once
-/// you move on to the new buffer.
+/// and cursor state in one step. `invert` reads the original rope to
+/// reconstruct deleted text, hence the BEFORE-apply ordering above.
 ///
 #[derive(Debug, Clone)]
 pub struct Transaction {

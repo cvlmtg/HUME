@@ -166,10 +166,10 @@ fn declare_plugin_command_name_with_quote_errors() {
 
 /// When a declared plugin is absent on disk, `cmd_owners` must NOT be pre-seeded.
 ///
-/// The old bug: `cmd_owners` was seeded before the path check, so an absent
-/// plugin left orphan attribution entries that could never be cleaned up by
-/// `drop_activations_for`.  The fix: the absent-path early-return fires before
-/// the pre-seed loop.
+/// Guards against `cmd_owners` being seeded before the path check: an absent
+/// plugin would otherwise leave orphan attribution entries that
+/// `drop_activations_for` could never clean up. The invariant: the
+/// absent-path early-return fires before the pre-seed loop.
 ///
 /// Fail oracle: remove the `if path.is_none() { return Ok(…) }` early-return →
 /// cmd_owners gets seeded → assertion fires.

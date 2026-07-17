@@ -524,9 +524,9 @@ fn command_plugin_unknown_returns_hume() {
 // All Steel commands participate in Ctrl+key one-shot extend; the body
 // receives `extend` as a lambda arg. There is no separate define-command-extend!.
 
-/// `define-command!` registers the command; `define-command-extend!` has been
-/// removed.  Verifies the old name is not a recognised builtin by checking that
-/// calling it produces a Steel FreeIdentifier error.
+/// `define-command!` registers the command; `define-command-extend!` does not
+/// exist. Verifies calling it produces a Steel FreeIdentifier error, not a
+/// recognised builtin.
 #[test]
 fn define_command_extend_builtin_removed() {
     let mut h = host();
@@ -1255,8 +1255,8 @@ fn set_register_prefix_passed_to_dispatch() {
 /// typed" (`parse_count_extend`), distinct from `Some(1)` even though both
 /// apply the command once.
 ///
-/// Fail oracle: before this change, `parse_count_extend` clamped `0` to `1`,
-/// so `dispatched_native[0].1` would be `Some(1)`, not `None`.
+/// Fail oracle: a `parse_count_extend` that clamps `0` to `1` would make
+/// `dispatched_native[0].1` come out `Some(1)`, not `None`.
 #[test]
 fn call_native_zero_count_decodes_to_none() {
     let mut h = host();
