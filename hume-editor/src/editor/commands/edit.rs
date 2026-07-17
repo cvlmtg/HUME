@@ -92,6 +92,11 @@ pub fn cmd_change(
 /// Select the span(s) typed during the most recently completed insert
 /// session (`i`/`a`/`o`/`O`/`A`/`I`/`c`/…), bound at `mii`.
 ///
+/// Like every other object in the `mi`/`ma` trie, honors [`MotionMode`]:
+/// `Move` replaces the current selection with just the insertion spans;
+/// `Extend` unions them into the current selection set instead of
+/// discarding it, matching the `.extendable()` contract.
+///
 /// Reports [`Severity::Info`] and leaves selections untouched if there is no
 /// stashed insertion, or if a later mutation (any edit, undo, or redo) has
 /// moved the buffer's `text_gen` past the stamp — see
@@ -100,7 +105,7 @@ pub fn cmd_select_last_insertion(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
-    _mode: MotionMode,
+    mode: MotionMode,
 ) -> Result<(), CommandError> {
     let buf = doc(state, view);
     let fresh = buf
@@ -116,13 +121,27 @@ pub fn cmd_select_last_insertion(
     // non-empty `spans` vec (see `pin_insert_anchors`'s caller). The last
     // span is spatially last (stashed in ascending-start order) — primary
     // there, matching the entry command's own cursor placement.
-    let primary = spans.len() - 1;
-    let selections: Vec<Selection> = spans
+    let insertion_primary = spans.len() - 1;
+    let insertion_sels: Vec<Selection> = spans
         .into_iter()
         .map(|(anchor, head)| Selection::new(anchor, head))
         .collect();
-    apply_focused_motion(state, view, move |_b, _sels| {
-        SelectionSet::from_vec(selections, primary)
+    apply_focused_motion(state, view, move |_b, sels| match mode {
+        MotionMode::Move => SelectionSet::from_vec(insertion_sels, insertion_primary),
+        MotionMode::Extend => {
+            // `from_vec` sorts and merges genuinely overlapping selections,
+            // so this is a plain union — no need to zip against current
+            // selections one-to-one (their counts can differ freely, e.g.
+            // `mii` invoked after the selection count changed since the
+            // insert). Merely-adjacent (touching, non-overlapping) spans
+            // stay separate selections, same as everywhere else in the
+            // codebase. The pre-existing primary stays primary, consistent
+            // with how every other `mi*` object behaves in Extend mode.
+            let primary = sels.primary_index();
+            let mut combined: Vec<Selection> = sels.iter_sorted().copied().collect();
+            combined.extend(insertion_sels);
+            SelectionSet::from_vec(combined, primary)
+        }
     });
     Ok(())
 }

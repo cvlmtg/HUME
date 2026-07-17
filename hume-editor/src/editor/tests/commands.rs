@@ -246,6 +246,82 @@ fn mii_multi_cursor_selects_each_span_primary_is_last() {
     assert_eq!(state(&ed), "xy -[xy]>\n");
 }
 
+/// In Extend mode `mii` must keep the current selection instead of discarding
+/// it — matching the `.extendable()` contract every other `mi*` text object
+/// honors. Here the insertion span and the current (collapsed cursor left by
+/// `i`) selection are adjacent but don't share an index, so — consistent with
+/// `SelectionSet`'s merge rule elsewhere in the codebase, which merges only on
+/// genuine overlap, not mere touching — both survive as separate selections
+/// rather than being discarded or force-merged.
+#[test]
+fn mii_extend_mode_keeps_adjacent_current_selection_as_separate() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('h'));
+    ed.handle_key(key('i'));
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "hi-[h]>ello\n"); // plain `i` leaves a collapsed cursor
+    ed.state.mode = Mode::Extend;
+    mii(&mut ed);
+    assert_eq!(state(&ed), "-[hi]>-[h]>ello\n");
+}
+
+/// When the current selection genuinely overlaps the insertion span, the
+/// union collapses into a single merged selection — proving `mii` in Extend
+/// mode actually reaches `SelectionSet`'s merge path, not just an append.
+#[test]
+fn mii_extend_mode_merges_overlapping_current_selection() {
+    use hume_editing::selection::Selection;
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('h'));
+    ed.handle_key(key('i'));
+    ed.handle_key(key_esc());
+    // buffer is now "hihello"; the insertion span covers indices [0,1] ("hi").
+    // Set the current selection to genuinely overlap it: indices [1,3] ("ihe").
+    let pid = ed.state.focused_pane_id;
+    let bid = ed.focused_buffer_id();
+    ed.state.panes.state[pid][bid].selections = SelectionSet::single(Selection::new(1, 3));
+    assert_eq!(state(&ed), "h-[ihe]>llo\n");
+
+    ed.state.mode = Mode::Extend;
+    mii(&mut ed);
+    assert_eq!(state(&ed), "-[hihe]>llo\n");
+}
+
+/// When the current selection is disjoint from the insertion span, Extend
+/// mode must add it as a separate selection rather than merging or replacing
+/// — and the pre-existing selection must stay primary, exactly like every
+/// other `mi*` object in Extend mode.
+#[test]
+fn mii_extend_mode_adds_disjoint_selection_and_keeps_current_primary() {
+    use hume_editing::selection::Selection;
+
+    let mut ed = editor_from("-[h]>ello world\n");
+    ed.handle_key(key('a'));
+    ed.handle_key(key('X'));
+    ed.handle_key(key('Y'));
+    ed.handle_key(key_esc());
+
+    // Move the current selection onto a disjoint word ("world"), independent
+    // of the stashed insertion span. Set directly rather than via a motion
+    // command, so this test doesn't couple to unrelated motion mechanics.
+    let pid = ed.state.focused_pane_id;
+    let bid = ed.focused_buffer_id();
+    ed.state.panes.state[pid][bid].selections = SelectionSet::single(Selection::new(8, 12));
+    assert_eq!(state(&ed), "hXYello -[world]>\n");
+
+    ed.state.mode = Mode::Extend;
+    mii(&mut ed);
+    assert_eq!(state(&ed), "h-[XY]>ello -[world]>\n");
+
+    // Primary must have stayed on the pre-existing selection ("world"), not
+    // jumped to the newly-unioned insertion span.
+    ed.handle_key(key(','));
+    assert_eq!(state(&ed), "hXYello -[world]>\n");
+}
+
 #[test]
 fn mii_reports_info_when_nothing_ever_typed() {
     let mut ed = editor_from("-[h]>ello\n");
