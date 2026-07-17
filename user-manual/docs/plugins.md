@@ -126,7 +126,7 @@ Use `(call! ...)` to dispatch other commands from within a plugin:
     (call! "write")))
 ```
 
-`call!` routes through the full dispatch system — lazy activation, native Rust commands, and Steel commands are handled uniformly.
+`call!` dispatches any command uniformly — built-in and Steel-defined alike, activating the target plugin on demand.
 
 When forwarding a `count` argument to another command, a count of `0` means "as if no count was typed" — this is how `move-down`/`move-up` decide between visual-row and buffer-line movement, and it lets a key-bound command that forwards its own `count` behave the same way a native keybinding would.
 
@@ -147,7 +147,7 @@ This fails loudly at load time (startup or `:reload-config`), naming exactly wha
 
 ### Pending character input
 
-Some commands need a character argument from the user (like surround operations). `(request-wait-char! cmd-name)` arms the pending-char mechanism and dispatches `cmd-name` once the user types a char; `(pending-char)` then reads that char inside the dispatched command:
+Some commands need a character argument from the user (like surround operations). `(request-wait-char! cmd-name)` dispatches `cmd-name` once the user types a character; `(pending-char)` then reads that char inside the dispatched command:
 
 ```scheme
 (define-command! "my-surround"

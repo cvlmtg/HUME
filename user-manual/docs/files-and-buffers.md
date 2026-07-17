@@ -89,7 +89,7 @@ Buffers can be marked read-only. The status bar shows `[RO]` when active. Editin
 
 ## Synthetic buffers
 
-Some commands open special read-only buffers for inspecting internal state:
+Some commands open special read-only buffers for inspecting the editor's state:
 
 | Command | Buffer | Contents |
 |---------|--------|----------|
@@ -105,6 +105,6 @@ A few things worth knowing before trusting HUME with real work:
 
 - **Undo tree is in-memory only.** Branching history is preserved for the session but **lost when HUME exits**. There is no persistent undo across restarts.
 - **No swap or backup files.** HUME does not write Vim-style `.swp` files. Saves use an atomic temp-file-plus-rename, so on POSIX the target either has the old content or the new content, never a partial write.
-- **UTF-8 only.** Files are read with `std::fs::read_to_string` — invalid UTF-8 returns an error (no lossy fallback). No BOM detection or stripping.
+- **UTF-8 only.** Files must be valid UTF-8 — invalid bytes are rejected with an error (no lossy fallback). No BOM detection or stripping.
 - **CRLF detected and preserved.** Files containing `\r\n` are normalized to `\n` in the buffer and re-expanded to `\r\n` on save; the status bar shows `CRLF` or `LF`. Bare `\r` (old Mac) is left as-is.
 - **No on-disk log file.** `:messages` is the entire logging surface — an in-memory ring capped at 1000 entries, discarded on exit. If you need to keep warnings/errors, copy them out of `:messages` before quitting.

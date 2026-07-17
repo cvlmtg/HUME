@@ -128,7 +128,7 @@ Some commands need a character typed right after the key (find/till motions, sur
 (bind-wait-char! 'normal "m s" "surround-add")
 ```
 
-Inside the target command, read the captured character with `(pending-char)` — see [Plugins](plugins.md) for the full command-writing API, including the related `(request-wait-char! cmd-name)`, which arms the same mechanism from inside an already-running command rather than from a key binding.
+Inside the target command, read the captured character with `(pending-char)` — see [Plugins](plugins.md) for the full command-writing API, including the related `(request-wait-char! cmd-name)`, which waits for a character from inside an already-running command rather than from a key binding.
 
 ### Key-string grammar
 

@@ -47,7 +47,7 @@ You can align the selection to the left or the right depending on the position o
 
 ## Copying and pasting
 
-HUME has two paste sources: the system clipboard and an internal kill ring.
+HUME has two paste sources: the system clipboard and a kill ring.
 
 | Key | Effect |
 |-----|--------|
@@ -62,7 +62,7 @@ HUME has two paste sources: the system clipboard and an internal kill ring.
 `p` and `P` decide what to paste based on the last command:
 
 - **After `d` or `c`** — reads the kill ring head (the most recently killed or changed text).
-- **After a paste-family command** (`p`, `P`, `[`, `]`) — re-pastes `last_paste` verbatim, appending onto the previous paste.
+- **After a paste-family command** (`p`, `P`, `[`, `]`) — re-pastes the same text again, appending another copy onto the previous paste.
 - **Otherwise** (including after `y`) — reads the system clipboard.
 
 The clipboard rule after `y` deserves a note: `y` writes the yanked text to **both** the system clipboard and the kill ring, so `y` then `p` pastes the clipboard, which is the text you just yanked — the common case behaves as expected. The subtlety is when you yank to an explicit non-default register (e.g. `"0y`): the clipboard is left untouched and a following `p` pastes whatever was previously in the clipboard. To paste from the just-yanked named register, prefix with the register: `"0p`.
@@ -99,7 +99,7 @@ Two further registers exist but cannot be named through the `"` prefix:
 | Register | How it's used |
 |----------|---------------|
 | `q` | Default macro register — written by `Q` recording, read by `q` replay |
-| `s` | Search register — holds the last search pattern; written by `/`/`?`/`*`, read by the search system |
+| `s` | Search register — holds the last search pattern; written by `/`, `?`, `*`, and reused when you repeat the search |
 
 ## Undo and redo
 
