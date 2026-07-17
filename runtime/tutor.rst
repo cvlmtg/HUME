@@ -70,10 +70,18 @@ The quick brown fox jumps over the lazy dog.
 +---+------------------------------------------------------------------+
 
 The difference: in "config.toml log-file", pressing ``w`` repeatedly
-selects "config", then ``.``, then "toml", then "log", then ``-``,
-then "file" (six steps — dots and dashes are boundaries). Pressing
-``W`` instead selects "config.toml", then "log-file" (two
+selects "config", then ``.``, then "toml" (plus the space after it),
+then "log" (plus the space before it), then ``-``, then "file" (six
+steps — dots and dashes are boundaries). Pressing ``W`` instead
+selects "config.toml" (plus its trailing space), then "log-file" (two
 steps — only whitespace divides WORDs).
+
+By default ``w``/``W``/``b``/``B`` also pick up the word's neighboring
+whitespace — trailing space if there is any, otherwise the space
+before it — which is why some of the steps above include an extra
+space alongside the word or token. Turn this off with
+``:set global word-selects-whitespace=false`` for bare-word
+selections instead.
 
 Exercise
 ~~~~~~~~
@@ -463,7 +471,8 @@ Exercise
 ~~~~~~~~
 
 Now press ``w`` to select the duplicate word "file", then ``d`` to
-delete it. Press ``d`` again to delete the extra space remaining:
+delete it — the trailing space goes with it, so there's no double
+space left behind:
 
 The configuration file file needs to be updated.
 
@@ -499,7 +508,7 @@ Exercise
 Navigate to "yesterday" using ``w``, then press ``c`` and type
 "Monday", then press ``Esc`` — "Monday" is now selected:
 
-The deadline was yesterday.
+The deadline is (yesterday).
 
 3.3 Replace
 -----------
@@ -529,7 +538,7 @@ Exercise
 Press ``w`` to select the word "secret", then press ``r*`` to
 mask every character with an asterisk:
 
-password = secret
+password = "secret"
 
 3.4 Join Lines
 --------------
@@ -866,11 +875,16 @@ The idiomatic pattern for repeating an edit across several words:
 - ``.`` to repeat the change on the new selection
 - ...and so on.
 
+Since ``w`` picks up the word's trailing space by default, type a
+trailing space as part of your replacement too, so the spacing after
+it stays intact.
+
 Exercise
 ~~~~~~~~
 
-Change the first "migrate" to "update" below, then navigate to
-the next "migrate" with ``w`` and press ``.`` to repeat the change:
+Change the first "migrate" to "update " (with a trailing space)
+below, then navigate to the next "migrate" with ``w`` and press ``.``
+to repeat the change:
 
 Migrate the schema, migrate the tests, migrate the docs.
 
@@ -1005,9 +1019,12 @@ Text objects select structured regions. Prefix ``mi`` for INNER
 | miW  maW | inner / around WORD                       |
 +----------+-------------------------------------------+
 
-Since ``miw`` and ``miW`` are very frequent operations, HUME adds
-a couple of shortcuts: ``mm`` for the inner word and ``MM`` for the
-inner WORD.
+Since selecting the word under the cursor is a very frequent
+operation, HUME adds a couple of shortcuts: ``mm`` and ``MM``. By
+default they behave like ``maw``/``maW`` (word/WORD plus surrounding
+whitespace); with ``word-selects-whitespace`` off they behave like
+``miw``/``miW`` instead. ``miw``/``maw``/``miW``/``maW`` themselves
+are unaffected by that setting either way.
 
 ``mii`` is different from the rest of this table: it selects
 whatever text you most recently typed in Insert mode, however you

@@ -73,6 +73,7 @@ These options have a global default that new buffers inherit, and a per-buffer o
 | `line-number-style` | `absolute` \| `relative` \| `hybrid` | `hybrid` | Line number display in the gutter |
 | `auto-pairs-enabled` | bool | `#t` | Enable auto-pair insertion |
 | `select-changed-text` | bool | `#t` | After `c` (change), keeps the selection on the text you changed |
+| `word-selects-whitespace` | bool | `#t` | `w`/`W`/`b`/`B` and `mm`/`MM` cover the destination word's surrounding whitespace (like `maw`); `#f` selects the bare word instead |
 | `signcolumn` | `always[:N]` \| `auto[:N]` | `always:1` | Gutter column for plugin-supplied signs (diagnostics, etc). `N` is the number of sign slots (1–127, default 1); `auto` collapses the column to zero width when no signs are visible |
 | `whitespace-space` | `none` \| `all` \| `trailing` | `none` | When to render space indicators. Also reveals invisible Unicode spaces (non-breaking and ideographic) with a distinct `⍽` marker |
 | `whitespace-tab` | `none` \| `all` \| `trailing` | `none` | When to render tab indicators |

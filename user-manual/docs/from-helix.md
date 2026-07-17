@@ -18,7 +18,7 @@ Unlike Helix, HUME's `c` keeps the selection on the text you changed: select a w
 
 ### Word motions
 
-`w`, `b`: Both editors re-anchor on each press (the anchor moves with the head — it does not stay pinned at the origin). The difference is **what gets selected**: Helix selects the gap traversed — from the old position to the next word start, including the trailing whitespace; HUME selects the destination word itself, with no surrounding whitespace.
+`w`, `b`: Both editors re-anchor on each press (the anchor moves with the head — it does not stay pinned at the origin). Helix selects the gap traversed — from the old position to the next word start, including the trailing whitespace. HUME selects the destination word itself and, by default, its surrounding whitespace too (trailing if there is any, otherwise the whitespace before it) — the same span `maw`/`maW` would select on that word. In the common case of words separated by single spaces the two editors land on visually the same span; they diverge at line ends and around punctuation, where Helix's "gap traversed" and HUME's "around the destination word" compute different things. Turn off `word-selects-whitespace` (see [Configuration](configuration.md)) for HUME's older bare-word behavior instead.
 
 <div style="font-family:var(--vp-font-family-mono);line-height:2;overflow-x:auto">
 <strong>Cursor on the first character</strong><br>
@@ -27,14 +27,14 @@ HUME&nbsp;&nbsp;&nbsp;<span style="background:var(--vp-c-brand-1);color:var(--vp
 <br>
 <strong>Press <code>w</code></strong><br>
 Helix&nbsp;&nbsp;<span style="background:var(--vp-c-brand-soft);border-radius:3px">Lorem<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">&nbsp;</span></span>ipsum dolor sit<br>
-HUME&nbsp;&nbsp;&nbsp;Lorem <span style="background:var(--vp-c-brand-soft);border-radius:3px">ipsu<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">m</span></span> dolor sit<br>
+HUME&nbsp;&nbsp;&nbsp;Lorem <span style="background:var(--vp-c-brand-soft);border-radius:3px">ipsum<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">&nbsp;</span></span>dolor sit<br>
 <br>
 <strong>Press <code>w</code> again</strong><br>
 Helix&nbsp;&nbsp;Lorem <span style="background:var(--vp-c-brand-soft);border-radius:3px">ipsum<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">&nbsp;</span></span>dolor sit<br>
-HUME&nbsp;&nbsp;&nbsp;Lorem ipsum <span style="background:var(--vp-c-brand-soft);border-radius:3px">dolo<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">r</span></span> sit
+HUME&nbsp;&nbsp;&nbsp;Lorem ipsum <span style="background:var(--vp-c-brand-soft);border-radius:3px">dolor<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">&nbsp;</span></span>sit
 </div>
 
-To select the word the cursor is already sitting on — no trailing space, no forward jump — HUME binds `mm` (a shortcut for `miw`, select inner word). It selects the whole word / whitespace / punctuation run under the cursor no matter where in that run the cursor sits. Helix has no dedicated command for this, but `e` (move to end of word) reaches the same result *only when the cursor already sits on the word's first character* — unlike `w`, `e` stops at the end of the word and excludes the trailing whitespace. Starting `e` from the middle of a word selects only from that point to the word's end (`rem`), not the whole word — `mm` has no such restriction.
+To select the word the cursor is already sitting on — no forward jump — HUME binds `mm`. By default it selects the whole word plus surrounding whitespace, same as `maw`, no matter where in the word the cursor sits; with `word-selects-whitespace` off it behaves like `miw` (bare word) instead. Helix has no dedicated command for this, but `e` (move to end of word) reaches a similar result *only when the cursor already sits on the word's first character* — unlike `w`, `e` always excludes the trailing whitespace and, starting from the middle of a word, selects only from that point to the word's end (`rem`), not the whole word. `mm` has neither restriction.
 
 <div style="font-family:var(--vp-font-family-mono);line-height:2;overflow-x:auto">
 <strong>Select the current word, cursor in the middle of the word</strong><br>
@@ -44,7 +44,7 @@ HUME&nbsp;&nbsp;&nbsp;Lo<span style="background:var(--vp-c-brand-1);color:var(--
 <strong>Press <code>e</code></strong><br>
 Helix&nbsp;&nbsp;Lo<span style="background:var(--vp-c-brand-soft);border-radius:3px">re<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">m</span></span> ipsum dolor sit<br>
 <strong>Press <code>mm</code></strong><br>
-HUME&nbsp;&nbsp;&nbsp;<span style="background:var(--vp-c-brand-soft);border-radius:3px">Lore<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">m</span></span> ipsum dolor sit
+HUME&nbsp;&nbsp;&nbsp;<span style="background:var(--vp-c-brand-soft);border-radius:3px">Lorem<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">&nbsp;</span></span>ipsum dolor sit
 </div>
 
 ### Growing selections

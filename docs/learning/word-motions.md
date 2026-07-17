@@ -51,6 +51,13 @@ eliminates `e`/`E`: in Helix/Vim, `e` reaches the end of the current word
 (complementing `w` which lands on the start of the next). In HUME, `w`
 already selects through the end, making `e` redundant.
 
+By default `w` also covers the destination word's neighboring whitespace
+(trailing space if there is any, otherwise the space before it — the same
+span the `aw` text object selects), so deleting a word never leaves a double
+space behind. This is a separate, toggleable layer on top of the "select the
+whole word" behavior above, not a different word-select model — an option
+restores the bare-word span shown here.
+
 ## Line crossing
 
 The word boundary model treats end-of-line as its own character class (see

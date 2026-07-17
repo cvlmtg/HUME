@@ -36,9 +36,11 @@ delimiter character (`ms(`, `ms[`, `ms{`, `ms<`, `ms"`, `ms'`, ``ms` ``) selects
 the two delimiter characters as cursors — the building block for surround
 editing, where you then act on both delimiters at once (replace them, delete
 them, change them as a pair). `mw` plus a delimiter wraps the current selection
-in that pair. `mm` is a shortcut for `miw` and `MM` for `miW`, the two most
-common inner-word variants. The same prefix keeps every "name a structural
-region" command under one key.
+in that pair. `mm` and `MM` select the word/WORD under the cursor directly —
+by default they behave like `maw`/`maW` (around), matching how the plain word
+motions `w`/`W`/`b`/`B` also cover surrounding whitespace by default; an
+option restores the `miw`/`miW` (inner) behavior for all of them at once. The
+same prefix keeps every "name a structural region" command under one key.
 
 ## The trailing-whitespace rule for words
 

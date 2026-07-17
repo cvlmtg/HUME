@@ -15,6 +15,8 @@ All movement happens in Normal mode. Motions move the cursor and change the curr
 
 A `word` breaks at punctuation, so `don't` is three `words`. A `WORD` only breaks at spaces, so `don't` is one `WORD`.
 
+By default, `w`/`W`/`b`/`B` also cover the word's surrounding whitespace — the same span you'd get from pressing `maw`/`maW` on the destination word: trailing whitespace if there is any, otherwise the whitespace before it. This means deleting a word never leaves a double space behind. Turn it off with `:set global word-selects-whitespace=false` (or per buffer) to select just the bare word instead — see [Configuration](configuration.md).
+
 ## Character find
 
 Search within the current line for a specific character:
