@@ -335,15 +335,17 @@ fn steel_call_repeat_last_action_drains_via_handle_key() {
     );
 
     // Move to "bar" and press F2 — the Steel command fires `(call! "repeat-last-action")`,
-    // setting pending_repeat during eval; handle_key tail drains it, deleting "bar".
+    // setting pending_repeat during eval; handle_key tail drains it, deleting the
+    // selection. "bar" has no trailing space (EOL follows) but a leading one, so
+    // `w` picks up " bar" (default around-word).
     ed.feed_key(key('w'));
     ed.feed_key(f2);
 
-    // "foo" was deleted by the initial `d` (leaving " bar\n"); "bar" was deleted by
-    // the Steel repeat — leaving only the original space before "bar".
+    // "foo" was deleted by the initial `d` (leaving " bar\n"); " bar" (including
+    // the leading space) was deleted by the Steel repeat — leaving just "\n".
     assert_eq!(
         ed.doc().text().to_string(),
-        " \n",
+        "\n",
         "Steel (call! \"repeat-last-action\") must replay the delete via handle_key drain"
     );
 }
@@ -1973,12 +1975,13 @@ fn steel_repeatable_change_via_call_records_insert_keys() {
         );
     }
 
-    // Move to "bar" and replay: change "bar", retype "hi".
+    // Move to "bar" and replay: change " bar" (leading fallback — "bar" has
+    // no trailing space since EOL follows), retype "hi".
     ed.feed_key(key('w'));
     ed.feed_key(key('.'));
     assert_eq!(
         ed.doc().text().to_string(),
-        "hi hi\n",
+        "hihi\n",
         "`.` must change the next selection and retype 'hi'"
     );
 }

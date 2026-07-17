@@ -20,14 +20,18 @@ mod tests {
     };
     use crate::ops::motion::{
         cmd_goto_line_end, cmd_goto_line_start, cmd_move_down, cmd_move_left, cmd_move_right,
-        cmd_move_up, cmd_select_next_uppercase_word, cmd_select_next_word,
-        cmd_select_prev_uppercase_word, cmd_select_prev_word,
+        cmd_move_up, cmd_select_next_uppercase_word, cmd_select_next_uppercase_word_around,
+        cmd_select_next_word, cmd_select_next_word_around, cmd_select_prev_uppercase_word,
+        cmd_select_prev_uppercase_word_around, cmd_select_prev_word, cmd_select_prev_word_around,
     };
     use crate::ops::selection_cmd::{
         cmd_collapse_selection_to_head, cmd_cycle_primary_backward, cmd_cycle_primary_forward,
         cmd_flip_selections, cmd_keep_primary_selection,
     };
-    use crate::ops::text_object::{cmd_around_word, cmd_inner_line, cmd_inner_word};
+    use crate::ops::text_object::{
+        cmd_around_word, cmd_inner_line, cmd_inner_word, cmd_select_uppercase_word_around,
+        cmd_select_word_around,
+    };
     use hume_editing::changeset::ChangeSet;
     use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::Text;
@@ -267,8 +271,14 @@ mod tests {
         SelectPrevWord,
         SelectNextUppercaseWord,
         SelectPrevUppercaseWord,
+        SelectNextWordAround,
+        SelectPrevWordAround,
+        SelectNextUppercaseWordAround,
+        SelectPrevUppercaseWordAround,
         InnerWord,
         AroundWord,
+        SelectWordAround,
+        SelectUppercaseWordAround,
         InnerLine,
         CollapseSelection,
         FlipSelections,
@@ -289,8 +299,14 @@ mod tests {
             Just(PureOp::SelectPrevWord),
             Just(PureOp::SelectNextUppercaseWord),
             Just(PureOp::SelectPrevUppercaseWord),
+            Just(PureOp::SelectNextWordAround),
+            Just(PureOp::SelectPrevWordAround),
+            Just(PureOp::SelectNextUppercaseWordAround),
+            Just(PureOp::SelectPrevUppercaseWordAround),
             Just(PureOp::InnerWord),
             Just(PureOp::AroundWord),
+            Just(PureOp::SelectWordAround),
+            Just(PureOp::SelectUppercaseWordAround),
             Just(PureOp::InnerLine),
             Just(PureOp::CollapseSelection),
             Just(PureOp::FlipSelections),
@@ -323,8 +339,20 @@ mod tests {
             PureOp::SelectPrevWord => cmd_select_prev_word(buf, sels, 1, mode),
             PureOp::SelectNextUppercaseWord => cmd_select_next_uppercase_word(buf, sels, 1, mode),
             PureOp::SelectPrevUppercaseWord => cmd_select_prev_uppercase_word(buf, sels, 1, mode),
+            PureOp::SelectNextWordAround => cmd_select_next_word_around(buf, sels, 1, mode),
+            PureOp::SelectPrevWordAround => cmd_select_prev_word_around(buf, sels, 1, mode),
+            PureOp::SelectNextUppercaseWordAround => {
+                cmd_select_next_uppercase_word_around(buf, sels, 1, mode)
+            }
+            PureOp::SelectPrevUppercaseWordAround => {
+                cmd_select_prev_uppercase_word_around(buf, sels, 1, mode)
+            }
             PureOp::InnerWord => cmd_inner_word(buf, sels, 0, mode),
             PureOp::AroundWord => cmd_around_word(buf, sels, 0, mode),
+            PureOp::SelectWordAround => cmd_select_word_around(buf, sels, 0, mode),
+            PureOp::SelectUppercaseWordAround => {
+                cmd_select_uppercase_word_around(buf, sels, 0, mode)
+            }
             PureOp::InnerLine => cmd_inner_line(buf, sels, 0, mode),
             // Selection-manipulation commands don't use mode; pass it anyway for API uniformity.
             PureOp::CollapseSelection => cmd_collapse_selection_to_head(buf, sels, 0, mode),

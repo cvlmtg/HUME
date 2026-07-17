@@ -7,15 +7,17 @@ use pretty_assertions::assert_eq;
 /// `d` deletes the selection. Moving then pressing `.` should delete the next selection.
 #[test]
 fn dot_repeats_delete() {
-    // Cursor starts at 'f'. `w` selects "foo", `d` deletes it.
-    // Then from the space at pos 0, `w` selects "bar" (the next word). `.` deletes it.
+    // Cursor starts at 'f'. `foo` is already selected; `d` deletes it.
+    // Then from the space at pos 0, `w` selects "bar" — since "bar" has no
+    // trailing space (EOL follows) but does have a leading one, the default
+    // around-word span picks up that leading space too. `.` deletes it.
     let mut ed = editor_from("-[foo]> bar\n");
     ed.feed_key(key('d')); // delete "foo" → " bar\n", cursor at 0 (space)
     assert_eq!(ed.doc().text().to_string(), " bar\n");
 
-    ed.feed_key(key('w')); // from space, select "bar"
+    ed.feed_key(key('w')); // from space, select " bar" (leading fallback)
     ed.feed_key(key('.')); // repeat delete
-    assert_eq!(ed.doc().text().to_string(), " \n");
+    assert_eq!(ed.doc().text().to_string(), "\n");
 }
 
 /// `c` + typed text + Esc should be replayable: the replacement text is reused.
@@ -30,11 +32,13 @@ fn dot_repeats_change_with_insert() {
 
     assert_eq!(ed.doc().text().to_string(), "hi bar\n");
 
-    // Move to "bar" and repeat.
-    ed.feed_key(key('w')); // select "bar"
-    ed.feed_key(key('.')); // repeat: delete "bar", insert "hi"
+    // Move to "bar" and repeat. "bar" has no trailing space (EOL follows)
+    // but does have a leading one, so `w` picks up " bar" (default
+    // around-word) — the replayed change removes that leading space too.
+    ed.feed_key(key('w')); // select " bar"
+    ed.feed_key(key('.')); // repeat: delete " bar", insert "hi"
 
-    assert_eq!(ed.doc().text().to_string(), "hi hi\n");
+    assert_eq!(ed.doc().text().to_string(), "hihi\n");
 }
 
 /// A replayed `c` also ends with the replacement selected — the anchor
@@ -49,11 +53,14 @@ fn dot_repeat_c_selects_replayed_replacement() {
     ed.feed_key(key('i'));
     ed.feed_key(key_esc());
 
+    // "bar" has no trailing space (EOL follows) but does have a leading
+    // one, so `w` picks up " bar" (default around-word); the replayed
+    // change removes that leading space too, leaving no separator.
     ed.feed_key(key('w'));
     ed.feed_key(key('.'));
 
-    assert_eq!(ed.doc().text().to_string(), "hi hi\n");
-    assert_eq!(state(&ed), "hi -[hi]>\n");
+    assert_eq!(ed.doc().text().to_string(), "hihi\n");
+    assert_eq!(state(&ed), "hi-[hi]>\n");
 }
 
 /// Pinning for `mii` is unconditional (not gated on `select-changed-text`),
@@ -136,11 +143,14 @@ fn dot_repeats_replace() {
 
     assert_eq!(ed.doc().text().to_string(), "xx cd\n");
 
-    // `w` from the "xx" selection (head at pos 1) selects the next word "cd".
+    // `w` from the "xx" selection (head at pos 1) selects "cd" — no trailing
+    // space (EOL follows), but a leading one, so the default around-word
+    // span picks up " cd" instead. `r` replaces every grapheme in the
+    // selection, including that space.
     ed.feed_key(key('w'));
-    ed.feed_key(key('.')); // repeat replace with 'x' → "xx xx\n"
+    ed.feed_key(key('.')); // repeat replace with 'x' → "xxxxx\n"
 
-    assert_eq!(ed.doc().text().to_string(), "xx xx\n");
+    assert_eq!(ed.doc().text().to_string(), "xxxxx\n");
 }
 
 /// When `.` is given an explicit count, the stored `last_repeatable_action.count`
@@ -218,10 +228,12 @@ fn dot_is_single_undo_step() {
     ed.feed_key(key_esc());
     assert_eq!(ed.doc().text().to_string(), "hi bar\n");
 
-    // Move to "bar" and repeat.
+    // Move to "bar" and repeat. "bar" has no trailing space (EOL follows)
+    // but does have a leading one, so `w` picks up " bar" (default
+    // around-word) — the replayed change removes that leading space too.
     ed.feed_key(key('w'));
     ed.feed_key(key('.'));
-    assert_eq!(ed.doc().text().to_string(), "hi hi\n");
+    assert_eq!(ed.doc().text().to_string(), "hihi\n");
 
     // One undo undoes the `.` replay entirely.
     ed.feed_key(key('u'));
@@ -588,6 +600,10 @@ fn dot_restamps_last_command() {
 #[test]
 fn dot_repeat_reaching_select_acts_on_current_selection() {
     let mut ed = editor_from("-[a]>  foo bar baz\n");
+    // This test is about the recipe/replay mechanism, not word-span shape —
+    // pin bare-word selection so the buffer arithmetic in the doc comment
+    // above holds regardless of word-selects-whitespace's default.
+    ed.state.settings.word_selects_whitespace = false;
 
     ed.feed_key(key('w')); // select "foo" (reaching, Move mode)
     ed.feed_key(key('d')); // delete "foo" → "a   bar baz\n"
@@ -655,8 +671,10 @@ fn editor_with_steel(initial_state: &str, source: &str) -> Editor {
 ///
 /// Independent oracle: buffer is "foo bar\n", initial selection is "foo".
 /// Run `del-sel` (repeatable Steel command that calls delete internally) →
-/// "foo" is deleted, buffer is " bar\n". Press `w` to select "bar", then `.`
-/// — `.` must replay `del-sel` on the current selection ("bar"), leaving " \n".
+/// "foo" is deleted, buffer is " bar\n". Press `w` to select "bar" — which,
+/// having no trailing space (EOL follows) but a leading one, picks up
+/// " bar" (default around-word) — then `.` replays `del-sel` on that
+/// selection, leaving just "\n".
 ///
 /// Fail oracle 1: if `meta().repeatable` returned `false` for `SteelBacked`,
 /// `last_repeatable_action` would be `None` (no prior recording) — `.` would
@@ -689,13 +707,13 @@ fn steel_dot_repeatable_round_trip() {
         "outer Steel command must win the repeat slot over the inner 'delete'"
     );
 
-    // Select "bar" then press `.` — replay must delete the current selection.
-    ed.feed_key(key('w')); // select "bar"
-    ed.feed_key(key('.')); // replay "del-sel" → delete "bar"
-    // Oracle: " bar\n" → " \n" after "bar" is deleted.
+    // Select " bar" then press `.` — replay must delete the current selection.
+    ed.feed_key(key('w')); // select " bar" (leading fallback)
+    ed.feed_key(key('.')); // replay "del-sel" → delete " bar"
+    // Oracle: " bar\n" → "\n" after " bar" is deleted.
     assert_eq!(
         ed.doc().text().to_string(),
-        " \n",
+        "\n",
         "`.` must replay the Steel command and delete the current selection"
     );
 }
