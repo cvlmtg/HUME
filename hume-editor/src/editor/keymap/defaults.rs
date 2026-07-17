@@ -154,17 +154,19 @@ fn build_text_object_trie() -> KeyTrie {
     match_trie.bind(key!('s'), KeyTrieNode::Node(surround_trie));
     match_trie.bind(key!('w'), wait_char!("surround-add"));
     match_trie.bind_leaf(key!('/'), cmd!("select-all-matches"));
-    // `mm` → `miw` — faster shortcut for selecting inner word.
-    match_trie.bind_leaf(key!('m'), cmd!("inner-word"));
+    // `mm` — select the word under the cursor. Follows
+    // `word-selects-whitespace` (see `select-word`'s `around_fun`), unlike
+    // `miw`/`maw` above which are never flag-affected.
+    match_trie.bind_leaf(key!('m'), cmd!("select-word"));
     match_trie
 }
 
 /// Build a standalone trie for the `M` prefix so that `MM` selects the
-/// inner WORD without opening the full text-object trie.  This keeps `m`
+/// uppercase WORD without opening the full text-object trie.  This keeps `m`
 /// and `M` as separate roots — `mM` and `Mm` are no-ops.
 fn build_uppercase_match_trie() -> KeyTrie {
     let mut t = KeyTrie::new("match");
-    t.bind_leaf(key!('M'), cmd!("inner-uppercase-word"));
+    t.bind_leaf(key!('M'), cmd!("select-uppercase-word"));
     t
 }
 
