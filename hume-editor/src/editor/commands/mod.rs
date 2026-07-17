@@ -141,7 +141,19 @@ pub(super) fn run_native_body(
     let buf = focused_buffer_id(state, view);
     let focused = state.focused_pane_id;
     match cmd {
-        MappableCommand::Motion { fun, .. } => {
+        MappableCommand::Motion {
+            fun, around_fun, ..
+        } => {
+            let fun = if state
+                .buffers
+                .get(buf)
+                .overrides
+                .word_selects_whitespace(&state.settings)
+            {
+                around_fun.unwrap_or(fun)
+            } else {
+                fun
+            };
             doc_ops::apply_doc_motion(
                 &state.buffers,
                 &mut state.panes.state,
@@ -150,7 +162,19 @@ pub(super) fn run_native_body(
                 |b, s| fun(b, s, count, motion_mode),
             );
         }
-        MappableCommand::Selection { fun, .. } => {
+        MappableCommand::Selection {
+            fun, around_fun, ..
+        } => {
+            let fun = if state
+                .buffers
+                .get(buf)
+                .overrides
+                .word_selects_whitespace(&state.settings)
+            {
+                around_fun.unwrap_or(fun)
+            } else {
+                fun
+            };
             doc_ops::apply_doc_motion(
                 &state.buffers,
                 &mut state.panes.state,
