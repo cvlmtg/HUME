@@ -10,6 +10,10 @@ HUME shares Helix's core editing model — select-then-act, selections as first-
 - `d`, `c`, `y`, `p` for delete/change/yank/paste
 - `u` / `U` undo / redo
 
+::: tip
+Unlike Helix, HUME's `c` keeps the selection on the text you changed: select a word, change it, and once you leave Insert mode the new text is still selected, ready to act on again — delete it, surround it, search for it. Disable this with the `select-changed-text` option (see [Configuration](configuration.md)).
+:::
+
 ## Key differences
 
 ### Word motions

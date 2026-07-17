@@ -489,12 +489,13 @@ server.listen(8080)
 +---+--------------------------------------------+
 
 Type your replacement, then press ``Esc``. Unlike other ways of
-leaving Insert mode, ``Esc`` after ``c`` selects the text you just
-typed instead of leaving a plain cursor after it — so you can act
-on the replacement again right away (delete it, search for it, and
-so on). If you press ``Esc`` without typing anything, the cursor is
-left where the change began. This is controlled by the
-``select-changed-text`` option (on by default).
+leaving Insert mode, ``c`` keeps the selection on the text you
+changed — once you leave Insert mode, your replacement is selected
+instead of leaving a plain cursor after it, so you can act on it
+again right away (delete it, search for it, and so on). If you
+press ``Esc`` without typing anything, the cursor is left where the
+change began. This is controlled by the ``select-changed-text``
+option (on by default).
 
 Exercise
 ~~~~~~~~

@@ -24,7 +24,7 @@ Press `Esc` to return to Normal mode.
 
 Use `x` to select the current line first if you want a line-wise delete (`x` then `d`).
 
-After changing text with `c`, leaving Insert mode selects the text you just typed, so you can immediately act on it again — delete it, surround it, search for it. Pressing `Esc` without typing anything leaves the cursor where the change began. Disable this with the `select-changed-text` option (see [Configuration](configuration.md)).
+`c` keeps the selection on the text you changed: leaving Insert mode selects your replacement instead of leaving a plain cursor, so you can immediately act on it again — delete it, surround it, search for it. Pressing `Esc` without typing anything leaves the cursor where the change began. Disable this with the `select-changed-text` option (see [Configuration](configuration.md)).
 
 Whichever way you entered Insert mode, `m i i` recovers what you last typed after `Esc` — see [Text objects](selections.md#text-objects).
 
