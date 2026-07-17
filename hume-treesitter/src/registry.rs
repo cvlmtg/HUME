@@ -39,6 +39,11 @@ pub struct LanguageConfig {
     pub shebangs: Vec<String>,
     /// Tree-sitter grammar + highlight query, `None` until `attach_grammar` is called.
     pub grammar: Option<GrammarBundle>,
+    /// Unique per constructed `LanguageConfig` instance, issued by
+    /// `LanguageRegistry::next_gen`. Grammar-swap / staleness checks compare
+    /// this instead of `Arc::ptr_eq` — a plain integer identity that survives
+    /// across the worker-thread boundary.
+    pub config_gen: u32,
 }
 
 // ── BufferSyntax ──────────────────────────────────────────────────────────────
@@ -46,23 +51,21 @@ pub struct LanguageConfig {
 /// Per-buffer syntax attachment state.
 ///
 /// The `tree_sitter::Parser` lives on the parse worker thread.  This struct
-/// tracks the grammar identity (for keepalive and grammar-swap detection via
-/// `Arc::ptr_eq`) and the most recently installed tree generation.
+/// tracks the attached grammar (for grammar-swap detection via
+/// `LanguageConfig::config_gen`) and the most recently installed tree
+/// generation.
 ///
 /// The parsed trees and highlighters live engine-side, in
 /// `SharedBuffer.syntax: Option<SyntaxLayers>` — both are already engine
 /// types, so there's no crate-layering reason to keep them here. This struct
 /// is the editor-domain half: a single `Option<BufferSyntax>` attachment
-/// flag (`Some` means syntax is wired up), the dlopen'd-grammar keepalive
-/// Arcs, and generation bookkeeping for incremental parsing.
+/// flag (`Some` means syntax is wired up), the attached grammar config, and
+/// generation bookkeeping for incremental parsing.
 pub struct BufferSyntax {
-    /// Keepalive: holds the Arc so the dlopen'd root grammar is not unloaded
-    /// while this buffer is syntax-attached.
+    /// The attached root grammar config.  Read when reposting an incremental
+    /// reparse request and when checking whether the currently attached root
+    /// grammar has an injections query (`sweep_buffers_for_grammars`).
     pub lang: Arc<LanguageConfig>,
-    /// Keepalive for every injected layer's grammar, so a dlopen'd grammar
-    /// backing an injected layer is not unloaded while its tree is installed.
-    /// Rebuilt on each parse install in `apply_parse_outcome`.
-    pub layer_langs: Vec<Arc<LanguageConfig>>,
     /// `text_gen` of the most recently installed tree.  When this equals
     /// `Buffer.text_gen`, the installed tree is up to date.
     pub parsed_gen: u64,
@@ -88,7 +91,6 @@ impl BufferSyntax {
     pub fn new(lang: Arc<LanguageConfig>) -> Self {
         Self {
             lang,
-            layer_langs: Vec::new(),
             parsed_gen: 0,
             tree_gen: 0,
             pending_edits: Vec::new(),
@@ -114,6 +116,9 @@ pub struct LanguageRegistry {
     /// and remove. Handed to the parse worker so it can resolve an injected
     /// language name to its grammar without touching main-thread state.
     grammar_snapshot: Arc<HashMap<String, Arc<LanguageConfig>>>,
+    /// Source of `LanguageConfig::config_gen` — incremented on every new
+    /// config construction so each instance gets a unique identity.
+    next_config_gen: u32,
 }
 
 #[derive(Debug)]
@@ -170,6 +175,7 @@ impl Default for LanguageRegistry {
             shebang_to_name: HashMap::new(),
             lang_order: Vec::new(),
             grammar_snapshot: Arc::new(HashMap::new()),
+            next_config_gen: 0,
         }
     }
 }
@@ -177,6 +183,13 @@ impl Default for LanguageRegistry {
 impl LanguageRegistry {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Issue a fresh `config_gen` for a new `LanguageConfig` instance.
+    fn next_gen(&mut self) -> u32 {
+        let next = self.next_config_gen;
+        self.next_config_gen += 1;
+        next
     }
 
     /// Register a language identity: name, extensions, glob patterns, shebangs.
@@ -209,12 +222,14 @@ impl LanguageRegistry {
         globs: &[&str],
         shebangs: &[&str],
     ) -> Arc<LanguageConfig> {
+        let config_gen = self.next_gen();
         let config = Arc::new(LanguageConfig {
             name: name.to_owned(),
             extensions: extensions.iter().map(|s| s.to_string()).collect(),
             globs: globs.iter().map(|s| s.to_string()).collect(),
             shebangs: shebangs.iter().map(|s| s.to_string()).collect(),
             grammar: None,
+            config_gen,
         });
         self.lang_order.retain(|n| n.as_str() != name);
         self.lang_order.push(name.to_owned());
@@ -365,16 +380,21 @@ impl LanguageRegistry {
             })
             .transpose()?;
         let existing = self.by_name.get(name);
+        let extensions = existing.map_or_else(Vec::new, |c| c.extensions.clone());
+        let globs = existing.map_or_else(Vec::new, |c| c.globs.clone());
+        let shebangs = existing.map_or_else(Vec::new, |c| c.shebangs.clone());
+        let config_gen = self.next_gen();
         let new_config = Arc::new(LanguageConfig {
             name: name.to_owned(),
-            extensions: existing.map_or_else(Vec::new, |c| c.extensions.clone()),
-            globs: existing.map_or_else(Vec::new, |c| c.globs.clone()),
-            shebangs: existing.map_or_else(Vec::new, |c| c.shebangs.clone()),
+            extensions,
+            globs,
+            shebangs,
             grammar: Some(GrammarBundle {
                 grammar,
                 highlighter,
                 injections,
             }),
+            config_gen,
         });
         self.by_name
             .insert(name.to_owned(), Arc::clone(&new_config));

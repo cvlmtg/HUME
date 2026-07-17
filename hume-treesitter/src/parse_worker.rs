@@ -51,8 +51,8 @@ pub(crate) const MAX_INJECTION_DEPTH: u8 = 3;
 pub struct ParseRequest {
     pub bid: BufferId,
     pub text_gen: u64,
-    /// Keepalive: holds the Arc so the dlopen'd grammar is not unloaded while
-    /// the worker holds this request.
+    /// The grammar to parse with. Read on the worker thread for `set_language`
+    /// and injection resolution.
     pub lang: Arc<LanguageConfig>,
     /// O(1) rope clone (structural sharing) — serialised to bytes on the worker
     /// thread only when the parse succeeds, avoiding the main-thread allocation.
@@ -85,7 +85,7 @@ pub struct ParsedLayers {
 
 /// One resolved and parsed injection layer.
 pub struct ParsedInjection {
-    /// Keepalive + identity for the injected layer's grammar.
+    /// The injected layer's grammar — read for its highlighter on install.
     pub lang: Arc<LanguageConfig>,
     pub tree: tree_sitter::Tree,
     /// Absolute byte ranges this layer was parsed over, sorted by start.
@@ -96,8 +96,9 @@ pub struct ParsedInjection {
 pub struct ParseDone {
     pub bid: BufferId,
     pub text_gen: u64,
-    /// Identity token — compared via `Arc::ptr_eq` on the main thread to detect
-    /// grammar swaps that occurred while the request was in flight.
+    /// The grammar this was parsed with. Its `config_gen` is compared on the
+    /// main thread to detect grammar swaps that occurred while the request
+    /// was in flight.
     pub lang: Arc<LanguageConfig>,
     pub outcome: ParseOutcome,
 }
@@ -114,10 +115,11 @@ fn coalesce_one(batch: &mut HashMap<BufferId, ParseRequest>, req: ParseRequest) 
         }
         Entry::Occupied(mut o) => {
             // Keep the latest generation; when generations are equal, a different
-            // grammar Arc means a grammar swap on a quiescent buffer — take the
+            // config_gen means a grammar swap on a quiescent buffer — take the
             // new entry so the fresh grammar wins even without a text edit.
             if req.text_gen > o.get().text_gen
-                || (req.text_gen == o.get().text_gen && !Arc::ptr_eq(&req.lang, &o.get().lang))
+                || (req.text_gen == o.get().text_gen
+                    && req.lang.config_gen != o.get().lang.config_gen)
             {
                 o.insert(req);
             }
@@ -268,14 +270,9 @@ pub trait ParseBackend {
     fn remove_in_flight(&mut self, bid: BufferId);
 
     /// Remove the in-flight record for `bid` only when both `text_gen` and
-    /// grammar identity match.  Avoids clearing a newer in-flight entry when
+    /// `config_gen` match.  Avoids clearing a newer in-flight entry when
     /// a stale `ParseDone` arrives for the same buffer.
-    fn clear_in_flight_if_matches(
-        &mut self,
-        bid: BufferId,
-        text_gen: u64,
-        lang: &Arc<LanguageConfig>,
-    );
+    fn clear_in_flight_if_matches(&mut self, bid: BufferId, text_gen: u64, config_gen: u32);
 
     /// True if any parse request is currently in flight.
     fn has_in_flight(&self) -> bool;
@@ -289,9 +286,9 @@ pub trait ParseBackend {
 /// re-submitting for a buffer whose request is already in flight.
 struct InFlight {
     text_gen: u64,
-    /// Grammar identity at submission time — used by `clear_in_flight_if_matches`
+    /// `config_gen` at submission time — used by `clear_in_flight_if_matches`
     /// to avoid evicting a newer in-flight entry when a stale result arrives.
-    lang: Arc<LanguageConfig>,
+    config_gen: u32,
 }
 
 // ── ThreadedParseBackend (production) ─────────────────────────────────────────
@@ -361,7 +358,7 @@ impl ParseBackend for ThreadedParseBackend {
             let bid = req.bid;
             let inf = InFlight {
                 text_gen: req.text_gen,
-                lang: Arc::clone(&req.lang),
+                config_gen: req.lang.config_gen,
             };
             match tx.send(req) {
                 Ok(()) => {
@@ -401,15 +398,10 @@ impl ParseBackend for ThreadedParseBackend {
         self.in_flight.remove(&bid);
     }
 
-    fn clear_in_flight_if_matches(
-        &mut self,
-        bid: BufferId,
-        text_gen: u64,
-        lang: &Arc<LanguageConfig>,
-    ) {
+    fn clear_in_flight_if_matches(&mut self, bid: BufferId, text_gen: u64, config_gen: u32) {
         if let Some(inf) = self.in_flight.get(&bid)
             && inf.text_gen == text_gen
-            && Arc::ptr_eq(&inf.lang, lang)
+            && inf.config_gen == config_gen
         {
             self.in_flight.remove(&bid);
         }
@@ -481,12 +473,7 @@ impl ParseBackend for InlineParseBackend {
         false
     }
     fn remove_in_flight(&mut self, _bid: BufferId) {}
-    fn clear_in_flight_if_matches(
-        &mut self,
-        _bid: BufferId,
-        _text_gen: u64,
-        _lang: &Arc<LanguageConfig>,
-    ) {
+    fn clear_in_flight_if_matches(&mut self, _bid: BufferId, _text_gen: u64, _config_gen: u32) {
     }
     // Inline parses complete synchronously inside `post` — nothing is ever pending.
     fn has_in_flight(&self) -> bool {
@@ -520,6 +507,14 @@ mod tests {
     use crate::registry::GrammarBundle;
     use crate::test_support::grammar_parser_path;
 
+    /// Distinct per call, mirroring `LanguageRegistry`'s `config_gen`
+    /// invariant so tests that compare configs by gen see real identity.
+    fn next_test_config_gen() -> u32 {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static NEXT_GEN: AtomicU32 = AtomicU32::new(0);
+        NEXT_GEN.fetch_add(1, Ordering::Relaxed)
+    }
+
     fn make_lang(name: &str, symbol: &str) -> Arc<LanguageConfig> {
         let path = grammar_parser_path(name);
         if !path.exists() {
@@ -545,6 +540,7 @@ mod tests {
                 highlighter,
                 injections: None,
             }),
+            config_gen: next_test_config_gen(),
         })
     }
 
@@ -667,8 +663,9 @@ mod tests {
             },
         );
         // The new lang must win.
-        assert!(
-            Arc::ptr_eq(&batch[&bid].lang, &lang_b),
+        assert_eq!(
+            batch[&bid].lang.config_gen,
+            lang_b.config_gen,
             "grammar swap must replace same-gen entry"
         );
         assert_eq!(
@@ -736,7 +733,7 @@ mod tests {
             matches!(done1.outcome, ParseOutcome::Ok(..)),
             "json parse must succeed"
         );
-        assert!(Arc::ptr_eq(&done1.lang, &json_lang));
+        assert_eq!(done1.lang.config_gen, json_lang.config_gen);
 
         worker.post(ParseRequest {
             bid,
@@ -754,7 +751,7 @@ mod tests {
             matches!(done2.outcome, ParseOutcome::Ok(..)),
             "rust parse must succeed after language switch"
         );
-        assert!(Arc::ptr_eq(&done2.lang, &rust_lang));
+        assert_eq!(done2.lang.config_gen, rust_lang.config_gen);
     }
 
     // ── Wake callback ─────────────────────────────────────────────────────────

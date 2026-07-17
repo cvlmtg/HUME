@@ -32,7 +32,7 @@ impl ParseBackend for AlwaysPendingBackend {
         &mut self,
         _bid: hume_engine::pipeline::BufferId,
         _text_gen: u64,
-        _lang: &std::sync::Arc<hume_treesitter::registry::LanguageConfig>,
+        _config_gen: u32,
     ) {
     }
     fn has_in_flight(&self) -> bool {

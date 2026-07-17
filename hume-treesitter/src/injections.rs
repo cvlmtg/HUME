@@ -342,7 +342,16 @@ mod tests {
                 highlighter,
                 injections,
             }),
+            config_gen: next_test_config_gen(),
         })
+    }
+
+    /// Distinct per call, mirroring `LanguageRegistry`'s `config_gen`
+    /// invariant so tests that compare configs by gen see real identity.
+    fn next_test_config_gen() -> u32 {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static NEXT_GEN: AtomicU32 = AtomicU32::new(0);
+        NEXT_GEN.fetch_add(1, Ordering::Relaxed)
     }
 
     fn skip_if_missing(name: &str) -> bool {

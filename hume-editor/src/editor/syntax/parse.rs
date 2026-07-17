@@ -18,7 +18,7 @@ impl Editor {
         self.view.buffers[bid].syntax = None;
         self.state.buffers.get_mut(bid).syntax = None;
         // Must clear before posting the fresh request: is_in_flight() matches on
-        // text_gen alone, so a stale entry (different Arc<LanguageConfig> after a
+        // text_gen alone, so a stale entry (different config_gen after a
         // grammar swap via sweep_buffers_for_grammars) would short-circuit the
         // reparse_stale_buffers request-phase even though the language changed.
         self.parse_worker.remove_in_flight(bid);
@@ -95,7 +95,7 @@ impl Editor {
         } = done;
         self.apply_parse_outcome(bid, text_gen, &lang, outcome);
         self.parse_worker
-            .clear_in_flight_if_matches(bid, text_gen, &lang);
+            .clear_in_flight_if_matches(bid, text_gen, lang.config_gen);
     }
 
     fn apply_parse_outcome(
@@ -119,7 +119,7 @@ impl Editor {
         };
 
         // Discard if the grammar was swapped between enqueue and arrival.
-        if !Arc::ptr_eq(lang, &buf_syntax.lang) {
+        if lang.config_gen != buf_syntax.lang.config_gen {
             return;
         }
 
@@ -137,7 +137,6 @@ impl Editor {
                         .expect("grammar.is_some() verified at setup_buffer_syntax")
                         .highlighter,
                 );
-                let mut layer_langs = Vec::with_capacity(parsed.injected.len());
                 let mut layers = Vec::with_capacity(1 + parsed.injected.len());
                 layers.push(SyntaxLayer {
                     tree: parsed.root,
@@ -152,7 +151,6 @@ impl Editor {
                     let Some(bundle) = injected.lang.grammar.as_ref() else {
                         continue;
                     };
-                    layer_langs.push(Arc::clone(&injected.lang));
                     layers.push(SyntaxLayer {
                         tree: injected.tree,
                         highlighter: Arc::clone(&bundle.highlighter),
@@ -166,7 +164,6 @@ impl Editor {
                 if let Some(syn) = self.state.buffers.get_mut(bid).syntax.as_mut() {
                     syn.pending_edits.retain(|(g, _)| *g > text_gen);
                     syn.tree_gen = text_gen;
-                    syn.layer_langs = layer_langs;
                 }
             }
             ParseOutcome::ParseFailed => {

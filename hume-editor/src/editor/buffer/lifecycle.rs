@@ -148,7 +148,7 @@ pub(crate) fn close_buffer(
 
 /// Drop the engine-side syntax layers for buffer `id`.
 ///
-/// The `BufferSyntax` state-side attachment (grammar keepalive, gen tracking)
+/// The `BufferSyntax` state-side attachment (attached grammar, gen tracking)
 /// is the caller's responsibility to clear (e.g. set `state.buffers[id].syntax
 /// = None` or let `setup_buffer_syntax` do it). This function only clears the
 /// engine-side layers so the stale parse result is not used by the renderer
