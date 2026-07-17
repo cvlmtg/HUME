@@ -54,58 +54,6 @@ pub struct GrammarBundle {
     pub config_gen: u32,
 }
 
-// ── BufferSyntax ──────────────────────────────────────────────────────────────
-
-/// Per-buffer syntax attachment state.
-///
-/// The `tree_sitter::Parser` lives on the parse worker thread.  This struct
-/// tracks the attached grammar bundle (for grammar-swap detection via
-/// `GrammarBundle::config_gen`) and the most recently installed tree
-/// generation.
-///
-/// The parsed trees and highlighters live engine-side, in
-/// `SharedBuffer.syntax: Option<SyntaxLayers>` — both are already engine
-/// types, so there's no crate-layering reason to keep them here. This struct
-/// is the editor-domain half: a single `Option<BufferSyntax>` attachment
-/// flag (`Some` means syntax is wired up), the attached grammar bundle, and
-/// generation bookkeeping for incremental parsing.
-pub struct BufferSyntax {
-    /// The attached root grammar bundle.  Read when reposting an incremental
-    /// reparse request and when checking whether the currently attached root
-    /// grammar has an injections query (`sweep_buffers_for_grammars`).
-    pub bundle: Arc<GrammarBundle>,
-    /// `text_gen` of the most recently installed tree.  When this equals
-    /// `Buffer.text_gen`, the installed tree is up to date.
-    pub parsed_gen: u64,
-    /// Text generation whose coordinates the committed `sbuf.syntax` layers
-    /// currently describe.  Advanced each time pending edits are baked into
-    /// the committed layers in `reparse_stale_buffers`, and on each precise
-    /// parse install in `apply_parse_outcome`.  Separate from `parsed_gen`
-    /// because edits can outpace the worker: `tree_gen` advances every frame
-    /// (on bake), while `parsed_gen` advances only when the worker delivers a
-    /// result.
-    pub tree_gen: u64,
-    /// Edits recorded since the last bake or installed tree, in order.
-    ///
-    /// Each entry is `(text_gen, edit)` where `text_gen` is the generation
-    /// produced by the edit.  A contiguous chain from `tree_gen + 1` to the
-    /// current `Buffer.text_gen` enables in-place baking of the committed tree;
-    /// a gap triggers a full reparse.  Entries are cleared on each successful
-    /// bake and drained (up to the installed gen) on each `apply_parse_outcome`.
-    pub pending_edits: Vec<(u64, tree_sitter::InputEdit)>,
-}
-
-impl BufferSyntax {
-    pub fn new(bundle: Arc<GrammarBundle>) -> Self {
-        Self {
-            bundle,
-            parsed_gen: 0,
-            tree_gen: 0,
-            pending_edits: Vec::new(),
-        }
-    }
-}
-
 // ── LanguageRegistry ──────────────────────────────────────────────────────────
 
 /// Global registry of configured language identities. Lives on `Editor`.

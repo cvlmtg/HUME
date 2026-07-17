@@ -11,32 +11,18 @@ use std::time::{Duration, Instant};
 use super::*;
 use hume_treesitter::parse_worker::{ParseBackend, ParseDone, ParseRequest};
 
-/// A `ParseBackend` double that reports work permanently in flight, without
-/// spinning a real thread. The parse worker does not contribute an
-/// `AsyncSource` (see `in_flight_parse_no_longer_forces_a_wake` below) —
-/// this double exists purely to prove that `has_in_flight()` returning
-/// `true` has no effect on `wake_timeout` whatsoever, arrival being
-/// wake-driven instead.
+/// A `ParseBackend` double that never completes a request, without spinning
+/// a real thread. The parse worker does not contribute an `AsyncSource` (see
+/// `in_flight_parse_no_longer_forces_a_wake` below) — `ParseBackend` has no
+/// in-flight query at all (that state lives on `Syntax` now), so this double
+/// exists purely to prove `wake_timeout` stays unaffected by a backend that
+/// never drains anything, arrival being wake-driven instead.
 struct AlwaysPendingBackend;
 
 impl ParseBackend for AlwaysPendingBackend {
     fn post(&mut self, _req: ParseRequest) {}
     fn drain_done(&mut self) -> Vec<ParseDone> {
         Vec::new()
-    }
-    fn is_in_flight(&self, _bid: hume_engine::pipeline::BufferId, _text_gen: u64) -> bool {
-        false
-    }
-    fn remove_in_flight(&mut self, _bid: hume_engine::pipeline::BufferId) {}
-    fn clear_in_flight_if_matches(
-        &mut self,
-        _bid: hume_engine::pipeline::BufferId,
-        _text_gen: u64,
-        _config_gen: u32,
-    ) {
-    }
-    fn has_in_flight(&self) -> bool {
-        true
     }
     fn is_disconnected(&self) -> bool {
         false
@@ -55,8 +41,9 @@ fn wake_timeout_is_none_when_idle() {
 #[test]
 fn in_flight_parse_no_longer_forces_a_wake() {
     // The parse worker must not contribute an `AsyncSource` regardless of
-    // `has_in_flight()` — parse completion wakes the loop through the
-    // platform waker, not a deadline — so this must stay `None`.
+    // backend state — parse completion wakes the loop through the platform
+    // waker, not a deadline — so this must stay `None` even against a
+    // backend that never drains anything.
     let mut ed = editor_from("-[w]>ord\n");
     ed.parse_worker = Box::new(AlwaysPendingBackend);
     assert_eq!(ed.wake_timeout(), None);

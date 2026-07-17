@@ -263,36 +263,10 @@ impl WorkerState {
 pub trait ParseBackend {
     fn post(&mut self, req: ParseRequest);
 
-    /// Drain all available parse results.  Must be called before
-    /// `is_in_flight` or other state queries on the same frame.
+    /// Drain all available parse results.
     fn drain_done(&mut self) -> Vec<ParseDone>;
 
-    /// Whether `bid` has an in-flight request matching `text_gen`.
-    fn is_in_flight(&self, bid: BufferId, text_gen: u64) -> bool;
-
-    /// Unconditionally remove the in-flight record for `bid`.
-    fn remove_in_flight(&mut self, bid: BufferId);
-
-    /// Remove the in-flight record for `bid` only when both `text_gen` and
-    /// `config_gen` match.  Avoids clearing a newer in-flight entry when
-    /// a stale `ParseDone` arrives for the same buffer.
-    fn clear_in_flight_if_matches(&mut self, bid: BufferId, text_gen: u64, config_gen: u32);
-
-    /// True if any parse request is currently in flight.
-    fn has_in_flight(&self) -> bool;
-
     fn is_disconnected(&self) -> bool;
-}
-
-// ── InFlight record ───────────────────────────────────────────────────────────
-
-/// Records a pending parse request so `reparse_stale_buffers` can avoid
-/// re-submitting for a buffer whose request is already in flight.
-struct InFlight {
-    text_gen: u64,
-    /// `config_gen` at submission time — used by `clear_in_flight_if_matches`
-    /// to avoid evicting a newer in-flight entry when a stale result arrives.
-    config_gen: u32,
 }
 
 // ── ThreadedParseBackend (production) ─────────────────────────────────────────
@@ -301,7 +275,6 @@ pub struct ThreadedParseBackend {
     /// `None` after `Drop` closes the channel to signal the worker.
     tx_req: Option<mpsc::Sender<ParseRequest>>,
     rx_done: mpsc::Receiver<ParseDone>,
-    in_flight: HashMap<BufferId, InFlight>,
     disconnected: bool,
     cancel: Arc<AtomicBool>,
     thread: Option<thread::JoinHandle<()>>,
@@ -339,7 +312,6 @@ impl ThreadedParseBackend {
         Self {
             tx_req: Some(tx_req),
             rx_done,
-            in_flight: HashMap::new(),
             disconnected: false,
             cancel,
             thread: Some(thread),
@@ -358,21 +330,10 @@ impl ParseBackend for ThreadedParseBackend {
         if self.disconnected {
             return;
         }
-        if let Some(ref tx) = self.tx_req {
-            let bid = req.bid;
-            let inf = InFlight {
-                text_gen: req.text_gen,
-                config_gen: req.bundle.config_gen,
-            };
-            match tx.send(req) {
-                Ok(()) => {
-                    self.in_flight.insert(bid, inf);
-                }
-                Err(_) => {
-                    self.disconnected = true;
-                    self.in_flight.clear();
-                }
-            }
+        if let Some(ref tx) = self.tx_req
+            && tx.send(req).is_err()
+        {
+            self.disconnected = true;
         }
     }
 
@@ -384,35 +345,11 @@ impl ParseBackend for ThreadedParseBackend {
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => {
                     self.disconnected = true;
-                    self.in_flight.clear();
                     break;
                 }
             }
         }
         out
-    }
-
-    fn is_in_flight(&self, bid: BufferId, text_gen: u64) -> bool {
-        self.in_flight
-            .get(&bid)
-            .is_some_and(|inf| inf.text_gen == text_gen)
-    }
-
-    fn remove_in_flight(&mut self, bid: BufferId) {
-        self.in_flight.remove(&bid);
-    }
-
-    fn clear_in_flight_if_matches(&mut self, bid: BufferId, text_gen: u64, config_gen: u32) {
-        if let Some(inf) = self.in_flight.get(&bid)
-            && inf.text_gen == text_gen
-            && inf.config_gen == config_gen
-        {
-            self.in_flight.remove(&bid);
-        }
-    }
-
-    fn has_in_flight(&self) -> bool {
-        !self.in_flight.is_empty()
     }
 
     fn is_disconnected(&self) -> bool {
@@ -473,16 +410,6 @@ impl ParseBackend for InlineParseBackend {
         self.done.drain(..).collect()
     }
 
-    fn is_in_flight(&self, _bid: BufferId, _text_gen: u64) -> bool {
-        false
-    }
-    fn remove_in_flight(&mut self, _bid: BufferId) {}
-    fn clear_in_flight_if_matches(&mut self, _bid: BufferId, _text_gen: u64, _config_gen: u32) {
-    }
-    // Inline parses complete synchronously inside `post` — nothing is ever pending.
-    fn has_in_flight(&self) -> bool {
-        false
-    }
     fn is_disconnected(&self) -> bool {
         false
     }

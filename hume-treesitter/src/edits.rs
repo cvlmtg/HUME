@@ -1,7 +1,5 @@
 use hume_editing::changeset::{ChangeSet, Operation};
 
-use crate::registry::BufferSyntax;
-
 // ── Incremental parse helpers ─────────────────────────────────────────────────
 
 /// Translate a `ChangeSet` into a sequence of `tree_sitter::InputEdit`s.
@@ -102,22 +100,6 @@ fn new_end_point(start_row: usize, start_col: usize, inserted: &str) -> (usize, 
         // Column is the byte count after the last newline in the inserted text.
         let last_nl = inserted.rfind('\n').unwrap();
         (start_row + newline_count, inserted.len() - last_nl - 1)
-    }
-}
-
-/// Record one batch of `InputEdit`s on `syn.pending_edits`.
-///
-/// Called from `doc_ops` immediately after every text mutation, guarded by
-/// the caller on `buf.syntax.is_some()` (a buffer with no grammar attached
-/// has nothing to record edits into).
-pub fn record_pending_edits(
-    syn: &mut BufferSyntax,
-    text_gen: u64,
-    cs: &ChangeSet,
-    rope_pre: &ropey::Rope,
-) {
-    for edit in input_edits_from_changeset(cs, rope_pre) {
-        syn.pending_edits.push((text_gen, edit));
     }
 }
 
