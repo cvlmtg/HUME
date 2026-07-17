@@ -278,6 +278,16 @@ mod imp {
                 // `wait` reports live `Input` forever and the run loop spins
                 // re-polling a dead fd instead of ever reaching its `Err`
                 // exit path.
+                //
+                // Known tradeoff, not an oversight: this means bytes still
+                // buffered at the moment of hangup are dropped rather than
+                // drained (`wait` errors before the caller's `event::read`
+                // ever runs). Poll flags alone can't distinguish "real
+                // pending bytes" from "closed fd that always reports POLLIN
+                // because an EOF read never blocks" — fixing that needs an
+                // actual read/FIONREAD probe here, not a flag tweak. Not
+                // worth it today: HUME has no PTY-driven automation that
+                // writes-then-closes.
                 let input_closed = input_r
                     .intersects(PollFlags::POLLERR | PollFlags::POLLHUP | PollFlags::POLLNVAL);
                 Ok(RawReady {
