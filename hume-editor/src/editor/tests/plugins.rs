@@ -1049,12 +1049,21 @@ fn native_command_survives_failed_shadowing_plugin() {
 }
 
 /// A lazy plugin activated via `call!` whose body binds a key and then errors:
-/// the binding must not survive — a `Failed` plugin leaves no dangling
+/// the binding must never be applied — a `Failed` plugin leaves no dangling
 /// keybinding pointing at a command that (if it was also rolled back, or was
 /// never valid) can no longer be dispatched.
 ///
-/// Flip: drop the `key_bindings` unbind loop from `finish_lazy_activation` →
-/// `lookup_command` still returns `Some(("some-cmd", false))` after failure.
+/// `bind-key!` only queues an `Effect::BindKey`, and two independent layers
+/// drop it: `pop_effect_marks(false)` discards the failed body's uncommitted
+/// entries, and `take_eval_effects` hands the dispatcher's `Err` arm only the
+/// *committed* ones. `Q` never reaches the keymap.
+///
+/// Flip: both layers must be defeated together for this to fire — make
+/// `pop_effect_marks`'s failure branch keep every entry AND `take_eval_effects`
+/// salvage uncommitted ones on `Err`; then the bind reaches
+/// `apply_script_effects` and `lookup_command` returns `Some(("some-cmd",
+/// false))`. Flipping either alone is caught by the other, which is the point:
+/// a bind is never applied unless the body that queued it committed.
 #[test]
 #[cfg(not(windows))]
 fn plugin_keybinding_rolled_back_on_failed_activation() {
@@ -2197,6 +2206,7 @@ fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
 #[cfg(not(windows))]
 fn keymap_lint_silent_for_known_command() {
     use crate::editor::Severity;
+    use crate::editor::keymap::BindMode;
 
     let (ed, _dirs) =
         setup_editor_with_init_scripting(r#"(bind-key! 'normal "Q" "move-down")"#, None);
@@ -2212,6 +2222,16 @@ fn keymap_lint_silent_for_known_command() {
             .entries()
             .map(|e| format!("{:?}: {}", e.severity, e.text))
             .collect::<Vec<_>>()
+    );
+    // The lint reads all three tries at once, so it can't tell Normal from
+    // Insert — this is what pins `Effect::BindKey`'s mode all the way through
+    // `to_editor_bind_mode` into the right trie.
+    assert!(
+        ed.state
+            .keymap
+            .lookup_command(BindMode::Normal, &[key('Q')])
+            .is_some(),
+        "init.scm's bind-key! must land in the Normal trie specifically"
     );
 }
 

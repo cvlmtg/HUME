@@ -169,6 +169,39 @@ pub enum Effect {
     GrammarSweep(String),
     LspRequest(PendingLspRequest),
     LspNotify(PendingLspNotify),
+    /// `(bind-key! …)` / `(bind-key-extend! …)` — applied via
+    /// `Keymap::bind_user_with_extend`.
+    ///
+    /// Queued rather than applied inline through a host capability so a failed
+    /// plugin activation's binds are *never applied*: `pop_effect_marks(false)`
+    /// drops them with everything else the failed body queued, so there is no
+    /// ledger to keep and no unbind pass to run — and a bind that would have
+    /// shadowed an existing one leaves it untouched, since nothing was ever
+    /// overwritten. Mode and key-sequence validation still fails synchronously
+    /// inside the builtin.
+    BindKey {
+        mode: crate::host::BindMode,
+        keys: Vec<crossterm::event::KeyEvent>,
+        cmd: String,
+        force_extend: bool,
+    },
+    /// `(bind-wait-char! …)` — applied via `Keymap::bind_wait_char_user`.
+    ///
+    /// Separate from [`Effect::BindKey`] rather than a flag on it: a WaitChar
+    /// node has no `force_extend` notion, so merging the two would make an
+    /// illegal state representable.
+    BindWaitChar {
+        mode: crate::host::BindMode,
+        keys: Vec<crossterm::event::KeyEvent>,
+        cmd: String,
+    },
+    /// `(unbind-key! …)` — applied via `Keymap::unbind_user`. Queued like the
+    /// three binders above so a same-eval bind-then-unbind on one key applies
+    /// in Steel's emission order.
+    UnbindKey {
+        mode: crate::host::BindMode,
+        keys: Vec<crossterm::event::KeyEvent>,
+    },
 }
 
 /// One entry in the shared effect log (`ScriptingHost::effects`).

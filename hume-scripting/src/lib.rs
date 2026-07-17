@@ -63,8 +63,7 @@ pub use builtins::ids::SteelBufferId;
 pub use hooks::HookId;
 pub use host::{
     BindMode, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost, EditHost,
-    EditorHost, KeymapHost, LanguageHost, LspHost, OutputHost, SettingsHost, TimerHost, UiHost,
-    unsupported,
+    EditorHost, LanguageHost, LspHost, OutputHost, SettingsHost, TimerHost, UiHost, unsupported,
 };
 pub use keys::parse_key_stream;
 pub use log::LogLevel;
@@ -128,13 +127,6 @@ pub(crate) struct ScriptingRegistries {
     /// dispatch for any method Rust doesn't already special-case
     /// (window/logMessage, window/showMessage, $/progress, publishDiagnostics).
     pub(crate) lsp_notification_handlers: std::collections::HashMap<String, Vec<SteelVal>>,
-    /// Keybindings applied inline by `bind-key!` / `bind-key-extend!` /
-    /// `bind-wait-char!`, tagged with the plugin whose body applied them.
-    /// Only populated for plugin-owned binds — top-level `init.scm` binds are
-    /// never recorded here, never rolled back (same as `cmd_owners`' implicit
-    /// `Owner::User` case). Consulted by `finish_lazy_activation` to unbind a
-    /// failed plugin's keys via `KeymapHost::unbind_key`.
-    pub(crate) key_bindings: Vec<(PluginId, host::BindMode, Vec<crossterm::event::KeyEvent>)>,
 }
 
 // ── HostBundle ────────────────────────────────────────────────────────────────
@@ -219,7 +211,6 @@ impl ScriptingHost {
                 command_table: std::collections::HashMap::new(),
                 plugin_configs: std::collections::HashMap::new(),
                 lsp_notification_handlers: std::collections::HashMap::new(),
-                key_bindings: Vec::new(),
             },
             plugin_stack: PluginStack::default(),
             pending_messages: Vec::new(),
@@ -722,10 +713,15 @@ impl ScriptingHost {
     ///
     /// Convenience wrapper for testing.  Delegates to `eval_source_raw` with
     /// empty `builtin_names` and the default 10-second init budget (harmless
-    /// for normal tests that complete quickly).
-    pub fn eval_source(&mut self, source: &str, host: &mut dyn EditorHost) -> Result<(), String> {
+    /// for normal tests that complete quickly). Returns the effects the eval
+    /// queued, in emission order — same contract as `eval_init`, so a test can
+    /// assert on what a builtin marshalled across the boundary.
+    pub fn eval_source(
+        &mut self,
+        source: &str,
+        host: &mut dyn EditorHost,
+    ) -> Result<Vec<Effect>, String> {
         self.eval_source_raw(source.to_owned(), Default::default(), 10_000, host)
-            .map(|_| ())
             .map_err(|e| e.message)
     }
 

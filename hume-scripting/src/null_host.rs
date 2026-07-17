@@ -6,8 +6,8 @@
 //!
 //! Suitable only for guard tests (init-guard, activation-state, budget, register
 //! validation) where the host mutators are never reached.  Tests that need working
-//! mutations (bind-key!, set-option!, attach-grammar!, …) must use `MockHost`
-//! in the editor crate.
+//! mutations (set-option!, attach-grammar!, …) must use `MockHost` in the editor
+//! crate.
 //!
 //! [`FailingRegisterHost`], [`InlineOutputHost`], and [`RecordingInlineOutputHost`]
 //! each embed a real `NullHost` and delegate every capability accessor to it,
@@ -15,13 +15,12 @@
 
 use std::path::{Path, PathBuf};
 
-use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::attribution::PluginId;
 use crate::host::{
-    BindMode, BufferHost, CommandHost, CursorHost, EditorHost, KeymapHost, LanguageHost,
-    OptionValue, OutputHost, SettingsHost,
+    BufferHost, CommandHost, CursorHost, EditorHost, LanguageHost, OptionValue, OutputHost,
+    SettingsHost,
 };
 use crate::types::SteelCmdDef;
 
@@ -36,9 +35,6 @@ impl EditorHost for NullHost {
         self
     }
     fn language(&mut self) -> &mut dyn LanguageHost {
-        self
-    }
-    fn keymap(&mut self) -> &mut dyn KeymapHost {
         self
     }
     fn settings(&mut self) -> &mut dyn SettingsHost {
@@ -105,29 +101,6 @@ impl SettingsHost for NullHost {
     }
     fn steel_command_budget_ms(&self) -> u64 {
         10_000
-    }
-}
-
-impl KeymapHost for NullHost {
-    fn bind_key(
-        &mut self,
-        _mode: BindMode,
-        _keys: &[KeyEvent],
-        _cmd: &str,
-        _fe: bool,
-    ) -> Result<(), String> {
-        Err("NullHost: bind_key not available".into())
-    }
-    fn bind_wait_char(
-        &mut self,
-        _mode: BindMode,
-        _keys: &[KeyEvent],
-        _cmd: &str,
-    ) -> Result<(), String> {
-        Err("NullHost: bind_wait_char not available".into())
-    }
-    fn unbind_key(&mut self, _mode: BindMode, _keys: &[KeyEvent]) -> Result<(), String> {
-        Err("NullHost: unbind_key not available".into())
     }
 }
 
@@ -216,9 +189,6 @@ impl EditorHost for FailingRegisterHost {
     fn language(&mut self) -> &mut dyn LanguageHost {
         &mut self.inner
     }
-    fn keymap(&mut self) -> &mut dyn KeymapHost {
-        &mut self.inner
-    }
     fn settings(&mut self) -> &mut dyn SettingsHost {
         &mut self.inner
     }
@@ -283,9 +253,6 @@ impl EditorHost for InlineOutputHost {
     fn language(&mut self) -> &mut dyn LanguageHost {
         &mut self.inner
     }
-    fn keymap(&mut self) -> &mut dyn KeymapHost {
-        &mut self.inner
-    }
     fn settings(&mut self) -> &mut dyn SettingsHost {
         &mut self.inner
     }
@@ -324,9 +291,6 @@ impl EditorHost for RecordingInlineOutputHost {
         &mut self.inner
     }
     fn language(&mut self) -> &mut dyn LanguageHost {
-        &mut self.inner
-    }
-    fn keymap(&mut self) -> &mut dyn KeymapHost {
         &mut self.inner
     }
     fn settings(&mut self) -> &mut dyn SettingsHost {
@@ -376,9 +340,6 @@ impl EditorHost for LazyStubHost {
         self
     }
     fn language(&mut self) -> &mut dyn LanguageHost {
-        &mut self.inner
-    }
-    fn keymap(&mut self) -> &mut dyn KeymapHost {
         &mut self.inner
     }
     fn settings(&mut self) -> &mut dyn SettingsHost {

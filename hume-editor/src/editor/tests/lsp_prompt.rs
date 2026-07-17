@@ -4,16 +4,7 @@
 use std::path::Path;
 
 use super::*;
-use crate::editor::scripting_setup::make_init_host;
 use hume_scripting::ScriptingHost;
-
-fn eval_with_real_host(ed: &mut Editor, host: &mut ScriptingHost, source: &str, tmp: &Path) {
-    let init_path = tmp.join("init.scm");
-    std::fs::write(&init_path, source).unwrap();
-    let mut ih = make_init_host(&mut ed.state, &mut ed.view);
-    host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-        .expect("eval_init");
-}
 
 fn run(ed: &mut Editor, tmp: &Path, source: &str) {
     let mut host = ScriptingHost::new();

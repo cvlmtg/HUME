@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 
-use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::attribution::PluginId;
@@ -9,8 +8,10 @@ use crate::types::SteelCmdDef;
 /// Key-binding mode, as recognised by `bind-key!`/`unbind-key!`.
 ///
 /// Defined here (scripting layer) so builtins do not depend on the editor's
-/// internal `crate::editor::keymap::BindMode`.  The editor impl maps this to
-/// its own `BindMode` in `EditorHostImpl`.
+/// internal `crate::editor::keymap::BindMode`.  Travels to the editor inside
+/// [`crate::Effect::BindKey`]/[`BindWaitChar`](crate::Effect::BindWaitChar)/
+/// [`UnbindKey`](crate::Effect::UnbindKey), which maps it to the editor's own
+/// `BindMode` as it applies them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BindMode {
     Normal,
@@ -37,10 +38,10 @@ pub fn unsupported(builtin: &str) -> String {
 }
 
 /// The editor interface exposed to scripting builtins during a Steel eval, as
-/// a capability directory: every domain method lives on one of the 13
+/// a capability directory: every domain method lives on one of the 12
 /// capability traits in this module (`BufferHost`, `SettingsHost`,
-/// `KeymapHost`, `LanguageHost`, `CommandHost`, `CursorHost`, `UiHost`,
-/// `LspHost`, `EditHost`, `DecorationHost`, `CompletionHost`, `TimerHost`,
+/// `LanguageHost`, `CommandHost`, `CursorHost`, `UiHost`, `LspHost`,
+/// `EditHost`, `DecorationHost`, `CompletionHost`, `TimerHost`,
 /// `OutputHost`), reached through an accessor on this trait — `EditorHost`
 /// itself declares no domain methods.
 ///
@@ -58,15 +59,15 @@ pub fn unsupported(builtin: &str) -> String {
 /// reads/enumeration) are command-mode only, gated per-builtin by the `cmd`
 /// kind in `builtins!`'s registration table (`errors::require_cmd`);
 /// init-only methods (`SettingsHost::set_global_option`,
-/// `SettingsHost::configure_statusline`, `KeymapHost::bind_*`/`unbind_key`)
-/// use the `config` kind (`errors::require_config`), the reverse guard.
+/// `SettingsHost::configure_statusline`) use the `config` kind
+/// (`errors::require_config`), the reverse guard.
 ///
 /// Focused buffer/pane ids are passed as explicit constructor args to
 /// `call_steel_cmd`/`fire_hook` rather than queried through this trait, so a
 /// builtin always sees the pre-command snapshot, not a value that can change
 /// mid-eval (e.g. after `switch-to-buffer!`).
 ///
-/// Six accessors are required — `buffers`, `settings`, `keymap`, `language`,
+/// Five accessors are required — `buffers`, `settings`, `language`,
 /// `commands`, `cursor` — because every host has *some* notion of them, even
 /// if minimal (an empty buffer list, a rejecting command registry). The other
 /// seven are optional, returning `Option<&mut dyn CapabilityTrait>`: `None`
@@ -124,9 +125,6 @@ pub trait EditorHost {
     /// Grammar attachment and trigger-char registration — required: every
     /// host has some notion (even if empty) of its language/grammar set.
     fn language(&mut self) -> &mut dyn LanguageHost;
-    /// Keymap binding/unbinding — required: every host has some notion (even
-    /// if empty) of its key bindings.
-    fn keymap(&mut self) -> &mut dyn KeymapHost;
     /// Global settings, statusline config, and the Steel eval budget —
     /// required: every host has some notion (even if minimal defaults) of
     /// its settings.
@@ -277,26 +275,6 @@ pub trait LanguageHost {
     /// source doesn't clobber the first's). An empty `chars` removes the
     /// entry.
     fn register_trigger_chars(&mut self, source: String, language: String, chars: Vec<char>);
-}
-
-/// Keymap binding/unbinding — accessed through [`EditorHost::keymap`].
-pub trait KeymapHost {
-    fn bind_key(
-        &mut self,
-        mode: BindMode,
-        keys: &[KeyEvent],
-        cmd: &str,
-        force_extend: bool,
-    ) -> Result<(), String>;
-
-    fn bind_wait_char(
-        &mut self,
-        mode: BindMode,
-        keys: &[KeyEvent],
-        cmd: &str,
-    ) -> Result<(), String>;
-
-    fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String>;
 }
 
 /// Global settings, statusline config, and the Steel eval budget —

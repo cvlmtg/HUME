@@ -480,14 +480,15 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
 ///   - hooks (`register-hook!`): every handler tagged with this plugin's id
 ///     is dropped via `HookRegistry::remove_owned_by`, so a `Failed`
 ///     plugin's hooks stop firing;
-///   - key bindings (`bind-key!` / `bind-key-extend!` / `bind-wait-char!`):
-///     every key this plugin bound is unbound via the `key_bindings` ledger
-///     and `KeymapHost::unbind_key`. This *unbinds* rather than *restores*
-///     whatever the key was bound to before — `bind-key!` overwrites
-///     silently with no collision detection (rebinding is a legitimate,
-///     common operation), so there is no prior binding to snapshot without
-///     much heavier machinery. A plugin that shadows an existing key and
-///     then fails leaves that key unbound, not reverted. Accepted scope.
+///   - key bindings (`bind-key!` / `bind-key-extend!` / `bind-wait-char!` /
+///     `unbind-key!`): nothing to undo — these never applied. The builtins
+///     queue an `Effect::BindKey`/`BindWaitChar`/`UnbindKey` rather than
+///     mutating the keymap inline, so `ctx.pop_effect_marks(success)` below
+///     drops a failed body's binds along with everything else it queued. No
+///     ledger, no unbind pass, no owner tag. And because a failed plugin's
+///     bind is never *applied* rather than *un-applied*, a plugin that would
+///     have shadowed an existing binding and then fails leaves that binding
+///     untouched — nothing was overwritten, so there is nothing to restore.
 ///
 /// `ctx.pop_effect_marks(success)` does the same for every queued side effect
 /// (`register-lsp-server!`, `define-language!`, LSP requests, grammar
@@ -497,12 +498,16 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
 /// successfully) survives this failure too, because that nested plugin's
 /// `Loaded` state is never rolled back either. See `pop_effect_marks`.
 ///
-/// Hooks and key bindings need none of that committed-flag machinery: they
-/// mutate persistent registries immediately and permanently the instant the
-/// builtin runs, each tagged with a static owner set once at registration —
-/// rollback removes entries *by identity* (`owner == this id`), never by
-/// eval-scoped position, so a nested plugin's own entries (a different
-/// owner) are simply never matched.
+/// Hooks need none of that committed-flag machinery, and cannot use it:
+/// `HookRegistry` lives inside `ScriptingHost`, but `Editor::init_scripting`
+/// holds the host in a local until well after it applies every startup eval's
+/// effects — an editor-applied `Effect::RegisterHook` would find `scripting ==
+/// None` and silently drop every hook `init.scm` registered. So
+/// `register-hook!` mutates the persistent registry the instant the builtin
+/// runs, tagged with a static owner set once at registration, and rollback
+/// removes entries *by identity* (`owner == this id`) rather than by
+/// eval-scoped position — a nested plugin's own entries (a different owner)
+/// are simply never matched.
 pub(crate) fn finish_lazy_activation(
     ctx: &mut SteelCtx,
     id_str: String,
@@ -546,21 +551,6 @@ pub(crate) fn finish_lazy_activation(
 
         // Roll back hooks the failed body registered.
         ctx.registries.hooks.remove_owned_by(&id);
-
-        // Roll back key bindings the failed body made.
-        let orphan_binds: Vec<_> = ctx
-            .registries
-            .key_bindings
-            .iter()
-            .filter(|(owner, _, _)| owner == &id)
-            .map(|(_, mode, keys)| (*mode, keys.clone()))
-            .collect();
-        ctx.registries
-            .key_bindings
-            .retain(|(owner, _, _)| owner != &id);
-        for (mode, keys) in orphan_binds {
-            let _ = ctx.host.keymap().unbind_key(mode, &keys);
-        }
     }
 
     Ok(SteelVal::Void)

@@ -30,16 +30,14 @@ pub(crate) struct SteelCtx<'a> {
     /// In `EvalSession::Init`, `host.buffers()`'s methods are gated by the
     /// `cmd` kind in `builtins!`'s registration table and never called; the
     /// init-only methods (`host.settings().set_global_option`,
-    /// `host.keymap().bind_key`, `host.settings().configure_statusline`) are
-    /// always safe.
+    /// `host.settings().configure_statusline`) are always safe.
     pub(crate) host: &'a mut dyn EditorHost,
     // ── Persistent state borrowed from ScriptingHost ──────────────────────────
     /// Plugin attribution stack; identifies whose mutation is being recorded.
     pub(crate) plugin_stack: &'a mut PluginStack,
     /// The persistent registries (`cmd_owners`, `hooks`, `lazy_registry`,
     /// `declared_plugins`, `command_table`, `plugin_configs`,
-    /// `lsp_notification_handlers`, `key_bindings`). Borrowed as a unit,
-    /// disjoint from `steel`.
+    /// `lsp_notification_handlers`). Borrowed as a unit, disjoint from `steel`.
     pub(crate) registries: &'a mut ScriptingRegistries,
     /// Log messages accumulated by `(log! …)`.
     pub(crate) pending_messages: &'a mut Vec<(LogLevel, String)>,

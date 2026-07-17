@@ -402,6 +402,30 @@ fn safe_tempdir() -> tempfile::TempDir {
     tempfile::tempdir().expect("tempdir")
 }
 
+/// Write `source` as `<tmp>/init.scm`, evaluate it against the real
+/// `EditorHostImpl`, and apply the effects it queued — the harness mirror of
+/// `Editor::init_scripting`'s eval/apply pair.
+///
+/// Applying is not optional: effects an eval queues (`bind-key!`,
+/// `register-lsp-server!`, …) only take hold once `apply_script_effects` runs,
+/// so skipping it silently drops every one of them.
+#[cfg(not(windows))]
+fn eval_with_real_host(
+    ed: &mut Editor,
+    host: &mut hume_scripting::ScriptingHost,
+    source: &str,
+    tmp: &std::path::Path,
+) {
+    let init_path = tmp.join("init.scm");
+    std::fs::write(&init_path, source).unwrap();
+    let effects = {
+        let mut ih = crate::editor::scripting_setup::make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init");
+    ed.apply_script_effects(effects);
+}
+
 /// Lock `HUME_RUNTIME_MUTEX`, create isolated `runtime` and `tmp` tempdirs,
 /// set `HUME_RUNTIME` and `TMPDIR`, and restore both on drop.
 ///

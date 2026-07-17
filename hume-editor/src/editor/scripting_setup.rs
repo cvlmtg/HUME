@@ -54,6 +54,25 @@ impl Editor {
                     self.flush_lsp_pending_changes();
                     self.send_one_lsp_notify(notify);
                 }
+                Effect::BindKey {
+                    mode,
+                    keys,
+                    cmd,
+                    force_extend,
+                } => self.state.keymap.bind_user_with_extend(
+                    to_editor_bind_mode(mode),
+                    &keys,
+                    std::borrow::Cow::Owned(cmd),
+                    force_extend,
+                ),
+                Effect::BindWaitChar { mode, keys, cmd } => self.state.keymap.bind_wait_char_user(
+                    to_editor_bind_mode(mode),
+                    &keys,
+                    std::borrow::Cow::Owned(cmd),
+                ),
+                Effect::UnbindKey { mode, keys } => {
+                    self.state.keymap.unbind_user(to_editor_bind_mode(mode), &keys)
+                }
             }
         }
     }
@@ -499,6 +518,18 @@ pub(crate) fn make_init_host<'a>(
     view: &'a mut hume_engine::pipeline::EngineView,
 ) -> EditorHostImpl<'a> {
     EditorHostImpl::new(state, view)
+}
+
+/// Map the scripting layer's `BindMode` (carried in `Effect::BindKey` and
+/// friends) to the editor's own. Fully qualified on both sides: this module
+/// works with `crate::editor::keymap::BindMode` too, so importing either name
+/// bare would shadow the other.
+fn to_editor_bind_mode(mode: hume_scripting::BindMode) -> crate::editor::keymap::BindMode {
+    match mode {
+        hume_scripting::BindMode::Normal => crate::editor::keymap::BindMode::Normal,
+        hume_scripting::BindMode::Extend => crate::editor::keymap::BindMode::Extend,
+        hume_scripting::BindMode::Insert => crate::editor::keymap::BindMode::Insert,
+    }
 }
 
 /// Map scripting `LogLevel` → editor `Severity`.

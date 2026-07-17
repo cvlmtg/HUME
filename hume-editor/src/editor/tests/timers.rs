@@ -2,21 +2,7 @@
 // (cancel-timer! id), (debounce ms proc).
 
 use super::*;
-use crate::editor::scripting_setup::make_init_host;
 use hume_scripting::ScriptingHost;
-
-fn eval_with_real_host(
-    ed: &mut Editor,
-    host: &mut ScriptingHost,
-    source: &str,
-    tmp: &std::path::Path,
-) {
-    let init_path = tmp.join("init.scm");
-    std::fs::write(&init_path, source).unwrap();
-    let mut ih = make_init_host(&mut ed.state, &mut ed.view);
-    host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-        .expect("eval_init");
-}
 
 #[test]
 fn after_fires_once_past_its_deadline() {

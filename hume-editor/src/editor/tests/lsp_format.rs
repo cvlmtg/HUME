@@ -9,21 +9,11 @@ use std::path::{Path, PathBuf};
 
 use super::*;
 use crate::editor::lsp::LspState;
-use crate::editor::scripting_setup::make_init_host;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_lsp::backend::{LspBackend, ServerId};
 use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
-
-#[cfg(not(windows))]
-fn eval_with_real_host(ed: &mut Editor, host: &mut ScriptingHost, source: &str, tmp: &Path) {
-    let init_path = tmp.join("init.scm");
-    std::fs::write(&init_path, source).unwrap();
-    let mut ih = make_init_host(&mut ed.state, &mut ed.view);
-    host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-        .expect("eval_init");
-}
 
 /// "line1\nline2\nline3\n" — char offsets: line0 'line1' = 0..5 (+\n at 5),
 /// line1 'line2' = 6..11 (+\n at 11), line2 'line3' = 12..17 (+\n at 17).

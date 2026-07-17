@@ -14,14 +14,6 @@ use hume_engine::pipeline::RenderContext;
 use hume_scripting::ScriptingHost;
 use ratatui::layout::Rect;
 
-fn eval_with_real_host(ed: &mut Editor, host: &mut ScriptingHost, source: &str, tmp: &Path) {
-    let init_path = tmp.join("init.scm");
-    std::fs::write(&init_path, source).unwrap();
-    let mut ih = crate::editor::scripting_setup::make_init_host(&mut ed.state, &mut ed.view);
-    host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-        .expect("eval_init");
-}
-
 fn run(ed: &mut Editor, tmp: &Path, source: &str) {
     let mut host = ScriptingHost::new();
     eval_with_real_host(ed, &mut host, source, tmp);

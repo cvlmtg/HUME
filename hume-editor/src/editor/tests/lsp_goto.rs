@@ -11,20 +11,10 @@ use std::path::{Path, PathBuf};
 
 use super::*;
 use crate::editor::lsp::LspState;
-use crate::editor::scripting_setup::make_init_host;
 use hume_lsp::backend::{LspBackend, ServerId};
 use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
-
-#[cfg(not(windows))]
-fn eval_with_real_host(ed: &mut Editor, host: &mut ScriptingHost, source: &str, tmp: &Path) {
-    let init_path = tmp.join("init.scm");
-    std::fs::write(&init_path, source).unwrap();
-    let mut ih = make_init_host(&mut ed.state, &mut ed.view);
-    host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-        .expect("eval_init");
-}
 
 /// Writes the fixture file up front and returns its `file://` URI — callers
 /// need the URI *before* `setup` to build their scripted `Location`

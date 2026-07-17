@@ -11,21 +11,12 @@ use std::path::Path;
 
 use super::*;
 use crate::editor::lsp::LspState;
-use crate::editor::scripting_setup::make_init_host;
 use hume_engine::builtins::sign_column::Sign;
 use hume_engine::pipeline::{PaneId, RenderContext};
 use hume_lsp::backend::LspBackend;
 use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
-
-fn eval_with_real_host(ed: &mut Editor, host: &mut ScriptingHost, source: &str, tmp: &Path) {
-    let init_path = tmp.join("init.scm");
-    std::fs::write(&init_path, source).unwrap();
-    let mut ih = make_init_host(&mut ed.state, &mut ed.view);
-    host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-        .expect("eval_init");
-}
 
 /// `((start_line, start_char), (end_line, end_char), severity)`.
 type DiagFixture = ((u32, u32), (u32, u32), i64);

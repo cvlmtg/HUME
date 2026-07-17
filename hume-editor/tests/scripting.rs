@@ -173,40 +173,46 @@ fn get_option_unknown_key_errors() {
 // ── bind-key! ─────────────────────────────────────────────────────────────
 
 #[test]
-fn bind_key_does_not_error_on_valid_input() {
+fn bind_key_queues_bind_effect() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    h.eval_source("(bind-key! 'normal \"z\" \"move-right\")", &mut mock)
+    let effects = h
+        .eval_source("(bind-key! 'normal \"z\" \"move-right\")", &mut mock)
         .unwrap();
 
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use hume_editor::KeymapBindMode as BindMode;
-    let z_key = &[KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)];
-    let (name, _) = mock
-        .keymap
-        .lookup_command(BindMode::Normal, z_key)
-        .expect("bind-key! must bind 'z' in the keymap");
-    assert_eq!(name, "move-right", "z must be bound to move-right");
+    let z_key = KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE);
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [Effect::BindKey { mode: BindMode::Normal, keys, cmd, force_extend: false }]
+                if keys.as_slice() == [z_key] && cmd == "move-right"
+        ),
+        "expected one Effect::BindKey for 'z' → move-right; got: {effects:?}"
+    );
 }
 
 #[test]
-fn bind_key_multi_key_sequence_no_error() {
+fn bind_key_multi_key_sequence_queues_full_sequence() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    h.eval_source("(bind-key! 'normal \"g h\" \"move-right\")", &mut mock)
+    let effects = h
+        .eval_source("(bind-key! 'normal \"g h\" \"move-right\")", &mut mock)
         .unwrap();
 
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use hume_editor::KeymapBindMode as BindMode;
     let g_key = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
     let h_key = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE);
-    let (name, _) = mock
-        .keymap
-        .lookup_command(BindMode::Normal, &[g_key, h_key])
-        .expect("bind-key! must bind the 'g h' sequence");
-    assert_eq!(name, "move-right", "g h must be bound to move-right");
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [Effect::BindKey { keys, cmd, .. }]
+                if keys.as_slice() == [g_key, h_key] && cmd == "move-right"
+        ),
+        "the whole 'g h' sequence must reach the effect; got: {effects:?}"
+    );
 }
 
 #[test]
@@ -1520,23 +1526,19 @@ fn language_builtins_error_on_stale_buffer_id() {
 // ── bind-key-extend! ──────────────────────────────────────────────────────
 
 #[test]
-fn bind_key_extend_creates_force_extending_leaf() {
+fn bind_key_extend_queues_force_extend_effect() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    h.eval_source(r#"(bind-key-extend! 'normal "z" "select-line")"#, &mut mock)
+    let effects = h
+        .eval_source(r#"(bind-key-extend! 'normal "z" "select-line")"#, &mut mock)
         .unwrap();
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use hume_editor::KeymapBindMode as BindMode;
-    let z_key = &[KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)];
-    let (name, force_extend) = mock
-        .keymap
-        .lookup_command(BindMode::Normal, z_key)
-        .expect("z must be bound after bind-key-extend!");
-    assert_eq!(name, "select-line");
     assert!(
-        force_extend,
-        "bind-key-extend! must produce force_extend = true"
+        matches!(
+            effects.as_slice(),
+            [Effect::BindKey { cmd, force_extend: true, .. }] if cmd == "select-line"
+        ),
+        "bind-key-extend! must produce force_extend = true; got: {effects:?}"
     );
 }
 
@@ -1545,16 +1547,16 @@ fn bind_key_does_not_force_extend() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    h.eval_source(r#"(bind-key! 'normal "z" "select-line")"#, &mut mock)
+    let effects = h
+        .eval_source(r#"(bind-key! 'normal "z" "select-line")"#, &mut mock)
         .unwrap();
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use hume_editor::KeymapBindMode as BindMode;
-    let z_key = &[KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)];
-    let (_, force_extend) = mock
-        .keymap
-        .lookup_command(BindMode::Normal, z_key)
-        .expect("z must be bound after bind-key!");
-    assert!(!force_extend, "bind-key! must produce force_extend = false");
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [Effect::BindKey { force_extend: false, .. }]
+        ),
+        "bind-key! must produce force_extend = false; got: {effects:?}"
+    );
 }
 
 #[test]
@@ -1571,57 +1573,24 @@ fn bind_key_extend_invalid_mode_errors() {
 // ── unbind-key! ───────────────────────────────────────────────────────────
 
 #[test]
-fn unbind_key_removes_default_binding() {
+fn unbind_key_queues_unbind_effect() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use hume_editor::KeymapBindMode as BindMode;
-    let h_key = &[KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE)];
-    assert!(
-        mock.keymap
-            .lookup_command(BindMode::Normal, h_key)
-            .is_some(),
-        "'h' must be bound by default"
-    );
-
-    h.eval_source(r#"(unbind-key! 'normal "h")"#, &mut mock)
+    let effects = h
+        .eval_source(r#"(unbind-key! 'normal "h")"#, &mut mock)
         .unwrap();
 
-    assert!(
-        mock.keymap
-            .lookup_command(BindMode::Normal, h_key)
-            .is_none(),
-        "'h' must be unbound after unbind-key!"
-    );
-}
-
-#[test]
-fn unbind_key_noop_on_already_unbound() {
-    let mut h = host();
-    let mut mock = MockHost::new();
-
+    // Whether 'h' was bound is `Keymap`'s business, not the builtin's —
+    // `remove_sequence_nonexistent_is_noop` (editor/keymap/mod.rs) owns that.
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use hume_editor::KeymapBindMode as BindMode;
-    let q_key = &[KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE)];
-
-    // 'Q' is not in the default keymap.
+    let h_key = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE);
     assert!(
-        mock.keymap
-            .lookup_command(BindMode::Normal, q_key)
-            .is_none(),
-        "'Q' must not be bound before unbind-key! (baseline check)"
-    );
-
-    h.eval_source(r#"(unbind-key! 'normal "Q")"#, &mut mock)
-        .unwrap();
-
-    // The no-op must not corrupt the keymap — 'Q' remains absent.
-    assert!(
-        mock.keymap
-            .lookup_command(BindMode::Normal, q_key)
-            .is_none(),
-        "'Q' must remain unbound after no-op unbind-key!"
+        matches!(
+            effects.as_slice(),
+            [Effect::UnbindKey { mode: BindMode::Normal, keys }] if keys.as_slice() == [h_key]
+        ),
+        "expected one Effect::UnbindKey for 'h'; got: {effects:?}"
     );
 }
 
@@ -1818,112 +1787,94 @@ const PRELUDE_MACROS: &str = r#"
 #[test]
 fn prelude_bind_keys_batch_binds_multiple() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use hume_editor::KeymapBindMode as BindMode;
 
     let mut h = host();
     let mut mock = MockHost::new();
 
     h.eval_source(PRELUDE_MACROS, &mut mock).unwrap();
-    h.eval_source(
-        r#"(bind-keys! 'normal
+    let effects = h
+        .eval_source(
+            r#"(bind-keys! 'normal
              ("z z" "move-left")
              ("z l" "move-right"))"#,
-        &mut mock,
-    )
-    .unwrap();
+            &mut mock,
+        )
+        .unwrap();
 
     let z = KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE);
     let l = KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE);
 
-    let (name, fe) = mock
-        .keymap
-        .lookup_command(BindMode::Normal, &[z, z])
-        .expect("\"z z\" must be bound after bind-keys!");
-    assert_eq!(name, "move-left");
-    assert!(!fe, "bind-keys! must not force extend");
-
-    let (name2, _) = mock
-        .keymap
-        .lookup_command(BindMode::Normal, &[z, l])
-        .expect("\"z l\" must be bound after bind-keys!");
-    assert_eq!(name2, "move-right");
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [
+                Effect::BindKey { keys: k1, cmd: c1, force_extend: false, .. },
+                Effect::BindKey { keys: k2, cmd: c2, force_extend: false, .. },
+            ] if k1.as_slice() == [z, z] && c1 == "move-left"
+                && k2.as_slice() == [z, l] && c2 == "move-right"
+        ),
+        "bind-keys! must expand to one non-force-extend bind per pair, in order; \
+         got: {effects:?}"
+    );
 }
 
 #[test]
 fn prelude_bind_keys_extend_creates_force_extend_leaves() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use hume_editor::KeymapBindMode as BindMode;
 
     let mut h = host();
     let mut mock = MockHost::new();
 
     h.eval_source(PRELUDE_MACROS, &mut mock).unwrap();
-    h.eval_source(
-        r#"(bind-keys-extend! 'normal
+    let effects = h
+        .eval_source(
+            r#"(bind-keys-extend! 'normal
              ("Q" "select-line")
              ("W" "select-to-end"))"#,
-        &mut mock,
-    )
-    .unwrap();
+            &mut mock,
+        )
+        .unwrap();
 
-    let q = &[KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE)];
-    let w = &[KeyEvent::new(KeyCode::Char('W'), KeyModifiers::NONE)];
+    let q = KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE);
+    let w = KeyEvent::new(KeyCode::Char('W'), KeyModifiers::NONE);
 
-    let (name, fe) = mock
-        .keymap
-        .lookup_command(BindMode::Normal, q)
-        .expect("\"Q\" must be bound after bind-keys-extend!");
-    assert_eq!(name, "select-line");
-    assert!(fe, "bind-keys-extend! must produce force_extend = true");
-
-    let (name2, fe2) = mock
-        .keymap
-        .lookup_command(BindMode::Normal, w)
-        .expect("\"W\" must be bound after bind-keys-extend!");
-    assert_eq!(name2, "select-to-end");
-    assert!(fe2, "bind-keys-extend! must produce force_extend = true");
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [
+                Effect::BindKey { keys: k1, cmd: c1, force_extend: true, .. },
+                Effect::BindKey { keys: k2, cmd: c2, force_extend: true, .. },
+            ] if k1.as_slice() == [q] && c1 == "select-line"
+                && k2.as_slice() == [w] && c2 == "select-to-end"
+        ),
+        "bind-keys-extend! must expand to force-extending binds, in order; got: {effects:?}"
+    );
 }
 
 #[test]
 fn prelude_unbind_keys_batch_removes_bindings() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use hume_editor::KeymapBindMode as BindMode;
 
     let mut h = host();
     let mut mock = MockHost::new();
 
     h.eval_source(PRELUDE_MACROS, &mut mock).unwrap();
-
-    // 'h' and 'l' are default normal-mode bindings.
-    let h_key = &[KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE)];
-    let l_key = &[KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE)];
-    assert!(
-        mock.keymap
-            .lookup_command(BindMode::Normal, h_key)
-            .is_some(),
-        "'h' must be bound by default"
-    );
-    assert!(
-        mock.keymap
-            .lookup_command(BindMode::Normal, l_key)
-            .is_some(),
-        "'l' must be bound by default"
-    );
-
-    h.eval_source(r#"(unbind-keys! 'normal "h" "l")"#, &mut mock)
+    let effects = h
+        .eval_source(r#"(unbind-keys! 'normal "h" "l")"#, &mut mock)
         .unwrap();
 
+    let h_key = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE);
+    let l_key = KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE);
+
     assert!(
-        mock.keymap
-            .lookup_command(BindMode::Normal, h_key)
-            .is_none(),
-        "'h' must be unbound after unbind-keys!"
-    );
-    assert!(
-        mock.keymap
-            .lookup_command(BindMode::Normal, l_key)
-            .is_none(),
-        "'l' must be unbound after unbind-keys!"
+        matches!(
+            effects.as_slice(),
+            [
+                Effect::UnbindKey { keys: k1, .. },
+                Effect::UnbindKey { keys: k2, .. },
+            ] if k1.as_slice() == [h_key] && k2.as_slice() == [l_key]
+        ),
+        "unbind-keys! must expand to one unbind per key, in order; got: {effects:?}"
     );
 }
 
@@ -1963,25 +1914,25 @@ fn prelude_eval_init_sequence_makes_macros_available_to_init_scm() {
             .collect::<Vec<_>>()
     );
 
-    h.eval_init(&init_path, 10_000, &mut mock, builtin_names)
+    let effects = h
+        .eval_init(&init_path, 10_000, &mut mock, builtin_names)
         .expect("init.scm using bind-keys! must succeed after prelude is loaded");
 
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use hume_editor::KeymapBindMode as BindMode;
     let q = KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE);
     let w = KeyEvent::new(KeyCode::Char('W'), KeyModifiers::NONE);
 
-    let (name1, _) = mock
-        .keymap
-        .lookup_command(BindMode::Normal, &[q, q])
-        .expect("\"Q Q\" must be bound via bind-keys! from init.scm");
-    assert_eq!(name1, "move-left");
-
-    let (name2, _) = mock
-        .keymap
-        .lookup_command(BindMode::Normal, &[q, w])
-        .expect("\"Q W\" must be bound via bind-keys! from init.scm");
-    assert_eq!(name2, "move-right");
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [
+                Effect::BindKey { keys: k1, cmd: c1, .. },
+                Effect::BindKey { keys: k2, cmd: c2, .. },
+            ] if k1.as_slice() == [q, q] && c1 == "move-left"
+                && k2.as_slice() == [q, w] && c2 == "move-right"
+        ),
+        "init.scm's bind-keys! must expand via the prelude macro; got: {effects:?}"
+    );
 }
 
 /// When init.scm uses bind-keys! but the prelude was never loaded, the eval

@@ -6,19 +6,10 @@ use std::path::Path;
 
 use super::*;
 use crate::editor::lsp::LspState;
-use crate::editor::scripting_setup::make_init_host;
 use hume_lsp::backend::{LspBackend, ServerId};
 use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
-
-fn eval_with_real_host(ed: &mut Editor, host: &mut ScriptingHost, source: &str, tmp: &Path) {
-    let init_path = tmp.join("init.scm");
-    std::fs::write(&init_path, source).unwrap();
-    let mut ih = make_init_host(&mut ed.state, &mut ed.view);
-    host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-        .expect("eval_init");
-}
 
 /// Attaches the focused buffer to a `Running` scripted server (UTF-16
 /// encoding, the negotiated default) — inlay hints need a resolvable

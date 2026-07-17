@@ -16,8 +16,8 @@
 //! # Design rule: delegate, record, or faithfully mirror — never approximate
 //!
 //! Every method here is (a) a thin wrapper over a *real* production
-//! structure/function it holds (`self.settings`, `self.keymap`, `hume::
-//! settings::setting_value`, `hume::ops::register::is_valid_register_name`),
+//! structure/function it holds (`self.settings`, `hume::settings::
+//! setting_value`, `hume::ops::register::is_valid_register_name`),
 //! (b) pure recording of whatever the test already told it (`dispatched_
 //! native`, `native_names`), or (c) a reduced but faithful mirror of a real
 //! decision, restated in the exact terms this mock actually tracks
@@ -33,16 +33,13 @@
 //! `Editor` + `EditorHostImpl` instead (see
 //! `hume-editor/src/editor/tests/plugins.rs`).
 
-use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
 use hume_scripting::host::{
-    BindMode, BufferHost, CommandHost, CursorHost, EditorHost, KeymapHost, LanguageHost,
-    OptionValue, SettingsHost,
+    BufferHost, CommandHost, CursorHost, EditorHost, LanguageHost, OptionValue, SettingsHost,
 };
 
 pub(crate) struct MockHost {
     pub(crate) settings: hume::settings::EditorSettings,
-    pub(crate) keymap: hume::Keymap,
     /// Grammar names attached via `(register-grammar! …)`.
     pub(crate) grammars: std::collections::HashSet<String>,
     /// Commands registered via `(define-command! …)` during evals.
@@ -62,7 +59,6 @@ impl MockHost {
     pub(crate) fn new() -> Self {
         Self {
             settings: hume::settings::EditorSettings::default(),
-            keymap: hume::Keymap::default(),
             grammars: std::collections::HashSet::new(),
             registered_cmds: Vec::new(),
             native_names: std::collections::HashSet::new(),
@@ -86,9 +82,6 @@ impl EditorHost for MockHost {
         self
     }
     fn language(&mut self) -> &mut dyn LanguageHost {
-        self
-    }
-    fn keymap(&mut self) -> &mut dyn KeymapHost {
         self
     }
     fn settings(&mut self) -> &mut dyn SettingsHost {
@@ -183,41 +176,6 @@ impl SettingsHost for MockHost {
     }
     fn steel_command_budget_ms(&self) -> u64 {
         self.settings.steel_command_budget_ms as u64
-    }
-}
-
-impl KeymapHost for MockHost {
-    fn bind_key(
-        &mut self,
-        mode: BindMode,
-        keys: &[KeyEvent],
-        cmd: &str,
-        force_extend: bool,
-    ) -> Result<(), String> {
-        self.keymap.bind_user_with_extend(
-            to_editor_bind_mode(mode),
-            keys,
-            std::borrow::Cow::Owned(cmd.to_owned()),
-            force_extend,
-        );
-        Ok(())
-    }
-    fn bind_wait_char(
-        &mut self,
-        mode: BindMode,
-        keys: &[KeyEvent],
-        cmd: &str,
-    ) -> Result<(), String> {
-        self.keymap.bind_wait_char_user(
-            to_editor_bind_mode(mode),
-            keys,
-            std::borrow::Cow::Owned(cmd.to_owned()),
-        );
-        Ok(())
-    }
-    fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String> {
-        self.keymap.unbind_user(to_editor_bind_mode(mode), keys);
-        Ok(())
     }
 }
 
@@ -332,14 +290,6 @@ impl CursorHost for MockHost {
     }
     fn selection_spans_full_line(&self, _bid: BufferId) -> bool {
         false
-    }
-}
-
-fn to_editor_bind_mode(mode: BindMode) -> hume::KeymapBindMode {
-    match mode {
-        BindMode::Normal => hume::KeymapBindMode::Normal,
-        BindMode::Extend => hume::KeymapBindMode::Extend,
-        BindMode::Insert => hume::KeymapBindMode::Insert,
     }
 }
 

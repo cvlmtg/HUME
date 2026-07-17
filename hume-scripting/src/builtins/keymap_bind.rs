@@ -4,9 +4,9 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use crate::SteelCtx;
 use crate::host::BindMode;
 use crate::keys::parse_key_sequence;
+use crate::{Effect, SteelCtx};
 
 use super::errors::generic_err;
 
@@ -45,24 +45,23 @@ fn bind_inner(
 ) -> SteelResult {
     let mode = mode_from_symbol(&mode, fn_name)?;
     let keys = parse_key_sequence(&key_str).map_err(generic_err)?;
-    match kind {
-        BindKind::Normal => ctx
-            .host
-            .keymap()
-            .bind_key(mode, &keys, &cmd_name, force_extend)
-            .map_err(generic_err)?,
-        BindKind::WaitChar => ctx
-            .host
-            .keymap()
-            .bind_wait_char(mode, &keys, &cmd_name)
-            .map_err(generic_err)?,
-    }
-    // Record the owner so a failed plugin activation can unbind this key —
-    // see `finish_lazy_activation`. Only tracked for plugin-owned binds;
-    // top-level init.scm binds are permanent, never rolled back.
-    if let Some(owner) = ctx.plugin_stack.current().cloned() {
-        ctx.registries.key_bindings.push((owner, mode, keys));
-    }
+    // Queued, not applied: a failed plugin activation's binds are dropped by
+    // `pop_effect_marks(false)` before the editor ever sees them. Validation
+    // above still fails synchronously — a bad mode or key sequence is the
+    // script's bug, not a side effect to defer.
+    ctx.push_effect(match kind {
+        BindKind::Normal => Effect::BindKey {
+            mode,
+            keys,
+            cmd: cmd_name,
+            force_extend,
+        },
+        BindKind::WaitChar => Effect::BindWaitChar {
+            mode,
+            keys,
+            cmd: cmd_name,
+        },
+    });
     Ok(SteelVal::Void)
 }
 
@@ -126,10 +125,7 @@ pub(crate) fn bind_key_extend(
 pub(crate) fn unbind_key(ctx: &mut SteelCtx, mode: SteelVal, key_str: String) -> SteelResult {
     let mode = mode_from_symbol(&mode, "unbind-key!")?;
     let keys = parse_key_sequence(&key_str).map_err(generic_err)?;
-    ctx.host
-        .keymap()
-        .unbind_key(mode, &keys)
-        .map_err(generic_err)?;
+    ctx.push_effect(Effect::UnbindKey { mode, keys });
     Ok(SteelVal::Void)
 }
 
@@ -161,6 +157,11 @@ pub(crate) fn bind_wait_char(
 mod tests {
     use super::*;
     use crate::test_support::SteelCtxTestHarness;
+
+    /// Effects queued so far, in emission order.
+    fn effects(h: &SteelCtxTestHarness) -> Vec<&Effect> {
+        h.effects.iter().map(|e| &e.effect).collect()
+    }
 
     // ── Init-only guard ───────────────────────────────────────────────────────
     //
@@ -241,6 +242,11 @@ mod tests {
             msg.contains("mode"),
             "error must mention 'mode'; got: {msg}"
         );
+        drop(ctx);
+        assert!(
+            effects(&h).is_empty(),
+            "validation must reject before queueing anything"
+        );
     }
 
     /// `unbind-key!` rejects an unknown mode name.
@@ -250,6 +256,11 @@ mod tests {
         let mut ctx = h.ctx_init();
         let result = unbind_key(&mut ctx, SteelVal::SymbolV("visual".into()), "z".into());
         assert!(result.is_err(), "unbind-key! must reject unknown mode");
+        drop(ctx);
+        assert!(
+            effects(&h).is_empty(),
+            "validation must reject before queueing anything"
+        );
     }
 
     /// `bind-key!` rejects a string mode (the pre-migration convention);
@@ -296,6 +307,11 @@ mod tests {
             result.is_err(),
             "bind-key! must reject invalid key sequences"
         );
+        drop(ctx);
+        assert!(
+            effects(&h).is_empty(),
+            "validation must reject before queueing anything"
+        );
     }
 
     /// `unbind-key!` also validates the key sequence.
@@ -312,28 +328,125 @@ mod tests {
             result.is_err(),
             "unbind-key! must reject invalid key sequences"
         );
+        drop(ctx);
+        assert!(
+            effects(&h).is_empty(),
+            "validation must reject before queueing anything"
+        );
     }
 
-    // ── Guard passes, host called ─────────────────────────────────────────────
+    // ── Guard passes, effect queued ───────────────────────────────────────────
 
-    /// In init mode with valid args, `bind-key!` passes the guard and reaches the
-    /// host.  NullHost returns Err("NullHost: bind_key not available"), which proves
-    /// the error is NOT the guard error.
+    /// In init mode with valid args, `bind-key!` passes the guard and queues an
+    /// `Effect::BindKey` carrying the parsed mode/keys/command — nothing touches
+    /// the keymap at builtin time; the editor applies it later via
+    /// `Editor::apply_script_effects`.
+    ///
+    /// Fail oracle: drop the `push_effect` from `bind_inner` → `effects` comes
+    /// back empty and the binding vanishes silently.
     #[test]
-    fn bind_key_init_mode_calls_host() {
+    fn bind_key_init_mode_queues_bind_effect() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx_init();
-        let result = bind_key(
-            &mut ctx,
-            SteelVal::SymbolV("normal".into()),
-            "z".into(),
-            "move-right".into(),
-        );
-        assert!(result.is_err());
-        let msg = result.unwrap_err().to_string();
+        {
+            let mut ctx = h.ctx_init();
+            let result = bind_key(
+                &mut ctx,
+                SteelVal::SymbolV("normal".into()),
+                "z".into(),
+                "move-right".into(),
+            );
+            assert!(result.is_ok(), "bind-key! must succeed; got: {result:?}");
+        }
         assert!(
-            !msg.contains("only valid during"),
-            "must reach the host, not the guard; got: {msg}"
+            matches!(
+                effects(&h).as_slice(),
+                [Effect::BindKey { mode: BindMode::Normal, keys, cmd, force_extend: false }]
+                    if keys.len() == 1 && cmd == "move-right"
+            ),
+            "expected one Effect::BindKey for 'z' → move-right; got: {:?}",
+            effects(&h)
+        );
+    }
+
+    /// `bind-key-extend!` queues the same effect with `force_extend: true` —
+    /// the flag is the only thing distinguishing it from `bind-key!`.
+    ///
+    /// Fail oracle: hardcode `force_extend: false` in `bind_inner`'s
+    /// `Effect::BindKey` → this fires while `bind_key_init_mode_queues_bind_effect`
+    /// still passes.
+    #[test]
+    fn bind_key_extend_queues_force_extend_effect() {
+        let mut h = SteelCtxTestHarness::new();
+        {
+            let mut ctx = h.ctx_init();
+            bind_key_extend(
+                &mut ctx,
+                SteelVal::SymbolV("normal".into()),
+                "z".into(),
+                "select-line".into(),
+            )
+            .expect("bind-key-extend! must succeed");
+        }
+        assert!(
+            matches!(
+                effects(&h).as_slice(),
+                [Effect::BindKey { force_extend: true, cmd, .. }] if cmd == "select-line"
+            ),
+            "expected Effect::BindKey with force_extend: true; got: {:?}",
+            effects(&h)
+        );
+    }
+
+    /// `bind-wait-char!` queues `Effect::BindWaitChar`, not `Effect::BindKey` —
+    /// a WaitChar node consumes the next keypress as an argument, so routing it
+    /// to a plain leaf would silently break `pending-char`.
+    ///
+    /// Fail oracle: collapse `bind_inner`'s `BindKind` match to always emit
+    /// `BindKey` → the binding becomes a plain leaf and this fires.
+    #[test]
+    fn bind_wait_char_queues_wait_char_effect() {
+        let mut h = SteelCtxTestHarness::new();
+        {
+            let mut ctx = h.ctx_init();
+            bind_wait_char(
+                &mut ctx,
+                SteelVal::SymbolV("normal".into()),
+                "f".into(),
+                "find-char".into(),
+            )
+            .expect("bind-wait-char! must succeed");
+        }
+        assert!(
+            matches!(
+                effects(&h).as_slice(),
+                [Effect::BindWaitChar { mode: BindMode::Normal, cmd, .. }] if cmd == "find-char"
+            ),
+            "expected Effect::BindWaitChar; got: {:?}",
+            effects(&h)
+        );
+    }
+
+    /// `unbind-key!` queues `Effect::UnbindKey` — deferred like the three
+    /// binders so a same-eval bind-then-unbind on one key applies in Steel's
+    /// emission order rather than the unbind racing ahead.
+    ///
+    /// Fail oracle: revert `unbind_key` to a direct host call → `effects` comes
+    /// back empty and the unbind is dropped.
+    #[test]
+    fn unbind_key_queues_unbind_effect() {
+        let mut h = SteelCtxTestHarness::new();
+        {
+            let mut ctx = h.ctx_init();
+            unbind_key(&mut ctx, SteelVal::SymbolV("normal".into()), "z".into())
+                .expect("unbind-key! must succeed");
+        }
+        assert!(
+            matches!(
+                effects(&h).as_slice(),
+                [Effect::UnbindKey { mode: BindMode::Normal, keys }] if keys.len() == 1
+            ),
+            "expected Effect::UnbindKey; got: {:?}",
+            effects(&h)
         );
     }
 
@@ -355,15 +468,15 @@ mod tests {
                 "z".into(),
                 "cmd".into(),
             );
-            // Guard must pass; NullHost error is expected.
-            assert!(result.is_err());
             assert!(
-                !result
-                    .unwrap_err()
-                    .to_string()
-                    .contains("only valid during"),
-                "bind-key! must not hit the init guard during plugin load"
+                result.is_ok(),
+                "bind-key! must not hit the init guard during plugin load; got: {result:?}"
             );
         }
+        assert!(
+            matches!(effects(&h).as_slice(), [Effect::BindKey { .. }]),
+            "expected the bind to be queued; got: {:?}",
+            effects(&h)
+        );
     }
 }

@@ -8,11 +8,10 @@
 //! - **Command dispatch** (`editor/mod.rs`, `run_steel_command`): called with the
 //!   live editor state and view from the focused pane.
 //! - **Init dispatch** (`scripting_setup.rs`): called with the same fields
-//!   during `init_scripting`; init-only builtins set settings/keymap.
+//!   during `init_scripting`; init-only builtins set settings.
 
 use std::path::{Path, PathBuf};
 
-use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use crate::editor::lsp::LspState;
@@ -21,9 +20,8 @@ use crate::editor::timer_bridge::TimerHandle;
 use crate::settings::{BufferOverrides, SettingScope, apply_setting};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 use hume_scripting::host::{
-    BindMode, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost, EditHost,
-    EditorHost, KeymapHost, LanguageHost, LspHost, OptionValue, OutputHost, SettingsHost,
-    TimerHost, UiHost,
+    BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost, EditHost, EditorHost,
+    LanguageHost, LspHost, OptionValue, OutputHost, SettingsHost, TimerHost, UiHost,
 };
 
 use super::{EditorState, Severity};
@@ -124,9 +122,6 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         self
     }
     fn language(&mut self) -> &mut dyn LanguageHost {
-        self
-    }
-    fn keymap(&mut self) -> &mut dyn KeymapHost {
         self
     }
     fn settings(&mut self) -> &mut dyn SettingsHost {
@@ -257,45 +252,6 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
 
     fn steel_command_budget_ms(&self) -> u64 {
         self.state.settings.steel_command_budget_ms as u64
-    }
-}
-
-impl<'a> KeymapHost for EditorHostImpl<'a> {
-    fn bind_key(
-        &mut self,
-        mode: BindMode,
-        keys: &[KeyEvent],
-        cmd: &str,
-        force_extend: bool,
-    ) -> Result<(), String> {
-        self.state.keymap.bind_user_with_extend(
-            to_editor_bind_mode(mode),
-            keys,
-            std::borrow::Cow::Owned(cmd.to_owned()),
-            force_extend,
-        );
-        Ok(())
-    }
-
-    fn bind_wait_char(
-        &mut self,
-        mode: BindMode,
-        keys: &[KeyEvent],
-        cmd: &str,
-    ) -> Result<(), String> {
-        self.state.keymap.bind_wait_char_user(
-            to_editor_bind_mode(mode),
-            keys,
-            std::borrow::Cow::Owned(cmd.to_owned()),
-        );
-        Ok(())
-    }
-
-    fn unbind_key(&mut self, mode: BindMode, keys: &[KeyEvent]) -> Result<(), String> {
-        self.state
-            .keymap
-            .unbind_user(to_editor_bind_mode(mode), keys);
-        Ok(())
     }
 }
 
@@ -613,15 +569,6 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
 
     fn completion_dismiss(&mut self) {
         self.clear_lsp_completion();
-    }
-}
-
-/// Map scripting `BindMode` → editor `keymap::BindMode`.
-pub(crate) fn to_editor_bind_mode(mode: BindMode) -> crate::editor::keymap::BindMode {
-    match mode {
-        BindMode::Normal => crate::editor::keymap::BindMode::Normal,
-        BindMode::Extend => crate::editor::keymap::BindMode::Extend,
-        BindMode::Insert => crate::editor::keymap::BindMode::Insert,
     }
 }
 
