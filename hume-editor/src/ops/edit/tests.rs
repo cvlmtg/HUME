@@ -2098,6 +2098,81 @@ fn capitalize_multiline_selection_resets_word_state_at_newline() {
     );
 }
 
+#[test]
+fn uppercase_grows_selection_when_case_mapping_changes_char_count() {
+    // ß has no single-char uppercase form: it maps to "SS" (two chars).
+    // transform_case must re-insert (not substitute in place), and the
+    // resulting selection must grow to cover both.
+    assert_state!(
+        "-[ß]>\n",
+        |(buf, sels)| make_text_uppercase(buf, sels),
+        "-[SS]>\n"
+    );
+}
+
+// Case mapping is context-sensitive: Greek sigma (Σ/σ) lowercases to the
+// final form 'ς' only at a word's end, and to 'σ' everywhere else. Mapping
+// grapheme-by-grapheme (the pre-rewrite implementation) strips the
+// surrounding context that check needs, so it silently falls back to the
+// default 'σ' even when the grapheme is at a word's end — correct mid-word
+// only by accident, wrong at word-final position.
+
+#[test]
+fn lowercase_resolves_mid_word_sigma_by_context() {
+    assert_state!(
+        "-[ΟΣΟ]>\n",
+        |(buf, sels)| make_text_lowercase(buf, sels),
+        "-[οσο]>\n"
+    );
+}
+
+#[test]
+fn lowercase_resolves_word_final_sigma_by_context() {
+    // Regression case: the pre-rewrite per-grapheme loop yields "οοσ" here
+    // (default mapping, no final-sigma context) instead of "οος".
+    assert_state!(
+        "-[ΟΟΣ]>\n",
+        |(buf, sels)| make_text_lowercase(buf, sels),
+        "-[οος]>\n"
+    );
+}
+
+#[test]
+fn uppercase_sigma_variants_both_map_to_capital_sigma() {
+    assert_state!(
+        "-[οσο]>\n",
+        |(buf, sels)| make_text_uppercase(buf, sels),
+        "-[ΟΣΟ]>\n"
+    );
+    assert_state!(
+        "-[οος]>\n",
+        |(buf, sels)| make_text_uppercase(buf, sels),
+        "-[ΟΟΣ]>\n"
+    );
+}
+
+#[test]
+fn capitalize_resolves_mid_word_sigma_by_context() {
+    // First grapheme uppercases to 'Ο'; the rest ("σο") lowercases as one
+    // string, so the mid-word sigma stays 'σ', not the final form 'ς'.
+    assert_state!(
+        "-[οσο]>\n",
+        |(buf, sels)| make_text_capitalized(buf, sels),
+        "-[Οσο]>\n"
+    );
+}
+
+#[test]
+fn capitalize_resolves_word_final_sigma_by_context() {
+    // Regression case: the pre-rewrite per-grapheme loop yields "Οοσ" here
+    // instead of "Οος" (same default-mapping bug as lowercase).
+    assert_state!(
+        "-[ΟΟΣ]>\n",
+        |(buf, sels)| make_text_capitalized(buf, sels),
+        "-[Οος]>\n"
+    );
+}
+
 // ── join_lines_select_spaces ───────────────────────────────────────────────
 
 #[test]

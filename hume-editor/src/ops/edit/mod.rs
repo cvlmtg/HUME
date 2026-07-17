@@ -7,6 +7,7 @@ use hume_editing::lines::{is_line_start, leading_whitespace_end, line_end_exclus
 use hume_editing::selection::{Selection, SelectionSet, is_selection_linewise};
 use hume_editing::text::Text;
 use hume_editing::word::is_word_boundary;
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::ops::motion::prev_word_start;
 use crate::ops::register;
@@ -973,16 +974,17 @@ enum CaseTransform {
     Capitalize,
 }
 
-/// Transform the case of every grapheme in each selection, preserving
+/// Transform the case of each selection as a whole string, preserving
 /// selection span and direction. Shared implementation for
 /// `make-text-lowercase` / `make-text-uppercase` / `make-text-capitalized`.
 ///
-/// Mirrors [`replace_selections`]'s selection walk: retain the gap before the
-/// selection, then loop grapheme-by-grapheme, skipping (retaining) `\n` to
-/// preserve line structure. Unlike `replace_selections`, each grapheme's own
-/// text is re-inserted (case-mapped) rather than substituted with a fixed
-/// char, and `insert` (not `insert_char`) is used since Unicode case mapping
-/// can change the char count (e.g. `ß` → `SS`).
+/// Case mapping is applied to the *entire* selection text at once, not
+/// grapheme-by-grapheme — Unicode case mapping is context-sensitive (Greek
+/// sigma lowercases to `ς` at a word's end, `σ` elsewhere). Mapping one
+/// grapheme at a time strips the surrounding context the "is this word-final"
+/// check needs, so it silently falls back to the default (non-final) mapping
+/// `σ` even at a word's end. `insert` (not `insert_char`) is used since case
+/// mapping can also change the char count (e.g. `ß` → `SS`).
 fn transform_case(
     buf: Text,
     sels: SelectionSet,
@@ -990,50 +992,62 @@ fn transform_case(
 ) -> (Text, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         let sel_start = sel.start();
-        let sel_end = sel.end();
+        let sel_end = next_grapheme_boundary(buf, sel.end()); // exclusive
 
         b.retain(sel_start - b.old_pos());
         let new_sel_start = b.new_pos();
 
-        // Tracks whether the previous grapheme was part of a word, so
-        // Capitalize can detect word-initial position. Reset per selection —
-        // each selection capitalizes independently.
-        let mut in_word = false;
-        let mut pos = sel_start;
-        loop {
-            let next = next_grapheme_boundary(buf, pos);
-            if buf.char_at(pos) == Some('\n') {
-                b.retain(next - pos);
-                in_word = false;
-            } else {
-                let grapheme: String = buf.slice(pos..next).chars().collect();
-                let mapped = match kind {
-                    CaseTransform::Lower => grapheme.to_lowercase(),
-                    CaseTransform::Upper => grapheme.to_uppercase(),
-                    CaseTransform::Capitalize => {
-                        let is_word_char = buf.char_at(pos).is_some_and(char::is_alphanumeric);
-                        let mapped = if is_word_char && !in_word {
-                            grapheme.to_uppercase()
-                        } else {
-                            grapheme.to_lowercase()
-                        };
-                        in_word = is_word_char;
-                        mapped
-                    }
-                };
-                b.delete(next - pos);
-                b.insert(&mapped);
-            }
-            if pos >= sel_end {
-                break;
-            }
-            pos = next;
-        }
+        let text: String = buf.slice(sel_start..sel_end).chars().collect();
+        let mapped = match kind {
+            CaseTransform::Lower => text.to_lowercase(),
+            CaseTransform::Upper => text.to_uppercase(),
+            CaseTransform::Capitalize => capitalize_words(&text),
+        };
+        b.delete(sel_end - sel_start);
+        b.insert(&mapped);
+
         let new_sel_end = b.new_pos() - 1;
 
         let forward = sel.anchor() <= sel.head();
         new_sels.push(Selection::directed(new_sel_start, new_sel_end, forward));
     })
+}
+
+/// Capitalize every alphanumeric word run in `text`: uppercase the first
+/// grapheme, lowercase the rest — each as one `str` operation, not
+/// grapheme-by-grapheme, so context-sensitive mappings stay correct (Greek
+/// sigma lowercases to `ς` at a word's end, `σ` elsewhere). Non-word runs
+/// (spaces, punctuation, newlines) pass through unchanged and reset the word
+/// boundary, so consecutive words each get their own capital.
+///
+/// A "word" is a maximal run of alphanumeric graphemes — the simplest
+/// definition that gives sensible results without a full word-motion
+/// classifier, though it means an apostrophe counts as a word break
+/// (`don't` → `Don'T`).
+fn capitalize_words(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut word = String::new();
+    for g in text.graphemes(true) {
+        if g.chars().next().is_some_and(char::is_alphanumeric) {
+            word.push_str(g);
+        } else {
+            push_capitalized(&mut out, &word);
+            word.clear();
+            out.push_str(g);
+        }
+    }
+    push_capitalized(&mut out, &word);
+    out
+}
+
+/// Append `word` to `out` with its first grapheme uppercased and the rest
+/// lowercased. No-op if `word` is empty.
+fn push_capitalized(out: &mut String, word: &str) {
+    let Some(first) = word.graphemes(true).next() else {
+        return;
+    };
+    out.push_str(&first.to_uppercase());
+    out.push_str(&word[first.len()..].to_lowercase());
 }
 
 /// Lowercase the text in each selection.
