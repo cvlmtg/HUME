@@ -106,9 +106,11 @@ Enable the Helix-style bindings by loading the built-in plugin:
 
 Several features were intentionally adopted from Helix rather than reinvented:
 
-- **Theme format** — Helix uses TOML with `[palette]` indirection and dot-separated UI scope names. HUME's theme loader is fully Helix-compatible, accepting the same file format, modifier names (`crossed_out`, `underlined`), and extended underline syntax. This lets the community share themes between both editors.
 - **Tree-sitter grammars** — Rather than curating our own grammar repository list, HUME pins a Helix commit and syncs grammar sources, revisions, language extensions, and file-glob associations from Helix's `languages.toml` via a script. Tree-sitter highlight queries are fetched directly from Helix's repository at the pinned revision at install time.
 - **Helix-style surround** — The `core:helix-surround` plugin remaps surround operations to `ms` (wrap), `md` (delete), and `mr` (replace), matching Helix's keybindings. This is opt-in; HUME's default surround follows its own select-then-act model.
+- **Theme format** — Helix uses TOML with `[palette]` indirection and dot-separated UI scope names. HUME's theme loader is fully Helix-compatible, accepting the same file format, modifier names (`crossed_out`, `underlined`), and extended underline syntax. This lets the community share themes between both editors.
+
+HUME also ships a theme editor — a single-file HTML tool you can open in a browser to edit themes visually and export them as TOML. You can download it from https://github.com/cvlmtg/HUME/blob/main/tools/theme-editor/index.html
 
 ### What HUME has that Helix doesn't
 
