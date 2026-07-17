@@ -10,6 +10,7 @@ pub mod edits;
 pub mod injections;
 pub mod parse_worker;
 pub mod registry;
+pub mod syntax;
 
 #[cfg(test)]
 mod test_support;

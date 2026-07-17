@@ -9,7 +9,10 @@ use crate::registry::BufferSyntax;
 /// `rope` must be the buffer text **before** the edit (the old document).  All
 /// char offsets in the changeset are converted to byte offsets and (row, byte-col)
 /// positions via the rope's index helpers.
-fn input_edits_from_changeset(cs: &ChangeSet, rope: &ropey::Rope) -> Vec<tree_sitter::InputEdit> {
+pub(crate) fn input_edits_from_changeset(
+    cs: &ChangeSet,
+    rope: &ropey::Rope,
+) -> Vec<tree_sitter::InputEdit> {
     let mut edits = Vec::new();
     let mut pre_char: usize = 0;
     let mut ops = cs.ops().iter();
