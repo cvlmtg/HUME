@@ -54,6 +54,17 @@ Press `g` followed by a second key for line jumps:
 | `g l` | End of line |
 | `g s` | First non-whitespace on line |
 
+## Jump to a line by number
+
+Type `:` then a line number and press `Enter` to jump there:
+
+| Command | Movement |
+|---------|----------|
+| `:<n>` | Jump to line `<n>` (e.g. `:42`) |
+| `:goto <n>` | Same, full form |
+
+Line numbers are 1-based. A number past the end of the file lands on the last line. The jump is recorded, so `Ctrl+o` brings you back.
+
 ## Paragraph movement
 
 | Key | Movement |

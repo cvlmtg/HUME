@@ -66,6 +66,7 @@ Search highlights clear automatically when you press `Esc`. `:clear-search` clea
 |---------|--------|
 | `:cd <path>` | Change the working directory |
 | `:pwd` | Print the current working directory |
+| `:goto <n>` | Jump to 1-based line `<n>`; the bare form `:<n>` (e.g. `:42`) is shorthand. Records a jump, so `Ctrl+o` returns |
 
 ## Plugins
 
