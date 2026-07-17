@@ -604,6 +604,13 @@ define_settings! {
         "select-changed-text" => select_changed_text: bool = true,
             scope: ["global", "buffer"],
             parser: bool;
+        // Word motions (`w`/`W`/`b`/`B`) and `mm`/`MM` cover the destination
+        // word's surrounding whitespace (trailing, or leading when no
+        // trailing exists) — see `word_select_cmd`/`run_native_body`'s
+        // `around_fun` swap.
+        "word-selects-whitespace" => word_selects_whitespace: bool = true,
+            scope: ["global", "buffer"],
+            parser: bool;
         "signcolumn" => signcolumn: SignColumnConfig = SignColumnConfig::default(),
             scope: ["global", "buffer"],
             parser: from_str;
@@ -782,6 +789,7 @@ mod tests {
         assert_eq!(s.line_number_style, LineNumberStyle::Hybrid);
         assert!(s.auto_pairs_enabled);
         assert!(s.select_changed_text);
+        assert!(s.word_selects_whitespace);
         assert!(s.pane_dividers);
         assert_eq!(s.signcolumn, SignColumnConfig::default());
     }
@@ -794,6 +802,7 @@ mod tests {
         assert!(ov.line_number_style.is_none());
         assert!(ov.auto_pairs_enabled.is_none());
         assert!(ov.select_changed_text.is_none());
+        assert!(ov.word_selects_whitespace.is_none());
         assert!(ov.auto_pairs.is_none());
         assert!(ov.whitespace_space.is_none());
         assert!(ov.whitespace_tab.is_none());
@@ -1140,6 +1149,15 @@ mod tests {
     }
 
     #[test]
+    fn set_global_word_selects_whitespace() {
+        assert!(
+            !global("word-selects-whitespace", "false")
+                .unwrap()
+                .word_selects_whitespace
+        );
+    }
+
+    #[test]
     fn set_global_whitespace_space() {
         assert_eq!(
             global("whitespace-space", "all").unwrap().whitespace.space,
@@ -1259,6 +1277,13 @@ mod tests {
         let global = EditorSettings::default();
         let ov = buffer("select-changed-text", "false").unwrap();
         assert!(!ov.select_changed_text(&global));
+    }
+
+    #[test]
+    fn set_buffer_word_selects_whitespace() {
+        let global = EditorSettings::default();
+        let ov = buffer("word-selects-whitespace", "false").unwrap();
+        assert!(!ov.word_selects_whitespace(&global));
     }
 
     #[test]
