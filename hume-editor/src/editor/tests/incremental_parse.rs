@@ -66,14 +66,15 @@ fn first_parse_full_reparse_no_pending() {
     let buf = ed.state.buffers.get(bid);
     let syn = buf.syntax.as_ref().unwrap();
     assert_eq!(
-        syn.parsed_gen, buf.text_gen,
+        syn.parsed_gen(),
+        buf.text_gen,
         "initial parse must be up-to-date"
     );
     assert!(
-        syn.pending_edits.is_empty(),
+        syn.pending_edits().is_empty(),
         "no pending edits after first parse"
     );
-    assert!(ed.view.buffers[bid].syntax.is_some(), "tree installed");
+    assert!(syn.layers().is_some(), "tree installed");
 }
 
 #[test]
@@ -90,7 +91,7 @@ fn edit_records_pending_edits() {
     assert!(buf.text_gen > gen_before, "edit must bump text_gen");
     let syn = buf.syntax.as_ref().unwrap();
     assert!(
-        !syn.pending_edits.is_empty(),
+        !syn.pending_edits().is_empty(),
         "edit must record pending edits"
     );
 }
@@ -111,14 +112,15 @@ fn reparse_after_edit_drains_pending() {
     let buf = ed.state.buffers.get(bid);
     let syn = buf.syntax.as_ref().unwrap();
     assert!(
-        syn.pending_edits.is_empty(),
+        syn.pending_edits().is_empty(),
         "pending edits must be drained after install"
     );
     assert_eq!(
-        syn.parsed_gen, gen_after_edit,
+        syn.parsed_gen(),
+        gen_after_edit,
         "parsed_gen matches text_gen after edit"
     );
-    assert!(ed.view.buffers[bid].syntax.is_some());
+    assert!(syn.layers().is_some());
 }
 
 #[test]
@@ -146,7 +148,7 @@ fn two_edits_batched_chain_resolves() {
         .syntax
         .as_ref()
         .unwrap()
-        .pending_edits
+        .pending_edits()
         .len();
     assert!(
         pending_count >= 2,
@@ -159,10 +161,10 @@ fn two_edits_batched_chain_resolves() {
     let buf = ed.state.buffers.get(bid);
     let syn = buf.syntax.as_ref().unwrap();
     assert!(
-        syn.pending_edits.is_empty(),
+        syn.pending_edits().is_empty(),
         "all pending edits drained after install"
     );
-    assert_eq!(syn.parsed_gen, gen_2);
+    assert_eq!(syn.parsed_gen(), gen_2);
 }
 
 #[test]
@@ -178,9 +180,14 @@ fn incremental_tree_matches_full_reparse() {
 
     reparse_edit(&mut ed);
 
-    let incremental_sexp = ed.view.buffers[bid]
+    let incremental_sexp = ed
+        .state
+        .buffers
+        .get(bid)
         .syntax
         .as_ref()
+        .unwrap()
+        .layers()
         .and_then(hume_engine::syntax_layers::SyntaxLayers::root_tree)
         .unwrap()
         .root_node()
@@ -236,23 +243,23 @@ fn bake_aligns_committed_tree_before_precise_install() {
 
     let syn = ed.state.buffers.get(bid).syntax.as_ref().unwrap();
     assert_eq!(
-        syn.tree_gen, text_gen_after,
+        syn.tree_gen(),
+        text_gen_after,
         "tree_gen must equal text_gen after bake"
     );
     assert!(
-        syn.parsed_gen < text_gen_after,
+        syn.parsed_gen() < text_gen_after,
         "parsed_gen must not yet equal text_gen — precise parse queued, not installed",
     );
     assert!(
-        syn.pending_edits.is_empty(),
+        syn.pending_edits().is_empty(),
         "pending_edits must be cleared by the bake"
     );
 
     // Committed tree must be coordinate-aligned: root end_byte == new text length.
     // Pre-fix: root end_byte == old_byte_len (stale coords → highlight column shift).
-    let root_end = ed.view.buffers[bid]
-        .syntax
-        .as_ref()
+    let root_end = syn
+        .layers()
         .and_then(hume_engine::syntax_layers::SyntaxLayers::root_tree)
         .unwrap()
         .root_node()
@@ -289,7 +296,7 @@ fn bake_handles_multi_edit_chain_in_one_shot() {
         .syntax
         .as_ref()
         .unwrap()
-        .pending_edits
+        .pending_edits()
         .len();
     assert!(
         pending_count >= 2,
@@ -301,17 +308,17 @@ fn bake_handles_multi_edit_chain_in_one_shot() {
 
     let syn = ed.state.buffers.get(bid).syntax.as_ref().unwrap();
     assert_eq!(
-        syn.tree_gen, text_gen_after,
+        syn.tree_gen(),
+        text_gen_after,
         "tree_gen must jump to text_gen after bake"
     );
     assert!(
-        syn.pending_edits.is_empty(),
+        syn.pending_edits().is_empty(),
         "all pending edits cleared by bake"
     );
 
-    let root_end = ed.view.buffers[bid]
-        .syntax
-        .as_ref()
+    let root_end = syn
+        .layers()
         .and_then(hume_engine::syntax_layers::SyntaxLayers::root_tree)
         .unwrap()
         .root_node()
@@ -337,14 +344,15 @@ fn grammar_swap_clears_pending_and_full_reparses() {
             .syntax
             .as_ref()
             .unwrap()
-            .pending_edits
+            .pending_edits()
             .is_empty(),
         "pending edits must exist before grammar swap",
     );
 
     // Simulate a grammar re-attach: detach → re-attach → re-enable.
-    // set_buffer_language(None) clears syntax (and pending_edits via BufferSyntax drop).
-    // Then re-attaching re-creates BufferSyntax::new() which starts with empty pending_edits.
+    // set_buffer_language(None) drops the whole Syntax attachment (and its
+    // pending_edits with it). Then re-attaching creates a fresh Syntax that
+    // starts with empty pending_edits.
     let parser_path = grammar_parser_path("json");
     let hl_path = grammar_query_path("json");
     ed.set_buffer_language(bid, None);
@@ -362,17 +370,24 @@ fn grammar_swap_clears_pending_and_full_reparses() {
     let lang = ed.state.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
 
-    // After re-attach, pending_edits must be empty (fresh BufferSyntax).
+    // After re-attach, pending_edits must be empty (fresh Syntax attachment).
     let syn = ed.state.buffers.get(bid).syntax.as_ref().unwrap();
     assert!(
-        syn.pending_edits.is_empty(),
+        syn.pending_edits().is_empty(),
         "grammar swap must clear pending edits"
     );
 
     // Full reparse succeeds (setup_buffer_syntax already posted it).
     ed.reparse_stale_buffers();
     assert!(
-        ed.view.buffers[bid].syntax.is_some(),
+        ed.state
+            .buffers
+            .get(bid)
+            .syntax
+            .as_ref()
+            .unwrap()
+            .layers()
+            .is_some(),
         "tree must be present after re-attach"
     );
 }

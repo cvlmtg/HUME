@@ -18,7 +18,6 @@ use crate::editor::pane_state::PaneBufferState;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
-use hume_treesitter::edits::record_pending_edits;
 
 /// No-op when `buf_id` has no grammar attached (`syntax` is `None`).
 /// Called immediately after every text mutation.
@@ -30,7 +29,7 @@ fn record_syntax_edits(
     rope_pre: &ropey::Rope,
 ) {
     if let Some(syn) = buffers.get_mut(buf_id).syntax.as_mut() {
-        record_pending_edits(syn, text_gen, cs, rope_pre);
+        syn.record_edit(text_gen, cs, rope_pre);
     }
 }
 

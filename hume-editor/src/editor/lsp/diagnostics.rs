@@ -390,8 +390,7 @@ mod tests {
 
     fn make_bid() -> BufferId {
         let mut ev = EngineView::new(Theme::default());
-        ev.buffers
-            .insert(hume_engine::pipeline::SharedBuffer::new())
+        ev.buffers.insert(())
     }
 
     /// Two guaranteed-distinct `BufferId`s — `make_bid()` calls each start a
@@ -401,12 +400,8 @@ mod tests {
     /// buffer" apart.
     fn make_two_bids() -> (BufferId, BufferId) {
         let mut ev = EngineView::new(Theme::default());
-        let a = ev
-            .buffers
-            .insert(hume_engine::pipeline::SharedBuffer::new());
-        let b = ev
-            .buffers
-            .insert(hume_engine::pipeline::SharedBuffer::new());
+        let a = ev.buffers.insert(());
+        let b = ev.buffers.insert(());
         (a, b)
     }
 

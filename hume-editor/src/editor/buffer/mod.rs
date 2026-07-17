@@ -13,7 +13,8 @@ use hume_platform::io::FileMeta;
 mod file_open;
 pub(crate) mod lifecycle;
 pub(crate) mod store;
-use hume_treesitter::registry::{BufferSyntax, LanguageId};
+use hume_treesitter::registry::LanguageId;
+use hume_treesitter::syntax::Syntax;
 
 // ── LastInsert ────────────────────────────────────────────────────────────────
 
@@ -80,10 +81,11 @@ pub(crate) struct Buffer {
     /// `reparse_stale_buffers` skips a buffer when this equals
     /// `syntax.parsed_gen`.
     pub(crate) text_gen: u64,
-    /// Per-buffer tree-sitter syntax attachment. Holds grammar identity and the
-    /// `text_gen` of the last installed tree. `None` when no grammar is attached
-    /// or the buffer exceeds `syntax-highlight-max-bytes`.
-    pub(crate) syntax: Option<BufferSyntax>,
+    /// Per-buffer tree-sitter syntax attachment: grammar identity, committed
+    /// parse layers, generation bookkeeping, and in-flight state, all in one
+    /// place. `None` when no grammar is attached or the buffer exceeds
+    /// `syntax-highlight-max-bytes`.
+    pub(crate) syntax: Option<Syntax>,
     /// When `true`, all forward text mutations are blocked at the `doc_ops`
     /// layer. Entering Insert mode is also refused. Read-only is orthogonal to
     /// language/syntax — a read-only buffer may still be highlighted.

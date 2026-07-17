@@ -165,7 +165,7 @@ mod testing {
     use crate::editor::buffer::Buffer;
     use hume_editing::selection::SelectionSet;
     use hume_editing::text::Text;
-    use hume_engine::pipeline::{BufferId, EngineView, SharedBuffer};
+    use hume_engine::pipeline::{BufferId, EngineView};
     use hume_engine::theme::Theme;
     use std::path::PathBuf;
 
@@ -212,7 +212,7 @@ mod testing {
     }
 
     pub(crate) fn make_id(ev: &mut EngineView) -> BufferId {
-        ev.buffers.insert(SharedBuffer::new())
+        ev.buffers.insert(())
     }
 
     pub(crate) fn make_buf() -> Buffer {

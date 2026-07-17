@@ -10,7 +10,7 @@
 
 use slotmap::SecondaryMap;
 
-use hume_engine::pipeline::{BufferId, EngineView, PaneId, SharedBuffer};
+use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
@@ -49,7 +49,7 @@ pub(crate) fn open_buffer(
     focused_pane_id: PaneId,
     doc: Buffer,
 ) -> BufferId {
-    let bid = ev.buffers.insert(SharedBuffer::new());
+    let bid = ev.buffers.insert(());
     buffers.open(bid, doc);
     pane_state::ensure(pane_state, buffers, focused_pane_id, bid);
     bid
@@ -144,19 +144,6 @@ pub(crate) fn close_buffer(
     }
 }
 
-// ── clear_engine_tree ────────────────────────────────────────────────────────
-
-/// Drop the engine-side syntax layers for buffer `id`.
-///
-/// The `BufferSyntax` state-side attachment (attached grammar, gen tracking)
-/// is the caller's responsibility to clear (e.g. set `state.buffers[id].syntax
-/// = None` or let `setup_buffer_syntax` do it). This function only clears the
-/// engine-side layers so the stale parse result is not used by the renderer
-/// or incremental baking.
-pub(crate) fn clear_engine_tree(ev: &mut EngineView, id: BufferId) {
-    ev.buffers[id].syntax = None;
-}
-
 // ── replace_buffer_in_place ───────────────────────────────────────────────────
 
 /// Replace buffer `id` with `new_doc` in-place, reseeding all pane state.
@@ -175,11 +162,10 @@ pub(crate) fn replace_buffer_in_place(
         new_doc.search_pattern.is_none(),
         "replace_buffer_in_place: new_doc must have no active search state",
     );
-    *buffers.get_mut(id) = new_doc;
     // The new doc carries no syntax attachment (Buffer.syntax = None by
-    // construction); drop the stale engine tree so the renderer does not use
-    // a tree aligned to the old content.
-    clear_engine_tree(ev, id);
+    // construction — the flip made this assignment alone sufficient to drop
+    // any stale committed layers, since they now live inside Buffer.syntax).
+    *buffers.get_mut(id) = new_doc;
     // Collect before mutating (borrow checker); n≈1 in the single-pane case.
     let pane_ids: Vec<PaneId> = ev
         .panes

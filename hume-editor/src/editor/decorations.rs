@@ -315,12 +315,8 @@ mod tests {
     /// `lsp/diagnostics.rs` for why a single `EngineView` is required.
     fn make_two_bids() -> (BufferId, BufferId) {
         let mut ev = EngineView::new(Theme::default());
-        let a = ev
-            .buffers
-            .insert(hume_engine::pipeline::SharedBuffer::new());
-        let b = ev
-            .buffers
-            .insert(hume_engine::pipeline::SharedBuffer::new());
+        let a = ev.buffers.insert(());
+        let b = ev.buffers.insert(());
         (a, b)
     }
 

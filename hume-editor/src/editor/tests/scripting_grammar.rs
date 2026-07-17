@@ -143,7 +143,14 @@ fn attach_then_set_language_attaches_syntax() {
         "syntax must be set after attach"
     );
     assert!(
-        ed.view.buffers[bid].syntax.is_some(),
+        ed.state
+            .buffers
+            .get(bid)
+            .syntax
+            .as_ref()
+            .unwrap()
+            .layers()
+            .is_some(),
         "engine tree must be set"
     );
 }
@@ -176,11 +183,7 @@ fn clear_language_detaches_syntax_keeps_identity() {
     ed.set_buffer_language(bid, None);
     assert!(
         ed.state.buffers.get(bid).syntax.is_none(),
-        "syntax must be cleared on language=None"
-    );
-    assert!(
-        ed.view.buffers[bid].syntax.is_none(),
-        "tree must be cleared"
+        "syntax attachment (and its committed tree) must be cleared on language=None"
     );
     // Identity survives detach — grammar is gone, language definition is not.
     assert!(
@@ -303,7 +306,7 @@ fn reparse_advances_parsed_gen_after_edit() {
             .syntax
             .as_ref()
             .unwrap()
-            .parsed_gen,
+            .parsed_gen(),
         gen0,
         "parsed_gen must equal text_gen after initial setup",
     );
@@ -321,7 +324,7 @@ fn reparse_advances_parsed_gen_after_edit() {
             .syntax
             .as_ref()
             .unwrap()
-            .parsed_gen,
+            .parsed_gen(),
         gen0,
         "parsed_gen must lag behind text_gen before reparse",
     );
@@ -337,7 +340,7 @@ fn reparse_advances_parsed_gen_after_edit() {
             .syntax
             .as_ref()
             .unwrap()
-            .parsed_gen,
+            .parsed_gen(),
         gen1,
         "reparse must advance parsed_gen to current text_gen",
     );
@@ -351,7 +354,7 @@ fn reparse_advances_parsed_gen_after_edit() {
             .syntax
             .as_ref()
             .unwrap()
-            .parsed_gen,
+            .parsed_gen(),
         gen1,
         "third reparse must be a no-op when gen already matches",
     );
@@ -403,7 +406,7 @@ fn reparse_detaches_when_buffer_exceeds_max_bytes() {
 ///
 /// Exercises: register_grammar command branch → attach_grammar → theme.bake →
 /// pending_grammar_sweeps → SteelCmdResult.grammar_sweeps → sweep_buffers_for_grammars
-/// → setup_buffer_syntax → engine SharedBuffer.syntax.
+/// → setup_buffer_syntax → Buffer.syntax (Syntax::attach).
 ///
 /// Flip: if the command body ran in init mode (queuing instead of attaching),
 /// no sweep would fire and syntax would stay None.
@@ -499,10 +502,10 @@ fn language_has_grammar_false_for_identity_only_true_after_attach() {
 // Fix 1 — replace_buffer_in_place must clear stale engine syntax state
 // ---------------------------------------------------------------------------
 
-/// Regression: replace_buffer_in_place must clear ev.buffers[id].tree / .syntax.
-/// Without the engine-side clear, both stay Some after replacing with a scratch buffer.
+/// Regression: replace_buffer_in_place must clear the buffer's syntax
+/// attachment (and with it, the committed tree it owns).
 ///
-/// Flip: if the engine-side clear is removed, the two `.is_none()` asserts fail.
+/// Flip: if `*buffers.get_mut(id) = new_doc` were skipped, the assert fails.
 #[test]
 fn replace_buffer_in_place_clears_engine_syntax_state() {
     let (parser, hl) = grammar_fixture("json");
@@ -527,26 +530,18 @@ fn replace_buffer_in_place_clears_engine_syntax_state() {
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers();
     assert!(
-        ed.view.buffers[bid].syntax.is_some(),
-        "tree must be set before replace"
-    );
-    assert!(
         ed.state.buffers.get(bid).syntax.is_some(),
-        "syntax must be set before replace"
+        "syntax (and its committed tree) must be set before replace"
     );
 
     // Replace with a scratch buffer (no path, language=None). detect_and_set_language
-    // returns None → set_buffer_language no-ops; the engine-side clear in
+    // returns None → set_buffer_language no-ops; the whole-Buffer swap in
     // buffer::lifecycle::replace_buffer_in_place is the load-bearing cleanup here.
     ed.replace_buffer_in_place(bid, Buffer::scratch());
 
     assert!(
-        ed.view.buffers[bid].syntax.is_none(),
-        "stale tree must be cleared on replace"
-    );
-    assert!(
         ed.state.buffers.get(bid).syntax.is_none(),
-        "stale syntax must be cleared on replace"
+        "stale syntax (and its committed tree) must be cleared on replace"
     );
 }
 
@@ -618,7 +613,7 @@ fn reparse_reattaches_after_shrink_under_cap() {
 /// The `end_byte()` assertion catches the reparse loop failing to post or
 /// install a request against the new content.  `state.syntax.is_some()` would
 /// fail if `detect_and_set_language` incorrectly cleared the language on reload.
-/// One thing the test cannot probe: that `clear_engine_tree` was called
+/// One thing the test cannot probe: that `Syntax::clear_layers` was called
 /// immediately on reload; that prevents a one-frame stale-tree in the renderer
 /// but is invisible to `InlineParseBackend`.
 #[test]
@@ -663,7 +658,14 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
         "syntax must be attached before reload"
     );
     assert!(
-        ed.view.buffers[bid].syntax.is_some(),
+        ed.state
+            .buffers
+            .get(bid)
+            .syntax
+            .as_ref()
+            .unwrap()
+            .layers()
+            .is_some(),
         "tree must be installed before reload"
     );
 
@@ -687,9 +689,14 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
         ed.state.buffers.get(bid).syntax.is_some(),
         "highlighter must survive reload"
     );
-    let tree = ed.view.buffers[bid]
+    let tree = ed
+        .state
+        .buffers
+        .get(bid)
         .syntax
         .as_ref()
+        .unwrap()
+        .layers()
         .and_then(hume_engine::syntax_layers::SyntaxLayers::root_tree)
         .expect("engine tree must be re-installed after reload");
     assert_eq!(
@@ -749,7 +756,7 @@ fn parse_worker_result_is_async_then_installed() {
             .syntax
             .as_ref()
             .unwrap()
-            .parsed_gen,
+            .parsed_gen(),
         gen0,
         "parsed_gen must still lag after first reparse_stale_buffers (result not yet drained)",
     );
@@ -763,7 +770,7 @@ fn parse_worker_result_is_async_then_installed() {
             .syntax
             .as_ref()
             .unwrap()
-            .parsed_gen,
+            .parsed_gen(),
         gen1,
         "parsed_gen must equal text_gen after second reparse_stale_buffers",
     );
@@ -825,13 +832,20 @@ fn grammar_swap_clears_stale_in_flight() {
 
     assert!(
         Arc::ptr_eq(
-            &ed.state.buffers.get(bid).syntax.as_ref().unwrap().bundle,
+            ed.state.buffers.get(bid).syntax.as_ref().unwrap().bundle(),
             &rust_bundle
         ),
         "buffer must be parsed with rust grammar after swap"
     );
     assert!(
-        ed.view.buffers[bid].syntax.is_some(),
+        ed.state
+            .buffers
+            .get(bid)
+            .syntax
+            .as_ref()
+            .unwrap()
+            .layers()
+            .is_some(),
         "rust parse must produce a tree"
     );
 }
@@ -1193,9 +1207,9 @@ fn rust_function_highlight_snapshot() {
     // Runs the highlight pipeline directly so the test fails even if the snapshot
     // renderer masks absent colours behind cursor/selection background.
     {
-        let layers = ed.view.buffers[bid]
-            .syntax
-            .as_ref()
+        let syn = ed.state.buffers.get(bid).syntax.as_ref().unwrap();
+        let layers = syn
+            .layers()
             .expect("engine syntax layers must be installed");
         let rope = ed.state.buffers.get(bid).text().rope();
         let mut raw = Vec::new();
@@ -1320,7 +1334,14 @@ fn initial_buffer_parse_is_in_flight_by_end_of_init_scripting() {
          detected from the buffer's path via the end-of-init detect loop)"
     );
     assert!(
-        ed.view.buffers[bid].syntax.is_none(),
+        ed.state
+            .buffers
+            .get(bid)
+            .syntax
+            .as_ref()
+            .unwrap()
+            .layers()
+            .is_none(),
         "tree must not be installed yet — only posted; drained on the next \
          reparse_stale_buffers call (matches the run loop's first iteration)"
     );
@@ -1328,7 +1349,14 @@ fn initial_buffer_parse_is_in_flight_by_end_of_init_scripting() {
     ed.reparse_stale_buffers();
 
     assert!(
-        ed.view.buffers[bid].syntax.is_some(),
+        ed.state
+            .buffers
+            .get(bid)
+            .syntax
+            .as_ref()
+            .unwrap()
+            .layers()
+            .is_some(),
         "tree must be installed after exactly one reparse_stale_buffers call \
          following init_scripting"
     );
@@ -1339,7 +1367,7 @@ fn initial_buffer_parse_is_in_flight_by_end_of_init_scripting() {
         .syntax
         .as_ref()
         .unwrap()
-        .parsed_gen;
+        .parsed_gen();
     assert_eq!(
         parsed_gen,
         ed.state.buffers.get(bid).text_gen,

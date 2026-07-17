@@ -89,9 +89,14 @@ fn markdown_buffer_installs_root_plus_injected_layers() {
     let source = "# Title\n\nSome **bold** text.\n\n```rust\nfn f() {}\n```\n";
     let (ed, bid) = markdown_editor(source);
 
-    let layers = &ed.view.buffers[bid]
+    let layers = &ed
+        .state
+        .buffers
+        .get(bid)
         .syntax
         .as_ref()
+        .unwrap()
+        .layers()
         .expect("engine syntax must be installed")
         .layers;
     assert!(
@@ -145,9 +150,14 @@ fn bake_pending_edits_refreshes_injected_layer_ranges() {
     let source = "```rust\nfn f() {}\n```\n";
     let (mut ed, bid) = markdown_editor(source);
 
-    let ranges_before: Vec<_> = ed.view.buffers[bid]
+    let ranges_before: Vec<_> = ed
+        .state
+        .buffers
+        .get(bid)
         .syntax
         .as_ref()
+        .unwrap()
+        .layers()
         .unwrap()
         .layers
         .iter()
@@ -173,9 +183,14 @@ fn bake_pending_edits_refreshes_injected_layer_ranges() {
     // `bake_aligns_committed_tree_before_precise_install`).
     ed.reparse_stale_buffers();
 
-    let ranges_after: Vec<_> = ed.view.buffers[bid]
+    let ranges_after: Vec<_> = ed
+        .state
+        .buffers
+        .get(bid)
         .syntax
         .as_ref()
+        .unwrap()
+        .layers()
         .unwrap()
         .layers
         .iter()
@@ -237,7 +252,8 @@ fn stale_gen_discards_whole_layer_set() {
 
     let syn = ed.state.buffers.get(bid).syntax.as_ref().unwrap();
     assert_eq!(
-        syn.parsed_gen, gen0,
+        syn.parsed_gen(),
+        gen0,
         "stale result must be discarded whole — parsed_gen must stay at the \
          initial install, not advance to the stale request's generation"
     );
@@ -246,8 +262,8 @@ fn stale_gen_discards_whole_layer_set() {
     // the full fresh layer set on the next drain.
     ed.reparse_stale_buffers();
     let syn = ed.state.buffers.get(bid).syntax.as_ref().unwrap();
-    assert_eq!(syn.parsed_gen, gen2, "fresh result must install");
-    let layers = &ed.view.buffers[bid].syntax.as_ref().unwrap().layers;
+    assert_eq!(syn.parsed_gen(), gen2, "fresh result must install");
+    let layers = &syn.layers().unwrap().layers;
     assert!(
         layers.len() >= 2,
         "recovered layer set must include the rust fence layer, got {} layer(s)",

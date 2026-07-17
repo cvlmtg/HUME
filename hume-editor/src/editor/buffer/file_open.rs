@@ -244,12 +244,15 @@ impl Editor {
         }
         self.state.decorations.remove_buffer(id);
 
-        // Drop the stale engine tree (it references pre-reload content). The
-        // highlighter in `state.syntax` survives reload untouched; `set_text` bumped
-        // `text_gen`, so `reparse_stale_buffers` will post a fresh full parse on the
-        // next tick. `detect_and_set_language` handles a genuine language change
-        // (shebang/extension), re-running setup via `set_buffer_language` itself.
-        lifecycle::clear_engine_tree(&mut self.view, id);
+        // Drop the stale committed layers (they reference pre-reload content),
+        // keeping the grammar attachment and generation bookkeeping intact.
+        // `set_text` bumped `text_gen`, so `reparse_stale_buffers` will post a
+        // fresh full parse on the next tick. `detect_and_set_language` handles
+        // a genuine language change (shebang/extension), re-running setup via
+        // `set_buffer_language` itself.
+        if let Some(syn) = self.state.buffers.get_mut(id).syntax.as_mut() {
+            syn.clear_layers();
+        }
         self.detect_and_set_language(id);
 
         // ── Phase 3: reseed per-pane selections / edit groups / scroll ───────

@@ -139,7 +139,10 @@ impl Syntax {
         }
 
         let old_tree = if self.tree_gen == text_gen {
-            self.layers.as_ref().and_then(SyntaxLayers::root_tree).cloned()
+            self.layers
+                .as_ref()
+                .and_then(SyntaxLayers::root_tree)
+                .cloned()
         } else {
             None
         };
@@ -178,7 +181,12 @@ impl Syntax {
 
         let tree_gen = self.tree_gen;
         let chain_ok = self.pending_edits[0].0 == tree_gen + 1
-            && self.pending_edits.last().expect("checked non-empty above").0 == text_gen
+            && self
+                .pending_edits
+                .last()
+                .expect("checked non-empty above")
+                .0
+                == text_gen
             && self.pending_edits.windows(2).all(|w| w[1].0 - w[0].0 <= 1);
 
         if chain_ok {
@@ -372,7 +380,12 @@ mod tests {
     /// by parsing `text` directly with a fresh `tree_sitter::Parser`, so
     /// tests exercise `Syntax::install` against a genuine tree rather than a
     /// hand-rolled stand-in (independent oracle, not circular).
-    fn parse_done_for(bundle: &Arc<GrammarBundle>, bid: BufferId, text_gen: u64, text: &str) -> ParseDone {
+    fn parse_done_for(
+        bundle: &Arc<GrammarBundle>,
+        bid: BufferId,
+        text_gen: u64,
+        text: &str,
+    ) -> ParseDone {
         let mut parser = tree_sitter::Parser::new();
         parser
             .set_language(bundle.grammar.language())
@@ -406,10 +419,23 @@ mod tests {
         let bundle = make_bundle("json", "tree_sitter_json");
         let bid = fresh_bid();
         let (syn, req) = Syntax::attach(bundle, bid, 0, &Text::from("{}\n"), &empty_langs());
-        assert!(req.is_some(), "non-empty text must produce a full-parse request");
-        assert!(req.unwrap().old_tree.is_none(), "initial attach must request a full parse");
-        assert!(syn.is_in_flight(), "attach must record the request as in-flight");
-        assert_eq!(syn.parsed_gen(), 0, "parsed_gen must not advance before install");
+        assert!(
+            req.is_some(),
+            "non-empty text must produce a full-parse request"
+        );
+        assert!(
+            req.unwrap().old_tree.is_none(),
+            "initial attach must request a full parse"
+        );
+        assert!(
+            syn.is_in_flight(),
+            "attach must record the request as in-flight"
+        );
+        assert_eq!(
+            syn.parsed_gen(),
+            0,
+            "parsed_gen must not advance before install"
+        );
     }
 
     // ── frame_tick ────────────────────────────────────────────────────────────
@@ -421,10 +447,14 @@ mod tests {
         }
         let bundle = make_bundle("json", "tree_sitter_json");
         let bid = fresh_bid();
-        let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, 0, &Text::from(""), &empty_langs());
+        let (mut syn, _req) =
+            Syntax::attach(Arc::clone(&bundle), bid, 0, &Text::from(""), &empty_langs());
         // parsed_gen == text_gen (0) already — up to date.
         let outcome = syn.frame_tick(bid, 0, &Text::from(""), &empty_langs());
-        assert!(outcome.request.is_none(), "up-to-date buffer must not re-request");
+        assert!(
+            outcome.request.is_none(),
+            "up-to-date buffer must not re-request"
+        );
     }
 
     #[test]
@@ -434,8 +464,13 @@ mod tests {
         }
         let bundle = make_bundle("json", "tree_sitter_json");
         let bid = fresh_bid();
-        let (mut syn, req) =
-            Syntax::attach(Arc::clone(&bundle), bid, 1, &Text::from("{}\n"), &empty_langs());
+        let (mut syn, req) = Syntax::attach(
+            Arc::clone(&bundle),
+            bid,
+            1,
+            &Text::from("{}\n"),
+            &empty_langs(),
+        );
         assert!(req.is_some());
         // parsed_gen is still 0 (attach doesn't install), text_gen is 1 —
         // frame_tick must see the existing in-flight request and dedup.
@@ -453,8 +488,13 @@ mod tests {
         }
         let bundle = make_bundle("json", "tree_sitter_json");
         let bid = fresh_bid();
-        let (mut syn, _req) =
-            Syntax::attach(Arc::clone(&bundle), bid, 1, &Text::from("{}\n"), &empty_langs());
+        let (mut syn, _req) = Syntax::attach(
+            Arc::clone(&bundle),
+            bid,
+            1,
+            &Text::from("{}\n"),
+            &empty_langs(),
+        );
         // Text advances to gen 2 before the gen-1 result arrives.
         let outcome = syn.frame_tick(bid, 2, &Text::from("{\"a\":1}\n"), &empty_langs());
         assert!(
@@ -471,8 +511,13 @@ mod tests {
         }
         let bundle = make_bundle("json", "tree_sitter_json");
         let bid = fresh_bid();
-        let (mut syn, _req) =
-            Syntax::attach(Arc::clone(&bundle), bid, 0, &Text::from("{}\n"), &empty_langs());
+        let (mut syn, _req) = Syntax::attach(
+            Arc::clone(&bundle),
+            bid,
+            0,
+            &Text::from("{}\n"),
+            &empty_langs(),
+        );
         let done = parse_done_for(&bundle, bid, 0, "{}\n");
         syn.install(done, 0);
         assert!(syn.layers().is_some(), "install must populate layers");
@@ -494,10 +539,7 @@ mod tests {
 
         // clear_layers drops the committed tree — next tick must full-reparse.
         syn.clear_layers();
-        syn.install(
-            parse_done_for(&bundle, bid, 1, "{\"a\":1}\n"),
-            1,
-        );
+        syn.install(parse_done_for(&bundle, bid, 1, "{\"a\":1}\n"), 1);
         assert!(syn.layers().is_some());
         // Force a chain break: pending edit gen does not follow tree_gen+1.
         let rope2 = ropey::Rope::from_str("{\"a\":1}\n");
@@ -528,8 +570,13 @@ mod tests {
         }
         let bundle = make_bundle("json", "tree_sitter_json");
         let bid = fresh_bid();
-        let (mut syn, _req) =
-            Syntax::attach(Arc::clone(&bundle), bid, 0, &Text::from("{}\n"), &empty_langs());
+        let (mut syn, _req) = Syntax::attach(
+            Arc::clone(&bundle),
+            bid,
+            0,
+            &Text::from("{}\n"),
+            &empty_langs(),
+        );
         syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
         assert_eq!(syn.tree_gen(), 0);
 
@@ -543,9 +590,19 @@ mod tests {
         assert_eq!(syn.pending_edits().len(), 1);
 
         let outcome = syn.frame_tick(bid, 1, &Text::from("{\"a\":1}\n"), &empty_langs());
-        assert!(outcome.chain_break.is_none(), "contiguous chain must not report a break");
-        assert_eq!(syn.tree_gen(), 1, "tree_gen must advance to the baked generation");
-        assert!(syn.pending_edits().is_empty(), "pending edits must be cleared after a successful bake");
+        assert!(
+            outcome.chain_break.is_none(),
+            "contiguous chain must not report a break"
+        );
+        assert_eq!(
+            syn.tree_gen(),
+            1,
+            "tree_gen must advance to the baked generation"
+        );
+        assert!(
+            syn.pending_edits().is_empty(),
+            "pending edits must be cleared after a successful bake"
+        );
 
         // Independent oracle: the baked root tree's end_byte must equal the
         // new text's byte length — computed from the string, not the tree.
@@ -561,8 +618,13 @@ mod tests {
         }
         let bundle = make_bundle("json", "tree_sitter_json");
         let bid = fresh_bid();
-        let (mut syn, _req) =
-            Syntax::attach(Arc::clone(&bundle), bid, 0, &Text::from("{}\n"), &empty_langs());
+        let (mut syn, _req) = Syntax::attach(
+            Arc::clone(&bundle),
+            bid,
+            0,
+            &Text::from("{}\n"),
+            &empty_langs(),
+        );
         syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
 
         // Fabricate a gapped chain directly: recorded gens 1 and 3 (a gap at
@@ -577,7 +639,10 @@ mod tests {
         syn.record_edit(3, &cs, &rope_pre);
 
         let outcome = syn.frame_tick(bid, 3, &Text::from("{x}\n"), &empty_langs());
-        assert!(outcome.chain_break.is_some(), "gapped chain must be rejected");
+        assert!(
+            outcome.chain_break.is_some(),
+            "gapped chain must be rejected"
+        );
         assert_eq!(syn.tree_gen(), 0, "gapped chain must NOT advance tree_gen");
         assert!(
             syn.pending_edits().is_empty(),
@@ -598,12 +663,24 @@ mod tests {
         }
         let bundle = make_bundle("json", "tree_sitter_json");
         let bid = fresh_bid();
-        let (mut syn, _req) =
-            Syntax::attach(Arc::clone(&bundle), bid, 0, &Text::from("{}\n"), &empty_langs());
+        let (mut syn, _req) = Syntax::attach(
+            Arc::clone(&bundle),
+            bid,
+            0,
+            &Text::from("{}\n"),
+            &empty_langs(),
+        );
         // current_text_gen has moved to 5; a done for gen 0 must be discarded.
         syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 5);
-        assert_eq!(syn.parsed_gen(), 0, "parsed_gen must NOT advance on a discarded stale result");
-        assert!(syn.layers().is_none(), "layers must not be installed from a stale result");
+        assert_eq!(
+            syn.parsed_gen(),
+            0,
+            "parsed_gen must NOT advance on a discarded stale result"
+        );
+        assert!(
+            syn.layers().is_none(),
+            "layers must not be installed from a stale result"
+        );
     }
 
     #[test]
@@ -615,9 +692,17 @@ mod tests {
         let new_bundle = make_bundle("json", "tree_sitter_json"); // distinct config_gen
         let bid = fresh_bid();
         // Attach with the NEW bundle (simulating a grammar swap already applied).
-        let (mut syn, _req) =
-            Syntax::attach(Arc::clone(&new_bundle), bid, 1, &Text::from("{}\n"), &empty_langs());
-        assert!(syn.is_in_flight(), "new attachment must have its own in-flight request");
+        let (mut syn, _req) = Syntax::attach(
+            Arc::clone(&new_bundle),
+            bid,
+            1,
+            &Text::from("{}\n"),
+            &empty_langs(),
+        );
+        assert!(
+            syn.is_in_flight(),
+            "new attachment must have its own in-flight request"
+        );
 
         // A done from the OLD bundle arrives late, same text_gen.
         let stale_done = parse_done_for(&old_bundle, bid, 1, "{}\n");
@@ -627,7 +712,11 @@ mod tests {
             syn.is_in_flight(),
             "a done from a superseded attachment must not clear the new attachment's in_flight"
         );
-        assert_eq!(syn.parsed_gen(), 0, "stale-config result must not advance parsed_gen");
+        assert_eq!(
+            syn.parsed_gen(),
+            0,
+            "stale-config result must not advance parsed_gen"
+        );
         assert!(syn.layers().is_none());
     }
 
@@ -646,9 +735,17 @@ mod tests {
         }
         let bundle = make_bundle("json", "tree_sitter_json");
         let bid = fresh_bid();
-        let (mut syn, _req0) =
-            Syntax::attach(Arc::clone(&bundle), bid, 0, &Text::from("{}\n"), &empty_langs());
-        assert!(syn.is_in_flight(), "attach must post the initial full-parse request");
+        let (mut syn, _req0) = Syntax::attach(
+            Arc::clone(&bundle),
+            bid,
+            0,
+            &Text::from("{}\n"),
+            &empty_langs(),
+        );
+        assert!(
+            syn.is_in_flight(),
+            "attach must post the initial full-parse request"
+        );
 
         // An edit lands while the initial parse (gen 0) is still in flight.
         let rope_pre = ropey::Rope::from_str("{}\n");
@@ -663,8 +760,15 @@ mod tests {
         // the in-flight initial parse), so pending_edits survives; a fresh
         // request for gen 1 is posted and recorded as in-flight.
         let outcome = syn.frame_tick(bid, 1, &Text::from("{x}\n"), &empty_langs());
-        assert!(outcome.request.is_some(), "gen-1 edit must trigger a fresh request");
-        assert_eq!(syn.pending_edits().len(), 1, "bake must not clear pending while layers is None");
+        assert!(
+            outcome.request.is_some(),
+            "gen-1 edit must trigger a fresh request"
+        );
+        assert_eq!(
+            syn.pending_edits().len(),
+            1,
+            "bake must not clear pending while layers is None"
+        );
 
         // The gen-1 request's done arrives and matches the current gen.
         syn.install(parse_done_for(&bundle, bid, 1, "{x}\n"), 1);
@@ -686,8 +790,13 @@ mod tests {
         }
         let bundle = make_bundle("json", "tree_sitter_json");
         let bid = fresh_bid();
-        let (mut syn, _req) =
-            Syntax::attach(Arc::clone(&bundle), bid, 0, &Text::from("{}\n"), &empty_langs());
+        let (mut syn, _req) = Syntax::attach(
+            Arc::clone(&bundle),
+            bid,
+            0,
+            &Text::from("{}\n"),
+            &empty_langs(),
+        );
         let done = ParseDone {
             bid,
             text_gen: 0,
@@ -695,9 +804,20 @@ mod tests {
             outcome: ParseOutcome::ParseFailed,
         };
         syn.install(done, 0);
-        assert_eq!(syn.parsed_gen(), 0, "parsed_gen must advance even on ParseFailed");
-        assert_eq!(syn.tree_gen(), 0, "tree_gen must NOT advance on ParseFailed");
-        assert!(syn.layers().is_none(), "layers must stay unset on ParseFailed");
+        assert_eq!(
+            syn.parsed_gen(),
+            0,
+            "parsed_gen must advance even on ParseFailed"
+        );
+        assert_eq!(
+            syn.tree_gen(),
+            0,
+            "tree_gen must NOT advance on ParseFailed"
+        );
+        assert!(
+            syn.layers().is_none(),
+            "layers must stay unset on ParseFailed"
+        );
     }
 
     // ── clear_layers ──────────────────────────────────────────────────────────
@@ -709,14 +829,26 @@ mod tests {
         }
         let bundle = make_bundle("json", "tree_sitter_json");
         let bid = fresh_bid();
-        let (mut syn, _req) =
-            Syntax::attach(Arc::clone(&bundle), bid, 0, &Text::from("{}\n"), &empty_langs());
+        let (mut syn, _req) = Syntax::attach(
+            Arc::clone(&bundle),
+            bid,
+            0,
+            &Text::from("{}\n"),
+            &empty_langs(),
+        );
         syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
         assert!(syn.layers().is_some());
 
         syn.clear_layers();
-        assert!(syn.layers().is_none(), "clear_layers must drop committed layers");
-        assert_eq!(syn.bundle().config_gen, bundle.config_gen, "attachment must survive clear_layers");
+        assert!(
+            syn.layers().is_none(),
+            "clear_layers must drop committed layers"
+        );
+        assert_eq!(
+            syn.bundle().config_gen,
+            bundle.config_gen,
+            "attachment must survive clear_layers"
+        );
 
         let outcome = syn.frame_tick(bid, 1, &Text::from("{\"a\":1}\n"), &empty_langs());
         assert!(

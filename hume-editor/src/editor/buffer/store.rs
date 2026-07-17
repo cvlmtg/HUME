@@ -1,7 +1,7 @@
-//! Per-editor buffer store: mirrors engine `SlotMap<BufferId, SharedBuffer>`.
+//! Per-editor buffer store: mirrors engine `SlotMap<BufferId, ()>`.
 //!
 //! `BufferStore` holds the authoritative `Buffer` structs keyed by `BufferId`.
-//! IDs are allocated by the engine's `SlotMap<BufferId, SharedBuffer>`; this
+//! IDs are allocated by the engine's `SlotMap<BufferId, ()>`; this
 //! store mirrors that slotmap. **Never insert/remove through only one side** —
 //! always go through the `Editor::open_buffer` / `Editor::close_buffer` choke-points.
 
@@ -15,7 +15,7 @@ use crate::editor::buffer::Buffer;
 
 // ── BufferStore ───────────────────────────────────────────────────────────────
 
-/// Mirrors the engine's `SlotMap<BufferId, SharedBuffer>` with the full
+/// Mirrors the engine's `SlotMap<BufferId, ()>` with the full
 /// `Buffer` structs. Owns all per-buffer content, history, and file metadata.
 pub(crate) struct BufferStore {
     /// The buffer content keyed by `BufferId`.
@@ -84,6 +84,11 @@ impl BufferStore {
         self.buffers.get(id)
     }
 
+    /// Non-panicking mutable getter — `None` for stale / unknown IDs.
+    pub(crate) fn try_get_mut(&mut self, id: BufferId) -> Option<&mut Buffer> {
+        self.buffers.get_mut(id)
+    }
+
     /// Iterate all open buffers in open-order.  Yields `(BufferId, &Buffer)`.
     pub(crate) fn iter(&self) -> impl Iterator<Item = (BufferId, &Buffer)> {
         self.order
@@ -149,8 +154,7 @@ mod tests {
     use hume_engine::theme::Theme;
 
     fn make_id(ev: &mut EngineView) -> BufferId {
-        ev.buffers
-            .insert(hume_engine::pipeline::SharedBuffer::new())
+        ev.buffers.insert(())
     }
 
     fn make_buf() -> Buffer {

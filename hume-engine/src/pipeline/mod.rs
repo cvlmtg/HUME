@@ -32,40 +32,6 @@ new_key_type! {
 }
 
 // ---------------------------------------------------------------------------
-// Shared buffer
-// ---------------------------------------------------------------------------
-
-/// State shared across all panes that view the same file.
-///
-/// The rope is intentionally absent — it lives in the editor's `Document`
-/// and is injected into `EngineView::render()` via the `get_rope` closure at
-/// render time. Keeping it here would couple the engine to editor-domain
-/// types and require per-frame clones to stay in sync. The syntax layers
-/// (parse trees + shared highlighters) are engine-owned, since both halves
-/// are already engine types — see [`crate::syntax_layers`].
-pub struct SharedBuffer {
-    /// Tree-sitter syntax layers (root grammar + embedded-language
-    /// injections), rebuilt on each edit.
-    ///
-    /// Written by the parse worker's install path and baked each frame by
-    /// `bake_pending_edits`. `None` until the first parse result arrives.
-    /// The renderer tolerates `None` — it just renders without highlights.
-    pub syntax: Option<crate::syntax_layers::SyntaxLayers>,
-}
-
-impl SharedBuffer {
-    pub fn new() -> Self {
-        Self { syntax: None }
-    }
-}
-
-impl Default for SharedBuffer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Frame scratch buffers
 // ---------------------------------------------------------------------------
 
@@ -174,7 +140,10 @@ impl Default for RenderContext {
 pub struct EngineView {
     pub layout: LayoutTree,
     pub panes: SlotMap<PaneId, Pane>,
-    pub buffers: SlotMap<BufferId, SharedBuffer>,
+    /// Pure `BufferId` allocator: a buffer's content, syntax, and rope all
+    /// live in the editor's `Document`/`Buffer` — this slotmap only mints and
+    /// validates IDs so `PaneId -> BufferId` references stay checkable.
+    pub buffers: SlotMap<BufferId, ()>,
     pub theme: Theme,
     /// Session-wide scope registry. Providers intern their scopes here.
     /// `Editor::prepare_frame` calls `theme.bake_if_stale(&registry)` once per
@@ -278,7 +247,7 @@ impl EngineView {
     ///
     /// `get_rope` resolves a `BufferId` to the authoritative `&Rope` owned by
     /// the caller (typically the editor's `Document`). The borrow is used only
-    /// inside this call — no rope is stored in `SharedBuffer`.
+    /// inside this call — no rope is stored in `EngineView`.
     ///
     /// `get_syntax` resolves a `BufferId` to its committed tree-sitter
     /// `SyntaxLayers`, if any — same per-frame-borrow contract as `get_rope`.
@@ -498,8 +467,8 @@ pub(crate) struct PaneRenderCtx<'a> {
     pub pane: &'a Pane,
     /// Rope borrowed from the caller's `Document` for this frame only.
     pub rope: &'a ropey::Rope,
-    /// Tree-sitter syntax layers from `SharedBuffer`, if a language with a
-    /// grammar is configured.
+    /// Tree-sitter syntax layers borrowed from the caller via `get_syntax`,
+    /// if a language with a grammar is configured.
     pub syntax: Option<&'a SyntaxLayers>,
     pub theme: &'a Theme,
     pub rect: ratatui::layout::Rect,

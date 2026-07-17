@@ -84,7 +84,7 @@ impl Editor {
         use crate::ui::build_pane;
         use hume_editing::selection::{Selection, SelectionSet};
         use hume_editing::text::Text;
-        use hume_engine::pipeline::{LayoutTree, SharedBuffer};
+        use hume_engine::pipeline::LayoutTree;
         use slotmap::SecondaryMap;
         use std::collections::VecDeque;
 
@@ -130,7 +130,7 @@ impl Editor {
         }));
 
         // Insert a buffer — just metadata; the rope is passed at render time.
-        let buffer_id = engine_view.buffers.insert(SharedBuffer::new());
+        let buffer_id = engine_view.buffers.insert(());
 
         let settings = EditorSettings::default();
 
@@ -558,7 +558,13 @@ impl Editor {
             area,
             buf,
             |bid| self.state.buffers.try_get(bid).map(|b| b.text().rope()),
-            |bid| self.view.buffers.get(bid).and_then(|b| b.syntax.as_ref()),
+            |bid| {
+                self.state
+                    .buffers
+                    .try_get(bid)
+                    .and_then(|b| b.syntax.as_ref())
+                    .and_then(hume_treesitter::syntax::Syntax::layers)
+            },
             |pid| self.resolve_pane_settings(pid).0,
             &statusline,
             self.state.focused_pane_id,

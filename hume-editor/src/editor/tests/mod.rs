@@ -17,7 +17,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
 use hume_engine::pane::Pane;
-use hume_engine::pipeline::{BufferId, EngineView, LayoutTree, PaneId, SharedBuffer};
+use hume_engine::pipeline::{BufferId, EngineView, LayoutTree, PaneId};
 use hume_treesitter::parse_worker::InlineParseBackend;
 use hume_treesitter::registry::LanguageRegistry;
 use slotmap::SecondaryMap;
@@ -172,7 +172,7 @@ impl Editor {
         // Minimal engine view for test contexts. Uses 80×24 with tab_width=4.
         let theme = crate::ui::theme::build_default_theme();
         let mut engine_view = EngineView::new(theme);
-        let buffer_id = engine_view.buffers.insert(SharedBuffer::new());
+        let buffer_id = engine_view.buffers.insert(());
         let settings = EditorSettings::default();
         let jump_list_capacity = settings.jump_list_capacity;
         let history_capacity = settings.history_capacity;
