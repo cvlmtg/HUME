@@ -280,6 +280,9 @@ impl EngineView {
     /// the caller (typically the editor's `Document`). The borrow is used only
     /// inside this call — no rope is stored in `SharedBuffer`.
     ///
+    /// `get_syntax` resolves a `BufferId` to its committed tree-sitter
+    /// `SyntaxLayers`, if any — same per-frame-borrow contract as `get_rope`.
+    ///
     /// Layout: the tab bar (if present) occupies the top row, the statusline
     /// always occupies the bottom row. Panes fill the remaining area.
     ///
@@ -295,6 +298,7 @@ impl EngineView {
         area: ratatui::layout::Rect,
         buf: &mut ratatui::buffer::Buffer,
         get_rope: impl Fn(BufferId) -> Option<&'rope ropey::Rope>,
+        get_syntax: impl Fn(BufferId) -> Option<&'rope SyntaxLayers>,
         get_pane_settings: impl Fn(PaneId) -> PaneRenderSettings,
         statusline: &dyn StatuslineProvider,
         focused_pane_id: PaneId,
@@ -361,9 +365,9 @@ impl EngineView {
             let Some(pane) = self.panes.get(pane_id) else {
                 continue;
             };
-            let Some(buffer) = self.buffers.get(pane.buffer_id) else {
+            if self.buffers.get(pane.buffer_id).is_none() {
                 continue;
-            };
+            }
             // Resolve the rope from the caller — zero-copy, no clone needed.
             let Some(rope) = get_rope(pane.buffer_id) else {
                 continue;
@@ -374,7 +378,7 @@ impl EngineView {
             let pane_ctx = PaneRenderCtx {
                 pane,
                 rope,
-                syntax: buffer.syntax.as_ref(),
+                syntax: get_syntax(pane.buffer_id),
                 theme: &self.theme,
                 rect,
                 settings: get_pane_settings(pane_id),
