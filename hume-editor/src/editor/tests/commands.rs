@@ -3002,3 +3002,132 @@ fn gu_dot_repeats() {
     ed.feed_key(key('.')); // replay make-text-lowercase
     assert_eq!(state(&ed), "hello\n-[world\n]>");
 }
+
+// ── word-selects-whitespace (mm/MM, w/W/b/B around-word default) ──────────
+//
+// Full-dispatch coverage of the default flip: the ops-level tests in
+// ops/motion/tests.rs and ops/text_object/tests.rs cover the span math;
+// these confirm the setting actually gates behavior through the real
+// keymap/registry/dispatch path (:set, direct field write, and replay).
+
+#[test]
+fn w_default_selects_trailing_space() {
+    let mut ed = editor_from("-[f]>oo bar baz\n");
+    ed.feed_key(key('w'));
+    assert_eq!(state(&ed), "foo -[bar ]>baz\n");
+}
+
+#[test]
+fn w_with_setting_off_selects_bare_word() {
+    let mut ed = editor_from("-[f]>oo bar baz\n");
+    ed.state.settings.word_selects_whitespace = false;
+    ed.feed_key(key('w'));
+    assert_eq!(state(&ed), "foo -[bar]> baz\n");
+}
+
+#[test]
+fn w_set_buffer_off_selects_bare_word() {
+    // Exercises the typed-command path (:set), not just a direct field write.
+    let mut ed = editor_from("-[f]>oo bar baz\n");
+    type_cmd(&mut ed, ":set buffer word-selects-whitespace=false");
+    ed.feed_key(key('w'));
+    assert_eq!(state(&ed), "foo -[bar]> baz\n");
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn W_default_selects_trailing_space() {
+    let mut ed = editor_from("-[f]>oo, bar baz\n");
+    ed.feed_key(key('W'));
+    assert_eq!(state(&ed), "foo, -[bar ]>baz\n");
+}
+
+#[test]
+fn b_default_selects_trailing_space() {
+    let mut ed = editor_from("foo bar -[b]>az\n");
+    ed.feed_key(key('b'));
+    assert_eq!(state(&ed), "foo -[bar ]>baz\n");
+}
+
+#[test]
+fn mm_default_matches_around_word() {
+    let mut ed = editor_from("-[h]>ello world\n");
+    ed.feed_keys([key('m'), key('m')]);
+    assert_eq!(state(&ed), "-[hello ]>world\n");
+}
+
+#[test]
+fn mm_with_setting_off_matches_inner_word() {
+    let mut ed = editor_from("-[h]>ello world\n");
+    ed.state.settings.word_selects_whitespace = false;
+    ed.feed_keys([key('m'), key('m')]);
+    assert_eq!(state(&ed), "-[hello]> world\n");
+}
+
+#[test]
+fn mm_default_on_whitespace_extends_to_adjacent_word() {
+    // around_word_impl's on-whitespace rule: cursor on the space itself
+    // extends forward to the adjacent word, same as pressing maw there.
+    let mut ed = editor_from("foo-[ ]>bar\n");
+    ed.feed_keys([key('m'), key('m')]);
+    assert_eq!(state(&ed), "foo-[ bar]>\n");
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn MM_default_matches_around_uppercase_word() {
+    let mut ed = editor_from("-[h]>ello.world foo\n");
+    ed.feed_keys([key('M'), key('M')]);
+    assert_eq!(state(&ed), "-[hello.world ]>foo\n");
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn MM_with_setting_off_matches_inner_uppercase_word() {
+    let mut ed = editor_from("-[h]>ello.world foo\n");
+    ed.state.settings.word_selects_whitespace = false;
+    ed.feed_keys([key('M'), key('M')]);
+    assert_eq!(state(&ed), "-[hello.world]> foo\n");
+}
+
+#[test]
+fn miw_unaffected_by_setting() {
+    let mut ed = editor_from("-[h]>ello world\n");
+    ed.feed_keys([key('m'), key('i'), key('w')]);
+    assert_eq!(state(&ed), "-[hello]> world\n");
+
+    let mut ed2 = editor_from("-[h]>ello world\n");
+    ed2.state.settings.word_selects_whitespace = false;
+    ed2.feed_keys([key('m'), key('i'), key('w')]);
+    assert_eq!(state(&ed2), "-[hello]> world\n");
+}
+
+#[test]
+fn maw_unaffected_by_setting() {
+    let mut ed = editor_from("-[h]>ello world\n");
+    ed.feed_keys([key('m'), key('a'), key('w')]);
+    assert_eq!(state(&ed), "-[hello ]>world\n");
+
+    let mut ed2 = editor_from("-[h]>ello world\n");
+    ed2.state.settings.word_selects_whitespace = false;
+    ed2.feed_keys([key('m'), key('a'), key('w')]);
+    assert_eq!(state(&ed2), "-[hello ]>world\n");
+}
+
+/// `select-word` (`mm`) is a Selection command, so it pushes an establish
+/// step onto the dot-repeat recipe (unlike the reaching word motions) —
+/// replay re-runs it via `run_native_body`, which must re-resolve
+/// `word-selects-whitespace` fresh each time rather than baking in whatever
+/// was true at the original keypress.
+#[test]
+fn dot_repeat_of_mm_delete_reresolves_word_selects_whitespace() {
+    let mut ed = editor_from("-[h]>ello world\n");
+    ed.feed_keys([key('m'), key('m')]); // select "hello " (around, default on)
+    ed.feed_key(key('d')); // delete "hello " -> "world\n"
+    assert_eq!(ed.doc().text().to_string(), "world\n");
+
+    ed.state.settings.word_selects_whitespace = false;
+    ed.feed_key(key('.')); // replay: re-establishes via mm (now bare), then deletes
+
+    assert_eq!(ed.doc().text().to_string(), "\n");
+}
