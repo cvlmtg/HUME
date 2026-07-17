@@ -79,7 +79,7 @@ pub(crate) struct Buffer {
     pub(crate) language: Option<LanguageId>,
     /// Monotonically increasing counter, bumped on every text mutation.
     /// `reparse_stale_buffers` skips a buffer when this equals
-    /// `syntax.parsed_gen`.
+    /// `syntax.parsed_gen()`.
     pub(crate) text_gen: u64,
     /// Per-buffer tree-sitter syntax attachment: grammar identity, committed
     /// parse layers, generation bookkeeping, and in-flight state, all in one
