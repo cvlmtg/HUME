@@ -18,7 +18,38 @@ Unlike Helix, HUME's `c` keeps the selection on the text you changed: select a w
 
 ### Word motions
 
-- `w`, `b`: Both editors re-anchor on each press (the anchor moves with the head — it does not stay pinned at the origin). The difference is **what gets selected**: Helix selects the gap traversed (from the old position to the next word start, e.g. `Basic ` including the trailing space); HUME selects the destination word itself (from its start to its end, e.g. `forward` with no surrounding whitespace). To grow a selection across multiple words in HUME, use Extend mode (`e` then `w`), or a one-shot extend (`Ctrl+w` under the kitty protocol). Unlike Helix, HUME's extend is bidirectional: pressing `b`/`Ctrl+b` after growing with `w`/`Ctrl+w` shrinks the selection back word by word (and vice versa) instead of only ever growing it.
+`w`, `b`: Both editors re-anchor on each press (the anchor moves with the head — it does not stay pinned at the origin). The difference is **what gets selected**: Helix selects the gap traversed — from the old position to the next word start, including the trailing whitespace; HUME selects the destination word itself, with no surrounding whitespace.
+
+<div style="font-family:var(--vp-font-family-mono);line-height:2;overflow-x:auto">
+<strong>Cursor on the first character</strong><br>
+Helix&nbsp;&nbsp;<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">L</span>orem ipsum dolor sit<br>
+HUME&nbsp;&nbsp;&nbsp;<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">L</span>orem ipsum dolor sit<br>
+<br>
+<strong>Press <code>w</code></strong><br>
+Helix&nbsp;&nbsp;<span style="background:var(--vp-c-brand-soft);border-radius:3px">Lorem<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">&nbsp;</span></span>ipsum dolor sit<br>
+HUME&nbsp;&nbsp;&nbsp;Lorem <span style="background:var(--vp-c-brand-soft);border-radius:3px">ipsu<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">m</span></span> dolor sit<br>
+<br>
+<strong>Press <code>w</code> again</strong><br>
+Helix&nbsp;&nbsp;Lorem <span style="background:var(--vp-c-brand-soft);border-radius:3px">ipsum<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">&nbsp;</span></span>dolor sit<br>
+HUME&nbsp;&nbsp;&nbsp;Lorem ipsum <span style="background:var(--vp-c-brand-soft);border-radius:3px">dolo<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">r</span></span> sit
+</div>
+
+To select the word the cursor is already sitting on — no trailing space, no forward jump — HUME binds `mm` (a shortcut for `miw`, select inner word). It selects the whole word / whitespace / punctuation run under the cursor no matter where in that run the cursor sits. Helix has no dedicated command for this, but `e` (move to end of word) reaches the same result *only when the cursor already sits on the word's first character* — unlike `w`, `e` stops at the end of the word and excludes the trailing whitespace. Starting `e` from the middle of a word selects only from that point to the word's end (`rem`), not the whole word — `mm` has no such restriction.
+
+<div style="font-family:var(--vp-font-family-mono);line-height:2;overflow-x:auto">
+<strong>Select the current word, cursor in the middle of the word</strong><br>
+Helix&nbsp;&nbsp;Lo<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">r</span>em ipsum dolor sit<br>
+HUME&nbsp;&nbsp;&nbsp;Lo<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">r</span>em ipsum dolor sit<br>
+<br>
+<strong>Press <code>e</code></strong><br>
+Helix&nbsp;&nbsp;Lo<span style="background:var(--vp-c-brand-soft);border-radius:3px">re<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">m</span></span> ipsum dolor sit<br>
+<strong>Press <code>mm</code></strong><br>
+HUME&nbsp;&nbsp;&nbsp;<span style="background:var(--vp-c-brand-soft);border-radius:3px">Lore<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">m</span></span> ipsum dolor sit
+</div>
+
+### Growing selections
+
+To grow a selection across multiple words in HUME, use Extend mode (`e` then `w`), or a one-shot extend (`Ctrl+w` under the kitty protocol). Both editors can shrink a grown selection back the same way: since extending keeps the anchor fixed and only moves the head, reversing direction (`b`/`Ctrl+b` after `w`/`Ctrl+w` in HUME; `b` after `w` in Helix's select mode) moves the head back toward the anchor instead of growing further. What differs is how you get into extending: Helix requires pressing `v` (select mode) first, after which every motion extends until you leave the mode; HUME's Extend mode (`e`) works the same way, but HUME also offers one-shot per-keystroke extends (`Ctrl+w`/`Ctrl+b`) that skip the mode switch entirely.
 
 ### Line selection: `x` vs Extend mode (`e`)
 
@@ -34,7 +65,7 @@ Helix's `x` is **modal** — once pressed, all subsequent `x` presses extend the
 
 HUME's `x` is **one-shot**. Each press re-anchors to the next line. To get Helix's repeat-extend behavior, enter **Extend mode** first (`e`) — in Extend mode, `x` (and every other motion) extends rather than replaces. Use `Ctrl+x` for a one-shot extend without entering the mode.
 
-Once extending, HUME's `x`/`X` are also bidirectional: after growing downward with `x`/`Ctrl+x`, pressing `X`/`Ctrl+X` shrinks the selection back up one line at a time (and vice versa), rather than only ever growing.
+Unlike its word motions, Helix's `x` doesn't share the anchor-fixed extend mechanism — it's hardcoded to always grow downward one line per press, and the default keymap has no key that shrinks a grown line selection back up (`X` normalizes the existing selection to whole-line boundaries rather than undoing a previous `x`; `Alt-x` shrinks to line bounds from an unrelated starting point). HUME's `x`/`X` are genuinely bidirectional: after growing downward with `x`/`Ctrl+x`, pressing `X`/`Ctrl+X` shrinks the selection back up one line at a time (and vice versa).
 
 ### Multiple selections
 
@@ -42,16 +73,16 @@ Both editors share the same foundations — multiple cursors, `;` to collapse, `
 
 | Operation | Helix | HUME |
 |-----------|-------|------|
-| Copy selection on line below | `Alt-C` | `C` (duplicates each selection to the same column on the next line, adding a multi-cursor — column-style editing via multi-cursor, not a rectangular visual block) |
-| Copy selection on line above | `Alt-c` | (unbound) |
+| Copy selection on line below | `C` | `C` (duplicates each selection to the same column on the next line, adding a multi-cursor — column-style editing via multi-cursor, not a rectangular visual block) |
+| Copy selection on line above | `Alt-C` | (unbound) |
 | Remove primary selection | `Alt-,` | `Ctrl+,` |
-| Flip selections | `Alt-o` (extend mode) | `o` (extend mode) |
-| Merge consecutive selections | `Alt-=`, `Alt-+` | automatic — adjacent selections never persist |
+| Flip selections | `Alt-;` (Normal and Select mode) | `Ctrl+e` (Normal and Extend mode); `o` (Extend mode only) |
+| Merge consecutive selections | `Alt-_` (touching selections only); `Alt--` merges all into one span | automatic — adjacent selections never persist |
 | Align selections | `&` | `&` |
-| Trim whitespace at edges | — | `_` |
-| Select all search matches | `%` (search mode) | `m /` |
-| Select within (regex per selection) | `s` (select mode) | `s` |
-| Use selection as search pattern | `*` | `Ctrl+/` (kitty only) |
+| Trim whitespace at edges | `_` | `_` |
+| Select within (regex per selection) | `s` | `s` |
+| Select all search matches | no dedicated key — `%` (select whole buffer) then `s` (sub-select regex matches) | `m /` |
+| Use selection as search pattern | `*` (adds word-boundary anchors; `Alt-*` for the literal selection) | `Ctrl+/` (kitty only) |
 
 ::: warning
 HUME's `*` is not the same operation as Helix's — it's Vim-style, searching the whole word under the cursor rather than the literal selection. `Ctrl+/` is HUME's equivalent of Helix's `*`.
@@ -84,7 +115,7 @@ Helix has no built-in plugin system. HUME has [PLUM](core-plugins.md#plum), a pl
 
 ### Statusline
 
-Helix's statusline is fixed. HUME's statusline is fully configurable from Scheme:
+Helix's statusline is configurable via TOML (`[editor.statusline]`) — you can reorder and toggle a fixed set of built-in elements (mode, file name, diagnostics, position, etc.) across left/center/right zones. HUME's statusline is scripted from Scheme, so providers can compute and display arbitrary custom content, not just rearrange a built-in list:
 
 ```scheme
 (configure-statusline! '("Mode" "FileName") '("SearchMatches") '("Position"))
