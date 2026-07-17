@@ -9,7 +9,7 @@ use std::thread;
 use hume_engine::pipeline::BufferId;
 
 use crate::injections::resolve_and_parse_injections;
-use crate::registry::LanguageConfig;
+use crate::registry::GrammarBundle;
 use hume_editing::text::Text;
 
 /// Called by the worker thread after posting results, so the editor's main
@@ -51,9 +51,9 @@ pub(crate) const MAX_INJECTION_DEPTH: u8 = 3;
 pub struct ParseRequest {
     pub bid: BufferId,
     pub text_gen: u64,
-    /// The grammar to parse with. Read on the worker thread for `set_language`
-    /// and injection resolution.
-    pub lang: Arc<LanguageConfig>,
+    /// The grammar bundle to parse with. Read on the worker thread for
+    /// `set_language` and injection resolution.
+    pub bundle: Arc<GrammarBundle>,
     /// O(1) rope clone (structural sharing) — serialised to bytes on the worker
     /// thread only when the parse succeeds, avoiding the main-thread allocation.
     pub text: Text,
@@ -64,7 +64,7 @@ pub struct ParseRequest {
     /// Snapshot of every grammared language, for resolving an injected
     /// language name (e.g. a fenced code block's info string) to its grammar
     /// without touching main-thread state from the worker.
-    pub langs: Arc<HashMap<String, Arc<LanguageConfig>>>,
+    pub langs: Arc<HashMap<String, Arc<GrammarBundle>>>,
 }
 
 pub enum ParseOutcome {
@@ -85,8 +85,8 @@ pub struct ParsedLayers {
 
 /// One resolved and parsed injection layer.
 pub struct ParsedInjection {
-    /// The injected layer's grammar — read for its highlighter on install.
-    pub lang: Arc<LanguageConfig>,
+    /// The injected layer's grammar bundle — read for its highlighter on install.
+    pub bundle: Arc<GrammarBundle>,
     pub tree: tree_sitter::Tree,
     /// Absolute byte ranges this layer was parsed over, sorted by start.
     pub ranges: Vec<tree_sitter::Range>,
@@ -96,10 +96,10 @@ pub struct ParsedInjection {
 pub struct ParseDone {
     pub bid: BufferId,
     pub text_gen: u64,
-    /// The grammar this was parsed with. Its `config_gen` is compared on the
-    /// main thread to detect grammar swaps that occurred while the request
-    /// was in flight.
-    pub lang: Arc<LanguageConfig>,
+    /// The grammar bundle this was parsed with. Its `config_gen` is compared
+    /// on the main thread to detect grammar swaps that occurred while the
+    /// request was in flight.
+    pub bundle: Arc<GrammarBundle>,
     pub outcome: ParseOutcome,
 }
 
@@ -119,7 +119,7 @@ fn coalesce_one(batch: &mut HashMap<BufferId, ParseRequest>, req: ParseRequest) 
             // new entry so the fresh grammar wins even without a text edit.
             if req.text_gen > o.get().text_gen
                 || (req.text_gen == o.get().text_gen
-                    && req.lang.config_gen != o.get().lang.config_gen)
+                    && req.bundle.config_gen != o.get().bundle.config_gen)
             {
                 o.insert(req);
             }
@@ -176,11 +176,8 @@ pub(crate) fn run_parse(
 /// constantly, so a "current language" cache (as a single-tree parser had)
 /// would just thrash on every request.
 fn do_parse(parser: &mut tree_sitter::Parser, req: ParseRequest, cancel: &AtomicBool) -> ParseDone {
-    let bundle = req.lang.grammar.as_ref().expect(
-        "grammar must be Some — setup_buffer_syntax verifies grammar.is_some() before posting",
-    );
     parser
-        .set_language(bundle.grammar.language())
+        .set_language(req.bundle.grammar.language())
         .expect("ABI verified at grammar registration time in attach_grammar");
     parser
         .set_included_ranges(&[])
@@ -189,8 +186,15 @@ fn do_parse(parser: &mut tree_sitter::Parser, req: ParseRequest, cancel: &Atomic
     let rope = req.text.rope();
     let outcome = match run_parse(parser, rope, req.old_tree.as_ref(), cancel) {
         Some(root) => {
-            let injected =
-                resolve_and_parse_injections(parser, &root, &req.lang, rope, &req.langs, cancel, 1);
+            let injected = resolve_and_parse_injections(
+                parser,
+                &root,
+                &req.bundle,
+                rope,
+                &req.langs,
+                cancel,
+                1,
+            );
             ParseOutcome::Ok(ParsedLayers { root, injected })
         }
         None => ParseOutcome::ParseFailed,
@@ -199,7 +203,7 @@ fn do_parse(parser: &mut tree_sitter::Parser, req: ParseRequest, cancel: &Atomic
     ParseDone {
         bid: req.bid,
         text_gen: req.text_gen,
-        lang: req.lang,
+        bundle: req.bundle,
         outcome,
     }
 }
@@ -358,7 +362,7 @@ impl ParseBackend for ThreadedParseBackend {
             let bid = req.bid;
             let inf = InFlight {
                 text_gen: req.text_gen,
-                config_gen: req.lang.config_gen,
+                config_gen: req.bundle.config_gen,
             };
             match tx.send(req) {
                 Ok(()) => {
@@ -501,21 +505,19 @@ mod tests {
     use hume_engine::theme::ScopeRegistry;
 
     use super::ParseBackend as _;
-    use super::{
-        LanguageConfig, ParseOutcome, ParseRequest, Text, ThreadedParseBackend, coalesce_one,
-    };
+    use super::{ParseOutcome, ParseRequest, Text, ThreadedParseBackend, coalesce_one};
     use crate::registry::GrammarBundle;
     use crate::test_support::grammar_parser_path;
 
     /// Distinct per call, mirroring `LanguageRegistry`'s `config_gen`
-    /// invariant so tests that compare configs by gen see real identity.
+    /// invariant so tests that compare bundles by gen see real identity.
     fn next_test_config_gen() -> u32 {
         use std::sync::atomic::{AtomicU32, Ordering};
         static NEXT_GEN: AtomicU32 = AtomicU32::new(0);
         NEXT_GEN.fetch_add(1, Ordering::Relaxed)
     }
 
-    fn make_lang(name: &str, symbol: &str) -> Arc<LanguageConfig> {
+    fn make_bundle(name: &str, symbol: &str) -> Arc<GrammarBundle> {
         let path = grammar_parser_path(name);
         if !path.exists() {
             panic!(
@@ -530,16 +532,10 @@ mod tests {
             query,
             &mut registry,
         ));
-        Arc::new(LanguageConfig {
-            name: name.to_owned(),
-            extensions: vec![],
-            globs: vec![],
-            shebangs: vec![],
-            grammar: Some(GrammarBundle {
-                grammar,
-                highlighter,
-                injections: None,
-            }),
+        Arc::new(GrammarBundle {
+            grammar,
+            highlighter,
+            injections: None,
             config_gen: next_test_config_gen(),
         })
     }
@@ -549,7 +545,7 @@ mod tests {
         sm.insert(())
     }
 
-    fn empty_langs() -> Arc<HashMap<String, Arc<LanguageConfig>>> {
+    fn empty_langs() -> Arc<HashMap<String, Arc<GrammarBundle>>> {
         Arc::new(HashMap::new())
     }
 
@@ -559,7 +555,7 @@ mod tests {
     fn coalesce_one_keeps_higher_gen() {
         use std::collections::HashMap;
         let bid = fresh_bid();
-        let lang = make_lang("json", "tree_sitter_json");
+        let bundle = make_bundle("json", "tree_sitter_json");
         let mut batch: HashMap<BufferId, ParseRequest> = HashMap::new();
 
         // Gen 2 lands first.
@@ -568,7 +564,7 @@ mod tests {
             ParseRequest {
                 bid,
                 text_gen: 2,
-                lang: Arc::clone(&lang),
+                bundle: Arc::clone(&bundle),
                 text: Text::from("bb\n"),
                 old_tree: None,
                 langs: empty_langs(),
@@ -580,7 +576,7 @@ mod tests {
             ParseRequest {
                 bid,
                 text_gen: 1,
-                lang: Arc::clone(&lang),
+                bundle: Arc::clone(&bundle),
                 text: Text::from("a\n"),
                 old_tree: None,
                 langs: empty_langs(),
@@ -602,7 +598,7 @@ mod tests {
             ParseRequest {
                 bid,
                 text_gen: 3,
-                lang: Arc::clone(&lang),
+                bundle: Arc::clone(&bundle),
                 text: Text::from("ccc\n"),
                 old_tree: None,
                 langs: empty_langs(),
@@ -617,7 +613,7 @@ mod tests {
             ParseRequest {
                 bid,
                 text_gen: 3,
-                lang: Arc::clone(&lang),
+                bundle: Arc::clone(&bundle),
                 text: Text::from("REPLACED\n"),
                 old_tree: None,
                 langs: empty_langs(),
@@ -634,38 +630,38 @@ mod tests {
     fn coalesce_one_same_gen_different_lang_replaces() {
         use std::collections::HashMap;
         let bid = fresh_bid();
-        let lang_a = make_lang("json", "tree_sitter_json");
-        let lang_b = make_lang("rust", "tree_sitter_rust");
+        let bundle_a = make_bundle("json", "tree_sitter_json");
+        let bundle_b = make_bundle("rust", "tree_sitter_rust");
         let mut batch: HashMap<BufferId, ParseRequest> = HashMap::new();
 
-        // lang_a arrives first at gen 5.
+        // bundle_a arrives first at gen 5.
         coalesce_one(
             &mut batch,
             ParseRequest {
                 bid,
                 text_gen: 5,
-                lang: Arc::clone(&lang_a),
+                bundle: Arc::clone(&bundle_a),
                 text: Text::from("{}\n"),
                 old_tree: None,
                 langs: empty_langs(),
             },
         );
-        // lang_b at the same gen — grammar swap on a quiescent buffer.
+        // bundle_b at the same gen — grammar swap on a quiescent buffer.
         coalesce_one(
             &mut batch,
             ParseRequest {
                 bid,
                 text_gen: 5,
-                lang: Arc::clone(&lang_b),
+                bundle: Arc::clone(&bundle_b),
                 text: Text::from("fn f(){}\n"),
                 old_tree: None,
                 langs: empty_langs(),
             },
         );
-        // The new lang must win.
+        // The new bundle must win.
         assert_eq!(
-            batch[&bid].lang.config_gen,
-            lang_b.config_gen,
+            batch[&bid].bundle.config_gen,
+            bundle_b.config_gen,
             "grammar swap must replace same-gen entry"
         );
         assert_eq!(
@@ -674,13 +670,13 @@ mod tests {
             "text must match the winning lang"
         );
 
-        // A second request with the same lang does not replace.
+        // A second request with the same bundle does not replace.
         coalesce_one(
             &mut batch,
             ParseRequest {
                 bid,
                 text_gen: 5,
-                lang: Arc::clone(&lang_b),
+                bundle: Arc::clone(&bundle_b),
                 text: Text::from("REPLACED\n"),
                 old_tree: None,
                 langs: empty_langs(),
@@ -710,15 +706,15 @@ mod tests {
 
     #[test]
     fn worker_language_switch_produces_trees_for_both() {
-        let json_lang = make_lang("json", "tree_sitter_json");
-        let rust_lang = make_lang("rust", "tree_sitter_rust");
+        let json_bundle = make_bundle("json", "tree_sitter_json");
+        let rust_bundle = make_bundle("rust", "tree_sitter_rust");
         let mut worker = ThreadedParseBackend::new();
         let bid = fresh_bid();
 
         worker.post(ParseRequest {
             bid,
             text_gen: 1,
-            lang: Arc::clone(&json_lang),
+            bundle: Arc::clone(&json_bundle),
             text: Text::from("{\"x\": 1}\n"),
             old_tree: None,
             langs: empty_langs(),
@@ -733,12 +729,12 @@ mod tests {
             matches!(done1.outcome, ParseOutcome::Ok(..)),
             "json parse must succeed"
         );
-        assert_eq!(done1.lang.config_gen, json_lang.config_gen);
+        assert_eq!(done1.bundle.config_gen, json_bundle.config_gen);
 
         worker.post(ParseRequest {
             bid,
             text_gen: 2,
-            lang: Arc::clone(&rust_lang),
+            bundle: Arc::clone(&rust_bundle),
             text: Text::from("fn main() {}\n"),
             old_tree: None,
             langs: empty_langs(),
@@ -751,7 +747,7 @@ mod tests {
             matches!(done2.outcome, ParseOutcome::Ok(..)),
             "rust parse must succeed after language switch"
         );
-        assert_eq!(done2.lang.config_gen, rust_lang.config_gen);
+        assert_eq!(done2.bundle.config_gen, rust_bundle.config_gen);
     }
 
     // ── Wake callback ─────────────────────────────────────────────────────────
@@ -763,12 +759,12 @@ mod tests {
             let _ = tx_wake.send(());
         });
         let mut worker = ThreadedParseBackend::with_waker(wake);
-        let lang = make_lang("json", "tree_sitter_json");
+        let bundle = make_bundle("json", "tree_sitter_json");
 
         worker.post(ParseRequest {
             bid: fresh_bid(),
             text_gen: 1,
-            lang,
+            bundle,
             text: Text::from("{}\n"),
             old_tree: None,
             langs: empty_langs(),

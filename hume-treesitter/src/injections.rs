@@ -7,7 +7,7 @@ use streaming_iterator::StreamingIterator;
 use hume_engine::builtins::tree_sitter_hl::RopeProvider;
 
 use crate::parse_worker::{MAX_INJECTION_DEPTH, ParsedInjection, run_parse};
-use crate::registry::LanguageConfig;
+use crate::registry::GrammarBundle;
 
 // ── InjectionsQuery ────────────────────────────────────────────────────────────
 
@@ -178,14 +178,14 @@ struct InjectionGroup {
 pub(crate) fn resolve_and_parse_injections(
     parser: &mut tree_sitter::Parser,
     tree: &tree_sitter::Tree,
-    lang: &LanguageConfig,
+    bundle: &GrammarBundle,
     rope: &ropey::Rope,
-    langs: &HashMap<String, Arc<LanguageConfig>>,
+    langs: &HashMap<String, Arc<GrammarBundle>>,
     cancel: &AtomicBool,
     depth: u8,
 ) -> Vec<ParsedInjection> {
     let mut out = Vec::new();
-    let Some(inj) = lang.grammar.as_ref().and_then(|b| b.injections.as_ref()) else {
+    let Some(inj) = bundle.injections.as_ref() else {
         return out;
     };
 
@@ -247,12 +247,11 @@ pub(crate) fn resolve_and_parse_injections(
         .into_iter()
         .chain(combined.into_iter().map(|(_, g)| g))
     {
-        // Unknown or grammarless injection language — skip silently. No
-        // lazy install: the user opts into grammars explicitly via PLUM.
-        let Some(child_lang) = langs.get(&group.language) else {
-            continue;
-        };
-        let Some(bundle) = child_lang.grammar.as_ref() else {
+        // Unknown injection language — skip silently. No lazy install: the
+        // user opts into grammars explicitly via PLUM. Every entry in `langs`
+        // is grammared by construction (it's built from the grammar table),
+        // so no further "does it have a grammar" check is needed here.
+        let Some(child_bundle) = langs.get(&group.language) else {
             continue;
         };
         let ranges = normalize_ranges(group.ranges);
@@ -260,7 +259,7 @@ pub(crate) fn resolve_and_parse_injections(
             continue;
         }
 
-        if parser.set_language(bundle.grammar.language()).is_err() {
+        if parser.set_language(child_bundle.grammar.language()).is_err() {
             continue; // ABI mismatch on the injected grammar
         }
         if parser.set_included_ranges(&ranges).is_err() {
@@ -275,7 +274,7 @@ pub(crate) fn resolve_and_parse_injections(
             out.extend(resolve_and_parse_injections(
                 parser,
                 &child_tree,
-                child_lang,
+                child_bundle,
                 rope,
                 langs,
                 cancel,
@@ -284,7 +283,7 @@ pub(crate) fn resolve_and_parse_injections(
         }
 
         out.push(ParsedInjection {
-            lang: Arc::clone(child_lang),
+            bundle: Arc::clone(child_bundle),
             tree: child_tree,
             ranges,
             depth,
@@ -313,7 +312,7 @@ mod tests {
     /// (overriding whatever `injections.scm` the fixture ships, if any) —
     /// keeps each test's injection query minimal and self-contained rather
     /// than depending on upstream Helix query wording.
-    fn make_lang(name: &str, symbol: &str, injections_src: Option<&str>) -> Arc<LanguageConfig> {
+    fn make_bundle(name: &str, symbol: &str, injections_src: Option<&str>) -> Arc<GrammarBundle> {
         let parser_path = grammar_parser_path(name);
         let grammar = LoadedGrammar::open(&parser_path, symbol).expect("load grammar");
         let highlights_src =
@@ -332,16 +331,10 @@ mod tests {
             );
             InjectionsQuery::new(q)
         });
-        Arc::new(LanguageConfig {
-            name: name.to_owned(),
-            extensions: vec![],
-            globs: vec![],
-            shebangs: vec![],
-            grammar: Some(GrammarBundle {
-                grammar,
-                highlighter,
-                injections,
-            }),
+        Arc::new(GrammarBundle {
+            grammar,
+            highlighter,
+            injections,
             config_gen: next_test_config_gen(),
         })
     }
@@ -365,11 +358,9 @@ mod tests {
         }
     }
 
-    fn parse(lang: &LanguageConfig, source: &str) -> (tree_sitter::Parser, tree_sitter::Tree) {
+    fn parse(bundle: &GrammarBundle, source: &str) -> (tree_sitter::Parser, tree_sitter::Tree) {
         let mut parser = tree_sitter::Parser::new();
-        parser
-            .set_language(lang.grammar.as_ref().unwrap().grammar.language())
-            .unwrap();
+        parser.set_language(bundle.grammar.language()).unwrap();
         let tree = parser.parse(source, None).expect("parse");
         (parser, tree)
     }
@@ -381,7 +372,7 @@ mod tests {
         if skip_if_missing("json") {
             return;
         }
-        let json = make_lang("json", "tree_sitter_json", None);
+        let json = make_bundle("json", "tree_sitter_json", None);
         // `[1,2]` parses as an `array` node whose direct children are, in
         // order: `[` (unnamed), `number` "1" (named), `,` (unnamed), `number`
         // "2" (named), `]` (unnamed). Excluding only unnamed children must
@@ -406,7 +397,7 @@ mod tests {
         if skip_if_missing("json") {
             return;
         }
-        let json = make_lang("json", "tree_sitter_json", None);
+        let json = make_bundle("json", "tree_sitter_json", None);
         let (_parser, tree) = parse(&json, "[1,2]\n");
         let array = tree.root_node().named_child(0).expect("array node");
 
@@ -454,16 +445,16 @@ mod tests {
         if skip_if_missing("json") || skip_if_missing("rust") {
             return;
         }
-        let json = make_lang(
+        let json = make_bundle(
             "json",
             "tree_sitter_json",
             Some(
                 r#"((string_content) @injection.content (#set! injection.language "rust") (#set! injection.include-unnamed-children))"#,
             ),
         );
-        let rust = make_lang("rust", "tree_sitter_rust", None);
+        let rust = make_bundle("rust", "tree_sitter_rust", None);
         let mut langs = HashMap::new();
-        langs.insert("rust".to_owned(), rust);
+        langs.insert("rust".to_owned(), Arc::clone(&rust));
 
         let source = "[\"hello\"]\n";
         let (mut parser, tree) = parse(&json, source);
@@ -473,7 +464,10 @@ mod tests {
         let out =
             resolve_and_parse_injections(&mut parser, &tree, &json, &rope, &langs, &cancel, 1);
         assert_eq!(out.len(), 1, "expected exactly one injected layer");
-        assert_eq!(out[0].lang.name, "rust");
+        assert!(
+            Arc::ptr_eq(&out[0].bundle, &rust),
+            "expected the rust bundle to be resolved"
+        );
         assert_eq!(out[0].depth, 1);
     }
 
@@ -482,7 +476,7 @@ mod tests {
         if skip_if_missing("json") || skip_if_missing("rust") {
             return;
         }
-        let json = make_lang(
+        let json = make_bundle(
             "json",
             "tree_sitter_json",
             Some(
@@ -494,7 +488,7 @@ mod tests {
         let mut langs = HashMap::new();
         langs.insert(
             "rust".to_owned(),
-            make_lang("rust", "tree_sitter_rust", None),
+            make_bundle("rust", "tree_sitter_rust", None),
         );
 
         let source = "[\"hello\"]\n";
@@ -516,14 +510,14 @@ mod tests {
         if skip_if_missing("json") || skip_if_missing("rust") {
             return;
         }
-        let json = make_lang(
+        let json = make_bundle(
             "json",
             "tree_sitter_json",
             Some(
                 r#"((string_content) @injection.content (#set! injection.language "rust") (#set! injection.combined) (#set! injection.include-unnamed-children))"#,
             ),
         );
-        let rust = make_lang("rust", "tree_sitter_rust", None);
+        let rust = make_bundle("rust", "tree_sitter_rust", None);
         let mut langs = HashMap::new();
         langs.insert("rust".to_owned(), rust);
 
@@ -557,7 +551,7 @@ mod tests {
         // Self-injecting: every `array` node re-parses its own (identical)
         // text as json again, matching `array` once more in the fresh tree —
         // unbounded without a depth cap, since the content never changes.
-        let json = make_lang(
+        let json = make_bundle(
             "json",
             "tree_sitter_json",
             Some(
@@ -597,10 +591,10 @@ mod tests {
             return;
         };
         let inj_src = std::fs::read_to_string(inj_path).unwrap();
-        let markdown = make_lang("markdown", "tree_sitter_markdown", Some(&inj_src));
-        let rust = make_lang("rust", "tree_sitter_rust", None);
+        let markdown = make_bundle("markdown", "tree_sitter_markdown", Some(&inj_src));
+        let rust = make_bundle("rust", "tree_sitter_rust", None);
         let mut langs = HashMap::new();
-        langs.insert("rust".to_owned(), rust);
+        langs.insert("rust".to_owned(), Arc::clone(&rust));
 
         let source = "```rust\nfn main() {}\n```\n";
         let (mut parser, tree) = parse(&markdown, source);
@@ -610,9 +604,9 @@ mod tests {
         let out =
             resolve_and_parse_injections(&mut parser, &tree, &markdown, &rope, &langs, &cancel, 1);
         assert!(
-            out.iter().any(|i| i.lang.name == "rust"),
-            "expected a rust layer resolved from the fenced code block's info string, got: {:?}",
-            out.iter().map(|i| i.lang.name.clone()).collect::<Vec<_>>()
+            out.iter().any(|i| Arc::ptr_eq(&i.bundle, &rust)),
+            "expected a rust layer resolved from the fenced code block's info string, got {} layers",
+            out.len()
         );
     }
 
@@ -626,8 +620,8 @@ mod tests {
             return;
         };
         let inj_src = std::fs::read_to_string(inj_path).unwrap();
-        let markdown = make_lang("markdown", "tree_sitter_markdown", Some(&inj_src));
-        let langs: HashMap<String, Arc<LanguageConfig>> = HashMap::new();
+        let markdown = make_bundle("markdown", "tree_sitter_markdown", Some(&inj_src));
+        let langs: HashMap<String, Arc<GrammarBundle>> = HashMap::new();
 
         let source = "```no-such-lang\nwhatever\n```\n";
         let (mut parser, tree) = parse(&markdown, source);

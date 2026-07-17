@@ -3,7 +3,7 @@ use std::sync::Arc;
 use hume_engine::pipeline::BufferId;
 use hume_engine::syntax_layers::{SyntaxLayer, SyntaxLayers};
 use hume_treesitter::parse_worker::{ParseDone, ParseOutcome, ParseRequest};
-use hume_treesitter::registry::{BufferSyntax, LanguageConfig};
+use hume_treesitter::registry::{BufferSyntax, GrammarBundle};
 
 use crate::editor::{Editor, Severity};
 
@@ -28,9 +28,9 @@ impl Editor {
             Some(n) => n,
             None => return,
         };
-        let lang_config = match self.state.languages.by_name(&lang_name) {
-            Some(c) if c.grammar.is_some() => Arc::clone(c),
-            _ => return,
+        let bundle = match self.state.languages.grammar_by_name(&lang_name) {
+            Some(b) => Arc::clone(b),
+            None => return,
         };
 
         // Size gate.
@@ -44,7 +44,7 @@ impl Editor {
 
         // The engine-side layers stay None until the backend responds; the
         // renderer reads them straight from `SharedBuffer.syntax`.
-        self.state.buffers.get_mut(bid).syntax = Some(BufferSyntax::new(Arc::clone(&lang_config)));
+        self.state.buffers.get_mut(bid).syntax = Some(BufferSyntax::new(Arc::clone(&bundle)));
 
         // Empty buffers need no parse — mark up to date so reparse_stale_buffers
         // skips them until the first edit arrives.
@@ -71,7 +71,7 @@ impl Editor {
         self.parse_worker.post(ParseRequest {
             bid,
             text_gen,
-            lang: lang_config,
+            bundle,
             text,
             old_tree: None,
             langs: self.state.languages.grammar_snapshot(),
@@ -90,19 +90,19 @@ impl Editor {
         let ParseDone {
             bid,
             text_gen,
-            lang,
+            bundle,
             outcome,
         } = done;
-        self.apply_parse_outcome(bid, text_gen, &lang, outcome);
+        self.apply_parse_outcome(bid, text_gen, &bundle, outcome);
         self.parse_worker
-            .clear_in_flight_if_matches(bid, text_gen, lang.config_gen);
+            .clear_in_flight_if_matches(bid, text_gen, bundle.config_gen);
     }
 
     fn apply_parse_outcome(
         &mut self,
         bid: hume_engine::pipeline::BufferId,
         text_gen: u64,
-        lang: &Arc<LanguageConfig>,
+        bundle: &Arc<GrammarBundle>,
         outcome: ParseOutcome,
     ) {
         // Discard if the buffer was closed while the request was in flight.
@@ -119,7 +119,7 @@ impl Editor {
         };
 
         // Discard if the grammar was swapped between enqueue and arrival.
-        if lang.config_gen != buf_syntax.lang.config_gen {
+        if bundle.config_gen != buf_syntax.bundle.config_gen {
             return;
         }
 
@@ -130,13 +130,7 @@ impl Editor {
 
         match outcome {
             ParseOutcome::Ok(parsed) => {
-                let root_highlighter = Arc::clone(
-                    &lang
-                        .grammar
-                        .as_ref()
-                        .expect("grammar.is_some() verified at setup_buffer_syntax")
-                        .highlighter,
-                );
+                let root_highlighter = Arc::clone(&bundle.highlighter);
                 let mut layers = Vec::with_capacity(1 + parsed.injected.len());
                 layers.push(SyntaxLayer {
                     tree: parsed.root,
@@ -145,15 +139,9 @@ impl Editor {
                     depth: 0,
                 });
                 for injected in parsed.injected {
-                    // Defensive: the bundle backing an injected layer's
-                    // language could vanish between the worker resolving it
-                    // and this install (e.g. a concurrent grammar removal).
-                    let Some(bundle) = injected.lang.grammar.as_ref() else {
-                        continue;
-                    };
                     layers.push(SyntaxLayer {
                         tree: injected.tree,
-                        highlighter: Arc::clone(&bundle.highlighter),
+                        highlighter: Arc::clone(&injected.bundle.highlighter),
                         ranges: injected.ranges,
                         depth: injected.depth,
                     });
@@ -242,8 +230,7 @@ impl Editor {
                         .get(bid)
                         .language
                         .as_deref()
-                        .and_then(|l| self.state.languages.by_name(l))
-                        .is_some_and(|c| c.grammar.is_some())
+                        .is_some_and(|l| self.state.languages.has_grammar(l))
                 {
                     self.setup_buffer_syntax(bid);
                 }
@@ -297,7 +284,7 @@ impl Editor {
             };
 
             let text = self.state.buffers.get(bid).text().clone();
-            let lang = Arc::clone(
+            let bundle = Arc::clone(
                 &self
                     .state
                     .buffers
@@ -305,12 +292,12 @@ impl Editor {
                     .syntax
                     .as_ref()
                     .expect("syntax is_some guaranteed above")
-                    .lang,
+                    .bundle,
             );
             self.parse_worker.post(ParseRequest {
                 bid,
                 text_gen,
-                lang,
+                bundle,
                 text,
                 old_tree,
                 langs: self.state.languages.grammar_snapshot(),
@@ -446,12 +433,10 @@ impl Editor {
                     .language
                     .as_deref()
                     .is_some_and(|lang| names.iter().any(|n| n == lang));
-                let root_has_injections = buf.syntax.as_ref().is_some_and(|syn| {
-                    syn.lang
-                        .grammar
-                        .as_ref()
-                        .is_some_and(|b| b.injections.is_some())
-                });
+                let root_has_injections = buf
+                    .syntax
+                    .as_ref()
+                    .is_some_and(|syn| syn.bundle.injections.is_some());
                 matches_name || root_has_injections
             })
             .map(|(bid, _)| bid)

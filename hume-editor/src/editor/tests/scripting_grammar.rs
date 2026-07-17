@@ -10,6 +10,7 @@
 use super::*;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use super::render_snapshot::render_to_styled_string;
 use crate::editor::scripting_setup::make_init_host;
@@ -791,7 +792,8 @@ fn grammar_swap_clears_stale_in_flight() {
     ed.reparse_stale_buffers(); // drain json parse result
 
     // Attach rust grammar and sweep — this should clear any json in-flight and post fresh.
-    ed.state
+    let rust_bundle = ed
+        .state
         .languages
         .attach_grammar(
             "rust",
@@ -805,18 +807,11 @@ fn grammar_swap_clears_stale_in_flight() {
     ed.set_buffer_language(bid, Some("rust".to_owned()));
     ed.reparse_stale_buffers(); // drain rust parse result
 
-    let rust_lang = ed
-        .state
-        .buffers
-        .get(bid)
-        .syntax
-        .as_ref()
-        .unwrap()
-        .lang
-        .name
-        .clone();
-    assert_eq!(
-        rust_lang, "rust",
+    assert!(
+        Arc::ptr_eq(
+            &ed.state.buffers.get(bid).syntax.as_ref().unwrap().bundle,
+            &rust_bundle
+        ),
         "buffer must be parsed with rust grammar after swap"
     );
     assert!(

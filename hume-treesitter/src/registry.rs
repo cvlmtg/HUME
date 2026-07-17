@@ -10,6 +10,31 @@ use hume_engine::theme::ScopeRegistry;
 
 use crate::injections::InjectionsQuery;
 
+// ── LanguageId ────────────────────────────────────────────────────────────────
+
+/// Interned language identity. Dense, append-only, minted by `LanguageRegistry`.
+/// An id is only ever handed out by `LanguageRegistry::intern` — indexing a
+/// different registry instance with it is a caller bug, not a runtime error.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct LanguageId(u32);
+
+// ── LanguageIdentity ────────────────────────────────────────────────────────────
+
+/// Detection identity for one language: extensions, glob patterns, shebangs.
+///
+/// Immutable once registered — re-registration (`register_identity_no_rebuild`)
+/// replaces the whole record rather than mutating it in place. The name is
+/// not stored here: it lives once, in the registry's interner (SSOT).
+#[derive(Debug, Default)]
+pub struct LanguageIdentity {
+    pub extensions: Vec<String>,
+    /// Raw glob patterns (e.g. `"Makefile"`, `"*.{ts,tsx}"`). Stored for
+    /// round-trip / debug; the compiled matcher lives on `LanguageRegistry`.
+    pub globs: Vec<String>,
+    /// Shebang substrings to match (e.g. `"python"`, `"node"`).
+    pub shebangs: Vec<String>,
+}
+
 // ── GrammarBundle ─────────────────────────────────────────────────────────────
 
 /// Tree-sitter grammar + precompiled highlight query, shared across all buffers
@@ -23,26 +48,9 @@ pub struct GrammarBundle {
     /// Compiled `injections.scm`, if the grammar has one. `None` means this
     /// language never injects embedded languages.
     pub injections: Option<InjectionsQuery>,
-}
-
-// ── LanguageConfig ────────────────────────────────────────────────────────────
-
-/// Language identity + optional grammar. Shared via `Arc`; rebuilt (new Arc)
-/// when a grammar is attached via `attach_grammar`.
-pub struct LanguageConfig {
-    pub name: String,
-    pub extensions: Vec<String>,
-    /// Raw glob patterns (e.g. `"Makefile"`, `"*.{ts,tsx}"`). Stored for
-    /// round-trip / debug; the compiled matcher lives on `LanguageRegistry`.
-    pub globs: Vec<String>,
-    /// Shebang substrings to match (e.g. `"python"`, `"node"`).
-    pub shebangs: Vec<String>,
-    /// Tree-sitter grammar + highlight query, `None` until `attach_grammar` is called.
-    pub grammar: Option<GrammarBundle>,
-    /// Unique per constructed `LanguageConfig` instance, issued by
-    /// `LanguageRegistry::next_gen`. Grammar-swap / staleness checks compare
-    /// this instead of `Arc::ptr_eq` — a plain integer identity that survives
-    /// across the worker-thread boundary.
+    /// Unique per attach, issued by `LanguageRegistry::next_gen`. Grammar-swap
+    /// / staleness checks compare this instead of `Arc::ptr_eq` — a plain
+    /// integer identity that survives across the worker-thread boundary.
     pub config_gen: u32,
 }
 
@@ -51,21 +59,21 @@ pub struct LanguageConfig {
 /// Per-buffer syntax attachment state.
 ///
 /// The `tree_sitter::Parser` lives on the parse worker thread.  This struct
-/// tracks the attached grammar (for grammar-swap detection via
-/// `LanguageConfig::config_gen`) and the most recently installed tree
+/// tracks the attached grammar bundle (for grammar-swap detection via
+/// `GrammarBundle::config_gen`) and the most recently installed tree
 /// generation.
 ///
 /// The parsed trees and highlighters live engine-side, in
 /// `SharedBuffer.syntax: Option<SyntaxLayers>` — both are already engine
 /// types, so there's no crate-layering reason to keep them here. This struct
 /// is the editor-domain half: a single `Option<BufferSyntax>` attachment
-/// flag (`Some` means syntax is wired up), the attached grammar config, and
+/// flag (`Some` means syntax is wired up), the attached grammar bundle, and
 /// generation bookkeeping for incremental parsing.
 pub struct BufferSyntax {
-    /// The attached root grammar config.  Read when reposting an incremental
+    /// The attached root grammar bundle.  Read when reposting an incremental
     /// reparse request and when checking whether the currently attached root
     /// grammar has an injections query (`sweep_buffers_for_grammars`).
-    pub lang: Arc<LanguageConfig>,
+    pub bundle: Arc<GrammarBundle>,
     /// `text_gen` of the most recently installed tree.  When this equals
     /// `Buffer.text_gen`, the installed tree is up to date.
     pub parsed_gen: u64,
@@ -88,9 +96,9 @@ pub struct BufferSyntax {
 }
 
 impl BufferSyntax {
-    pub fn new(lang: Arc<LanguageConfig>) -> Self {
+    pub fn new(bundle: Arc<GrammarBundle>) -> Self {
         Self {
-            lang,
+            bundle,
             parsed_gen: 0,
             tree_gen: 0,
             pending_edits: Vec::new(),
@@ -101,23 +109,35 @@ impl BufferSyntax {
 // ── LanguageRegistry ──────────────────────────────────────────────────────────
 
 /// Global registry of configured language identities. Lives on `Editor`.
+///
+/// `ids`/`names`/`identities`/`grammars` are the interner: dense, append-only,
+/// all index-aligned by `LanguageId.0`. `identities.len() == grammars.len() ==
+/// names.len()` always — `intern` pushes one entry to each.
 pub struct LanguageRegistry {
-    by_name: HashMap<String, Arc<LanguageConfig>>,
-    by_ext: HashMap<String, Arc<LanguageConfig>>,
+    ids: HashMap<String, LanguageId>,
+    names: Vec<String>,
+    /// `None` = interned but no identity registered.
+    identities: Vec<Option<LanguageIdentity>>,
+    /// The `LanguageId -> GrammarBundle` map.
+    grammars: Vec<Option<Arc<GrammarBundle>>>,
+    /// Detection indices — never rebuilt on `attach_grammar`, only on
+    /// identity (re-)registration or removal.
+    by_ext: HashMap<String, LanguageId>,
     /// Compiled glob matcher, rebuilt whenever languages are added or removed.
-    /// Index-aligned with `glob_lang_names`.
+    /// Index-aligned with `glob_lang_ids`.
     compiled_globs: GlobSet,
-    /// Language name for each glob pattern at the corresponding GlobSet index.
-    glob_lang_names: Vec<String>,
-    shebang_to_name: HashMap<String, String>,
+    /// Language id for each glob pattern at the corresponding GlobSet index.
+    glob_lang_ids: Vec<LanguageId>,
+    shebang_to_id: HashMap<String, LanguageId>,
     /// Registration order for glob priority: later entries win on overlap.
-    lang_order: Vec<String>,
-    /// Grammared languages only (`grammar.is_some()`), rebuilt on every attach
-    /// and remove. Handed to the parse worker so it can resolve an injected
-    /// language name to its grammar without touching main-thread state.
-    grammar_snapshot: Arc<HashMap<String, Arc<LanguageConfig>>>,
-    /// Source of `LanguageConfig::config_gen` — incremented on every new
-    /// config construction so each instance gets a unique identity.
+    lang_order: Vec<LanguageId>,
+    /// Grammared languages only, rebuilt whenever the grammar table changes.
+    /// Handed to the parse worker so it can resolve an injected language name
+    /// (a dynamically-discovered info-string) to its grammar without
+    /// touching main-thread state.
+    grammar_snapshot: Arc<HashMap<String, Arc<GrammarBundle>>>,
+    /// Source of `GrammarBundle::config_gen` — incremented on every grammar
+    /// attach so each attached bundle gets a unique identity.
     next_config_gen: u32,
 }
 
@@ -168,11 +188,14 @@ impl std::fmt::Display for RegisterError {
 impl Default for LanguageRegistry {
     fn default() -> Self {
         Self {
-            by_name: HashMap::new(),
+            ids: HashMap::new(),
+            names: Vec::new(),
+            identities: Vec::new(),
+            grammars: Vec::new(),
             by_ext: HashMap::new(),
             compiled_globs: GlobSet::empty(),
-            glob_lang_names: Vec::new(),
-            shebang_to_name: HashMap::new(),
+            glob_lang_ids: Vec::new(),
+            shebang_to_id: HashMap::new(),
             lang_order: Vec::new(),
             grammar_snapshot: Arc::new(HashMap::new()),
             next_config_gen: 0,
@@ -185,12 +208,41 @@ impl LanguageRegistry {
         Self::default()
     }
 
-    /// Issue a fresh `config_gen` for a new `LanguageConfig` instance.
+    /// Issue a fresh `config_gen` for a newly attached `GrammarBundle`.
     fn next_gen(&mut self) -> u32 {
         let next = self.next_config_gen;
         self.next_config_gen += 1;
         next
     }
+
+    // ── Interner ──────────────────────────────────────────────────────────────
+
+    /// Mint-or-get: returns the existing id for `name`, or interns a fresh one
+    /// (identity and grammar slots start `None`).
+    pub fn intern(&mut self, name: &str) -> LanguageId {
+        if let Some(&id) = self.ids.get(name) {
+            return id;
+        }
+        let id = LanguageId(self.names.len() as u32);
+        self.names.push(name.to_owned());
+        self.identities.push(None);
+        self.grammars.push(None);
+        self.ids.insert(name.to_owned(), id);
+        id
+    }
+
+    /// The id for `name`, if it has been interned.
+    pub fn id_of(&self, name: &str) -> Option<LanguageId> {
+        self.ids.get(name).copied()
+    }
+
+    /// The name `id` was interned with. `id` must have been minted by this
+    /// registry — an out-of-range id is a caller bug.
+    pub fn name_of(&self, id: LanguageId) -> &str {
+        &self.names[id.0 as usize]
+    }
+
+    // ── Identity ──────────────────────────────────────────────────────────────
 
     /// Register a language identity: name, extensions, glob patterns, shebangs.
     ///
@@ -205,57 +257,60 @@ impl LanguageRegistry {
         extensions: &[&str],
         globs: &[&str],
         shebangs: &[&str],
-    ) -> Result<Arc<LanguageConfig>, RegisterError> {
-        let config = self.register_identity_no_rebuild(name, extensions, globs, shebangs);
+    ) -> Result<LanguageId, RegisterError> {
+        let id = self.register_identity_no_rebuild(name, extensions, globs, shebangs);
         self.rebuild_glob_set()?;
-        Ok(config)
+        Ok(id)
     }
 
     /// Insert identity data without rebuilding the compiled glob set.
     ///
     /// Intended for batch registration: call this N times then call
     /// `rebuild_glob_set` once, avoiding O(N²) NFA constructions at startup.
+    ///
+    /// Re-registering an already-grammared name drops its grammar (matching
+    /// `by_name`/`has_grammar` seeing no identity change without a fresh
+    /// `attach_grammar`) and rebuilds the snapshot so no stale entry survives.
     pub fn register_identity_no_rebuild(
         &mut self,
         name: &str,
         extensions: &[&str],
         globs: &[&str],
         shebangs: &[&str],
-    ) -> Arc<LanguageConfig> {
-        let config_gen = self.next_gen();
-        let config = Arc::new(LanguageConfig {
-            name: name.to_owned(),
+    ) -> LanguageId {
+        let id = self.intern(name);
+        if let Some(old) = self.identities[id.0 as usize].take() {
+            self.deindex(&old);
+        }
+        let new_identity = LanguageIdentity {
             extensions: extensions.iter().map(|s| s.to_string()).collect(),
             globs: globs.iter().map(|s| s.to_string()).collect(),
             shebangs: shebangs.iter().map(|s| s.to_string()).collect(),
-            grammar: None,
-            config_gen,
-        });
-        self.lang_order.retain(|n| n.as_str() != name);
-        self.lang_order.push(name.to_owned());
-        if let Some(old) = self.by_name.remove(name) {
-            self.deindex(&old);
+        };
+        for ext in &new_identity.extensions {
+            self.by_ext.insert(ext.clone(), id);
         }
-        self.by_name.insert(name.to_owned(), Arc::clone(&config));
-        for ext in &config.extensions {
-            self.by_ext.insert(ext.clone(), Arc::clone(&config));
+        for shebang in &new_identity.shebangs {
+            self.shebang_to_id.insert(shebang.clone(), id);
         }
-        for shebang in &config.shebangs {
-            self.shebang_to_name
-                .insert(shebang.clone(), name.to_owned());
+        self.identities[id.0 as usize] = Some(new_identity);
+        self.lang_order.retain(|&i| i != id);
+        self.lang_order.push(id);
+        if self.grammars[id.0 as usize].take().is_some() {
+            self.rebuild_grammar_snapshot();
         }
-        config
+        id
     }
 
-    /// Remove `config`'s entries from the `by_ext`/`shebang_to_name` secondary
-    /// indices, leaving `by_name`/`lang_order` untouched. Shared by
-    /// `register_identity_no_rebuild`'s replace-existing branch and `remove`.
-    fn deindex(&mut self, config: &LanguageConfig) {
-        for ext in &config.extensions {
+    /// Remove `identity`'s entries from the `by_ext`/`shebang_to_id` secondary
+    /// indices. Shared by `register_identity_no_rebuild`'s replace-existing
+    /// branch and `remove`.
+    fn deindex(&mut self, identity: &LanguageIdentity) {
+        for ext in &identity.extensions {
             self.by_ext.remove(ext.as_str());
         }
-        for shebang in &config.shebangs {
-            self.shebang_to_name.remove(shebang.as_str());
+        for shebang in &identity.shebangs {
+            self.shebang_to_id.remove(shebang.as_str());
         }
     }
 
@@ -264,27 +319,31 @@ impl LanguageRegistry {
     /// Returns `Err` if the NFA size limit is exceeded; on error the prior
     /// compiled set is preserved.
     pub fn rebuild_glob_set(&mut self) -> Result<(), RegisterError> {
-        let (compiled, names) =
-            Self::build_globs(&self.by_name, &self.lang_order).map_err(RegisterError::GlobBuild)?;
+        let (compiled, ids) =
+            Self::build_globs(&self.identities, &self.lang_order).map_err(RegisterError::GlobBuild)?;
         self.compiled_globs = compiled;
-        self.glob_lang_names = names;
+        self.glob_lang_ids = ids;
         Ok(())
     }
 
     /// Look up a language by file extension (e.g. `"rs"`, `"C"`).
-    pub fn by_extension(&self, ext: &str) -> Option<&Arc<LanguageConfig>> {
-        self.by_ext.get(ext)
+    pub fn by_extension(&self, ext: &str) -> Option<LanguageId> {
+        self.by_ext.get(ext).copied()
     }
 
-    /// Look up a language by name (e.g. `"rust"`).
-    pub fn by_name(&self, name: &str) -> Option<&Arc<LanguageConfig>> {
-        self.by_name.get(name)
+    /// Look up a language's identity by name (e.g. `"rust"`).
+    pub fn by_name(&self, name: &str) -> Option<&LanguageIdentity> {
+        let id = self.id_of(name)?;
+        self.identities[id.0 as usize].as_ref()
     }
 
-    /// Iterator over registered language names, in arbitrary (HashMap) order.
-    /// Used by `:set buffer language=` completion.
+    /// Iterator over registered language names (those with an identity), in
+    /// arbitrary order. Used by `:set buffer language=` completion.
     pub fn iter_names(&self) -> impl Iterator<Item = &str> {
-        self.by_name.keys().map(String::as_str)
+        self.identities
+            .iter()
+            .enumerate()
+            .filter_map(|(i, ident)| ident.as_ref().map(|_| self.names[i].as_str()))
     }
 
     /// The compiled glob matcher for path-based detection. Index-aligned with
@@ -295,52 +354,53 @@ impl LanguageRegistry {
 
     /// Language name for glob match index `i` (from `GlobSet::matches`).
     pub fn glob_lang_name(&self, i: usize) -> Option<&str> {
-        self.glob_lang_names.get(i).map(String::as_str)
+        self.glob_lang_ids.get(i).map(|&id| self.name_of(id))
     }
 
     /// Look up a language by shebang substring (e.g. `"python"`).
-    pub fn by_shebang(&self, token: &str) -> Option<&Arc<LanguageConfig>> {
-        self.shebang_to_name
-            .get(token)
-            .and_then(|name| self.by_name.get(name))
+    pub fn by_shebang(&self, token: &str) -> Option<LanguageId> {
+        self.shebang_to_id.get(token).copied()
     }
 
-    /// Remove a registered language by name, returning it if present.
+    /// Remove a registered language's identity by name, returning it if
+    /// present. Also clears any attached grammar for the same id — a removed
+    /// language has no detection and no grammar, matching `remove` deleting
+    /// the language wholesale.
     #[cfg(any(test, feature = "test-util"))]
-    pub fn remove(&mut self, name: &str) -> Option<Arc<LanguageConfig>> {
-        let config = self.by_name.remove(name)?;
-        self.deindex(&config);
-        let new_order: Vec<String> = self
-            .lang_order
-            .iter()
-            .filter(|n| n.as_str() != name)
-            .cloned()
-            .collect();
-        let (compiled, names) = Self::build_globs(&self.by_name, &new_order).unwrap_or_else(|e| {
-            eprintln!("LanguageRegistry::remove: glob rebuild failed: {e}");
-            (GlobSet::empty(), Vec::new())
-        });
-        self.lang_order = new_order;
+    pub fn remove(&mut self, name: &str) -> Option<LanguageIdentity> {
+        let id = self.id_of(name)?;
+        let identity = self.identities[id.0 as usize].take()?;
+        self.deindex(&identity);
+        self.grammars[id.0 as usize] = None;
+        self.lang_order.retain(|&i| i != id);
+        let (compiled, ids) =
+            Self::build_globs(&self.identities, &self.lang_order).unwrap_or_else(|e| {
+                eprintln!("LanguageRegistry::remove: glob rebuild failed: {e}");
+                (GlobSet::empty(), Vec::new())
+            });
         self.compiled_globs = compiled;
-        self.glob_lang_names = names;
+        self.glob_lang_ids = ids;
         self.rebuild_grammar_snapshot();
-        Some(config)
+        Some(identity)
     }
+
+    // ── Grammar ───────────────────────────────────────────────────────────────
 
     /// Attach a tree-sitter grammar to a language.
     ///
     /// Reads the highlights query file, compiles it, builds the shared
     /// highlighter (interning its capture names into `scope_reg`), optionally
-    /// reads and compiles `injections_path` if given, then replaces the
-    /// `Arc<LanguageConfig>` in the registry so all subsequent
-    /// `by_name`/`by_extension` lookups see the grammar.
+    /// reads and compiles `injections_path` if given, then installs the
+    /// resulting `GrammarBundle` for `name`'s id — detection indices
+    /// (`by_ext`/globs/shebangs) are never touched.
     ///
     /// A broken `injections.scm` fails the whole attach, same as a broken
     /// `highlights.scm` — both come from the same trusted pinned source, so
-    /// there is no separate soft-degrade path.
+    /// there is no separate soft-degrade path. All fallible work happens
+    /// before any registry mutation, so a failed attach leaves no partial state.
     ///
-    /// Auto-registers the identity (no extensions/globs/shebangs) if the language
-    /// name is not already known.
+    /// Auto-registers a bare identity (no extensions/globs/shebangs) if the
+    /// language name has none yet.
     pub fn attach_grammar(
         &mut self,
         name: &str,
@@ -349,7 +409,7 @@ impl LanguageRegistry {
         highlights_path: &Path,
         injections_path: Option<&Path>,
         scope_reg: &mut ScopeRegistry,
-    ) -> Result<Arc<LanguageConfig>, RegisterError> {
+    ) -> Result<Arc<GrammarBundle>, RegisterError> {
         let grammar =
             LoadedGrammar::open(grammar_path, symbol).map_err(RegisterError::GrammarLoad)?;
         let abi = grammar.language().abi_version();
@@ -379,71 +439,75 @@ impl LanguageRegistry {
                 Ok::<_, RegisterError>(InjectionsQuery::new(query))
             })
             .transpose()?;
-        let existing = self.by_name.get(name);
-        let extensions = existing.map_or_else(Vec::new, |c| c.extensions.clone());
-        let globs = existing.map_or_else(Vec::new, |c| c.globs.clone());
-        let shebangs = existing.map_or_else(Vec::new, |c| c.shebangs.clone());
+
+        let id = self.intern(name);
+        if self.identities[id.0 as usize].is_none() {
+            self.identities[id.0 as usize] = Some(LanguageIdentity::default());
+        }
         let config_gen = self.next_gen();
-        let new_config = Arc::new(LanguageConfig {
-            name: name.to_owned(),
-            extensions,
-            globs,
-            shebangs,
-            grammar: Some(GrammarBundle {
-                grammar,
-                highlighter,
-                injections,
-            }),
+        let bundle = Arc::new(GrammarBundle {
+            grammar,
+            highlighter,
+            injections,
             config_gen,
         });
-        self.by_name
-            .insert(name.to_owned(), Arc::clone(&new_config));
-        for ext in &new_config.extensions {
-            self.by_ext.insert(ext.clone(), Arc::clone(&new_config));
-        }
+        self.grammars[id.0 as usize] = Some(Arc::clone(&bundle));
         self.rebuild_grammar_snapshot();
-        Ok(new_config)
+        Ok(bundle)
     }
 
     /// Returns `true` if `name` has an attached tree-sitter grammar.
     pub fn has_grammar(&self, name: &str) -> bool {
-        self.by_name.get(name).is_some_and(|c| c.grammar.is_some())
+        self.id_of(name)
+            .is_some_and(|id| self.grammars[id.0 as usize].is_some())
     }
 
-    /// Snapshot of grammared languages (`grammar.is_some()`), keyed by name.
-    /// Handed to the parse worker so it can resolve injection language names
-    /// without touching main-thread state.
-    pub fn grammar_snapshot(&self) -> Arc<HashMap<String, Arc<LanguageConfig>>> {
+    /// The grammar bundle attached to `id`, if any.
+    pub fn grammar(&self, id: LanguageId) -> Option<&Arc<GrammarBundle>> {
+        self.grammars.get(id.0 as usize)?.as_ref()
+    }
+
+    /// The grammar bundle attached to `name`, if any.
+    pub fn grammar_by_name(&self, name: &str) -> Option<&Arc<GrammarBundle>> {
+        let id = self.id_of(name)?;
+        self.grammar(id)
+    }
+
+    /// Snapshot of grammared languages, keyed by name. Handed to the parse
+    /// worker so it can resolve an injection language name (a
+    /// dynamically-discovered info string) to its grammar without touching
+    /// main-thread state.
+    pub fn grammar_snapshot(&self) -> Arc<HashMap<String, Arc<GrammarBundle>>> {
         Arc::clone(&self.grammar_snapshot)
     }
 
     fn rebuild_grammar_snapshot(&mut self) {
         self.grammar_snapshot = Arc::new(
-            self.by_name
+            self.grammars
                 .iter()
-                .filter(|(_, c)| c.grammar.is_some())
-                .map(|(name, c)| (name.clone(), Arc::clone(c)))
+                .enumerate()
+                .filter_map(|(i, g)| g.as_ref().map(|b| (self.names[i].clone(), Arc::clone(b))))
                 .collect(),
         );
     }
 
     fn build_globs(
-        by_name: &HashMap<String, Arc<LanguageConfig>>,
-        lang_order: &[String],
-    ) -> Result<(GlobSet, Vec<String>), globset::Error> {
+        identities: &[Option<LanguageIdentity>],
+        lang_order: &[LanguageId],
+    ) -> Result<(GlobSet, Vec<LanguageId>), globset::Error> {
         let mut builder = GlobSetBuilder::new();
-        let mut names = Vec::new();
-        for lang_name in lang_order {
-            if let Some(config) = by_name.get(lang_name) {
-                for pattern in &config.globs {
+        let mut ids = Vec::new();
+        for &lang_id in lang_order {
+            if let Some(Some(identity)) = identities.get(lang_id.0 as usize) {
+                for pattern in &identity.globs {
                     if let Ok(glob) = globset::Glob::new(pattern) {
                         builder.add(glob);
-                        names.push(config.name.clone());
+                        ids.push(lang_id);
                     }
                 }
             }
         }
-        Ok((builder.build()?, names))
+        Ok((builder.build()?, ids))
     }
 }
 
@@ -473,9 +537,9 @@ pub fn detect_language(
         }
 
         if let Some(ext) = path.extension().and_then(|e| e.to_str())
-            && let Some(lang) = registry.by_extension(ext)
+            && let Some(id) = registry.by_extension(ext)
         {
-            return Some(lang.name.clone());
+            return Some(registry.name_of(id).to_owned());
         }
     }
 
@@ -506,7 +570,7 @@ fn detect_shebang(line: &str, registry: &LanguageRegistry) -> Option<String> {
 
     registry
         .by_shebang(interpreter)
-        .map(|lang| lang.name.clone())
+        .map(|id| registry.name_of(id).to_owned())
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -540,7 +604,7 @@ mod tests {
 
         let mut reg = LanguageRegistry::new();
         let mut scope_reg = ScopeRegistry::new();
-        let config = reg
+        let bundle = reg
             .attach_grammar(
                 "rust",
                 &parser_path,
@@ -551,7 +615,6 @@ mod tests {
             )
             .expect("attach with valid injections must succeed");
 
-        let bundle = config.grammar.as_ref().expect("grammar attached");
         let injections = bundle
             .injections
             .as_ref()
@@ -578,7 +641,7 @@ mod tests {
 
         let mut reg = LanguageRegistry::new();
         let mut scope_reg = ScopeRegistry::new();
-        let config = reg
+        let bundle = reg
             .attach_grammar(
                 "rust",
                 &parser_path,
@@ -590,7 +653,7 @@ mod tests {
             .expect("attach without injections must succeed");
 
         assert!(
-            config.grammar.as_ref().unwrap().injections.is_none(),
+            bundle.injections.is_none(),
             "no injections_path given → injections must stay None"
         );
     }
@@ -627,7 +690,7 @@ mod tests {
         );
         assert!(
             reg.by_name("rust").is_none(),
-            "a failed attach must not leave a partial LanguageConfig behind"
+            "a failed attach must not leave a partial identity behind"
         );
     }
 
@@ -647,8 +710,12 @@ mod tests {
     fn register_identity_then_by_name_returns_entry() {
         let mut reg = LanguageRegistry::new();
         reg.register_identity("toml", &["toml"], &[], &[]).unwrap();
-        let config = reg.by_name("toml").expect("identity should be registered");
-        assert_eq!(config.name, "toml");
+        assert!(
+            reg.by_name("toml").is_some(),
+            "identity should be registered"
+        );
+        let id = reg.id_of("toml").expect("toml must be interned");
+        assert_eq!(reg.name_of(id), "toml");
         assert!(
             reg.by_extension("toml").is_some(),
             "extension lookup must work after identity reg"
