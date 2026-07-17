@@ -36,8 +36,6 @@ Text objects select structured regions in one step. They use the `m` prefix — 
 | `m i a` / `m a a` | Argument (trimmed) / argument + separator comma |
 | `m i l` / `m a l` | Line content (no newline) / full line (with newline) |
 
-`i` (inner) selects content without the delimiters. `a` (around) includes the delimiters.
-
 Two shortcuts select the inner word directly:
 
 | Key | Effect |

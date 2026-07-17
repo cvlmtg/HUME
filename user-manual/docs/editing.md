@@ -15,7 +15,7 @@ HUME follows a **select-then-act** model. You first select the text you want to 
 
 Press `Esc` to return to Normal mode.
 
-## Deleting
+## Deleting and Changing text
 
 | Key | Effect |
 |-----|--------|
@@ -28,7 +28,7 @@ After changing text with `c`, leaving Insert mode selects the text you just type
 
 Whichever way you entered Insert mode, `m i i` recovers what you last typed after `Esc` — see [Text objects](selections.md#text-objects).
 
-## Replacing
+## Replacing text
 
 | Key | Effect |
 |-----|--------|
@@ -42,6 +42,8 @@ After pressing `r`, HUME waits for the replacement character. All the characters
 |-----|--------|
 | `J` | Join the current line with the next, replacing the newline with a space; the cursor lands on the inserted space. If the selection spans multiple lines, all are joined into one. |
 | `&` | Align all selections to the column of the primary selection's anchor. Spaces are inserted or removed at the left edge of each selection. Multi-line selections are left unchanged. |
+
+You can align the selection to the left or the right depending on the position of the selection anchor. Use `ctrl+e` in normal mode or `o` in extend mode to swap anchor and head. See [Selections](selections.md#flipping-and-collapsing-the-selection) for more informations on flipping the selection.
 
 ## Copying and pasting
 
