@@ -116,6 +116,12 @@ pub(crate) type EditorCmdFn = fn(
 
 // ── MappableCommand ───────────────────────────────────────────────────────────
 
+/// Signature shared by `Motion`/`Selection`'s `fun` and `around_fun` fields.
+/// Named only to keep `Option<fn(...)>` under clippy's type-complexity
+/// threshold — `fun` itself stays inline since the bare (non-`Option`) form
+/// doesn't trip it.
+type SelectionFn = fn(&Text, SelectionSet, usize, MotionMode) -> SelectionSet;
+
 /// A command that can be bound to a key in a keymap.
 ///
 /// The keymap trie stores command *names*; the registry resolves names to
@@ -140,7 +146,7 @@ pub(crate) enum MappableCommand {
         /// the word motions (`select-next-word` et al.), which swap in their
         /// `_around` twin — same signature, covers the destination word's
         /// surrounding whitespace on `Move` only.
-        around_fun: Option<fn(&Text, SelectionSet, usize, MotionMode) -> SelectionSet>,
+        around_fun: Option<SelectionFn>,
         /// Whether this motion always records a jump list entry before executing,
         /// regardless of how far the cursor moves. Used for goto commands.
         jump: bool,
@@ -172,7 +178,7 @@ pub(crate) enum MappableCommand {
         /// selection command except `select-word`/`select-uppercase-word`
         /// (`mm`/`MM`), which swap to their around-word body. See
         /// `Motion::around_fun`.
-        around_fun: Option<fn(&Text, SelectionSet, usize, MotionMode) -> SelectionSet>,
+        around_fun: Option<SelectionFn>,
         /// Whether this command always records a jump list entry before executing,
         /// regardless of how far the cursor moves. Used for `select-all` (`%`).
         jump: bool,

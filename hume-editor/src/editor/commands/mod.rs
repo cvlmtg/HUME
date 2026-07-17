@@ -143,26 +143,8 @@ pub(super) fn run_native_body(
     match cmd {
         MappableCommand::Motion {
             fun, around_fun, ..
-        } => {
-            let fun = if state
-                .buffers
-                .get(buf)
-                .overrides
-                .word_selects_whitespace(&state.settings)
-            {
-                around_fun.unwrap_or(fun)
-            } else {
-                fun
-            };
-            doc_ops::apply_doc_motion(
-                &state.buffers,
-                &mut state.panes.state,
-                focused,
-                buf,
-                |b, s| fun(b, s, count, motion_mode),
-            );
         }
-        MappableCommand::Selection {
+        | MappableCommand::Selection {
             fun, around_fun, ..
         } => {
             let fun = if state
