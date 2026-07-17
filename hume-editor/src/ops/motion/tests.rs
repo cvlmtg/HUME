@@ -1156,6 +1156,207 @@ fn select_prev_word_multi_cursor() {
     );
 }
 
+// ── around-word variants (w/W/b/B covering surrounding whitespace) ────────
+//
+// These wrap the same select_next_word/select_prev_word motions used above,
+// so movement is identical; only the final span differs. Each covers the
+// destination word's surrounding whitespace exactly like `maw`/`maW`:
+// trailing preferred, leading fallback when there's no trailing, EOL never
+// consumed. Used when `word-selects-whitespace` is on (see `run_native_body`).
+
+#[test]
+fn select_next_word_around_trailing_basic() {
+    // Multiple trailing spaces are all included.
+    assert_state!(
+        "-[f]>oo bar   baz\n",
+        |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move),
+        "foo -[bar   ]>baz\n"
+    );
+}
+
+#[test]
+fn select_next_word_around_trailing_tab() {
+    // Tab classifies as Space — counts as trailing whitespace too.
+    assert_state!(
+        "-[f]>oo bar\tbaz\n",
+        |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move),
+        "foo -[bar\t]>baz\n"
+    );
+}
+
+#[test]
+fn select_next_word_around_trailing_nbsp() {
+    // U+00A0 (NBSP) classifies as Space too.
+    assert_state!(
+        "-[f]>oo bar\u{00A0}baz\n",
+        |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move),
+        "foo -[bar\u{00A0}]>baz\n"
+    );
+}
+
+#[test]
+fn select_next_word_around_leading_fallback_at_line_end() {
+    // "bar" is the last word on the line — no trailing space (EOL follows),
+    // so the leading space is included instead.
+    assert_state!(
+        "-[f]>oo bar\n",
+        |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move),
+        "foo-[ bar]>\n"
+    );
+}
+
+#[test]
+fn select_next_word_around_leading_fallback_before_punctuation() {
+    // "bar" is followed immediately by punctuation (no trailing space) but
+    // preceded by a space — leading fallback engages mid-line, not just at EOL.
+    assert_state!(
+        "-[f]>oo bar,baz\n",
+        |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move),
+        "foo-[ bar]>,baz\n"
+    );
+}
+
+#[test]
+fn select_next_word_around_punctuation_destination_gets_trailing_space() {
+    // w can land on a punctuation run just like a word — it gets the same
+    // around treatment.
+    assert_state!(
+        "-[f]>oo , bar\n",
+        |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move),
+        "foo -[, ]>bar\n"
+    );
+}
+
+#[test]
+fn select_next_word_around_eol_never_consumed() {
+    // "world" is followed by the trailing '\n' (Eol, not Space) and preceded
+    // by the newline that starts its own line (also Eol) — neither side
+    // extends. The around variant is a no-op here, same as bare `w`.
+    assert_state!(
+        "-[h]>ello\nworld\n",
+        |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move),
+        "hello\n-[world]>\n"
+    );
+}
+
+#[test]
+fn select_next_word_around_at_last_word_is_noop() {
+    // Guard: the motion itself is a no-op (already on the last word), so no
+    // expansion is attempted even though "world" has a leading space that
+    // would otherwise qualify for the leading-fallback rule.
+    assert_state!(
+        "hello -[world]>\n",
+        |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move),
+        "hello -[world]>\n"
+    );
+}
+
+#[test]
+fn select_next_word_around_count_2_expands_only_final_span() {
+    // count=2 hops through "world" (which has extra surrounding spaces of
+    // its own) on the way to "foo" — only the final landing span gets
+    // expanded, not each intermediate hop.
+    // "hello   world  foo\n": positions 13-14 are the two spaces before "foo".
+    assert_state!(
+        "-[h]>ello   world  foo\n",
+        |(buf, sels)| cmd_select_next_word_around(&buf, sels, 2, MotionMode::Move),
+        "hello   world-[  foo]>\n"
+    );
+}
+
+#[test]
+fn select_next_word_around_multi_cursor_overlap_merges() {
+    // Cursor 1 lands on "bar" and picks up its trailing space (no trailing
+    // space of "baz" to compete with yet). Cursor 2 lands on "baz" and,
+    // having no trailing space of its own (EOL follows), falls back to the
+    // same space via the leading rule. The two expanded spans overlap at
+    // that shared space and get merged into one selection.
+    // "foo bar baz\n": f=0..2,' '=3,b=4..6,' '=7,b=8..10,'\n'=11.
+    assert_state!(
+        "-[f]>oo -[b]>ar baz\n",
+        |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move),
+        "foo -[bar baz]>\n"
+    );
+}
+
+#[test]
+fn select_next_word_around_skips_combining_grapheme() {
+    // Text: "cafe\u{0301} world\n" — the combining acute must not be
+    // misread as a word-class char when scanning for the leading space.
+    assert_state!(
+        "-[c]>afe\u{0301} world\n",
+        |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move),
+        "cafe\u{0301}-[ world]>\n"
+    );
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn select_next_uppercase_word_around_punct_and_leading_fallback() {
+    // W: "foo," is one WORD (punctuation merged in); "bar" is the last WORD
+    // on the line, so it picks up the leading space instead of a trailing one.
+    assert_state!(
+        "-[f]>oo, bar\n",
+        |(buf, sels)| cmd_select_next_uppercase_word_around(&buf, sels, 1, MotionMode::Move),
+        "foo,-[ bar]>\n"
+    );
+}
+
+#[test]
+fn select_prev_word_around_trailing() {
+    // b lands on "hello", which has a trailing space (the one before "world").
+    assert_state!(
+        "hello -[world]>\n",
+        |(buf, sels)| cmd_select_prev_word_around(&buf, sels, 1, MotionMode::Move),
+        "-[hello ]>world\n"
+    );
+}
+
+#[test]
+fn select_prev_word_around_leading_fallback() {
+    // Cursor starts on the punctuation right after "bar" (no trailing space
+    // of its own); b lands on "bar" directly, which falls back to its
+    // leading space.
+    assert_state!(
+        "foo bar-[,]>baz\n",
+        |(buf, sels)| cmd_select_prev_word_around(&buf, sels, 1, MotionMode::Move),
+        "foo-[ bar]>,baz\n"
+    );
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn select_prev_uppercase_word_around_trailing() {
+    // B: "hello.world" is one WORD; it has a trailing space (before "bar").
+    assert_state!(
+        "hello.world -[bar]>\n",
+        |(buf, sels)| cmd_select_prev_uppercase_word_around(&buf, sels, 1, MotionMode::Move),
+        "-[hello.world ]>bar\n"
+    );
+}
+
+#[test]
+fn select_prev_word_around_at_buffer_start_is_noop() {
+    // Guard: no previous word exists — no-op, no expansion attempted.
+    assert_state!(
+        "-[h]>ello\n",
+        |(buf, sels)| cmd_select_prev_word_around(&buf, sels, 1, MotionMode::Move),
+        "-[h]>ello\n"
+    );
+}
+
+#[test]
+fn extend_select_next_word_around_matches_bare_extend() {
+    // Extend mode always keeps bare-word anchor units — the around variant
+    // must behave identically to the bare command here (compare against
+    // extend_select_next_word_from_cursor above).
+    assert_state!(
+        "-[h]>ello world foo\n",
+        |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Extend),
+        "-[hello world]> foo\n"
+    );
+}
+
 // ── multi-cursor paragraph motions ────────────────────────────────────────
 
 #[test]

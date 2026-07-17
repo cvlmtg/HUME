@@ -172,6 +172,53 @@ fn inner_uppercase_word_spans_punctuation() {
     );
 }
 
+// ── select-word / select-uppercase-word (mm/MM around-word body) ──────────
+//
+// Used in place of cmd_inner_word/cmd_inner_uppercase_word when
+// word-selects-whitespace is on (see mm/MM in keymap/defaults.rs). Move
+// reuses around_word_impl — same span as maw/maW; Extend keeps bare
+// inner-word units, matching cmd_inner_word's Extend arm exactly.
+
+#[test]
+fn select_word_around_move_matches_around_word() {
+    assert_state!(
+        "-[h]>ello world\n",
+        |(buf, sels)| cmd_select_word_around(&buf, sels, 0, MotionMode::Move),
+        "-[hello ]>world\n"
+    );
+}
+
+#[test]
+fn select_word_around_move_leading_fallback() {
+    assert_state!(
+        "hello -[w]>orld\n",
+        |(buf, sels)| cmd_select_word_around(&buf, sels, 0, MotionMode::Move),
+        "hello-[ world]>\n"
+    );
+}
+
+#[test]
+fn select_word_around_extend_keeps_bare_units() {
+    // Extend arm uses inner_word_impl, not around_word_impl — must match
+    // cmd_inner_word's Extend behavior exactly (compare
+    // extend_text_object_preserves_backward_direction above).
+    assert_state!(
+        "<[he]-llo world\n",
+        |(buf, sels)| cmd_select_word_around(&buf, sels, 0, MotionMode::Extend),
+        "<[hello]- world\n"
+    );
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn select_uppercase_word_around_move_spans_punctuation_and_whitespace() {
+    assert_state!(
+        "-[h]>ello.world foo\n",
+        |(buf, sels)| cmd_select_uppercase_word_around(&buf, sels, 0, MotionMode::Move),
+        "-[hello.world ]>foo\n"
+    );
+}
+
 // ── Brackets ──────────────────────────────────────────────────────────────
 
 #[test]
