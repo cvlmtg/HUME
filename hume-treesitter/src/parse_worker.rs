@@ -376,14 +376,18 @@ impl Drop for ThreadedParseBackend {
 /// queues the result; `drain_done` flushes the queue.  No threads, no channels,
 /// no waiting — tests call `reparse_stale_buffers` instead of blocking helpers.
 ///
-/// `pub` (not `#[cfg(test)]`): used from hume-editor's own test suite across
-/// the crate boundary, and as the default backend before a real editor swaps
-/// in `ThreadedParseBackend`.
+/// Gated behind `test-util` (not just `#[cfg(test)]`): `hume-editor`'s own test
+/// suite constructs this across the crate boundary, so crate-local `cfg(test)`
+/// alone isn't enough — same reasoning as `LanguageRegistry::register_identity`
+/// in `registry.rs`. Never constructed in production: `Editor::open` always
+/// builds `ThreadedParseBackend` directly.
+#[cfg(any(test, feature = "test-util"))]
 pub struct InlineParseBackend {
     parser: tree_sitter::Parser,
     done: std::collections::VecDeque<ParseDone>,
 }
 
+#[cfg(any(test, feature = "test-util"))]
 impl InlineParseBackend {
     pub fn new() -> Self {
         Self {
@@ -393,12 +397,14 @@ impl InlineParseBackend {
     }
 }
 
+#[cfg(any(test, feature = "test-util"))]
 impl Default for InlineParseBackend {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(any(test, feature = "test-util"))]
 impl ParseBackend for InlineParseBackend {
     fn post(&mut self, req: ParseRequest) {
         let no_cancel = AtomicBool::new(false);
