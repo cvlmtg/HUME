@@ -9,7 +9,7 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::{IntoSteelVal, SteelVal};
 
-use super::args::{BidArg, cons_pair, usize_arg};
+use super::args::{BidArg, cons_pair, optional_string_arg, usize_arg};
 use super::errors::generic_err;
 use super::ids::{SteelBufferId, SteelPaneId};
 use crate::{SteelCtx, types::Effect};
@@ -278,13 +278,7 @@ pub(crate) fn set_buffer_language_steel(
     lang: SteelVal,
 ) -> SteelResult {
     let id = bid.0;
-    let new_lang = match &lang {
-        SteelVal::StringV(s) => Some(s.to_string()),
-        SteelVal::BoolV(false) => None,
-        _ => {
-            steel::stop!(TypeMismatch => "set-buffer-language!: expected string or #f, got {:?}", lang)
-        }
-    };
+    let new_lang = optional_string_arg(lang, "set-buffer-language!")?;
     if !ctx.host.buffers().buffer_exists(id) {
         steel::stop!(Generic => "set-buffer-language!: invalid buffer id {id:?}");
     }

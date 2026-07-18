@@ -30,29 +30,10 @@ use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 
+use super::args::list_to_strings;
 use super::errors::generic_err;
 
 type SteelResult = Result<SteelVal, SteelErr>;
-
-/// Extract a Steel list of strings into a `Vec<String>`.
-///
-/// Accepts a `ListV` of strings.  Raises a type error if the value is not a
-/// list, and a type mismatch error if any element is not a string.
-fn extract_string_list(val: &SteelVal, section: &str) -> Result<Vec<String>, SteelErr> {
-    match val {
-        SteelVal::ListV(lst) => lst
-            .iter()
-            .map(|v| match v {
-                SteelVal::StringV(s) => Ok(s.to_string()),
-                _ => steel::stop!(TypeMismatch =>
-                    "configure-statusline!: {} section expects a list of strings, got {:?}",
-                    section, v),
-            })
-            .collect(),
-        _ => steel::stop!(TypeMismatch =>
-            "configure-statusline!: {} section must be a list, got {:?}", section, val),
-    }
-}
 
 /// `(configure-statusline! left center right)` — configure the three sections
 /// of the statusline.
@@ -68,9 +49,9 @@ pub(crate) fn configure_statusline(
     center: SteelVal,
     right: SteelVal,
 ) -> SteelResult {
-    let left = extract_string_list(&left, "left")?;
-    let center = extract_string_list(&center, "center")?;
-    let right = extract_string_list(&right, "right")?;
+    let left = list_to_strings(left, "configure-statusline! left")?;
+    let center = list_to_strings(center, "configure-statusline! center")?;
+    let right = list_to_strings(right, "configure-statusline! right")?;
     ctx.host
         .settings()
         .configure_statusline(left, center, right)

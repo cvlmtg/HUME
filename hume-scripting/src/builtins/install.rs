@@ -27,7 +27,7 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 use crate::SteelCtx;
 use crate::log::LogLevel;
 
-use super::args::{list_to_strings, string_arg};
+use super::args::{list_to_strings, optional_path_arg};
 use super::errors::generic_err;
 
 const INSTALL_LOCK_FILE_NAME: &str = ".install-lock";
@@ -210,10 +210,7 @@ pub(crate) fn run_inline_output(
     cwd_val: SteelVal,
 ) -> Result<SteelVal, SteelErr> {
     let args = list_to_strings(args_val, "%run-inline-output! args")?;
-    let cwd = match cwd_val {
-        SteelVal::BoolV(false) => None,
-        other => Some(PathBuf::from(string_arg(other, "%run-inline-output! cwd")?)),
-    };
+    let cwd = optional_path_arg(cwd_val, "%run-inline-output! cwd")?;
 
     // The child inherits stdio, so this is a real terminal write — open the
     // bracket before spawning it.
