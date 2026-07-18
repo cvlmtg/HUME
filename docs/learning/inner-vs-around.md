@@ -37,34 +37,34 @@ the two delimiter characters as cursors — the building block for surround
 editing, where you then act on both delimiters at once (replace them, delete
 them, change them as a pair). `mw` plus a delimiter wraps the current selection
 in that pair. `mm` and `MM` select the word/WORD under the cursor directly —
-by default they cover surrounding whitespace too, matching how the plain word
-motions `w`/`W`/`b`/`B` do (see [Word Motions](word-motions.md) for that
-rule); an option restores the `miw`/`miW` (inner) behavior for all of them at
-once. The same prefix keeps every "name a structural region" command under
-one key.
+they select exactly what `maw`/`maW` would (see below), gated behind the
+`word-selects-whitespace` setting: on, they match `maw`/`maW`; off, they match
+`miw`/`miW` instead. `maw`/`miw`/`maW`/`miW` themselves are always available
+regardless of that setting. The same prefix keeps every "name a structural
+region" command under one key.
 
-## The trailing-whitespace rule for `maw`/`maW`
+## The whitespace rule for `maw`/`maW`
 
 For bracket text objects, inner/around is straightforward: include or exclude
 the delimiter characters. For word text objects, "around" requires a choice:
-which whitespace runs to include when neither a leading nor trailing run is
-obvious?
+which whitespace run to include when neither side is obviously right?
 
-The rule `maw`/`maW` (following Vim) use: prefer to include trailing
-whitespace, fall back to leading whitespace if there is no trailing space —
-unconditionally, regardless of where the word falls on its line.
+The rule: prefer the whitespace *before* the word, falling back to the
+whitespace *after* it only for the first word of a line — a leading run
+there is indentation, not inter-word spacing, and is never absorbed.
+Whichever direction, if no adjacent whitespace exists on the chosen side, the
+selection stays bare.
 
 The reason: deleting "a word" should leave the surrounding text tidy. If you
 have `one two three` and delete `aw` with the cursor on `two`, you want
 `one three` with one space — not `one  three` (double-space) or `onetwo` (no
-space). Including the trailing space produces the clean result in the common
-case; the leading fallback handles the last word in a line.
+space). Preferring the leading space produces the clean result in the common
+case; the trailing fallback for a line's first word additionally guarantees a
+delete never eats the line's indentation.
 
-This is a different rule from the one `w`/`b`/`mm` use by default — see
-[Word Motions](word-motions.md). Both exist for the same reason (tidy
-deletes), but `maw`/`maW` stay fixed at Vim's rule so they're always
-available as an escape hatch, independent of the `word-selects-whitespace`
-setting.
+This is the same rule the plain word motions `w`/`W`/`b`/`B` use by default —
+see [Word Motions](word-motions.md) — which is why `mm`/`maw` and `w` land on
+identical spans.
 
 ## In practice
 
