@@ -299,7 +299,7 @@ mod tests {
     /// `scripts/fetch-test-grammars.sh`).
     #[test]
     fn multi_edit_changeset_incremental_tree_matches_full_reparse() {
-        use hume_engine::grammar::LoadedGrammar;
+        use crate::grammar::LoadedGrammar;
 
         let parser_path = crate::test_support::grammar_parser_path("json");
         if !parser_path.exists() {

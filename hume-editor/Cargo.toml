@@ -17,7 +17,6 @@ hume-lsp = { path = "../hume-lsp" }
 lsp-types = "0.97"
 serde_json.workspace = true
 globset = "0.4"
-tree-sitter = "0.26.8"
 slotmap = "1"
 steel-core = { version = "0.8.2", features = ["custom-hash"] }
 ropey.workspace = true
@@ -34,6 +33,7 @@ pretty_assertions = "1.4.1"
 proptest = "1.11.0"
 insta = "1.47"
 tempfile = "3"
+tree-sitter.workspace = true
 hume-scripting = { path = "../hume-scripting", features = ["test-util"] }
 hume-treesitter = { path = "../hume-treesitter", features = ["test-util"] }
 hume-lsp = { path = "../hume-lsp", features = ["test-util"] }

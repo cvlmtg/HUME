@@ -427,7 +427,7 @@ mod tests {
     use std::collections::HashMap;
 
     use hume_engine::builtins::tree_sitter_hl::TreeSitterHighlighter;
-    use hume_engine::grammar::LoadedGrammar;
+    use crate::grammar::LoadedGrammar;
     use hume_engine::pipeline::BufferId;
     use hume_engine::theme::ScopeRegistry;
 

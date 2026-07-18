@@ -1102,7 +1102,6 @@ version = "0.1.0"
 dependencies = [
  "bitflags 2.13.0",
  "hume-platform",
- "libloading",
  "ratatui",
  "ropey",
  "slotmap",
@@ -1110,7 +1109,6 @@ dependencies = [
  "tempfile",
  "toml",
  "tree-sitter",
- "tree-sitter-language",
  "unicode-segmentation",
  "unicode-width 0.2.2",
 ]
@@ -1161,11 +1159,13 @@ dependencies = [
  "globset",
  "hume-editing",
  "hume-engine",
+ "libloading",
  "ropey",
  "slotmap",
  "streaming-iterator",
  "tempfile",
  "tree-sitter",
+ "tree-sitter-language",
 ]
 
 [[package]]

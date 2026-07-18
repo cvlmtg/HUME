@@ -1,6 +1,5 @@
 pub mod builtins;
 pub mod format;
-pub mod grammar;
 pub mod layout;
 pub mod pane;
 pub mod pipeline;

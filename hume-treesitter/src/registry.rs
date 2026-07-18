@@ -5,7 +5,7 @@ use std::sync::Arc;
 use globset::{GlobSet, GlobSetBuilder};
 
 use hume_engine::builtins::tree_sitter_hl::TreeSitterHighlighter;
-use hume_engine::grammar::LoadedGrammar;
+use crate::grammar::LoadedGrammar;
 use hume_engine::theme::ScopeRegistry;
 
 use crate::injections::InjectionsQuery;
@@ -94,7 +94,7 @@ pub enum RegisterError {
     /// The combined glob pattern set exceeded globset's NFA size limit.
     GlobBuild(globset::Error),
     /// Failed to open the grammar shared library.
-    GrammarLoad(hume_engine::grammar::GrammarLoadError),
+    GrammarLoad(crate::grammar::GrammarLoadError),
     /// Failed to read the highlights query file.
     HighlightsRead(std::io::Error),
     /// Failed to compile the highlights query.

@@ -8,7 +8,7 @@
 
 use super::*;
 
-use hume_engine::grammar::LoadedGrammar;
+use hume_treesitter::grammar::LoadedGrammar;
 
 use crate::editor::buffer::Buffer;
 use hume_editing::selection::SelectionSet;

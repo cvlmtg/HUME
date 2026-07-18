@@ -362,7 +362,7 @@ mod tests {
     use hume_editing::changeset::ChangeSetBuilder;
     use hume_editing::text::Text;
     use hume_engine::builtins::tree_sitter_hl::TreeSitterHighlighter;
-    use hume_engine::grammar::LoadedGrammar;
+    use crate::grammar::LoadedGrammar;
     use hume_engine::pipeline::BufferId;
     use hume_engine::theme::ScopeRegistry;
     use slotmap::SlotMap;

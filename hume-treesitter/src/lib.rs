@@ -7,6 +7,7 @@
 //! buffers, ropes, and grammars.
 
 pub mod edits;
+pub mod grammar;
 pub mod injections;
 pub mod parse_worker;
 pub mod registry;
