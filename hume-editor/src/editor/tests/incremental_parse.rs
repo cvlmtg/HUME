@@ -8,6 +8,7 @@
 
 use super::*;
 
+use hume_test_fixtures::skip_unless_grammars;
 use hume_treesitter::grammar::LoadedGrammar;
 
 use crate::editor::buffer::Buffer;
@@ -21,12 +22,6 @@ use hume_editing::text::Text;
 /// so the first drain installs it.
 fn json_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
     let parser_path = grammar_parser_path("json");
-    if !parser_path.exists() {
-        panic!(
-            "grammar fixture missing: {}\nrun scripts/fetch-test-grammars.sh",
-            parser_path.display()
-        );
-    }
     let hl_path = grammar_query_path("json");
     let buf = Buffer::new(Text::from(source), SelectionSet::default());
     let mut ed = Editor::for_testing(buf);
@@ -62,6 +57,9 @@ fn reparse_edit(ed: &mut Editor) {
 
 #[test]
 fn first_parse_full_reparse_no_pending() {
+    if skip_unless_grammars(&["json"]) {
+        return;
+    }
     let (ed, bid) = json_editor("{\"x\": 1}\n");
     let buf = ed.state.buffers.get(bid);
     let syn = buf.syntax.as_ref().unwrap();
@@ -79,6 +77,9 @@ fn first_parse_full_reparse_no_pending() {
 
 #[test]
 fn edit_records_pending_edits() {
+    if skip_unless_grammars(&["json"]) {
+        return;
+    }
     let (mut ed, bid) = json_editor("{}\n");
     let gen_before = ed.state.buffers.get(bid).text_gen;
 
@@ -98,6 +99,9 @@ fn edit_records_pending_edits() {
 
 #[test]
 fn reparse_after_edit_drains_pending() {
+    if skip_unless_grammars(&["json"]) {
+        return;
+    }
     let (mut ed, bid) = json_editor("{}\n");
 
     ed.feed_key(key('i'));
@@ -125,6 +129,9 @@ fn reparse_after_edit_drains_pending() {
 
 #[test]
 fn two_edits_batched_chain_resolves() {
+    if skip_unless_grammars(&["json"]) {
+        return;
+    }
     let (mut ed, bid) = json_editor("{}\n");
 
     // Two edits without reparsing between them.
@@ -169,6 +176,9 @@ fn two_edits_batched_chain_resolves() {
 
 #[test]
 fn incremental_tree_matches_full_reparse() {
+    if skip_unless_grammars(&["json"]) {
+        return;
+    }
     // The tree produced by incremental re-parsing must have the same S-expression
     // as a from-scratch parse of the exact same source bytes.
     let (mut ed, bid) = json_editor("{\"k\":1}\n");
@@ -224,6 +234,9 @@ fn incremental_tree_matches_full_reparse() {
 /// pre-edit byte count.
 #[test]
 fn bake_aligns_committed_tree_before_precise_install() {
+    if skip_unless_grammars(&["json"]) {
+        return;
+    }
     let (mut ed, bid) = json_editor("{}\n");
     let old_byte_len = ed.state.buffers.get(bid).text().len_bytes();
 
@@ -276,6 +289,9 @@ fn bake_aligns_committed_tree_before_precise_install() {
 /// multiple pending InputEdits and advance tree_gen in one shot.
 #[test]
 fn bake_handles_multi_edit_chain_in_one_shot() {
+    if skip_unless_grammars(&["json"]) {
+        return;
+    }
     let (mut ed, bid) = json_editor("{}\n");
 
     // Two separate insert-mode characters → two text_gen bumps, two pending edits.
@@ -331,6 +347,9 @@ fn bake_handles_multi_edit_chain_in_one_shot() {
 
 #[test]
 fn grammar_swap_clears_pending_and_full_reparses() {
+    if skip_unless_grammars(&["json"]) {
+        return;
+    }
     let (mut ed, bid) = json_editor("{\"x\":1}\n");
 
     // Record a pending edit.

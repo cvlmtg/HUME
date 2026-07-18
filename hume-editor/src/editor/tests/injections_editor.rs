@@ -7,6 +7,7 @@
 use super::*;
 
 use crate::editor::tests::{grammar_parser_path, grammar_query_path, helix_injections_path};
+use hume_test_fixtures::{skip_unless_file, skip_unless_grammars};
 
 /// Attach the fixture grammar `name` (source name == attach identity — true
 /// for every real PLUM install; there is no renaming split in production).
@@ -29,11 +30,15 @@ fn attach(ed: &mut Editor, name: &str, symbol: &str, injections: bool) {
         .unwrap_or_else(|e| panic!("attach {name}: {e}"));
 }
 
-fn fixtures_present() -> bool {
-    ["markdown", "markdown.inline", "rust"]
-        .iter()
-        .all(|n| grammar_parser_path(n).exists())
-        && helix_injections_path("markdown").is_some()
+/// Returns `true` when the caller should skip early. See
+/// `hume_test_fixtures::skip_unless_grammars`/`skip_unless_file` for the
+/// skip-or-require contract this composes.
+fn skip_unless_fixtures() -> bool {
+    if skip_unless_grammars(&["markdown", "markdown.inline", "rust"]) {
+        return true;
+    }
+    let helix_path = grammar_parser_path("markdown").with_file_name("helix-injections.scm");
+    skip_unless_file(&helix_path, "markdown helix-injections.scm")
 }
 
 /// Build an editor with markdown (+ the real Helix-maintained
@@ -83,7 +88,7 @@ fn markdown_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
 
 #[test]
 fn markdown_buffer_installs_root_plus_injected_layers() {
-    if !fixtures_present() {
+    if skip_unless_fixtures() {
         return; // scripts/fetch-test-grammars.sh not run
     }
     let source = "# Title\n\nSome **bold** text.\n\n```rust\nfn f() {}\n```\n";
@@ -144,7 +149,7 @@ fn markdown_buffer_installs_root_plus_injected_layers() {
 
 #[test]
 fn bake_pending_edits_refreshes_injected_layer_ranges() {
-    if !fixtures_present() {
+    if skip_unless_fixtures() {
         return;
     }
     let source = "```rust\nfn f() {}\n```\n";
@@ -222,7 +227,7 @@ fn bake_pending_edits_refreshes_injected_layer_ranges() {
 
 #[test]
 fn stale_gen_discards_whole_layer_set() {
-    if !fixtures_present() {
+    if skip_unless_fixtures() {
         return;
     }
     let (mut ed, bid) = markdown_editor("```rust\nfn f() {}\n```\n");
