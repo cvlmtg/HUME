@@ -179,11 +179,7 @@ pub enum Outcome {
 /// (from both the test-only `cancel` and the timeout sweep in
 /// `take_completed`).
 fn cancel_request_params(id: &RequestId) -> serde_json::Value {
-    let id_value = match id {
-        RequestId::Int(n) => serde_json::Value::from(*n),
-        RequestId::Str(s) => serde_json::Value::String(s.clone()),
-    };
-    serde_json::json!({ "id": id_value })
+    serde_json::json!({ "id": id })
 }
 
 /// How long `initialize` may go unanswered before the client gives up and
@@ -518,7 +514,16 @@ impl LspClient {
             {
                 self.initialize_id = None;
                 self.pending.remove(&id);
-                self.handle_initialize_response(result)
+                // `begin_shutdown` on a still-Starting client jumps straight
+                // to `Dead` without waiting for (or cancelling) the in-flight
+                // `initialize` — a response landing after that must not
+                // resurrect the client into `Running` via the handler below,
+                // which unconditionally overwrites `state`.
+                if self.state == ServerState::Starting {
+                    self.handle_initialize_response(result)
+                } else {
+                    Vec::new()
+                }
             }
             InboundEvent::Message(Message::Response { id, result }) => {
                 if let Some(meta) = self.pending.remove(&id) {
@@ -1386,6 +1391,41 @@ mod tests {
             backend.sent.is_empty(),
             "must not send shutdown/exit before the handshake completed: {:?}",
             backend.sent
+        );
+    }
+
+    /// Regression: `begin_shutdown` on a still-`Starting` client jumps
+    /// straight to `Dead` without cancelling (or waiting for) the in-flight
+    /// `initialize` — its `pending`/`initialize_id` entries are untouched.
+    /// A response that lands afterward must not resurrect the client into
+    /// `Running` via `handle_initialize_response`'s unconditional state
+    /// overwrite.
+    #[test]
+    fn initialize_response_after_shutdown_while_starting_does_not_resurrect_the_client() {
+        let mut backend = InlineLspBackend::new();
+        backend.respond_to("initialize", canned_result(None));
+        let sid = backend.start("x", &[], std::path::Path::new(".")).unwrap();
+        let mut client = LspClient::new(sid, PathBuf::from("."));
+
+        client.start_handshake(&mut backend);
+        client.begin_shutdown(&mut backend);
+        assert_eq!(client.state, ServerState::Dead);
+
+        let (_id, ev) = backend
+            .drain()
+            .into_iter()
+            .find(|(_, ev)| matches!(ev, InboundEvent::Message(Message::Response { .. })))
+            .expect("initialize response");
+        let actions = client.on_event(ev);
+
+        assert!(
+            actions.is_empty(),
+            "a late initialize response must not surface any action once already Dead: {actions:?}"
+        );
+        assert_eq!(
+            client.state,
+            ServerState::Dead,
+            "state must stay Dead, not flip back to Running"
         );
     }
 
