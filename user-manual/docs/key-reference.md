@@ -14,8 +14,8 @@ Keys marked **kitty only** require the kitty keyboard protocol, auto-detected at
 | `l` / `→` | Move right one grapheme |
 | `j` / `↓` | Move down one visual line |
 | `k` / `↑` | Move up one visual line |
-| `w` | Select next word (plus surrounding whitespace by default — see `word-selects-whitespace`) |
-| `b` | Select previous word (plus surrounding whitespace by default) |
+| `w` | Select next word (plus one adjacent whitespace run by default — see `word-selects-whitespace`) |
+| `b` | Select previous word (plus one adjacent whitespace run by default) |
 | `W` / `B` | WORD variants of `w` / `b` |
 | `Home` | Start of line (idiomatic form is `g h`) |
 | `End` | End of line (idiomatic form is `g l`) |
@@ -71,7 +71,7 @@ Text objects (use the `m` prefix):
 | `` m i ` `` / `` m a ` `` | Inner / around `` `…` `` |
 | `m i a` / `m a a` | Inner / around argument |
 | `m i l` / `m a l` | Inner / around line |
-| `m m` | Select the word under the cursor (plus surrounding whitespace by default, same rule as `w`/`b` — see `word-selects-whitespace`) |
+| `m m` | Select the word under the cursor (plus one adjacent whitespace run by default, same rule as `w`/`b` — see `word-selects-whitespace`) |
 | `M M` | WORD variant of `m m` |
 | `m s` + char | Select surrounding delimiter pair |
 | `m w` + char | Wrap each selection with a delimiter pair |

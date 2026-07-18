@@ -20,12 +20,12 @@ The same one-shot extend applies to search: `Ctrl+n` (kitty only) jumps the head
 
 ### Text objects
 
-Text objects select structured regions in one step. They use the `m` prefix — `m i` for inner content, `m a` for around (including delimiters or surrounding whitespace):
+Text objects select structured regions in one step. They use the `m` prefix — `m i` for inner content, `m a` for around (including delimiters, or one adjacent whitespace run for words):
 
 | Sequence | Selects |
 |----------|---------|
-| `m i w` / `m a w` | Inner word / word + surrounding whitespace |
-| `m i W` / `m a W` | Inner WORD / WORD + surrounding whitespace |
+| `m i w` / `m a w` | Inner word / word + one adjacent whitespace run |
+| `m i W` / `m a W` | Inner WORD / WORD + one adjacent whitespace run |
 | `m i (` / `m a (` | Inside `()` / including `()` |
 | `m i [` / `m a [` | Inside `[]` / including `[]` |
 | `m i {` / `m a {` | Inside `{}` / including `{}` |
@@ -40,7 +40,7 @@ Two shortcuts select the word under the cursor directly:
 
 | Key | Effect |
 |-----|--------|
-| `m m` | Word under the cursor (plus surrounding whitespace by default, same rule as `w`/`b`; disable `word-selects-whitespace` for `m i w` instead — see [Configuration](configuration.md)) |
+| `m m` | Word under the cursor (plus one adjacent whitespace run by default, same rule as `w`/`b`; disable `word-selects-whitespace` for `m i w` instead — see [Configuration](configuration.md)) |
 | `M M` | WORD under the cursor (same as `m a W` by default) |
 
 There is no paragraph text object; use the `{` and `}` paragraph motions.

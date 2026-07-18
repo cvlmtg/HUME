@@ -605,8 +605,8 @@ define_settings! {
             scope: ["global", "buffer"],
             parser: bool;
         // Word motions (`w`/`W`/`b`/`B`) and `mm`/`MM` cover the destination
-        // word's surrounding whitespace (trailing, or leading when no
-        // trailing exists) — see `word_select_cmd`/`run_native_body`'s
+        // word's whitespace bookend (leading, or trailing for the first
+        // word of a line) — see `word_select_cmd`/`run_native_body`'s
         // `around_fun` swap.
         "word-selects-whitespace" => word_selects_whitespace: bool = true,
             scope: ["global", "buffer"],

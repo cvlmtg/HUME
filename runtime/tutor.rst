@@ -1022,9 +1022,9 @@ Text objects select structured regions. Prefix ``mi`` for INNER
 
 Since selecting the word under the cursor is a very frequent
 operation, HUME adds a couple of shortcuts: ``mm`` and ``MM``. By
-default they cover the word/WORD's surrounding whitespace, the same
-rule ``w``/``b``/``W``/``B`` use; with ``word-selects-whitespace`` off
-they behave like ``miw``/``miW`` instead. ``miw``/``maw``/``miW``/``maW``
+default they cover one adjacent whitespace run of the word/WORD, the
+same rule ``w``/``b``/``W``/``B`` use; with ``word-selects-whitespace``
+off they behave like ``miw``/``miW`` instead. ``miw``/``maw``/``miW``/``maW``
 themselves are unaffected by that setting either way.
 
 ``mii`` is different from the rest of this table: it selects

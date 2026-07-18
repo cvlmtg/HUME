@@ -292,7 +292,7 @@ impl CommandRegistry {
         // reached by navigating away from the cursor. Not safe to replay
         // positionally — dot-repeat would advance past the intended word.
         // Each carries an `_around` twin that covers the destination word's
-        // surrounding whitespace in both modes — swapped in by
+        // whitespace bookend in both modes — swapped in by
         // `run_native_body` when `word-selects-whitespace` is on.
         motion!(
             "select-next-word",
@@ -428,7 +428,7 @@ impl CommandRegistry {
         .reg(self);
         selection!(
             "around-word",
-            "Select word plus surrounding whitespace.",
+            "Select word plus one adjacent whitespace run.",
             cmd_around_word
         );
         selection!(
@@ -438,7 +438,7 @@ impl CommandRegistry {
         );
         selection!(
             "around-uppercase-word",
-            "Select uppercase word plus surrounding whitespace.",
+            "Select uppercase word plus one adjacent whitespace run.",
             cmd_around_uppercase_word
         );
         // `mm`/`MM`: select the word/WORD under the cursor. Unlike

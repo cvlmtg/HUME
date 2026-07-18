@@ -301,7 +301,7 @@ pub(super) fn select_prev_word(
 /// early for that selection and the last selection is kept unchanged.
 ///
 /// When `around` is set, the final word span is grown to include its
-/// surrounding whitespace (leading, or trailing when the word is the first
+/// whitespace bookend (leading, or trailing when the word is the first
 /// on its line — see [`expand_word_unit`]) once the loop is done. A
 /// selection the loop never actually moved (motion returned `None` on the
 /// first iteration, e.g. `w` at EOF) is left untouched — there is no word to
@@ -489,7 +489,7 @@ pub(crate) fn cmd_select_next_word(
     )
 }
 
-/// Select or extend to the next word (`w`), covering surrounding whitespace
+/// Select or extend to the next word (`w`), covering its whitespace bookend
 /// in both modes — used when `word-selects-whitespace` is on. See
 /// [`cmd_select_next_word`].
 #[allow(non_snake_case)]
@@ -531,7 +531,7 @@ pub(crate) fn cmd_select_next_uppercase_word(
     )
 }
 
-/// Select or extend to the next WORD (`W`), covering surrounding whitespace
+/// Select or extend to the next WORD (`W`), covering its whitespace bookend
 /// in both modes. See [`cmd_select_next_word_around`].
 #[allow(non_snake_case)]
 pub(crate) fn cmd_select_next_uppercase_word_around(
@@ -572,8 +572,8 @@ pub(crate) fn cmd_select_prev_word(
     )
 }
 
-/// Select or extend to the previous word (`b`), covering surrounding
-/// whitespace in both modes. See [`cmd_select_next_word_around`].
+/// Select or extend to the previous word (`b`), covering its whitespace
+/// bookend in both modes. See [`cmd_select_next_word_around`].
 #[allow(non_snake_case)]
 pub(crate) fn cmd_select_prev_word_around(
     buf: &Text,
@@ -613,8 +613,8 @@ pub(crate) fn cmd_select_prev_uppercase_word(
     )
 }
 
-/// Select or extend to the previous WORD (`B`), covering surrounding
-/// whitespace in both modes. See [`cmd_select_next_word_around`].
+/// Select or extend to the previous WORD (`B`), covering its whitespace
+/// bookend in both modes. See [`cmd_select_next_word_around`].
 #[allow(non_snake_case)]
 pub(crate) fn cmd_select_prev_uppercase_word_around(
     buf: &Text,

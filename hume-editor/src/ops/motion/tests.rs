@@ -1156,11 +1156,11 @@ fn select_prev_word_multi_cursor() {
     );
 }
 
-// ── around-word variants (w/W/b/B covering surrounding whitespace) ────────
+// ── around-word variants (w/W/b/B covering their whitespace bookend) ──────
 //
 // These wrap the same select_next_word/select_prev_word motions used above,
 // so movement is identical; only the final span differs. Each covers the
-// destination word's surrounding whitespace: leading preferred, trailing
+// destination word's whitespace bookend: leading preferred, trailing
 // fallback when the word is the first on its line (any leading run there is
 // indentation, never absorbed) or when there's no leading run at all. EOL is
 // never consumed on either side. Used when `word-selects-whitespace` is on
