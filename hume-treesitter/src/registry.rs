@@ -228,7 +228,7 @@ impl LanguageRegistry {
     ) -> LanguageId {
         let id = self.intern(name);
         if let Some(old) = self.identities[id.0 as usize].take() {
-            self.deindex(&old);
+            self.deindex(id, &old);
         }
         let new_identity = LanguageIdentity {
             extensions: extensions.iter().map(|s| s.to_string()).collect(),
@@ -251,14 +251,24 @@ impl LanguageRegistry {
     }
 
     /// Remove `identity`'s entries from the `by_ext`/`shebang_to_id` secondary
-    /// indices. Shared by `register_identity_no_rebuild`'s replace-existing
-    /// branch and `remove`.
-    fn deindex(&mut self, identity: &LanguageIdentity) {
+    /// indices, but only where `id` is still the current owner — a shared
+    /// extension (e.g. `.h` claimed by both `c` and `cpp`) may have been
+    /// reassigned to a different language since `identity` was registered, and
+    /// deindexing unconditionally would evict that newer owner's mapping.
+    /// Shared by `register_identity_no_rebuild`'s replace-existing branch and
+    /// `remove`. Note: this does not resurrect an older claimant if `id` was
+    /// indeed still the owner — the extension simply becomes unclaimed, which
+    /// matches the last-registered-wins model elsewhere in this registry.
+    fn deindex(&mut self, id: LanguageId, identity: &LanguageIdentity) {
         for ext in &identity.extensions {
-            self.by_ext.remove(ext.as_str());
+            if self.by_ext.get(ext.as_str()) == Some(&id) {
+                self.by_ext.remove(ext.as_str());
+            }
         }
         for shebang in &identity.shebangs {
-            self.shebang_to_id.remove(shebang.as_str());
+            if self.shebang_to_id.get(shebang.as_str()) == Some(&id) {
+                self.shebang_to_id.remove(shebang.as_str());
+            }
         }
     }
 
@@ -323,7 +333,7 @@ impl LanguageRegistry {
     pub fn remove(&mut self, name: &str) -> Option<LanguageIdentity> {
         let id = self.id_of(name)?;
         let identity = self.identities[id.0 as usize].take()?;
-        self.deindex(&identity);
+        self.deindex(id, &identity);
         self.grammars[id.0 as usize] = None;
         self.lang_order.retain(|&i| i != id);
         let (compiled, ids) =
@@ -711,6 +721,37 @@ mod tests {
         assert!(reg.by_shebang("python").is_none());
         // Flip expectation: after remove, matches must be empty.
         assert!(reg.compiled_globs().matches(Path::new("foo.py")).is_empty());
+    }
+
+    /// Regression: `deindex` must only remove an index entry it still owns.
+    /// `c` and `cpp` both claim `.h` (last-registered wins, so `cpp` takes
+    /// it); re-registering `c` without `.h` must not evict `cpp`'s mapping —
+    /// `c` never owned it at the time of re-registration.
+    ///
+    /// Flip: an unconditional `by_ext.remove(ext)` in `deindex` (no ownership
+    /// check) makes this test fail — `cpp` loses `.h` even though it's the
+    /// current owner.
+    #[test]
+    fn deindex_does_not_clobber_another_languages_shared_extension() {
+        let mut reg = LanguageRegistry::new();
+        reg.register_identity("c", &["c", "h"], &[], &[]).unwrap();
+        reg.register_identity("cpp", &["cpp", "h"], &[], &[])
+            .unwrap();
+        assert_eq!(
+            reg.by_extension("h"),
+            reg.id_of("cpp"),
+            "cpp must win the shared .h extension (last-registered-wins)"
+        );
+
+        // Re-register c, dropping .h from its own extension list.
+        reg.register_identity("c", &["c"], &[], &[]).unwrap();
+
+        assert_eq!(
+            reg.by_extension("h"),
+            reg.id_of("cpp"),
+            "re-registering c must not clobber cpp's still-current .h mapping"
+        );
+        assert_eq!(reg.by_extension("c"), reg.id_of("c"));
     }
 
     #[test]
