@@ -121,8 +121,9 @@ fn inner_word_cursor_on_punctuation() {
 }
 
 #[test]
-fn around_word_includes_trailing_space() {
-    // Trailing space is included; head = the space char.
+fn around_word_first_word_of_buffer_takes_trailing() {
+    // "hello" is the first word of the buffer — no leading run is possible —
+    // so it falls back to its trailing space; head = the space char.
     assert_state!(
         "-[h]>ello world\n",
         |(buf, sels)| cmd_around_word(&buf, sels, 0, MotionMode::Move),
@@ -131,12 +132,24 @@ fn around_word_includes_trailing_space() {
 }
 
 #[test]
-fn around_word_no_trailing_space_uses_leading() {
-    // "world" at end of line has no trailing space, so leading space included.
+fn around_word_leading_preferred() {
+    // "world" isn't the first word on its line, so it takes its leading
+    // space, regardless of what follows it (here, EOL).
     assert_state!(
         "hello -[w]>orld\n",
         |(buf, sels)| cmd_around_word(&buf, sels, 0, MotionMode::Move),
         "hello-[ world]>\n"
+    );
+}
+
+#[test]
+fn around_word_mid_line_takes_leading() {
+    // "world" isn't the first word on its line — takes its leading space
+    // even though a trailing space exists too.
+    assert_state!(
+        "hello -[w]>orld baz\n",
+        |(buf, sels)| cmd_around_word(&buf, sels, 0, MotionMode::Move),
+        "hello-[ world]> baz\n"
     );
 }
 
@@ -174,18 +187,19 @@ fn inner_uppercase_word_spans_punctuation() {
 
 // ── select-word / select-uppercase-word (mm/MM around-word body) ──────────
 //
-// Used in place of cmd_inner_word/cmd_inner_uppercase_word when
-// word-selects-whitespace is on (see mm/MM in keymap/defaults.rs). Move
-// uses word_unit_at — leading-preferred, trailing fallback for the first
-// word of a line, same as w/W/b/B; unlike maw/maW, which keep the
-// trailing-preferred Vim rule unconditionally. Extend keeps bare inner-word
+// mm/MM (`cmd_select_word_around`/`cmd_select_uppercase_word_around`) and
+// maw/maW (`cmd_around_word`/`cmd_around_uppercase_word`) share the same
+// word_unit_at body and select identical spans — leading-preferred, trailing
+// fallback for the first word of a line, same as w/W/b/B. `mm`/`MM` only
+// exist as a separate name because they stay gated behind
+// word-selects-whitespace (see mm/MM in keymap/defaults.rs) — maw/maW are
+// always available regardless of the setting. Extend keeps bare inner-word
 // units, matching cmd_inner_word's Extend arm exactly.
 
 #[test]
 fn select_word_around_move_first_word_of_buffer_takes_trailing() {
     // "hello" is the first word of the buffer — no leading run is possible —
-    // so it falls back to its trailing space, coincidentally matching what
-    // maw would do here too.
+    // so it falls back to its trailing space.
     assert_state!(
         "-[h]>ello world\n",
         |(buf, sels)| cmd_select_word_around(&buf, sels, 0, MotionMode::Move),
@@ -196,8 +210,7 @@ fn select_word_around_move_first_word_of_buffer_takes_trailing() {
 #[test]
 fn select_word_around_move_leading_preferred() {
     // "world" isn't the first word on its line, so it takes its leading
-    // space — unlike maw, which would take the (nonexistent) trailing run
-    // and fall back to leading only because EOL follows.
+    // space regardless of what follows it (here, EOL).
     assert_state!(
         "hello -[w]>orld\n",
         |(buf, sels)| cmd_select_word_around(&buf, sels, 0, MotionMode::Move),
@@ -206,12 +219,16 @@ fn select_word_around_move_leading_preferred() {
 }
 
 #[test]
-fn select_word_around_move_mid_line_diverges_from_around_word() {
-    // Mid-line, mm now differs from maw: mm takes the leading space, maw
-    // takes the trailing one.
+fn select_word_around_move_matches_around_word() {
+    // mm and maw select the identical span mid-line.
     assert_state!(
         "foo -[b]>ar baz\n",
         |(buf, sels)| cmd_select_word_around(&buf, sels, 0, MotionMode::Move),
+        "foo-[ bar]> baz\n"
+    );
+    assert_state!(
+        "foo -[b]>ar baz\n",
+        |(buf, sels)| cmd_around_word(&buf, sels, 0, MotionMode::Move),
         "foo-[ bar]> baz\n"
     );
 }
@@ -559,17 +576,20 @@ fn around_uppercase_word_no_trailing_space_uses_leading() {
 
 #[test]
 #[allow(non_snake_case)]
-fn around_uppercase_word_end_of_buffer_with_leading_space_uses_uppercase_word_boundary() {
-    // B1 regression: the fallback path for "WORD at end of buffer with no
-    // trailing space" was calling inner_word_impl with the wrong predicate
-    // (is_word_boundary instead of is_uppercase_word_boundary). This test catches
-    // that by using a WORD that contains punctuation — `is_word_boundary`
-    // would split "foo.bar" into two words while `is_uppercase_word_boundary` keeps
-    // it as one WORD, so the leading-space extent would differ.
+fn around_uppercase_word_first_word_of_line_uses_uppercase_word_boundary() {
+    // B1 regression: word_unit_at must call inner_word_impl with the right
+    // predicate (is_uppercase_word_boundary, not is_word_boundary). This
+    // test catches that by using a WORD that contains punctuation —
+    // `is_word_boundary` would split "foo.bar" into two words while
+    // `is_uppercase_word_boundary` keeps it as one WORD, so the resulting
+    // span would differ: "foo.bar" is the first (and only) WORD of the
+    // buffer — its leading run is indentation, never absorbed, and there's
+    // no trailing space (EOL follows), so the correct result is bare
+    // "foo.bar", not the wrong predicate's bare "foo".
     assert_state!(
         "  -[f]>oo.bar\n",
         |(buf, sels)| cmd_around_uppercase_word(&buf, sels, 0, MotionMode::Move),
-        "-[  foo.bar]>\n"
+        "  -[foo.bar]>\n"
     );
 }
 
@@ -610,9 +630,9 @@ fn around_uppercase_word_treats_punctuation_as_part_of_word() {
 #[test]
 fn around_word_stops_at_punctuation() {
     // Contrast: around_word (lower-case) on "foo.bar baz\n", cursor on 'f'.
-    // Inner word = "foo" (0..2). Next char = '.' (Punctuation, not Space) →
-    // no trailing space. No leading space (cursor at col 0) → no expansion.
-    // Result: just "foo".
+    // Inner word = "foo" (0..2), the first word of the buffer — no leading
+    // run is possible. Next char = '.' (Punctuation, not Space) → no
+    // trailing space either → no expansion. Result: just "foo".
     assert_state!(
         "-[f]>oo.bar baz\n",
         |(buf, sels)| cmd_around_word(&buf, sels, 0, MotionMode::Move),

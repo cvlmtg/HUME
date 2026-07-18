@@ -3069,22 +3069,23 @@ fn b_b_walks_back_through_distinct_words() {
 
 #[test]
 fn mm_default_matches_around_word() {
-    // "hello" is the first word of the buffer, so it falls back to trailing
-    // absorption — coincidentally matching what maw would give here too.
+    // mm and maw share the same word_unit_at body and always select the
+    // identical span; "hello" is the first word of the buffer here, so both
+    // fall back to trailing absorption.
     let mut ed = editor_from("-[h]>ello world\n");
     ed.feed_keys([key('m'), key('m')]);
     assert_eq!(state(&ed), "-[hello ]>world\n");
 }
 
 #[test]
-fn mm_mid_line_diverges_from_maw() {
+fn mm_mid_line_matches_maw() {
     let mut ed = editor_from("foo -[b]>ar baz\n");
     ed.feed_keys([key('m'), key('m')]);
     assert_eq!(state(&ed), "foo-[ bar]> baz\n");
 
     let mut ed2 = editor_from("foo -[b]>ar baz\n");
     ed2.feed_keys([key('m'), key('a'), key('w')]);
-    assert_eq!(state(&ed2), "foo -[bar ]>baz\n");
+    assert_eq!(state(&ed2), "foo-[ bar]> baz\n");
 }
 
 #[test]
@@ -3097,8 +3098,8 @@ fn mm_with_setting_off_matches_inner_word() {
 
 #[test]
 fn mm_default_on_whitespace_extends_to_adjacent_word() {
-    // around_word_impl's on-whitespace rule: cursor on the space itself
-    // extends forward to the adjacent word, same as pressing maw there.
+    // word_unit_at's on-whitespace rule: cursor on the space itself extends
+    // forward to the adjacent word, same as pressing maw there.
     let mut ed = editor_from("foo-[ ]>bar\n");
     ed.feed_keys([key('m'), key('m')]);
     assert_eq!(state(&ed), "foo-[ bar]>\n");

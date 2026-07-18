@@ -198,35 +198,6 @@ pub(crate) fn inner_word_impl(
     Some((start, end))
 }
 
-/// Around word parameterised by boundary predicate.
-///
-/// Computes the inner word range, then extends to include surrounding
-/// whitespace. The rule (matching Vim/Helix):
-/// - If the word is a real word (non-whitespace): prefer trailing whitespace,
-///   fall back to leading whitespace if no trailing whitespace exists.
-/// - If the word IS whitespace: extend to include the adjacent non-whitespace
-///   word that follows (or precedes if at end of line).
-fn around_word_impl(
-    buf: &Text,
-    pos: usize,
-    is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
-) -> Option<(usize, usize)> {
-    let (start, end) = inner_word_impl(buf, pos, is_boundary)?;
-    let class = classify_char(buf.char_at(pos)?);
-
-    // On whitespace: extend to the adjacent real word (forward, or backward
-    // if at line end). On a real word: extend to adjacent whitespace
-    // (trailing, or leading if there's none trailing) — the two rules share
-    // the same "try forward, else try backward" shape, just with the target
-    // class flipped.
-    let wants: fn(CharClass) -> bool = if class == CharClass::Space || class == CharClass::Eol {
-        |c| c != CharClass::Space && c != CharClass::Eol
-    } else {
-        |c| c == CharClass::Space
-    };
-    extend_to_adjacent_run(buf, start, end, wants, is_boundary)
-}
-
 /// Grow `(start, end)` to include the adjacent grapheme run matching `wants`:
 /// the run right after `end` if it qualifies, else the run right before
 /// `start`. Neither side extending is not a failure — the original range is
@@ -236,9 +207,8 @@ fn around_word_impl(
 /// sequences (e.g. e + combining accent) are handled correctly; see
 /// `next_grapheme_boundary`/`prev_grapheme_boundary`.
 ///
-/// Used by `around_word_impl` (`maw`/`maW`, trailing-preferred) and by
-/// [`word_unit_at`]'s on-whitespace branch (extend to the adjacent word) —
-/// not by the leading-preferred `w`/`b`/`mm` unit, which uses
+/// Used only by [`word_unit_at`]'s on-whitespace branch (extend to the
+/// adjacent word) — the leading-preferred unit for a real word uses
 /// [`expand_word_unit`] instead.
 fn extend_to_adjacent_run(
     buf: &Text,
@@ -277,12 +247,10 @@ pub(crate) fn cmd_inner_word(
 /// run: leading preferred, trailing when the leading run is indentation or
 /// absent.
 ///
-/// This is the word-motion counterpart to `around_word_impl`'s "trailing
-/// preferred, leading fallback" — flipped, with one twist: a leading run
-/// that reaches back to the start of its line (or the start of the buffer)
-/// is indentation, not inter-word spacing, and must never be absorbed — the
-/// first word of a line always takes its trailing whitespace instead. This
-/// keeps `w`/`b`/`mm` from ever eating indentation.
+/// A leading run that reaches back to the start of its line (or the start of
+/// the buffer) is indentation, not inter-word spacing, and must never be
+/// absorbed — the first word of a line always takes its trailing whitespace
+/// instead. This keeps `w`/`b`/`mm`/`maw` from ever eating indentation.
 pub(crate) fn expand_word_unit(buf: &Text, start: usize, end: usize) -> (usize, usize) {
     // Leading scan: walk back over Space graphemes from `start`. Stopping on
     // Eol means the run touches the start of the line — indentation.
@@ -329,11 +297,12 @@ pub(crate) fn expand_word_unit(buf: &Text, start: usize, end: usize) -> (usize, 
 
 /// The word (or WORD) unit at `pos`: the inner word plus its whitespace
 /// bookend per [`expand_word_unit`], or — when `pos` sits on whitespace —
-/// the same "extend to the adjacent word" fallback `maw` uses on whitespace.
+/// extend to the adjacent word instead.
 ///
-/// Used for `mm`/`MM` (position-based, unlike the motion-based `w`/`b`) and
-/// to resolve an extend selection's anchor unit when `word-selects-whitespace`
-/// is on.
+/// This is the shared body of `mm`/`MM` and `maw`/`maW` (position-based,
+/// unlike the motion-based `w`/`b`) — all four names select the same span.
+/// Also used to resolve an extend selection's anchor unit when
+/// `word-selects-whitespace` is on.
 pub(crate) fn word_unit_at(
     buf: &Text,
     pos: usize,
@@ -492,15 +461,16 @@ pub(crate) fn cmd_select_word_nearest_on_line(
     result
 }
 
+/// Around word (`ma w`): same span as `mm` (see [`cmd_select_word_around`]),
+/// under a separate name because it stays available regardless of
+/// `word-selects-whitespace`.
 pub(crate) fn cmd_around_word(
     buf: &Text,
     sels: SelectionSet,
-    _count: usize,
+    count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
-    apply_text_object_by_mode(buf, sels, mode, |b, pos| {
-        around_word_impl(b, pos, is_word_boundary)
-    })
+    cmd_select_word_around(buf, sels, count, mode)
 }
 
 #[allow(non_snake_case)]
@@ -515,22 +485,22 @@ pub(crate) fn cmd_inner_uppercase_word(
     })
 }
 
+/// Around WORD (`ma W`); see [`cmd_around_word`].
 #[allow(non_snake_case)]
 pub(crate) fn cmd_around_uppercase_word(
     buf: &Text,
     sels: SelectionSet,
-    _count: usize,
+    count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
-    apply_text_object_by_mode(buf, sels, mode, |b, pos| {
-        around_word_impl(b, pos, is_uppercase_word_boundary)
-    })
+    cmd_select_uppercase_word_around(buf, sels, count, mode)
 }
 
 /// Select the word under the cursor (`mm`), covering its surrounding
-/// whitespace like [`expand_word_unit`] — used when `word-selects-whitespace`
+/// whitespace per [`expand_word_unit`] — used when `word-selects-whitespace`
 /// is on. Both modes use the same unit; `Extend` unions it with the current
-/// selection via [`apply_text_object_extend`].
+/// selection via [`apply_text_object_extend`]. Also the body `maw` delegates
+/// to — [`cmd_around_word`] — the two select the same span.
 pub(crate) fn cmd_select_word_around(
     buf: &Text,
     sels: SelectionSet,
