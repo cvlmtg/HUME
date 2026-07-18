@@ -202,6 +202,49 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
     );
 }
 
+// ── Decode errors name the builtin ─────────────────────────────────────────
+
+/// `declare-plugin`'s argument decoders must name the builtin in their error,
+/// matching every other builtin's naming idiom — `declare-plugin` was the
+/// one straggler still passing bare `"commands"`/`"events"`/`"languages"` as
+/// the decoder's `ctx_name`.
+///
+/// Fail oracle: revert the `ctx_name` args back to bare `"commands"` →
+/// the assertion on the `declare-plugin` prefix fails.
+#[test]
+fn declare_plugin_bad_commands_names_the_builtin() {
+    use crate::ScriptingHost;
+    use crate::null_host::LazyStubHost;
+    let mut host = ScriptingHost::new();
+    let mut editor_host = LazyStubHost::default();
+    let err = host
+        .eval_source(r#"(declare-plugin "user/tp" #:commands '(1))"#, &mut editor_host)
+        .expect_err("non-string #:commands entry must be rejected");
+    assert!(
+        err.contains("declare-plugin commands"),
+        "error must name the builtin; got: {err}"
+    );
+}
+
+/// Same naming requirement for an unknown `#:events` hook name.
+#[test]
+fn declare_plugin_unknown_hook_names_the_builtin() {
+    use crate::ScriptingHost;
+    use crate::null_host::LazyStubHost;
+    let mut host = ScriptingHost::new();
+    let mut editor_host = LazyStubHost::default();
+    let err = host
+        .eval_source(
+            r#"(declare-plugin "user/tp" #:commands '("c") #:events '("not-a-real-hook"))"#,
+            &mut editor_host,
+        )
+        .expect_err("unknown hook name must be rejected");
+    assert!(
+        err.contains("declare-plugin events"),
+        "error must name the builtin; got: {err}"
+    );
+}
+
 // ── Command-name character validation ─────────────────────────────────────
 
 /// `declare-plugin` hard-errors on a `#:commands` entry containing `"` or

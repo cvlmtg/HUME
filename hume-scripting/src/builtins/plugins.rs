@@ -138,9 +138,9 @@ pub(crate) fn declare_plugin(
         ctx.registries.declared_plugins.push(name.clone());
     }
 
-    let cmd_list = list_to_strings(commands, "commands")?;
-    let evt_strs = list_to_strings(events, "events")?;
-    let lang_list = list_to_strings(languages, "languages")?;
+    let cmd_list = list_to_strings(commands, "declare-plugin commands")?;
+    let evt_strs = list_to_strings(events, "declare-plugin events")?;
+    let lang_list = list_to_strings(languages, "declare-plugin languages")?;
 
     // Malformed name (not a collision) → hard error, same rule as
     // define-command!.  A name that can't survive quoting is a typo — this
@@ -158,7 +158,10 @@ pub(crate) fn declare_plugin(
         .map(|s| {
             HookId::from_symbol(s).ok_or_else(|| {
                 let valid = HookId::all_names().collect::<Vec<_>>().join(", ");
-                generic_err(format!("events: unknown hook '{}'; valid: {}", s, valid))
+                generic_err(format!(
+                    "declare-plugin events: unknown hook '{}'; valid: {}",
+                    s, valid
+                ))
             })
         })
         .collect::<Result<_, _>>()?;
