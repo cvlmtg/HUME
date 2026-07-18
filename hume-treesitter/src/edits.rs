@@ -98,7 +98,7 @@ fn new_end_point(start_row: usize, start_col: usize, inserted: &str) -> (usize, 
         (start_row, start_col + inserted.len())
     } else {
         // Column is the byte count after the last newline in the inserted text.
-        let last_nl = inserted.rfind('\n').unwrap();
+        let last_nl = inserted.rfind('\n').expect("newline_count > 0 checked above");
         (start_row + newline_count, inserted.len() - last_nl - 1)
     }
 }
