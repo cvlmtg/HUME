@@ -228,14 +228,15 @@ fn select_word_around_move_indented_first_word_keeps_indent() {
 }
 
 #[test]
-fn select_word_around_extend_keeps_bare_units() {
-    // Extend arm uses inner_word_impl, not around_word_impl — must match
-    // cmd_inner_word's Extend behavior exactly (compare
-    // extend_text_object_preserves_backward_direction above).
+fn select_word_around_extend_honors_the_setting() {
+    // Extend arm uses word_unit_at, same as Move — "hello" is the first word
+    // of the buffer, so its unit includes the trailing space, and the union
+    // grows to cover it too (unlike cmd_inner_word's Extend arm, which stays
+    // bare — compare extend_text_object_preserves_backward_direction above).
     assert_state!(
         "<[he]-llo world\n",
         |(buf, sels)| cmd_select_word_around(&buf, sels, 0, MotionMode::Extend),
-        "<[hello]- world\n"
+        "<[hello ]-world\n"
     );
 }
 

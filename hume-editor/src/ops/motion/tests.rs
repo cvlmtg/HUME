@@ -1475,14 +1475,82 @@ fn select_prev_word_around_at_buffer_start_is_noop() {
 }
 
 #[test]
-fn extend_select_next_word_around_matches_bare_extend() {
-    // Extend mode always keeps bare-word anchor units — the around variant
-    // must behave identically to the bare command here (compare against
-    // extend_select_next_word_from_cursor above).
+fn extend_select_next_word_around_grows_with_anchor_unit() {
+    // Extend mode honors word-selects-whitespace: the anchor's unit ("bar",
+    // not first on its line, takes its leading space) is kept whole as the
+    // selection grows forward to the target word's own end — no trailing
+    // whitespace is pulled in, which is exactly why the old bare-anchor
+    // reversion (see apply_word_select_extend's doc) is no longer needed.
     assert_state!(
-        "-[h]>ello world foo\n",
+        "foo -[b]>ar baz\n",
         |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Extend),
-        "-[hello world]> foo\n"
+        "foo-[ bar baz]>\n"
+    );
+}
+
+#[test]
+fn extend_select_prev_word_around_grows_backward_onto_leading_whitespace() {
+    // Growing backward, the target word's own leading space is absorbed
+    // into `head` — the selection can legitimately start on whitespace.
+    assert_state!(
+        "foo bar -[b]>az\n",
+        |(buf, sels)| cmd_select_prev_word_around(&buf, sels, 1, MotionMode::Extend),
+        "foo<[ bar baz]-\n"
+    );
+}
+
+#[test]
+fn extend_select_prev_word_around_shrinks_to_anchor_unit() {
+    // The target ("bar") is the anchor's own word — collapses to the
+    // anchor's unit (" bar"), not further.
+    assert_state!(
+        "foo-[ bar baz]>\n",
+        |(buf, sels)| cmd_select_prev_word_around(&buf, sels, 1, MotionMode::Extend),
+        "foo-[ bar]> baz\n"
+    );
+}
+
+#[test]
+fn extend_select_word_around_round_trip_across_anchor() {
+    // "a b c\n": extend-w from "b" grows onto "c" (anchor unit " b", target
+    // raw "c") → "a-[ b c]>". extend-b walks back to the anchor's own unit,
+    // collapsing → "a-[ b]> c". A second extend-b walks past the anchor and
+    // out the other side, flipping direction → "<[a b]- c". The final
+    // extend-w crosses back and collapses to the anchor's own unit again.
+    assert_state!(
+        "a -[b]> c\n",
+        |(buf, sels)| {
+            let s1 = cmd_select_next_word_around(&buf, sels, 1, MotionMode::Extend);
+            let s2 = cmd_select_prev_word_around(&buf, s1, 1, MotionMode::Extend);
+            let s3 = cmd_select_prev_word_around(&buf, s2, 1, MotionMode::Extend);
+            cmd_select_next_word_around(&buf, s3, 1, MotionMode::Extend)
+        },
+        "a-[ b]> c\n"
+    );
+}
+
+#[test]
+fn extend_select_prev_word_around_backward_edge_excludes_indentation() {
+    // Growing backward onto "one", the first word of its (indented) line —
+    // its leading run is indentation and is never absorbed into `head`.
+    assert_state!(
+        "  one -[t]>wo\n",
+        |(buf, sels)| cmd_select_prev_word_around(&buf, sels, 1, MotionMode::Extend),
+        "  <[one two]-\n"
+    );
+}
+
+#[test]
+fn extend_select_next_word_around_chained_grows_past_two_words() {
+    // Two separate extend-w presses grow the selection past "two" onto
+    // "three", re-resolving the (unchanged) anchor unit each time.
+    assert_state!(
+        "-[o]>ne two three\n",
+        |(buf, sels)| {
+            let s1 = cmd_select_next_word_around(&buf, sels, 1, MotionMode::Extend); // "-[one two]>"
+            cmd_select_next_word_around(&buf, s1, 1, MotionMode::Extend)
+        },
+        "-[one two three]>\n"
     );
 }
 

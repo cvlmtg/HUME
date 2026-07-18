@@ -1,5 +1,5 @@
 use super::MotionMode;
-use crate::ops::text_object::expand_word_unit;
+use crate::ops::text_object::{expand_word_unit, word_unit_at};
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
@@ -358,16 +358,31 @@ pub(super) fn apply_word_select(
 }
 
 /// Apply a word-select motion in extend mode: grow toward the target word if
-/// it lies beyond the anchor's word, shrink toward it if the target has
-/// crossed back onto or past the anchor's word, replacing the old selection
+/// it lies beyond the anchor's unit, shrink toward it if the target has
+/// crossed back onto or past the anchor's unit, replacing the old selection
 /// rather than unioning with it.
 ///
 /// The motion origin is `sel.head()` — each press searches from wherever the
 /// last press left the cursor, so repeated presses walk word by word in
-/// either direction. Because a target word can only lie entirely beyond,
-/// entirely behind, or exactly on the anchor's word (`anchor_unit`; words
-/// never partially overlap), the anchor's word is always kept whole: crossing
-/// it flips the selection's direction but never truncates it.
+/// either direction.
+///
+/// When `around` is set, the anchor's unit is resolved via [`word_unit_at`]
+/// (leading whitespace included, same rule as [`expand_word_unit`]) instead
+/// of the bare [`anchor_unit`], and a backward-growing target's `head` is
+/// expanded the same way — so a backward extend can end on the target
+/// word's leading whitespace. Comparisons still use the target's *raw* word
+/// bounds against the *expanded* anchor unit: adjacent units can overlap by
+/// one space (e.g. "one two" → "one " and " two"), but since only the
+/// anchor's own unit is ever expanded for the comparison, that overlap never
+/// causes a position to be double-counted. A forward-growing target never
+/// needs expanding — its `head` already lands on its own last char, which is
+/// exactly why `around` on `Move` needed the reversion this replaces:
+/// leading units end at the word, not in trailing whitespace.
+///
+/// Because a target unit can only lie entirely beyond, entirely behind, or
+/// exactly on the anchor's unit (units never partially overlap once the
+/// anchor's own unit is fixed), the anchor's unit is always kept whole:
+/// crossing it flips the selection's direction but never truncates it.
 ///
 /// If `motion` returns `None`, iteration stops early and the last selection is
 /// kept.
@@ -375,6 +390,7 @@ pub(super) fn apply_word_select_extend(
     buf: &Text,
     sels: SelectionSet,
     count: usize,
+    around: bool,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
     motion: impl Fn(&Text, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
@@ -383,13 +399,23 @@ pub(super) fn apply_word_select_extend(
         for _ in 0..count {
             match motion(buf, current.head()) {
                 Some((word_start, word_end)) => {
-                    let (unit_start, unit_end) = anchor_unit(buf, current.anchor(), is_boundary);
+                    let (unit_start, unit_end) = if around {
+                        word_unit_at(buf, current.anchor(), is_boundary)
+                            .expect("anchor is always a valid buffer offset")
+                    } else {
+                        anchor_unit(buf, current.anchor(), is_boundary)
+                    };
                     current = if word_start > unit_end {
                         Selection::new(unit_start, word_end) // target beyond anchor — grow forward
                     } else if word_end < unit_start {
-                        Selection::new(unit_end, word_start) // target behind anchor — grow backward
+                        let head = if around {
+                            expand_word_unit(buf, word_start, word_end).0
+                        } else {
+                            word_start
+                        };
+                        Selection::new(unit_end, head) // target behind anchor — grow backward
                     } else {
-                        Selection::new(unit_start, unit_end) // target is the anchor's own word
+                        Selection::new(unit_start, unit_end) // target is the anchor's own unit
                     };
                 }
                 None => break,
@@ -411,12 +437,10 @@ type SelectWord = fn(&Text, usize, IsBoundary) -> Option<(usize, usize)>;
 /// and word class (`is_boundary`: [`is_word_boundary`] or
 /// [`is_uppercase_word_boundary`]).
 ///
-/// `around` and `backward` only affect the `Move` arm — see
-/// [`apply_word_select`]'s doc for what each does.
-/// [`apply_word_select_extend`] always keeps bare-word anchor units,
-/// regardless of `word-selects-whitespace`, and its `head()`-based chaining
-/// has no analogous backward/forward asymmetry (see the `_around` command
-/// wrappers below).
+/// `backward` only affects the `Move` arm's search origin (see
+/// [`apply_word_select`]'s doc); `Extend`'s chaining always uses `head()` and
+/// has no analogous asymmetry. `around` affects both arms identically —
+/// whether whitespace is included in the unit.
 #[allow(clippy::too_many_arguments)]
 fn word_select_cmd(
     buf: &Text,
@@ -432,9 +456,11 @@ fn word_select_cmd(
         MotionMode::Move => apply_word_select(buf, sels, count, around, backward, |b, pos| {
             select_word(b, pos, is_boundary)
         }),
-        MotionMode::Extend => apply_word_select_extend(buf, sels, count, is_boundary, |b, pos| {
-            select_word(b, pos, is_boundary)
-        }),
+        MotionMode::Extend => {
+            apply_word_select_extend(buf, sels, count, around, is_boundary, |b, pos| {
+                select_word(b, pos, is_boundary)
+            })
+        }
     }
 }
 
@@ -459,7 +485,7 @@ pub(crate) fn cmd_select_next_word(
 }
 
 /// Select or extend to the next word (`w`), covering surrounding whitespace
-/// on `Move` — used when `word-selects-whitespace` is on. See
+/// in both modes — used when `word-selects-whitespace` is on. See
 /// [`cmd_select_next_word`].
 #[allow(non_snake_case)]
 pub(crate) fn cmd_select_next_word_around(
@@ -501,7 +527,7 @@ pub(crate) fn cmd_select_next_uppercase_word(
 }
 
 /// Select or extend to the next WORD (`W`), covering surrounding whitespace
-/// on `Move`. See [`cmd_select_next_word_around`].
+/// in both modes. See [`cmd_select_next_word_around`].
 #[allow(non_snake_case)]
 pub(crate) fn cmd_select_next_uppercase_word_around(
     buf: &Text,
@@ -542,7 +568,7 @@ pub(crate) fn cmd_select_prev_word(
 }
 
 /// Select or extend to the previous word (`b`), covering surrounding
-/// whitespace on `Move`. See [`cmd_select_next_word_around`].
+/// whitespace in both modes. See [`cmd_select_next_word_around`].
 #[allow(non_snake_case)]
 pub(crate) fn cmd_select_prev_word_around(
     buf: &Text,
@@ -583,7 +609,7 @@ pub(crate) fn cmd_select_prev_uppercase_word(
 }
 
 /// Select or extend to the previous WORD (`B`), covering surrounding
-/// whitespace on `Move`. See [`cmd_select_next_word_around`].
+/// whitespace in both modes. See [`cmd_select_next_word_around`].
 #[allow(non_snake_case)]
 pub(crate) fn cmd_select_prev_uppercase_word_around(
     buf: &Text,

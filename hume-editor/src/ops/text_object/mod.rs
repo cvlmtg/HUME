@@ -235,7 +235,12 @@ fn around_word_impl(
 /// `next_pos`/`prev_start` are grapheme-boundary steps (not `±1`) so combining
 /// sequences (e.g. e + combining accent) are handled correctly; see
 /// `next_grapheme_boundary`/`prev_grapheme_boundary`.
-pub(crate) fn extend_to_adjacent_run(
+///
+/// Used by `around_word_impl` (`maw`/`maW`, trailing-preferred) and by
+/// [`word_unit_at`]'s on-whitespace branch (extend to the adjacent word) —
+/// not by the leading-preferred `w`/`b`/`mm` unit, which uses
+/// [`expand_word_unit`] instead.
+fn extend_to_adjacent_run(
     buf: &Text,
     start: usize,
     end: usize,
@@ -524,22 +529,17 @@ pub(crate) fn cmd_around_uppercase_word(
 
 /// Select the word under the cursor (`mm`), covering its surrounding
 /// whitespace like [`expand_word_unit`] — used when `word-selects-whitespace`
-/// is on. Extend mode keeps bare (inner-word) units, matching the word
-/// motions' anchor-unit behaviour.
+/// is on. Both modes use the same unit; `Extend` unions it with the current
+/// selection via [`apply_text_object_extend`].
 pub(crate) fn cmd_select_word_around(
     buf: &Text,
     sels: SelectionSet,
     _count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
-    match mode {
-        MotionMode::Move => {
-            apply_text_object(buf, sels, |b, pos| word_unit_at(b, pos, is_word_boundary))
-        }
-        MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| {
-            inner_word_impl(b, pos, is_word_boundary)
-        }),
-    }
+    apply_text_object_by_mode(buf, sels, mode, |b, pos| {
+        word_unit_at(b, pos, is_word_boundary)
+    })
 }
 
 /// Select the WORD under the cursor (`MM`); see [`cmd_select_word_around`].
@@ -550,14 +550,9 @@ pub(crate) fn cmd_select_uppercase_word_around(
     _count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
-    match mode {
-        MotionMode::Move => apply_text_object(buf, sels, |b, pos| {
-            word_unit_at(b, pos, is_uppercase_word_boundary)
-        }),
-        MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| {
-            inner_word_impl(b, pos, is_uppercase_word_boundary)
-        }),
-    }
+    apply_text_object_by_mode(buf, sels, mode, |b, pos| {
+        word_unit_at(b, pos, is_uppercase_word_boundary)
+    })
 }
 
 // ── Brackets ───────────────────────────────────────────────────────────────────
