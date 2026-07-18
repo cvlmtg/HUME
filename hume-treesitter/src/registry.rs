@@ -513,10 +513,7 @@ fn detect_shebang(line: &str, registry: &LanguageRegistry) -> Option<LanguageId>
     let mut tokens = after_bang.split_whitespace();
     let interpreter_path = tokens.next()?;
 
-    let interpreter = if interpreter_path.ends_with("/env")
-        || interpreter_path == "env"
-        || interpreter_path == "/usr/bin/env"
-    {
+    let interpreter = if interpreter_path.ends_with("/env") || interpreter_path == "env" {
         tokens.find(|t| !t.starts_with('-'))?
     } else {
         std::path::Path::new(interpreter_path)
