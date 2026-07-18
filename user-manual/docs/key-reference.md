@@ -71,7 +71,7 @@ Text objects (use the `m` prefix):
 | `` m i ` `` / `` m a ` `` | Inner / around `` `…` `` |
 | `m i a` / `m a a` | Inner / around argument |
 | `m i l` / `m a l` | Inner / around line |
-| `m m` | Select the word under the cursor (plus surrounding whitespace by default, same as `m a w` — see `word-selects-whitespace`) |
+| `m m` | Select the word under the cursor (plus surrounding whitespace by default, same rule as `w`/`b` — see `word-selects-whitespace`) |
 | `M M` | WORD variant of `m m` |
 | `m s` + char | Select surrounding delimiter pair |
 | `m w` + char | Wrap each selection with a delimiter pair |

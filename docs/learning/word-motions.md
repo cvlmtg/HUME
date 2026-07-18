@@ -51,12 +51,14 @@ eliminates `e`/`E`: in Helix/Vim, `e` reaches the end of the current word
 (complementing `w` which lands on the start of the next). In HUME, `w`
 already selects through the end, making `e` redundant.
 
-By default `w` also covers the destination word's neighboring whitespace
-(trailing space if there is any, otherwise the space before it — the same
-span the `aw` text object selects), so deleting a word never leaves a double
-space behind. This is a separate, toggleable layer on top of the "select the
-whole word" behavior above, not a different word-select model — an option
-restores the bare-word span shown here.
+By default `w` also covers the whitespace *before* the destination word, so
+deleting a word never leaves a double space behind: `one two three`, cursor
+on `two`, `w` then delete leaves `one three` with a single space. The first
+word on a line is the exception — its leading whitespace is indentation, not
+inter-word spacing, so it's never touched; that word takes its *trailing*
+whitespace instead. This is a separate, toggleable layer on top of the
+"select the whole word" behavior above, not a different word-select model —
+an option restores the bare-word span shown here.
 
 ## Line crossing
 
@@ -111,6 +113,11 @@ itself, the selection flips to grow in the *other* direction instead, again
 always keeping full words. This mirrors how `Ctrl+h`/`Ctrl+j`/`Ctrl+k`/`Ctrl+l`
 already let you walk a selection back and forth character-by-character or
 line-by-line — `w`/`b` do the same thing one word at a time.
+
+The whitespace-inclusion behavior described above carries into extend mode
+too: growing extends through the target word's own whitespace bookend, and
+shrinking back toward the anchor never cuts into the anchor word's own
+whitespace either.
 
 ## Counts fold inside one undo step
 

@@ -76,10 +76,11 @@ steps — dots and dashes are boundaries). Pressing ``W`` instead
 selects "config.toml" (plus its trailing space), then "log-file" (two
 steps — only whitespace divides WORDs).
 
-By default ``w``/``W``/``b``/``B`` also pick up the word's neighboring
-whitespace — trailing space if there is any, otherwise the space
-before it — which is why some of the steps above include an extra
-space alongside the word or token. Turn this off with
+By default ``w``/``W``/``b``/``B`` also pick up the whitespace
+*before* the destination word or token — except the first word of a
+line, which picks up its trailing space instead, since a leading run
+there would be indentation — which is why some of the steps above
+include an extra space alongside the word or token. Turn this off with
 ``:set global word-selects-whitespace=false`` for bare-word
 selections instead.
 
@@ -1021,10 +1022,10 @@ Text objects select structured regions. Prefix ``mi`` for INNER
 
 Since selecting the word under the cursor is a very frequent
 operation, HUME adds a couple of shortcuts: ``mm`` and ``MM``. By
-default they behave like ``maw``/``maW`` (word/WORD plus surrounding
-whitespace); with ``word-selects-whitespace`` off they behave like
-``miw``/``miW`` instead. ``miw``/``maw``/``miW``/``maW`` themselves
-are unaffected by that setting either way.
+default they cover the word/WORD's surrounding whitespace, the same
+rule ``w``/``b``/``W``/``B`` use; with ``word-selects-whitespace`` off
+they behave like ``miw``/``miW`` instead. ``miw``/``maw``/``miW``/``maW``
+themselves are unaffected by that setting either way.
 
 ``mii`` is different from the rest of this table: it selects
 whatever text you most recently typed in Insert mode, however you

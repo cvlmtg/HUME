@@ -40,7 +40,7 @@ Two shortcuts select the word under the cursor directly:
 
 | Key | Effect |
 |-----|--------|
-| `m m` | Word under the cursor (same as `m a w` by default; disable `word-selects-whitespace` for `m i w` instead — see [Configuration](configuration.md)) |
+| `m m` | Word under the cursor (plus surrounding whitespace by default, same rule as `w`/`b`; disable `word-selects-whitespace` for `m i w` instead — see [Configuration](configuration.md)) |
 | `M M` | WORD under the cursor (same as `m a W` by default) |
 
 There is no paragraph text object; use the `{` and `}` paragraph motions.
