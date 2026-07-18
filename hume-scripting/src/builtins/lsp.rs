@@ -106,9 +106,9 @@ pub(crate) fn lsp_show_status(ctx: &mut SteelCtx) -> SteelResult {
     Ok(SteelVal::Void)
 }
 
-/// `(%lsp-request server method params callback allow-stale)`. The
-/// `lsp-request` Scheme wrapper (BOOTSTRAP) supplies `#:allow-stale`'s
-/// default. Pushes an `Effect::LspRequest`, sent by `Editor::send_one_lsp_request`
+/// `(%lsp-request server method params callback allow-stale supersede)`. The
+/// `lsp-request` Scheme wrapper (BOOTSTRAP) supplies `#:allow-stale`'s and
+/// `#:supersede`'s defaults. Pushes an `Effect::LspRequest`, sent by `Editor::send_one_lsp_request`
 /// right after this eval returns — `SteelCtx` has no route to the transport
 /// (crate fence), and queuing keeps every LSP send on one chokepoint
 /// regardless of which eval kind (command, hook, or a queued callback)

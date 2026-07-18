@@ -161,8 +161,8 @@ macro_rules! builtins {
 // debouncer.
 //
 // diagnostics-for-buffer — bounded, filtered pull. #:severity: floor symbol
-// ('error 'warning 'info 'hint) or #f for none. #:range: (list start end)
-// char-offset bound, or #f for the whole buffer.
+// ('error 'warning 'info 'hint) or #f for none. #:range: (start . end)
+// dotted-pair char-offset bound, or #f for the whole buffer.
 //
 // apply-text-edits! — one undoable transaction. edits: list of
 // ((start-line . start-col) (end-line . end-col) text), wire positions as

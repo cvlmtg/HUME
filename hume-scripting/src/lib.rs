@@ -495,6 +495,19 @@ impl ScriptingHost {
     ///   any committed by a nested successful plugin activation, which are
     ///   salvaged onto the error (see `take_eval_effects`).  The caller is
     ///   responsible for applying `EvalError::effects` and surfacing the error.
+    ///
+    /// Atomicity is **not** all-or-nothing across the whole file: only
+    /// deferred effects (keybinds, LSP registration, …) roll back on error.
+    /// `define-command!` and `register-hook!` mutate `command_table` /
+    /// `HookRegistry` inline the instant the builtin runs (see
+    /// `builtins::commands`/`builtins::hooks`), so a `define-command!` or
+    /// `register-hook!` that ran before the failing form stays live in the
+    /// degraded session — only *plugin activation* (`declare-plugin` bodies)
+    /// is a true atomic unit with full command/hook rollback (see
+    /// `builtins::plugins::finish_lazy_activation`). This is deliberate: a
+    /// config error already surfaces to the user, and `:reload-config`
+    /// rebuilds a fresh `ScriptingHost`, so the half-applied state never
+    /// accumulates across reloads.
     pub fn eval_init(
         &mut self,
         path: &Path,
