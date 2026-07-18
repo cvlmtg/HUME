@@ -1,7 +1,5 @@
 use super::StyleScratch;
-use crate::builtins::tree_sitter_hl::layer_highlights_for_line;
-use crate::providers::{HighlightSource, HighlightTier, ProviderId, SourceContext};
-use crate::syntax_layers::SyntaxLayers;
+use crate::providers::{HighlightSource, HighlightTier, ProviderId, SourceContext, SyntaxSpans};
 use crate::theme::Theme;
 use crate::types::{ResolvedStyle, ScopeId};
 
@@ -119,28 +117,20 @@ impl TierBufs {
 /// Must be called once per buffer line before calling [`super::style_row`] for
 /// that line's display rows. Clears and re-fills `tier_bufs` and `raw_highlights`.
 ///
-/// `syntax` is the buffer's tree-sitter syntax layers (if a language is
-/// configured). Every layer covering this line is merged into the `Syntax`
+/// `syntax` is the buffer's syntax span source (if a language is
+/// configured). Its spans for this line are merged into the `Syntax`
 /// tier bucket before any per-pane provider-based sources.
 pub(crate) fn rebuild_tier_bufs(
     line_idx: usize,
-    syntax: Option<&SyntaxLayers>,
+    syntax: Option<&dyn SyntaxSpans>,
     providers: &[(ProviderId, Box<dyn HighlightSource>)],
     rope: &ropey::Rope,
     scratch: &mut StyleScratch,
 ) {
     scratch.tier_bufs.clear();
     scratch.highlights.clear();
-    if let Some(layers) = syntax {
-        layer_highlights_for_line(
-            layers,
-            line_idx,
-            rope,
-            &mut scratch.ts_raw,
-            &mut scratch.ts_stack,
-            &mut scratch.ts_events,
-            &mut scratch.highlights,
-        );
+    if let Some(syntax) = syntax {
+        syntax.spans_for_line(line_idx, rope, &mut scratch.highlights);
         for &interval in scratch.highlights.iter() {
             scratch.tier_bufs.push(HighlightTier::Syntax, interval);
         }

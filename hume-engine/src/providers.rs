@@ -72,6 +72,25 @@ pub trait HighlightSource {
 }
 
 // ---------------------------------------------------------------------------
+// Syntax spans
+// ---------------------------------------------------------------------------
+
+/// Per-buffer source of syntax highlight spans, implemented outside the
+/// engine (hume-treesitter's `Syntax`). Same span contract as
+/// `HighlightSource::highlights_for_line`: `(byte_start, byte_end, scope_id)`
+/// relative to the line start, sorted, non-overlapping, appended to `out`.
+/// The engine consumes only these spans — it has no knowledge of parse
+/// trees, grammars, or tree-sitter.
+pub trait SyntaxSpans {
+    fn spans_for_line(
+        &self,
+        line_idx: usize,
+        rope: &ropey::Rope,
+        out: &mut Vec<(usize, usize, ScopeId)>,
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Gutter column
 // ---------------------------------------------------------------------------
 

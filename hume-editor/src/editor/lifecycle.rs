@@ -563,7 +563,7 @@ impl Editor {
                     .buffers
                     .try_get(bid)
                     .and_then(|b| b.syntax.as_ref())
-                    .and_then(hume_treesitter::syntax::Syntax::layers)
+                    .map(|s| s as &dyn hume_engine::providers::SyntaxSpans)
             },
             |pid| self.resolve_pane_settings(pid).0,
             &statusline,

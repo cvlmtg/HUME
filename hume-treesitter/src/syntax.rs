@@ -1,14 +1,27 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use hume_editing::changeset::ChangeSet;
 use hume_editing::text::Text;
+use hume_engine::builtins::tree_sitter_hl::layer_highlights_for_line;
 use hume_engine::pipeline::BufferId;
 use hume_engine::syntax_layers::{SyntaxLayer, SyntaxLayers};
+use hume_engine::types::ScopeId;
 
 use crate::edits::input_edits_from_changeset;
 use crate::parse_worker::{ParseDone, ParseOutcome, ParseRequest};
 use crate::registry::GrammarBundle;
+
+/// Scratch for `layer_highlights_for_line`'s overlap flattener, reused
+/// across lines and frames. Behind a `Mutex` because renders reach
+/// `spans_for_line` through `&Syntax` (same uncontended single-threaded
+/// pattern as `TreeSitterHighlighter::cursor`).
+#[derive(Default)]
+pub(crate) struct FlattenScratch {
+    raw: Vec<(usize, usize, ScopeId, u8)>,
+    stack: Vec<(u8, u32, ScopeId)>,
+    events: Vec<(usize, bool, u32, ScopeId, u8)>,
+}
 
 /// Diagnostic info for a broken pending-edit chain: a text mutation bumped
 /// `text_gen` without recording an `InputEdit` between two recorded edits.
@@ -61,6 +74,11 @@ pub struct Syntax {
     /// `config_gen` slot is needed: `bundle` never changes within one
     /// attachment, so the posted config is always `bundle.config_gen`.
     in_flight: Option<u64>,
+    /// Scratch for the overlap flattener, reused across `spans_for_line`
+    /// calls. Lives here (not per-frame in the engine) because it survives
+    /// `install`/`clear_layers` — `SyntaxLayers` is rebuilt wholesale on
+    /// every install, `Syntax` is not.
+    span_scratch: Mutex<FlattenScratch>,
 }
 
 impl Syntax {
@@ -82,6 +100,7 @@ impl Syntax {
             tree_gen: 0,
             pending_edits: Vec::new(),
             in_flight: None,
+            span_scratch: Mutex::new(FlattenScratch::default()),
         };
 
         if text.len_bytes() == 0 {
@@ -311,6 +330,25 @@ impl Syntax {
 
     pub fn is_in_flight(&self) -> bool {
         self.in_flight.is_some()
+    }
+}
+
+impl hume_engine::providers::SyntaxSpans for Syntax {
+    fn spans_for_line(
+        &self,
+        line_idx: usize,
+        rope: &ropey::Rope,
+        out: &mut Vec<(usize, usize, ScopeId)>,
+    ) {
+        let Some(layers) = self.layers.as_ref() else {
+            return;
+        };
+        let mut scratch = self
+            .span_scratch
+            .lock()
+            .expect("span scratch lock poisoned");
+        let FlattenScratch { raw, stack, events } = &mut *scratch;
+        layer_highlights_for_line(layers, line_idx, rope, raw, stack, events, out);
     }
 }
 

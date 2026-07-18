@@ -5,10 +5,9 @@ use slotmap::{SlotMap, new_key_type};
 use crate::format::FormatScratch;
 use crate::pane::{Pane, WhitespaceConfig, WrapMode};
 use crate::providers::{
-    DrawerProvider, GutterCell, InlineInsert, StatuslineProvider, TabBarProvider,
+    DrawerProvider, GutterCell, InlineInsert, StatuslineProvider, SyntaxSpans, TabBarProvider,
 };
 use crate::style::StyleScratch;
-use crate::syntax_layers::SyntaxLayers;
 use crate::theme::{ScopeRegistry, Theme};
 use crate::types::EditorMode;
 
@@ -249,8 +248,8 @@ impl EngineView {
     /// the caller (typically the editor's `Document`). The borrow is used only
     /// inside this call — no rope is stored in `EngineView`.
     ///
-    /// `get_syntax` resolves a `BufferId` to its committed tree-sitter
-    /// `SyntaxLayers`, if any — same per-frame-borrow contract as `get_rope`.
+    /// `get_syntax` resolves a `BufferId` to its syntax highlight span
+    /// source, if any — same per-frame-borrow contract as `get_rope`.
     ///
     /// Layout: the tab bar (if present) occupies the top row, the statusline
     /// always occupies the bottom row. Panes fill the remaining area.
@@ -267,7 +266,7 @@ impl EngineView {
         area: ratatui::layout::Rect,
         buf: &mut ratatui::buffer::Buffer,
         get_rope: impl Fn(BufferId) -> Option<&'rope ropey::Rope>,
-        get_syntax: impl Fn(BufferId) -> Option<&'rope SyntaxLayers>,
+        get_syntax: impl Fn(BufferId) -> Option<&'rope dyn SyntaxSpans>,
         get_pane_settings: impl Fn(PaneId) -> PaneRenderSettings,
         statusline: &dyn StatuslineProvider,
         focused_pane_id: PaneId,
@@ -467,9 +466,9 @@ pub(crate) struct PaneRenderCtx<'a> {
     pub pane: &'a Pane,
     /// Rope borrowed from the caller's `Document` for this frame only.
     pub rope: &'a ropey::Rope,
-    /// Tree-sitter syntax layers borrowed from the caller via `get_syntax`,
-    /// if a language with a grammar is configured.
-    pub syntax: Option<&'a SyntaxLayers>,
+    /// Syntax highlight span source borrowed from the caller via
+    /// `get_syntax`, if a language with a grammar is configured.
+    pub syntax: Option<&'a dyn SyntaxSpans>,
     pub theme: &'a Theme,
     pub rect: ratatui::layout::Rect,
     pub settings: PaneRenderSettings,
