@@ -209,8 +209,12 @@ pub(crate) fn pair_fields(
 /// `pair_fields`, via steel-core's public `cons` primitive (the only public
 /// pair-construction API; the `Pair` type itself is unnameable outside
 /// steel-core).
-pub(crate) fn cons_pair(a: SteelVal, b: SteelVal) -> Result<SteelVal, SteelErr> {
-    let (mut a, mut b) = (a, b);
+///
+/// `b` must not be a list (including `'()`): steel's `cons` returns a proper
+/// `ListV` rather than a `Pair` when `b` is itself list-shaped, and
+/// `pair_fields` would then reject the round-trip. Every current caller's
+/// cdr is a scalar (`IntV`/position), so this holds in practice.
+pub(crate) fn cons_pair(mut a: SteelVal, mut b: SteelVal) -> Result<SteelVal, SteelErr> {
     steel::primitives::lists::cons(&mut a, &mut b)
 }
 

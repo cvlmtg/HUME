@@ -183,7 +183,6 @@ pub(crate) fn diagnostics_for_buffer(
     let floor = match severity {
         SteelVal::BoolV(false) => None,
         SteelVal::SymbolV(s) => Some(s.to_string()),
-        SteelVal::StringV(s) => Some(s.to_string()),
         _ => {
             steel::stop!(TypeMismatch => "diagnostics-for-buffer: #:severity expected a symbol or #f")
         }
