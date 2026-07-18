@@ -198,39 +198,6 @@ pub(crate) fn inner_word_impl(
     Some((start, end))
 }
 
-/// Grow a whitespace run `(start, end)` to include the adjacent word: the
-/// word right after `end` if one exists, else the word right before `start`.
-/// Neither side extending is not a failure — the original range is returned
-/// unchanged.
-///
-/// `next_pos`/`prev_start` are grapheme-boundary steps (not `±1`) so combining
-/// sequences (e.g. e + combining accent) are handled correctly; see
-/// `next_grapheme_boundary`/`prev_grapheme_boundary`.
-///
-/// Used only by [`word_unit_at`]'s on-whitespace branch — the
-/// leading-preferred unit for a real word uses [`expand_word_unit`] instead.
-fn extend_run_to_adjacent_word(
-    buf: &Text,
-    start: usize,
-    end: usize,
-    is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
-) -> Option<(usize, usize)> {
-    let is_word = |c: CharClass| c != CharClass::Space && c != CharClass::Eol;
-    let next_pos = next_grapheme_boundary(buf, end);
-    if next_pos < buf.len_chars() && is_word(classify_char(buf.char_at(next_pos)?)) {
-        let (_, new_end) = inner_word_impl(buf, next_pos, is_boundary)?;
-        return Some((start, new_end));
-    }
-    if start > 0 {
-        let prev_start = prev_grapheme_boundary(buf, start);
-        if is_word(classify_char(buf.char_at(prev_start)?)) {
-            let (new_start, _) = inner_word_impl(buf, prev_start, is_boundary)?;
-            return Some((new_start, end));
-        }
-    }
-    Some((start, end))
-}
-
 pub(crate) fn cmd_inner_word(
     buf: &Text,
     sels: SelectionSet,
@@ -295,8 +262,17 @@ pub(crate) fn expand_word_unit(buf: &Text, start: usize, end: usize) -> (usize, 
 }
 
 /// The word (or WORD) unit at `pos`: the inner word plus its whitespace
-/// bookend per [`expand_word_unit`], or — when `pos` sits on whitespace —
-/// extend to the adjacent word instead.
+/// bookend per [`expand_word_unit`].
+///
+/// When `pos` sits on whitespace there is no word under the cursor — snap to
+/// the adjacent word (the one right after the run if any, else the one right
+/// before it) and expand that instead. The whitespace under the cursor is
+/// never selected for its own sake; it only appears in the span when the
+/// expansion re-absorbs it (an inter-word space run is the following word's
+/// leading run), so newlines and indentation never leak into the selection.
+/// Returns `None` when no word is adjacent to the run (e.g. a
+/// whitespace-only buffer, or indentation at the start of the buffer) — the
+/// callers treat that as a no-op.
 ///
 /// This is the shared body of `mm`/`MM` and `maw`/`maW` (position-based,
 /// unlike the motion-based `w`/`b`) — all four names select the same span.
@@ -308,16 +284,33 @@ pub(crate) fn word_unit_at(
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
 ) -> Option<(usize, usize)> {
     // `pos` may be any valid selection endpoint, including the trailing
-    // codepoint of a combining cluster — see `anchor_unit`'s doc for why this
-    // snap to the cluster start matters before classifying.
+    // codepoint of a multi-codepoint grapheme cluster — see `anchor_unit`'s
+    // doc for why this snap to the cluster start matters before classifying.
     let pos = prev_grapheme_boundary(buf, next_grapheme_boundary(buf, pos));
     let (start, end) = inner_word_impl(buf, pos, is_boundary)?;
     let class = classify_char(buf.char_at(pos)?);
-    if class == CharClass::Space || class == CharClass::Eol {
-        extend_run_to_adjacent_word(buf, start, end, is_boundary)
-    } else {
-        Some(expand_word_unit(buf, start, end))
+    if class != CharClass::Space && class != CharClass::Eol {
+        return Some(expand_word_unit(buf, start, end));
     }
+
+    // On whitespace: `(start, end)` is the whitespace run — find the word
+    // adjacent to it (following preferred, preceding fallback) and expand
+    // that one by the normal rule instead.
+    let is_word = |c: CharClass| c != CharClass::Space && c != CharClass::Eol;
+    let next_pos = next_grapheme_boundary(buf, end);
+    let word_pos = if next_pos < buf.len_chars() && is_word(classify_char(buf.char_at(next_pos)?)) {
+        next_pos
+    } else if start > 0 {
+        let prev_pos = prev_grapheme_boundary(buf, start);
+        if !is_word(classify_char(buf.char_at(prev_pos)?)) {
+            return None;
+        }
+        prev_pos
+    } else {
+        return None;
+    };
+    let (start, end) = inner_word_impl(buf, word_pos, is_boundary)?;
+    Some(expand_word_unit(buf, start, end))
 }
 
 /// Find the nearest word within `[line_start, line_end_excl)` from `head`.

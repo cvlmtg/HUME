@@ -399,9 +399,14 @@ pub(super) fn apply_word_select_extend(
         for _ in 0..count {
             match motion(buf, current.head()) {
                 Some((word_start, word_end)) => {
-                    let (unit_start, unit_end) = if around {
-                        word_unit_at(buf, current.anchor(), is_boundary)
-                            .expect("anchor is always a valid buffer offset")
+                    // `word_unit_at` returns `None` when the anchor sits on
+                    // whitespace with no adjacent word (e.g. indentation at
+                    // the very start of the buffer) — fall back to the bare
+                    // whitespace position, same as `anchor_unit` yields there.
+                    let (unit_start, unit_end) = if around
+                        && let Some(unit) = word_unit_at(buf, current.anchor(), is_boundary)
+                    {
+                        unit
                     } else {
                         anchor_unit(buf, current.anchor(), is_boundary)
                     };

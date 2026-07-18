@@ -3100,8 +3100,9 @@ fn mm_with_setting_off_matches_inner_word() {
 
 #[test]
 fn mm_default_on_whitespace_extends_to_adjacent_word() {
-    // word_unit_at's on-whitespace rule: cursor on the space itself extends
-    // forward to the adjacent word, same as pressing maw there.
+    // word_unit_at's on-whitespace rule: cursor on the space snaps to the
+    // following word, whose normal unit re-absorbs that space as its leading
+    // run — same as pressing maw there.
     let mut ed = editor_from("foo-[ ]>bar\n");
     ed.feed_keys([key('m'), key('m')]);
     assert_eq!(state(&ed), "foo-[ bar]>\n");

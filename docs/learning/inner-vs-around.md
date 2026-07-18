@@ -66,6 +66,13 @@ This is the same rule the plain word motions `w`/`W`/`b`/`B` use by default —
 see [Word Motions](word-motions.md) — which is why `mm`/`maw` and `w` land on
 identical spans.
 
+With the cursor on whitespace rather than a word, `mm`/`maw` act on the
+adjacent word instead — the following one if any, otherwise the preceding
+one — under the same rule. The whitespace under the cursor is never selected
+for its own sake: a space between two words reappears as the following
+word's leading run, but a newline or a line's indentation never enters the
+selection.
+
 ## In practice
 
 The implementations share the code that locates the extent of the text object

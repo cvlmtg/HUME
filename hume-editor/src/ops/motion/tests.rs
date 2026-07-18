@@ -1541,6 +1541,19 @@ fn extend_select_prev_word_around_backward_edge_excludes_indentation() {
 }
 
 #[test]
+fn extend_select_next_word_around_whitespace_anchor_without_adjacent_word() {
+    // The anchor sits on indentation at the very start of the buffer — no
+    // word is adjacent to that run, so word_unit_at returns None and the
+    // anchor unit falls back to the bare whitespace position (must not
+    // panic). The extend still reaches "foo" on the next line.
+    assert_state!(
+        "-[ ]> \nfoo\n",
+        |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Extend),
+        "-[  \nfoo]>\n"
+    );
+}
+
+#[test]
 fn extend_select_next_word_around_chained_grows_past_two_words() {
     // Two separate extend-w presses grow the selection past "two" onto
     // "three", re-resolving the (unchanged) anchor unit each time.

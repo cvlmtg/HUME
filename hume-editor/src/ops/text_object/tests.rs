@@ -257,6 +257,83 @@ fn select_word_around_extend_honors_the_setting() {
     );
 }
 
+// ── mm/maw with the cursor on whitespace ──────────────────────────────────
+//
+// There is no word under the cursor: snap to the adjacent word (following
+// preferred, preceding fallback) and apply the normal unit rule to it. The
+// whitespace under the cursor is never selected for its own sake — an
+// inter-word space reappears as the following word's leading run, but
+// newlines and indentation never enter the span.
+
+#[test]
+fn around_word_on_interior_newline_selects_next_word_without_eol() {
+    // Cursor on the newline ending "hello": snap forward to "world", which
+    // is the first word of its line with EOL after it — bare. The newline
+    // itself is never part of the span.
+    assert_state!(
+        "hello-[\n]>world\n",
+        |(buf, sels)| cmd_around_word(&buf, sels, 0, MotionMode::Move),
+        "hello\n-[world]>\n"
+    );
+}
+
+#[test]
+fn around_word_on_trailing_structural_newline_snaps_backward() {
+    // Cursor on the buffer's structural '\n': nothing follows, so snap back
+    // to "hello" — first word of its line, no trailing space → bare.
+    assert_state!(
+        "hello-[\n]>",
+        |(buf, sels)| cmd_around_word(&buf, sels, 0, MotionMode::Move),
+        "-[hello]>\n"
+    );
+}
+
+#[test]
+fn around_word_on_blank_line_snaps_forward_past_the_newline_run() {
+    // Cursor on a blank line: the whole newline run is the whitespace under
+    // the cursor; the adjacent word after it is "world" — selected bare,
+    // with none of the newlines.
+    assert_state!(
+        "hello\n-[\n]>world\n",
+        |(buf, sels)| cmd_around_word(&buf, sels, 0, MotionMode::Move),
+        "hello\n\n-[world]>\n"
+    );
+}
+
+#[test]
+fn around_word_on_indentation_excludes_the_indent() {
+    // Cursor on the indentation: snap forward to "foo", whose unit takes
+    // the trailing space (first word of the line) — the indent is excluded,
+    // same as pressing maw on "foo" itself.
+    assert_state!(
+        "-[ ]> foo bar\n",
+        |(buf, sels)| cmd_around_word(&buf, sels, 0, MotionMode::Move),
+        "  -[foo ]>bar\n"
+    );
+}
+
+#[test]
+fn around_word_on_whitespace_only_buffer_is_noop() {
+    // No word adjacent to the run in either direction — no-op.
+    assert_state!(
+        "-[ ]>  \n",
+        |(buf, sels)| cmd_around_word(&buf, sels, 0, MotionMode::Move),
+        "-[ ]>  \n"
+    );
+}
+
+#[test]
+fn select_word_around_extend_at_buffer_end_never_consumes_trailing_newline() {
+    // Regression: the extend retry from past the selection end lands on the
+    // structural '\n'; its unit must resolve to the preceding word (already
+    // covered), not grow the selection onto the newline.
+    assert_state!(
+        "-[hello world]>\n",
+        |(buf, sels)| cmd_select_word_around(&buf, sels, 0, MotionMode::Extend),
+        "-[hello world]>\n"
+    );
+}
+
 #[test]
 #[allow(non_snake_case)]
 fn select_uppercase_word_around_move_spans_punctuation_and_whitespace() {
