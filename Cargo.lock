@@ -1079,6 +1079,7 @@ dependencies = [
  "hume-lsp",
  "hume-platform",
  "hume-scripting",
+ "hume-test-fixtures",
  "hume-treesitter",
  "insta",
  "lsp-types",
@@ -1151,12 +1152,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "hume-test-fixtures"
+version = "0.1.0"
+
+[[package]]
 name = "hume-treesitter"
 version = "0.1.0"
 dependencies = [
  "globset",
  "hume-editing",
  "hume-engine",
+ "hume-test-fixtures",
  "libloading",
  "ropey",
  "slotmap",

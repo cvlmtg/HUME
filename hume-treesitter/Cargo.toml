@@ -16,6 +16,7 @@ ropey.workspace = true
 [dev-dependencies]
 slotmap = "1"
 tempfile = "3"
+hume-test-fixtures = { path = "../hume-test-fixtures" }
 
 [features]
 # Exposes test-only registry methods (register_identity, remove) to
