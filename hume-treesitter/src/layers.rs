@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::builtins::tree_sitter_hl::TreeSitterHighlighter;
+use crate::highlight::TreeSitterHighlighter;
 
 /// One parsed layer of a buffer's syntax tree: the root grammar, or one
 /// embedded-language injection (a fenced code block, a combined

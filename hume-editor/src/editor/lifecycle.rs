@@ -1947,8 +1947,8 @@ fn push_priority_highlight_lines(
 /// handled automatically by the engine's per-tier `HighlightStack`; this
 /// only resolves overlaps *within* one tier, e.g. two diagnostics on the
 /// same line). Lower `priority` wins overlapping regions (ties keep
-/// whichever was pushed first) — same event-sweep shape as the engine's
-/// `flatten_overlaps` in `hume-engine/src/builtins/tree_sitter_hl.rs`
+/// whichever was pushed first) — same event-sweep shape as
+/// `flatten_overlaps` in `hume-treesitter/src/highlight.rs`
 /// (nested tree-sitter injection layers), adapted for scope-carrying
 /// diagnostic/extra-highlight spans instead of syntax layers. `raw` need
 /// not be pre-sorted; drained (left empty) on return.

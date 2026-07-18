@@ -4,7 +4,7 @@ use std::sync::atomic::AtomicBool;
 
 use streaming_iterator::StreamingIterator;
 
-use hume_engine::builtins::tree_sitter_hl::RopeProvider;
+use crate::highlight::RopeProvider;
 
 use crate::parse_worker::{MAX_INJECTION_DEPTH, ParsedInjection, run_parse};
 use crate::registry::GrammarBundle;
@@ -300,7 +300,7 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::atomic::AtomicBool;
 
-    use hume_engine::builtins::tree_sitter_hl::TreeSitterHighlighter;
+    use crate::highlight::TreeSitterHighlighter;
     use crate::grammar::LoadedGrammar;
     use hume_engine::theme::ScopeRegistry;
 

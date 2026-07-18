@@ -8,7 +8,9 @@
 
 pub mod edits;
 pub mod grammar;
+pub mod highlight;
 pub mod injections;
+pub mod layers;
 pub mod parse_worker;
 pub mod registry;
 pub mod syntax;

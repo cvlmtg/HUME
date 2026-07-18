@@ -1105,10 +1105,8 @@ dependencies = [
  "ratatui",
  "ropey",
  "slotmap",
- "streaming-iterator",
  "tempfile",
  "toml",
- "tree-sitter",
  "unicode-segmentation",
  "unicode-width 0.2.2",
 ]

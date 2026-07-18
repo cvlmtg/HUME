@@ -6,6 +6,5 @@ pub mod pipeline;
 pub mod providers;
 pub mod render;
 pub mod style;
-pub mod syntax_layers;
 pub mod theme;
 pub mod types;

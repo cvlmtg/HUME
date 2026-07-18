@@ -697,7 +697,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
         .as_ref()
         .unwrap()
         .layers()
-        .and_then(hume_engine::syntax_layers::SyntaxLayers::root_tree)
+        .and_then(hume_treesitter::layers::SyntaxLayers::root_tree)
         .expect("engine tree must be re-installed after reload");
     assert_eq!(
         tree.root_node().end_byte(),
@@ -1170,7 +1170,7 @@ fn catalog_parsing_extracts_json_pins() {
 /// to the default style — proving the assertion is not a zero-effect check.
 #[test]
 fn rust_function_highlight_snapshot() {
-    use hume_engine::builtins::tree_sitter_hl::layer_highlights_for_line;
+    use hume_treesitter::highlight::layer_highlights_for_line;
 
     let (parser, hl) = grammar_fixture("rust");
     // Cursor on the trailing `\n` so no token cell is reverse-video in the snapshot.

@@ -11,8 +11,6 @@ unicode-width.workspace = true
 ratatui.workspace = true
 bitflags = "2"
 slotmap = "1"
-tree-sitter.workspace = true
-streaming-iterator = "0.1"
 toml = { version = "1", default-features = false, features = ["parse", "serde", "std"] }
 
 [dev-dependencies]

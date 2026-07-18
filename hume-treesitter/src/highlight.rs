@@ -1,11 +1,11 @@
 use std::sync::{Arc, Mutex};
 
+use hume_engine::theme::ScopeRegistry;
+use hume_engine::types::ScopeId;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Query, QueryCursor};
 
-use crate::syntax_layers::{SyntaxLayers, layer_covers_line};
-use crate::theme::ScopeRegistry;
-use crate::types::{Scope, ScopeId};
+use crate::layers::{SyntaxLayers, layer_covers_line};
 
 // ---------------------------------------------------------------------------
 // RopeProvider
@@ -71,8 +71,6 @@ impl TreeSitterHighlighter {
     /// directly as the engine scope name. The theme's dot-notation cascade
     /// (`keyword.function` → `keyword` → default) handles unknowns. This is
     /// the standard constructor for Helix-compatible `highlights.scm` queries.
-    ///
-    /// Use [`new_with_scope_map`] when explicit capture→scope remapping is needed.
     pub fn new(
         language: &Language,
         query_source: &str,
@@ -98,35 +96,6 @@ impl TreeSitterHighlighter {
             capture_scopes,
             cursor: Mutex::new(QueryCursor::new()),
         }
-    }
-
-    /// Create a new provider with an explicit capture-name → scope-name map.
-    ///
-    /// Captures not present in `scope_map` are silently ignored. Use this for
-    /// grammars where tree-sitter capture names don't match the engine scope
-    /// convention directly.
-    pub fn new_with_scope_map(
-        language: &Language,
-        query_source: &str,
-        scope_map: &[(&str, Scope)],
-        registry: &mut ScopeRegistry,
-    ) -> Result<Self, tree_sitter::QueryError> {
-        let query = Arc::new(Query::new(language, query_source)?);
-        let capture_scopes: Vec<Option<ScopeId>> = query
-            .capture_names()
-            .iter()
-            .map(|name| {
-                scope_map
-                    .iter()
-                    .find(|(n, _)| *n == *name)
-                    .map(|(_, s)| registry.intern(s.0))
-            })
-            .collect();
-        Ok(Self {
-            query,
-            capture_scopes,
-            cursor: Mutex::new(QueryCursor::new()),
-        })
     }
 
     /// Append this layer's raw (line-relative) capture intervals for
@@ -171,14 +140,14 @@ impl TreeSitterHighlighter {
 }
 
 /// Build sorted, non-overlapping highlight spans for `line_idx` across every
-/// syntax layer that covers it, for consumption by [`crate::style::rebuild_tier_bufs`].
+/// syntax layer that covers it, for consumption by the engine's
+/// `rebuild_tier_bufs` (reached via the `SyntaxSpans` trait).
 ///
 /// Collects each covering layer's raw captures (tagged with the layer's
 /// depth) then flattens once — `flatten_overlaps` resolves overlaps by
 /// deepest-layer-wins, so a nested injection's captures always take priority
 /// over its parent's, regardless of collection order. `raw`/`stack`/`events`
-/// are caller-owned scratch (see [`StyleScratch`](crate::style::StyleScratch)),
-/// cleared on entry.
+/// are caller-owned scratch (`Syntax`'s `FlattenScratch`), cleared on entry.
 ///
 /// Deliberate non-optimization: every line re-runs the query from the tree
 /// root (clipped by `set_byte_range`, so cost is O(tree depth + line

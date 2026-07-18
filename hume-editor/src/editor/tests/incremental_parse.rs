@@ -188,7 +188,7 @@ fn incremental_tree_matches_full_reparse() {
         .as_ref()
         .unwrap()
         .layers()
-        .and_then(hume_engine::syntax_layers::SyntaxLayers::root_tree)
+        .and_then(hume_treesitter::layers::SyntaxLayers::root_tree)
         .unwrap()
         .root_node()
         .to_sexp();
@@ -260,7 +260,7 @@ fn bake_aligns_committed_tree_before_precise_install() {
     // Pre-fix: root end_byte == old_byte_len (stale coords → highlight column shift).
     let root_end = syn
         .layers()
-        .and_then(hume_engine::syntax_layers::SyntaxLayers::root_tree)
+        .and_then(hume_treesitter::layers::SyntaxLayers::root_tree)
         .unwrap()
         .root_node()
         .end_byte();
@@ -319,7 +319,7 @@ fn bake_handles_multi_edit_chain_in_one_shot() {
 
     let root_end = syn
         .layers()
-        .and_then(hume_engine::syntax_layers::SyntaxLayers::root_tree)
+        .and_then(hume_treesitter::layers::SyntaxLayers::root_tree)
         .unwrap()
         .root_node()
         .end_byte();

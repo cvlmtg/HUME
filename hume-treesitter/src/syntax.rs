@@ -3,9 +3,9 @@ use std::sync::{Arc, Mutex};
 
 use hume_editing::changeset::ChangeSet;
 use hume_editing::text::Text;
-use hume_engine::builtins::tree_sitter_hl::layer_highlights_for_line;
+use crate::highlight::layer_highlights_for_line;
 use hume_engine::pipeline::BufferId;
-use hume_engine::syntax_layers::{SyntaxLayer, SyntaxLayers};
+use crate::layers::{SyntaxLayer, SyntaxLayers};
 use hume_engine::types::ScopeId;
 
 use crate::edits::input_edits_from_changeset;
@@ -361,7 +361,7 @@ mod tests {
 
     use hume_editing::changeset::ChangeSetBuilder;
     use hume_editing::text::Text;
-    use hume_engine::builtins::tree_sitter_hl::TreeSitterHighlighter;
+    use crate::highlight::TreeSitterHighlighter;
     use crate::grammar::LoadedGrammar;
     use hume_engine::pipeline::BufferId;
     use hume_engine::theme::ScopeRegistry;

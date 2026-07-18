@@ -2,10 +2,10 @@ use std::path::PathBuf;
 
 use std::sync::Arc;
 
-use hume_engine::builtins::tree_sitter_hl::{TreeSitterHighlighter, layer_highlights_for_line};
-use hume_engine::syntax_layers::{SyntaxLayer, SyntaxLayers};
 use hume_engine::theme::ScopeRegistry;
 use hume_treesitter::grammar::LoadedGrammar;
+use hume_treesitter::highlight::{TreeSitterHighlighter, layer_highlights_for_line};
+use hume_treesitter::layers::{SyntaxLayer, SyntaxLayers};
 
 /// Wrap a single parsed tree + highlighter into a one-layer `SyntaxLayers`
 /// (the root layer, whole-buffer `ranges`) and run the real per-line

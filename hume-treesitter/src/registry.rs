@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use globset::{GlobSet, GlobSetBuilder};
 
-use hume_engine::builtins::tree_sitter_hl::TreeSitterHighlighter;
+use crate::highlight::TreeSitterHighlighter;
 use crate::grammar::LoadedGrammar;
 use hume_engine::theme::ScopeRegistry;
 
