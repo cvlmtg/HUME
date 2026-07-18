@@ -989,46 +989,7 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
 #[test]
 #[cfg(not(windows))]
 fn install_real_json_grammar_e2e() {
-    use std::process::Command;
-
-    let require_live = std::env::var("HUME_REQUIRE_LIVE_GRAMMAR_E2E")
-        .map(|v| v == "1")
-        .unwrap_or(false);
-
-    if !require_live {
-        eprintln!(
-            "install_real_json_grammar_e2e: skipping \
-             (set HUME_REQUIRE_LIVE_GRAMMAR_E2E=1 to run live e2e)"
-        );
-        return;
-    }
-
-    // Check prerequisites; skip unless HUME_REQUIRE_LIVE_GRAMMAR_E2E=1.
-    let has_git = Command::new("git")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    let has_curl = Command::new("curl")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    let has_ts = Command::new("tree-sitter")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-
-    if !has_git || !has_curl || !has_ts {
-        if require_live {
-            panic!(
-                "HUME_REQUIRE_LIVE_GRAMMAR_E2E=1 but git={has_git} curl={has_curl} tree-sitter={has_ts}"
-            );
-        }
-        eprintln!(
-            "install_real_json_grammar_e2e: skipping (git={has_git} curl={has_curl} ts={has_ts})"
-        );
+    if hume_test_fixtures::skip_unless_live_grammar_e2e("install_real_json_grammar_e2e") {
         return;
     }
 
@@ -1053,20 +1014,8 @@ fn install_real_json_grammar_e2e() {
     // Step 1: git clone --filter=blob:none
     let status = git_clone_rev_for_test(url, &src_dir, rev);
     match &status {
-        Err(e) => {
-            if require_live {
-                panic!("git_clone_rev failed: {e}");
-            }
-            eprintln!("install_real_json_grammar_e2e: skipping (clone failed: {e})");
-            return;
-        }
-        Ok(s) if !s.success() => {
-            if require_live {
-                panic!("git_clone_rev non-zero exit");
-            }
-            eprintln!("install_real_json_grammar_e2e: skipping (clone non-zero exit)");
-            return;
-        }
+        Err(e) => panic!("git_clone_rev failed: {e}"),
+        Ok(s) if !s.success() => panic!("git_clone_rev non-zero exit"),
         Ok(_) => {}
     }
     assert!(src_dir.exists(), "clone must create src dir");
@@ -1074,13 +1023,7 @@ fn install_real_json_grammar_e2e() {
     // Step 2: tree-sitter build
     let status = hume_platform::process::tree_sitter_build(&src_dir, &out_path)
         .expect("tree_sitter_build must not fail to spawn");
-    if !status.success() {
-        if require_live {
-            panic!("tree-sitter build failed");
-        }
-        eprintln!("install_real_json_grammar_e2e: skipping (build failed)");
-        return;
-    }
+    assert!(status.success(), "tree-sitter build failed");
     assert!(out_path.exists(), "compiled grammar must exist after build");
 
     // Step 3: register-grammar! via editor scripting
@@ -1092,20 +1035,8 @@ fn install_real_json_grammar_e2e() {
     );
     let curl_status = curl_fetch_for_test(&hl_url, &hl_path);
     match &curl_status {
-        Err(e) => {
-            if require_live {
-                panic!("curl_fetch failed: {e}");
-            }
-            eprintln!("install_real_json_grammar_e2e: skipping (curl failed: {e})");
-            return;
-        }
-        Ok(s) if !s.success() => {
-            if require_live {
-                panic!("curl_fetch non-zero exit");
-            }
-            eprintln!("install_real_json_grammar_e2e: skipping (curl non-zero)");
-            return;
-        }
+        Err(e) => panic!("curl_fetch failed: {e}"),
+        Ok(s) if !s.success() => panic!("curl_fetch non-zero exit"),
         Ok(_) => {}
     }
     assert!(hl_path.exists(), "highlights query must exist after curl");

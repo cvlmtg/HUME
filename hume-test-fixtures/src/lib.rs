@@ -108,3 +108,41 @@ pub fn skip_unless_file(path: &Path, what: &str) -> bool {
     );
     true
 }
+
+/// Set to `"1"` to opt into e2e tests that hit the network (git clone + curl
+/// fetch + a real `tree-sitter` CLI build) instead of a pre-built fixture.
+/// Distinct from [`REQUIRE_FIXTURES_ENV`]: that one gates *presence of
+/// pre-compiled fixtures*, this one gates *live installs* run through PLUM.
+pub const REQUIRE_LIVE_E2E_ENV: &str = "HUME_REQUIRE_LIVE_GRAMMAR_E2E";
+
+/// Gate a live (network + `tree-sitter` CLI) grammar-install e2e test.
+///
+/// Returns `true` when the caller should skip — the caller should `return`
+/// early; this function already `eprintln!`s the skip note, tagged with
+/// `test_name`. Returns `false` (never skip) once `git`, `curl`, and
+/// `tree-sitter` are all confirmed present. Panics — naming whichever tools
+/// are missing — when `HUME_REQUIRE_LIVE_GRAMMAR_E2E=1` but a prerequisite
+/// tool isn't on `PATH`, so CI (which sets the var) can never pass vacuously.
+pub fn skip_unless_live_grammar_e2e(test_name: &str) -> bool {
+    use std::process::Command;
+
+    let require_live = std::env::var(REQUIRE_LIVE_E2E_ENV).is_ok_and(|v| v == "1");
+    if !require_live {
+        eprintln!("{test_name}: skipping (set {REQUIRE_LIVE_E2E_ENV}=1 to run live e2e)");
+        return true;
+    }
+
+    let has_tool = |name: &str| {
+        Command::new(name)
+            .arg("--version")
+            .output()
+            .is_ok_and(|o| o.status.success())
+    };
+    let has_git = has_tool("git");
+    let has_curl = has_tool("curl");
+    let has_ts = has_tool("tree-sitter");
+    if !has_git || !has_curl || !has_ts {
+        panic!("{REQUIRE_LIVE_E2E_ENV}=1 but git={has_git} curl={has_curl} tree-sitter={has_ts}");
+    }
+    false
+}

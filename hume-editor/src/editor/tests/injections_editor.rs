@@ -711,37 +711,10 @@ fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
 #[test]
 #[cfg(not(windows))]
 fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
-    use std::process::Command;
-
-    let require_live = std::env::var("HUME_REQUIRE_LIVE_GRAMMAR_E2E")
-        .map(|v| v == "1")
-        .unwrap_or(false);
-    if !require_live {
-        eprintln!(
-            "plum_install_grammar_recovers_from_stale_source_dir_on_first_try: skipping \
-             (set HUME_REQUIRE_LIVE_GRAMMAR_E2E=1 to run live e2e)"
-        );
+    if hume_test_fixtures::skip_unless_live_grammar_e2e(
+        "plum_install_grammar_recovers_from_stale_source_dir_on_first_try",
+    ) {
         return;
-    }
-    let has_git = Command::new("git")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    let has_curl = Command::new("curl")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    let has_ts = Command::new("tree-sitter")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    if !has_git || !has_curl || !has_ts {
-        panic!(
-            "HUME_REQUIRE_LIVE_GRAMMAR_E2E=1 but git={has_git} curl={has_curl} tree-sitter={has_ts}"
-        );
     }
 
     let _lock = super::HUME_RUNTIME_MUTEX
@@ -803,36 +776,10 @@ fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
 #[test]
 #[cfg(not(windows))]
 fn plum_install_grammar_resolves_helix_inherits_chain() {
-    let require_live = std::env::var("HUME_REQUIRE_LIVE_GRAMMAR_E2E")
-        .map(|v| v == "1")
-        .unwrap_or(false);
-    if !require_live {
-        eprintln!(
-            "plum_install_grammar_resolves_helix_inherits_chain: skipping \
-             (set HUME_REQUIRE_LIVE_GRAMMAR_E2E=1 to run live e2e)"
-        );
+    if hume_test_fixtures::skip_unless_live_grammar_e2e(
+        "plum_install_grammar_resolves_helix_inherits_chain",
+    ) {
         return;
-    }
-    use std::process::Command;
-    let has_git = Command::new("git")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    let has_curl = Command::new("curl")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    let has_ts = Command::new("tree-sitter")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    if !has_git || !has_curl || !has_ts {
-        panic!(
-            "HUME_REQUIRE_LIVE_GRAMMAR_E2E=1 but git={has_git} curl={has_curl} tree-sitter={has_ts}"
-        );
     }
 
     let _lock = super::HUME_RUNTIME_MUTEX
