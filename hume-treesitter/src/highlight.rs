@@ -19,9 +19,10 @@ use crate::layers::{SyntaxLayers, layer_covers_line};
 /// `get_byte_slice` returns `None` on an out-of-range request, so a misaligned
 /// range degrades to empty text rather than panicking.
 ///
-/// `pub` so other tree-sitter-driven query matching (e.g. injection
-/// resolution in `hume-treesitter`) can reuse it instead of duplicating.
-pub struct RopeProvider<'a>(pub &'a ropey::Rope);
+/// `pub(crate)` so other tree-sitter-driven query matching within this crate
+/// (e.g. injection resolution in `injections.rs`) can reuse it instead of
+/// duplicating.
+pub(crate) struct RopeProvider<'a>(pub(crate) &'a ropey::Rope);
 
 impl<'a> tree_sitter::TextProvider<&'a [u8]> for RopeProvider<'a> {
     type I = std::iter::Map<ropey::iter::Chunks<'a>, fn(&str) -> &[u8]>;
