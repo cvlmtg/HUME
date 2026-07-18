@@ -447,10 +447,9 @@ impl LanguageRegistry {
         for &lang_id in lang_order {
             if let Some(Some(identity)) = identities.get(lang_id.0 as usize) {
                 for pattern in &identity.globs {
-                    if let Ok(glob) = globset::Glob::new(pattern) {
-                        builder.add(glob);
-                        ids.push(lang_id);
-                    }
+                    let glob = globset::Glob::new(pattern)?;
+                    builder.add(glob);
+                    ids.push(lang_id);
                 }
             }
         }
@@ -667,6 +666,18 @@ mod tests {
         );
         // Flip: unknown ext should not match.
         assert!(reg.by_extension("yaml").is_none());
+    }
+
+    #[test]
+    fn register_identity_with_invalid_glob_errors() {
+        let mut reg = LanguageRegistry::new();
+        let err = reg
+            .register_identity("broken", &[], &["["], &[])
+            .expect_err("unterminated character class must fail glob compilation");
+        assert!(
+            matches!(err, super::RegisterError::GlobBuild(_)),
+            "expected GlobBuild error, got: {err:?}"
+        );
     }
 
     #[test]
