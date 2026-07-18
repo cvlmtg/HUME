@@ -3050,11 +3050,13 @@ fn b_default_selects_leading_space() {
     assert_eq!(state(&ed), "foo-[ bar]> baz\n");
 }
 
-/// Regression: pressing `b` twice in a row must walk back through two
-/// distinct words, not get stuck re-selecting the same one. The first press
-/// absorbs "three"'s trailing space (default around-word), landing head on
-/// that space; a naive second press searching from head would be fooled
-/// into re-finding "three" instead of advancing to "two" — see
+/// Regression: pressing `b` repeatedly must walk back through distinct
+/// words, not get stuck re-selecting the same one. Backward motions search
+/// from `start()` rather than `head()`: after a first-word-of-line landing
+/// (the final press here, onto "one"), the around-expansion absorbs
+/// trailing whitespace and leaves head on that space — just outside the
+/// word's own bounds — which would defeat `select_prev_word`'s "am I still
+/// on the word I just found" check and re-return the same word. See
 /// apply_word_select's `backward` parameter in ops/motion/word.rs.
 #[test]
 fn b_b_walks_back_through_distinct_words() {

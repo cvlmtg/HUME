@@ -1976,8 +1976,8 @@ fn steel_repeatable_change_via_call_records_insert_keys() {
         );
     }
 
-    // Move to "bar" and replay: change " bar" (leading fallback — "bar" has
-    // no trailing space since EOL follows), retype "hi".
+    // Move to "bar" and replay: change " bar" ("bar" isn't the first word
+    // of its line, so it takes its leading space), retype "hi".
     ed.feed_key(key('w'));
     ed.feed_key(key('.'));
     assert_eq!(

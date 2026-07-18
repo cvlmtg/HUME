@@ -292,8 +292,8 @@ impl CommandRegistry {
         // reached by navigating away from the cursor. Not safe to replay
         // positionally — dot-repeat would advance past the intended word.
         // Each carries an `_around` twin that covers the destination word's
-        // surrounding whitespace on Move — swapped in by `run_native_body`
-        // when `word-selects-whitespace` is on.
+        // surrounding whitespace in both modes — swapped in by
+        // `run_native_body` when `word-selects-whitespace` is on.
         motion!(
             "select-next-word",
             "Select the next word.",

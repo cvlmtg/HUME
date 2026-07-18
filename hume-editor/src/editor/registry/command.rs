@@ -145,7 +145,7 @@ pub(crate) enum MappableCommand {
         /// `run_native_body`'s dispatch swap). `None` for every motion except
         /// the word motions (`select-next-word` et al.), which swap in their
         /// `_around` twin — same signature, covers the destination word's
-        /// surrounding whitespace on `Move` only.
+        /// surrounding whitespace in both `Move` and `Extend` modes.
         around_fun: Option<SelectionFn>,
         /// Whether this motion always records a jump list entry before executing,
         /// regardless of how far the cursor moves. Used for goto commands.

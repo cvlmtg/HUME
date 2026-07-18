@@ -198,33 +198,32 @@ pub(crate) fn inner_word_impl(
     Some((start, end))
 }
 
-/// Grow `(start, end)` to include the adjacent grapheme run matching `wants`:
-/// the run right after `end` if it qualifies, else the run right before
-/// `start`. Neither side extending is not a failure — the original range is
-/// returned unchanged.
+/// Grow a whitespace run `(start, end)` to include the adjacent word: the
+/// word right after `end` if one exists, else the word right before `start`.
+/// Neither side extending is not a failure — the original range is returned
+/// unchanged.
 ///
 /// `next_pos`/`prev_start` are grapheme-boundary steps (not `±1`) so combining
 /// sequences (e.g. e + combining accent) are handled correctly; see
 /// `next_grapheme_boundary`/`prev_grapheme_boundary`.
 ///
-/// Used only by [`word_unit_at`]'s on-whitespace branch (extend to the
-/// adjacent word) — the leading-preferred unit for a real word uses
-/// [`expand_word_unit`] instead.
-fn extend_to_adjacent_run(
+/// Used only by [`word_unit_at`]'s on-whitespace branch — the
+/// leading-preferred unit for a real word uses [`expand_word_unit`] instead.
+fn extend_run_to_adjacent_word(
     buf: &Text,
     start: usize,
     end: usize,
-    wants: impl Fn(CharClass) -> bool,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
 ) -> Option<(usize, usize)> {
+    let is_word = |c: CharClass| c != CharClass::Space && c != CharClass::Eol;
     let next_pos = next_grapheme_boundary(buf, end);
-    if next_pos < buf.len_chars() && wants(classify_char(buf.char_at(next_pos)?)) {
+    if next_pos < buf.len_chars() && is_word(classify_char(buf.char_at(next_pos)?)) {
         let (_, new_end) = inner_word_impl(buf, next_pos, is_boundary)?;
         return Some((start, new_end));
     }
     if start > 0 {
         let prev_start = prev_grapheme_boundary(buf, start);
-        if wants(classify_char(buf.char_at(prev_start)?)) {
+        if is_word(classify_char(buf.char_at(prev_start)?)) {
             let (new_start, _) = inner_word_impl(buf, prev_start, is_boundary)?;
             return Some((new_start, end));
         }
@@ -315,13 +314,7 @@ pub(crate) fn word_unit_at(
     let (start, end) = inner_word_impl(buf, pos, is_boundary)?;
     let class = classify_char(buf.char_at(pos)?);
     if class == CharClass::Space || class == CharClass::Eol {
-        extend_to_adjacent_run(
-            buf,
-            start,
-            end,
-            |c| c != CharClass::Space && c != CharClass::Eol,
-            is_boundary,
-        )
+        extend_run_to_adjacent_word(buf, start, end, is_boundary)
     } else {
         Some(expand_word_unit(buf, start, end))
     }
