@@ -87,6 +87,14 @@ pub(crate) fn int_arg(val: SteelVal, ctx_name: &str) -> Result<i64, SteelErr> {
     }
 }
 
+/// A bool.
+pub(crate) fn bool_arg(val: SteelVal, ctx_name: &str) -> Result<bool, SteelErr> {
+    match val {
+        SteelVal::BoolV(b) => Ok(b),
+        _ => steel::stop!(TypeMismatch => "{}: expected a bool", ctx_name),
+    }
+}
+
 /// A Steel list, unpacked to a `Vec<SteelVal>`.
 pub(crate) fn list_items(val: SteelVal, ctx_name: &str) -> Result<Vec<SteelVal>, SteelErr> {
     match val {
@@ -310,6 +318,19 @@ mod tests {
     #[test]
     fn usize_arg_rejects_negative() {
         assert!(usize_arg(SteelVal::IntV(-1), "f").is_err());
+    }
+
+    #[test]
+    fn bool_arg_accepts_both_bools() {
+        assert!(bool_arg(SteelVal::BoolV(true), "f").unwrap());
+        assert!(!bool_arg(SteelVal::BoolV(false), "f").unwrap());
+    }
+
+    #[test]
+    fn bool_arg_rejects_wrong_type_naming_the_arg() {
+        let err = bool_arg(SteelVal::IntV(1), "dismiss-on-key").unwrap_err();
+        assert!(err.to_string().contains("dismiss-on-key"), "got: {err}");
+        assert!(err.to_string().contains("expected a bool"), "got: {err}");
     }
 
     #[test]

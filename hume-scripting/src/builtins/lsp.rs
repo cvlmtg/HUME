@@ -11,7 +11,8 @@ use crate::types::{Effect, PendingLspNotify, PendingLspRequest, PendingLspServer
 use crate::{PendingLspServerReg, SteelCtx};
 
 use super::args::{
-    BidArg, json_params, list_to_strings, optional_json_arg, optional_string_arg, string_arg,
+    BidArg, bool_arg, json_params, list_to_strings, optional_json_arg, optional_string_arg,
+    string_arg,
 };
 
 type SteelResult = Result<SteelVal, SteelErr>;
@@ -125,10 +126,7 @@ pub(crate) fn lsp_request(
     let server = optional_string_arg(server, "lsp-request server")?;
     let method = string_arg(method, "lsp-request method")?;
     let params = json_params(params, "lsp-request params")?;
-    let allow_stale = match allow_stale {
-        SteelVal::BoolV(b) => b,
-        _ => steel::stop!(TypeMismatch => "lsp-request: #:allow-stale expected a bool"),
-    };
+    let allow_stale = bool_arg(allow_stale, "lsp-request #:allow-stale")?;
     let supersede = optional_string_arg(supersede, "lsp-request supersede")?;
     ctx.push_effect(Effect::LspRequest(PendingLspRequest {
         server,

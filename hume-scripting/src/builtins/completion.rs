@@ -7,7 +7,7 @@ use steel::rvals::SteelVal;
 use crate::SteelCtx;
 use crate::json::{json_to_steel, steel_to_json};
 
-use super::args::{BidArg, chars_arg, list_items, string_arg, usize_arg};
+use super::args::{BidArg, bool_arg, chars_arg, list_items, string_arg, usize_arg};
 use super::errors::{generic_err, require_cap};
 
 type SteelResult = Result<SteelVal, SteelErr>;
@@ -44,10 +44,7 @@ pub(crate) fn completion_begin(
     incomplete: SteelVal,
 ) -> SteelResult {
     let id = bid.0;
-    let incomplete = match incomplete {
-        SteelVal::BoolV(b) => b,
-        _ => steel::stop!(TypeMismatch => "completion-begin!: #:incomplete expected a bool"),
-    };
+    let incomplete = bool_arg(incomplete, "completion-begin! #:incomplete")?;
     let mut parsed = Vec::new();
     for entry in list_items(items, "completion-begin! items")? {
         parsed.push(steel_to_json(&entry).map_err(generic_err)?);

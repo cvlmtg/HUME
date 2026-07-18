@@ -11,7 +11,7 @@ use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 
-use super::args::{list_to_strings, string_arg};
+use super::args::{bool_arg, list_to_strings, string_arg};
 use super::errors::{generic_err, require_cap};
 
 type SteelResult = Result<SteelVal, SteelErr>;
@@ -30,10 +30,7 @@ pub(crate) fn show_popup(
     if anchor != "cursor" {
         steel::stop!(Generic => "show-popup!: #:anchor must be 'cursor, got '{}'", anchor);
     }
-    let dismiss_on_key = match dismiss_on_key {
-        SteelVal::BoolV(b) => b,
-        _ => steel::stop!(TypeMismatch => "show-popup!: #:dismiss-on-key expected a bool"),
-    };
+    let dismiss_on_key = bool_arg(dismiss_on_key, "show-popup! #:dismiss-on-key")?;
     require_cap(ctx.host.ui(), "show-popup!")?
         .show_popup(text, dismiss_on_key)
         .map(|()| SteelVal::Void)
