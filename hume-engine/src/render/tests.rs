@@ -69,7 +69,6 @@ fn renders_simple_text() {
         theme: &theme,
         pane_bg: None,
         rope: &rope,
-        tree: None,
     };
     let mut canvas = PaneCanvas::new(&mut buf, None);
     compose_row(
@@ -134,7 +133,6 @@ fn filler_rows_have_tilde() {
         theme: &theme,
         pane_bg: None,
         rope: &rope,
-        tree: None,
     };
     let mut canvas = PaneCanvas::new(&mut buf, None);
     render_tilde_fillers(1, &[], &ctx, &mut canvas);
@@ -190,7 +188,6 @@ fn do_compose_row(
         theme: &theme,
         pane_bg: None,
         rope: &rope,
-        tree: None,
     };
     let mut canvas = PaneCanvas::new(&mut buf, None);
     compose_row(
@@ -600,7 +597,6 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         theme: &theme,
         pane_bg: None,
         rope: &rope,
-        tree: None,
     };
     let mut canvas = PaneCanvas::new(&mut buf, None);
     compose_row(
@@ -681,7 +677,6 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
         theme: &theme,
         pane_bg: None,
         rope: &rope,
-        tree: None,
     };
     let mut canvas = PaneCanvas::new(&mut buf, None);
     compose_row(
@@ -815,7 +810,6 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
         theme: &theme,
         pane_bg: None,
         rope: &rope,
-        tree: None,
     };
     let mut canvas = PaneCanvas::new(&mut buf, None);
     compose_row(
@@ -927,7 +921,6 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
         theme: &theme,
         pane_bg: None,
         rope: &rope,
-        tree: None,
     };
     let mut canvas = PaneCanvas::new(&mut buf, None);
     compose_row(
@@ -1046,7 +1039,6 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
             theme: &theme,
             pane_bg: None,
             rope: &rope,
-            tree: None,
         };
         let mut canvas = PaneCanvas::new(&mut buf, None);
         compose_row(
@@ -1160,7 +1152,6 @@ fn gutter_column_reads_rope_via_ctx() {
         theme: &theme,
         pane_bg: None,
         rope: &rope,
-        tree: None,
     };
     let mut canvas = PaneCanvas::new(&mut buf, None);
     compose_row(
@@ -1290,7 +1281,6 @@ fn compose_row_dims_cells_inline() {
         theme: &theme,
         pane_bg: Some(Color::Rgb(0, 0, 0)),
         rope: &rope,
-        tree: None,
     };
     let mut canvas = PaneCanvas::new(&mut buf, Some((Color::Rgb(0, 0, 0), 0.5)));
     compose_row(
@@ -1355,7 +1345,6 @@ fn compose_row_non_rgb_dim_target_is_noop() {
         theme: &theme,
         pane_bg: Some(Color::Rgb(0, 0, 0)),
         rope: &rope,
-        tree: None,
     };
     let mut canvas = PaneCanvas::new(&mut buf, Some((Color::Reset, 0.5)));
     compose_row(

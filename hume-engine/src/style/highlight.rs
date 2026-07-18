@@ -148,7 +148,6 @@ pub(crate) fn rebuild_tier_bufs(
     }
     let ctx = SourceContext {
         rope,
-        tree: syntax.and_then(SyntaxLayers::root_tree),
         line_start_byte: rope.line_to_byte(line_idx),
     };
     for (_, provider) in providers {

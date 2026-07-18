@@ -441,7 +441,6 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
         mode: hume_engine::types::EditorMode::Normal,
         primary_head_line: 0,
         rope: &rope,
-        tree: None,
     };
     let col = c.ed.view.panes[c.pid]
         .providers

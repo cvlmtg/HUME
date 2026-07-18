@@ -3,7 +3,6 @@ use unicode_segmentation::UnicodeSegmentation;
 use crate::format::{push_arena_text, unicode_display_width};
 use crate::providers::VirtualLineAnchor;
 use crate::render::{self, ComposeCtx};
-use crate::syntax_layers::SyntaxLayers;
 use crate::types::{CellContent, DisplayRow, Grapheme, ResolvedStyle, RowKind};
 
 use super::{FrameScratch, PaneRenderCtx, ViewportCursor};
@@ -104,7 +103,6 @@ pub(crate) fn render_pane(
         theme: pane_ctx.theme,
         pane_bg: pane_ctx.theme.ui.background.bg,
         rope: pane_ctx.rope,
-        tree: pane_ctx.syntax.and_then(SyntaxLayers::root_tree),
     };
     let mut canvas = render::PaneCanvas::new(buf, pane_ctx.dim);
 

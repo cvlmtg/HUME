@@ -38,7 +38,6 @@ fn make_compose_ctx<'a>(
         theme,
         pane_bg: None,
         rope,
-        tree: None,
     }
 }
 

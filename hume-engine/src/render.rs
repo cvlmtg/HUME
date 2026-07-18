@@ -38,8 +38,6 @@ pub(crate) struct ComposeCtx<'a> {
     /// so gutter providers (git-signs, diagnostics) can query buffer content
     /// without pre-owning it.
     pub rope: &'a ropey::Rope,
-    /// tree-sitter parse tree, if one has been built.
-    pub tree: Option<&'a tree_sitter::Tree>,
 }
 
 /// The pane's drawing surface — every cell write for a pane goes through here.
@@ -136,7 +134,6 @@ fn compose_gutter(
         mode: compose_ctx.mode,
         primary_head_line: compose_ctx.primary_head_line,
         rope: compose_ctx.rope,
-        tree: compose_ctx.tree,
     };
     for ((_, col_provider), &col_width) in compose_ctx.gutter_columns.iter().zip(col_widths.iter())
     {

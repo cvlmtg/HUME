@@ -152,14 +152,13 @@ mod tests {
     use crate::providers::GutterRowCtx;
     use crate::types::{EditorMode, RowKind};
 
-    /// `LineNumberColumn` never reads `rope`/`tree`, so an empty rope is fine
+    /// `LineNumberColumn` never reads `rope`, so an empty rope is fine
     /// for every test here — only `primary_head_line` varies.
     fn ctx(rope: &ropey::Rope, primary_head_line: usize) -> GutterRowCtx<'_> {
         GutterRowCtx {
             mode: EditorMode::Normal,
             primary_head_line,
             rope,
-            tree: None,
         }
     }
 

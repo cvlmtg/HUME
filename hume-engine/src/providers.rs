@@ -20,8 +20,6 @@ pub type ProviderId = u16;
 /// Context passed to providers that need to query the buffer or syntax tree.
 pub struct SourceContext<'a> {
     pub rope: &'a ropey::Rope,
-    /// tree-sitter parse tree, if one has been built.
-    pub tree: Option<&'a tree_sitter::Tree>,
     /// Absolute byte offset of `line_idx`'s start in the file.
     /// Providers that receive byte ranges from external tools (e.g. tree-sitter)
     /// use this to convert to line-relative offsets.
@@ -88,8 +86,6 @@ pub struct GutterRowCtx<'a> {
     pub mode: EditorMode,
     pub primary_head_line: usize,
     pub rope: &'a ropey::Rope,
-    /// tree-sitter parse tree, if one has been built.
-    pub tree: Option<&'a tree_sitter::Tree>,
 }
 
 /// A single column in the gutter (line numbers, git signs, diagnostics, etc.).

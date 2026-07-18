@@ -190,7 +190,6 @@ mod tests {
             mode: EditorMode::Normal,
             primary_head_line: 0,
             rope,
-            tree: None,
         }
     }
 
@@ -411,7 +410,6 @@ mod tests {
             theme: &theme,
             pane_bg: None,
             rope: &rope,
-            tree: None,
         };
         let mut canvas = crate::render::PaneCanvas::new(&mut buf, None);
         crate::render::compose_row(
@@ -508,7 +506,6 @@ mod tests {
             theme: &theme,
             pane_bg: None,
             rope: &rope,
-            tree: None,
         };
         let mut canvas = crate::render::PaneCanvas::new(&mut buf, None);
         crate::render::compose_row(
@@ -763,7 +760,6 @@ mod tests {
             theme: &theme,
             pane_bg: None,
             rope: &rope,
-            tree: None,
         };
         let mut canvas = crate::render::PaneCanvas::new(&mut buf, None);
         crate::render::compose_row(
