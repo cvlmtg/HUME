@@ -268,6 +268,91 @@ pub(crate) fn cmd_inner_word(
     })
 }
 
+/// Grow a word/punct span `(start, end)` to include an adjacent whitespace
+/// run: leading preferred, trailing when the leading run is indentation or
+/// absent.
+///
+/// This is the word-motion counterpart to `around_word_impl`'s "trailing
+/// preferred, leading fallback" — flipped, with one twist: a leading run
+/// that reaches back to the start of its line (or the start of the buffer)
+/// is indentation, not inter-word spacing, and must never be absorbed — the
+/// first word of a line always takes its trailing whitespace instead. This
+/// keeps `w`/`b`/`mm` from ever eating indentation.
+pub(crate) fn expand_word_unit(buf: &Text, start: usize, end: usize) -> (usize, usize) {
+    // Leading scan: walk back over Space graphemes from `start`. Stopping on
+    // Eol means the run touches the start of the line — indentation.
+    let mut run_start = start;
+    let mut hit_eol = false;
+    while run_start > 0 {
+        let prev_pos = prev_grapheme_boundary(buf, run_start);
+        match classify_char(buf.char_at(prev_pos).expect("prev_pos < len")) {
+            CharClass::Space => run_start = prev_pos,
+            CharClass::Eol => {
+                hit_eol = true;
+                break;
+            }
+            _ => break,
+        }
+    }
+    let at_bol = hit_eol || run_start == 0;
+
+    if run_start < start && !at_bol {
+        return (run_start, end);
+    }
+
+    // Trailing fallback: first word of a line, punctuation immediately
+    // before, or no adjacent whitespace at all.
+    let mut run_end_start = end;
+    loop {
+        let next_pos = next_grapheme_boundary(buf, run_end_start);
+        if next_pos >= buf.len_chars() {
+            break;
+        }
+        if classify_char(buf.char_at(next_pos).expect("next_pos < len")) != CharClass::Space {
+            break;
+        }
+        run_end_start = next_pos;
+    }
+    if run_end_start == end {
+        (start, end)
+    } else {
+        // grapheme-safe: run_end_start is a grapheme boundary reached via
+        // next_grapheme_boundary; -1 is the last codepoint of that cluster.
+        (start, next_grapheme_boundary(buf, run_end_start) - 1)
+    }
+}
+
+/// The word (or WORD) unit at `pos`: the inner word plus its whitespace
+/// bookend per [`expand_word_unit`], or — when `pos` sits on whitespace —
+/// the same "extend to the adjacent word" fallback `maw` uses on whitespace.
+///
+/// Used for `mm`/`MM` (position-based, unlike the motion-based `w`/`b`) and
+/// to resolve an extend selection's anchor unit when `word-selects-whitespace`
+/// is on.
+pub(crate) fn word_unit_at(
+    buf: &Text,
+    pos: usize,
+    is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
+) -> Option<(usize, usize)> {
+    // `pos` may be any valid selection endpoint, including the trailing
+    // codepoint of a combining cluster — see `anchor_unit`'s doc for why this
+    // snap to the cluster start matters before classifying.
+    let pos = prev_grapheme_boundary(buf, next_grapheme_boundary(buf, pos));
+    let (start, end) = inner_word_impl(buf, pos, is_boundary)?;
+    let class = classify_char(buf.char_at(pos)?);
+    if class == CharClass::Space || class == CharClass::Eol {
+        extend_to_adjacent_run(
+            buf,
+            start,
+            end,
+            |c| c != CharClass::Space && c != CharClass::Eol,
+            is_boundary,
+        )
+    } else {
+        Some(expand_word_unit(buf, start, end))
+    }
+}
+
 /// Find the nearest word within `[line_start, line_end_excl)` from `head`.
 ///
 /// - If `head` is on a word or punctuation char, returns its inner-word range
@@ -438,7 +523,7 @@ pub(crate) fn cmd_around_uppercase_word(
 }
 
 /// Select the word under the cursor (`mm`), covering its surrounding
-/// whitespace like [`cmd_around_word`] — used when `word-selects-whitespace`
+/// whitespace like [`expand_word_unit`] — used when `word-selects-whitespace`
 /// is on. Extend mode keeps bare (inner-word) units, matching the word
 /// motions' anchor-unit behaviour.
 pub(crate) fn cmd_select_word_around(
@@ -448,9 +533,9 @@ pub(crate) fn cmd_select_word_around(
     mode: MotionMode,
 ) -> SelectionSet {
     match mode {
-        MotionMode::Move => apply_text_object(buf, sels, |b, pos| {
-            around_word_impl(b, pos, is_word_boundary)
-        }),
+        MotionMode::Move => {
+            apply_text_object(buf, sels, |b, pos| word_unit_at(b, pos, is_word_boundary))
+        }
         MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| {
             inner_word_impl(b, pos, is_word_boundary)
         }),
@@ -467,7 +552,7 @@ pub(crate) fn cmd_select_uppercase_word_around(
 ) -> SelectionSet {
     match mode {
         MotionMode::Move => apply_text_object(buf, sels, |b, pos| {
-            around_word_impl(b, pos, is_uppercase_word_boundary)
+            word_unit_at(b, pos, is_uppercase_word_boundary)
         }),
         MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| {
             inner_word_impl(b, pos, is_uppercase_word_boundary)

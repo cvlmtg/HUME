@@ -8,16 +8,17 @@ use pretty_assertions::assert_eq;
 #[test]
 fn dot_repeats_delete() {
     // Cursor starts at 'f'. `foo` is already selected; `d` deletes it.
-    // Then from the space at pos 0, `w` selects "bar" — since "bar" has no
-    // trailing space (EOL follows) but does have a leading one, the default
-    // around-word span picks up that leading space too. `.` deletes it.
+    // Then from the space at pos 0, `w` selects "bar" — "bar" is the first
+    // (and only) word on its line, so its leading space is indentation and
+    // is never absorbed; there's no trailing space either (EOL follows), so
+    // the default around-word span is bare. `.` deletes just "bar".
     let mut ed = editor_from("-[foo]> bar\n");
     ed.feed_key(key('d')); // delete "foo" → " bar\n", cursor at 0 (space)
     assert_eq!(ed.doc().text().to_string(), " bar\n");
 
-    ed.feed_key(key('w')); // from space, select " bar" (leading fallback)
+    ed.feed_key(key('w')); // from space, select "bar" (bare — indent kept)
     ed.feed_key(key('.')); // repeat delete
-    assert_eq!(ed.doc().text().to_string(), "\n");
+    assert_eq!(ed.doc().text().to_string(), " \n");
 }
 
 /// `c` + typed text + Esc should be replayable: the replacement text is reused.
@@ -671,10 +672,11 @@ fn editor_with_steel(initial_state: &str, source: &str) -> Editor {
 ///
 /// Independent oracle: buffer is "foo bar\n", initial selection is "foo".
 /// Run `del-sel` (repeatable Steel command that calls delete internally) →
-/// "foo" is deleted, buffer is " bar\n". Press `w` to select "bar" — which,
-/// having no trailing space (EOL follows) but a leading one, picks up
-/// " bar" (default around-word) — then `.` replays `del-sel` on that
-/// selection, leaving just "\n".
+/// "foo" is deleted, buffer is " bar\n". Press `w` to select "bar" — the
+/// first (and only) word on its line, so its leading space is indentation
+/// and is never absorbed, and there's no trailing space either (EOL
+/// follows) — the default around-word span is bare "bar" — then `.` replays
+/// `del-sel` on that selection, leaving " \n".
 ///
 /// Fail oracle 1: if `meta().repeatable` returned `false` for `SteelBacked`,
 /// `last_repeatable_action` would be `None` (no prior recording) — `.` would
@@ -707,13 +709,13 @@ fn steel_dot_repeatable_round_trip() {
         "outer Steel command must win the repeat slot over the inner 'delete'"
     );
 
-    // Select " bar" then press `.` — replay must delete the current selection.
-    ed.feed_key(key('w')); // select " bar" (leading fallback)
-    ed.feed_key(key('.')); // replay "del-sel" → delete " bar"
-    // Oracle: " bar\n" → "\n" after " bar" is deleted.
+    // Select "bar" then press `.` — replay must delete the current selection.
+    ed.feed_key(key('w')); // select "bar" (bare — indent kept)
+    ed.feed_key(key('.')); // replay "del-sel" → delete "bar"
+    // Oracle: " bar\n" → " \n" after "bar" is deleted.
     assert_eq!(
         ed.doc().text().to_string(),
-        "\n",
+        " \n",
         "`.` must replay the Steel command and delete the current selection"
     );
 }

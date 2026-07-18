@@ -1160,44 +1160,48 @@ fn select_prev_word_multi_cursor() {
 //
 // These wrap the same select_next_word/select_prev_word motions used above,
 // so movement is identical; only the final span differs. Each covers the
-// destination word's surrounding whitespace exactly like `maw`/`maW`:
-// trailing preferred, leading fallback when there's no trailing, EOL never
-// consumed. Used when `word-selects-whitespace` is on (see `run_native_body`).
+// destination word's surrounding whitespace: leading preferred, trailing
+// fallback when the word is the first on its line (any leading run there is
+// indentation, never absorbed) or when there's no leading run at all. EOL is
+// never consumed on either side. Used when `word-selects-whitespace` is on
+// (see `run_native_body`).
 
 #[test]
-fn select_next_word_around_trailing_basic() {
-    // Multiple trailing spaces are all included.
+fn select_next_word_around_leading_basic() {
+    // "bar" isn't the first word on its line, so its single leading space is
+    // absorbed. The three spaces after "bar" belong to "baz"'s leading run
+    // instead, and are left untouched.
     assert_state!(
         "-[f]>oo bar   baz\n",
         |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move),
-        "foo -[bar   ]>baz\n"
+        "foo-[ bar]>   baz\n"
     );
 }
 
 #[test]
-fn select_next_word_around_trailing_tab() {
-    // Tab classifies as Space — counts as trailing whitespace too.
+fn select_next_word_around_leading_tab() {
+    // Tab classifies as Space — counts as leading whitespace too.
     assert_state!(
-        "-[f]>oo bar\tbaz\n",
+        "-[f]>oo\tbar baz\n",
         |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move),
-        "foo -[bar\t]>baz\n"
+        "foo-[\tbar]> baz\n"
     );
 }
 
 #[test]
-fn select_next_word_around_trailing_nbsp() {
+fn select_next_word_around_leading_nbsp() {
     // U+00A0 (NBSP) classifies as Space too.
     assert_state!(
-        "-[f]>oo bar\u{00A0}baz\n",
+        "-[f]>oo\u{00A0}bar baz\n",
         |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move),
-        "foo -[bar\u{00A0}]>baz\n"
+        "foo-[\u{00A0}bar]> baz\n"
     );
 }
 
 #[test]
-fn select_next_word_around_leading_fallback_at_line_end() {
-    // "bar" is the last word on the line — no trailing space (EOL follows),
-    // so the leading space is included instead.
+fn select_next_word_around_leading_mid_line_before_eol() {
+    // "bar" isn't the first word on its line (that's "foo"), so it takes its
+    // leading space even though it's also the last word before EOL.
     assert_state!(
         "-[f]>oo bar\n",
         |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move),
@@ -1206,9 +1210,8 @@ fn select_next_word_around_leading_fallback_at_line_end() {
 }
 
 #[test]
-fn select_next_word_around_leading_fallback_before_punctuation() {
-    // "bar" is followed immediately by punctuation (no trailing space) but
-    // preceded by a space — leading fallback engages mid-line, not just at EOL.
+fn select_next_word_around_leading_mid_line_before_punctuation() {
+    // Same rule applies regardless of what follows the word.
     assert_state!(
         "-[f]>oo bar,baz\n",
         |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move),
@@ -1217,13 +1220,37 @@ fn select_next_word_around_leading_fallback_before_punctuation() {
 }
 
 #[test]
-fn select_next_word_around_punctuation_destination_gets_trailing_space() {
+fn select_next_word_around_punctuation_destination_gets_leading_space() {
     // w can land on a punctuation run just like a word — it gets the same
     // around treatment.
     assert_state!(
         "-[f]>oo , bar\n",
         |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move),
-        "foo -[, ]>bar\n"
+        "foo-[ ,]> bar\n"
+    );
+}
+
+#[test]
+fn select_next_word_around_first_word_of_line_indented_takes_trailing() {
+    // "bar" is the first word on its line — the leading run is indentation
+    // and is never absorbed; the trailing space (before "baz") is used
+    // instead, same as the un-indented first-word case.
+    assert_state!(
+        "-[f]>oo\n  bar baz\n",
+        |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move),
+        "foo\n  -[bar ]>baz\n"
+    );
+}
+
+#[test]
+fn select_next_word_around_first_word_of_line_indented_no_trailing_is_bare() {
+    // "foo" is the first (and only) word on its line, indented, with EOL
+    // right after it — neither side qualifies, so the indentation is kept
+    // and the result is bare.
+    assert_state!(
+        "x\n-[ ]>   foo\n",
+        |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move),
+        "x\n    -[foo]>\n"
     );
 }
 
@@ -1243,7 +1270,7 @@ fn select_next_word_around_eol_never_consumed() {
 fn select_next_word_around_at_last_word_is_noop() {
     // Guard: the motion itself is a no-op (already on the last word), so no
     // expansion is attempted even though "world" has a leading space that
-    // would otherwise qualify for the leading-fallback rule.
+    // would otherwise be absorbed.
     assert_state!(
         "hello -[world]>\n",
         |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move),
@@ -1266,35 +1293,33 @@ fn select_next_word_around_count_2_expands_only_final_span() {
 
 #[test]
 fn select_next_word_around_second_press_advances_past_first_word() {
-    // Forward counterpart of select_prev_word_around_second_press_advances_past_first_word:
-    // locks in that chaining two SEPARATE `w` presses (not a single count=2
-    // call) still advances correctly when the first press's around-expansion
-    // pushes head into trailing whitespace. Forward search is naturally
-    // immune to the backward bug (see apply_word_select's doc comment) since
-    // it just continues scanning from wherever head is, but this pins that
-    // guarantee down with a cross-call test the way the backward fix needed.
+    // Forward search always uses `head()` as the origin (see
+    // apply_word_select's doc comment), and a leading expansion only ever
+    // moves `start` — so `head()` lands on the found word's own last char
+    // and the next press's search continues correctly from there. Chains
+    // three SEPARATE `w` presses (not a single count=3 call) to pin that down.
     assert_state!(
         "-[o]>ne two three four\n",
         |(buf, sels)| {
-            let s1 = cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move); // "two "
-            cmd_select_next_word_around(&buf, s1, 1, MotionMode::Move) // must be "three ", not "two " again
+            let s1 = cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move); // " two"
+            let s2 = cmd_select_next_word_around(&buf, s1, 1, MotionMode::Move); // " three"
+            cmd_select_next_word_around(&buf, s2, 1, MotionMode::Move) // " four", not " three" again
         },
-        "one two -[three ]>four\n"
+        "one two three-[ four]>\n"
     );
 }
 
 #[test]
-fn select_next_word_around_multi_cursor_overlap_merges() {
-    // Cursor 1 lands on "bar" and picks up its trailing space (no trailing
-    // space of "baz" to compete with yet). Cursor 2 lands on "baz" and,
-    // having no trailing space of its own (EOL follows), falls back to the
-    // same space via the leading rule. The two expanded spans overlap at
-    // that shared space and get merged into one selection.
+fn select_next_word_around_multi_cursor_adjacent_cursors_stay_disjoint() {
+    // Cursor 1 lands on "bar" and absorbs its leading space; cursor 2 lands
+    // on "baz" and absorbs *its* leading space (the one right after "bar").
+    // The two expanded spans are adjacent but don't overlap, so they stay
+    // separate selections rather than merging.
     // "foo bar baz\n": f=0..2,' '=3,b=4..6,' '=7,b=8..10,'\n'=11.
     assert_state!(
         "-[f]>oo -[b]>ar baz\n",
         |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move),
-        "foo -[bar baz]>\n"
+        "foo-[ bar]>-[ baz]>\n"
     );
 }
 
@@ -1311,9 +1336,9 @@ fn select_next_word_around_skips_combining_grapheme() {
 
 #[test]
 #[allow(non_snake_case)]
-fn select_next_uppercase_word_around_punct_and_leading_fallback() {
-    // W: "foo," is one WORD (punctuation merged in); "bar" is the last WORD
-    // on the line, so it picks up the leading space instead of a trailing one.
+fn select_next_uppercase_word_around_punct_leading() {
+    // W: "foo," is one WORD (punctuation merged in) and isn't "bar"'s own
+    // line-start, so "bar" takes its leading space.
     assert_state!(
         "-[f]>oo, bar\n",
         |(buf, sels)| cmd_select_next_uppercase_word_around(&buf, sels, 1, MotionMode::Move),
@@ -1322,8 +1347,9 @@ fn select_next_uppercase_word_around_punct_and_leading_fallback() {
 }
 
 #[test]
-fn select_prev_word_around_trailing() {
-    // b lands on "hello", which has a trailing space (the one before "world").
+fn select_prev_word_around_first_word_of_buffer_takes_trailing() {
+    // "hello" is the first word of the buffer — no leading run is possible —
+    // so it falls back to its trailing space (the one before "world").
     assert_state!(
         "hello -[world]>\n",
         |(buf, sels)| cmd_select_prev_word_around(&buf, sels, 1, MotionMode::Move),
@@ -1332,10 +1358,21 @@ fn select_prev_word_around_trailing() {
 }
 
 #[test]
-fn select_prev_word_around_leading_fallback() {
-    // Cursor starts on the punctuation right after "bar" (no trailing space
-    // of its own); b lands on "bar" directly, which falls back to its
-    // leading space.
+fn select_prev_word_around_leading_mid_line() {
+    // Plain word-to-word case: b lands on "bar", which isn't the first word
+    // on its line, so it takes its leading space.
+    assert_state!(
+        "foo bar -[b]>az\n",
+        |(buf, sels)| cmd_select_prev_word_around(&buf, sels, 1, MotionMode::Move),
+        "foo-[ bar]> baz\n"
+    );
+}
+
+#[test]
+fn select_prev_word_around_leading_mid_line_before_punctuation() {
+    // Cursor starts on the punctuation right after "bar"; b lands on "bar"
+    // directly, which still isn't the first word on its line, so it takes
+    // its leading space regardless of what follows.
     assert_state!(
         "foo bar-[,]>baz\n",
         |(buf, sels)| cmd_select_prev_word_around(&buf, sels, 1, MotionMode::Move),
@@ -1345,8 +1382,9 @@ fn select_prev_word_around_leading_fallback() {
 
 #[test]
 #[allow(non_snake_case)]
-fn select_prev_uppercase_word_around_trailing() {
-    // B: "hello.world" is one WORD; it has a trailing space (before "bar").
+fn select_prev_uppercase_word_around_first_word_of_buffer_takes_trailing() {
+    // B: "hello.world" is one WORD and is the first word of the buffer, so
+    // it falls back to its trailing space (before "bar").
     assert_state!(
         "hello.world -[bar]>\n",
         |(buf, sels)| cmd_select_prev_uppercase_word_around(&buf, sels, 1, MotionMode::Move),
@@ -1356,23 +1394,23 @@ fn select_prev_uppercase_word_around_trailing() {
 
 #[test]
 fn select_prev_word_around_second_press_advances_past_first_word() {
-    // Regression: the first `b` absorbs "three"'s trailing space, landing
-    // head ON that space (one past "three", not inside it). A second press
-    // must not be fooled by that into re-selecting "three" again — it must
-    // advance to "two". Before the fix, the second press's search origin was
-    // `current.head()` (the trailing space), which falls outside "three"'s
-    // own bounds, so `select_prev_word`'s "am I still on the word I just
-    // found" check missed and returned "three" a second time — `b` got
-    // stuck. The fix searches from `current.start()` for backward motions,
-    // which stays correctly "on" three's bounds and lets prev_word_start
-    // naturally find "two".
+    // Regression: `select_prev_word`'s "am I still on the word I just found"
+    // check uses `current.start()` as the search origin (not `head()`,
+    // which after a *first-word* landing can sit in that word's trailing
+    // whitespace, just outside its own bounds — see apply_word_select's doc
+    // comment). Chains three presses: the first two land mid-line (leading
+    // absorption moves `start`, not `head`, so the bug can't occur there
+    // anyway); the third lands on "one", the first word of the buffer, which
+    // *does* absorb trailing whitespace into `head` — proving the next press
+    // still advances instead of getting stuck re-selecting "one".
     assert_state!(
         "one two three -[f]>our\n",
         |(buf, sels)| {
-            let s1 = cmd_select_prev_word_around(&buf, sels, 1, MotionMode::Move); // "three "
-            cmd_select_prev_word_around(&buf, s1, 1, MotionMode::Move) // must be "two ", not "three " again
+            let s1 = cmd_select_prev_word_around(&buf, sels, 1, MotionMode::Move); // " three"
+            let s2 = cmd_select_prev_word_around(&buf, s1, 1, MotionMode::Move); // " two"
+            cmd_select_prev_word_around(&buf, s2, 1, MotionMode::Move) // "one ", not " two" again
         },
-        "one -[two ]>three four\n"
+        "-[one ]>two three four\n"
     );
 }
 
@@ -1380,15 +1418,49 @@ fn select_prev_word_around_second_press_advances_past_first_word() {
 #[allow(non_snake_case)]
 fn select_prev_uppercase_word_around_second_press_advances_past_first_word() {
     // Same regression as select_prev_word_around_second_press_advances_past_first_word,
-    // for B: "three.x" is one WORD (punctuation merged in); a second press
-    // must advance to "two", not re-select "three.x".
+    // for B: "three.x" is one WORD (punctuation merged in).
     assert_state!(
         "one two three.x -[f]>our\n",
         |(buf, sels)| {
-            let s1 = cmd_select_prev_uppercase_word_around(&buf, sels, 1, MotionMode::Move); // "three.x "
-            cmd_select_prev_uppercase_word_around(&buf, s1, 1, MotionMode::Move) // must be "two ", not "three.x " again
+            let s1 = cmd_select_prev_uppercase_word_around(&buf, sels, 1, MotionMode::Move); // " three.x"
+            let s2 = cmd_select_prev_uppercase_word_around(&buf, s1, 1, MotionMode::Move); // " two"
+            cmd_select_prev_uppercase_word_around(&buf, s2, 1, MotionMode::Move) // "one ", not " two" again
         },
-        "one -[two ]>three.x four\n"
+        "-[one ]>two three.x four\n"
+    );
+}
+
+#[test]
+fn select_word_around_w_then_b_round_trip() {
+    // w lands on "two" (leading-absorbed: " two", head on "o"); b then
+    // searches from `start()` (the leading space), skips it, and steps back
+    // to "one" — the first word of the buffer, which falls back to trailing
+    // absorption ("one ", head on the trailing space). Confirms the two
+    // directions compose correctly across a leading-vs-trailing unit switch.
+    assert_state!(
+        "-[o]>ne two three four\n",
+        |(buf, sels)| {
+            let s1 = cmd_select_next_word_around(&buf, sels, 1, MotionMode::Move); // " two"
+            cmd_select_prev_word_around(&buf, s1, 1, MotionMode::Move) // "one ", back to start
+        },
+        "-[one ]>two three four\n"
+    );
+}
+
+#[test]
+fn select_word_around_b_then_w_round_trip() {
+    // b from inside "two" steps back to "one" (first word of buffer,
+    // trailing-absorbed: "one ", head on the trailing space). w then
+    // searches from that space (`head()`), finds "two" again, and takes its
+    // leading space — proving forward search isn't fooled by a head sitting
+    // on whitespace left behind by a first-word backward landing.
+    assert_state!(
+        "one -[t]>wo three four\n",
+        |(buf, sels)| {
+            let s1 = cmd_select_prev_word_around(&buf, sels, 1, MotionMode::Move); // "one "
+            cmd_select_next_word_around(&buf, s1, 1, MotionMode::Move) // " two", not stuck on "one"
+        },
+        "one-[ two]> three four\n"
     );
 }
 

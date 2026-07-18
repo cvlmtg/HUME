@@ -176,11 +176,16 @@ fn inner_uppercase_word_spans_punctuation() {
 //
 // Used in place of cmd_inner_word/cmd_inner_uppercase_word when
 // word-selects-whitespace is on (see mm/MM in keymap/defaults.rs). Move
-// reuses around_word_impl — same span as maw/maW; Extend keeps bare
-// inner-word units, matching cmd_inner_word's Extend arm exactly.
+// uses word_unit_at — leading-preferred, trailing fallback for the first
+// word of a line, same as w/W/b/B; unlike maw/maW, which keep the
+// trailing-preferred Vim rule unconditionally. Extend keeps bare inner-word
+// units, matching cmd_inner_word's Extend arm exactly.
 
 #[test]
-fn select_word_around_move_matches_around_word() {
+fn select_word_around_move_first_word_of_buffer_takes_trailing() {
+    // "hello" is the first word of the buffer — no leading run is possible —
+    // so it falls back to its trailing space, coincidentally matching what
+    // maw would do here too.
     assert_state!(
         "-[h]>ello world\n",
         |(buf, sels)| cmd_select_word_around(&buf, sels, 0, MotionMode::Move),
@@ -189,11 +194,36 @@ fn select_word_around_move_matches_around_word() {
 }
 
 #[test]
-fn select_word_around_move_leading_fallback() {
+fn select_word_around_move_leading_preferred() {
+    // "world" isn't the first word on its line, so it takes its leading
+    // space — unlike maw, which would take the (nonexistent) trailing run
+    // and fall back to leading only because EOL follows.
     assert_state!(
         "hello -[w]>orld\n",
         |(buf, sels)| cmd_select_word_around(&buf, sels, 0, MotionMode::Move),
         "hello-[ world]>\n"
+    );
+}
+
+#[test]
+fn select_word_around_move_mid_line_diverges_from_around_word() {
+    // Mid-line, mm now differs from maw: mm takes the leading space, maw
+    // takes the trailing one.
+    assert_state!(
+        "foo -[b]>ar baz\n",
+        |(buf, sels)| cmd_select_word_around(&buf, sels, 0, MotionMode::Move),
+        "foo-[ bar]> baz\n"
+    );
+}
+
+#[test]
+fn select_word_around_move_indented_first_word_keeps_indent() {
+    // "foo" is the first word on its (indented) line — the leading run is
+    // indentation and is never absorbed; the trailing space is used instead.
+    assert_state!(
+        "x\n  -[f]>oo bar\n",
+        |(buf, sels)| cmd_select_word_around(&buf, sels, 0, MotionMode::Move),
+        "x\n  -[foo ]>bar\n"
     );
 }
 
@@ -212,6 +242,8 @@ fn select_word_around_extend_keeps_bare_units() {
 #[test]
 #[allow(non_snake_case)]
 fn select_uppercase_word_around_move_spans_punctuation_and_whitespace() {
+    // "hello.world" is one WORD and the first word of the buffer, so it
+    // falls back to its trailing space.
     assert_state!(
         "-[h]>ello.world foo\n",
         |(buf, sels)| cmd_select_uppercase_word_around(&buf, sels, 0, MotionMode::Move),

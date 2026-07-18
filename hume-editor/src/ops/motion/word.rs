@@ -1,5 +1,5 @@
 use super::MotionMode;
-use crate::ops::text_object::extend_to_adjacent_run;
+use crate::ops::text_object::expand_word_unit;
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
@@ -301,34 +301,33 @@ pub(super) fn select_prev_word(
 /// early for that selection and the last selection is kept unchanged.
 ///
 /// When `around` is set, the final word span is grown to include its
-/// surrounding whitespace (trailing, or leading when there's no trailing —
-/// see [`extend_to_adjacent_run`]) once the loop is done, exactly as `maw`
-/// would from the destination word. A selection the loop never actually
-/// moved (motion returned `None` on the first iteration, e.g. `w` at EOF) is
-/// left untouched — there is no word to grow around.
+/// surrounding whitespace (leading, or trailing when the word is the first
+/// on its line — see [`expand_word_unit`]) once the loop is done. A
+/// selection the loop never actually moved (motion returned `None` on the
+/// first iteration, e.g. `w` at EOF) is left untouched — there is no word to
+/// grow around.
 ///
 /// `backward` selects which edge of the current selection each hop searches
-/// from. Forward motions (`w`/`W`) always search from `head()` — scanning
-/// forward from wherever the last hop landed is correct regardless of
-/// whether that head sits on real content or on whitespace absorbed by a
-/// prior around-expansion. Backward motions (`b`/`B`) need `start()`
-/// instead: `select_prev_word` detects "did I land back on the word I'm
-/// already sitting in" by checking whether the search origin falls inside
-/// that word's bounds, and an around-expanded selection's `head()` can sit
-/// in the word's *trailing* whitespace — just outside those bounds — which
+/// from. Forward motions (`w`/`W`) always search from `head()`: a leading
+/// expansion only ever moves `start`, so `head()` always sits on the found
+/// word's own last char (or, for a first-word-on-line landing, on its
+/// trailing whitespace) — either way `next_word_start` searches correctly
+/// from there. Backward motions (`b`/`B`) need `start()` instead:
+/// `select_prev_word` detects "did I land back on the word I'm already
+/// sitting in" by checking whether the search origin falls inside that
+/// word's bounds, and after a first-word-on-line landing `head()` sits in
+/// the word's *trailing* whitespace — just outside those bounds — which
 /// defeats the check and re-returns the same word every subsequent press.
-/// `start()` never drifts into trailing whitespace (only a *leading*
-/// expansion can move it, and that only pulls it further from the found
-/// word, which keeps the check working), so it's the origin that stays
-/// correct across repeated backward presses on both bare and around
-/// selections.
+/// `start()` never drifts into trailing whitespace (a leading expansion only
+/// pulls it further from the found word, which keeps the check working), so
+/// it's the origin that stays correct across repeated backward presses on
+/// both bare and around selections.
 pub(super) fn apply_word_select(
     buf: &Text,
     sels: SelectionSet,
     count: usize,
     around: bool,
     backward: bool,
-    is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
     motion: impl Fn(&Text, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
     let result = sels.map(|sel| {
@@ -348,16 +347,8 @@ pub(super) fn apply_word_select(
                 None => break, // no more words — stop early, keep last selection
             }
         }
-        if around
-            && moved
-            && let Some((start, end)) = extend_to_adjacent_run(
-                buf,
-                current.start(),
-                current.end(),
-                |c| c == CharClass::Space,
-                is_boundary,
-            )
-        {
+        if around && moved {
+            let (start, end) = expand_word_unit(buf, current.start(), current.end());
             current = Selection::new(start, end);
         }
         current
@@ -438,11 +429,9 @@ fn word_select_cmd(
     select_word: SelectWord,
 ) -> SelectionSet {
     match mode {
-        MotionMode::Move => {
-            apply_word_select(buf, sels, count, around, backward, is_boundary, |b, pos| {
-                select_word(b, pos, is_boundary)
-            })
-        }
+        MotionMode::Move => apply_word_select(buf, sels, count, around, backward, |b, pos| {
+            select_word(b, pos, is_boundary)
+        }),
         MotionMode::Extend => apply_word_select_extend(buf, sels, count, is_boundary, |b, pos| {
             select_word(b, pos, is_boundary)
         }),

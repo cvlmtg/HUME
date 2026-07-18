@@ -3006,15 +3006,16 @@ fn gu_dot_repeats() {
 // ── word-selects-whitespace (mm/MM, w/W/b/B around-word default) ──────────
 //
 // Full-dispatch coverage of the default flip: the ops-level tests in
-// ops/motion/tests.rs and ops/text_object/tests.rs cover the span math;
-// these confirm the setting actually gates behavior through the real
+// ops/motion/tests.rs and ops/text_object/tests.rs cover the span math
+// (leading-preferred, trailing fallback for the first word of a line); these
+// confirm the setting actually gates behavior through the real
 // keymap/registry/dispatch path (:set, direct field write, and replay).
 
 #[test]
-fn w_default_selects_trailing_space() {
+fn w_default_selects_leading_space() {
     let mut ed = editor_from("-[f]>oo bar baz\n");
     ed.feed_key(key('w'));
-    assert_eq!(state(&ed), "foo -[bar ]>baz\n");
+    assert_eq!(state(&ed), "foo-[ bar]> baz\n");
 }
 
 #[test]
@@ -3036,17 +3037,17 @@ fn w_set_buffer_off_selects_bare_word() {
 
 #[test]
 #[allow(non_snake_case)]
-fn W_default_selects_trailing_space() {
+fn W_default_selects_leading_space() {
     let mut ed = editor_from("-[f]>oo, bar baz\n");
     ed.feed_key(key('W'));
-    assert_eq!(state(&ed), "foo, -[bar ]>baz\n");
+    assert_eq!(state(&ed), "foo,-[ bar]> baz\n");
 }
 
 #[test]
-fn b_default_selects_trailing_space() {
+fn b_default_selects_leading_space() {
     let mut ed = editor_from("foo bar -[b]>az\n");
     ed.feed_key(key('b'));
-    assert_eq!(state(&ed), "foo -[bar ]>baz\n");
+    assert_eq!(state(&ed), "foo-[ bar]> baz\n");
 }
 
 /// Regression: pressing `b` twice in a row must walk back through two
@@ -3059,18 +3060,31 @@ fn b_default_selects_trailing_space() {
 fn b_b_walks_back_through_distinct_words() {
     let mut ed = editor_from("one two three -[f]>our\n");
     ed.feed_key(key('b'));
-    assert_eq!(state(&ed), "one two -[three ]>four\n");
+    assert_eq!(state(&ed), "one two-[ three]> four\n");
     ed.feed_key(key('b'));
-    assert_eq!(state(&ed), "one -[two ]>three four\n");
+    assert_eq!(state(&ed), "one-[ two]> three four\n");
     ed.feed_key(key('b'));
     assert_eq!(state(&ed), "-[one ]>two three four\n");
 }
 
 #[test]
 fn mm_default_matches_around_word() {
+    // "hello" is the first word of the buffer, so it falls back to trailing
+    // absorption — coincidentally matching what maw would give here too.
     let mut ed = editor_from("-[h]>ello world\n");
     ed.feed_keys([key('m'), key('m')]);
     assert_eq!(state(&ed), "-[hello ]>world\n");
+}
+
+#[test]
+fn mm_mid_line_diverges_from_maw() {
+    let mut ed = editor_from("foo -[b]>ar baz\n");
+    ed.feed_keys([key('m'), key('m')]);
+    assert_eq!(state(&ed), "foo-[ bar]> baz\n");
+
+    let mut ed2 = editor_from("foo -[b]>ar baz\n");
+    ed2.feed_keys([key('m'), key('a'), key('w')]);
+    assert_eq!(state(&ed2), "foo -[bar ]>baz\n");
 }
 
 #[test]

@@ -336,16 +336,17 @@ fn steel_call_repeat_last_action_drains_via_handle_key() {
 
     // Move to "bar" and press F2 — the Steel command fires `(call! "repeat-last-action")`,
     // setting pending_repeat during eval; handle_key tail drains it, deleting the
-    // selection. "bar" has no trailing space (EOL follows) but a leading one, so
-    // `w` picks up " bar" (default around-word).
+    // selection. "bar" is the first (and only) word on its line, so its leading
+    // space is indentation and is never absorbed, and there's no trailing space
+    // either (EOL follows) — `w` picks up bare "bar" (default around-word).
     ed.feed_key(key('w'));
     ed.feed_key(f2);
 
-    // "foo" was deleted by the initial `d` (leaving " bar\n"); " bar" (including
-    // the leading space) was deleted by the Steel repeat — leaving just "\n".
+    // "foo" was deleted by the initial `d` (leaving " bar\n"); "bar" was deleted
+    // by the Steel repeat — leaving the indentation space, " \n".
     assert_eq!(
         ed.doc().text().to_string(),
-        "\n",
+        " \n",
         "Steel (call! \"repeat-last-action\") must replay the delete via handle_key drain"
     );
 }
