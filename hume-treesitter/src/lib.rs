@@ -14,6 +14,3 @@ pub mod layers;
 pub mod parse_worker;
 pub mod registry;
 pub mod syntax;
-
-#[cfg(test)]
-mod test_support;

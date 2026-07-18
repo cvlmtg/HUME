@@ -306,7 +306,9 @@ mod tests {
 
     use super::*;
     use crate::registry::GrammarBundle;
-    use crate::test_support::{grammar_injections_path, grammar_parser_path, grammar_query_path};
+    use hume_test_fixtures::{
+        grammar_parser_path, grammar_query_path, skip_unless_file, skip_unless_grammars,
+    };
 
     /// Load a real grammar fixture with an optional custom injections source
     /// (overriding whatever `injections.scm` the fixture ships, if any) —
@@ -347,17 +349,6 @@ mod tests {
         NEXT_GEN.fetch_add(1, Ordering::Relaxed)
     }
 
-    fn skip_if_missing(name: &str) -> bool {
-        if !grammar_parser_path(name).exists() {
-            eprintln!(
-                "skipping: {name} grammar fixture not fetched — run scripts/fetch-test-grammars.sh"
-            );
-            true
-        } else {
-            false
-        }
-    }
-
     fn parse(bundle: &GrammarBundle, source: &str) -> (tree_sitter::Parser, tree_sitter::Tree) {
         let mut parser = tree_sitter::Parser::new();
         parser.set_language(bundle.grammar.language()).unwrap();
@@ -369,7 +360,7 @@ mod tests {
 
     #[test]
     fn content_ranges_excludes_only_unnamed_children_by_default() {
-        if skip_if_missing("json") {
+        if skip_unless_grammars(&["json"]) {
             return;
         }
         let json = make_bundle("json", "tree_sitter_json", None);
@@ -394,7 +385,7 @@ mod tests {
 
     #[test]
     fn content_ranges_include_unnamed_children_returns_whole_node() {
-        if skip_if_missing("json") {
+        if skip_unless_grammars(&["json"]) {
             return;
         }
         let json = make_bundle("json", "tree_sitter_json", None);
@@ -442,7 +433,7 @@ mod tests {
 
     #[test]
     fn static_language_override_wins_regardless_of_content() {
-        if skip_if_missing("json") || skip_if_missing("rust") {
+        if skip_unless_grammars(&["json", "rust"]) {
             return;
         }
         let json = make_bundle(
@@ -473,7 +464,7 @@ mod tests {
 
     #[test]
     fn unknown_injection_language_is_skipped_silently() {
-        if skip_if_missing("json") || skip_if_missing("rust") {
+        if skip_unless_grammars(&["json", "rust"]) {
             return;
         }
         let json = make_bundle(
@@ -507,7 +498,7 @@ mod tests {
 
     #[test]
     fn combined_merges_multiple_matches_into_one_layer() {
-        if skip_if_missing("json") || skip_if_missing("rust") {
+        if skip_unless_grammars(&["json", "rust"]) {
             return;
         }
         let json = make_bundle(
@@ -545,7 +536,7 @@ mod tests {
 
     #[test]
     fn depth_cap_stops_recursion_at_max_depth() {
-        if skip_if_missing("json") {
+        if skip_unless_grammars(&["json"]) {
             return;
         }
         // Self-injecting: every `array` node re-parses its own (identical)
@@ -583,13 +574,13 @@ mod tests {
 
     #[test]
     fn dynamic_language_capture_reads_fenced_code_info_string() {
-        if skip_if_missing("markdown") || skip_if_missing("rust") {
+        if skip_unless_grammars(&["markdown", "rust"]) {
             return;
         }
-        let Some(inj_path) = grammar_injections_path("markdown") else {
-            eprintln!("skipping: markdown fixture has no injections.scm");
+        let inj_path = grammar_query_path("markdown").with_file_name("injections.scm");
+        if skip_unless_file(&inj_path, "markdown injections.scm") {
             return;
-        };
+        }
         let inj_src = std::fs::read_to_string(inj_path).unwrap();
         let markdown = make_bundle("markdown", "tree_sitter_markdown", Some(&inj_src));
         let rust = make_bundle("rust", "tree_sitter_rust", None);
@@ -612,13 +603,13 @@ mod tests {
 
     #[test]
     fn dynamic_language_capture_unknown_info_string_no_layer() {
-        if skip_if_missing("markdown") {
+        if skip_unless_grammars(&["markdown"]) {
             return;
         }
-        let Some(inj_path) = grammar_injections_path("markdown") else {
-            eprintln!("skipping: markdown fixture has no injections.scm");
+        let inj_path = grammar_query_path("markdown").with_file_name("injections.scm");
+        if skip_unless_file(&inj_path, "markdown injections.scm") {
             return;
-        };
+        }
         let inj_src = std::fs::read_to_string(inj_path).unwrap();
         let markdown = make_bundle("markdown", "tree_sitter_markdown", Some(&inj_src));
         let langs: HashMap<String, Arc<GrammarBundle>> = HashMap::new();

@@ -440,7 +440,7 @@ mod tests {
     use super::ParseBackend as _;
     use super::{ParseOutcome, ParseRequest, Text, ThreadedParseBackend, coalesce_one};
     use crate::registry::GrammarBundle;
-    use crate::test_support::grammar_parser_path;
+    use hume_test_fixtures::{grammar_parser_path, skip_unless_grammars};
 
     /// Distinct per call, mirroring `LanguageRegistry`'s `config_gen`
     /// invariant so tests that compare bundles by gen see real identity.
@@ -487,6 +487,9 @@ mod tests {
     #[test]
     fn coalesce_one_keeps_higher_gen() {
         use std::collections::HashMap;
+        if skip_unless_grammars(&["json"]) {
+            return;
+        }
         let bid = fresh_bid();
         let bundle = make_bundle("json", "tree_sitter_json");
         let mut batch: HashMap<BufferId, ParseRequest> = HashMap::new();
@@ -562,6 +565,9 @@ mod tests {
     #[test]
     fn coalesce_one_same_gen_different_lang_replaces() {
         use std::collections::HashMap;
+        if skip_unless_grammars(&["json", "rust"]) {
+            return;
+        }
         let bid = fresh_bid();
         let bundle_a = make_bundle("json", "tree_sitter_json");
         let bundle_b = make_bundle("rust", "tree_sitter_rust");
@@ -639,6 +645,9 @@ mod tests {
 
     #[test]
     fn worker_language_switch_produces_trees_for_both() {
+        if skip_unless_grammars(&["json", "rust"]) {
+            return;
+        }
         let json_bundle = make_bundle("json", "tree_sitter_json");
         let rust_bundle = make_bundle("rust", "tree_sitter_rust");
         let mut worker = ThreadedParseBackend::new();
@@ -691,6 +700,9 @@ mod tests {
         let wake: super::WakeCallback = Arc::new(move || {
             let _ = tx_wake.send(());
         });
+        if skip_unless_grammars(&["json"]) {
+            return;
+        }
         let mut worker = ThreadedParseBackend::with_waker(wake);
         let bundle = make_bundle("json", "tree_sitter_json");
 

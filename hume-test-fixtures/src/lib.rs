@@ -39,14 +39,6 @@ pub fn grammar_query_path(name: &str) -> PathBuf {
     fixtures_root().join(name).join("queries/highlights.scm")
 }
 
-/// Absolute path to the grammar-bundled injections query file for `name`, if
-/// the fixture ships one (`None` for grammars without embedded-language
-/// support).
-pub fn grammar_injections_path(name: &str) -> Option<PathBuf> {
-    let path = fixtures_root().join(name).join("queries/injections.scm");
-    path.exists().then_some(path)
-}
-
 /// Absolute path to the *Helix-maintained* injections query for `name`,
 /// fetched by `scripts/fetch-test-grammars.sh` from the pinned Helix commit —
 /// distinct from (and can differ from!) the grammar's own bundled

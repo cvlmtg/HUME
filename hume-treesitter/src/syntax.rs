@@ -370,7 +370,7 @@ mod tests {
     use super::Syntax;
     use crate::parse_worker::{ParseDone, ParseOutcome, ParsedLayers};
     use crate::registry::GrammarBundle;
-    use crate::test_support::grammar_parser_path;
+    use hume_test_fixtures::{grammar_parser_path, skip_unless_grammars};
 
     fn next_test_config_gen() -> u32 {
         use std::sync::atomic::{AtomicU32, Ordering};
@@ -410,10 +410,6 @@ mod tests {
         Arc::new(HashMap::new())
     }
 
-    fn json_fixture_available() -> bool {
-        grammar_parser_path("json").exists()
-    }
-
     /// Real end-to-end parse via `do_parse`-equivalent: build a `ParseDone`
     /// by parsing `text` directly with a fresh `tree_sitter::Parser`, so
     /// tests exercise `Syntax::install` against a genuine tree rather than a
@@ -451,7 +447,7 @@ mod tests {
 
     #[test]
     fn attach_nonempty_text_returns_request_and_sets_in_flight() {
-        if !json_fixture_available() {
+        if skip_unless_grammars(&["json"]) {
             return;
         }
         let bundle = make_bundle("json", "tree_sitter_json");
@@ -480,7 +476,7 @@ mod tests {
 
     #[test]
     fn frame_tick_up_to_date_returns_no_request() {
-        if !json_fixture_available() {
+        if skip_unless_grammars(&["json"]) {
             return;
         }
         let bundle = make_bundle("json", "tree_sitter_json");
@@ -497,7 +493,7 @@ mod tests {
 
     #[test]
     fn frame_tick_dedups_while_in_flight_at_same_gen() {
-        if !json_fixture_available() {
+        if skip_unless_grammars(&["json"]) {
             return;
         }
         let bundle = make_bundle("json", "tree_sitter_json");
@@ -521,7 +517,7 @@ mod tests {
 
     #[test]
     fn frame_tick_reposts_after_further_edit() {
-        if !json_fixture_available() {
+        if skip_unless_grammars(&["json"]) {
             return;
         }
         let bundle = make_bundle("json", "tree_sitter_json");
@@ -544,7 +540,7 @@ mod tests {
 
     #[test]
     fn frame_tick_old_tree_present_iff_chain_baked() {
-        if !json_fixture_available() {
+        if skip_unless_grammars(&["json"]) {
             return;
         }
         let bundle = make_bundle("json", "tree_sitter_json");
@@ -603,7 +599,7 @@ mod tests {
 
     #[test]
     fn bake_contiguous_chain_advances_tree_gen_and_clears_pending() {
-        if !json_fixture_available() {
+        if skip_unless_grammars(&["json"]) {
             return;
         }
         let bundle = make_bundle("json", "tree_sitter_json");
@@ -651,7 +647,7 @@ mod tests {
 
     #[test]
     fn bake_mid_chain_gap_rejected() {
-        if !json_fixture_available() {
+        if skip_unless_grammars(&["json"]) {
             return;
         }
         let bundle = make_bundle("json", "tree_sitter_json");
@@ -696,7 +692,7 @@ mod tests {
 
     #[test]
     fn install_stale_text_gen_discarded() {
-        if !json_fixture_available() {
+        if skip_unless_grammars(&["json"]) {
             return;
         }
         let bundle = make_bundle("json", "tree_sitter_json");
@@ -723,7 +719,7 @@ mod tests {
 
     #[test]
     fn install_config_gen_mismatch_discarded_without_clearing_newer_in_flight() {
-        if !json_fixture_available() {
+        if skip_unless_grammars(&["json"]) {
             return;
         }
         let old_bundle = make_bundle("json", "tree_sitter_json");
@@ -768,7 +764,7 @@ mod tests {
     /// retains an entry.
     #[test]
     fn install_matching_done_clears_in_flight_and_drains_pending() {
-        if !json_fixture_available() {
+        if skip_unless_grammars(&["json"]) {
             return;
         }
         let bundle = make_bundle("json", "tree_sitter_json");
@@ -823,7 +819,7 @@ mod tests {
 
     #[test]
     fn install_parse_failed_advances_parsed_gen_only() {
-        if !json_fixture_available() {
+        if skip_unless_grammars(&["json"]) {
             return;
         }
         let bundle = make_bundle("json", "tree_sitter_json");
@@ -862,7 +858,7 @@ mod tests {
 
     #[test]
     fn clear_layers_keeps_attachment_next_tick_full_reparses() {
-        if !json_fixture_available() {
+        if skip_unless_grammars(&["json"]) {
             return;
         }
         let bundle = make_bundle("json", "tree_sitter_json");

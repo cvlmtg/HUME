@@ -1,8 +1,7 @@
-use std::path::PathBuf;
-
 use std::sync::Arc;
 
 use hume_engine::theme::ScopeRegistry;
+use hume_test_fixtures::{grammar_parser_path, grammar_query_path, skip_unless_grammars};
 use hume_treesitter::grammar::LoadedGrammar;
 use hume_treesitter::highlight::{TreeSitterHighlighter, layer_highlights_for_line};
 use hume_treesitter::layers::{SyntaxLayer, SyntaxLayers};
@@ -44,44 +43,16 @@ fn highlights_for_line(
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn grammar_path(name: &str) -> PathBuf {
-    let fixture_base = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("tests/fixtures/grammars");
-    let suffix = if cfg!(target_os = "macos") {
-        "dylib"
-    } else if cfg!(windows) {
-        "dll"
-    } else {
-        "so"
-    };
-    let p = fixture_base.join(name).join(format!("parser.{suffix}"));
-    if !p.exists() {
-        panic!(
-            "grammar fixture missing: {}\ninstall the tree-sitter CLI (npm i -g tree-sitter-cli) and run scripts/fetch-test-grammars.sh from the repo root",
-            p.display()
-        );
-    }
-    p
-}
-
-fn highlights_path(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("tests/fixtures/grammars")
-        .join(name)
-        .join("queries/highlights.scm")
-}
-
 // ---------------------------------------------------------------------------
 // Grammar load tests
 // ---------------------------------------------------------------------------
 
 #[test]
 fn loads_rust_grammar() {
-    let gpath = grammar_path("rust");
+    if skip_unless_grammars(&["rust"]) {
+        return;
+    }
+    let gpath = grammar_parser_path("rust");
     let grammar = LoadedGrammar::open(&gpath, "tree_sitter_rust").expect("open rust grammar");
     let mut parser = tree_sitter::Parser::new();
     parser
@@ -91,7 +62,10 @@ fn loads_rust_grammar() {
 
 #[test]
 fn loads_json_grammar() {
-    let gpath = grammar_path("json");
+    if skip_unless_grammars(&["json"]) {
+        return;
+    }
+    let gpath = grammar_parser_path("json");
     let grammar = LoadedGrammar::open(&gpath, "tree_sitter_json").expect("open json grammar");
     let mut parser = tree_sitter::Parser::new();
     parser
@@ -105,7 +79,10 @@ fn loads_json_grammar() {
 
 #[test]
 fn parses_rust_function_signature() {
-    let gpath = grammar_path("rust");
+    if skip_unless_grammars(&["rust"]) {
+        return;
+    }
+    let gpath = grammar_parser_path("rust");
     let grammar = LoadedGrammar::open(&gpath, "tree_sitter_rust").unwrap();
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(grammar.language()).unwrap();
@@ -124,7 +101,10 @@ fn parses_rust_function_signature() {
 
 #[test]
 fn parses_json_object() {
-    let gpath = grammar_path("json");
+    if skip_unless_grammars(&["json"]) {
+        return;
+    }
+    let gpath = grammar_parser_path("json");
     let grammar = LoadedGrammar::open(&gpath, "tree_sitter_json").unwrap();
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(grammar.language()).unwrap();
@@ -146,7 +126,10 @@ fn parses_json_object() {
 
 #[test]
 fn highlights_emit_keyword_event() {
-    let gpath = grammar_path("rust");
+    if skip_unless_grammars(&["rust"]) {
+        return;
+    }
+    let gpath = grammar_parser_path("rust");
     let grammar = LoadedGrammar::open(&gpath, "tree_sitter_rust").unwrap();
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(grammar.language()).unwrap();
@@ -157,7 +140,7 @@ fn highlights_emit_keyword_event() {
         .expect("parse should succeed");
 
     let highlights_source =
-        std::fs::read_to_string(highlights_path("rust")).expect("highlights.scm should exist");
+        std::fs::read_to_string(grammar_query_path("rust")).expect("highlights.scm should exist");
     let mut scope_reg = ScopeRegistry::new();
     let rope = ropey::Rope::from_str(&String::from_utf8_lossy(source));
 
@@ -185,15 +168,18 @@ fn highlights_emit_keyword_event() {
 // Byte offsets must be line-relative, not file-relative.
 #[test]
 fn highlights_for_line_correct_on_nonzero_line() {
+    if skip_unless_grammars(&["rust"]) {
+        return;
+    }
     let source = b"fn foo() {}\nlet x = 1;\n";
-    let gpath = grammar_path("rust");
+    let gpath = grammar_parser_path("rust");
     let grammar = LoadedGrammar::open(&gpath, "tree_sitter_rust").unwrap();
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(grammar.language()).unwrap();
     let tree = parser.parse(source as &[u8], None).expect("parse");
 
     let highlights_source =
-        std::fs::read_to_string(highlights_path("rust")).expect("highlights.scm");
+        std::fs::read_to_string(grammar_query_path("rust")).expect("highlights.scm");
     let mut scope_reg = ScopeRegistry::new();
     let rope = ropey::Rope::from_str(&String::from_utf8_lossy(source));
 
@@ -221,7 +207,10 @@ fn highlights_for_line_correct_on_nonzero_line() {
 // Mutation gate: removing the trim branch re-emits function from 0, failing the start check.
 #[test]
 fn highlight_overlap_shorter_wins_at_shared_start() {
-    let gpath = grammar_path("rust");
+    if skip_unless_grammars(&["rust"]) {
+        return;
+    }
+    let gpath = grammar_parser_path("rust");
     let grammar = LoadedGrammar::open(&gpath, "tree_sitter_rust").expect("open rust grammar");
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(grammar.language()).unwrap();
@@ -261,7 +250,10 @@ fn highlight_overlap_shorter_wins_at_shared_start() {
 // Mutation gate: removing the `else if` guard produces two spans, failing the count.
 #[test]
 fn highlight_overlap_fully_contained_is_dropped() {
-    let gpath = grammar_path("json");
+    if skip_unless_grammars(&["json"]) {
+        return;
+    }
+    let gpath = grammar_parser_path("json");
     let grammar = LoadedGrammar::open(&gpath, "tree_sitter_json").expect("open json grammar");
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(grammar.language()).unwrap();

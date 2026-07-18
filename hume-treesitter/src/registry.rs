@@ -525,8 +525,8 @@ mod tests {
     use std::path::Path;
 
     use super::{LanguageRegistry, detect_language};
-    use crate::test_support::{grammar_parser_path, grammar_query_path};
     use hume_engine::theme::ScopeRegistry;
+    use hume_test_fixtures::{grammar_parser_path, grammar_query_path, skip_unless_grammars};
 
     /// Write `src` to a temp file and return its path (kept alive via the
     /// returned `TempDir`).
@@ -539,10 +539,10 @@ mod tests {
 
     #[test]
     fn attach_grammar_with_valid_injections_populates_bundle() {
-        let parser_path = grammar_parser_path("rust");
-        if !parser_path.exists() {
-            return; // fixture not fetched — scripts/fetch-test-grammars.sh
+        if skip_unless_grammars(&["rust"]) {
+            return;
         }
+        let parser_path = grammar_parser_path("rust");
         let hl_path = grammar_query_path("rust");
         let (_dir, inj_path) =
             write_temp_scm(r#"((_) @injection.content (#set! injection.language "markdown"))"#);
@@ -578,10 +578,10 @@ mod tests {
 
     #[test]
     fn attach_grammar_without_injections_path_leaves_injections_none() {
-        let parser_path = grammar_parser_path("rust");
-        if !parser_path.exists() {
+        if skip_unless_grammars(&["rust"]) {
             return;
         }
+        let parser_path = grammar_parser_path("rust");
         let hl_path = grammar_query_path("rust");
 
         let mut reg = LanguageRegistry::new();
@@ -609,10 +609,10 @@ mod tests {
     /// path.
     #[test]
     fn attach_grammar_with_broken_injections_fails_whole_attach() {
-        let parser_path = grammar_parser_path("rust");
-        if !parser_path.exists() {
+        if skip_unless_grammars(&["rust"]) {
             return;
         }
+        let parser_path = grammar_parser_path("rust");
         let hl_path = grammar_query_path("rust");
         let (_dir, inj_path) = write_temp_scm("(this is not valid tree-sitter query syntax");
 
