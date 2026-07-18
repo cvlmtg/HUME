@@ -253,7 +253,14 @@ fn flatten_overlaps(
         pos = event_pos;
 
         if is_end {
-            if let Some(idx) = stack.iter().position(|&(d, s, _)| d == depth && s == seq) {
+            let idx = stack.iter().position(|&(d, s, _)| d == depth && s == seq);
+            debug_assert!(
+                idx.is_some(),
+                "end event with no matching start on the stack — a zero-width \
+                 interval would sort its end before its own start at the same \
+                 position; callers must filter those out before collection"
+            );
+            if let Some(idx) = idx {
                 stack.remove(idx);
             }
         } else {
