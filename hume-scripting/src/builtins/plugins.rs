@@ -413,6 +413,25 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) ->
 /// `Loading` guard from recursing until the stack overflows.
 const MAX_ACTIVATION_DEPTH: usize = 16;
 
+/// Marks `id` `Failed` and runs the same cleanup `finish_lazy_activation`
+/// would on failure — `drop_activations_for` (expired activation-event/language
+/// entries) and `unregister_lazy_stubs_of` (dead `Lazy` command stub).
+///
+/// Shared by `begin_lazy_activation`'s two pre-body-eval raise paths (depth
+/// limit, unquotable path) and `finish_lazy_activation`'s failure branch —
+/// both leave a `Failed` plugin with no live activation footprint. Command/
+/// hook rollback stays out of this helper: `begin_lazy_activation` raises
+/// before the body ever runs, so no commands or hooks are registered under
+/// this id yet.
+fn fail_plugin_activation(ctx: &mut SteelCtx, id: &PluginId) {
+    ctx.registries
+        .lazy_registry
+        .plugins
+        .insert(id.clone(), PluginState::Failed);
+    ctx.registries.lazy_registry.drop_activations_for(id);
+    ctx.host.commands().unregister_lazy_stubs_of(id);
+}
+
 /// `(%begin-lazy-activation id-str)` — Rust primitive for inline activation.
 ///
 /// Called from the BOOTSTRAP `%activate-plugin-inline` helper immediately before
@@ -431,10 +450,7 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
     };
 
     if ctx.plugin_stack.len() >= MAX_ACTIVATION_DEPTH {
-        ctx.registries
-            .lazy_registry
-            .plugins
-            .insert(id.clone(), PluginState::Failed);
+        fail_plugin_activation(ctx, &id);
         steel::stop!(Generic =>
             "%begin-lazy-activation: activation depth limit ({}) exceeded — \
              check for circular load-plugin chains; '{}' marked Failed",
@@ -443,10 +459,7 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
 
     let abs_str = path.to_string_lossy();
     if abs_str.contains('"') {
-        ctx.registries
-            .lazy_registry
-            .plugins
-            .insert(id.clone(), PluginState::Failed);
+        fail_plugin_activation(ctx, &id);
         steel::stop!(Generic =>
             "plugin path contains '\"' — cannot embed in require: {}", path.display());
     }
@@ -517,22 +530,17 @@ pub(crate) fn finish_lazy_activation(
     ctx.plugin_stack.pop();
     ctx.pop_effect_marks(success);
 
-    let new_state = if success {
-        PluginState::Loaded
+    if success {
+        ctx.registries
+            .lazy_registry
+            .plugins
+            .insert(id.clone(), PluginState::Loaded);
+        ctx.registries.lazy_registry.drop_activations_for(&id);
+        // Drop any `Lazy` stub the plugin didn't replace via `define-command!` —
+        // dead weight now that the plugin is Loaded and won't re-run its body.
+        ctx.host.commands().unregister_lazy_stubs_of(&id);
     } else {
-        PluginState::Failed
-    };
-    ctx.registries
-        .lazy_registry
-        .plugins
-        .insert(id.clone(), new_state);
-    ctx.registries.lazy_registry.drop_activations_for(&id);
-    // Drop any `Lazy` stub the plugin didn't replace via `define-command!` —
-    // on success, dead weight (the plugin is Loaded and won't re-run its
-    // body); on failure, frees the name for a later plugin to claim.
-    ctx.host.commands().unregister_lazy_stubs_of(&id);
-
-    if !success {
+        fail_plugin_activation(ctx, &id);
         // Roll back any commands the failed body partially registered.
         let id_str_owned = id.to_string();
         let orphans: Vec<String> = ctx

@@ -130,6 +130,78 @@ fn begin_lazy_activation_below_depth_cap_succeeds() {
     );
 }
 
+/// `%begin-lazy-activation` failing at the depth cap must clean up exactly
+/// like `%finish-lazy-activation`'s failure branch does — dropping the
+/// plugin's activation-event/language entries and its `Lazy` command stub —
+/// even though the body never ran and `%finish-lazy-activation` never fires
+/// for it.
+///
+/// Fail oracle: revert the depth-cap branch in `begin_lazy_activation` to a
+/// bare `plugins.insert(id, Failed)` (dropping the `fail_plugin_activation`
+/// call) → the event/language entries and the stub survive the failure and
+/// re-trigger a no-op activation attempt on every later matching event.
+#[test]
+fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
+    use crate::host::EditorHost;
+    use crate::null_host::LazyStubHost;
+    use crate::ScriptingHost;
+    use std::io::Write as _;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("deep.scm");
+    std::fs::File::create(&path)
+        .unwrap()
+        .write_all(b"(define x 1)")
+        .unwrap();
+
+    let id = PluginId::parse("core:deep").unwrap();
+    let mut host = ScriptingHost::new();
+    host.registries.lazy_registry.declare(
+        id.clone(),
+        Some(path),
+        vec![HookId::OnBufferSave],
+        vec!["rust".to_string()],
+    );
+
+    let mut editor_host = LazyStubHost::default();
+    editor_host
+        .commands()
+        .register_lazy_command("deep-cmd", &id)
+        .expect("stub claim must succeed on a fresh host");
+
+    let dummy = PluginId::parse("core:dummy").unwrap();
+    for _ in 0..MAX_ACTIVATION_DEPTH {
+        host.push_plugin_for_test(dummy.clone());
+    }
+
+    let result = host.eval_source(r#"(%begin-lazy-activation "core:deep")"#, &mut editor_host);
+    assert!(result.is_err(), "depth cap must raise; got Ok");
+
+    assert!(
+        host.registries
+            .lazy_registry
+            .activation_events
+            .get(&HookId::OnBufferSave)
+            .map(|plugins| !plugins.contains(&id))
+            .unwrap_or(true),
+        "Failed plugin's event-activation entry must be dropped, not leaked"
+    );
+    assert!(
+        host.registries
+            .lazy_registry
+            .activation_languages
+            .get("rust")
+            .map(|plugins| !plugins.contains(&id))
+            .unwrap_or(true),
+        "Failed plugin's language-activation entry must be dropped, not leaked"
+    );
+    assert!(
+        editor_host.commands().lazy_command_owner("deep-cmd").is_none(),
+        "Failed plugin's dead command stub must be unregistered, not leaked"
+    );
+}
+
 // ── Command-name character validation ─────────────────────────────────────
 
 /// `declare-plugin` hard-errors on a `#:commands` entry containing `"` or
