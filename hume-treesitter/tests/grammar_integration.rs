@@ -40,10 +40,6 @@ fn highlights_for_line(
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // Grammar load tests
 // ---------------------------------------------------------------------------
 
@@ -203,8 +199,13 @@ fn highlights_for_line_correct_on_nonzero_line() {
     );
 }
 
-// Overlap resolver branch 3 (partial trim): shorter interval at shared start wins.
-// Mutation gate: removing the trim branch re-emits function from 0, failing the start check.
+// Shared-start priority in flatten_overlaps's sweep-line: `@keyword` ("fn")
+// and `@function` (the whole item) both start at byte 0; the later-collected
+// interval at the same depth wins its region, trimming the earlier one to
+// start where the winner ends.
+// Mutation gate: breaking the ascending (depth, seq) stack-insertion order
+// collapses this to first-collected-wins, re-emitting `function` from byte 0
+// instead of trimmed to 2.
 #[test]
 fn highlight_overlap_shorter_wins_at_shared_start() {
     if skip_unless_grammars(&["rust"]) {
@@ -246,8 +247,12 @@ fn highlight_overlap_shorter_wins_at_shared_start() {
     );
 }
 
-// Overlap resolver branch 2 (fully-contained drop): duplicate captures → one span.
-// Mutation gate: removing the `else if` guard produces two spans, failing the count.
+// Two captures over the identical byte range collapse to one span via
+// flatten_overlaps's sweep-line stack: the later-collected interval fully
+// supersedes the earlier one occupying the same range, rather than emitting
+// both.
+// Mutation gate: breaking that stack-based supersession emits two
+// overlapping spans instead of one, failing the count.
 #[test]
 fn highlight_overlap_fully_contained_is_dropped() {
     if skip_unless_grammars(&["json"]) {
