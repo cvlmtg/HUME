@@ -10,9 +10,7 @@ set -euo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
-if [[ ! -d tests/fixtures/grammars ]]; then
-  bash scripts/fetch-test-grammars.sh
-fi
+bash scripts/fetch-test-grammars.sh
 
 export HUME_REQUIRE_LIVE_GRAMMAR_E2E=1
 cargo test --all-targets

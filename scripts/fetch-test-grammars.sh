@@ -9,7 +9,11 @@
 # compile if the shared library is newer than the grammar source. Run once per
 # machine and after any helix-pin bump that changes grammar-sources.scm.
 #
-# Compiled artifacts go into tests/fixtures/grammars/ (gitignored).
+# Compiled artifacts go into tests/fixtures/grammars/ (gitignored). Every
+# grammar's queries/ end up at tests/fixtures/grammars/<name>/queries/,
+# regardless of whether the grammar lives at the root of its clone or in
+# a monorepo subpath — test code can assume a uniform layout and never
+# needs to parse grammar-sources.scm for subpaths.
 set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -79,6 +83,15 @@ fetch_grammar() {
     src_dir="$target/$subpath"
   fi
   compile_grammar "$name" "$src_dir" "$target"
+
+  # Normalize monorepo grammars (markdown, markdown.inline) so their
+  # queries/ live at the fixture root like every other grammar's — copy
+  # (not symlink, for Git Bash/Windows) so test code never needs to know
+  # about `subpath`; that knowledge stays only in this script.
+  if [[ -n "$subpath" && -d "$src_dir/queries" ]]; then
+    rm -rf "$target/queries"
+    cp -R "$src_dir/queries" "$target/queries"
+  fi
 }
 
 # Fetch the *Helix-maintained* injections.scm for `name` — distinct from
