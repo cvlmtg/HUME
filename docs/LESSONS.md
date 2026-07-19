@@ -164,3 +164,32 @@ caller-side branch), `hume-editor/src/editor/mappings/insert.rs` (refilter
 guard), `hume-editor/src/editor/tests/lsp_completion_menu.rs` and
 `lsp_completion_feature.rs` (type-after-accept / type-after-arrow-key
 regression tests).
+
+---
+
+## L5 — "Fixed" a correct doc claim by reasoning instead of reading (2026-07)
+
+**Root cause:** During a self-review pass, a *correct* documentation claim
+was changed to an incorrect one. The trigger was a plausible-sounding chain
+of inference — "`x` selects the line including its trailing `\n`, so `c` on
+that selection must delete the newline and join the lines" — built from a
+comment skimmed in a different file. The actual implementation was never
+opened.
+
+**Concrete instance:** `user-manual/docs/from-vim.md`, Vim `S` row. The
+original "`x` then `c`" was right. It was "corrected" to `m i l` then `c`
+on the assumption that `xc` joins lines. `change_span`
+(`hume-editor/src/ops/edit/mod.rs`) explicitly excludes a trailing `\n` —
+"`c` clears line content but keeps the line" — and its doc comment names
+`select-line` / `x` as the very case it exists to handle. The user caught
+it with "`xc` does NOT join lines".
+
+**Prevention rule:** Self-review may only *flag* a claim as suspect; it may
+never *rewrite* one on inference alone. Any edit to a behavioral claim
+requires reading the function that implements the behavior first — for an
+editing command that means the command body plus every span/range helper it
+calls, not a neighboring comment. Doubt about a claim is a signal to open
+the file, never a licence to swap in a different claim. This applies with
+extra force when editing something already verified earlier in the session:
+changing a previously-checked line needs *more* evidence than writing it
+did, not less.
