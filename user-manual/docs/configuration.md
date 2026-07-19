@@ -1,13 +1,17 @@
 # Configuration
 
-HUME can be configured two ways: the `:set` command for runtime changes during a session, or a Steel (`init.scm`) file for persistent configuration loaded at startup.
+Options, key bindings, the statusline, plugins, and language servers are all configured in one language, in one file. There's no separate config format to learn — `init.scm` is a Scheme program, so anything you can compute you can configure.
 
-HUME reads persistent configuration from a Scheme file at:
+HUME can be configured two ways: the `:set` command for runtime changes during a session, or an `init.scm` file for persistent configuration loaded at startup.
+
+HUME reads persistent configuration from:
 
 - **macOS / Linux:** `$XDG_CONFIG_HOME/hume/init.scm` (defaults to `~/.config/hume/init.scm`)
 - **Windows:** `%APPDATA%\hume\init.scm`
 
-If the file does not exist, HUME starts with defaults. Parse errors show a warning and fall back to defaults. A bundled reference config ships at `runtime/init.scm.example` (inside the runtime directory — see [File locations](#file-locations)); HUME never auto-copies it, so copy it to the path above manually if you want a starting point.
+If the file does not exist, HUME starts with defaults. If it fails partway through, the error is reported in `:messages` and everything up to that point stays applied — so a broken line late in the file leaves you half-configured rather than back at defaults. Fix it and run `:reload-config` to re-run the file from scratch without restarting.
+
+A reference config ships at `runtime/init.scm.example` (see [File locations](#file-locations)); copy it to the path above if you want a starting point.
 
 ## Setting options
 
@@ -44,7 +48,7 @@ Set with `:set global <option>=<value>` or `(set-option! "option" value)`. All o
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `theme` | string | `""` (built-in dark) | Active color theme name |
+| `theme` | string | `""` (built-in `sand`) | Active color theme name |
 | `scrolloff` | integer | `3` | Minimum lines kept above/below cursor |
 | `mouse-enabled` | bool | `#t` | Enable mouse support |
 | `mouse-scroll-lines` | integer | `3` | Lines per mouse scroll tick |
@@ -58,6 +62,10 @@ Set with `:set global <option>=<value>` or `(set-option! "option" value)`. All o
 | `syntax-highlight-max-bytes` | integer ≥ 1 | `1048576` | Max bytes for syntax highlighting |
 | `pane-dividers` | bool | `#t` | Draw a 1-cell divider between sibling panes |
 | `statusline` | `left` \| `center` \| `right` | see [Statusline](#statusline) | Three `\|`-separated sections, each a comma-separated list of element names (empty sections allowed), e.g. `Mode,FileName\|\|Position` |
+| `lsp.inlay-hints` | bool | `#f` | Show inlay hints from the language server |
+| `lsp.diagnostics-severity-floor` | `error` \| `warning` \| `info` \| `hint` | `hint` | Lowest diagnostic severity to display |
+| `lsp.request-timeout-ms` | integer ≥ 1 | `10000` | How long to wait for a language-server reply |
+| `lsp.viewport-debounce-ms` | integer | `150` | Delay before re-requesting hints after scrolling |
 | `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Line wrapping for new panes. `N` is the wrap column (`0` or omitted = pane content width). See [Text wrap](#text-wrap) for per-pane overrides and the `:wrap` toggle |
 
 ## Buffer options
@@ -120,6 +128,19 @@ HUME ships a theme editor — a single-file HTML tool you can open in a browser 
 
 `bind-key!` — binds a key in the given mode (`'normal`, `'insert`, `'extend`).
 `unbind-key!` — removes a binding.
+`bind-key-extend!` — binds a key so it always extends the selection, as the one-shot `Ctrl+` motions do.
+
+To set several bindings at once, use the plural forms:
+
+```scheme
+(bind-keys! 'normal
+  ("ctrl-h" "select-prev-word")
+  ("ctrl-l" "select-next-word"))
+
+(unbind-keys! 'normal "ctrl-j" "ctrl-k")
+```
+
+`bind-keys-extend!` is the bulk form of `bind-key-extend!`.
 
 ### Binding a key that waits for a character
 
@@ -182,6 +203,16 @@ Available elements:
 | `"MacroRecording"` | Macro recording indicator |
 | `"Language"` | Buffer language |
 | `"ReadOnly"` | `[RO]` indicator |
+| `"Diagnostics"` | Error and warning counts from the language server |
+
+The default is equivalent to:
+
+```scheme
+(configure-statusline!
+  '("Position" "FilePath" "Language" "ReadOnly" "DirtyIndicator")
+  '()
+  '("MacroRecording" "SearchMatches" "Diagnostics" "KittyProtocol" "Separator" "Mode"))
+```
 
 ## Language detection
 
@@ -189,12 +220,14 @@ HUME detects file languages from extension, glob pattern, or shebang line. Defin
 
 ```scheme
 (define-language! "my-lang"
-  '(".myl")
+  '("myl")
   '("*.my")
   '("myinterpreter"))
 ```
 
-The arguments, in order, are: the language name, a list of file extensions, a list of glob patterns, and a list of shebang lines. Trailing arguments you don't need can be dropped — `(define-language! "my-lang" '(".myl"))` is fine.
+The arguments, in order, are: the language name, a list of file extensions, a list of glob patterns, and a list of shebang lines. Trailing arguments you don't need can be dropped — `(define-language! "my-lang" '("myl"))` is fine.
+
+Write extensions **without** a leading dot: `"myl"`, not `".myl"`. An extension with a dot never matches.
 
 The definition registers the language and associates it with tree-sitter grammars installed via PLUM:
 
@@ -212,17 +245,34 @@ Hooks can trigger on language detection:
 
 ## Example init.scm
 
+A complete starting config — copy it to `~/.config/hume/init.scm` and edit:
+
 ```scheme
+;; Appearance
 (set-option! "theme" "sand")
 (set-option! "line-number-style" "absolute")
-(set-option! "tab-width" 2)
 (set-option! "scrolloff" 8)
 
-(bind-key! 'normal "ctrl-h" "select-prev-word")
-(bind-key! 'normal "ctrl-l" "select-next-word")
+;; Indentation
+(set-option! "tab-width" 2)
+(set-option! "tab-style" "soft")
 
+;; Key bindings
+(bind-keys! 'normal
+  ("ctrl-h" "select-prev-word")
+  ("ctrl-l" "select-next-word"))
+
+;; Bundled plugins — see core-plugins.md
+(load-plugin "core:stdlib")
+(load-plugin "core:vim-keybind")
+(declare-plugin "core:plum")          ; plugin and grammar manager
+(declare-plugin "core:lsp")           ; language servers
+
+;; A third-party plugin, installed with :plum-install
 (declare-plugin "username/hume-plugin-example" #:commands '("hello"))
 ```
+
+Before your `init.scm` runs, HUME loads its own prelude (which defines `bind-keys!`, `define-language!` and friends) and its built-in language definitions — so those are always available to you.
 
 ## File locations
 
@@ -232,9 +282,20 @@ HUME resolves its directories per OS:
 |------|---------------|---------|
 | Config dir (`init.scm`, user `themes/`) | `$XDG_CONFIG_HOME/hume/` (default `~/.config/hume/`) | `%APPDATA%\hume\` |
 | Data dir (plugin clones, tree-sitter grammars) | `$XDG_DATA_HOME/hume/` (default `~/.local/share/hume/`) | `%LOCALAPPDATA%\hume\` (fallback `%APPDATA%\hume\`) |
-| Runtime dir (bundled `runtime/`: `tutor.rst`, `themes/`, `init.scm.example`, core plugins) | `$HUME_RUNTIME` if set; else `../share/hume/` relative to the binary; else `./runtime` in dev | `$HUME_RUNTIME` if set; else the binary's directory |
+| Runtime dir (bundled `runtime/`: `tutor.rst`, `themes/`, `scheme/`, `init.scm.example`, core plugins) | see below | see below |
 
-Notable subpaths inside the data dir: `data/plugins/` (PLUM-managed plugin clones), `data/grammars/` and `data/grammars/sources/` (compiled and source tree-sitter grammars). Plugin sandboxed filesystem operations are restricted to `data/plugins/`, `data/grammars/`, and `runtime/plugins/` (read-only).
+HUME looks for its runtime directory in this order, taking the first that exists:
+
+1. `$HUME_RUNTIME`, if set
+2. `../share/hume/` relative to the binary (macOS and Linux only — this is the layout you get from the release archive)
+3. `runtime/` next to the binary (the Windows archive layout)
+4. `runtime/` in the current working directory (handy when running from a source checkout)
+
+Notable subpaths inside the data dir: `data/plugins/` (PLUM-managed plugin clones), `data/grammars/` and `data/grammars/sources/` (compiled and source tree-sitter grammars).
+
+::: warning Plugins are trusted code
+Plugins run with the same privileges as HUME itself — they can read and write any file your user account can, and run other programs. There is no sandbox. Install third-party plugins only from sources you trust.
+:::
 
 ::: info
 On macOS HUME follows the XDG convention (`~/.config/hume/`, `~/.local/share/hume/`) rather than `~/Library/Application Support/`.
