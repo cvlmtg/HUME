@@ -46,13 +46,15 @@ How rendering, dispatch, and the engine/editor boundary are structured.
 
 ### Languages & syntax
 
-How buffers learn their language, and how tree-sitter grammars produce
-syntax highlighting — including embedded languages via injections.
+How buffers learn their language, how tree-sitter grammars produce syntax
+highlighting — including embedded languages via injections — and how
+language servers add semantic features like diagnostics and completion.
 
 | Topic | File |
 |-------|------|
 | Language Identity and Detection | [docs/learning/language-identity.md](docs/learning/language-identity.md) |
 | Tree-sitter: Grammars, Queries, and Plum | [docs/learning/tree-sitter-pipeline.md](docs/learning/tree-sitter-pipeline.md) |
+| LSP: One Protocol Between Editors and Languages | [docs/learning/lsp.md](docs/learning/lsp.md) |
 
 ### Plugins & registers
 
