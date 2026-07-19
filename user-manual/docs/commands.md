@@ -1,93 +1,102 @@
 # Commands
 
-Press `:` in Normal mode to open the command line. Type a command name and press `Enter` to run it. `Esc` dismisses without running. This page lists the built-in `:` commands; for launching HUME from a shell, see [Command-line Flags](cli.md).
+Anything that doesn't deserve a keystroke lives behind `:`. Press `:` in Normal mode to open the command line, type a name, and press `Enter`. `Esc` dismisses without running.
 
-Tab completion is available for command names and, where applicable, their arguments.
+Most commands have a short alias — both forms are listed below, and both work. Press `Tab` at any point for completion of names and, where it makes sense, arguments.
 
-## File commands
+For running HUME from a shell instead, see [Command-line Flags](cli.md).
+
+## Quitting and saving
 
 | Command | Effect |
 |---------|--------|
-| `:e <path>` | Open file (or reload current file if no path given) |
-| `:w` | Save |
+| `:q`, `:quit` | Close the focused pane; with one pane, close the buffer, and quit HUME when it's the last one |
+| `:q!` | Same, discarding unsaved changes |
+| `:qa`, `:quit-all` | Quit everything. Refuses if any buffer has unsaved changes, and jumps to the first one |
+| `:qa!` | Quit everything, discarding unsaved changes |
+| `:w`, `:write` | Save |
 | `:w <path>` | Save as |
-| `:w!` | Force save (retry with chmod on permission errors) |
-| `:wa` | Write all modified buffers to disk |
-| `:q` | Close the focused pane if others are open; otherwise quit (blocked on unsaved changes; use `:q!`) |
-| `:q!` | Force quit |
-| `:wq` | Save and quit |
-| `:qa` | Quit all buffers |
+| `:w!` | Save, retrying with a permission change if the first attempt is refused |
+| `:wa`, `:write-all` | Save every modified buffer |
+| `:wq`, `:write-quit` | Save and quit |
 
-## Buffer commands
+Relative paths given to `:w` resolve against HUME's working directory (`:pwd`), not the shell's.
 
-| Command | Aliases | Effect |
-|---------|---------|--------|
-| `:ls` | — | List buffers |
-| `:b <name>` | — | Switch to buffer |
-| `:bnext` | `:bn` | Next buffer |
-| `:bprev` | `:bp` | Previous buffer |
-| `:bd` | — | Close buffer (blocked if there are unsaved changes) |
-| `:bd!` | — | Force close buffer (discard unsaved changes) |
+## Files
+
+| Command | Effect |
+|---------|--------|
+| `:e <path>`, `:edit <path>` | Open a file |
+| `:e` | Reload the current file. Refuses if there are unsaved changes |
+| `:e!` | Reload, discarding unsaved changes |
+
+In arguments, `%` expands to the current file's path and `#` to the alternate file's. Both only work as a whole argument — `:w %.bak` won't expand.
+
+## Buffers
+
+| Command | Effect |
+|---------|--------|
+| `:ls`, `:list-buffers` | List open buffers |
+| `:b <name>`, `:buffer <name>` | Switch buffer. Accepts a name, a unique filename prefix, a full path, a number from `:ls`, or `#` for the previous buffer |
+| `:bn`, `:bnext` | Next buffer |
+| `:bp`, `:bprev` | Previous buffer |
+| `:bd`, `:buffer-delete` | Close the buffer. Refuses if there are unsaved changes; closing the last one leaves a scratch buffer |
+| `:bd!` | Close the buffer, discarding unsaved changes |
+
+`:b #` is the quickest way back to the previous buffer. There's no default key for it, but `:goto-alternate-file` can be bound to one — and `core:vim-keybind` binds it to `Ctrl+6` for you.
 
 ## Panes
 
-| Command | Aliases | Effect |
-|---------|---------|--------|
-| `:split` | `:sp` | Split the focused pane, stacking the new pane below it |
-| `:vsplit` | `:vsp` | Split the focused pane side by side |
+| Command | Effect |
+|---------|--------|
+| `:sp`, `:split` | Split the focused pane, stacking the new pane below |
+| `:vsp`, `:vsplit` | Split the focused pane side by side |
 
-Pane focus, splitting, and closing use the `Ctrl+p` prefix (`Ctrl+p h`/`j`/`k`/`l`/`p`/`s`/`v`/`c`) — see the [Key Reference](key-reference.md).
+Splitting is refused with a message when the pane is already too small. Focus and closing use the `Ctrl+p` prefix (`Ctrl+p` then `h`/`j`/`k`/`l`/`p`/`s`/`v`/`c`) — see the [Key Reference](key-reference.md).
 
 ## Settings
 
 | Command | Effect |
 |---------|--------|
-| `:set global <option>=<value>` | Set a global option |
-| `:set buffer <option>=<value>` | Set an option for the current buffer only |
-| `:set pane <option>=<value>` | Set an option for the current pane only (`wrap-mode` only) |
+| `:set global <option>=<value>` | Set an option everywhere |
+| `:set buffer <option>=<value>` | Set an option for this buffer only |
+| `:set pane <option>=<value>` | Set an option for this pane only (`wrap-mode` only) |
 
-See [Configuration](configuration.md) for all available options.
+See [Configuration](configuration.md) for every option.
 
 ## Display
 
-| Command | Aliases | Effect |
-|---------|---------|--------|
-| `:theme <name>` | — | Load a theme by name; no arg shows current |
-| `:theme-debug` | — | Show resolved styles for key UI scopes |
-| `:toggle-soft-wrap` | `:wrap` | Toggle line wrapping on/off for the current pane. See [wrap styles](configuration.md#text-wrap) |
-| `:messages` | `:mes` | Show message log in a read-only buffer |
-| `:clear-search` | — | Clear search highlights (also clears automatically on `Esc`) |
-
-Search highlights clear automatically when you press `Esc`. `:clear-search` clears them on demand.
+| Command | Effect |
+|---------|--------|
+| `:theme <name>` | Load a theme; with no argument, show the current one |
+| `:theme-debug` | Show the resolved styles for the main UI scopes |
+| `:wrap`, `:toggle-soft-wrap` | Toggle line wrapping in this pane — see [wrap styles](configuration.md#text-wrap) |
+| `:mes`, `:messages` | Show the message log in a read-only buffer |
+| `:clear-search` | Clear search highlights (`Esc` also clears them) |
 
 ## Navigation
 
 | Command | Effect |
 |---------|--------|
-| `:cd <path>` | Change the working directory |
-| `:pwd` | Print the current working directory |
-| `:goto <n>` | Jump to 1-based line `<n>`; the bare form `:<n>` (e.g. `:42`) is shorthand. Records a jump, so `Ctrl+o` returns |
+| `:cd <path>`, `:change-directory <path>` | Change the working directory |
+| `:pwd`, `:print-working-directory` | Print the working directory |
+| `:goto <n>` | Jump to line `<n>`. `:42` is shorthand. Records a jump, so `Ctrl+o` comes back |
 
-## Plugins
+## Config and plugins
 
-| Command | Aliases | Effect |
-|---------|---------|--------|
-| `:plugin-status` | `:plugins` | Show declared plugins and their load state |
-| `:reload-config` | — | Reload `init.scm` from scratch |
+| Command | Effect |
+|---------|--------|
+| `:plugins`, `:plugin-status` | Show declared plugins and whether they've loaded |
+| `:reload-config` | Re-run `init.scm` from scratch |
+| `:ver`, `:version` | Show the editor version |
+| `:tutor` | Open the interactive tutorial |
 
-The `:plum-*` commands (plugin and grammar installation, updates, cleanup) are provided by the bundled `core:plum` plugin — see [Core Plugins](core-plugins.md#plum) for the full list.
+Plugins add commands of their own once you load them. The `:plum-*` commands (installing plugins and grammars) come from `core:plum`, and the `:lsp-*` and `:diagnostics` commands from `core:lsp` — neither is loaded until you ask for it in `init.scm`. See [Core Plugins](core-plugins.md).
 
-## Other
+## Finding a command
 
-| Command | Aliases | Effect |
-|---------|---------|--------|
-| `:tutor` | — | Open the interactive tutorial |
-| `:version` | `:ver` | Show editor version |
+There is no listing command. Open the command line with `:` and press `Tab` — completion shows every registered name and alias, including stubs for plugins that haven't loaded yet.
 
-## Discovering commands
+## Running key commands from `:`
 
-There is no `:commands` listing command. To discover available commands, open the command line with `:` and press `Tab` — completion lists every registered name and alias. The list reflects both built-in commands and stubs registered by lazy plugins (see [Plugins](plugins.md)).
-
-## Mappable commands from the command line
-
-In addition to the typed commands above, **any mappable editor command** can be invoked from `:`. Commands like `:clear-search`, `:undo`, `:redo`, and `:select-all-matches` work this way without dedicated typed-command wrappers. Mappable commands take no aliases and accept an implicit count of 1.
+Every command that can be bound to a key can also be typed at `:`, even without a short alias — `:undo`, `:select-all-matches`, `:goto-alternate-file`, and so on. Typed this way they take no count and run once.

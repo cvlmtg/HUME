@@ -12,7 +12,7 @@ A selection has two ends: the **anchor** and the **head**. The head is the movin
 
 Press `e` to enter Extend mode. In Extend mode, every motion grows the selection instead of moving it — and moving back toward where you started shrinks it again, since only the moving end travels while the anchor stays put. Press `e` again or `Esc` to return to Normal. The status bar shows `EXT` while Extend mode is active.
 
-You can also do a one-shot extend without entering Extend mode: under the kitty keyboard protocol, `Ctrl+h`/`Ctrl+j`/`Ctrl+k`/`Ctrl+l`/`Ctrl+w`/`Ctrl+b` run the corresponding motion with extend on for that single keypress. (`Ctrl+x` / `Ctrl+X` likewise extend line selection on any terminal.)
+You can also do a one-shot extend without entering Extend mode: under the kitty keyboard protocol, `Ctrl+h`/`Ctrl+j`/`Ctrl+k`/`Ctrl+l`/`Ctrl+w`/`Ctrl+b` run the corresponding motion with extend on for that single keypress. `Ctrl+x` extends the line selection downward on any terminal; its backward twin `Ctrl+X` needs kitty, since older terminals can't tell the two apart.
 
 The same one-shot extend applies to search: `Ctrl+n` (kitty only) jumps the head to the next search match while the anchor stays put, growing the selection to cover everything from where you started through the new match — without entering Extend mode. `Ctrl+N` does the same backward, extending to the previous match.
 
@@ -36,6 +36,8 @@ Text objects select structured regions in one step. They use the `m` prefix — 
 | `m i a` / `m a a` | Argument (trimmed) / argument + separator comma |
 | `m i l` / `m a l` | Line content (no newline) / full line (with newline) |
 
+Closing brackets work as well as opening ones: `m i )` is the same as `m i (`, and likewise for `]`, `}`, and `>`.
+
 Two shortcuts select the word under the cursor directly:
 
 | Key | Effect |
@@ -52,6 +54,7 @@ There is no paragraph text object; use the `{` and `}` paragraph motions.
 | Key | Effect |
 |-----|--------|
 | `%` | Select entire buffer |
+| `m /` | Turn every search match in the buffer into a selection — see [Moving Around](moving-around.md#search-navigation) |
 
 ## Flipping and collapsing the selection
 

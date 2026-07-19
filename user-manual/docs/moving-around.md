@@ -1,5 +1,7 @@
 # Moving Around
 
+Getting the cursor where you want it is most of editing. HUME's motions are built so the common jumps — a word, a character on this line, a matching bracket, the line you were on a minute ago — are one or two keystrokes away.
+
 All movement happens in Normal mode. Motions move the cursor and change the current selection.
 
 ## Basic movement
@@ -71,10 +73,10 @@ Line numbers are 1-based. A number past the end of the file lands on the last li
 
 | Key | Movement |
 |-----|----------|
-| `{` | Previous paragraph start |
-| `}` | Next paragraph start |
+| `{` | Up to the blank line above this paragraph |
+| `}` | Down to the start of the next paragraph |
 
-A paragraph is a block of non-blank lines delimited by blank lines; `{` and `}` jump to the first line of the surrounding paragraphs.
+A paragraph is a block of non-blank lines delimited by blank lines. The two keys aren't quite mirror images: `}` lands on the first line of the next paragraph, while `{` lands in the blank gap above the current one — at the top of that gap when it's several lines deep.
 
 ## Scrolling
 
@@ -103,9 +105,9 @@ Press `z` followed by a second key to reposition the view (the cursor itself sta
 | `?pattern` | Search backward |
 | `n` | Next match |
 | `N` | Previous match |
-| `*` | Search the whole word under the cursor, ignoring any current selection. Word-class text is wrapped in word boundaries (`\b…\b`) for a whole-word search; punctuation is searched literally. |
+| `*` | Search the whole word under the cursor, ignoring any current selection. Words are wrapped in word boundaries (`\b…\b`); punctuation is searched literally. Does nothing on whitespace or a blank line |
 | `m /` | Turn every search match in the buffer into a selection |
-| `Ctrl+/` | Use the primary selection's text, literally, as the search pattern — no word expansion, no boundaries (kitty only) |
+| `Ctrl+/` | Use the primary selection's text, literally, as the search pattern — no word expansion, no boundaries (kitty only). Does nothing when the selection is just a line ending |
 
 ### `m /` precondition
 
@@ -113,13 +115,13 @@ Press `z` followed by a second key to reposition the view (the cursor itself sta
 
 ### Regex syntax
 
-`/`, `?`, `s` (select-within), and `*` all use the [Rust `regex` crate](https://docs.rs/regex) syntax via `regex-cursor`. Notable points:
+`/`, `?`, `s` (select-within), and `*` all use [Rust regex](https://docs.rs/regex) syntax. Notable points:
 
-- **Smart case.** An all-lowercase pattern is case-insensitive; any uppercase character makes the match case-sensitive. Override with inline flags: `(?i)` forces case-insensitive, `(?-i)` forces case-sensitive.
+- **Smart case.** A pattern with no uppercase letter matches case-insensitively; a single uppercase letter anywhere makes it case-sensitive. Note that this looks at the raw pattern text, so an escape like `\W` or `\S` counts as uppercase and will quietly make the search case-sensitive. Override with `(?i)` or `(?-i)`.
 - **Other inline flags** — `(?m)` multiline `^`/`$`, `(?s)` dot-matches-newline, `(?x)` extended (whitespace ignored), `(?U)` swap greedy/non-greedy.
 - **`.` does not match newlines** by default; use `(?s)` if you need it to.
-- **No backreferences, no lookaround, no possessive quantifiers** — Rust regex is RE2-like. No Vim-style `\c` / `\C` case toggles (they'd match the literal letters `c` / `C`).
-- **Invalid patterns** are silently ignored during live preview (the cursor stays put); committing an invalid pattern leaves the previous search state intact.
+- **No backreferences, no lookaround, no possessive quantifiers.** No Vim-style `\c` / `\C` case toggles either — they'd match the literal letters `c` / `C`.
+- **Invalid patterns** do nothing during live preview: the cursor stays put. Pressing `Enter` on one still stores it, so `n` and `N` will do nothing until you search for something valid again.
 
 ## Search and replace
 
@@ -140,5 +142,6 @@ HUME maintains a jump list of recent cursor positions.
 |-----|--------|
 | `Ctrl+o` | Jump to previous position |
 | `Ctrl+i` | Jump to next position |
+| `Tab` | Jump to next position (except under the kitty protocol, where `Tab` moves between panes) |
 
-Jumping to the alternate (most-recently-focused) buffer is available via `:e #`, or via `:b#`.
+To get back to the buffer you were last in, use `:b #`. `:e #` does the same but only for buffers that have a file on disk.
