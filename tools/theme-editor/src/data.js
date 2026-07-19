@@ -34,7 +34,7 @@ export const DEFAULT_PAL = {
 };
 
 export const DEFAULT_SC = {
-  "ui.background": "black", "ui.foreground": "white", "ui.cursor": "blue",
+  "ui.background": { bg: "black" }, "ui.foreground": "white", "ui.cursor": { fg: "black", bg: "blue" },
   "ui.cursor.match": { fg: "yellow", bg: "#3a371a", modifiers: ["bold"] }, "ui.selection": { bg: "dark-gray" },
   "ui.selection.primary": { bg: "gray" }, "ui.selection.search": { fg: "orange", bg: "#3a2a14" }, "ui.linenr": "gray",
   "ui.linenr.selected": "yellow",

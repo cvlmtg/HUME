@@ -60,6 +60,7 @@ export function cssUnderlineStyle(s) {
   if (s === "curl" || s === "wavy" || s === "undercurl") return "wavy";
   if (s === "dotted") return "dotted";
   if (s === "dashed") return "dashed";
+  if (s === "double_line") return "double";
   return "solid";
 }
 

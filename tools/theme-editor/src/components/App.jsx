@@ -23,14 +23,28 @@ export default function HelixThemeEditor() {
   const [scOpen, setScOpen] = useState(true);
   const [hslOpen, setHslOpen] = useState(true);
   // Inherits handling: child themes (`inherits = "..."`) only override the
-  // parent's palette/scopes. We stash the child's overrides, show a banner
-  // asking the user to import the parent, then merge child-on-top when it
-  // arrives. `loadedParent` tracks whether a non-inherits theme is loaded so
-  // the order can be reversed (parent first, then child).
-  const [pendingChild, setPendingChild] = useState(null);
+  // parent's palette/scopes, and that parent may itself inherit further
+  // (theme -> variant -> base). We stash each imported child's overrides on a
+  // stack, most-derived first, show a banner asking for the next ancestor, and
+  // merge the whole stack onto the root once a non-inherits theme arrives.
+  // `loadedParent` tracks whether a non-inherits theme is loaded so a later
+  // inherits-import can merge directly instead of stacking.
+  const [pendingChildren, setPendingChildren] = useState([]);
   const [inheritBanner, setInheritBanner] = useState(null);
   const [loadedParent, setLoadedParent] = useState(false);
+  const [importError, setImportError] = useState(null);
   const fileRef = useRef(null);
+
+  // Merge a most-derived-first override stack onto a base, most-derived wins.
+  const mergeChildStack = (children, basePalette = {}, baseScopes = {}) => {
+    let palette = { ...basePalette };
+    let scopes = { ...baseScopes };
+    for (let i = children.length - 1; i >= 0; i--) {
+      palette = { ...palette, ...children[i].palette };
+      scopes = { ...scopes, ...children[i].scopes };
+    }
+    return { palette, scopes };
+  };
 
   const handleImport = useCallback(e => {
     const file = e.target.files?.[0];
@@ -39,6 +53,7 @@ export default function HelixThemeEditor() {
     reader.onload = ev => {
       try {
         const parsed = parseTOML(ev.target.result);
+        setImportError(null);
         const newPalette = parsed.palette || {};
         const newScopes = extractScopes(parsed);
         const hasInherits = typeof parsed.inherits === "string" && parsed.inherits.length > 0;
@@ -49,22 +64,25 @@ export default function HelixThemeEditor() {
             // Parent already loaded — merge child overrides on top.
             setPalette(p => ({...p, ...newPalette}));
             setScopes(s => ({...s, ...newScopes}));
-            setPendingChild(null);
+            setPendingChildren([]);
             setInheritBanner(null);
           } else {
-            // No parent yet — apply child for visual feedback, stash for later
-            // merge, and show the banner so the user knows to import the parent.
-            setPalette(newPalette);
-            setScopes(newScopes);
-            setPendingChild({ palette: newPalette, scopes: newScopes });
+            // No root yet — stack this child's overrides, apply the stack for
+            // visual feedback, and point the banner at its own ancestor.
+            const nextPending = [...pendingChildren, { palette: newPalette, scopes: newScopes }];
+            setPendingChildren(nextPending);
+            const merged = mergeChildStack(nextPending);
+            setPalette(merged.palette);
+            setScopes(merged.scopes);
             setInheritBanner({ parent: parsed.inherits });
           }
         } else {
-          if (pendingChild) {
-            // Child was imported first; this is the parent. Parent first, child on top.
-            setPalette({...newPalette, ...pendingChild.palette});
-            setScopes({...newScopes, ...pendingChild.scopes});
-            setPendingChild(null);
+          if (pendingChildren.length) {
+            // Root arrived — apply root first, then the whole stack on top.
+            const merged = mergeChildStack(pendingChildren, newPalette, newScopes);
+            setPalette(merged.palette);
+            setScopes(merged.scopes);
+            setPendingChildren([]);
             setInheritBanner(null);
           } else {
             setPalette(newPalette);
@@ -75,11 +93,12 @@ export default function HelixThemeEditor() {
         }
       } catch (err) {
         console.error("Parse error", err);
+        setImportError(err.message || String(err));
       }
     };
     reader.readAsText(file);
     e.target.value = "";
-  }, [loadedParent, pendingChild]);
+  }, [loadedParent, pendingChildren]);
 
   const handleExport = useCallback(() => {
     const toml = exportTOML(adjPalette, scopes);
@@ -129,6 +148,13 @@ export default function HelixThemeEditor() {
         </div>
       </div>
 
+      {importError && (
+        <div style={{ padding: "8px 20px", background: "#3a1a1a", borderBottom: "1px solid #4a2a2a", color: "#f38ba8", fontFamily: MONO, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <span>{"Import failed: " + importError}</span>
+          <button onClick={() => setImportError(null)} style={{ background: "transparent", border: "1px solid #4a2a2a", color: "#f38ba8", borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontFamily: MONO, fontSize: 11, flexShrink: 0 }} title="Dismiss">{"×"}</button>
+        </div>
+      )}
+
       {inheritBanner && (
         <div style={{ padding: "8px 20px", background: "#3a2f1a", borderBottom: "1px solid #4a3f2a", color: "#f9e2af", fontFamily: MONO, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <span>
@@ -136,7 +162,7 @@ export default function HelixThemeEditor() {
             <code style={{ background: "#1f1a0e", padding: "1px 6px", borderRadius: 3, color: "#fab387" }}>{inheritBanner.parent + ".toml"}</code>
             {" — import the parent file to apply its scopes. Child overrides are stashed and will be re-applied on top."}
           </span>
-          <button onClick={() => { setInheritBanner(null); setPendingChild(null); }} style={{ background: "transparent", border: "1px solid #4a3f2a", color: "#f9e2af", borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontFamily: MONO, fontSize: 11, flexShrink: 0 }} title="Dismiss and discard pending overrides">{"×"}</button>
+          <button onClick={() => { setInheritBanner(null); setPendingChildren([]); }} style={{ background: "transparent", border: "1px solid #4a3f2a", color: "#f9e2af", borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontFamily: MONO, fontSize: 11, flexShrink: 0 }} title="Dismiss and discard pending overrides">{"×"}</button>
         </div>
       )}
 
@@ -207,7 +233,10 @@ export default function HelixThemeEditor() {
               </div>
             </div>
             {filtered.map(id => (
-              <ScopeRow key={id} id={id} value={scopes[id] || ""} palette={adjPalette} onChange={v => setScopes(s => ({...s, [id]: v}))} />
+              <ScopeRow key={id} id={id} value={scopes[id] || ""} palette={adjPalette} onChange={v => setScopes(s => {
+                if (v === null) { const n = {...s}; delete n[id]; return n; }
+                return {...s, [id]: v};
+              })} />
             ))}
           </Acc>
 

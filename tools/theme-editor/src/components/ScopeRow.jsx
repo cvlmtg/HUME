@@ -21,10 +21,15 @@ export default function ScopeRow({ id, value, palette, onChange }) {
       : {};
     const hasExtra = Object.keys(extra).length > 0;
     if (!hasBg) {
-      onChange(hasExtra ? { ...extra, fg: newFg } : newFg);
+      // extra is always {} here: hasBg is false only when value isn't an object.
+      if (newFg === "") { onChange(null); return; }
+      onChange(newFg);
       return;
     }
-    if (newFg === "" && newBg === "") onChange(hasExtra ? { ...extra } : {});
+    if (newFg === "" && newBg === "") {
+      if (!hasExtra) { onChange(null); return; }
+      onChange({ ...extra });
+    }
     else if (newBg === "")            onChange(hasExtra ? { ...extra, fg: newFg } : newFg);
     else if (newFg === "")            onChange({ ...extra, bg: newBg });
     else                              onChange({ ...extra, fg: newFg, bg: newBg });
@@ -36,13 +41,19 @@ export default function ScopeRow({ id, value, palette, onChange }) {
   const rBg = resolve(bgVal, palette);
 
   function renderSelect(val, isCustom, hexVal, setCustom, setHex, isBgField) {
+    // A value that isn't blank and isn't a known palette name (e.g. an imported
+    // literal hex) must also render as "custom", even before the user touches it —
+    // otherwise the dropdown falls back to "-- none --" while the swatch shows a color.
+    const showCustom = isCustom || (val !== "" && !palNames.includes(val));
     const handleSel = e => {
       const v = e.target.value;
       if (v === "__custom__") { setCustom(true); return; }
       setCustom(false);
+      setHex("");
       if (isBgField) emit(fgVal, v); else emit(v, bgVal);
     };
     const handleHex = e => {
+      setCustom(true);
       setHex(e.target.value);
       if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) {
         if (isBgField) emit(fgVal, e.target.value); else emit(e.target.value, bgVal);
@@ -50,13 +61,13 @@ export default function ScopeRow({ id, value, palette, onChange }) {
     };
     return (
       <div style={{ flex: 1, minWidth: 0 }}>
-        <select value={isCustom ? "__custom__" : val} onChange={handleSel} style={sel}>
+        <select value={showCustom ? "__custom__" : val} onChange={handleSel} style={sel}>
           <option value="">{"-- none --"}</option>
           {palNames.map(n => <option key={n} value={n}>{n}</option>)}
           <option value="__custom__">{"Custom hex"}</option>
         </select>
-        {isCustom && (
-          <input type="text" placeholder="#ff00aa" value={hexVal} onChange={handleHex}
+        {showCustom && (
+          <input type="text" placeholder="#ff00aa" value={isCustom ? hexVal : val} onChange={handleHex}
             style={{ ...INPUT, width: "100%", marginTop: 3, boxSizing: "border-box" }} />
         )}
       </div>

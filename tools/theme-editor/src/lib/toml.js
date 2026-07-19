@@ -74,12 +74,35 @@ export function parseInlineArray(s) {
   return splitPairs(inner).map(e => parseInlineVal(e));
 }
 
+// Unescape TOML basic-string escapes (double-quoted strings only; single-quoted
+// TOML literals have no escapes). Unknown escape sequences keep their literal char.
+export function unescapeBasic(s) {
+  return s.replace(/\\(u[0-9a-fA-F]{4}|.)/gs, (m, esc) => {
+    if (esc[0] === "u") return String.fromCodePoint(parseInt(esc.slice(1), 16));
+    switch (esc) {
+      case "\\": return "\\";
+      case '"': return '"';
+      case "n": return "\n";
+      case "t": return "\t";
+      case "r": return "\r";
+      case "b": return "\b";
+      case "f": return "\f";
+      default: return esc;
+    }
+  });
+}
+
+const NUMBER_RE = /^[+-]?\d[\d_]*(\.[\d_]+)?$/;
+
 export function parseInlineVal(s) {
   s = s.trim();
-  if (s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1);
+  if (s.startsWith('"') && s.endsWith('"')) return unescapeBasic(s.slice(1, -1));
   if (s.startsWith("'") && s.endsWith("'")) return s.slice(1, -1);
   if (s.startsWith('{') && s.endsWith('}')) return parseInlineTable(s);
   if (s.startsWith('[') && s.endsWith(']')) return parseInlineArray(s);
+  if (s === "true") return true;
+  if (s === "false") return false;
+  if (NUMBER_RE.test(s)) return Number(s.replace(/_/g, ""));
   return s;
 }
 
@@ -139,17 +162,7 @@ export function parseTOML(text) {
     }
     val = val.trim();
 
-    if (val.startsWith('{') && val.endsWith('}')) {
-      cur[key] = parseInlineTable(val);
-    } else if (val.startsWith('[') && val.endsWith(']')) {
-      cur[key] = parseInlineArray(val);
-    } else if (val.startsWith('"') && val.endsWith('"')) {
-      cur[key] = val.slice(1, -1);
-    } else if (val.startsWith("'") && val.endsWith("'")) {
-      cur[key] = val.slice(1, -1);
-    } else {
-      cur[key] = val;
-    }
+    cur[key] = parseInlineVal(val);
   }
   return result;
 }
@@ -157,7 +170,10 @@ export function parseTOML(text) {
 // Single value formatter — arrays and nested tables are never wrapped in quotes.
 export function formatVal(v) {
   if (Array.isArray(v)) return "[ " + v.map(formatVal).join(", ") + " ]";
-  if (typeof v === "string") return '"' + v.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  if (typeof v === "string") {
+    return '"' + v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+      .replace(/\n/g, '\\n').replace(/\t/g, '\\t').replace(/\r/g, '\\r') + '"';
+  }
   if (typeof v === "object" && v !== null) {
     const parts = Object.entries(v).map(([k, val]) => k + " = " + formatVal(val)).join(", ");
     return "{ " + parts + " }";
@@ -165,28 +181,38 @@ export function formatVal(v) {
   return String(v);
 }
 
+const SCOPE_KEYS = ["fg", "bg", "modifiers", "underline", "style"];
+
+function isTable(v) {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
 // Pull scope definitions from a parsed TOML object. Skips `palette` and `inherits`.
-// Promotes nested sections (e.g. `[ui]` with bare `cursor = "..."`) into flat
-// dotted keys ("ui.cursor"), matching the shape the editor uses.
+// Recursively promotes nested sections (e.g. `[ui.statusline.normal]`) into flat
+// dotted keys ("ui.statusline.normal"), matching the shape the editor uses.
+// A table is emitted as a scope def once it has no more sub-tables to descend
+// into (or is empty, e.g. `"ui.cursor.insert" = {}`) — deeper keys keep recursing.
+function walkScopes(ns, obj, prefix) {
+  const keys = Object.keys(obj);
+  const styleKeys = keys.filter(k => SCOPE_KEYS.includes(k));
+  if (prefix && (keys.length === 0 || styleKeys.length > 0)) {
+    const def = {};
+    for (const k of styleKeys) def[k] = obj[k];
+    ns[prefix] = def;
+  }
+  for (const k of keys) {
+    if (SCOPE_KEYS.includes(k)) continue;
+    if (!prefix && (k === "palette" || k === "inherits")) continue;
+    const v = obj[k];
+    const path = prefix ? prefix + "." + k : k;
+    if (typeof v === "string") ns[path] = v;
+    else if (isTable(v)) walkScopes(ns, v, path);
+  }
+}
+
 export function extractScopes(parsed) {
   const ns = {};
-  const SCOPE_KEYS = ["fg", "bg", "modifiers", "underline", "style"];
-  for (const _k of Object.keys(parsed)) {
-    if (_k === "palette" || _k === "inherits") continue;
-    const v = parsed[_k];
-    if (typeof v === "string") {
-      ns[_k] = v;
-    } else if (typeof v === "object" && v !== null) {
-      const isScopeDef = Object.keys(v).some(k => SCOPE_KEYS.includes(k));
-      if (isScopeDef) {
-        ns[_k] = v;
-      } else {
-        for (const [sk, sv] of Object.entries(v)) {
-          ns[_k + "." + sk] = sv;
-        }
-      }
-    }
-  }
+  walkScopes(ns, parsed, "");
   return ns;
 }
 
