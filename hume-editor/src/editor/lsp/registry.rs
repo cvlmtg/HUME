@@ -26,11 +26,10 @@ pub(crate) struct LspServerConfig {
     /// Sent verbatim as `initializationOptions` in the `initialize` request
     /// (`lsp_attach_buffer`'s spawn branch, via `LspClient::set_init_options`).
     pub(crate) init_options: Option<serde_json::Value>,
-    /// Answered verbatim to `workspace/configuration` requests and sent as
-    /// `didChangeConfiguration` after `initialized` — needs
-    /// a server-id -> language lookup in the dispatch table that doesn't
-    /// exist yet; wired when a feature first needs it.
-    #[allow(dead_code)]
+    /// Pushed as `workspace/didChangeConfiguration` after `initialized`
+    /// (`lsp_attach_buffer`'s spawn branch, via `LspClient::set_settings`),
+    /// and resolved per-item to answer `workspace/configuration` pull
+    /// requests (`Editor::dispatch_lsp_action`'s `ServerRequest` arm).
     pub(crate) settings: Option<serde_json::Value>,
 }
 
@@ -215,6 +214,7 @@ impl Editor {
                 Ok(server_id) => {
                     let mut client = hume_lsp::client::LspClient::new(server_id, root);
                     client.set_init_options(config.init_options.clone());
+                    client.set_settings(config.settings.clone());
                     client.start_handshake(self.lsp.backend.as_mut());
                     self.lsp.servers.insert(
                         server_id,

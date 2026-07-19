@@ -376,6 +376,155 @@ fn server_request_action_gets_exactly_one_response() {
 }
 
 #[test]
+fn workspace_configuration_resolves_the_attached_servers_registered_settings() {
+    // The dispatch-table shape (section resolution, null-per-item) is
+    // covered exhaustively in `hume_lsp::client::tests`; what's specific to
+    // this layer is the glue — that dispatch actually looks up the
+    // *requesting* server's own registered settings (via `server_id` ->
+    // `introspect::server_language` -> `LspState.configs`) rather than
+    // some other server's, or none at all.
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[w]>ord\n");
+    let mut host = ScriptingHost::new();
+
+    let (mut backend, response_log) = hume_lsp::test_util::RecordingLspBackend::with_response_log();
+    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    backend.push_from_server(
+        sid,
+        hume_lsp::codec::Message::Request {
+            id: hume_lsp::codec::RequestId::Int(7),
+            method: "workspace/configuration".to_string(),
+            params: serde_json::json!({"items": [
+                {"section": "rust-analyzer.cargo.features"},
+                {"section": "nope"},
+            ]}),
+        },
+    );
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    let mut client = LspClient::new(sid, PathBuf::from("."));
+    client.set_state_for_test(ServerState::Running);
+    ed.lsp.insert_client_for_test(client);
+    ed.lsp
+        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
+
+    eval_register(
+        &mut ed,
+        &mut host,
+        r#"(register-lsp-server! "rust" #:command "rust-analyzer"
+             #:settings (hash "rust-analyzer" (hash "cargo" (hash "features" "all"))))"#,
+        tmp.path(),
+    );
+
+    ed.drain_lsp();
+
+    let responses = response_log.borrow();
+    assert_eq!(responses.len(), 1, "expected exactly one response sent");
+    let (resp_sid, id, result) = &responses[0];
+    assert_eq!(*resp_sid, sid);
+    assert_eq!(*id, hume_lsp::codec::RequestId::Int(7));
+    assert_eq!(result.as_ref().unwrap(), &serde_json::json!(["all", null]));
+}
+
+#[test]
+fn workspace_configuration_answers_null_when_requesting_server_has_no_registered_settings() {
+    // Same shape, but the attached server's config carries no `#:settings`
+    // at all — must fall back to null per item, not panic or leak another
+    // server's settings.
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[w]>ord\n");
+    let mut host = ScriptingHost::new();
+
+    let (mut backend, response_log) = hume_lsp::test_util::RecordingLspBackend::with_response_log();
+    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    backend.push_from_server(
+        sid,
+        hume_lsp::codec::Message::Request {
+            id: hume_lsp::codec::RequestId::Int(9),
+            method: "workspace/configuration".to_string(),
+            params: serde_json::json!({"items": [{"section": "rust-analyzer"}]}),
+        },
+    );
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    let mut client = LspClient::new(sid, PathBuf::from("."));
+    client.set_state_for_test(ServerState::Running);
+    ed.lsp.insert_client_for_test(client);
+    ed.lsp
+        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
+
+    eval_register(
+        &mut ed,
+        &mut host,
+        r#"(register-lsp-server! "rust" #:command "rust-analyzer")"#,
+        tmp.path(),
+    );
+
+    ed.drain_lsp();
+
+    let responses = response_log.borrow();
+    assert_eq!(responses.len(), 1);
+    assert_eq!(responses[0].2.as_ref().unwrap(), &serde_json::json!([null]));
+}
+
+#[test]
+fn workspace_configuration_never_leaks_another_servers_settings() {
+    // Two servers, two languages, two different settings blobs — the
+    // requesting server's own id must resolve only its own language's
+    // config, never the other one's, even though both configs live in the
+    // same `LspState.configs` map.
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[w]>ord\n");
+    let mut host = ScriptingHost::new();
+
+    let (mut backend, response_log) = hume_lsp::test_util::RecordingLspBackend::with_response_log();
+    let rust_sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let python_sid = backend.start("pyright", &[], Path::new("py")).unwrap();
+    backend.push_from_server(
+        python_sid,
+        hume_lsp::codec::Message::Request {
+            id: hume_lsp::codec::RequestId::Int(1),
+            method: "workspace/configuration".to_string(),
+            params: serde_json::json!({"items": [{"section": "python.tsdk"}]}),
+        },
+    );
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+
+    let mut rust_client = LspClient::new(rust_sid, PathBuf::from("."));
+    rust_client.set_state_for_test(ServerState::Running);
+    ed.lsp.insert_client_for_test(rust_client);
+    ed.lsp
+        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), rust_sid);
+
+    let mut python_client = LspClient::new(python_sid, PathBuf::from("py"));
+    python_client.set_state_for_test(ServerState::Running);
+    ed.lsp.insert_client_for_test(python_client);
+    ed.lsp
+        .insert_server_key_for_test("python".to_string(), PathBuf::from("py"), python_sid);
+
+    eval_register(
+        &mut ed,
+        &mut host,
+        r#"(begin
+             (register-lsp-server! "rust" #:command "rust-analyzer"
+               #:settings (hash "rust-analyzer" (hash "cargo" (hash "features" "all"))))
+             (register-lsp-server! "python" #:command "pyright"
+               #:settings (hash "python" (hash "tsdk" "node_modules/typescript/lib"))))"#,
+        tmp.path(),
+    );
+
+    ed.drain_lsp();
+
+    let responses = response_log.borrow();
+    assert_eq!(responses.len(), 1, "only the python server made a request");
+    let (resp_sid, _id, result) = &responses[0];
+    assert_eq!(*resp_sid, python_sid);
+    assert_eq!(
+        result.as_ref().unwrap(),
+        &serde_json::json!(["node_modules/typescript/lib"]),
+        "must resolve python's own settings, never rust's"
+    );
+}
+
+#[test]
 fn lsp_stop_dispatches_timed_out_for_in_flight_callbacks_instead_of_orphaning_them() {
     // Without draining a removed client's `pending` map, `:lsp-stop` dropped
     // the `LspClient` (and its pending requests) outright — a registered

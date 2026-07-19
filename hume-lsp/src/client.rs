@@ -9,7 +9,8 @@ use hume_editing::PositionEncoding;
 use lsp_types::{
     ClientCapabilities, ClientInfo, CodeActionClientCapabilities, CodeActionKind,
     CodeActionKindLiteralSupport, CodeActionLiteralSupport, CompletionClientCapabilities,
-    CompletionItemCapability, FailureHandlingKind, GeneralClientCapabilities, GotoCapability,
+    CompletionItemCapability, DidChangeConfigurationClientCapabilities,
+    DidChangeConfigurationParams, FailureHandlingKind, GeneralClientCapabilities, GotoCapability,
     HoverClientCapabilities, InitializeParams, InitializeResult, InitializedParams, MarkupKind,
     PositionEncodingKind, PublishDiagnosticsClientCapabilities, RenameClientCapabilities,
     ResourceOperationKind, ServerCapabilities, TextDocumentClientCapabilities,
@@ -213,6 +214,12 @@ pub struct LspClient {
     /// `set_init_options` before `start_handshake` to take effect; `None`
     /// omits the field entirely (never sent as `null`).
     init_options: Option<serde_json::Value>,
+    /// Server configuration — set via `set_settings` before `start_handshake`
+    /// to take effect. Pushed once as `workspace/didChangeConfiguration`
+    /// right after `initialized`, and answered to `workspace/configuration`
+    /// pull requests (resolved per-item by `resolve_config_section`). `None`
+    /// sends no push at all, and pull requests fall back to `null` per item.
+    settings: Option<serde_json::Value>,
     /// Messages (e.g. `didOpen`) that arrived while `Starting` — sent, in
     /// order, right after `initialized` once the handshake completes.
     queued: Vec<Message>,
@@ -239,6 +246,7 @@ impl LspClient {
             encoding: PositionEncoding::Utf16,
             root,
             init_options: None,
+            settings: None,
             queued: Vec::new(),
             initialize_id: None,
             ids: IdAllocator::new(),
@@ -263,6 +271,14 @@ impl LspClient {
     /// must be called before `start_handshake` to take effect.
     pub fn set_init_options(&mut self, init_options: Option<serde_json::Value>) {
         self.init_options = init_options;
+    }
+
+    /// Sets the server configuration blob — must be called before
+    /// `start_handshake` to take effect. Pushed as `workspace/
+    /// didChangeConfiguration` right after `initialized`; also consulted to
+    /// answer `workspace/configuration` pull requests.
+    pub fn set_settings(&mut self, settings: Option<serde_json::Value>) {
+        self.settings = settings;
     }
 
     pub fn encoding(&self) -> PositionEncoding {
@@ -584,6 +600,17 @@ impl LspClient {
             params: serde_json::to_value(InitializedParams {})
                 .expect("InitializedParams always serializes"),
         }];
+        // Pushed once, right after `initialized` and before any queued
+        // `didOpen` — some servers read configuration only from this push
+        // and never issue a `workspace/configuration` pull. Omitted
+        // entirely when unset, never sent as `settings: null`.
+        if let Some(settings) = self.settings.clone() {
+            send.push(Message::Notification {
+                method: lsp_types::notification::DidChangeConfiguration::METHOD.to_string(),
+                params: serde_json::to_value(DidChangeConfigurationParams { settings })
+                    .expect("DidChangeConfigurationParams always serializes"),
+            });
+        }
         send.append(&mut self.queued);
         vec![ClientAction::BecameRunning { send }]
     }
@@ -665,6 +692,12 @@ fn build_client_capabilities() -> ClientCapabilities {
         workspace: Some(WorkspaceClientCapabilities {
             apply_edit: Some(true),
             configuration: Some(true),
+            // No dynamic registration path exists — the push happens
+            // unconditionally right after `initialized`, so this only
+            // needs to be present, not negotiated.
+            did_change_configuration: Some(DidChangeConfigurationClientCapabilities {
+                dynamic_registration: Some(false),
+            }),
             workspace_folders: Some(true),
             // Every rename result is a WorkspaceEdit — some servers
             // (rust-analyzer) refuse textDocument/rename outright without
@@ -774,17 +807,20 @@ fn build_client_capabilities() -> ClientCapabilities {
 /// server request that needs `&mut Editor` (the edit engine), so the editor
 /// glue answers it separately (`apply_edit_request_response`) rather than
 /// through this pure lookup table.
+///
+/// `settings` is the server's configured blob (if any) — the caller resolves
+/// it from the registry keyed by server id, since this function has no
+/// editor state of its own.
 pub fn server_request_response(
     method: &str,
     params: &serde_json::Value,
+    settings: Option<&serde_json::Value>,
 ) -> Result<serde_json::Value, ResponseError> {
     use lsp_types::request::{
         RegisterCapability, UnregisterCapability, WorkDoneProgressCreate, WorkspaceConfiguration,
     };
     match method {
-        // No settings blob exists — every item answers `null`,
-        // same shape a server sees from a client with no matching config.
-        WorkspaceConfiguration::METHOD => Ok(workspace_configuration_response(params)),
+        WorkspaceConfiguration::METHOD => Ok(workspace_configuration_response(params, settings)),
         // Acknowledged, no-op: these need no editor state to answer, unlike
         // `workspace/applyEdit` (the one request this lookup can't handle —
         // see `apply_edit_request_response`).
@@ -799,15 +835,51 @@ pub fn server_request_response(
     }
 }
 
-/// One `null` per requested item — same length as `params.items`, per spec
-/// (the result array must line up positionally with the request).
-fn workspace_configuration_response(params: &serde_json::Value) -> serde_json::Value {
-    let item_count = params
+/// Resolves one requested item's `section` (e.g. `"a.b"`) against `settings`,
+/// treating it as the root config object — VS Code semantics. No section (or
+/// an empty one) returns the whole blob; a dotted path walks object keys;
+/// any miss (missing key, or a non-object encountered mid-path) is `null`.
+pub fn resolve_config_section(
+    settings: &serde_json::Value,
+    section: Option<&str>,
+) -> serde_json::Value {
+    let Some(section) = section.filter(|s| !s.is_empty()) else {
+        return settings.clone();
+    };
+    let mut current = settings;
+    for part in section.split('.') {
+        match current.get(part) {
+            Some(next) => current = next,
+            None => return serde_json::Value::Null,
+        }
+    }
+    current.clone()
+}
+
+/// One entry per requested item, same length and order as `params.items`,
+/// per spec (the result array must line up positionally with the request).
+/// With no settings blob, every item answers `null` — same shape a server
+/// sees from a client with no matching config.
+fn workspace_configuration_response(
+    params: &serde_json::Value,
+    settings: Option<&serde_json::Value>,
+) -> serde_json::Value {
+    let items = params
         .get("items")
         .and_then(|v| v.as_array())
-        .map(|arr| arr.len())
-        .unwrap_or(0);
-    serde_json::Value::Array(vec![serde_json::Value::Null; item_count])
+        .cloned()
+        .unwrap_or_default();
+    let Some(settings) = settings else {
+        return serde_json::Value::Array(vec![serde_json::Value::Null; items.len()]);
+    };
+    let values = items
+        .iter()
+        .map(|item| {
+            let section = item.get("section").and_then(|s| s.as_str());
+            resolve_config_section(settings, section)
+        })
+        .collect();
+    serde_json::Value::Array(values)
 }
 
 #[cfg(test)]
@@ -873,6 +945,14 @@ mod tests {
         let ws = caps.workspace.unwrap();
         assert_eq!(ws.apply_edit, Some(true));
         assert_eq!(ws.configuration, Some(true));
+        // Declared unconditionally — the push happens right after
+        // `initialized` with no dynamic-registration negotiation.
+        assert_eq!(
+            ws.did_change_configuration
+                .expect("did_change_configuration capability must be declared")
+                .dynamic_registration,
+            Some(false)
+        );
         // Manual smoke testing found rust-analyzer refuses
         // textDocument/rename outright without this declared — every
         // rename result is a WorkspaceEdit, and some servers won't attempt
@@ -938,6 +1018,112 @@ mod tests {
                     Message::Notification { method, .. } => assert_eq!(method, "initialized"),
                     other => panic!("expected initialized notification, got {other:?}"),
                 }
+            }
+            other => panic!("expected one BecameRunning action, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn handshake_sends_did_change_configuration_when_settings_set() {
+        let mut backend = InlineLspBackend::with_default_handshake();
+        let sid = backend
+            .start("rust-analyzer", &[], std::path::Path::new("."))
+            .unwrap();
+        let mut client = LspClient::new(sid, PathBuf::from("."));
+        client.set_settings(Some(serde_json::json!({"files": {"watcher": "server"}})));
+
+        client.start_handshake(&mut backend);
+        let events = backend.drain();
+        let (_id, ev) = events.into_iter().next().unwrap();
+        let actions = client.on_event(ev);
+
+        match &actions[..] {
+            [ClientAction::BecameRunning { send }] => {
+                assert_eq!(
+                    send.len(),
+                    2,
+                    "expected initialized + didChangeConfiguration"
+                );
+                match &send[0] {
+                    Message::Notification { method, .. } => assert_eq!(method, "initialized"),
+                    other => panic!("expected initialized notification, got {other:?}"),
+                }
+                match &send[1] {
+                    Message::Notification { method, params } => {
+                        assert_eq!(method, "workspace/didChangeConfiguration");
+                        assert_eq!(
+                            params["settings"],
+                            serde_json::json!({"files": {"watcher": "server"}})
+                        );
+                    }
+                    other => panic!("expected didChangeConfiguration notification, got {other:?}"),
+                }
+            }
+            other => panic!("expected one BecameRunning action, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn handshake_omits_did_change_configuration_when_settings_unset() {
+        let mut backend = InlineLspBackend::with_default_handshake();
+        let sid = backend
+            .start("rust-analyzer", &[], std::path::Path::new("."))
+            .unwrap();
+        let mut client = LspClient::new(sid, PathBuf::from("."));
+
+        client.start_handshake(&mut backend);
+        let events = backend.drain();
+        let (_id, ev) = events.into_iter().next().unwrap();
+        let actions = client.on_event(ev);
+
+        match &actions[..] {
+            [ClientAction::BecameRunning { send }] => {
+                assert_eq!(send.len(), 1, "expected only initialized, no config push");
+            }
+            other => panic!("expected one BecameRunning action, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn did_change_configuration_is_queued_ahead_of_pending_did_open() {
+        let mut backend = InlineLspBackend::with_default_handshake();
+        let sid = backend
+            .start("rust-analyzer", &[], std::path::Path::new("."))
+            .unwrap();
+        let mut client = LspClient::new(sid, PathBuf::from("."));
+        client.set_settings(Some(serde_json::json!({"a": 1})));
+
+        // Queued while Starting, before the handshake completes.
+        client.send_or_queue(
+            &mut backend,
+            Message::Notification {
+                method: "textDocument/didOpen".to_string(),
+                params: serde_json::json!({}),
+            },
+        );
+
+        client.start_handshake(&mut backend);
+        let events = backend.drain();
+        let (_id, ev) = events.into_iter().next().unwrap();
+        let actions = client.on_event(ev);
+
+        match &actions[..] {
+            [ClientAction::BecameRunning { send }] => {
+                let methods: Vec<&str> = send
+                    .iter()
+                    .map(|m| match m {
+                        Message::Notification { method, .. } => method.as_str(),
+                        _ => panic!("expected only notifications in send"),
+                    })
+                    .collect();
+                assert_eq!(
+                    methods,
+                    vec![
+                        "initialized",
+                        "workspace/didChangeConfiguration",
+                        "textDocument/didOpen",
+                    ]
+                );
             }
             other => panic!("expected one BecameRunning action, got {other:?}"),
         }
@@ -1975,18 +2161,40 @@ mod tests {
     // ── server_request_response ──────────────────────────────────────────────
 
     #[test]
-    fn workspace_configuration_answers_null_per_item() {
+    fn workspace_configuration_answers_null_per_item_with_no_settings() {
         let params =
             serde_json::json!({"items": [{"section": "rust-analyzer"}, {"section": "editor"}]});
-        let result = server_request_response("workspace/configuration", &params).unwrap();
+        let result = server_request_response("workspace/configuration", &params, None).unwrap();
         assert_eq!(result, serde_json::json!([null, null]));
     }
 
     #[test]
     fn workspace_configuration_with_no_items_answers_empty_array() {
         let params = serde_json::json!({"items": []});
-        let result = server_request_response("workspace/configuration", &params).unwrap();
+        let result = server_request_response("workspace/configuration", &params, None).unwrap();
         assert_eq!(result, serde_json::json!([]));
+    }
+
+    #[test]
+    fn workspace_configuration_resolves_sections_from_settings() {
+        let settings = serde_json::json!({"rust-analyzer": {"cargo": {"features": "all"}}});
+        let params = serde_json::json!({"items": [
+            {"section": "rust-analyzer.cargo.features"},
+            {"section": "rust-analyzer"},
+            {"section": "nope"},
+            {},
+        ]});
+        let result =
+            server_request_response("workspace/configuration", &params, Some(&settings)).unwrap();
+        assert_eq!(
+            result,
+            serde_json::json!([
+                "all",
+                {"cargo": {"features": "all"}},
+                null,
+                settings,
+            ])
+        );
     }
 
     // workspace/applyEdit is answered separately (needs `&mut Editor`) — see
@@ -1999,16 +2207,66 @@ mod tests {
             "client/unregisterCapability",
             "window/workDoneProgress/create",
         ] {
-            let result = server_request_response(method, &serde_json::Value::Null).unwrap();
+            let result = server_request_response(method, &serde_json::Value::Null, None).unwrap();
             assert_eq!(result, serde_json::Value::Null, "method {method}");
         }
     }
 
     #[test]
     fn unknown_server_request_is_method_not_found() {
-        let err =
-            server_request_response("some/madeUpMethod", &serde_json::Value::Null).unwrap_err();
+        let err = server_request_response("some/madeUpMethod", &serde_json::Value::Null, None)
+            .unwrap_err();
         assert_eq!(err.code, -32601);
         assert!(err.message.contains("some/madeUpMethod"));
+    }
+
+    // ── resolve_config_section ────────────────────────────────────────────────
+
+    #[test]
+    fn resolve_config_section_exact_hit() {
+        let settings = serde_json::json!({"a": {"b": 1}});
+        assert_eq!(
+            resolve_config_section(&settings, Some("a")),
+            serde_json::json!({"b": 1})
+        );
+    }
+
+    #[test]
+    fn resolve_config_section_nested_dotted_hit() {
+        let settings = serde_json::json!({"a": {"b": {"c": 42}}});
+        assert_eq!(
+            resolve_config_section(&settings, Some("a.b.c")),
+            serde_json::json!(42)
+        );
+    }
+
+    #[test]
+    fn resolve_config_section_missing_key_is_null() {
+        let settings = serde_json::json!({"a": {"b": 1}});
+        assert_eq!(
+            resolve_config_section(&settings, Some("a.missing")),
+            serde_json::Value::Null
+        );
+    }
+
+    #[test]
+    fn resolve_config_section_non_object_mid_path_is_null() {
+        let settings = serde_json::json!({"a": 1});
+        assert_eq!(
+            resolve_config_section(&settings, Some("a.b")),
+            serde_json::Value::Null
+        );
+    }
+
+    #[test]
+    fn resolve_config_section_absent_returns_whole_blob() {
+        let settings = serde_json::json!({"a": 1, "b": 2});
+        assert_eq!(resolve_config_section(&settings, None), settings);
+    }
+
+    #[test]
+    fn resolve_config_section_empty_string_returns_whole_blob() {
+        let settings = serde_json::json!({"a": 1});
+        assert_eq!(resolve_config_section(&settings, Some("")), settings);
     }
 }

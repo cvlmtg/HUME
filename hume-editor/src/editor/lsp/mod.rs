@@ -648,7 +648,10 @@ impl Editor {
                 let result = if method == lsp_types::request::ApplyWorkspaceEdit::METHOD {
                     self.apply_edit_request_response(&params)
                 } else {
-                    server_request_response(&method, &params)
+                    let settings = introspect::server_language(&self.lsp, server_id)
+                        .and_then(|lang| self.lsp.configs.get(&lang))
+                        .and_then(|cfg| cfg.settings.as_ref());
+                    server_request_response(&method, &params, settings)
                 };
                 self.lsp
                     .backend

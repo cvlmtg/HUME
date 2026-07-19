@@ -6,7 +6,7 @@ use std::path::Path;
 use std::rc::Rc;
 
 use crate::backend::{LspBackend, ServerId};
-use crate::codec::Message;
+use crate::codec::{Message, RequestId, ResponseError};
 use crate::inline::InlineLspBackend;
 use crate::transport::InboundEvent;
 
@@ -21,6 +21,21 @@ pub type NotificationLog = Rc<RefCell<Vec<(String, serde_json::Value)>>>;
 /// `initialize`) also flowing through `send`.
 pub type RequestLog = Rc<RefCell<Vec<(ServerId, String, serde_json::Value)>>>;
 
+/// Shared log of `(server, id, result)` for every *response* a
+/// `RecordingLspBackend` sends — i.e. what the editor's dispatch table
+/// answered a server-initiated request with. Kept separate from the other
+/// two logs for the same reason: a test asserting on one stream shouldn't
+/// have to account for the others.
+pub type ResponseLog = Rc<
+    RefCell<
+        Vec<(
+            ServerId,
+            RequestId,
+            Result<serde_json::Value, ResponseError>,
+        )>,
+    >,
+>;
+
 /// Wraps `InlineLspBackend`, additionally recording every outgoing
 /// notification's `(method, params)` into a shared log. Once a backend is
 /// boxed into `Box<dyn LspBackend>` (as `LspState` does), the trait object
@@ -30,6 +45,7 @@ pub struct RecordingLspBackend {
     inner: InlineLspBackend,
     log: NotificationLog,
     request_log: RequestLog,
+    response_log: ResponseLog,
 }
 
 impl RecordingLspBackend {
@@ -38,7 +54,8 @@ impl RecordingLspBackend {
     /// moved into a `Box<dyn LspBackend>` immediately. Callers that only
     /// need the notification log bind the request log to `_`.
     pub fn new() -> (Self, NotificationLog, RequestLog) {
-        Self::from_inline(InlineLspBackend::new())
+        let (backend, log, request_log, _) = Self::from_inline(InlineLspBackend::new());
+        (backend, log, request_log)
     }
 
     /// Same as `new`, but pre-scripted with a canned `initialize` success
@@ -46,20 +63,34 @@ impl RecordingLspBackend {
     /// therefore flush anything it queued while `Starting`) via a plain
     /// `drain_lsp()` call.
     pub fn with_default_handshake() -> (Self, NotificationLog, RequestLog) {
-        Self::from_inline(InlineLspBackend::with_default_handshake())
+        let (backend, log, request_log, _) =
+            Self::from_inline(InlineLspBackend::with_default_handshake());
+        (backend, log, request_log)
     }
 
-    fn from_inline(inner: InlineLspBackend) -> (Self, NotificationLog, RequestLog) {
+    /// Same as `new`, but returns the response log instead — for tests
+    /// asserting what the editor answered a server-initiated request with
+    /// (e.g. `workspace/configuration`), rather than what the client itself
+    /// sent.
+    pub fn with_response_log() -> (Self, ResponseLog) {
+        let (backend, _, _, response_log) = Self::from_inline(InlineLspBackend::new());
+        (backend, response_log)
+    }
+
+    fn from_inline(inner: InlineLspBackend) -> (Self, NotificationLog, RequestLog, ResponseLog) {
         let log = Rc::new(RefCell::new(Vec::new()));
         let request_log = Rc::new(RefCell::new(Vec::new()));
+        let response_log = Rc::new(RefCell::new(Vec::new()));
         (
             Self {
                 inner,
                 log: log.clone(),
                 request_log: request_log.clone(),
+                response_log: response_log.clone(),
             },
             log,
             request_log,
+            response_log,
         )
     }
 
@@ -93,7 +124,11 @@ impl LspBackend for RecordingLspBackend {
                     .borrow_mut()
                     .push((server, method.clone(), params.clone()));
             }
-            Message::Response { .. } => {}
+            Message::Response { id, result } => {
+                self.response_log
+                    .borrow_mut()
+                    .push((server, id.clone(), result.clone()));
+            }
         }
         self.inner.send(server, msg);
     }

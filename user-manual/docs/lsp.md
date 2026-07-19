@@ -173,7 +173,7 @@ order doesn't matter. `register-lsp-server!` takes:
 | `#:args` | Extra command-line arguments, if the server needs them |
 | `#:root-markers` | Filenames that mark a project root (HUME walks up from the opened file looking for the nearest one) |
 | `#:init-options` | Server-specific initialization options, as a `hash` |
-| `#:settings` | Reserved; not currently sent to the server. Use `#:init-options` for server configuration |
+| `#:settings` | Server configuration, as a `hash` — see below |
 
 Examples for a few commonly used servers:
 
@@ -195,6 +195,27 @@ Examples for a few commonly used servers:
 ;; C / C++ — clangd
 (register-lsp-server! "c" #:command "clangd" #:root-markers '("compile_commands.json" ".clangd"))
 ```
+
+### Server settings (`#:settings`)
+
+Unlike `#:init-options` (sent once, at startup), `#:settings` is HUME's side of the server's *own* configuration system — the same thing a `settings.json` would hold in an editor with native LSP support. It's pushed to the server right after startup, and used to answer any configuration questions the server asks afterward.
+
+Servers ask for a named **section** (a dotted string like `"gopls"` or `"typescript.inlayHints"`), and HUME resolves it by walking that path into your `#:settings` hash — the top level of the hash has to match what the server itself asks for. Most servers namespace their own settings under their own name, the same way you'd see them nested in a VS Code `settings.json`:
+
+```scheme
+;; gopls asks for section "gopls" and expects its option map directly —
+;; so the hash needs a top-level "gopls" key, same shape as VS Code's
+;; settings.json "gopls": {...} block.
+(register-lsp-server! "go" #:command "gopls"
+  #:root-markers '("go.mod")
+  #:settings (hash "gopls" (hash "hints" (hash "assignVariableTypes" #t
+                                                "parameterNames" #t)
+                                 "usePlaceholders" #t)))
+```
+
+A request for a more specific section (say, `"gopls.hints"`) walks further into the same hash — `gopls` then `hints`. Ask for a section that isn't there and the server gets nothing back (`null`), same as if `#:settings` were never set — check your server's own docs for the exact section name and shape it expects.
+
+Changing `#:settings` and running `:reload-config` updates what HUME has stored, but an already-running server keeps its old configuration until it restarts — run `:lsp-restart` (or reinstall the server) to push the change.
 
 ## Commands and keys
 
