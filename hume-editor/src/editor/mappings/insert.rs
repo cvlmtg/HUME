@@ -6,6 +6,7 @@ use hume_scripting::hooks::HookId;
 use super::super::dispatch::ArgSource;
 use super::super::keymap::WalkResult;
 use super::super::registry::MappableCommand;
+use super::super::replay::InsertInput;
 use super::super::{Editor, Severity, commands, doc_ops};
 use crate::ops::MotionMode;
 use crate::ops::auto_pairs::{delete_pair, insert_pair_close};
@@ -79,7 +80,7 @@ impl Editor {
         // Trie-matched keys (Esc, arrows) returned early above, so everything
         // reaching here is a text-modifying key — safe to record for replay.
         if let Some(ref mut session) = self.state.insert_session {
-            session.keystrokes.push(key);
+            session.keystrokes.push(InsertInput::Key(key));
         }
 
         // ── Character input ───────────────────────────────────────────────────

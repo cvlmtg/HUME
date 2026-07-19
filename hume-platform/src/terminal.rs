@@ -67,6 +67,19 @@ fn disable_mouse(out: &mut Stdout) -> io::Result<()> {
     out.flush()
 }
 
+fn enable_bracketed_paste(out: &mut impl io::Write) -> io::Result<()> {
+    // Bypass crossterm's EnableBracketedPaste Command for the same reason as
+    // push_kitty_flags: a raw write is a harmless no-op on terminals without
+    // DEC mode 2004, with no platform-specific failure path to route around.
+    out.write_all(b"\x1b[?2004h")?;
+    out.flush()
+}
+
+fn disable_bracketed_paste(out: &mut impl io::Write) -> io::Result<()> {
+    out.write_all(b"\x1b[?2004l")?;
+    out.flush()
+}
+
 // ── Public terminal lifecycle API ─────────────────────────────────────────────
 
 /// Probe for kitty keyboard protocol support on the normal screen.
@@ -123,6 +136,7 @@ pub fn init(mouse_enabled: bool, mouse_select: bool, kitty_enabled: bool) -> io:
     // land on the alternate screen's stack so that key reads (which consult
     // the active screen) pick up the enhanced encoding.
     execute!(out, EnterAlternateScreen)?;
+    enable_bracketed_paste(&mut out)?;
 
     if kitty_enabled {
         // REPORT_ALTERNATE_KEYS is required so that Ctrl+shifted-chars
@@ -171,6 +185,10 @@ pub fn restore() -> io::Result<()> {
     // the held buffer on alt-screen exit. Sending it explicitly is harmless if
     // no envelope was open.
     try_op(execute!(stdout(), EndSynchronizedUpdate));
+    // Disable bracketed paste before leaving the alt screen — must not leak
+    // into the shell, where a subsequent paste would dump raw `\x1b[200~`
+    // markers into the prompt.
+    try_op(disable_bracketed_paste(&mut stdout()));
     // Pop kitty keyboard protocol. Harmless on legacy terminals — the pop
     // is a no-op if the stack is empty.
     try_op(pop_kitty_flags(&mut stdout()));
@@ -310,6 +328,7 @@ pub fn end_synchronized_update() -> io::Result<()> {
 pub fn enter_inline_output(kitty_enabled: bool, mouse_enabled: bool) -> io::Result<()> {
     // Close any open synchronized-output envelope (harmless if none is open).
     let _ = execute!(stdout(), EndSynchronizedUpdate);
+    disable_bracketed_paste(&mut stdout())?;
     if kitty_enabled {
         pop_kitty_flags(&mut stdout())?;
     }
@@ -333,6 +352,7 @@ pub fn leave_inline_output(
 ) -> io::Result<()> {
     enable_raw_mode()?;
     execute!(stdout(), EnterAlternateScreen)?;
+    enable_bracketed_paste(&mut stdout())?;
     if kitty_enabled {
         push_kitty_flags(&mut stdout())?;
     }
@@ -377,7 +397,7 @@ pub fn wait_for_keypress() {
 
 #[cfg(test)]
 mod tests {
-    use super::{pop_kitty_flags, push_kitty_flags};
+    use super::{disable_bracketed_paste, enable_bracketed_paste, pop_kitty_flags, push_kitty_flags};
 
     // Regression guard for the Windows/WezTerm crash. The previous impl
     // dispatched through crossterm's `PushKeyboardEnhancementFlags` Command,
@@ -401,5 +421,19 @@ mod tests {
         pop_kitty_flags(&mut buf).unwrap();
         // kitty pop = CSI < 1 u (one stack level, fixed — no flag arg).
         assert_eq!(buf, b"\x1b[<1u");
+    }
+
+    #[test]
+    fn enable_bracketed_paste_emits_raw_csi() {
+        let mut buf = Vec::new();
+        enable_bracketed_paste(&mut buf).unwrap();
+        assert_eq!(buf, b"\x1b[?2004h");
+    }
+
+    #[test]
+    fn disable_bracketed_paste_emits_raw_csi() {
+        let mut buf = Vec::new();
+        disable_bracketed_paste(&mut buf).unwrap();
+        assert_eq!(buf, b"\x1b[?2004l");
     }
 }

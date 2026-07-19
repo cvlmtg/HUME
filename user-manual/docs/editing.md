@@ -57,6 +57,14 @@ HUME has two paste sources: the system clipboard and a kill ring.
 | `[` | Cycle one step older in the kill ring and re-paste |
 | `]` | Cycle one step newer in the kill ring and re-paste |
 
+### Pasting from the terminal
+
+Pasting text from outside HUME — your system clipboard via the terminal's own paste shortcut, a mouse paste, or a paste from `tmux`/`screen` — lands in one step and as a single undo entry, however long the pasted text is.
+
+- In Insert mode, the text is inserted at the cursor. Auto-pairing does not run on pasted text, so pasted brackets and quotes are never doubled up.
+- In Normal or Extend mode, the text replaces the current selection.
+- On the command line and in search/select prompts, line breaks in the pasted text become spaces, since those fields are single-line.
+
 ### Smart-p paste
 
 `p` and `P` decide what to paste based on the last command:

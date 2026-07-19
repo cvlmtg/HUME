@@ -111,6 +111,91 @@ fn insert_char_unicode() {
     );
 }
 
+// ── insert_str ────────────────────────────────────────────────────────────
+//
+// Bulk-string counterpart of insert_char, used for terminal paste. Mirrors
+// insert_char's cases plus multi-char-specific ones (multi-line text,
+// grapheme clusters spanning the inserted text, identity on empty string).
+
+#[test]
+fn insert_str_at_cursor_start() {
+    assert_state!(
+        "-[h]>ello\n",
+        |(buf, sels)| insert_str(buf, sels, "xyz"),
+        "xyz-[h]>ello\n"
+    );
+}
+
+#[test]
+fn insert_str_at_cursor_eof() {
+    assert_state!(
+        "hello-[\n]>",
+        |(buf, sels)| insert_str(buf, sels, "xyz"),
+        "helloxyz-[\n]>"
+    );
+}
+
+#[test]
+fn insert_str_replaces_forward_selection() {
+    // Selection covers "hell" (4 chars); replaced by "xyz".
+    assert_state!(
+        "-[hell]>o\n",
+        |(buf, sels)| insert_str(buf, sels, "xyz"),
+        "xyz-[o]>\n"
+    );
+}
+
+#[test]
+fn insert_str_replaces_backward_selection() {
+    assert_state!(
+        "<[hell]-o\n",
+        |(buf, sels)| insert_str(buf, sels, "xyz"),
+        "xyz-[o]>\n"
+    );
+}
+
+#[test]
+fn insert_str_two_cursors() {
+    // Cursors at 0 and 3; "xy" inserted at both.
+    assert_state!(
+        "-[f]>oo-[ ]>bar\n",
+        |(buf, sels)| insert_str(buf, sels, "xy"),
+        "xy-[f]>ooxy-[ ]>bar\n"
+    );
+}
+
+#[test]
+fn insert_str_unicode_grapheme() {
+    // Pasted text itself contains a combining sequence (é = e + combining
+    // acute). Cursor lands after the whole pasted span via new_pos(), never
+    // mid-cluster.
+    assert_state!(
+        "caf-[é]>\n",
+        |(buf, sels)| insert_str(buf, sels, "e\u{0301}"),
+        "cafe\u{0301}-[é]>\n"
+    );
+}
+
+#[test]
+fn insert_str_multiline() {
+    // Pasted text contains an embedded newline; buffer's structural trailing
+    // \n is untouched.
+    assert_state!(
+        "h-[e]>llo\n",
+        |(buf, sels)| insert_str(buf, sels, "X\nY"),
+        "hX\nY-[e]>llo\n"
+    );
+}
+
+#[test]
+fn insert_str_empty_is_identity() {
+    assert_state!(
+        "-[h]>ello\n",
+        |(buf, sels)| insert_str(buf, sels, ""),
+        "-[h]>ello\n"
+    );
+}
+
 // ── insert_tab ────────────────────────────────────────────────────────────
 
 #[test]

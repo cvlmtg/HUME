@@ -115,7 +115,7 @@ impl Editor {
     /// first match from the pre-search position.
     ///
     /// Called on every keystroke while in Search mode.
-    fn update_live_search(&mut self) {
+    pub(super) fn update_live_search(&mut self) {
         let pattern = match self.state.minibuf.as_ref() {
             Some(mb) if !mb.input.is_empty() => mb.input.clone(),
             _ => return,

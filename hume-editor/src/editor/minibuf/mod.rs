@@ -141,6 +141,17 @@ impl MiniBuffer {
             _ => MiniBufferEvent::Ignored,
         }
     }
+
+    /// Insert a whole string at the edit cursor — the terminal-paste
+    /// counterpart of the single-char branch in [`handle_key`](Self::handle_key).
+    /// No-op on an empty string.
+    pub(super) fn insert_str(&mut self, s: &str) {
+        if s.is_empty() {
+            return;
+        }
+        self.input.insert_str(self.cursor, s);
+        self.cursor += s.len();
+    }
 }
 
 // ── Grapheme helpers ─────────────────────────────────────────────────────────

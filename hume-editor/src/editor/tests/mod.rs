@@ -763,6 +763,7 @@ mod multi_pane;
 mod page_scroll;
 mod pane_focus;
 mod pane_sync;
+mod paste;
 mod per_pane_jumps;
 mod plugins;
 mod render_snapshot;

@@ -54,7 +54,7 @@ impl Editor {
 
     /// Recompile the regex and replace selections with matches within the
     /// original selections. Called on every keystroke in Select mode.
-    fn update_live_select(&mut self) {
+    pub(super) fn update_live_select(&mut self) {
         let pattern = match self.state.minibuf.as_ref() {
             Some(mb) if !mb.input.is_empty() => mb.input.clone(),
             _ => return,

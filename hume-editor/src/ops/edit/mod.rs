@@ -391,6 +391,32 @@ pub(crate) fn insert_char(
     })
 }
 
+/// Insert `text` at every selection — the bulk-string counterpart of
+/// [`insert_char`], used for pasted text so a paste is one edit rather than
+/// one `insert_char` call per character.
+///
+/// Same shape as `insert_char`: single-character selections get `text`
+/// inserted before the cursor; non-collapsed selections are replaced. The
+/// cursor lands at `new_pos()` (one past the inserted text) in both cases —
+/// no manual position arithmetic, so a multi-char `text` can't land mid
+/// grapheme-cluster.
+pub(crate) fn insert_str(
+    buf: Text,
+    sels: SelectionSet,
+    text: &str,
+) -> (Text, SelectionSet, ChangeSet) {
+    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+        let start = sel.start();
+        b.retain(start - b.old_pos());
+        if !sel.is_collapsed() {
+            b.delete(sel.content_end(buf) + 1 - start);
+        }
+        b.insert(text);
+        let sel = Selection::collapsed(b.new_pos());
+        new_sels.push(sel);
+    })
+}
+
 /// Returns `true` if `line` has leading whitespace and nothing else before its
 /// structural newline — a blank, auto-indented line with no real content.
 ///

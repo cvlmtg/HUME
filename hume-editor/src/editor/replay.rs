@@ -15,6 +15,18 @@ use super::{Editor, EditorState, Mode, commands, doc_ops};
 
 // ── Dot-repeat / insert-session state ────────────────────────────────────────
 
+/// One unit of recorded insert-session input, replayed by `replay_dot`.
+///
+/// A pasted string is kept as its own variant rather than being replayed as
+/// synthetic per-char `KeyEvent`s: a synthesized `Enter` would run
+/// `insert_newline_indent` with auto-indent, altering text a real paste never
+/// auto-indents.
+#[derive(Debug, Clone)]
+pub(crate) enum InsertInput {
+    Key(KeyEvent),
+    Paste(String),
+}
+
 /// State for an active insert session (entered via a repeatable command).
 ///
 /// Tracks keystrokes for dot-repeat recording. Created by
@@ -24,7 +36,7 @@ use super::{Editor, EditorState, Mode, commands, doc_ops};
 /// replay, where the replay path pre-opens the edit group to signal
 /// `begin_insert_session` that recording should be suppressed.
 pub(crate) struct InsertSession {
-    pub(super) keystrokes: Vec<KeyEvent>,
+    pub(super) keystrokes: Vec<InsertInput>,
     /// Step cursor back one grapheme on exit (set for `a` / `A` / `o` / `O` entry).
     pub(super) step_back_on_exit: bool,
 }
@@ -67,11 +79,11 @@ pub(crate) struct RepeatableAction {
     /// Character argument for wait-char commands (`r`, `f`, `t`, …).
     /// `None` for commands that don't consume a char.
     pub char_arg: Option<char>,
-    /// Keystrokes typed during the insert session, if any.
+    /// Keystrokes (and pasted text) recorded during the insert session, if any.
     ///
     /// Populated by the insert-mode recording path when the command transitions
     /// to Insert mode. Empty for non-insert actions like `delete` or `paste-after`.
-    pub insert_keys: Vec<KeyEvent>,
+    pub insert_keys: Vec<InsertInput>,
     /// Selection-building recipe to replay BEFORE the edit.
     ///
     /// Invariant: `[]` (edit acted on pre-existing selection or after a reaching
@@ -242,9 +254,15 @@ impl Editor {
             }
         }
 
-        // Feed recorded insert keystrokes through the insert handler.
-        for key in &action.insert_keys {
-            self.handle_insert(*key);
+        // Feed recorded insert input back through the same paths the original
+        // session used — a paste replays as one bulk insert, not synthesized
+        // per-char keys (which would wrongly re-trigger auto-indent on an
+        // embedded newline).
+        for input in &action.insert_keys {
+            match input {
+                InsertInput::Key(key) => self.handle_insert(*key),
+                InsertInput::Paste(text) => self.apply_insert_mode_paste(text),
+            }
         }
 
         // Close the edit group.

@@ -296,6 +296,7 @@ impl Editor {
         match ev {
             Event::Key(k) => self.handle_key(k),
             Event::Mouse(m) => self.handle_mouse(m),
+            Event::Paste(s) => self.handle_terminal_paste(s),
             _ => {}
         }
         self.drain_hooks();
@@ -453,6 +454,10 @@ impl Editor {
                 Event::Mouse(mouse) => {
                     self.handle_event(Event::Mouse(mouse));
                 }
+                Event::Paste(text) => {
+                    self.handle_event(Event::Paste(text));
+                    self.sync_search_cache();
+                }
                 Event::Resize(_, _) => {
                     // Drain any additional resize events that are already queued
                     // so a drag (which emits one event per delta) collapses into a
@@ -471,6 +476,11 @@ impl Editor {
                             Event::Key(_) => break,
                             Event::Mouse(mouse) => {
                                 self.handle_event(Event::Mouse(mouse));
+                                break;
+                            }
+                            Event::Paste(text) => {
+                                self.handle_event(Event::Paste(text));
+                                self.sync_search_cache();
                                 break;
                             }
                             _ => break,

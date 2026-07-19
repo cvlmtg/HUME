@@ -7,6 +7,7 @@ mod execute;
 mod insert;
 mod lazy;
 mod normal;
+mod paste;
 mod search_mode;
 mod select_mode;
 
