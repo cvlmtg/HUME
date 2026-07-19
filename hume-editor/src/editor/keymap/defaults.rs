@@ -377,7 +377,9 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
 
     // ── Match prefix (`m` / `M`) ───────────────────────────────────────────────
     // `m` → text objects (`mi`/`ma`), surround (`ms`), and `m/` (select-all-matches).
-    // `M` mirrors `m` and only contains `MM`, a shortcut for `miW` (inner WORD).
+    // `M` mirrors `m` and only contains `MM` (select-uppercase-word): the WORD
+    // under the cursor, with the around body swapped in while
+    // `word-selects-whitespace` is on — same gating as `mm`.
     t.bind(key!('m'), KeyTrieNode::Node(build_text_object_trie()));
     t.bind(key!('M'), KeyTrieNode::Node(build_uppercase_match_trie()));
 
