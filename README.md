@@ -18,11 +18,11 @@ This project is driven by curiosity and the pure joy of hacking, not by deadline
 
 ## Why try it
 
-- **Less typing for what you do most.** Selections come first, so acting on text is short and direct.
-- **Paste that does the obvious thing.** `p` reaches for what you most likely meant.
-- **Batteries included.** Plugins and language support work out of the box — no extra tooling to set up.
-- **Comfortable with real text.** Emoji, accents, and other multi-byte characters are treated as single characters, the way you'd expect.
-- **Usable immediately, yours to shape.** Sensible defaults on day one; customize everything in a single language when you're ready.
+- **Less typing for what you do most**. Selections come first, so acting on text is short and direct.
+- **Paste that does the obvious thing**. `p` reaches for what you most likely meant.
+- **Batteries included**: Bundled plugins, 300+ language definitions, and language-server support ship with the editor.
+- **Comfortable with real text**. Emoji, accents, and other multi-byte characters are treated as single characters, the way you'd expect.
+- **Usable immediately, yours to shape**. Sensible defaults on day one; customize everything in a single language when you're ready.
 
 ---
 
