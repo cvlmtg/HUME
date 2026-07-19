@@ -15,14 +15,16 @@ This manual covers everything you need to use HUME effectively — from first la
 ## Why try it
 - Less typing for what you do most. Selections come first, so acting on text is short and direct.
 - Paste that does the obvious thing. `p` reaches for what you most likely meant.
-- Batteries included. Plugins and language support work out of the box — no extra tooling to set up.
+- Batteries included: Bundled plugins, 300+ language definitions, and language-server support ship with the editor.
 - Comfortable with real text. Emoji, accents, and other multi-byte characters are treated as single characters, the way you'd expect.
 - Usable immediately, yours to shape. Sensible defaults on day one; customize everything in a single language when you're ready.
 
 
 ## Quickstart
 
-Check [Installation](installation.md) to see how to download and install HUME. Then run HUME and type `:tutor`.
+Check [Installation](installation.md) to see how to download and install HUME. Then run HUME and type `:tutor` for the interactive tutorial.
+
+And the question every modal editor has to answer up front: **to quit, press `Esc`, then type `:q` and press `Enter`.** Use `:q!` to quit without saving, `:wq` to save and quit.
 
 ## Where to go next
 

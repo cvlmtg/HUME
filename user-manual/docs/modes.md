@@ -1,6 +1,8 @@
 # Modes
 
-HUME is a modal editor. The meaning of every key depends on the current mode. The active mode is shown in the status bar (mode label on the right).
+One keyboard, several meanings. Because `d` only deletes when you're in the mode where `d` means delete, HUME can put a whole editor's worth of commands on plain letters — no modifier gymnastics.
+
+The active mode is shown on the right of the status bar. `Esc` always takes you back to Normal.
 
 ## Normal mode
 
@@ -14,7 +16,9 @@ Insert mode lets you type text directly into the buffer. The cursor changes to a
 
 **Enter from Normal:**
 
-Enter Insert mode with `i`, `a`, `o`, `O`, `I`, or `A`. See [Editing](editing.md) for what each key does.
+Enter Insert mode with `i`, `a`, `I`, `A`, `o`, `O`, or `c`. See [Editing](editing.md) for what each key does.
+
+**Exit:** `Esc` or `Ctrl+c`
 
 ## Extend mode
 
@@ -22,7 +26,7 @@ Extend mode works like Normal mode, but every motion *extends* the current selec
 
 **Enter:** `e` (toggles; status bar shows `EXT`)
 
-**Exit:** `Esc`, `e` again, or `;` (collapse to head) / `Ctrl+;` (collapse to anchor)
+**Exit:** `Esc`, `e` again, or `;` (collapse to head) / `Ctrl+;` (collapse to anchor, kitty only)
 
 ## Command mode
 
@@ -42,24 +46,26 @@ Invoked with `s` in Normal mode. Select mode opens a regex prompt (`⫽`). Enter
 
 ## Multi-key sequences
 
-Some Normal-mode keys take a second input. They fall into two groups: **prefix states** (a transient mode that waits for a follow-up key) and **char-argument motions** (a motion that consumes one typed character).
+Some Normal-mode keys wait for a second key before doing anything. Either they open a small family of related commands, or they take a single character as their argument.
 
-### Prefix states
+### Prefixes
 
 | Prefix | Keys | Purpose |
 |--------|------|---------|
 | Goto | `g` + key | Jump to a line or column position — see [Moving Around](moving-around.md) |
 | Match | `m` + key | Select text objects and surrounding delimiters — see [Selections](selections.md) |
+| Match WORD | `M M` | Select the WORD under the cursor — see [Selections](selections.md) |
 | View | `z` + key | Scroll the view to a position — see [Moving Around](moving-around.md) |
 | Pane | `Ctrl+p` + key | Move focus between panes — see [Key Reference](key-reference.md) |
 | Register | `"` + char | Target a specific register for yank, paste, or delete — see [Editing](editing.md) |
 
-### Char-argument motions
+### Keys that take a character
 
 | Keys | Purpose |
 |------|---------|
-| `f`, `F`, `t`, `T` + char | Search for a character on the current line — see [Moving Around](moving-around.md) |
+| `f`, `F`, `t`, `T` + char | Jump to a character on the current line — see [Moving Around](moving-around.md) |
 | `r` + char | Replace the selected characters with the typed character — see [Editing](editing.md) |
+| `m w` + char | Wrap the selection in that character — see [Selections](selections.md) |
 
 ### Count prefix
 

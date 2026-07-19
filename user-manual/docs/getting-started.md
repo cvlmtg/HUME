@@ -1,5 +1,7 @@
 # Getting Started
 
+Modal editing has a reputation for a steep first hour. It doesn't need one: the ideas below take about five minutes, and they cover most of what you'll do all day.
+
 ## First launch
 
 Launch HUME on a file:
@@ -14,10 +16,8 @@ Or run `hume` with no arguments to open a scratch buffer. The current mode is sh
 
 1. **Launch:** `hume path/to/file.txt` (or just `hume` for a scratch buffer).
 2. **Learn the keys:** type `:tutor` and press `Enter` to open the interactive tutorial. The tutorial is an editable copy of the bundled `tutor.rst` — feel free to experiment in it. Re-running `:tutor` later in the same session switches back to your existing buffer, preserving any edits; after `:bd!` it opens a fresh copy.
-3. **Quit:** `:q` quits the current buffer. `:q!` quits without saving. `:wq` saves and quits. `:qa` quits all buffers.
+3. **Quit:** `:q` closes the current buffer, and quits HUME once it's the last one open. `:q!` discards unsaved changes. `:wq` saves and quits. `:qa` quits everything.
 4. **Where am I?** The mode label (`NOR`, `INS`, `EXT`, …) sits on the right of the status bar; the file path and cursor position sit on the left.
-
-For a hands-on introduction, type `:tutor` to launch the interactive tutorial.
 
 ## The modal idea
 
@@ -25,9 +25,9 @@ HUME has distinct modes. Every key you press is interpreted in the context of th
 
 ### How is this different from a normal editor?
 
-In a conventional editor, every letter you type lands in the document, and most actions are chorded shortcuts held with `Ctrl` or `Cmd` (`Ctrl+C`, `Cmd+V`, `Ctrl+F`, …). Editing is a constant dance between the main keys and modifier keys, and many moves require the mouse.
+In a conventional editor every letter you type lands in the document, so actions have to be chorded shortcuts — `Ctrl+C`, `Cmd+V`, `Ctrl+F` — and many moves need the mouse.
 
-Modal editors invert this. In Normal mode, letters are *commands* — `d` deletes, `w` jumps a word, `x` selects a line. Nothing you type reaches the buffer. To type prose you switch to Insert mode, type your text, and press `Esc` to return to Normal. Because keys are contextual, the same letter means different things in different modes, and the vast majority of edits need no modifiers and no mouse.
+Modal editors invert that. In Normal mode letters are *commands*: `d` deletes, `w` jumps a word, `x` selects a line, and nothing you type reaches the buffer. To write prose you switch to Insert mode, type, and press `Esc` to come back. The payoff is that almost every edit is a plain keystroke — no modifiers, no mouse.
 
 ## The three main modes
 
