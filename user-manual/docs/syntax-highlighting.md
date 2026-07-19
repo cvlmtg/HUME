@@ -2,11 +2,17 @@
 
 HUME colors your code with **tree-sitter** — accurate highlighting that stays correct as you type and handles partial or malformed code without choking.
 
-Highlighting is **opt-in per language**: HUME knows how to recognize many languages out of the box, but it doesn't ship pre-compiled parsers. For a language to light up, you install a **grammar** — a small package tree-sitter uses to parse that language. [PLUM](core-plugins.md#plum) handles this for you.
+Highlighting is **opt-in per language**: HUME knows how to recognize many languages out of the box, but it doesn't ship pre-compiled parsers. For a language to light up, you install a **grammar** — a small package tree-sitter uses to parse that language. [PLUM](core-plugins.md#core-plum) handles this for you.
+
+PLUM is a plugin like any other, and it doesn't load by itself. Everything on this page needs it declared in your `init.scm` first:
+
+```scheme
+(declare-plugin "core:plum")
+```
 
 ## Prerequisites
 
-Installing a grammar runs a few external tools. Most are already on your system; if one is missing the install will tell you. You need:
+Installing a grammar runs a few external tools. Most are already on your system; if one is missing, the install fails with an error naming it. You need:
 
 - `git`
 - `curl`
@@ -17,7 +23,7 @@ How you install these depends on your operating system:
 
 - **macOS**: [Homebrew](https://brew.sh) covers all four — `brew install git curl tree-sitter`. A C compiler comes with Xcode's Command Line Tools (`xcode-select --install`); most machines already have it.
 - **Linux**: use your distribution's package manager. `git` and `curl` are usually preinstalled; `gcc` or `clang` come from your distro's base-devel/build-essential group. The `tree-sitter` CLI isn't in every distro's repos — if yours doesn't have it, install it via `cargo install tree-sitter-cli` (needs a [Rust toolchain](https://rustup.rs)) or `npm install -g tree-sitter-cli`.
-- **Windows**: [winget](https://learn.microsoft.com/windows/package-manager/winget/) or [Scoop](https://scoop.sh) can install `git`, `curl`, and `tree-sitter-cli`; for a C compiler, install the [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (select the "Desktop development with C++" workload), or run HUME under WSL and follow the Linux instructions above. If you'd rather skip the Build Tools install, `clang`, `gcc`, or [zig](https://ziglang.org/download/) (e.g. `winget install zig.zig`) work too — HUME uses whichever one it finds on `PATH`.
+- **Windows**: [winget](https://learn.microsoft.com/windows/package-manager/winget/) or [Scoop](https://scoop.sh) can install `git`, `curl`, and `tree-sitter-cli`; for a C compiler, install the [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (select the "Desktop development with C++" workload), or run HUME under WSL and follow the Linux instructions above. If you'd rather skip the Build Tools install, `clang`, `gcc`, or [zig](https://ziglang.org/download/) (e.g. `winget install zig.zig`) work too — tree-sitter picks up whichever it finds on `PATH`.
 
 ## Install a grammar
 
@@ -61,23 +67,23 @@ If HUME can't guess correctly the buffer language, you can override it manually:
 :set buffer language=python
 ```
 
-Use the exact language name — `:plum-list-grammars` shows every name HUME recognizes. The override lasts for that buffer only.
+Use the exact language name — press `Tab` after `language=` to complete from the languages HUME recognizes. (`:plum-list-grammars` lists the *grammar* catalog, which is a slightly different set.) The override lasts for that buffer only.
 
 ## Teach HUME a new language
 
 Add it to your `init.scm`:
 
 ```scheme
-(define-language! "my-lang" '(".myl") '("*.my") '("myinterpreter"))
+(define-language! "my-lang" '("myl") '("*.my") '("myinterpreter"))
 ```
 
 The arguments, in order, are:
 - the language name
-- a list of file extensions
+- a list of file extensions, written **without** a leading dot (`"myl"`, not `".myl"` — an extension with a dot never matches)
 - a list of glob patterns
 - a list of shebang lines.
 
-Trailing arguments you don't need can be dropped — `(define-language! "my-lang" '(".myl"))` is fine.
+Trailing arguments you don't need can be dropped — `(define-language! "my-lang" '("myl"))` is fine.
 
 Now `my-lang` is detected like any built-in. For a grammar that isn't in the catalog — a private or experimental tree-sitter grammar — point HUME at the compiled library and a highlight query file by hand:
 

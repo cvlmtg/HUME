@@ -1,7 +1,9 @@
 # Language Servers
 
-`core:lsp` connects HUME to language servers: hover docs, go-to-definition, references,
-diagnostics, rename, formatting, code actions, signature help, completions, and inlay hints.
+Everything an IDE gives you, in the terminal. `core:lsp` connects HUME to language servers
+for hover docs, go-to-definition, references, diagnostics, rename, formatting, code actions,
+signature help, completions, and inlay hints — and installs the servers themselves, so
+getting a language working is usually one command.
 
 ## Setup
 
@@ -64,10 +66,10 @@ Installing a server shells out to a few external tools. Most are already on your
 one is missing, the install tells you which one before downloading anything. Depending on the
 server:
 
-- `curl` — always, to download the release asset
+- `curl` — for servers downloaded as a release asset
 - `gzip` — for servers distributed as a single gzip-compressed binary
 - `unzip` (macOS/Linux) or `tar` (Windows) — for servers distributed as a zip archive
-- `node` and `npm` — for servers distributed as an npm package
+- `npm` — for servers distributed as an npm package
 
 How you install these depends on your operating system:
 
@@ -108,8 +110,10 @@ uninstalled server shows a one-line `run :lsp-install` hint, once per language p
 :lsp-servers
 ```
 
-Lists every server HUME knows how to install: its languages, its seeded version, and whether
-it's installed, out of date, or not installable on your platform (and why).
+Lists every server HUME knows about: its languages, its seeded version, and whether it's
+installed, out of date, or not installable on your platform (and why). Not every entry can
+be installed for you — many are listed so you can point HUME at a copy you install yourself,
+with `register-lsp-server!` below.
 
 ### Manage installed servers
 
@@ -122,8 +126,8 @@ the server's name from `:lsp-servers`, not the language name — e.g.
 `:lsp-uninstall rust-analyzer`, not `:lsp-uninstall rust`.
 
 Reinstalling a server that's already running (e.g. to pick up an update) shuts the old client
-down first; on most platforms this completes in one step. If it doesn't (a locked file on
-Windows), the message says so — run `:lsp-install` again.
+down first. If the install fails anyway — a locked file on Windows is the usual reason — the
+message tells you to run `:lsp-install` again, which normally succeeds the second time.
 
 ### Troubleshooting
 
@@ -169,7 +173,7 @@ order doesn't matter. `register-lsp-server!` takes:
 | `#:args` | Extra command-line arguments, if the server needs them |
 | `#:root-markers` | Filenames that mark a project root (HUME walks up from the opened file looking for the nearest one) |
 | `#:init-options` | Server-specific initialization options, as a `hash` |
-| `#:settings` | Server-specific configuration, as a `hash` — sent once at startup and answered verbatim to the server's own configuration requests |
+| `#:settings` | Reserved; not currently sent to the server. Use `#:init-options` for server configuration |
 
 Examples for a few commonly used servers:
 
@@ -211,13 +215,17 @@ Examples for a few commonly used servers:
 | `Ctrl+Space` (Insert) | `lsp-completion-trigger` | Show completions at the cursor |
 
 Jumping to a definition, declaration, type, implementation, or reference in another file
-opens that file as a buffer; use HUME's jump-back binding to return. A goto/references
-result with more than one match opens a list to pick from instead of jumping directly.
+opens that file as a buffer; `Ctrl+o` jumps back. A goto with more than one match opens a
+list to pick from instead of jumping directly, and `g R` (references) always opens the list,
+even for a single hit.
 
-Typing while a completion menu is open narrows it; `Enter` accepts the highlighted entry,
-`Esc` dismisses the menu. Signature help pops up automatically as you type an argument
-list for a function the server knows about, and inlay hints (see below) appear inline once
-enabled.
+Typing while a completion menu is open narrows it. `Tab` and `Down` move to the next entry,
+`Shift+Tab` and `Up` to the previous, `Enter` accepts the highlighted one, and `Esc`
+dismisses the menu. Signature help pops up automatically as you type an argument list for a
+function the server knows about, and inlay hints (see below) appear inline once enabled.
+
+`g n` and `g p` show the full diagnostic message in a popup after they jump; it clears on
+your next keypress. Each line with a problem also gets a short summary at its end.
 
 ## Settings
 
@@ -230,6 +238,15 @@ enabled.
 
 ```scheme
 (set-option! "lsp.inlay-hints" #t)
+```
+
+### Format on save
+
+Not on by default. Add this to your `init.scm` to run `:lsp-fmt` every time you save:
+
+```scheme
+(register-hook! 'on-buffer-save
+  (lambda (bid) (call! "lsp-fmt")))
 ```
 
 ## Managing servers
