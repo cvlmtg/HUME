@@ -57,7 +57,7 @@ project root) and attaches.
 
 ## Installing servers
 
-`core:lsp` downloads and manages language servers for you, the same way [PLUM](core-plugins.md#plum)
+`core:lsp` downloads and manages language servers for you, the same way [PLUM](core-plugins.md#core-plum)
 handles tree-sitter grammars — no need to track down a binary or install it by hand.
 
 ### Prerequisites

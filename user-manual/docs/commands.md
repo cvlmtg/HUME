@@ -30,7 +30,7 @@ Relative paths given to `:w` resolve against HUME's working directory (`:pwd`), 
 | `:e` | Reload the current file. Refuses if there are unsaved changes |
 | `:e!` | Reload, discarding unsaved changes |
 
-In arguments, `%` expands to the current file's path and `#` to the alternate file's. Both only work as a whole argument — `:w %.bak` won't expand.
+In arguments, `%` expands to the current file's path and `#` to the alternate file's. Both only work as a whole argument — `:w %.bak` won't expand. `:b` is the exception: it resolves `#` itself, which is why `:b #` works for buffers with no file on disk.
 
 ## Buffers
 
