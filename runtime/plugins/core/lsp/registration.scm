@@ -13,9 +13,14 @@
 ;;
 ;; Hash: name → server-entry fields, the tagged-alist tail from
 ;; lsp-servers.scm: (languages ...) (command . cmd) (args ...)
-;; (settings . json-string-or-absent) — settings is a single canonical JSON
-;; string (empty tail `(settings)` when the server has none), decoded with
-;; `(json-parse)` at the one place it's consumed
+;; (config . json-string-or-absent) — Helix's `[language-server.*.config]`
+;; table, copied verbatim by the sync script. Helix sends this blob as
+;; `initializationOptions` (the only path that actually configures gopls/
+;; rust-analyzer — both request `workspace/configuration` under their own
+;; name, which this blob isn't nested under, so that lookup misses for them
+;; and many others; a verified no-op for both, not a bug). `config` is a
+;; single canonical JSON string (empty tail `(config)` when the server has
+;; none), decoded with `(json-parse)` at the one place it's consumed
 ;; (`lsp/register-server-languages!`), not walked into a hash at load time
 ;; for every entry regardless of whether it's ever installed.
 ;; Exposed read-only via `lsp/servers-catalog` — `servers.scm` needs it to
@@ -87,7 +92,7 @@
 ;; ── Registration ──────────────────────────────────────────────────────────────
 
 ;;; Register `name` for every language it serves that isn't registered yet,
-;;; with `cmd` as the server command. `args`/`settings` are shared across a
+;;; with `cmd` as the server command. `args`/`config` are shared across a
 ;;; multi-language server; only root markers vary per language (see
 ;;; docs/LSP-INSTALL.md "Seeded data format"). Skipping an already-registered
 ;;; language is what makes a mid-session rescan (`:lsp-rescan-servers`, or
@@ -115,19 +120,26 @@
          (langs    (filter (lambda (lang-entry) (not (lsp-registered-for-language? (car lang-entry))))
                             (cdr (lsp/field fields 'languages))))
          (args     (cdr (lsp/field fields 'args)))
-         ;; `(settings . "json")` when the server has seeded settings,
-         ;; `(settings)` (empty tail) otherwise — `cdr` gives the JSON
-         ;; string or '() respectively, matching every other empty-tail
-         ;; field in this catalog (see lsp-servers.scm's own header).
-         (settings-json (cdr (lsp/field fields 'settings)))
-         (settings (if (null? settings-json) #f (json-parse settings-json))))
+         ;; `(config . "json")` when the server has a seeded Helix config,
+         ;; `(config)` (empty tail) otherwise — `cdr` gives the JSON string
+         ;; or '() respectively, matching every other empty-tail field in
+         ;; this catalog (see lsp-servers.scm's own header).
+         (config-json (cdr (lsp/field fields 'config)))
+         (config (if (null? config-json) #f (json-parse config-json))))
     (for-each
       (lambda (lang-entry)
+        ;; Delivered both ways, exactly as Helix does: as
+        ;; `initializationOptions` (the path that actually configures
+        ;; gopls/rust-analyzer/etc. — see the catalog comment above) and
+        ;; as `#:settings` (answers `workspace/configuration` pulls;
+        ;; misses for servers whose config isn't nested under their own
+        ;; name are expected and harmless, same as in Helix).
         (register-lsp-server! (car lang-entry)
                                #:command cmd
                                #:args args
                                #:root-markers (cdr lang-entry)
-                               #:settings settings))
+                               #:init-options config
+                               #:settings config))
       langs)))
 
 ;; ── Startup server registration ───────────────────────────────────────────────

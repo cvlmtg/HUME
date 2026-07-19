@@ -86,17 +86,23 @@ LSP_SERVERS_HEADER = """\
 ;;;    (languages (lang-name root-marker…)…)
 ;;;    (command . cmd)
 ;;;    (args arg…)
-;;;    (settings . json-string))
+;;;    (config . json-string))
 ;;;
 ;;; `args` is the empty tail `(args)` (never #f) when the server takes none.
-;;; `settings` is the *entire* tail `(settings)` (never a dotted pair) when
-;;; the server has no seeded settings; otherwise `(settings . "...")`, a
-;;; single canonical (sort_keys) JSON-encoded string — the runtime catalog
-;;; loader (`core:lsp/registration.scm`) parses it with the `(json-parse)`
-;;; builtin at load time, once, rather than every plugin needing its own
-;;; nested-alist/vector-array reader for a JSON object embedded as Scheme
-;;; data. All fields are fully canonicalised; no defaults are applied at
-;;; read time. Read via the R7RS idiom from any plugin:
+;;; `config` is Helix's `[language-server.*.config]` table for this server,
+;;; copied verbatim — the *entire* tail is `(config)` (never a dotted pair)
+;;; when Helix has no config for it; otherwise `(config . "...")`, a single
+;;; canonical (sort_keys) JSON-encoded string. `core:lsp/registration.scm`
+;;; delivers it two ways, exactly as Helix does: as `initializationOptions`
+;;; (the path that actually configures most servers) and as
+;;; `register-lsp-server!`'s `#:settings` (answers `workspace/configuration`
+;;; pulls — a miss is expected and harmless for servers whose config isn't
+;;; nested under their own name). The runtime catalog loader parses the
+;;; JSON string with the `(json-parse)` builtin at load time, once, rather
+;;; than every plugin needing its own nested-alist/vector-array reader for a
+;;; JSON object embedded as Scheme data. All fields are fully canonicalised;
+;;; no defaults are applied at read time. Read via the R7RS idiom from any
+;;; plugin:
 ;;;
 ;;;   (define *lsp-servers*
 ;;;     (call-with-input-file
@@ -260,7 +266,7 @@ def emit_language_identities(langs: list[dict]) -> list[str]:
 
 
 def parse_language_servers(doc: dict) -> dict[str, dict]:
-    """Return {server_name: {command, args, settings, languages}}.
+    """Return {server_name: {command, args, config, languages}}.
 
     Only the primary (first-listed) language-server per language is kept —
     HUME's client is single-server-per-buffer in v1, so Helix's non-primary
@@ -299,14 +305,14 @@ def parse_language_servers(doc: dict) -> dict[str, dict]:
             if ls_def is None or "command" not in ls_def:
                 broken_servers[server_name] = [lang_name]
                 continue
-            settings = ls_def.get("config")
-            if settings and "hostInfo" in settings:
-                settings = {**settings, "hostInfo": "hume"}
+            config = ls_def.get("config")
+            if config and "hostInfo" in config:
+                config = {**config, "hostInfo": "hume"}
             ignored_keys.update(k for k in ls_def if k not in ("command", "args", "config"))
             servers[server_name] = {
                 "command": ls_def["command"],
                 "args": ls_def.get("args", []),
-                "settings": settings,
+                "config": config,
                 "languages": [],
             }
         servers[server_name]["languages"].append((lang_name, *roots))
@@ -361,17 +367,17 @@ def emit_lsp_servers(servers: dict[str, dict]) -> list[str]:
             for lang_tuple in s["languages"]
         )
         args_sexpr = " ".join(scheme_str(a) for a in s["args"])
-        settings_field = (
-            " (settings . {})".format(scheme_str(json.dumps(s["settings"], sort_keys=True)))
-            if s["settings"]
-            else " (settings)"
+        config_field = (
+            " (config . {})".format(scheme_str(json.dumps(s["config"], sort_keys=True)))
+            if s["config"]
+            else " (config)"
         )
         row = " ({} (languages {}) (command . {}) (args{}){})".format(
             scheme_str(name),
             langs_sexpr,
             scheme_str(s["command"]),
             f" {args_sexpr}" if args_sexpr else "",
-            settings_field,
+            config_field,
         )
         rows.append(row)
     return ["("] + rows + [")"]

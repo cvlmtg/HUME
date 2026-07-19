@@ -232,26 +232,35 @@ fn settings_conversion_produces_correct_json_shapes_for_arrays_and_nested_object
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
+    // The seeded catalog's `config` field is registered under BOTH keywords
+    // (`registration.scm` delivers it as init-options and settings, exactly
+    // as Helix delivers the same blob) — assert the conversion lands
+    // correctly in both, not just one.
+
     // svlangserver: (systemverilog (includeIndexing . #("*.{v,vh,sv,svh}" "**/*.{v,vh,sv,svh}")))
-    let sv_settings = ed
-        .lsp
-        .config_settings_for_test("systemverilog")
-        .expect("svlangserver settings must be registered");
     let expected_sv = serde_json::json!({
         "systemverilog": {
             "includeIndexing": ["*.{v,vh,sv,svh}", "**/*.{v,vh,sv,svh}"]
         }
     });
+    let sv_settings = ed
+        .lsp
+        .config_settings_for_test("systemverilog")
+        .expect("svlangserver settings must be registered");
     assert_eq!(
         sv_settings, expected_sv,
         "a #(...) settings array must decode to a JSON array, not an object or a string"
     );
+    let sv_init_options = ed
+        .lsp
+        .config_init_options_for_test("systemverilog")
+        .expect("svlangserver init-options must be registered");
+    assert_eq!(
+        sv_init_options, expected_sv,
+        "catalog config must reach init-options with the same shape as settings"
+    );
 
     // rust-analyzer: nested objects with bool/string/int scalar leaves.
-    let ra_settings = ed
-        .lsp
-        .config_settings_for_test("rust")
-        .expect("rust-analyzer settings must be registered");
     let expected_ra = serde_json::json!({
         "files": {"watcher": "server"},
         "inlayHints": {
@@ -263,9 +272,21 @@ fn settings_conversion_produces_correct_json_shapes_for_arrays_and_nested_object
             "typeHints": {"hideClosureInitialization": false}
         }
     });
+    let ra_settings = ed
+        .lsp
+        .config_settings_for_test("rust")
+        .expect("rust-analyzer settings must be registered");
     assert_eq!(
         ra_settings, expected_ra,
         "nested-object settings entries must round-trip through the converter exactly"
+    );
+    let ra_init_options = ed
+        .lsp
+        .config_init_options_for_test("rust")
+        .expect("rust-analyzer init-options must be registered");
+    assert_eq!(
+        ra_init_options, expected_ra,
+        "catalog config must reach init-options with the same shape as settings"
     );
 }
 

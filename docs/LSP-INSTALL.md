@@ -100,7 +100,7 @@ optional fields.
 
 **`lsp-servers.scm`** (registration, from helix-pin) — keyed by *server*, with a language
 list that the scan fans out into one `register-lsp-server!` call per language. Keying by
-language would copy a multi-language server's `settings` blob once per language
+language would copy a multi-language server's `config` blob once per language
 (typescript-language-server serves four); normalized beats denormalized copies. Root
 markers are the one *per-language* field: in Helix, `roots` belongs to the language, not
 the server, and languages sharing a server genuinely differ (javascript/jsx root on
@@ -112,7 +112,7 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
   (languages ("rust" "Cargo.toml"))
   (command . "rust-analyzer")
   (args)
-  (settings))
+  (config))
  ("typescript-language-server"
   (languages
    ("typescript" "package.json" "tsconfig.json")
@@ -121,7 +121,7 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
    ("jsx"        "package.json" "jsconfig.json"))
   (command . "typescript-language-server")
   (args "--stdio")
-  (settings . "{\"hostInfo\": \"hume\", \"typescript\": {\"inlayHints\": {…}}}")))
+  (config . "{\"hostInfo\": \"hume\", \"typescript\": {\"inlayHints\": {…}}}")))
 ```
 
 - **Languages live only in this file.** Helix language names match `languages.scm` (same
@@ -131,17 +131,22 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
   [v1 scope](#v1-scope-and-limitations)): each language appears under exactly one server,
   so the scan can never produce conflicting registrations.
 - Every entry uses one shape: an absent/empty value is the empty tail (`(args)`,
-  `(settings)`), never `#f` — consumers read one encoding.
-- `settings` is a single canonical (`sort_keys`) JSON-encoded string when the server has
-  seeded settings — `(settings . "...")`, the *entire* tail is `(settings)` (never a
-  dotted pair) when it doesn't. The sync script emits it with a plain `json.dumps`; the
-  plugin decodes it with the `(json-parse)` Steel builtin (`hume-scripting/src/builtins/
-  json.rs`, wrapping the same `json_to_steel` conversion `lsp-request` responses already
-  use) at the one place it's consumed (`lsp/register-server-languages!`), not walked into
-  a Steel hash for every catalog entry at load regardless of whether it's ever installed.
-  This replaced an earlier nested-alist-plus-`#(...)`-vector encoding that needed a
-  hand-rolled Scheme-side walker (`lsp/settings->hash`) and a
-  Python-side array/object-disambiguation hack (`vector_arrays=True`) purely because plain
+  `(config)`), never `#f` — consumers read one encoding.
+- `config` is Helix's `[language-server.*.config]` table for this server, copied verbatim.
+  It's a single canonical (`sort_keys`) JSON-encoded string when Helix seeds one for this
+  server — `(config . "...")`, the *entire* tail is `(config)` (never a dotted pair) when
+  it doesn't. `core:lsp/registration.scm` delivers it as both `#:init-options` and
+  `#:settings` on `register-lsp-server!`, exactly as Helix delivers the same blob as both
+  `initializationOptions` and its own `workspace/configuration` answer — see
+  `docs/ROADMAP.md`'s LSP section for why that's correct rather than a mismatch. The sync
+  script emits it with a plain `json.dumps`; the plugin decodes it with the `(json-parse)`
+  Steel builtin (`hume-scripting/src/builtins/json.rs`, wrapping the same `json_to_steel`
+  conversion `lsp-request` responses already use) at the one place it's consumed
+  (`lsp/register-server-languages!`), not walked into a Steel hash for every catalog entry
+  at load regardless of whether it's ever installed. This replaced an earlier
+  nested-alist-plus-`#(...)`-vector encoding that needed a hand-rolled Scheme-side walker
+  (`lsp/settings->hash`) and a Python-side array/object-disambiguation hack
+  (`vector_arrays=True`) purely because plain
   sexpr syntax can't tell an empty JSON array from an empty JSON object — a JSON string
   has no such ambiguity.
 

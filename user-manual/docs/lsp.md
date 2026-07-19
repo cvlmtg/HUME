@@ -172,8 +172,8 @@ order doesn't matter. `register-lsp-server!` takes:
 | `#:command` | The executable to run |
 | `#:args` | Extra command-line arguments, if the server needs them |
 | `#:root-markers` | Filenames that mark a project root (HUME walks up from the opened file looking for the nearest one) |
-| `#:init-options` | Server-specific initialization options, as a `hash` |
-| `#:settings` | Server configuration, as a `hash` — see below |
+| `#:init-options` | Server configuration, sent once at startup — see below |
+| `#:settings` | Server configuration, handed over on an ongoing basis — see below |
 
 Examples for a few commonly used servers:
 
@@ -196,26 +196,35 @@ Examples for a few commonly used servers:
 (register-lsp-server! "c" #:command "clangd" #:root-markers '("compile_commands.json" ".clangd"))
 ```
 
-### Server settings (`#:settings`)
+### Server configuration (`#:init-options` and `#:settings`)
 
-Unlike `#:init-options` (sent once, at startup), `#:settings` is HUME's side of the server's *own* configuration system — the same thing a `settings.json` would hold in an editor with native LSP support. It's pushed to the server right after startup, and used to answer any configuration questions the server asks afterward.
+Language servers each have their own configuration options — code style, extra warnings, where to find things — and most of them read the *shape and names* of those options straight from their own documentation, not from anything LSP-specific. HUME just needs to hand the hash over in the right way, and servers differ on which way that is. Check your server's own docs for the option names, and try `#:init-options` first.
 
-Servers ask for a named **section** (a dotted string like `"gopls"` or `"typescript.inlayHints"`), and HUME resolves it by walking that path into your `#:settings` hash — the top level of the hash has to match what the server itself asks for. Most servers namespace their own settings under their own name, the same way you'd see them nested in a VS Code `settings.json`:
+**`#:init-options` is sent once, when the server starts up.** This is how most servers actually pick up their configuration — including well-known ones like rust-analyzer and gopls:
 
 ```scheme
-;; gopls asks for section "gopls" and expects its option map directly —
-;; so the hash needs a top-level "gopls" key, same shape as VS Code's
-;; settings.json "gopls": {...} block.
+;; gopls reads its own option names directly off the hash you pass here —
+;; no extra nesting needed.
 (register-lsp-server! "go" #:command "gopls"
   #:root-markers '("go.mod")
-  #:settings (hash "gopls" (hash "hints" (hash "assignVariableTypes" #t
-                                                "parameterNames" #t)
-                                 "usePlaceholders" #t)))
+  #:init-options (hash "hints" (hash "assignVariableTypes" #t
+                                     "parameterNames" #t)
+                       "usePlaceholders" #t))
 ```
 
-A request for a more specific section (say, `"gopls.hints"`) walks further into the same hash — `gopls` then `hints`. Ask for a section that isn't there and the server gets nothing back (`null`), same as if `#:settings` were never set — check your server's own docs for the exact section name and shape it expects.
+**`#:settings` is handed to the server on an ongoing basis instead of just once at startup:** HUME sends it right after the server is ready, and keeps it on hand to answer if the server asks for a specific piece of it later by name. Which of those two a given server actually pays attention to depends on the server — some read what's handed to them upfront, some ask for a named piece, some do both — so when in doubt, shape the hash to match whatever your server's own docs show for a settings file, and pass it as both:
 
-Changing `#:settings` and running `:reload-config` updates what HUME has stored, but an already-running server keeps its old configuration until it restarts — run `:lsp-restart` (or reinstall the server) to push the change.
+```scheme
+;; typescript-language-server reads its "typescript" and "javascript"
+;; keys from what's handed to it, without asking for them by name.
+(register-lsp-server! "typescript" #:command "typescript-language-server" #:args '("--stdio")
+  #:root-markers '("package.json" "tsconfig.json")
+  #:settings (hash "typescript" (hash "inlayHints" (hash "parameterNames" (hash "enabled" "all")))))
+```
+
+If a server does ask for a specific named piece and it isn't in your `#:settings` hash, that's a plain "nothing configured for this" answer, not an error — well-behaved servers, including gopls and rust-analyzer, take that in stride and keep whatever configuration they already have.
+
+Changing either and running `:reload-config` updates what HUME has stored, but an already-running server keeps its old configuration until it restarts — run `:lsp-restart` (or reinstall the server) to push the change.
 
 ## Commands and keys
 
