@@ -1,5 +1,7 @@
 # Files & Buffers
 
+Open several files, view one file in two places at once, and keep them all straight. This page covers opening, saving, splitting, and quitting — plus what HUME does and doesn't guarantee about your data.
+
 ## Opening files
 
 ```
@@ -24,11 +26,13 @@ A **buffer** is an open file (or scratch text). HUME can have multiple buffers o
 | `:bd` | Close (delete) current buffer (blocked if unsaved) |
 | `:bd!` | Force close, discarding unsaved changes |
 
-`:b` accepts a name prefix, a full path, a 1-based index as shown by `:ls`, or `#` to switch to the alternate buffer. If two open files share the same name, their parent directory is shown to disambiguate.
+`:b` accepts a name prefix, a full path, a 1-based index as shown by `:ls`, or `#` to switch to the alternate buffer. When two open files share a name, Tab completion shows their parent directories to tell them apart.
+
+Closing the last remaining buffer leaves an empty scratch buffer rather than exiting.
 
 ### Alternate buffer
 
-`:b #` (or `:e #`) toggles between the current and previous buffer.
+`:b #` switches back to the buffer you were in before this one. `:e #` does the same, but only works when that buffer has a file on disk — for scratch and other file-less buffers, use `:b #`.
 
 ## Splits and panes
 
@@ -49,7 +53,9 @@ A **pane** is a viewport onto a buffer. A buffer is the open file itself; a pane
 | `Ctrl+p h` / `j` / `k` / `l` | Focus the pane to the left / below / above / to the right |
 | `Ctrl+p c` | Close the focused pane (does nothing if it's the only pane) |
 
-`:q` is pane-aware: with multiple panes open, it closes the focused pane and leaves the buffer open in the buffer list; with a single pane, it falls through to the usual quit behavior (blocked on unsaved changes).
+Splitting is refused with a message when the pane is already too small to divide.
+
+`:q` is pane-aware: with multiple panes open it closes the focused pane and leaves the buffer in the buffer list. With a single pane it closes the current buffer and moves you to another one, quitting HUME only when there's nothing left to go back to. Unsaved changes block it — use `:q!` to discard them.
 
 A divider is drawn between panes (controlled by the `pane-dividers` option, on by default), and the pane without focus is dimmed. Soft wrap is per-pane, so two panes on the same buffer can wrap independently: `:wrap` toggles it on/off for the focused pane, and `:set pane wrap-mode=<value>` changes its style directly — see [Text wrap](configuration.md#text-wrap).
 
@@ -60,8 +66,9 @@ A divider is drawn between panes (controlled by the `pane-dividers` option, on b
 | `:w` | Save current buffer |
 | `:w filename` | Save as (write to a new path) |
 | `:w!` | Force save (tries `chmod` + retry on permission errors) |
+| `:wa` | Save every modified buffer |
 
-A `[+]` indicator in the status bar means the buffer has unsaved changes. Files using CRLF line endings are detected and preserved on save. Writes use atomic file operations (write to temp, rename).
+A `[+]` indicator in the status bar means the buffer has unsaved changes. Files using CRLF line endings are detected and preserved on save. Relative paths are resolved against HUME's working directory (`:pwd`), which isn't necessarily the shell's.
 
 ## Working directory
 
@@ -74,18 +81,19 @@ A `[+]` indicator in the status bar means the buffer has unsaved changes. Files 
 
 | Command | Effect |
 |---------|--------|
-| `:q` | Close the focused pane if others are open; otherwise quit (blocked if there are unsaved changes) |
-| `:q!` | Quit without saving |
+| `:q` | Close the focused pane if others are open; otherwise close the buffer, quitting on the last one |
+| `:q!` | Same, discarding unsaved changes |
 | `:wq` | Save and quit |
-| `:qa` | Quit, closing all buffers |
+| `:qa` | Quit everything. Refuses if any buffer has unsaved changes, and takes you to the first one |
+| `:qa!` | Quit everything, discarding unsaved changes |
 
 ## The scratch buffer
 
 If you launch HUME with no arguments, it opens a scratch buffer named `*scratch*`. This buffer has no associated file — `:w` will ask for a filename.
 
-## Read-only mode
+## Read-only buffers
 
-Buffers can be marked read-only. The status bar shows `[RO]` when active. Editing commands are blocked on read-only buffers — attempts show a warning.
+The editor's own informational buffers — `:messages`, `:ls`, `:plugin-status` — are read-only. The status bar shows `[RO]`, and editing commands are refused with a warning. Files you open are always editable, whatever their permissions on disk; a write you aren't allowed to make fails at `:w` rather than being blocked up front.
 
 ## Synthetic buffers
 
@@ -103,8 +111,8 @@ These are regular buffers in all other respects — you can scroll, search, and 
 
 A few things worth knowing before trusting HUME with real work:
 
-- **Undo tree is in-memory only.** Branching history is preserved for the session but **lost when HUME exits**. There is no persistent undo across restarts.
-- **No swap or backup files.** HUME does not write Vim-style `.swp` files. Saves use an atomic temp-file-plus-rename, so on POSIX the target either has the old content or the new content, never a partial write.
-- **UTF-8 only.** Files must be valid UTF-8 — invalid bytes are rejected with an error (no lossy fallback). No BOM detection or stripping.
+- **Undo history is in-memory only.** It's **lost when HUME exits** — there is no undo across restarts.
+- **No swap or backup files.** HUME does not write Vim-style `.swp` files. Saves write to a temporary file and rename it into place, so the file on disk holds either the old content or the new, never a half-written mix.
+- **UTF-8 only.** Files must be valid UTF-8 — invalid bytes are rejected with an error (no lossy fallback). A byte-order mark isn't stripped; it will appear as a character at the top of the buffer.
 - **CRLF detected and preserved.** Files containing `\r\n` are normalized to `\n` in the buffer and re-expanded to `\r\n` on save; the status bar shows `CRLF` or `LF`. Bare `\r` (old Mac) is left as-is.
 - **No on-disk log file.** `:messages` is the entire logging surface — an in-memory ring capped at 1000 entries, discarded on exit. If you need to keep warnings/errors, copy them out of `:messages` before quitting.

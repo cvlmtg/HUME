@@ -1,6 +1,6 @@
 # Editing
 
-HUME follows a **select-then-act** model. You first select the text you want to change, then apply an action to it. Most editing commands operate on the current selection.
+Say what you mean, then say what to do with it. Because the selection always comes first, you can see exactly what an edit will touch before it happens — and the same handful of action keys work on a character, a word, a block, or forty places at once.
 
 ## Inserting text
 
@@ -13,9 +13,9 @@ HUME follows a **select-then-act** model. You first select the text you want to 
 | `o` | New line below |
 | `O` | New line above |
 
-Press `Esc` to return to Normal mode.
+Press `Esc` or `Ctrl+c` to return to Normal mode. `Ctrl+w` deletes the word before the cursor while you type.
 
-## Deleting and Changing text
+## Deleting and changing text
 
 | Key | Effect |
 |-----|--------|
@@ -34,20 +34,32 @@ Whichever way you entered Insert mode, `m i i` recovers what you last typed afte
 |-----|--------|
 | `r` + char | Replace every selected character with the typed character |
 
-After pressing `r`, HUME waits for the replacement character. All the characters in the selection are replaced with the typed character.
+Line endings inside the selection are left alone, so replacing across several lines won't collapse them into one. On a single character, `r` is delimiter-aware: replacing one half of a bracket or quote pair updates its partner too.
+
+## Changing case
+
+| Key | Effect |
+|-----|--------|
+| `g u` | Lowercase the selection |
+| `g U` | Uppercase the selection |
+| `g C` | Capitalize the selection |
 
 ## Lines and alignment
 
 | Key | Effect |
 |-----|--------|
-| `J` | Join the current line with the next, replacing the newline with a space; the cursor lands on the inserted space. If the selection spans multiple lines, all are joined into one. |
-| `&` | Align all selections to the column of the primary selection's anchor. Spaces are inserted or removed at the left edge of each selection. Multi-line selections are left unchanged. |
+| `J` | Join the selected lines into one |
+| `&` | Align selections into a column |
 
-You can align the selection to the left or the right depending on the position of the selection anchor. Use `ctrl+e` to swap anchor and head. See [Selections](selections.md#flipping-and-collapsing-the-selection) for more information on flipping the selection.
+`J` replaces each line break with a single space and drops the next line's indentation, so joining wrapped code or prose doesn't leave a gap in the middle. When the next line is empty or only whitespace, the lines are joined with no space at all. Joining several lines at once leaves one cursor on each inserted space, ready to act on.
+
+`&` lines up your selections using the primary selection's line as the starting point. Spaces are inserted at the left edge of each selection to reach that column, and if some other line needs more room, the column widens for everybody — which means the primary selection can shift right too. Multi-line selections are left alone. Where a selection sits too far right already, the run of spaces or tabs immediately to its left is squeezed down (never below one).
+
+You can align to the left or the right depending on which end of the selection is the anchor; `Ctrl+e` swaps anchor and head. See [Selections](selections.md#flipping-and-collapsing-the-selection).
 
 ## Copying and pasting
 
-HUME has two paste sources: the system clipboard and a kill ring.
+HUME has two paste sources: the system clipboard and a kill ring that remembers the last 10 things you deleted or yanked.
 
 | Key | Effect |
 |-----|--------|
@@ -57,13 +69,7 @@ HUME has two paste sources: the system clipboard and a kill ring.
 | `[` | Cycle one step older in the kill ring and re-paste |
 | `]` | Cycle one step newer in the kill ring and re-paste |
 
-### Pasting from the terminal
-
-Pasting text from outside HUME — your system clipboard via the terminal's own paste shortcut, a mouse paste, or a paste from `tmux`/`screen` — lands in one step and as a single undo entry, however long the pasted text is.
-
-- In Insert mode, the text is inserted at the cursor. Auto-pairing does not run on pasted text, so pasted brackets and quotes are never doubled up.
-- In Normal or Extend mode, the text replaces the current selection.
-- On the command line and in search/select prompts, line breaks in the pasted text become spaces, since those fields are single-line.
+With a real selection (more than a single character), `p` and `P` both **replace** it — "after" and "before" only apply when the selection is a bare cursor. The replaced text is thrown away rather than pushed onto the kill ring.
 
 ### Smart-p paste
 
@@ -71,15 +77,23 @@ Pasting text from outside HUME — your system clipboard via the terminal's own 
 
 - **After `d` or `c`** — reads the kill ring head (the most recently killed or changed text).
 - **After a paste-family command** (`p`, `P`, `[`, `]`) — re-pastes the same text again, appending another copy onto the previous paste.
-- **Otherwise** (including after `y`) — reads the system clipboard.
+- **Otherwise** (including after `y`) — reads the system clipboard, falling back to the kill ring head when the clipboard is empty or unavailable.
 
-The clipboard rule after `y` deserves a note: `y` writes the yanked text to **both** the system clipboard and the kill ring, so `y` then `p` pastes the clipboard, which is the text you just yanked — the common case behaves as expected. The subtlety is when you yank to an explicit non-default register (e.g. `"0y`): the clipboard is left untouched and a following `p` pastes whatever was previously in the clipboard. To paste from the just-yanked named register, prefix with the register: `"0p`.
+Since `y` writes to both the clipboard and the kill ring, `y` then `p` pastes what you just yanked. The exception is yanking to an explicit register (`"0y`): that leaves the clipboard untouched, so a following bare `p` pastes whatever was in the clipboard before. Use `"0p` to read the register back.
 
-`[` and `]` cycle within the current **paste session** (opened by a preceding `p`/`P`). Each cycle replaces the previous paste, and the whole session records as a single undo step. Consecutive `p` presses append copies (each starts a new session and a separate undo step).
+`[` and `]` only work inside a **paste session** — one opened by a preceding `p` or `P`. Each cycle replaces the previous paste, and the whole session records as a single undo step. Consecutive `p` presses append copies, each starting a new session and a separate undo step.
+
+### Pasting from the terminal
+
+Pasting text from outside HUME — your system clipboard via the terminal's own paste shortcut, a mouse paste, or a paste from `tmux`/`screen` — lands in one step, however long the pasted text is.
+
+- In Insert mode, the text is inserted at the cursor. Auto-pairing does not run on pasted text, so pasted brackets and quotes are never doubled up.
+- In Normal or Extend mode, a real selection is replaced; on a bare cursor the text is inserted in front of it.
+- On the command line and in search/select prompts, line breaks in the pasted text become spaces, since those fields are single-line.
 
 ### Whitespace and the kill ring
 
-When the current kill-ring head is a pure-whitespace entry (only spaces, tabs, and/or newlines), the next delete, change, or yank overwrites that slot in place instead of taking a fresh one. This stops filling the ring with entries you would never want to cycle back to. The just-killed whitespace remains retrievable until the next capture, so a swap still works; afterwards it is gone. To keep whitespace durably, yank it into a named register (`"0`–`"9`).
+When the current kill-ring head is a pure-whitespace entry (only spaces, tabs, and/or newlines), the next delete, change, or yank overwrites that slot in place instead of taking a fresh one. This stops the ring filling up with entries you'd never want to cycle back to. To keep whitespace durably, yank it into a numbered register (`"0`–`"9`).
 
 ### Register prefix (`"`)
 
@@ -89,18 +103,23 @@ Prefix a yank, delete, change, or paste with `"` + a register name to target a s
 |---------|--------|
 | `"cp` | Paste from the system clipboard explicitly |
 | `"kp` | Paste from the kill-ring head |
-| `"0y` | Yank to named register 0 |
-| `"5p` | Paste from named register 5 |
+| `"ky` | Yank to the kill ring only, leaving the clipboard alone |
+| `"0y` | Yank to register 0 |
+| `"5p` | Paste from register 5 |
 | `"bd` | Delete to the black hole (nothing saved) |
 
 Four kinds of register are addressable via `"`:
 
 | Register | Contents |
 |----------|----------|
-| `0`–`9` | Named storage, symmetric — `"5y` writes and `"5p` reads the same slot |
+| `0`–`9` | Numbered storage — `"5y` writes and `"5p` reads the same slot |
 | `k` | Kill-ring head |
 | `c` | System clipboard |
 | `b` | Black hole — writes are discarded, reads return nothing |
+
+::: warning Numbered registers are shared with macros
+`"3y` and `Q 3` write to the same slot, and the last write wins — recording a macro into `3` overwrites text you stored there, and yanking into `3` destroys the macro. Keep the two uses on separate numbers.
+:::
 
 Two further registers exist but cannot be named through the `"` prefix:
 
@@ -113,10 +132,10 @@ Two further registers exist but cannot be named through the `"` prefix:
 
 | Key | Effect |
 |-----|--------|
-| `u` | Undo |
+| `u` | Undo (accepts a count — `5u` undoes five steps) |
 | `U` / `Ctrl+r` | Redo |
 
-HUME has a full undo tree — branching history is preserved. If you undo several steps and then type, the previous "future" is kept and accessible.
+Undo history is a tree rather than a straight line, so redoing after new edits follows the most recent branch. The history lives in memory only and starts fresh each time you open a file.
 
 ## Repeat
 
@@ -124,7 +143,7 @@ HUME has a full undo tree — branching history is preserved. If you undo severa
 |-----|--------|
 | `.` | Repeat the last editing command |
 
-Dot-repeat replays the most recent insert session or editing command (delete, change, etc.). Useful for applying the same change in multiple locations.
+Dot-repeat replays the most recent insert session or editing command — delete, change, paste and so on, but not `y`. Give it a count to override the original: if `3w` set up the first change, `5.` repeats it over five words instead.
 
 ## Macros
 
@@ -132,16 +151,18 @@ Macros record and replay sequences of keys and are stored in registers. Register
 
 | Key | Effect |
 |-----|--------|
-| `Q Q` | Start recording into the default register `q` |
-| `Q <reg>` | Start recording into a named register (`0`–`9`) |
+| `Q Q` or `Q q` | Start recording into the default register `q` |
+| `Q <0-9>` | Start recording into a numbered register |
 | `Q` (while recording) | Stop recording |
 | `q q` | Replay register `q` |
-| `q <reg>` | Replay a named register (`0`–`9`) |
+| `q <0-9>` | Replay a numbered register |
 | `<count> q q` | Replay register `q` `<count>` times |
+
+Recording is ignored in read-only buffers, and while a macro is already recording or replaying — so a macro can't record itself or nest.
 
 ## Numeric count
 
-Prefix a motion with one or more digits — the first digit must be `1`–`9`; `0` is a digit only inside an already-started count, otherwise `0` is `goto-line-start`. So `12w` moves forward 12 words and `10j` moves down 10 lines, while `0` alone jumps to the start of the line.
+Prefix a command with digits to repeat it. The first digit must be `1`–`9`; `0` counts only once a count is already under way. So `12w` moves forward 12 words and `10j` moves down 10 lines.
 
 | Example | Effect |
 |---------|--------|
@@ -150,20 +171,22 @@ Prefix a motion with one or more digits — the first digit must be `1`–`9`; `
 | `12w` | Move forward 12 words |
 | `10j` | Move down 10 lines |
 
+`0` on its own does nothing by default — `g h` goes to the start of the line. If you want vim's `0`, the `core:vim-keybind` plugin binds it (see [Core Plugins](core-plugins.md#core-vim-keybind)).
+
 ## Surround
 
-HUME's surround commands select or wrap delimiter pairs using the `m` prefix — see [Selections](selections.md) for the full list of `m i`/`m a` text objects and surround commands.
+HUME's surround commands select or wrap delimiter pairs using the `m` prefix — see [Selections](selections.md) for the full list of `m i`/`m a` text objects.
 
 | Key | Effect |
 |-----|--------|
 | `m s` + char | Select the surrounding delimiter pair (both ends) |
 | `m w` + char | Wrap each selection with a delimiter pair |
 
-The `m` key is a prefix — the status bar shows "match" while waiting for the next key.
+To delete or replace a pair, select it with `m s` and then act: `m s (` then `d` deletes the parentheses, `r` replaces them.
 
 ## Helix-style surround (bundled plugin)
 
-If you prefer Helix-style surround, a built-in plugin overrides the default `m s` binding and adds `m d` / `m r`:
+If you prefer Helix's dedicated surround keys, a bundled plugin provides them:
 
 | Key | Effect |
 |-----|--------|
@@ -171,8 +194,16 @@ If you prefer Helix-style surround, a built-in plugin overrides the default `m s
 | `m d` + char | Delete the surrounding pair |
 | `m r` + char + new | Replace the surrounding pair with a new delimiter |
 
-Load the plugin in your `init.scm`:
+Note that this moves wrapping onto `m s`: it takes over the default `m s` (select the pair) and removes `m w`.
 
 ```scheme
 (load-plugin "core:helix-surround")
+```
+
+## GUI-style paste (bundled plugin)
+
+If you'd rather keep the clipboard and the kill ring on separate keys instead of letting `p` choose, load `core:classic-paste`. It puts the kill ring on `p` / `P` and the system clipboard on `Ctrl+V` / `Ctrl+Shift+V` (the latter needs the kitty protocol).
+
+```scheme
+(load-plugin "core:classic-paste")
 ```
