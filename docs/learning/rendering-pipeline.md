@@ -34,8 +34,9 @@ feature:
   Stage 4 — they draw in the gutter columns laid out by Stage 1.
 - **Syntax highlighting, search matches, bracket highlighting** plug into
   Stage 3 — they add or override style on individual graphemes.
-- **Virtual lines** (inline diagnostics, diff context) plug into Stage 2 —
-  they inject rows that don't correspond to buffer lines.
+- **Virtual lines** (inline diagnostics today; diff context could follow the
+  same mechanism) plug into Stage 2 — they inject rows that don't correspond
+  to buffer lines.
 - **Floating overlays** (completion popup, hover) plug into Stage 4 — they
   draw over the composed output.
 
@@ -72,15 +73,15 @@ draw real text, visible whitespace, inlay hints, and tilde fillers through
 the same machinery.
 
 A parallel extension point — inline decorations — injects cells at byte
-offsets *inside* a row rather than as separate rows. Inlay hints and ghost
-text are the natural uses; no provider wires it yet, but the path is open.
+offsets *inside* a row rather than as separate rows. This is how inlay hints
+are rendered, sitting inline with the code they annotate.
 
 **Stage 3 (Style)** walks the cells and assigns a resolved style to
 each one — foreground colour, background colour, bold/italic/underline. Style
 comes from multiple layered sources: the base theme, the cursorline background
 (applied to the primary cursor's line), syntax highlighting spans, search match
-highlighting, a diagnostic tier reserved for future LSP markers, bracket-match
-highlighting, the selection background, and the cursor head itself. Layers are
+highlighting, LSP diagnostic underlines, bracket-match highlighting, the
+selection background, and the cursor head itself. Layers are
 applied in priority order, each compositing *over* the previous one — a later
 layer overrides only the fields it sets, leaving the rest intact. So a search
 match's background wins over syntax highlighting's, but if the match sits on a
@@ -139,18 +140,20 @@ rest.
 
 ## The engine/editor boundary
 
-The engine crate is self-contained — it knows nothing about the editor's
+The rendering layer is self-contained — it knows nothing about the editor's
 top-level state, file loading, or modes. It fetches a buffer's text through a
-closure that lends it the rope for the duration of the call. The engine never
-*owns* a buffer and never depends on editor-domain types, but it does borrow
-the rope through that closure. This keeps the engine testable in isolation
-and prevents a circular dependency between the editor layer and the rendering
-layer.
+closure that lends it the rope for the duration of the call, and it fetches
+syntax highlighting the same way: a closure handed in for the frame, not a
+value the renderer owns. It never *owns* a buffer and never depends on
+editor-domain types, but it does borrow both the rope and the syntax data
+through those closures. This keeps rendering testable in isolation and
+prevents a circular dependency between the editor and the renderer.
 
 Per-frame data that crosses the boundary (search highlights, bracket match
-positions) is written by the editor into a shared slot before rendering begins,
-then read by the engine's Stage 3 providers during styling. The editor writes
-once per frame; the engine reads once per frame. The shared slot is wrapped in
-a lock, but the lock is uncontended — one write outside the render, then reads
-inside it — so the cost is a few nanoseconds per read rather than a true
-contention tax.
+positions, LSP diagnostics) is written by the editor into a shared per-pane
+slot before rendering begins, then read by Stage 3's providers during
+styling. The editor writes once per frame; rendering reads once per frame.
+Each pane has its own slot, so one pane's search highlights never bleed into
+another's. The slot is wrapped in a lock, but the lock is uncontended — one
+write outside the render, then reads inside it — so the cost is a few
+nanoseconds per read rather than a true contention tax.

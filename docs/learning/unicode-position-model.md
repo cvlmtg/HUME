@@ -26,8 +26,9 @@ characters are **variable-width**: 1 to 4 bytes each.
 character — it is not a valid character boundary. This is why `s[3..4]` on
 `"café"` panics in Rust: slicing through a multi-byte character is undefined.
 
-Byte offsets are used internally by Rust's `str` and by `ropey`, but they are
-**never used for buffer positions** in HUME. They surface at one narrow seam:
+Byte offsets are used internally by Rust's `str` and by the rope library HUME
+stores buffer text in, but they are **never used for buffer positions** in
+HUME. They surface at one narrow seam:
 converting positions to and from byte offsets when an external library speaks
 bytes (regular-expression matchers, tree-sitter nodes). Outside that
 interoperability seam, byte offsets are an implementation detail.
@@ -43,9 +44,9 @@ regardless of how many bytes each one takes.
  0  1  2  3   ← char offsets
 ```
 
-`é` is a single `char` at offset 3 — no partial-character hazard. This is
-`ropey`'s native addressing unit, and it is what HUME's buffer, selections,
-and selection sets use for all positions.
+`é` is a single `char` at offset 3 — no partial-character hazard. This is the
+rope library's native addressing unit, and it is what HUME's buffer,
+selections, and selection sets use for all positions.
 
 Char offsets make sense for an editor at the storage layer:
 - `insert(at, text)` and `remove(from, to)` can be expressed cleanly.

@@ -23,7 +23,7 @@ Each row on screen belongs to one of four categories:
 |------|-------------|
 | **Line start** | The first row of a buffer line — always exists, even for a single-char line |
 | **Wrapped continuation** | A subsequent row that continues a long buffer line beyond the viewport width |
-| **Virtual** | A row injected by a provider, not backed by buffer text (future: inline diagnostics, diff context) |
+| **Virtual** | A row injected by a provider, not backed by buffer text (e.g. an inline diagnostic message) |
 | **Filler** | An empty row below the last buffer line, conventionally shown with a tilde (`~`) |
 
 The renderer processes one buffer line at a time. For each buffer line, it
@@ -80,16 +80,14 @@ across consecutive vertical moves. Any horizontal movement (or any non-vertical
 command) resets the latch. This matches how virtually every text editor handles
 vertical movement with short lines.
 
-## Connection to future features
+## Connection to LSP and future features
 
-Virtual rows currently go unused — the infrastructure is there, but no provider
-injects them yet. When HUME gains LSP support, inline diagnostic messages will
-appear as virtual rows anchored below the line they annotate, without
-disrupting the buffer text or changing any buffer line numbers. The format
-stage is already ready for this. A parallel mechanism — inline decorations —
-can inject cells *inside* a row at byte offsets rather than as separate rows,
-the natural shape for inlay hints and ghost text; the path is open but no
-provider wires it yet.
+Virtual rows now carry inline diagnostic messages: an LSP diagnostic on a line
+appears as a virtual row anchored below it, without disrupting the buffer text
+or changing any buffer line numbers. A parallel mechanism — inline
+decorations — injects cells *inside* a row at byte offsets rather than as
+separate rows; this is how inlay hints are rendered, sitting inline with the
+code they annotate rather than on their own row.
 
 The display-line abstraction is also the mechanism by which syntax-highlighted
 folding ("fold this function to one line") would eventually work: a fold

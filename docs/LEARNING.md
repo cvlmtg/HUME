@@ -27,7 +27,7 @@ produce selections.
 |-------|------|
 | Edit Operations: Acting on Selections | [docs/learning/edit-operations.md](docs/learning/edit-operations.md) |
 | Motions vs Text Objects | [docs/learning/motions-vs-text-objects.md](docs/learning/motions-vs-text-objects.md) |
-| MotionMode: Separating Position from Anchor Semantics | [docs/learning/motion-mode.md](docs/learning/motion-mode.md) |
+| Move vs Extend: Separating Position from Anchor Semantics | [docs/learning/motion-mode.md](docs/learning/motion-mode.md) |
 | Word Motions: Selecting the Whole Word | [docs/learning/word-motions.md](docs/learning/word-motions.md) |
 | CharClass: Word Boundaries and the Eol Split | [docs/learning/charclass.md](docs/learning/charclass.md) |
 | Inner vs Around: The Text Object Convention | [docs/learning/inner-vs-around.md](docs/learning/inner-vs-around.md) |
@@ -42,6 +42,7 @@ How rendering, dispatch, and the engine/editor boundary are structured.
 | The Command/Keymap/Dispatch Architecture | [docs/learning/command-keymap-dispatch.md](docs/learning/command-keymap-dispatch.md) |
 | The Rendering Pipeline: Engine, Providers, and the 4-Stage Pipeline | [docs/learning/rendering-pipeline.md](docs/learning/rendering-pipeline.md) |
 | Display Lines and Soft Wrap | [docs/learning/display-lines-and-soft-wrap.md](docs/learning/display-lines-and-soft-wrap.md) |
+| Splits and Panes: One Buffer, Many Views | [docs/learning/splits-and-panes.md](docs/learning/splits-and-panes.md) |
 
 ### Languages & syntax
 

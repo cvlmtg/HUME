@@ -128,8 +128,8 @@ that map cleanly to a single built-in verb (like `dd`) tend to be ties.
 
 ## Running the challenges yourself
 
-See `tools/golf/README.md` for setup and usage. The `tools/golf/challenges/`
-directory ships a corpus of real vimgolf problems with reference solutions,
-input/output fixtures, and a harness that compares HUME's keystroke count
-against Kakoune. The three synthetic challenges above are teaching examples;
-the corpus is where you'd go to test HUME on the real field.
+HUME ships a small golf harness with a corpus of real vimgolf problems —
+reference solutions, input/output fixtures, and a runner that compares HUME's
+keystroke count against Kakoune's. The three synthetic challenges above are
+teaching examples; the corpus is where you'd go to test HUME on the real
+field.

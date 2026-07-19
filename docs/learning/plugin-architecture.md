@@ -128,6 +128,8 @@ The full set of lifecycle hooks, for reference:
 | `on-buffer-save` | A buffer is written to disk |
 | `on-mode-change` | The editor mode changes (e.g. entering insert) |
 | `on-language-set` | A buffer's language is set or cleared |
+| `on-lsp-attach` | A language server attaches to a buffer |
+| `on-lsp-detach` | A language server detaches from a buffer |
 
 All hooks fire at the tail of an event dispatch, never mid-dispatch. If a
 single event triggers several hooks, they are queued and drained together

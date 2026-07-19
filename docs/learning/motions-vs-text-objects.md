@@ -26,11 +26,11 @@ past the current end, so repeated extend-mode bracket and quote objects climb to
 the enclosing pair rather than re-reporting the inner one.
 
 Word motions (`w`/`b`/`W`/`B`) sit in between: navigational like motions but
-returning a full word range. They use a third framework, `apply_word_select`,
+returning a full word range. They use a third framework, word select,
 described in [Word Motions](word-motions.md).
 
-This leads to three framework functions: `apply_motion`, `apply_text_object`,
-and `apply_word_select`.
+This leads to three framework entry points — one per pattern: motion, text
+object, and word select.
 
 ## The inner function pattern
 

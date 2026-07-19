@@ -129,14 +129,16 @@ HUME maintains three separate tries:
 | Extend | Sparse overrides for Extend mode (checked first) |
 | Insert | Single-key bindings for Insert mode |
 
-The **extend trie** is intentionally sparse — by default it only overrides `o`
-(which flips anchor and head, mirroring Helix/Kakoune's visual `o`). Any key
-not found in the extend trie falls through to the normal trie with extend mode
-active, which applies extend semantics automatically.
+The **extend trie** ships empty by default — flipping anchor and head (Helix
+and Kakoune's visual `o`) is already reachable via `Ctrl+e` in both Normal and
+Extend mode, so no override is needed out of the box. Any key not found in the
+extend trie falls through to the normal trie with extend mode active, which
+applies extend semantics automatically.
 
 This lets Steel customise per-key extend-mode overrides: "when in extend mode
 and the user presses this key, run this specific command instead of the usual
-one."
+one." A keybinding plugin that prefers Vim's `o` over `Ctrl+e`, for example,
+can bind `o` in the extend trie to the same flip command.
 
 ## Layer 4: Dispatch
 
@@ -179,6 +181,23 @@ To remap a command with its extend behaviour to a different key:
 The user only writes the base command name. Extend semantics come from the
 dispatch layer automatically.
 
+### Counts: distinguishing a bare keypress from an explicit count
+
+Typing `3w` should behave differently from typing `w` three times in a row in
+one respect: dot-repeat and a few other bookkeeping paths care whether a count
+was actually typed, not just what number ends up being used. So the dispatcher
+tracks count as "no count was typed" versus "an explicit count of *n* was
+typed" — a bare `w` and an explicit `1w` both move by one word, but they are
+distinguishable to the layers above dispatch.
+
+Script-defined commands receive count and extend as their first two
+parameters (if declared), the same injection mechanism as the extend flag
+described above. Since Scheme has no built-in way to say "this argument was
+omitted," dispatch passes a count of zero to mean "no count was typed," and a
+command that forwards its count to another command decodes zero back into
+"no count" before passing it on — so a bare keypress stays a bare keypress
+all the way through a chain of commands calling each other.
+
 ### WaitChar: parameterized commands
 
 Some commands need a character argument: find-forward, find-backward, replace.
@@ -218,9 +237,9 @@ A change in one layer cannot corrupt another because they communicate only
 through name strings.
 
 A related invariant is enforced at the dispatch layer: every native command's
-function body must run through one funnel. A build-time lint scans the crate
-for any second place that calls a native command's function pointer directly,
-and fails the build if it finds one. The funnel is where the bookkeeping that
+function body must run through one funnel. A build-time check scans the
+editor's source for any second place that calls a native command's function
+directly, and fails the build if it finds one. The funnel is where the bookkeeping that
 surrounds every command — last-command tracking, dot-repeat, paste-session
 commits, jump-list updates, register routing — gets applied. Letting a second
 call site bypass it would mean two paths for the same command, and the

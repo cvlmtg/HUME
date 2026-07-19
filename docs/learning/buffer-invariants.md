@@ -65,16 +65,17 @@ There are two kinds of call sites:
   validates the changeset first, then validates the resulting selection
   against the new buffer, and returns an error on failure.
 
-  Today this boundary exists by design and is exercised by history replay:
-  every undo, redo, and cross-branch jump replays a transaction the editor
-  itself authored, so a corrupt revision would surface as a clean error rather
-  than a silent miscomputation. The boundary is not yet reachable from the
-  scripting layer — by design, scripts do not build raw transactions. Plugin
-  code instead issues named editor commands, each of which constructs its
-  changeset internally and runs through the fast, expecting-success path. The
-  boundary is ready for the day a future scripting API wants to submit edits
-  directly, but the only road into the buffer today is through commands the
-  editor itself authors.
+  This boundary is exercised in two places today. History replay — every
+  undo, redo, and cross-branch jump — replays a transaction the editor itself
+  authored, so a corrupt revision would surface as a clean error rather than
+  a silent miscomputation. And a script can submit a raw edit directly, most
+  commonly on behalf of a language server applying a rename or a formatting
+  pass: the edit is validated (is the buffer writable? does it still match
+  the buffer generation the edit was computed against?), applied, and only
+  then is the resulting selection checked — the same two-step validation as
+  any other transaction. Most plugin code never touches this path at all; it
+  issues named editor commands instead, each of which constructs its
+  changeset internally and runs through the fast, expecting-success path.
 
 There is one other place untrusted text enters the buffer: reloading a file
 from disk (`:e!`). The contents come from outside the editor, but they enter
@@ -109,27 +110,27 @@ Allocating a temporary, using it on the success path, and automatically
 discarding it on the failure path requires zero explicit cleanup code.
 
 ```
-let inverse = build_inverse(changeset, original_buf);  // build while original is intact
-match apply(changeset, original_buf) {
-    Ok(new_buf) => { /* push inverse onto undo stack */ }
-    Err(e)      => { /* inverse is freed here — no cleanup needed */ }
+let inverse = build_inverse(changeset, original)  // build while original is intact
+match apply(changeset, original) {
+    ok(new_buf)  => { /* push inverse onto undo stack */ }
+    err(reason)  => { /* inverse is freed here — no cleanup needed */ }
 }
 ```
 
-## Why the apply function takes the buffer by reference
+## Why applying an edit takes the buffer by reference
 
 The original version consumed the buffer (taking it by value). That was an
 intentional optimization: the buffer's underlying rope could be mutated in
 place rather than cloned.
 
-The problem: if `apply` failed, the buffer was gone. The caller had no way to
-recover the original.
+The problem: if applying the edit failed, the buffer was gone. The caller had
+no way to recover the original.
 
 The fix: take the buffer by reference instead. Cloning the rope before mutating
 costs almost nothing because the rope uses arc-based structural sharing —
-cloning just bumps a reference count, sharing the whole tree. Apply then works
-on the clone, checks the post-conditions, and only wraps the clone in a new
-buffer if everything succeeded. On failure, the clone is dropped and the
+cloning just bumps a reference count, sharing the whole tree. Applying then
+works on the clone, checks the post-conditions, and only wraps the clone in a
+new buffer if everything succeeded. On failure, the clone is dropped and the
 original is intact.
 
 The key insight is that "recoverable failure" and "mutation in place" are

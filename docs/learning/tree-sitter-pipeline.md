@@ -23,12 +23,12 @@ When a grammar is installed and registered, HUME loads two things together:
 
 1. **A parser** — a native shared library (`.dylib` on macOS, `.so` on Linux,
    `.dll` on Windows) compiled from the grammar's C source. Loading it gives
-   HUME a tree-sitter `Language` object that can parse source text into a
-   concrete syntax tree.
+   HUME a language handle that tree-sitter can use to parse source text into
+   a concrete syntax tree.
 
-2. **A compiled highlight query** — a tree-sitter `Query` compiled against
-   that specific `Language`. The query is the bridge between the parse tree
-   and semantic meaning: it matches patterns in the tree and assigns named
+2. **A compiled highlight query** — a query compiled against that specific
+   language handle. The query is the bridge between the parse tree and
+   semantic meaning: it matches patterns in the tree and assigns named
    captures to them.
 
 A grammar whose language embeds others carries an optional third piece: an
@@ -36,9 +36,9 @@ A grammar whose language embeds others carries an optional third piece: an
 different language (see [Injections](#injections-embedded-languages) below).
 
 These pieces are kept together — a grammar bundle — because the queries are
-compiled against the `Language` pointer inside the shared library. They share
-a lifetime: you cannot use a query compiled for one version of a grammar with
-a parser from a different version.
+compiled against the language handle inside the shared library. They share a
+lifetime: you cannot use a query compiled for one version of a grammar with a
+parser from a different version.
 
 The compiled queries are shared across every buffer of that language. Whether
 ten files or a hundred are open, there is exactly one compiled highlight query
@@ -154,15 +154,14 @@ When you run `:plum-install-grammar`, plum:
    way, but best-effort: most languages embed nothing and have no injection
    query, so its absence is normal, not an error.
 4. Compiles the C source to a shared library, also in the data directory.
-5. Calls `register-grammar!` to load the shared library and the queries into
-   the running editor. A grammar whose tree-sitter ABI version is incompatible
-   with the editor is rejected here with a clear error rather than crashing
-   the parse worker later.
+5. Registers the shared library and the queries with the running editor. A
+   grammar whose tree-sitter ABI version is incompatible with the editor is
+   rejected here with a clear error rather than crashing the parse worker
+   later.
 
-On subsequent starts, plum calls `register-installed-grammars!` during
-initialization, which scans the data directory and registers every grammar
-already on disk. No network access on startup; grammars are registered from
-local files.
+On subsequent starts, plum scans the data directory during initialization and
+registers every grammar already on disk. No network access on startup;
+grammars are registered from local files.
 
 ## Why pinned revisions
 
@@ -173,9 +172,9 @@ stop matching or match incorrectly. Pinning both to known-good revisions
 ensures that every HUME installation using the same catalog produces the same
 highlighting behavior.
 
-The `helix-pin.scm` file records the Helix revision from which queries are
-fetched. Updating to a new version of a grammar means updating both the
-grammar pin and the Helix pin in the catalog.
+A separate pinned-revision record tracks the Helix revision from which
+queries are fetched. Updating to a new version of a grammar means updating
+both the grammar pin and the Helix pin in the catalog.
 
 ## Late grammar registration
 
@@ -183,8 +182,8 @@ Grammars can arrive after buffers are already open. A user might open a Rust
 file, then install the Rust grammar (`:plum-install-grammar`) in the same
 session. HUME handles this by sweeping open buffers when a grammar is attached.
 
-After `register-grammar!` completes, HUME walks every open buffer. Any buffer
-whose language name matches a grammar that was just attached is re-run through
+After a grammar is registered, HUME walks every open buffer. Any buffer whose
+language name matches a grammar that was just attached is re-run through
 syntax setup: a parse request is queued, and once the worker responds the
 buffer renders with highlighting — no restart required.
 
@@ -204,8 +203,8 @@ Putting it all together, here is what happens when you open `main.rs`:
    extension matches Rust, so the language is identified as `"rust"`.
 
 3. **Funnel** — the funnel is called with `"rust"`. It writes the language
-   name to the buffer, looks up the `LanguageConfig` for Rust in the registry,
-   and proceeds to syntax setup.
+   name to the buffer, looks up Rust's registered grammar (if any), and
+   proceeds to syntax setup.
 
 4. **Syntax setup** — if a grammar bundle is attached to the Rust config, a
    parse request is queued to the background parse worker. Parsing happens

@@ -23,15 +23,20 @@ state left behind at the top level.
 
 ## The watchdog timer
 
-HUME arms a timer thread before every script evaluation — both during startup
-(loading `init.scm` and plugins), on every individual command invocation, and
-before every lifecycle hook fires. The timer is set to a configurable budget:
-10 seconds for init/plugin loads, 1 second for command calls and hook
-handlers.
+HUME keeps one watchdog thread alive for the lifetime of the scripting
+engine, rather than spawning a fresh thread for every evaluation — spawning
+per eval would be wasted work on the hot path, since most evaluations are
+commands that return in microseconds. Instead, the thread is *armed* before
+every script evaluation — during startup (loading `init.scm` and plugins), on
+every individual command invocation, and before every lifecycle hook fires —
+with a configurable budget: 10 seconds for init/plugin loads, 1 second for
+command calls and hook handlers.
 
-If the eval returns within the budget, the timer is cancelled immediately and
-everything proceeds normally. If the budget expires before the eval returns,
-the timer sets a shared flag to `true`.
+If the eval returns within the budget, the watchdog is told to stand down
+before it can fire — and the standing-down call waits for the watchdog's
+acknowledgement, so a timer that is already mid-expiry cannot leak its
+interrupt into the *next* evaluation's budget. If the budget expires first,
+the watchdog sets a shared flag to `true`.
 
 Scripts cooperate by calling `(hume/yield!)` at their yield points — the Steel
 equivalent of "check if I should stop". Each `(hume/yield!)` call reads the
@@ -44,11 +49,13 @@ expires — the flag is only an interrupt request, not a hard kill. For well-
 behaved plugins this is invisible; for misbehaving or long-running ones it
 bounds the freeze to the interval between yield points.
 
-The watchdog thread itself uses a sleep-with-wake mechanism rather than a plain
-sleep: when the eval returns and the watchdog is cancelled, a wakeup call
-immediately resumes the watchdog thread so it can exit — there's no sleeping
-out the remainder of the budget on the fast path. The watchdog also resets
-the interrupt flag after every eval, so a watchdog trip on one eval cannot
-bleed into the next. The mechanism is designed so that a future Ctrl-C handler
-can set the same flag from outside the script and abort long-running code by
-the same cooperative protocol — for now that wiring is not yet hooked up.
+While armed, the watchdog thread sleeps in a wake-on-message wait rather than
+a plain sleep, and re-checks the deadline every time it wakes rather than
+trusting the wake itself as a signal to fire — an early or spurious wake can
+never trip the interrupt before the budget has actually elapsed. This also
+means standing the watchdog down is fast: no waiting out the remainder of the
+budget on the common case where the eval finishes early. The interrupt flag
+is reset right after every eval, so a trip on one eval cannot bleed into the
+next. The mechanism is designed so that a future Ctrl-C handler can set the
+same flag from outside the script and abort long-running code by the same
+cooperative protocol — for now that wiring is not yet hooked up.
