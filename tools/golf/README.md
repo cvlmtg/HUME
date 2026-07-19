@@ -26,7 +26,7 @@ Score a single challenge or all challenges at once:
 CHALLENGE                      HUME  KAKOUNE  RESULT
 ----------------------------------------------------------------------
 4d1a34ccfa85f32065000004         10       10  OK
-4d1a8bf2b8cb3409320002c4          9        8  OK
+4d1a8bf2b8cb3409320002c4          6        8  OK
 ----------------------------------------------------------------------
 2 passed, 0 failed
 ```
