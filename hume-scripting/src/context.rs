@@ -248,7 +248,8 @@ impl<'a> SteelCtx<'a> {
             return;
         }
         let tail = self.effects.split_off(mark);
-        self.effects.extend(tail.into_iter().filter(|e| e.committed));
+        self.effects
+            .extend(tail.into_iter().filter(|e| e.committed));
     }
 
     pub(crate) fn new_command(
@@ -506,6 +507,9 @@ mod tests {
             "b1/b2 must be dropped, c1/c2 kept in original order, a1 untouched"
         );
         assert!(!h.effects[0].committed, "a1 was never inside a mark");
-        assert!(h.effects[1].committed && h.effects[2].committed, "c1/c2 stay committed");
+        assert!(
+            h.effects[1].committed && h.effects[2].committed,
+            "c1/c2 stay committed"
+        );
     }
 }

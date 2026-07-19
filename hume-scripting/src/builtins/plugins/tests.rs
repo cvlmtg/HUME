@@ -142,9 +142,9 @@ fn begin_lazy_activation_below_depth_cap_succeeds() {
 /// re-trigger a no-op activation attempt on every later matching event.
 #[test]
 fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
+    use crate::ScriptingHost;
     use crate::host::EditorHost;
     use crate::null_host::LazyStubHost;
-    use crate::ScriptingHost;
     use std::io::Write as _;
     use tempfile::TempDir;
 
@@ -197,7 +197,10 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
         "Failed plugin's language-activation entry must be dropped, not leaked"
     );
     assert!(
-        editor_host.commands().lazy_command_owner("deep-cmd").is_none(),
+        editor_host
+            .commands()
+            .lazy_command_owner("deep-cmd")
+            .is_none(),
         "Failed plugin's dead command stub must be unregistered, not leaked"
     );
 }
@@ -218,7 +221,10 @@ fn declare_plugin_bad_commands_names_the_builtin() {
     let mut host = ScriptingHost::new();
     let mut editor_host = LazyStubHost::default();
     let err = host
-        .eval_source(r#"(declare-plugin "user/tp" #:commands '(1))"#, &mut editor_host)
+        .eval_source(
+            r#"(declare-plugin "user/tp" #:commands '(1))"#,
+            &mut editor_host,
+        )
         .expect_err("non-string #:commands entry must be rejected");
     assert!(
         err.contains("declare-plugin commands"),

@@ -447,19 +447,13 @@ mod tests {
     #[test]
     fn pair_fields_rejects_proper_list() {
         let err = pair_fields(list_of(&["a", "b"]), "position", "(line . col)").unwrap_err();
-        assert!(
-            err.to_string().contains("(line . col)"),
-            "got: {err}"
-        );
+        assert!(err.to_string().contains("(line . col)"), "got: {err}");
     }
 
     #[test]
     fn pair_fields_rejects_non_pair_scalar() {
         let err = pair_fields(SteelVal::IntV(3), "position", "(line . col)").unwrap_err();
-        assert!(
-            err.to_string().contains("(line . col)"),
-            "got: {err}"
-        );
+        assert!(err.to_string().contains("(line . col)"), "got: {err}");
     }
 
     // ── BidArg ────────────────────────────────────────────────────────────────

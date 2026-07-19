@@ -704,7 +704,9 @@ pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
 //
 // Shared with hume-treesitter's test suite via the hume-test-fixtures dev
 // crate — see that crate for the path helpers and require-fixtures gating.
-pub(crate) use hume_test_fixtures::{grammar_parser_path, grammar_query_path, helix_injections_path};
+pub(crate) use hume_test_fixtures::{
+    grammar_parser_path, grammar_query_path, helix_injections_path,
+};
 
 mod alternate;
 mod async_source;

@@ -33,7 +33,10 @@ fn set_buffer_language_writes_language_field() {
     let bid = ed.focused_buffer_id();
     let lang = ed.state.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
-    assert_eq!(ed.state.buffers.get(bid).language, ed.state.languages.id_of("rust"));
+    assert_eq!(
+        ed.state.buffers.get(bid).language,
+        ed.state.languages.id_of("rust")
+    );
     // Flip: wrong language must not match.
     assert_ne!(
         ed.state.buffers.get(bid).language,
@@ -67,7 +70,10 @@ fn set_buffer_language_no_op_when_unchanged() {
     ed.set_buffer_language(bid, Some(lang));
     let lang = ed.state.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang)); // no-op, no double-fire
-    assert_eq!(ed.state.buffers.get(bid).language, ed.state.languages.id_of("rust"));
+    assert_eq!(
+        ed.state.buffers.get(bid).language,
+        ed.state.languages.id_of("rust")
+    );
 }
 
 // ── detect_and_set_language ───────────────────────────────────────────────────
@@ -81,7 +87,10 @@ fn detect_and_set_language_matches_extension() {
     ed.state.buffers.get_mut(bid).path = Some(std::path::PathBuf::from("/tmp/foo.rs"));
     register_rust(&mut ed, "rust", &["rs"]);
     ed.detect_and_set_language(bid);
-    assert_eq!(ed.state.buffers.get(bid).language, ed.state.languages.id_of("rust"));
+    assert_eq!(
+        ed.state.buffers.get(bid).language,
+        ed.state.languages.id_of("rust")
+    );
     // Flip: the language must not be absent after detection of a registered ext.
     assert!(ed.state.buffers.get(bid).language.is_some());
 }
@@ -123,7 +132,10 @@ fn typed_set_language_buffer_scope_sets_language() {
     register_rust(&mut ed, "rust", &["rs"]);
     let bid = ed.focused_buffer_id();
     run_cmd(&mut ed, "buffer language=rust").expect(":set buffer language=rust failed");
-    assert_eq!(ed.state.buffers.get(bid).language, ed.state.languages.id_of("rust"));
+    assert_eq!(
+        ed.state.buffers.get(bid).language,
+        ed.state.languages.id_of("rust")
+    );
 }
 
 #[test]

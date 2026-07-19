@@ -397,7 +397,9 @@ pub fn wait_for_keypress() {
 
 #[cfg(test)]
 mod tests {
-    use super::{disable_bracketed_paste, enable_bracketed_paste, pop_kitty_flags, push_kitty_flags};
+    use super::{
+        disable_bracketed_paste, enable_bracketed_paste, pop_kitty_flags, push_kitty_flags,
+    };
 
     // Regression guard for the Windows/WezTerm crash. The previous impl
     // dispatched through crossterm's `PushKeyboardEnhancementFlags` Command,

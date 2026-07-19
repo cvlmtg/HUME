@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use globset::{GlobSet, GlobSetBuilder};
 
-use crate::highlight::TreeSitterHighlighter;
 use crate::grammar::LoadedGrammar;
+use crate::highlight::TreeSitterHighlighter;
 use hume_engine::theme::ScopeRegistry;
 
 use crate::injections::InjectionsQuery;
@@ -277,8 +277,8 @@ impl LanguageRegistry {
     /// Returns `Err` if the NFA size limit is exceeded; on error the prior
     /// compiled set is preserved.
     pub fn rebuild_glob_set(&mut self) -> Result<(), RegisterError> {
-        let (compiled, ids) =
-            Self::build_globs(&self.identities, &self.lang_order).map_err(RegisterError::GlobBuild)?;
+        let (compiled, ids) = Self::build_globs(&self.identities, &self.lang_order)
+            .map_err(RegisterError::GlobBuild)?;
         self.compiled_globs = compiled;
         self.glob_lang_ids = ids;
         Ok(())

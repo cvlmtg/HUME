@@ -432,8 +432,8 @@ mod tests {
 
     use std::collections::HashMap;
 
-    use crate::highlight::TreeSitterHighlighter;
     use crate::grammar::LoadedGrammar;
+    use crate::highlight::TreeSitterHighlighter;
     use hume_engine::pipeline::BufferId;
     use hume_engine::theme::ScopeRegistry;
 
@@ -599,8 +599,7 @@ mod tests {
         );
         // The new bundle must win.
         assert_eq!(
-            batch[&bid].bundle.config_gen,
-            bundle_b.config_gen,
+            batch[&bid].bundle.config_gen, bundle_b.config_gen,
             "grammar swap must replace same-gen entry"
         );
         assert_eq!(

@@ -1139,7 +1139,8 @@ fn register_hook_errors_in_command_mode() {
         )
         .unwrap_err();
     assert!(
-        err.message.contains("only valid during init.scm or plugin load"),
+        err.message
+            .contains("only valid during init.scm or plugin load"),
         "got: {err}"
     );
 }
@@ -1518,7 +1519,8 @@ fn language_builtins_error_on_stale_buffer_id() {
         )
         .unwrap_err();
     assert!(
-        err.message.contains("set-buffer-language!: invalid buffer id"),
+        err.message
+            .contains("set-buffer-language!: invalid buffer id"),
         "set-buffer-language! must reject a stale id; got: {err}"
     );
 }
@@ -1553,7 +1555,10 @@ fn bind_key_does_not_force_extend() {
     assert!(
         matches!(
             effects.as_slice(),
-            [Effect::BindKey { force_extend: false, .. }]
+            [Effect::BindKey {
+                force_extend: false,
+                ..
+            }]
         ),
         "bind-key! must produce force_extend = false; got: {effects:?}"
     );

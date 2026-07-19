@@ -214,5 +214,8 @@ pub(crate) fn diagnostic_counts(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult 
         .decorations()
         .map(|d| d.diagnostic_counts(id))
         .unwrap_or((0, 0));
-    cons_pair(SteelVal::IntV(errors as isize), SteelVal::IntV(warnings as isize))
+    cons_pair(
+        SteelVal::IntV(errors as isize),
+        SteelVal::IntV(warnings as isize),
+    )
 }

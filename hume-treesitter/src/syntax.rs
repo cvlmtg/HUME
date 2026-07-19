@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use crate::highlight::layer_highlights_for_line;
+use crate::layers::{SyntaxLayer, SyntaxLayers};
 use hume_editing::changeset::ChangeSet;
 use hume_editing::text::Text;
-use crate::highlight::layer_highlights_for_line;
 use hume_engine::pipeline::BufferId;
-use crate::layers::{SyntaxLayer, SyntaxLayers};
 use hume_engine::types::ScopeId;
 
 use crate::edits::input_edits_from_changeset;
@@ -359,10 +359,10 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
 
+    use crate::grammar::LoadedGrammar;
+    use crate::highlight::TreeSitterHighlighter;
     use hume_editing::changeset::ChangeSetBuilder;
     use hume_editing::text::Text;
-    use crate::highlight::TreeSitterHighlighter;
-    use crate::grammar::LoadedGrammar;
     use hume_engine::pipeline::BufferId;
     use hume_engine::theme::ScopeRegistry;
     use slotmap::SlotMap;

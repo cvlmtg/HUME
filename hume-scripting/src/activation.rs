@@ -819,8 +819,8 @@ mod tests {
     /// would be wrongly removed too.
     #[test]
     fn nested_activation_hook_survives_enclosing_plugin_failure() {
-        use crate::host::EditorHost;
         use crate::hooks::HookId;
+        use crate::host::EditorHost;
         use crate::null_host::LazyStubHost;
 
         let dir = TempDir::new().unwrap();

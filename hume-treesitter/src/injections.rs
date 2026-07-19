@@ -259,7 +259,10 @@ pub(crate) fn resolve_and_parse_injections(
             continue;
         }
 
-        if parser.set_language(child_bundle.grammar.language()).is_err() {
+        if parser
+            .set_language(child_bundle.grammar.language())
+            .is_err()
+        {
             continue; // ABI mismatch on the injected grammar
         }
         if parser.set_included_ranges(&ranges).is_err() {
@@ -300,8 +303,8 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::atomic::AtomicBool;
 
-    use crate::highlight::TreeSitterHighlighter;
     use crate::grammar::LoadedGrammar;
+    use crate::highlight::TreeSitterHighlighter;
     use hume_engine::theme::ScopeRegistry;
 
     use super::*;

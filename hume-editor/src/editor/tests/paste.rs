@@ -16,7 +16,8 @@ fn begin_completion_session(ed: &mut Editor, items: &[&str]) {
     let items: Vec<StoredCompletionItem> = items
         .iter()
         .map(|label| {
-            StoredCompletionItem::from_json(&serde_json::json!({"label": label})).expect("test item")
+            StoredCompletionItem::from_json(&serde_json::json!({"label": label}))
+                .expect("test item")
         })
         .collect();
     let session = CompletionSession::begin(&ed.state, bid, items, false).unwrap();

@@ -47,11 +47,9 @@ impl Editor {
                     self.set_buffer_language(buffer, lang_id)
                 }
                 Effect::GrammarSweep(name) => {
-                    let id = self
-                        .state
-                        .languages
-                        .id_of(&name)
-                        .expect("GrammarSweep is only emitted right after attach_grammar interns the name");
+                    let id = self.state.languages.id_of(&name).expect(
+                        "GrammarSweep is only emitted right after attach_grammar interns the name",
+                    );
                     self.sweep_buffers_for_grammars(vec![id])
                 }
                 Effect::LspRequest(req) => {
@@ -78,9 +76,10 @@ impl Editor {
                     &keys,
                     std::borrow::Cow::Owned(cmd),
                 ),
-                Effect::UnbindKey { mode, keys } => {
-                    self.state.keymap.unbind_user(to_editor_bind_mode(mode), &keys)
-                }
+                Effect::UnbindKey { mode, keys } => self
+                    .state
+                    .keymap
+                    .unbind_user(to_editor_bind_mode(mode), &keys),
             }
         }
     }

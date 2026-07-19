@@ -248,9 +248,10 @@ pub(crate) fn char_index_to_line(ctx: &mut SteelCtx, idx: SteelVal) -> SteelResu
 pub(crate) fn viewport_range(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
     let id = bid.0;
     match ctx.host.buffers().viewport_range(id) {
-        Some((first, last)) => {
-            cons_pair(SteelVal::IntV(first as isize), SteelVal::IntV(last as isize))
-        }
+        Some((first, last)) => cons_pair(
+            SteelVal::IntV(first as isize),
+            SteelVal::IntV(last as isize),
+        ),
         None => Ok(SteelVal::BoolV(false)),
     }
 }
