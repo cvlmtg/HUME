@@ -421,7 +421,8 @@ impl CommandRegistry {
         selection!("inner-word", "Select inner word.", cmd_inner_word);
         ecmd(
             "select-word-nearest-on-line",
-            "Select inner word; on whitespace snap to nearest word on the same visual line.",
+            "Select the word under the cursor, or the nearest word on the same visual line \
+             when on whitespace; span follows word-selects-whitespace.",
             cmd_visual_select_word_nearest_on_line,
         )
         .extendable()

@@ -476,6 +476,55 @@ fn select_word_nearest_no_oscillation_on_repeated_j() {
     );
 }
 
+/// With the default `word-selects-whitespace = true`, the snapped word's
+/// leading whitespace bookend is absorbed into the selection (matching `mm`)
+/// — even in wrap mode, since the absorbed space (char 76) is buffer-adjacent
+/// to "ratatui", not a crossing into a different word.
+#[test]
+fn select_word_nearest_absorbs_whitespace_bookend_by_default() {
+    let mut ed = word_wrap_editor();
+
+    ed.handle_key(key('j')); // head -> char 76 (leading space of sub-row 1)
+    ed.execute_keymap_command(
+        std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
+        Some(1),
+        false,
+        ArgSource::Keymap,
+    );
+
+    let sel = ed.current_selections().primary();
+    assert_eq!(
+        sel.anchor(),
+        76,
+        "leading space must be absorbed, matching mm's word_unit_at rule"
+    );
+    assert_eq!(sel.head(), 83, "still snaps to 'ratatui'");
+}
+
+/// With `word-selects-whitespace` off, the selection stays a bare inner word
+/// — no whitespace bookend — even in wrap mode.
+#[test]
+fn select_word_nearest_respects_word_selects_whitespace_off() {
+    let mut ed = word_wrap_editor();
+    ed.state.settings.word_selects_whitespace = false;
+
+    ed.handle_key(key('j')); // head -> char 76 (leading space of sub-row 1)
+    ed.execute_keymap_command(
+        std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
+        Some(1),
+        false,
+        ArgSource::Keymap,
+    );
+
+    let sel = ed.current_selections().primary();
+    assert_eq!(
+        sel.anchor(),
+        77,
+        "inner word only — leading space must not be absorbed"
+    );
+    assert_eq!(sel.head(), 83, "still snaps to 'ratatui'");
+}
+
 // ── Dispatch-origin count semantics ────────────────────────────────────────
 //
 // `move-down`/`move-up`'s buffer-line-vs-visual-row choice comes from

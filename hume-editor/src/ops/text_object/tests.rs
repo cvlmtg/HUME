@@ -1136,13 +1136,18 @@ fn extend_inner_argument_basic() {
 }
 
 // ── select-word-nearest-on-line ────────────────────────────────────────────
+//
+// This block passes `around = false` throughout, isolating the nearest-word
+// scan logic from the whitespace-bookend expansion. See the `_around_word`
+// block below for `around = true` (word-selects-whitespace on), which reuses
+// the same scan but expands the winning anchor via `word_unit_at`.
 
 #[test]
 fn nearest_on_word_selects_inner_word() {
     // Head lands mid-word — same as inner-word.
     assert_state!(
         "hello wor-[l]>d foo\n",
-        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move),
+        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move, false),
         "hello -[world]> foo\n"
     );
 }
@@ -1153,7 +1158,7 @@ fn nearest_on_whitespace_prev_closer() {
     // dist to "bar" start (6) = 3. Prev is closer → select "foo".
     assert_state!(
         "foo-[ ]>  bar\n",
-        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move),
+        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move, false),
         "-[foo]>   bar\n"
     );
 }
@@ -1164,7 +1169,7 @@ fn nearest_on_whitespace_next_closer() {
     // dist to "bar" start (6) = 1. Next is closer → select "bar".
     assert_state!(
         "foo  -[ ]>bar\n",
-        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move),
+        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move, false),
         "foo   -[bar]>\n"
     );
 }
@@ -1175,7 +1180,7 @@ fn nearest_on_whitespace_tie_picks_prev() {
     // dist to "bar" start (6) = 2. Exact tie → prev → select "foo".
     assert_state!(
         "foo -[ ]> bar\n",
-        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move),
+        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move, false),
         "-[foo]>   bar\n"
     );
 }
@@ -1186,7 +1191,7 @@ fn nearest_at_line_start_whitespace_no_cross_to_prev_line() {
     // must NOT be selected. Next word ("start") on the same line is selected.
     assert_state!(
         "end\n-[ ]>start\n",
-        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move),
+        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move, false),
         "end\n -[start]>\n"
     );
 }
@@ -1198,7 +1203,7 @@ fn nearest_at_line_end_whitespace_no_cross_to_next_line() {
     // selected.
     assert_state!(
         "end -[ ]>\nnext\n",
-        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move),
+        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move, false),
         "-[end]>  \nnext\n"
     );
 }
@@ -1208,7 +1213,7 @@ fn nearest_on_blank_line_is_noop() {
     // A line with only a newline has no words — selection unchanged.
     assert_state!(
         "hello\n-[\n]>world\n",
-        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move),
+        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move, false),
         "hello\n-[\n]>world\n"
     );
 }
@@ -1218,7 +1223,7 @@ fn nearest_on_whitespace_only_line_is_noop() {
     // A line of pure spaces has no words — selection unchanged.
     assert_state!(
         "hello\n-[ ]>  \nworld\n",
-        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move),
+        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move, false),
         "hello\n-[ ]>  \nworld\n"
     );
 }
@@ -1228,7 +1233,7 @@ fn nearest_preserves_horiz_on_word() {
     // sel.horiz = Some(5) must survive the snap to a word.
     let buf = Text::from("hello world\n");
     let sels = SelectionSet::single(Selection::with_horiz(6, 6, 5));
-    let result = cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move);
+    let result = cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move, false);
     let sel = result.primary();
     // "world" spans chars 6–10.
     assert_eq!((sel.anchor(), sel.head()), (6, 10), "expected word range");
@@ -1242,7 +1247,7 @@ fn nearest_preserves_horiz_on_whitespace() {
     //                    0123456789
     // spaces at 2,3,4; head=3 (space), prev word = "hi" ends at 1.
     let sels = SelectionSet::single(Selection::with_horiz(3, 3, 3));
-    let result = cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move);
+    let result = cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move, false);
     let sel = result.primary();
     assert_eq!((sel.anchor(), sel.head()), (0, 1), "expected 'hi' range");
     assert_eq!(sel.horiz(), Some(3), "horiz must be preserved");
@@ -1253,7 +1258,7 @@ fn nearest_no_horiz_is_cleared() {
     // When input sel has horiz=None, output must also have horiz=None.
     let buf = Text::from("hello world\n");
     let sels = SelectionSet::single(Selection::new(6, 6));
-    let result = cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move);
+    let result = cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move, false);
     let sel = result.primary();
     assert_eq!(sel.horiz(), None, "horiz must stay None");
 }
@@ -1269,7 +1274,7 @@ fn nearest_extend_grows_selection_to_snapped_word() {
     // new_end = max(10, 4) = 10 → selection stays (0, 10); head is already past "hello".
     let buf = Text::from("hello\n     world\n");
     let sels = SelectionSet::single(Selection::new(0, 10)); // anchor=0, head=10 (space)
-    let result = cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Extend);
+    let result = cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Extend, false);
     let sel = result.primary();
     assert_eq!(
         (sel.anchor(), sel.head()),
@@ -1283,10 +1288,58 @@ fn nearest_extend_grows_selection_to_snapped_word() {
 fn nearest_extend_preserves_horiz() {
     let buf = Text::from("hello world\n");
     let sels = SelectionSet::single(Selection::with_horiz(0, 5, 7)); // anchor=0, head=5 (space)
-    let result = cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Extend);
+    let result = cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Extend, false);
     assert_eq!(
         result.primary().horiz(),
         Some(7),
         "horiz must survive extend mode"
+    );
+}
+
+// ── select-word-nearest-on-line, around = true (word-selects-whitespace on) ─
+//
+// Same scan logic as above, but the winning anchor is expanded via
+// `word_unit_at` instead of `inner_word_impl` — matching `mm`'s
+// leading-preferred, trailing-fallback-for-first-word rule (see the
+// `select_word_around_*` block). Expected spans are derived directly from
+// that rule, independent of this command's own scan implementation.
+
+#[test]
+fn nearest_on_word_around_absorbs_leading_whitespace() {
+    // Same head position as `nearest_on_word_selects_inner_word` (direct hit,
+    // no whitespace snap needed). "world" isn't the first word on its line,
+    // so `around = true` grows the selection to include its leading space —
+    // contrast the `false` case, which selects "world" alone.
+    assert_state!(
+        "hello wor-[l]>d foo\n",
+        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move, true),
+        "hello-[ world]> foo\n"
+    );
+}
+
+#[test]
+fn nearest_on_whitespace_around_expands_snapped_word() {
+    // Same buffer/head as `nearest_on_whitespace_next_closer`. The scan still
+    // snaps to "bar" via the nearest-edge rule, but the expansion step then
+    // absorbs the word's *full* leading whitespace run (all three spaces),
+    // not just the portion between `head` and the word.
+    assert_state!(
+        "foo  -[ ]>bar\n",
+        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move, true),
+        "foo-[   bar]>\n"
+    );
+}
+
+#[test]
+fn nearest_on_whitespace_around_keeps_indentation_protected() {
+    // Same buffer/head as `nearest_at_line_start_whitespace_no_cross_to_prev_line`.
+    // The scan snaps to "start", whose leading run reaches the start of its
+    // line (indentation) — `expand_word_unit` must not absorb it, and there
+    // is no trailing space to fall back to either, so `around = true`
+    // produces the identical span to `around = false` here.
+    assert_state!(
+        "end\n-[ ]>start\n",
+        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move, true),
+        "end\n -[start]>\n"
     );
 }

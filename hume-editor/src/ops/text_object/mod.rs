@@ -316,26 +316,39 @@ pub(crate) fn word_unit_at(
 /// Find the nearest word within `[line_start, line_end_excl)` from `head`.
 ///
 /// - If `head` is on a word or punctuation char, returns its inner-word range
-///   (identical to `inner_word_impl`).
+///   (identical to `inner_word_impl`), or the word plus its whitespace
+///   bookend (identical to `word_unit_at`) when `around` is set.
 /// - If `head` is on whitespace or EOL, scans left and right within the given
 ///   bounds to find the closest word. "Closest" is measured as the distance
 ///   from `head` to the nearest edge of each candidate word; ties go to the
-///   previous (left) word.
+///   previous (left) word. The winning word is then resolved the same way
+///   (inner vs. around) as the direct-hit case.
 /// - Returns `None` when no word exists within the bounds.
 ///
 /// Callers supply bounds explicitly so this helper can be scoped to either a
-/// buffer line (no-wrap path) or a visual sub-row (wrap path).
+/// buffer line (no-wrap path) or a visual sub-row (wrap path). `around`
+/// mirrors the effective `word-selects-whitespace` setting — see
+/// `cmd_select_word_nearest_on_line` and `cmd_visual_select_word_nearest_on_line`.
 pub(crate) fn nearest_word_on_line(
     buf: &Text,
     head: usize,
     line_start: usize,
     line_end_excl: usize,
+    around: bool,
 ) -> Option<(usize, usize)> {
+    let unit = |pos: usize| {
+        if around {
+            word_unit_at(buf, pos, is_word_boundary)
+        } else {
+            inner_word_impl(buf, pos, is_word_boundary)
+        }
+    };
+
     let class = classify_char(buf.char_at(head)?);
 
-    // Fast path: head is already on a word/punct — delegate to inner_word_impl.
+    // Fast path: head is already on a word/punct — delegate to inner/around unit.
     if class != CharClass::Space && class != CharClass::Eol {
-        return inner_word_impl(buf, head, is_word_boundary);
+        return unit(head);
     }
 
     // Scan LEFT within the given bounds for the first non-whitespace grapheme.
@@ -374,8 +387,8 @@ pub(crate) fn nearest_word_on_line(
 
     match (prev_anchor, next_anchor) {
         (None, None) => None,
-        (Some(p), None) => inner_word_impl(buf, p, is_word_boundary),
-        (None, Some(n)) => inner_word_impl(buf, n, is_word_boundary),
+        (Some(p), None) => unit(p),
+        (None, Some(n)) => unit(n),
         (Some(p), Some(n)) => {
             // Pick the word whose nearest edge is closer to `head`; tie → prev.
             // `p` is the last char of the prev word's run (nearest edge = p itself).
@@ -383,7 +396,7 @@ pub(crate) fn nearest_word_on_line(
             let dist_prev = head.saturating_sub(p);
             let dist_next = n.saturating_sub(head);
             let anchor = if dist_next < dist_prev { n } else { p };
-            inner_word_impl(buf, anchor, is_word_boundary)
+            unit(anchor)
         }
     }
 }
@@ -420,9 +433,13 @@ pub(crate) fn apply_nearest_word_result(
     }
 }
 
-/// Select inner word, snapping to the nearest word on the same buffer line when
-/// the cursor sits on whitespace. Preserves `sel.horiz` so the sticky visual
-/// column (set by `move-down` / `move-up`) survives through this step.
+/// Select the word nearest the cursor on the same buffer line, snapping to it
+/// when the cursor sits on whitespace. Preserves `sel.horiz` so the sticky
+/// visual column (set by `move-down` / `move-up`) survives through this step.
+///
+/// `around` mirrors the effective `word-selects-whitespace` setting: when set,
+/// the selected span includes the word's whitespace bookend (matching `mm`);
+/// when unset, only the inner word is selected.
 ///
 /// In wrap mode, `cmd_visual_select_word_nearest_on_line` (in `editor/visual_move.rs`)
 /// should be used instead — it scopes the search to the current visual sub-row,
@@ -435,12 +452,13 @@ pub(crate) fn cmd_select_word_nearest_on_line(
     sels: SelectionSet,
     _count: usize,
     mode: MotionMode,
+    around: bool,
 ) -> SelectionSet {
     let result = sels.map(|sel| {
         let line = buf.char_to_line(sel.anchor());
         let line_start = buf.line_to_char(line);
         let line_end_excl = line_end_exclusive(buf, line);
-        let found = nearest_word_on_line(buf, sel.anchor(), line_start, line_end_excl);
+        let found = nearest_word_on_line(buf, sel.anchor(), line_start, line_end_excl, around);
         apply_nearest_word_result(sel, found, mode)
     });
     result.debug_assert_valid(buf);

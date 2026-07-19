@@ -330,16 +330,21 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     mode: MotionMode,
 ) -> Result<(), CommandError> {
     let (wrap_mode, tab_width, whitespace) = focused_format_context(state, view);
+    let buf_id = focused_buffer_id(state, view);
+    let around = state
+        .buffers
+        .get(buf_id)
+        .overrides
+        .word_selects_whitespace(&state.settings);
 
     if !wrap_mode.is_wrapping() {
         apply_focused_motion(state, view, |buf, sels| {
-            cmd_select_word_nearest_on_line(buf, sels, 0, mode)
+            cmd_select_word_nearest_on_line(buf, sels, 0, mode, around)
         });
         return Ok(());
     }
 
     let focused = state.focused_pane_id;
-    let buf_id = focused_buffer_id(state, view);
     let scratch = &mut state.motion_format_scratch;
 
     // Not `apply_focused_motion`: the closure below also captures `scratch`.
@@ -373,7 +378,8 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
                         (ls, le)
                     });
 
-                let found = nearest_word_on_line(text, sel.anchor(), line_start, line_end_excl);
+                let found =
+                    nearest_word_on_line(text, sel.anchor(), line_start, line_end_excl, around);
                 apply_nearest_word_result(sel, found, mode)
             });
             new_sels.debug_assert_valid(text);
