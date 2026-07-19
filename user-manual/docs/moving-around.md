@@ -19,6 +19,12 @@ A `word` breaks at punctuation, so `don't` is three `words`. A `WORD` only break
 
 By default, `w`/`W`/`b`/`B` also cover the whitespace *before* the destination word — except the first word of a line, which takes its *trailing* whitespace instead, since a leading run there would be indentation. This means deleting a word never leaves a double space behind. Turn it off with `:set global word-selects-whitespace=false` (or per buffer) to select just the bare word instead — see [Configuration](configuration.md).
 
+<div class="key-demo">
+<strong>Cursor on the first character, press <code>w</code></strong><br>
+default&nbsp;&nbsp;&nbsp;Lorem<span class="sel">&nbsp;ipsu<span class="head">m</span></span> dolor sit<br>
+off&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Lorem <span class="sel">ipsu<span class="head">m</span></span> dolor sit
+</div>
+
 ## Character find
 
 Search within the current line for a specific character:
@@ -33,6 +39,16 @@ Search within the current line for a specific character:
 | `-` | Repeat last find backward |
 
 After pressing `f`, `F`, `t`, or `T`, HUME waits for the target character.
+
+Both are jumps, not extends — the selection collapses to a single character at the landing spot, not a span from where the cursor started:
+
+<div class="key-demo">
+<strong>Cursor on the first character, press <code>f</code> <code>i</code></strong><br>
+Lorem <span class="head">i</span>psum dolor sit<br>
+<br>
+<strong>Cursor on the first character, press <code>t</code> <code>i</code></strong><br>
+Lorem<span class="head">&nbsp;</span>ipsum dolor sit
+</div>
 
 ## Line movement
 

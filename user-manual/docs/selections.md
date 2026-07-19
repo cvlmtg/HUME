@@ -18,6 +18,22 @@ The same one-shot extend applies to search: `Ctrl+n` (kitty only) jumps the head
 
 `w`/`b` and `x`/`X` additionally shrink in whole units: pressing the opposite key shrinks the selection back down one word or one line at a time, rather than one character at a time. The word or line where you started stays fully selected no matter which way you shrink or grow from there — crossing back past your starting point flips the selection's direction instead of cutting it off partway.
 
+<div class="key-demo">
+<strong>Word selected with <code>w</code>, then <code>e</code> to enter Extend mode</strong><br>
+Lorem<span class="sel">&nbsp;ipsu<span class="head">m</span></span> dolor sit<br>
+<br>
+<strong>Press <code>w</code></strong><br>
+Lorem<span class="sel">&nbsp;ipsum dolo<span class="head">r</span></span> sit<br>
+<br>
+<strong>Press <code>w</code> again</strong><br>
+Lorem<span class="sel">&nbsp;ipsum dolor si<span class="head">t</span></span><br>
+<br>
+<strong>Press <code>b</code></strong><br>
+Lorem<span class="sel">&nbsp;ipsum dolo<span class="head">r</span></span> sit
+</div>
+
+The anchor stays pinned on `Lorem`'s trailing whitespace throughout — `w` grows the head forward one word at a time, `b` shrinks it back the same way.
+
 ### Text objects
 
 Text objects select structured regions in one step. They use the `m` prefix — `m i` for inner content, `m a` for around (including delimiters, or one adjacent whitespace run for words):
@@ -46,6 +62,20 @@ Two shortcuts select the word under the cursor directly:
 | `M M` | WORD under the cursor (same as `m a W` by default) |
 
 There is no paragraph text object; use the `{` and `}` paragraph motions.
+
+`m i` selects just the structure's content; `m a` includes what surrounds it — one adjacent whitespace run for words, the delimiters themselves for brackets:
+
+<div class="key-demo">
+<strong>Cursor mid-word, press <code>m</code> <code>i</code> <code>w</code></strong><br>
+Lorem <span class="sel">ipsu<span class="head">m</span></span> dolor<br>
+<strong>Press <code>m</code> <code>a</code> <code>w</code></strong><br>
+Lorem<span class="sel">&nbsp;ipsu<span class="head">m</span></span> dolor<br>
+<br>
+<strong>Cursor inside the parens, press <code>m</code> <code>i</code> <code>(</code></strong><br>
+call(<span class="sel">one, tw<span class="head">o</span></span>)<br>
+<strong>Press <code>m</code> <code>a</code> <code>(</code></strong><br>
+call<span class="sel">(one, two<span class="head">)</span></span>
+</div>
 
 `m i i` selects the text you most recently typed before leaving Insert mode — however you entered it (`i`, `a`, `o`, `O`, `A`, `I`, `c`). Type something, press `Esc`, then `m i i` to act on what you just wrote. It stops working as soon as you make another change to the buffer (including undo/redo). There is no `m a i` — an insertion has no delimiters or surrounding structure to select "around".
 

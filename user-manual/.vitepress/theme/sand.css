@@ -171,3 +171,10 @@
   border-top: none !important;
   padding-top: 0 !important;
 }
+
+/* Inline code spans (e.g. `m m`, `g h`) represent one key sequence and must
+   not wrap mid-sequence in narrow table columns. Excludes fenced code
+   blocks (`pre > code`), which manage their own line breaks. */
+.vp-doc :not(pre) > code {
+  white-space: nowrap;
+}

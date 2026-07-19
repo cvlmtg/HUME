@@ -184,6 +184,17 @@ HUME's surround commands select or wrap delimiter pairs using the `m` prefix —
 
 To delete or replace a pair, select it with `m s` and then act: `m s (` then `d` deletes the parentheses, `r` replaces them.
 
+<div class="key-demo">
+<strong>Cursor inside, press <code>m</code> <code>s</code> <code>(</code></strong><br>
+call<span class="head">(</span>one, two<span class="head">)</span><br>
+<br>
+<strong>Press <code>d</code></strong><br>
+callone, two<br>
+<br>
+<strong>...or press <code>r</code> <code>[</code> instead</strong><br>
+call[one, two]
+</div>
+
 ## Helix-style surround (bundled plugin)
 
 If you prefer Helix's dedicated surround keys, a bundled plugin provides them:

@@ -20,31 +20,31 @@ Unlike Helix, HUME's `c` keeps the selection on the text you changed: select a w
 
 `w`, `b`: Both editors re-anchor on each press (the anchor moves with the head — it does not stay pinned at the origin). Helix selects the gap traversed — from the old position to the next word start, including the trailing whitespace. HUME selects the destination word itself and, by default, the whitespace *before* it too — except the first word of a line, which takes its trailing whitespace instead, since a leading run there would be indentation. In the common case of words separated by single spaces the two editors land on visually similar spans; they diverge in exactly where the whitespace sits (leading for HUME vs. trailing for Helix's traversed gap) and around punctuation or line ends, where the two models compute different things outright. Turn off `word-selects-whitespace` (see [Configuration](configuration.md)) for HUME's bare-word behavior instead.
 
-<div style="font-family:var(--vp-font-family-mono);line-height:2;overflow-x:auto">
+<div class="key-demo">
 <strong>Cursor on the first character</strong><br>
-Helix&nbsp;&nbsp;<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">L</span>orem ipsum dolor sit<br>
-HUME&nbsp;&nbsp;&nbsp;<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">L</span>orem ipsum dolor sit<br>
+Helix&nbsp;&nbsp;<span class="head">L</span>orem ipsum dolor sit<br>
+HUME&nbsp;&nbsp;&nbsp;<span class="head">L</span>orem ipsum dolor sit<br>
 <br>
 <strong>Press <code>w</code></strong><br>
-Helix&nbsp;&nbsp;<span style="background:var(--vp-c-brand-soft);border-radius:3px">Lorem<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">&nbsp;</span></span>ipsum dolor sit<br>
-HUME&nbsp;&nbsp;&nbsp;Lorem<span style="background:var(--vp-c-brand-soft);border-radius:3px">&nbsp;ipsu<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">m</span></span> dolor sit<br>
+Helix&nbsp;&nbsp;<span class="sel">Lorem<span class="head">&nbsp;</span></span>ipsum dolor sit<br>
+HUME&nbsp;&nbsp;&nbsp;Lorem<span class="sel">&nbsp;ipsu<span class="head">m</span></span> dolor sit<br>
 <br>
 <strong>Press <code>w</code> again</strong><br>
-Helix&nbsp;&nbsp;Lorem <span style="background:var(--vp-c-brand-soft);border-radius:3px">ipsum<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">&nbsp;</span></span>dolor sit<br>
-HUME&nbsp;&nbsp;&nbsp;Lorem ipsum<span style="background:var(--vp-c-brand-soft);border-radius:3px">&nbsp;dolo<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">r</span></span> sit
+Helix&nbsp;&nbsp;Lorem <span class="sel">ipsum<span class="head">&nbsp;</span></span>dolor sit<br>
+HUME&nbsp;&nbsp;&nbsp;Lorem ipsum<span class="sel">&nbsp;dolo<span class="head">r</span></span> sit
 </div>
 
 To select the word the cursor is already sitting on — no forward jump — HUME binds `mm`. By default it selects the whole word plus one adjacent whitespace run (same rule as `w`/`b` above), no matter where in the word the cursor sits; with `word-selects-whitespace` off it behaves like `miw` (bare word) instead. Helix has no dedicated command for this, but `e` (move to end of word) reaches a similar result *only when the cursor already sits on the word's first character* — unlike `w`, `e` always excludes the trailing whitespace and, starting from the middle of a word, selects only from that point to the word's end (`rem`), not the whole word. `mm` has neither restriction.
 
-<div style="font-family:var(--vp-font-family-mono);line-height:2;overflow-x:auto">
+<div class="key-demo">
 <strong>Select the current word, cursor in the middle of the word</strong><br>
-Helix&nbsp;&nbsp;Lorem ip<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">s</span>um dolor sit<br>
-HUME&nbsp;&nbsp;&nbsp;Lorem ip<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">s</span>um dolor sit<br>
+Helix&nbsp;&nbsp;Lorem ip<span class="head">s</span>um dolor sit<br>
+HUME&nbsp;&nbsp;&nbsp;Lorem ip<span class="head">s</span>um dolor sit<br>
 <br>
 <strong>Press <code>e</code></strong><br>
-Helix&nbsp;&nbsp;Lorem ip<span style="background:var(--vp-c-brand-soft);border-radius:3px">su<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">m</span></span> dolor sit<br>
+Helix&nbsp;&nbsp;Lorem ip<span class="sel">su<span class="head">m</span></span> dolor sit<br>
 <strong>Press <code>mm</code></strong><br>
-HUME&nbsp;&nbsp;&nbsp;Lorem<span style="background:var(--vp-c-brand-soft);border-radius:3px"> ipsu<span style="background:var(--vp-c-brand-1);color:var(--vp-c-bg);border-radius:3px">m</span></span> dolor sit
+HUME&nbsp;&nbsp;&nbsp;Lorem<span class="sel"> ipsu<span class="head">m</span></span> dolor sit
 </div>
 
 ### Growing selections

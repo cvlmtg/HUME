@@ -1,0 +1,25 @@
+/* ============================================================
+   Inline keystroke demos — monospace before/after diagrams used
+   throughout the manual to show what a motion or selection
+   command does to the buffer. Colors are VitePress design tokens
+   (see sand.css), so these stay correct in light and dark.
+   ============================================================ */
+
+.key-demo {
+  font-family: var(--vp-font-family-mono);
+  line-height: 2;
+  overflow-x: auto;
+}
+
+/* Selection body */
+.key-demo .sel {
+  background: var(--vp-c-brand-soft);
+  border-radius: 3px;
+}
+
+/* Selection head (the moving end) */
+.key-demo .head {
+  background: var(--vp-c-brand-1);
+  color: var(--vp-c-bg);
+  border-radius: 3px;
+}

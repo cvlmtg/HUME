@@ -12,6 +12,15 @@ In HUME, the order is reversed: you **select first, then act**. `w` selects the 
 - Operators (`d`, `c`, `y`, …) act on whatever is currently selected
 - The selection is always visible — there is no invisible "cursor as a point"
 
+<div class="key-demo">
+<strong>Cursor on the first character, press <code>w</code></strong><br>
+Lorem<span class="sel">&nbsp;ipsu<span class="head">m</span></span> dolor sit<br>
+<strong>Press <code>d</code></strong><br>
+Lorem<span class="head">&nbsp;</span>dolor sit
+</div>
+
+You see the selection `w` built — word plus its leading whitespace — before `d` ever runs, instead of composing `dw` blind and finding out what it did after the fact.
+
 ## Mode map
 
 | Vim mode | HUME equivalent |
