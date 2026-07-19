@@ -1,0 +1,88 @@
+export const SCOPES = [
+  ["UI", [
+    "ui.background", "ui.foreground", "ui.cursor", "ui.cursor.match",
+    "ui.selection", "ui.selection.primary", "ui.selection.search", "ui.linenr", "ui.linenr.selected",
+    "ui.statusline", "ui.statusline.normal", "ui.statusline.insert",
+    "ui.popup", "ui.menu", "ui.menu.selected", "ui.window", "ui.gutter",
+  ]],
+  ["Syntax", [
+    "comment", "constant", "constant.numeric", "constant.character",
+    "constant.character.escape", "string", "string.special",
+    "keyword", "keyword.control", "keyword.function", "keyword.operator",
+    "operator", "function", "function.method", "function.macro",
+    "tag", "type", "type.builtin",
+    "variable", "variable.builtin", "variable.parameter",
+    "label", "punctuation", "punctuation.bracket", "punctuation.delimiter",
+    "namespace", "attribute", "module",
+  ]],
+  ["Markup", [
+    "markup.heading", "markup.bold", "markup.italic",
+    "markup.link", "markup.raw", "markup.list",
+  ]],
+  ["Diff", ["diff.plus", "diff.minus", "diff.delta"]],
+  ["Diagnostic", [
+    "diagnostic.error", "diagnostic.warning", "diagnostic.info", "diagnostic.hint",
+  ]],
+];
+
+export const ALL_SCOPES = SCOPES.flatMap(([, items]) => items);
+
+export const DEFAULT_PAL = {
+  black: "#1a1b26", red: "#f7768e", green: "#9ece6a", yellow: "#e0af68",
+  blue: "#7aa2f7", magenta: "#bb9af7", cyan: "#7dcfff", white: "#c0caf5",
+  orange: "#ff9e64", gray: "#565f89", "light-gray": "#a9b1d6", "dark-gray": "#33374c",
+};
+
+export const DEFAULT_SC = {
+  "ui.background": "black", "ui.foreground": "white", "ui.cursor": "blue",
+  "ui.cursor.match": { fg: "yellow", bg: "#3a371a", modifiers: ["bold"] }, "ui.selection": { bg: "dark-gray" },
+  "ui.selection.primary": { bg: "gray" }, "ui.selection.search": { fg: "orange", bg: "#3a2a14" }, "ui.linenr": "gray",
+  "ui.linenr.selected": "yellow",
+  "ui.statusline": { fg: "white", bg: "dark-gray" },
+  "ui.statusline.normal": { fg: "black", bg: "blue" },
+  "ui.statusline.insert": { fg: "black", bg: "green" },
+  "ui.popup": { fg: "white", bg: "dark-gray" },
+  "ui.menu": { fg: "white", bg: "dark-gray" },
+  "ui.menu.selected": { fg: "black", bg: "blue" },
+  "ui.window": "gray", "ui.gutter": "gray",
+  comment: { fg: "gray", modifiers: ["italic"] }, constant: "orange", "constant.numeric": "orange",
+  "constant.character": "orange", "constant.character.escape": "magenta",
+  string: "green", "string.special": "cyan",
+  keyword: "magenta", "keyword.control": "magenta",
+  "keyword.function": "magenta", "keyword.operator": "cyan",
+  operator: "cyan", "function": "blue", "function.method": "blue",
+  "function.macro": "cyan", tag: "red", type: "yellow",
+  "type.builtin": "yellow", variable: "white",
+  "variable.builtin": "red", "variable.parameter": "orange",
+  label: "cyan", punctuation: "light-gray",
+  "punctuation.bracket": "light-gray", "punctuation.delimiter": "light-gray",
+  namespace: "magenta", attribute: "yellow", module: "magenta",
+  "markup.heading": { fg: "blue", modifiers: ["bold"] },
+  "markup.bold": { fg: "orange", modifiers: ["bold"] },
+  "markup.italic": { fg: "magenta", modifiers: ["italic"] },
+  "markup.link": { fg: "cyan", modifiers: ["underlined"] },
+  "markup.raw": "green", "markup.list": "red",
+  "diff.plus": "green", "diff.minus": "red", "diff.delta": "yellow",
+  "diagnostic.error": "red", "diagnostic.warning": "yellow",
+  "diagnostic.info": "blue", "diagnostic.hint": "cyan",
+};
+
+export const CODE = [
+  { n: 1, t: [["use ", "keyword"], ["std", "namespace"], ["::", "punctuation.delimiter"], ["collections", "module"], ["::", "punctuation.delimiter"], ["HashMap", "type"], [";", "punctuation.delimiter"]] },
+  { n: 2, t: [] },
+  { n: 3, t: [["/// A theme palette for the editor", "comment"]] },
+  { n: 4, t: [["pub ", "keyword"], ["struct ", "keyword"], ["Theme", "type", "search"], [" {", "punctuation.bracket"]] },
+  { n: 5, t: [["    ", ""], ["n", "variable", "cursor"], ["ame", "variable", "sel"], [":", "punctuation.delimiter"], [" String", "type.builtin"], [",", "punctuation.delimiter"]] },
+  { n: 6, t: [["    colors", "variable"], [":", "punctuation.delimiter"], [" HashMap", "type"], ["<", "punctuation.bracket"], ["String", "type.builtin"], [", ", "punctuation.delimiter"], ["Color", "type"], [">", "punctuation.bracket"], [",", "punctuation.delimiter"]] },
+  { n: 7, t: [["}", "punctuation.bracket"]] },
+  { n: 8, t: [] },
+  { n: 9, t: [["impl ", "keyword"], ["Theme", "type", "search"], [" {", "punctuation.bracket"]] },
+  { n: 10, t: [["    pub ", "keyword"], ["fn ", "keyword.function"], ["new", "function"], ["(", "punctuation.bracket", "match"], ["name", "variable.parameter"], [": ", "punctuation.delimiter"], ["&", "operator"], ["str", "type.builtin"], [")", "punctuation.bracket", "match"], [" -> ", "operator"], ["Self", "type.builtin"], [" {", "punctuation.bracket"]] },
+  { n: 11, t: [["        let ", "keyword"], ["count", "variable"], [" = ", "operator"], ["42", "constant.numeric"], [";", "punctuation.delimiter"]] },
+  { n: 12, t: [["        let ", "keyword"], ["msg", "variable"], [" = ", "operator"], ['"Theme loaded"', "string"], [";", "punctuation.delimiter"]] },
+  { n: 13, t: [["        println!", "function.macro"], ["(", "punctuation.bracket"], ['"{}"', "string"], [", ", "punctuation.delimiter"], ["msg", "variable"], [")", "punctuation.bracket"], [";", "punctuation.delimiter"]] },
+  { n: 14, t: [["        Self", "type.builtin"], [" { ", "punctuation.bracket"], ["name", "variable", "sel2"], [": ", "punctuation.delimiter"], ["name", "variable.parameter", "sel2"], [".", "punctuation.delimiter"], ["to_string", "function.method"], ["()", "punctuation.bracket"], [" }", "punctuation.bracket"]] },
+  { n: 15, t: [["    }", "punctuation.bracket"]] },
+  { n: 16, t: [["}", "punctuation.bracket"]] },
+  { n: 17, t: [] },
+];

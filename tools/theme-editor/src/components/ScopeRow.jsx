@@ -1,0 +1,85 @@
+import { useState } from 'react';
+import { C, INPUT, MONO } from '../ui.js';
+import { resolve } from '../lib/theme.js';
+import Swatch from './Swatch.jsx';
+
+export default function ScopeRow({ id, value, palette, onChange }) {
+  const isObj = typeof value === "object" && value !== null;
+  const fgVal = isObj ? (value.fg || "") : (value || "");
+  const bgVal = isObj ? (value.bg || "") : "";
+  const hasBg = isObj || id.startsWith("ui.");
+  const palNames = Object.keys(palette);
+
+  const [fgCustom, setFgCustom] = useState(false);
+  const [bgCustom, setBgCustom] = useState(false);
+  const [fgHex, setFgHex] = useState("");
+  const [bgHex, setBgHex] = useState("");
+
+  const emit = (newFg, newBg) => {
+    const extra = (typeof value === "object" && value !== null)
+      ? Object.fromEntries(Object.entries(value).filter(([k]) => k !== "fg" && k !== "bg"))
+      : {};
+    const hasExtra = Object.keys(extra).length > 0;
+    if (!hasBg) {
+      onChange(hasExtra ? { ...extra, fg: newFg } : newFg);
+      return;
+    }
+    if (newFg === "" && newBg === "") onChange(hasExtra ? { ...extra } : {});
+    else if (newBg === "")            onChange(hasExtra ? { ...extra, fg: newFg } : newFg);
+    else if (newFg === "")            onChange({ ...extra, bg: newBg });
+    else                              onChange({ ...extra, fg: newFg, bg: newBg });
+  };
+
+  const sel = { ...INPUT, flex: 1, minWidth: 0 };
+
+  const rFg = resolve(fgVal, palette);
+  const rBg = resolve(bgVal, palette);
+
+  function renderSelect(val, isCustom, hexVal, setCustom, setHex, isBgField) {
+    const handleSel = e => {
+      const v = e.target.value;
+      if (v === "__custom__") { setCustom(true); return; }
+      setCustom(false);
+      if (isBgField) emit(fgVal, v); else emit(v, bgVal);
+    };
+    const handleHex = e => {
+      setHex(e.target.value);
+      if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) {
+        if (isBgField) emit(fgVal, e.target.value); else emit(e.target.value, bgVal);
+      }
+    };
+    return (
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <select value={isCustom ? "__custom__" : val} onChange={handleSel} style={sel}>
+          <option value="">{"-- none --"}</option>
+          {palNames.map(n => <option key={n} value={n}>{n}</option>)}
+          <option value="__custom__">{"Custom hex"}</option>
+        </select>
+        {isCustom && (
+          <input type="text" placeholder="#ff00aa" value={hexVal} onChange={handleHex}
+            style={{ ...INPUT, width: "100%", marginTop: 3, boxSizing: "border-box" }} />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: "6px 4px", borderBottom: "1px solid " + C.bgRow }}>
+      <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 4, fontFamily: MONO, display: "flex", alignItems: "center", gap: 6 }}>
+        <Swatch color={rFg} />
+        {hasBg && <Swatch color={rBg} />}
+        <span style={{ opacity: 0.7 }}>{id}</span>
+      </div>
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <span style={{ fontSize: 9, color: C.textDim, width: 16, flexShrink: 0 }}>FG</span>
+        {renderSelect(fgVal, fgCustom, fgHex, setFgCustom, setFgHex, false)}
+      </div>
+      {hasBg && (
+        <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}>
+          <span style={{ fontSize: 9, color: C.textDim, width: 16, flexShrink: 0 }}>BG</span>
+          {renderSelect(bgVal, bgCustom, bgHex, setBgCustom, setBgHex, true)}
+        </div>
+      )}
+    </div>
+  );
+}

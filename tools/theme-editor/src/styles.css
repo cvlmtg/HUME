@@ -1,0 +1,10 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #11111b; overflow: hidden; }
+#root { height: 100vh; overflow-y: auto; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #363a4f; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #45475a; }
+select { cursor: pointer; }
+select option { background: #24273a; color: #cad3f5; }
+@keyframes hume-blink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
