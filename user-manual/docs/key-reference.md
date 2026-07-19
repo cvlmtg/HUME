@@ -1,5 +1,7 @@
 # Key Reference
 
+Every default key, by mode. Use your browser's search — or the search box above — to find one fast.
+
 ::: info
 Keys marked **kitty only** require the kitty keyboard protocol, auto-detected at startup on supported terminals — see [Terminal compatibility](installation.md#terminal-compatibility). Legacy terminal encodings cannot transmit those key combinations, so the bindings are unavailable there.
 :::
@@ -19,11 +21,13 @@ Keys marked **kitty only** require the kitty keyboard protocol, auto-detected at
 | `W` / `B` | WORD variants of `w` / `b` |
 | `Home` | Start of line (idiomatic form is `g h`) |
 | `End` | End of line (idiomatic form is `g l`) |
-| `{` / `}` | Previous / next paragraph start |
+| `{` | Up to the blank line above this paragraph |
+| `}` | Down to the start of the next paragraph |
 | `PageDown` / `PageUp` | Scroll one viewport down / up |
 | `Ctrl+d` / `Ctrl+u` | Scroll half a viewport down / up |
 | `Ctrl+o` | Jump list back |
 | `Ctrl+i` | Jump list forward |
+| `Tab` | Jump list forward (under kitty, `Tab` focuses the next pane instead) |
 | `Ctrl+h/j/k/l/w/b` | One-shot extend of the corresponding motion (kitty only) |
 
 ### Character find
@@ -50,7 +54,8 @@ After `f`/`F`/`t`/`T`, HUME waits for the target character.
 | `%` | Select entire buffer |
 | `x` | Select current line (forward) |
 | `X` | Select current line (backward) |
-| `Ctrl+x` / `Ctrl+X` | Same as `x` / `X` but always extend (any terminal) |
+| `Ctrl+x` | Same as `x` but always extends |
+| `Ctrl+X` | Same as `X` but always extends (kitty only) |
 | `S` | Split multi-line selections on newlines |
 | `C` | Copy each selection to the line below |
 | `_` | Trim leading/trailing whitespace from each selection |
@@ -71,6 +76,7 @@ Text objects (use the `m` prefix):
 | `` m i ` `` / `` m a ` `` | Inner / around `` `…` `` |
 | `m i a` / `m a a` | Inner / around argument |
 | `m i l` / `m a l` | Inner / around line |
+| `m i i` | Select the text typed during the last insert |
 | `m m` | Select the word under the cursor (plus one adjacent whitespace run by default, same rule as `w`/`b` — see `word-selects-whitespace`) |
 | `M M` | WORD variant of `m m` |
 | `m s` + char | Select surrounding delimiter pair |
@@ -86,10 +92,10 @@ Text objects (use the `m` prefix):
 | `y` | Yank (clipboard + kill ring) |
 | `p` | Paste after (smart source) |
 | `P` | Paste before |
-| `[` / `]` | Cycle kill ring older / newer |
-| `r` + char | Replace every selected character |
-| `J` | Join current line with next |
-| `&` | Align selections to primary's anchor column |
+| `[` / `]` | Cycle kill ring older / newer and re-paste (only after a `p`/`P`) |
+| `r` + char | Replace every selected character (line endings are left alone) |
+| `J` | Join the selected lines into one |
+| `&` | Align selections into a column |
 | `u` | Undo |
 | `U` / `Ctrl+r` | Redo |
 | `.` | Repeat last editing action |
@@ -121,12 +127,14 @@ Text objects (use the `m` prefix):
 
 | Key | Action |
 |-----|--------|
-| `Q Q` | Start recording into default register `q` |
-| `Q <reg>` | Start recording into named register (`0`–`9`) |
+| `Q Q` or `Q q` | Start recording into default register `q` |
+| `Q <0-9>` | Start recording into a numbered register |
 | `Q` (while recording) | Stop recording |
 | `q q` | Replay register `q` |
-| `q <reg>` | Replay named register (`0`–`9`) |
+| `q <0-9>` | Replay a numbered register |
 | `<count> q q` | Replay `q` `<count>` times |
+
+Numbered registers are shared between macros and yanked text — last write wins. Recording is ignored in read-only buffers and during replay.
 
 See [Register prefix](editing.md#register-prefix) for the full register list.
 
@@ -207,10 +215,13 @@ The status bar shows `EXT` in Extend mode.
 | Key | Action |
 |-----|--------|
 | `Enter` | Execute command |
-| `Esc` | Cancel |
+| `Esc` / `Ctrl+c` | Cancel |
 | `Tab` | Complete |
 | `Shift+Tab` | Complete (previous) |
 | `Up` / `Down` | History |
+| `Left` / `Right` | Move the cursor |
+| `Backspace` | Delete character before cursor; on empty input, dismiss the command line |
+| `Ctrl+w` | Delete word before cursor |
 
 ## Search mode
 
@@ -226,8 +237,9 @@ Entered with `/` (forward) or `?` (backward). Every keystroke live-previews the 
 | `Backspace` (on empty input) | Exit Search mode |
 | `Ctrl+w` | Delete word before cursor |
 | `Up` / `Down` | Recall previous / next pattern from history (separate `/` and `?` rings) |
+| `Left` / `Right` | Move the cursor |
 | Any other character | Insert and re-preview |
-| `Tab` / `Shift+Tab` / `Left` / `Right` | No-op |
+| `Tab` / `Shift+Tab` | No-op |
 
 ## Select mode
 
@@ -241,5 +253,6 @@ Entered with `s` from Normal mode (requires at least one non-collapsed selection
 | `Backspace` (input non-empty) | Delete char and re-preview |
 | `Backspace` (empties input or on empty) | Restore original selections, stay in Select mode |
 | `Ctrl+w` | Delete word before cursor |
+| `Left` / `Right` | Move the cursor |
 | Any other character | Insert and re-preview |
-| `Tab` / `Shift+Tab` / `Up` / `Down` / `Left` / `Right` | No-op (Select mode has no pattern history) |
+| `Tab` / `Shift+Tab` / `Up` / `Down` | No-op (Select mode has no pattern history) |

@@ -1,6 +1,6 @@
 # Command-line Flags
 
-This page documents the `hume` command as run from a shell. For the in-editor `:` prompt, see [Commands](commands.md).
+HUME's command line is deliberately small — almost everything is configured in `init.scm` rather than passed as a flag. This page covers the `hume` command as run from a shell; for the in-editor `:` prompt, see [Commands](commands.md).
 
 ## Synopsis
 
@@ -20,8 +20,8 @@ hume [OPTIONS] [FILE...]
 |------|-------------|
 | `--keys <STREAM>` | Headless golf-replay mode. Replay the key `STREAM` (e.g. `dwx`) against a single input file and write the result to `--output`. Requires `--output` and exactly one `FILE`. |
 | `--output <PATH>` | Output path for headless mode. Required by and requires `--keys`. |
-| `-h`, `--help` | Print clap-derived help and exit. |
-| `-V`, `--version` | Print the HUME version (e.g. `hume 0.1.0-f460770`) and exit. The same string is available inside the editor via `:version`. |
+| `-h`, `--help` | Print help and exit. |
+| `-V`, `--version` | Print the HUME version (e.g. `hume 0.9.0-f460770`) and exit. The same string is available inside the editor via `:version`. |
 
 ## What's not here
 
