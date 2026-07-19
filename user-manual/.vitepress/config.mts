@@ -71,6 +71,7 @@ export default defineConfig({
         items: [
           { text: 'Vim / Neovim', link: '/from-vim' },
           { text: 'Helix', link: '/from-helix' },
+          { text: 'Kakoune', link: '/from-kakoune' },
         ],
       },
       { text: 'Roadmap', link: '/roadmap' },
