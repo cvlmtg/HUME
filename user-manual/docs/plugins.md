@@ -1,6 +1,10 @@
 # Plugins
 
-HUME plugins are written in Scheme (Steel dialect) and managed by **PLUM**, a bundled core plugin — see [Core Plugins](core-plugins.md#plum) for what it is and how to enable it.
+Plugins are written in the same language as your config, so the line between configuring HUME and extending it is thin — a plugin is mostly just `init.scm` code that lives somewhere reusable.
+
+The first half of this page covers using plugins other people wrote; [Writing a plugin](#writing-a-plugin) covers making your own.
+
+Plugins are installed and updated by **PLUM**, a bundled plugin — see [Core Plugins](core-plugins.md#core-plum) to enable it.
 
 ## Installing a plugin
 
@@ -11,7 +15,7 @@ Add a `declare-plugin` or `load-plugin` call to your `init.scm`:
 (load-plugin "username/my-theme")
 ```
 
-On next launch, PLUM clones the plugin from GitHub, loads it, and makes its commands and key bindings available.
+Then run `:plum-install` to clone it from GitHub. PLUM never installs anything on its own, so nothing is fetched behind your back at startup; once the plugin is on disk, its commands and key bindings are available from the next launch.
 
 See [How plugins are loaded](#how-plugins-are-loaded) for the difference between the two verbs.
 
@@ -68,7 +72,7 @@ A bare `declare-plugin` with no activation entries asks the plugin for its own d
 
 ## Writing a plugin
 
-A plugin is a Scheme file placed in PLUM's managed directory. The simplest plugin:
+A plugin is a directory containing a `plugin.scm` — that file is the entry point HUME loads. For a plugin installed by PLUM, the directory is named after its GitHub owner and repo. The simplest `plugin.scm`:
 
 ```scheme
 (define-command! "hello"
@@ -90,7 +94,7 @@ This registers `:hello` as a typed command.
 
 Registers a typed command available as `:command-name`. The second argument is a doc string shown in command help; the function is called when the command is dispatched.
 
-For commands that stream subprocess output to the terminal (installers, git operations), add the `#:inline-output #t` keyword. The alt-screen opens on the command's first real output — not eagerly at the start — so a run that produces no output (an already-up-to-date check, a validation error) never flashes an empty screen or waits on an unneeded keypress. Once something is printed, HUME exits the alt-screen so it's visible, then waits for a keypress before returning.
+For commands that stream subprocess output to the terminal (installers, git operations), add the `#:inline-output #t` keyword. The alt-screen opens on the command's first real output — not eagerly at the start — so a run that produces no output (an already-up-to-date check, a validation error) never flashes an empty screen or waits on an unneeded keypress. Once something is printed, HUME waits for a keypress before returning to the editor, so the output stays on screen until you've read it.
 
 Plugins run with the same privileges as HUME itself, so any Scheme process/filesystem function is available — there's no separate "shell builtin" layer. The one exception: inside an `#:inline-output` command, spawn subprocesses whose output should reach the terminal via `run-inline-output!` rather than a raw `spawn-process`/`command` call — it isolates the child into its own process group so a Ctrl+C meant to interrupt the subprocess doesn't kill HUME too, and it's the trigger that opens the alt-screen:
 
@@ -119,14 +123,18 @@ For commands that should support dot-repeat (`.`), add `#:repeatable #t`. `#:rep
 Use `(call! ...)` to dispatch other commands from within a plugin:
 
 ```scheme
-(define-command! "delete-and-save"
-  "Delete the selection and write the buffer to disk."
+(define-command! "delete-and-deselect"
+  "Delete the selection, then collapse the cursor."
   (lambda ()
     (call! "delete-selection")
-    (call! "write")))
+    (call! "collapse-selection")))
 ```
 
-`call!` dispatches any command uniformly — built-in and Steel-defined alike, activating the target plugin on demand.
+`call!` dispatches any command that can be bound to a key — built-in and Steel-defined alike — activating the target plugin on demand.
+
+::: warning `call!` can't run `:` commands
+Typed commands like `write`, `quit`, or `edit` are not reachable through `call!`. Calling one logs a warning and does nothing, so `(call! "write")` will not save. Only key-bindable commands work here.
+:::
 
 When forwarding a `count` argument to another command, a count of `0` means "as if no count was typed" — this is how `move-down`/`move-up` decide between visual-row and buffer-line movement, and it lets a key-bound command that forwards its own `count` behave the same way a native keybinding would.
 
@@ -157,7 +165,7 @@ Some commands need a character argument from the user (like surround operations)
     (request-wait-char! "replace")))
 ```
 
-The status bar shows a pending indicator while waiting.
+HUME shows nothing while it waits, so make it obvious from context that a character is expected.
 
 ### Register prefix
 
@@ -171,7 +179,7 @@ To make subsequent `(call! …)` invocations in a command body target a specific
     (call! "paste-after")))
 ```
 
-The prefix persists for the rest of the command body. The status bar shows `"` while the register prompt is active.
+The prefix persists for the rest of the command body.
 
 ### Hooks
 
@@ -193,8 +201,16 @@ Available hooks and their lambda signatures:
 | `on-mode-change` | The editor mode changes | `(old new)` — mode strings |
 | `on-language-set` | A buffer's language is detected or changed | `(buffer-id lang)` — `lang` is a string or `#f` |
 | `on-diagnostics-changed` | A buffer's LSP diagnostics change | `(buffer-id)` — pull details with `diagnostics-for-buffer` |
+| `on-lsp-attach` | A language server attaches to a buffer | `(buffer-id server-name)` |
+| `on-lsp-detach` | A language server detaches from a buffer | `(buffer-id server-name)` |
+| `on-viewport-change` | The visible region of a pane changes | `()` |
+| `on-trigger-char` | A registered trigger character is typed | `(buffer-id char source)` |
+| `on-completion-accept` | A completion entry is accepted | `(buffer-id item)` |
+| `on-completion-refilter` | Completion input changes | `(buffer-id text)` |
 
 For lazy plugins, declare the events that should trigger activation via `#:events` on `declare-plugin` instead (see [How plugins are loaded](#how-plugins-are-loaded)). LSP-related hooks like `on-lsp-attach` work fine with `register-hook!`, but can't be used as an `#:events` activation entry — a plugin gated only on `on-lsp-attach` never activates, since nothing attaches to a server until the plugin has already loaded and registered it.
+
+`set-option!` can't be called from a hook handler: it's only valid while `init.scm` or a plugin body is being evaluated. Set options at the top level of your plugin instead.
 
 A few more examples:
 
@@ -202,12 +218,6 @@ A few more examples:
 ; format on save
 (register-hook! 'on-buffer-save
   (lambda (bid) (call! "lsp-fmt")))
-
-; per-language settings
-(register-hook! 'on-language-set
-  (lambda (bid lang)
-    (when (equal? lang "go")
-      (set-option! "tab-width" 4))))
 
 ; react to diagnostics
 (register-hook! 'on-diagnostics-changed
@@ -253,6 +263,8 @@ A plugin can read the `#:config` value its user passed to `load-plugin` or `decl
 
 Document the keys your plugin understands so users know what to pass.
 
+The two verbs treat `#:config` differently: with `declare-plugin` the first declaration wins, so a later one can't quietly change it, while `load-plugin` always applies the config it's given. That means a bare `(load-plugin "name")` after a configured `declare-plugin` resets the plugin to its defaults.
+
 ### Filesystem and processes
 
 Plugins are trusted code: they can read and write any file, and spawn any process, just like any other Scheme program. There's no separate sandboxed subset of the filesystem — use Scheme's own functions directly (`open-input-file`, `create-directory!`, `delete-file!`, `read-dir`, `path-exists?`, and so on) for file access, and `command`/`spawn-process`/`wait` for running external tools.
@@ -265,6 +277,8 @@ A few extra functions cover things Scheme has no way to know on its own:
 | `(runtime-dir)` | HUME's runtime directory, or `#f` if unavailable |
 | `(path-join seg…)` | Join path segments with the OS-native separator |
 | `(json-parse str)` | Decode a JSON string into hashmaps/lists/strings/numbers/booleans — errors on malformed input |
+
+`run-inline-output!` also takes a `#:cwd` keyword to set the working directory, and raises an error if the command exits non-zero — wrap it in a handler if a failure is expected.
 
 Only install or overwrite files under `(data-dir)` unless you have a specific reason to go elsewhere — that's where HUME expects a plugin's own data (installed grammars, downloaded servers, plugin state) to live.
 

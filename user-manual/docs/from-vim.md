@@ -35,12 +35,12 @@ HUME replaces Vim's letter registers (`a`–`z`) with a small set of mnemonic si
 
 | Name | HUME function | Vim equivalent |
 |------|---------------|----------------|
-| `"0`–`"9` | Named storage — text or macros | `"0`–`"9` |
+| `"0`–`"9` | Numbered storage — text *or* macros, last write wins | `"0`–`"9` |
 | `"k` | Kill-ring head (most recent yank/delete) | — |
 | `"c` | System clipboard | `"+` |
 | `"b` | Black hole — writes discarded | `"_` |
-| `"s` | Search register — last search pattern | `"/` |
-| `"q` | Macro register (`QQ`/`qq`) | — |
+
+Two more registers exist but can't be typed after `"`: the search register (the last pattern, vim's `"/`), written by `/`, `?` and `*`; and the macro register `q`, written by `Q` recording. You reach both through the commands that use them, not through the `"` prefix.
 
 ::: warning
 Letter registers `a`–`z` other than the special names above do not exist. All yanks and deletes go to the kill ring (`k`) and digit registers (`0`–`9`). Use `[`/`]` to cycle through kill-ring history.
@@ -101,5 +101,5 @@ Most `:` commands work as expected:
 | `:bd` | `:bd` |
 | `:cd` | `:cd` |
 | `:pwd` | `:pwd` |
-| `Ctrl+^` | `:b#`, or `Ctrl+6` with `core:vim-keybind` loaded |
+| `Ctrl+^` | `:b #`, or `Ctrl+6` with `core:vim-keybind` loaded (kitty only) |
 | `Ctrl+o` / `Ctrl+i` | `Ctrl+o` / `Ctrl+i` |

@@ -75,7 +75,7 @@ Both editors share the same foundations — multiple cursors, `;` to collapse, `
 |-----------|-------|------|
 | Copy selection on line below | `C` | `C` (duplicates each selection to the same column on the next line, adding a multi-cursor — column-style editing via multi-cursor, not a rectangular visual block) |
 | Copy selection on line above | `Alt-C` | (unbound) |
-| Remove primary selection | `Alt-,` | `Ctrl+,` |
+| Remove primary selection | `Alt-,` | `Ctrl+,` (kitty only) |
 | Flip selections | `Alt-;` (Normal and Select mode) | `Ctrl+e` (Normal and Extend mode) |
 | Merge consecutive selections | `Alt-_` (touching selections only); `Alt--` merges all into one span | automatic — adjacent selections never persist |
 | Align selections | `&` | `&` |
@@ -87,7 +87,7 @@ Both editors share the same foundations — multiple cursors, `;` to collapse, `
 | Search selection literally, no anchors | `Alt-*` | `Ctrl+/` (kitty only) |
 
 ::: warning
-HUME's `*` is not the same operation as Helix's `*`. Helix's `*` searches the literal current selection (or just the character under a collapsed cursor), adding `\b` anchors only when that text looks like a word — it never expands past what's already selected. HUME's `*` is Vim-style: it always expands to the whole word under the cursor first, ignoring any existing selection, then searches with `\b` anchors.
+HUME's `*` is not the same operation as Helix's `*`. Helix's `*` searches the literal current selection (or just the character under a collapsed cursor), adding `\b` anchors only when that text looks like a word — it never expands past what's already selected. HUME's `*` is Vim-style: it expands to the whole run under the cursor, ignoring any existing selection. A word gets `\b` anchors; a run of punctuation is searched literally without them, and on whitespace `*` does nothing at all.
 
 HUME's `Ctrl+/` is the closer match — to Helix's `Alt-*` (literal selection, no anchors). HUME has no equivalent of Helix's `*` (selection-based search with automatic boundary detection).
 
@@ -111,7 +111,7 @@ This makes HUME's config a real programming language — conditionals, loops, an
 
 ### Plugin system
 
-Helix has no built-in plugin system. HUME has [PLUM](core-plugins.md#plum), a plugin manager where plugins are Steel (Scheme) scripts loaded from GitHub:
+Helix has no built-in plugin system. HUME has [PLUM](core-plugins.md#core-plum), a plugin manager where plugins are Steel (Scheme) scripts installed from GitHub. Declare the plugin, then run `:plum-install` to fetch it:
 
 ```scheme
 (load-plugin "username/my-plugin")
@@ -119,7 +119,7 @@ Helix has no built-in plugin system. HUME has [PLUM](core-plugins.md#plum), a pl
 
 ### Statusline
 
-Helix's statusline is configurable via TOML (`[editor.statusline]`) — you can reorder and toggle a fixed set of built-in elements (mode, file name, diagnostics, position, etc.) across left/center/right zones. HUME's statusline is scripted from Scheme, so providers can compute and display arbitrary custom content, not just rearrange a built-in list:
+Helix's statusline is configurable via TOML (`[editor.statusline]`); HUME's is configured from Scheme. Both work the same way in practice — you reorder and toggle a fixed set of built-in elements across left/center/right zones:
 
 ```scheme
 (configure-statusline! '("Mode" "FileName") '("SearchMatches") '("Position"))
@@ -132,8 +132,10 @@ Helix uses `ms`, `md`, `mr` for surround. HUME supports both defaults and a Heli
 | Action | HUME (default) | HUME (helix-surround plugin) |
 |--------|---------------|------------------------------|
 | Wrap | `mw` + char | `ms` + char |
-| Delete | (unbound) | `md` + char |
-| Replace | (unbound) | `mr` + char |
+| Delete | `ms` + char, then `d` | `md` + char |
+| Replace | `ms` + char, then `r` | `mr` + char |
+
+By default there's no dedicated delete or replace key because you don't need one: `ms` selects the surrounding pair, and then the ordinary `d` and `r` act on it. Loading the plugin swaps that trade — it takes `ms` over for wrapping and removes `mw`.
 
 Enable the Helix-style bindings by loading the built-in plugin:
 
@@ -147,14 +149,12 @@ Several features were intentionally adopted from Helix rather than reinvented:
 
 - **Tree-sitter grammars** — Rather than curating our own grammar repository list, HUME pins a Helix commit and syncs grammar sources, revisions, language extensions, and file-glob associations from Helix's `languages.toml` via a script. Tree-sitter highlight queries are fetched directly from Helix's repository at the pinned revision at install time.
 - **Helix-style surround** — The `core:helix-surround` plugin remaps surround operations to `ms` (wrap), `md` (delete), and `mr` (replace), matching Helix's keybindings. This is opt-in; HUME's default surround follows its own select-then-act model.
-- **Theme format** — Helix uses TOML with `[palette]` indirection and dot-separated UI scope names. HUME's theme loader is fully Helix-compatible, accepting the same file format, modifier names (`crossed_out`, `underlined`), and extended underline syntax. This lets the community share themes between both editors.
+- **Theme format** — Helix uses TOML with `[palette]` indirection and dot-separated UI scope names. HUME's theme loader reads the same file format, modifier names (`crossed_out`, `underlined`), and extended underline syntax, so themes can be shared between both editors. One difference: palette entries must be `#rrggbb` values — a theme using terminal color names like `red` in its palette won't pick those up.
 
 HUME also ships a theme editor — a single-file HTML tool you can open in a browser to edit themes visually and export them as TOML. You can download it from https://github.com/cvlmtg/HUME/blob/main/tools/theme-editor/index.html
 
 ### What HUME has that Helix doesn't
 
 - Scripting and plugins (Steel/Scheme)
-- An undo tree (branching history preserved)
 - Smart paste with kill ring
-- Fully configurable statusline
 - Hook system (on-buffer-open, on-buffer-save, etc.)
