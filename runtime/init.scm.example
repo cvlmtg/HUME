@@ -4,7 +4,7 @@
 ;;; and edit to taste.  HUME evaluates it once at startup; use :reload-config
 ;;; to apply changes without restarting.
 ;;;
-;;; Steel is a Scheme dialect. Run :commands to list all built-in commands.
+;;; Steel is a Scheme dialect. Press : then Tab to list all built-in commands.
 ;;; Full reference: user-manual/docs/configuration.md and plugins.md.
 
 ;; ── Settings ──────────────────────────────────────────────────────────────────

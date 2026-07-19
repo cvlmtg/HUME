@@ -196,6 +196,18 @@
 - **File picker / fuzzy finder** (Helix-style): full design + task breakdown in `docs/FUZZY-FINDERS.md`. Splits dependency satisfied by M10 T2; remaining gate is prioritization.
 - **Class A docked panes (fixed-row-count `LayoutTree` variant)**: real panes docked to a fixed row count inside the split tree. `LayoutTree::Fixed { rows, main, dock }` alongside `Split { ratio }`. Clients: quickfix list, LSP references/diagnostics, embedded terminal/REPL, build/test runner, `:help` pager, DAP debugger views. Deferred until the first concrete client is scoped.
 
+### LSP — Language Server Protocol (complete)
+
+Design and task breakdown: `docs/LSP.md` (hub) + `docs/lsp/step-*.md` (task cards).
+
+- [x] `hume-lsp` crate: client, transport, server lifecycle
+- [x] `core:lsp` plugin: hover, goto (definition/declaration/type/implementation), references, rename, formatting, code actions, signature help, completion, inlay hints, diagnostics
+- [x] Server catalog + install/uninstall (`:lsp-install`, `:lsp-uninstall`, `:lsp-servers`), runtime management (`:lsp-status`, `:lsp-stop`, `:lsp-restart`)
+- [x] Decoration layer: inline diagnostics, virtual lines, gutter signs, inlay hints
+- [x] Steel bridge: `register-lsp-server!`, `lsp-request`, `lsp-capabilities`, trigger chars, completion builtins
+
+Known gap: `#:settings` on `register-lsp-server!` is stored but never sent to the server (`workspace/configuration` is answered with `null` per item). Only `#:init-options` reaches the server. Either wire it up or drop the keyword.
+
 ### Future
 
 - **Wrap indicator**: configurable char prepended to continuation rows in soft-wrap mode.
@@ -206,7 +218,6 @@
 - **Byte-string parsing in settings**: `"10MB"` / `"512KB"` strings; companion to size-threshold setting.
 - **Cached `size: u64` on `FileMeta` + `FileSize` statusline element**.
 - **Streaming load for huge files**: chunked `Rope::from_reader` replacing single blocking `fs::read_to_string`.
-- **LSP support** — see `LSP.md` (hub) + `docs/lsp/step-*.md` (task cards) for the full design and task breakdown (includes the virtual-lines/decoration-layer work: inline diagnostics, inlay hints).
 - **Unified decoration system**: single `Decoration` trait replacing the current separate provider traits (`GutterColumn`, `HighlightSource`, `VirtualLineSource`, `InlineDecoration`, `OverlayProvider`). Post-LSP, once the decoration surface is stable.
 - **Steel builtin to register custom completers**: plugin-side `Completer` implementations dispatched by command name; core does prefix matching only (fuzzy scoring is a plugin concern). Note: this is the *minibuffer* system — the insert-mode scriptable-completion design lives in `docs/COMPLETION-PICKER.md` and deliberately does not touch it.
 - **Scriptable completion sources**: design + task breakdown in `docs/COMPLETION-PICKER.md` (multi-source insert-mode completion). Nothing blocks on current work — additive.

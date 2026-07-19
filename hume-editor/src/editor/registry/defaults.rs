@@ -331,7 +331,7 @@ impl CommandRegistry {
         );
         motion!(
             "prev-paragraph",
-            "Move cursors to the start of the previous paragraph.",
+            "Move cursors to the first empty line above the current paragraph.",
             cmd_prev_paragraph
         );
 
