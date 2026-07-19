@@ -38,7 +38,7 @@
 ;;; Full sync: run scripts/sync-grammars.py after updating helix-pin.scm.
 
 (
- ("actions-language-server" (languages ("github-action")) (command . "actions-languageserver") (args "--stdio") (config . "{\"actions-language-server\": {\"sessionToken\": \"\"}}"))
+ ("actions-language-server" (languages ("github-action")) (command . "actions-languageserver") (args "--stdio") (config . "{\"sessionToken\": \"\"}"))
  ("ada-gpr-language-server" (languages ("gpr" "alire.toml")) (command . "ada_language_server") (args "--language-gpr") (config))
  ("ada-language-server" (languages ("ada" "alire.toml")) (command . "ada_language_server") (args) (config))
  ("amber-lsp" (languages ("amber")) (command . "amber-lsp") (args) (config))
@@ -129,7 +129,7 @@
  ("perlnavigator" (languages ("perl")) (command . "perlnavigator") (args "--stdio") (config))
  ("pest-language-server" (languages ("pest")) (command . "pest-language-server") (args) (config))
  ("pkl-lsp" (languages ("pkl")) (command . "pkl-lsp") (args) (config))
- ("pony-lsp" (languages ("ponylang" "corral.json" "lock.json")) (command . "pony-lsp") (args "--stdio") (config . "{\"defines\": [], \"ponypath\": []}"))
+ ("pony-lsp" (languages ("ponylang" "corral.json" "lock.json")) (command . "pony-lsp") (args "--stdio") (config . "{\"pony-lsp\": {\"defines\": [], \"ponypath\": []}}"))
  ("prisma-language-server" (languages ("prisma" "package.json")) (command . "prisma-language-server") (args "--stdio") (config . "{\"prisma\": {\"enableDiagnostics\": true}}"))
  ("purescript-language-server" (languages ("purescript" "spago.yaml" "spago.dhall" "bower.json")) (command . "purescript-language-server") (args "--stdio") (config))
  ("pylsp" (languages ("snakemake" "Snakefile" "config.yaml" "environment.yaml" "workflow/")) (command . "pylsp") (args) (config))

@@ -15,6 +15,7 @@ Idempotent: running twice produces byte-identical files.
 
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -265,6 +266,26 @@ def emit_language_identities(langs: list[dict]) -> list[str]:
     return lines
 
 
+# HUME-specific corrections to upstream Helix `config` data, applied before
+# emission. Not Helix bugs to route around blindly — verified against each
+# named server's own source that its *real* config-reading code expects a
+# different shape than what ships in languages.toml. Add an entry here only
+# after checking the server's actual handler, the same way the hostInfo
+# rewrite in parse_language_servers below was checked.
+CONFIG_OVERRIDES: dict[str, Callable[[dict], dict]] = {
+    # Helix's own entry double-wraps this under the server's own name
+    # (`[language-server.actions-language-server.config.actions-language-server]`)
+    # but connection.ts reads `initializationOptions.sessionToken` flat, no
+    # wrapper — the token is silently never seen as shipped upstream.
+    "actions-language-server": lambda config: config.get("actions-language-server", config),
+    # pony-lsp ignores initializationOptions for these keys entirely; it
+    # only reads them from a workspace/configuration pull for section
+    # "pony-lsp" (server_options.pony's send_configuration_request), which
+    # needs this same data nested one level under that key.
+    "pony-lsp": lambda config: {"pony-lsp": config},
+}
+
+
 def parse_language_servers(doc: dict) -> dict[str, dict]:
     """Return {server_name: {command, args, config, languages}}.
 
@@ -308,6 +329,8 @@ def parse_language_servers(doc: dict) -> dict[str, dict]:
             config = ls_def.get("config")
             if config and "hostInfo" in config:
                 config = {**config, "hostInfo": "hume"}
+            if config and server_name in CONFIG_OVERRIDES:
+                config = CONFIG_OVERRIDES[server_name](config)
             ignored_keys.update(k for k in ls_def if k not in ("command", "args", "config"))
             servers[server_name] = {
                 "command": ls_def["command"],
