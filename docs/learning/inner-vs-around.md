@@ -14,7 +14,8 @@ one rule that applies everywhere.
 
 ## The two flavours
 
-Every text object in HUME comes in two flavours:
+Nearly every text object in HUME comes in two flavours (the rare object with
+no meaningful "outside", like last-insertion, has only an inner form):
 
 - **inner (`i` prefix)**: the content *without* the delimiters. `mi(` selects
   the text inside parentheses; `miw` selects the word without surrounding
@@ -50,10 +51,10 @@ the delimiter characters. For word text objects, "around" requires a choice:
 which whitespace run to include when neither side is obviously right?
 
 The rule: prefer the whitespace *before* the word, falling back to the
-whitespace *after* it only for the first word of a line — a leading run
-there is indentation, not inter-word spacing, and is never absorbed.
-Whichever direction, if no adjacent whitespace exists on the chosen side, the
-selection stays bare.
+whitespace *after* it when there is none — because the word starts its line
+(a leading run there is indentation, not inter-word spacing, and is never
+absorbed) or because punctuation sits directly before it. If neither side
+has whitespace, the selection stays bare.
 
 The reason: deleting "a word" should leave the surrounding text tidy. If you
 have `one two three` and delete `aw` with the cursor on `two`, you want

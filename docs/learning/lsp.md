@@ -30,8 +30,8 @@ kinds of message:
 Either side can send any of the three. Most traffic is the editor asking
 things of the server (`textDocument/hover`, `textDocument/completion`), but
 the server also pushes notifications to the editor unprompted — diagnostics
-are the main example — and occasionally asks something of the editor itself,
-such as "apply this edit" or "here is my progress on indexing."
+are the main example, along with indexing-progress updates — and occasionally
+asks something of the editor itself, such as "apply this edit."
 
 ## The handshake
 
@@ -72,8 +72,10 @@ server rather than sending a request into the void.
 
 ## Keeping the document in sync
 
-The server never reads files off disk on its own — the editor is the source
-of truth for anything open, and tells the server about every change.
+For any file the editor has open, the server never trusts the disk — the
+editor's copy is the source of truth, and the editor tells the server about
+every change. (The rest of the project the server still reads from disk
+while indexing.)
 `textDocument/didOpen` sends the full text once. After that,
 `textDocument/didChange` sends *incremental* edits: small range-and-replacement
 descriptions rather than the whole file again. Each event in a batch is
@@ -142,16 +144,18 @@ Everything else is *pulled* — the editor asks, the server answers once:
 | Find references | `g R` |
 | Rename symbol | `g r` |
 | Code actions | `g a` |
-| Completion | `ctrl-space` (insert mode) |
+| Completion | `ctrl-space`, or automatically on trigger characters (insert mode) |
+| Signature help | automatic, as you type a call (insert mode) |
 | Format buffer | `:lsp-fmt` |
 | Inlay hints | off by default; `:set global lsp.inlay-hints=true` |
 
 ## When servers misbehave
 
 Every request carries a deadline, so a server that never answers doesn't
-hang the editor forever. Some requests can be superseded — completion
-re-filters on every keystroke, and each new request cancels the one still in
-flight rather than piling up. If a server process dies outright, HUME marks
+hang the editor forever. Some requests can be superseded — completion can
+need a fresh request as the user types (when the server said its candidate
+list was incomplete), and each new request cancels the one still in flight
+rather than piling up. If a server process dies outright, HUME marks
 it dead and stops routing buffers to it; it does **not** restart
 automatically. That's a deliberate choice — a crash loop caused by a bad
 project config shouldn't spin silently in the background. Restart by hand
@@ -201,8 +205,10 @@ Two safety valves keep stale answers from causing damage. If the document
 has moved on by the time a response arrives, the callback can be skipped
 instead of acting on positions that no longer mean anything. And a plugin
 can supersede its own previous request instead of piling both up — this is
-how completion re-filters on every keystroke without a backlog of stale
-answers trailing behind.
+how completion avoids a backlog when the server's candidate list was
+incomplete and further typing forces a fresh request. (The common case needs
+no request at all: the core re-filters the already-fetched candidates
+locally as the user types.)
 
 Server-initiated traffic doesn't all reach plugins the same way:
 
@@ -211,7 +217,8 @@ Server-initiated traffic doesn't all reach plugins the same way:
 | Diagnostics | core stores and remaps them | yes — a hook fires so plugins can react; rendering reads the store directly |
 | Progress, log/status messages | core only | no |
 | "Apply this edit" | core applies it, using the same edit path as everything else | no |
-| Anything else unrecognized | core forwards it | yes, to whatever plugin registered for it |
+| Any other notification | core forwards it | yes, to whatever plugin registered for it |
+| Any other request | core answers "not supported" itself | no — every request must get exactly one response |
 
 Diagnostics are the one case worth dwelling on: the core owns storage and
 position remapping (so a diagnostic keeps pointing at the right line as the

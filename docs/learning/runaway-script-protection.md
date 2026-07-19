@@ -14,10 +14,12 @@ There's a second hazard: a plugin that partially completes before hitting an
 error. HUME handles this with **fail-fast** semantics: the eval aborts as soon
 as an error occurs and the error surfaces in `:messages`. Partial changes made
 before the error are not rolled back when they happen at the top level of
-`init.scm` — keys bound, options set, hooks registered all survive. A *plugin
-body* that fails mid-evaluation is one step more careful: any commands it
-already registered before the error are rolled back, so a half-loaded plugin
-does not leave orphan commands in the registry. Re-running `:reload-config`
+`init.scm` — options set, commands defined, and hooks registered all survive,
+though deferred changes such as key bindings from the failed run are
+discarded. A *plugin body* that fails mid-evaluation is one step more
+careful: any commands, hooks, key bindings, and other pending changes it
+already made before the error are rolled back, so a half-loaded plugin
+leaves no footprint. Re-running `:reload-config`
 rebuilds everything from scratch either way and is the recovery path for
 state left behind at the top level.
 

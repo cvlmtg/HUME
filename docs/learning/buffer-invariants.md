@@ -54,7 +54,7 @@ buffer is untouched.
 
 There are two kinds of call sites:
 
-- **Internal commands** (`insert-char`, `delete-char`, motion code): these
+- **Internal commands** (character insertion and deletion, motion code): these
   build changesets by construction and can never violate the invariants. They
   expect success and treat a failure as an engine bug — a hard crash with a
   diagnostic message is appropriate here.
@@ -65,17 +65,20 @@ There are two kinds of call sites:
   validates the changeset first, then validates the resulting selection
   against the new buffer, and returns an error on failure.
 
-  This boundary is exercised in two places today. History replay — every
-  undo, redo, and cross-branch jump — replays a transaction the editor itself
-  authored, so a corrupt revision would surface as a clean error rather than
-  a silent miscomputation. And a script can submit a raw edit directly, most
-  commonly on behalf of a language server applying a rename or a formatting
-  pass: the edit is validated (is the buffer writable? does it still match
-  the buffer generation the edit was computed against?), applied, and only
-  then is the resulting selection checked — the same two-step validation as
-  any other transaction. Most plugin code never touches this path at all; it
-  issues named editor commands instead, each of which constructs its
-  changeset internally and runs through the fast, expecting-success path.
+  The transaction boundary is exercised by history replay today: every undo
+  and redo replays a transaction the editor itself authored, and the
+  validation means a corrupt revision halts loudly with a diagnostic instead
+  of silently miscomputing. A script *can* submit a raw edit directly — most
+  commonly for a language-server rename or formatting pass — but that path is
+  validated up front instead: is the buffer writable? does it still match the
+  buffer generation the edit was computed against? are the ranges well-formed
+  and non-overlapping? Only then is a changeset built, and because the editor
+  derives the resulting cursor positions itself (by mapping the existing
+  selections through the edit), there is no untrusted selection left to check
+  — the edit then runs through the same fast, expecting-success path as any
+  internal command. Most plugin code never touches even that path; it issues
+  named editor commands instead, each of which constructs its changeset
+  internally.
 
 There is one other place untrusted text enters the buffer: reloading a file
 from disk (`:e!`). The contents come from outside the editor, but they enter

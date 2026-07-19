@@ -76,7 +76,8 @@ reads that name and routes accordingly:
   append the same values verbatim, independent of what the ring or clipboard
   hold at that moment.
 - **Anything else** → paste reads the system clipboard. Cross-application
-  paste remains one keystroke.
+  paste remains one keystroke. (If no OS clipboard is available — a headless
+  environment — this case falls back to the ring head.)
 
 The intuition behind the allow-list (this short set keeps paste in the ring;
 everything else switches to clipboard):

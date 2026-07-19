@@ -34,9 +34,9 @@ feature:
   Stage 4 — they draw in the gutter columns laid out by Stage 1.
 - **Syntax highlighting, search matches, bracket highlighting** plug into
   Stage 3 — they add or override style on individual graphemes.
-- **Virtual lines** (inline diagnostics today; diff context could follow the
-  same mechanism) plug into Stage 2 — they inject rows that don't correspond
-  to buffer lines.
+- **Virtual lines** (a general mechanism any plugin can inject rows through —
+  diff context, code lenses) plug into Stage 2 — they inject rows that don't
+  correspond to buffer lines.
 - **Floating overlays** (completion popup, hover) plug into Stage 4 — they
   draw over the composed output.
 
@@ -64,13 +64,16 @@ small set:
   which inherits its neighbour's style;
 - a **virtual** cell — text injected by a provider that isn't backed by
   buffer content, the in-row cousin of a virtual row (inlay hints, ghost text);
-- an **empty** cell — padding for a tilde row or any other row with no
-  content of its own.
+- an **empty** cell — a placeholder at the end of every line, so the cursor
+  has a cell to land on when it sits on the newline (and the sole cell of an
+  empty line).
 
 Virtual rows (whole rows injected by providers, not backed by buffer text)
 also appear here. The cell vocabulary is what lets a single rendering loop
-draw real text, visible whitespace, inlay hints, and tilde fillers through
-the same machinery.
+draw real text, visible whitespace, and inlay hints through the same
+machinery. (Tilde filler rows below the last buffer line are the one
+exception — they carry no content at all and are painted by a small
+dedicated path.)
 
 A parallel extension point — inline decorations — injects cells at byte
 offsets *inside* a row rather than as separate rows. This is how inlay hints
@@ -79,9 +82,11 @@ are rendered, sitting inline with the code they annotate.
 **Stage 3 (Style)** walks the cells and assigns a resolved style to
 each one — foreground colour, background colour, bold/italic/underline. Style
 comes from multiple layered sources: the base theme, the cursorline background
-(applied to the primary cursor's line), syntax highlighting spans, search match
-highlighting, LSP diagnostic underlines, bracket-match highlighting, the
-selection background, and the cursor head itself. Layers are
+(applied to the primary cursor's line), syntax highlighting spans,
+plugin-supplied highlight spans, search match highlighting, LSP diagnostic
+underlines, bracket-match highlighting, the selection background, and the
+cursor head itself. Inline decorations carry their own colour, above every
+highlight layer but below the selection. Layers are
 applied in priority order, each compositing *over* the previous one — a later
 layer overrides only the fields it sets, leaving the rest intact. So a search
 match's background wins over syntax highlighting's, but if the match sits on a
@@ -95,8 +100,9 @@ On the first row of every buffer line, indent guides — thin vertical rules at
 each inner tab stop of the leading whitespace — are drawn so nested blocks
 stay visually aligned even when the user has tabs turning into spaces or vice
 versa. Overlays (like the completion popup) are drawn last, on top of
-everything else; the status line and any tab bar claim a reserved row above
-or below the content rather than overlaying it.
+everything else; the status line, any tab bar, and the collapsible bottom
+drawer (used for list-style output such as diagnostics) each claim reserved
+rows above or below the content rather than overlaying it.
 
 ## The fused loop
 

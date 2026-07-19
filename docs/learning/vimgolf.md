@@ -11,7 +11,8 @@ and actions that make a modal editor expressive rather than just different.
 HUME is a kakoune-style editor, which means its editing model differs from Vim
 in a fundamental way: **you select first, then act**. In Vim you typically say
 "do *what* to *where*" (e.g. `dw` — delete, then word). In HUME you say "select
-*where*, then do *what*" (e.g. `wd` — extend to next word, then delete it). This
+*where*, then do *what*" (e.g. `wd` — select the next word, with its adjacent
+whitespace by default, then delete the selection). This
 changes which challenges HUME wins, ties, or loses.
 
 ---
@@ -73,8 +74,8 @@ baz!
 - `!` — type the character to insert (simultaneously, at every cursor).
 - `<esc>` — exit insert mode.
 
-**Vim equivalent:** a common approach is `qaA!<esc>j0q2@a` or `:%s/$\!/g<enter>`
-— the first is 12 keystrokes, the second is 11. HUME's multiple-cursor model
+**Vim equivalent:** a common approach is `qaA!<esc>j0q2@a` or `:%s/$/!/g<enter>`
+— the first is 11 keystrokes, the second is 10. HUME's multiple-cursor model
 gives a clear advantage here: once all lines share a single distributed
 selection, the insertion happens once and applies everywhere.
 
@@ -105,10 +106,11 @@ foo qux baz
 - `qux` — type the replacement.
 - `<esc>` — exit insert mode.
 
-**Vim equivalent:** `/bar<enter>cwqux<esc>` is also 10 keystrokes (a tie),
-or `:%s/bar/qux<enter>` is 13. The surface syntax differs — HUME's `c`
-(change) acts on the already-selected match, while Vim's `cw` is "change word"
-from the cursor position — but the score ties.
+**Vim equivalent:** `/bar<enter>cwqux<esc>` is 11 keystrokes, or
+`:%s/bar/qux<enter>` is 12 — HUME edges both by a stroke or two. The surface
+syntax differs — HUME's `c` (change) acts on the already-selected match,
+while Vim's `cw` is "change word" from the cursor position — and the searched
+match doubling as a selection is what saves the stroke.
 
 ---
 

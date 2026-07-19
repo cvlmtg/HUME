@@ -28,10 +28,12 @@ character — it is not a valid character boundary. This is why `s[3..4]` on
 
 Byte offsets are used internally by Rust's `str` and by the rope library HUME
 stores buffer text in, but they are **never used for buffer positions** in
-HUME. They surface at one narrow seam:
-converting positions to and from byte offsets when an external library speaks
-bytes (regular-expression matchers, tree-sitter nodes). Outside that
-interoperability seam, byte offsets are an implementation detail.
+HUME. They surface only at narrow interoperability seams, where an external
+system speaks other units: regular-expression matchers and tree-sitter speak
+bytes, and language servers speak line-plus-column positions whose column
+counts UTF-8 bytes or UTF-16 code units — a fourth unit that exists only at
+that wire boundary and is converted to char offsets on arrival. Outside those
+seams, byte offsets are an implementation detail.
 
 ## Char offset
 

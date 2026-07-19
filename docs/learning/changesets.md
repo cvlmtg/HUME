@@ -64,15 +64,14 @@ the edit as data, which enables:
 
 Edit operations and undo/redo never use position mapping. Edits compute
 result positions directly during construction; undo/redo restore selections
-from the stored transaction (see below). The in-editor consumer of position
-mapping today is **non-acting-pane cursor propagation**: when one pane edits a
-buffer that other panes also have open, the other panes' selections must ride
-the changeset to stay meaningful in the new text. Each selection is mapped
-through the changeset character by character, anchored to the *after* side of
-any nearby insertion. External positions not tied to a specific edit —
-diagnostic ranges, bookmarks, future cross-tool references — are the other
-natural consumer, modelled by the same mechanism and ready for the day they
-appear.
+from the stored transaction (see below). Position mapping serves everything
+*else* that holds a position not tied to the edit being made. One consumer is
+**non-acting-pane cursor propagation**: when one pane edits a buffer that
+other panes also have open, the other panes' selections must ride the
+changeset to stay meaningful in the new text. Others are external positions
+the editor stores between edits — LSP diagnostic ranges and decoration
+anchors ride every changeset the same way, so a diagnostic keeps pointing at
+the right text as the buffer changes around it.
 
 ## The builder pattern
 
@@ -128,8 +127,9 @@ applied, because inverting a changeset reads the deleted text from the original
 buffer to reconstruct what was there. Once the buffer is overwritten with the
 new content, the original deleted text is gone.
 
-The history manager stores both transactions. Applying the inverse restores
-both the text and the cursor positions in a single step.
+Every edit path computes the inverse changeset before replacing the buffer
+text; the history manager stores the pair as one revision. Applying the
+inverse restores both the text and the cursor positions in a single step.
 
 Reloads share the same algebra. `:e!` does not throw away the buffer and start
 over; it derives a (forward, inverse) changeset pair from a line-level diff
@@ -139,10 +139,14 @@ reload brings the pre-reload text back with its full undo tree intact beneath
 matches the buffer exactly, the forward changeset is the identity and no
 revision is recorded at all.
 
-One final detail on position mapping: the "before" association mode is used
-only in tests that probe the algorithm itself. Every production caller asks for
-"after" association — cursors sit on the far side of insertions, never
-suspended at the insertion site.
+One final detail on position mapping: both association modes are exercised in
+practice. Cursors ride the *after* side of insertions — they sit on the far
+side of newly inserted text, never suspended at the insertion site. Positions
+that must stay glued to the text before them — a range's end, an anchor
+pinned to what was already there — ask for *before* association instead.
+Mapping a whole range uses both at once: its start maps after, its end maps
+before, so an insertion at either edge lands outside the range rather than
+silently growing it.
 
 ## The undo tree
 

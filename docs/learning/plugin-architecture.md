@@ -56,12 +56,22 @@ as `cfg` does above, and capture whatever a command needs from it in a `define`.
 plugin author decides what keys their config hash understands and documents them for
 users.
 
+When the same plugin is mentioned more than once, the two verbs resolve differently:
+duplicate `declare-plugin` calls keep the *first* config, while `load-plugin` always
+overwrites whatever was recorded. So a bare `(load-plugin "x")` after a configured
+declare deliberately runs the body with the empty default — the most recent explicit
+load wins.
+
 ---
 
 ## The manifest and the body
 
-When HUME processes a `declare-plugin` call it records a *manifest* — a description of
-what the plugin offers — and nothing else. The plugin file is not read, no code runs.
+When HUME processes a `declare-plugin` call with at least one activation entry, it
+records a *manifest* — a description of what the plugin offers — and nothing else. The
+plugin file is not read, no code runs. A `declare-plugin` with *no* entries instead
+evaluates the plugin's own small manifest file, which declares the plugin with its
+author-chosen default activation entries — a bare declare lets the plugin supply its own
+triggers.
 
 The manifest contains three optional lists:
 
@@ -81,13 +91,16 @@ and `bind-key!` to wire everything up; after that, commands and hooks remain act
 
 ## Activation entries
 
-A lazy plugin must declare at least one activation entry. With none, there is no moment
-that would ever trigger loading — the plugin could never activate.
+A lazy plugin needs at least one activation entry — with none, there is no moment that
+would ever trigger loading. You can supply the entries yourself, or omit them entirely
+and let the plugin's bundled manifest supply its author-chosen defaults (an error if the
+plugin ships none).
 
 The three entry types serve different loading patterns:
 
 **`#:commands`** is the most common. Declare the command names the plugin will register;
-HUME creates placeholder stubs so those names appear in `:commands` immediately. The first
+HUME creates placeholder stubs so those names appear in `:` command-line completion
+immediately. The first
 time someone dispatches one, the plugin body runs and replaces the stub with the real
 implementation.
 
@@ -114,6 +127,10 @@ named languages. This is the preferred pattern for language-specific plugins (se
 ; body runs the first time a buffer language is set to "rust"
 ```
 
+The special name `"*"` is an any-language wildcard: the body runs the first time a
+buffer's language is set to *anything* — for plugins that work with every language
+rather than a list they could enumerate.
+
 Use `#:languages` rather than `#:events '("on-language-set")` when you only care about
 one language. A `on-language-set` event fires for *every* language, so a Rust plugin
 declared that way would load the moment you open a PHP file. `#:languages` names only the
@@ -130,6 +147,11 @@ The full set of lifecycle hooks, for reference:
 | `on-language-set` | A buffer's language is set or cleared |
 | `on-lsp-attach` | A language server attaches to a buffer |
 | `on-lsp-detach` | A language server detaches from a buffer |
+| `on-diagnostics-changed` | Diagnostics arrived (or cleared) for a buffer |
+| `on-viewport-change` | The visible region settled after a scroll or resize |
+| `on-trigger-char` | A registered trigger character was typed in insert mode |
+| `on-completion-accept` | A completion candidate was accepted |
+| `on-completion-refilter` | An incomplete completion list needs a fresh request as typing continues |
 
 All hooks fire at the tail of an event dispatch, never mid-dispatch. If a
 single event triggers several hooks, they are queued and drained together

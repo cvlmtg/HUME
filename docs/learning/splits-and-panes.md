@@ -58,11 +58,13 @@ One pane is always **focused** — it's the one that receives keystrokes.
 Focused and unfocused panes render differently: the unfocused ones are dimmed,
 making it visually obvious at a glance which pane your typing will land in.
 
-Where two panes meet, a thin seam is drawn between them, and where three or
-more seams meet, a junction glyph — a T- or cross-shape — connects them
-cleanly instead of leaving a gap or an overlap. This is purely a rendering
-detail: the seam and its glyph exist only in the rendered frame, not in the
-buffer or the layout tree's own data.
+Where two panes meet, a thin seam is drawn between them (toggleable via the
+`pane-dividers` setting; dimming works either way), and where seams touch, a
+junction glyph — a T- or cross-shape — connects them cleanly instead of
+leaving a gap or an overlap. The seam segments beside the focused pane are
+accent-coloured, a second focus cue alongside dimming. This is purely a
+rendering detail: the seam and its glyph exist only in the rendered frame,
+not in the buffer or the layout tree's own data.
 
 ## Splitting
 

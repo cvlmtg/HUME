@@ -26,7 +26,8 @@ Three types of owner exist:
   hashing are case-insensitive, so `ALICE/TOOL` and `alice/tool` are the same plugin.
 - **Core** — the built-in fallback for Rust commands that were never registered through
   Steel. The core owner is never active during scripting; it surfaces only as the
-  string `"hume"` when `(command-plugin name)` is called for a built-in Rust command.
+  string `"hume"` when `(command-plugin name)` is called for a name never registered
+  through Steel — built-in Rust commands included.
 
 ## Plugin names
 
@@ -35,7 +36,7 @@ Valid plugin name forms:
 - `<user>/<repo>` — a third-party plugin with exactly one `/`
 
 Name segments must be non-empty, must not be `.` or `..`, and must not contain `/`,
-`\`, or NUL. Equality and hashing are case-insensitive; display and on-disk paths
+`\`, `"`, `:`, or NUL. Equality and hashing are case-insensitive; display and on-disk paths
 use the original casing.
 
 ## Owner attribution and `(command-plugin name)`
@@ -62,7 +63,7 @@ user's own `init.scm` customisations.
 Conflicts fall into two categories with different severity:
 
 **Soft conflict — manifest vs manifest.** If two plugins both list the same command name
-in their `#:commands`, the first declarant wins. The duplicate is silently dropped (a
+in their `#:commands`, the first declarant wins. The duplicate is dropped (a
 non-fatal error is logged to `:messages`) and `init.scm` continues loading.
 
 **Hard conflict — body vs existing.** When a plugin body calls `define-command!` for a

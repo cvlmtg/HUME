@@ -63,11 +63,19 @@ branches internally:
 This means adding a new motion requires **one function and one registration**
 — the extend variant comes for free from the parameter.
 
+A command may also register an *alternate body* chosen at dispatch time by a
+buffer option. Word motions ship this way: one command name, with the
+whitespace-including variant swapped in per buffer while
+`word-selects-whitespace` is on.
+
 ### The extendable flag
 
-Some commands should *always* extend when invoked via a Ctrl+key shortcut —
-they declare themselves extendable at registration time. Commands that should
-not extend (like undo or quit) carry the flag as false.
+Commands declare at registration time whether they *have* extend semantics.
+The flag is a guard, not a trigger: the Ctrl+key one-shot mechanism
+(described below) only fires for commands that do — a Ctrl+key resolving to
+a command without extend semantics (like undo) is suppressed as a no-op
+rather than run. Bindings that should *always* extend are a separate,
+per-binding declaration (see "Explicit force-extend bindings" below).
 
 All Steel-defined commands are extendable automatically. When Ctrl+key delivers
 extend to your command, the lambda receives `extend = #t` as its second argument
@@ -129,8 +137,8 @@ HUME maintains three separate tries:
 | Extend | Sparse overrides for Extend mode (checked first) |
 | Insert | Single-key bindings for Insert mode |
 
-The **extend trie** ships empty by default — flipping anchor and head (Helix
-and Kakoune's visual `o`) is already reachable via `Ctrl+e` in both Normal and
+The **extend trie** ships empty by default — flipping anchor and head (Vim's
+visual `o`) is already reachable via `Ctrl+e` in both Normal and
 Extend mode, so no override is needed out of the box. Any key not found in the
 extend trie falls through to the normal trie with extend mode active, which
 applies extend semantics automatically.
@@ -160,7 +168,9 @@ keypress
 
 **1. Sticky extend mode.** The user presses `e` to enter Extend mode. All
 subsequent commands run with Extend semantics until the mode is exited. The
-extend trie is checked first for per-key overrides.
+extend trie is checked first for per-key overrides. Acting destructively on
+the selection (delete, paste, replace) also exits Extend mode automatically —
+mirroring Vim's visual-mode operators; yank and pure motions leave it active.
 
 **2. Ctrl+key one-shot extend (kitty keyboard protocol).** When kitty protocol
 is active, pressing `Ctrl+l` strips the Control modifier, looks up `l` in the
@@ -174,12 +184,14 @@ sticky extend mode or kitty. This works on any terminal.
 To remap a command with its extend behaviour to a different key:
 
 ```scheme
-(bind-key! 'normal "f"   "select-line")  ; Move mode
-(bind-key! 'normal "C-f" "select-line")  ; Extend mode (automatic for Ctrl+letter)
+(bind-key! 'normal "f" "select-line")          ; Move mode
+(bind-key-extend! 'normal "C-f" "select-line") ; always extends (force-extend)
 ```
 
-The user only writes the base command name. Extend semantics come from the
-dispatch layer automatically.
+The user only writes the base command name — there is no extend-variant name
+to learn. Note that one-shot extend is automatic only for an *unbound*
+Ctrl+letter (on kitty terminals); binding the key explicitly takes over, so
+a binding that should always extend must say so via `bind-key-extend!`.
 
 ### Counts: distinguishing a bare keypress from an explicit count
 
@@ -237,12 +249,12 @@ A change in one layer cannot corrupt another because they communicate only
 through name strings.
 
 A related invariant is enforced at the dispatch layer: every native command's
-function body must run through one funnel. A build-time check scans the
+function body must run through one funnel. A test in the suite scans the
 editor's source for any second place that calls a native command's function
-directly, and fails the build if it finds one. The funnel is where the bookkeeping that
+directly, and fails if it finds one. The funnel is where the bookkeeping that
 surrounds every command — last-command tracking, dot-repeat, paste-session
-commits, jump-list updates, register routing — gets applied. Letting a second
-call site bypass it would mean two paths for the same command, and the
+commits, jump-list updates, extend-mode auto-exit — gets applied. Letting a
+second call site bypass it would mean two paths for the same command, and the
 bookkeeping would silently regress on whichever path skipped the funnel;
 tests that pin the primary effect would stay green either way. The lint makes
-that mistake a compile error rather than a behavioural drift.
+that mistake a test failure rather than a behavioural drift.

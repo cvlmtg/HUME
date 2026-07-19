@@ -16,33 +16,39 @@ HUME classifies every character into one of four classes:
 |-------|---------|---------------|
 | Word | alphanumeric (Unicode) + underscore | `a`–`z`, `A`–`Z`, `0`–`9`, `_`, `é`, `文` |
 | Punctuation | printable non-word non-space | `.`, `(`, `#`, `-`, `"` |
-| Space | horizontal whitespace | space, tab |
+| Space | inter-word whitespace | space, tab, no-break and ideographic spaces |
 | Eol | end-of-line | `\n` |
 
 The Word class follows Unicode's notion of "alphanumeric", so accented letters
-like `é` and Han characters like `文` classify as Word just as `a` does.
+like `é` and Han characters like `文` classify as Word just as `a` does. Space
+covers the characters that genuinely act as spacing — including the two
+invisible Unicode spaces — while every other exotic whitespace character
+(form feed, thin space, …) is deliberately classed as Punctuation, so the
+cursor stops on it rather than silently skipping something invisible.
 
 For `word` boundaries, any adjacent class change is a boundary — `Word`→`Punctuation`,
-`Punctuation`→`Space`, and so on. For `WORD` boundaries, Punctuation is
-treated as Word — the only boundaries that count are `(Word or Punctuation)`
-↔ `(Space or Eol)`.
+`Punctuation`→`Space`, and so on. For `WORD` boundaries, the only merge is
+Word+Punctuation — every other class change still counts, including
+`Space`↔`Eol`, which is how a whitespace scan still notices line ends.
 
-The same word-finding logic powers both `w` and `W` (and `iw` and `iW`) — the
-boundary rule is passed in as a parameter so there is no duplicated code.
+The same word-finding logic powers both `w` and `W` (and the inner-word text
+objects) — the boundary rule is passed in as a parameter so there is no
+duplicated code.
 
 ## Why Eol is its own class
 
-`\n` could be treated as `Space` — it is whitespace, after all. But if it
-were, `w` (move to next word start) would skip over newlines the same way it
-skips spaces. A cursor at the end of one line would jump directly to the first
-word of the next line — or further if successive lines are blank. HUME follows
-Helix's behaviour here: `w` stops at the newline, not past it.
-
-Making `Eol` a distinct class is what enforces this — a newline is always a
-class change from whatever precedes it, so word-forward always pauses there.
-The [word motions doc](word-motions.md) describes how a second step then crosses
-the newline when the user expects to land on the next word.
+`\n` could be treated as `Space` — it is whitespace, after all. But
+collapsing the two would erase information the layers above want. With `Eol`
+distinct, the low-level boundary scan always pauses at a newline, and the
+*motion* layer decides deliberately what happens there. For `w` that decision
+is to cross: it takes a second internal step over a non-final newline so you
+land on the next line's first word (see the
+[word motions doc](word-motions.md)). At the buffer's end there is nothing
+beyond the trailing newline, so `w` on the last word becomes a clean no-op
+instead of parking the cursor on an invisible character.
 
 Treating `Eol` as distinct also gives text objects cleaner boundaries: an
 `iw` selection on the last word of a line doesn't accidentally absorb the
-newline, and a `Space` skip always halts at line ends.
+newline, a `Space` skip always halts at line ends, and the around-word
+whitespace rule can tell indentation (whitespace touching a line start) from
+inter-word spacing.

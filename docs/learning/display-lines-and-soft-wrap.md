@@ -23,7 +23,7 @@ Each row on screen belongs to one of four categories:
 |------|-------------|
 | **Line start** | The first row of a buffer line — always exists, even for a single-char line |
 | **Wrapped continuation** | A subsequent row that continues a long buffer line beyond the viewport width |
-| **Virtual** | A row injected by a provider, not backed by buffer text (e.g. an inline diagnostic message) |
+| **Virtual** | A row injected by a provider, not backed by buffer text (e.g. a plugin-injected annotation row) |
 | **Filler** | An empty row below the last buffer line, conventionally shown with a tilde (`~`) |
 
 The renderer processes one buffer line at a time. For each buffer line, it
@@ -40,9 +40,10 @@ whitespace position, and when a grapheme would overflow the right edge it
 breaks at that remembered position rather than mid-word. The effect is the
 same as walking back from the right edge; the cost is a single forward pass.
 
-A second mode, *indent wrap*, starts each continuation row at the same column
-as the leading whitespace of its parent line, so deeply nested arguments stay
-visually nested across the wrap instead of snapping back to column zero.
+A second mode, *indent wrap*, starts each continuation row at the parent
+line's indentation level, rounded down to whole tab stops — while still
+breaking at word boundaries — so deeply nested arguments stay visually
+nested across the wrap instead of snapping back to column zero.
 
 Every continuation row knows which buffer line it belongs to (so line-number
 rendering and selection highlighting still work) and which sub-row within that
@@ -56,7 +57,9 @@ calculation, so wide-tab lines behave predictably.
 
 When wrap is off, `j` and `k` move by one buffer line — straightforward. When
 wrap is on, the user expects `j`/`k` to move by one *display row*, which may
-stay on the same buffer line if that line spans multiple rows.
+stay on the same buffer line if that line spans multiple rows. (A `j`/`k`
+with an explicit count — `9j` — deliberately moves by buffer lines even in
+wrap mode, so it matches relative line numbers.)
 
 Visual-line movement needs to know the visual column of the cursor, not just
 its character offset in the buffer. The goal is "land on the closest character
@@ -82,12 +85,13 @@ vertical movement with short lines.
 
 ## Connection to LSP and future features
 
-Virtual rows now carry inline diagnostic messages: an LSP diagnostic on a line
-appears as a virtual row anchored below it, without disrupting the buffer text
-or changing any buffer line numbers. A parallel mechanism — inline
-decorations — injects cells *inside* a row at byte offsets rather than as
-separate rows; this is how inlay hints are rendered, sitting inline with the
-code they annotate rather than on their own row.
+Inline decorations — a mechanism that injects cells *inside* a row at byte
+offsets rather than as separate rows — carry both inlay hints and the
+end-of-line diagnostic summary, sitting inline with the code they annotate
+rather than on their own row. Virtual rows are the complementary,
+whole-row-granularity mechanism, available to any plugin that wants to
+anchor an annotation row below a buffer line without disrupting the buffer
+text or changing any line numbers.
 
 The display-line abstraction is also the mechanism by which syntax-highlighted
 folding ("fold this function to one line") would eventually work: a fold

@@ -4,11 +4,15 @@
 
 Three distinct patterns exist for creating selections from cursor movement:
 
-| Pattern | Returns | Anchor | Typical use |
+| Pattern | Returns | Anchor (in Move mode) | Typical use |
 |---|---|---|---|
 | Motion | a new cursor position | depends on Move vs Extend mode | `h/j/k/l`, paragraph, goto-line |
-| Text object | an optional selected range | always the range's start | `iw`, `i(`, `i"` |
-| Word select | an optional selected range | always the word's start | `w/b/W/B` |
+| Text object | an optional selected range | the range's start | `iw`, `i(`, `i"` |
+| Word select | an optional selected range | the selected span's start | `w/b/W/B` |
+
+(In extend mode both text objects and word selects anchor differently — they
+grow an existing selection, preserving its direction; see the extend sections
+below.)
 
 Word select occupies a middle ground: it returns a full range like a text
 object, but it is navigational like a motion — counting, crossing line
@@ -20,26 +24,18 @@ current selection is preserved — a true no-op. A plain motion always produces
 
 ## Kakoune, Helix, and HUME
 
-Word motions reflect three distinct design philosophies, best illustrated by
+Word motions split into two design philosophies, best illustrated by
 "change the second word" starting from column 0 in `"hello world"`:
 
-**Kakoune** (`w` selects the traversed span, anchor at old head):
+**Kakoune and Helix** (`w` selects the traversed span, anchor at old head):
 ```
-w   → "hello w" selected (traversed span)
+w   → the span you crossed getting there is selected
 e   → reanchors at 'w', extends to end of "world"
 c   → change "world"       (3 keystrokes)
 ```
 Motions double as selection builders. Composable, but indirect — you select
-what you cross on the way, not the word itself.
-
-**Helix** (`w` = Move, pure navigation):
-```
-w    → cursor jumps to 'w', single-char selection
-iw   → text object selects "world"
-c    → change "world"       (3 keystrokes)
-```
-Predictable — `w` always means "go there". But acting on a word always needs
-a second gesture (`iw`).
+what you cross on the way, not the word itself, so acting on the destination
+word always needs a second gesture (`e` here, or an inner-word text object).
 
 **HUME** (`w` selects the whole destination word):
 ```
@@ -53,10 +49,11 @@ already selects through the end, making `e` redundant.
 
 By default `w` also covers the whitespace *before* the destination word, so
 deleting a word never leaves a double space behind: `one two three`, cursor
-on `two`, `w` then delete leaves `one three` with a single space. The first
-word on a line is the exception — its leading whitespace is indentation, not
-inter-word spacing, so it's never touched; that word takes its *trailing*
-whitespace instead. This is a separate, toggleable layer on top of the
+on `one`, `w` then delete leaves `one three` with a single space. The first
+word on a line is an exception — its leading whitespace is indentation, not
+inter-word spacing, so it's never touched. That word — and any word with no
+whitespace directly before it, say right after punctuation — takes its
+*trailing* whitespace instead. This is a separate, toggleable layer on top of the
 "select the whole word" behavior above, not a different word-select model —
 an option restores the bare-word span shown here.
 
@@ -119,10 +116,11 @@ too: growing extends through the target word's own whitespace bookend, and
 shrinking back toward the anchor never cuts into the anchor word's own
 whitespace either.
 
-## Counts fold inside one undo step
+## Counts fold into one pass
 
 A count prefix (`3w`, `2b`) is folded per-selection into the word-select
 framework rather than re-running the command `count` times from scratch. Each
-selection walks `count` words in one pass, and the resulting edit or selection
-records as a single undo step — typing `3w` then `d` deletes three words in one
-motion, undoable as one.
+selection walks `count` words in one pass: in Move mode `3w` jumps three
+words and selects the third — `d` then deletes it. In extend mode `3w`
+instead grows the selection across all three words, so `d` removes them in
+one edit.

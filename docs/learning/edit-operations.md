@@ -42,8 +42,9 @@ to every selection in the set simultaneously. The *primary* is just the
 2. **Viewport scrolling**: the editor scrolls to keep the primary visible.
    Other cursors may be off-screen — that is fine and expected.
 
-3. **Single-selection commands**: "keep primary" collapses the set to just the
-   primary cursor; "remove primary" removes it and promotes the next one.
+3. **Single-selection commands**: "keep primary" drops every selection except
+   the primary (its extent is preserved); "remove primary" removes it and
+   promotes the next one.
    Both commands operate on exactly one selection, identified by the primary.
 
 4. **Registers**: when you yank with N cursors, the
@@ -60,10 +61,14 @@ to every selection in the set simultaneously. The *primary* is just the
    |-----|----------|-------|
    | `0`–`9` | Named storage | Text or macros; last write wins. `"5y`/`"5p` round-trip. |
    | `k` | Kill ring | `"kp` pastes ring head; `"ky`/`"kd`/`"kc` push onto ring |
-   | `q` | Default macro | `QQ` records, `q` replays |
+   | `q` | Default macro | `QQ` records, `qq` replays |
    | `c` | System clipboard | Requires OS integration |
    | `b` | Black hole | Discards writes |
    | `s` | Search | Holds last search pattern |
+
+   Not every name in the table works as a `"` prefix: only `0`–`9`, `k`,
+   `c`, and `b` are addressable that way. `q` is driven by the `Q`/`q` keys
+   themselves, and `s` is written by search — neither can be named after `"`.
 
    There is no single "default register" that all bare yanks and deletes flow
    through. The bare behaviour is split: a bare yank writes to the system
@@ -87,7 +92,7 @@ to every selection in the set simultaneously. The *primary* is just the
    The kill ring (bounded history of recent captures) is accessible via `"k`
    (head paste) and `[`/`]` cycling. See [Kill Ring and Smart-p](kill-ring-and-smart-p.md).
 
-   **Macro model (M5):** macros are stored in registers (Vim model, not
+   **Macro model:** macros are stored in registers (Vim model, not
    Helix's single-slot model). `QQ` records into register `q` (the default
    macro register). `Q3` records into register `3`. `qq` replays from `q`,
    `q3` replays from `3`.

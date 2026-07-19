@@ -151,17 +151,19 @@ When you run `:plum-install-grammar`, plum:
 2. Clones the grammar repository at the pinned revision.
 3. Fetches the matching highlight query from Helix's pinned runtime and writes
    it to the editor's data directory. The injection query is fetched the same
-   way, but best-effort: most languages embed nothing and have no injection
-   query, so its absence is normal, not an error.
+   way once the library is built, but best-effort: most languages embed
+   nothing and have no injection query, so its absence is normal, not an
+   error.
 4. Compiles the C source to a shared library, also in the data directory.
 5. Registers the shared library and the queries with the running editor. A
    grammar whose tree-sitter ABI version is incompatible with the editor is
    rejected here with a clear error rather than crashing the parse worker
    later.
 
-On subsequent starts, plum scans the data directory during initialization and
-registers every grammar already on disk. No network access on startup;
-grammars are registered from local files.
+On subsequent starts, plum walks the catalog during initialization and
+registers every declared grammar whose compiled library and queries are
+already on disk. No network access on startup; grammars are registered from
+local files.
 
 ## Why pinned revisions
 
@@ -173,8 +175,9 @@ ensures that every HUME installation using the same catalog produces the same
 highlighting behavior.
 
 A separate pinned-revision record tracks the Helix revision from which
-queries are fetched. Updating to a new version of a grammar means updating
-both the grammar pin and the Helix pin in the catalog.
+queries are fetched. Updating grammars means moving the Helix pin forward and
+re-deriving the catalog's grammar revisions from it — the two records move
+together.
 
 ## Late grammar registration
 
@@ -185,7 +188,10 @@ session. HUME handles this by sweeping open buffers when a grammar is attached.
 After a grammar is registered, HUME walks every open buffer. Any buffer whose
 language name matches a grammar that was just attached is re-run through
 syntax setup: a parse request is queued, and once the worker responds the
-buffer renders with highlighting — no restart required.
+buffer renders with highlighting — no restart required. Buffers whose own
+grammar can inject other languages are swept too — installing the Rust
+grammar lights up Rust code fences in a Markdown buffer that was already open
+and highlighted.
 
 The same mechanism handles batch registration at startup: because `plum`
 registers all installed grammars during initialization (potentially after some
@@ -203,8 +209,9 @@ Putting it all together, here is what happens when you open `main.rs`:
    extension matches Rust, so the language is identified as `"rust"`.
 
 3. **Funnel** — the funnel is called with `"rust"`. It writes the language
-   name to the buffer, looks up Rust's registered grammar (if any), and
-   proceeds to syntax setup.
+   name to the buffer, looks up Rust's registered grammar (if any), proceeds
+   to syntax setup, and attaches the buffer to a Rust language server if one
+   is configured (see the LSP doc).
 
 4. **Syntax setup** — if a grammar bundle is attached to the Rust config, a
    parse request is queued to the background parse worker. Parsing happens
@@ -216,12 +223,12 @@ Putting it all together, here is what happens when you open `main.rs`:
    has its syntax detached, and one that later shrinks back under the cap is
    re-attached without a restart.
 
-5. **Hook** — `OnLanguageSet` fires with the buffer id and `"rust"`. Plugins
-   can react (e.g. configuring indent width, setting options, enabling
-   diagnostics).
+5. **Hook** — `on-language-set` fires with the buffer id and `"rust"`.
+   Plugins can react (e.g. configuring indent width, setting options).
 
-6. **`OnBufferOpen`** — fires next. By this point the language is guaranteed
-   to be set, so `on-buffer-open` handlers can safely branch on language.
+6. **`on-buffer-open`** — fires next. By this point the language is
+   guaranteed to be set, so `on-buffer-open` handlers can safely branch on
+   language.
 
 7. **Render** — when the buffer is drawn, the renderer's style stage reads
    the stored syntax trees (once available) — the root tree plus any injected

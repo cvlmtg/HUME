@@ -2,14 +2,14 @@
 
 ## What a buffer "is"
 
-Every buffer carries a language name — a plain string like `"rust"`,
-`"python"`, or `"markdown"`. This name is the **single source of truth** for
-the buffer's language identity: it lives in one place, and every other
-subsystem that cares about language (the statusline, the hook system, the
-syntax highlighter) reads it from there.
+Every buffer carries a language name — `"rust"`, `"python"`, `"markdown"`.
+This name is the **single source of truth** for the buffer's language
+identity: it lives in one place, and every other subsystem that cares about
+language (the statusline, the hook system, the syntax highlighter, the LSP
+client) reads it from there.
 
-The name is intentionally just a string, not a pointer to a grammar object or
-an enum variant. That choice matters for two reasons.
+The name is intentionally just a name, not a pointer to a grammar object or
+a compiled-in enum variant. That choice matters for two reasons.
 
 First, **identity is decoupled from capability**. A buffer can know it is a
 Rust file even if no Rust grammar is installed. The statusline can display the
@@ -18,8 +18,9 @@ parser. When a grammar is installed later, the buffer gains syntax highlighting
 without losing or changing its identity.
 
 Second, **plugins can introduce new languages without recompiling HUME**. A
-plugin declares `"my-dsl"` as a language name at runtime. Because the name is
-just a string, no Rust enum needs updating, no match arm needs adding. The
+plugin declares `"my-dsl"` as a language name at runtime. Because languages
+are named, not compiled in, no Rust enum needs updating, no match arm needs
+adding. The
 language registry learns the name; buffers whose filenames match are tagged
 accordingly; the rest of the editor follows along.
 
@@ -58,27 +59,31 @@ Every change to a buffer's language — whether from automatic detection, the
 function. Nothing writes the language field directly; all callers go through
 the funnel.
 
-The funnel does four things in sequence:
+The funnel does five things in sequence:
 
 1. Writes the new language name to the buffer.
 2. Activates any lazy plugins that declared this language as one of their
    activation entries — so a plugin listed as `#:languages '("rust")` loads
    its body the first time a buffer becomes Rust.
-3. Queues the `OnLanguageSet` hook so plugins can react; the hook is drained
+3. Queues the `on-language-set` hook so plugins can react; the hook is drained
    at the tail of the current event, after syntax setup has already run.
 4. Sets up (or tears down) syntax parsing for the buffer based on the new
    language.
+5. Attaches the buffer to a language server for the new language, spawning
+   one if needed (see the LSP doc).
 
 Having one funnel makes it impossible for any code path to change the language
 and forget to update syntax state, or to change it without notifying plugins.
-The invariant — language field, plugin activation, syntax state, and hook
-notification always move together — is structural, not just conventional.
+The invariant — language field, plugin activation, syntax state, hook
+notification, and language-server attachment always move together — is
+structural, not just conventional.
 
-## The `OnLanguageSet` hook
+## The `on-language-set` hook
 
-The `on-language-set` hook fires every time a buffer's language is set or
-cleared. It receives two arguments: the buffer id, and the language name as a
-string (or `#f` if the language was cleared).
+The `on-language-set` hook fires every time a buffer's language changes — set
+to a new value, or cleared. Re-setting the same value fires nothing. It
+receives two arguments: the buffer id, and the language name as a string (or
+`#f` if the language was cleared).
 
 When a buffer is first opened, the hook fires *before* `on-buffer-open`. That
 ordering is deliberate: if a plugin registers an `on-buffer-open` handler that
