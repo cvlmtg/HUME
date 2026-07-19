@@ -1132,7 +1132,11 @@ pub(crate) fn join_lines_select_spaces(
         let start_line = buf.char_to_line(sel.start());
         let mut end_line = buf.char_to_line(sel.end_inclusive(buf));
         if start_line == end_line {
-            end_line = (end_line + 1).min(buf.len_lines() - 1);
+            // Clamp to the last *content* line (len_lines() - 2: the structural
+            // '\n' opens a final empty line). A cursor on the last content line
+            // must not join with that empty line — it would delete the
+            // structural '\n' and panic in the changeset validator.
+            end_line = (end_line + 1).min(buf.len_lines().saturating_sub(2));
         }
 
         for line in start_line..end_line {

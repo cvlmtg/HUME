@@ -2312,6 +2312,19 @@ fn join_lines_skips_empty_line_no_space() {
 }
 
 #[test]
+fn join_lines_multi_cursor_including_last_line_joins_others() {
+    // Cursors on every line, including the last. The last-line cursor has no
+    // next line to join — it must not consume the structural '\n' (which would
+    // make the changeset invalid). The other cursors join normally and the
+    // inserted spaces become the new selections.
+    assert_state!(
+        "-[1]>\n-[2]>\n-[3]>\n",
+        |(buf, sels)| join_lines_select_spaces(buf, sels),
+        "1-[ ]>2-[ ]>3\n"
+    );
+}
+
+#[test]
 fn join_lines_cursor_on_last_line_noop() {
     // Cursor on the last line — nothing to join, buffer and cursor unchanged.
     assert_state!(
