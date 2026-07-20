@@ -2,7 +2,13 @@ use std::io;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use crossterm::event::{self, Event, KeyEventKind};
+// Input is still read via crossterm in this commit (`ct::poll`/`ct::read`)
+// and converted to termina's event model at `convert_event` below; the next
+// commit replaces the reader itself and this conversion boundary goes away.
+// Everything downstream of the boundary (`handle_event`, mappings, keymap)
+// already speaks termina types.
+use crossterm::event as ct;
+use termina::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, Modifiers};
 
 use hume_engine::pane::{Pane, WhitespaceConfig, WrapMode};
 use hume_engine::pipeline::{BufferId, EngineView, PaneId, PaneRenderSettings, RenderContext};
@@ -279,7 +285,7 @@ impl Editor {
     /// from outside the interactive event loop (e.g. headless key-runner).  The
     /// interactive loop handles hook draining itself via [`handle_event`]; here
     /// we use [`handle_key`] directly so the caller doesn't need a scripting host.
-    pub(crate) fn step(&mut self, key: crossterm::event::KeyEvent) {
+    pub(crate) fn step(&mut self, key: KeyEvent) {
         self.handle_key(key);
         self.sync_search_cache();
         self.drain_replay_queue();
@@ -416,7 +422,7 @@ impl Editor {
             // decoded events in its own internal queue, which the fd-level
             // wait below cannot see — check it first, or a queued event
             // could sit unhandled until the next physical keypress.
-            if !event::poll(Duration::from_millis(0))? {
+            if !ct::poll(Duration::from_millis(0))? {
                 // (b) Block until input, a wake from a background thread
                 // (parse worker, LSP transport, SIGWINCH), or the nearest
                 // async source's deadline — whichever comes first. Idle (no
@@ -436,13 +442,13 @@ impl Editor {
                         // that signaled us may be one crossterm filters out
                         // entirely. No event ready here means a spurious
                         // wake — re-loop rather than block in `event::read`.
-                        if !event::poll(Duration::from_millis(0))? {
+                        if !ct::poll(Duration::from_millis(0))? {
                             continue;
                         }
                     }
                 }
             }
-            match event::read()? {
+            match convert_event(ct::read()?) {
                 // Release events arrive only with kitty keyboard protocol
                 // (REPORT_EVENT_TYPES flag). Ignore them — we act on Press and
                 // Repeat (held key). Without kitty all events are Press anyway.
@@ -458,16 +464,16 @@ impl Editor {
                     self.handle_event(Event::Paste(text));
                     self.sync_search_cache();
                 }
-                Event::Resize(_, _) => {
+                Event::WindowResized(_) => {
                     // Drain any additional resize events that are already queued
                     // so a drag (which emits one event per delta) collapses into a
                     // single render on the next iteration. Viewport dimensions are
                     // re-read at loop top, so only the final size matters.
                     // Non-resize events that arrive during the drain are handled
                     // inline so they are never lost.
-                    while event::poll(Duration::from_millis(0))? {
-                        match event::read()? {
-                            Event::Resize(_, _) => continue,
+                    while ct::poll(Duration::from_millis(0))? {
+                        match convert_event(ct::read()?) {
+                            Event::WindowResized(_) => continue,
                             Event::Key(key) if key.kind != KeyEventKind::Release => {
                                 self.handle_event(Event::Key(key));
                                 self.sync_search_cache();
@@ -1809,6 +1815,178 @@ impl Editor {
 // ---------------------------------------------------------------------------
 // Module-level helpers
 // ---------------------------------------------------------------------------
+
+// ── crossterm → termina event conversion (temporary) ────────────────────────
+//
+// Input reading stays on crossterm for this commit; everything downstream
+// (`handle_event`, mappings, keymap) already speaks termina's event model.
+// This boundary — and the `ct` import above — is deleted in the commit that
+// replaces the reader itself with termina's `EventReader`.
+
+fn convert_event(ev: ct::Event) -> Event {
+    match ev {
+        ct::Event::Key(k) => Event::Key(KeyEvent {
+            code: convert_key_code(k.code),
+            modifiers: convert_modifiers(k.modifiers),
+            kind: convert_kind(k.kind),
+            state: convert_state(k.state),
+        }),
+        ct::Event::Mouse(m) => Event::Mouse(termina::event::MouseEvent {
+            kind: convert_mouse_kind(m.kind),
+            column: m.column,
+            row: m.row,
+            modifiers: convert_modifiers(m.modifiers),
+        }),
+        ct::Event::Paste(s) => Event::Paste(s),
+        ct::Event::Resize(cols, rows) => Event::WindowResized(termina::WindowSize {
+            cols,
+            rows,
+            pixel_width: None,
+            pixel_height: None,
+        }),
+        ct::Event::FocusGained => Event::FocusIn,
+        ct::Event::FocusLost => Event::FocusOut,
+    }
+}
+
+fn convert_key_code(code: ct::KeyCode) -> KeyCode {
+    match code {
+        ct::KeyCode::Backspace => KeyCode::Backspace,
+        ct::KeyCode::Enter => KeyCode::Enter,
+        ct::KeyCode::Left => KeyCode::Left,
+        ct::KeyCode::Right => KeyCode::Right,
+        ct::KeyCode::Up => KeyCode::Up,
+        ct::KeyCode::Down => KeyCode::Down,
+        ct::KeyCode::Home => KeyCode::Home,
+        ct::KeyCode::End => KeyCode::End,
+        ct::KeyCode::PageUp => KeyCode::PageUp,
+        ct::KeyCode::PageDown => KeyCode::PageDown,
+        ct::KeyCode::Tab => KeyCode::Tab,
+        ct::KeyCode::BackTab => KeyCode::BackTab,
+        ct::KeyCode::Delete => KeyCode::Delete,
+        ct::KeyCode::Insert => KeyCode::Insert,
+        ct::KeyCode::F(n) => KeyCode::Function(n),
+        ct::KeyCode::Char(c) => KeyCode::Char(c),
+        ct::KeyCode::Null => KeyCode::Null,
+        ct::KeyCode::Esc => KeyCode::Escape,
+        ct::KeyCode::CapsLock => KeyCode::CapsLock,
+        ct::KeyCode::ScrollLock => KeyCode::ScrollLock,
+        ct::KeyCode::NumLock => KeyCode::NumLock,
+        ct::KeyCode::PrintScreen => KeyCode::PrintScreen,
+        ct::KeyCode::Pause => KeyCode::Pause,
+        ct::KeyCode::Menu => KeyCode::Menu,
+        ct::KeyCode::KeypadBegin => KeyCode::KeypadBegin,
+        ct::KeyCode::Media(m) => KeyCode::Media(convert_media_key(m)),
+        ct::KeyCode::Modifier(m) => KeyCode::Modifier(convert_modifier_key(m)),
+    }
+}
+
+fn convert_media_key(m: ct::MediaKeyCode) -> termina::event::MediaKeyCode {
+    use termina::event::MediaKeyCode as T;
+    match m {
+        ct::MediaKeyCode::Play => T::Play,
+        ct::MediaKeyCode::Pause => T::Pause,
+        ct::MediaKeyCode::PlayPause => T::PlayPause,
+        ct::MediaKeyCode::Reverse => T::Reverse,
+        ct::MediaKeyCode::Stop => T::Stop,
+        ct::MediaKeyCode::FastForward => T::FastForward,
+        ct::MediaKeyCode::Rewind => T::Rewind,
+        ct::MediaKeyCode::TrackNext => T::TrackNext,
+        ct::MediaKeyCode::TrackPrevious => T::TrackPrevious,
+        ct::MediaKeyCode::Record => T::Record,
+        ct::MediaKeyCode::LowerVolume => T::LowerVolume,
+        ct::MediaKeyCode::RaiseVolume => T::RaiseVolume,
+        ct::MediaKeyCode::MuteVolume => T::MuteVolume,
+    }
+}
+
+fn convert_modifier_key(m: ct::ModifierKeyCode) -> termina::event::ModifierKeyCode {
+    use termina::event::ModifierKeyCode as T;
+    match m {
+        ct::ModifierKeyCode::LeftShift => T::LeftShift,
+        ct::ModifierKeyCode::LeftControl => T::LeftControl,
+        ct::ModifierKeyCode::LeftAlt => T::LeftAlt,
+        ct::ModifierKeyCode::LeftSuper => T::LeftSuper,
+        ct::ModifierKeyCode::LeftHyper => T::LeftHyper,
+        ct::ModifierKeyCode::LeftMeta => T::LeftMeta,
+        ct::ModifierKeyCode::RightShift => T::RightShift,
+        ct::ModifierKeyCode::RightControl => T::RightControl,
+        ct::ModifierKeyCode::RightAlt => T::RightAlt,
+        ct::ModifierKeyCode::RightSuper => T::RightSuper,
+        ct::ModifierKeyCode::RightHyper => T::RightHyper,
+        ct::ModifierKeyCode::RightMeta => T::RightMeta,
+        ct::ModifierKeyCode::IsoLevel3Shift => T::IsoLevel3Shift,
+        ct::ModifierKeyCode::IsoLevel5Shift => T::IsoLevel5Shift,
+    }
+}
+
+fn convert_kind(k: ct::KeyEventKind) -> KeyEventKind {
+    match k {
+        ct::KeyEventKind::Press => KeyEventKind::Press,
+        ct::KeyEventKind::Repeat => KeyEventKind::Repeat,
+        ct::KeyEventKind::Release => KeyEventKind::Release,
+    }
+}
+
+fn convert_state(s: ct::KeyEventState) -> KeyEventState {
+    let mut out = KeyEventState::NONE;
+    if s.contains(ct::KeyEventState::KEYPAD) {
+        out |= KeyEventState::KEYPAD;
+    }
+    if s.contains(ct::KeyEventState::CAPS_LOCK) {
+        out |= KeyEventState::CAPS_LOCK;
+    }
+    if s.contains(ct::KeyEventState::NUM_LOCK) {
+        out |= KeyEventState::NUM_LOCK;
+    }
+    out
+}
+
+fn convert_modifiers(m: ct::KeyModifiers) -> Modifiers {
+    let mut out = Modifiers::NONE;
+    if m.contains(ct::KeyModifiers::SHIFT) {
+        out |= Modifiers::SHIFT;
+    }
+    if m.contains(ct::KeyModifiers::ALT) {
+        out |= Modifiers::ALT;
+    }
+    if m.contains(ct::KeyModifiers::CONTROL) {
+        out |= Modifiers::CONTROL;
+    }
+    if m.contains(ct::KeyModifiers::SUPER) {
+        out |= Modifiers::SUPER;
+    }
+    if m.contains(ct::KeyModifiers::HYPER) {
+        out |= Modifiers::HYPER;
+    }
+    if m.contains(ct::KeyModifiers::META) {
+        out |= Modifiers::META;
+    }
+    out
+}
+
+fn convert_mouse_kind(k: ct::MouseEventKind) -> termina::event::MouseEventKind {
+    use termina::event::MouseEventKind as T;
+    match k {
+        ct::MouseEventKind::Down(b) => T::Down(convert_mouse_button(b)),
+        ct::MouseEventKind::Up(b) => T::Up(convert_mouse_button(b)),
+        ct::MouseEventKind::Drag(b) => T::Drag(convert_mouse_button(b)),
+        ct::MouseEventKind::Moved => T::Moved,
+        ct::MouseEventKind::ScrollDown => T::ScrollDown,
+        ct::MouseEventKind::ScrollUp => T::ScrollUp,
+        ct::MouseEventKind::ScrollLeft => T::ScrollLeft,
+        ct::MouseEventKind::ScrollRight => T::ScrollRight,
+    }
+}
+
+fn convert_mouse_button(b: ct::MouseButton) -> termina::event::MouseButton {
+    use termina::event::MouseButton as T;
+    match b {
+        ct::MouseButton::Left => T::Left,
+        ct::MouseButton::Right => T::Right,
+        ct::MouseButton::Middle => T::Middle,
+    }
+}
 
 /// Scroll the pane viewport so `cursor_char` stays within the visible area.
 ///

@@ -1,4 +1,4 @@
-use crossterm::event::KeyEvent;
+use termina::event::KeyEvent;
 
 use super::super::commands::typed_goto_line;
 use super::super::dispatch::ArgSource;

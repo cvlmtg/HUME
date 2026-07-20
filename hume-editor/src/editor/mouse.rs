@@ -1,6 +1,6 @@
 //! Mouse event handling.
 //!
-//! Crossterm delivers mouse events when normal tracking (mode 1000) is enabled.
+//! Mouse events are delivered when normal tracking (mode 1000) is enabled.
 //! Button-event tracking (mode 1002) is only enabled when `editor.mouse_select`
 //! is true, so `MouseEventKind::Drag` events are received only in that case.
 //!
@@ -12,9 +12,9 @@
 //! number of lines (Vim-style). Moving the cursor with the viewport prevents
 //! `ensure_cursor_visible` from snapping the viewport back on the next frame.
 
-use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use hume_engine::format::{FormatScratch, count_visual_rows};
 use hume_engine::pane::WrapMode;
+use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
 use super::cursor;
 use super::visual_move::apply_visual_vertical;
@@ -24,7 +24,7 @@ use hume_editing::selection::{Selection, SelectionSet};
 use super::{Editor, Mode};
 
 impl Editor {
-    /// Dispatch a crossterm [`MouseEvent`] to the appropriate handler.
+    /// Dispatch a [`MouseEvent`] to the appropriate handler.
     ///
     /// Hook draining happens in the caller (`handle_event`) — this method only
     /// performs the dispatch.

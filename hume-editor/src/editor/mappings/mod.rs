@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use termina::event::{KeyCode, KeyEvent};
 
 use super::{Editor, Mode};
 
@@ -128,7 +128,7 @@ impl Editor {
                 self.queue_steel_call(menu.callback, vec![idx]);
                 true
             }
-            KeyCode::Esc => {
+            KeyCode::Escape => {
                 let menu = self.state.menu.take().expect("checked by the caller above");
                 self.queue_steel_call(menu.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
                 true
@@ -179,7 +179,7 @@ impl Editor {
                 self.queue_steel_call(callback, vec![idx]);
                 true
             }
-            KeyCode::Esc => {
+            KeyCode::Escape => {
                 let drawer = self.state.drawer.take().expect("checked above");
                 self.queue_steel_call(drawer.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
                 self.state.sync_drawer_view();
@@ -273,9 +273,9 @@ mod tests {
     #[test]
     fn message_log_summary_ttl() {
         use super::super::{Editor, Severity};
-        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        use termina::event::{KeyCode, KeyEvent, Modifiers};
 
-        let noop = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE);
+        let noop = KeyEvent::new(KeyCode::Char('h'), Modifiers::NONE);
 
         let (buf, sels) = crate::testing::parse_state("-[a]>\n");
         let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::new(buf, sels));

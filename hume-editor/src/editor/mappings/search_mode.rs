@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crossterm::event::KeyEvent;
+use termina::event::KeyEvent;
 
 use super::super::commands::search_sel;
 use super::super::jump_list::JumpEntry;

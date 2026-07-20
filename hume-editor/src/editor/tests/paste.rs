@@ -4,8 +4,8 @@
 
 use super::*;
 use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
-use crossterm::event::Event;
 use pretty_assertions::assert_eq;
+use termina::event::Event;
 
 fn paste(ed: &mut Editor, text: &str) {
     ed.handle_event(Event::Paste(text.to_string()));
@@ -112,9 +112,9 @@ fn insert_mode_paste_with_embedded_newline() {
 
 #[test]
 fn insert_mode_paste_with_embedded_escape_sequence_inserts_literally() {
-    // `handle_terminal_paste` receives the payload crossterm already stripped
-    // of the bracketed-paste markers — an embedded control/escape sequence in
-    // that payload is just more text to insert, not something to interpret.
+    // `handle_terminal_paste` receives the payload already stripped of the
+    // bracketed-paste markers — an embedded control/escape sequence in that
+    // payload is just more text to insert, not something to interpret.
     let mut ed = editor_from("-[\n]>");
     ed.feed_key(key('i'));
     paste(&mut ed, "\x1b[31mred\x1b[0m");

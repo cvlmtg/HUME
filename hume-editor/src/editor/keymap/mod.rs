@@ -38,8 +38,9 @@ use defaults::{default_extend_keymap, default_insert_keymap, default_normal_keym
 
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 
-use crossterm::event::KeyEvent;
+use termina::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, Modifiers};
 
 // ── WaitCharPending ───────────────────────────────────────────────────────────
 
@@ -98,6 +99,97 @@ pub(super) enum WalkResult {
     NoMatch,
 }
 
+// ── Key binding identity ─────────────────────────────────────────────────────
+
+/// Canonical binding identity for a key event.
+///
+/// crossterm 0.29 normalized case implicitly (uppercase char ⇔ `SHIFT`) as
+/// part of `KeyEvent`'s `PartialEq`/`Hash` impls; termina's `KeyEvent` derives
+/// plain equality with no such normalization, so the trie must do it
+/// explicitly at the binding boundary. Also scrubs fields that never
+/// participate in binding identity: `kind` (a kitty autorepeat is a `Repeat`
+/// event, not `Press` — held keys must keep matching the same binding under
+/// `REPORT_EVENT_TYPES`), protocol `state`, and the Caps/Num Lock modifier
+/// bits.
+fn canonical(mut key: KeyEvent) -> KeyEvent {
+    key.kind = KeyEventKind::Press;
+    key.state = KeyEventState::NONE;
+    key.modifiers -= Modifiers::CAPS_LOCK | Modifiers::NUM_LOCK;
+    if let KeyCode::Char(c) = key.code {
+        if c.is_ascii_uppercase() {
+            key.modifiers |= Modifiers::SHIFT;
+        } else if key.modifiers.contains(Modifiers::SHIFT) {
+            // No-op for punctuation and other non-alphabetic chars: shifted
+            // punctuation (e.g. `:`) stays distinct from its unshifted form,
+            // matching what terminals actually deliver.
+            key.code = KeyCode::Char(c.to_ascii_uppercase());
+        }
+    }
+    key
+}
+
+/// Tags each [`KeyCode`] variant with a small integer plus payload so
+/// [`encode`] can pack it into a `u64`. `Media`/`Modifier` are fieldless enums,
+/// so casting to `u32` is a plain discriminant read.
+fn encode_key_code(code: KeyCode) -> (u8, u32) {
+    match code {
+        KeyCode::Char(c) => (0, c as u32),
+        KeyCode::Function(n) => (1, n as u32),
+        KeyCode::Media(m) => (2, m as u32),
+        KeyCode::Modifier(m) => (3, m as u32),
+        KeyCode::Enter => (4, 0),
+        KeyCode::Backspace => (5, 0),
+        KeyCode::Tab => (6, 0),
+        KeyCode::Escape => (7, 0),
+        KeyCode::Left => (8, 0),
+        KeyCode::Right => (9, 0),
+        KeyCode::Up => (10, 0),
+        KeyCode::Down => (11, 0),
+        KeyCode::Home => (12, 0),
+        KeyCode::End => (13, 0),
+        KeyCode::BackTab => (14, 0),
+        KeyCode::PageUp => (15, 0),
+        KeyCode::PageDown => (16, 0),
+        KeyCode::Insert => (17, 0),
+        KeyCode::Delete => (18, 0),
+        KeyCode::KeypadBegin => (19, 0),
+        KeyCode::CapsLock => (20, 0),
+        KeyCode::ScrollLock => (21, 0),
+        KeyCode::NumLock => (22, 0),
+        KeyCode::PrintScreen => (23, 0),
+        KeyCode::Pause => (24, 0),
+        KeyCode::Menu => (25, 0),
+        KeyCode::Null => (26, 0),
+    }
+}
+
+/// Injective encoding of a canonical key event's `(code, modifiers)` pair,
+/// used as the trie's hash. `kind`/`state` are excluded because [`canonical`]
+/// already collapses them to fixed values.
+fn encode(key: &KeyEvent) -> u64 {
+    let (tag, payload) = encode_key_code(key.code);
+    ((tag as u64) << 40) | ((payload as u64) << 8) | key.modifiers.bits() as u64
+}
+
+/// Hashable, case-normalized wrapper around [`KeyEvent`] used as the trie's
+/// map key. termina's `KeyEvent` derives `PartialEq` but not `Hash`, and its
+/// equality has no case-normalization — both are needed for binding lookup,
+/// so this type is the only place a raw `KeyEvent` becomes a map key.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct TrieKey(KeyEvent);
+
+impl From<KeyEvent> for TrieKey {
+    fn from(key: KeyEvent) -> Self {
+        Self(canonical(key))
+    }
+}
+
+impl Hash for TrieKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write_u64(encode(&self.0));
+    }
+}
+
 // ── KeyTrie ───────────────────────────────────────────────────────────────────
 
 /// A single level of the keymap trie.
@@ -110,7 +202,7 @@ pub(super) struct KeyTrie {
     /// Human-readable name shown in the statusline when the user is mid-sequence
     /// at this node (e.g. `"match"` after pressing `m`, `"goto"` after `g`).
     pub(super) name: &'static str,
-    map: HashMap<KeyEvent, KeyTrieNode>,
+    map: HashMap<TrieKey, KeyTrieNode>,
 }
 
 #[derive(Clone)]
@@ -132,7 +224,7 @@ impl KeyTrie {
     }
 
     fn bind(&mut self, key: KeyEvent, node: KeyTrieNode) {
-        self.map.insert(key, node);
+        self.map.insert(TrieKey::from(key), node);
     }
 
     fn bind_leaf(&mut self, key: KeyEvent, cmd: KeymapCommand) {
@@ -152,7 +244,7 @@ impl KeyTrie {
         }
         let entry = self
             .map
-            .entry(keys[0])
+            .entry(TrieKey::from(keys[0]))
             .or_insert_with(|| KeyTrieNode::Node(KeyTrie::new("user")));
         if !matches!(entry, KeyTrieNode::Node(_)) {
             *entry = KeyTrieNode::Node(KeyTrie::new("user"));
@@ -174,7 +266,7 @@ impl KeyTrie {
         }
         let entry = self
             .map
-            .entry(keys[0])
+            .entry(TrieKey::from(keys[0]))
             .or_insert_with(|| KeyTrieNode::Node(KeyTrie::new("user")));
         // If the slot already holds a Leaf or WaitChar, replace with a Node
         // so the prefix can be extended. This may shadow an existing binding.
@@ -193,10 +285,10 @@ impl KeyTrie {
         match keys {
             [] => {}
             [only] => {
-                self.map.remove(only);
+                self.map.remove(&TrieKey::from(*only));
             }
             [first, rest @ ..] => {
-                if let Some(KeyTrieNode::Node(sub)) = self.map.get_mut(first) {
+                if let Some(KeyTrieNode::Node(sub)) = self.map.get_mut(&TrieKey::from(*first)) {
                     sub.remove_sequence(rest);
                 }
             }
@@ -213,7 +305,7 @@ impl KeyTrie {
         let last = keys.len() - 1;
 
         for (i, key) in keys.iter().enumerate() {
-            match current.map.get(key) {
+            match current.map.get(&TrieKey::from(*key)) {
                 None => return WalkResult::NoMatch,
                 Some(KeyTrieNode::Leaf(cmd)) if i == last => {
                     return WalkResult::Leaf(cmd.clone());
@@ -400,7 +492,7 @@ impl Keymap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use termina::event::{KeyCode, KeyEvent, Modifiers};
 
     // ── bind_sequence / remove_sequence / bind_user_with_extend / unbind_user ─
 
@@ -619,5 +711,125 @@ mod tests {
             names.contains(&"insert-sentinel".to_string()),
             "insert mode must be swept"
         );
+    }
+
+    // ── canonical() ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn canonical_uppercase_char_gains_shift() {
+        let k = canonical(KeyEvent::new(KeyCode::Char('G'), Modifiers::NONE));
+        assert_eq!(k, KeyEvent::new(KeyCode::Char('G'), Modifiers::SHIFT));
+    }
+
+    #[test]
+    fn canonical_shift_lowercase_char_becomes_uppercase() {
+        let k = canonical(KeyEvent::new(KeyCode::Char('g'), Modifiers::SHIFT));
+        assert_eq!(k, KeyEvent::new(KeyCode::Char('G'), Modifiers::SHIFT));
+    }
+
+    #[test]
+    fn canonical_shift_punctuation_is_unchanged() {
+        // Punctuation has no case to normalize — SHIFT+':' stays distinct from
+        // plain ':'. (The lone-SHIFT strip in `handle_normal` handles the
+        // partially-compliant-terminal gap for punctuation; that's a separate
+        // mechanism from this trie-identity normalization.)
+        let k = canonical(KeyEvent::new(KeyCode::Char(':'), Modifiers::SHIFT));
+        assert_eq!(k, KeyEvent::new(KeyCode::Char(':'), Modifiers::SHIFT));
+    }
+
+    #[test]
+    fn canonical_scrubs_lock_bits() {
+        let k = canonical(KeyEvent::new(
+            KeyCode::Char('h'),
+            Modifiers::CAPS_LOCK | Modifiers::NUM_LOCK,
+        ));
+        assert_eq!(k, KeyEvent::new(KeyCode::Char('h'), Modifiers::NONE));
+    }
+
+    #[test]
+    fn canonical_scrubs_protocol_state() {
+        let mut k = KeyEvent::new(KeyCode::Char('h'), Modifiers::NONE);
+        k.state = KeyEventState::KEYPAD | KeyEventState::CAPS_LOCK;
+        assert_eq!(canonical(k).state, KeyEventState::NONE);
+    }
+
+    #[test]
+    fn canonical_repeat_becomes_press() {
+        let mut k = KeyEvent::new(KeyCode::Char('j'), Modifiers::NONE);
+        k.kind = KeyEventKind::Repeat;
+        assert_eq!(canonical(k).kind, KeyEventKind::Press);
+    }
+
+    #[test]
+    fn canonical_is_idempotent() {
+        let k = KeyEvent::new(KeyCode::Char('g'), Modifiers::SHIFT);
+        assert_eq!(canonical(canonical(k)), canonical(k));
+    }
+
+    // ── Trie resolution equivalence ───────────────────────────────────────────
+
+    #[test]
+    fn walk_resolves_uppercase_leaf_regardless_of_incoming_shift_bit() {
+        let mut trie = KeyTrie::new("test");
+        trie.bind_leaf(
+            key!('I'),
+            KeymapCommand {
+                name: Cow::Borrowed("insert-at-line-start"),
+                force_extend: false,
+            },
+        );
+        // A non-conformant kitty terminal delivers the uppercase codepoint
+        // with SHIFT still set (see `handle_normal`'s doc comment); a clean
+        // delivery omits it. Both must resolve to the same leaf.
+        let non_conformant = KeyEvent::new(KeyCode::Char('I'), Modifiers::SHIFT);
+        let clean = KeyEvent::new(KeyCode::Char('I'), Modifiers::NONE);
+        assert!(matches!(
+            trie.walk(&[non_conformant]),
+            WalkResult::Leaf(ref c) if c.name == "insert-at-line-start"
+        ));
+        assert!(matches!(
+            trie.walk(&[clean]),
+            WalkResult::Leaf(ref c) if c.name == "insert-at-line-start"
+        ));
+    }
+
+    #[test]
+    fn walk_resolves_repeat_kind_key_like_press() {
+        // A kitty terminal with REPORT_EVENT_TYPES sends autorepeat as
+        // `KeyEventKind::Repeat`, not `Press`. A held key must keep matching
+        // its binding.
+        let mut trie = KeyTrie::new("test");
+        trie.bind_leaf(
+            key!('j'),
+            KeymapCommand {
+                name: Cow::Borrowed("move-down"),
+                force_extend: false,
+            },
+        );
+        let mut repeated = KeyEvent::new(KeyCode::Char('j'), Modifiers::NONE);
+        repeated.kind = KeyEventKind::Repeat;
+        assert!(matches!(
+            trie.walk(&[repeated]),
+            WalkResult::Leaf(ref c) if c.name == "move-down"
+        ));
+    }
+
+    #[test]
+    fn bind_user_with_extend_shift_lowercase_and_uppercase_are_the_same_binding() {
+        // Steel's `bind-key!` "shift-a" / "S-a" spelling parses to
+        // Char('a')+SHIFT (see hume-scripting's `keys.rs`); a plain "A" bind
+        // string and live uppercase keypresses both resolve to Char('A')+SHIFT
+        // once canonicalized. All three must be the same trie entry.
+        let mut km = Keymap::default();
+        km.bind_user_with_extend(
+            BindMode::Normal,
+            &[KeyEvent::new(KeyCode::Char('a'), Modifiers::SHIFT)],
+            Cow::Borrowed("my-cmd"),
+            false,
+        );
+        assert!(matches!(
+            km.normal.walk(&[key!('A')]),
+            WalkResult::Leaf(ref c) if c.name == "my-cmd"
+        ));
     }
 }

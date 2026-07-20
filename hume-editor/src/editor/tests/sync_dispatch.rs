@@ -285,7 +285,7 @@ fn case_b_sync_cursor_read_reflects_motion() {
 #[test]
 fn steel_call_repeat_last_action_drains_via_handle_key() {
     use crate::editor::keymap::BindMode;
-    use crossterm::event::KeyCode;
+    use termina::event::KeyCode;
 
     let mut ed = editor_from("-[foo]> bar\n");
 
@@ -314,7 +314,7 @@ fn steel_call_repeat_last_action_drains_via_handle_key() {
     ed.scripting = Some(host);
 
     // Bind the Steel command to an unoccupied key (F2) in Normal mode.
-    let f2 = crossterm::event::KeyEvent::new(KeyCode::F(2), crossterm::event::KeyModifiers::NONE);
+    let f2 = termina::event::KeyEvent::new(KeyCode::Function(2), termina::event::Modifiers::NONE);
     ed.state.keymap.bind_user_with_extend(
         BindMode::Normal,
         &[f2],
@@ -900,8 +900,8 @@ fn steel_unknown_cmd_warns_and_continues() {
 /// → `pending_hooks` is non-empty after the click (the pending hook was never cleared).
 #[test]
 fn mouse_click_drains_hooks_immediately() {
-    use crossterm::event::Event;
     use hume_scripting::hooks::HookId;
+    use termina::event::Event;
 
     let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::new(
         hume_editing::text::Text::from("hello\n"),
@@ -921,11 +921,11 @@ fn mouse_click_drains_hooks_immediately() {
     );
 
     // Simulate a left-click at (0, 0) via handle_event so the drain choke point runs.
-    let click = crossterm::event::MouseEvent {
-        kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+    let click = termina::event::MouseEvent {
+        kind: termina::event::MouseEventKind::Down(termina::event::MouseButton::Left),
         column: 0,
         row: 0,
-        modifiers: crossterm::event::KeyModifiers::NONE,
+        modifiers: termina::event::Modifiers::NONE,
     };
     ed.handle_event(Event::Mouse(click));
 
@@ -1749,7 +1749,7 @@ fn native_call_bang_at_init_top_level_warns_and_skips() {
 /// host, and bind the named command to F2 in Normal mode.
 fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) {
     use crate::editor::keymap::BindMode;
-    use crossterm::event::KeyCode;
+    use termina::event::KeyCode;
 
     let names: Vec<String> = ed
         .state
@@ -1768,7 +1768,7 @@ fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) {
 
     ed.scripting = Some(host);
 
-    let f2 = crossterm::event::KeyEvent::new(KeyCode::F(2), crossterm::event::KeyModifiers::NONE);
+    let f2 = termina::event::KeyEvent::new(KeyCode::Function(2), termina::event::Modifiers::NONE);
     ed.state.keymap.bind_user_with_extend(
         BindMode::Normal,
         &[f2],
@@ -1787,9 +1787,9 @@ fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) {
 ///   at the raw cursor position instead of the recipe-established one.
 #[test]
 fn steel_repeatable_insert_dot_repeat_replays_command_and_typed_text() {
-    let f2 = crossterm::event::KeyEvent::new(
-        crossterm::event::KeyCode::F(2),
-        crossterm::event::KeyModifiers::NONE,
+    let f2 = termina::event::KeyEvent::new(
+        termina::event::KeyCode::Function(2),
+        termina::event::Modifiers::NONE,
     );
     let mut ed = editor_from("-[x]>\n");
     setup_steel_f2(
@@ -1846,9 +1846,9 @@ fn steel_repeatable_insert_dot_repeat_replays_command_and_typed_text() {
 /// this — it passes with the snapshot, fails without it.
 #[test]
 fn steel_repeatable_insert_preserves_prior_selection_recipe() {
-    let f2 = crossterm::event::KeyEvent::new(
-        crossterm::event::KeyCode::F(2),
-        crossterm::event::KeyModifiers::NONE,
+    let f2 = termina::event::KeyEvent::new(
+        termina::event::KeyCode::Function(2),
+        termina::event::Modifiers::NONE,
     );
     // `x` (select-line) on "foo bar\n" selects the whole line — an in-place
     // selection that pushes a recipe step. (Reaching motions like `w` don't
@@ -1900,9 +1900,9 @@ fn steel_repeatable_insert_preserves_prior_selection_recipe() {
 /// Mirrors `dot_is_single_undo_step` from dot_repeat.rs but drives insert via Steel.
 #[test]
 fn steel_repeatable_insert_dot_repeat_single_undo() {
-    let f2 = crossterm::event::KeyEvent::new(
-        crossterm::event::KeyCode::F(2),
-        crossterm::event::KeyModifiers::NONE,
+    let f2 = termina::event::KeyEvent::new(
+        termina::event::KeyCode::Function(2),
+        termina::event::Modifiers::NONE,
     );
     let mut ed = editor_from("-[x]>y\n");
     setup_steel_f2(
@@ -1941,9 +1941,9 @@ fn steel_repeatable_insert_dot_repeat_single_undo() {
 /// This guards that the edit-then-insert undo-group path remains safe.
 #[test]
 fn steel_repeatable_change_via_call_records_insert_keys() {
-    let f2 = crossterm::event::KeyEvent::new(
-        crossterm::event::KeyCode::F(2),
-        crossterm::event::KeyModifiers::NONE,
+    let f2 = termina::event::KeyEvent::new(
+        termina::event::KeyCode::Function(2),
+        termina::event::Modifiers::NONE,
     );
     let mut ed = editor_from("-[foo]> bar\n");
     setup_steel_f2(

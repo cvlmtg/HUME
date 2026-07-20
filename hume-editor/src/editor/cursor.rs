@@ -236,7 +236,7 @@ pub(crate) fn format_row_col(
 /// [`gutter_width`]). Clicks that land inside the gutter return `None`.
 ///
 /// The coordinate space is pane-relative: `(0, 0)` is the top-left cell of
-/// the pane, matching what crossterm's `MouseEvent.column` / `.row` report
+/// the pane, matching what `MouseEvent.column` / `.row` report
 /// when the pane fills the whole terminal (which is currently always true).
 ///
 /// Returns `None` if the click is:

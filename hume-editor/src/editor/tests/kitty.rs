@@ -240,7 +240,7 @@ fn kitty_ctrl_u_is_not_undo() {
 
 /// Ctrl+} extends to the next paragraph (kitty mode).
 ///
-/// With REPORT_ALTERNATE_KEYS, crossterm delivers the shifted character
+/// With REPORT_ALTERNATE_KEYS, the terminal delivers the shifted character
 /// directly: Ctrl+} arrives as Char('}') with CONTROL (no SHIFT).
 #[test]
 fn kitty_ctrl_close_brace_extends_next_paragraph() {

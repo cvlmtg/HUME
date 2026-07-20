@@ -71,12 +71,12 @@ impl MiniBuffer {
     /// Covers: cancel (Esc/Ctrl+C), confirm (Enter), char insertion, grapheme-aware
     /// backspace, and left/right cursor movement. Returns a [`MiniBufferEvent`]
     /// describing the outcome so the caller can apply mode-specific logic.
-    pub(super) fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> MiniBufferEvent {
-        use crossterm::event::{KeyCode, KeyModifiers};
+    pub(super) fn handle_key(&mut self, key: termina::event::KeyEvent) -> MiniBufferEvent {
+        use termina::event::{KeyCode, Modifiers};
 
         match key.code {
-            KeyCode::Esc => MiniBufferEvent::Cancel,
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Escape => MiniBufferEvent::Cancel,
+            KeyCode::Char('c') if key.modifiers.contains(Modifiers::CONTROL) => {
                 MiniBufferEvent::Cancel
             }
             KeyCode::Enter => {
@@ -108,7 +108,7 @@ impl MiniBuffer {
             // whitespace first, then remove the word. Never closes the minibuf
             // on empty (unlike Backspace) — emits `Ignored` when there's
             // nothing to the left of the cursor.
-            KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Char('w') if key.modifiers.contains(Modifiers::CONTROL) => {
                 let new_cursor = word_boundary_back(&self.input, self.cursor);
                 if new_cursor == self.cursor {
                     MiniBufferEvent::Ignored
@@ -118,7 +118,7 @@ impl MiniBuffer {
                     MiniBufferEvent::Edited
                 }
             }
-            KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Char(ch) if !key.modifiers.contains(Modifiers::CONTROL) => {
                 self.input.insert(self.cursor, ch);
                 self.cursor += ch.len_utf8();
                 MiniBufferEvent::Edited

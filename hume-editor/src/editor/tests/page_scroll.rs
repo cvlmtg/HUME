@@ -23,11 +23,11 @@ fn page_test_editor() -> Editor {
 }
 
 fn key_page_down() -> KeyEvent {
-    KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE)
+    KeyEvent::new(KeyCode::PageDown, Modifiers::NONE)
 }
 
 fn key_page_up() -> KeyEvent {
-    KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE)
+    KeyEvent::new(KeyCode::PageUp, Modifiers::NONE)
 }
 
 /// Ctrl+d (half-page-down) moves cursor down by half the viewport height (12 lines).

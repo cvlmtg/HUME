@@ -6,8 +6,8 @@
 //! replayed at a different cursor. Macro replay drains a queue of recorded
 //! keys through the normal event path.
 
-use crossterm::event::{Event, KeyEvent};
 use std::borrow::Cow;
+use termina::event::{Event, KeyEvent};
 
 use super::dispatch::{ArgSource, CmdCtx};
 use super::registry::MappableCommand;

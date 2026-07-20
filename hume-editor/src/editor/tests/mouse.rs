@@ -1,13 +1,13 @@
 use super::*;
-use crossterm::event::{Event, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use pretty_assertions::assert_eq;
+use termina::event::{Event, Modifiers, MouseButton, MouseEvent, MouseEventKind};
 
 fn mouse_left_down(col: u16, row: u16) -> Event {
     Event::Mouse(MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
         column: col,
         row,
-        modifiers: KeyModifiers::NONE,
+        modifiers: Modifiers::NONE,
     })
 }
 

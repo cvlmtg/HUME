@@ -12,8 +12,8 @@ use crate::editor::commands::open_pane;
 #[test]
 fn exit_insert_via_esc_fires_on_mode_change() {
     use crate::testing::MockHost;
-    use crossterm::event::Event;
     use hume_scripting::ScriptingHost;
+    use termina::event::Event;
 
     // Two-char buffer; cursor starts at col 0.
     let mut ed = editor_from("-[a]>b\n");
@@ -53,8 +53,8 @@ fn exit_insert_via_esc_fires_on_mode_change() {
 #[test]
 fn mouse_click_in_insert_fires_on_mode_change() {
     use crate::testing::MockHost;
-    use crossterm::event::Event;
     use hume_scripting::ScriptingHost;
+    use termina::event::Event;
 
     let mut ed = editor_from("-[a]>b\n");
     ed.view.panes[ed.state.focused_pane_id].viewport =
@@ -76,11 +76,11 @@ fn mouse_click_in_insert_fires_on_mode_change() {
     let before = state(&ed);
 
     // Left-click at (col=1, row=0) — lands in content, triggers exit-insert.
-    let click = crossterm::event::MouseEvent {
-        kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+    let click = termina::event::MouseEvent {
+        kind: termina::event::MouseEventKind::Down(termina::event::MouseButton::Left),
         column: 1,
         row: 0,
-        modifiers: crossterm::event::KeyModifiers::NONE,
+        modifiers: termina::event::Modifiers::NONE,
     };
     ed.handle_event(Event::Mouse(click));
 

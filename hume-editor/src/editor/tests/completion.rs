@@ -1,15 +1,15 @@
 use super::*;
-use crossterm::event::{KeyCode, KeyModifiers};
 use pretty_assertions::assert_eq;
+use termina::event::{KeyCode, Modifiers};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn key_tab() -> KeyEvent {
-    KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)
+    KeyEvent::new(KeyCode::Tab, Modifiers::NONE)
 }
 
 fn key_shift_tab() -> KeyEvent {
-    KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT)
+    KeyEvent::new(KeyCode::BackTab, Modifiers::SHIFT)
 }
 
 /// Drain the minibuf input for assertions.

@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use super::{KeyTrie, KeyTrieNode, Keymap, KeymapCommand, WaitCharPending};
 
@@ -46,25 +46,25 @@ macro_rules! wait_char {
 /// ```rust,ignore
 /// key!('w')           // Char('w'), no modifiers
 /// key!(Ctrl + 'h')    // Char('h'), CONTROL modifier
-/// key!(Esc)           // Esc, no modifiers
+/// key!(Escape)        // Escape, no modifiers
 /// key!(Left)          // Left arrow, no modifiers
 /// ```
 macro_rules! key {
     // Ctrl+char — must come first so `Ctrl + 'h'` is not mistakenly parsed
     // by a later arm.
     (Ctrl + $ch:literal) => {
-        KeyEvent::new(KeyCode::Char($ch), KeyModifiers::CONTROL)
+        KeyEvent::new(KeyCode::Char($ch), Modifiers::CONTROL)
     };
-    // Named KeyCode variant: `key!(Esc)`, `key!(Left)`, `key!(Backspace)`, …
-    // Rust macros dispatch by syntactic category: `Esc` is an *identifier*
+    // Named KeyCode variant: `key!(Escape)`, `key!(Left)`, `key!(Backspace)`, …
+    // Rust macros dispatch by syntactic category: `Escape` is an *identifier*
     // (`$variant:ident`), while `'w'` is a *literal* (`$ch:literal`), so these
     // two arms never overlap even though they look similar.
     ($variant:ident) => {
-        KeyEvent::new(KeyCode::$variant, KeyModifiers::NONE)
+        KeyEvent::new(KeyCode::$variant, Modifiers::NONE)
     };
     // Plain character literal
     ($ch:literal) => {
-        KeyEvent::new(KeyCode::Char($ch), KeyModifiers::NONE)
+        KeyEvent::new(KeyCode::Char($ch), Modifiers::NONE)
     };
 }
 
@@ -114,7 +114,7 @@ fn build_text_object_trie() -> KeyTrie {
 
     for (chars, inner_name, around_name) in objects {
         for &ch in *chars {
-            let k = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE);
+            let k = KeyEvent::new(KeyCode::Char(ch), Modifiers::NONE);
             inner_trie.bind_leaf(k, cmd!(inner_name));
             around_trie.bind_leaf(k, cmd!(around_name));
         }
@@ -143,7 +143,7 @@ fn build_text_object_trie() -> KeyTrie {
     let mut surround_trie = KeyTrie::new("surround");
     for (chars, name) in surround_objects {
         for &ch in *chars {
-            let k = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE);
+            let k = KeyEvent::new(KeyCode::Char(ch), Modifiers::NONE);
             surround_trie.bind_leaf(k, cmd!(name));
         }
     }
@@ -357,8 +357,8 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!('*'), cmd!("search-word-under-cursor"));
     // Select text, then Ctrl+/ turns it into the search pattern verbatim (Helix's
     // `search_selection`), so `n`/`N` cycle its other occurrences. Kitty-only:
-    // legacy terminals encode Ctrl+/ as the control byte 0x1F, which crossterm
-    // decodes as `Ctrl+'7'` — left unbound, so the key silently no-ops there.
+    // legacy terminals encode Ctrl+/ as the control byte 0x1F, which decodes
+    // as `Ctrl+'7'` — left unbound, so the key silently no-ops there.
     t.bind_leaf(key!(Ctrl + '/'), cmd!("search-selection"));
 
     // ── Pane prefix (Ctrl+p) ─────────────────────────────────────────────────
@@ -417,7 +417,7 @@ pub(super) fn default_insert_keymap() -> KeyTrie {
     let mut t = KeyTrie::new("insert");
 
     // Return to Normal mode.
-    t.bind_leaf(key!(Esc), cmd!("exit-insert"));
+    t.bind_leaf(key!(Escape), cmd!("exit-insert"));
     t.bind_leaf(key!(Ctrl + 'c'), cmd!("exit-insert"));
 
     // Navigation (no extend in insert mode).
@@ -465,7 +465,7 @@ impl Keymap {
 mod tests {
     use super::super::{Keymap, WalkResult};
     use super::{default_insert_keymap, default_normal_keymap};
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use termina::event::{KeyCode, KeyEvent, Modifiers};
 
     #[test]
     fn no_match() {

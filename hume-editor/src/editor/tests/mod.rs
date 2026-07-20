@@ -13,7 +13,6 @@ use crate::editor::{EditorState, SearchDirection, SearchState};
 use crate::ops::register::{KillRing, RegisterSet};
 use crate::settings::EditorSettings;
 use crate::testing::{parse_state, serialize_state};
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
 use hume_engine::pane::Pane;
@@ -21,6 +20,7 @@ use hume_engine::pipeline::{BufferId, EngineView, LayoutTree, PaneId};
 use hume_treesitter::parse_worker::InlineParseBackend;
 use hume_treesitter::registry::LanguageRegistry;
 use slotmap::SecondaryMap;
+use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use super::{Editor, Mode, Severity};
 
@@ -48,39 +48,39 @@ fn state(ed: &Editor) -> String {
 
 /// A normal (no modifier) character key event.
 fn key(ch: char) -> KeyEvent {
-    KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE)
+    KeyEvent::new(KeyCode::Char(ch), Modifiers::NONE)
 }
 
 fn key_esc() -> KeyEvent {
-    KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)
+    KeyEvent::new(KeyCode::Escape, Modifiers::NONE)
 }
 
 fn key_ctrl(ch: char) -> KeyEvent {
-    KeyEvent::new(KeyCode::Char(ch), KeyModifiers::CONTROL)
+    KeyEvent::new(KeyCode::Char(ch), Modifiers::CONTROL)
 }
 
 fn key_enter() -> KeyEvent {
-    KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)
+    KeyEvent::new(KeyCode::Enter, Modifiers::NONE)
 }
 
 fn key_up() -> KeyEvent {
-    KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)
+    KeyEvent::new(KeyCode::Up, Modifiers::NONE)
 }
 
 fn key_down() -> KeyEvent {
-    KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)
+    KeyEvent::new(KeyCode::Down, Modifiers::NONE)
 }
 
 fn key_tab() -> KeyEvent {
-    KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)
+    KeyEvent::new(KeyCode::Tab, Modifiers::NONE)
 }
 
 fn key_backspace() -> KeyEvent {
-    KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE)
+    KeyEvent::new(KeyCode::Backspace, Modifiers::NONE)
 }
 
 fn key_left() -> KeyEvent {
-    KeyEvent::new(KeyCode::Left, KeyModifiers::NONE)
+    KeyEvent::new(KeyCode::Left, Modifiers::NONE)
 }
 
 /// Type a colon command into the editor via `handle_key`, going through the

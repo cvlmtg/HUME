@@ -181,8 +181,8 @@ fn bind_key_queues_bind_effect() {
         .eval_source("(bind-key! 'normal \"z\" \"move-right\")", &mut mock)
         .unwrap();
 
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    let z_key = KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE);
+    use termina::event::{KeyCode, KeyEvent, Modifiers};
+    let z_key = KeyEvent::new(KeyCode::Char('z'), Modifiers::NONE);
     assert!(
         matches!(
             effects.as_slice(),
@@ -202,9 +202,9 @@ fn bind_key_multi_key_sequence_queues_full_sequence() {
         .eval_source("(bind-key! 'normal \"g h\" \"move-right\")", &mut mock)
         .unwrap();
 
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    let g_key = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
-    let h_key = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE);
+    use termina::event::{KeyCode, KeyEvent, Modifiers};
+    let g_key = KeyEvent::new(KeyCode::Char('g'), Modifiers::NONE);
+    let h_key = KeyEvent::new(KeyCode::Char('h'), Modifiers::NONE);
     assert!(
         matches!(
             effects.as_slice(),
@@ -1588,8 +1588,8 @@ fn unbind_key_queues_unbind_effect() {
 
     // Whether 'h' was bound is `Keymap`'s business, not the builtin's —
     // `remove_sequence_nonexistent_is_noop` (editor/keymap/mod.rs) owns that.
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    let h_key = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE);
+    use termina::event::{KeyCode, KeyEvent, Modifiers};
+    let h_key = KeyEvent::new(KeyCode::Char('h'), Modifiers::NONE);
     assert!(
         matches!(
             effects.as_slice(),
@@ -1791,7 +1791,7 @@ const PRELUDE_MACROS: &str = r#"
 
 #[test]
 fn prelude_bind_keys_batch_binds_multiple() {
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use termina::event::{KeyCode, KeyEvent, Modifiers};
 
     let mut h = host();
     let mut mock = MockHost::new();
@@ -1806,8 +1806,8 @@ fn prelude_bind_keys_batch_binds_multiple() {
         )
         .unwrap();
 
-    let z = KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE);
-    let l = KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE);
+    let z = KeyEvent::new(KeyCode::Char('z'), Modifiers::NONE);
+    let l = KeyEvent::new(KeyCode::Char('l'), Modifiers::NONE);
 
     assert!(
         matches!(
@@ -1825,7 +1825,7 @@ fn prelude_bind_keys_batch_binds_multiple() {
 
 #[test]
 fn prelude_bind_keys_extend_creates_force_extend_leaves() {
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use termina::event::{KeyCode, KeyEvent, Modifiers};
 
     let mut h = host();
     let mut mock = MockHost::new();
@@ -1840,8 +1840,8 @@ fn prelude_bind_keys_extend_creates_force_extend_leaves() {
         )
         .unwrap();
 
-    let q = KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE);
-    let w = KeyEvent::new(KeyCode::Char('W'), KeyModifiers::NONE);
+    let q = KeyEvent::new(KeyCode::Char('Q'), Modifiers::NONE);
+    let w = KeyEvent::new(KeyCode::Char('W'), Modifiers::NONE);
 
     assert!(
         matches!(
@@ -1858,7 +1858,7 @@ fn prelude_bind_keys_extend_creates_force_extend_leaves() {
 
 #[test]
 fn prelude_unbind_keys_batch_removes_bindings() {
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use termina::event::{KeyCode, KeyEvent, Modifiers};
 
     let mut h = host();
     let mut mock = MockHost::new();
@@ -1868,8 +1868,8 @@ fn prelude_unbind_keys_batch_removes_bindings() {
         .eval_source(r#"(unbind-keys! 'normal "h" "l")"#, &mut mock)
         .unwrap();
 
-    let h_key = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE);
-    let l_key = KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE);
+    let h_key = KeyEvent::new(KeyCode::Char('h'), Modifiers::NONE);
+    let l_key = KeyEvent::new(KeyCode::Char('l'), Modifiers::NONE);
 
     assert!(
         matches!(
@@ -1923,9 +1923,9 @@ fn prelude_eval_init_sequence_makes_macros_available_to_init_scm() {
         .eval_init(&init_path, 10_000, &mut mock, builtin_names)
         .expect("init.scm using bind-keys! must succeed after prelude is loaded");
 
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    let q = KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE);
-    let w = KeyEvent::new(KeyCode::Char('W'), KeyModifiers::NONE);
+    use termina::event::{KeyCode, KeyEvent, Modifiers};
+    let q = KeyEvent::new(KeyCode::Char('Q'), Modifiers::NONE);
+    let w = KeyEvent::new(KeyCode::Char('W'), Modifiers::NONE);
 
     assert!(
         matches!(

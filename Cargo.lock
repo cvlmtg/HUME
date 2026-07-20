@@ -1092,6 +1092,7 @@ dependencies = [
  "slotmap",
  "steel-core",
  "tempfile",
+ "termina",
  "tree-sitter",
  "unicode-segmentation",
  "unicode-width 0.2.2",
@@ -1149,6 +1150,7 @@ dependencies = [
  "slotmap",
  "steel-core",
  "tempfile",
+ "termina",
 ]
 
 [[package]]
@@ -2786,6 +2788,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "termina"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9048a889effe34a5cddee0af7f53285198b16dca3be510858d38dfdb3e62a04e"
+dependencies = [
+ "bitflags 2.13.0",
+ "parking_lot",
+ "rustix",
+ "signal-hook",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

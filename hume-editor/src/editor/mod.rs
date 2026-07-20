@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-use crossterm::event::KeyEvent;
+use termina::event::KeyEvent;
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 

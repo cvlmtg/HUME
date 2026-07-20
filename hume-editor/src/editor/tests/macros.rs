@@ -193,9 +193,9 @@ fn macro_no_nested_recording_during_replay() {
     ed.state.registers.write_macro(
         'q',
         vec![
-            KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE),
-            KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE),
-            KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE),
+            KeyEvent::new(KeyCode::Char('Q'), Modifiers::NONE),
+            KeyEvent::new(KeyCode::Char('Q'), Modifiers::NONE),
+            KeyEvent::new(KeyCode::Char('j'), Modifiers::NONE),
         ],
     );
 
@@ -229,8 +229,8 @@ fn macro_trailing_q_does_not_arm_pending() {
     ed.state.registers.write_macro(
         'q',
         vec![
-            KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE),
-            KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE),
+            KeyEvent::new(KeyCode::Char('j'), Modifiers::NONE),
+            KeyEvent::new(KeyCode::Char('Q'), Modifiers::NONE),
         ],
     );
 
@@ -302,7 +302,7 @@ fn macro_records_insert_mode_keys() {
     );
     assert_eq!(keys[0].code, KeyCode::Char('i'));
     assert_eq!(keys[1].code, KeyCode::Char('x'));
-    assert_eq!(keys[2].code, KeyCode::Esc);
+    assert_eq!(keys[2].code, KeyCode::Escape);
 }
 
 // ── New edge-case tests ───────────────────────────────────────────────────────
@@ -545,8 +545,8 @@ fn macro_recursive_replay_suppressed() {
     ed.state.registers.write_macro(
         'q',
         vec![
-            KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE),
-            KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE),
+            KeyEvent::new(KeyCode::Char('q'), Modifiers::NONE),
+            KeyEvent::new(KeyCode::Char('q'), Modifiers::NONE),
         ],
     );
 
@@ -643,7 +643,7 @@ fn macro_esc_during_recording_is_captured() {
         keys.len(),
         keys
     );
-    assert_eq!(keys[0].code, KeyCode::Esc);
+    assert_eq!(keys[0].code, KeyCode::Escape);
     assert_eq!(keys[1].code, KeyCode::Char('j'));
 }
 
@@ -901,5 +901,45 @@ fn macro_recording_can_be_stopped_on_read_only_buffer() {
     assert!(
         ed.state.macro_recording.is_none(),
         "Q must stop recording even when the focused buffer is read-only"
+    );
+}
+
+/// A macro register can hold a raw `KeyEvent` from a non-conformant delivery
+/// — the uppercase codepoint with SHIFT still set, per `handle_normal`'s doc
+/// comment — however it got recorded. Replaying it must resolve identically
+/// to a live press of the same key delivered cleanly: the stored key routes
+/// back through `handle_key`, which applies the same SHIFT-strip and trie
+/// canonicalization it would for any live keypress.
+///
+/// The register is written directly (rather than via `QQ...Q` recording) so
+/// this test isolates the replay path from live dispatch during recording —
+/// `non_conformant_i` here is never dispatched except through replay.
+#[test]
+fn macro_replay_resolves_non_conformant_shift_delivery_like_clean_press() {
+    use termina::event::{KeyCode, KeyEvent, Modifiers};
+
+    let non_conformant_i = KeyEvent::new(KeyCode::Char('I'), Modifiers::SHIFT);
+
+    let mut recorded = editor_from("-[a]>bcd\n");
+    recorded
+        .state
+        .registers
+        .write_macro('q', vec![non_conformant_i]);
+    recorded.handle_key(key('q'));
+    recorded.handle_key(key('q'));
+    recorded.drain_replay_queue();
+
+    let mut direct = editor_from("-[a]>bcd\n");
+    direct.handle_key(key('I'));
+
+    assert_eq!(
+        recorded.state.mode(),
+        direct.state.mode(),
+        "mode must match"
+    );
+    assert_eq!(
+        recorded.current_selections().primary().head(),
+        direct.current_selections().primary().head(),
+        "cursor position must match"
     );
 }

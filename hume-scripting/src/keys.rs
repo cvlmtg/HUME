@@ -23,12 +23,12 @@
 //! "G"         → [Char('G')]
 //! "ctrl-x"    → [Char('x') | CONTROL]
 //! "shift-tab" → [BackTab | SHIFT]
-//! "esc"       → [Esc]
+//! "esc"       → [Escape]
 //! "g h"       → [Char('g'), Char('h')]
 //! "m d"       → [Char('m'), Char('d')]
 //! ```
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 /// Parse a key-sequence string into a `Vec<KeyEvent>`.
 ///
@@ -53,19 +53,19 @@ fn parse_single_key(token: &str) -> Result<KeyEvent, String> {
     // from the original token so that single-char case is preserved
     // ("G" stays 'G', not 'g').
     let lower = token.to_ascii_lowercase();
-    let mut modifiers = KeyModifiers::NONE;
+    let mut modifiers = Modifiers::NONE;
     let mut rest_lower = lower.as_str();
 
     // Strip all modifier prefixes — order doesn't matter.
     loop {
         if let Some(tail) = rest_lower.strip_prefix("ctrl-") {
-            modifiers |= KeyModifiers::CONTROL;
+            modifiers |= Modifiers::CONTROL;
             rest_lower = tail;
         } else if let Some(tail) = rest_lower.strip_prefix("shift-") {
-            modifiers |= KeyModifiers::SHIFT;
+            modifiers |= Modifiers::SHIFT;
             rest_lower = tail;
         } else if let Some(tail) = rest_lower.strip_prefix("alt-") {
-            modifiers |= KeyModifiers::ALT;
+            modifiers |= Modifiers::ALT;
             rest_lower = tail;
         } else {
             break;
@@ -84,7 +84,7 @@ fn parse_single_key(token: &str) -> Result<KeyEvent, String> {
     }
 
     let code = parse_key_code(key_name)?;
-    // `shift-tab` is conventionally represented as BackTab in crossterm.
+    // Terminal input reports Shift+Tab as `BackTab`, not `Tab | SHIFT`.
     let (code, modifiers) = normalise_shift_tab(code, modifiers);
     Ok(KeyEvent::new(code, modifiers))
 }
@@ -100,7 +100,7 @@ fn parse_key_code(key_name: &str) -> Result<KeyCode, String> {
         "space" => return Ok(KeyCode::Char(' ')),
         "tab" => return Ok(KeyCode::Tab),
         "enter" | "return" | "cr" | "ret" => return Ok(KeyCode::Enter),
-        "esc" | "escape" => return Ok(KeyCode::Esc),
+        "esc" | "escape" => return Ok(KeyCode::Escape),
         "lt" => return Ok(KeyCode::Char('<')),
         "backspace" | "bs" => return Ok(KeyCode::Backspace),
         "delete" | "del" => return Ok(KeyCode::Delete),
@@ -122,7 +122,7 @@ fn parse_key_code(key_name: &str) -> Result<KeyCode, String> {
         .and_then(|s| s.parse::<u8>().ok())
         .filter(|&n| (1..=12).contains(&n))
     {
-        return Ok(KeyCode::F(n));
+        return Ok(KeyCode::Function(n));
     }
 
     // Single Unicode character — must be exactly one char.
@@ -156,7 +156,7 @@ fn parse_key_code(key_name: &str) -> Result<KeyCode, String> {
 ///
 /// ```text
 /// "i"           → [Char('i')]
-/// "wbc<esc>"    → [Char('w'), Char('b'), Char('c'), Esc]
+/// "wbc<esc>"    → [Char('w'), Char('b'), Char('c'), Escape]
 /// "<c-a>"       → [Char('a') | CONTROL]
 /// "a b"         → [Char('a'), Char(' '), Char('b')]   (space is literal)
 /// "<lt>"        → [Char('<')]
@@ -184,7 +184,7 @@ pub fn parse_key_stream(s: &str) -> Result<Vec<KeyEvent>, String> {
                 .chars()
                 .next()
                 .expect("i is on a char boundary: advanced by len_utf8 each iteration");
-            keys.push(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE));
+            keys.push(KeyEvent::new(KeyCode::Char(ch), Modifiers::NONE));
             i += ch.len_utf8();
         }
     }
@@ -202,7 +202,7 @@ fn parse_stream_token(inner: &str) -> Result<KeyEvent, String> {
     // it is two characters and would fall through to parse_single_key as an
     // unknown name otherwise.
     if inner.eq_ignore_ascii_case("lt") {
-        return Ok(KeyEvent::new(KeyCode::Char('<'), KeyModifiers::NONE));
+        return Ok(KeyEvent::new(KeyCode::Char('<'), Modifiers::NONE));
     }
     let expanded = expand_short_modifiers(inner);
     parse_single_key(&expanded)
@@ -242,8 +242,8 @@ fn expand_short_modifiers(token: &str) -> String {
 }
 
 /// Crossterm uses `BackTab` (not `Tab | SHIFT`) for Shift+Tab.
-fn normalise_shift_tab(code: KeyCode, mods: KeyModifiers) -> (KeyCode, KeyModifiers) {
-    if code == KeyCode::Tab && mods.contains(KeyModifiers::SHIFT) {
+fn normalise_shift_tab(code: KeyCode, mods: Modifiers) -> (KeyCode, Modifiers) {
+    if code == KeyCode::Tab && mods.contains(Modifiers::SHIFT) {
         (KeyCode::BackTab, mods)
     } else {
         (code, mods)
@@ -265,16 +265,16 @@ mod tests {
     }
 
     fn key(code: KeyCode) -> KeyEvent {
-        KeyEvent::new(code, KeyModifiers::NONE)
+        KeyEvent::new(code, Modifiers::NONE)
     }
     fn ctrl(code: KeyCode) -> KeyEvent {
-        KeyEvent::new(code, KeyModifiers::CONTROL)
+        KeyEvent::new(code, Modifiers::CONTROL)
     }
     fn shift(code: KeyCode) -> KeyEvent {
-        KeyEvent::new(code, KeyModifiers::SHIFT)
+        KeyEvent::new(code, Modifiers::SHIFT)
     }
     fn alt(code: KeyCode) -> KeyEvent {
-        KeyEvent::new(code, KeyModifiers::ALT)
+        KeyEvent::new(code, Modifiers::ALT)
     }
 
     #[test]
@@ -310,8 +310,8 @@ mod tests {
 
     #[test]
     fn named_key_esc() {
-        assert_eq!(parse("esc").unwrap(), vec![key(KeyCode::Esc)]);
-        assert_eq!(parse("escape").unwrap(), vec![key(KeyCode::Esc)]);
+        assert_eq!(parse("esc").unwrap(), vec![key(KeyCode::Escape)]);
+        assert_eq!(parse("escape").unwrap(), vec![key(KeyCode::Escape)]);
     }
 
     #[test]
@@ -341,8 +341,8 @@ mod tests {
 
     #[test]
     fn function_keys() {
-        assert_eq!(parse("f1").unwrap(), vec![key(KeyCode::F(1))]);
-        assert_eq!(parse("f12").unwrap(), vec![key(KeyCode::F(12))]);
+        assert_eq!(parse("f1").unwrap(), vec![key(KeyCode::Function(1))]);
+        assert_eq!(parse("f12").unwrap(), vec![key(KeyCode::Function(12))]);
     }
 
     #[test]
@@ -371,7 +371,7 @@ mod tests {
     fn ctrl_shift_combo() {
         let expected = vec![KeyEvent::new(
             KeyCode::Char('k'),
-            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            Modifiers::CONTROL | Modifiers::SHIFT,
         )];
         assert_eq!(parse("ctrl-shift-k").unwrap(), expected);
     }
@@ -392,7 +392,7 @@ mod tests {
     fn mixed_named_and_char_sequence() {
         assert_eq!(
             parse("g esc").unwrap(),
-            vec![key(KeyCode::Char('g')), key(KeyCode::Esc)],
+            vec![key(KeyCode::Char('g')), key(KeyCode::Escape)],
         );
     }
 
@@ -448,7 +448,7 @@ mod tests {
             stream("a<esc>b").unwrap(),
             vec![
                 key(KeyCode::Char('a')),
-                key(KeyCode::Esc),
+                key(KeyCode::Escape),
                 key(KeyCode::Char('b')),
             ],
         );

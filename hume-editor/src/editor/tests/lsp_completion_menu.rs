@@ -360,7 +360,7 @@ fn shift_tab_at_first_item_wraps_to_last() {
 
     // No Tab pressed yet — `lsp_completion_ui` is lazily created on first
     // move, defaulting to index 0, which is what BackTab must wrap from.
-    ed.feed_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT));
+    ed.feed_key(KeyEvent::new(KeyCode::BackTab, Modifiers::SHIFT));
     assert_eq!(
         ed.lsp.completion_ui.as_ref().unwrap().selected,
         2,
@@ -376,7 +376,7 @@ fn ctrl_c_exits_insert_and_dismisses_the_session() {
     ed.feed_key(key('i'));
     begin_session(&mut ed, &[("foo", None)]);
 
-    ed.feed_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
+    ed.feed_key(KeyEvent::new(KeyCode::Char('c'), Modifiers::CONTROL));
 
     assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Normal);
     assert!(ed.lsp.completion.is_none());
@@ -464,8 +464,8 @@ fn typing_after_moving_the_cursor_before_the_anchor_dismisses_instead_of_panicki
     // with its anchor now stale relative to the cursor. Two presses land the
     // cursor two chars before the anchor, so the very next char inserted
     // still leaves `head < anchor` — the inverted-range case.
-    ed.feed_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
-    ed.feed_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+    ed.feed_key(KeyEvent::new(KeyCode::Left, Modifiers::NONE));
+    ed.feed_key(KeyEvent::new(KeyCode::Left, Modifiers::NONE));
     assert!(
         ed.lsp.completion.is_some(),
         "sanity: Left does not itself dismiss the session"

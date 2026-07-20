@@ -1,6 +1,6 @@
 use super::*;
-use crossterm::event::{KeyCode, KeyModifiers};
 use pretty_assertions::assert_eq;
+use termina::event::{KeyCode, Modifiers};
 
 // ── Shifted-punctuation bindings under partial kitty support ──────────────────
 //
@@ -15,10 +15,10 @@ use pretty_assertions::assert_eq;
 // reported when running HUME on WezTerm (where `:` did nothing but `i`/`a`
 // worked and `:` typed fine in Insert mode).
 
-/// A shifted printable: Char(ch) + SHIFT, mirroring what crossterm delivers on
-/// terminals with DISAMBIGUATE but incomplete REPORT_ALTERNATE_KEYS.
+/// A shifted printable: Char(ch) + SHIFT, mirroring what the decoder delivers
+/// on terminals with DISAMBIGUATE but incomplete REPORT_ALTERNATE_KEYS.
 fn key_shift(ch: char) -> KeyEvent {
-    KeyEvent::new(KeyCode::Char(ch), KeyModifiers::SHIFT)
+    KeyEvent::new(KeyCode::Char(ch), Modifiers::SHIFT)
 }
 
 /// `:` delivered as Char(':') + SHIFT must still enter command mode.
@@ -77,10 +77,10 @@ fn shift_tab_still_backtab() {
     ed.handle_key(key(':'));
     ed.handle_key(key('w'));
     // Open popup (first candidate), then Tab forward once.
-    ed.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
-    ed.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+    ed.handle_key(KeyEvent::new(KeyCode::Tab, Modifiers::NONE));
+    ed.handle_key(KeyEvent::new(KeyCode::Tab, Modifiers::NONE));
     // Shift-Tab back to candidate 0.
-    ed.handle_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT));
+    ed.handle_key(KeyEvent::new(KeyCode::BackTab, Modifiers::SHIFT));
     let state = ed.state.completion.as_ref().unwrap();
     assert_eq!(state.selected, 0);
 }

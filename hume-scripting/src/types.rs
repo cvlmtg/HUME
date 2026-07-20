@@ -181,7 +181,7 @@ pub enum Effect {
     /// inside the builtin.
     BindKey {
         mode: crate::host::BindMode,
-        keys: Vec<crossterm::event::KeyEvent>,
+        keys: Vec<termina::event::KeyEvent>,
         cmd: String,
         force_extend: bool,
     },
@@ -192,7 +192,7 @@ pub enum Effect {
     /// illegal state representable.
     BindWaitChar {
         mode: crate::host::BindMode,
-        keys: Vec<crossterm::event::KeyEvent>,
+        keys: Vec<termina::event::KeyEvent>,
         cmd: String,
     },
     /// `(unbind-key! …)` — applied via `Keymap::unbind_user`. Queued like the
@@ -200,7 +200,7 @@ pub enum Effect {
     /// in Steel's emission order.
     UnbindKey {
         mode: crate::host::BindMode,
-        keys: Vec<crossterm::event::KeyEvent>,
+        keys: Vec<termina::event::KeyEvent>,
     },
 }
 

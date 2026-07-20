@@ -1,4 +1,4 @@
-use crossterm::event::KeyEvent;
+use termina::event::KeyEvent;
 
 use super::super::minibuf::MiniBufferEvent;
 use super::super::{Editor, Mode};

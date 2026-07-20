@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 
-use crossterm::event::KeyEvent;
+use termina::event::KeyEvent;
 
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
@@ -379,9 +379,9 @@ mod tests {
 
     #[test]
     fn black_hole_write_macro_is_discarded() {
-        use crossterm::event::{KeyCode, KeyModifiers};
+        use termina::event::{KeyCode, Modifiers};
         let mut regs = RegisterSet::new();
-        let keys = vec![KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)];
+        let keys = vec![KeyEvent::new(KeyCode::Char('j'), Modifiers::NONE)];
         regs.write_macro(BLACK_HOLE_REGISTER, keys);
         // The black-hole guard must apply to macro writes too.
         assert!(regs.read(BLACK_HOLE_REGISTER).is_none());
@@ -404,9 +404,9 @@ mod tests {
 
     #[test]
     fn write_macro_and_read_back() {
-        use crossterm::event::{KeyCode, KeyModifiers};
+        use termina::event::{KeyCode, Modifiers};
         let mut regs = RegisterSet::new();
-        let keys = vec![KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)];
+        let keys = vec![KeyEvent::new(KeyCode::Char('j'), Modifiers::NONE)];
         regs.write_macro('q', keys.clone());
         assert_eq!(regs.read('q').unwrap().as_macro(), Some(keys.as_slice()));
         // as_text() returns None for a macro register
@@ -415,10 +415,10 @@ mod tests {
 
     #[test]
     fn macro_overwrites_text_last_write_wins() {
-        use crossterm::event::{KeyCode, KeyModifiers};
+        use termina::event::{KeyCode, Modifiers};
         let mut regs = RegisterSet::new();
         regs.write_text('0', vec!["hello".to_string()]);
-        let keys = vec![KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)];
+        let keys = vec![KeyEvent::new(KeyCode::Char('j'), Modifiers::NONE)];
         regs.write_macro('0', keys.clone());
         // now holds a macro, not text
         assert!(regs.read('0').unwrap().as_text().is_none());
@@ -427,9 +427,9 @@ mod tests {
 
     #[test]
     fn text_overwrites_macro_last_write_wins() {
-        use crossterm::event::{KeyCode, KeyModifiers};
+        use termina::event::{KeyCode, Modifiers};
         let mut regs = RegisterSet::new();
-        let keys = vec![KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)];
+        let keys = vec![KeyEvent::new(KeyCode::Char('j'), Modifiers::NONE)];
         regs.write_macro('0', keys);
         regs.write_text('0', vec!["text".to_string()]);
         // now holds text, not a macro

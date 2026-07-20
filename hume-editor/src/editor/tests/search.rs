@@ -177,7 +177,7 @@ fn esc_in_normal_clears_search() {
         "pre-condition: cache is populated"
     );
 
-    ed.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    ed.handle_key(KeyEvent::new(KeyCode::Escape, Modifiers::NONE));
     ed.sync_search_cache();
 
     assert!(

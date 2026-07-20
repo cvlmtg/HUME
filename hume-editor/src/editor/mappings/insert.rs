@@ -1,7 +1,7 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use hume_editing::lines::leading_whitespace_end;
 use hume_scripting::SteelBufferId;
 use hume_scripting::hooks::HookId;
+use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use super::super::dispatch::ArgSource;
 use super::super::keymap::WalkResult;
@@ -87,7 +87,7 @@ impl Editor {
         let focused = self.state.focused_pane_id;
         let buf = self.focused_buffer_id();
         match key.code {
-            KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Char(ch) if !key.modifiers.contains(Modifiers::CONTROL) => {
                 // Typing real content cancels the "nothing typed since Enter"
                 // state that gates the blank-line indent trim on exit — see
                 // `EditorState::autoindent_pending`.
@@ -330,7 +330,7 @@ impl Editor {
                 self.accept_completion_selection();
                 true
             }
-            KeyCode::Esc => {
+            KeyCode::Escape => {
                 self.clear_lsp_completion();
                 true
             }
@@ -390,7 +390,7 @@ impl Editor {
     /// Backspace has already landed in the buffer.
     fn refilter_lsp_completion_after_edit(&mut self, key: KeyEvent) {
         let is_char =
-            matches!(key.code, KeyCode::Char(_)) && !key.modifiers.contains(KeyModifiers::CONTROL);
+            matches!(key.code, KeyCode::Char(_)) && !key.modifiers.contains(Modifiers::CONTROL);
         if !is_char && key.code != KeyCode::Backspace {
             return;
         }

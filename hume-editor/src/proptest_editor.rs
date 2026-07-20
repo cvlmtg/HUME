@@ -8,8 +8,8 @@
 /// select-within, undo/redo, and multi-cursor, all interacting.
 #[cfg(test)]
 mod tests {
-    use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
     use proptest::prelude::*;
+    use termina::event::{Event, KeyCode, KeyEvent, Modifiers};
 
     use crate::editor::Editor;
     use crate::editor::buffer::Buffer;
@@ -65,10 +65,10 @@ mod tests {
     impl FuzzKey {
         fn to_key_event(&self) -> KeyEvent {
             match self {
-                FuzzKey::Char(ch) => KeyEvent::new(KeyCode::Char(*ch), KeyModifiers::NONE),
-                FuzzKey::Esc => KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
-                FuzzKey::Enter => KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
-                FuzzKey::Backspace => KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE),
+                FuzzKey::Char(ch) => KeyEvent::new(KeyCode::Char(*ch), Modifiers::NONE),
+                FuzzKey::Esc => KeyEvent::new(KeyCode::Escape, Modifiers::NONE),
+                FuzzKey::Enter => KeyEvent::new(KeyCode::Enter, Modifiers::NONE),
+                FuzzKey::Backspace => KeyEvent::new(KeyCode::Backspace, Modifiers::NONE),
             }
         }
     }

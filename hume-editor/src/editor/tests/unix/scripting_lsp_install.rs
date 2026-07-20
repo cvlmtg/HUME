@@ -1326,7 +1326,11 @@ fn discovery_hint_does_not_fire_when_already_registered() {
 /// resets its own `$PATH` first so the `mkdir`/`chmod` it shells out to can
 /// still be found, even though the *test*'s `$PATH` is pinned to the shim
 /// directory alone.
-fn write_fake_cargo_shim(args_file: &Path, bin_name: &str, create_binary: bool) -> tempfile::TempDir {
+fn write_fake_cargo_shim(
+    args_file: &Path,
+    bin_name: &str,
+    create_binary: bool,
+) -> tempfile::TempDir {
     let shim_dir = tempfile::tempdir().unwrap();
     let body = if create_binary {
         format!(
@@ -1388,7 +1392,13 @@ fn lsp_install_cargo_runs_cargo_install_with_locked_root_and_registers() {
         .join("pest-language-server");
     assert_eq!(
         argv[..5],
-        ["install", "--locked", "--root", server_dir.to_str().unwrap(), "--"],
+        [
+            "install",
+            "--locked",
+            "--root",
+            server_dir.to_str().unwrap(),
+            "--"
+        ],
         "argv up to the crate spec must match exactly: {argv:?}"
     );
     assert!(
