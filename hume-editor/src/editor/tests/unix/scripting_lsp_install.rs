@@ -11,6 +11,10 @@
 //   gopls (language "go") — golang purl kind, a stub source: not installable
 //   ada-language-server (language "ada") — github, but every platform target
 //     is .tar.gz, so it is never installable in v1 regardless of host OS
+//   pest-language-server (language "pest") — cargo, crates.io semver,
+//     installable
+//   nil (language "nix") — cargo-git, a Mason git-tag pin, a stub: not
+//     installable
 
 use std::path::{Path, PathBuf};
 
@@ -640,6 +644,24 @@ fn lsp_install_stub_kind_names_the_unsupported_kind() {
 }
 
 #[test]
+fn lsp_install_cargo_git_stub_kind_names_the_kind() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    // nil's Mason source pins a git tag (2025-06-13), not a crates.io
+    // version — downgraded to stub kind `cargo-git`, never installable.
+    type_cmd(&mut ed, ":lsp-install nix");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("cargo-git"),
+        "a cargo-git stub-kind server must fail naming the kind: {log}"
+    );
+}
+
+#[test]
 fn lsp_install_unknown_language_warns() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -1205,6 +1227,63 @@ fn discovery_hint_does_not_fire_for_npm_kind_when_npm_missing_from_path() {
 }
 
 #[test]
+fn discovery_hint_fires_for_cargo_kind_now_installable() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    // pest-language-server (cargo-kind, language "pest") must report
+    // installable now that core:lsp has a cargo installer — cargo is
+    // guaranteed on $PATH since this test suite itself runs under cargo.
+    let bid = ed.focused_buffer_id();
+    let lang = ed.state.languages.intern("pest");
+    ed.set_buffer_language(bid, Some(lang));
+    ed.drain_hooks();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("run :lsp-install"),
+        "a now-installable cargo-kind server must hint: {log}"
+    );
+    assert!(
+        log.contains("pest-language-server"),
+        "the hint must name the seeded server: {log}"
+    );
+}
+
+#[test]
+fn discovery_hint_does_not_fire_for_cargo_kind_when_cargo_missing_from_path() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    // Force $PATH to a directory with no cargo binary in it — must not hint
+    // an install that would immediately fail `lsp/preflight!`'s cargo check.
+    let empty_path_dir = tempfile::tempdir().unwrap();
+    let original_path = std::env::var("PATH").unwrap();
+    unsafe {
+        std::env::set_var("PATH", empty_path_dir.path());
+    }
+
+    let bid = ed.focused_buffer_id();
+    let lang = ed.state.languages.intern("pest");
+    ed.set_buffer_language(bid, Some(lang));
+    ed.drain_hooks();
+
+    unsafe {
+        std::env::set_var("PATH", original_path);
+    }
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        !log.contains("run :lsp-install"),
+        "must never hint a cargo-kind install when cargo is not on $PATH: {log}"
+    );
+}
+
+#[test]
 fn discovery_hint_does_not_fire_when_already_registered() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -1227,6 +1306,153 @@ fn discovery_hint_does_not_fire_when_already_registered() {
     assert!(
         !log.contains("run :lsp-install"),
         "must not hint when the language is already registered: {log}"
+    );
+}
+
+// ── cargo installer (fake shim, no network/compile) ─────────────────────────────
+//
+// A real `cargo install` compiles a full crate graph — multi-minute,
+// toolchain+network dependent, a poor fit even for the manual live-e2e gate
+// (see docs/LSP-INSTALL.md; npm-kind has no live e2e either). These tests
+// cover HUME's entire side of the contract — argv, `--root` layout, receipt,
+// registration, and the failure path — against a fake `cargo` executable
+// that does no real work.
+
+/// Write an executable fake `cargo` shim into a fresh tempdir and return that
+/// dir. The shim records its argv (one token per line) to `args_file`, then
+/// — unless `create_binary` is false — locates the `--root <dir>` argument
+/// and creates `<dir>/bin/<bin_name>` as an executable file, exactly
+/// mirroring what a real `cargo install --root` would leave behind. It
+/// resets its own `$PATH` first so the `mkdir`/`chmod` it shells out to can
+/// still be found, even though the *test*'s `$PATH` is pinned to the shim
+/// directory alone.
+fn write_fake_cargo_shim(args_file: &Path, bin_name: &str, create_binary: bool) -> tempfile::TempDir {
+    let shim_dir = tempfile::tempdir().unwrap();
+    let body = if create_binary {
+        format!(
+            "#!/bin/sh\n\
+             PATH=/usr/bin:/bin\n\
+             printf '%s\\n' \"$@\" > {args_file}\n\
+             root=\"\"; prev=\"\"\n\
+             for a in \"$@\"; do [ \"$prev\" = \"--root\" ] && root=\"$a\"; prev=\"$a\"; done\n\
+             mkdir -p \"$root/bin\"\n\
+             printf '#!/bin/sh\\n' > \"$root/bin/{bin_name}\"\n\
+             chmod +x \"$root/bin/{bin_name}\"\n",
+            args_file = args_file.display(),
+        )
+    } else {
+        format!(
+            "#!/bin/sh\n\
+             PATH=/usr/bin:/bin\n\
+             printf '%s\\n' \"$@\" > {args_file}\n",
+            args_file = args_file.display(),
+        )
+    };
+    let shim_path = shim_dir.path().join("cargo");
+    std::fs::write(&shim_path, body).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&shim_path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    shim_dir
+}
+
+#[test]
+fn lsp_install_cargo_runs_cargo_install_with_locked_root_and_registers() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    let args_tmp = tempfile::tempdir().unwrap();
+    let args_file = args_tmp.path().join("argv.txt");
+    let shim_dir = write_fake_cargo_shim(&args_file, "pest-language-server", true);
+
+    let original_path = std::env::var("PATH").unwrap();
+    unsafe {
+        std::env::set_var("PATH", shim_dir.path());
+    }
+    type_cmd(&mut ed, ":lsp-install pest");
+    unsafe {
+        std::env::set_var("PATH", original_path);
+    }
+
+    let argv: Vec<String> = std::fs::read_to_string(&args_file)
+        .expect("shim must have run and recorded argv")
+        .lines()
+        .map(str::to_string)
+        .collect();
+    let server_dir = canonical_data_dir(data_tmp.path())
+        .join("servers")
+        .join("pest-language-server");
+    assert_eq!(
+        argv[..5],
+        ["install", "--locked", "--root", server_dir.to_str().unwrap(), "--"],
+        "argv up to the crate spec must match exactly: {argv:?}"
+    );
+    assert!(
+        argv[5].starts_with("pest-language-server@"),
+        "final argv token must be the crate@version spec: {argv:?}"
+    );
+    let seeded_version = argv[5].strip_prefix("pest-language-server@").unwrap();
+
+    let receipt = std::fs::read_to_string(server_dir.join("receipt.scm"))
+        .expect("receipt.scm must be written on success");
+    assert!(
+        receipt.contains(&format!("(version . \"{seeded_version}\")")),
+        "receipt version must match the version cargo was told to install: {receipt}"
+    );
+
+    let cmd = ed
+        .lsp
+        .config_command_for_test("pest")
+        .expect("pest must be registered after a successful cargo install");
+    assert_eq!(
+        Path::new(&cmd),
+        server_dir.join("bin").join("pest-language-server"),
+        "the registered command must be the absolute bin/ path cargo --root produces"
+    );
+}
+
+#[test]
+fn lsp_install_cargo_missing_binary_after_install_fails_loudly() {
+    let _lock = lock();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    let args_tmp = tempfile::tempdir().unwrap();
+    let args_file = args_tmp.path().join("argv.txt");
+    // create_binary: false — shim exits 0 but leaves no bin/ behind, exactly
+    // the failure this installer's own post-check must catch.
+    let shim_dir = write_fake_cargo_shim(&args_file, "pest-language-server", false);
+
+    let original_path = std::env::var("PATH").unwrap();
+    unsafe {
+        std::env::set_var("PATH", shim_dir.path());
+    }
+    type_cmd(&mut ed, ":lsp-install pest");
+    unsafe {
+        std::env::set_var("PATH", original_path);
+    }
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("expected binary not found after cargo install"),
+        "a cargo install that produces no binary must fail loudly: {log}"
+    );
+
+    let server_dir = canonical_data_dir(data_tmp.path())
+        .join("servers")
+        .join("pest-language-server");
+    assert!(
+        !server_dir.join("receipt.scm").exists(),
+        "no receipt must be committed when the post-install binary check fails"
+    );
+    assert!(
+        ed.lsp.config_command_for_test("pest").is_none(),
+        "pest must not be registered when the install failed"
     );
 }
 

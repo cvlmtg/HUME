@@ -7,10 +7,14 @@
 ;;;            (targets (hume-target asset-file sha256 bin-path)…))
 ;;;   npm:    (name (kind . npm) (version . ver)
 ;;;            (packages "name@version" extra…) (bin . script))
+;;;   cargo:  (name (kind . cargo) (version . ver) (crate . crates-io-name)
+;;;            (bin . bin-name))
 ;;;   stub:   (name (kind . other-kind) (version . ver))  — not installable;
-;;;           either an unsupported purl kind (golang, pypi, cargo, …) or a
-;;;           github package with no prebuilt asset (kind `github-build`,
-;;;           Mason builds it from source).
+;;;           either an unsupported purl kind (golang, pypi, cargo-git, …) or
+;;;           a github package with no prebuilt asset (kind `github-build`,
+;;;           Mason builds it from source). `cargo-git` is a Mason cargo
+;;;           package pinned to a git tag/rev instead of a crates.io version
+;;;           (e.g. nil) — not reachable via `cargo install crate@version`.
 ;;;
 ;;; hume-target is one of darwin-arm64, darwin-x64, linux-x64, windows-x64.
 ;;; A server missing a target simply omits that row (not installable there).
@@ -35,15 +39,15 @@
  ("ada-gpr-language-server" (kind . github) (version . "2026.3.202607051") (repo . "AdaCore/ada_language_server") (targets (darwin-arm64 "als-2026.3.202607051-darwin-arm64.tar.gz" "sha256:a7bf4ffc855cbf9851d5c21809c2213603aa0cd130987b9d9c102931c3a79923" "integration/vscode/ada/arm64/darwin/ada_language_server") (darwin-x64 "als-2026.3.202607051-darwin-x64.tar.gz" "sha256:f77115d4675f2e634b14babe77dabb1517d5e7c083d4d2feb4d6c7b305b16d5a" "integration/vscode/ada/x64/darwin/ada_language_server") (linux-x64 "als-2026.3.202607051-linux-x64.tar.gz" "sha256:9dfa29af05418913ff445be0c6875f7a51ebad5fc781f3446d3e2c3903d09787" "integration/vscode/ada/x64/linux/ada_language_server") (windows-x64 "als-2026.3.202607051-win32-x64.tar.gz" "sha256:7285d044f261d9b7e06816196b60cdc08a099ac22f2175e9109f4749b71f71fb" "integration/vscode/ada/x64/win32/ada_language_server.exe")))
  ("ada-language-server" (kind . github) (version . "2026.3.202607051") (repo . "AdaCore/ada_language_server") (targets (darwin-arm64 "als-2026.3.202607051-darwin-arm64.tar.gz" "sha256:a7bf4ffc855cbf9851d5c21809c2213603aa0cd130987b9d9c102931c3a79923" "integration/vscode/ada/arm64/darwin/ada_language_server") (darwin-x64 "als-2026.3.202607051-darwin-x64.tar.gz" "sha256:f77115d4675f2e634b14babe77dabb1517d5e7c083d4d2feb4d6c7b305b16d5a" "integration/vscode/ada/x64/darwin/ada_language_server") (linux-x64 "als-2026.3.202607051-linux-x64.tar.gz" "sha256:9dfa29af05418913ff445be0c6875f7a51ebad5fc781f3446d3e2c3903d09787" "integration/vscode/ada/x64/linux/ada_language_server") (windows-x64 "als-2026.3.202607051-win32-x64.tar.gz" "sha256:7285d044f261d9b7e06816196b60cdc08a099ac22f2175e9109f4749b71f71fb" "integration/vscode/ada/x64/win32/ada_language_server.exe")))
  ("amber-lsp" (kind . github) (version . "v0.3.0") (repo . "amber-lang/amber-lsp") (targets (darwin-arm64 "amber-lsp-aarch64-apple-darwin.tar.gz" "sha256:5f6a874c1336b9cc4b88a4d09f40bda534dfb617bf4e1dbf0ce7ba04ab492cd0" "amber-lsp-aarch64-apple-darwin/amber-lsp") (darwin-x64 "amber-lsp-x86_64-apple-darwin.tar.gz" "sha256:4d22703d40348491f8c5f482510c1573c8b0fc19b35590880c453050eb83055a" "amber-lsp-x86_64-apple-darwin/amber-lsp") (linux-x64 "amber-lsp-x86_64-unknown-linux-gnu.tar.gz" "sha256:fcdf2a4458799b6151e19ad18357fe82e3a69a1871ab295185f94afa5b5abba1" "amber-lsp-x86_64-unknown-linux-gnu/amber-lsp") (windows-x64 "amber-lsp-x86_64-pc-windows-msvc.zip" "sha256:6a40f33ac248c0604e9448afd6a015a799dbcaa2ddf4ec682ee0dd0d9a54d284" "amber-lsp.exe")))
- ("asm-lsp" (kind . cargo) (version . "0.10.1"))
+ ("asm-lsp" (kind . cargo) (version . "0.10.1") (crate . "asm-lsp") (bin . "asm-lsp"))
  ("astro-ls" (kind . npm) (version . "2.16.12") (packages "@astrojs/language-server@2.16.12" "typescript" "@astrojs/ts-plugin") (bin . "astro-ls"))
  ("awk-language-server" (kind . npm) (version . "0.10.6") (packages "awk-language-server@0.10.6") (bin . "awk-language-server"))
  ("bash-language-server" (kind . npm) (version . "5.6.0") (packages "bash-language-server@5.6.0") (bin . "bash-language-server"))
- ("beancount-language-server" (kind . cargo) (version . "1.9.2"))
+ ("beancount-language-server" (kind . cargo) (version . "1.9.2") (crate . "beancount-language-server") (bin . "beancount-language-server"))
  ("buf" (kind . github) (version . "v1.72.0") (repo . "bufbuild/buf") (targets (darwin-arm64 "buf-Darwin-arm64" "sha256:5176f23a6118b9978de1340c3e3301a4ed0d48e16a669510be44b4c355170d57" "buf-Darwin-arm64") (darwin-x64 "buf-Darwin-x86_64" "sha256:eb815a2708d4a43d31799049d5a2987ea81d0a9e98b53976d47bd1e78d154a8f" "buf-Darwin-x86_64") (linux-x64 "buf-Linux-x86_64" "sha256:8720830e26a733da55bb89bcd3cb44849c0965fc0c44fb5d691cccdc64dca5af" "buf-Linux-x86_64") (windows-x64 "buf-Windows-x86_64.exe" "sha256:6e8f6d043e520bc81cae7b85d4cd6d93e57716a8a9842d5d18200191ee259cb5" "buf-Windows-x86_64.exe")))
  ("c3-lsp" (kind . github) (version . "v0.4.0") (repo . "pherrymason/c3-lsp") (targets (darwin-arm64 "c3lsp-darwin-arm64.zip" "sha256:dd3f050e50f5a052284d1670bbda6cd283e489b2f2501b72d14348288a4ea041" "server/bin/release/c3lsp") (linux-x64 "c3lsp-linux-amd64.tar.gz" "sha256:3cc35e64c262d990bee69ef85e78a330fdb92cb9ba5c9dbc12411afad4d70b26" "server/bin/release/c3lsp") (windows-x64 "c3lsp-windows-amd64.zip" "sha256:d2059652df261ac60088abc1b628139f4d7a582f38ee1d2e1e1dcbff2bb3289c" "server/bin/release/c3lsp.exe")))
- ("cairo-language-server" (kind . cargo) (version . "2.15.0"))
- ("circom-lsp" (kind . cargo) (version . "0.1.3"))
+ ("cairo-language-server" (kind . cargo) (version . "2.15.0") (crate . "cairo-language-server") (bin . "cairo-language-server"))
+ ("circom-lsp" (kind . cargo) (version . "0.1.3") (crate . "circom-lsp") (bin . "circom-lsp"))
  ("clangd" (kind . github) (version . "22.1.6") (repo . "clangd/clangd") (targets (darwin-arm64 "clangd-mac-22.1.6.zip" "sha256:631aef462556cbd74e0ebaae1778a38d1997d0ba3371652ca54f82652a179e7d" "clangd_22.1.6/bin/clangd") (darwin-x64 "clangd-mac-22.1.6.zip" "sha256:631aef462556cbd74e0ebaae1778a38d1997d0ba3371652ca54f82652a179e7d" "clangd_22.1.6/bin/clangd") (linux-x64 "clangd-linux-22.1.6.zip" "sha256:a9c77443af2e447ed467e84771848d3a6ac1c56f84bcfcde717e66318de77cfa" "clangd_22.1.6/bin/clangd") (windows-x64 "clangd-windows-22.1.6.zip" "sha256:ce54f16e0b4fd76d450eeda9664420b195360b73febcfe40e661108fa57f2ce1" "clangd_22.1.6/bin/clangd.exe")))
  ("clarinet" (kind . github-build) (version . "v15.16.0"))
  ("clojure-lsp" (kind . github) (version . "2026.07.06-14.34.19") (repo . "clojure-lsp/clojure-lsp") (targets (darwin-arm64 "clojure-lsp-native-macos-aarch64.zip" "sha256:dd9a8e36add53b8d8166bb3d7580c6e5563401aea87b62600786af2e7d37ccde" "clojure-lsp") (darwin-x64 "clojure-lsp-native-macos-amd64.zip" "sha256:0449f7f8fc975157cb4e5cdcf365bcd43bcf1fa47b99256427e7a86e4c17fc3f" "clojure-lsp") (linux-x64 "clojure-lsp-native-linux-amd64.zip" "sha256:520f724ee02f4b3ecb225395a7a5a4ccad3878d6d1418240cd9636afcf9b858e" "clojure-lsp") (windows-x64 "clojure-lsp-native-windows-amd64.zip" "sha256:7b978ab266f7aa0ecf48b7484fc0aa6d3b3b7b395c27c47c949d6ce93174599d" "clojure-lsp.exe")))
@@ -85,13 +89,13 @@
  ("millet" (kind . github) (version . "v0.15.2") (repo . "azdavis/millet") (targets (darwin-arm64 "millet-ls-aarch64-apple-darwin.gz" "sha256:ab1a486e7c3f4080f14c1072b46aa596eed9c6502e87cb48183804a7d7a8c64f" "millet-ls-aarch64-apple-darwin") (darwin-x64 "millet-ls-x86_64-apple-darwin.gz" "sha256:f98b6780b745a9c4e12f06f3fa29cfa96fd27dd0267c336ea2481ca31a870208" "millet-ls-x86_64-apple-darwin") (linux-x64 "millet-ls-x86_64-unknown-linux-gnu.gz" "sha256:5f150b088dbcfd306db33d3ce150d749d58a1ca30fc4c8894cd2b0194f60ff92" "millet-ls-x86_64-unknown-linux-gnu") (windows-x64 "millet-ls-x86_64-pc-windows-msvc.gz" "sha256:98a5cbb2996d94731661fc431aee5b926ee47a142a82043d5d53497cfedc5cf2" "millet-ls-x86_64-pc-windows-msvc.exe")))
  ("neocmakelsp" (kind . github) (version . "v0.10.4") (repo . "neocmakelsp/neocmakelsp") (targets (darwin-arm64 "neocmakelsp-universal-apple-darwin.tar.gz" "sha256:eed477fbc9c3a86a7f925e812b738859bbc3f273fb3548fc7fb2df761c1884ab" "neocmakelsp") (darwin-x64 "neocmakelsp-universal-apple-darwin.tar.gz" "sha256:eed477fbc9c3a86a7f925e812b738859bbc3f273fb3548fc7fb2df761c1884ab" "neocmakelsp") (linux-x64 "neocmakelsp-x86_64-unknown-linux-gnu.tar.gz" "sha256:ddd64bf110094a59792d53fe95e1b60c57c86a9934367f8f4f29c02eb0481c6f" "neocmakelsp") (windows-x64 "neocmakelsp-x86_64-pc-windows-msvc.zip" "sha256:a8aeaf4cf2ed809ae287ce74259a0a25cc2ccbb0f8d8c3e4f4af1e22725cd7b3" "neocmakelsp.exe")))
  ("nginx-language-server" (kind . pypi) (version . "0.9.0"))
- ("nil" (kind . cargo) (version . "2025-06-13"))
+ ("nil" (kind . cargo-git) (version . "2025-06-13"))
  ("nimlangserver" (kind . github) (version . "v1.14.0") (repo . "nim-lang/langserver") (targets (darwin-arm64 "nimlangserver-macos-arm64.zip" "sha256:adda93a9b5cec22f9c7e4ff981dcc86d409bdd04ca22516e68028c8e3249372c" "nimlangserver") (darwin-x64 "nimlangserver-macos-amd64.zip" "sha256:51b6626c1fdcedeb088c279e9fa9651eac9e24c08067fdda6a406fb3ba9738d1" "nimlangserver") (linux-x64 "nimlangserver-linux-amd64.tar.gz" "sha256:4570d32bafbe355841ca3cafba33dcd6080ddc5d5d1faefded896c116d97a2e5" "nimlangserver") (windows-x64 "nimlangserver-windows-amd64.zip" "sha256:a5f1aebff948998107399dbe045cf95b36cc08ceac65adae31202aac7f4cce54" "nimlangserver.exe")))
- ("nls" (kind . cargo) (version . "1.17.0"))
+ ("nls" (kind . cargo) (version . "1.17.0") (crate . "nickel-lang-lsp") (bin . "nls"))
  ("ocamllsp" (kind . opam) (version . "1.27.0"))
  ("ols" (kind . github) (version . "nightly") (repo . "DanielGavin/ols") (targets (darwin-arm64 "ols-arm64-darwin.zip" "sha256:144eb92d28e4b042a608817cb0f3fa37672f090a1703b6320e68376116a3b37e" "ols-arm64-darwin") (darwin-x64 "ols-x86_64-darwin.zip" "sha256:d3ce71e213cbf273e3aa5889fbc12ce50eaa13ea100fa62791f9159664e12902" "ols-x86_64-darwin") (linux-x64 "ols-x86_64-unknown-linux-gnu.zip" "sha256:961e51e1cb10adc441a5349835af7b607a6d3f8bc284a4ff38bf6ce35234e851" "ols-x86_64-unknown-linux-gnu") (windows-x64 "ols-x86_64-pc-windows-msvc.zip" "sha256:085b361f579462e7908c7f42833b33a26f684f1d6dc19b2c2ec1f76c652d1ac0" "ols-x86_64-pc-windows-msvc.exe")))
- ("openscad-lsp" (kind . cargo) (version . "2.0.2"))
- ("pest-language-server" (kind . cargo) (version . "0.3.14"))
+ ("openscad-lsp" (kind . cargo) (version . "2.0.2") (crate . "openscad-lsp") (bin . "openscad-lsp"))
+ ("pest-language-server" (kind . cargo) (version . "0.3.14") (crate . "pest-language-server") (bin . "pest-language-server"))
  ("pkl-lsp" (kind . github-build) (version . "0.8.0"))
  ("prisma-language-server" (kind . npm) (version . "31.11.0") (packages "@prisma/language-server@31.11.0") (bin . "prisma-language-server"))
  ("purescript-language-server" (kind . npm) (version . "0.18.5") (packages "purescript-language-server@0.18.5") (bin . "purescript-language-server"))

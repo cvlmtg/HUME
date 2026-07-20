@@ -70,15 +70,20 @@ server:
 - `gzip` — for servers distributed as a single gzip-compressed binary
 - `unzip` (macOS/Linux) or `tar` (Windows) — for servers distributed as a zip archive
 - `npm` — for servers distributed as an npm package
+- `cargo` — for servers built from a Rust crate (compiled from source; the first install
+  can take a few minutes)
 
 How you install these depends on your operating system:
 
-- **macOS**: [Homebrew](https://brew.sh) — `brew install curl gzip unzip node`.
+- **macOS**: [Homebrew](https://brew.sh) — `brew install curl gzip unzip node`; install
+  `cargo` via [rustup.rs](https://rustup.rs).
 - **Linux**: use your distribution's package manager; these are usually already installed
-  except `node`/`npm`, which most distros package as `nodejs`/`npm`.
+  except `node`/`npm`, which most distros package as `nodejs`/`npm`, and `cargo`, best
+  installed via [rustup.rs](https://rustup.rs) rather than a distro package.
 - **Windows**: `tar` and `curl` ship with Windows 10+; `gzip` needs Git for Windows (or an
   equivalent) on `PATH`; install `node` from [nodejs.org](https://nodejs.org) or via
-  [winget](https://learn.microsoft.com/windows/package-manager/winget/)/[Scoop](https://scoop.sh).
+  [winget](https://learn.microsoft.com/windows/package-manager/winget/)/[Scoop](https://scoop.sh);
+  install `cargo` via [rustup.rs](https://rustup.rs).
 
 ### Install a server
 
@@ -135,8 +140,9 @@ message tells you to run `:lsp-install` again, which normally succeeds the secon
 [prerequisites](#prerequisites) above.
 
 **`:lsp-install` says "not installable".** Not every server HUME knows about can be
-auto-installed — some don't publish prebuilt binaries HUME can unpack, or are only available
-through a package manager not yet supported (`cargo`, `pip`, `gem`, …). Install it yourself
+auto-installed — some don't publish prebuilt binaries HUME can unpack, are pinned by their
+package manager to a git revision rather than a released version, or are only available
+through a package manager not yet supported (`pip`, `gem`, …). Install it yourself
 and register it manually — see [Registering a language server](#registering-a-language-server)
 below.
 

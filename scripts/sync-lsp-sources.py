@@ -58,10 +58,14 @@ LSP_SOURCES_HEADER = """\
 ;;;            (targets (hume-target asset-file sha256 bin-path)…))
 ;;;   npm:    (name (kind . npm) (version . ver)
 ;;;            (packages "name@version" extra…) (bin . script))
+;;;   cargo:  (name (kind . cargo) (version . ver) (crate . crates-io-name)
+;;;            (bin . bin-name))
 ;;;   stub:   (name (kind . other-kind) (version . ver))  — not installable;
-;;;           either an unsupported purl kind (golang, pypi, cargo, …) or a
-;;;           github package with no prebuilt asset (kind `github-build`,
-;;;           Mason builds it from source).
+;;;           either an unsupported purl kind (golang, pypi, cargo-git, …) or
+;;;           a github package with no prebuilt asset (kind `github-build`,
+;;;           Mason builds it from source). `cargo-git` is a Mason cargo
+;;;           package pinned to a git tag/rev instead of a crates.io version
+;;;           (e.g. nil) — not reachable via `cargo install crate@version`.
 ;;;
 ;;; hume-target is one of darwin-arm64, darwin-x64, linux-x64, windows-x64.
 ;;; A server missing a target simply omits that row (not installable there).
@@ -137,6 +141,7 @@ MASON_TARGET_PRIORITY = {
 ARCHIVE_EXTENSIONS = (".tar.gz", ".tar.xz", ".tar.bz2", ".tgz", ".txz", ".zip", ".gz", ".xz")
 _TEMPLATE_RE = re.compile(r"\{\{\s*([^}]+?)\s*\}\}")
 _BIN_PREFIX_RE = re.compile(r"^[a-z][a-z0-9_]*:(?!//)")
+_CARGO_SEMVER_RE = re.compile(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.\-]+)?")
 
 
 def fetch_registry(tag: str) -> list:
@@ -408,6 +413,39 @@ def build_npm_record(name: str, package: dict, helix_command: str):
     return {"kind": "npm", "version": version, "packages": packages, "bin": script}
 
 
+def build_cargo_record(name: str, package: dict, helix_command: str):
+    purl = package["source"]["id"]
+    _kind, subject, version = parse_purl(purl)
+    if not _CARGO_SEMVER_RE.fullmatch(version):
+        # A git-tag pin (e.g. nil@2025-06-13) — not reachable via a crates.io
+        # `cargo install crate@version`. Same downgrade shape as github ->
+        # github-build: a distinct stub kind the runtime reports verbatim.
+        return {"kind": "cargo-git", "version": version}
+
+    _, _, qualifier_str = purl.partition("?")
+    qualifier_str = qualifier_str.partition("#")[0]
+    qualifiers = {q.partition("=")[0] for q in qualifier_str.split("&") if q}
+    unknown = qualifiers - {"repository_url"}
+    if unknown:
+        # `repository_url` is informational for a semver install (beancount
+        # carries it with a valid crates.io version) and safe to ignore. Any
+        # other qualifier (e.g. a future `features=…`) would silently install
+        # the wrong binary if not accounted for — skip-with-report instead.
+        print(
+            f"  skip '{name}': cargo purl has unsupported qualifier(s) {sorted(unknown)}",
+            file=sys.stderr,
+        )
+        return None
+
+    bin_template = pick_bin_template(package.get("bin") or {}, helix_command, name)
+    if bin_template is None:
+        return None
+    if not bin_template.startswith("cargo:"):
+        print(f"  skip '{name}': cargo-kind bin template has no cargo: prefix: {bin_template!r}", file=sys.stderr)
+        return None
+    return {"kind": "cargo", "version": version, "crate": subject, "bin": bin_template[len("cargo:") :]}
+
+
 def scheme_str_list(items) -> str:
     return " ".join(scheme_str(x) for x in items)
 
@@ -452,6 +490,13 @@ def emit_lsp_sources(records: dict) -> list[str]:
                 scheme_str(name),
                 scheme_str(r["version"]),
                 scheme_str_list(r["packages"]),
+                scheme_str(r["bin"]),
+            )
+        elif r["kind"] == "cargo":
+            row = " ({} (kind . cargo) (version . {}) (crate . {}) (bin . {}))".format(
+                scheme_str(name),
+                scheme_str(r["version"]),
+                scheme_str(r["crate"]),
                 scheme_str(r["bin"]),
             )
         else:
@@ -526,6 +571,8 @@ def main() -> None:
             record = build_github_record(helix_name, package, helix_command, reports, hash_cache)
         elif purl_kind == "npm":
             record = build_npm_record(helix_name, package, helix_command)
+        elif purl_kind == "cargo":
+            record = build_cargo_record(helix_name, package, helix_command)
         else:
             record = {"kind": purl_kind, "version": version}
 

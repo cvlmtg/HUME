@@ -166,7 +166,12 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
   (kind . npm)
   (version . "5.3.0")
   (packages "typescript-language-server@5.3.0" "typescript")
-  (bin . "typescript-language-server")))
+  (bin . "typescript-language-server"))
+ ("nls"
+  (kind . cargo)
+  (version . "1.17.0")
+  (crate . "nickel-lang-lsp")
+  (bin . "nls")))
 ```
 
 - **github**: each target is `(target asset-file sha256 bin-path)` — the unpacked binary's
@@ -180,7 +185,15 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
   `npm install --ignore-scripts --prefix servers/<name>/`.
   `bin` = script name in `node_modules/.bin`. `version` kept separate for receipt/upgrade
   comparison.
-- **Unsupported kinds** (`pkg:golang`, `pkg:pypi`, `pkg:cargo`, …): emitted as a *stub* —
+- **cargo**: crates.io semver installs only. `crate` = the crates.io package name (may
+  differ from both the server name and the bin name — Helix's `nls` is Mason/crates.io
+  `nickel-lang-lsp`, installed binary `nls`), installed via
+  `cargo install --locked <crate>@<version> --root servers/<name>/`. `bin` = binary name;
+  the installed path is `bin/<bin>` (cargo's own `--root` layout). A Mason cargo package
+  pinned to a git tag/rev instead of a crates.io version (e.g. `nil`) is not reachable via
+  `cargo install crate@version` and is emitted as the `cargo-git` stub kind instead (below)
+  — deferred, see `docs/ROADMAP.md`.
+- **Unsupported kinds** (`pkg:golang`, `pkg:pypi`, `cargo-git`, …): emitted as a *stub* —
   `(kind . golang)` plus `version`, no install fields. That is what lets `:lsp-install`
   fail naming the kind and `:lsp-servers` mark the entry "not installable". A Helix-primary
   server Mason doesn't carry at all (no name-mapping match) gets no entry; `:lsp-install`
@@ -196,7 +209,7 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
     ├── .install-lock            transient — held only during an install/uninstall
     └── rust-analyzer/
         ├── receipt.scm         written LAST — the install commit point
-        └── rust-analyzer       (or node_modules/… for npm-kind installs)
+        └── rust-analyzer       (or node_modules/… for npm, bin/… for cargo-kind installs)
 ```
 
 - **Per-server dir, no shared `bin/`.** Mason keeps a symlinked `bin/` dir so users can put
@@ -231,7 +244,12 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
   with different bits), unlike the grammar pipeline's pinned git SHAs — the recorded hash
   restores that property. npm-kind installs have no equivalent check: integrity rests on
   the npm registry's version immutability, and `npm install` runs with `--ignore-scripts`
-  so no package lifecycle script executes during install. Accepted tradeoff.
+  so no package lifecycle script executes during install. Accepted tradeoff. cargo-kind
+  installs have no sha256 either — integrity rests on crates.io's version immutability
+  plus `--locked` (pinning upstream's own published dependency graph). Unlike npm's
+  `--ignore-scripts`, `cargo install` compiles the crate from source, so its `build.rs`
+  build script does run — an accepted tradeoff, the same trust decision as running the
+  server binary itself.
 
 ## Registration model
 
@@ -310,12 +328,16 @@ lists) stays in the plugin — Rust never reads them.
 ## v1 scope and limitations
 
 - **Source kinds**: `pkg:github` (prebuilt release binaries — rust-analyzer, clangd,
-  marksman, taplo, zls, lua-language-server, …) and `pkg:npm` (typescript-language-server,
+  marksman, taplo, zls, lua-language-server, …), `pkg:npm` (typescript-language-server,
   pyright, bash-language-server, `json-lsp`/`css-lsp` (Mason's packages wrapping
-  vscode-langservers-extracted), …). npm-kind installs require node on the machine —
-  `:lsp-install` preflights and fails loudly naming the missing tool before downloading
-  anything. Other purl kinds (`pkg:golang` → gopls, `pkg:pypi`, `pkg:cargo`, …) fail with a
-  loud, specific error naming the unsupported kind. Expand later.
+  vscode-langservers-extracted), …), and `pkg:cargo` restricted to crates.io semver
+  versions (asm-lsp, beancount-language-server, cairo-language-server, circom-lsp, `nls`
+  (crate `nickel-lang-lsp`), openscad-lsp, pest-language-server). npm-kind installs
+  require node, cargo-kind installs require a Rust toolchain — `:lsp-install` preflights
+  and fails loudly naming the missing tool before downloading anything. Other purl kinds
+  (`pkg:golang` → gopls, `pkg:pypi`, `cargo-git` — a Mason cargo package pinned to a git
+  tag/rev instead of a crates.io version, e.g. `nil` — …) fail with a loud, specific error
+  naming the unsupported kind. Expand later.
 - **One server per language — no multi-server support.** Helix lists ordered *multiple*
   servers for some languages (python → `["ty", "ruff", "jedi", "pylsp"]`,
   toml → `["taplo", "tombi"]`, go → `["gopls", "golangci-lint-lsp"]`). The registry holds
@@ -403,9 +425,12 @@ choice (see below), traded for a hard runtime dependency on these being present:
 | `.gz` decode | `gzip -dc` (ships with the OS) | `gzip -dc` (ships with the OS) | `gzip -dc` — requires Git for Windows (or equivalent) on `PATH` |
 | `.zip` extract | `unzip -o` (ships with the OS) | `unzip -o` (not always preinstalled — install the `unzip` package) | `tar -xf` (bsdtar, built into Windows 10+) |
 | npm-kind installs | `node`/`npm` on `PATH` — required regardless of platform |
+| cargo-kind installs | a Rust toolchain (`cargo` on `PATH`, e.g. via [rustup.rs](https://rustup.rs)) — required regardless of platform; compiles the crate from source, so the first install of a given server can take a few minutes |
 
 `git` and `curl` were already required by the grammar pipeline; this adds `unzip` on
-Linux and `gzip` on Windows as the only new hard requirements. `:lsp-install` preflights
+Linux and `gzip` on Windows as the only new hard requirements for github/npm-kind
+installs. cargo-kind installs are opt-in per server and add a Rust toolchain requirement
+only for those. `:lsp-install` preflights
 the specific tool an install needs (via Steel's `which`, post-2026-07-13 — see the Step 2
 update note above) before downloading anything, so a missing tool fails loudly naming it
 rather than partway through an install.

@@ -163,6 +163,8 @@
        (cond
          ((equal? kind 'npm)
           (if (which "npm") #f "requires 'npm' on $PATH, which was not found"))
+         ((equal? kind 'cargo)
+          (if (which "cargo") #f "requires 'cargo' on $PATH, which was not found"))
          ((not (equal? kind 'github))
           (string-append "not installable (kind " (symbol->string kind) ") in v1"))
          (else
@@ -180,13 +182,15 @@
 (define (lsp/required-tool name)
   (let* ((fields (hash-ref *lsp-sources* name))
          (kind   (cdr (lsp/field fields 'kind))))
-    (if (equal? kind 'npm)
-        "npm"
-        (let* ((target (lsp/find-target (cdr (lsp/field fields 'targets))))
-               (fmt    (lsp/asset-format (list-ref target 1))))
-          (cond
-            ((equal? fmt 'zip) (if (equal? (hume-target) "windows-x64") "tar" "unzip"))
-            (else "gzip"))))))
+    (cond
+      ((equal? kind 'npm) "npm")
+      ((equal? kind 'cargo) "cargo")
+      (else
+       (let* ((target (lsp/find-target (cdr (lsp/field fields 'targets))))
+              (fmt    (lsp/asset-format (list-ref target 1))))
+         (cond
+           ((equal? fmt 'zip) (if (equal? (hume-target) "windows-x64") "tar" "unzip"))
+           (else "gzip")))))))
 
 ;;; Fail loudly, naming the tool, before any download starts.
 (define (lsp/preflight! name)
@@ -242,6 +246,25 @@
                             ": expected binary not found after npm install: " bin-rel)))
     bin-rel))
 
+;;; Run `cargo install` for a cargo-kind crate, rooted in the server dir.
+;;; Returns the bin path relative to `dir` (cargo's own --root layout:
+;;; `bin/<name>`, `.exe` on Windows). `--locked` builds with upstream's
+;;; published Cargo.lock — the closest cargo analog to the sha256 pin
+;;; github assets get. cargo creates `dir` itself.
+(define (lsp/install-cargo! name fields dir)
+  (let* ((crate    (cdr (lsp/field fields 'crate)))
+         (version  (cdr (lsp/field fields 'version)))
+         (bin      (cdr (lsp/field fields 'bin)))
+         (windows? (equal? (hume-target) "windows-x64"))
+         (bin-rel  (string-append "bin/" bin (if windows? ".exe" ""))))
+    (run-inline-output! "cargo"
+                        (list "install" "--locked" "--root" dir "--"
+                              (string-append crate "@" version)))
+    (unless (path-exists? (path-join dir bin-rel))
+      (error (string-append "lsp/install-cargo!: " name
+                            ": expected binary not found after cargo install: " bin-rel)))
+    bin-rel))
+
 ;;; Install (or reinstall) a single server from its declared source, always
 ;;; from a clean slate — this doubles as the repair/upgrade path. See
 ;;; docs/LSP-INSTALL.md "Commands and lifecycle" for the
@@ -251,7 +274,8 @@
 ;;;      end-of-eval, after which any running client is reaped)
 ;;;   3. lsp/delete-dir — purge any existing install; the receipt dies with
 ;;;      it, so an interruption from here on is self-describing
-;;;   4. download + verify + unpack (github), or npm install (npm)
+;;;   4. download + verify + unpack (github), npm install (npm), or cargo
+;;;      install (cargo)
 ;;;   5. write receipt — the commit point
 ;;;   6. $PATH notice, if the seeded command also resolves there
 ;;; Registration is not this function's job — the caller re-scans afterward
@@ -268,9 +292,10 @@
     (for-each (lambda (lang-entry) (unregister-lsp-server! (car lang-entry)))
               (cdr (lsp/field server-fields 'languages)))
     (lsp/delete-dir dir)
-    (let ((bin-rel (if (equal? kind 'github)
-                        (lsp/install-github! name source-fields dir)
-                        (lsp/install-npm! name source-fields dir))))
+    (let ((bin-rel (cond
+                     ((equal? kind 'github) (lsp/install-github! name source-fields dir))
+                     ((equal? kind 'cargo)  (lsp/install-cargo! name source-fields dir))
+                     (else                  (lsp/install-npm! name source-fields dir)))))
       (lsp/write-receipt! name (cdr (lsp/field source-fields 'version)) bin-rel)
       (let ((cmd (cdr (lsp/field server-fields 'command))))
         (when (which cmd)

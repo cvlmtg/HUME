@@ -11,7 +11,10 @@ diagnostics navigation, etc.) that make a registered server useful.
 `steel-language-server` isn't in Helix's `languages.toml` or in mason-registry yet, so
 HUME's regular server catalog (synced from those two sources) can't offer it. Once either
 upstream gains it, HUME's catalog sync will pick it up automatically, `:lsp-install` will
-handle it like any other server, and this plugin will be retired.
+handle it like any other server, and this plugin will be retired. (`core:lsp` can install
+cargo-kind *catalog* servers directly via `:lsp-install` — but only for servers already
+seeded in its catalog, which `steel-language-server` isn't, so this plugin keeps its own
+global `cargo install` until upstream carries it.)
 
 ## Usage
 
