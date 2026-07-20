@@ -1,6 +1,6 @@
 # Core Plugins
 
-HUME ships six plugins under the `core:` namespace — a plugin and grammar manager, language server support, and a few keymap alternatives. **None of them load automatically.** Nothing runs until you ask for it in your `init.scm`, so a default HUME is exactly what you see.
+HUME ships a some plugins under the `core:` namespace — a plugin and grammar manager, language server support, and a few keymap alternatives. **None of them load automatically.** Nothing runs until you ask for it in your `init.scm`, so a default HUME is exactly what you see.
 
 There are two ways to bring a plugin in:
 
@@ -46,6 +46,33 @@ Language server support: hover, go-to-definition, references, diagnostics, renam
 Requires `core:stdlib`. Declared lazily like this, it wakes up on the first buffer with a detected language, or the first `:lsp-*` command you type.
 
 See [Language Servers](lsp.md) for setup, the full command and key tables, and settings.
+
+## core:steel-server
+
+Registers a language server for Scheme buffers (`.ss`/`.scm`/`.sld`) — which includes your
+own `init.scm` and plugin files, so you get hover, diagnostics, and completion while editing
+your HUME config. Requires `core:lsp`, which provides the editor-side features that make a
+registered server useful.
+
+```scheme
+(declare-plugin "core:stdlib")
+(declare-plugin "core:lsp")
+(declare-plugin "core:steel-server")
+```
+
+Declared lazily like this, it activates on the first Scheme buffer or the first time you run
+`:steel-server-install`.
+
+**This is a temporary plugin.** The underlying server isn't in HUME's regular server catalog
+yet, so it can't be installed through `:lsp-install` like other servers. Once it lands
+upstream, HUME's catalog will pick it up automatically and this plugin will be retired.
+
+| Command | Effect |
+|---------|--------|
+| `:steel-server-install` | Install the Scheme language server and register it for Scheme buffers |
+
+Installing requires `cargo` — install Rust from [rustup.rs](https://rustup.rs) first. See
+[Language Servers](lsp.md) for the general LSP workflow.
 
 ## core:vim-keybind
 
