@@ -9,8 +9,8 @@ export default function Preview({ pal, sc }) {
   const lnrS = fgc("ui.linenr.selected", sc, pal, "#e0af68");
   const stFg = fgc("ui.statusline", sc, pal, "#c0caf5");
   const stBg = bgc("ui.statusline", sc, pal, "#33374c");
-  const mnFg = fgc("ui.statusline.normal", sc, pal, "#1a1b26");
-  const mnBg = bgc("ui.statusline.normal", sc, pal, "#7aa2f7");
+  const mnFg = fgc("ui.statusline.mode.normal", sc, pal, "#1a1b26");
+  const mnBg = bgc("ui.statusline.mode.normal", sc, pal, "#7aa2f7");
   const brd = fgc("ui.window", sc, pal, "#565f89");
   const statusBg = stBg !== "transparent" ? stBg : BG;
 
@@ -71,11 +71,11 @@ export default function Preview({ pal, sc }) {
           );
         })}
       </div>
-      <div style={{ display: "flex", alignItems: "center", borderTop: "1px solid " + brd, fontSize: 11, fontFamily: MONO }}>
+      <div style={{ display: "flex", alignItems: "center", background: statusBg, borderTop: "1px solid " + brd, fontSize: 11, fontFamily: MONO }}>
+        <span style={{ padding: "3px 10px", color: stFg }}>5:1 theme.rs [rust] [+]</span>
+        <span style={{ flex: 1 }} />
+        <span style={{ padding: "3px 10px", color: stFg }}>{"│"}</span>
         <span style={{ padding: "3px 10px", background: mnBg, color: mnFg, fontWeight: 700 }}>NOR</span>
-        <span style={{ padding: "3px 10px", background: statusBg, color: stFg, flex: 1 }}>theme.rs [+]</span>
-        <span style={{ padding: "3px 10px", background: statusBg, color: lnr }}>5:1</span>
-        <span style={{ padding: "3px 10px", background: statusBg, color: lnr }}>UTF-8 rust</span>
       </div>
     </div>
   );
