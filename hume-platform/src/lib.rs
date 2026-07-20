@@ -22,8 +22,6 @@
 
 #[cfg(unix)]
 mod unix;
-#[cfg(windows)]
-mod windows;
 
 pub mod dirs;
 pub mod events;
@@ -59,11 +57,18 @@ pub fn install_signal_handlers() -> Result<(), ctrlc::Error> {
 
 /// Probe the terminal for kitty keyboard protocol support.
 ///
-/// Dispatches to the platform-specific implementation in `unix` or `windows`,
-/// each of which constructs a [`ProbeChannel`] over native polling primitives
-/// and delegates the actual query/response loop to [`run_probe`]. Returns
-/// `Ok(true)` if the terminal supports kitty keyboard protocol push,
-/// `Ok(false)` otherwise.
+/// On Unix, constructs a [`ProbeChannel`] over native polling primitives and
+/// delegates the query/response loop to [`run_probe`]. Returns `Ok(true)` if
+/// the terminal supports kitty keyboard protocol push, `Ok(false)` otherwise.
+///
+/// On Windows this is unconditionally `Ok(false)` — no probe runs. Input
+/// arrives as Win32 `INPUT_RECORD`s translated by ConPTY, and crossterm's
+/// Windows event source has no CSI-u parser (that parser exists only in its
+/// Unix path), so kitty-encoded keys would leak into the buffer as literal
+/// text no matter what the hosting terminal supports. Asking the terminal is
+/// not a valid gate here anyway: ConPTY from Windows Terminal 1.25 answers
+/// the kitty query itself. Real Windows support needs a VT input reader of
+/// our own (see docs/ROADMAP.md).
 ///
 /// Must be called after `enable_raw_mode()`.
 pub(crate) fn probe_kitty_support() -> std::io::Result<bool> {
@@ -71,11 +76,7 @@ pub(crate) fn probe_kitty_support() -> std::io::Result<bool> {
     {
         unix::probe_kitty_support()
     }
-    #[cfg(windows)]
-    {
-        windows::probe_kitty_support()
-    }
-    #[cfg(not(any(unix, windows)))]
+    #[cfg(not(unix))]
     {
         Ok(false)
     }
@@ -83,11 +84,10 @@ pub(crate) fn probe_kitty_support() -> std::io::Result<bool> {
 
 /// Bidirectional byte channel used by [`run_probe`] to query the terminal.
 ///
-/// Each platform implements this on top of its native readable-with-deadline
-/// primitive (`poll(2)` on Unix, `WaitForSingleObject` on Windows). The trait
-/// isolates the one OS-specific concern — "is there input ready before
-/// `deadline`?" — so the shared query/response loop in [`run_probe`] is
-/// platform-agnostic and unit-testable via a mock channel.
+/// Implemented on top of the native readable-with-deadline primitive
+/// (`poll(2)` on Unix). The trait isolates the one OS-specific concern — "is
+/// there input ready before `deadline`?" — so the query/response loop in
+/// [`run_probe`] is platform-agnostic and unit-testable via a mock channel.
 trait ProbeChannel {
     fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()>;
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize>;

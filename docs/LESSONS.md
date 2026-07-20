@@ -217,3 +217,25 @@ on the whole `mod tests` (`hume-lsp/src/backend.rs`); a `mod tests` that
 mixes portable and unix-only tests gets a nested `#[cfg(unix)] mod unix`
 holding the unix-only tests, itself gated once, with no per-test
 attributes (`hume-lsp/src/transport.rs`).
+
+## Terminal protocol enabling: gate on decode capability, not terminal capability (2026-07-20)
+
+**Mistake pattern:** The kitty keyboard probe asked the *terminal* "do you
+support kitty?" and enabled the protocol on a yes — on every platform. On
+Windows the answer travels through ConPTY, whose passthrough (bundled
+ConPTY ≥ 1.22, and ConPTY itself answers the kitty query from Windows
+Terminal 1.25) happily says yes, while the *input* side still delivers
+ConPTY-translated `INPUT_RECORD`s that crossterm's Windows event source
+cannot map back from CSI-u. Result: every keypress leaked into the buffer
+as literal text (`[105;1:3u]`) and the editor was undriveable. The bug was
+latent for as long as older bundled conhosts silently ate the probe
+queries; a wezterm nightly ConPTY bump unmasked it.
+
+**Prevention rule:** Enabling a terminal *output* protocol changes the
+*input* encoding — so the gate must be "can our input path decode the
+resulting encoding", not "does the terminal support it". A capability
+probe of the terminal is only half the handshake; when an OS layer
+(ConPTY) re-translates input independently of the terminal, the probe can
+say yes while decode is impossible. If the decode capability is statically
+absent on a platform, hardwire the feature off there (`probe_kitty_support`
+returns `false` on Windows) instead of probing.

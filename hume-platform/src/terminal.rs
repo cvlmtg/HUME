@@ -38,11 +38,12 @@ fn push_kitty_flags(out: &mut impl io::Write) -> io::Result<()> {
     let flags = KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
         | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
         | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS;
-    // Bypass crossterm's PushKeyboardEnhancementFlags Command: its Windows
-    // path hardcodes is_ansi_code_supported()=false and returns Unsupported,
-    // but ConPTY passes raw VT through to WezTerm/kitty/ghostty/foot which
-    // interpret the kitty keyboard protocol natively. Emits the same CSI
-    // crossterm's own write_ansi would (`\x1b[>{bits}u`).
+    // Bypass crossterm's PushKeyboardEnhancementFlags Command, which routes
+    // through a WinAPI fallback path on Windows; a raw write keeps this
+    // helper a plain byte emitter. Emits the same CSI crossterm's own
+    // write_ansi would (`\x1b[>{bits}u`). Only ever reached on Unix: the
+    // Windows probe is hardwired to false (see probe_kitty_support) because
+    // the INPUT_RECORD-based input path cannot decode kitty CSI-u replies.
     write!(out, "\x1b[>{}u", flags.bits())?;
     out.flush()
 }
