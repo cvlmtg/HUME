@@ -212,6 +212,20 @@ fn write_paste_disable(out: &mut impl io::Write) -> io::Result<()> {
     out.flush()
 }
 
+fn write_sync_reset(out: &mut impl io::Write) -> io::Result<()> {
+    write!(out, "{}", dec_reset(DecPrivateModeCode::SynchronizedOutput))?;
+    out.flush()
+}
+
+fn write_leave_alt_screen(out: &mut impl io::Write) -> io::Result<()> {
+    write!(
+        out,
+        "{}",
+        dec_reset(DecPrivateModeCode::ClearAndEnableAlternateScreen)
+    )?;
+    out.flush()
+}
+
 /// SSOT byte sequence that undoes every application-level mode [`init`]
 /// turns on: closes any open synchronized-update envelope, disables
 /// bracketed paste, pops the kitty keyboard stack, disables mouse tracking,
@@ -219,23 +233,33 @@ fn write_paste_disable(out: &mut impl io::Write) -> io::Result<()> {
 /// hook installed by [`init`] — the hook can only write bytes (no raw/cooked
 /// mode switch), and termina restores the platform mode itself right after
 /// the hook returns.
+///
+/// Each step is attempted independently, even if an earlier one fails — the
+/// goal is to leave the shell as usable as possible. The first error
+/// encountered is returned; later ones are silently discarded.
 fn write_unwind_escapes(out: &mut impl io::Write) -> io::Result<()> {
-    write!(out, "{}", dec_reset(DecPrivateModeCode::SynchronizedOutput))?;
-    out.flush()?;
-    write_paste_disable(out)?;
-    write_kitty_pop(out)?;
-    write_mouse_disable(out)?;
-    write!(
-        out,
-        "{}",
-        dec_reset(DecPrivateModeCode::ClearAndEnableAlternateScreen)
-    )?;
-    out.flush()?;
+    let mut first_err: Option<io::Error> = None;
+    let mut record = |r: io::Result<()>| {
+        if first_err.is_none() {
+            first_err = r.err();
+        }
+    };
+
+    record(write_sync_reset(out));
+    record(write_paste_disable(out));
+    record(write_kitty_pop(out));
+    record(write_mouse_disable(out));
+    record(write_leave_alt_screen(out));
     // Second pop. Since `init()` pushes onto the alt screen's stack, the
     // first pop (above) clears it. This extra pop handles terminals with a
     // global keyboard stack — a harmless no-op on per-screen-buffer
     // terminals (WezTerm, kitty).
-    write_kitty_pop(out)
+    record(write_kitty_pop(out));
+
+    match first_err {
+        Some(e) => Err(e),
+        None => Ok(()),
+    }
 }
 
 // ── Public terminal lifecycle API ─────────────────────────────────────────────
@@ -286,7 +310,10 @@ pub fn probe_kitty(term: &SharedTerm) -> io::Result<bool> {
 ///
 /// Call [`restore`] before the process exits so the user's shell is left in
 /// a usable state; a panic during the session also restores it via the panic
-/// hook installed here.
+/// hook installed here. The hook is armed before any mode is entered, and a
+/// failure partway through this function's own enable sequence is unwound
+/// before the error is returned — `init` never returns `Err` while leaving
+/// the alternate screen, mouse tracking, or bracketed paste set.
 pub fn init(
     term: &SharedTerm,
     mouse_enabled: bool,
@@ -294,31 +321,46 @@ pub fn init(
     kitty_enabled: bool,
 ) -> io::Result<Term> {
     let mut term = term.clone();
-    term.enter_raw_mode()?;
 
-    // Enter alternate screen before pushing kitty flags. Some terminals
-    // (WezTerm, kitty) maintain a per-screen keyboard stack; the push must
-    // land on the alternate screen's stack so that key reads (which consult
-    // the active screen) pick up the enhanced encoding.
-    write!(
-        term,
-        "{}",
-        dec_set(DecPrivateModeCode::ClearAndEnableAlternateScreen)
-    )?;
-    term.flush()?;
-    write_paste_enable(&mut term)?;
-
-    if kitty_enabled {
-        write_kitty_push(&mut term)?;
-    }
-
-    if mouse_enabled {
-        write_mouse_enable(&mut term, mouse_select)?;
-    }
-
+    // Arm before entering any mode: a panic during the enable sequence below
+    // still unwinds through this hook, and every escape it emits is a
+    // documented no-op for a mode not yet entered.
     term.set_panic_hook(|handle| {
         let _ = write_unwind_escapes(handle);
     });
+
+    let enter = (|| -> io::Result<()> {
+        term.enter_raw_mode()?;
+
+        // Enter alternate screen before pushing kitty flags. Some terminals
+        // (WezTerm, kitty) maintain a per-screen keyboard stack; the push
+        // must land on the alternate screen's stack so that key reads
+        // (which consult the active screen) pick up the enhanced encoding.
+        write!(
+            term,
+            "{}",
+            dec_set(DecPrivateModeCode::ClearAndEnableAlternateScreen)
+        )?;
+        term.flush()?;
+        write_paste_enable(&mut term)?;
+
+        if kitty_enabled {
+            write_kitty_push(&mut term)?;
+        }
+
+        if mouse_enabled {
+            write_mouse_enable(&mut term, mouse_select)?;
+        }
+
+        Ok(())
+    })();
+
+    if let Err(e) = enter {
+        // A partial enable must not leak: the caller propagates this error
+        // and never reaches the happy-path `restore()` in `run()`.
+        let _ = restore(&term);
+        return Err(e);
+    }
 
     ratatui::Terminal::new(TerminaBackend::new(term))
 }
@@ -536,8 +578,9 @@ pub fn wait_for_keypress(term: &SharedTerm) {
 mod tests {
     use super::{
         write_kitty_pop, write_kitty_push, write_mouse_disable, write_mouse_enable,
-        write_paste_disable, write_paste_enable,
+        write_paste_disable, write_paste_enable, write_unwind_escapes,
     };
+    use std::io;
 
     // Regression pins against termina's escape-sequence encoding: a version
     // bump that silently changes these bytes would otherwise only surface as
@@ -593,5 +636,42 @@ mod tests {
         let mut buf = Vec::new();
         write_mouse_disable(&mut buf).unwrap();
         assert_eq!(buf, b"\x1b[?1002l\x1b[?1000l\x1b[?1006l");
+    }
+
+    /// Fails the first write, then succeeds. Counts writes that reach past
+    /// the injected failure, to prove teardown keeps going after one step
+    /// errors rather than short-circuiting on the first `?`.
+    struct FailingWriter {
+        failed_once: bool,
+        writes_after_failure: usize,
+    }
+
+    impl io::Write for FailingWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            if !self.failed_once {
+                self.failed_once = true;
+                return Err(io::Error::other("injected failure"));
+            }
+            self.writes_after_failure += 1;
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn write_unwind_escapes_keeps_going_after_one_step_fails() {
+        let mut out = FailingWriter {
+            failed_once: false,
+            writes_after_failure: 0,
+        };
+        let result = write_unwind_escapes(&mut out);
+        assert!(result.is_err(), "first error must still be reported");
+        assert!(
+            out.writes_after_failure > 0,
+            "remaining unwind steps must still run after an earlier one fails"
+        );
     }
 }
