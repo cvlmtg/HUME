@@ -112,8 +112,22 @@ impl termina::Terminal for SharedTerm {
 
 /// Open the process terminal. Call once at startup; clone the result for
 /// every caller that needs to read or write it.
+///
+/// On Windows, `PlatformTerminal::new` enables VT input/output mode
+/// unconditionally (HUME runs no legacy-console fallback — see
+/// `docs/ROADMAP.md`); a console that can't provide it (older than Windows
+/// 10 1809, or a raw pipe such as mintty without winpty) fails here.
 pub fn create() -> io::Result<SharedTerm> {
+    #[cfg(windows)]
+    let inner = PlatformTerminal::new().map_err(|e| {
+        io::Error::new(
+            e.kind(),
+            format!("{e} (HUME requires Windows 10 1809+ and a VT-capable console)"),
+        )
+    })?;
+    #[cfg(not(windows))]
     let inner = PlatformTerminal::new()?;
+
     let reader = inner.event_reader();
     Ok(SharedTerm {
         inner: Arc::new(Mutex::new(inner)),
@@ -240,7 +254,7 @@ fn write_unwind_escapes(out: &mut impl io::Write) -> io::Result<()> {
 pub fn probe_kitty(term: &SharedTerm) -> io::Result<bool> {
     let mut term = term.clone();
     term.enter_raw_mode()?;
-    let kitty_enabled = match crate::probe_kitty_support() {
+    let kitty_enabled = match crate::probe_kitty_support(&term) {
         Ok(v) => v,
         Err(e) => {
             // Disable raw mode so the hint prints with normal line discipline

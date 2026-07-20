@@ -57,19 +57,85 @@ pub fn install_signal_handlers(term: terminal::SharedTerm) -> Result<(), ctrlc::
 /// delegates the query/response loop to [`run_probe`]. Returns `Ok(true)` if
 /// the terminal supports kitty keyboard protocol push, `Ok(false)` otherwise.
 ///
-/// On Windows this is unconditionally `Ok(false)` for now — no probe runs
-/// yet (tracked separately; termina's Windows backend decodes kitty
-/// CSI-u sequences, so a real probe belongs here once wired up).
+/// On Windows, writes the same kitty query (plus a DA1 fence) through `term`
+/// and waits for termina's event reader to decode a reply — see
+/// [`probe_via_events`]. This is the same decode path real input goes
+/// through, so a `true` here means kitty-encoded keys will actually work,
+/// unlike asking the terminal in the abstract (ConPTY from Windows Terminal
+/// ≥ 1.25 answers the query even when nothing downstream could decode the
+/// reply).
 ///
 /// Must be called after `enable_raw_mode()`.
-pub(crate) fn probe_kitty_support() -> std::io::Result<bool> {
+pub(crate) fn probe_kitty_support(term: &terminal::SharedTerm) -> std::io::Result<bool> {
     #[cfg(unix)]
     {
+        let _ = term;
         unix::probe_kitty_support()
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
     {
+        probe_via_events(term)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = term;
         Ok(false)
+    }
+}
+
+/// Windows kitty probe: write the progressive-enhancement query plus a DA1
+/// fence, then wait for termina's event reader to decode either reply.
+///
+/// Typed keys the user presses during the probe window are filtered out
+/// (not consumed) and stay buffered in the [`EventReader`](termina::EventReader)
+/// for the main loop to read — unlike the Unix byte-channel probe, which has
+/// no such buffering and can eat a keystroke typed during the race.
+#[cfg(windows)]
+fn probe_via_events(term: &terminal::SharedTerm) -> std::io::Result<bool> {
+    use std::io::Write;
+    use termina::escape::csi::{Csi, Device, Keyboard};
+
+    let mut out = term.clone();
+    write!(
+        out,
+        "{}{}",
+        Csi::Keyboard(Keyboard::QueryFlags),
+        Csi::Device(Device::RequestPrimaryDeviceAttributes),
+    )?;
+    out.flush()?;
+
+    let reader = term.event_reader();
+    let deadline = Instant::now() + Duration::from_millis(500);
+    loop {
+        let Some(left) = deadline.checked_duration_since(Instant::now()) else {
+            return Ok(false); // timeout
+        };
+        if !reader.poll(Some(left), |e| classify_probe_event(e).is_some())? {
+            return Ok(false); // timeout
+        }
+        let event = reader.read(|e| classify_probe_event(e).is_some())?;
+        if let Some(verdict) = classify_probe_event(&event) {
+            return Ok(verdict);
+        }
+    }
+}
+
+/// Classifies one event from the Windows probe's query/response exchange.
+///
+/// `Some(true)` — the terminal reported kitty keyboard protocol flags: it
+/// supports the query, so it supports the push we're about to send. `Some(false)`
+/// — the DA1 fence arrived with no kitty report first: the terminal answered
+/// every query we sent and kitty was not among the replies. `None` — an
+/// event outside this classification (e.g. a stray key); keep waiting.
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
+fn classify_probe_event(ev: &termina::Event) -> Option<bool> {
+    use termina::Event;
+    use termina::escape::csi::{Csi, Device, Keyboard};
+
+    match ev {
+        Event::Csi(Csi::Keyboard(Keyboard::ReportFlags(_))) => Some(true),
+        Event::Csi(Csi::Device(Device::DeviceAttributes(_))) => Some(false),
+        _ => None,
     }
 }
 
@@ -79,6 +145,12 @@ pub(crate) fn probe_kitty_support() -> std::io::Result<bool> {
 /// (`poll(2)` on Unix). The trait isolates the one OS-specific concern — "is
 /// there input ready before `deadline`?" — so the query/response loop in
 /// [`run_probe`] is platform-agnostic and unit-testable via a mock channel.
+///
+/// Only `unix::probe_kitty_support` implements it in production; on Windows
+/// (kitty probing goes through [`probe_via_events`] instead) it exists only
+/// for its unit tests, which is also why the whole family stays testable
+/// cross-platform rather than being gated to `#[cfg(unix)]` outright.
+#[cfg_attr(not(any(unix, test)), allow(dead_code))]
 trait ProbeChannel {
     fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()>;
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize>;
@@ -107,6 +179,7 @@ trait ProbeChannel {
 /// the terminal went away without answering, so kitty is unavailable. An `Err`
 /// from `read` or `wait_until` is a permanent channel failure and propagates to
 /// the caller, which surfaces it to the user rather than degrading silently.
+#[cfg_attr(not(any(unix, test)), allow(dead_code))]
 fn run_probe(ch: &mut impl ProbeChannel) -> std::io::Result<bool> {
     ch.write_all(b"\x1B[?u\x1B[>q\x1B[c")?;
 
@@ -143,6 +216,7 @@ fn run_probe(ch: &mut impl ProbeChannel) -> std::io::Result<bool> {
 /// to the `\x1B[?u` query. DA1 sequences (`ESC [ ? <digits> c`) are skipped
 /// over — they don't indicate kitty support but don't rule it out either, since
 /// both responses may appear in the same buffer.
+#[cfg_attr(not(any(unix, test)), allow(dead_code))]
 fn has_kitty_response(buf: &[u8]) -> bool {
     let mut i = 0;
     while i + 2 < buf.len() {
@@ -170,6 +244,7 @@ fn has_kitty_response(buf: &[u8]) -> bool {
 ///
 /// XTVERSION is sent alongside the kitty query and DA1 sentinel as a fallback
 /// identification mechanism. Its response arrives before DA1.
+#[cfg_attr(not(any(unix, test)), allow(dead_code))]
 fn has_kitty_xtversion(buf: &[u8]) -> bool {
     // Find the DCS introducer for XTVERSION: ESC P > |
     let Some(pos) = buf.windows(4).position(|w| w == b"\x1BP>|") else {
@@ -192,6 +267,7 @@ fn has_kitty_xtversion(buf: &[u8]) -> bool {
 
 /// Returns true once the buffer contains a complete DA1 response (`ESC [ ? <digits> c`),
 /// which signals the terminal has finished responding to all queries.
+#[cfg_attr(not(any(unix, test)), allow(dead_code))]
 fn has_da1_response(buf: &[u8]) -> bool {
     let mut i = 0;
     while i + 2 < buf.len() {
@@ -214,7 +290,9 @@ fn has_da1_response(buf: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{has_da1_response, has_kitty_response, has_kitty_xtversion, run_probe};
+    use super::{
+        classify_probe_event, has_da1_response, has_kitty_response, has_kitty_xtversion, run_probe,
+    };
     use std::io;
     use std::time::Instant;
 
@@ -503,5 +581,33 @@ mod tests {
         };
         assert!(run_probe(&mut ch).unwrap());
         assert_eq!(ch.read_idx, 2);
+    }
+
+    // ── classify_probe_event (Windows event-based probe) ──────────────────────
+
+    #[test]
+    fn classify_kitty_report_flags_is_supported() {
+        use termina::escape::csi::{Csi, Keyboard, KittyKeyboardFlags};
+
+        let ev = termina::Event::Csi(Csi::Keyboard(Keyboard::ReportFlags(
+            KittyKeyboardFlags::DISAMBIGUATE_ESCAPE_CODES,
+        )));
+        assert_eq!(classify_probe_event(&ev), Some(true));
+    }
+
+    #[test]
+    fn classify_da1_fence_with_no_prior_report_is_unsupported() {
+        use termina::escape::csi::{Csi, Device};
+
+        let ev = termina::Event::Csi(Csi::Device(Device::DeviceAttributes(())));
+        assert_eq!(classify_probe_event(&ev), Some(false));
+    }
+
+    #[test]
+    fn classify_unrelated_event_keeps_waiting() {
+        use termina::event::{KeyCode, KeyEvent, Modifiers};
+
+        let ev = termina::Event::Key(KeyEvent::new(KeyCode::Char('x'), Modifiers::NONE));
+        assert_eq!(classify_probe_event(&ev), None);
     }
 }
