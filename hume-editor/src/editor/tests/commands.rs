@@ -614,7 +614,10 @@ fn r_then_enter_replaces_with_newline() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('r'));
     ed.handle_key(key_enter());
-    assert!(ed.state.wait_char.is_none(), "wait_char cleared after Enter");
+    assert!(
+        ed.state.wait_char.is_none(),
+        "wait_char cleared after Enter"
+    );
     assert_eq!(state(&ed), "-[\n]>ello\n");
 }
 
@@ -650,7 +653,10 @@ fn f_then_enter_is_accepted_but_never_matches() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('f'));
     ed.handle_key(key_enter());
-    assert!(ed.state.wait_char.is_none(), "wait_char cleared after Enter");
+    assert!(
+        ed.state.wait_char.is_none(),
+        "wait_char cleared after Enter"
+    );
     assert_eq!(
         state(&ed),
         "-[h]>ello\n",
@@ -3176,6 +3182,76 @@ fn MM_with_setting_off_matches_inner_uppercase_word() {
     ed.state.settings.word_selects_whitespace = false;
     ed.feed_keys([key('M'), key('M')]);
     assert_eq!(state(&ed), "-[hello.world]> foo\n");
+}
+
+/// Direct side-by-side comparison, mirroring `mm_mid_line_matches_maw` but
+/// for the uppercase pair — the lowercase tests above only check `MM`
+/// against a hardcoded literal, never `MM` against a typed `m A W` on the
+/// same input.
+#[test]
+#[allow(non_snake_case)]
+fn MM_mid_line_matches_maW() {
+    let mut ed = editor_from("foo.bar -[b]>az.qux quux\n");
+    ed.feed_keys([key('M'), key('M')]);
+    assert_eq!(state(&ed), "foo.bar-[ baz.qux]> quux\n");
+
+    let mut ed2 = editor_from("foo.bar -[b]>az.qux quux\n");
+    ed2.feed_keys([key('m'), key('a'), key('W')]);
+    assert_eq!(state(&ed2), "foo.bar-[ baz.qux]> quux\n");
+}
+
+/// Same, with the setting off — `MM` against a typed `m i W`.
+#[test]
+#[allow(non_snake_case)]
+fn MM_with_setting_off_matches_miW() {
+    let mut ed = editor_from("foo.bar -[b]>az.qux quux\n");
+    ed.state.settings.word_selects_whitespace = false;
+    ed.feed_keys([key('M'), key('M')]);
+    assert_eq!(state(&ed), "foo.bar -[baz.qux]> quux\n");
+
+    let mut ed2 = editor_from("foo.bar -[b]>az.qux quux\n");
+    ed2.state.settings.word_selects_whitespace = false;
+    ed2.feed_keys([key('m'), key('i'), key('W')]);
+    assert_eq!(state(&ed2), "foo.bar -[baz.qux]> quux\n");
+}
+
+/// Every equivalence test above runs in Move mode only — `mm`/`MM` dispatch
+/// through the same `around_fun.unwrap_or(fun)` gate regardless of
+/// `MotionMode`, so this checks the pairing also holds once an existing
+/// selection is being *grown* (Extend), not just replaced.
+#[test]
+fn mm_extend_mode_matches_maw_extend() {
+    let mut ed = editor_from("one -[t]>wo three\n");
+    ed.state.mode = Mode::Extend;
+    ed.feed_keys([key('m'), key('m')]);
+    let mm_state = state(&ed);
+
+    let mut ed2 = editor_from("one -[t]>wo three\n");
+    ed2.state.mode = Mode::Extend;
+    ed2.feed_keys([key('m'), key('a'), key('w')]);
+    assert_eq!(
+        mm_state,
+        state(&ed2),
+        "mm vs maw must agree in Extend mode too"
+    );
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn MM_extend_mode_matches_maW_extend() {
+    let mut ed = editor_from("one.zero -[t]>wo.zero three\n");
+    ed.state.mode = Mode::Extend;
+    ed.feed_keys([key('M'), key('M')]);
+    let mm_state = state(&ed);
+
+    let mut ed2 = editor_from("one.zero -[t]>wo.zero three\n");
+    ed2.state.mode = Mode::Extend;
+    ed2.feed_keys([key('m'), key('a'), key('W')]);
+    assert_eq!(
+        mm_state,
+        state(&ed2),
+        "MM vs maW must agree in Extend mode too"
+    );
 }
 
 #[test]
