@@ -4,7 +4,7 @@ use ratatui::style::Style;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use hume_platform::path::shorten_home;
+use hume_platform::path::{is_path_sep, shorten_home};
 
 use crate::editor::Editor;
 use crate::ui::theme::EditorColors;
@@ -43,6 +43,18 @@ pub(in crate::ui::statusline) fn statusline_display_path(editor: &Editor) -> Str
 /// 3. If still too wide after all dirs are abbreviated, truncate the filename
 ///    with a trailing `…`, shrinking until it fits or only `…` remains.
 pub(in crate::ui::statusline) fn shorten_path_to_width(display: &str, max_cols: usize) -> String {
+    shorten_path_to_width_with(display, max_cols, is_path_sep)
+}
+
+/// `is_sep` is injected so the separator handling (`/` everywhere, plus `\` on
+/// Windows) is exercisable in tests regardless of the host platform. Splits
+/// keep each component's trailing separator character so mixed `/`/`\` input
+/// (as can appear in a Windows path) survives reassembly unchanged.
+pub(in crate::ui::statusline) fn shorten_path_to_width_with(
+    display: &str,
+    max_cols: usize,
+    is_sep: fn(char) -> bool,
+) -> String {
     if UnicodeWidthStr::width(display) <= max_cols {
         return display.to_owned();
     }
@@ -50,9 +62,7 @@ pub(in crate::ui::statusline) fn shorten_path_to_width(display: &str, max_cols: 
         return String::new();
     }
 
-    // Split into components on '/'. Works on the `~`-collapsed string where
-    // the separator is always '/'.
-    let parts: Vec<&str> = display.split('/').collect();
+    let parts: Vec<&str> = display.split_inclusive(is_sep).collect();
     let n = parts.len();
     if n == 0 {
         return String::new();
@@ -63,21 +73,18 @@ pub(in crate::ui::statusline) fn shorten_path_to_width(display: &str, max_cols: 
     let mut components: Vec<String> = parts.iter().map(|s| s.to_string()).collect();
 
     for i in 0..n.saturating_sub(1) {
+        let (content, sep) = split_trailing_sep(&components[i], is_sep);
         // Skip components that are already at minimum width: empty, "~", or
         // single-grapheme entries (abbreviated in a previous run).
-        let grapheme_count = components[i].graphemes(true).count();
+        let grapheme_count = content.graphemes(true).count();
         if grapheme_count <= 1 {
             continue;
         }
-        // Abbreviate to the first grapheme cluster.
-        let first = components[i]
-            .graphemes(true)
-            .next()
-            .unwrap_or("")
-            .to_owned();
-        components[i] = first;
+        // Abbreviate to the first grapheme cluster, keeping the separator.
+        let first = content.graphemes(true).next().unwrap_or("").to_owned();
+        components[i] = format!("{first}{sep}");
 
-        let candidate = components.join("/");
+        let candidate = components.concat();
         if UnicodeWidthStr::width(candidate.as_str()) <= max_cols {
             return candidate;
         }
@@ -86,12 +93,11 @@ pub(in crate::ui::statusline) fn shorten_path_to_width(display: &str, max_cols: 
     // All dirs abbreviated — still too wide. Truncate the filename with `…`.
     let ellipsis = "…"; // U+2026, 1 col wide
     let ellipsis_w = UnicodeWidthStr::width(ellipsis);
-    let prefix = components[..n.saturating_sub(1)].join("/");
-    let sep = if n > 1 { "/" } else { "" };
-    // Available columns for the filename (after prefix + sep + ellipsis).
+    let prefix = components[..n.saturating_sub(1)].concat();
+    // Available columns for the filename (after prefix + ellipsis). The
+    // prefix already carries its own trailing separator, if any.
     let prefix_w = UnicodeWidthStr::width(prefix.as_str());
-    let sep_w = sep.len(); // '/' is always 1 col
-    let available = max_cols.saturating_sub(prefix_w + sep_w + ellipsis_w);
+    let available = max_cols.saturating_sub(prefix_w + ellipsis_w);
 
     let filename = &components[n - 1];
     let mut truncated = String::new();
@@ -110,9 +116,21 @@ pub(in crate::ui::statusline) fn shorten_path_to_width(display: &str, max_cols: 
         if prefix.is_empty() {
             ellipsis.to_owned()
         } else {
-            format!("{prefix}{sep}{ellipsis}")
+            format!("{prefix}{ellipsis}")
         }
     } else {
-        format!("{prefix}{sep}{truncated}{ellipsis}")
+        format!("{prefix}{truncated}{ellipsis}")
+    }
+}
+
+/// Split `s` into `(content, sep)` where `sep` is the trailing separator
+/// character (as injected by `is_sep`), or `(s, "")` if `s` has none.
+fn split_trailing_sep(s: &str, is_sep: fn(char) -> bool) -> (&str, &str) {
+    match s.chars().next_back() {
+        Some(c) if is_sep(c) => {
+            let split_at = s.len() - c.len_utf8();
+            (&s[..split_at], &s[split_at..])
+        }
+        _ => (s, ""),
     }
 }
