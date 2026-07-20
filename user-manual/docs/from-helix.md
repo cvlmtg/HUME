@@ -149,6 +149,7 @@ Several features were intentionally adopted from Helix rather than reinvented:
 
 - **Tree-sitter grammars** — Rather than curating our own grammar repository list, HUME pins a Helix commit and syncs grammar sources, revisions, language extensions, and file-glob associations from Helix's `languages.toml` via a script. Tree-sitter highlight queries are fetched directly from Helix's repository at the pinned revision at install time.
 - **Helix-style surround** — The `core:helix-surround` plugin remaps surround operations to `ms` (wrap), `md` (delete), and `mr` (replace), matching Helix's keybindings. This is opt-in; HUME's default surround follows its own select-then-act model.
+- **Kitty keyboard protocol support** — HUME uses the `termina` crate so the same detection and encoding work consistently on Unix and Windows terminals alike, falling back to legacy key encoding where the protocol isn't available.
 - **Theme format** — Helix uses TOML with `[palette]` indirection and dot-separated UI scope names. HUME's theme loader reads the same file format, modifier names (`crossed_out`, `underlined`), and extended underline syntax, so themes can be shared between both editors. One difference: palette entries must be `#rrggbb` values — a theme using terminal color names like `red` in its palette won't pick those up.
 
 HUME also ships a theme editor — a single-file HTML tool you can open in a browser to edit themes visually and export them as TOML. You can download it from https://github.com/cvlmtg/HUME/blob/main/tools/theme-editor/index.html
