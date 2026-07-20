@@ -77,8 +77,8 @@ export function parseInlineArray(s) {
 // Unescape TOML basic-string escapes (double-quoted strings only; single-quoted
 // TOML literals have no escapes). Unknown escape sequences keep their literal char.
 export function unescapeBasic(s) {
-  return s.replace(/\\(u[0-9a-fA-F]{4}|.)/gs, (m, esc) => {
-    if (esc[0] === "u") return String.fromCodePoint(parseInt(esc.slice(1), 16));
+  return s.replace(/\\(u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|.)/gs, (m, esc) => {
+    if (esc[0] === "u" || esc[0] === "U") return String.fromCodePoint(parseInt(esc.slice(1), 16));
     switch (esc) {
       case "\\": return "\\";
       case '"': return '"';

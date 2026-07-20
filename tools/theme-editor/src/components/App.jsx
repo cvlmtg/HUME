@@ -27,11 +27,15 @@ export default function HelixThemeEditor() {
   // (theme -> variant -> base). We stash each imported child's overrides on a
   // stack, most-derived first, show a banner asking for the next ancestor, and
   // merge the whole stack onto the root once a non-inherits theme arrives.
-  // `loadedParent` tracks whether a non-inherits theme is loaded so a later
-  // inherits-import can merge directly instead of stacking.
+  // `loadedThemeName` (the imported file's basename, matching Helix's
+  // filename-is-the-theme-name convention) tracks WHICH theme is currently
+  // loaded, so a later inherits-import only merges directly when it actually
+  // names the loaded theme as its parent — not merely because *some*
+  // non-inherits theme happens to be loaded (that could be an unrelated
+  // theme, giving a child the wrong base).
   const [pendingChildren, setPendingChildren] = useState([]);
   const [inheritBanner, setInheritBanner] = useState(null);
-  const [loadedParent, setLoadedParent] = useState(false);
+  const [loadedThemeName, setLoadedThemeName] = useState(null);
   const [importError, setImportError] = useState(null);
   const fileRef = useRef(null);
 
@@ -49,6 +53,7 @@ export default function HelixThemeEditor() {
   const handleImport = useCallback(e => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const themeName = file.name.replace(/\.toml$/i, "");
     const reader = new FileReader();
     reader.onload = ev => {
       try {
@@ -60,36 +65,49 @@ export default function HelixThemeEditor() {
         setHShift(0); setSShift(0); setLShift(0);
 
         if (hasInherits) {
-          if (loadedParent) {
-            // Parent already loaded — merge child overrides on top.
+          if (loadedThemeName && loadedThemeName === parsed.inherits) {
+            // The loaded theme is confirmed (by name) to be this child's
+            // declared parent — merge child overrides directly on top of it.
+            // Track this child as the now-loaded theme (not the parent it
+            // just merged onto) so a further import naming *it* as their
+            // parent (a theme -> variant -> base chain) also matches.
             setPalette(p => ({...p, ...newPalette}));
             setScopes(s => ({...s, ...newScopes}));
             setPendingChildren([]);
             setInheritBanner(null);
+            setLoadedThemeName(themeName);
           } else {
-            // No root yet — stack this child's overrides, apply the stack for
-            // visual feedback, and point the banner at its own ancestor.
+            // Either nothing is loaded yet, or what's loaded isn't this
+            // child's parent — stack this child's overrides (discarding
+            // whatever was loaded, since it's the wrong base), apply the
+            // stack for visual feedback, and point the banner at the real
+            // ancestor this file names.
             const nextPending = [...pendingChildren, { palette: newPalette, scopes: newScopes }];
             setPendingChildren(nextPending);
             const merged = mergeChildStack(nextPending);
             setPalette(merged.palette);
             setScopes(merged.scopes);
             setInheritBanner({ parent: parsed.inherits });
+            setLoadedThemeName(null);
           }
         } else {
-          if (pendingChildren.length) {
-            // Root arrived — apply root first, then the whole stack on top.
+          if (pendingChildren.length && inheritBanner?.parent === themeName) {
+            // This is the ancestor the banner asked for — apply it first,
+            // then the whole pending stack on top.
             const merged = mergeChildStack(pendingChildren, newPalette, newScopes);
             setPalette(merged.palette);
             setScopes(merged.scopes);
             setPendingChildren([]);
             setInheritBanner(null);
           } else {
+            // A fresh root theme — any stashed children were waiting on a
+            // different ancestor and no longer apply.
             setPalette(newPalette);
             setScopes(newScopes);
+            setPendingChildren([]);
             setInheritBanner(null);
           }
-          setLoadedParent(true);
+          setLoadedThemeName(themeName);
         }
       } catch (err) {
         console.error("Parse error", err);
@@ -98,7 +116,7 @@ export default function HelixThemeEditor() {
     };
     reader.readAsText(file);
     e.target.value = "";
-  }, [loadedParent, pendingChildren]);
+  }, [loadedThemeName, pendingChildren, inheritBanner]);
 
   const handleExport = useCallback(() => {
     const toml = exportTOML(adjPalette, scopes);

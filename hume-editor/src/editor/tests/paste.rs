@@ -24,6 +24,32 @@ fn begin_completion_session(ed: &mut Editor, items: &[&str]) {
     ed.lsp.completion = Some(session);
 }
 
+// ── No-op guards ──────────────────────────────────────────────────────────
+
+#[test]
+fn empty_paste_is_a_noop_in_normal_mode() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let before = state(&ed);
+    paste(&mut ed, "");
+    assert_eq!(state(&ed), before);
+    // Not even an undo step was opened.
+    ed.feed_key(key('u'));
+    assert_eq!(state(&ed), before);
+}
+
+#[test]
+fn newline_only_paste_flattens_to_empty_and_is_a_noop_in_command_mode() {
+    // Distinct from the top-level empty-text guard: "\n\n" survives
+    // `normalize_paste_newlines` (it's non-empty), but `flatten_for_minibuf`
+    // trims all of it away, and the Command/Search/Select arm's own
+    // empty-after-flatten guard must catch that.
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    assert_eq!(ed.state.mode, Mode::Command);
+    paste(&mut ed, "\n\n");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "");
+}
+
 // ── Insert mode ───────────────────────────────────────────────────────────
 
 #[test]
@@ -84,6 +110,18 @@ fn insert_mode_paste_with_embedded_newline() {
     assert_eq!(ed.doc().text().to_string(), "hX\nYello\n");
 }
 
+#[test]
+fn insert_mode_paste_with_embedded_escape_sequence_inserts_literally() {
+    // `handle_terminal_paste` receives the payload crossterm already stripped
+    // of the bracketed-paste markers — an embedded control/escape sequence in
+    // that payload is just more text to insert, not something to interpret.
+    let mut ed = editor_from("-[\n]>");
+    ed.feed_key(key('i'));
+    paste(&mut ed, "\x1b[31mred\x1b[0m");
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "\x1b[31mred\x1b[0m\n");
+}
+
 // ── Normal / Extend mode ─────────────────────────────────────────────────
 
 #[test]
@@ -107,6 +145,23 @@ fn extend_mode_paste_replaces_selection() {
     assert_eq!(ed.doc().text().to_string(), "xyzo\n");
 }
 
+#[test]
+fn normal_mode_paste_replaces_every_selection_in_a_multi_cursor_selection() {
+    // `insert_str` (the closure `apply_doc_edit` invokes) iterates the whole
+    // SelectionSet, same as any other command — a paste replacing multiple
+    // selections at once is no exception. Two-char selections here (not
+    // bare 1-char cursors) so this exercises replace, not insert-before —
+    // see `insert_str_replaces_forward_selection` vs. `insert_str_two_cursors`
+    // in `ops/edit/tests.rs` for why that distinction matters.
+    let mut ed = editor_from("-[ab]>cd-[ef]>gh\n");
+    paste(&mut ed, "X");
+    assert_eq!(ed.doc().text().to_string(), "XcdXgh\n");
+
+    // One undo step undoes both replacements together.
+    ed.feed_key(key('u'));
+    assert_eq!(ed.doc().text().to_string(), "abcdefgh\n");
+}
+
 // ── Command / Search minibuffer ──────────────────────────────────────────
 
 #[test]
@@ -126,6 +181,19 @@ fn search_mode_paste_triggers_live_search() {
     paste(&mut ed, "world");
     // Live search already moved the selection onto the match.
     assert_eq!(state(&ed), "hello -[world]>\n");
+}
+
+#[test]
+fn select_mode_paste_triggers_live_select() {
+    let mut ed = editor_from("-[ab cd ab]>\n");
+    ed.handle_key(key('s'));
+    assert_eq!(ed.state.mode, Mode::Select);
+    paste(&mut ed, "ab");
+    // Live select-within already narrowed to the two "ab" matches within the
+    // original selection — same `on_minibuf_paste_edited` follow-up a typed
+    // pattern would trigger.
+    assert_eq!(ed.current_selections().len(), 2);
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "ab");
 }
 
 // ── Dot-repeat ────────────────────────────────────────────────────────────

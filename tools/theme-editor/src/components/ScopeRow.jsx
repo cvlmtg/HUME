@@ -15,6 +15,28 @@ export default function ScopeRow({ id, value, palette, onChange }) {
   const [fgHex, setFgHex] = useState("");
   const [bgHex, setBgHex] = useState("");
 
+  // Rows are keyed by a fixed `id` (see App.jsx), so a row is never remounted
+  // when `value` changes out from under it (e.g. a theme import overwrites
+  // `scopes` while this row is showing a typed-but-uncommitted custom hex).
+  // Reset the local "custom hex" state whenever the resolved fg/bg actually
+  // changes — this is the React-documented "adjust state during render"
+  // pattern, not an effect, so it applies before paint with no extra render.
+  // A self-triggered `emit()` also changes `value` (and so re-fires this),
+  // but harmlessly: `showCustom`'s `val`-based fallback keeps the custom
+  // input visible and in sync even with `fgCustom`/`bgCustom` reset to false.
+  const [prevFgVal, setPrevFgVal] = useState(fgVal);
+  const [prevBgVal, setPrevBgVal] = useState(bgVal);
+  if (fgVal !== prevFgVal) {
+    setPrevFgVal(fgVal);
+    setFgCustom(false);
+    setFgHex("");
+  }
+  if (bgVal !== prevBgVal) {
+    setPrevBgVal(bgVal);
+    setBgCustom(false);
+    setBgHex("");
+  }
+
   const emit = (newFg, newBg) => {
     const extra = (typeof value === "object" && value !== null)
       ? Object.fromEntries(Object.entries(value).filter(([k]) => k !== "fg" && k !== "bg"))

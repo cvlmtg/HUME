@@ -535,6 +535,47 @@ fn select_word_nearest_does_not_absorb_previous_row_whitespace() {
     assert_eq!(sel.head(), 10, "still selects all of 'wordB'");
 }
 
+/// `mm` (`select-word`) is NOT wrap-aware — unlike
+/// `select-word-nearest-on-line` (see
+/// `select_word_nearest_does_not_absorb_previous_row_whitespace` above, same
+/// buffer/wrap setup), it has no sub-row floor to stop the leading-whitespace
+/// absorption at a wrap boundary, because it dispatches straight to
+/// `word_unit_at` with `min_start = 0` rather than through
+/// `nearest_word_on_line`. So on a word that starts a wrapped continuation
+/// row, `mm` pulls in the previous row's trailing space while the on-cursor
+/// snap command does not — a real behavioral difference between the two
+/// commands, not a bug in either. This pins the current, deliberate
+/// asymmetry so a future change to either command's wrap-awareness is a
+/// visible, intentional decision rather than a silent regression.
+#[test]
+fn select_word_absorbs_previous_row_whitespace_unlike_nearest_on_line() {
+    use hume_editing::selection::{Selection, SelectionSet};
+    use hume_editing::text::Text;
+    // Same buffer/wrap as `select_word_nearest_does_not_absorb_previous_row_whitespace`:
+    // "hello " (space included) wraps onto sub-row 0, so "wordB" starts
+    // sub-row 1 with no leading space in-row.
+    let buf = Text::from("hello wordB\n");
+    let sels = SelectionSet::single(Selection::collapsed(8)); // 'r' inside "wordB"
+    let mut ed = Editor::for_testing(Buffer::new(buf, sels));
+    ed.view.panes[ed.state.focused_pane_id].wrap_mode =
+        hume_engine::pane::WrapMode::Indent { width: 6 };
+
+    ed.execute_keymap_command(
+        std::borrow::Cow::Borrowed("select-word"),
+        Some(1),
+        false,
+        ArgSource::Keymap,
+    );
+
+    let sel = ed.current_selections().primary();
+    assert_eq!(
+        sel.anchor(),
+        5,
+        "mm DOES absorb the previous row's space (char 5) — no sub-row floor"
+    );
+    assert_eq!(sel.head(), 10, "still selects all of 'wordB'");
+}
+
 /// With `word-selects-whitespace` off, the selection stays a bare inner word
 /// — no whitespace bookend — even in wrap mode.
 #[test]

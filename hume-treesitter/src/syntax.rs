@@ -401,6 +401,39 @@ mod tests {
         })
     }
 
+    /// Like `make_bundle`, but with a compiled injections query attached —
+    /// needed to exercise the injected-layer (`depth > 0`) path in `bake`.
+    fn make_bundle_with_injections(
+        name: &str,
+        symbol: &str,
+        injections_src: &str,
+    ) -> Arc<GrammarBundle> {
+        let path = grammar_parser_path(name);
+        if !path.exists() {
+            panic!(
+                "grammar fixture missing: {}\nrun scripts/fetch-test-grammars.sh from the repo root",
+                path.display()
+            );
+        }
+        let grammar = LoadedGrammar::open(&path, symbol).expect("load grammar");
+        let query = Arc::new(tree_sitter::Query::new(grammar.language(), "").expect("empty query"));
+        let mut registry = ScopeRegistry::new();
+        let highlighter = Arc::new(TreeSitterHighlighter::from_shared_query(
+            query,
+            &mut registry,
+        ));
+        let injections = Arc::new(
+            tree_sitter::Query::new(grammar.language(), injections_src)
+                .expect("compile injections"),
+        );
+        Arc::new(GrammarBundle {
+            grammar,
+            highlighter,
+            injections: Some(crate::injections::InjectionsQuery::new(injections)),
+            config_gen: next_test_config_gen(),
+        })
+    }
+
     fn fresh_bid() -> BufferId {
         let mut sm: SlotMap<BufferId, ()> = SlotMap::with_key();
         sm.insert(())
@@ -685,6 +718,99 @@ mod tests {
         assert!(
             outcome.request.unwrap().old_tree.is_none(),
             "broken chain must request a full reparse"
+        );
+    }
+
+    /// All prior `bake` coverage used JSON (no injections), so the
+    /// `layer.depth > 0` ranges-refresh branch never ran. This installs a
+    /// real markdown root + rust fenced-code injection layer, edits text
+    /// *before* the fenced block (shifting the injection forward), bakes,
+    /// and checks the injected layer's cached `ranges` — the copy
+    /// `layer_covers_line` consults — actually moved with it instead of
+    /// staying pinned at the pre-edit byte offset.
+    #[test]
+    fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
+        if skip_unless_grammars(&["markdown", "rust"]) {
+            return;
+        }
+        let inj_path =
+            hume_test_fixtures::grammar_query_path("markdown").with_file_name("injections.scm");
+        if hume_test_fixtures::skip_unless_file(&inj_path, "markdown injections.scm") {
+            return;
+        }
+        let inj_src = std::fs::read_to_string(&inj_path).expect("read injections.scm");
+        let markdown = make_bundle_with_injections("markdown", "tree_sitter_markdown", &inj_src);
+        let rust = make_bundle("rust", "tree_sitter_rust");
+        let mut langs_map = HashMap::new();
+        langs_map.insert("rust".to_owned(), Arc::clone(&rust));
+        let langs = Arc::new(langs_map);
+
+        let bid = fresh_bid();
+        let source = "```rust\nfn main() {}\n```\n";
+        let (mut syn, _req) =
+            Syntax::attach(Arc::clone(&markdown), bid, 0, &Text::from(source), &langs);
+
+        // Parse root + resolve injections directly (mirrors `do_parse` in
+        // `parse_worker.rs`, inlined so the test controls the exact result).
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(markdown.grammar.language())
+            .expect("set language");
+        let root = parser.parse(source, None).expect("parse root");
+        let rope = ropey::Rope::from_str(source);
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        let injected = crate::injections::resolve_and_parse_injections(
+            &mut parser,
+            &root,
+            &markdown,
+            &rope,
+            &langs,
+            &cancel,
+            1,
+        );
+        assert_eq!(injected.len(), 1, "expected one rust injection layer");
+        let original_start = injected[0].ranges[0].start_byte;
+
+        syn.install(
+            ParseDone {
+                bid,
+                text_gen: 0,
+                bundle: Arc::clone(&markdown),
+                outcome: ParseOutcome::Ok(ParsedLayers { root, injected }),
+            },
+            0,
+        );
+
+        // Insert text before the fenced code block — the rust layer's byte
+        // range must shift forward by the inserted length once baked.
+        let prefix = "more text\n";
+        let rope_pre = rope;
+        let mut b = ChangeSetBuilder::new(rope_pre.len_chars());
+        b.insert(prefix);
+        b.retain_rest();
+        let cs = b.finish();
+        syn.record_edit(1, &cs, &rope_pre);
+
+        let new_source = format!("{prefix}{source}");
+        let outcome = syn.frame_tick(bid, 1, &Text::from(new_source.as_str()), &langs);
+        assert!(
+            outcome.chain_break.is_none(),
+            "contiguous chain must not report a break"
+        );
+
+        let rust_layer = syn
+            .layers()
+            .unwrap()
+            .layers
+            .iter()
+            .find(|l| l.depth > 0)
+            .expect("rust injected layer must survive the bake");
+        // Independent oracle: the shift is exactly `prefix.len()` bytes,
+        // computed from the inserted string — not re-derived from the tree.
+        assert_eq!(
+            rust_layer.ranges[0].start_byte,
+            original_start + prefix.len(),
+            "ranges must be refreshed to the tree's post-edit included_ranges, not left stale"
         );
     }
 

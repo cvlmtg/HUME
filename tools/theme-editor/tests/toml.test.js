@@ -11,6 +11,11 @@ test('unescapeBasic handles \\", \\\\, \\n, \\t, \\r', () => {
   assert.equal(unescapeBasic('a\\rb'), 'a\rb');
 });
 
+test('unescapeBasic handles \\uXXXX (4-digit) and \\UXXXXXXXX (8-digit) unicode escapes', () => {
+  assert.equal(unescapeBasic('\\u00e9'), 'é'); // é, within the BMP
+  assert.equal(unescapeBasic('\\U0001F600'), '\u{1F600}'); // 😀, needs a surrogate pair
+});
+
 test('parseTOML unescapes double-quoted strings, keeps single-quoted literal', () => {
   const parsed = parseTOML('k = "a\\"b"\nlit = \'raw\\nstays\'');
   assert.equal(parsed.k, 'a"b');
@@ -94,4 +99,51 @@ test('an empty scope def ({}) blocks dotted-chain fallback (intentional Helix se
 test('lookupRaw falls back through the dotted chain when no exact key is defined', () => {
   const sc = { 'ui.cursorline': { bg: 'red' } };
   assert.deepEqual(lookupRaw('ui.cursorline.primary', sc), { bg: 'red' });
+});
+
+// ── Coverage gaps closed: modifiers/array, nested inline object, malformed
+// input, quoted keys containing '#' or '.' ──────────────────────────────────
+
+test('a scope def with a modifiers array round-trips through export and re-parse', () => {
+  const parsed = parseTOML('"a" = { fg = "red", modifiers = ["bold", "italic"] }');
+  const original = extractScopes(parsed);
+  assert.deepEqual(original, { a: { fg: 'red', modifiers: ['bold', 'italic'] } });
+
+  // Independent oracle: re-parse the exported text and compare against the
+  // pre-export structure, not against a string the export step produced.
+  const reparsed = extractScopes(parseTOML(exportTOML({}, original)));
+  assert.deepEqual(reparsed, original);
+});
+
+test('an inline table with a nested object value (e.g. `style = {...}`) parses and round-trips', () => {
+  const parsed = parseTOML('"a" = { style = { bold = true } }');
+  const original = extractScopes(parsed);
+  assert.deepEqual(original, { a: { style: { bold: true } } });
+
+  const reparsed = extractScopes(parseTOML(exportTOML({}, original)));
+  assert.deepEqual(reparsed, original);
+});
+
+test('parseTOML skips a malformed line with no "=" instead of throwing', () => {
+  const parsed = parseTOML('not a valid toml line\nk = "v"');
+  assert.deepEqual(parsed, { k: 'v' });
+});
+
+test('parseTOML does not throw on an unterminated string value', () => {
+  // No closing quote — parseInlineVal doesn't match the quoted-string
+  // pattern (start AND end with '"'), so the value falls through unchanged
+  // rather than crashing the parser.
+  const parsed = parseTOML('k = "unterminated');
+  assert.equal(parsed.k, '"unterminated');
+});
+
+test('a quoted key containing "#" is not treated as a comment start', () => {
+  const parsed = parseTOML('"a#b" = 1');
+  assert.equal(parsed['a#b'], 1);
+});
+
+test('a quoted key containing "." is kept as one flat key, not split into a nested path', () => {
+  const parsed = parseTOML('"a.b" = 1');
+  assert.equal(parsed['a.b'], 1);
+  assert.equal(parsed.a, undefined);
 });

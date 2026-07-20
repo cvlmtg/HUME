@@ -839,7 +839,7 @@ pub fn server_request_response(
 /// treating it as the root config object — VS Code semantics. No section (or
 /// an empty one) returns the whole blob; a dotted path walks object keys;
 /// any miss (missing key, or a non-object encountered mid-path) is `null`.
-pub fn resolve_config_section(
+pub(crate) fn resolve_config_section(
     settings: &serde_json::Value,
     section: Option<&str>,
 ) -> serde_json::Value {
@@ -864,16 +864,16 @@ fn workspace_configuration_response(
     params: &serde_json::Value,
     settings: Option<&serde_json::Value>,
 ) -> serde_json::Value {
-    let items = params
-        .get("items")
-        .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default();
+    let items = params.get("items").and_then(|v| v.as_array());
     let Some(settings) = settings else {
-        return serde_json::Value::Array(vec![serde_json::Value::Null; items.len()]);
+        return serde_json::Value::Array(vec![
+            serde_json::Value::Null;
+            items.map_or(0, |v| v.len())
+        ]);
     };
     let values = items
-        .iter()
+        .into_iter()
+        .flatten()
         .map(|item| {
             let section = item.get("section").and_then(|s| s.as_str());
             resolve_config_section(settings, section)

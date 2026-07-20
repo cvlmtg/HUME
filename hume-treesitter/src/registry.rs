@@ -62,8 +62,8 @@ pub struct GrammarBundle {
 /// all index-aligned by `LanguageId.0`. `identities.len() == grammars.len() ==
 /// names.len()` always — `intern` pushes one entry to each.
 pub struct LanguageRegistry {
-    ids: HashMap<String, LanguageId>,
-    names: Vec<String>,
+    ids: HashMap<Arc<str>, LanguageId>,
+    names: Vec<Arc<str>>,
     /// `None` = interned but no identity registered.
     identities: Vec<Option<LanguageIdentity>>,
     /// The `LanguageId -> GrammarBundle` map.
@@ -172,10 +172,14 @@ impl LanguageRegistry {
             return id;
         }
         let id = LanguageId(self.names.len() as u32);
-        self.names.push(name.to_owned());
+        // One allocation, shared via Arc — `names` and `ids` both need their
+        // own owned key, but they can point at the same heap string instead
+        // of each holding an independent copy.
+        let owned: Arc<str> = Arc::from(name);
+        self.names.push(Arc::clone(&owned));
         self.identities.push(None);
         self.grammars.push(None);
-        self.ids.insert(name.to_owned(), id);
+        self.ids.insert(owned, id);
         id
     }
 
@@ -301,7 +305,7 @@ impl LanguageRegistry {
         self.identities
             .iter()
             .enumerate()
-            .filter_map(|(i, ident)| ident.as_ref().map(|_| self.names[i].as_str()))
+            .filter_map(|(i, ident)| ident.as_ref().map(|_| &*self.names[i]))
     }
 
     /// The compiled glob matcher for path-based detection. Index-aligned with
@@ -438,7 +442,10 @@ impl LanguageRegistry {
             self.grammars
                 .iter()
                 .enumerate()
-                .filter_map(|(i, g)| g.as_ref().map(|b| (self.names[i].clone(), Arc::clone(b))))
+                .filter_map(|(i, g)| {
+                    g.as_ref()
+                        .map(|b| (self.names[i].to_string(), Arc::clone(b)))
+                })
                 .collect(),
         );
     }

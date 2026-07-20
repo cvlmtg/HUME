@@ -36,7 +36,11 @@ export function hslToHex(h, s, l) {
 export function adjustColor(hex, hShift, sShift, lShift) {
   if (!hex || !hex.startsWith("#") || hex.length < 7) return hex;
   const hsl = hexToHSL(hex);
-  return hslToHex(hsl[0] + hShift, hsl[1] + sShift, hsl[2] + lShift);
+  const rgb = hslToHex(hsl[0] + hShift, hsl[1] + sShift, hsl[2] + lShift);
+  // #rrggbbaa: hslToHex only ever produces 6 digits, so the alpha byte —
+  // untouched by an H/S/L shift — must be carried over from the input.
+  const alpha = hex.length === 9 ? hex.slice(7, 9) : "";
+  return rgb + alpha;
 }
 
 export function adjustPalette(pal, hShift, sShift, lShift) {

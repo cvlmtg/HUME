@@ -122,6 +122,16 @@ impl Editor {
                 continue;
             }
 
+            // frame_tick is a no-op once parsed_gen == text_gen — check that
+            // before paying for the text clone and grammar-snapshot Arc bump.
+            if buf
+                .syntax
+                .as_ref()
+                .is_some_and(|s| s.parsed_gen() == text_gen)
+            {
+                continue;
+            }
+
             let text = self.state.buffers.get(bid).text().clone();
             let langs = self.state.languages.grammar_snapshot();
             let syn = self

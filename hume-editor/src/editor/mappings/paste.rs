@@ -4,6 +4,8 @@
 //! distinct from the register/kill-ring `p`/`P` "paste" commands in
 //! `editor::commands::edit`, which are an unrelated feature.
 
+use std::borrow::Cow;
+
 use super::super::minibuf::history::{HistoryKind, HistoryStore};
 use super::super::replay::InsertInput;
 use super::super::{Editor, Mode, doc_ops};
@@ -19,21 +21,25 @@ impl Editor {
     /// character. See [`Editor::apply_insert_mode_paste`] for the Insert-mode
     /// path, shared with dot-repeat replay.
     pub(crate) fn handle_terminal_paste(&mut self, text: String) {
-        // Mirrors `handle_key`'s status-message dismissal, minus the
-        // summary-TTL bookkeeping — a paste is a real input event but not a
-        // keystroke the TTL countdown should tick against.
-        self.state.status_msg.take();
-
         let text = normalize_paste_newlines(&text);
         if text.is_empty() {
             return;
         }
 
+        // Mirrors `handle_key`'s status-message dismissal, minus the
+        // summary-TTL bookkeeping — a paste is a real input event but not a
+        // keystroke the TTL countdown should tick against. Dismissed once we
+        // know the paste isn't empty, but per-arm below the no-op guards
+        // (menu/drawer interception, an all-newline paste flattening to
+        // nothing) so a paste that does nothing leaves the status untouched.
         match self.state.mode() {
             Mode::Insert => {
+                self.state.status_msg.take();
                 self.apply_insert_mode_paste(&text);
                 if let Some(session) = self.state.insert_session.as_mut() {
-                    session.keystrokes.push(InsertInput::Paste(text));
+                    session
+                        .keystrokes
+                        .push(InsertInput::Paste(text.into_owned()));
                 }
             }
             Mode::Normal | Mode::Extend => {
@@ -43,6 +49,7 @@ impl Editor {
                 if self.state.menu.is_some() || self.state.drawer.is_some() {
                     return;
                 }
+                self.state.status_msg.take();
                 let focused = self.state.focused_pane_id;
                 let buf = self.focused_buffer_id();
                 doc_ops::apply_doc_edit(
@@ -59,9 +66,12 @@ impl Editor {
                 if flattened.is_empty() {
                     return;
                 }
-                let Some(mb) = self.state.minibuf.as_mut() else {
-                    return;
-                };
+                let mb = self
+                    .state
+                    .minibuf
+                    .as_mut()
+                    .expect("minibuf present in Command/Search/Select mode");
+                self.state.status_msg.take();
                 mb.insert_str(&flattened);
                 self.on_minibuf_paste_edited();
             }
@@ -131,8 +141,27 @@ impl Editor {
 /// `\r` both become `\n`. Terminals commonly transmit CR (or CRLF) for
 /// newlines in a bracketed paste regardless of the source file's own
 /// convention.
-fn normalize_paste_newlines(text: &str) -> String {
-    text.replace("\r\n", "\n").replace('\r', "\n")
+///
+/// Single pass, and a borrow (no allocation at all) on the common case of a
+/// paste with no `\r` — the two-`.replace()` version always allocated twice
+/// regardless of whether anything matched.
+fn normalize_paste_newlines(text: &str) -> Cow<'_, str> {
+    if !text.contains('\r') {
+        return Cow::Borrowed(text);
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\r' {
+            if chars.peek() == Some(&'\n') {
+                chars.next();
+            }
+            out.push('\n');
+        } else {
+            out.push(c);
+        }
+    }
+    Cow::Owned(out)
 }
 
 /// Flatten already-newline-normalized text for a single-line minibuffer
