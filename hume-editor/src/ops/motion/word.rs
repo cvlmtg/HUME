@@ -469,167 +469,102 @@ fn word_select_cmd(
     }
 }
 
-/// Select or extend to the next word (`w`).
-#[allow(non_snake_case)]
-pub(crate) fn cmd_select_next_word(
-    buf: &Text,
-    sels: SelectionSet,
-    count: usize,
-    mode: MotionMode,
-) -> SelectionSet {
-    word_select_cmd(
-        buf,
-        sels,
-        count,
-        mode,
-        false,
-        false,
-        is_word_boundary,
-        select_next_word,
-    )
+/// Generates one `cmd_select_*` fn delegating to [`word_select_cmd`].
+///
+/// The command registry stores `fun`/`around_fun` as bare `fn` pointers (see
+/// `EditorCmdFn`'s doc), so each variant still needs its own named item —
+/// only the body is shared here, not the item itself.
+macro_rules! word_select_variant {
+    ($name:ident, $doc:expr, $around:expr, $backward:expr, $is_boundary:expr, $select_word:expr) => {
+        #[doc = $doc]
+        pub(crate) fn $name(
+            buf: &Text,
+            sels: SelectionSet,
+            count: usize,
+            mode: MotionMode,
+        ) -> SelectionSet {
+            word_select_cmd(
+                buf,
+                sels,
+                count,
+                mode,
+                $around,
+                $backward,
+                $is_boundary,
+                $select_word,
+            )
+        }
+    };
 }
 
-/// Select or extend to the next word (`w`), covering its whitespace bookend
-/// in both modes — used when `word-selects-whitespace` is on. See
-/// [`cmd_select_next_word`].
-#[allow(non_snake_case)]
-pub(crate) fn cmd_select_next_word_around(
-    buf: &Text,
-    sels: SelectionSet,
-    count: usize,
-    mode: MotionMode,
-) -> SelectionSet {
-    word_select_cmd(
-        buf,
-        sels,
-        count,
-        mode,
-        true,
-        false,
-        is_word_boundary,
-        select_next_word,
-    )
-}
-
-/// Select or extend to the next WORD (`W`): like `w` but treats word+punct as one class.
-#[allow(non_snake_case)]
-pub(crate) fn cmd_select_next_uppercase_word(
-    buf: &Text,
-    sels: SelectionSet,
-    count: usize,
-    mode: MotionMode,
-) -> SelectionSet {
-    word_select_cmd(
-        buf,
-        sels,
-        count,
-        mode,
-        false,
-        false,
-        is_uppercase_word_boundary,
-        select_next_word,
-    )
-}
-
-/// Select or extend to the next WORD (`W`), covering its whitespace bookend
-/// in both modes. See [`cmd_select_next_word_around`].
-#[allow(non_snake_case)]
-pub(crate) fn cmd_select_next_uppercase_word_around(
-    buf: &Text,
-    sels: SelectionSet,
-    count: usize,
-    mode: MotionMode,
-) -> SelectionSet {
-    word_select_cmd(
-        buf,
-        sels,
-        count,
-        mode,
-        true,
-        false,
-        is_uppercase_word_boundary,
-        select_next_word,
-    )
-}
-
-/// Select or extend to the previous word (`b`).
-#[allow(non_snake_case)]
-pub(crate) fn cmd_select_prev_word(
-    buf: &Text,
-    sels: SelectionSet,
-    count: usize,
-    mode: MotionMode,
-) -> SelectionSet {
-    word_select_cmd(
-        buf,
-        sels,
-        count,
-        mode,
-        false,
-        true,
-        is_word_boundary,
-        select_prev_word,
-    )
-}
-
-/// Select or extend to the previous word (`b`), covering its whitespace
-/// bookend in both modes. See [`cmd_select_next_word_around`].
-#[allow(non_snake_case)]
-pub(crate) fn cmd_select_prev_word_around(
-    buf: &Text,
-    sels: SelectionSet,
-    count: usize,
-    mode: MotionMode,
-) -> SelectionSet {
-    word_select_cmd(
-        buf,
-        sels,
-        count,
-        mode,
-        true,
-        true,
-        is_word_boundary,
-        select_prev_word,
-    )
-}
-
-/// Select or extend to the previous WORD (`B`): like `b` but treats word+punct as one class.
-#[allow(non_snake_case)]
-pub(crate) fn cmd_select_prev_uppercase_word(
-    buf: &Text,
-    sels: SelectionSet,
-    count: usize,
-    mode: MotionMode,
-) -> SelectionSet {
-    word_select_cmd(
-        buf,
-        sels,
-        count,
-        mode,
-        false,
-        true,
-        is_uppercase_word_boundary,
-        select_prev_word,
-    )
-}
-
-/// Select or extend to the previous WORD (`B`), covering its whitespace
-/// bookend in both modes. See [`cmd_select_next_word_around`].
-#[allow(non_snake_case)]
-pub(crate) fn cmd_select_prev_uppercase_word_around(
-    buf: &Text,
-    sels: SelectionSet,
-    count: usize,
-    mode: MotionMode,
-) -> SelectionSet {
-    word_select_cmd(
-        buf,
-        sels,
-        count,
-        mode,
-        true,
-        true,
-        is_uppercase_word_boundary,
-        select_prev_word,
-    )
-}
+word_select_variant!(
+    cmd_select_next_word,
+    "Select or extend to the next word (`w`).",
+    false,
+    false,
+    is_word_boundary,
+    select_next_word
+);
+word_select_variant!(
+    cmd_select_next_word_around,
+    "Select or extend to the next word (`w`), covering its whitespace \
+     bookend in both modes — used when `word-selects-whitespace` is on. \
+     See [`cmd_select_next_word`].",
+    true,
+    false,
+    is_word_boundary,
+    select_next_word
+);
+word_select_variant!(
+    cmd_select_next_uppercase_word,
+    "Select or extend to the next WORD (`W`): like `w` but treats \
+     word+punct as one class.",
+    false,
+    false,
+    is_uppercase_word_boundary,
+    select_next_word
+);
+word_select_variant!(
+    cmd_select_next_uppercase_word_around,
+    "Select or extend to the next WORD (`W`), covering its whitespace \
+     bookend in both modes. See [`cmd_select_next_word_around`].",
+    true,
+    false,
+    is_uppercase_word_boundary,
+    select_next_word
+);
+word_select_variant!(
+    cmd_select_prev_word,
+    "Select or extend to the previous word (`b`).",
+    false,
+    true,
+    is_word_boundary,
+    select_prev_word
+);
+word_select_variant!(
+    cmd_select_prev_word_around,
+    "Select or extend to the previous word (`b`), covering its whitespace \
+     bookend in both modes. See [`cmd_select_next_word_around`].",
+    true,
+    true,
+    is_word_boundary,
+    select_prev_word
+);
+word_select_variant!(
+    cmd_select_prev_uppercase_word,
+    "Select or extend to the previous WORD (`B`): like `b` but treats \
+     word+punct as one class.",
+    false,
+    true,
+    is_uppercase_word_boundary,
+    select_prev_word
+);
+word_select_variant!(
+    cmd_select_prev_uppercase_word_around,
+    "Select or extend to the previous WORD (`B`), covering its whitespace \
+     bookend in both modes. See [`cmd_select_next_word_around`].",
+    true,
+    true,
+    is_uppercase_word_boundary,
+    select_prev_word
+);
