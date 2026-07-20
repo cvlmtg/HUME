@@ -210,6 +210,10 @@ cfg attributes at all. A wholly unix-only test file goes in `unix/`; a
 file mixing portable and unix-only tests is split into a same-named pair
 (portable half stays, unix half moves). Never add a new
 `#[cfg(not(windows))]` to a test or import in the editor test tree —
-put the test in `unix/` instead. (Inline `mod tests` blocks in library
-crates still use cfg gates, e.g. `#[cfg(all(test, unix))]` in
-`hume-lsp/src/backend.rs`.)
+put the test in `unix/` instead. The same gate-once shape applies to
+inline `mod tests` blocks in library crates, just nested one level
+deeper: a wholly unix-only test module takes `#[cfg(all(test, unix))]`
+on the whole `mod tests` (`hume-lsp/src/backend.rs`); a `mod tests` that
+mixes portable and unix-only tests gets a nested `#[cfg(unix)] mod unix`
+holding the unix-only tests, itself gated once, with no per-test
+attributes (`hume-lsp/src/transport.rs`).
