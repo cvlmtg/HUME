@@ -61,7 +61,7 @@ fn setup_with_capabilities(
     let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
     configure(&mut backend, sid);
 
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let mut client = LspClient::new(sid, PathBuf::from("."));
     client.start_handshake(ed.lsp.backend_mut());

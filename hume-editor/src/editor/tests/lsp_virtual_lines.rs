@@ -3,7 +3,7 @@
 // `PaneVirtualLines` (`VirtualLineSource`) from the `decorations.virtual_lines`
 // store, over the virtual-row-aware scroll/cursor plumbing.
 //
-// Every test here goes through `Editor::open(None)` (not `editor_from`'s
+// Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}))` (not `editor_from`'s
 // bare `Pane::new`) — `PaneVirtualLines` is only registered by `build_pane`,
 // same reasoning as `lsp_render.rs`.
 
@@ -35,7 +35,7 @@ fn type_text(ed: &mut Editor, text: &str) {
 #[test]
 fn virtual_line_renders_after_its_anchor_line() {
     let tmp = tempfile::tempdir().unwrap();
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     type_text(&mut ed, "let x = 5\nlet y = 10");
     let bid = ed.focused_buffer_id();
@@ -64,7 +64,7 @@ fn scroll_over_a_virtual_line_pushes_the_next_line_down_correctly() {
     // line's own row — the row-counting fix must correctly push line
     // 1's content down by the one stolen row, never overlap or skip it.
     let tmp = tempfile::tempdir().unwrap();
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     type_text(&mut ed, "aaa\nbbb\nccc");
     run(
@@ -97,7 +97,7 @@ fn scroll_over_a_virtual_line_pushes_the_next_line_down_correctly() {
 
 #[test]
 fn clearing_the_store_removes_the_virtual_line_next_frame() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
     ed.state.decorations.set_virtual_lines(

@@ -36,7 +36,7 @@ fn setup(
 ) -> (Editor, RealRuntimeGuard, ServerId) {
     let guard = RealRuntimeGuard::new();
 
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     let file = file_dir.join("main.rs");
     // 30 lines — comfortably taller than the default pane height's ⅓-cap
     // (`Pane::new`'s default viewport is 24 rows tall; `(viewport-range bid)`

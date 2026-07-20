@@ -195,7 +195,7 @@ fn cross_buffer_search_highlight_does_not_bleed_into_other_pane() {
     let path = f.path().to_path_buf();
     let _tmp_path = f.into_temp_path();
 
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     let pid_a = ed.state.focused_pane_id;
 
     // Distinguishing content + an active search on buffer A.

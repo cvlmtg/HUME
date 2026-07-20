@@ -59,7 +59,7 @@ fn setup_declared(
 ) -> (Editor, RealRuntimeGuard) {
     let guard = RealRuntimeGuard::new();
 
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     let file = file_dir.join("main.rs");
     // 30 lines — comfortably taller than the default pane height's ⅓-cap
     // (see lsp_hover.rs's `setup` for the full rationale): a 1-2 line
@@ -265,7 +265,7 @@ fn every_default_goto_binding_dispatches_without_error() {
     std::fs::write(&file, "fn main() {}\n").unwrap();
 
     let guard = RealRuntimeGuard::new();
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
 
     let mut host = ScriptingHost::new();
@@ -319,7 +319,7 @@ fn every_default_goto_binding_dispatches_without_error() {
 fn commented_init_example_block_is_valid_source() {
     let tmp = safe_tempdir();
     let guard = RealRuntimeGuard::new();
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,

@@ -43,7 +43,7 @@ fn begin_session(ed: &mut Editor, items: &[(&str, Option<&str>)]) {
 
 #[test]
 fn completion_menu_clamps_to_a_short_pane_instead_of_vanishing() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     // MAX_MENU_ROWS is 10 — 12 items would size an unclamped box to
     // 12 rows (+2 frame), taller than the short pane below.
@@ -72,7 +72,7 @@ fn completion_menu_clamps_to_a_short_pane_instead_of_vanishing() {
 
 #[test]
 fn completion_menu_clamps_to_a_narrow_pane_instead_of_vanishing() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     // A label wide enough to overflow the narrow pane below.
     begin_session(
@@ -103,7 +103,7 @@ fn completion_menu_clamps_to_a_narrow_pane_instead_of_vanishing() {
 
 #[test]
 fn menu_appears_with_top_items_after_begin() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     ed.feed_key(key('i'));
     begin_session(
@@ -123,7 +123,7 @@ fn menu_appears_with_top_items_after_begin() {
 
 #[test]
 fn typing_narrows_the_filtered_items() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     begin_session(&mut ed, &[("foo", None), ("foobar", None), ("grape", None)]);
 
@@ -145,7 +145,7 @@ fn typing_narrows_the_filtered_items() {
 
 #[test]
 fn enter_applies_the_selected_edit_and_closes_the_session() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     begin_session(&mut ed, &[("foo", None)]);
 
@@ -162,7 +162,7 @@ fn enter_applies_the_selected_edit_and_closes_the_session() {
 
 #[test]
 fn enter_with_no_session_inserts_a_newline_regression() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     ed.feed_key(key('a'));
     assert!(ed.lsp.completion.is_none(), "sanity: no session open");
@@ -180,7 +180,7 @@ fn enter_with_no_session_inserts_a_newline_regression() {
 
 #[test]
 fn esc_dismisses_the_session_but_keeps_typed_text_and_stays_in_insert() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     begin_session(&mut ed, &[("foo", None)]);
     ed.feed_key(key('f'));
@@ -206,7 +206,7 @@ fn esc_dismisses_the_session_but_keeps_typed_text_and_stays_in_insert() {
 /// swallowed the newline.
 #[test]
 fn enter_at_zero_matches_inserts_a_newline_instead_of_erroring() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     begin_session(&mut ed, &[("foo", None)]);
 
@@ -233,7 +233,7 @@ fn enter_at_zero_matches_inserts_a_newline_instead_of_erroring() {
 /// which inserts an indent (`\t` or spaces, depending on `tab-style`).
 #[test]
 fn tab_at_zero_matches_falls_through_to_normal_insert() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     begin_session(&mut ed, &[("foo", None)]);
 
@@ -256,7 +256,7 @@ fn tab_at_zero_matches_falls_through_to_normal_insert() {
 
 #[test]
 fn typing_to_zero_matches_keeps_the_session_but_a_single_esc_still_exits_insert() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     begin_session(&mut ed, &[("foo", None)]);
 
@@ -284,7 +284,7 @@ fn typing_to_zero_matches_keeps_the_session_but_a_single_esc_still_exits_insert(
 
 #[test]
 fn backspace_within_the_token_refilters_and_keeps_the_session_open() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     begin_session(&mut ed, &[("foo", None), ("grape", None)]);
     ed.feed_key(key('g'));
@@ -310,7 +310,7 @@ fn backspace_within_the_token_refilters_and_keeps_the_session_open() {
 
 #[test]
 fn backspace_past_the_anchor_dismisses_the_session() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     ed.feed_key(key('x')); // one char BEFORE the session's anchor
     begin_session(&mut ed, &[("foo", None)]);
@@ -334,7 +334,7 @@ fn backspace_past_the_anchor_dismisses_the_session() {
 
 #[test]
 fn tab_at_last_item_wraps_to_first() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     begin_session(&mut ed, &[("foo", None), ("bar", None), ("baz", None)]);
 
@@ -354,7 +354,7 @@ fn tab_at_last_item_wraps_to_first() {
 
 #[test]
 fn shift_tab_at_first_item_wraps_to_last() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     begin_session(&mut ed, &[("foo", None), ("bar", None), ("baz", None)]);
 
@@ -372,7 +372,7 @@ fn shift_tab_at_first_item_wraps_to_last() {
 
 #[test]
 fn ctrl_c_exits_insert_and_dismisses_the_session() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     begin_session(&mut ed, &[("foo", None)]);
 
@@ -390,7 +390,7 @@ fn ctrl_c_exits_insert_and_dismisses_the_session() {
 /// `prepare_frame` (the render-time safety net) does consume it.
 #[test]
 fn mode_change_outside_key_dispatch_dismisses_the_session_by_the_next_frame() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     begin_session(&mut ed, &[("foo", None)]);
     assert!(ed.lsp.completion.is_some(), "sanity: session open");
@@ -416,7 +416,7 @@ fn mode_change_outside_key_dispatch_dismisses_the_session_by_the_next_frame() {
 
 #[test]
 fn typing_after_accept_composes_into_the_open_edit_group_without_panicking() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     for ch in "DEFAULT_".chars() {
         ed.feed_key(key(ch));
@@ -451,7 +451,7 @@ fn typing_after_accept_composes_into_the_open_edit_group_without_panicking() {
 
 #[test]
 fn typing_after_moving_the_cursor_before_the_anchor_dismisses_instead_of_panicking() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     for ch in "abc".chars() {
         ed.feed_key(key(ch));

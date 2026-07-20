@@ -140,6 +140,7 @@ macro_rules! live_host {
                 wheel: &mut $ed.timer_wheel,
                 payloads: &mut $ed.timer_payloads,
             }),
+            terminal: $ed.terminal.as_ref(),
         }
     }};
 }
@@ -284,7 +285,7 @@ impl Editor {
             virtual_lines_synced: std::collections::HashMap::new(),
             lsp: super::lsp::LspState::new_inline(),
             tui_active: false,
-            event_wait: None,
+            terminal: None,
         }
     }
 

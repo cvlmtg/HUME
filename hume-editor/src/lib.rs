@@ -40,7 +40,9 @@ pub fn run_keys(
     let parsed =
         hume_scripting::parse_key_stream(keys).map_err(|e| format!("invalid key stream: {e}"))?;
 
-    let mut editor = editor::Editor::open(Some(input))?;
+    // Headless: no terminal, so nothing to wake — background threads (parse
+    // worker, LSP transport) call this harmlessly into the void.
+    let mut editor = editor::Editor::open(Some(input), std::sync::Arc::new(|| {}))?;
     // Headless mode: no terminal to negotiate kitty protocol, so assume
     // full capability. Ctrl+letter keys (e.g. `<c-w>`) are no-ops without
     // this since the dispatcher strips the Ctrl modifier only when
@@ -77,11 +79,23 @@ pub fn run_keys(
 /// to the shell and aren't seen by the editor; any left in the input buffer
 /// are read once raw mode / the alt-screen are entered.
 ///
-/// `TerminalGuard` ensures restore runs on every exit path — clean return,
-/// `?`-propagated error, or panic — including a panic before the terminal
-/// was ever touched (`restore` is a harmless no-op then).
+/// [`hume_platform::terminal::init`] installs a panic hook that restores the
+/// terminal on unwind; the explicit [`hume_platform::terminal::restore`] call
+/// at the end covers the clean-return and `?`-propagated-error paths. Both
+/// are safe to run even if `init` was never reached — every escape sequence
+/// `restore` emits is a documented no-op for a mode that was never entered.
 pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
-    if let Err(e) = hume_platform::install_signal_handlers() {
+    let shared = hume_platform::terminal::create()?;
+
+    // The cross-thread waker: background threads (LSP transport, parse
+    // worker) call `wake()` after posting a result so the main loop wakes
+    // instead of polling for completion (see `Editor::run`'s event step).
+    let waker = shared.event_reader().waker();
+    let wake: std::sync::Arc<dyn Fn() + Send + Sync> = std::sync::Arc::new(move || {
+        let _ = waker.wake();
+    });
+
+    if let Err(e) = hume_platform::install_signal_handlers(shared.clone()) {
         // Non-fatal: SIGTERM/SIGHUP will leak terminal state, but the editor
         // still works correctly for normal exit.
         eprintln!("hume: failed to install signal handlers: {e}");
@@ -92,14 +106,10 @@ pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error
         None => (None, &[][..]),
     };
 
-    // Guard is declared first so it drops last. On any unwinding path the
-    // Terminal's BufWriter flushes before restore() fires, ensuring no
-    // buffered render bytes reach the main screen after the alt screen exits.
-    let mut guard = hume_platform::terminal::TerminalGuard::new();
-
-    let mut editor = editor::Editor::open(first)?;
-    let kitty_enabled = hume_platform::terminal::probe_kitty()?;
+    let mut editor = editor::Editor::open(first, wake)?;
+    let kitty_enabled = hume_platform::terminal::probe_kitty(&shared)?;
     editor.set_kitty_support(kitty_enabled);
+    editor.attach_terminal(shared.clone());
     editor.init_scripting();
     // Open remaining paths after scripting init so OnBufferOpen hooks fire.
     editor.open_extra_files(rest);
@@ -109,6 +119,7 @@ pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error
     editor.drain_hooks();
 
     let mut term = hume_platform::terminal::init(
+        &shared,
         editor.state.settings.mouse_enabled,
         editor.state.settings.mouse_select,
         kitty_enabled,
@@ -116,9 +127,7 @@ pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error
     let result = editor.run(&mut term);
 
     // Explicit restore on the happy path so IO errors propagate to the caller.
-    // Disarm the guard afterwards to suppress the drop-time call.
-    hume_platform::terminal::restore()?;
-    guard.disarm();
+    hume_platform::terminal::restore(&shared)?;
 
     Ok(result?)
 }

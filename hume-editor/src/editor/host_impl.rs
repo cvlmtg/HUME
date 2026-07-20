@@ -41,6 +41,12 @@ pub(crate) struct EditorHostImpl<'a> {
     /// shared-borrow shape doesn't fit; `TimerHandle` bundles the two
     /// `&mut` pieces this needs.
     pub(crate) timers: Option<TimerHandle<'a>>,
+    /// `Some` only at the one call site that can reach
+    /// [`OutputHost::ensure_inline_output_screen`] (command dispatch) — `None`
+    /// everywhere else. `state.inline_output` only ever reaches `Armed` from
+    /// that same call site, so `ensure_inline_output_screen`'s early return
+    /// guarantees this is never read as `None` when it matters.
+    pub(crate) terminal: Option<&'a hume_platform::terminal::SharedTerm>,
 }
 
 impl<'a> EditorHostImpl<'a> {
@@ -52,6 +58,7 @@ impl<'a> EditorHostImpl<'a> {
             view,
             lsp: None,
             timers: None,
+            terminal: None,
         }
     }
 
@@ -589,7 +596,10 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
             return Ok(());
         };
         let (kitty, mouse, name) = (*kitty, *mouse, name.clone());
-        hume_platform::terminal::enter_inline_output(kitty, mouse)
+        let term = self
+            .terminal
+            .expect("Armed implies tui_active implies terminal is Some");
+        hume_platform::terminal::enter_inline_output(term, kitty, mouse)
             .map_err(|e| format!("inline-output enter failed: {e}"))?;
         hume_platform::terminal::print_running_banner(&name);
         self.state.inline_output = super::InlineOutputDispatch::Entered;

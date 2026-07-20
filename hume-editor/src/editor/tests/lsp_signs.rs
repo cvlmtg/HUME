@@ -3,7 +3,7 @@
 // from the diagnostics store and the signs store, plus the sign column's
 // auto-collapsing width.
 //
-// Every test here goes through `Editor::open(None)` (not `editor_from`'s bare
+// Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}))` (not `editor_from`'s bare
 // `Pane::new`) — sign providers are only registered by `build_pane`, same
 // reasoning as `lsp_render.rs`.
 
@@ -60,7 +60,7 @@ fn setup_with_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagCtx {
         backend.push_from_server(sid, publish_diagnostics_notification(uri.as_str(), diags));
     }
 
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     ed.lsp
         .insert_client_for_test(LspClient::new(sid, std::path::PathBuf::from(".")));
@@ -233,7 +233,7 @@ fn gutter_width_auto_2_expands_when_signs_exist() {
 #[test]
 fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
     let tmp = tempfile::tempdir().unwrap();
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     for ch in "abcdefgh".chars() {
         ed.feed_key(key(ch));
@@ -272,7 +272,7 @@ fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
 #[test]
 fn two_plugin_sources_on_the_same_line_keep_the_higher_priority_first() {
     let tmp = tempfile::tempdir().unwrap();
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     for ch in "abcdefgh".chars() {
         ed.feed_key(key(ch));
@@ -322,7 +322,7 @@ fn two_plugin_sources_on_the_same_line_keep_the_higher_priority_first() {
 #[test]
 fn two_plugin_sources_at_equal_priority_resolve_by_source_name() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     for ch in "abcdefgh".chars() {
         ed.feed_key(key(ch));
@@ -367,7 +367,7 @@ fn two_plugin_sources_at_equal_priority_resolve_by_source_name() {
 #[test]
 fn wider_signcolumn_keeps_multiple_signs_per_line() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     for ch in "abcdefgh".chars() {
         ed.feed_key(key(ch));
@@ -482,7 +482,7 @@ fn reload_to_shorter_text_clears_stale_diagnostics_and_does_not_panic() {
     let mut backend = InlineLspBackend::new();
     let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
 
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     ed.lsp
         .insert_client_for_test(LspClient::new(sid, std::path::PathBuf::from(".")));

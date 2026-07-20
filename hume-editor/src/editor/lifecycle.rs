@@ -2,13 +2,7 @@ use std::io;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-// Input is still read via crossterm in this commit (`ct::poll`/`ct::read`)
-// and converted to termina's event model at `convert_event` below; the next
-// commit replaces the reader itself and this conversion boundary goes away.
-// Everything downstream of the boundary (`handle_event`, mappings, keymap)
-// already speaks termina types.
-use crossterm::event as ct;
-use termina::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, Modifiers};
+use termina::event::{Event, KeyEvent, KeyEventKind};
 
 use hume_engine::pane::{Pane, WhitespaceConfig, WrapMode};
 use hume_engine::pipeline::{BufferId, EngineView, PaneId, PaneRenderSettings, RenderContext};
@@ -21,8 +15,7 @@ use crate::editor::lsp::DiagSeverity;
 use crate::editor::search;
 use crate::ops::pair::find_bracket_pair;
 use hume_editing::lines::line_end_exclusive;
-use hume_platform::events::WaitOutcome;
-use hume_platform::terminal::Term;
+use hume_platform::terminal::{SharedTerm, Term};
 
 use super::{Editor, Mode};
 
@@ -77,7 +70,15 @@ impl Editor {
     ///
     /// The cursor starts at position 0 in Normal mode. Terminal dimensions are
     /// placeholder values replaced on the first event-loop iteration.
-    pub(crate) fn open(file_path: Option<std::path::PathBuf>) -> io::Result<Self> {
+    ///
+    /// `wake` is the cross-thread waker background threads (LSP transport,
+    /// parse worker) call after posting a result, so `run`'s event loop wakes
+    /// instead of polling for completion. Works without a terminal too
+    /// (headless): the loop simply never enters `run` to wait on it.
+    pub(crate) fn open(
+        file_path: Option<std::path::PathBuf>,
+        wake: Arc<dyn Fn() + Send + Sync>,
+    ) -> io::Result<Self> {
         use super::clipboard;
         use super::keymap::Keymap;
         use super::message_log::MessageLog;
@@ -166,15 +167,6 @@ impl Editor {
 
         let mut buffers = BufferStore::new();
         buffers.open(buffer_id, doc);
-
-        // The cross-thread waker: background threads (LSP transport, parse
-        // worker) call `wake()` after posting a result so the main loop
-        // wakes instead of polling for completion (see `run`'s event step).
-        // Works without a terminal too (headless): the wake side just never
-        // has anything to wait on.
-        let (event_wait, waker) = hume_platform::events::event_wait_pair()?;
-        let wake: std::sync::Arc<dyn Fn() + Send + Sync> =
-            std::sync::Arc::new(move || waker.wake());
 
         Ok(Self {
             state: super::EditorState {
@@ -274,8 +266,14 @@ impl Editor {
             virtual_lines_synced: std::collections::HashMap::new(),
             lsp: super::lsp::LspState::new_threaded(std::sync::Arc::clone(&wake)),
             tui_active: false,
-            event_wait: Some(event_wait),
+            terminal: None,
         })
+    }
+
+    /// Attach the shared terminal handle `run` will read/write and the
+    /// inline-output bracket will borrow. Call once, before entering `run`.
+    pub(crate) fn attach_terminal(&mut self, term: SharedTerm) {
+        self.terminal = Some(term);
     }
 
     /// Process one key event — dispatch it, sync the search cache, drain any
@@ -320,12 +318,14 @@ impl Editor {
         // inline-output bracket (mod.rs) checks this to skip alt-screen
         // toggling and the "press any key" block outside the event loop.
         self.tui_active = true;
-        // The cross-thread waker's wait side. Taken out of `self` (not
-        // restored — `run` owns the terminal for its whole lifetime) so the
-        // loop below can call `&mut self` methods freely while holding it.
-        let mut event_wait = self.event_wait.take().ok_or_else(|| {
-            io::Error::other("event loop requires an Editor built by Editor::open")
+        // Cloned once up front (cheap: Arc + EventReader clone) so the loop
+        // below can call `&mut self` methods freely while still holding a
+        // terminal handle — `self.terminal` itself is never borrowed across
+        // the loop body.
+        let shared = self.terminal.clone().ok_or_else(|| {
+            io::Error::other("event loop requires an Editor with attach_terminal called")
         })?;
+        let reader = shared.event_reader();
         // Render context lives here — allocated once, reused every frame.
         // It must be outside `self` so `render_into` can borrow `self`
         // immutably while `ctx` is borrowed mutably alongside it.
@@ -393,7 +393,7 @@ impl Editor {
             // display until after every byte of this frame has been written.
             // Terminals that don't support DEC 2026 silently ignore the
             // sequence — hence `let _ =` rather than `?`.
-            let _ = hume_platform::terminal::begin_synchronized_update();
+            let _ = hume_platform::terminal::begin_synchronized_update(&shared);
             term.draw(|frame| {
                 self.render_into(frame.area(), frame.buffer_mut(), &mut ctx);
                 if let Some((col, row)) = cursor_screen {
@@ -405,50 +405,37 @@ impl Editor {
             // Emitted *after* draw so it's the last escape sequence the terminal
             // sees before we block — ratatui's ShowCursor flush can otherwise
             // reset the shape on some terminals.
-            let _ = hume_platform::terminal::set_cursor_shape(self.state.mode().cursor_is_bar());
+            let _ = hume_platform::terminal::set_cursor_shape(
+                &shared,
+                self.state.mode().cursor_is_bar(),
+            );
             if last_cursor_color_mode != Some(self.state.mode()) {
                 // Command/Search place the cursor on a white statusline background;
                 // use black so it remains visible. All other modes reset to default.
                 let black = matches!(self.state.mode(), EditorMode::Command | EditorMode::Search);
-                let _ = hume_platform::terminal::set_cursor_color(black);
+                let _ = hume_platform::terminal::set_cursor_color(&shared, black);
                 last_cursor_color_mode = Some(self.state.mode());
             }
             // Close the synchronized-output envelope: the terminal now atomically
             // paints the complete frame — clear + cells + cursor shape in one shot.
-            let _ = hume_platform::terminal::end_synchronized_update();
+            let _ = hume_platform::terminal::end_synchronized_update(&shared);
 
             // ── 3. Event ──────────────────────────────────────────────────────
-            // (a) Crossterm parses input in batches and can hold already-
-            // decoded events in its own internal queue, which the fd-level
-            // wait below cannot see — check it first, or a queued event
-            // could sit unhandled until the next physical keypress.
-            if !ct::poll(Duration::from_millis(0))? {
-                // (b) Block until input, a wake from a background thread
-                // (parse worker, LSP transport, SIGWINCH), or the nearest
-                // async source's deadline — whichever comes first. Idle (no
-                // deadline) blocks indefinitely, so we never burn CPU while
-                // the editor is at rest.
-                match event_wait.wait(self.wake_timeout())? {
-                    // Woken/TimedOut: loop back to the top — `prepare_frame`
-                    // drains every async source regardless of why we woke,
-                    // and `term.size()` at loop top re-reads the viewport
-                    // (covers SIGWINCH; crossterm surfaces the actual
-                    // `Resize` event on a later poll/read).
-                    WaitOutcome::Woken | WaitOutcome::TimedOut => continue,
-                    WaitOutcome::Input => {
-                        // Readable isn't the same as "a complete event is
-                        // ready": crossterm may have only a partial escape
-                        // sequence buffered, or (Windows) the console record
-                        // that signaled us may be one crossterm filters out
-                        // entirely. No event ready here means a spurious
-                        // wake — re-loop rather than block in `event::read`.
-                        if !ct::poll(Duration::from_millis(0))? {
-                            continue;
-                        }
-                    }
-                }
+            // Blocks until a matching event is available, a wake from a
+            // background thread (parse worker, LSP transport, SIGWINCH — the
+            // reader's source routes it internally), or the nearest async
+            // source's deadline — whichever comes first. Idle (no deadline)
+            // blocks indefinitely, so we never burn CPU while the editor is
+            // at rest. `Ok(false)` covers both a timeout and a waker
+            // interrupt — either way, loop back to the top: `prepare_frame`
+            // drains every async source regardless of why we woke, and
+            // `term.size()` re-reads the viewport (covers SIGWINCH).
+            match reader.poll(self.wake_timeout(), |_| true) {
+                Ok(true) => {}
+                Ok(false) => continue,
+                Err(e) => return Err(e),
             }
-            match convert_event(ct::read()?) {
+            match reader.read(|_| true)? {
                 // Release events arrive only with kitty keyboard protocol
                 // (REPORT_EVENT_TYPES flag). Ignore them — we act on Press and
                 // Repeat (held key). Without kitty all events are Press anyway.
@@ -471,8 +458,8 @@ impl Editor {
                     // re-read at loop top, so only the final size matters.
                     // Non-resize events that arrive during the drain are handled
                     // inline so they are never lost.
-                    while ct::poll(Duration::from_millis(0))? {
-                        match convert_event(ct::read()?) {
+                    while reader.poll(Some(Duration::ZERO), |_| true)? {
+                        match reader.read(|_| true)? {
                             Event::WindowResized(_) => continue,
                             Event::Key(key) if key.kind != KeyEventKind::Release => {
                                 self.handle_event(Event::Key(key));
@@ -493,6 +480,9 @@ impl Editor {
                         }
                     }
                 }
+                // CSI/OSC/DCS protocol responses and focus events: nothing in
+                // the run loop needs them. The `|_| true` filter guarantees
+                // they can't pile up unread in the reader's buffer either way.
                 _ => {}
             }
 
@@ -520,8 +510,8 @@ impl Editor {
         // ServerHandle::drop would otherwise SIGKILL them.
         self.lsp_shutdown_all(Duration::from_millis(500));
         // Restore the user's default cursor shape and colour before returning to the shell.
-        hume_platform::terminal::reset_cursor_shape()?;
-        let _ = hume_platform::terminal::set_cursor_color(false); // emits reset sequence
+        hume_platform::terminal::reset_cursor_shape(&shared)?;
+        let _ = hume_platform::terminal::set_cursor_color(&shared, false); // emits reset sequence
         Ok(())
     }
 
@@ -1815,178 +1805,6 @@ impl Editor {
 // ---------------------------------------------------------------------------
 // Module-level helpers
 // ---------------------------------------------------------------------------
-
-// ── crossterm → termina event conversion (temporary) ────────────────────────
-//
-// Input reading stays on crossterm for this commit; everything downstream
-// (`handle_event`, mappings, keymap) already speaks termina's event model.
-// This boundary — and the `ct` import above — is deleted in the commit that
-// replaces the reader itself with termina's `EventReader`.
-
-fn convert_event(ev: ct::Event) -> Event {
-    match ev {
-        ct::Event::Key(k) => Event::Key(KeyEvent {
-            code: convert_key_code(k.code),
-            modifiers: convert_modifiers(k.modifiers),
-            kind: convert_kind(k.kind),
-            state: convert_state(k.state),
-        }),
-        ct::Event::Mouse(m) => Event::Mouse(termina::event::MouseEvent {
-            kind: convert_mouse_kind(m.kind),
-            column: m.column,
-            row: m.row,
-            modifiers: convert_modifiers(m.modifiers),
-        }),
-        ct::Event::Paste(s) => Event::Paste(s),
-        ct::Event::Resize(cols, rows) => Event::WindowResized(termina::WindowSize {
-            cols,
-            rows,
-            pixel_width: None,
-            pixel_height: None,
-        }),
-        ct::Event::FocusGained => Event::FocusIn,
-        ct::Event::FocusLost => Event::FocusOut,
-    }
-}
-
-fn convert_key_code(code: ct::KeyCode) -> KeyCode {
-    match code {
-        ct::KeyCode::Backspace => KeyCode::Backspace,
-        ct::KeyCode::Enter => KeyCode::Enter,
-        ct::KeyCode::Left => KeyCode::Left,
-        ct::KeyCode::Right => KeyCode::Right,
-        ct::KeyCode::Up => KeyCode::Up,
-        ct::KeyCode::Down => KeyCode::Down,
-        ct::KeyCode::Home => KeyCode::Home,
-        ct::KeyCode::End => KeyCode::End,
-        ct::KeyCode::PageUp => KeyCode::PageUp,
-        ct::KeyCode::PageDown => KeyCode::PageDown,
-        ct::KeyCode::Tab => KeyCode::Tab,
-        ct::KeyCode::BackTab => KeyCode::BackTab,
-        ct::KeyCode::Delete => KeyCode::Delete,
-        ct::KeyCode::Insert => KeyCode::Insert,
-        ct::KeyCode::F(n) => KeyCode::Function(n),
-        ct::KeyCode::Char(c) => KeyCode::Char(c),
-        ct::KeyCode::Null => KeyCode::Null,
-        ct::KeyCode::Esc => KeyCode::Escape,
-        ct::KeyCode::CapsLock => KeyCode::CapsLock,
-        ct::KeyCode::ScrollLock => KeyCode::ScrollLock,
-        ct::KeyCode::NumLock => KeyCode::NumLock,
-        ct::KeyCode::PrintScreen => KeyCode::PrintScreen,
-        ct::KeyCode::Pause => KeyCode::Pause,
-        ct::KeyCode::Menu => KeyCode::Menu,
-        ct::KeyCode::KeypadBegin => KeyCode::KeypadBegin,
-        ct::KeyCode::Media(m) => KeyCode::Media(convert_media_key(m)),
-        ct::KeyCode::Modifier(m) => KeyCode::Modifier(convert_modifier_key(m)),
-    }
-}
-
-fn convert_media_key(m: ct::MediaKeyCode) -> termina::event::MediaKeyCode {
-    use termina::event::MediaKeyCode as T;
-    match m {
-        ct::MediaKeyCode::Play => T::Play,
-        ct::MediaKeyCode::Pause => T::Pause,
-        ct::MediaKeyCode::PlayPause => T::PlayPause,
-        ct::MediaKeyCode::Reverse => T::Reverse,
-        ct::MediaKeyCode::Stop => T::Stop,
-        ct::MediaKeyCode::FastForward => T::FastForward,
-        ct::MediaKeyCode::Rewind => T::Rewind,
-        ct::MediaKeyCode::TrackNext => T::TrackNext,
-        ct::MediaKeyCode::TrackPrevious => T::TrackPrevious,
-        ct::MediaKeyCode::Record => T::Record,
-        ct::MediaKeyCode::LowerVolume => T::LowerVolume,
-        ct::MediaKeyCode::RaiseVolume => T::RaiseVolume,
-        ct::MediaKeyCode::MuteVolume => T::MuteVolume,
-    }
-}
-
-fn convert_modifier_key(m: ct::ModifierKeyCode) -> termina::event::ModifierKeyCode {
-    use termina::event::ModifierKeyCode as T;
-    match m {
-        ct::ModifierKeyCode::LeftShift => T::LeftShift,
-        ct::ModifierKeyCode::LeftControl => T::LeftControl,
-        ct::ModifierKeyCode::LeftAlt => T::LeftAlt,
-        ct::ModifierKeyCode::LeftSuper => T::LeftSuper,
-        ct::ModifierKeyCode::LeftHyper => T::LeftHyper,
-        ct::ModifierKeyCode::LeftMeta => T::LeftMeta,
-        ct::ModifierKeyCode::RightShift => T::RightShift,
-        ct::ModifierKeyCode::RightControl => T::RightControl,
-        ct::ModifierKeyCode::RightAlt => T::RightAlt,
-        ct::ModifierKeyCode::RightSuper => T::RightSuper,
-        ct::ModifierKeyCode::RightHyper => T::RightHyper,
-        ct::ModifierKeyCode::RightMeta => T::RightMeta,
-        ct::ModifierKeyCode::IsoLevel3Shift => T::IsoLevel3Shift,
-        ct::ModifierKeyCode::IsoLevel5Shift => T::IsoLevel5Shift,
-    }
-}
-
-fn convert_kind(k: ct::KeyEventKind) -> KeyEventKind {
-    match k {
-        ct::KeyEventKind::Press => KeyEventKind::Press,
-        ct::KeyEventKind::Repeat => KeyEventKind::Repeat,
-        ct::KeyEventKind::Release => KeyEventKind::Release,
-    }
-}
-
-fn convert_state(s: ct::KeyEventState) -> KeyEventState {
-    let mut out = KeyEventState::NONE;
-    if s.contains(ct::KeyEventState::KEYPAD) {
-        out |= KeyEventState::KEYPAD;
-    }
-    if s.contains(ct::KeyEventState::CAPS_LOCK) {
-        out |= KeyEventState::CAPS_LOCK;
-    }
-    if s.contains(ct::KeyEventState::NUM_LOCK) {
-        out |= KeyEventState::NUM_LOCK;
-    }
-    out
-}
-
-fn convert_modifiers(m: ct::KeyModifiers) -> Modifiers {
-    let mut out = Modifiers::NONE;
-    if m.contains(ct::KeyModifiers::SHIFT) {
-        out |= Modifiers::SHIFT;
-    }
-    if m.contains(ct::KeyModifiers::ALT) {
-        out |= Modifiers::ALT;
-    }
-    if m.contains(ct::KeyModifiers::CONTROL) {
-        out |= Modifiers::CONTROL;
-    }
-    if m.contains(ct::KeyModifiers::SUPER) {
-        out |= Modifiers::SUPER;
-    }
-    if m.contains(ct::KeyModifiers::HYPER) {
-        out |= Modifiers::HYPER;
-    }
-    if m.contains(ct::KeyModifiers::META) {
-        out |= Modifiers::META;
-    }
-    out
-}
-
-fn convert_mouse_kind(k: ct::MouseEventKind) -> termina::event::MouseEventKind {
-    use termina::event::MouseEventKind as T;
-    match k {
-        ct::MouseEventKind::Down(b) => T::Down(convert_mouse_button(b)),
-        ct::MouseEventKind::Up(b) => T::Up(convert_mouse_button(b)),
-        ct::MouseEventKind::Drag(b) => T::Drag(convert_mouse_button(b)),
-        ct::MouseEventKind::Moved => T::Moved,
-        ct::MouseEventKind::ScrollDown => T::ScrollDown,
-        ct::MouseEventKind::ScrollUp => T::ScrollUp,
-        ct::MouseEventKind::ScrollLeft => T::ScrollLeft,
-        ct::MouseEventKind::ScrollRight => T::ScrollRight,
-    }
-}
-
-fn convert_mouse_button(b: ct::MouseButton) -> termina::event::MouseButton {
-    use termina::event::MouseButton as T;
-    match b {
-        ct::MouseButton::Left => T::Left,
-        ct::MouseButton::Right => T::Right,
-        ct::MouseButton::Middle => T::Middle,
-    }
-}
 
 /// Scroll the pane viewport so `cursor_char` stays within the visible area.
 ///

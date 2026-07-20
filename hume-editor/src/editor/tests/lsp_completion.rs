@@ -460,6 +460,7 @@ fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op
         view: &mut ed.view,
         lsp: None,
         timers: None,
+        terminal: None,
     };
     let result = impl_host.completion_begin(bid_b, vec![serde_json::json!({"label": "x"})], false);
     assert!(

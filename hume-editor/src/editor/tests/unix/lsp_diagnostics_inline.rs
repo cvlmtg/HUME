@@ -55,7 +55,7 @@ fn setup(file: &Path, tmp: &Path, diags: &[DiagFixture]) -> (Editor, RealRuntime
         backend.push_from_server(sid, publish_diagnostics_notification(uri.as_str(), diags));
     }
 
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     ed.lsp
         .insert_client_for_test(LspClient::new(sid, file.parent().unwrap().to_path_buf()));

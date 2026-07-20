@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-crossterm = "0.29"
+termina = "0.3.3"
+ratatui-termina = "0.1"
 ratatui.workspace = true
 ctrlc = { version = "3", features = ["termination"] }
 tempfile = "3"

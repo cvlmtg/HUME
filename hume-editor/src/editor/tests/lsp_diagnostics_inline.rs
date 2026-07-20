@@ -17,7 +17,7 @@ use hume_engine::pipeline::RenderContext;
 /// terminal-flush-time truncation.)
 #[test]
 fn full_message_reaches_the_render_provider_untruncated() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     for ch in "let x = 1".chars() {
         ed.feed_key(key(ch));

@@ -12,9 +12,6 @@
 //! - [`process`] — `std::process::Command` wrappers (the audit allow-list).
 //! - [`dirs`] — XDG/platform config, data, home, and runtime directories.
 //! - [`path`] — tilde/env-var expansion and path-separator utilities.
-//! - [`events`] — cross-thread wake primitive for the main event loop:
-//!   blocks on terminal input, an external wake from a background thread, or
-//!   a deadline, whichever comes first.
 //!
 //! All platform-conditional code (`#[cfg(unix)]`, `#[cfg(windows)]`) is
 //! hidden behind private sub-modules; every public function has a uniform
@@ -24,7 +21,6 @@
 mod unix;
 
 pub mod dirs;
-pub mod events;
 pub mod fs;
 pub mod io;
 pub mod path;
@@ -43,10 +39,10 @@ use std::time::{Duration, Instant};
 /// terminal-window close sent by the OS.
 ///
 /// The handler runs on a dedicated worker thread managed by `ctrlc`, so it is
-/// safe to call `restore()` (which allocates and writes to stdout).
-pub fn install_signal_handlers() -> Result<(), ctrlc::Error> {
-    ctrlc::set_handler(|| {
-        if let Err(e) = crate::terminal::restore() {
+/// safe to call `restore()` (which allocates and writes to the terminal).
+pub fn install_signal_handlers(term: terminal::SharedTerm) -> Result<(), ctrlc::Error> {
+    ctrlc::set_handler(move || {
+        if let Err(e) = crate::terminal::restore(&term) {
             eprintln!("hume: terminal restore failed (signal): {e}");
         }
         // Exit with the conventional "killed by signal" code. ctrlc does not
@@ -61,14 +57,9 @@ pub fn install_signal_handlers() -> Result<(), ctrlc::Error> {
 /// delegates the query/response loop to [`run_probe`]. Returns `Ok(true)` if
 /// the terminal supports kitty keyboard protocol push, `Ok(false)` otherwise.
 ///
-/// On Windows this is unconditionally `Ok(false)` — no probe runs. Input
-/// arrives as Win32 `INPUT_RECORD`s translated by ConPTY, and crossterm's
-/// Windows event source has no CSI-u parser (that parser exists only in its
-/// Unix path), so kitty-encoded keys would leak into the buffer as literal
-/// text no matter what the hosting terminal supports. Asking the terminal is
-/// not a valid gate here anyway: ConPTY from Windows Terminal 1.25 answers
-/// the kitty query itself. Real Windows support needs a VT input reader of
-/// our own (see docs/ROADMAP.md).
+/// On Windows this is unconditionally `Ok(false)` for now — no probe runs
+/// yet (tracked separately; termina's Windows backend decodes kitty
+/// CSI-u sequences, so a real probe belongs here once wired up).
 ///
 /// Must be called after `enable_raw_mode()`.
 pub(crate) fn probe_kitty_support() -> std::io::Result<bool> {

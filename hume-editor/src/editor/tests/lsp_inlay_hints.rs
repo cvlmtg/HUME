@@ -2,7 +2,7 @@
 // write side that feeds the new `InlayHintProvider` (`InlineDecoration`) from
 // the `decorations.inlay_hints` store.
 //
-// Every test here goes through `Editor::open(None)` (not `editor_from`'s bare
+// Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}))` (not `editor_from`'s bare
 // `Pane::new`) — `InlayHintProvider` is only registered by `build_pane`, same
 // reasoning as `lsp_render.rs`. Hints are injected directly via
 // `ed.state.decorations.set_inlay_hints` (bypassing `set-inlay-hints!`'s wire
@@ -28,7 +28,7 @@ fn type_text(ed: &mut Editor, text: &str) {
 
 #[test]
 fn after_hint_renders_dimmed_immediately_after_its_char() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     ed.state.settings.lsp_inlay_hints = true; // off by default
     type_text(&mut ed, "let x = 5");
@@ -50,7 +50,7 @@ fn after_hint_renders_dimmed_immediately_after_its_char() {
 
 #[test]
 fn before_hint_renders_immediately_before_its_char() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     ed.state.settings.lsp_inlay_hints = true; // off by default
     type_text(&mut ed, "let x = 5");
@@ -76,7 +76,7 @@ fn hint_after_an_emoji_lands_on_the_correct_byte_offset() {
     // emoji itself) must splice in right after its 4 bytes, not after 1
     // byte — proving the write side converts by rope char-to-byte, not by
     // treating `pos` as already a byte count.
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     ed.state.settings.lsp_inlay_hints = true; // off by default
     type_text(&mut ed, "🎉party");
@@ -102,7 +102,7 @@ fn hint_on_a_wrapped_line_pins_current_render_behavior() {
     // render time but are invisible to scroll/cursor row math) — this test
     // only pins whatever `format_buffer_line` currently does, it does not
     // assert correctness of cursor placement on this line.
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     ed.state.settings.lsp_inlay_hints = true; // off by default
     type_text(&mut ed, "aaaaaaaaaabbbbbbbbbbccccccccccdddddddddd");
@@ -125,7 +125,7 @@ fn hint_on_a_wrapped_line_pins_current_render_behavior() {
 
 #[test]
 fn clearing_the_store_removes_the_hint_next_frame() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.state.settings.lsp_inlay_hints = true; // off by default
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
@@ -179,7 +179,7 @@ fn setting_off_renders_nothing_even_with_hints_in_the_store() {
     // first and confirms a hint renders — otherwise the final "off" assert
     // would pass even if the `:set … =false` call were a no-op (the
     // zero-effect the setting already starts in).
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
     ed.state.decorations.set_inlay_hints(

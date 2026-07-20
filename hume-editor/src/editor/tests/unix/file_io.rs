@@ -142,7 +142,7 @@ fn open_extra_files_opens_all_paths() {
     let canonical1 = std::fs::canonicalize(f1.path()).unwrap();
     let canonical2 = std::fs::canonicalize(f2.path()).unwrap();
 
-    let mut ed = Editor::open(Some(canonical1.clone())).unwrap();
+    let mut ed = Editor::open(Some(canonical1.clone()), std::sync::Arc::new(|| {})).unwrap();
     let first_id = ed.focused_buffer_id();
 
     ed.open_extra_files(std::slice::from_ref(&canonical2));
@@ -170,7 +170,7 @@ fn open_extra_files_deduplicates() {
     std::fs::write(f1.path(), "hello\n").unwrap();
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
 
-    let mut ed = Editor::open(Some(canonical.clone())).unwrap();
+    let mut ed = Editor::open(Some(canonical.clone()), std::sync::Arc::new(|| {})).unwrap();
     // Pass the same path twice — must still result in exactly one buffer.
     ed.open_extra_files(&[canonical.clone(), canonical]);
 
@@ -313,7 +313,7 @@ fn wa_preserves_focus_on_single_buffer() {
 /// it via `?`, leaving bid2 unsaved.
 #[test]
 fn wa_skips_read_only_dirty_buffer() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     // bid1 — writable dirty buffer backed by a file.
     let (tmp1_path, bid1) = open_file_buffer(&mut ed, "one\n");
     ed.switch_to_buffer_without_jump(bid1);
@@ -356,7 +356,7 @@ fn open_extra_files_nonexistent_logs_warning() {
     std::fs::write(f1.path(), "hello\n").unwrap();
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
 
-    let mut ed = Editor::open(Some(canonical.clone())).unwrap();
+    let mut ed = Editor::open(Some(canonical.clone()), std::sync::Arc::new(|| {})).unwrap();
     let nonexistent = std::path::PathBuf::from("/tmp/hume_test_nonexistent_xyz_404.txt");
 
     ed.open_extra_files(std::slice::from_ref(&nonexistent));
@@ -395,7 +395,7 @@ fn open_extra_files_warns_with_untransformed_path() {
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
 
-    let mut ed = Editor::open(Some(canonical)).unwrap();
+    let mut ed = Editor::open(Some(canonical), std::sync::Arc::new(|| {})).unwrap();
     // Bypass shell tilde expansion by constructing the PathBuf directly —
     // exercises callers (e.g. Steel scripting) that may pass a literal `~`.
     let tilde_path = std::path::PathBuf::from("~/hume-test-no-such-file-xyz.txt");

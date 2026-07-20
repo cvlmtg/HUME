@@ -12,73 +12,216 @@
 //! Also provides cursor shape/colour control, DEC 2026 synchronized-update
 //! framing, and the inline-subprocess-output flow
 //! ([`enter_inline_output`]/[`leave_inline_output`]).
+//!
+//! [`SharedTerm`] is a cheap-to-clone handle: every caller that needs to read
+//! or write the terminal (the render loop, the signal handler, the inline-
+//! output bracket) holds a clone. Event reads/polls never lock the shared
+//! mutex — they go straight to the cloned [`EventReader`] — so a blocking
+//! read on one thread can never stall a write on another.
 
-use std::io::{self, BufWriter, Stdout, Write, stdout};
+use std::io::{self, Write};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Duration;
 
-use crossterm::{
-    cursor::SetCursorStyle,
-    event::{Event, KeyEventKind, KeyboardEnhancementFlags, read},
-    execute,
-    terminal::{
-        BeginSynchronizedUpdate, EndSynchronizedUpdate, EnterAlternateScreen, LeaveAlternateScreen,
-        disable_raw_mode, enable_raw_mode,
-    },
+use ratatui_termina::TerminaBackend;
+use termina::Terminal as _;
+use termina::escape::csi::{
+    Csi, Cursor, DecPrivateMode, DecPrivateModeCode, Keyboard, KittyKeyboardFlags, Mode,
 };
-use ratatui::{Terminal, backend::CrosstermBackend};
+use termina::escape::osc::{ColorOrQuery, DynamicColorNumber, Osc};
+use termina::event::KeyEventKind;
+use termina::style::{CursorStyle, RgbColor};
+use termina::{Event, EventReader, PlatformHandle, PlatformTerminal, WindowSize};
 
-/// A ratatui `Terminal` backed by crossterm on stdout.
+/// A ratatui `Terminal` backed by a [`SharedTerm`].
 ///
 /// Aliased here so every other module can name the type without repeating the
 /// backend parameter.
-pub type Term = Terminal<CrosstermBackend<BufWriter<Stdout>>>;
+pub type Term = ratatui::Terminal<TerminaBackend<SharedTerm>>;
+
+// ── SharedTerm ────────────────────────────────────────────────────────────────
+
+/// A cheap-to-clone handle to the process's terminal.
+///
+/// Wraps the platform terminal behind a mutex so it can be shared between the
+/// render loop, the signal handler, and the inline-output bracket, plus a
+/// cloned [`EventReader`] captured once at [`create`] time. The mutex guards
+/// only short operations — writes and mode switches; blocking `poll`/`read`
+/// calls go through the `EventReader` directly and never take the lock, so a
+/// pending read can never stall a writer on another thread.
+#[derive(Clone)]
+pub struct SharedTerm {
+    inner: Arc<Mutex<PlatformTerminal>>,
+    reader: EventReader,
+}
+
+impl SharedTerm {
+    fn lock(&self) -> MutexGuard<'_, PlatformTerminal> {
+        self.inner.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// A cloneable reader for blocking or non-blocking event reads.
+    pub fn event_reader(&self) -> EventReader {
+        self.reader.clone()
+    }
+}
+
+impl io::Write for SharedTerm {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.lock().write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.lock().flush()
+    }
+}
+
+impl termina::Terminal for SharedTerm {
+    fn enter_raw_mode(&mut self) -> io::Result<()> {
+        self.lock().enter_raw_mode()
+    }
+
+    fn enter_cooked_mode(&mut self) -> io::Result<()> {
+        self.lock().enter_cooked_mode()
+    }
+
+    fn get_dimensions(&self) -> io::Result<WindowSize> {
+        self.lock().get_dimensions()
+    }
+
+    fn event_reader(&self) -> EventReader {
+        self.reader.clone()
+    }
+
+    fn poll<F: Fn(&Event) -> bool>(
+        &self,
+        filter: F,
+        timeout: Option<Duration>,
+    ) -> io::Result<bool> {
+        self.reader.poll(timeout, filter)
+    }
+
+    fn read<F: Fn(&Event) -> bool>(&self, filter: F) -> io::Result<Event> {
+        self.reader.read(filter)
+    }
+
+    fn set_panic_hook(&mut self, f: impl Fn(&mut PlatformHandle) + Send + Sync + 'static) {
+        self.lock().set_panic_hook(f);
+    }
+}
+
+/// Open the process terminal. Call once at startup; clone the result for
+/// every caller that needs to read or write it.
+pub fn create() -> io::Result<SharedTerm> {
+    let inner = PlatformTerminal::new()?;
+    let reader = inner.event_reader();
+    Ok(SharedTerm {
+        inner: Arc::new(Mutex::new(inner)),
+        reader,
+    })
+}
 
 // ── Shared escape-sequence helpers ───────────────────────────────────────────
 
-fn push_kitty_flags(out: &mut impl io::Write) -> io::Result<()> {
-    let flags = KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-        | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
-        | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS;
-    // Bypass crossterm's PushKeyboardEnhancementFlags Command, which routes
-    // through a WinAPI fallback path on Windows; a raw write keeps this
-    // helper a plain byte emitter. Emits the same CSI crossterm's own
-    // write_ansi would (`\x1b[>{bits}u`). Only ever reached on Unix: the
-    // Windows probe is hardwired to false (see probe_kitty_support) because
-    // the INPUT_RECORD-based input path cannot decode kitty CSI-u replies.
-    write!(out, "\x1b[>{}u", flags.bits())?;
+fn dec_set(code: DecPrivateModeCode) -> Csi {
+    Csi::Mode(Mode::SetDecPrivateMode(DecPrivateMode::Code(code)))
+}
+
+fn dec_reset(code: DecPrivateModeCode) -> Csi {
+    Csi::Mode(Mode::ResetDecPrivateMode(DecPrivateMode::Code(code)))
+}
+
+fn kitty_flags() -> KittyKeyboardFlags {
+    // REPORT_ALTERNATE_KEYS is required so that Ctrl+shifted-chars (e.g.
+    // Ctrl+}) arrive with the correct keycode instead of the base key plus
+    // SHIFT. See docs/learning/command-keymap-dispatch.md.
+    //
+    // Known limitation: WezTerm 20240203-110809-5046fc22 does not fully
+    // support REPORT_ALTERNATE_KEYS — Ctrl+shifted-char one-shot extend may
+    // not work on that version.
+    KittyKeyboardFlags::DISAMBIGUATE_ESCAPE_CODES
+        | KittyKeyboardFlags::REPORT_EVENT_TYPES
+        | KittyKeyboardFlags::REPORT_ALTERNATE_KEYS
+}
+
+fn write_kitty_push(out: &mut impl io::Write) -> io::Result<()> {
+    write!(out, "{}", Csi::Keyboard(Keyboard::PushFlags(kitty_flags())))?;
     out.flush()
 }
 
-fn pop_kitty_flags(out: &mut impl io::Write) -> io::Result<()> {
+fn write_kitty_pop(out: &mut impl io::Write) -> io::Result<()> {
     // Pop one level of the keyboard enhancement stack. Fixed protocol
-    // sequence (no flag argument); harmless no-op when stack is empty.
-    out.write_all(b"\x1b[<1u")?;
+    // sequence (no flag argument); harmless no-op when the stack is empty.
+    write!(out, "{}", Csi::Keyboard(Keyboard::PopFlags(1)))?;
     out.flush()
 }
 
-fn enable_mouse(out: &mut Stdout, select: bool) -> io::Result<()> {
-    out.write_all(b"\x1b[?1000h\x1b[?1006h")?;
+fn write_mouse_enable(out: &mut impl io::Write, select: bool) -> io::Result<()> {
+    // Normal tracking (1000): button press/release and scroll wheel.
+    // SGR extended coordinates (1006): removes the 223-column limit of the
+    // legacy X10 encoding; required for wide terminals.
+    write!(
+        out,
+        "{}{}",
+        dec_set(DecPrivateModeCode::MouseTracking),
+        dec_set(DecPrivateModeCode::SGRMouse)
+    )?;
     if select {
-        out.write_all(b"\x1b[?1002h")?;
+        // Button-event tracking (1002) additionally reports drag motion.
+        // Without it, drag events never reach the application, so the
+        // terminal handles drag-select natively.
+        write!(out, "{}", dec_set(DecPrivateModeCode::ButtonEventMouse))?;
     }
     out.flush()
 }
 
-fn disable_mouse(out: &mut Stdout) -> io::Result<()> {
-    out.write_all(b"\x1b[?1002l\x1b[?1000l\x1b[?1006l")?;
+fn write_mouse_disable(out: &mut impl io::Write) -> io::Result<()> {
+    // The reset sequences are harmless no-ops if the corresponding mode was
+    // never enabled.
+    write!(
+        out,
+        "{}{}{}",
+        dec_reset(DecPrivateModeCode::ButtonEventMouse),
+        dec_reset(DecPrivateModeCode::MouseTracking),
+        dec_reset(DecPrivateModeCode::SGRMouse)
+    )?;
     out.flush()
 }
 
-fn enable_bracketed_paste(out: &mut impl io::Write) -> io::Result<()> {
-    // Bypass crossterm's EnableBracketedPaste Command for the same reason as
-    // push_kitty_flags: a raw write is a harmless no-op on terminals without
-    // DEC mode 2004, with no platform-specific failure path to route around.
-    out.write_all(b"\x1b[?2004h")?;
+fn write_paste_enable(out: &mut impl io::Write) -> io::Result<()> {
+    write!(out, "{}", dec_set(DecPrivateModeCode::BracketedPaste))?;
     out.flush()
 }
 
-fn disable_bracketed_paste(out: &mut impl io::Write) -> io::Result<()> {
-    out.write_all(b"\x1b[?2004l")?;
+fn write_paste_disable(out: &mut impl io::Write) -> io::Result<()> {
+    write!(out, "{}", dec_reset(DecPrivateModeCode::BracketedPaste))?;
     out.flush()
+}
+
+/// SSOT byte sequence that undoes every application-level mode [`init`]
+/// turns on: closes any open synchronized-update envelope, disables
+/// bracketed paste, pops the kitty keyboard stack, disables mouse tracking,
+/// and leaves the alternate screen. Shared between [`restore`] and the panic
+/// hook installed by [`init`] — the hook can only write bytes (no raw/cooked
+/// mode switch), and termina restores the platform mode itself right after
+/// the hook returns.
+fn write_unwind_escapes(out: &mut impl io::Write) -> io::Result<()> {
+    write!(out, "{}", dec_reset(DecPrivateModeCode::SynchronizedOutput))?;
+    out.flush()?;
+    write_paste_disable(out)?;
+    write_kitty_pop(out)?;
+    write_mouse_disable(out)?;
+    write!(
+        out,
+        "{}",
+        dec_reset(DecPrivateModeCode::ClearAndEnableAlternateScreen)
+    )?;
+    out.flush()?;
+    // Second pop. Since `init()` pushes onto the alt screen's stack, the
+    // first pop (above) clears it. This extra pop handles terminals with a
+    // global keyboard stack — a harmless no-op on per-screen-buffer
+    // terminals (WezTerm, kitty).
+    write_kitty_pop(out)
 }
 
 // ── Public terminal lifecycle API ─────────────────────────────────────────────
@@ -94,24 +237,25 @@ fn disable_bracketed_paste(out: &mut impl io::Write) -> io::Result<()> {
 /// Probe failures (channel errors, not mere timeouts) are surfaced to the
 /// user as a one-line stderr hint: kitty support degrades to "off" but the
 /// editor still starts. A plain timeout reports `Ok(false)` upstream.
-pub fn probe_kitty() -> io::Result<bool> {
-    enable_raw_mode()?;
+pub fn probe_kitty(term: &SharedTerm) -> io::Result<bool> {
+    let mut term = term.clone();
+    term.enter_raw_mode()?;
     let kitty_enabled = match crate::probe_kitty_support() {
         Ok(v) => v,
         Err(e) => {
             // Disable raw mode so the hint prints with normal line discipline
             // (no staircase) before we report it.
-            let _ = disable_raw_mode();
+            let _ = term.enter_cooked_mode();
             eprintln!("hume: kitty keyboard probe failed: {e}");
             return Ok(false);
         }
     };
-    disable_raw_mode()?;
+    term.enter_cooked_mode()?;
     Ok(kitty_enabled)
 }
 
-/// Switch the terminal into raw mode + alternate screen and create a ratatui
-/// `Terminal`.
+/// Switch the terminal into raw mode + alternate screen and return a ratatui
+/// `Term` ready to render.
 ///
 /// `kitty_enabled` is the result of a prior [`probe_kitty`] call. When `true`,
 /// the caller should filter `KeyEventKind::Release` events from the event
@@ -119,138 +263,71 @@ pub fn probe_kitty() -> io::Result<bool> {
 /// protocol.
 ///
 /// Mouse tracking is enabled selectively:
-/// - `mouse_enabled` enables normal tracking (button press/release + scroll,
-///   `\x1b[?1000h`) plus SGR extended coordinates (`\x1b[?1006h`). With only
-///   these modes, drag events are NOT sent to the application, so the terminal
-///   handles drag-select natively.
-/// - `mouse_select` additionally enables button-event tracking (`\x1b[?1002h`),
-///   which sends drag events so the editor can create editor selections on drag.
+/// - `mouse_enabled` enables normal tracking (button press/release + scroll)
+///   plus SGR extended coordinates. With only these modes, drag events are
+///   NOT sent to the application, so the terminal handles drag-select
+///   natively.
+/// - `mouse_select` additionally enables button-event tracking, which sends
+///   drag events so the editor can create editor selections on drag.
 ///
-/// Call [`restore`] (or let the panic hook do it) before the process exits so
-/// the user's shell is left in a usable state.
-pub fn init(mouse_enabled: bool, mouse_select: bool, kitty_enabled: bool) -> io::Result<Term> {
-    enable_raw_mode()?;
-    let mut out = stdout();
+/// Call [`restore`] before the process exits so the user's shell is left in
+/// a usable state; a panic during the session also restores it via the panic
+/// hook installed here.
+pub fn init(
+    term: &SharedTerm,
+    mouse_enabled: bool,
+    mouse_select: bool,
+    kitty_enabled: bool,
+) -> io::Result<Term> {
+    let mut term = term.clone();
+    term.enter_raw_mode()?;
 
-    // Enter alternate screen before pushing kitty flags.  Some terminals
+    // Enter alternate screen before pushing kitty flags. Some terminals
     // (WezTerm, kitty) maintain a per-screen keyboard stack; the push must
     // land on the alternate screen's stack so that key reads (which consult
     // the active screen) pick up the enhanced encoding.
-    execute!(out, EnterAlternateScreen)?;
-    enable_bracketed_paste(&mut out)?;
+    write!(
+        term,
+        "{}",
+        dec_set(DecPrivateModeCode::ClearAndEnableAlternateScreen)
+    )?;
+    term.flush()?;
+    write_paste_enable(&mut term)?;
 
     if kitty_enabled {
-        // REPORT_ALTERNATE_KEYS is required so that Ctrl+shifted-chars
-        // (e.g. Ctrl+}) arrive with the correct keycode instead of the base
-        // key plus SHIFT. See docs/learning/command-keymap-dispatch.md.
-        //
-        // Known limitation: WezTerm 20240203-110809-5046fc22 does not fully
-        // support REPORT_ALTERNATE_KEYS — Ctrl+shifted-char one-shot extend
-        // may not work on that version.
-        push_kitty_flags(&mut out)?;
+        write_kitty_push(&mut term)?;
     }
 
     if mouse_enabled {
-        // Normal tracking (1000): button press/release and scroll wheel.
-        // SGR extended coordinates (1006): removes the 223-column limit of the
-        // legacy X10 encoding; required for wide terminals.
-        // We deliberately do NOT enable button-event tracking (1002, which
-        // also reports drag motion) unless `mouse_select` is true. Without
-        // 1002, drag events never reach the application, so the terminal
-        // handles drag-select natively.
-        enable_mouse(&mut out, mouse_select)?;
+        write_mouse_enable(&mut term, mouse_select)?;
     }
-    let term = Terminal::new(CrosstermBackend::new(BufWriter::with_capacity(
-        64 * 1024,
-        out,
-    )))?;
-    Ok(term)
+
+    term.set_panic_hook(|handle| {
+        let _ = write_unwind_escapes(handle);
+    });
+
+    ratatui::Terminal::new(TerminaBackend::new(term))
 }
 
-/// Undo everything [`init`] did: pop the kitty keyboard flags (harmless no-op
-/// on legacy terminals), leave the alternate screen, and disable raw mode.
-///
-/// All three operations are attempted even if an earlier one fails — the goal
-/// is to leave the shell as usable as possible. The first error encountered is
-/// returned; subsequent errors are silently discarded.
-pub fn restore() -> io::Result<()> {
+/// Undo everything [`init`] did: run [`write_unwind_escapes`] then leave raw
+/// mode. Both are attempted even if the first fails — the goal is to leave
+/// the shell as usable as possible. The first error encountered is returned;
+/// a second is silently discarded.
+pub fn restore(term: &SharedTerm) -> io::Result<()> {
+    let mut term = term.clone();
     let mut first_err: Option<io::Error> = None;
-    let mut try_op = |r: io::Result<()>| {
+    let mut record = |r: io::Result<()>| {
         if first_err.is_none() {
             first_err = r.err();
         }
     };
 
-    // Close any deferred-paint envelope first: a panic mid-frame can leave the
-    // terminal expecting an EndSynchronizedUpdate, and most (but not all) emit
-    // the held buffer on alt-screen exit. Sending it explicitly is harmless if
-    // no envelope was open.
-    try_op(execute!(stdout(), EndSynchronizedUpdate));
-    // Disable bracketed paste before leaving the alt screen — must not leak
-    // into the shell, where a subsequent paste would dump raw `\x1b[200~`
-    // markers into the prompt.
-    try_op(disable_bracketed_paste(&mut stdout()));
-    // Pop kitty keyboard protocol. Harmless on legacy terminals — the pop
-    // is a no-op if the stack is empty.
-    try_op(pop_kitty_flags(&mut stdout()));
-    // Disable all mouse tracking modes. The `l` (low) sequences are harmless
-    // no-ops if the corresponding mode was never enabled.
-    try_op(disable_mouse(&mut stdout()));
-    // Disable raw mode before leaving the alternate screen so the shell stays
-    // usable even if LeaveAlternateScreen fails.
-    try_op(disable_raw_mode());
-    try_op(execute!(stdout(), LeaveAlternateScreen));
-    // Second pop after leaving the alternate screen. Since `init()` now
-    // pushes onto the alt screen's stack, the first pop (above) clears it.
-    // This extra pop handles terminals with a global keyboard stack — it is
-    // a harmless no-op on per-screen-buffer terminals (WezTerm, kitty).
-    try_op(pop_kitty_flags(&mut stdout()));
+    record(write_unwind_escapes(&mut term));
+    record(term.enter_cooked_mode());
 
     match first_err {
         Some(e) => Err(e),
         None => Ok(()),
-    }
-}
-
-/// RAII guard that calls [`restore`] when dropped. Ensures the terminal is
-/// returned to a sane state on every exit path — clean return, `?`-propagated
-/// error, panic unwinding.
-///
-/// Declare the guard *before* the `Terminal` value so that on unwind the
-/// `Terminal`'s `BufWriter` flushes first (any buffered render bytes hit the
-/// alt screen while it is still active) and [`restore`] runs last.
-///
-/// After an explicit [`restore`]`()?` on the happy path, call [`disarm`] to
-/// suppress the drop-time call.
-///
-/// [`disarm`]: TerminalGuard::disarm
-pub struct TerminalGuard {
-    armed: bool,
-}
-
-impl TerminalGuard {
-    pub fn new() -> Self {
-        Self { armed: true }
-    }
-
-    pub fn disarm(&mut self) {
-        self.armed = false;
-    }
-}
-
-impl Default for TerminalGuard {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Drop for TerminalGuard {
-    fn drop(&mut self) {
-        if self.armed
-            && let Err(e) = restore()
-        {
-            eprintln!("hume: terminal restore failed: {e}");
-        }
     }
 }
 
@@ -261,59 +338,81 @@ impl Drop for TerminalGuard {
 /// mode) where the default colour would be invisible.
 ///
 /// When `black` is `false`, resets to the user's configured terminal default.
-///
-/// OSC 12 (`\x1b]12;COLOR\x07`) is supported by the overwhelming majority of
-/// modern terminal emulators. The reset form (`\x1b]112;\x07`) restores the
-/// user's configured cursor colour.
-pub fn set_cursor_color(black: bool) -> io::Result<()> {
-    let seq: &[u8] = if black {
-        b"\x1b]12;black\x07"
+pub fn set_cursor_color(term: &SharedTerm, black: bool) -> io::Result<()> {
+    let mut term = term.clone();
+    if black {
+        write!(
+            term,
+            "{}",
+            Osc::ChangeDynamicColors(
+                DynamicColorNumber::TextCursorColor,
+                vec![ColorOrQuery::Color(RgbColor::new(0, 0, 0))],
+            )
+        )?;
     } else {
-        b"\x1b]112;\x07"
-    };
-    stdout().write_all(seq)
+        write!(
+            term,
+            "{}",
+            Osc::ResetDynamicColor(DynamicColorNumber::TextCursorColor)
+        )?;
+    }
+    term.flush()
 }
 
-/// Emit a crossterm `SetCursorStyle` escape for the cursor shape.
+/// Emit a DECSCUSR escape for the cursor shape.
 ///
 /// When `bar` is `true`, emits `SteadyBar` (used for Insert/Command/Search/Select).
 /// When `bar` is `false`, emits `SteadyBlock` (used for Normal/Extend).
-pub fn set_cursor_shape(bar: bool) -> io::Result<()> {
+pub fn set_cursor_shape(term: &SharedTerm, bar: bool) -> io::Result<()> {
     let style = if bar {
-        SetCursorStyle::SteadyBar
+        CursorStyle::SteadyBar
     } else {
-        SetCursorStyle::SteadyBlock
+        CursorStyle::SteadyBlock
     };
-    execute!(stdout(), style)
+    let mut term = term.clone();
+    write!(term, "{}", Csi::Cursor(Cursor::CursorStyle(style)))?;
+    term.flush()
 }
 
-/// Emit the `DefaultUserShape` escape, restoring whatever cursor shape the
-/// user's terminal is configured to display.
-///
-/// Call this before returning to the shell so the user's preferred cursor is
-/// restored.
-pub fn reset_cursor_shape() -> io::Result<()> {
-    execute!(stdout(), SetCursorStyle::DefaultUserShape)
+/// Restore whatever cursor shape the user's terminal is configured to
+/// display. Call before returning to the shell so the user's preferred
+/// cursor is restored.
+pub fn reset_cursor_shape(term: &SharedTerm) -> io::Result<()> {
+    let mut term = term.clone();
+    write!(
+        term,
+        "{}",
+        Csi::Cursor(Cursor::CursorStyle(CursorStyle::Default))
+    )?;
+    term.flush()
 }
 
-/// Emit DEC Mode 2026 `\x1b[?2026h` — ask the terminal to defer display
-/// updates until [`end_synchronized_update`] is called.
+/// Ask the terminal to defer display updates until [`end_synchronized_update`]
+/// is called.
 ///
 /// Call once per frame, before `term.draw(…)`. Terminals that do not
 /// recognise DEC 2026 silently ignore the sequence, so this is safe to emit
 /// unconditionally. The `let _ = …` pattern at the call site is intentional:
 /// a write failure here must never abort the render loop.
-pub fn begin_synchronized_update() -> io::Result<()> {
-    execute!(stdout(), BeginSynchronizedUpdate)
+pub fn begin_synchronized_update(term: &SharedTerm) -> io::Result<()> {
+    let mut term = term.clone();
+    write!(term, "{}", dec_set(DecPrivateModeCode::SynchronizedOutput))?;
+    term.flush()
 }
 
-/// Emit DEC Mode 2026 `\x1b[?2026l` — signal the terminal that the current
-/// frame is complete and it may paint the accumulated output atomically.
+/// Signal the terminal that the current frame is complete and it may paint
+/// the accumulated output atomically.
 ///
 /// Call after every write that contributes to the current frame (draw,
 /// cursor shape, cursor colour). Pairs with [`begin_synchronized_update`].
-pub fn end_synchronized_update() -> io::Result<()> {
-    execute!(stdout(), EndSynchronizedUpdate)
+pub fn end_synchronized_update(term: &SharedTerm) -> io::Result<()> {
+    let mut term = term.clone();
+    write!(
+        term,
+        "{}",
+        dec_reset(DecPrivateModeCode::SynchronizedOutput)
+    )?;
+    term.flush()
 }
 
 /// Leave the alt-screen and raw mode so subprocess output streams to the user's
@@ -326,19 +425,33 @@ pub fn end_synchronized_update() -> io::Result<()> {
 /// Called from `EditorHostImpl::ensure_inline_output_screen`, not eagerly at
 /// dispatch — the caller only reaches this on a command's first real output,
 /// so a command whose body produces none never leaves the alt-screen at all.
-pub fn enter_inline_output(kitty_enabled: bool, mouse_enabled: bool) -> io::Result<()> {
+pub fn enter_inline_output(
+    term: &SharedTerm,
+    kitty_enabled: bool,
+    mouse_enabled: bool,
+) -> io::Result<()> {
+    let mut term = term.clone();
     // Close any open synchronized-output envelope (harmless if none is open).
-    let _ = execute!(stdout(), EndSynchronizedUpdate);
-    disable_bracketed_paste(&mut stdout())?;
+    let _ = write!(
+        term,
+        "{}",
+        dec_reset(DecPrivateModeCode::SynchronizedOutput)
+    );
+    let _ = term.flush();
+    write_paste_disable(&mut term)?;
     if kitty_enabled {
-        pop_kitty_flags(&mut stdout())?;
+        write_kitty_pop(&mut term)?;
     }
     if mouse_enabled {
-        disable_mouse(&mut stdout())?;
+        write_mouse_disable(&mut term)?;
     }
-    disable_raw_mode()?;
-    execute!(stdout(), LeaveAlternateScreen)?;
-    Ok(())
+    term.enter_cooked_mode()?;
+    write!(
+        term,
+        "{}",
+        dec_reset(DecPrivateModeCode::ClearAndEnableAlternateScreen)
+    )?;
+    term.flush()
 }
 
 /// Re-enter raw mode and the alt-screen after [`enter_inline_output`].
@@ -347,18 +460,25 @@ pub fn enter_inline_output(kitty_enabled: bool, mouse_enabled: bool) -> io::Resu
 /// chance to read it (typically after a "press any key" prompt). Restores
 /// kitty and mouse to the state that was active before `enter_inline_output`.
 pub fn leave_inline_output(
+    term: &SharedTerm,
     kitty_enabled: bool,
     mouse_enabled: bool,
     mouse_select: bool,
 ) -> io::Result<()> {
-    enable_raw_mode()?;
-    execute!(stdout(), EnterAlternateScreen)?;
-    enable_bracketed_paste(&mut stdout())?;
+    let mut term = term.clone();
+    term.enter_raw_mode()?;
+    write!(
+        term,
+        "{}",
+        dec_set(DecPrivateModeCode::ClearAndEnableAlternateScreen)
+    )?;
+    term.flush()?;
+    write_paste_enable(&mut term)?;
     if kitty_enabled {
-        push_kitty_flags(&mut stdout())?;
+        write_kitty_push(&mut term)?;
     }
     if mouse_enabled {
-        enable_mouse(&mut stdout(), mouse_select)?;
+        write_mouse_enable(&mut term, mouse_select)?;
     }
     Ok(())
 }
@@ -384,34 +504,35 @@ pub fn print_return_prompt() {
 /// Block until the user presses a key, ignoring resize, mouse, and key-release
 /// events. Holds subprocess output on screen until the user is ready to return
 /// to the TUI.
-pub fn wait_for_keypress() {
-    let _ = enable_raw_mode();
+pub fn wait_for_keypress(term: &SharedTerm) {
+    let mut term = term.clone();
+    let _ = term.enter_raw_mode();
+    let reader = term.event_reader();
     loop {
-        match read() {
+        match reader.read(|_| true) {
             Ok(Event::Key(k)) if k.kind != KeyEventKind::Release => break,
             Ok(_) => continue,
             Err(_) => break,
         }
     }
-    let _ = disable_raw_mode();
+    let _ = term.enter_cooked_mode();
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        disable_bracketed_paste, enable_bracketed_paste, pop_kitty_flags, push_kitty_flags,
+        write_kitty_pop, write_kitty_push, write_mouse_disable, write_mouse_enable,
+        write_paste_disable, write_paste_enable,
     };
 
-    // Regression guard for the Windows/WezTerm crash. The previous impl
-    // dispatched through crossterm's `PushKeyboardEnhancementFlags` Command,
-    // whose Windows arm hardcodes `is_ansi_code_supported()=false` and returns
-    // `Unsupported`, crashing hume on startup. On Unix the same Command wrote
-    // these exact bytes via `write_ansi`, so the test only catches the
-    // regression on Windows CI — which is the matrix that was broken.
+    // Regression pins against termina's escape-sequence encoding: a version
+    // bump that silently changes these bytes would otherwise only surface as
+    // a terminal that stops responding to kitty/mouse/paste input.
+
     #[test]
-    fn push_kitty_flags_emits_raw_csi() {
+    fn kitty_push_emits_expected_csi() {
         let mut buf = Vec::new();
-        push_kitty_flags(&mut buf).unwrap();
+        write_kitty_push(&mut buf).unwrap();
         // DISAMBIGUATE_ESCAPE_CODES(1) | REPORT_EVENT_TYPES(2)
         // | REPORT_ALTERNATE_KEYS(4) = 7. Spec:
         // https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement
@@ -419,24 +540,44 @@ mod tests {
     }
 
     #[test]
-    fn pop_kitty_flags_emits_raw_csi() {
+    fn kitty_pop_emits_expected_csi() {
         let mut buf = Vec::new();
-        pop_kitty_flags(&mut buf).unwrap();
-        // kitty pop = CSI < 1 u (one stack level, fixed — no flag arg).
+        write_kitty_pop(&mut buf).unwrap();
         assert_eq!(buf, b"\x1b[<1u");
     }
 
     #[test]
-    fn enable_bracketed_paste_emits_raw_csi() {
+    fn paste_enable_emits_expected_csi() {
         let mut buf = Vec::new();
-        enable_bracketed_paste(&mut buf).unwrap();
+        write_paste_enable(&mut buf).unwrap();
         assert_eq!(buf, b"\x1b[?2004h");
     }
 
     #[test]
-    fn disable_bracketed_paste_emits_raw_csi() {
+    fn paste_disable_emits_expected_csi() {
         let mut buf = Vec::new();
-        disable_bracketed_paste(&mut buf).unwrap();
+        write_paste_disable(&mut buf).unwrap();
         assert_eq!(buf, b"\x1b[?2004l");
+    }
+
+    #[test]
+    fn mouse_enable_without_select_emits_1000_and_1006_only() {
+        let mut buf = Vec::new();
+        write_mouse_enable(&mut buf, false).unwrap();
+        assert_eq!(buf, b"\x1b[?1000h\x1b[?1006h");
+    }
+
+    #[test]
+    fn mouse_enable_with_select_also_emits_1002() {
+        let mut buf = Vec::new();
+        write_mouse_enable(&mut buf, true).unwrap();
+        assert_eq!(buf, b"\x1b[?1000h\x1b[?1006h\x1b[?1002h");
+    }
+
+    #[test]
+    fn mouse_disable_emits_1002_1000_1006_in_that_order() {
+        let mut buf = Vec::new();
+        write_mouse_disable(&mut buf).unwrap();
+        assert_eq!(buf, b"\x1b[?1002l\x1b[?1000l\x1b[?1006l");
     }
 }

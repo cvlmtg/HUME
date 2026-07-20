@@ -3,7 +3,7 @@
 // `ScopedHighlighter` (Diagnostic/Extra tiers) from the diagnostics store
 // and the extra-highlights store.
 //
-// Every test here goes through `Editor::open(None)` (not `editor_from`'s
+// Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}))` (not `editor_from`'s
 // bare `Pane::new`) — highlight providers are only registered by
 // `build_pane`, which only the real `Editor::open`/`:e` construction path
 // runs (see `editor/mod.rs`'s `for_testing` doc comment on why its own
@@ -83,7 +83,7 @@ fn setup_with_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagCtx {
         backend.push_from_server(sid, publish_diagnostics_notification(uri.as_str(), diags));
     }
 
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     ed.lsp
         .insert_client_for_test(LspClient::new(sid, std::path::PathBuf::from(".")));
@@ -229,7 +229,7 @@ fn diagnostics_stay_visible_in_insert_mode() {
 #[test]
 fn extra_highlight_gets_its_runtime_interned_scope() {
     let tmp = tempfile::tempdir().unwrap();
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     type_text(&mut ed, "abcdefgh");
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -257,7 +257,7 @@ fn extra_highlight_gets_its_runtime_interned_scope() {
 #[test]
 fn extra_highlight_scope_is_cached_not_reinterned() {
     let tmp = tempfile::tempdir().unwrap();
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     type_text(&mut ed, "abcdefgh");
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -294,7 +294,7 @@ fn extra_highlight_scope_is_cached_not_reinterned() {
 #[test]
 fn search_match_beats_extra_highlight_in_overlapping_region() {
     let tmp = tempfile::tempdir().unwrap();
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     type_text(&mut ed, "abcdefgh");
     let mut host = ScriptingHost::new();

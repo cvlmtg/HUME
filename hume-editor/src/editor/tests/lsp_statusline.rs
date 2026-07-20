@@ -62,7 +62,7 @@ fn setup(content: &str, publishes: &[&[DiagFixture]]) -> DiagCtx {
         backend.push_from_server(sid, publish_diagnostics_notification(uri.as_str(), diags));
     }
 
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
     // A server publishing diagnostics is, in reality, always past its
@@ -129,7 +129,7 @@ fn diagnostics_element_omits_zero_half() {
 
 #[test]
 fn configure_statusline_round_trips_diagnostics_element_name() {
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     crate::editor::commands::typed_set(&mut ed, Some("global statusline=Diagnostics||"), false)
         .unwrap();
     assert_eq!(
@@ -169,7 +169,7 @@ fn starting_server_renders_the_loading_spinner() {
     let mut backend = InlineLspBackend::new();
     let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
 
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     // `LspClient::new` defaults to `Starting` — exactly like a real server
     // between spawn and `initialize` completing. No `drain_lsp()` call here,
@@ -190,7 +190,7 @@ fn progress_begin_report_end_tracks_the_active_task() {
     let mut backend = InlineLspBackend::new();
     let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
 
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
     client.set_state_for_test(ServerState::Running);
@@ -267,7 +267,7 @@ fn progress_begin_missing_title_still_animates_the_spinner() {
         },
     );
 
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
     client.set_state_for_test(ServerState::Running);
@@ -296,7 +296,7 @@ fn crash_clears_progress_so_the_spinner_stops() {
     let mut backend = InlineLspBackend::new();
     let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
 
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
     client.set_state_for_test(ServerState::Running);

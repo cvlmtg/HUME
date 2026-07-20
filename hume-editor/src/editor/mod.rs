@@ -461,11 +461,13 @@ pub(crate) struct Editor {
     /// toggle + "press any key to return" block) when there is no TUI to
     /// suspend and no interactive user to press a key.
     tui_active: bool,
-    /// The wake side of the cross-thread waker `run` blocks on. `Some` from
-    /// [`Editor::open`], taken by `run` itself; `None` from `for_testing` —
-    /// tests dispatch directly and never enter `run`, so there is nothing to
-    /// wait on and no per-test wake-pipe/event-handle to construct.
-    event_wait: Option<hume_platform::events::EventWait>,
+    /// The shared terminal handle `run` reads/writes and the inline-output
+    /// bracket (`host_impl.rs`, `dispatch.rs`) borrows to leave/re-enter the
+    /// alt-screen. `Some` once [`Editor::attach_terminal`] has been called
+    /// (always paired with entering `run`); `None` from `for_testing` and
+    /// headless `run_keys` — those dispatch directly and never enter `run`,
+    /// so there is no terminal to attach.
+    terminal: Option<hume_platform::terminal::SharedTerm>,
 }
 
 impl Editor {

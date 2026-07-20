@@ -36,7 +36,7 @@ fn setup(
 ) -> (Editor, RealRuntimeGuard, ServerId) {
     let guard = RealRuntimeGuard::new();
 
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
 
     let mut backend = InlineLspBackend::new();
     backend.respond_to(

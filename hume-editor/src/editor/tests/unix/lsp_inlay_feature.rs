@@ -43,7 +43,7 @@ fn setup(
     let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
     configure(&mut backend, sid);
 
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let mut client = LspClient::new(sid, PathBuf::from("."));
     client.start_handshake(ed.lsp.backend_mut());
@@ -352,7 +352,7 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
     backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
 
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
 
     let mut client_a = LspClient::new(sid_a, PathBuf::from("."));
@@ -448,7 +448,7 @@ fn refresh_hints_resolves_against_the_buffers_own_server_not_the_focused_buffers
     let sid_b = backend.start("pylsp", &[], Path::new(".")).unwrap();
     backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
 
-    let mut ed = Editor::open(None).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
 
     let mut client_a = LspClient::new(sid_a, PathBuf::from("."));

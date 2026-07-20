@@ -256,6 +256,7 @@ impl Editor {
                             wheel: &mut self.timer_wheel,
                             payloads: &mut self.timer_payloads,
                         }),
+                        terminal: self.terminal.as_ref(),
                     };
                     host_scr.fire_hook(hook_id, &args, pid, bid, &mut impl_host)
                 };
@@ -310,6 +311,7 @@ impl Editor {
                     wheel: &mut self.timer_wheel,
                     payloads: &mut self.timer_payloads,
                 }),
+                terminal: self.terminal.as_ref(),
             };
             host_scr.run_steel_calls(calls, pid, bid, &mut impl_host)
         };

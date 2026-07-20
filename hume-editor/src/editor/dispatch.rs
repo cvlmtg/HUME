@@ -260,6 +260,7 @@ impl Editor {
                     wheel: &mut self.timer_wheel,
                     payloads: &mut self.timer_payloads,
                 }),
+                terminal: self.terminal.as_ref(),
             };
             scripting.call_steel_cmd(
                 name,
@@ -279,12 +280,16 @@ impl Editor {
         let entered = matches!(self.state.inline_output, InlineOutputDispatch::Entered);
         self.state.inline_output = InlineOutputDispatch::Inactive;
         if entered {
+            let term = self
+                .terminal
+                .as_ref()
+                .expect("Entered implies tui_active implies terminal is Some");
             hume_platform::terminal::print_return_prompt();
-            hume_platform::terminal::wait_for_keypress();
+            hume_platform::terminal::wait_for_keypress(term);
             let kitty = self.kitty_enabled;
             let mouse = self.state.settings.mouse_enabled;
             let mouse_select = self.state.settings.mouse_select;
-            let _ = hume_platform::terminal::leave_inline_output(kitty, mouse, mouse_select);
+            let _ = hume_platform::terminal::leave_inline_output(term, kitty, mouse, mouse_select);
             self.state.force_full_redraw = true;
         }
 
