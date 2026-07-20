@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseTOML, extractScopes, exportTOML, unescapeBasic } from '../src/lib/toml.js';
+import { parseTOML, extractScopes, exportTOML, unescapeBasic, parseInlineTable } from '../src/lib/toml.js';
 import { bgc, lookupRaw } from '../src/lib/theme.js';
 
 test('unescapeBasic handles \\", \\\\, \\n, \\t, \\r', () => {
@@ -41,6 +41,11 @@ test('a string that merely looks like a hex color still parses as a string', () 
   const parsed = parseTOML('k = "#aabbcc"');
   assert.equal(parsed.k, '#aabbcc');
   assert.equal(typeof parsed.k, 'string');
+});
+
+test('parseInlineTable splits on the "=" outside a quoted key containing one', () => {
+  const parsed = parseInlineTable('{ "a=b" = "c", x = 1 }');
+  assert.deepEqual(parsed, { 'a=b': 'c', x: 1 });
 });
 
 test('extractScopes preserves an empty scope def ({}), e.g. ui.cursor.insert', () => {

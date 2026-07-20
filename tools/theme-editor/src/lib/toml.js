@@ -111,7 +111,11 @@ export function parseInlineTable(s) {
   if (!inner) return {};
   const obj = {};
   for (const pair of splitPairs(inner)) {
-    const eq = pair.indexOf('=');
+    // Find '=' outside string literals (keys may contain quoted '=').
+    let eq = -1;
+    for (const { i: pos, c, inStr } of scanString(pair)) {
+      if (!inStr && c === '=') { eq = pos; break; }
+    }
     if (eq === -1) continue;
     const k = pair.slice(0, eq).trim().replace(/^["']|["']$/g, "");
     obj[k] = parseInlineVal(pair.slice(eq + 1).trim());
