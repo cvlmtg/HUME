@@ -80,14 +80,13 @@ pub fn typed_write_quit(
     force: bool,
 ) -> Result<(), CommandError> {
     // force applies to both write (chmod-retry on readonly targets) and quit
-    // (quit even if the write fails).
+    // (proceed with the quit even if the write fails). After a successful
+    // write, delegate to typed_quit so :wq mirrors :q's pane/buffer-aware
+    // close instead of always tearing down the whole editor.
     match write_file(ed, arg, force) {
-        Ok(()) => {
-            ed.state.should_quit = true;
-            Ok(())
-        }
+        Ok(()) => typed_quit(ed, None, force),
         Err(e) if force => {
-            ed.state.should_quit = true;
+            typed_quit(ed, None, true).expect("force quit cannot fail: dirty check is skipped");
             Err(e)
         }
         Err(e) => Err(e),

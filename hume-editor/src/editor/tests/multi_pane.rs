@@ -874,6 +874,47 @@ fn quit_with_multiple_panes_ignores_dirty_buffer() {
     assert_eq!(ed.view.panes.len(), 1);
 }
 
+/// `:wq` delegates to `:q` after a successful write, so it must mirror the
+/// same pane-aware close: with panes open it writes then closes the focused
+/// pane, rather than tearing down the whole editor.
+#[test]
+fn wq_with_multiple_panes_closes_focused_pane_not_editor() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    let pid_a = ed.state.focused_pane_id;
+    ed.execute_typed("split", None).unwrap();
+    let pid_b = ed.state.focused_pane_id;
+    assert_ne!(pid_a, pid_b);
+
+    // Dirty the buffer both panes are viewing.
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    assert!(ed.doc().is_dirty(), "sanity: buffer is dirty");
+
+    let expected_content = ed.doc().text().to_string();
+    let result = ed.execute_typed("wq", None);
+
+    assert!(
+        result.is_ok(),
+        ":wq with panes open must write and close the pane: {result:?}"
+    );
+    assert!(
+        !ed.state.should_quit,
+        ":wq with panes open must not quit the editor"
+    );
+    assert_eq!(ed.view.panes.len(), 1, "the focused pane is closed");
+    assert_eq!(
+        ed.state.focused_pane_id, pid_a,
+        "focus returns to the surviving pane"
+    );
+    assert!(!ed.doc().is_dirty(), "the write must have happened");
+    assert_eq!(
+        std::fs::read_to_string(&tmp).unwrap(),
+        expected_content,
+        "the edit must have been written to disk before the pane closed"
+    );
+}
+
 /// `viewport_debounce`/`last_viewport_key`/`virtual_lines_synced` live on
 /// `Editor` rather than `EditorState.panes`, so `drop_pane_state` can't clear
 /// them directly — `prepare_frame`'s `prune_closed_pane_caches` sweep is the

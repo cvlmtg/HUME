@@ -757,6 +757,53 @@ fn colon_wq_bang_quits_even_if_write_fails() {
     assert!(ed.state.should_quit);
 }
 
+#[test]
+fn colon_wq_single_pane_other_buffer_closes_buffer_and_stays() {
+    // :wq delegates to :q after a successful write, so with another real
+    // (file-backed) buffer open it must write, close the current buffer, and
+    // switch focus — not quit the editor.
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    let dirty_buf = ed.focused_buffer_id();
+
+    // Dirty the buffer.
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    assert!(ed.doc().is_dirty(), "buffer must be dirty before :wq");
+    let expected_content = ed.doc().text().to_string();
+
+    // Open a second real file-backed buffer.
+    let tmp2 = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(tmp2.path(), "world\n").unwrap();
+    let (_, meta2) = hume_platform::io::read_file(tmp2.path()).unwrap();
+    let mut buf2 = crate::editor::buffer::Buffer::new(
+        hume_editing::text::Text::from("world\n"),
+        SelectionSet::default(),
+    );
+    buf2.set_path(Some(tmp2.path().to_path_buf()));
+    buf2.file_meta = Some(meta2);
+    let other_buf = ed.open_buffer(buf2);
+    ed.switch_to_buffer_without_jump(dirty_buf);
+
+    type_cmd(&mut ed, ":wq");
+
+    assert!(
+        !ed.state.should_quit,
+        ":wq must not quit when another real buffer remains"
+    );
+    assert_eq!(
+        ed.focused_buffer_id(),
+        other_buf,
+        ":wq must switch focus to the remaining real buffer"
+    );
+    assert_eq!(ed.state.buffers.len(), 1, "written buffer must be removed");
+    assert_eq!(
+        std::fs::read_to_string(&tmp).unwrap(),
+        expected_content,
+        "the edit must have been written to disk before the buffer closed"
+    );
+}
+
 // ── Command history ───────────────────────────────────────────────────────────
 
 /// Helper: submit a typed command through the minibuffer.

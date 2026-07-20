@@ -83,7 +83,7 @@ A `[+]` indicator in the status bar means the buffer has unsaved changes. Files 
 |---------|--------|
 | `:q` | Close the focused pane if others are open; otherwise close the buffer, quitting on the last one |
 | `:q!` | Same, discarding unsaved changes |
-| `:wq` | Save and quit |
+| `:wq` | Save, then close the focused pane if others are open; otherwise close the buffer, quitting on the last one |
 | `:qa` | Quit everything. Refuses if any buffer has unsaved changes, and takes you to the first one |
 | `:qa!` | Quit everything, discarding unsaved changes |
 
