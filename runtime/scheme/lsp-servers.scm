@@ -34,7 +34,7 @@
 ;;; Install sources (download/build info) live in lsp-sources.scm, joined by
 ;;; server name.
 ;;;
-;;; Source: helix-editor/helix languages.toml @ 8c41b1160792
+;;; Source: helix-editor/helix languages.toml @ f6f3eb1fe4a7
 ;;; Full sync: run scripts/sync-grammars.py after updating helix-pin.scm.
 
 (
@@ -65,6 +65,7 @@
  ("cs" (languages ("smithy" "smithy-build.json")) (command . "cs") (args "launch" "--contrib" "smithy-language-server" "--" "0") (config))
  ("cuelsp" (languages ("cue" "cue.mod")) (command . "cue") (args "lsp" "serve") (config))
  ("dart" (languages ("dart" "pubspec.yaml")) (command . "dart") (args "language-server" "--client-id=helix") (config))
+ ("debian-lsp" (languages ("debian")) (command . "debian-lsp") (args) (config))
  ("dhall-lsp-server" (languages ("dhall")) (command . "dhall-lsp-server") (args) (config))
  ("djlsp" (languages ("htmldjango" "manage.py")) (command . "djlsp") (args) (config))
  ("docker-compose-langserver" (languages ("docker-compose" "docker-compose.yaml" "docker-compose.yml" "compose.yaml" "compose.yml")) (command . "docker-compose-langserver") (args "--stdio") (config))
@@ -87,8 +88,10 @@
  ("forth-lsp" (languages ("forth")) (command . "forth-lsp") (args) (config))
  ("fortls" (languages ("fortran" "fpm.toml")) (command . "fortls") (args "--lowercase_intrinsics") (config))
  ("fsharp-ls" (languages ("fsharp" "*.slnx" "*.sln" "*.fsproj")) (command . "fsautocomplete") (args) (config . "{\"AutomaticWorkspaceInit\": true}"))
+ ("ghostty-ls" (languages ("ghostty")) (command . "ghostty-ls") (args) (config))
  ("gleam" (languages ("gleam" "gleam.toml")) (command . "gleam") (args "lsp") (config))
  ("glsl_analyzer" (languages ("glsl")) (command . "glsl_analyzer") (args) (config))
+ ("godot" (languages ("gdscript" "project.godot")) (command . "ncat") (args "127.0.0.1" "6005") (config))
  ("gopls" (languages ("go" "go.work" "go.mod") ("gomod") ("gotmpl") ("gowork")) (command . "gopls") (args) (config . "{\"hints\": {\"assignVariableTypes\": true, \"compositeLiteralFields\": true, \"constantValues\": true, \"functionTypeParameters\": true, \"parameterNames\": true, \"rangeVariableTypes\": true}}"))
  ("graphql-language-service" (languages ("graphql")) (command . "graphql-lsp") (args "server" "-m" "stream") (config))
  ("hare-lsp" (languages ("hare")) (command . "hare-lsp") (args "-S") (config))
@@ -115,9 +118,13 @@
  ("marksman" (languages ("markdown" ".marksman.toml")) (command . "marksman") (args "server") (config))
  ("mesonlsp" (languages ("meson")) (command . "mesonlsp") (args "--lsp") (config))
  ("metals" (languages ("scala" "build.sbt" "build.sc" "build.gradle" "build.gradle.kts" "pom.xml" ".scala-build")) (command . "metals") (args) (config . "{\"isHttpEnabled\": true, \"metals\": {\"inlayHints\": {\"hintsInPatternMatch\": {\"enable\": true}, \"typeParameters\": {\"enable\": true}}}}"))
+ ("millet" (languages ("sml" "millet.toml")) (command . "millet-ls") (args) (config))
  ("mint" (languages ("mint")) (command . "mint") (args "tool" "ls") (config))
+ ("mm-lsp-server" (languages ("metamath" "set.mm")) (command . "mm-lsp-server") (args) (config))
  ("mojo-lsp-server" (languages ("mojo" "pixi.toml" "pixi.lock")) (command . "pixi") (args "run" "mojo-lsp-server") (config))
+ ("moonbit-lsp" (languages ("moonbit" "moon.mod.json")) (command . "moonbit-lsp") (args) (config))
  ("neocmakelsp" (languages ("cmake")) (command . "neocmakelsp") (args "stdio") (config))
+ ("nginx-language-server" (languages ("nginx" "nginx.conf")) (command . "nginx-language-server") (args) (config))
  ("nil" (languages ("nix")) (command . "nil") (args) (config))
  ("nimlangserver" (languages ("nim")) (command . "nimlangserver") (args) (config))
  ("nls" (languages ("nickel")) (command . "nls") (args) (config))
@@ -131,11 +138,12 @@
  ("pkl-lsp" (languages ("pkl")) (command . "pkl-lsp") (args) (config))
  ("pony-lsp" (languages ("ponylang" "corral.json" "lock.json")) (command . "pony-lsp") (args "--stdio") (config . "{\"pony-lsp\": {\"defines\": [], \"ponypath\": []}}"))
  ("prisma-language-server" (languages ("prisma" "package.json")) (command . "prisma-language-server") (args "--stdio") (config . "{\"prisma\": {\"enableDiagnostics\": true}}"))
+ ("puppet-languageserver" (languages ("puppet")) (command . "puppet-languageserver") (args "--stdio") (config))
  ("purescript-language-server" (languages ("purescript" "spago.yaml" "spago.dhall" "bower.json")) (command . "purescript-language-server") (args "--stdio") (config))
  ("pylsp" (languages ("snakemake" "Snakefile" "config.yaml" "environment.yaml" "workflow/")) (command . "pylsp") (args) (config))
  ("qmlls" (languages ("qml")) (command . "qmlls") (args) (config))
  ("quint-language-server" (languages ("quint")) (command . "quint-language-server") (args "--stdio") (config))
- ("r" (languages ("r") ("rmarkdown")) (command . "R") (args "--no-echo" "-e" "languageserver::run()") (config))
+ ("r" (languages ("r") ("rmarkdown")) (command . "R") (args "--vanilla" "--no-echo" "-e" "languageserver::run()") (config))
  ("racket" (languages ("racket")) (command . "racket") (args "-l" "racket-langserver") (config))
  ("regols" (languages ("rego")) (command . "regols") (args) (config))
  ("rescript-language-server" (languages ("rescript" "bsconfig.json")) (command . "rescript-language-server") (args "--stdio") (config))
@@ -153,7 +161,7 @@
  ("solc" (languages ("solidity")) (command . "solc") (args "--lsp") (config))
  ("sourcekit-lsp" (languages ("swift" "Package.swift")) (command . "sourcekit-lsp") (args) (config))
  ("sourcepawn-studio" (languages ("sourcepawn")) (command . "sourcepawn-studio") (args) (config))
- ("spade-language-server" (languages ("spade" "swim.toml")) (command . "spade-language-server") (args) (config))
+ ("spade-language-server" (languages ("spade" "swim.toml")) (command . "swim") (args "lsp") (config))
  ("starpls" (languages ("starlark")) (command . "starpls") (args) (config))
  ("styx" (languages ("styx")) (command . "styx") (args "lsp") (config))
  ("svelteserver" (languages ("svelte")) (command . "svelteserver") (args "--stdio") (config . "{\"configuration\": {\"javascript\": {\"inlayHints\": {\"enumMemberValues\": {\"enabled\": true}, \"functionLikeReturnTypes\": {\"enabled\": true}, \"parameterNames\": {\"enabled\": \"all\"}, \"parameterTypes\": {\"enabled\": true}, \"propertyDeclarationTypes\": {\"enabled\": true}, \"variableTypes\": {\"enabled\": true}}}, \"typescript\": {\"inlayHints\": {\"enumMemberValues\": {\"enabled\": true}, \"functionLikeReturnTypes\": {\"enabled\": true}, \"parameterNames\": {\"enabled\": \"all\"}, \"parameterTypes\": {\"enabled\": true}, \"propertyDeclarationTypes\": {\"enabled\": true}, \"variableTypes\": {\"enabled\": true}}}}}"))
@@ -173,6 +181,7 @@
  ("typescript-language-server" (languages ("javascript" "package.json" "jsconfig.json") ("jsx" "package.json" "jsconfig.json") ("typescript" "package.json" "tsconfig.json") ("tsx" "package.json" "tsconfig.json") ("gjs" "package.json" "ember-cli-build.js") ("gts" "package.json" "ember-cli-build.js")) (command . "typescript-language-server") (args "--stdio") (config . "{\"hostInfo\": \"hume\", \"javascript\": {\"inlayHints\": {\"includeInlayEnumMemberValueHints\": true, \"includeInlayFunctionLikeReturnTypeHints\": true, \"includeInlayFunctionParameterTypeHints\": true, \"includeInlayParameterNameHints\": \"all\", \"includeInlayParameterNameHintsWhenArgumentMatchesName\": true, \"includeInlayPropertyDeclarationTypeHints\": true, \"includeInlayVariableTypeHints\": true}}, \"typescript\": {\"inlayHints\": {\"includeInlayEnumMemberValueHints\": true, \"includeInlayFunctionLikeReturnTypeHints\": true, \"includeInlayFunctionParameterTypeHints\": true, \"includeInlayParameterNameHints\": \"all\", \"includeInlayParameterNameHintsWhenArgumentMatchesName\": true, \"includeInlayPropertyDeclarationTypeHints\": true, \"includeInlayVariableTypeHints\": true}}}"))
  ("typespec" (languages ("typespec" "tspconfig.yaml")) (command . "tsp-server") (args "--stdio") (config))
  ("vala-language-server" (languages ("vala")) (command . "vala-language-server") (args) (config))
+ ("varlink-language-server" (languages ("varlink")) (command . "varlink-language-server") (args) (config))
  ("verible-verilog-ls" (languages ("verilog")) (command . "verible-verilog-ls") (args) (config))
  ("vhdl_ls" (languages ("vhdl")) (command . "vhdl_ls") (args) (config))
  ("vlang-language-server" (languages ("v" "v.mod")) (command . "v-analyzer") (args) (config))

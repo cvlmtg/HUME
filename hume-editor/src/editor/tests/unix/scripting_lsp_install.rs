@@ -809,7 +809,7 @@ fn lsp_install_up_to_date_registers_a_late_fabricated_receipt() {
     fabricate_server(
         data_tmp.path(),
         "rust-analyzer",
-        "2026-07-06",
+        "2026-07-13",
         "rust-analyzer",
     );
 
@@ -817,7 +817,7 @@ fn lsp_install_up_to_date_registers_a_late_fabricated_receipt() {
 
     assert_eq!(
         ed.state.status_msg.as_deref(),
-        Some("LSP: rust-analyzer already installed (v2026-07-06) — up to date"),
+        Some("LSP: rust-analyzer already installed (v2026-07-13) — up to date"),
         "must report the up-to-date status"
     );
     let expected_cmd = canonical_data_dir(data_tmp.path())

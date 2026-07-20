@@ -17,4 +17,4 @@
 ;;; dropped any LSP servers, run scripts/sync-grammars.py first — see
 ;;; scripts/sync-readme.md for the run order.
 
-"2026-07-10-flashy-canoe"
+"2026-07-20-precious-hemp"

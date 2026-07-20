@@ -15,4 +15,4 @@
 ;;; To upgrade: change the SHA below, then run scripts/sync-grammars.py to
 ;;; regenerate languages.scm and grammar-sources.scm.
 
-"8c41b1160792"
+"f6f3eb1fe4a7"
