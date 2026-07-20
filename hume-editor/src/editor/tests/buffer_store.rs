@@ -201,8 +201,6 @@ fn p6_close_buffer_redirects_all_panes_to_mru() {
     );
 }
 
-
-
 // ── reload_buffer_in_place cursor-preservation tests ─────────────────────────
 
 /// `reload_buffer_in_place` preserves the primary cursor line/column when the
@@ -372,15 +370,11 @@ fn p6_reload_collapses_multi_selection_to_primary() {
     );
 }
 
-
 // ── :e! undo-retention (RELOAD.md) ────────────────────────────────────────────
 //
 // `:e!` now records the reload as an ordinary edit in the existing undo tree
 // instead of discarding history. `u` reverts to the pre-reload buffer (full
 // prior tree intact beneath); `Ctrl-r` re-applies the reload.
-
-
-
 
 /// Move the focused pane's primary cursor to `head` for the focused buffer.
 pub(super) fn set_cursor(ed: &mut Editor, head: usize) {

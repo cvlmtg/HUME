@@ -425,14 +425,6 @@ fn eval_with_real_host(
     ed.apply_script_effects(effects);
 }
 
-
-
-
-
-
-
-
-
 /// Write `content` to a temp file and return its path (kept alive by the returned TempPath).
 fn temp_file(content: &str) -> (std::path::PathBuf, tempfile::TempPath) {
     let f = tempfile::NamedTempFile::new().unwrap();
@@ -460,9 +452,6 @@ impl Drop for CwdGuard {
         let _ = std::env::set_current_dir(&self.saved);
     }
 }
-
-
-
 
 // ── Event-loop faithful helpers ───────────────────────────────────────────────
 

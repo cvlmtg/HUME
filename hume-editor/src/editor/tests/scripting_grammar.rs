@@ -896,4 +896,3 @@ fn rust_function_highlight_snapshot() {
     let rect = ratatui::layout::Rect::new(0, 0, 30, 8);
     insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
 }
-

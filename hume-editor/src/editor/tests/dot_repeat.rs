@@ -807,4 +807,3 @@ fn non_repeatable_steel_does_not_hijack_dot() {
         "`.` must repeat the native delete, not the non-repeatable Steel command"
     );
 }
-

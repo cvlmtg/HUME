@@ -1,5 +1,5 @@
-use super::*;
 use super::super::command_mode::submit;
+use super::*;
 
 /// `:b#` (no space) must switch to the alternate buffer via the minibuf path.
 /// The alternate must be reachable even when it has no file name — the

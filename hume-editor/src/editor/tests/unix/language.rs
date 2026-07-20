@@ -1,5 +1,5 @@
-use super::*;
 use super::super::language::attach_host;
+use super::*;
 
 /// An invalid glob pattern in `define-language!` is warned and silently skipped;
 /// valid patterns and other languages still register correctly.

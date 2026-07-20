@@ -42,7 +42,6 @@ fn ls_long_alias_works() {
 
 // ── Multiple buffers ──────────────────────────────────────────────────────────
 
-
 // ── Dirty indicator ───────────────────────────────────────────────────────────
 
 #[test]
@@ -82,7 +81,6 @@ fn ls_scratch_buffer_shows_scratch_name() {
 }
 
 // ── Cursor placement ──────────────────────────────────────────────────────────
-
 
 // ── Read-only view buffer properties ─────────────────────────────────────────
 
@@ -362,7 +360,6 @@ fn view_buffer_blocks_write() {
         ":w on a read-only view must report 'Buffer is read-only'"
     );
 }
-
 
 /// `:e!` on a synthetic buffer (path-less, labeled) must error with
 /// "no file name" — there is no source to reload from, force or not.

@@ -1,5 +1,5 @@
-use super::*;
 use super::super::list_buffers::ls_output;
+use super::*;
 
 #[test]
 fn ls_two_buffers_marks_current_and_alternate() {

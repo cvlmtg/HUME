@@ -1989,7 +1989,6 @@ fn steel_repeatable_change_via_call_records_insert_keys() {
 
 // ── Lazy command extend forwarding ───────────────────────────────────────────
 
-
 /// A 3-param non-variadic lambda can be *registered* (it is valid for `call!`
 /// invocations with explicit args) but must produce a graceful error when
 /// dispatched via keymap injection — which supplies at most 2 args.

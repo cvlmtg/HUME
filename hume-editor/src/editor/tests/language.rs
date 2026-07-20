@@ -185,7 +185,6 @@ fn on_language_set_hook_fires_on_set_buffer_language() {
     assert_ne!(state(&ed), before, "on-language-set hook must have fired");
 }
 
-
 #[test]
 fn on_language_set_hook_does_not_fire_on_no_op() {
     let mut ed = editor_from("-[a]>b\n");

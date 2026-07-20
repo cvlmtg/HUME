@@ -180,14 +180,7 @@ fn insert_at_selection_start_collapsed() {
 
 // ── :e on already-open buffers ────────────────────────────────────────────────
 
-
-
-
-
-
 // ── open_extra_files ──────────────────────────────────────────────────────────
-
-
 
 // ── :wa (write all) ────────────────────────────────────────────────────────────
 
@@ -214,12 +207,3 @@ pub(super) fn open_file_buffer(ed: &mut Editor, content: &str) -> (tempfile::Tem
     let bid = ed.open_buffer(buf);
     (tmp_path, bid)
 }
-
-
-
-
-
-
-
-
-

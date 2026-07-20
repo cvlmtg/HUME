@@ -12,10 +12,7 @@ fn alternate_buffer_none_with_single_buffer() {
     assert_eq!(ed.alternate_buffer(), None);
 }
 
-
 // ── goto-alternate-file  ───────────────────────────────────────────────────────
-
-
 
 #[test]
 fn goto_alternate_file_warns_when_no_alternate() {
@@ -42,7 +39,6 @@ fn goto_alternate_file_warns_when_no_alternate() {
 
 // ── %/# expansion in typed commands ──────────────────────────────────────────
 
-
 #[test]
 fn colon_e_hash_errors_with_no_alternate() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -57,7 +53,6 @@ fn colon_e_hash_errors_with_no_alternate() {
         "unexpected status: {msg:?}"
     );
 }
-
 
 #[test]
 fn colon_e_percent_errors_with_no_path() {

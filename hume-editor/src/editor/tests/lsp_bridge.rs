@@ -59,7 +59,6 @@ pub(super) fn setup_with_recording(
 
 // ── #:supersede ──────────────────────────────────────────────────────────────
 
-
 /// Two `lsp-request` calls with no `#:supersede` key must never cancel each
 /// other — both are independent, both fire.
 #[test]
@@ -238,10 +237,6 @@ fn timeout_delivers_err_string_timeout_to_callback() {
         "callback must receive the string \"timeout\" as err"
     );
 }
-
-
-
-
 
 #[test]
 fn on_lsp_notification_fires_the_registered_handler() {
@@ -432,7 +427,6 @@ impl LspBackend for OrderedLogBackend {
         self.inner.shutdown(server);
     }
 }
-
 
 #[test]
 fn lsp_request_with_unknown_server_reports_an_error_and_fires_callback_with_err() {

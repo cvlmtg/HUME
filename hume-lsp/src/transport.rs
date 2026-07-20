@@ -720,9 +720,7 @@ mod tests {
 
             rx_wake
                 .recv_timeout(std::time::Duration::from_secs(5))
-                .expect(
-                    "reader thread must wake the loop after cat echoes the notification back",
-                );
+                .expect("reader thread must wake the loop after cat echoes the notification back");
 
             drop(handle);
         }

@@ -950,7 +950,6 @@ fn cursor_is_at_end_after_recall() {
 
 // ── Bug fixes: parser and empty Enter ────────────────────────────────────────
 
-
 /// `:ls` and `:list-buffers` (hyphen in name) still dispatch correctly after
 /// the parser rewrite — regression guard.
 #[test]
@@ -968,7 +967,6 @@ fn colon_list_buffers_aliases_work() {
         ":list-buffers must open the read-only [buffers] view buffer"
     );
 }
-
 
 /// Pressing `:` then Enter must dismiss the minibuf silently — no warning.
 #[test]

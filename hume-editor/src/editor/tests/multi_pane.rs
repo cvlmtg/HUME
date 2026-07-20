@@ -517,9 +517,6 @@ fn vsplit_places_pane_side_by_side() {
     }
 }
 
-
-
-
 /// End-to-end regression guard: `:split` typed through the real command-mode
 /// dispatch path (`Mode::Command`, not `Mode::Normal`) must still move focus
 /// to the new pane. `execute_typed`-based tests above run with the editor
@@ -1014,7 +1011,6 @@ fn same_buffer_split_inherits_source_pane_wrap_mode() {
     );
 }
 
-
 /// `:wrap` toggles only the focused pane's `wrap_mode` — a sibling pane on
 /// the same buffer is untouched. `wrap_mode` lives on `Pane`, not on the
 /// buffer, so two panes viewing the same buffer can wrap independently.
@@ -1190,7 +1186,6 @@ fn same_buffer_split_inherits_saved_scrolls() {
     );
 }
 
-
 /// Before the first `prepare_frame`, there is no real terminal geometry to
 /// check a split against — `fits_split` must allow it; the next
 /// `prepare_frame` sizes the result correctly regardless.
@@ -1331,7 +1326,6 @@ fn split_same_buffer_clones_jump_list_then_diverges() {
     );
 }
 
-
 // ── Per-pane highlight isolation ────────────────────────────────────────────
 //
 // `update_highlight_providers` must not write into globally-shared highlight
@@ -1341,7 +1335,6 @@ fn split_same_buffer_clones_jump_list_then_diverges() {
 // pane's highlight bytes (bracket/search matches) onto every other pane's
 // unrelated text, including one viewing a different buffer or the same
 // buffer scrolled elsewhere.
-
 
 /// A search match that spans a `\n` must produce one highlight span per line
 /// it touches, each clipped to that line's own content — not a single span

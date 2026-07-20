@@ -426,7 +426,6 @@ fn ctrl_w_at_start_of_search_minibuf_is_noop() {
 
 // ── :set completion (integration) ─────────────────────────────────────────────
 
-
 /// `:set ` with no further input opens the scope popup (>=2 candidates), so
 /// Tab opens the popup rather than silently completing.
 #[test]

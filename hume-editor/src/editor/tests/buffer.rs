@@ -15,7 +15,6 @@ fn buffer_no_arg_errors() {
 
 // ── :b by 1-based index ───────────────────────────────────────────────────────
 
-
 #[test]
 fn buffer_index_zero_errors() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -38,15 +37,9 @@ fn buffer_index_out_of_range_errors() {
 
 // ── :b by full absolute path ──────────────────────────────────────────────────
 
-
-
 // ── :b by exact basename ──────────────────────────────────────────────────────
 
-
-
 // ── :b by basename prefix ─────────────────────────────────────────────────────
-
-
 
 #[test]
 fn buffer_no_match_errors() {
@@ -61,7 +54,6 @@ fn buffer_no_match_errors() {
 }
 
 // ── :b scratch buffer ─────────────────────────────────────────────────────────
-
 
 // ── :b current buffer is a no-op ─────────────────────────────────────────────
 
@@ -114,8 +106,4 @@ fn buffer_bang_force_is_ignored() {
 
 // ── :b on a buffer whose backing file has been deleted ───────────────────────
 
-
-
-
 // ── Ctrl+O restores position after :b ────────────────────────────────────────
-

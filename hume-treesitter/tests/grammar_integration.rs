@@ -310,8 +310,7 @@ fn highlight_later_pattern_wins_on_same_node() {
     let source = b"fn main() { foo(1); }\n";
     let tree = parser.parse(source as &[u8], None).expect("parse");
 
-    let query_src =
-        "(identifier) @variable\n(call_expression function: (identifier) @function)";
+    let query_src = "(identifier) @variable\n(call_expression function: (identifier) @function)";
     let mut scope_reg = ScopeRegistry::new();
     let rope = ropey::Rope::from_str(&String::from_utf8_lossy(source));
 
@@ -354,8 +353,7 @@ fn highlight_pattern_order_controls_winner_not_specificity() {
     let source = b"fn main() { foo(1); }\n";
     let tree = parser.parse(source as &[u8], None).expect("parse");
 
-    let query_src =
-        "(call_expression function: (identifier) @function)\n(identifier) @variable";
+    let query_src = "(call_expression function: (identifier) @function)\n(identifier) @variable";
     let mut scope_reg = ScopeRegistry::new();
     let rope = ropey::Rope::from_str(&String::from_utf8_lossy(source));
 
@@ -412,8 +410,7 @@ fn highlight_underscore_captures_are_ignored() {
 
     // Underscore capture alongside a real one on the same node: the real
     // capture must win, never the (dropped) underscore capture.
-    let mixed_query =
-        "(call_expression function: (identifier) @_helper)\n(identifier) @variable";
+    let mixed_query = "(call_expression function: (identifier) @_helper)\n(identifier) @variable";
     let mut scope_reg = ScopeRegistry::new();
     let highlighter = TreeSitterHighlighter::new(grammar.language(), mixed_query, &mut scope_reg)
         .expect("highlighter creation should succeed");

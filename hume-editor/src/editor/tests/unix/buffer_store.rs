@@ -1,5 +1,5 @@
-use super::*;
 use super::super::buffer_store::set_cursor;
+use super::*;
 
 /// `:e path` opens a new buffer when the file is not already open.
 #[test]

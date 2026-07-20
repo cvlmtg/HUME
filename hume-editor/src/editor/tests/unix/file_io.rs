@@ -1,5 +1,5 @@
-use super::*;
 use super::super::file_io::{dirty_focused, open_file_buffer};
+use super::*;
 
 #[test]
 fn edit_existing_buffer_switches_without_reread() {
