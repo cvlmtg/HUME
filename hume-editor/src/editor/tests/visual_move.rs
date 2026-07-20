@@ -501,6 +501,40 @@ fn select_word_nearest_absorbs_whitespace_bookend_by_default() {
     assert_eq!(sel.head(), 83, "still snaps to 'ratatui'");
 }
 
+/// A word beginning exactly at a wrapped sub-row's start (no leading space
+/// within that row — the space is the *previous* row's trailing char) must
+/// not have that space pulled into its around-selection. Before the fix,
+/// `expand_word_unit`'s leading scan ignored the sub-row bound
+/// `nearest_word_on_line` was given and walked straight through it into the
+/// previous visual row.
+#[test]
+fn select_word_nearest_does_not_absorb_previous_row_whitespace() {
+    use hume_editing::selection::{Selection, SelectionSet};
+    use hume_editing::text::Text;
+    // "hello wordB\n": wrap at column 6 puts "hello " (space included) on
+    // sub-row 0, so "wordB" starts sub-row 1 with no leading space in-row.
+    let buf = Text::from("hello wordB\n");
+    let sels = SelectionSet::single(Selection::collapsed(8)); // 'r' inside "wordB"
+    let mut ed = Editor::for_testing(Buffer::new(buf, sels));
+    ed.view.panes[ed.state.focused_pane_id].wrap_mode =
+        hume_engine::pane::WrapMode::Indent { width: 6 };
+
+    ed.execute_keymap_command(
+        std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
+        Some(1),
+        false,
+        ArgSource::Keymap,
+    );
+
+    let sel = ed.current_selections().primary();
+    assert_eq!(
+        sel.anchor(),
+        6,
+        "must not absorb the space at char 5 — it belongs to the previous visual row"
+    );
+    assert_eq!(sel.head(), 10, "still selects all of 'wordB'");
+}
+
 /// With `word-selects-whitespace` off, the selection stays a bare inner word
 /// — no whitespace bookend — even in wrap mode.
 #[test]

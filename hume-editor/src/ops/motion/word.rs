@@ -348,7 +348,7 @@ pub(super) fn apply_word_select(
             }
         }
         if around && moved {
-            let (start, end) = expand_word_unit(buf, current.start(), current.end());
+            let (start, end) = expand_word_unit(buf, current.start(), current.end(), 0);
             current = Selection::new(start, end);
         }
         current
@@ -404,7 +404,7 @@ pub(super) fn apply_word_select_extend(
                     // the very start of the buffer) — fall back to the bare
                     // whitespace position, same as `anchor_unit` yields there.
                     let (unit_start, unit_end) = if around
-                        && let Some(unit) = word_unit_at(buf, current.anchor(), is_boundary)
+                        && let Some(unit) = word_unit_at(buf, current.anchor(), is_boundary, 0)
                     {
                         unit
                     } else {
@@ -414,7 +414,7 @@ pub(super) fn apply_word_select_extend(
                         Selection::new(unit_start, word_end) // target beyond anchor — grow forward
                     } else if word_end < unit_start {
                         let head = if around {
-                            expand_word_unit(buf, word_start, word_end).0
+                            expand_word_unit(buf, word_start, word_end, 0).0
                         } else {
                             word_start
                         };

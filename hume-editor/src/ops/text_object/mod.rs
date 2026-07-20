@@ -217,12 +217,36 @@ pub(crate) fn cmd_inner_word(
 /// the buffer) is indentation, not inter-word spacing, and must never be
 /// absorbed — the first word of a line always takes its trailing whitespace
 /// instead. This keeps `w`/`b`/`mm`/`maw` from ever eating indentation.
-pub(crate) fn expand_word_unit(buf: &Text, start: usize, end: usize) -> (usize, usize) {
+///
+/// `min_start` is a hard lower bound on the leading scan, never crossed.
+/// Buffer-line callers pass `0` (no floor beyond the buffer itself). The wrap
+/// path passes the visual sub-row's start so a word beginning a continuation
+/// row never absorbs the inter-word space that lives at the end of the
+/// previous display row.
+///
+/// Reaching `min_start` only counts as indentation (blocking absorption) when
+/// `min_start` is itself a genuine line start — the buffer start, or right
+/// after a real newline. A wrap sub-row boundary is neither: it falls
+/// mid-line, so a leading run that reaches it is ordinary inter-word spacing
+/// that happens to sit at the row split, not indentation, and stays
+/// absorbable up to that floor.
+pub(crate) fn expand_word_unit(
+    buf: &Text,
+    start: usize,
+    end: usize,
+    min_start: usize,
+) -> (usize, usize) {
+    let min_start_is_bol = min_start == 0
+        || classify_char(
+            buf.char_at(prev_grapheme_boundary(buf, min_start))
+                .expect("min_start > 0 implies a preceding char"),
+        ) == CharClass::Eol;
+
     // Leading scan: walk back over Space graphemes from `start`. Stopping on
     // Eol means the run touches the start of the line — indentation.
     let mut run_start = start;
     let mut hit_eol = false;
-    while run_start > 0 {
+    while run_start > min_start {
         let prev_pos = prev_grapheme_boundary(buf, run_start);
         match classify_char(buf.char_at(prev_pos).expect("prev_pos < len")) {
             CharClass::Space => run_start = prev_pos,
@@ -233,7 +257,7 @@ pub(crate) fn expand_word_unit(buf: &Text, start: usize, end: usize) -> (usize, 
             _ => break,
         }
     }
-    let at_bol = hit_eol || run_start == 0;
+    let at_bol = hit_eol || (run_start == min_start && min_start_is_bol);
 
     if run_start < start && !at_bol {
         return (run_start, end);
@@ -282,6 +306,7 @@ pub(crate) fn word_unit_at(
     buf: &Text,
     pos: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
+    min_start: usize,
 ) -> Option<(usize, usize)> {
     // `pos` may be any valid selection endpoint, including the trailing
     // codepoint of a multi-codepoint grapheme cluster — see `anchor_unit`'s
@@ -290,7 +315,7 @@ pub(crate) fn word_unit_at(
     let (start, end) = inner_word_impl(buf, pos, is_boundary)?;
     let class = classify_char(buf.char_at(pos)?);
     if class != CharClass::Space && class != CharClass::Eol {
-        return Some(expand_word_unit(buf, start, end));
+        return Some(expand_word_unit(buf, start, end, min_start));
     }
 
     // On whitespace: `(start, end)` is the whitespace run — find the word
@@ -310,7 +335,7 @@ pub(crate) fn word_unit_at(
         return None;
     };
     let (start, end) = inner_word_impl(buf, word_pos, is_boundary)?;
-    Some(expand_word_unit(buf, start, end))
+    Some(expand_word_unit(buf, start, end, min_start))
 }
 
 /// Find the nearest word within `[line_start, line_end_excl)` from `head`.
@@ -338,7 +363,7 @@ pub(crate) fn nearest_word_on_line(
 ) -> Option<(usize, usize)> {
     let unit = |pos: usize| {
         if around {
-            word_unit_at(buf, pos, is_word_boundary)
+            word_unit_at(buf, pos, is_word_boundary, line_start)
         } else {
             inner_word_impl(buf, pos, is_word_boundary)
         }
@@ -512,7 +537,7 @@ pub(crate) fn cmd_select_word_around(
     mode: MotionMode,
 ) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, |b, pos| {
-        word_unit_at(b, pos, is_word_boundary)
+        word_unit_at(b, pos, is_word_boundary, 0)
     })
 }
 
@@ -525,7 +550,7 @@ pub(crate) fn cmd_select_uppercase_word_around(
     mode: MotionMode,
 ) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, |b, pos| {
-        word_unit_at(b, pos, is_uppercase_word_boundary)
+        word_unit_at(b, pos, is_uppercase_word_boundary, 0)
     })
 }
 
