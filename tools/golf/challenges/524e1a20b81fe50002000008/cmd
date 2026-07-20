@@ -1,1 +1,1 @@
-QQxs, <ret>c,<ret><esc>x<c-X>s:<ret>&Qjqq
+QQxs, <ret>;r<ret>x<c-X>s:<ret>&Qjqq
