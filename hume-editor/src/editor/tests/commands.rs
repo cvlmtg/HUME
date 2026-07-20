@@ -605,6 +605,59 @@ fn f_then_esc_cancels_without_side_effects() {
     );
 }
 
+// ── WaitChar accepts Enter and Tab (Kakoune parity) ────────────────────────────
+
+/// `r<ret>` replaces the char under the cursor with a literal newline. The
+/// wait-char consumer translates `KeyCode::Enter` to `'\n'` before dispatch.
+#[test]
+fn r_then_enter_replaces_with_newline() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('r'));
+    ed.handle_key(key_enter());
+    assert!(ed.state.wait_char.is_none(), "wait_char cleared after Enter");
+    assert_eq!(state(&ed), "-[\n]>ello\n");
+}
+
+/// Multi-char selection: every grapheme becomes '\n', except a grapheme that
+/// already was '\n' — `replace_selections` never replaces an existing newline,
+/// it is retained as-is (see `replace_multiline_selection_skips_newline` in
+/// `ops/edit/tests.rs`). This exercises that rule with the new Enter argument.
+#[test]
+fn r_then_enter_multi_char_selection_replaces_each_grapheme() {
+    let mut ed = editor_from("-[ab\ncd]>\n");
+    ed.handle_key(key('r'));
+    ed.handle_key(key_enter());
+    assert_eq!(state(&ed), "-[\n\n\n\n\n]>\n");
+}
+
+/// `r<tab>` replaces with a literal tab character.
+#[test]
+fn r_then_tab_replaces_with_tab() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('r'));
+    ed.handle_key(key_tab());
+    assert!(ed.state.wait_char.is_none(), "wait_char cleared after Tab");
+    assert_eq!(state(&ed), "-[\t]>ello\n");
+}
+
+/// `f<ret>` is accepted as a wait-char argument (the wait clears, unlike Esc)
+/// but never matches: `find_char_on_line_forward` (ops/motion/find.rs)
+/// explicitly excludes '\n' as a structural line boundary, not content — by
+/// design, not a bug. This documents that "accepted argument" and "found on
+/// line" are separate questions, exactly like `fz` on a line with no 'z'.
+#[test]
+fn f_then_enter_is_accepted_but_never_matches() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('f'));
+    ed.handle_key(key_enter());
+    assert!(ed.state.wait_char.is_none(), "wait_char cleared after Enter");
+    assert_eq!(
+        state(&ed),
+        "-[h]>ello\n",
+        "'\\n' is never a match target for find — cursor unchanged"
+    );
+}
+
 // ── `m i w` three-key text-object sequence ─────────────────────────────────
 
 /// The trie must advance through `m` (Interior) → `mi` (Interior) → `miw`

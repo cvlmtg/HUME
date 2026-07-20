@@ -36,6 +36,8 @@ Whichever way you entered Insert mode, `m i i` recovers what you last typed afte
 
 Line endings inside the selection are left alone, so replacing across several lines won't collapse them into one. On a single character, `r` is delimiter-aware: replacing one half of a bracket or quote pair updates its partner too.
 
+`Enter` and `Tab` count as the typed character, replacing with a newline or tab.
+
 ## Changing case
 
 | Key | Effect |

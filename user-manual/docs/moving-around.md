@@ -38,7 +38,7 @@ Search within the current line for a specific character:
 | `=` | Repeat last find forward |
 | `-` | Repeat last find backward |
 
-After pressing `f`, `F`, `t`, or `T`, HUME waits for the target character.
+After pressing `f`, `F`, `t`, or `T`, HUME waits for the target character. `Tab` counts as a target character.
 
 Both are jumps, not extends — the selection collapses to a single character at the landing spot, not a span from where the cursor started:
 

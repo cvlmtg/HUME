@@ -41,7 +41,9 @@ Keys marked **kitty only** require the kitty keyboard protocol, auto-detected at
 | `=` | Repeat last find forward |
 | `-` | Repeat last find backward |
 
-After `f`/`F`/`t`/`T`, HUME waits for the target character.
+After `f`/`F`/`t`/`T`, HUME waits for the target character. `Tab` counts as a
+target character; a line ending never does, since these motions never leave
+the current line.
 
 ### Selection
 
@@ -93,7 +95,7 @@ Text objects (use the `m` prefix):
 | `p` | Paste after (smart source) |
 | `P` | Paste before |
 | `[` / `]` | Cycle kill ring older / newer and re-paste (only after a `p`/`P`) |
-| `r` + char | Replace every selected character (line endings are left alone) |
+| `r` + char | Replace every selected character (line endings are left alone). `Enter`/`Tab` count as the character, replacing with a newline/tab |
 | `J` | Join the selected lines into one |
 | `&` | Align selections into a column |
 | `u` | Undo |

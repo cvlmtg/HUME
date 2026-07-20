@@ -69,8 +69,17 @@ impl Editor {
         // If a f/t/F/T/r binding fired on the previous keypress, `wait_char`
         // holds the command name to dispatch. The next character (any key)
         // becomes the argument — stored in `pending_char` for the command to read.
+        // Enter and Tab are accepted as their literal characters ('\n' / '\t') —
+        // Kakoune parity (e.g. `r<ret>` replaces with a newline, `f<tab>` finds a
+        // tab) — since both have an unambiguous char meaning as a target/argument.
         if let Some(wc) = self.state.wait_char.take() {
-            if let KeyCode::Char(ch) = key.code {
+            let arg = match key.code {
+                KeyCode::Char(ch) => Some(ch),
+                KeyCode::Enter => Some('\n'),
+                KeyCode::Tab => Some('\t'),
+                _ => None,
+            };
+            if let Some(ch) = arg {
                 let count = self.state.count.take();
                 self.state.pending_char = Some(ch);
                 // Extend resolution: sticky extend (mode == Extend) OR one-shot
@@ -78,7 +87,7 @@ impl Editor {
                 let extend = (self.state.mode() == EditorMode::Extend) || wc.ctrl_extend;
                 self.execute_keymap_command(wc.cmd_name.clone(), count, extend, ArgSource::Keymap);
             }
-            // Non-char key (e.g. Esc after pressing `f`): cancel the wait.
+            // Non-char/Enter/Tab key (e.g. Esc after pressing `f`): cancel the wait.
             // Clear count so a prefix like `3f<Esc>` doesn't leak into the next command.
             self.state.count = None;
             return;
