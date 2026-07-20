@@ -305,14 +305,9 @@ impl LanguageRegistry {
     }
 
     /// The compiled glob matcher for path-based detection. Index-aligned with
-    /// `glob_lang_name`: `glob_lang_name(i)` is the language for match index `i`.
+    /// `glob_lang_id`: `glob_lang_id(i)` is the language for match index `i`.
     pub fn compiled_globs(&self) -> &GlobSet {
         &self.compiled_globs
-    }
-
-    /// Language name for glob match index `i` (from `GlobSet::matches`).
-    pub fn glob_lang_name(&self, i: usize) -> Option<&str> {
-        self.glob_lang_ids.get(i).map(|&id| self.name_of(id))
     }
 
     /// Language id for glob match index `i` (from `GlobSet::matches`).
@@ -694,7 +689,8 @@ mod tests {
             .unwrap();
         let matches = reg.compiled_globs().matches(Path::new("Makefile"));
         assert!(!matches.is_empty(), "Makefile should match registered glob");
-        assert_eq!(reg.glob_lang_name(matches[0]), Some("makefile"));
+        let name = reg.glob_lang_id(matches[0]).map(|id| reg.name_of(id));
+        assert_eq!(name, Some("makefile"));
         // Flip: non-matching path must produce empty match.
         assert!(
             reg.compiled_globs()
