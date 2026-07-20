@@ -334,8 +334,8 @@ impl Pane {
     /// Copy the view state a same-buffer split inherits from its source pane.
     ///
     /// Exhaustive destructure on purpose: adding a `Pane` field forces a
-    /// compile-time inherit-or-skip decision here instead of a silent split bug
-    /// (this method exists because `saved_scrolls` was once such a bug).
+    /// compile-time inherit-or-skip decision here instead of a silent split
+    /// bug.
     pub fn inherit_view_state(&mut self, src: &Pane) {
         let Pane {
             buffer_id: _, // pane identity, set by the split itself

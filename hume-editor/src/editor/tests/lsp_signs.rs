@@ -407,8 +407,7 @@ fn wider_signcolumn_keeps_multiple_signs_per_line() {
     );
 }
 
-/// Cross-map merge (a gap flagged in review, not previously covered):
-/// diagnostics and plugin signs are written to two separate maps by
+/// Cross-map merge: diagnostics and plugin signs are written to two separate maps by
 /// `update_sign_providers`, then merged by the engine's `SignColumn`, which
 /// holds one `SharedSignSource` per map (see `build_pane`). Every test above
 /// checks the two maps in isolation; this one drives the pane's actual

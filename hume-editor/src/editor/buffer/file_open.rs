@@ -287,13 +287,13 @@ impl Editor {
 
     /// Replace buffer `id` with `new_doc` in-place, reseeding all pane state.
     ///
-    /// History-discarding whole-`Buffer` swap. The `:e!` reload path now uses
-    /// [`reload_buffer_in_place`](Self::reload_buffer_in_place) (history-preserving)
-    /// instead; this wrapper survives for tests that exercise the
-    /// `lifecycle::replace_buffer_in_place` reset path (scratch-swap on last-buffer
-    /// close, read-only-view refresh invariants). The prod non-test callers go
-    /// through `lifecycle::replace_buffer_in_place` directly (`close_buffer`'s
-    /// last-buffer branch).
+    /// History-discarding whole-`Buffer` swap. Test-only entry point for the
+    /// `lifecycle::replace_buffer_in_place` reset path (scratch-swap on
+    /// last-buffer close, read-only-view refresh invariants). Production
+    /// callers go through `lifecycle::replace_buffer_in_place` directly
+    /// (`close_buffer`'s last-buffer branch); the `:e!` reload path uses
+    /// [`reload_buffer_in_place`](Self::reload_buffer_in_place) instead, which
+    /// preserves undo history.
     ///
     /// Caller contract: `new_doc.search_pattern` must be `None` (enforced by
     /// debug_assert — `Buffer::from_file` satisfies this by construction).

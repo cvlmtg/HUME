@@ -275,8 +275,7 @@ fn shift_d_is_dot_repeatable() {
 /// Loading `core:vim-keybind` with the default `'smart` `change-to-eol` but
 /// without `core:stdlib` loaded first must fail `eval_init` at load time,
 /// naming `core:stdlib` — not silently succeed and leave `C` picking the
-/// wrong branch the first time it's pressed (the failure mode before the
-/// load-time `(loaded-plugins)` check was added).
+/// wrong branch the first time it's pressed.
 #[test]
 fn smart_change_to_eol_without_stdlib_errors_at_load() {
     let guard = HumeRuntimeGuard::new();

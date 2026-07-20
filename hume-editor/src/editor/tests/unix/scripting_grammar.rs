@@ -395,11 +395,8 @@ fn setup_editor_with_languages_scm(
 /// parse has been posted to the background worker — so the run loop's first
 /// frame is highlighted at most one poll later, never long after a b/w flash.
 ///
-/// The detection + parse-post happens via the existing end-of-init
-/// `detect_and_set_language` loop in `scripting_setup.rs` — this test does
-/// not depend on, and does not require, any early-kickoff variant (an
-/// early-detection-pass approach was considered and deliberately rejected;
-/// see the ROADMAP decisions table).
+/// The detection + parse-post happens via the end-of-init
+/// `detect_and_set_language` loop in `scripting_setup.rs`.
 ///
 /// Flip: comment out that end-of-init loop — `syntax` stays `None` after
 /// `init_scripting` and the first assertion fails.

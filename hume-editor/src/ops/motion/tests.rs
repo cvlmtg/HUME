@@ -1479,8 +1479,7 @@ fn extend_select_next_word_around_grows_with_anchor_unit() {
     // Extend mode honors word-selects-whitespace: the anchor's unit ("bar",
     // not first on its line, takes its leading space) is kept whole as the
     // selection grows forward to the target word's own end — no trailing
-    // whitespace is pulled in, which is exactly why the old bare-anchor
-    // reversion (see apply_word_select_extend's doc) is no longer needed.
+    // whitespace is pulled in.
     assert_state!(
         "foo -[b]>ar baz\n",
         |(buf, sels)| cmd_select_next_word_around(&buf, sels, 1, MotionMode::Extend),

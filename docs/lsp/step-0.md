@@ -24,7 +24,7 @@ serde_json = "1"
 ```
 Crates opt in with `serde.workspace = true` — only where actually used (nothing uses them until P8/C1).
 
-**Toml trigger** — the recorded decision was "stay on toml 0.8 until serde enters the workspace (LSP)". That is now. Evaluate bumping `hume-engine` to toml 1.x (its `Value` moves behind a serde feature there). If the upgrade is a mechanical version bump with green tests, do it here; if it causes API churn in the theme loader, stay on 0.8 and record the rationale in `docs/ROADMAP.md`'s decisions table. Do not rabbit-hole — this is a side quest with a 30-minute budget.
+**Toml trigger** — serde entering the workspace is the recorded trigger to evaluate bumping `hume-engine` to toml 1.x (its `Value` moves behind a serde feature there). If the upgrade is a mechanical version bump with green tests, do it here; if it causes API churn in the theme loader, stay on 0.8 and record the rationale in `docs/ROADMAP.md`'s decisions table. Do not rabbit-hole — this is a side quest with a 30-minute budget.
 
 **Tests** — `cargo build --workspace` + `cargo test --workspace`; `cargo tree -d` shows no duplicate serde versions.
 

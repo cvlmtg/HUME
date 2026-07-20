@@ -208,9 +208,7 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
 // ── Decode errors name the builtin ─────────────────────────────────────────
 
 /// `declare-plugin`'s argument decoders must name the builtin in their error,
-/// matching every other builtin's naming idiom — `declare-plugin` was the
-/// one straggler still passing bare `"commands"`/`"events"`/`"languages"` as
-/// the decoder's `ctx_name`.
+/// matching every other builtin's naming idiom.
 ///
 /// Fail oracle: revert the `ctx_name` args back to bare `"commands"` →
 /// the assertion on the `declare-plugin` prefix fails.

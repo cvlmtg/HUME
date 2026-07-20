@@ -159,12 +159,13 @@ fn inner_word_includes_combining_grapheme() {
     // char offsets: c(0) a(1) f(2) e(3) ◌́(4) ' '(5) w(6) ...
     // Grapheme clusters: {c}{a}{f}{e◌́}{ }{w}...
     //
-    // Old code (end += 1) stops at offset 3 because the combining codepoint
-    // at offset 4 is classified as Punctuation — a false word/punct boundary
-    // inside the grapheme. New code steps by grapheme boundary: the next
-    // cluster after offset 3 starts at offset 5 (space), so the word ends
-    // at offset 4 (last codepoint of the {e◌́} grapheme) — the full cluster
-    // is included.
+    // Stepping by grapheme boundary (not codepoint) matters here: the
+    // combining codepoint at offset 4 is classified as Punctuation, which
+    // would be a false word/punct boundary inside the grapheme if stepped
+    // one codepoint at a time. Stepping by grapheme boundary instead: the
+    // next cluster after offset 3 starts at offset 5 (space), so the word
+    // ends at offset 4 (last codepoint of the {e◌́} grapheme) — the full
+    // cluster is included.
     assert_state!(
         "-[c]>afe\u{0301} world\n",
         |(buf, sels)| cmd_inner_word(&buf, sels, 0, MotionMode::Move),

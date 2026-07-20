@@ -103,14 +103,12 @@ pub(super) enum WalkResult {
 
 /// Canonical binding identity for a key event.
 ///
-/// crossterm 0.29 normalized case implicitly (uppercase char ⇔ `SHIFT`) as
-/// part of `KeyEvent`'s `PartialEq`/`Hash` impls; termina's `KeyEvent` derives
-/// plain equality with no such normalization, so the trie must do it
-/// explicitly at the binding boundary. Also scrubs fields that never
-/// participate in binding identity: `kind` (a kitty autorepeat is a `Repeat`
-/// event, not `Press` — held keys must keep matching the same binding under
-/// `REPORT_EVENT_TYPES`), protocol `state`, and the Caps/Num Lock modifier
-/// bits.
+/// `KeyEvent`'s `PartialEq`/`Hash` impls perform no case normalization, so
+/// the trie normalizes uppercase char ⇔ `SHIFT` explicitly at the binding
+/// boundary. Also scrubs fields that never participate in binding identity:
+/// `kind` (a kitty autorepeat is a `Repeat` event, not `Press` — held keys
+/// must keep matching the same binding under `REPORT_EVENT_TYPES`), protocol
+/// `state`, and the Caps/Num Lock modifier bits.
 fn canonical(mut key: KeyEvent) -> KeyEvent {
     key.kind = KeyEventKind::Press;
     key.state = KeyEventState::NONE;

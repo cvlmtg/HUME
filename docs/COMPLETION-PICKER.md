@@ -2,9 +2,9 @@
 
 Design document for the insert-mode completion menu driven by multiple Steel-registered sources (LSP, buffer words, custom plugins), mixed and prioritized by policy written in Steel.
 
-The sibling fuzzy-finder (picker) design lives in `docs/FUZZY-FINDERS.md` — split out on 2026-07-12 (this doc previously held it as "Part B"). The two designs share the "Rust store, Steel policy" architectural pattern, and prospectively the fuzzy matcher if `Q-B6` there ever unifies them; see that doc's "Why not one shared session type" note for why they stay separate.
+The sibling fuzzy-finder (picker) design lives in `docs/FUZZY-FINDERS.md`, in its own file. The two designs share the "Rust store, Steel policy" architectural pattern, and prospectively the fuzzy matcher if `Q-B6` there ever unifies them; see that doc's "Why not one shared session type" note for why they stay separate.
 
-**Status: design only — not scheduled, no implementation started.** Written 2026-07-10 against the `lsp` branch (post Step 4 / F11). This document is the single place to resume from; it assumes the reader has *no* memory of the exploration that produced it.
+**Status: design only — not scheduled, no implementation started.** Written against the `lsp` branch (post Step 4 / F11). This document is the single place to resume from; it assumes the reader has *no* memory of the exploration that produced it.
 
 **Headline conclusions** (the "do we need to lay foundations now?" answer):
 
@@ -16,7 +16,7 @@ The sibling fuzzy-finder (picker) design lives in `docs/FUZZY-FINDERS.md` — sp
 
 Same rules as `docs/LSP.md`:
 
-1. **Verify before you write.** Symbols named here were verified on 2026-07-10, but the codebase moves. `rg 'symbol_name'` before relying on anything. No line numbers anywhere in this doc — navigate by symbol search.
+1. **Verify before you write.** The codebase moves — `rg 'symbol_name'` before relying on anything named here. No line numbers anywhere in this doc — navigate by symbol search.
 2. **If the doc contradicts the code, STOP** and report; don't silently adapt.
 3. Open questions each carry a `Default:`. At implementation time, adopt the default unless evidence gathered during the task contradicts it — then record the decision in the Decisions table here.
 4. Project-wide rules from `CLAUDE.md` apply (no `.unwrap()` outside tests, grapheme discipline, every command tested).
@@ -32,7 +32,7 @@ These are settled project decisions (see `docs/LSP.md` Decisions table) and this
 
 ---
 
-## Current state — verified inventory (lsp branch, 2026-07-10)
+## Current state — verified inventory (`lsp` branch)
 
 Everything below was read from source, not recalled. This is the substrate this design builds on.
 
@@ -138,7 +138,7 @@ and their items appear in the same menu as LSP completions, ranked by the same R
 
 **Source contract**: `fn` receives `(bid prefix emit)` where `emit` is a closure the coordinator provides; the source calls `(emit items)` once, synchronously or from an async callback (e.g. inside an `lsp-request` callback). Items are completion-item hashmaps in the **LSP `CompletionItem` JSON shape** — that shape stays the lingua franca because `StoredCompletionItem::from_json` already parses it and the fallbacks (`filterText`→`label` etc.) make the minimal item just `{"label": "foo"}`. Non-LSP sources simply omit `textEdit` and get the generic anchor-span insert path.
 
-One source class this contract can't serve yet: an **external-command-backed source** (dictionary/spell via `aspell`, a snippets CLI, shell history). Steel's process spawn is synchronous only — a spawn at trigger time freezes the editor for the command's duration. The fix is the generic `spawn-async` builtin designed and deferred in `docs/FUZZY-FINDERS.md` (B5's deferral note, 2026-07-13): command output batches to a Steel callback, which feeds `completion-add-items!` — the session token already makes late async arrivals harmless by construction. Such a source is the named candidate "second client" that would un-defer that builtin; no design change needed here when it does.
+One source class this contract can't serve yet: an **external-command-backed source** (dictionary/spell via `aspell`, a snippets CLI, shell history). Steel's process spawn is synchronous only — a spawn at trigger time freezes the editor for the command's duration. The fix is the generic `spawn-async` builtin designed and deferred in `docs/FUZZY-FINDERS.md` (B5's deferral note): command output batches to a Steel callback, which feeds `completion-add-items!` — the session token already makes late async arrivals harmless by construction. Such a source is the named candidate "second client" that would un-defer that builtin; no design change needed here when it does.
 
 **Incremental arrival — the one real Rust change.** Sources finish at different times (buffer-words: instant; LSP: 10–300ms). Two models considered:
 
@@ -185,7 +185,7 @@ Estimated total: comparable to one-and-a-half LSP Step 4 cards. No architectural
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Foundation timing | **Nothing now; additive later** | Completion store already source-agnostic. Verified against source 2026-07-10. |
+| Foundation timing | **Nothing now; additive later** | Completion store already source-agnostic. Verified against source. |
 | Item schema for completion sources | **LSP `CompletionItem` JSON shape as lingua franca** | Store already parses it with label-fallbacks making minimal items trivial; non-LSP sources omit `textEdit` and ride the generic anchor-span accept path (works serverless — UTF-16 default round-trips). |
 | Multi-source merge model | **Incremental: `completion-begin!` returns token; `completion-add-items!` merges with replace-per-source semantics; both carry `#:source`/`#:priority`/`#:incomplete`** | Menu appears at fastest-source speed; token makes late async arrivals from stale triggers harmless; replace-per-source makes isIncomplete re-requests idempotent (no duplicates). Single-shot rejected: gates UX on slowest source/timeout. |
 | Source registry location | **Pure Steel, in `core:completion`** | Registration and orchestration are user-intent frequency; no Rust registry earns its keep. Mirrors the `trigger_chars` precedent (Rust holds only the union it needs for the Insert-mode fire check). |

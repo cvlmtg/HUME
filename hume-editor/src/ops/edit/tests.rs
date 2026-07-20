@@ -1023,15 +1023,13 @@ fn delete_selection_lone_blank_line_is_noop() {
 
 #[test]
 fn delete_selection_last_line_multi_cursor_cursor_lands_at_merged_line_start() {
-    // Regression: multi-cursor dd-on-last-line. The first cursor deletes 'b'
-    // (char 1), advancing b.old_pos. The second cursor covers the whole last
-    // line "c\n" [anchor=3, head=4]. The cursor produced for that deletion must
+    // Multi-cursor dd-on-last-line. The first cursor deletes 'b' (char 1),
+    // advancing b.old_pos. The second cursor covers the whole last line
+    // "c\n" [anchor=3, head=4]. The cursor produced for that deletion must
     // land at char 0 (start of the merged "a" line), not at char 1.
     //
-    // Old code computed: cursor_new = b.new_pos() + cursor_line_start.saturating_sub(b.old_pos())
-    //   = 1 + (0.saturating_sub(2)) = 1 + 0 = 1  ← wrong
-    // New code: col_in_line = del_start - line_to_char(prev_line) = 2 - 0 = 2
-    //           retain(0); cursor_new = b.new_pos().saturating_sub(2) = 1 - 2 = 0 ✓
+    // col_in_line = del_start - line_to_char(prev_line) = 2 - 0 = 2
+    // retain(0); cursor_new = b.new_pos().saturating_sub(2) = 1 - 2 = 0 ✓
     use crate::ops::edit::delete_selection;
     use hume_editing::selection::SelectionSet;
     let buf = hume_editing::text::Text::from("ab\nc\n");

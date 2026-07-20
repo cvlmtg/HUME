@@ -301,8 +301,7 @@ impl Buffer {
     /// The `ChangeSet` pair is line-diff-derived ([`changesets_from_line_diff`])
     /// so the inverse carries only the changed lines, not a full-buffer
     /// delete-all + insert-all. `saved_revision` is bumped after recording so
-    /// the reloaded buffer is `!is_dirty()`, matching the old buffer-swap
-    /// behaviour.
+    /// the reloaded buffer is `!is_dirty()`.
     pub(crate) fn reload_from_text(
         &mut self,
         new_text: Text,

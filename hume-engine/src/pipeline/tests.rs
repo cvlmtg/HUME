@@ -378,15 +378,11 @@ fn cjk_heavy_viewport_fills_every_row_no_premature_filler() {
     }
 }
 
-// ── Dual compose path migration (B10) ───────────────────────────────
-
 #[test]
 fn scrolled_pane_renders_from_top_line_onward() {
-    // "ab\ncd\n": scrolling to top_line=1 must show "cd" at screen row 0
-    // — migrated from render.rs's old top_skip_rows_skips_first_row,
-    // which drove the deleted batch `compose()` path directly. The
-    // fused pipeline's equivalent scroll mechanism in `WrapMode::None`
-    // is `viewport.top_line`, not `top_row_offset` (which only sub-scrolls
+    // "ab\ncd\n": scrolling to top_line=1 must show "cd" at screen row 0.
+    // The fused pipeline's scroll mechanism in `WrapMode::None` is
+    // `viewport.top_line`, not `top_row_offset` (which only sub-scrolls
     // within a wrapped `top_line`'s own rows).
     let rope = ropey::Rope::from_str("ab\ncd\n");
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();

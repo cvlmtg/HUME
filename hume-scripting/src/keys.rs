@@ -241,7 +241,7 @@ fn expand_short_modifiers(token: &str) -> String {
     result
 }
 
-/// Crossterm uses `BackTab` (not `Tab | SHIFT`) for Shift+Tab.
+/// Terminal input reports Shift+Tab as `BackTab`, not `Tab | SHIFT`.
 fn normalise_shift_tab(code: KeyCode, mods: Modifiers) -> (KeyCode, Modifiers) {
     if code == KeyCode::Tab && mods.contains(Modifiers::SHIFT) {
         (KeyCode::BackTab, mods)

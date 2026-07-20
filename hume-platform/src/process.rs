@@ -580,8 +580,8 @@ mod tests {
 
     /// Pin down the wrapper's exact contents: the `--target` strip (needed by
     /// both `clang` and `zig cc`, see `target_stripping_wrapper_script`) and,
-    /// for `zig`, the whitespace-splitting issue that `cc`'s handling of
-    /// `CC="zig cc"` used to hit (see `compiler_env_vars`).
+    /// for `zig`, the whitespace-splitting issue in `cc`'s handling of
+    /// `CC="zig cc"` (see `compiler_env_vars`).
     #[test]
     #[cfg(windows)]
     fn target_stripping_wrapper_script_forwards_args_to_invocation() {

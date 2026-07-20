@@ -47,9 +47,8 @@ pub struct FrameTickOutcome {
 /// layers, generation bookkeeping, pending `InputEdit`s awaiting a bake, and
 /// the in-flight request generation.
 ///
-/// Replaces three previously hand-synced homes (editor-side generations,
-/// engine-side trees, backend-side in-flight map) with one type — desync is
-/// unrepresentable because there is only one place to look.
+/// One type for the attachment, generations, trees, and in-flight tracking —
+/// desync is unrepresentable because there is only one place to look.
 pub struct Syntax {
     /// The attached root grammar bundle. Immutable for this attachment's
     /// lifetime — a grammar swap replaces the whole `Syntax` via a fresh

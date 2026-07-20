@@ -103,7 +103,6 @@ mod tests {
         let mut paths: Vec<std::path::PathBuf> = Vec::new();
         collect_source_rs(&root.join("src/ops"), &mut paths);
         // lines.rs and word.rs live in the editing crate — scan them from there.
-        // (helpers.rs was split into these two modules.)
         paths.push(workspace_root.join("hume-editing/src/lines.rs"));
         paths.push(workspace_root.join("hume-editing/src/word.rs"));
 

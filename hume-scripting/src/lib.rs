@@ -662,9 +662,8 @@ impl ScriptingHost {
                 SteelCtx::new_command(host, bundle, focused_pane_id, focused_buffer_id, None);
 
             // Call each handler directly with the arg values — no source
-            // program, no per-fire globals.  The first handler error aborts
-            // the remaining handlers, matching the composite-program semantics
-            // this replaced.
+            // program, no per-fire globals. The first handler error aborts
+            // the remaining handlers.
             run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
                 for proc in handler_procs {
                     steel.call_function_with_args(proc, args.to_vec())?;

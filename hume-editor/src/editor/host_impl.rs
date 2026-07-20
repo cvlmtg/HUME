@@ -333,8 +333,8 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
             self.state.registry.get_mappable(name)
         {
             return if owner == plugin {
-                // Duplicate declare-plugin call for the same plugin — no-op,
-                // mirroring LazyRegistry::declare's old first-declaration-wins.
+                // Duplicate declare-plugin call for the same plugin — no-op;
+                // first declaration wins.
                 Ok(())
             } else {
                 Err(format!("'{name}' already claimed by lazy plugin '{owner}'"))

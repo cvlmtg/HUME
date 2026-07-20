@@ -376,34 +376,22 @@ files, step 2's builtin signatures).
   `lsp-sources.scm` server has an `lsp-servers.scm` entry, every referenced language
   exists in `languages.scm`, and every language appears under exactly one server.
 - [x] **Step 2 — Rust platform primitives**: last-wins `register-lsp-server!` semantics
-  plus a runtime registration path (the builtin is init-only today — registrations are
-  queued and flushed once after init); unregister path + client shutdown (for
-  `:lsp-uninstall` and reinstall-while-running; per-language, matching the registry's
-  language keying — the plugin fans out); attach already-open buffers after
-  registration; new builtins the plugin needs — `lsp-registered-for-language?` (registry
-  query for the discovery hint), platform/arch identifier, sha256
-  verification, download (`curl-fetch` exists — audit for reuse), unpack (plain `.gz`
-  single-file gzip and `.zip` at minimum), an npm-install wrapper (there is deliberately
-  no generic run-process builtin and none is added — a narrow sandboxed wrapper like the
-  git/curl ones; the path sandbox must learn the `servers/` root), and `$PATH` lookup
-  (for the already-on-`$PATH` notice); cfg-gated Windows `.cmd`/`.bat` spawn wrap in
-  `hume-lsp`'s transport (required, not optional — npm-kind servers cannot spawn on
-  Windows without it). Update `LSP.md` where the new semantics invalidate it: the
-  Decisions row "reject a second `register-lsp-server!`" and the Steel API index's
-  init-only marking.
-
-  **Superseded 2026-07-13 (full-trust plugin model, see `docs/ROADMAP.md`'s plugin trust
-  model decision)**: the "no generic run-process builtin" framing above no longer holds —
-  `servers.scm` now runs `curl`/`git`/`npm` directly through Steel's own `steel/process`
-  (`command`/`spawn-process`/`which`), with all path-sandbox checks removed (plugins are
-  trusted code). `curl-fetch`/`verify-sha256!`/`npm-install!`/`exe-on-path?` were removed;
-  their replacements are `run-inline-output!` (a new sandbox-free Rust builtin —
-  process-group-isolated spawn, needed only because `#:inline-output` commands run with
-  terminal raw mode off and Steel's `spawn-process` has no `setpgid`), `sha256-file` (hash
-  only; the compare-and-delete-on-mismatch logic moved to `lsp/verify-sha256!` in
-  `servers.scm`), and Steel's own `which`. `unpack-gz`/`unpack-zip` survive as sandbox-free
-  utility builtins (chmod + archive-format platform logic). The tool-preflight and
-  zip-slip/symlink notes below are otherwise unaffected.
+  plus a runtime registration path (registrations are queued and flushed once per eval,
+  not just at init); unregister path + client shutdown (for `:lsp-uninstall` and
+  reinstall-while-running; per-language, matching the registry's language keying — the
+  plugin fans out); attach already-open buffers after registration. `servers.scm` runs
+  `curl`/`git`/`npm` directly through Steel's own `steel/process` (`command`/
+  `spawn-process`/`which`) — per HUME's full-trust plugin model (see `docs/ROADMAP.md`'s
+  plugin trust model decision), there is no path sandbox to route these through. The
+  sandbox-free Rust builtins that survive are ones a Scheme rewrite would only make
+  platform-conditional logic worse: `run-inline-output!` (process-group-isolated spawn,
+  needed because `#:inline-output` commands run with terminal raw mode off and Steel's
+  `spawn-process` has no `setpgid`), `sha256-file` (hash only; the
+  compare-and-delete-on-mismatch logic lives in `lsp/verify-sha256!` in `servers.scm`),
+  platform/arch identifier, `lsp-registered-for-language?` (registry query for the
+  discovery hint), and `unpack-gz`/`unpack-zip` (chmod + archive-format platform logic).
+  `$PATH` lookup (for the already-on-`$PATH` notice) uses Steel's own `which`. The
+  tool-preflight and zip-slip/symlink notes below are otherwise unaffected.
 - [x] **Step 3 — `servers.scm`** (Steel, pure consumer of steps 1+2): scan-on-load
   registration; `lsp-install` / `lsp-uninstall` / `lsp-servers` commands; receipts; orphan
   warnings; npm install path; missing-server hint; user-manual + `init.scm.example` docs.
@@ -427,13 +415,13 @@ choice (see below), traded for a hard runtime dependency on these being present:
 | npm-kind installs | `node`/`npm` on `PATH` — required regardless of platform |
 | cargo-kind installs | a Rust toolchain (`cargo` on `PATH`, e.g. via [rustup.rs](https://rustup.rs)) — required regardless of platform; compiles the crate from source, so the first install of a given server can take a few minutes |
 
-`git` and `curl` were already required by the grammar pipeline; this adds `unzip` on
+`git` and `curl` are already required by the grammar pipeline; this adds `unzip` on
 Linux and `gzip` on Windows as the only new hard requirements for github/npm-kind
 installs. cargo-kind installs are opt-in per server and add a Rust toolchain requirement
 only for those. `:lsp-install` preflights
-the specific tool an install needs (via Steel's `which`, post-2026-07-13 — see the Step 2
-update note above) before downloading anything, so a missing tool fails loudly naming it
-rather than partway through an install.
+the specific tool an install needs (via Steel's `which` — see the Step 2 note above)
+before downloading anything, so a missing tool fails loudly naming it rather than
+partway through an install.
 
 **Why shell out instead of adding `sha2`/`flate2`/`zip` crate dependencies**: keeps the
 audited process-spawn surface (`hume-platform/src/process.rs`) as the only place
