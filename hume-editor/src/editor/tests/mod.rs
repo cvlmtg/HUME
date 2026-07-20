@@ -409,7 +409,6 @@ fn safe_tempdir() -> tempfile::TempDir {
 /// Applying is not optional: effects an eval queues (`bind-key!`,
 /// `register-lsp-server!`, …) only take hold once `apply_script_effects` runs,
 /// so skipping it silently drops every one of them.
-#[cfg(not(windows))]
 fn eval_with_real_host(
     ed: &mut Editor,
     host: &mut hume_scripting::ScriptingHost,
