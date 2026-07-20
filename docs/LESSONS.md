@@ -239,3 +239,12 @@ probe of the terminal is only half the handshake; when an OS layer
 say yes while decode is impossible. If the decode capability is statically
 absent on a platform, hardwire the feature off there (`probe_kitty_support`
 returns `false` on Windows) instead of probing.
+
+**Resolution (2026-07-20, same day):** HUME migrated from crossterm to
+termina for terminal I/O. Termina's Windows backend sets
+`ENABLE_VIRTUAL_TERMINAL_INPUT` and decodes kitty CSI-u on Windows the same
+way it does on Unix — the decode capability that was statically absent is
+now present, so the rule above applies in the other direction: Windows
+probes for real again (`probe_via_events` in `hume-platform/src/lib.rs`),
+using the *same* `EventReader` real input goes through, which is what makes
+the probe's answer trustworthy this time.

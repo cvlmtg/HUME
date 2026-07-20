@@ -1110,7 +1110,6 @@ version = "0.9.0"
 dependencies = [
  "arboard",
  "clap",
- "crossterm",
  "globset",
  "hume-editing",
  "hume-engine",
@@ -1170,17 +1169,14 @@ dependencies = [
  "nix 0.31.3",
  "ratatui",
  "ratatui-termina",
- "signal-hook",
  "tempfile",
  "termina",
- "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "hume-scripting"
 version = "0.1.0"
 dependencies = [
- "crossterm",
  "hume-engine",
  "hume-platform",
  "num-bigint",

@@ -7,10 +7,10 @@ use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 
 /// Probe for kitty keyboard protocol support on Unix.
 ///
-/// Opens `/dev/tty` directly (bypassing crossterm's internal event system,
-/// which is subject to timing issues on some terminals), builds a
-/// [`super::TtyChannel`] over it, and delegates the query/response loop to
-/// [`super::run_probe`].
+/// Opens `/dev/tty` directly on its own side channel — independent of the
+/// [`SharedTerm`](crate::terminal::SharedTerm) event reader, so probe replies
+/// can never race or interleave with it — builds a [`super::TtyChannel`]
+/// over it, and delegates the query/response loop to [`super::run_probe`].
 ///
 /// Must be called after `enable_raw_mode()`.
 pub(super) fn probe_kitty_support() -> io::Result<bool> {

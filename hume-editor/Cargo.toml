@@ -24,7 +24,6 @@ unicode-segmentation.workspace = true
 unicode-width.workspace = true
 ratatui.workspace = true
 clap = { version = "4.6.1", features = ["derive"] }
-crossterm = "0.29"
 termina = "0.3.3"
 regex-cursor = "0.1.5"
 arboard = "3"

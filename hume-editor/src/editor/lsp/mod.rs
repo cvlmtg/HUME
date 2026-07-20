@@ -424,9 +424,9 @@ impl LspState {
 impl AsyncSource for LspState {
     fn next_wake(&self, now: Instant) -> Option<Instant> {
         // Real deadlines only: response *arrival* needs no wake here — the
-        // transport threads wake the event loop directly the moment a
-        // message lands (see `hume_platform::events`). What remains is the
-        // earliest pending-request timeout across every server
+        // transport threads wake the event loop directly via
+        // `termina::PlatformWaker` the moment a message lands. What remains
+        // is the earliest pending-request timeout across every server
         // (initialize/shutdown included — see `LspClient::earliest_deadline`),
         // so a silent server's timeout sweep in `take_completed` still
         // fires promptly.

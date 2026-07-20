@@ -41,6 +41,14 @@
 ### Terminal & compatibility
 - Bracketed paste — pastes land in one step, without auto-pairing.
 - Event-driven main loop: HUME sleeps when idle instead of polling.
+- Switched terminal I/O from crossterm to termina. Kitty keyboard protocol
+  now works on Windows (Windows Terminal ≥ 1.25): input decoding is now
+  identical across platforms, so a probe reporting kitty support means it
+  actually works, not just that the terminal answered a query. Windows
+  requires 10 1809+ and a VT-capable console (no legacy-conhost fallback);
+  raw mintty without winpty is unsupported, unchanged from before.
+- Fixed: held-key autorepeat under the kitty protocol (`REPORT_EVENT_TYPES`)
+  never matched a keymap binding — the trie only ever recorded `Press`.
 
 ### Theming
 - Theme editor rebuilt as a proper web app.
@@ -51,8 +59,6 @@
 - Crash when joining lines with a cursor on the last line.
 - Syntax highlighting precedence for overlapping captures.
 - Busy-loop when the terminal hung up.
-- Kitty keyboard protocol disabled on Windows, where support is
-  unreliable.
 
 ## [0.9.0] - 2026-07-15
 

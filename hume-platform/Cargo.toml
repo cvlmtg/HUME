@@ -12,11 +12,3 @@ tempfile = "3"
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", default-features = false, features = ["poll", "user", "fs", "signal"] }
-signal-hook = "0.3"
-
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = [
-    "Win32_System_Console",
-    "Win32_Foundation",
-    "Win32_System_Threading",
-] }

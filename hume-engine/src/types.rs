@@ -120,11 +120,11 @@ impl From<ResolvedStyle> for ratatui::style::Style {
         }
         // Known boundary limitation (tracked, not fixed here — see
         // docs/ROADMAP.md open questions): Solid/Wavy/Dotted/Dashed all collapse
-        // to the same plain UNDERLINED modifier. ratatui's `Modifier`
-        // bitflags carry no underline-*shape* bits, and the crossterm
-        // backend never emits the `Undercurled`/`Underdotted`/`Underdashed`
-        // attributes crossterm itself supports — there is no injection point
-        // between this `From` impl and the terminal to express the shape.
+        // to the same plain UNDERLINED modifier. ratatui's `Modifier` bitflags
+        // carry no underline-*shape* bits regardless of backend, so there is
+        // no injection point between this `From` impl and the terminal to
+        // express the shape, even though the backend protocol itself
+        // (termina's `style::Underline`) can represent it.
         // `UnderlineStyle` is kept as its own field on `ResolvedStyle` (and
         // the theme loader keeps parsing Helix's `underline.style`) so
         // themes and providers are already correct the day ratatui gains

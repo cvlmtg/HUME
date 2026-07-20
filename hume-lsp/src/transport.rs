@@ -16,7 +16,7 @@ use crate::codec::{self, Message};
 /// Called by the reader/stderr threads after posting an event, so the
 /// editor's main loop wakes and drains it instead of rechecking on a poll
 /// cadence. Type-erased so this crate stays free of a `hume-platform`
-/// dependency — production wraps `hume_platform::events::EventWaker::wake`.
+/// dependency — production wraps `termina::PlatformWaker::wake`.
 pub type WakeCallback = Arc<dyn Fn() + Send + Sync>;
 
 /// Invokes a [`WakeCallback`] on drop — fires whether a thread exits

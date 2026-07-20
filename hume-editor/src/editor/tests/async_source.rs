@@ -1,7 +1,7 @@
 // Generalized event-loop wake (`wake_timeout`) and the timer wheel's
 // integration with it as a real AsyncSource. Response/completion arrival is
 // not a poll cadence this module tracks — background threads wake the
-// event loop's wait primitive directly (see `hume_platform::events`), so
+// event loop's wait primitive directly via `termina::PlatformWaker`, so
 // `wake_timeout` reports real deadlines only: the timer wheel's own
 // schedule, and the LSP source's earliest pending-request deadline / spinner
 // cadence (see the `next_wake_covers_client_state` module below).
