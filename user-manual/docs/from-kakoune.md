@@ -87,12 +87,15 @@ The search keys overlap heavily in spelling and barely at all in meaning.
 
 | Kakoune | Does | HUME |
 |---------|------|------|
-| `/` | Select next match | `/` — search forward, with a live preview as you type |
-| `?` | **Extend** to next match | `?` — search *backward* |
-| `n` | Move main selection to next match | `n` — same |
-| `N` | **Add** a selection at the next match | *(none)* — use `m /` to select every match at once |
-| `*` | Set search pattern from the selection, smart word boundaries | `*` — set it from the word under the cursor, ignoring the selection |
-| `<a-*>` | Set pattern from the selection, verbatim | `Ctrl+/` |
+| `/` | Select next match | Search forward, with a live preview as you type |
+| `?` | **Extend** to next match | Search *backward* |
+| `<c-n>` | | **Extend** to next match |
+| `n` | Move main selection to next match | same |
+| `N` | **Add** a selection at the next match | Move main selection to the previous match |
+| `m /` | | Select every match at once |
+| `*` | Set search pattern from the selection, smart word boundaries | Set it from the word under the cursor, ignoring the selection |
+| `<a-*>` | Set pattern from the selection, verbatim | |
+| `<c-/>` | | Set pattern from the selection, verbatim |
 
 ::: warning
 `?` is the trap. In Kakoune it extends to the next match; in HUME it opens a backward search, the way it does in Vim.
