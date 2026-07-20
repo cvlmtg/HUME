@@ -226,6 +226,14 @@ An earlier note here claimed gopls and rust-analyzer were broken and needed thei
 - **Scriptable completion sources**: design + task breakdown in `docs/COMPLETION-PICKER.md` (multi-source insert-mode completion). Nothing blocks on current work — additive.
 - **Fuzzy pickers**: design + task breakdown in `docs/FUZZY-FINDERS.md` (generic picker foundation, Steel-defined per the ratified decision above). Nothing blocks on current work — additive.
 - **Kitty keyboard protocol on Windows**: needs a Windows-only VT *input* reader — enable `ENABLE_VIRTUAL_TERMINAL_INPUT`, read stdin as a raw byte stream, and parse CSI-u/VT sequences into the event loop, replacing only crossterm's `INPUT_RECORD`-based Windows event source (output writes and rendering already pass through ConPTY unchanged). Until then `probe_kitty_support` is hardwired false on Windows. The deleted probe machinery (`hume-platform/src/windows.rs`, `WinChannel`) is recoverable from git history.
+- **`cargo`-kind install support in `core:lsp`**: `sync-lsp-sources.py` currently discards
+  the crate name and bin for `kind cargo` sources (emits only `{kind, version}`); teach it
+  to emit `(crate . ...)` + `(bin . ...)`, and teach `servers.scm`'s install dispatch a
+  `cargo install [--git]` flavor (mason's `nil` pins a git tag, not a crates.io version —
+  two sub-flavors needed). Unblocks 8 currently-stub catalog servers: `asm-lsp`,
+  `beancount-language-server`, `cairo-language-server`, `circom-lsp`, `nil`, `nls`,
+  `openscad-lsp`, `pest-language-server`. Separate from `core:steel-server` (which installs
+  a server absent from both upstreams entirely, so catalog support wouldn't help it).
 - Git gutter signs (plugin candidate — keep out of core)
 - File watcher (detect external file changes, prompt to reload)
 - Documentation: Markdown guides, auto-generated command reference, in-editor `:help`
