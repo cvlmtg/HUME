@@ -1,0 +1,539 @@
+use super::*;
+
+/// Load the real `core:plum` plugin (the actual `runtime/plugins/core/plum/`
+/// sources, not a synthetic copy) into `ed`, pointing `HUME_RUNTIME` at the
+/// repo's real `runtime/` dir (so the real `grammar-sources.scm` catalog is
+/// used) and `XDG_DATA_HOME` at `data_dir`. Env vars are process-global —
+/// callers must hold `super::HUME_RUNTIME_MUTEX` for the test's duration.
+fn load_plum(ed: &mut Editor, data_dir: &std::path::Path) {
+    let repo_runtime_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("runtime");
+    let config_tmp = tempfile::tempdir().unwrap();
+    let hume_config = config_tmp.path().join("hume");
+    std::fs::create_dir_all(&hume_config).unwrap();
+    std::fs::write(hume_config.join("init.scm"), r#"(load-plugin "core:plum")"#).unwrap();
+
+    unsafe {
+        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
+        std::env::set_var("HUME_RUNTIME", &repo_runtime_dir);
+        std::env::set_var("XDG_DATA_HOME", data_dir);
+    }
+    ed.init_scripting();
+    unsafe {
+        std::env::remove_var("XDG_CONFIG_HOME");
+        std::env::remove_var("HUME_RUNTIME");
+        std::env::remove_var("XDG_DATA_HOME");
+    }
+}
+
+/// Load the real `core:lsp` plugin (plus its `core:stdlib` dependency) —
+/// `:lsp-servers` (the `#:inline-output` command exercised below) lives
+/// there, not in core:plum. Twin of `load_plum` above, different init.scm.
+fn load_lsp(ed: &mut Editor, data_dir: &std::path::Path) {
+    let repo_runtime_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("runtime");
+    let config_tmp = tempfile::tempdir().unwrap();
+    let hume_config = config_tmp.path().join("hume");
+    std::fs::create_dir_all(&hume_config).unwrap();
+    std::fs::write(
+        hume_config.join("init.scm"),
+        "(load-plugin \"core:stdlib\")\n(load-plugin \"core:lsp\")",
+    )
+    .unwrap();
+
+    unsafe {
+        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
+        std::env::set_var("HUME_RUNTIME", &repo_runtime_dir);
+        std::env::set_var("XDG_DATA_HOME", data_dir);
+    }
+    ed.init_scripting();
+    unsafe {
+        std::env::remove_var("XDG_CONFIG_HOME");
+        std::env::remove_var("HUME_RUNTIME");
+        std::env::remove_var("XDG_DATA_HOME");
+    }
+}
+
+/// `plum/register-installed-grammars!` runs its real body — including the
+/// injections-path lookup — for every entry in the real `grammar-sources.scm`
+/// catalog. None of them are compiled in the empty data dir, so every one is
+/// skipped by the `when` guard and no network call happens; this is a pure
+/// Scheme-syntax/logic smoke test for the PLUM changes, not an installation test.
+#[test]
+fn plum_plugin_loads_with_real_grammar_catalog() {
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    let errors: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.as_str())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "loading core:plum against the real grammar-sources.scm must not error: {errors:?}"
+    );
+}
+
+/// `:plum-list` exercises `plugins.scm`'s post-migration `plum/installed-plugins`
+/// (now built on `plum/list-dir`, a Steel `read-dir`-backed helper, instead of
+/// the removed `list-dir` builtin) against a real (empty) data dir — no
+/// network. Pins that the migration to Steel's stdlib process/fs helpers
+/// (see docs/ROADMAP.md's plugin trust model decision) didn't break loading
+/// or basic discovery.
+#[test]
+fn plum_list_runs_with_no_errors_against_empty_data_dir() {
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":plum-list");
+
+    let errors: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.as_str())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        ":plum-list against an empty data dir must not error: {errors:?}"
+    );
+}
+
+/// Run `git` with `args` in `dir`, asserting success — test-setup helper
+/// only (builds local origin/clone fixtures), not part of the migration
+/// under test.
+fn git_ok(dir: &std::path::Path, args: &[&str]) {
+    let status = std::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .status()
+        .expect("spawn git");
+    assert!(status.success(), "git {args:?} in {dir:?} failed");
+}
+
+/// `:plum-update` exercises `plum/run!` (Phase 1 helper, now backing
+/// `git-pull`'s replacement) against a REAL local git repo — no network. A
+/// local "origin" gets a second commit after the "installed" clone is made,
+/// then `:plum-update` must actually run `git pull` (via Steel's
+/// `spawn-process` + `with-current-dir`, not the removed `git-pull`
+/// builtin) and fast-forward the clone to match.
+#[test]
+fn plum_update_runs_real_git_pull_against_local_origin() {
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let origin_tmp = tempfile::tempdir().unwrap();
+    let origin_dir = origin_tmp.path();
+    git_ok(origin_dir, &["init", "-q"]);
+    git_ok(origin_dir, &["config", "user.email", "test@example.com"]);
+    git_ok(origin_dir, &["config", "user.name", "Test"]);
+    std::fs::write(origin_dir.join("plugin.scm"), "; v1\n").unwrap();
+    git_ok(origin_dir, &["add", "plugin.scm"]);
+    git_ok(origin_dir, &["commit", "-q", "-m", "v1"]);
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let clone_dir = data_tmp.path().join("hume/plugins/testuser/testrepo");
+    std::fs::create_dir_all(clone_dir.parent().unwrap()).unwrap();
+    git_ok(
+        data_tmp.path(),
+        &[
+            "clone",
+            "-q",
+            origin_dir.to_str().unwrap(),
+            clone_dir.to_str().unwrap(),
+        ],
+    );
+
+    // Advance the origin past what the clone has.
+    std::fs::write(origin_dir.join("plugin.scm"), "; v2\n").unwrap();
+    git_ok(origin_dir, &["add", "plugin.scm"]);
+    git_ok(origin_dir, &["commit", "-q", "-m", "v2"]);
+
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":plum-update");
+
+    let errors: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.as_str())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        ":plum-update against a local origin must not error: {errors:?}"
+    );
+    let content = std::fs::read_to_string(clone_dir.join("plugin.scm")).unwrap();
+    assert_eq!(
+        content, "; v2\n",
+        "plum/run!-backed git pull must fast-forward the clone to origin's latest commit"
+    );
+}
+
+/// `:plum-cleanup` exercises `plum/delete-dir` (Phase 1 helper, now backing
+/// `delete-dir`'s replacement) against a real on-disk orphan plugin — no
+/// network. Nothing in `init.scm` declares it, so it's an orphan by
+/// definition; `:plum-cleanup` must remove its directory.
+#[test]
+fn plum_cleanup_removes_orphan_plugin_directory() {
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let orphan_dir = data_tmp.path().join("hume/plugins/testuser/orphanrepo");
+    std::fs::create_dir_all(&orphan_dir).unwrap();
+    std::fs::write(orphan_dir.join("plugin.scm"), "; orphan\n").unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":plum-cleanup");
+
+    let errors: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.as_str())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        ":plum-cleanup must not error: {errors:?}"
+    );
+    assert!(
+        !orphan_dir.exists(),
+        "plum/delete-dir-backed plum-cleanup must remove the orphan plugin directory"
+    );
+}
+
+/// `:plum-install-grammar` with no argument and no buffer language must warn
+/// with the "no grammar name given" message. A `(equal? name "")` guard is
+/// dead here — `name` is `#f`, not `""` — so it must not be relied on to
+/// catch this; letting a `#f` name fall through produces an opaque
+/// install-failure warning instead.
+#[test]
+fn plum_install_grammar_no_arg_no_language_warns() {
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":plum-install-grammar");
+
+    let msgs: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .map(|e| e.text.as_str())
+        .collect();
+    assert!(
+        ed.state.message_log.entries().any(|e| {
+            e.severity == Severity::Warning && e.text.contains("no grammar name given")
+        }),
+        "expected 'no grammar name given' warning, got: {msgs:?}"
+    );
+}
+
+/// `:plum-install-grammar nosuchlang` — a name absent from the catalog warns
+/// with the unknown-grammar message instead of failing deep inside the
+/// install pipeline with an opaque hash-lookup error. This validation runs
+/// before the stale-source `delete-dir` purge in `plum/install-grammar`, so
+/// an unknown name deletes nothing.
+#[test]
+fn plum_install_grammar_unknown_name_warns() {
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":plum-install-grammar nosuchlang");
+
+    let msgs: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .map(|e| e.text.as_str())
+        .collect();
+    assert!(
+        ed.state.message_log.entries().any(|e| {
+            e.severity == Severity::Warning && e.text.contains(r#"unknown grammar "nosuchlang""#)
+        }),
+        "expected unknown-grammar warning naming 'nosuchlang', got: {msgs:?}"
+    );
+}
+
+/// A typed argument wins over the current buffer's language.
+///
+/// Flip: before the arity-1 fix, `plum-install-grammar` was arity-0 so the
+/// minibuffer silently dropped `nosuchlang` and the command installed `rust`
+/// (the buffer's language) instead — verified by reverting the lambda to
+/// arity-0, which made this test fail because it actually ran a real
+/// `git-clone-rev`/`curl-fetch`/`compile-grammar!` install of `rust` instead
+/// of ever mentioning `nosuchlang`.
+#[test]
+fn plum_install_grammar_arg_overrides_buffer_language() {
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":set buffer language=rust");
+    type_cmd(&mut ed, ":plum-install-grammar nosuchlang");
+
+    let msgs: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .map(|e| e.text.as_str())
+        .collect();
+    assert!(
+        ed.state.message_log.entries().any(|e| {
+            e.severity == Severity::Warning && e.text.contains(r#"unknown grammar "nosuchlang""#)
+        }),
+        "typed arg must win over buffer language 'rust', got: {msgs:?}"
+    );
+}
+
+/// `plum-install-grammar` is declared `#:inline-output #t` — dispatch must
+/// only bracket it with the real terminal (alt-screen exit + "press any key
+/// to return" block) when `Editor::run` owns the terminal. Off the event
+/// loop (this test, like every other in this file, dispatches directly and
+/// never calls `run`), that bracket must be skipped entirely: otherwise
+/// dispatch blocks forever on a keypress that never comes whenever stdin
+/// happens to be a real TTY (e.g. `cargo test` run interactively), which is
+/// exactly what stalled the suite before `tui_active` was introduced.
+///
+/// This particular command errors out via `log!` only (no `displayln`), so
+/// under the lazy-entry design it never even reaches
+/// `ensure_inline_output_screen` — see
+/// `inline_output_command_with_real_output_still_skips_bracket_off_event_loop`
+/// below for the case that does.
+#[test]
+fn inline_output_command_does_not_enter_terminal_bracket_off_event_loop() {
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    assert!(
+        !ed.inline_output_entered(),
+        "bracket must not have fired before any inline-output command ran"
+    );
+
+    type_cmd(&mut ed, ":plum-install-grammar nosuchlang");
+
+    assert!(
+        !ed.inline_output_entered(),
+        "inline-output bracket must stay skipped when Editor::run never took the terminal"
+    );
+}
+
+/// `lsp-servers` is `#:inline-output #t` and *does* print via `displayln`
+/// (one line per seeded server) — off the event loop that must still reach
+/// `EditorHostImpl::ensure_inline_output_screen`'s `Headless` no-op branch
+/// rather than the real terminal: printing must succeed without ever
+/// flipping `inline_output_entered()`.
+///
+/// Flip: hardcode `ensure_inline_output_screen` to always enter (drop the
+/// `Headless`/`Armed` distinction) → this test hangs on `wait_for_keypress`
+/// against a real TTY, or panics against a non-TTY stdin in CI.
+#[test]
+fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":lsp-servers");
+
+    assert!(
+        !ed.inline_output_entered(),
+        "displayln output off the event loop must not enter the real terminal bracket"
+    );
+    assert!(
+        ed.state
+            .status_msg
+            .as_deref()
+            .is_some_and(|m| m.contains("seeded servers")),
+        "lsp-servers must still log its summary line, got: {:?}",
+        ed.state.status_msg
+    );
+}
+
+/// Regression test: a grammar's source dir left non-empty by a prior failed
+/// install (clone succeeded, compile didn't) must not break
+/// `:plum-install-grammar` on the very next attempt — `plum/install-grammar`
+/// purges any existing source dir before re-cloning, so retrying "just works"
+/// on the first try instead of requiring a second attempt to clear the
+/// leftover directory as a side effect of the first attempt's own failure.
+///
+/// Hits the network (real git clone + curl fetch + tree-sitter build of the
+/// `json` grammar); gated like `install_real_json_grammar_e2e` in
+/// `scripting_grammar.rs`.
+///
+/// Flip: without the `(delete-dir src-dir)` fix in `plum/install-grammar`,
+/// `git-clone-rev` refuses to clone into this pre-seeded non-empty dir and
+/// the command logs an error instead of installing — `out_path` never
+/// appears, and this assertion fails.
+#[test]
+fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
+    if hume_test_fixtures::skip_unless_live_grammar_e2e(
+        "plum_install_grammar_recovers_from_stale_source_dir_on_first_try",
+    ) {
+        return;
+    }
+
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    // `load_plum` points XDG_DATA_HOME at data_tmp — the real data dir is
+    // XDG_DATA_HOME/hume (see dirs.rs's ScriptDirs::new).
+    let data_dir = data_tmp.path().join("hume");
+    // Seed a stale, non-empty source dir exactly like a prior clone-succeeded/
+    // compile-failed install would leave behind — git-clone-rev refuses to
+    // clone into this without the pre-clean fix.
+    let src_dir = data_dir.join("grammars/sources/json");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::write(src_dir.join("stale.txt"), b"leftover from a failed install").unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":plum-install-grammar json");
+
+    let ext = if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    };
+    let out_path = data_dir.join("grammars").join(format!("json.{ext}"));
+    let errors: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .map(|e| format!("{:?}: {}", e.severity, e.text))
+        .collect();
+    assert!(
+        out_path.exists(),
+        "compiled json grammar must exist after install recovers from a stale \
+         source dir on the first try; log={errors:#?}"
+    );
+    assert!(
+        !src_dir.join("stale.txt").exists(),
+        "stale leftover file must be purged by the pre-clone delete-dir"
+    );
+}
+
+/// `tsx`'s `highlights.scm` declares `; inherits: ecma,_typescript,_jsx`
+/// instead of writing out its own patterns — `plum/install-grammar` must
+/// resolve that chain (`plum/resolve-query` in `grammars.scm`) so the file
+/// written to disk has real capture patterns, not a dangling directive.
+///
+/// Hits the network (real git clone + tree-sitter build of the `tsx` grammar,
+/// plus curl fetches of its `highlights.scm` and its `ecma`/`_typescript`/
+/// `_jsx` query dependencies); gated like `install_real_json_grammar_e2e`.
+///
+/// Flip: reverting the `plum/fetch-query!` call sites back to plain
+/// `curl-fetch` leaves `highlights.scm` as the raw `; inherits: …` stub —
+/// the `starts_with("; inherits")` and `contains('@')` assertions below both
+/// fail on that stub (no `@capture` in a comment-only file).
+#[test]
+fn plum_install_grammar_resolves_helix_inherits_chain() {
+    if hume_test_fixtures::skip_unless_live_grammar_e2e(
+        "plum_install_grammar_resolves_helix_inherits_chain",
+    ) {
+        return;
+    }
+
+    let _lock = super::HUME_RUNTIME_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let data_dir = data_tmp.path().join("hume");
+
+    let buf = crate::editor::buffer::Buffer::new(
+        hume_editing::text::Text::from("const x: number = 1;\n"),
+        hume_editing::selection::SelectionSet::default(),
+    );
+    let mut ed = Editor::for_testing(buf);
+    let bid = ed.focused_buffer_id();
+    load_plum(&mut ed, data_tmp.path());
+    // Real bootstrap loads runtime/scheme/languages.scm (which declares tsx's
+    // identity) before any plugin runs; `load_plum` only loads `core:plum`,
+    // so register the identity here to match that ordering — `register-grammar!`
+    // attaches onto an existing identity, it doesn't create one.
+    ed.state
+        .languages
+        .register_identity("tsx", &["tsx"], &[], &[])
+        .unwrap();
+
+    type_cmd(&mut ed, ":plum-install-grammar tsx");
+
+    let errors: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .map(|e| format!("{:?}: {}", e.severity, e.text))
+        .collect();
+
+    let hl_path = data_dir.join("grammars/sources/tsx/highlights.scm");
+    let hl_content = std::fs::read_to_string(&hl_path).unwrap_or_else(|e| {
+        panic!("highlights.scm must exist after install; log={errors:#?}; err={e}")
+    });
+    assert!(
+        !hl_content.trim_start().starts_with("; inherits"),
+        "highlights.scm must be resolved, not left as a dangling inherits stub: {hl_content:?}"
+    );
+    assert!(
+        hl_content.contains('@'),
+        "resolved highlights.scm must contain real tree-sitter capture patterns, got: {hl_content:?}"
+    );
+
+    let lang = ed.state.languages.intern("tsx");
+    ed.set_buffer_language(bid, Some(lang));
+    ed.reparse_stale_buffers();
+    assert!(
+        ed.state.buffers.get(bid).syntax.is_some(),
+        "syntax must attach after tsx grammar install; log={errors:#?}"
+    );
+}

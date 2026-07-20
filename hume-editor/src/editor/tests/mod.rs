@@ -425,132 +425,20 @@ fn eval_with_real_host(
     ed.apply_script_effects(effects);
 }
 
-/// Lock `HUME_RUNTIME_MUTEX`, create isolated `runtime` and `tmp` tempdirs,
-/// set `HUME_RUNTIME` and `TMPDIR`, and restore both on drop.
-///
-/// The mutex is acquired BEFORE the tempdirs are created so that a concurrent
-/// guarded test's TMPDIR does not cause our tempdirs to be nested inside it —
-/// which would make them disappear when that test's guard drops and deletes its
-/// tree.
-#[cfg(not(windows))]
-struct HumeRuntimeGuard {
-    runtime: tempfile::TempDir,
-    tmp: tempfile::TempDir,
-    // Last field — released after runtime/tmp dirs are deleted.
-    _lock: std::sync::MutexGuard<'static, ()>,
-}
 
-#[cfg(not(windows))]
-impl HumeRuntimeGuard {
-    fn new() -> Self {
-        let lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let runtime = tempfile::tempdir().expect("tempdir");
-        let tmp = tempfile::tempdir().expect("tempdir");
-        unsafe {
-            std::env::set_var("HUME_RUNTIME", runtime.path());
-            std::env::set_var("TMPDIR", tmp.path());
-        }
-        HumeRuntimeGuard {
-            runtime,
-            tmp,
-            _lock: lock,
-        }
-    }
-}
 
-#[cfg(not(windows))]
-impl Drop for HumeRuntimeGuard {
-    fn drop(&mut self) {
-        // Clear env vars before the TempDir fields delete their directories and
-        // before _lock releases the mutex, so the next waiter sees a clean env.
-        unsafe {
-            std::env::remove_var("HUME_RUNTIME");
-            std::env::remove_var("TMPDIR");
-        }
-    }
-}
 
-/// The real shipped `core:stdlib` plugin source, embedded so tests exercise
-/// the actual file rather than a hand-rolled stand-in.
-#[cfg(not(windows))]
-const STDLIB_PLUGIN: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../runtime/plugins/core/stdlib/plugin.scm"
-));
 
-/// Stage a real shipped core plugin's source into `guard`'s isolated
-/// `HUME_RUNTIME/plugins/core/<name>/plugin.scm`, so `load-plugin` resolves it
-/// as a core plugin during the test.
-#[cfg(not(windows))]
-fn write_core_plugin(guard: &HumeRuntimeGuard, name: &str, source: &str) {
-    let plugin_dir = guard.runtime.path().join("plugins").join("core").join(name);
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(plugin_dir.join("plugin.scm"), source).unwrap();
-}
 
-/// Points `HUME_RUNTIME` at the *real*, on-disk `runtime/` directory (a
-/// sibling of the crate root, resolved once via `CARGO_MANIFEST_DIR`) for
-/// the guard's lifetime — used by multi-file core plugins (`core:lsp`,
-/// mirroring `core:plum`'s layout) so tests exercise the actual shipped
-/// files without hand-copying every one into a temp dir and keeping that
-/// list in sync as feature files are added.
-///
-/// Also points `XDG_DATA_HOME` at a fresh, guard-owned temp dir: loading the
-/// real `core:lsp` plugin now scans `<data-dir>/servers/` at load time (see
-/// `lsp/registration.scm`), so without this every `RealRuntimeGuard` test
-/// would scan whatever the developer running the suite actually has
-/// installed on their machine — non-hermetic, and a source of spurious
-/// scan warnings in test output.
-///
-/// Deliberately does **not** touch `TMPDIR`, unlike [`HumeRuntimeGuard`]:
-/// pointing at a persistent, never-deleted directory means there is nothing
-/// for a concurrent test's cleanup to race against. `HumeRuntimeGuard`'s
-/// `TMPDIR` override only protects itself from *other* `HumeRuntimeGuard`s
-/// (both take the same mutex) — it does not and cannot protect unrelated
-/// tests that call bare `tempfile::tempdir()`, since `TMPDIR` is a
-/// process-global env var every thread's allocator reads. A slow guarded
-/// test can redirect an unrelated concurrent test's `tempfile::tempdir()`
-/// into its own tree and then delete that tree out from under it on drop.
-/// Avoiding `TMPDIR` entirely sidesteps the hazard rather than narrowing it.
-/// `XDG_DATA_HOME` doesn't need the same care — nothing outside HUME's own
-/// `data-dir` resolution reads it, so there is no allocator-style hazard.
-#[cfg(not(windows))]
-struct RealRuntimeGuard {
-    _lock: std::sync::MutexGuard<'static, ()>,
-    _data_tmp: tempfile::TempDir,
-    prev_xdg_data_home: Option<String>,
-}
 
-#[cfg(not(windows))]
-impl RealRuntimeGuard {
-    fn new() -> Self {
-        let lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let real_runtime = concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime");
-        let data_tmp = tempfile::tempdir().expect("tempdir");
-        let prev_xdg_data_home = std::env::var("XDG_DATA_HOME").ok();
-        unsafe {
-            std::env::set_var("HUME_RUNTIME", real_runtime);
-            std::env::set_var("XDG_DATA_HOME", data_tmp.path());
-        }
-        RealRuntimeGuard {
-            _lock: lock,
-            _data_tmp: data_tmp,
-            prev_xdg_data_home,
-        }
-    }
-}
 
-#[cfg(not(windows))]
-impl Drop for RealRuntimeGuard {
-    fn drop(&mut self) {
-        unsafe {
-            std::env::remove_var("HUME_RUNTIME");
-            match &self.prev_xdg_data_home {
-                Some(v) => std::env::set_var("XDG_DATA_HOME", v),
-                None => std::env::remove_var("XDG_DATA_HOME"),
-            }
-        }
-    }
+
+/// Write `content` to a temp file and return its path (kept alive by the returned TempPath).
+fn temp_file(content: &str) -> (std::path::PathBuf, tempfile::TempPath) {
+    let f = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(f.path(), content).unwrap();
+    let path = f.path().to_path_buf();
+    (path, f.into_temp_path())
 }
 
 /// Acquire the cwd lock, save the current directory, and restore it on drop.
@@ -573,57 +461,8 @@ impl Drop for CwdGuard {
     }
 }
 
-/// Like `CwdGuard`, but also owns a tempdir the test can `cd` into.
-///
-/// Bundling the tempdir into the same struct as the restore-on-drop logic is
-/// what fixes the historical bug, not the fields' declaration order: Rust
-/// always runs a struct's custom `Drop::drop` to completion *before* dropping
-/// any of its own fields, regardless of their order. So restoring cwd inside
-/// `CwdSandbox::drop` is guaranteed to happen before `dir` (the `TempDir`
-/// field) is deleted.
-///
-/// A test that instead pairs a bare `CwdGuard` with a *separately-scoped*
-/// `tempfile::tempdir()` local doesn't get that guarantee — independent
-/// locals in a function body drop in reverse declaration order, so the
-/// tempdir (declared after the guard) drops *first*, deleting the directory
-/// while the process cwd still points inside it. Any concurrently-running
-/// test that calls `std::env::current_dir()` in that window — e.g. Steel's
-/// `Engine::new()`, which falls back to it while compiling `ALL_MODULES` —
-/// gets `ENOENT` and panics. `CwdSandbox` closes that window structurally.
-#[cfg(not(windows))]
-struct CwdSandbox {
-    dir: tempfile::TempDir,
-    saved: PathBuf,
-    _lock: std::sync::MutexGuard<'static, ()>,
-}
 
-#[cfg(not(windows))]
-impl CwdSandbox {
-    fn new() -> Self {
-        let _lock = CWD_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let saved = std::env::current_dir().expect("current_dir");
-        let dir = tempfile::tempdir().expect("tempdir");
-        Self { dir, saved, _lock }
-    }
 
-    /// Raw tempdir path — build child dirs/files under this.
-    fn raw(&self) -> &std::path::Path {
-        self.dir.path()
-    }
-
-    /// Canonicalized tempdir path (macOS /var → /private/var) for cwd asserts.
-    fn path(&self) -> PathBuf {
-        std::fs::canonicalize(self.dir.path()).expect("canonicalize")
-    }
-}
-
-#[cfg(not(windows))]
-impl Drop for CwdSandbox {
-    fn drop(&mut self) {
-        // Restore first; `dir` is only deleted afterwards, when the field drops.
-        let _ = std::env::set_current_dir(&self.saved);
-    }
-}
 
 // ── Event-loop faithful helpers ───────────────────────────────────────────────
 
