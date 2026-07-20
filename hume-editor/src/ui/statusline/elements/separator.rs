@@ -14,6 +14,6 @@ impl StatuslineElement for SeparatorElement {
     fn read(_editor: &Editor) -> Self::Data {}
 
     fn format(_data: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, Style) {
-        (Cow::Borrowed("│"), colors.statusline)
+        (Cow::Borrowed("│"), colors.statusline_separator)
     }
 }

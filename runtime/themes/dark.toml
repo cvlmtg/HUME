@@ -81,13 +81,13 @@
 "ui.drawer" = { fg = "#b4b4c8", bg = "#282832" }
 
 # ── Statusline ────────────────────────────────────────────────────────────────
-"ui.statusline"              = { fg = "statusline_fg", bg = "statusline" }
-"ui.statusline.mode.normal"  = { fg = "statusline_fg", bg = "statusline" }
-"ui.statusline.mode.insert"  = { fg = "cyan",          bg = "statusline" }
-"ui.statusline.mode.extend"  = { fg = "yellow",        bg = "statusline" }
-"ui.statusline.mode.search"  = { fg = "magenta",       bg = "statusline" }
-"ui.statusline.mode.command" = { fg = "green",         bg = "statusline" }
-"ui.statusline.mode.select"  = { fg = "blue",          bg = "statusline" }
+"ui.statusline"         = { fg = "statusline_fg", bg = "statusline" }
+"ui.statusline.normal"  = { fg = "statusline_fg", bg = "statusline" }
+"ui.statusline.insert"  = { fg = "cyan",          bg = "statusline" }
+"ui.statusline.extend"  = { fg = "yellow",        bg = "statusline" }
+"ui.statusline.search"  = { fg = "magenta",       bg = "statusline" }
+"ui.statusline.command" = { fg = "green",         bg = "statusline" }
+"ui.statusline.select"  = { fg = "blue",          bg = "statusline" }
 
 [palette]
 fg           = "#d0d0d0"

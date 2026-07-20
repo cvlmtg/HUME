@@ -9,8 +9,8 @@ export default function Preview({ pal, sc }) {
   const lnrS = fgc("ui.linenr.selected", sc, pal, "#e0af68");
   const stFg = fgc("ui.statusline", sc, pal, "#c0caf5");
   const stBg = bgc("ui.statusline", sc, pal, "#33374c");
-  const mnFg = fgc("ui.statusline.mode.normal", sc, pal, "#1a1b26");
-  const mnBg = bgc("ui.statusline.mode.normal", sc, pal, "#7aa2f7");
+  const mnFg = fgc("ui.statusline.normal", sc, pal, "#1a1b26");
+  const mnBg = bgc("ui.statusline.normal", sc, pal, "#7aa2f7");
   const brd = fgc("ui.window", sc, pal, "#565f89");
   const statusBg = stBg !== "transparent" ? stBg : BG;
 

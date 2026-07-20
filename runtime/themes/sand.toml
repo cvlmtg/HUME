@@ -26,12 +26,12 @@
 "ui.statusline" = { fg = "bg", bg = "sand", modifiers = [ "bold" ] }
 "ui.statusline.inactive" = { fg = "muted", bg = "bg" }
 "ui.statusline.separator" = { fg = "surface" }
-"ui.statusline.mode.normal" = { fg = "bg", bg = "sand" }
-"ui.statusline.mode.insert" = { fg = "bg", bg = "plum" }
-"ui.statusline.mode.extend" = { fg = "bg", bg = "blue" }
-"ui.statusline.mode.search" = { fg = "bg", bg = "red" }
-"ui.statusline.mode.command" = { fg = "bg", bg = "green" }
-"ui.statusline.mode.select" = { fg = "bg", bg = "blue" }
+"ui.statusline.normal" = { fg = "bg", bg = "sand" }
+"ui.statusline.insert" = { fg = "bg", bg = "plum" }
+"ui.statusline.extend" = { fg = "bg", bg = "blue" }
+"ui.statusline.search" = { fg = "bg", bg = "red" }
+"ui.statusline.command" = { fg = "bg", bg = "green" }
+"ui.statusline.select" = { fg = "bg", bg = "blue" }
 "ui.bufferline" = { fg = "muted", bg = "bg" }
 "ui.bufferline.active" = { fg = "bright_fg", bg = "surface" }
 "ui.bufferline.background" = { bg = "bg" }

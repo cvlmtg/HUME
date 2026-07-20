@@ -29,6 +29,10 @@ pub(crate) struct EditorColors {
 
     /// Mode label in Select mode (`SEL`). Blue distinguishes it from Search.
     pub status_select: Style,
+
+    /// Separator glyph (`│`) between statusline elements. Falls back to
+    /// `statusline` when a theme omits `ui.statusline.separator`.
+    pub statusline_separator: Style,
 }
 
 impl EditorColors {
@@ -44,6 +48,7 @@ impl EditorColors {
             status_search: reversed.fg(Color::Magenta),
             status_command: reversed.fg(Color::Green),
             status_select: reversed.fg(Color::Blue),
+            statusline_separator: reversed,
         }
     }
 
@@ -54,12 +59,13 @@ impl EditorColors {
 
         Self {
             statusline: style_for("ui.statusline"),
-            status_normal: style_for("ui.statusline.mode.normal"),
-            status_insert: style_for("ui.statusline.mode.insert"),
-            status_extend: style_for("ui.statusline.mode.extend"),
-            status_search: style_for("ui.statusline.mode.search"),
-            status_command: style_for("ui.statusline.mode.command"),
-            status_select: style_for("ui.statusline.mode.select"),
+            status_normal: style_for("ui.statusline.normal"),
+            status_insert: style_for("ui.statusline.insert"),
+            status_extend: style_for("ui.statusline.extend"),
+            status_search: style_for("ui.statusline.search"),
+            status_command: style_for("ui.statusline.command"),
+            status_select: style_for("ui.statusline.select"),
+            statusline_separator: style_for("ui.statusline.separator"),
         }
     }
 }
@@ -123,7 +129,7 @@ mod tests {
             },
         );
         styles.insert(
-            "ui.statusline.mode.insert",
+            "ui.statusline.insert",
             ResolvedStyle {
                 fg: Some(insert_fg),
                 bg: Some(base_bg),
@@ -160,6 +166,8 @@ mod tests {
             "ui.selection",
             "ui.menu",
             "ui.statusline",
+            "ui.statusline.separator",
+            "ui.statusline.normal",
             "ui.background",
             "ui.window",
             "ui.window.focused",
@@ -205,8 +213,8 @@ mod tests {
 
     #[test]
     fn from_theme_fallback_to_statusline_when_mode_missing() {
-        // Only "ui.statusline" is defined; all mode-specific keys are absent.
-        // The dot-fallback chain must resolve each ui.statusline.mode.* to ui.statusline.
+        // Only "ui.statusline" is defined; all mode-specific and separator keys are absent.
+        // The dot-fallback chain must resolve each ui.statusline.* to ui.statusline.
         let mut styles: HashMap<&'static str, ResolvedStyle> = HashMap::new();
         styles.insert(
             "ui.statusline",
@@ -232,5 +240,41 @@ mod tests {
         assert_eq!(colors.status_search, want);
         assert_eq!(colors.status_command, want);
         assert_eq!(colors.status_select, want);
+        assert_eq!(colors.statusline_separator, want);
+    }
+
+    #[test]
+    fn separator_scope_honored_when_defined() {
+        // "ui.statusline.separator" carries its own fg (no bg); other scopes
+        // fall back to the base "ui.statusline" style.
+        let mut styles: HashMap<&'static str, ResolvedStyle> = HashMap::new();
+        styles.insert(
+            "ui.statusline",
+            ResolvedStyle {
+                fg: Some(Color::White),
+                bg: Some(Color::DarkGray),
+                ..Default::default()
+            },
+        );
+        styles.insert(
+            "ui.statusline.separator",
+            ResolvedStyle {
+                fg: Some(Color::Yellow),
+                ..Default::default()
+            },
+        );
+        let theme = hume_engine::theme::Theme::new(styles, ResolvedStyle::default());
+        let colors = EditorColors::from_theme(&theme);
+
+        let want_base = Style::default()
+            .fg(Color::White)
+            .bg(Color::DarkGray)
+            .remove_modifier(Modifier::all());
+        let want_separator = Style::default()
+            .fg(Color::Yellow)
+            .remove_modifier(Modifier::all());
+
+        assert_eq!(colors.statusline_separator, want_separator);
+        assert_eq!(colors.status_normal, want_base);
     }
 }
