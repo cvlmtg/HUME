@@ -193,3 +193,23 @@ the file, never a licence to swap in a different claim. This applies with
 extra force when editing something already verified earlier in the session:
 changing a previously-checked line needs *more* evidence than writing it
 did, not less.
+
+## Platform-gated tests: structure over attributes (2026-07-20)
+
+**Mistake pattern:** Unix-only tests accumulated as per-test
+`#[cfg(not(windows))]` attributes inside otherwise-portable test files.
+Every such file's module-level imports then only compile as "used" on
+unix — each new gated test risks a fresh crop of Windows-only
+unused-import warnings, invisible until Windows CI runs. Fixing them by
+gating individual imports treats the symptom and multiplies attributes.
+
+**Prevention rule:** Platform-scoped tests belong in a platform-scoped
+module: `hume-editor/src/editor/tests/unix/` is gated once via
+`#[cfg(unix)] mod unix;` in `tests/mod.rs`, and files inside carry no
+cfg attributes at all. A wholly unix-only test file goes in `unix/`; a
+file mixing portable and unix-only tests is split into a same-named pair
+(portable half stays, unix half moves). Never add a new
+`#[cfg(not(windows))]` to a test or import in the editor test tree —
+put the test in `unix/` instead. (Inline `mod tests` blocks in library
+crates still use cfg gates, e.g. `#[cfg(all(test, unix))]` in
+`hume-lsp/src/backend.rs`.)
