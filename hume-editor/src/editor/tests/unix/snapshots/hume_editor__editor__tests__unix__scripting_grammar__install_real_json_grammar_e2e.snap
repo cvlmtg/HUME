@@ -1,8 +1,8 @@
 ---
-source: hume-editor/src/editor/tests/scripting_grammar.rs
+source: hume-editor/src/editor/tests/unix/scripting_grammar.rs
 expression: "render_to_styled_string(&mut ed, rect)"
 ---
-<fg=#000000,bg=#ffffff>{</><fg=#7ab87a,bg=#3a3a3a>"x"</><fg=#808080,bg=#3a3a3a>:</><fg=#d0d0d0,bg=#3a3a3a> </><fg=#d09060,bg=#3a3a3a>1</><fg=#8c8ca0,bg=#3a3a3a>}</>
+<fg=#000000,bg=#ffffff>{</><fg=#d0d0d0,bg=#3a3a3a>"x"</><fg=#808080,bg=#3a3a3a>:</><fg=#d0d0d0,bg=#3a3a3a> </><fg=#d09060,bg=#3a3a3a>1</><fg=#8c8ca0,bg=#3a3a3a>}</>
 <fg=#808080,bg=#1a1a1a>~</>
 <fg=#808080,bg=#1a1a1a>~</>
 <fg=#808080,bg=#1a1a1a>~</>

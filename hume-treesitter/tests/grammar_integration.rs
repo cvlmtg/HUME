@@ -286,3 +286,146 @@ fn highlight_overlap_fully_contained_is_dropped() {
             .collect::<Vec<_>>()
     );
 }
+
+// Regression: Helix-style queries rely on a later, more specific pattern
+// overriding an earlier catch-all for the SAME node — e.g. `(identifier)
+// @variable` followed by `(call_expression function: (identifier)
+// @function)`. `foo`'s identifier node is nested inside the call_expression
+// match's root, so a `matches()`-based collector emits the call-rooted
+// `@function` capture ahead of the identifier-rooted `@variable` capture,
+// and flatten_overlaps's same-range last-pushed-wins then picks `@variable`
+// — silently losing every keyword/function capture in real-world queries.
+// `captures()` orders by node position with pattern order as the tiebreak,
+// so the later pattern (`@function`) must win here.
+#[test]
+fn highlight_later_pattern_wins_on_same_node() {
+    if skip_unless_grammars(&["rust"]) {
+        return;
+    }
+    let gpath = grammar_parser_path("rust");
+    let grammar = LoadedGrammar::open(&gpath, "tree_sitter_rust").expect("open rust grammar");
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(grammar.language()).unwrap();
+
+    let source = b"fn main() { foo(1); }\n";
+    let tree = parser.parse(source as &[u8], None).expect("parse");
+
+    let query_src =
+        "(identifier) @variable\n(call_expression function: (identifier) @function)";
+    let mut scope_reg = ScopeRegistry::new();
+    let rope = ropey::Rope::from_str(&String::from_utf8_lossy(source));
+
+    let highlighter = TreeSitterHighlighter::new(grammar.language(), query_src, &mut scope_reg)
+        .expect("highlighter creation should succeed");
+
+    let out = highlights_for_line(tree, highlighter, &rope, 0);
+
+    // `foo` is at byte offset 13..16 in `fn main() { foo(1); }`.
+    let foo_span = out.iter().find(|&&(s, e, _)| s == 12 && e == 15);
+    let (_, _, scope_id) = *foo_span.unwrap_or_else(|| {
+        panic!(
+            "expected a span at [12, 15) for `foo`; got: {:?}",
+            out.iter()
+                .map(|&(s, e, id)| (s, e, scope_reg.name_of(id)))
+                .collect::<Vec<_>>()
+        )
+    });
+    assert_eq!(
+        scope_reg.name_of(scope_id),
+        "function",
+        "later pattern (@function) must win over the earlier catch-all (@variable)"
+    );
+}
+
+// Companion to `highlight_later_pattern_wins_on_same_node`, with pattern
+// order reversed: the catch-all `@variable` now comes last, so it must win.
+// Guards against a fix that hardcodes "more specific pattern wins" instead
+// of genuinely respecting query order.
+#[test]
+fn highlight_pattern_order_controls_winner_not_specificity() {
+    if skip_unless_grammars(&["rust"]) {
+        return;
+    }
+    let gpath = grammar_parser_path("rust");
+    let grammar = LoadedGrammar::open(&gpath, "tree_sitter_rust").expect("open rust grammar");
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(grammar.language()).unwrap();
+
+    let source = b"fn main() { foo(1); }\n";
+    let tree = parser.parse(source as &[u8], None).expect("parse");
+
+    let query_src =
+        "(call_expression function: (identifier) @function)\n(identifier) @variable";
+    let mut scope_reg = ScopeRegistry::new();
+    let rope = ropey::Rope::from_str(&String::from_utf8_lossy(source));
+
+    let highlighter = TreeSitterHighlighter::new(grammar.language(), query_src, &mut scope_reg)
+        .expect("highlighter creation should succeed");
+
+    let out = highlights_for_line(tree, highlighter, &rope, 0);
+
+    let foo_span = out.iter().find(|&&(s, e, _)| s == 12 && e == 15);
+    let (_, _, scope_id) = *foo_span.unwrap_or_else(|| {
+        panic!(
+            "expected a span at [12, 15) for `foo`; got: {:?}",
+            out.iter()
+                .map(|&(s, e, id)| (s, e, scope_reg.name_of(id)))
+                .collect::<Vec<_>>()
+        )
+    });
+    assert_eq!(
+        scope_reg.name_of(scope_id),
+        "variable",
+        "with order swapped, the now-later catch-all (@variable) must win"
+    );
+}
+
+// Leading-underscore captures are Helix's convention for pattern-internal
+// predicate helpers (e.g. `@_f`, `@_lib`) and must never be styled — they
+// should be dropped entirely rather than interned as a real scope that could
+// clobber a legitimate capture on the same node.
+#[test]
+fn highlight_underscore_captures_are_ignored() {
+    if skip_unless_grammars(&["rust"]) {
+        return;
+    }
+    let gpath = grammar_parser_path("rust");
+    let grammar = LoadedGrammar::open(&gpath, "tree_sitter_rust").expect("open rust grammar");
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(grammar.language()).unwrap();
+
+    let source = b"fn main() { foo(1); }\n";
+    let tree = parser.parse(source as &[u8], None).expect("parse");
+
+    // Only-underscore query: must yield zero spans for `foo`.
+    let helper_only_query = "(call_expression function: (identifier) @_helper)";
+    let mut scope_reg = ScopeRegistry::new();
+    let rope = ropey::Rope::from_str(&String::from_utf8_lossy(source));
+    let highlighter =
+        TreeSitterHighlighter::new(grammar.language(), helper_only_query, &mut scope_reg)
+            .expect("highlighter creation should succeed");
+    let out = highlights_for_line(tree.clone(), highlighter, &rope, 0);
+    assert!(
+        out.is_empty(),
+        "a query with only an underscore capture must emit no spans; got: {out:?}"
+    );
+
+    // Underscore capture alongside a real one on the same node: the real
+    // capture must win, never the (dropped) underscore capture.
+    let mixed_query =
+        "(call_expression function: (identifier) @_helper)\n(identifier) @variable";
+    let mut scope_reg = ScopeRegistry::new();
+    let highlighter = TreeSitterHighlighter::new(grammar.language(), mixed_query, &mut scope_reg)
+        .expect("highlighter creation should succeed");
+    let out = highlights_for_line(tree, highlighter, &rope, 0);
+    let foo_span = out.iter().find(|&&(s, e, _)| s == 12 && e == 15);
+    let (_, _, scope_id) = *foo_span.unwrap_or_else(|| {
+        panic!(
+            "expected a span at [12, 15) for `foo`; got: {:?}",
+            out.iter()
+                .map(|&(s, e, id)| (s, e, scope_reg.name_of(id)))
+                .collect::<Vec<_>>()
+        )
+    });
+    assert_eq!(scope_reg.name_of(scope_id), "variable");
+}

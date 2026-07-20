@@ -87,10 +87,19 @@ impl TreeSitterHighlighter {
     /// registration time (e.g. from `GrammarBundle.query`) to avoid
     /// re-parsing the `highlights.scm` source per buffer open.
     pub fn from_shared_query(query: Arc<Query>, registry: &mut ScopeRegistry) -> Self {
+        // Leading-underscore captures (e.g. `@_f`, `@_lib`) are Helix's
+        // convention for pattern-internal predicate helpers, never meant to
+        // be styled — map them to `None` so they never emit a span.
         let capture_scopes: Vec<Option<ScopeId>> = query
             .capture_names()
             .iter()
-            .map(|name| Some(registry.intern_runtime(name)))
+            .map(|name| {
+                if name.starts_with('_') {
+                    None
+                } else {
+                    Some(registry.intern_runtime(name))
+                }
+            })
             .collect();
         Self {
             query,
@@ -103,6 +112,18 @@ impl TreeSitterHighlighter {
     /// `line_idx` into `raw`, tagged with `depth` for `flatten_overlaps`'s
     /// depth-first priority. Does not flatten overlaps — the caller merges
     /// captures from every layer covering the line before flattening once.
+    ///
+    /// Uses `cursor.captures()` (not `matches()`): Helix-style queries rely
+    /// on later patterns overriding earlier ones for the *same* node — e.g.
+    /// a catch-all `(symbol) @variable` followed by a more specific
+    /// `(list . (symbol) @keyword)`. `matches()` yields matches ordered by
+    /// each match's root node, so a list-rooted `@keyword` match (root at
+    /// the opening paren) is emitted before the symbol-rooted `@variable`
+    /// match nested inside it, and `flatten_overlaps`'s last-pushed-wins
+    /// same-range tiebreak then picks `@variable` — silently losing every
+    /// keyword/function capture. `captures()` yields captures ordered by
+    /// node position with pattern order as the same-position tiebreak,
+    /// matching Helix's own precedence semantics.
     pub(crate) fn collect_line_spans(
         &self,
         tree: &tree_sitter::Tree,
@@ -116,25 +137,24 @@ impl TreeSitterHighlighter {
         cursor.set_byte_range(line_start..line_end);
 
         let root = tree.root_node();
-        let mut matches = cursor.matches(&self.query, root, RopeProvider(rope));
-        while let Some(m) = matches.next() {
-            for cap in m.captures {
-                let Some(scope) = self
-                    .capture_scopes
-                    .get(cap.index as usize)
-                    .copied()
-                    .flatten()
-                else {
-                    continue;
-                };
-                let node = cap.node;
-                let abs_start = node.start_byte();
-                let abs_end = node.end_byte();
-                let rel_start = abs_start.saturating_sub(line_start);
-                let rel_end = abs_end.saturating_sub(line_start);
-                if rel_start < rel_end {
-                    raw.push((rel_start, rel_end, scope, depth));
-                }
+        let mut captures = cursor.captures(&self.query, root, RopeProvider(rope));
+        while let Some((m, capture_index)) = captures.next() {
+            let cap = m.captures[*capture_index];
+            let Some(scope) = self
+                .capture_scopes
+                .get(cap.index as usize)
+                .copied()
+                .flatten()
+            else {
+                continue;
+            };
+            let node = cap.node;
+            let abs_start = node.start_byte();
+            let abs_end = node.end_byte();
+            let rel_start = abs_start.saturating_sub(line_start);
+            let rel_end = abs_end.saturating_sub(line_start);
+            if rel_start < rel_end {
+                raw.push((rel_start, rel_end, scope, depth));
             }
         }
     }
