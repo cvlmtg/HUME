@@ -52,7 +52,6 @@ fn lock() -> std::sync::MutexGuard<'static, ()> {
 /// `data_dir`. Env vars are process-global — callers must hold
 /// `super::HUME_RUNTIME_MUTEX` for the test's duration. Mirrors
 /// `injections_editor.rs`'s `load_plum`.
-#[cfg(not(windows))]
 fn load_with_init(ed: &mut Editor, data_dir: &std::path::Path, init_src: &str) {
     let repo_runtime_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -78,7 +77,6 @@ fn load_with_init(ed: &mut Editor, data_dir: &std::path::Path, init_src: &str) {
 
 /// Load the real `core:plum` plugin only — plugin/grammar management, no
 /// LSP awareness at all (servers.scm lives entirely in core:lsp now).
-#[cfg(not(windows))]
 fn load_plum(ed: &mut Editor, data_dir: &std::path::Path) {
     load_with_init(ed, data_dir, r#"(load-plugin "core:plum")"#);
 }
@@ -86,7 +84,6 @@ fn load_plum(ed: &mut Editor, data_dir: &std::path::Path) {
 /// Load the real `core:lsp` plugin only (plus its documented `core:stdlib`
 /// dependency) — the entire LSP server lifecycle: install, uninstall,
 /// listing, and scan-on-load registration.
-#[cfg(not(windows))]
 fn load_lsp(ed: &mut Editor, data_dir: &std::path::Path) {
     load_with_init(
         ed,
@@ -99,7 +96,6 @@ fn load_lsp(ed: &mut Editor, data_dir: &std::path::Path) {
 /// test for `plugins.scm`/`grammars.scm` (no LSP catalogs touch this plugin
 /// anymore; that's `lsp_plugin_loads_with_real_lsp_catalogs`'s job below).
 #[test]
-#[cfg(not(windows))]
 fn plum_plugin_loads_cleanly() {
     let _lock = lock();
 
@@ -124,7 +120,6 @@ fn plum_plugin_loads_cleanly() {
 /// lsp-servers.scm catalog, and `servers.scm`'s lsp-sources.scm catalog load
 /// — this is the smoke test for both self-contained module loads.
 #[test]
-#[cfg(not(windows))]
 fn lsp_plugin_loads_with_real_lsp_catalogs() {
     let _lock = lock();
 
@@ -150,7 +145,6 @@ fn lsp_plugin_loads_with_real_lsp_catalogs() {
 /// runs no receipt scan — LSP server install/uninstall/registration is
 /// core:lsp-owned end to end. See docs/LSP-INSTALL.md "Registration model".
 #[test]
-#[cfg(not(windows))]
 fn plum_alone_does_not_register_installed_servers() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -186,7 +180,6 @@ fn plum_alone_does_not_register_installed_servers() {
 // ── Scan-on-load ─────────────────────────────────────────────────────────────
 
 #[test]
-#[cfg(not(windows))]
 fn scan_registers_installed_server_with_absolute_managed_path() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -217,7 +210,6 @@ fn scan_registers_installed_server_with_absolute_managed_path() {
 /// `lsp/settings->hash` — this is the settings-conversion correctness
 /// check, so it must not share logic with the thing it verifies.
 #[test]
-#[cfg(not(windows))]
 fn settings_conversion_produces_correct_json_shapes_for_arrays_and_nested_objects() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -291,7 +283,6 @@ fn settings_conversion_produces_correct_json_shapes_for_arrays_and_nested_object
 }
 
 #[test]
-#[cfg(not(windows))]
 fn interrupted_install_is_warned_and_not_registered() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -318,7 +309,6 @@ fn interrupted_install_is_warned_and_not_registered() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn orphan_server_is_warned_and_not_registered() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -342,7 +332,6 @@ fn orphan_server_is_warned_and_not_registered() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn install_lock_sentinel_file_is_never_scanned_as_a_server_directory() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -364,7 +353,6 @@ fn install_lock_sentinel_file_is_never_scanned_as_a_server_directory() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn stray_non_directory_file_under_servers_dir_is_never_scanned_as_a_server() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -389,7 +377,6 @@ fn stray_non_directory_file_under_servers_dir_is_never_scanned_as_a_server() {
 /// `:lsp-install`), and used internally by `servers.scm`'s own install and
 /// uninstall commands to pick up what they just wrote to disk.
 #[test]
-#[cfg(not(windows))]
 fn lsp_rescan_servers_command_registers_newly_installed() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -429,7 +416,6 @@ fn lsp_rescan_servers_command_registers_newly_installed() {
 /// version the catalog doesn't carry, or a `$PATH` copy the user wants to
 /// take precedence — see user-manual/docs/lsp.md) on the next rescan.
 #[test]
-#[cfg(not(windows))]
 fn rescan_does_not_clobber_a_manually_registered_language() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -474,7 +460,6 @@ fn rescan_does_not_clobber_a_manually_registered_language() {
 /// scan queues nothing competing for "rust" in that eval — it never
 /// exercises this same-eval race at all.
 #[test]
-#[cfg(not(windows))]
 fn register_lsp_server_after_eager_load_plugin_overrides_the_scans_own_registration() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -509,7 +494,6 @@ fn register_lsp_server_after_eager_load_plugin_overrides_the_scans_own_registrat
 /// earlier-queued registration and skips "rust" entirely regardless of
 /// call order.
 #[test]
-#[cfg(not(windows))]
 fn register_lsp_server_before_eager_load_plugin_also_survives_the_scan() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -554,7 +538,6 @@ fn register_lsp_server_before_eager_load_plugin_also_survives_the_scan() {
 /// buffer) so the attach assertions below actually exercise the attach path,
 /// not just the registration.
 #[test]
-#[cfg(not(windows))]
 fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -616,7 +599,6 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
 /// mappings/command_mode.rs), so `:lsp-install` on a plugin that hasn't
 /// loaded yet still works, no eager `(load-plugin "core:lsp")` required.
 #[test]
-#[cfg(not(windows))]
 fn lazy_lsp_plugin_activates_on_typed_lsp_install_command() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -641,7 +623,6 @@ fn lazy_lsp_plugin_activates_on_typed_lsp_install_command() {
 // ── :lsp-install failure paths ────────────────────────────────────────────────
 
 #[test]
-#[cfg(not(windows))]
 fn lsp_install_stub_kind_names_the_unsupported_kind() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -659,7 +640,6 @@ fn lsp_install_stub_kind_names_the_unsupported_kind() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn lsp_install_unknown_language_warns() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -676,7 +656,6 @@ fn lsp_install_unknown_language_warns() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn lsp_install_no_language_buffer_and_no_arg_warns() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -694,7 +673,6 @@ fn lsp_install_no_language_buffer_and_no_arg_warns() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn lsp_install_unsupported_asset_format_fails_loudly() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -718,7 +696,6 @@ fn lsp_install_unsupported_asset_format_fails_loudly() {
 /// later `:lsp-install`/`:lsp-uninstall` behind a lock nothing will ever
 /// release.
 #[test]
-#[cfg(not(windows))]
 fn install_lock_is_released_after_a_failed_install() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -762,7 +739,6 @@ fn install_lock_is_released_after_a_failed_install() {
 /// fails first, so this never actually reaches rust-analyzer's real
 /// download path (no `HUME_REQUIRE_LIVE_LSP_INSTALL_E2E` gate needed).
 #[test]
-#[cfg(not(windows))]
 fn lsp_install_refuses_when_the_cross_process_lock_is_already_held() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -787,7 +763,6 @@ fn lsp_install_refuses_when_the_cross_process_lock_is_already_held() {
 /// fallback branch, not the "no argument given" branch — a made-up language
 /// name only this test's buffer has makes the distinction unambiguous.
 #[test]
-#[cfg(not(windows))]
 fn lsp_install_no_arg_falls_back_to_buffer_language_not_the_count_sentinel() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -815,7 +790,6 @@ fn lsp_install_no_arg_falls_back_to_buffer_language_not_the_count_sentinel() {
 /// up by `:lsp-install`'s own post-check rescan, not just reported as
 /// up-to-date and left unregistered.
 #[test]
-#[cfg(not(windows))]
 fn lsp_install_up_to_date_registers_a_late_fabricated_receipt() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -863,7 +837,6 @@ fn lsp_install_up_to_date_registers_a_late_fabricated_receipt() {
 /// "PLUM missing:" status is the safe way to observe `plum/missing-plugins`'s
 /// output without ever touching the network.
 #[test]
-#[cfg(not(windows))]
 fn plum_missing_plugins_excludes_declared_core_plugins() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -893,7 +866,6 @@ fn plum_missing_plugins_excludes_declared_core_plugins() {
 // ── :lsp-uninstall ────────────────────────────────────────────────────────────
 
 #[test]
-#[cfg(not(windows))]
 fn lsp_uninstall_removes_registration_and_directory() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -933,7 +905,6 @@ fn lsp_uninstall_removes_registration_and_directory() {
 /// `.install-lock` at the moment the deferred `(after 0 ...)` callback fires
 /// must refuse the delete loudly, leaving the directory intact.
 #[test]
-#[cfg(not(windows))]
 fn lsp_uninstall_refuses_the_delete_when_the_cross_process_lock_is_already_held() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -965,7 +936,6 @@ fn lsp_uninstall_refuses_the_delete_when_the_cross_process_lock_is_already_held(
 }
 
 #[test]
-#[cfg(not(windows))]
 fn lsp_uninstall_of_never_installed_server_is_silent() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -998,7 +968,6 @@ fn lsp_uninstall_of_never_installed_server_is_silent() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn lsp_uninstall_rejects_path_traversal_name() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -1029,7 +998,6 @@ fn lsp_uninstall_rejects_path_traversal_name() {
 // ── :lsp-servers ──────────────────────────────────────────────────────────────
 
 #[test]
-#[cfg(not(windows))]
 fn lsp_servers_command_runs_without_error() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -1077,7 +1045,6 @@ fn lsp_servers_command_runs_without_error() {
 // `lsp-show-status!`/`lsp-stop!`/`lsp-restart!` builtins.
 
 #[test]
-#[cfg(not(windows))]
 fn lsp_status_opens_a_read_only_view_when_no_servers_are_registered() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -1091,7 +1058,6 @@ fn lsp_status_opens_a_read_only_view_when_no_servers_are_registered() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn lsp_stop_with_no_matching_server_reports_nothing_to_stop() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -1107,7 +1073,6 @@ fn lsp_stop_with_no_matching_server_reports_nothing_to_stop() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn lsp_restart_with_no_matching_server_reports_nothing_to_restart() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -1123,7 +1088,6 @@ fn lsp_restart_with_no_matching_server_reports_nothing_to_restart() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn plum_alone_does_not_expose_lsp_status_stop_restart() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -1149,7 +1113,6 @@ fn plum_alone_does_not_expose_lsp_status_stop_restart() {
 // command's dispatch, not only after one.
 
 #[test]
-#[cfg(not(windows))]
 fn discovery_hint_fires_once_for_an_installable_unregistered_language() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -1187,7 +1150,6 @@ fn discovery_hint_fires_once_for_an_installable_unregistered_language() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn discovery_hint_does_not_fire_for_a_blocked_server() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -1209,7 +1171,6 @@ fn discovery_hint_does_not_fire_for_a_blocked_server() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn discovery_hint_does_not_fire_for_npm_kind_when_npm_missing_from_path() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -1244,7 +1205,6 @@ fn discovery_hint_does_not_fire_for_npm_kind_when_npm_missing_from_path() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn discovery_hint_does_not_fire_when_already_registered() {
     let _lock = lock();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -1278,7 +1238,6 @@ fn discovery_hint_does_not_fire_when_already_registered() {
 ///
 /// Gated by `HUME_REQUIRE_LIVE_LSP_INSTALL_E2E=1`; skipped otherwise.
 #[test]
-#[cfg(not(windows))]
 fn lsp_install_real_rust_analyzer_e2e() {
     let require_live = std::env::var("HUME_REQUIRE_LIVE_LSP_INSTALL_E2E")
         .map(|v| v == "1")
@@ -1353,7 +1312,6 @@ fn lsp_install_real_rust_analyzer_e2e() {
 ///
 /// Gated by `HUME_REQUIRE_LIVE_LSP_INSTALL_E2E=1`; skipped otherwise.
 #[test]
-#[cfg(not(windows))]
 fn lsp_install_real_rust_analyzer_reinstall_after_version_bump_e2e() {
     let require_live = std::env::var("HUME_REQUIRE_LIVE_LSP_INSTALL_E2E")
         .map(|v| v == "1")

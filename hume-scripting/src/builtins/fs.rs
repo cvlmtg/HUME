@@ -182,7 +182,10 @@ mod tests {
         // macOS TempDir paths are under /var, which is itself a symlink to
         // /private/var — canonicalize the *expected* side so the comparison
         // isn't platform-dependent (see memory feedback_macos_tempfile_canonicalize).
-        let expected = std::fs::canonicalize(&data_dir).unwrap();
+        // On Windows canonicalize yields a `\\?\`-prefixed path, but
+        // `(data-dir)` returns the display form — strip the prefix to match.
+        let expected =
+            hume_platform::path::strip_unc_prefix(std::fs::canonicalize(&data_dir).unwrap());
         let msgs = host.take_pending_messages();
         assert!(
             msgs.iter()

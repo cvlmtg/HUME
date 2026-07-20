@@ -346,6 +346,7 @@ fn stderr_loop(r: impl BufRead, tx: &mpsc::SyncSender<String>, wake: &WakeCallba
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use crate::codec::RequestId;
     use std::io::Cursor;
 

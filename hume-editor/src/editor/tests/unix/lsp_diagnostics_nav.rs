@@ -40,7 +40,6 @@ fn publish_diagnostics_notification(uri: &str, diags: &[DiagFixture]) -> hume_ls
 /// line1 'bb' = 3..5, line2 'cc' = 6..8, line3 'dd' = 9..11. Diagnostic A
 /// covers 'bb' (char start 3); diagnostic B covers 'dd' (char start 9) —
 /// leaves line0 genuinely "before A" and line2 genuinely "between A and B".
-#[cfg(not(windows))]
 fn setup(file: &Path, tmp: &Path, diags: &[DiagFixture]) -> (Editor, RealRuntimeGuard) {
     let guard = RealRuntimeGuard::new();
     std::fs::write(file, "aa\nbb\ncc\ndd\n").unwrap();
@@ -71,14 +70,12 @@ fn setup(file: &Path, tmp: &Path, diags: &[DiagFixture]) -> (Editor, RealRuntime
     (ed, guard)
 }
 
-#[cfg(not(windows))]
 fn run(ed: &mut Editor, cmd: &str) {
     type_cmd(ed, cmd);
     ed.drain_hooks();
     ed.drain_pending_steel_calls();
 }
 
-#[cfg(not(windows))]
 fn set_cursor(ed: &mut Editor, char_offset: usize) {
     let bid = ed.focused_buffer_id();
     let pid = ed.state.focused_pane_id;
@@ -98,7 +95,6 @@ const DIAG_A: DiagFixture = ((1, 0), (1, 2), 1, "problem A");
 const DIAG_B: DiagFixture = ((3, 0), (3, 2), 2, "problem B");
 
 #[test]
-#[cfg(not(windows))]
 fn next_from_before_a_jumps_to_a() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -119,7 +115,6 @@ fn next_from_before_a_jumps_to_a() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn next_from_as_start_of_a_jumps_to_b_not_a() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -140,7 +135,6 @@ fn next_from_as_start_of_a_jumps_to_b_not_a() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn next_from_after_b_wraps_to_a() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -161,7 +155,6 @@ fn next_from_after_b_wraps_to_a() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn prev_from_after_b_jumps_to_b() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -182,7 +175,6 @@ fn prev_from_after_b_jumps_to_b() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn prev_from_before_a_wraps_to_b() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -203,7 +195,6 @@ fn prev_from_before_a_wraps_to_b() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn empty_buffer_reports_no_diagnostics() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -221,7 +212,6 @@ fn empty_buffer_reports_no_diagnostics() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();

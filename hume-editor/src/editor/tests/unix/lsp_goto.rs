@@ -20,7 +20,6 @@ use hume_scripting::ScriptingHost;
 /// need the URI *before* `setup` to build their scripted `Location`
 /// response, since `configure` must run before the backend is boxed into
 /// `LspState` (trait-erased afterward, per `lsp_hover.rs`).
-#[cfg(not(windows))]
 fn write_fixture_file(file_dir: &Path) -> (PathBuf, String) {
     let file = file_dir.join("main.rs");
     std::fs::write(&file, "fn main() {\n    foo();\n}\n").unwrap();
@@ -36,7 +35,6 @@ fn write_fixture_file(file_dir: &Path) -> (PathBuf, String) {
 /// a `Location` can point at a different line for the jump-back test),
 /// driven handshake (so `lsp-capabilities` decodes), the real `core:lsp`
 /// plugin loaded in place.
-#[cfg(not(windows))]
 fn setup(
     file: &Path,
     tmp: &Path,
@@ -80,7 +78,6 @@ fn setup(
     (ed, guard, sid)
 }
 
-#[cfg(not(windows))]
 fn run_goto(ed: &mut Editor, cmd: &str) {
     type_cmd(ed, cmd);
     // Drain the Command-mode entry/exit's on-mode-change hooks now (mirrors
@@ -108,7 +105,6 @@ fn location_link(uri: &str, line: u64, character: u64) -> serde_json::Value {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn null_result_reports_no_definition_found() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -127,7 +123,6 @@ fn null_result_reports_no_definition_found() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn single_location_hashmap_jumps_directly() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -148,7 +143,6 @@ fn single_location_hashmap_jumps_directly() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn single_element_array_jumps_directly() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -173,7 +167,6 @@ fn single_element_array_jumps_directly() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn multi_element_array_opens_the_drawer_and_row_select_jumps() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -217,7 +210,6 @@ fn multi_element_array_opens_the_drawer_and_row_select_jumps() {
 /// only path in core:lsp that reads a `LocationLink`'s `targetUri`/
 /// `targetSelectionRange` outside Rust's own dual-shape dispatch.
 #[test]
-#[cfg(not(windows))]
 fn multi_element_location_link_array_opens_the_drawer_and_row_select_jumps() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -265,7 +257,6 @@ fn multi_element_location_link_array_opens_the_drawer_and_row_select_jumps() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn location_link_array_prefers_target_selection_range() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -289,7 +280,6 @@ fn location_link_array_prefers_target_selection_range() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn jump_back_returns_to_the_origin_after_a_jump() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -315,7 +305,6 @@ fn jump_back_returns_to_the_origin_after_a_jump() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn nonexistent_target_errors_without_moving_the_cursor() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -337,7 +326,6 @@ fn nonexistent_target_errors_without_moving_the_cursor() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn each_command_sends_its_own_method() {
     // Wiring smoke test: script a distinctive response only for the exact
     // method each command should send. If a command sent the wrong method,

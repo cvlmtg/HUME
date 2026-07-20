@@ -17,7 +17,6 @@ use hume_lsp::codec::{Message, RequestId};
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
 use hume_scripting::ScriptingHost;
 
-#[cfg(not(windows))]
 fn write_fixture_file(file_dir: &Path) -> (PathBuf, String) {
     let file = file_dir.join("main.rs");
     std::fs::write(&file, "fn main() {\n    let x = 1;\n}\n").unwrap();
@@ -29,7 +28,6 @@ fn write_fixture_file(file_dir: &Path) -> (PathBuf, String) {
     (file, uri)
 }
 
-#[cfg(not(windows))]
 fn setup(
     file: &Path,
     tmp: &Path,
@@ -47,7 +45,6 @@ fn setup(
 /// for the resolve tests, which require `codeActionProvider` to be the
 /// CodeActionOptions hash shape (`{"resolveProvider": true}`), not the bare
 /// boolean `setup`'s default uses.
-#[cfg(not(windows))]
 fn setup_with_capabilities(
     file: &Path,
     tmp: &Path,
@@ -89,7 +86,6 @@ fn setup_with_capabilities(
     (ed, guard, sid, requests)
 }
 
-#[cfg(not(windows))]
 fn run_actions(ed: &mut Editor) {
     type_cmd(ed, ":lsp-code-actions");
     ed.drain_hooks();
@@ -97,7 +93,6 @@ fn run_actions(ed: &mut Editor) {
     ed.drain_pending_steel_calls();
 }
 
-#[cfg(not(windows))]
 fn menu_items(ed: &Editor) -> Vec<String> {
     ed.state
         .menu
@@ -106,7 +101,6 @@ fn menu_items(ed: &Editor) -> Vec<String> {
         .unwrap_or_default()
 }
 
-#[cfg(not(windows))]
 fn last_request_params(requests: &RequestLog, method: &str) -> serde_json::Value {
     requests
         .borrow()
@@ -151,7 +145,6 @@ fn diagnostic_params(uri: &str) -> serde_json::Value {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn titles_are_listed_in_the_menu() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -175,7 +168,6 @@ fn titles_are_listed_in_the_menu() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn selecting_an_edit_action_applies_it() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -198,7 +190,6 @@ fn selecting_an_edit_action_applies_it() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn selecting_a_command_action_runs_the_full_server_loop() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -239,7 +230,6 @@ fn selecting_a_command_action_runs_the_full_server_loop() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn disabled_actions_are_filtered_out() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -264,7 +254,6 @@ fn disabled_actions_are_filtered_out() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn empty_response_reports_no_code_actions_and_opens_no_menu() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -284,7 +273,6 @@ fn empty_response_reports_no_code_actions_and_opens_no_menu() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn context_diagnostics_echoes_the_raw_diagnostic_overlapping_the_cursor() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -323,7 +311,6 @@ fn context_diagnostics_echoes_the_raw_diagnostic_overlapping_the_cursor() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn selecting_an_unresolved_action_sends_resolve_then_applies_it() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -356,7 +343,6 @@ fn selecting_an_unresolved_action_sends_resolve_then_applies_it() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn selecting_an_unresolved_action_without_resolve_support_reports_it() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -398,7 +384,6 @@ fn selecting_an_unresolved_action_without_resolve_support_reports_it() {
 /// action as unsupported — an unbounded round trip for a server that never
 /// produces a resolvable shape. `#:resolved?` bounds this to one attempt.
 #[test]
-#[cfg(not(windows))]
 fn selecting_an_unresolved_action_whose_resolve_is_still_bare_reports_it_once() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -441,7 +426,6 @@ fn selecting_an_unresolved_action_whose_resolve_is_still_bare_reports_it_once() 
 }
 
 #[test]
-#[cfg(not(windows))]
 fn selecting_an_unresolved_action_whose_resolve_errors_reports_it() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();

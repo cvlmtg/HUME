@@ -86,12 +86,13 @@ impl LspBackend for ThreadedLspBackend {
     }
 }
 
-#[cfg(test)]
+// Both tests spawn `/bin/cat` as a stand-in server, so the whole module is
+// unix-only.
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 
     #[test]
-    #[cfg(unix)]
     fn start_send_drain_round_trips_through_cat() {
         let root = std::env::current_dir().unwrap();
         let mut backend = ThreadedLspBackend::new();
@@ -129,7 +130,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn start_threads_the_waker_through_to_the_spawned_server() {
         // Distinct from transport.rs's `cat_echo_fires_waker`, which pins the
         // reader loop's own wake calls: this pins that `ThreadedLspBackend`

@@ -51,7 +51,6 @@ const DECLARE_LSP_WRONG_EVENT: &str = r#"(load-plugin "core:stdlib")
 /// `state.pending_hooks`, which lives on `Editor::state` independent of
 /// `scripting` — the queued hook survives host installation and is still
 /// there for a later `ed.drain_hooks()` to process against the real host.
-#[cfg(not(windows))]
 fn setup_declared(
     file_dir: &Path,
     tmp: &Path,
@@ -104,7 +103,6 @@ fn setup_declared(
     (ed, guard)
 }
 
-#[cfg(not(windows))]
 fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
     ed.state
         .popup_view
@@ -120,7 +118,6 @@ fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
 /// Flip: if `declare-plugin` eagerly loaded the plugin (a bug reintroducing
 /// eager semantics), status would already read `Loaded` here.
 #[test]
-#[cfg(not(windows))]
 fn declared_but_undispatched_plugin_is_declared_not_loaded() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -147,7 +144,6 @@ fn declared_but_undispatched_plugin_is_declared_not_loaded() {
 /// report an error, not show a popup; without the real activation wiring,
 /// `plugin_status` would stay `Declared`.
 #[test]
-#[cfg(not(windows))]
 fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -197,7 +193,6 @@ fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
 /// "core:stdlib"` in the same source, or the handshake itself) as the cause
 /// of this test's `Loaded` result.
 #[test]
-#[cfg(not(windows))]
 fn attach_event_alone_activates_the_declared_plugin() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -230,7 +225,6 @@ fn attach_event_alone_activates_the_declared_plugin() {
 /// declaring `core:lsp` on `on-buffer-save` instead of `on-lsp-attach` and
 /// running the same attach sequence must leave it `Declared`.
 #[test]
-#[cfg(not(windows))]
 fn attach_event_does_not_activate_a_plugin_declared_for_a_different_event() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -264,7 +258,6 @@ fn attach_event_does_not_activate_a_plugin_declared_for_a_different_event() {
 /// with "unknown command" — checked at least once by temporarily renaming
 /// `"g d"`'s target in `plugin.scm` to a typo and confirming this test fails.
 #[test]
-#[cfg(not(windows))]
 fn every_default_goto_binding_dispatches_without_error() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -323,7 +316,6 @@ fn every_default_goto_binding_dispatches_without_error() {
 /// Flip: introducing a typo into the block below (not the real file — this
 /// is a literal copy for isolation) reliably fails `eval_init`.
 #[test]
-#[cfg(not(windows))]
 fn commented_init_example_block_is_valid_source() {
     let tmp = safe_tempdir();
     let guard = RealRuntimeGuard::new();

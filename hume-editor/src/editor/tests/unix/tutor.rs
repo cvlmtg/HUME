@@ -1,15 +1,14 @@
 use super::*;
 
 // All tutor tests set HUME_RUNTIME and TMPDIR to temp dirs, so they are
-// gated #[cfg(not(windows))] — HUME_RUNTIME is not honoured on Windows
-// because runtime_dir() uses a different branch there, and env::set_var in
-// parallel tests is unsafe and requires the mutex guard.
+// unix-only — HUME_RUNTIME is not honoured on Windows because runtime_dir()
+// uses a different branch there, and env::set_var in parallel tests is
+// unsafe and requires the mutex guard.
 
 const MARKER: &str = "=== HUME Tutor Test ===";
 const STUB: &str = "=== HUME Tutor Test ===\nLesson 1\n";
 
 /// Write STUB into `dir/tutor.rst` and return the canonical path of that file.
-#[cfg(not(windows))]
 fn write_stub_tutor(dir: &std::path::Path) -> std::path::PathBuf {
     let path = dir.join("tutor.rst");
     std::fs::write(&path, STUB).unwrap();
@@ -19,7 +18,6 @@ fn write_stub_tutor(dir: &std::path::Path) -> std::path::PathBuf {
 // ── :tutor opens the lesson file as a tmp copy ────────────────────────────────
 
 #[test]
-#[cfg(not(windows))]
 fn tutor_opens_buffer_with_lesson_content() {
     let guard = HumeRuntimeGuard::new();
     write_stub_tutor(guard.runtime.path());
@@ -44,7 +42,6 @@ fn tutor_opens_buffer_with_lesson_content() {
 // ── :tutor is idempotent ──────────────────────────────────────────────────────
 
 #[test]
-#[cfg(not(windows))]
 fn tutor_is_idempotent() {
     let guard = HumeRuntimeGuard::new();
     write_stub_tutor(guard.runtime.path());
@@ -78,7 +75,6 @@ fn tutor_is_idempotent() {
 // ── after :bd!, :tutor opens a fresh buffer ───────────────────────────────────
 
 #[test]
-#[cfg(not(windows))]
 fn tutor_after_bd_opens_fresh() {
     let guard = HumeRuntimeGuard::new();
     write_stub_tutor(guard.runtime.path());
@@ -106,7 +102,6 @@ fn tutor_after_bd_opens_fresh() {
 // ── after save-as, :tutor opens a fresh buffer at the tmp path ────────────────
 
 #[test]
-#[cfg(not(windows))]
 fn tutor_after_save_as_opens_fresh() {
     let guard = HumeRuntimeGuard::new();
     write_stub_tutor(guard.runtime.path());
@@ -144,7 +139,6 @@ fn tutor_after_save_as_opens_fresh() {
 // ── tutor buffer is editable ──────────────────────────────────────────────────
 
 #[test]
-#[cfg(not(windows))]
 fn tutor_buffer_is_editable() {
     let guard = HumeRuntimeGuard::new();
     write_stub_tutor(guard.runtime.path());
@@ -174,7 +168,6 @@ fn tutor_buffer_is_editable() {
 // ── missing tutor.rst produces a clear error ──────────────────────────────────
 
 #[test]
-#[cfg(not(windows))]
 fn tutor_missing_file_returns_error() {
     // Do NOT write tutor.rst — the runtime directory is empty.
     let _guard = HumeRuntimeGuard::new();
@@ -203,7 +196,6 @@ fn tutor_missing_file_returns_error() {
 // ── :w writes to tmp, not to the install source ───────────────────────────────
 
 #[test]
-#[cfg(not(windows))]
 fn tutor_save_does_not_overwrite_source() {
     let guard = HumeRuntimeGuard::new();
     let source_path = guard.runtime.path().join("tutor.rst");

@@ -18,7 +18,6 @@ use hume_lsp::client::LspClient;
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
 use hume_scripting::ScriptingHost;
 
-#[cfg(not(windows))]
 fn write_fixture_file(file_dir: &Path) -> PathBuf {
     let file = file_dir.join("main.rs");
     // "foo\n" — char 3 is the trailing newline; a collapsed selection
@@ -33,7 +32,6 @@ fn write_fixture_file(file_dir: &Path) -> PathBuf {
 /// `Running` transition fires it. Every other card's tests never depend on
 /// that ordering because they trigger everything through `type_cmd`, not
 /// through a hook that only fires once, at attach time.
-#[cfg(not(windows))]
 fn setup(
     file: &Path,
     tmp: &Path,
@@ -85,7 +83,6 @@ fn setup(
     (ed, guard, requests)
 }
 
-#[cfg(not(windows))]
 fn position_after_foo(ed: &mut Editor) {
     let bid = ed.focused_buffer_id();
     let pid = ed.state.focused_pane_id;
@@ -99,7 +96,6 @@ fn position_after_foo(ed: &mut Editor) {
     pbs.selections = SelectionSet::single(Selection::collapsed(3));
 }
 
-#[cfg(not(windows))]
 fn type_char_and_settle(ed: &mut Editor, ch: char) {
     ed.feed_key(key(ch));
     ed.drain_hooks(); // on-trigger-char fires, schedules the debounce timer
@@ -121,7 +117,6 @@ fn popup_lines(ed: &mut Editor) -> Vec<String> {
         .unwrap_or_default()
 }
 
-#[cfg(not(windows))]
 fn request_count(requests: &RequestLog, method: &str) -> usize {
     requests
         .borrow()
@@ -153,7 +148,6 @@ fn signature_help_response(
 /// `:lsp-stop` would hit `lsp-request`'s server-resolution failure and log
 /// an Error, not a polite Info skip, on every matching keystroke.
 #[test]
-#[cfg(not(windows))]
 fn detach_clears_sighelp_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -179,7 +173,6 @@ fn detach_clears_sighelp_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn trigger_char_after_debounce_shows_signature_with_marked_param() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -203,7 +196,6 @@ fn trigger_char_after_debounce_shows_signature_with_marked_param() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn comma_advances_the_marked_parameter() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -232,7 +224,6 @@ fn comma_advances_the_marked_parameter() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn close_paren_closes_the_popup_without_a_request() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -273,7 +264,6 @@ fn close_paren_closes_the_popup_without_a_request() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn esc_closes_via_the_shared_mode_change_handler() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -300,7 +290,6 @@ fn esc_closes_via_the_shared_mode_change_handler() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn rapid_trigger_chars_coalesce_to_one_request() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -341,7 +330,6 @@ fn rapid_trigger_chars_coalesce_to_one_request() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn null_response_closes_the_popup() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -371,7 +359,6 @@ fn null_response_closes_the_popup() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn offset_form_parameter_label_marks_the_correct_slice() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -406,7 +393,6 @@ fn offset_form_parameter_label_marks_the_correct_slice() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn offset_form_label_with_an_astral_char_marks_the_correct_slice() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();

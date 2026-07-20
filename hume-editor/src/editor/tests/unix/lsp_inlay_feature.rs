@@ -22,14 +22,12 @@ use hume_lsp::client::LspClient;
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
 use hume_scripting::ScriptingHost;
 
-#[cfg(not(windows))]
 fn write_fixture_file(file_dir: &Path) -> PathBuf {
     let file = file_dir.join("main.rs");
     std::fs::write(&file, "let x = 1;\n").unwrap();
     file
 }
 
-#[cfg(not(windows))]
 fn setup(
     file: &Path,
     tmp: &Path,
@@ -70,7 +68,6 @@ fn setup(
     (ed, guard, requests)
 }
 
-#[cfg(not(windows))]
 fn fire_viewport_change(ed: &mut Editor) {
     let mut ctx = RenderContext::new();
     ed.prepare_frame(80, 25, &mut ctx);
@@ -87,7 +84,6 @@ fn fire_viewport_change(ed: &mut Editor) {
 /// `drain_pending_steel_calls` round is needed to actually invoke the
 /// response callback. `prepare_frame` does exactly this pair internally
 /// every real frame; a test not calling it needs the pair explicitly.
-#[cfg(not(windows))]
 fn settle_after_debounce(ed: &mut Editor) {
     ed.drain_hooks();
     std::thread::sleep(Duration::from_millis(300));
@@ -98,7 +94,6 @@ fn settle_after_debounce(ed: &mut Editor) {
     ed.drain_pending_steel_calls();
 }
 
-#[cfg(not(windows))]
 fn request_count(requests: &RequestLog, method: &str) -> usize {
     requests
         .borrow()
@@ -107,7 +102,6 @@ fn request_count(requests: &RequestLog, method: &str) -> usize {
         .count()
 }
 
-#[cfg(not(windows))]
 fn inlay_hint_response(entries: &[(u32, u32, serde_json::Value)]) -> serde_json::Value {
     serde_json::Value::Array(
         entries
@@ -123,7 +117,6 @@ fn inlay_hint_response(entries: &[(u32, u32, serde_json::Value)]) -> serde_json:
 }
 
 #[test]
-#[cfg(not(windows))]
 fn viewport_change_triggers_one_debounced_request() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -140,7 +133,6 @@ fn viewport_change_triggers_one_debounced_request() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn setting_off_sends_no_request() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -157,7 +149,6 @@ fn setting_off_sends_no_request() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn hints_land_in_the_store_at_the_correct_char_offset() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -184,7 +175,6 @@ fn hints_land_in_the_store_at_the_correct_char_offset() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn label_parts_concatenate_and_padding_becomes_literal_spaces() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -215,7 +205,6 @@ fn label_parts_concatenate_and_padding_becomes_literal_spaces() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn diagnostics_changed_also_refreshes_hints() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -254,7 +243,6 @@ fn diagnostics_changed_also_refreshes_hints() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn hidden_buffer_skips_diagnostics_triggered_refresh() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -299,7 +287,6 @@ fn hidden_buffer_skips_diagnostics_triggered_refresh() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn an_empty_response_clears_previously_stored_hints() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -343,7 +330,6 @@ fn an_empty_response_clears_previously_stored_hints() {
 /// still-pending call, and only B would ever refresh. `debounce-by` keys
 /// per buffer, so both must refresh.
 #[test]
-#[cfg(not(windows))]
 fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -442,7 +428,6 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
 /// background pane must resolve capabilities and the request target
 /// against buffer B's own server — never the focused buffer's.
 #[test]
-#[cfg(not(windows))]
 fn refresh_hints_resolves_against_the_buffers_own_server_not_the_focused_buffers() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();

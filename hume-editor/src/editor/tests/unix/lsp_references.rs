@@ -15,7 +15,6 @@ use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
 
-#[cfg(not(windows))]
 fn write_fixture_file(file_dir: &Path) -> (PathBuf, String) {
     let file = file_dir.join("main.rs");
     std::fs::write(&file, "fn main() {\n    foo();\n}\n").unwrap();
@@ -27,7 +26,6 @@ fn write_fixture_file(file_dir: &Path) -> (PathBuf, String) {
     (file, uri)
 }
 
-#[cfg(not(windows))]
 fn setup(
     file: &Path,
     tmp: &Path,
@@ -68,7 +66,6 @@ fn setup(
     (ed, guard, sid)
 }
 
-#[cfg(not(windows))]
 fn run_references(ed: &mut Editor) {
     type_cmd(ed, ":lsp-references");
     ed.drain_hooks();
@@ -85,7 +82,6 @@ fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn three_locations_list_three_rows() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -107,7 +103,6 @@ fn three_locations_list_three_rows() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn enter_jumps_and_drawer_stays_open() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -138,7 +133,6 @@ fn enter_jumps_and_drawer_stays_open() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn single_result_still_opens_the_drawer() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -159,7 +153,6 @@ fn single_result_still_opens_the_drawer() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn null_result_reports_no_references() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();

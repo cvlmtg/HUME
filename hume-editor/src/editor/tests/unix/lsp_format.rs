@@ -17,7 +17,6 @@ use hume_scripting::ScriptingHost;
 
 /// "line1\nline2\nline3\n" — char offsets: line0 'line1' = 0..5 (+\n at 5),
 /// line1 'line2' = 6..11 (+\n at 11), line2 'line3' = 12..17 (+\n at 17).
-#[cfg(not(windows))]
 fn setup(
     file: &Path,
     tmp: &Path,
@@ -62,7 +61,6 @@ fn setup(
     (ed, guard)
 }
 
-#[cfg(not(windows))]
 fn select_full_line_1(ed: &mut Editor) {
     // 'line1\n' — chars [0, 6).
     let bid = ed.focused_buffer_id();
@@ -77,7 +75,6 @@ fn select_full_line_1(ed: &mut Editor) {
     pbs.selections = SelectionSet::single(Selection::new(0, 5));
 }
 
-#[cfg(not(windows))]
 fn run_fmt(ed: &mut Editor) {
     type_cmd(ed, ":lsp-fmt");
     ed.drain_hooks();
@@ -93,7 +90,6 @@ fn text_edit(sl: u64, sc: u64, el: u64, ec: u64, new_text: &str) -> serde_json::
 }
 
 #[test]
-#[cfg(not(windows))]
 fn whole_buffer_edit_is_one_undo_step() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -131,7 +127,6 @@ fn whole_buffer_edit_is_one_undo_step() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn sub_line_selection_still_formats_the_whole_buffer() {
     // Default cursor: a bare collapsed selection — never spans a full line.
     let tmp = safe_tempdir();
@@ -160,7 +155,6 @@ fn sub_line_selection_still_formats_the_whole_buffer() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn full_line_selection_sends_range_formatting() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -190,7 +184,6 @@ fn full_line_selection_sends_range_formatting() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn null_result_reports_already_formatted() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -212,7 +205,6 @@ fn null_result_reports_already_formatted() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn loading_the_plugin_registers_no_save_hook() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();

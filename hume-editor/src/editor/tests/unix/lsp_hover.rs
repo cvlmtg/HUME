@@ -28,7 +28,6 @@ use hume_scripting::ScriptingHost;
 /// `textDocument/hover`) — it must run *before* the backend is boxed into
 /// `LspState`, since `client_and_backend`/`backend_mut` only expose the
 /// trait object afterward, which can't reach `InlineLspBackend::respond_to`.
-#[cfg(not(windows))]
 fn setup(
     file_dir: &Path,
     tmp: &Path,
@@ -79,7 +78,6 @@ fn setup(
     (ed, guard, sid)
 }
 
-#[cfg(not(windows))]
 fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
     ed.state
         .popup_view
@@ -89,7 +87,6 @@ fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
         .map(|s| s.lines.clone())
 }
 
-#[cfg(not(windows))]
 fn run_hover(ed: &mut Editor) {
     type_cmd(ed, ":lsp-hover");
     // Drain the Command-mode entry/exit's on-mode-change hooks (which
@@ -105,7 +102,6 @@ fn run_hover(ed: &mut Editor) {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn popup_shows_the_fixture_content() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -136,7 +132,6 @@ fn popup_shows_the_fixture_content() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn null_result_logs_and_shows_no_popup() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -165,7 +160,6 @@ fn null_result_logs_and_shows_no_popup() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn error_reports_via_the_message_log() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -194,7 +188,6 @@ fn error_reports_via_the_message_log() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn tall_content_falls_back_to_the_drawer() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -229,7 +222,6 @@ fn tall_content_falls_back_to_the_drawer() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn capability_gate_skips_the_request_when_hover_unsupported() {
     // No response scripted for "textDocument/hover" — if the capability
     // gate failed open (called the request thunk anyway), the request
@@ -256,7 +248,6 @@ fn capability_gate_skips_the_request_when_hover_unsupported() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn allow_stale_is_honored_despite_an_intervening_edit() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();

@@ -18,7 +18,6 @@ use hume_scripting::ScriptingHost;
 /// Writes "fn main() {\n    helper();\n}\n" and returns its (path, uri) —
 /// cursor lands inside "helper" on line 1 (0-indexed), matching the search
 /// each test does before invoking `lsp-rename`.
-#[cfg(not(windows))]
 fn write_fixture_file(file_dir: &Path) -> (PathBuf, String) {
     let file = file_dir.join("main.rs");
     std::fs::write(&file, "fn main() {\n    helper();\n}\n").unwrap();
@@ -30,7 +29,6 @@ fn write_fixture_file(file_dir: &Path) -> (PathBuf, String) {
     (file, uri)
 }
 
-#[cfg(not(windows))]
 fn setup(
     file: &Path,
     tmp: &Path,
@@ -84,14 +82,12 @@ fn setup(
     (ed, guard, sid)
 }
 
-#[cfg(not(windows))]
 fn run_rename(ed: &mut Editor) {
     type_cmd(ed, ":lsp-rename");
     ed.drain_hooks();
 }
 
 #[test]
-#[cfg(not(windows))]
 fn prompt_prefill_shows_the_symbol_under_cursor() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -108,7 +104,6 @@ fn prompt_prefill_shows_the_symbol_under_cursor() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn cancel_sends_no_rename_request() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -147,7 +142,6 @@ fn cancel_sends_no_rename_request() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn null_result_reports_nothing_to_rename() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -171,7 +165,6 @@ fn null_result_reports_nothing_to_rename() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn multi_file_workspace_edit_applies_and_logs_the_summary() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();

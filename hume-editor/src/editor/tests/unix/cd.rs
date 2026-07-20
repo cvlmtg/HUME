@@ -5,7 +5,6 @@ use pretty_assertions::assert_eq;
 // ── set_cwd ───────────────────────────────────────────────────────────────────
 
 #[test]
-#[cfg(not(windows))]
 fn set_cwd_updates_editor_and_process_cwd() {
     let cwd = CwdSandbox::new();
     let canonical = cwd.path();
@@ -25,7 +24,6 @@ fn set_cwd_updates_editor_and_process_cwd() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn set_cwd_rejects_non_directory() {
     let _guard = CwdGuard::new();
     let file = tempfile::NamedTempFile::new().unwrap();
@@ -49,7 +47,6 @@ fn set_cwd_rejects_non_directory() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn set_cwd_rejects_nonexistent_path() {
     let _guard = CwdGuard::new();
     let mut ed = editor_from("-[h]>ello\n");
@@ -63,7 +60,6 @@ fn set_cwd_rejects_nonexistent_path() {
 // ── :cd typed command ─────────────────────────────────────────────────────────
 
 #[test]
-#[cfg(not(windows))]
 fn typed_cd_absolute_path() {
     let cwd = CwdSandbox::new();
     let canonical = cwd.path();
@@ -77,7 +73,6 @@ fn typed_cd_absolute_path() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn typed_cd_relative_path() {
     let cwd = CwdSandbox::new();
     // Create a subdirectory inside the sandboxed tempdir.
@@ -101,7 +96,6 @@ fn typed_cd_relative_path() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn typed_cd_no_arg_goes_home() {
     let _guard = CwdGuard::new();
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
@@ -117,7 +111,6 @@ fn typed_cd_no_arg_goes_home() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn typed_cd_tilde_expands_to_home() {
     let _guard = CwdGuard::new();
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
@@ -130,7 +123,6 @@ fn typed_cd_tilde_expands_to_home() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn typed_cd_error_on_nonexistent() {
     let _guard = CwdGuard::new();
     let before = std::env::current_dir().unwrap();
@@ -156,7 +148,6 @@ fn typed_cd_error_on_nonexistent() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn typed_cd_error_on_file_path() {
     let _guard = CwdGuard::new();
     let file = tempfile::NamedTempFile::new().unwrap();
@@ -184,7 +175,6 @@ fn typed_cd_error_on_file_path() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn typed_cd_alias_works() {
     let cwd = CwdSandbox::new();
     let canonical = cwd.path();
@@ -199,7 +189,6 @@ fn typed_cd_alias_works() {
 // ── :cd then :e uses new cwd ──────────────────────────────────────────────────
 
 #[test]
-#[cfg(not(windows))]
 fn cd_then_edit_resolves_relative_to_new_cwd() {
     let cwd = CwdSandbox::new();
 
@@ -225,7 +214,6 @@ fn cd_then_edit_resolves_relative_to_new_cwd() {
 // ── :pwd typed command ────────────────────────────────────────────────────────
 
 #[test]
-#[cfg(not(windows))]
 fn typed_pwd_reports_current_directory() {
     let cwd = CwdSandbox::new();
     let canonical = cwd.path();
@@ -244,7 +232,6 @@ fn typed_pwd_reports_current_directory() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn typed_pwd_long_alias_works() {
     let cwd = CwdSandbox::new();
     let canonical = cwd.path();
@@ -265,7 +252,6 @@ fn typed_pwd_long_alias_works() {
 // ── PathCompleter dirs_only ───────────────────────────────────────────────────
 
 #[test]
-#[cfg(not(windows))]
 fn path_completer_dirs_only_mode() {
     use crate::editor::completion::{Completer, CompletionCtx, PathCompleter};
 
@@ -324,7 +310,6 @@ fn path_completer_dirs_only_mode() {
 /// the next line ran, making such a check racy against unrelated tests, not a
 /// signal about this sandbox's correctness.
 #[test]
-#[cfg(not(windows))]
 fn cwd_sandbox_restores_cwd_and_deletes_tempdir() {
     let cwd = CwdSandbox::new();
     let raw = cwd.raw().to_path_buf();
@@ -355,7 +340,6 @@ fn cwd_sandbox_restores_cwd_and_deletes_tempdir() {
 /// (`CwdGuard::new()` + a separately-scoped `tempfile::tempdir()` local) and
 /// the reader thread reliably observes `current_dir()` failing mid-loop.
 #[test]
-#[cfg(not(windows))]
 fn cwd_sandbox_never_dangles_under_concurrent_reads() {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};

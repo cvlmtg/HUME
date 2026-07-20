@@ -19,7 +19,6 @@ use hume_lsp::client::LspClient;
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
 use hume_scripting::ScriptingHost;
 
-#[cfg(not(windows))]
 fn write_fixture_file(file_dir: &Path) -> PathBuf {
     let file = file_dir.join("main.rs");
     std::fs::write(&file, "foo\n").unwrap();
@@ -29,7 +28,6 @@ fn write_fixture_file(file_dir: &Path) -> PathBuf {
 /// Same plugin-before-handshake ordering as the signature-help setup: `on-lsp-attach`'s
 /// handler (registers trigger chars) must already be installed when the
 /// `Running` transition fires it, once, at attach time.
-#[cfg(not(windows))]
 fn setup(
     file: &Path,
     tmp: &Path,
@@ -80,21 +78,18 @@ fn setup(
     (ed, guard, requests)
 }
 
-#[cfg(not(windows))]
 fn full_completion_caps() -> serde_json::Value {
     serde_json::json!({
         "completionProvider": {"triggerCharacters": ["."], "resolveProvider": true}
     })
 }
 
-#[cfg(not(windows))]
 fn settle(ed: &mut Editor) {
     ed.drain_hooks();
     ed.drain_lsp();
     ed.drain_pending_steel_calls();
 }
 
-#[cfg(not(windows))]
 fn request_count(requests: &RequestLog, method: &str) -> usize {
     requests
         .borrow()
@@ -103,13 +98,11 @@ fn request_count(requests: &RequestLog, method: &str) -> usize {
         .count()
 }
 
-#[cfg(not(windows))]
 fn status(ed: &Editor) -> String {
     ed.state.status_msg.clone().unwrap_or_default()
 }
 
 #[test]
-#[cfg(not(windows))]
 fn trigger_char_fires_the_completion_request() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -132,7 +125,6 @@ fn trigger_char_fires_the_completion_request() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn ctrl_space_fires_completion_trigger() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -155,7 +147,6 @@ fn ctrl_space_fires_completion_trigger() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn capability_gated_no_completion_provider_sends_no_request() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -177,7 +168,6 @@ fn capability_gated_no_completion_provider_sends_no_request() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn null_response_opens_no_session() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -222,7 +212,6 @@ fn null_response_opens_no_session() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn accept_applies_main_edit_and_additional_text_edits_as_one_undo_step() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -291,7 +280,6 @@ fn accept_applies_main_edit_and_additional_text_edits_as_one_undo_step() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn typing_after_an_accept_with_additional_text_edits_composes_into_the_same_group() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -356,7 +344,6 @@ fn typing_after_an_accept_with_additional_text_edits_composes_into_the_same_grou
 }
 
 #[test]
-#[cfg(not(windows))]
 fn additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -426,7 +413,6 @@ fn additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it() {
 /// between edits at all — so this proves that conversion is correct with an
 /// astral prefix on the line, not just plain ASCII.
 #[test]
-#[cfg(not(windows))]
 fn additional_edit_on_the_same_line_with_an_astral_prefix_lands_correctly() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -494,7 +480,6 @@ fn additional_edit_on_the_same_line_with_an_astral_prefix_lands_correctly() {
 /// batch. Both land at the identical final text, proving the resolve path
 /// is exact, not an approximation.
 #[test]
-#[cfg(not(windows))]
 fn resolved_additional_edits_land_through_the_accept_edit_on_the_same_line() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -566,7 +551,6 @@ fn resolved_additional_edits_land_through_the_accept_edit_on_the_same_line() {
 /// stale positions (same discipline `stale_check` already gives every other
 /// `lsp-request`).
 #[test]
-#[cfg(not(windows))]
 fn resolved_additional_edits_are_dropped_after_a_post_accept_edit() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -633,7 +617,6 @@ fn resolved_additional_edits_are_dropped_after_a_post_accept_edit() {
 /// resolve request in flight at stop time must not apply anything once its
 /// swept `Outcome::TimedOut` reaches the callback, and must not panic.
 #[test]
-#[cfg(not(windows))]
 fn resolve_does_not_apply_anything_after_lsp_stop() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -688,7 +671,6 @@ fn resolve_does_not_apply_anything_after_lsp_stop() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn resolve_sent_only_when_item_lacks_additional_text_edits_and_resolve_provider_present() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -736,7 +718,6 @@ fn resolve_sent_only_when_item_lacks_additional_text_edits_and_resolve_provider_
 }
 
 #[test]
-#[cfg(not(windows))]
 fn null_resolve_response_is_a_clean_no_op() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -774,7 +755,6 @@ fn null_resolve_response_is_a_clean_no_op() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn resolve_not_sent_when_the_item_already_has_additional_text_edits() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -819,7 +799,6 @@ fn resolve_not_sent_when_the_item_already_has_additional_text_edits() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn refilter_on_incomplete_session_re_requests() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -856,7 +835,6 @@ fn refilter_on_incomplete_session_re_requests() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn refilter_on_complete_session_does_not_re_request() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -896,7 +874,6 @@ fn refilter_on_complete_session_does_not_re_request() {
 /// (now-detached) server and logs "not supported by server" on every
 /// matching keystroke.
 #[test]
-#[cfg(not(windows))]
 fn detach_clears_completion_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -930,7 +907,6 @@ fn detach_clears_completion_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
 /// server stops would keep showing (and let the user accept) suggestions
 /// from a server that's no longer running for this buffer.
 #[test]
-#[cfg(not(windows))]
 fn detach_dismisses_an_open_completion_session_for_that_buffer() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -965,7 +941,6 @@ fn detach_dismisses_an_open_completion_session_for_that_buffer() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn snippet_item_lands_as_stripped_plain_text() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
