@@ -25,9 +25,18 @@ export default function Preview({ pal, sc }) {
 
   function tagStyle(tag) {
     if (!tag) return null;
-    if (tag === "cursor") return { bg: cursorBg };
-    if (tag === "sel")    return { bg: selPrimBg };
-    if (tag === "sel2")   return { bg: selSecBg };
+    if (tag === "cursor") {
+      const c = fullStyle("ui.cursor.primary", sc, pal);
+      return { fg: c?.fg ?? FG, bg: c?.bg ?? cursorBg };
+    }
+    if (tag === "sel") {
+      const c = fullStyle("ui.selection.primary", sc, pal);
+      return { fg: c?.fg ?? FG, bg: c?.bg ?? selPrimBg };
+    }
+    if (tag === "sel2") {
+      const c = fullStyle("ui.selection", sc, pal);
+      return { fg: c?.fg ?? FG, bg: c?.bg ?? selSecBg };
+    }
     if (tag === "match") {
       const m = fullStyle("ui.cursor.match", sc, pal);
       return { fg: m?.fg, bg: m?.bg, mods: m?.mods ?? [] };
