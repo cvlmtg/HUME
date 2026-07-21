@@ -55,7 +55,7 @@ Set with `:set global <option>=<value>` or `(set-option! "option" value)`. All o
 | `mouse-select` | bool | `#f` | Mouse drag creates selections |
 | `jump-list-capacity` | integer ≥ 1 | `100` | Max jump list entries |
 | `jump-line-threshold` | integer | `5` | Line distance to record a jump |
-| `history-capacity` | integer ≥ 1 | `100` | Undo tree capacity |
+| `history-capacity` | integer ≥ 1 | `100` | Max entries per `:`/`/`/`?` prompt history |
 | `steel-init-budget-ms` | integer ≥ 1 | `10000` | Max init.scm evaluation time (ms) |
 | `steel-command-budget-ms` | integer ≥ 1 | `1000` | Max Steel command evaluation time (ms) |
 | `popup-border` | bool | `#t` | Show popup borders |
