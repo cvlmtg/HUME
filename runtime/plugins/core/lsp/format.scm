@@ -11,8 +11,7 @@
         "insertSpaces" (equal? (get-option "tab-style") "soft")))
 
 (define-command! "lsp-fmt"
-  ":lsp-fmt — format the buffer via LSP, or just the selected lines if the \
-selection spans one or more complete lines."
+  ":lsp-fmt — format the buffer via LSP, or just the selected lines if the selection spans one or more complete lines."
   (lambda ()
     (let* ((bid (current-buffer))
            (range? (selection-spans-full-line? bid))
