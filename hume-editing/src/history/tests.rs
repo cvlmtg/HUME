@@ -283,3 +283,164 @@ fn multiple_sequential_undos() {
     }
     assert!(!h.can_undo());
 }
+
+// ── undo-levels cap ──────────────────────────────────────────────────────
+
+#[test]
+fn cap_zero_never_evicts() {
+    // Fail oracle: if enforce_undo_levels ran regardless of the 0 sentinel,
+    // this would trim down to 1 revision instead of staying at 6.
+    let mut h = History::new(sel_at(0), 6);
+    for i in 0..5 {
+        h.record(
+            insert_cs(6 + i, "x"),
+            delete_cs(7 + i, 1),
+            sel_at(i),
+            sel_at(i + 1),
+        );
+    }
+    assert_eq!(h.len(), 6);
+}
+
+#[test]
+fn set_undo_levels_does_not_trim_until_next_record() {
+    // Fail oracle: if set_undo_levels trimmed immediately, len() would drop
+    // to 3 right after the call instead of only on the next record.
+    let mut h = History::new(sel_at(0), 6);
+    for i in 0..5 {
+        h.record(
+            insert_cs(6 + i, "x"),
+            delete_cs(7 + i, 1),
+            sel_at(i),
+            sel_at(i + 1),
+        );
+    }
+    assert_eq!(h.len(), 6);
+
+    h.set_undo_levels(2);
+    assert_eq!(h.len(), 6, "lowering the cap must not retroactively trim");
+
+    let promoted = h.record(insert_cs(11, "x"), delete_cs(12, 1), sel_at(5), sel_at(6));
+    assert_eq!(h.len(), 3); // root + last 2 revisions
+    assert!(promoted.is_some());
+}
+
+#[test]
+fn linear_chain_promotes_oldest() {
+    // Fail oracle: without promotion, initial_sels would still read the
+    // original root's identity selection (sel_at(0)) instead of a's
+    // post-edit selection, and undo would walk one level too many.
+    let mut h = History::new(sel_at(0), 6);
+    h.set_undo_levels(2);
+    h.record(insert_cs(6, "a"), delete_cs(7, 1), sel_at(0), sel_at(1)); // a
+    h.record(insert_cs(7, "b"), delete_cs(8, 1), sel_at(1), sel_at(2)); // b
+    h.record(insert_cs(8, "c"), delete_cs(9, 1), sel_at(2), sel_at(3)); // c
+
+    assert_eq!(h.len(), 3); // root(now=a) + b + c
+    assert_eq!(*h.initial_sels(), sel_at(1)); // a's post-edit selection
+
+    h.undo(); // c -> b
+    h.undo(); // b -> new root (was a's parent slot, now root itself)
+    assert!(!h.can_undo());
+}
+
+#[test]
+fn cap_one_current_never_evicted() {
+    // Fail oracle: if current could be evicted, len() would collapse to 1
+    // (root only) instead of holding at 2 (root + current).
+    let mut h = History::new(sel_at(0), 6);
+    h.set_undo_levels(1);
+    for i in 0..4 {
+        h.record(
+            insert_cs(6 + i, "x"),
+            delete_cs(7 + i, 1),
+            sel_at(i),
+            sel_at(i + 1),
+        );
+        assert_eq!(h.len(), 2);
+    }
+    h.undo();
+    assert!(h.can_redo());
+}
+
+#[test]
+fn oldest_branch_evicted_first() {
+    // Tree: root -> A (rev1) -> B (rev2); undo to A; record C (rev3, branch).
+    // current is under C. Capping to 1 must drop the whole {A, B} branch
+    // and promote C, not touch C's own subtree.
+    // Fail oracle: evicting C's branch instead of A/B would break current.
+    let mut h = History::new(sel_at(0), 6);
+    h.record(insert_cs(6, "a"), delete_cs(7, 1), sel_at(0), sel_at(1)); // rev1 = A
+    h.record(insert_cs(7, "b"), delete_cs(8, 1), sel_at(1), sel_at(2)); // rev2 = B
+    h.undo(); // back to A
+    h.undo(); // back to root
+    h.set_undo_levels(1);
+    h.record(insert_cs(6, "c"), delete_cs(7, 1), sel_at(0), sel_at(1)); // rev3 = C
+
+    assert_eq!(h.len(), 2); // root(now=C) + nothing else
+    assert!(h.parent(RevisionId(1)).is_none()); // A evicted
+    assert!(h.parent(RevisionId(2)).is_none()); // B evicted (subtree of A)
+    assert!(h.goto_revision(RevisionId(1)).is_none());
+}
+
+#[test]
+fn protected_branch_skipped() {
+    // Tree: root -> A (rev1) -> B (rev2, current); undo to root; record C
+    // (rev3, branch), undo to root; record D (rev4, branch, current).
+    // Root has 3 children [A, C, D] (chronological). D is on current's
+    // path. Eviction must remove A's branch (oldest non-protected), not D's.
+    let mut h = History::new(sel_at(0), 6);
+    h.record(insert_cs(6, "a"), delete_cs(7, 1), sel_at(0), sel_at(1)); // rev1 = A
+    h.record(insert_cs(7, "b"), delete_cs(8, 1), sel_at(1), sel_at(2)); // rev2 = B
+    h.undo();
+    h.undo(); // back to root
+    h.record(insert_cs(6, "c"), delete_cs(7, 1), sel_at(0), sel_at(1)); // rev3 = C
+    h.undo(); // back to root
+    h.set_undo_levels(2);
+    let promoted = h.record(insert_cs(6, "d"), delete_cs(7, 1), sel_at(0), sel_at(1)); // rev4 = D
+
+    // Non-root count must be <= 2: A's branch {A, B} (2 nodes) discarded,
+    // leaving {C, D} = 2 nodes. No promotion needed since root already had
+    // more than one child.
+    assert_eq!(h.len(), 3);
+    assert!(promoted.is_none());
+    assert!(h.parent(RevisionId(1)).is_none()); // A evicted
+    assert!(h.parent(RevisionId(2)).is_none()); // B evicted
+    assert!(h.parent(RevisionId(3)).is_some()); // C survives
+    assert_eq!(h.current, RevisionId(4)); // D survives, still current
+}
+
+#[test]
+fn subtree_eviction_may_overshoot() {
+    // Tree: root -> A -> B -> C (chain of 3), undo to root, record D
+    // (branch, current). Cap 3 with 4 non-root nodes triggers eviction;
+    // discarding the whole {A, B, C} branch in one step drops to 1 non-root
+    // node, well under the cap of 3 — matches Vim's overshoot behavior.
+    let mut h = History::new(sel_at(0), 6);
+    h.record(insert_cs(6, "a"), delete_cs(7, 1), sel_at(0), sel_at(1)); // rev1 = A
+    h.record(insert_cs(7, "b"), delete_cs(8, 1), sel_at(1), sel_at(2)); // rev2 = B
+    h.record(insert_cs(8, "c"), delete_cs(9, 1), sel_at(2), sel_at(3)); // rev3 = C
+    h.undo();
+    h.undo();
+    h.undo(); // back to root
+    h.set_undo_levels(3);
+    h.record(insert_cs(6, "d"), delete_cs(7, 1), sel_at(0), sel_at(1)); // rev4 = D
+
+    assert_eq!(h.len(), 2); // root + D only; overshot below the cap of 3
+}
+
+#[test]
+fn promotion_reports_last_promoted_only() {
+    // A single record call can trigger multiple promotions in the trim
+    // loop (linear chain with a very low cap). Only the final promoted id
+    // is meaningful (it's the node root now represents), so earlier
+    // promotions in the same loop must not leak out.
+    let mut h = History::new(sel_at(0), 6);
+    h.set_undo_levels(1);
+    h.record(insert_cs(6, "a"), delete_cs(7, 1), sel_at(0), sel_at(1)); // a: len 2, no trim
+    let promoted_b = h.record(insert_cs(7, "b"), delete_cs(8, 1), sel_at(1), sel_at(2)); // b promotes a
+    assert_eq!(promoted_b, Some(RevisionId(1))); // a
+    let promoted_c = h.record(insert_cs(8, "c"), delete_cs(9, 1), sel_at(2), sel_at(3)); // c promotes b
+    assert_eq!(promoted_c, Some(RevisionId(2))); // b, not a
+    assert_eq!(h.len(), 2);
+}

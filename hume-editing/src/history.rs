@@ -105,6 +105,9 @@ pub struct History {
     /// Next ID to assign in `record`. Monotonic — never reused, even for
     /// evicted revisions.
     next_id: usize,
+    /// Maximum non-root revisions to retain. `0` means unlimited (no
+    /// trimming). Enforced lazily in `record`, not the moment it is set.
+    undo_levels: usize,
 }
 
 impl History {
@@ -137,7 +140,23 @@ impl History {
             revisions,
             current: Self::ROOT,
             next_id: 1,
+            undo_levels: 0,
         }
+    }
+
+    /// Set the maximum number of non-root revisions to retain. `0` means
+    /// unlimited.
+    ///
+    /// Takes effect on the *next* `record` call, not immediately — matching
+    /// Vim's `undolevels` semantics, where lowering the cap does not
+    /// retroactively trim existing history.
+    pub fn set_undo_levels(&mut self, levels: usize) {
+        self.undo_levels = levels;
+    }
+
+    /// The current `undo-levels` cap. `0` means unlimited.
+    pub fn undo_levels(&self) -> usize {
+        self.undo_levels
     }
 
     /// Record a new edit and advance the current position to it.
@@ -155,13 +174,19 @@ impl History {
     ///   so undo restores them).
     /// - `post_edit_sels`: cursor positions after the edit (stored in `forward`
     ///   so redo restores them).
+    ///
+    /// If `undo-levels` trimming promotes a child of the root to become the
+    /// new root (see [`Self::enforce_undo_levels`]), returns the id of that
+    /// promoted revision — callers holding an external `RevisionId` (e.g. a
+    /// "clean" save point) must remap it to [`Self::ROOT`] if it matches, so
+    /// that state stays reachable. Returns `None` when no promotion occurred.
     pub fn record(
         &mut self,
         forward_cs: ChangeSet,
         inverse_cs: ChangeSet,
         pre_edit_sels: SelectionSet,
         post_edit_sels: SelectionSet,
-    ) {
+    ) -> Option<RevisionId> {
         let new_id = RevisionId(self.next_id);
         self.next_id += 1;
         let parent_id = self.current;
@@ -183,6 +208,93 @@ impl History {
             .children
             .push(new_id);
         self.current = new_id;
+
+        self.enforce_undo_levels()
+    }
+
+    /// Trim the tree down to at most `undo_levels` non-root revisions,
+    /// Vim-`undolevels`-style: evict from the root end, oldest first.
+    ///
+    /// The revision on the path to `current` is always protected — `current`
+    /// is a freshly recorded leaf, and `undo_levels` (when enforced) is at
+    /// least 1, so it is never a candidate for eviction.
+    ///
+    /// Each iteration looks at the root's children (chronological, oldest
+    /// first):
+    /// - More than one child: the root has old alternate branches. The
+    ///   oldest branch *not* on the path to `current` is discarded whole
+    ///   (mirrors Vim freeing an entire unreachable redo branch).
+    /// - Exactly one child `C` (so `C` is necessarily on the path to
+    ///   `current`, and `C != current` — see above): there is nothing to
+    ///   discard without cutting into the live path, so `C` is *promoted*:
+    ///   its children become the root's children, and the root's `forward`
+    ///   transaction is replaced with `C`'s (root now represents `C`'s
+    ///   post-edit state — `initial_sels` reads exactly this field). `C`
+    ///   itself is removed. This may still overshoot below the cap when a
+    ///   whole branch is discarded in one step — matches Vim.
+    ///
+    /// Returns the id of the last revision promoted into the root, if any.
+    fn enforce_undo_levels(&mut self) -> Option<RevisionId> {
+        if self.undo_levels == 0 {
+            return None;
+        }
+
+        let mut last_promoted = None;
+        while self.revisions.len() - 1 > self.undo_levels {
+            let root_children = self.revisions[&Self::ROOT].children.clone();
+
+            if root_children.len() > 1 {
+                let protected = self.root_child_on_current_path();
+                let victim = root_children
+                    .into_iter()
+                    .find(|&c| c != protected)
+                    .expect("more than one child, at most one is protected");
+                self.remove_subtree(victim);
+            } else {
+                let c_id = root_children[0];
+                let c = self.revisions.remove(&c_id).expect("child exists");
+                for child in &c.children {
+                    self.revisions.get_mut(child).expect("child exists").parent = Some(Self::ROOT);
+                }
+                let root = self.revisions.get_mut(&Self::ROOT).expect("root exists");
+                root.children = c.children;
+                root.forward = c.forward;
+                last_promoted = Some(c_id);
+            }
+        }
+        last_promoted
+    }
+
+    /// Walk parent links from `current` up to find which child of the root
+    /// lies on the path to `current`.
+    fn root_child_on_current_path(&self) -> RevisionId {
+        let mut id = self.current;
+        while let Some(parent) = self.revisions[&id].parent {
+            if parent == Self::ROOT {
+                return id;
+            }
+            id = parent;
+        }
+        unreachable!("current must have an ancestor that is a child of root")
+    }
+
+    /// Remove `id` and every revision in its subtree from the arena, and
+    /// detach `id` from its parent's `children` list.
+    fn remove_subtree(&mut self, id: RevisionId) {
+        if let Some(parent) = self.revisions[&id].parent {
+            self.revisions
+                .get_mut(&parent)
+                .expect("parent exists")
+                .children
+                .retain(|&c| c != id);
+        }
+
+        let mut stack = vec![id];
+        while let Some(next) = stack.pop() {
+            if let Some(revision) = self.revisions.remove(&next) {
+                stack.extend(revision.children);
+            }
+        }
     }
 
     /// Undo: return the inverse Transaction for the current revision and move
