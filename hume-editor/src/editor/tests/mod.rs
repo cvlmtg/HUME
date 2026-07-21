@@ -589,6 +589,7 @@ mod scripting_effects;
 mod scripting_grammar;
 mod search;
 mod select_all;
+mod settings_effects;
 mod shift_punctuation;
 mod surround;
 mod sync_dispatch;

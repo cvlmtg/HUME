@@ -1718,9 +1718,6 @@ fn native_call_bang_at_init_top_level_warns_and_skips() {
     );
 
     // 2. The line after the native call must have been applied.
-    ed.state
-        .history
-        .set_capacity(ed.state.settings.history_capacity);
     assert_eq!(
         ed.state.settings.history_capacity, 77,
         "set-option! after native call must be applied (eval continued past it)"

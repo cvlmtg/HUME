@@ -17,17 +17,17 @@
 //!
 //! Most settings are defined in one [`define_settings!`] invocation that
 //! generates [`EditorSettings`], [`BufferOverrides`], their `Default` impls,
-//! accessors, and the [`apply_setting`]/`setting_scopes` dispatch — a simple
+//! accessors, and the [`write_setting`]/`setting_scopes` dispatch — a simple
 //! setting needs one macro entry and nothing else. `scope: [...]` is the SSOT
 //! for which `:set` scopes (`global`/`buffer`/`pane`) a key accepts;
 //! `typed_set` looks it up via `setting_scopes(key)` rather than
 //! special-casing per key. `"pane"` scope needs a matching `if key == "..."`
 //! write arm in `typed_set` regardless of macro section placement, since
-//! `apply_setting` has no pane-storage concept.
+//! `write_setting` has no pane-storage concept.
 //!
 //! `language` has no macro entry: no global default (would let `:set global
 //! language=…` silently succeed) and its write path needs `Editor`-level
-//! access (`OnLanguageSet` hook, registry lookup) `apply_setting`'s
+//! access (`OnLanguageSet` hook, registry lookup) `write_setting`'s
 //! `(&mut EditorSettings, &mut BufferOverrides)` signature doesn't have. It
 //! stays a small, explicit special case in `typed_set`.
 //!
@@ -208,7 +208,7 @@ pub enum SettingScope {
 
 /// Dispatch from a parser-kind token to the actual parse call.
 ///
-/// All arms return `Result<T, String>`. Used inside `apply_setting` (generated
+/// All arms return `Result<T, String>`. Used inside `write_setting` (generated
 /// by `define_settings!`) where `value` and `key` are in scope.
 macro_rules! parse_setting {
     ($value:expr, $key:expr, bool) => {
@@ -262,7 +262,7 @@ macro_rules! option_value {
 
 // ── Settings definition ───────────────────────────────────────────────────────
 
-/// Generate [`EditorSettings`], [`BufferOverrides`], and [`apply_setting`]
+/// Generate [`EditorSettings`], [`BufferOverrides`], and [`write_setting`]
 /// from a single source of truth.
 ///
 /// ## Sections
@@ -279,10 +279,10 @@ macro_rules! option_value {
 ///   only (no corresponding `EditorSettings` field); format: `field: Type;`
 ///   Resolution is handled manually in a separate `impl BufferOverrides` block.
 /// - `manual_keys { … }` — `:set` keys whose values need custom resolution
-///   (not a plain field write) and so get a hand-written `apply_setting` arm
+///   (not a plain field write) and so get a hand-written `write_setting` arm
 ///   below the macro invocation; format: `"key" => [scope, scope, ...];`.
 ///   Sole source for those keys' [`setting_scopes`]/[`all_setting_keys`]
-///   entries — only the `apply_setting` arm itself is hand-written.
+///   entries — only the `write_setting` arm itself is hand-written.
 ///
 /// ## Parser kinds
 ///
@@ -364,9 +364,9 @@ macro_rules! define_settings {
             )*
         }
 
-        // ── apply_setting ─────────────────────────────────────────────────────
+        // ── write_setting ─────────────────────────────────────────────────────
 
-        /// Apply a setting mutation from a `:set scope key=value` command.
+        /// Write a setting's raw value — no derived-state resync.
         ///
         /// - `Global` scope writes to `settings` (always valid for all keys)
         /// - `Text` scope writes to `overrides` (rejected for global-only
@@ -374,7 +374,22 @@ macro_rules! define_settings {
         ///
         /// Returns `Err(message)` on unknown key, wrong-scope key, or invalid
         /// value.
-        pub fn apply_setting(
+        ///
+        /// This is the raw field write only — some settings have derived
+        /// state that must be resynced after a successful write (e.g. the
+        /// undo-tree cap on every open buffer, the loaded theme). Production
+        /// code must go through [`crate::editor::settings_ops::apply`], which
+        /// wraps this and runs those effects; calling this directly would
+        /// silently skip them.
+        ///
+        /// Stays `pub` (not `pub(crate)`) only because `testing/mock_host.rs`
+        /// — which has no editor state to resync effects against, so it must
+        /// call this raw writer — is `#[path]`-included into two external
+        /// integration-test crates where `pub(crate)` would be invisible.
+        /// `editor::lints::write_setting_only_called_from_allowlist` enforces
+        /// the "chokepoint or MockHost only" restriction at the source level
+        /// instead of via the type system.
+        pub fn write_setting(
             scope: SettingScope,
             key: &str,
             value: &str,
@@ -441,7 +456,7 @@ macro_rules! define_settings {
         /// `manual_keys` (`whitespace-*`, `statusline`) and `"language"`,
         /// neither of which this getter supports today (no `core:lsp`
         /// feature reads them; add a hand-written arm here, mirroring
-        /// `apply_setting`'s manual arms, if one needs to).
+        /// `write_setting`'s manual arms, if one needs to).
         pub fn setting_value(
             key: &str,
             settings: &EditorSettings,
@@ -495,7 +510,7 @@ macro_rules! define_settings {
         /// `true` if `key`'s value is parsed with `parser: bool` — i.e. its
         /// only valid values are `"true"`/`"false"`. Derived from the same
         /// per-key `parser: kind;` declaration used to dispatch parsing in
-        /// `apply_setting`, so a new bool setting is picked up automatically
+        /// `write_setting`, so a new bool setting is picked up automatically
         /// by anything that queries this (e.g.
         /// [`crate::editor::completion::SetCompleter`]'s value completion)
         /// instead of needing a hand-copied key list. `manual_keys` never
@@ -585,7 +600,7 @@ define_settings! {
         // property, and two panes on the same buffer may wrap differently.
         // `scope` below additionally allows "pane" — `:set pane wrap-mode=…`
         // (see `typed_file::typed_set`) writes straight to the live `Pane`,
-        // a separate path from `apply_setting`/this table.
+        // a separate path from `write_setting`/this table.
         "wrap-mode" => wrap_mode: WrapMode = hume_engine::pane::DEFAULT_WRAP_STYLE,
             scope: ["global", "pane"],
             parser: from_str;
@@ -645,7 +660,7 @@ define_settings! {
         whitespace_newline: bool;
     }
     manual_keys {
-        // Sub-field patches (see apply_setting below) — not plain field writes.
+        // Sub-field patches (see write_setting below) — not plain field writes.
         "whitespace-space"   => ["global", "buffer"];
         "whitespace-tab"     => ["global", "buffer"];
         "whitespace-newline" => ["global", "buffer"];

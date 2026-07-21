@@ -52,6 +52,27 @@
 //! `(define-command! "name" ...)` found across that plugin's own `*.scm`
 //! files. A plugin directory with no `manifest.scm` (no zero-arg
 //! `declare-plugin` activation defined) is skipped, not a violation.
+//!
+//! # `write_setting` single-chokepoint discipline
+//!
+//! `settings::write_setting` writes a setting's raw value with no
+//! derived-state resync (the undo-tree cap on every buffer, the prompt
+//! history's ring capacity, the loaded theme). Production code must go
+//! through `editor::settings_ops::apply` instead, which wraps
+//! `write_setting` and runs those effects — calling `write_setting` directly
+//! silently skips them, the exact bug this lint exists to prevent from
+//! recurring.
+//!
+//! `write_setting` can't be `pub(crate)`: `testing/mock_host.rs` (which has
+//! no editor state to resync effects against, so it must call the raw
+//! writer) is `#[path]`-included into two external integration-test crates
+//! (`tests/scripting.rs`, `tests/unix/main.rs`), where `pub(crate)` is
+//! invisible. It stays `pub`, and `write_setting_only_called_from_allowlist`
+//! enforces the restriction at the source level instead.
+//!
+//! **Opt-out**: none — add the new call site's file to `allowed_files`
+//! instead, with a comment explaining why it has no editor state to resync
+//! effects against.
 
 #[cfg(test)]
 mod tests {
@@ -513,6 +534,78 @@ mod tests {
             "\nPlugin manifest.scm #:commands drifted from its own define-command! calls.\n\
              A missing manifest entry means that command never triggers lazy activation;\n\
              a stale one is dead weight. Keep both in sync.\n\
+             Violations:\n{}\n",
+            violations.join("\n")
+        );
+    }
+
+    // ── write_setting single-chokepoint discipline ────────────────────────────
+
+    /// Only `editor::settings_ops::apply` (the chokepoint that writes a
+    /// setting *and* resyncs derived state) and `testing::mock_host::MockHost`
+    /// (which has no editor state to resync against) may call
+    /// `settings::write_setting` directly. `collect_source_rs` already
+    /// excludes every `tests.rs`-named file and `tests/` directory, so
+    /// `settings/tests.rs`'s own direct calls (exercising the raw writer in
+    /// isolation) never reach this scan.
+    ///
+    /// The `fn write_setting` exclusion distinguishes the definition
+    /// signature line itself (which also contains the substring
+    /// `write_setting(`) from an actual call.
+    ///
+    /// Fail oracle: add `crate::settings::write_setting(...)` directly to
+    /// `typed_file.rs` — this test must fail naming that line.
+    #[test]
+    fn write_setting_only_called_from_allowlist() {
+        let manifest = std::env::var("CARGO_MANIFEST_DIR")
+            .expect("CARGO_MANIFEST_DIR not set — run via `cargo test`");
+        let root = std::path::Path::new(&manifest);
+
+        let allowed_files: &[&str] = &[
+            "src/settings.rs",            // definition site
+            "src/editor/settings_ops.rs", // the chokepoint
+            "src/testing/mock_host.rs",   // no editor state to resync against
+        ];
+
+        let mut paths: Vec<std::path::PathBuf> = Vec::new();
+        collect_source_rs(&root.join("src"), &mut paths);
+
+        let mut violations: Vec<String> = Vec::new();
+
+        for path in &paths {
+            let rel = path
+                .strip_prefix(root)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .replace('\\', "/");
+
+            if allowed_files.contains(&rel.as_str()) {
+                continue;
+            }
+
+            let src = std::fs::read_to_string(path)
+                .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+
+            for (lineno, line) in src.lines().enumerate() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("//") {
+                    continue;
+                }
+                let code = match line.find("//") {
+                    Some(idx) => &line[..idx],
+                    None => line,
+                };
+                if code.contains("write_setting(") && !code.contains("fn write_setting") {
+                    violations.push(format!("  {rel}:{} — {trimmed}", lineno + 1));
+                }
+            }
+        }
+
+        assert!(
+            violations.is_empty(),
+            "\nsettings::write_setting called outside its allowlist.\n\
+             write_setting is the raw field write with no derived-state resync —\n\
+             production code must go through editor::settings_ops::apply instead.\n\
              Violations:\n{}\n",
             violations.join("\n")
         );

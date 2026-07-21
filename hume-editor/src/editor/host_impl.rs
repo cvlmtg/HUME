@@ -17,7 +17,7 @@ use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use crate::editor::lsp::LspState;
 use crate::editor::registry::MappableCommand;
 use crate::editor::timer_bridge::TimerHandle;
-use crate::settings::{BufferOverrides, SettingScope, apply_setting};
+use crate::settings::SettingScope;
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 use hume_scripting::host::{
     BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost, EditHost, EditorHost,
@@ -219,13 +219,13 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
 
 impl<'a> SettingsHost for EditorHostImpl<'a> {
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
-        let mut dummy = BufferOverrides::default();
-        apply_setting(
+        crate::editor::settings_ops::apply(
+            self.state,
+            self.view,
             SettingScope::Global,
             key,
             value,
-            &mut self.state.settings,
-            &mut dummy,
+            None,
         )
     }
 

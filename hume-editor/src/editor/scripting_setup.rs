@@ -6,7 +6,7 @@ use hume_scripting::SteelBufferId;
 use hume_scripting::{Effect, hooks::HookId};
 use steel::rvals::SteelVal;
 
-use super::{Editor, Severity, host_impl::EditorHostImpl, theme};
+use super::{Editor, Severity, host_impl::EditorHostImpl};
 
 /// Upper bound on total hooks processed per `drain_hooks` boundary.
 ///
@@ -450,15 +450,6 @@ impl Editor {
         // already applied above, each right after its own eval, so
         // `self.state.languages` is fully populated by this point.
         let lang_activations = host.activation_languages();
-        // Pick up any (set-option! "history-capacity" N) calls from init.scm.
-        self.state
-            .history
-            .set_capacity(self.state.settings.history_capacity);
-        // Pick up any (set-option! "undo-levels" N) calls from init.scm —
-        // also covers the startup buffer, which is opened before this runs.
-        self.state
-            .buffers
-            .set_undo_levels_all(self.state.settings.undo_levels);
         // Flush any `(log! …)` messages produced during init.scm evaluation.
         for (level, text) in host.take_pending_messages() {
             self.report(log_level_to_severity(level), text);
@@ -503,15 +494,6 @@ impl Editor {
                     );
                 }
             }
-        }
-        // Load theme set by (set-option! 'theme "…") in init.scm.
-        if !self.state.settings.theme.is_empty() {
-            theme::load_theme_by_name(
-                &mut self.view,
-                &mut self.state.message_log,
-                &mut self.state.status_msg,
-                &self.state.settings.theme,
-            );
         }
         // Re-detect language for buffers opened before init_scripting ran
         // (the initial buffer is opened in lib.rs before init_scripting is called).

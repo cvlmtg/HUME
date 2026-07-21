@@ -1,8 +1,9 @@
 use hume_engine::pipeline::BufferId;
 
 use super::super::Editor;
-use super::super::{Severity, theme};
+use super::super::Severity;
 use crate::editor::error::CommandError;
+use crate::editor::settings_ops;
 
 // ── Typed file commands ───────────────────────────────────────────────────────
 
@@ -173,23 +174,22 @@ pub fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(),
     }
 
     match scope {
-        "global" => {
-            let result = crate::settings::apply_setting(
-                crate::settings::SettingScope::Global,
-                key,
-                value,
-                &mut ed.state.settings,
-                &mut ed.state.buffers.get_mut(bid).overrides,
-            );
-            apply_set_side_effects(ed, key, &result);
-            result.map_err(CommandError::new)
-        }
-        "buffer" => crate::settings::apply_setting(
+        "global" => settings_ops::apply(
+            &mut ed.state,
+            &mut ed.view,
+            crate::settings::SettingScope::Global,
+            key,
+            value,
+            Some(bid),
+        )
+        .map_err(CommandError::new),
+        "buffer" => settings_ops::apply(
+            &mut ed.state,
+            &mut ed.view,
             crate::settings::SettingScope::Text,
             key,
             value,
-            &mut ed.state.settings,
-            &mut ed.state.buffers.get_mut(bid).overrides,
+            Some(bid),
         )
         .map_err(CommandError::new),
         "pane" => {
@@ -207,37 +207,6 @@ pub fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(),
             unreachable!("'{key}' has scope 'pane' in setting_scopes() but no pane handler here")
         }
         _ => unreachable!("setting_scopes() emitted unknown scope literal '{scope}' for '{key}'"),
-    }
-}
-
-/// Side effects that must re-run after a successful `:set global <key>=…`
-/// (both only ever apply at global scope; `apply_setting` itself doesn't know
-/// about `history`/`view` state, so this stays outside it).
-fn apply_set_side_effects(ed: &mut Editor, key: &str, result: &Result<(), String>) {
-    if result.is_err() {
-        return;
-    }
-    match key {
-        "history-capacity" => ed
-            .state
-            .history
-            .set_capacity(ed.state.settings.history_capacity),
-        // Like history-capacity, `set-option!` during lazy runtime plugin
-        // activation runs no side effect (host_impl.rs's set_global_option
-        // doesn't call this function) — a precedented gap, not closed here.
-        "undo-levels" => ed
-            .state
-            .buffers
-            .set_undo_levels_all(ed.state.settings.undo_levels),
-        "theme" if !ed.state.settings.theme.is_empty() => {
-            theme::load_theme_by_name(
-                &mut ed.view,
-                &mut ed.state.message_log,
-                &mut ed.state.status_msg,
-                &ed.state.settings.theme,
-            );
-        }
-        _ => {}
     }
 }
 

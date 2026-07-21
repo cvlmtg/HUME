@@ -49,6 +49,7 @@ mod registry;
 mod replay;
 pub(super) mod scroll;
 pub(crate) mod search;
+pub(crate) mod settings_ops;
 pub(crate) mod syntax;
 mod theme;
 mod timer_bridge;

@@ -17,10 +17,10 @@ use crate::settings::{
 /// - **value** (`=` present) — offers the valid value set for enum/bool keys,
 ///   registered language names for `language`, installed theme names for
 ///   `theme`. Numeric/free-form keys (e.g. `scrolloff`, `statusline`) get no
-///   candidates — the user types them and `apply_setting` validates.
+///   candidates — the user types them and `write_setting` validates.
 ///
 /// Value lists are completion *hints* mirrored from each setting's parser;
-/// `apply_setting` remains the validation SSOT, so the two can drift only in
+/// `write_setting` remains the validation SSOT, so the two can drift only in
 /// what's offered, never in what's accepted.
 pub(crate) struct SetCompleter;
 

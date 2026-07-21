@@ -211,19 +211,19 @@ fn auto_pairs_both_inherited_when_no_override() {
     assert_eq!(pairs.len(), global.auto_pairs.len());
 }
 
-// ── apply_setting: Global scope ───────────────────────────────────────────
+// ── write_setting: Global scope ───────────────────────────────────────────
 
 fn global(key: &str, value: &str) -> Result<EditorSettings, String> {
     let mut s = EditorSettings::default();
     let mut ov = BufferOverrides::default();
-    apply_setting(SettingScope::Global, key, value, &mut s, &mut ov)?;
+    write_setting(SettingScope::Global, key, value, &mut s, &mut ov)?;
     Ok(s)
 }
 
 fn buffer(key: &str, value: &str) -> Result<BufferOverrides, String> {
     let mut s = EditorSettings::default();
     let mut ov = BufferOverrides::default();
-    apply_setting(SettingScope::Text, key, value, &mut s, &mut ov)?;
+    write_setting(SettingScope::Text, key, value, &mut s, &mut ov)?;
     Ok(ov)
 }
 
@@ -473,7 +473,7 @@ fn set_global_empty_value_errors() {
     assert!(global("mouse-enabled", "").is_err());
 }
 
-// ── apply_setting: Text scope ───────────────────────────────────────────
+// ── write_setting: Text scope ───────────────────────────────────────────
 
 #[test]
 fn set_buffer_tab_width() {
@@ -566,7 +566,7 @@ fn set_buffer_whitespace_fields_are_independent() {
 fn set_buffer_global_only_setting_errors() {
     let mut s = EditorSettings::default();
     let mut ov = BufferOverrides::default();
-    let err = apply_setting(SettingScope::Text, "scrolloff", "3", &mut s, &mut ov).unwrap_err();
+    let err = write_setting(SettingScope::Text, "scrolloff", "3", &mut s, &mut ov).unwrap_err();
     assert!(
         err.contains("global-only"),
         "expected 'global-only' in error: {err}"
@@ -589,7 +589,7 @@ fn set_buffer_global_only_all_keys_error() {
         "popup-border",
         "pane-dividers",
     ] {
-        let err = apply_setting(SettingScope::Text, key, "1", &mut s, &mut ov).unwrap_err();
+        let err = write_setting(SettingScope::Text, key, "1", &mut s, &mut ov).unwrap_err();
         assert!(
             err.contains("global-only"),
             "key '{key}': expected 'global-only' in error: {err}",
@@ -620,7 +620,7 @@ fn set_buffer_whitespace_invalid_value_errors() {
 fn set_global_tab_width_propagates_to_unoverridden_buffer() {
     let mut global = EditorSettings::default();
     let mut ov = BufferOverrides::default();
-    apply_setting(SettingScope::Global, "tab-width", "2", &mut global, &mut ov).unwrap();
+    write_setting(SettingScope::Global, "tab-width", "2", &mut global, &mut ov).unwrap();
     // Text has no override, so it inherits the new global value.
     assert_eq!(ov.tab_width(&global), 2);
 }
@@ -629,7 +629,7 @@ fn set_global_tab_width_propagates_to_unoverridden_buffer() {
 fn set_global_tab_style_propagates_to_unoverridden_buffer() {
     let mut global = EditorSettings::default();
     let mut ov = BufferOverrides::default();
-    apply_setting(
+    write_setting(
         SettingScope::Global,
         "tab-style",
         "soft",
@@ -646,7 +646,7 @@ fn apply_statusline_wrong_section_count_errors() {
     let mut ov = BufferOverrides::default();
     // Two pipes required; one pipe produces only two parts.
     assert!(
-        apply_setting(
+        write_setting(
             SettingScope::Global,
             "statusline",
             "Mode|Position",
@@ -657,7 +657,7 @@ fn apply_statusline_wrong_section_count_errors() {
     );
     // Three pipes / four sections produce four parts, also rejected.
     assert!(
-        apply_setting(
+        write_setting(
             SettingScope::Global,
             "statusline",
             "Mode|Position|Cwd|Extra",
@@ -673,7 +673,7 @@ fn apply_statusline_unknown_element_name_errors() {
     let mut s = EditorSettings::default();
     let mut ov = BufferOverrides::default();
     assert!(
-        apply_setting(
+        write_setting(
             SettingScope::Global,
             "statusline",
             "NotAnElement||",
@@ -688,7 +688,7 @@ fn apply_statusline_unknown_element_name_errors() {
 fn apply_statusline_text_scope_rejected() {
     let mut s = EditorSettings::default();
     let mut ov = BufferOverrides::default();
-    assert!(apply_setting(SettingScope::Text, "statusline", "||", &mut s, &mut ov).is_err());
+    assert!(write_setting(SettingScope::Text, "statusline", "||", &mut s, &mut ov).is_err());
 }
 
 #[test]
@@ -711,7 +711,7 @@ fn is_bool_setting_matches_every_bool_field() {
     }
 }
 
-// ── all_setting_keys / apply_setting cross-check ─────────────────────────
+// ── all_setting_keys / write_setting cross-check ─────────────────────────
 //
 // `all_setting_keys()` and `setting_scopes()` are both generated from the
 // same `$gkey`/`$bkey`/`$mkey` token stream, with a non-empty `scope: […]`
@@ -719,9 +719,9 @@ fn is_bool_setting_matches_every_bool_field() {
 // `all_setting_keys()` having a declared scope is a structural guarantee,
 // not something a test can catch drifting. What a test *can* catch: a key
 // declared in `global`/`buffer`/`manual_keys` that has no matching arm in
-// `apply_setting` (a typo in the hand-written `manual_keys` arms, since
+// `write_setting` (a typo in the hand-written `manual_keys` arms, since
 // the macro-generated arms can't drift from their own key list) — falling
-// through to `apply_setting`'s `_ => "unknown setting"` catch-all. That's
+// through to `write_setting`'s `_ => "unknown setting"` catch-all. That's
 // what this guardrail checks.
 
 #[test]
@@ -738,11 +738,11 @@ fn all_setting_keys_are_recognized_by_apply_setting() {
         // *invalid value*, not as an *unrecognized key* — either outcome
         // is fine here, we only guard against the "unknown setting"
         // catch-all, which would mean the key isn't wired into
-        // `apply_setting` at all.
-        if let Err(err) = apply_setting(scope, key, "\u{0}garbage\u{0}", &mut s, &mut ov) {
+        // `write_setting` at all.
+        if let Err(err) = write_setting(scope, key, "\u{0}garbage\u{0}", &mut s, &mut ov) {
             assert!(
                 !err.contains("unknown setting"),
-                "key '{key}' from all_setting_keys() is not recognized by apply_setting: {err}"
+                "key '{key}' from all_setting_keys() is not recognized by write_setting: {err}"
             );
         }
     }

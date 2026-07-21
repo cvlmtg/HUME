@@ -22,9 +22,10 @@ fn two_edits(ed: &mut Editor) -> String {
 
 #[test]
 fn typed_set_applies_to_open_buffers() {
-    // Fail oracle: remove the "undo-levels" arm from apply_set_side_effects
-    // and the cap is never pushed to the buffer — both edits would remain
-    // undoable instead of the first being evicted/promoted away.
+    // Fail oracle: remove the "undo-levels" arm from
+    // settings_ops::resync_derived_state and the cap is never pushed to the
+    // buffer — both edits would remain undoable instead of the first being
+    // evicted/promoted away.
     let mut ed = editor_from("-[h]>ello\n");
     crate::editor::commands::typed_set(&mut ed, Some("global undo-levels=1"), false)
         .expect("set undo-levels");
@@ -62,9 +63,12 @@ fn new_buffer_inherits_undo_levels() {
 
 #[test]
 fn steel_set_option_applies_undo_levels() {
-    // Mirrors the init.scm path: set-option! only updates settings.rs; the
-    // buffer-side pickup (scripting_setup.rs's post-init line, replicated
-    // here) is what actually pushes the cap onto open buffers.
+    // set-option! routes through EditorHostImpl::set_global_option ->
+    // settings_ops::apply, which resyncs every open buffer's cap inline —
+    // no separate pickup step needed after eval returns.
+    // Fail oracle: reintroduce a raw write_setting call in set_global_option
+    // (bypassing settings_ops::apply) and this cap never reaches the buffer,
+    // so the second undo would still succeed.
     let mut ed = editor_from("-[h]>ello\n");
 
     let names: Vec<String> = ed
@@ -84,10 +88,6 @@ fn steel_set_option_applies_undo_levels() {
         &mut init_host,
     );
     assert!(result.is_ok(), "eval must succeed: {result:?}");
-
-    ed.state
-        .buffers
-        .set_undo_levels_all(ed.state.settings.undo_levels);
     assert_eq!(ed.state.settings.undo_levels, 1);
 
     let after_first_edit = two_edits(&mut ed);

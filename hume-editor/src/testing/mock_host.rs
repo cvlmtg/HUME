@@ -133,9 +133,12 @@ impl BufferHost for MockHost {
 
 impl SettingsHost for MockHost {
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
-        use hume::settings::{BufferOverrides, SettingScope, apply_setting};
+        // MockHost models no editor state to resync derived state against
+        // (no history rings, no buffers, no view) — write_setting is the
+        // effect-free raw writer, and it's the only one that fits here.
+        use hume::settings::{BufferOverrides, SettingScope, write_setting};
         let mut dummy = BufferOverrides::default();
-        apply_setting(
+        write_setting(
             SettingScope::Global,
             key,
             value,
