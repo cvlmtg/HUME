@@ -61,6 +61,10 @@
 - Crash when joining lines with a cursor on the last line.
 - Syntax highlighting precedence for overlapping captures.
 - Busy-loop when the terminal hung up.
+- `(set-option! ...)` from a lazily-activated plugin now takes effect
+  immediately instead of silently doing nothing until the next `:set`.
+- `:set global theme=<name>` no longer keeps a theme name that failed to
+  load — it's rolled back, matching `:theme <name>`'s existing behavior.
 
 ## [0.9.0] - 2026-07-15
 
