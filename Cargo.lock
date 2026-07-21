@@ -1085,6 +1085,7 @@ name = "hume-engine"
 version = "0.1.0"
 dependencies = [
  "bitflags 2.13.1",
+ "critical-section",
  "hume-platform",
  "ratatui",
  "ropey",
