@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::changeset::{ChangeSet, ChangeSetBuilder};
@@ -6,12 +7,14 @@ use crate::transaction::Transaction;
 
 // ── Arena index ───────────────────────────────────────────────────────────────
 
-/// A lightweight index into the History revision arena.
+/// A stable key into the History revision arena.
 ///
-/// Using `usize` as an arena index is idiomatic Rust for tree structures:
-/// it avoids `Rc<RefCell<...>>` reference cycles and the borrow-checker
-/// friction that comes with self-referential structs, while still allowing
-/// O(1) parent/child traversal via a `Vec`.
+/// IDs are assigned once (monotonically increasing) and never reused, even
+/// after a revision is evicted by `undo-levels` trimming. This makes stale
+/// IDs held by other structs (e.g. `Buffer::saved_revision`, search caches)
+/// safe by construction: an evicted ID simply never matches again, rather
+/// than risking silently matching a *different* revision that reused the
+/// same slot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RevisionId(pub(crate) usize);
 
@@ -62,17 +65,19 @@ struct Revision {
 ///
 /// ## Structure
 ///
-/// Revisions are stored in an arena (`Vec<Revision>`) and linked by
-/// [`RevisionId`] indices. The root revision (index 0) represents the initial
-/// document state and has identity changesets. `current` tracks the active
-/// revision — the state that matches the document's current buffer and
-/// selections.
+/// Revisions are stored in an arena (`HashMap<RevisionId, Revision>`) keyed
+/// by stable, monotonically-assigned IDs that are never reused. The root
+/// revision (id 0) represents the initial document state and has identity
+/// changesets. `current` tracks the active revision — the state that
+/// matches the document's current buffer and selections.
+///
+/// All ordering (which child is newest, ancestor chains) comes from the
+/// `children` vecs and `parent` links, never from map iteration order.
 ///
 /// ## Branching
 ///
 /// Undoing to state A then making a new edit C preserves the old redo path
-/// (B) as a sibling of C — no edit is ever discarded; the tree grows
-/// monotonically, revisions are never deleted.
+/// (B) as a sibling of C — no edit is discarded by undoing/redoing.
 ///
 /// ```text
 ///  root
@@ -93,10 +98,13 @@ struct Revision {
 /// Transactions (changeset + selections), keeping it a pure data structure
 /// with no buffer dependency.
 pub struct History {
-    /// Arena of all revisions. Index 0 is always the root.
-    revisions: Vec<Revision>,
+    /// Arena of all revisions, keyed by stable `RevisionId`.
+    revisions: HashMap<RevisionId, Revision>,
     /// The currently active revision.
     current: RevisionId,
+    /// Next ID to assign in `record`. Monotonic — never reused, even for
+    /// evicted revisions.
+    next_id: usize,
 }
 
 impl History {
@@ -122,9 +130,13 @@ impl History {
             timestamp: Instant::now(),
         };
 
+        let mut revisions = HashMap::new();
+        revisions.insert(Self::ROOT, root);
+
         Self {
-            revisions: vec![root],
-            current: RevisionId(0),
+            revisions,
+            current: Self::ROOT,
+            next_id: 1,
         }
     }
 
@@ -150,7 +162,8 @@ impl History {
         pre_edit_sels: SelectionSet,
         post_edit_sels: SelectionSet,
     ) {
-        let new_id = RevisionId(self.revisions.len());
+        let new_id = RevisionId(self.next_id);
+        self.next_id += 1;
         let parent_id = self.current;
 
         let revision = Revision {
@@ -163,8 +176,12 @@ impl History {
             timestamp: Instant::now(),
         };
 
-        self.revisions.push(revision);
-        self.revisions[parent_id.0].children.push(new_id);
+        self.revisions.insert(new_id, revision);
+        self.revisions
+            .get_mut(&parent_id)
+            .expect("parent exists")
+            .children
+            .push(new_id);
         self.current = new_id;
     }
 
@@ -181,12 +198,11 @@ impl History {
     /// `Transaction` is cheap to clone: its ChangeSet is a `Vec<Operation>`.
     pub fn undo(&mut self) -> Option<Transaction> {
         let old_current = self.current;
-        // Copy out the parent index before mutating current.
-        let parent = self.revisions[old_current.0].parent?;
+        // Copy out the parent id before mutating current.
+        let parent = self.revisions[&old_current].parent?;
         self.current = parent;
         // Clone the inverse from the revision we just stepped out of.
-        // The arena is append-only — old_current is still valid.
-        Some(self.revisions[old_current.0].inverse.clone())
+        Some(self.revisions[&old_current].inverse.clone())
     }
 
     /// Redo: return the forward Transaction of the most recent child and move
@@ -199,19 +215,19 @@ impl History {
     /// Returns an owned `Transaction` for the same reason as [`Self::undo`].
     pub fn redo(&mut self) -> Option<Transaction> {
         // Copy out child_id before mutating current.
-        let child_id = *self.revisions[self.current.0].children.last()?;
+        let child_id = *self.revisions[&self.current].children.last()?;
         self.current = child_id;
-        Some(self.revisions[child_id.0].forward.clone())
+        Some(self.revisions[&child_id].forward.clone())
     }
 
     /// True if there is at least one revision above the current position.
     pub fn can_undo(&self) -> bool {
-        self.revisions[self.current.0].parent.is_some()
+        self.revisions[&self.current].parent.is_some()
     }
 
     /// True if the current revision has at least one child.
     pub fn can_redo(&self) -> bool {
-        !self.revisions[self.current.0].children.is_empty()
+        !self.revisions[&self.current].children.is_empty()
     }
 
     /// Total number of revisions in the tree (including the root).
@@ -237,22 +253,18 @@ impl History {
     /// Returned to the caller so pane state can be seeded when a pane first
     /// views a buffer, or when the buffer is reloaded from disk.
     pub fn initial_sels(&self) -> &SelectionSet {
-        self.revisions[0].forward.selection()
+        self.revisions[&Self::ROOT].forward.selection()
     }
 
-    /// Parent of a revision. `None` for the root or for an out-of-bounds id.
+    /// Parent of a revision. `None` for the root or for an id that is out of
+    /// bounds or has been evicted by `undo-levels` trimming.
     ///
     /// Using `.get` instead of direct indexing closes the panic vector that
     /// would exist if a caller fabricated a `RevisionId` with an arbitrary
-    /// value via [`RevisionId::new`].
+    /// value via [`RevisionId::new`], and also lets callers safely query a
+    /// stale (evicted) id without panicking.
     pub fn parent(&self, id: RevisionId) -> Option<RevisionId> {
-        debug_assert!(
-            id.0 < self.revisions.len(),
-            "parent: RevisionId({}) is out of bounds (len={})",
-            id.0,
-            self.revisions.len(),
-        );
-        self.revisions.get(id.0)?.parent
+        self.revisions.get(&id)?.parent
     }
 
     /// Ancestor chain from `id` up to and including the root.
@@ -260,7 +272,7 @@ impl History {
     /// Returns `[id, parent, grandparent, ..., root]`.
     fn ancestors(&self, mut id: RevisionId) -> Vec<RevisionId> {
         let mut chain = vec![id];
-        while let Some(parent) = self.revisions[id.0].parent {
+        while let Some(parent) = self.revisions[&id].parent {
             chain.push(parent);
             id = parent;
         }
@@ -291,7 +303,7 @@ impl History {
         if target == self.current {
             return None;
         }
-        if target.0 >= self.revisions.len() {
+        if !self.revisions.contains_key(&target) {
             return None;
         }
 
@@ -331,10 +343,10 @@ impl History {
         // Build the transaction list.
         let mut txns = Vec::with_capacity(up_path.len() + down_path.len());
         for id in &up_path {
-            txns.push(self.revisions[id.0].inverse.clone());
+            txns.push(self.revisions[id].inverse.clone());
         }
         for id in &down_path {
-            txns.push(self.revisions[id.0].forward.clone());
+            txns.push(self.revisions[id].forward.clone());
         }
 
         self.current = target;
