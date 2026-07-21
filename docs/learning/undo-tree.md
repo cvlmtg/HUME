@@ -24,8 +24,9 @@ new edit, a new branch grows from that point:
      C   D   ←── D is the branch you undid past; it's still there
 ```
 
-`D` is still reachable — you can undo `C` and then redo to reach `D`. No edit
-is ever thrown away; the tree only ever grows.
+`D` is still reachable — you can undo `C` and then redo to reach `D`. Undoing
+and redoing never throws an edit away; branches only disappear when the tree
+is deliberately bounded (see "Bounding the tree" below).
 
 When you redo from a branch point, the most recent child is chosen — after
 undoing and making a new edit, subsequent redo takes you along the new branch,
@@ -55,16 +56,38 @@ undo history.
 
 ## The arena
 
-All nodes live in a flat list (an "arena"), and references between nodes are
-just integer indices into that list. This is idiomatic Rust for tree structures
-— unlike linked lists built from heap-allocated nodes connected by owning
-pointers, an arena has no ownership cycles for the type system to object to,
-and every access is a direct array index.
+All nodes live in a lookup table (an "arena"), and references between nodes
+are stable identifiers into that table rather than pointers. This is
+idiomatic Rust for tree structures — unlike linked lists built from
+heap-allocated nodes connected by owning pointers, an arena has no ownership
+cycles for the type system to object to.
 
-The trade-off: individual nodes are never freed. The whole arena is discarded
-only when the buffer closes. For an undo tree that only ever grows, this is
-fine — the tree is bounded by the number of edits ever made in a session, which
-is manageable.
+Each identifier is assigned once, in creation order, and never reused — not
+even after the node it names is later dropped by bounding (below). That
+matters for anything outside the tree that remembers a node by identifier
+(the save-point marker described next, for instance): a dropped node's
+identifier simply stops matching anything, rather than risking a coincidental
+match with an unrelated, newer node.
+
+## Bounding the tree
+
+Left alone, the tree grows for as long as the buffer stays open — every edit
+is one more node, forever. An `undo-levels` limit caps how many states are
+kept per buffer (`0`, the default, means unlimited).
+
+The limit is enforced the moment a new edit is recorded, by discarding from
+the *oldest* end of the tree — never from the branch you're currently on.
+When the oldest surviving point in the tree has more than one branch growing
+from it, the oldest branch that isn't the one you're on is dropped as a
+whole, in one step — every node in it, not just its tip. When there's only
+one branch to drop from, the tree's starting point advances to the next node
+along that branch instead, so a bound tree still remembers as much recent
+history as the limit allows even along a single, unbranching line of edits.
+
+Because a bounding pass can drop an entire old branch in one step, the tree
+can end up noticeably smaller than the limit right after the pass — the same
+tradeoff as any bulk cleanup. Lowering the limit doesn't retroactively trim
+anything by itself; it only takes effect the next time an edit is recorded.
 
 ## Revision IDs double as the dirty/clean oracle
 
@@ -80,6 +103,14 @@ circuits through the identity case. Using the revision id makes the question
 *structural* — the buffer is clean precisely at one position in the tree, and
 every navigation primitive already updates the current position. No bookkeeping
 duplicates that fact.
+
+Bounding the tree respects this oracle rather than fighting it. If the saved
+state is the node a bounding pass drops the tree's starting point *to* (the
+single-branch case above), the save marker moves along with it, so the clean
+state stays reachable. If the saved state instead sits inside a branch that
+gets dropped outright, there is no way back to it — the buffer simply reads
+dirty from then on, which is correct: that exact state no longer exists
+anywhere in the tree.
 
 ## Reloads join the tree instead of replacing it
 

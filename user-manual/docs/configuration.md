@@ -56,6 +56,7 @@ Set with `:set global <option>=<value>` or `(set-option! "option" value)`. All o
 | `jump-list-capacity` | integer ≥ 1 | `100` | Max jump list entries |
 | `jump-line-threshold` | integer | `5` | Line distance to record a jump |
 | `history-capacity` | integer ≥ 1 | `100` | Max entries per `:`/`/`/`?` prompt history |
+| `undo-levels` | integer | `0` | Max undo states kept per buffer; `0` means unlimited. Once the limit is reached, the oldest states — including whole abandoned branches — are dropped as new edits are made |
 | `steel-init-budget-ms` | integer ≥ 1 | `10000` | Max init.scm evaluation time (ms) |
 | `steel-command-budget-ms` | integer ≥ 1 | `1000` | Max Steel command evaluation time (ms) |
 | `popup-border` | bool | `#t` | Show popup borders |

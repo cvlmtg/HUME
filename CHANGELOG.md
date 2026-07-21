@@ -22,6 +22,8 @@
 - Case transforms: `gu`, `gU`, `gC`.
 - Word motions and `mm`/`MM` now also select adjacent whitespace.
   Controlled by the new `word-selects-whitespace` option (default on).
+- New `undo-levels` option caps the number of undo states kept per buffer
+  (default `0`, unlimited).
 - Character prompts (`r`, `t`, `f`, …) accept Enter and Tab.
 - Extend-mode `o` (flip selection) moved into the `core:vim-keybind`
   plugin.
