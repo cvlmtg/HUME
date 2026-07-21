@@ -89,12 +89,12 @@ fn macro_recording_element_idle_renders_empty() {
 
 #[test]
 fn macro_recording_element_active_renders_label() {
-    // While recording into register 'q', MacroRecording renders "[recording @q]".
+    // While recording into register 'q', MacroRecording renders its label.
     let mut ed = test_editor();
     ed.state.macro_recording = Some(('q', vec![]));
     let colors = crate::ui::theme::EditorColors::default();
     let (text, _) = render_element(StatusElement::MacroRecording, &ed, &colors, "");
-    assert_eq!(text.as_ref(), "[recording @q]");
+    insta::assert_snapshot!(text, @"[recording @q]");
 }
 
 #[test]
@@ -104,7 +104,7 @@ fn macro_recording_element_named_register() {
     ed.state.macro_recording = Some(('3', vec![]));
     let colors = crate::ui::theme::EditorColors::default();
     let (text, _) = render_element(StatusElement::MacroRecording, &ed, &colors, "");
-    assert_eq!(text.as_ref(), "[recording @3]");
+    insta::assert_snapshot!(text, @"[recording @3]");
 }
 
 // ── LineEnding element ────────────────────────────────────────────────────
@@ -125,7 +125,7 @@ fn line_ending_element_lf() {
     let ed = test_editor_with_text("hello\n");
     let colors = crate::ui::theme::EditorColors::default();
     let (text, _) = render_element(StatusElement::LineEnding, &ed, &colors, "");
-    assert_eq!(text.as_ref(), "LF");
+    insta::assert_snapshot!(text, @"LF");
 }
 
 #[test]
@@ -133,7 +133,7 @@ fn line_ending_element_crlf() {
     let ed = test_editor_with_text("hello\r\n");
     let colors = crate::ui::theme::EditorColors::default();
     let (text, _) = render_element(StatusElement::LineEnding, &ed, &colors, "");
-    assert_eq!(text.as_ref(), "CRLF");
+    insta::assert_snapshot!(text, @"CRLF");
 }
 
 // ── Cwd element ───────────────────────────────────────────────────────────
@@ -171,7 +171,7 @@ fn language_element_renders_bracketed() {
     ed.doc_mut().language = Some(lang);
     let colors = crate::ui::theme::EditorColors::default();
     let (text, _) = render_element(StatusElement::Language, &ed, &colors, "");
-    assert_eq!(text.as_ref(), "[rust]");
+    insta::assert_snapshot!(text, @"[rust]");
 }
 
 // ── ReadOnly element ──────────────────────────────────────────────────────
@@ -197,7 +197,7 @@ fn readonly_element_renders_ro_label() {
     let ed = crate::editor::Editor::for_testing(buf);
     let colors = crate::ui::theme::EditorColors::default();
     let (text, _) = render_element(StatusElement::ReadOnly, &ed, &colors, "");
-    assert_eq!(text.as_ref(), "[RO]");
+    insta::assert_snapshot!(text, @"[RO]");
 }
 
 // ── Diagnostics element (format) ──────────────────────────────────────────
@@ -205,9 +205,11 @@ fn readonly_element_renders_ro_label() {
 // `format` is deterministic (`Data` carries the spinner frame as a plain
 // `usize`, no clock involved), so these exercise it directly with synthetic
 // `Data` rather than through a full `Editor` fixture — see the
-// `StatuslineElement` trait's doc comment. Behavior driven by a live LSP
-// server (the `Starting` → `Progress` → `Idle` transitions themselves) is
-// covered in `editor::tests::lsp_statusline`.
+// `StatuslineElement` trait's doc comment. These are the appearance tests
+// (exact glyphs/spacing pinned via inline snapshots); data flow driven by a
+// live LSP server (the `Starting` → `Progress` → `Idle` transitions, and the
+// counts themselves) is covered as data assertions in
+// `editor::tests::lsp_statusline`.
 
 use crate::editor::lsp::introspect::LspActivity;
 
@@ -215,7 +217,7 @@ use crate::editor::lsp::introspect::LspActivity;
 fn diagnostics_element_starting_shows_spinner() {
     let colors = crate::ui::theme::EditorColors::default();
     let (text, _) = DiagnosticsElement::format((LspActivity::Starting, 0, 0, 0), &colors);
-    assert_eq!(text.as_ref(), "⠋ lsp");
+    insta::assert_snapshot!(text, @"⠋ lsp");
 }
 
 #[test]
@@ -230,7 +232,7 @@ fn diagnostics_element_progress_with_percentage() {
         0,
     );
     let (text, _) = DiagnosticsElement::format(data, &colors);
-    assert_eq!(text.as_ref(), "⠋ 45%");
+    insta::assert_snapshot!(text, @"⠋ 45%");
 }
 
 #[test]
@@ -238,7 +240,7 @@ fn diagnostics_element_progress_with_no_percentage_shows_generic_label() {
     let colors = crate::ui::theme::EditorColors::default();
     let data = (LspActivity::Progress { percentage: None }, 0, 0, 0);
     let (text, _) = DiagnosticsElement::format(data, &colors);
-    assert_eq!(text.as_ref(), "⠋ lsp");
+    insta::assert_snapshot!(text, @"⠋ lsp");
 }
 
 #[test]
@@ -246,10 +248,7 @@ fn diagnostics_element_spinner_indexes_by_frame() {
     let colors = crate::ui::theme::EditorColors::default();
     // Frame 3 selects the 4th glyph in the SPINNER table (⠋⠙⠹⠸…).
     let (text, _) = DiagnosticsElement::format((LspActivity::Starting, 0, 0, 3), &colors);
-    assert!(
-        text.starts_with('⠸'),
-        "frame 3 should select the 4th spinner glyph, got {text:?}"
-    );
+    insta::assert_snapshot!(text, @"⠸ lsp");
 }
 
 #[test]
@@ -257,10 +256,21 @@ fn diagnostics_element_idle_shows_counts_with_no_spinner() {
     let colors = crate::ui::theme::EditorColors::default();
     let data = (LspActivity::Idle, 3, 12, 0);
     let (text, _) = DiagnosticsElement::format(data, &colors);
-    assert_eq!(
-        text.as_ref(),
-        format!("{DIAGNOSTICS_ERROR_GLYPH} 3 {DIAGNOSTICS_WARNING_GLYPH} 12")
-    );
+    insta::assert_snapshot!(text, @"✘ 3 ⚠ 12");
+}
+
+#[test]
+fn diagnostics_element_omits_zero_warning_half() {
+    let colors = crate::ui::theme::EditorColors::default();
+    let (text, _) = DiagnosticsElement::format((LspActivity::Idle, 1, 0, 0), &colors);
+    insta::assert_snapshot!(text, @"✘ 1");
+}
+
+#[test]
+fn diagnostics_element_omits_zero_error_half() {
+    let colors = crate::ui::theme::EditorColors::default();
+    let (text, _) = DiagnosticsElement::format((LspActivity::Idle, 0, 1, 0), &colors);
+    insta::assert_snapshot!(text, @"⚠ 1");
 }
 
 /// A `$/progress` task in flight must not hide diagnostic counts already
@@ -277,10 +287,7 @@ fn diagnostics_element_progress_and_counts_render_together() {
         0,
     );
     let (text, _) = DiagnosticsElement::format(data, &colors);
-    assert_eq!(
-        text.as_ref(),
-        format!("⠋ 45% {DIAGNOSTICS_ERROR_GLYPH} 3 {DIAGNOSTICS_WARNING_GLYPH} 12")
-    );
+    insta::assert_snapshot!(text, @"⠋ 45% ✘ 3 ⚠ 12");
 }
 
 #[test]

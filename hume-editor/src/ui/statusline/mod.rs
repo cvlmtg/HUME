@@ -19,8 +19,6 @@ use elements::{
     PositionElement, ReadOnlyElement, SearchMatchesElement, SelectionsElement, SeparatorElement,
     StatuslineElement,
 };
-#[cfg(test)]
-pub(crate) use elements::{DIAGNOSTICS_ERROR_GLYPH, DIAGNOSTICS_WARNING_GLYPH};
 
 /// Hardcoded left section for Command/Search modes.
 const MINIBUF_LEFT: &[StatusElement] = &[StatusElement::MiniBuf];

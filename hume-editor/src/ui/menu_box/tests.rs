@@ -8,18 +8,31 @@ fn style() -> Style {
     Style::default()
 }
 
+/// Rows of `area` as plain symbols, trailing spaces trimmed per row.
+fn symbols_in(buf: &ScreenBuf, area: Rect) -> String {
+    (area.y..area.y + area.height)
+        .map(|y| {
+            let row: String = (area.x..area.x + area.width)
+                .map(|x| buf[(x, y)].symbol())
+                .collect();
+            row.trim_end().to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[test]
-fn draw_menu_box_border_draws_corner_glyphs() {
+fn draw_menu_box_border_frame_snapshot() {
     let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
     let outer = Rect::new(2, 3, 8, 4);
     draw_menu_box(&mut buf, outer, &rows(2), Some(0), true, style(), style());
 
-    assert_eq!(buf[(2, 3)].symbol(), "┌");
-    assert_eq!(buf[(9, 3)].symbol(), "┐");
-    assert_eq!(buf[(2, 6)].symbol(), "└");
-    assert_eq!(buf[(9, 6)].symbol(), "┘");
-    assert_eq!(buf[(5, 3)].symbol(), "─");
-    assert_eq!(buf[(2, 4)].symbol(), "│");
+    insta::assert_snapshot!(symbols_in(&buf, outer), @"
+    ┌──────┐
+    │item0 │
+    │item1 │
+    └──────┘
+    ");
 }
 
 #[test]
@@ -29,10 +42,11 @@ fn draw_menu_box_no_border_leaves_plain_margin() {
     draw_menu_box(&mut buf, outer, &rows(2), Some(0), false, style(), style());
 
     // Corners stay background-filled space, never a box-drawing glyph.
-    assert_eq!(buf[(2, 3)].symbol(), " ");
-    assert_eq!(buf[(9, 3)].symbol(), " ");
-    assert_eq!(buf[(2, 6)].symbol(), " ");
-    assert_eq!(buf[(9, 6)].symbol(), " ");
+    insta::assert_snapshot!(symbols_in(&buf, outer), @"
+
+    item0
+    item1
+    ");
 }
 
 #[test]

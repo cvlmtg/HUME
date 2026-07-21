@@ -7,8 +7,8 @@ use crate::editor::Editor;
 use crate::editor::lsp::introspect::LspActivity;
 use crate::ui::theme::EditorColors;
 
-pub(crate) const DIAGNOSTICS_ERROR_GLYPH: &str = "✘";
-pub(crate) const DIAGNOSTICS_WARNING_GLYPH: &str = "⚠";
+const DIAGNOSTICS_ERROR_GLYPH: &str = "✘";
+const DIAGNOSTICS_WARNING_GLYPH: &str = "⚠";
 
 /// Braille spinner frames for the loading state, indexed by
 /// `frame % SPINNER.len()`.

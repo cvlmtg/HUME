@@ -222,19 +222,26 @@ fn format_status_waiting_with_triggers() {
 
 // The data layer accepts zero-activation plugins (LazyRegistry::declare has no
 // policy gate); the policy guard lives in declare_plugin (builtins layer).
-// This test exercises the defensive em-dash fallback in pending_activations.
+// This test exercises the defensive placeholder fallback in
+// pending_activations — which glyph is used is an appearance detail, not
+// asserted here.
 #[test]
-fn format_status_zero_trigger_shows_em_dash() {
+fn format_status_zero_trigger_shows_a_placeholder() {
     let mut reg = LazyRegistry::default();
     reg.declare(id_user("bob", "bare"), Some(fake_path()), vec![], vec![]);
     let out = reg.format_status(&[]);
-    assert!(out.contains("bob/bare"));
-    assert!(out.contains("declared"));
-    assert!(
-        out.contains('\u{2014}'),
-        "zero-entry plugin must show em dash"
+    let row = out
+        .lines()
+        .find(|l| l.contains("bob/bare"))
+        .expect("row for bob/bare must exist");
+    let fields: Vec<&str> = row.split_whitespace().collect();
+    assert_eq!(
+        fields.len(),
+        3,
+        "zero-trigger plugin must show a placeholder in the activations column, got {row:?}"
     );
-    assert!(!out.contains("cmd:"), "no cmd prefix for zero-entry plugin");
+    assert_eq!(fields[1], "declared");
+    assert!(!row.contains("cmd:"), "no cmd prefix for zero-entry plugin");
 }
 
 #[test]

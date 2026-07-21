@@ -1,16 +1,16 @@
-// Statusline diagnostics element: `StatusElement::Diagnostics`
-// reads the diagnostics store directly (never through Steel) and renders
-// `"✘ E ⚠ W"`, omitting either half when its count is zero and collapsing
-// to empty when both counts are zero. While the attached server is still
-// `Starting` or reporting `$/progress`, the element shows a loading spinner
-// instead — see the `progress_*`/`starting_*` tests below.
+// Statusline diagnostics element: `StatusElement::Diagnostics` reads the
+// diagnostics store directly (never through Steel) and its loading state
+// from the attached LSP server. These tests cover the *data* flow — counts
+// and activity state landing correctly on the editor — not the rendered
+// glyphs/spacing, which are pinned as inline snapshots in
+// `ui::statusline::tests`.
 
 use std::path::Path;
 
 use super::*;
 use crate::editor::lsp::LspState;
 use crate::editor::lsp::introspect::LspActivity;
-use crate::ui::statusline::{DIAGNOSTICS_ERROR_GLYPH, DIAGNOSTICS_WARNING_GLYPH, StatusElement};
+use crate::ui::statusline::StatusElement;
 use hume_lsp::backend::LspBackend;
 use hume_lsp::client::{ClientAction, LspClient, ServerState};
 use hume_lsp::inline::InlineLspBackend;
@@ -95,7 +95,7 @@ fn diagnostics_element_empty_with_no_diagnostics() {
 }
 
 #[test]
-fn diagnostics_element_renders_error_and_warning_counts() {
+fn diagnostics_element_displays_published_error_and_warning_counts() {
     let c = setup(
         "abcdefgh\n",
         &[&[
@@ -104,27 +104,39 @@ fn diagnostics_element_renders_error_and_warning_counts() {
             ((0, 4), (0, 5), 2),
         ]],
     );
+    let bid = c.ed.focused_buffer_id();
+    assert_eq!(
+        c.ed.diagnostic_counts(bid),
+        (1, 2),
+        "one severity-1 (error) and two severity-2 (warning) diagnostics were published"
+    );
+
     let colors = crate::ui::theme::EditorColors::default();
     let (text, _) =
         crate::ui::statusline::render_element(StatusElement::Diagnostics, &c.ed, &colors, "");
-    assert_eq!(
-        text.as_ref(),
-        format!("{DIAGNOSTICS_ERROR_GLYPH} 1 {DIAGNOSTICS_WARNING_GLYPH} 2")
+    assert!(
+        !text.is_empty(),
+        "known diagnostic counts must be displayed"
     );
 }
 
 #[test]
-fn diagnostics_element_omits_zero_half() {
+fn severity_mapping_produces_error_only_and_warning_only_counts() {
     let c = setup("abcdefgh\n", &[&[((0, 0), (0, 1), 1)]]);
-    let colors = crate::ui::theme::EditorColors::default();
-    let (text, _) =
-        crate::ui::statusline::render_element(StatusElement::Diagnostics, &c.ed, &colors, "");
-    assert_eq!(text.as_ref(), format!("{DIAGNOSTICS_ERROR_GLYPH} 1"));
+    let bid = c.ed.focused_buffer_id();
+    assert_eq!(
+        c.ed.diagnostic_counts(bid),
+        (1, 0),
+        "severity 1 must map to the error count"
+    );
 
     let c = setup("abcdefgh\n", &[&[((0, 0), (0, 1), 2)]]);
-    let (text, _) =
-        crate::ui::statusline::render_element(StatusElement::Diagnostics, &c.ed, &colors, "");
-    assert_eq!(text.as_ref(), format!("{DIAGNOSTICS_WARNING_GLYPH} 1"));
+    let bid = c.ed.focused_buffer_id();
+    assert_eq!(
+        c.ed.diagnostic_counts(bid),
+        (0, 1),
+        "severity 2 must map to the warning count"
+    );
 }
 
 #[test]
@@ -165,7 +177,7 @@ fn progress_action(token: &str, value: serde_json::Value) -> ClientAction {
 }
 
 #[test]
-fn starting_server_renders_the_loading_spinner() {
+fn starting_server_displays_a_loading_indicator() {
     let mut backend = InlineLspBackend::new();
     let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
 
@@ -179,10 +191,15 @@ fn starting_server_renders_the_loading_spinner() {
     let bid = ed.focused_buffer_id();
     ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
 
+    assert!(matches!(ed.lsp_activity(bid), LspActivity::Starting));
+
     let colors = crate::ui::theme::EditorColors::default();
     let (text, _) =
         crate::ui::statusline::render_element(StatusElement::Diagnostics, &ed, &colors, "");
-    assert_eq!(text.as_ref(), "⠋ lsp");
+    assert!(
+        !text.is_empty(),
+        "a starting server must display a loading indicator"
+    );
 }
 
 #[test]
@@ -326,7 +343,7 @@ fn crash_clears_progress_so_the_spinner_stops() {
 }
 
 #[test]
-fn loading_state_renders_alongside_diagnostic_counts() {
+fn loading_state_keeps_diagnostic_counts_available() {
     let mut c = setup("abcdefgh\n", &[&[((0, 0), (0, 1), 1)]]);
     let bid = c.ed.focused_buffer_id();
     let sid =
@@ -351,11 +368,13 @@ fn loading_state_renders_alongside_diagnostic_counts() {
         ),
     );
 
-    let colors = crate::ui::theme::EditorColors::default();
-    let (text, _) =
-        crate::ui::statusline::render_element(StatusElement::Diagnostics, &c.ed, &colors, "");
     assert!(
-        text.contains("lsp") && text.contains(DIAGNOSTICS_ERROR_GLYPH),
-        "a background progress task must not hide already-known diagnostic counts, got {text:?}"
+        matches!(c.ed.lsp_activity(bid), LspActivity::Progress { .. }),
+        "a begun progress task must be reflected in the activity state"
+    );
+    assert_eq!(
+        c.ed.diagnostic_counts(bid),
+        (1, 0),
+        "a background progress task must not clear already-known diagnostic counts"
     );
 }
