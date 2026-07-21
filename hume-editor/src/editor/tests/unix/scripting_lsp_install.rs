@@ -1354,7 +1354,6 @@ fn write_fake_cargo_shim(
     };
     let shim_path = shim_dir.path().join("cargo");
     std::fs::write(&shim_path, body).unwrap();
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&shim_path, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -1524,7 +1523,6 @@ fn lsp_install_real_rust_analyzer_e2e() {
         cmd_path.exists(),
         "the registered command must point at a real, existing binary: {cmd}"
     );
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let mode = std::fs::metadata(cmd_path).unwrap().permissions().mode();
