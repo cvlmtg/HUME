@@ -182,7 +182,9 @@ impl Buffer {
     /// refresh — it intentionally bypasses the `read_only` guard in `doc_ops`.
     pub(crate) fn set_view_content(&mut self, text: Text) {
         let text_len = text.len_chars();
+        let undo_levels = self.history.undo_levels();
         self.history = History::new(SelectionSet::default(), text_len);
+        self.history.set_undo_levels(undo_levels);
         self.saved_revision = self.history.current_id();
         self.search_pattern = None;
         self.search_matches = SearchMatches::default();
@@ -326,7 +328,7 @@ impl Buffer {
             return;
         }
 
-        self.history.record(forward, inverse, pre_sels, post_sels);
+        self.record_revision(forward, inverse, pre_sels, post_sels);
         self.saved_revision = self.history.current_id();
     }
 
@@ -345,6 +347,33 @@ impl Buffer {
         self.saved_revision = self.history.current_id();
     }
 
+    /// Set the `undo-levels` cap on this buffer's history. `0` means unlimited.
+    pub(crate) fn set_undo_levels(&mut self, levels: usize) {
+        self.history.set_undo_levels(levels);
+    }
+
+    /// Record a revision, remapping `saved_revision` if `undo-levels`
+    /// trimming just promoted it into the new root.
+    ///
+    /// A revision ID that gets merely evicted (not promoted) needs no
+    /// handling: `RevisionId`s are never reused, so `is_dirty()`'s equality
+    /// check against a stale `saved_revision` correctly stays `true`
+    /// forever. Only promotion needs a remap, since the promoted node's
+    /// state is still reachable — it's now what the root represents.
+    fn record_revision(
+        &mut self,
+        forward: ChangeSet,
+        inverse: ChangeSet,
+        pre_sels: SelectionSet,
+        post_sels: SelectionSet,
+    ) {
+        if let Some(promoted) = self.history.record(forward, inverse, pre_sels, post_sels)
+            && self.saved_revision == promoted
+        {
+            self.saved_revision = History::ROOT;
+        }
+    }
+
     /// Apply an edit and record it in the undo history.
     ///
     /// Takes `sels` (the acting pane's current selections) by value and returns
@@ -360,8 +389,7 @@ impl Buffer {
 
         // self.text is still pre-edit here — safe to call invert.
         let inverse_cs = cs.invert(&self.text);
-        self.history
-            .record(cs.clone(), inverse_cs, sels, new_sels.clone());
+        self.record_revision(cs.clone(), inverse_cs, sels, new_sels.clone());
         self.set_text(new_text);
         (new_sels, cs)
     }
@@ -460,8 +488,7 @@ impl Buffer {
 
         if let Some(cs) = group.cs {
             let inverse_cs = cs.invert(&group.text_snapshot);
-            self.history
-                .record(cs, inverse_cs, group.pre_sels, post_sels);
+            self.record_revision(cs, inverse_cs, group.pre_sels, post_sels);
         }
     }
 
