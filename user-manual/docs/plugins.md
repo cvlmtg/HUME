@@ -133,7 +133,7 @@ Use `(call! ...)` to dispatch other commands from within a plugin:
 `call!` dispatches any command that can be bound to a key — built-in and Steel-defined alike — activating the target plugin on demand.
 
 ::: warning `call!` can't run `:` commands
-Typed commands like `write`, `quit`, or `edit` are not reachable through `call!`. Calling one logs a warning and does nothing, so `(call! "write")` will not save. Only key-bindable commands work here.
+Typed commands like `write`, `quit`, or `edit` are not reachable through `call!`. Calling one logs an error and does nothing, so `(call! "write")` will not save. Only key-bindable commands work here.
 :::
 
 When forwarding a `count` argument to another command, a count of `0` means "as if no count was typed" — this is how `move-down`/`move-up` decide between visual-row and buffer-line movement, and it lets a key-bound command that forwards its own `count` behave the same way a native keybinding would.
@@ -141,17 +141,26 @@ When forwarding a `count` argument to another command, a count of `0` means "as 
 ### Depending on another plugin
 
 ::: warning
-`call!` with an unknown command name logs a warning and no-ops instead of erroring — a missing plugin dependency shows up as your plugin quietly doing the wrong thing rather than a clear failure.
+`call!` with an unknown command name logs an error and no-ops instead of aborting the command body — a missing plugin dependency shows up as an error in `:messages`, not as a crash, so check dependencies up front rather than relying on the error to be noticed.
 :::
 
-If your plugin calls another plugin's commands via `call!`, check that the other plugin is loaded before you rely on it, with `(loaded-plugins)` at the top level of your plugin body — before anything that calls into the dependency:
+If your plugin calls another plugin's commands via `call!`, check that the other plugin is available before you rely on it. Which check to use depends on when you need the dependency:
 
-```scheme
-(unless (member "core:stdlib" (loaded-plugins))
-  (error "my-plugin: requires core:stdlib — load it before my-plugin"))
-```
+- **Needed immediately** — your plugin body calls into the dependency at the top level, before any key is pressed. Check `(loaded-plugins)`: a lazily-declared plugin that hasn't activated yet won't show up in it, and there's no key press coming to trigger that activation.
 
-This fails loudly at load time (startup or `:reload-config`), naming exactly what's missing, instead of leaving the bug to surface later at whatever moment the dependent command actually runs.
+  ```scheme
+  (unless (member "core:stdlib" (loaded-plugins))
+    (error "my-plugin: requires core:stdlib — load it before my-plugin"))
+  ```
+
+- **Needed later, inside a command** — the dependency is only called from within a `lambda` that a key press fires. `call!` activates a lazily-declared plugin on demand, so it doesn't matter yet whether the dependency has activated — only that it was declared at all. Check `(declared-plugins)` instead:
+
+  ```scheme
+  (unless (member "core:stdlib" (declared-plugins))
+    (error "my-plugin: requires core:stdlib — declare or load it before my-plugin"))
+  ```
+
+Either check fails loudly at load time (startup or `:reload-config`), naming exactly what's missing, instead of leaving the bug to surface later at whatever moment the dependent command actually runs.
 
 ### Pending character input
 

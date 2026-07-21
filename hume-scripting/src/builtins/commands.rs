@@ -13,7 +13,7 @@
 //!   activates the owner inline via `%activate-plugin-inline`, then retries.
 //! - **Native commands**: forwarded to `%call-native!` → `run_command_sync` inline.
 //!   Init mode: warns and skips (buffer access not available during init).
-//! - **Unknown**: forwarded to `%call-native!` → warning logged, no-op.
+//! - **Unknown**: forwarded to `%call-native!` → error logged, no-op.
 //!
 //! `request-wait-char!` allows a Steel command to request that after the
 //! current eval finishes, the editor enters WaitChar mode for the named command.
@@ -170,13 +170,22 @@ fn define_command_inner(
 ///   validates count/extend args and runs synchronously via `run_command_sync`.
 ///   In init mode, logs a warning and skips — native commands touch buffers,
 ///   which are not available during init.scm evaluation.
-/// - **Steel-but-not-in-table** (`Ok(false)`): logs a `Warning` naming the
+/// - **Steel-but-not-in-table** (`Ok(false)`): logs an `Error` naming the
 ///   command and returns `#void`. Reaching this arm at all means the
 ///   dispatcher's own lookup already missed the command in `command_table`,
 ///   so this is a fallback message, not the common case.
 /// - **Unknown** (`Err(msg)`): the host's registry has no such command at
 ///   all (typo, missing plugin). Logs the host's own error message — it
 ///   already names the command — and returns `#void`.
+///
+/// Both misses log `Error`, not `Warning`: an unreachable `call!` target is
+/// a plugin bug (typo or missing dependency), same severity as an unknown
+/// `:` command (`command_mode.rs`). Still a no-op, not a raised Steel error —
+/// raising from a native builtin risks the with-handler re-raise/VM-panic
+/// hazard, and partial edits already committed earlier in the body are
+/// undoable either way (each inner edit records its own undo revision).
+/// Keybind misses (unknown name bound to a key) are a different path and
+/// stay `Warning` — see `hume-editor/src/editor/dispatch.rs`.
 pub(crate) fn call_command_primitive(
     ctx: &mut SteelCtx,
     name: String,
@@ -203,13 +212,13 @@ pub(crate) fn call_command_primitive(
         }
         Ok(false) => {
             ctx.log(
-                LogLevel::Warning,
+                LogLevel::Error,
                 format!("'{name}' is not a native command"),
             );
             Ok(SteelVal::Void)
         }
         Err(msg) => {
-            ctx.log(LogLevel::Warning, msg);
+            ctx.log(LogLevel::Error, msg);
             Ok(SteelVal::Void)
         }
     }
@@ -358,9 +367,9 @@ mod tests {
     }
 
     /// NullHost returns `Ok(false)` for `command_is_native` (no registry) →
-    /// "not a native command" path → warning logged.
+    /// "not a native command" path → error logged.
     #[test]
-    fn call_bang_unknown_command_logs_warning() {
+    fn call_bang_unknown_command_logs_error() {
         let mut h = SteelCtxTestHarness::new();
         {
             let mut ctx = h.ctx_init();
@@ -374,14 +383,15 @@ mod tests {
         assert!(
             h.pending_messages
                 .iter()
-                .any(|(_, msg)| msg.contains("plum-ensure-grammars")),
-            "unknown command must log a warning; got: {:?}",
+                .any(|(level, msg)| *level == LogLevel::Error
+                    && msg.contains("plum-ensure-grammars")),
+            "unknown command must log an error; got: {:?}",
             h.pending_messages
         );
     }
 
     #[test]
-    fn call_bang_unknown_command_command_mode_logs_warning() {
+    fn call_bang_unknown_command_command_mode_logs_error() {
         let mut h = SteelCtxTestHarness::new();
         {
             let mut ctx = h.ctx();
@@ -390,14 +400,14 @@ mod tests {
         assert!(
             h.pending_messages
                 .iter()
-                .any(|(_, msg)| msg.contains("move-right")),
-            "unknown command in command mode must log a warning; got: {:?}",
+                .any(|(level, msg)| *level == LogLevel::Error && msg.contains("move-right")),
+            "unknown command in command mode must log an error; got: {:?}",
             h.pending_messages
         );
     }
 
     #[test]
-    fn call_bang_multiple_unknown_commands_each_log_warning() {
+    fn call_bang_multiple_unknown_commands_each_log_error() {
         let mut h = SteelCtxTestHarness::new();
         {
             let mut ctx = h.ctx();
@@ -407,14 +417,14 @@ mod tests {
         let has_right = h
             .pending_messages
             .iter()
-            .any(|(_, msg)| msg.contains("move-right"));
+            .any(|(level, msg)| *level == LogLevel::Error && msg.contains("move-right"));
         let has_left = h
             .pending_messages
             .iter()
-            .any(|(_, msg)| msg.contains("move-left"));
+            .any(|(level, msg)| *level == LogLevel::Error && msg.contains("move-left"));
         assert!(
             has_right && has_left,
-            "each unknown command must produce a warning"
+            "each unknown command must produce an error"
         );
     }
 

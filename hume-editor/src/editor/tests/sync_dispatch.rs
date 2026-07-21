@@ -844,13 +844,14 @@ fn steel_native_via_call_preserves_own_count() {
     );
 }
 
-/// **Finding 8 — unknown warns, no abort**: a body with an unknown command between
-/// two valid moves must execute both valid moves, not abort on the typo.
+/// **Finding 8 — unknown errors, no abort**: a body with an unknown command
+/// between two valid moves must execute both valid moves, not abort on the
+/// typo. `call!` logs an `Error` for the miss but never raises into Steel.
 ///
 /// Fail oracle: reinstate `Err(e) => steel::stop!` in `call_command_primitive`
 /// → the second move-right never runs.
 #[test]
-fn steel_unknown_cmd_warns_and_continues() {
+fn steel_unknown_cmd_errors_and_continues() {
     // "-[a]>bc\n", cursor at 0. Two moves should bring cursor to 2.
     let mut ed = editor_from("-[a]>bc\n");
 

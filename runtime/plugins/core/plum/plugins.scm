@@ -70,7 +70,7 @@
                                               (string-append "https://github.com/" name ".git")
                                               (plum/plugin-dir name)))))))
             (when (> n 0)
-              (call! "reload-config")))))))
+              (log! 'info "PLUM: run :reload-config to activate the newly installed plugins")))))))
 
 (define-command! "plum-cleanup"
   "Remove on-disk plugins that are no longer declared in init.scm."
@@ -90,7 +90,7 @@
           (let ((n (plum/batch-run "updated" installed
                      (lambda (name) (plum/run! "git" (list "pull") #:cwd (plum/plugin-dir name))))))
             (when (> n 0)
-              (call! "reload-config")))))))
+              (log! 'info "PLUM: run :reload-config to pick up the updated plugins")))))))
 
 (define-command! "plum-list"
   "Log the declared, installed, orphan, and missing plugin lists."
