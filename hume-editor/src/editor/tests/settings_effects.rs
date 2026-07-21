@@ -115,3 +115,72 @@ fn typed_set_theme_failure_does_not_persist() {
         ed.state.settings.theme
     );
 }
+
+// ── :theme delegates to the chokepoint ──────────────────────────────────────
+
+#[test]
+fn typed_theme_bad_name_leaves_setting() {
+    // Regression guard: :theme's own load-then-store behavior must survive
+    // delegating to settings_ops::apply. Mirrors
+    // editor::tests::commands::load_theme_by_name_fails_gracefully, but
+    // through the typed_theme entry point instead of calling the loader
+    // directly.
+    // Fail oracle: drop the rollback in settings_ops::apply (the same
+    // mutation settings_effects.rs's theme tests above are verified
+    // against) — settings.theme ends up "no_such_theme_xyz" here too, since
+    // :theme now shares that code path.
+    let mut ed = editor_from("-[h]>ello\n");
+    let result = crate::editor::commands::typed_theme(&mut ed, Some("no_such_theme_xyz"), false);
+    assert!(result.is_ok(), "command must not error: {result:?}");
+
+    assert!(ed.state.settings.theme.is_empty());
+    assert!(
+        ed.state.message_log.has_unseen(),
+        "expected a warning message"
+    );
+}
+
+/// Points `HUME_RUNTIME` at the real bundled runtime dir for the duration of
+/// a test, so `theme::load_theme_by_name` can find real theme files.
+/// Mirrors `editor/tests/unix/mod.rs`'s `RealRuntimeGuard`, minus the
+/// `XDG_DATA_HOME` redirect (unneeded for a read-only theme load).
+struct RealThemeRuntimeGuard {
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+impl RealThemeRuntimeGuard {
+    fn new() -> Self {
+        let lock = super::HUME_RUNTIME_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let real_runtime = concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime");
+        // SAFETY: not unsafe in the memory-safety sense — Rust 2024 requires
+        // the block because env vars are process-global; HUME_RUNTIME_MUTEX
+        // is what actually makes this test-safe (see its doc at tests/mod.rs).
+        unsafe {
+            std::env::set_var("HUME_RUNTIME", real_runtime);
+        }
+        Self { _lock: lock }
+    }
+}
+
+impl Drop for RealThemeRuntimeGuard {
+    fn drop(&mut self) {
+        unsafe {
+            std::env::remove_var("HUME_RUNTIME");
+        }
+    }
+}
+
+#[test]
+fn typed_theme_sets_setting_on_success() {
+    // Fail oracle: revert typed_theme to its own load-then-store path (still
+    // correct on its own) with a typo in the delegated key string (e.g.
+    // "themes" instead of "theme") — write_setting would then return
+    // Err("unknown setting"), and this test's Ok() assertion would fail.
+    let _guard = RealThemeRuntimeGuard::new();
+    let mut ed = editor_from("-[h]>ello\n");
+    let result = crate::editor::commands::typed_theme(&mut ed, Some("gruvbox"), false);
+    assert!(result.is_ok(), "command must not error: {result:?}");
+    assert_eq!(ed.state.settings.theme, "gruvbox");
+}

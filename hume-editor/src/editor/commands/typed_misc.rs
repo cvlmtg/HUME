@@ -1,7 +1,7 @@
 use hume_engine::pipeline::{BufferId, Direction};
 
 use super::super::Editor;
-use super::super::{Severity, theme};
+use super::super::Severity;
 use super::current_jump_entry;
 use crate::editor::error::CommandError;
 
@@ -205,15 +205,15 @@ pub fn typed_theme(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(
         ed.report(Severity::Info, format!("Current theme: {current}"));
         return Ok(());
     };
-    if theme::load_theme_by_name(
+    crate::editor::settings_ops::apply(
+        &mut ed.state,
         &mut ed.view,
-        &mut ed.state.message_log,
-        &mut ed.state.status_msg,
+        crate::settings::SettingScope::Global,
+        "theme",
         name,
-    ) {
-        ed.state.settings.theme = name.to_owned();
-    }
-    Ok(())
+        None,
+    )
+    .map_err(CommandError::new)
 }
 
 /// `:theme-debug` — print the resolved style chain for key UI scopes.
