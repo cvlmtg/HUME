@@ -222,6 +222,13 @@ fn apply_set_side_effects(ed: &mut Editor, key: &str, result: &Result<(), String
             .state
             .history
             .set_capacity(ed.state.settings.history_capacity),
+        // Like history-capacity, `set-option!` during lazy runtime plugin
+        // activation runs no side effect (host_impl.rs's set_global_option
+        // doesn't call this function) — a precedented gap, not closed here.
+        "undo-levels" => ed
+            .state
+            .buffers
+            .set_undo_levels_all(ed.state.settings.undo_levels),
         "theme" if !ed.state.settings.theme.is_empty() => {
             theme::load_theme_by_name(
                 &mut ed.view,

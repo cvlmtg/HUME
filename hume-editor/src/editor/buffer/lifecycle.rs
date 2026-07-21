@@ -22,33 +22,41 @@ use crate::editor::pane_state::{self, PaneBufferState};
 /// Dedup-open a file path: if already open returns `(existing_id, false)`,
 /// otherwise reads the file and allocates a new buffer, returning `(new_id, true)`.
 ///
-/// The caller is responsible for any post-open work (hook firing, pane switching).
+/// `undo_levels` seeds the `undo-levels` cap on a newly-read buffer (ignored
+/// when the path was already open). The caller is responsible for any
+/// post-open work (hook firing, pane switching).
 pub(crate) fn open_or_dedup(
     ev: &mut EngineView,
     buffers: &mut BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     focused_pane_id: PaneId,
     canonical: &std::path::Path,
+    undo_levels: usize,
 ) -> std::io::Result<(BufferId, bool)> {
     if let Some(existing) = buffers.find_by_path(canonical) {
         return Ok((existing, false));
     }
     let doc = Buffer::from_file(canonical)?;
     Ok((
-        open_buffer(ev, buffers, pane_state, focused_pane_id, doc),
+        open_buffer(ev, buffers, pane_state, focused_pane_id, doc, undo_levels),
         true,
     ))
 }
 
 /// Allocate a new buffer slot (engine + BufferStore), seed the focused pane's
 /// `pane_state` with initial selections, and return the allocated `BufferId`.
+///
+/// `undo_levels` seeds `doc`'s `undo-levels` cap — the current global
+/// setting, since new buffers always start out tracking it.
 pub(crate) fn open_buffer(
     ev: &mut EngineView,
     buffers: &mut BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     focused_pane_id: PaneId,
-    doc: Buffer,
+    mut doc: Buffer,
+    undo_levels: usize,
 ) -> BufferId {
+    doc.set_undo_levels(undo_levels);
     let bid = ev.buffers.insert(());
     buffers.open(bid, doc);
     pane_state::ensure(pane_state, buffers, focused_pane_id, bid);
@@ -109,7 +117,8 @@ pub(crate) fn switch_to_buffer_with_jump(
 ///
 /// - At least one other buffer: redirect every pane viewing `id` to the
 ///   MRU replacement, then free the slot.
-/// - Only buffer: replace in-place with a fresh scratch buffer.
+/// - Only buffer: replace in-place with a fresh scratch buffer, seeded with
+///   `undo_levels` (the current global `undo-levels` setting).
 ///
 /// Returns the `BufferId` that the focused pane is now viewing.
 pub(crate) fn close_buffer(
@@ -119,6 +128,7 @@ pub(crate) fn close_buffer(
     pane_jumps: &mut SecondaryMap<PaneId, JumpList>,
     focused_pane_id: PaneId,
     id: BufferId,
+    undo_levels: usize,
 ) -> BufferId {
     match buffers.mru_excluding(id) {
         Some(next) => {
@@ -138,7 +148,9 @@ pub(crate) fn close_buffer(
             ev.panes[focused_pane_id].buffer_id
         }
         None => {
-            replace_buffer_in_place(ev, buffers, pane_state, pane_jumps, id, Buffer::scratch());
+            let mut scratch = Buffer::scratch();
+            scratch.set_undo_levels(undo_levels);
+            replace_buffer_in_place(ev, buffers, pane_state, pane_jumps, id, scratch);
             id
         }
     }

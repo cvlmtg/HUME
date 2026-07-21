@@ -594,6 +594,7 @@ mod surround;
 mod sync_dispatch;
 mod tabs;
 mod timers;
+mod undo_levels;
 #[cfg(unix)]
 mod unix;
 mod view_scroll;

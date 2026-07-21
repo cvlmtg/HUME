@@ -320,6 +320,7 @@ fn resolve_or_open(
         &mut state.panes.state,
         state.focused_pane_id,
         &canonical,
+        state.settings.undo_levels,
     )
     .map_err(|e| format!("{}: {e}", canonical.display()))?;
     if is_new {

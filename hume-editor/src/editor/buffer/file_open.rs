@@ -94,6 +94,7 @@ impl Editor {
             &mut self.state.panes.state,
             self.state.focused_pane_id,
             doc,
+            self.state.settings.undo_levels,
         );
         self.detect_and_set_language(bid);
         let val = SteelBufferId::new(bid).into_steel_val();
@@ -122,6 +123,7 @@ impl Editor {
             &mut self.state.panes.jumps,
             self.state.focused_pane_id,
             id,
+            self.state.settings.undo_levels,
         );
         // Fire with the ID that was closed, not the new current buffer.
         let val = SteelBufferId::new(id).into_steel_val();

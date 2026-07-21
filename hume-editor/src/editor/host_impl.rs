@@ -176,6 +176,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
             &mut self.state.panes.state,
             self.state.focused_pane_id,
             &canonical,
+            self.state.settings.undo_levels,
         )
         .map_err(|e| format!("open-buffer!: {}: {e}", canonical.display()))?;
         Ok(bid)
@@ -191,6 +192,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
             &mut self.state.panes.jumps,
             self.state.focused_pane_id,
             id,
+            self.state.settings.undo_levels,
         ))
     }
     fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String> {

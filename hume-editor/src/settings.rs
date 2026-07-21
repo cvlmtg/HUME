@@ -533,6 +533,11 @@ define_settings! {
         "history-capacity" => history_capacity: usize = 100,
             scope: ["global"],
             parser: usize_nonzero;
+        // 0 is a valid, meaningful value here (unlimited), unlike
+        // history-capacity above — hence plain `usize`, not `usize_nonzero`.
+        "undo-levels" => undo_levels: usize = 0,
+            scope: ["global"],
+            parser: usize;
         "steel-init-budget-ms" => steel_init_budget_ms: usize = 10_000,
             scope: ["global"],
             parser: usize_nonzero;

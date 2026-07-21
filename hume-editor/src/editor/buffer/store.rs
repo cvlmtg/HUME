@@ -96,6 +96,17 @@ impl BufferStore {
             .filter_map(|&id| self.buffers.get(id).map(|buf| (id, buf)))
     }
 
+    /// Apply the `undo-levels` cap to every open buffer's history.
+    ///
+    /// Called from the `:set global` side-effect path and from the
+    /// post-init.scm settings pickup — there is no per-buffer scope for
+    /// this setting, so every buffer always tracks the same cap.
+    pub(crate) fn set_undo_levels_all(&mut self, levels: usize) {
+        for buf in self.buffers.values_mut() {
+            buf.set_undo_levels(levels);
+        }
+    }
+
     /// Remove `id` from the store.
     ///
     /// Returns the most-recently-used buffer excluding `id` (the recommended

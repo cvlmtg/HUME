@@ -454,6 +454,11 @@ impl Editor {
         self.state
             .history
             .set_capacity(self.state.settings.history_capacity);
+        // Pick up any (set-option! "undo-levels" N) calls from init.scm —
+        // also covers the startup buffer, which is opened before this runs.
+        self.state
+            .buffers
+            .set_undo_levels_all(self.state.settings.undo_levels);
         // Flush any `(log! …)` messages produced during init.scm evaluation.
         for (level, text) in host.take_pending_messages() {
             self.report(log_level_to_severity(level), text);

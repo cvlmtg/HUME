@@ -443,6 +443,7 @@ fn ensure_seeds_new_entry_with_initial_sels() {
         &mut ed.state.panes.state,
         pid,
         doc2,
+        0,
     );
 
     // open_buffer already calls ensure internally; a second call is idempotent
@@ -1206,6 +1207,7 @@ fn same_buffer_split_inherits_saved_scrolls() {
         &mut ed.state.panes.state,
         pid_a,
         Buffer::scratch(),
+        0,
     );
     ed.view.panes[pid_a].saved_scrolls.insert(
         bid2,

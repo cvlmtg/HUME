@@ -12,6 +12,7 @@ fn editor_settings_default_matches_old_constants() {
     assert_eq!(s.jump_list_capacity, 100);
     assert_eq!(s.jump_line_threshold, 5);
     assert_eq!(s.history_capacity, 100);
+    assert_eq!(s.undo_levels, 0);
     assert_eq!(s.tab_width, 4);
     assert_eq!(s.tab_style, TabStyle::Hard);
     assert_eq!(s.wrap_mode, WrapMode::Indent { width: 0 });
@@ -295,6 +296,18 @@ fn set_global_history_capacity_zero_errors() {
 }
 
 #[test]
+fn set_global_undo_levels() {
+    assert_eq!(global("undo-levels", "30").unwrap().undo_levels, 30);
+}
+
+#[test]
+fn set_global_undo_levels_zero_ok() {
+    // Unlike history-capacity, 0 is the meaningful "unlimited" default here,
+    // not a rejected value.
+    assert_eq!(global("undo-levels", "0").unwrap().undo_levels, 0);
+}
+
+#[test]
 fn set_global_tab_width() {
     assert_eq!(global("tab-width", "8").unwrap().tab_width, 8);
 }
@@ -572,6 +585,7 @@ fn set_buffer_global_only_all_keys_error() {
         "jump-list-capacity",
         "jump-line-threshold",
         "history-capacity",
+        "undo-levels",
         "popup-border",
         "pane-dividers",
     ] {
