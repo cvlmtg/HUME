@@ -1,9 +1,8 @@
 # HUME — LSP Server Installation (core:lsp `servers.scm`)
 
 Design decisions for automatic language-server download, installation, and registration.
-Status: **design complete** — decisions below are pinned; implementation is broken into
-three independently-planned steps (see [Implementation steps](#implementation-steps)).
-Deliberately kept out of `LSP.md` (client architecture) and `ROADMAP.md`.
+Status: **shipped**. Deliberately kept out of `LSP.md` (client architecture) and
+`ROADMAP.md`.
 
 ## Problem
 
@@ -30,7 +29,7 @@ command namespace is flat, and discoverability next to `core:lsp`'s other `:lsp-
 
 Consequence: with no `core:lsp` in `init.scm` at all, there is no LSP
 install/uninstall/registration feature — `core:plum` never touches `servers/` or the LSP
-catalogs. See `docs/ROADMAP.md`'s "LSP server lifecycle ownership" row for how this
+catalogs. See `docs/LSP.md`'s "LSP server lifecycle ownership" row for how this
 placement was arrived at.
 
 ## Architecture: two seeded data sources, two pins
@@ -138,7 +137,8 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
   it doesn't. `core:lsp/registration.scm` delivers it as both `#:init-options` and
   `#:settings` on `register-lsp-server!`, exactly as Helix delivers the same blob as both
   `initializationOptions` and its own `workspace/configuration` answer — see
-  `docs/ROADMAP.md`'s LSP section for why that's correct rather than a mismatch. The sync
+  [Config delivery & per-server audit](#config-delivery--per-server-audit) for why that's
+  correct rather than a mismatch. The sync
   script emits it with a plain `json.dumps`; the plugin decodes it with the `(json-parse)`
   Steel builtin (`hume-scripting/src/builtins/json.rs`, wrapping the same `json_to_steel`
   conversion `lsp-request` responses already use) at the one place it's consumed
@@ -198,6 +198,31 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
   fail naming the kind and `:lsp-servers` mark the entry "not installable". A Helix-primary
   server Mason doesn't carry at all (no name-mapping match) gets no entry; `:lsp-install`
   for it fails with "no install source" and `:lsp-servers` marks it the same way.
+
+## Config delivery & per-server audit
+
+- **`#:settings` wired up**: pushed once as `workspace/didChangeConfiguration` after
+  `initialized`, and resolved per-item (dotted `section` walked into the blob, VS Code
+  semantics) to answer `workspace/configuration` pull requests. Resolution logic lives in
+  `hume-lsp/src/client.rs` (`resolve_config_section`); the editor glue looks up the
+  requesting server's own registered config by `server_id -> language -> LspState.configs`.
+- **Seeded catalog delivers its config correctly**: `runtime/scheme/lsp-servers.scm`'s
+  `config` field (Helix's `[language-server.*.config]` table, copied verbatim, not LSP
+  workspace settings) is delivered as **both** `#:init-options` and `#:settings` by
+  `core:lsp/registration.scm`, matching Helix's own delivery of the same blob.
+  `initializationOptions` is the path that actually configures most seeded servers.
+- **Per-server config audit** (all 17 seeded servers carrying a `config` blob, verified
+  against each server's own source): 15 work correctly as delivered. Two —
+  `actions-language-server` and `pony-lsp` — need a correction, in both cases tracing to a
+  pre-existing mismatch in Helix's own upstream `languages.toml`. `scripts/sync-grammars.py`'s
+  `CONFIG_OVERRIDES` table corrects both before emission — `actions-language-server`'s blob
+  is double-wrapped under its own name (the server reads `sessionToken` flat, no wrapper);
+  `pony-lsp`'s blob is unwrapped (the server only reads it via a `workspace/configuration`
+  pull for section `"pony-lsp"`, needing that same nesting). gopls and rust-analyzer need no
+  such correction: both request `workspace/configuration` under their own name and miss the
+  unwrapped blob there, but that miss is a harmless no-op for both (gopls's `Options.Set` has
+  an explicit no-op `case nil:`; rust-analyzer's `apply_change_with_sink` guards on
+  `json.is_null()`), since their real configuration arrives via `initializationOptions`.
 
 ## Installation layout
 
@@ -358,52 +383,41 @@ lists) stays in the plugin — Rust never reads them.
   typescript-language-server registers for typescript, tsx, javascript, jsx — N entries in
   the registry, same config.
 
-## Open questions
-
-None — all design questions resolved.
-
 ## Implementation steps
 
-Three steps, each landing green and committable on its own, planned independently (in
-order — each is a pure consumer of the previous step's contract: step 1's generated data
-files, step 2's builtin signatures).
+Shipped in three steps, each a pure consumer of the previous step's contract: a Python-only
+data pipeline (`mason-pin.scm`; extended `sync-grammars.py` → `lsp-servers.scm`; new
+`sync-lsp-sources.py` → `lsp-sources.scm`, with the Helix→Mason name-mapping table and
+unmatched-server report; shared `sync_common.py`); Rust platform primitives (below); and
+`servers.scm` itself (Steel, pure consumer of the previous two — scan-on-load registration,
+`lsp-install`/`lsp-uninstall`/`lsp-servers` commands, receipts, orphan warnings, npm install
+path, missing-server hint, user-manual + `init.scm.example` docs — `core:plum`'s
+`grammars.scm` is the template. Lives in `core:lsp` — see
+[Placement](#placement-corelsp-owns-the-server-lifecycle-end-to-end)).
+Marshalling gotcha: the minibuffer passes the integer `1` to an arity-1 Steel command
+invoked with no argument — the `lsp-install` no-arg branch must test "argument is a
+string", not absence.
 
-- [x] **Step 1 — data pipeline** (Python only, zero editor changes): `mason-pin.scm`;
-  extend `sync-grammars.py` to emit `lsp-servers.scm`; new `sync-lsp-sources.py` emitting
-  `lsp-sources.scm` (with the Helix→Mason name-mapping table and unmatched-server report);
-  shared `sync_common.py`; run both and check in the generated files. Verified by
-  inspecting the generated data plus mechanical cross-checks in the sync scripts: every
-  `lsp-sources.scm` server has an `lsp-servers.scm` entry, every referenced language
-  exists in `languages.scm`, and every language appears under exactly one server.
-- [x] **Step 2 — Rust platform primitives**: last-wins `register-lsp-server!` semantics
-  plus a runtime registration path (registrations are queued and flushed once per eval,
-  not just at init); unregister path + client shutdown (for `:lsp-uninstall` and
-  reinstall-while-running; per-language, matching the registry's language keying — the
-  plugin fans out); attach already-open buffers after registration. `servers.scm` runs
-  `curl`/`git`/`npm` directly through Steel's own `steel/process` (`command`/
-  `spawn-process`/`which`) — per HUME's full-trust plugin model (see `docs/ROADMAP.md`'s
-  plugin trust model decision), there is no path sandbox to route these through. The
-  sandbox-free Rust builtins that survive are ones a Scheme rewrite would only make
-  platform-conditional logic worse: `run-inline-output!` (process-group-isolated spawn,
-  needed because `#:inline-output` commands run with terminal raw mode off and Steel's
-  `spawn-process` has no `setpgid`), `sha256-file` (hash only; the
-  compare-and-delete-on-mismatch logic lives in `lsp/verify-sha256!` in `servers.scm`),
-  platform/arch identifier, `lsp-registered-for-language?` (registry query for the
-  discovery hint), and `unpack-gz`/`unpack-zip` (chmod + archive-format platform logic).
-  `$PATH` lookup (for the already-on-`$PATH` notice) uses Steel's own `which`. The
-  tool-preflight and zip-slip/symlink notes below are otherwise unaffected.
-- [x] **Step 3 — `servers.scm`** (Steel, pure consumer of steps 1+2): scan-on-load
-  registration; `lsp-install` / `lsp-uninstall` / `lsp-servers` commands; receipts; orphan
-  warnings; npm install path; missing-server hint; user-manual + `init.scm.example` docs.
-  `core:plum`'s `grammars.scm` is the template. Lives in `core:lsp` — see
-  [Placement](#placement-corelsp-owns-the-server-lifecycle-end-to-end).
-  Marshalling gotcha: the minibuffer passes the integer
-  `1` to an arity-1 Steel command invoked with no argument — the `lsp-install` no-arg
-  branch must test "argument is a string", not absence.
+**Rust platform primitives**: last-wins `register-lsp-server!` semantics plus a runtime
+registration path (registrations are queued and flushed once per eval, not just at init);
+unregister path + client shutdown (for `:lsp-uninstall` and reinstall-while-running;
+per-language, matching the registry's language keying — the plugin fans out); attach
+already-open buffers after registration. `servers.scm` runs `curl`/`git`/`npm` directly
+through Steel's own `steel/process` (`command`/`spawn-process`/`which`) — per HUME's
+full-trust plugin model (see `docs/ROADMAP.md`'s plugin trust model decision), there is no
+path sandbox to route these through. The sandbox-free Rust builtins that survive are ones a
+Scheme rewrite would only make platform-conditional logic worse: `run-inline-output!`
+(process-group-isolated spawn, needed because `#:inline-output` commands run with terminal
+raw mode off and Steel's `spawn-process` has no `setpgid`), `sha256-file` (hash only; the
+compare-and-delete-on-mismatch logic lives in `lsp/verify-sha256!` in `servers.scm`),
+platform/arch identifier, `lsp-registered-for-language?` (registry query for the
+discovery hint), and `unpack-gz`/`unpack-zip` (chmod + archive-format platform logic).
+`$PATH` lookup (for the already-on-`$PATH` notice) uses Steel's own `which`. The
+tool-preflight and zip-slip/symlink notes below are otherwise unaffected.
 
 ### Required external tools
 
-sha256 verification and archive unpacking (step 2) shell out to each platform's
+sha256 verification and archive unpacking (the Rust-platform-primitives step) shell out to each platform's
 canonical system tool rather than pulling in hashing/archive crates — a deliberate
 choice (see below), traded for a hard runtime dependency on these being present:
 
@@ -419,7 +433,7 @@ choice (see below), traded for a hard runtime dependency on these being present:
 Linux and `gzip` on Windows as the only new hard requirements for github/npm-kind
 installs. cargo-kind installs are opt-in per server and add a Rust toolchain requirement
 only for those. `:lsp-install` preflights
-the specific tool an install needs (via Steel's `which` — see the Step 2 note above)
+the specific tool an install needs (via Steel's `which` — see the Rust-platform-primitives note above)
 before downloading anything, so a missing tool fails loudly naming it rather than
 partway through an install.
 
@@ -433,7 +447,7 @@ developer's `git`/build toolchain — costs no new install step in the common ca
 Info-ZIP strips `../` entries; bsdtar refuses them by default), rather than implemented in
 HUME. The residual risk is bounded by the sync-time sha256 pin: `unpack-zip` runs only
 after `lsp/verify-sha256!` (Scheme, `servers.scm` — wraps the sandbox-free `sha256-file`
-builtin; see the Step 2 update note above) has confirmed the archive matches the
+builtin; see the Rust-platform-primitives note above) has confirmed the archive matches the
 maintainer-vetted, hash-locked asset recorded in `lsp-sources.scm` — an attacker would need
 to compromise the pinned upstream release itself, not just something interposed at install
 time.

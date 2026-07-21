@@ -401,7 +401,7 @@ Entering: set up the minibuffer with `prompt` display = label (the existing `pro
 
 ### B10 — Platform addendum (Step 4 prerequisite)
 
-**Goal** — four small platform gaps surfaced while verifying the Step 4 (F1–F11) cards against the tree: no Step 4 feature can be written zero-Rust without them (hub rule 4). Landed as one Rust pre-task, its own commit, before F1.
+**Goal** — four small platform gaps surfaced while verifying the Step 4 (F1–F11) cards against the tree: no Step 4 feature could be written zero-Rust without them. Landed as one Rust pre-task, its own commit, before F1.
 
 **Depends** — B4 (hooks fire through the same queued-delivery path), B7 (extends its `HookId`/`HOOKS` table), B8 (extends `StoredCompletionItem`/`CompletionSession`). **Unlocks** — F3, F7, F8, F10.
 

@@ -1,41 +1,16 @@
 # HUME — LSP Support
 
-Design and task breakdown for Language Server Protocol support. All LSP decisions live here (moved out of `ROADMAP.md`, which keeps a pointer).
+Design and shared reference for HUME's Language Server Protocol support (shipped). All LSP decisions live here (moved out of `ROADMAP.md`, which keeps a pointer).
 
-This file is the **hub**: architecture, decisions, open questions, shared reference (protocol primer, codebase orientation, Steel API index, implementation order, testing playbook), and the progress tracker. Per-task implementation cards live in the step files:
+This file is the **hub**: architecture, decisions, shared reference (protocol primer, codebase orientation, Steel API index, testing playbook), and per-step shipped summaries. Per-task implementation cards live in the step files:
 
 | File | Contents |
 |------|----------|
 | `docs/lsp/step-0.md` | P1–P8 — prerequisites (workspace groundwork) |
 | `docs/lsp/step-1.md` | C1–C10 — LSP core (Rust data plane) |
-| `docs/lsp/step-2.md` | B1–B9 — Steel platform (bridge + primitives) |
+| `docs/lsp/step-2.md` | B1–B10 — Steel platform (bridge + primitives) |
 | `docs/lsp/step-3.md` | U1–U9 — UI surfaces (widgets + render wiring) |
 | `docs/lsp/step-4.md` | F1–F11 — features (Steel, `core:lsp` plugin) |
-
-## How to use this document
-
-Rules for the implementing session. Follow them exactly.
-
-1. **One task per session.** Pick the first task in the [Implementation order](#implementation-order) whose checkbox (in the step sections below) is still unticked. Read: this hub's Overview + the sections your task card references, the task's card in its step file, and every file in the card's *Read first* list. Do not start coding before that.
-2. **Verify before you write.** Cards name real files, types, and functions, but the codebase moves. Before relying on any named symbol, confirm it exists (`rg 'symbol_name'`). The doc deliberately avoids line numbers — navigate by symbol search.
-3. **If the doc contradicts the code, STOP.** Do not improvise a workaround, do not silently adapt the design. Report the contradiction and wait for guidance. Same rule if a card's approach turns out to be impossible as written.
-4. **Stay inside the card.** No drive-by refactors, no extra features, no "while I'm here". If a Step 4 feature needs a Rust change, that is a missing platform primitive: stop and report (fix belongs in a Step 1–3 task, not inline).
-5. **A task is done when** every item in its card's *Done when* list is true, `cargo test --workspace` is green, and the task's checkbox in this hub is ticked. If the card was a decision gate (see Open Questions), also move the resolved question into the Decisions table with its rationale.
-6. **Defaults are decisions.** Every open question has a `Default:`. At the gate, adopt the default unless the gate's own evidence (e.g. P8 numbers) contradicts it. Never leave a gate undecided.
-7. Project-wide rules from `CLAUDE.md` apply everywhere: no `.unwrap()` outside tests, grapheme discipline in motion/selection code, every command tested, idiomatic Rust. Read `docs/LESSONS.md` at session start.
-
-**Card format** (used by all step files):
-
-- **Goal** — what exists after the task.
-- **Depends / Unlocks** — hard ordering edges.
-- **Files** — create/modify list (paths are indicative; verify parent modules).
-- **Read first** — files/symbols to read before planning.
-- **Mimic** — the existing code whose *pattern* you copy.
-- **Shape** — signature sketches. These are design contracts, not literal code: names and argument shapes should survive; adjust internals to fit reality.
-- **Tests** — what to test and with which harness.
-- **Done when** — acceptance checklist.
-- **Traps** — task-specific mistakes to avoid.
-- **Size** — rough effort calibration (source + test lines, excluding churn).
 
 ## Overview
 
@@ -104,15 +79,15 @@ Steps 1–3 are ordered by dependency but Step 4 tasks unlock incrementally — 
 | `diagnostics-for-buffer`'s `raw` field | **Each entry carries the original wire `Diagnostic` JSON verbatim** | `textDocument/codeAction`'s `context.diagnostics` must echo back the *raw* diagnostics currently shown in the request range — servers gate diagnostic-derived quickfixes on this, treating an empty array as "the client isn't showing any diagnostics here." `StoredDiag`'s `raw: serde_json::Value` field is captured at ingest before the wire `Diagnostic` is consumed, exposed as a `"raw"` key in `diagnostics-for-buffer`'s output; `actions.scm` extracts it directly, no position math in Steel. |
 | Snippet completions (F3) | **Strip to plain text, Rust-side** | `insertTextFormat == 2` items get `${n:default}` rewritten to `default` and bare `$n` dropped at store ingress (`StoredCompletionItem::from_typed`/`from_json_lenient`, `hume-editor/src/editor/lsp/completion.rs`'s `strip_snippet`) — no choices, no nested placeholders, no `\$` escapes. `raw` (and so `on-completion-accept`/`completionItem/resolve`) carries the pristine, unstripped snippet text, since a server may echo/consume the original snippet syntax. Full snippet support (tabstop navigation, multi-cursor placeholder selection) stays Future — the insert-mode state machine for that is Rust, not Steel. |
 | Multi-character inline inserts | **`hume-engine/src/format.rs`: one `Grapheme`/`Cell` per grapheme cluster of the insert text, not one cell for the whole string** | `CellContent::Virtual`'s render arm reserves `width` columns per multi-character insert (inlay hints, inline diagnostics); ratatui writes one cell per terminal column, so a symbol wider than one cell must be split into one `Cell` per grapheme or its spillover gets overwritten by the next cell write. |
-| Server crash policy | **Manual `:lsp-restart [language]` only — no auto-restart** | `core:lsp` Steel command over an `lsp-restart!` builtin (queued onto `PendingLspServerOp`, applied by `Editor::apply_lsp_server_ops`) — see the "LSP server lifecycle ownership" row in `docs/ROADMAP.md`. Stops then respawns through the same spawn path. |
-| `workspace/configuration` flow | **`register-lsp-server!`'s `#:settings` blob pushed once as `didChangeConfiguration` after `initialized`, and resolved per-item (dotted `section` walked into the blob — VS Code semantics: no section returns the whole blob, a miss returns `null`) to answer `workspace/configuration` pull requests** | Resolution and push live in `hume-lsp/src/client.rs` (`resolve_config_section`, `workspace_configuration_response`, the push in `handle_initialize_response`); the editor glue resolves the requesting server's own config (`server_id -> introspect::server_language -> LspState.configs`) in `hume-editor/src/editor/lsp/mod.rs`'s `ServerRequest` dispatch arm and `registry.rs`'s spawn branch. A server asking for a specific `section` gets that sub-object, not the whole blob, matching how real servers (gopls, rust-analyzer) actually request their config. A miss is expected and harmless, same as in Helix; see `docs/ROADMAP.md`'s LSP section. Real configuration for these seeded servers arrives via `#:init-options` (the catalog's `config` field), not this pull path. |
-| Multiple servers per language | **Last-wins: a second `register-lsp-server!` for a language *replaces* its config (matching `define-language!`), rather than being rejected.** Running clients on the old config are left untouched until their next spawn — a caller needing an immediate respawn (e.g. reinstalling a server) unregisters explicitly first via `unregister-lsp-server!`. Both builtins are queued and applied via `Editor::apply_lsp_server_ops` at the end of an init eval or a command/hook body — see `docs/LSP-INSTALL.md` step 2. A *lazy* plugin activation (`#:languages`/`#:events`/`#:commands`) applies its own queued registration synchronously too — `activate_and_register` (`hume-editor/src/editor/mappings/lazy.rs`) runs `apply_script_effects` before returning, so the buffer whose language-set (or command/event) triggered activation attaches in that same call — see `docs/ROADMAP.md`'s "Lazy-activation side effects" decision row. | `hume-editor/src/editor/lsp/registry.rs`'s `apply_pending_lsp_server_reg`/`apply_lsp_server_op`. The diagnostics store keys by `(server, buffer)`, leaving room for a future per-buffer override without a data-model change. A hard error on re-registration would make user config unable to win over a plugin's default; `init.scm` loads after every plugin, so a user's own `register-lsp-server!` for a language a plugin already registered (e.g. overriding a plugin's `pyright` default with `pylsp`) must silently replace it. The replacement is logged at `Severity::Trace` (visible via `:messages`), since last-wins is the intended, unsurprising outcome, not a conflict — this is not a missing duplicate-registration guard. |
+| Server crash policy | **Manual `:lsp-restart [language]` only — no auto-restart** | `core:lsp` Steel command over an `lsp-restart!` builtin (queued onto `PendingLspServerOp`, applied by `Editor::apply_lsp_server_ops`) — see the "LSP server lifecycle ownership" row above. Stops then respawns through the same spawn path. |
+| `workspace/configuration` flow | **`register-lsp-server!`'s `#:settings` blob pushed once as `didChangeConfiguration` after `initialized`, and resolved per-item (dotted `section` walked into the blob — VS Code semantics: no section returns the whole blob, a miss returns `null`) to answer `workspace/configuration` pull requests** | Resolution and push live in `hume-lsp/src/client.rs` (`resolve_config_section`, `workspace_configuration_response`, the push in `handle_initialize_response`); the editor glue resolves the requesting server's own config (`server_id -> introspect::server_language -> LspState.configs`) in `hume-editor/src/editor/lsp/mod.rs`'s `ServerRequest` dispatch arm and `registry.rs`'s spawn branch. A server asking for a specific `section` gets that sub-object, not the whole blob, matching how real servers (gopls, rust-analyzer) actually request their config. A miss is expected and harmless, same as in Helix; see `docs/LSP-INSTALL.md`'s "Config delivery & per-server audit" section. Real configuration for these seeded servers arrives via `#:init-options` (the catalog's `config` field), not this pull path. |
+| Multiple servers per language | **Last-wins: a second `register-lsp-server!` for a language *replaces* its config (matching `define-language!`), rather than being rejected.** Running clients on the old config are left untouched until their next spawn — a caller needing an immediate respawn (e.g. reinstalling a server) unregisters explicitly first via `unregister-lsp-server!`. Both builtins are queued and applied via `Editor::apply_lsp_server_ops` at the end of an init eval or a command/hook body — see `docs/LSP-INSTALL.md`'s "Registration model" section. A *lazy* plugin activation (`#:languages`/`#:events`/`#:commands`) applies its own queued registration synchronously too — `activate_and_register` (`hume-editor/src/editor/mappings/lazy.rs`) runs `apply_script_effects` before returning, so the buffer whose language-set (or command/event) triggered activation attaches in that same call — see `docs/ROADMAP.md`'s "Lazy-activation side effects" decision row. | `hume-editor/src/editor/lsp/registry.rs`'s `apply_pending_lsp_server_reg`/`apply_lsp_server_op`. The diagnostics store keys by `(server, buffer)`, leaving room for a future per-buffer override without a data-model change. A hard error on re-registration would make user config unable to win over a plugin's default; `init.scm` loads after every plugin, so a user's own `register-lsp-server!` for a language a plugin already registered (e.g. overriding a plugin's `pyright` default with `pylsp`) must silently replace it. The replacement is logged at `Severity::Trace` (visible via `:messages`), since last-wins is the intended, unsurprising outcome, not a conflict — this is not a missing duplicate-registration guard. |
 | `(declared-plugins)` scope | **Reports every declared plugin, `core:*` included** | Generic introspection, not scoped to any one consumer. `plum/missing-plugins` (`plugins.scm`) is where the never-install-core filter belongs — core plugins being un-installable is PLUM's install-list policy, not a property of what `init.scm` declared, so it filters `core:*` back out locally rather than the builtin doing it globally. |
 | Supersede-cancel for `lsp-request` | **Explicit opt-in `#:supersede <key>` on `lsp-request`** | A new request with `#:supersede "k"` cancels the caller's own previous still-pending request filed under `(server, "k")`: `$/cancelRequest` sent on the wire (only once `Running`; a no-op if the response already arrived), its pending entry dropped, and its callback silently removed (never fires) rather than left to race the new one. Cleanup: the `(server, key) -> id` map entry is removed in `dispatch_completed` (covers response/timeout/crash-drain/`:lsp-stop`-drain, all of which funnel there) and swept per-server in `lsp_stop_one` as a belt for a response that arrived but was never drained. `completion.scm`'s per-keystroke refilter is the only v1 caller (`#:supersede "completion"`) — hover/sighelp are one-shot, not re-issued per keystroke, so they don't need it. Cancellation is never automatic by method name — that would silently cancel two features' concurrent same-method requests (e.g. two plugins both calling `textDocument/hover`) that were never meant to race each other; explicit opt-in keeps the policy in Steel, where it belongs. |
-
-## Open Questions
-
-None. `workspace/didChangeWatchedFiles` is tracked under [Deferred / Future](#deferred--future) below — it never had a v1 implementation to decide on, only a "not required" default. Future gates that open a new question go here, with a **Default** per rule 6 above, until resolved into Decisions.
+| LSP server lifecycle ownership | **`core:lsp` owns install, uninstall, registration, and runtime management (`:lsp-status`/`:lsp-stop`/`:lsp-restart`) end to end; `core:plum` is not involved** | A package manager alone must not silently turn on diagnostics with no way to interact with them, and loading only `core:plum` must not expose `:lsp-install`/`:lsp-uninstall`/`:lsp-servers` with no LSP feature plugin loaded. `core:lsp`'s own scan (`lsp/register-installed-servers!`) is called directly after install/uninstall. `:lsp-status`/`:lsp-stop`/`:lsp-restart` are thin `define-command!` wrappers in `core:lsp` over `lsp-show-status!`/`lsp-stop!`/`lsp-restart!` Steel builtins, which queue onto the `PendingLspServerOp` end-of-eval drain (the Steel-eval-time `EditorHost` impl only holds `&mut EditorState`/`&mut EngineView`, not `&mut Editor`, which `Editor::lsp_stop`/`lsp_restart`/`open_read_only_view` need). See `docs/LSP-INSTALL.md`'s "Placement" and "Registration model" sections. |
+| LSP default keybindings | **All bound by `core:lsp` itself (`bind-key!` in `plugin.scm`), none in Rust's native default keymaps** | With no `core:lsp` loaded or declared, none of its keys — including `Ctrl+Space` → `lsp-completion-trigger` — exist at all: no post-init keymap lint warning, no dead binding. |
+| `lsp.rs` module split + embedded Scheme as `.scm` | **`builtins/lsp.rs` holds server lifecycle, request/notify bridge, and introspection only. Decorations/diagnostics live in `decorations.rs`; completion orchestration + `register-trigger-chars!` in `completion.rs`; text-edit/goto-location primitives in `edits.rs`; generic buffer/cursor reads (`viewport-range`, `selection-spans-full-line?`, `symbol-under-cursor`) in `buffers.rs`; `%prompt!` in `ui.rs`. `BOOTSTRAP` and `PRINT_GATE_SHIMS` live as `builtins/bootstrap.scm`/`builtins/print_gate_shims.scm`, embedded via `include_str!`.** | Every builtin module stays scoped to one concern; every Steel name, gate kind, and behavior is unchanged from a plugin author's perspective. |
+| Virtual-line-aware scroll/cursor math (U8, `docs/lsp/step-3.md`) | **Landed end to end; wrap-mode paths only** | `hume-editor`'s `cursor::screen_pos`/`screen_to_char_offset` and `scroll::ensure_cursor_visible`/`scroll_cursor_to_row`/`scroll_backward_from_cursor` thread `&ProviderSet`/`content_width` through and use `format::display_rows_for_line`'s `RowsBreakdown` (`{before, content, after}`) instead of content-only `count_visual_rows`. Scoped to the *wrapping* code path only: `ensure_cursor_visible_unwrapped` (no-wrap vertical scroll) and `ensure_cursor_visible_horizontal`/`format_row_col` (column math, never cross-line) stay untouched — a virtual line's effect on no-wrap vertical scrolling remains unhandled. A viewport's own top line never shows its own `before` block (shown only when reached mid-walk from an earlier top line) — landing `top_row_offset` exactly at a line's content-row-0 must round the cut *down* past any `before`, never overshoot into it, since virtual rows can't be partially scrolled. The first real `VirtualLineSource` (`PaneVirtualLines`, per-pane `HashMap<line, Vec<VirtualLine>>`) is fed by `update_virtual_line_providers` from `decorations.virtual_lines`, gated on a `virtual_lines_generation` counter (bumped by `set_virtual_lines`) so the per-pane mirror only rebuilds on a real change, not every frame — this runs in scroll/cursor math too, not just render. `VirtualLineEntry` has an optional whole-line `scope` (`(line text)` or `(line text scope)`), falling back to the `ui.virtual` theme key (the same one `Theme::ui.virtual_text`, the struct field, resolves from) when absent. Every entry anchors `After(line)` — no `Before` in v1. `ViewportState.top_row_offset` indexes content (wrap) rows only. |
 
 ## LSP protocol primer
 
@@ -219,28 +194,19 @@ Every Steel-visible surface Steps 1–3 introduce. Cards define the semantics; t
 | `(show-popup! text #:anchor 'cursor #:dismiss-on-key #f)` / `(close-popup!)` — `#:dismiss-on-key`: cleared by `Editor::handle_key`'s top-of-loop check on the *next* key, whatever it is (`gn`/`gp`'s overlay), instead of only by `close-popup!`/`on-mode-change` | builtin | U4, U8 |
 | `(show-menu! items on-select)` / `(close-menu!)` | builtin | U5 |
 | `(show-drawer-list! items on-select)` / `(close-drawer!)` — `items` is a flat list of pre-formatted display strings; `on-select` receives an index and may fire more than once (drawer stays open until `Esc`/`close-drawer!`, which calls it with `#f`) | builtin | U6 |
-| `:lsp-status`, `:lsp-stop`, `:lsp-restart` | `core:lsp` typed commands over `(lsp-show-status!)`/`(lsp-stop! lang)`/`(lsp-restart! lang)` builtins | C10, moved into `core:lsp` — see `docs/ROADMAP.md` |
+| `:lsp-status`, `:lsp-stop`, `:lsp-restart` | `core:lsp` typed commands over `(lsp-show-status!)`/`(lsp-stop! lang)`/`(lsp-restart! lang)` builtins | C10, moved into `core:lsp` — see the "LSP server lifecycle ownership" row above |
 | `(get-option key)` → the effective value (buffer override, else global), typed `bool`/`int`/`string` per the setting's parser kind; `Err` on an unknown key | builtin | B10b |
 | Settings knobs (`lsp.request-timeout-ms`, `lsp.diagnostics-severity-floor`, `lsp.inlay-hints` (default `false`), …) | via existing `:set` / `set-option!` / `get-option` | owning cards |
 
-## Implementation order
+## Manual smoke checks
 
-Canonical linearization — implement top to bottom. Progress is tracked by the checkboxes in the step sections below (the single tracker — tick there, not here). The only intentional deviations from numeric order: P8 needs serde (P1); P5/P6 live in `hume-lsp` so they follow C1.
+Observable proof each step landed, kept for reference.
 
-1. **Step 0 + Step 1 core:** P1 → P8 → P2 → P3 → P7 → P4 → C1 → P5 → P6 → C2 → C3 → C4 → C5 → C6 → C8 → C7 → C9 → C10
-2. **Step 2 (Steel platform):** B1 → B2 → B3 → B4 → B7 → B5 → B6 → B9 → B8 → B10 (Step 4 prerequisite, landed once Step 4 verification surfaced the gaps)
-3. **Step 3 (UI surfaces):** U1 → U2 → U3 → U4 → U5 → U6 → U9 → U7 → U8
-4. **Step 4 (features; each unlocks when its composition exists):** F1 → F2 → F6 → F4 → F5 → F8 → F9 → F7 → F3 → F10 → F11
-
-### Milestone checkpoints
-
-Observable proof that a step landed. Run the check before starting the next step.
-
-- **After Step 0**: `cargo test --workspace` green; editor behaves identically in normal use (the wake/timer refactor is invisible); P8's numbers are recorded in this hub (Decisions/OQ updated).
-- **After Step 1**: with rust-analyzer registered in `init.scm` and a `.rs` file open — `:lsp-status` shows the server `Running` with the correct root; typing produces no protocol errors in `:messages`; quitting the editor leaves no orphan `rust-analyzer` process (`pgrep`).
-- **After Step 2**: from `init.scm`: an `(lsp-request … "textDocument/hover" … (lambda (err res) …))` round-trip logs a result; `(after 200 thunk)` fires once; `(apply-text-edits! …)` performs an undoable edit. All against the C4 double in tests, against rust-analyzer manually.
-- **After Step 3**: introduce an error into a `.rs` file → underline + gutter sign + statusline count appear (no `core:lsp` plugin yet — wired via a test snippet in `init.scm`); `(show-popup! "hi")` renders at the cursor and `(close-popup!)` removes it.
-- **After Step 4**: each F-card's *Done when* manual check; `:plugin-status` shows `core:lsp` lazy-loading on first matching buffer.
+- **Step 0**: `cargo test --workspace` green; editor behaves identically in normal use (the wake/timer refactor is invisible); P8's numbers are recorded in this hub's Decisions table.
+- **Step 1**: with rust-analyzer registered in `init.scm` and a `.rs` file open — `:lsp-status` shows the server `Running` with the correct root; typing produces no protocol errors in `:messages`; quitting the editor leaves no orphan `rust-analyzer` process (`pgrep`).
+- **Step 2**: from `init.scm`: an `(lsp-request … "textDocument/hover" … (lambda (err res) …))` round-trip logs a result; `(after 200 thunk)` fires once; `(apply-text-edits! …)` performs an undoable edit. All against the C4 double in tests, against rust-analyzer manually.
+- **Step 3**: introduce an error into a `.rs` file → underline + gutter sign + statusline count appear (no `core:lsp` plugin yet — wired via a test snippet in `init.scm`); `(show-popup! "hi")` renders at the cursor and `(close-popup!)` removes it.
+- **Step 4**: each F-card's *Done when* manual check; `:plugin-status` shows `core:lsp` lazy-loading on first matching buffer.
 
 ## Testing playbook
 
@@ -259,76 +225,23 @@ Test-writing rules (from `CLAUDE.md`, restated because they bite here):
 
 ## Step 0 — Prerequisites
 
-Workspace groundwork with no LSP-visible behavior. Cards: `docs/lsp/step-0.md`. Note P5/P6 live in `hume-lsp` and therefore follow C1 (see Implementation order).
-
-- [x] **P1** — serde + serde_json workspace deps (fires the toml 0.8→1.x evaluation)
-- [x] **P2** — batch position mapping (`PosMapCursor` public API)
-- [x] **P3** — generalized event-loop wake (compose async sources behind one predicate)
-- [x] **P4** — position encoding conversion (rope char offset ↔ LSP line/character, utf-8 + utf-16)
-- [x] **P5** — path ↔ `file://` URI (in `hume-lsp`)
-- [x] **P6** — `ChangeSet` → `TextDocumentContentChangeEvent[]` (in `hume-lsp`)
-- [x] **P7** — event-loop timer wheel
-- [x] **P8** — boundary-cost spike (measure, then decide; updates this hub)
+Workspace groundwork with no LSP-visible behavior. All prerequisite tasks shipped (P1–P8: serde/serde_json deps, batch position mapping, generalized event-loop wake, position encoding conversion, path↔URI, `ChangeSet` conversion, timer wheel, boundary-cost spike). Cards: `docs/lsp/step-0.md`.
 
 ## Step 1 — LSP core (Rust data plane)
 
-The `hume-lsp` crate plus editor glue: spawn, handshake, document sync, diagnostics in memory. After this step nothing is visible except `:lsp-status` and the message log — but the data plane is complete. Cards: `docs/lsp/step-1.md`.
-
-- [x] **C1** — crate scaffold (`hume-lsp/`, deps: `lsp-types` + serde + `hume-editing` only)
-- [x] **C2** — JSON-RPC codec (framing, message enum, id allocation/correlation)
-- [x] **C3** — server process management (reader/writer/stderr threads, `ServerHandle`, kill-on-drop)
-- [x] **C4** — `LspBackend` trait + `InlineLspBackend` scripted double
-- [x] **C5** — lifecycle (initialize handshake, capability storage, shutdown, crash detection)
-- [x] **C6** — request bookkeeping (deadlines, staleness by `text_gen`, `$/cancelRequest`, server→client request dispatch)
-- [x] **C7** — document sync glue (didOpen/didChange/didSave/didClose from `ChangeSet`s)
-- [x] **C8** — server registration (`register-lsp-server!`, root resolution, spawn-on-first-open)
-- [x] **C9** — diagnostics store (Rust-ingested, P4-converted, P2-remapped; bulk never reaches Steel)
-- [x] **C10** — observability + lifecycle commands (`:lsp-status` / `:lsp-stop` / `:lsp-restart`, stderr → log)
+The `hume-lsp` crate plus editor glue: spawn, handshake, document sync, diagnostics in memory. All core tasks shipped (C1–C10: crate scaffold, JSON-RPC codec, process management, `LspBackend` trait + inline double, lifecycle, request bookkeeping, document sync, server registration, diagnostics store, observability/lifecycle commands). Cards: `docs/lsp/step-1.md`.
 
 ## Step 2 — Steel platform
 
-The bridge and primitives that make Steel the feature layer. After it, a plugin can reach any LSP method and any editor surface. Cards: `docs/lsp/step-2.md`.
-
-- [x] **B1** — JSON↔SteelVal codec (null ↔ void; sized by P8)
-- [x] **B2** — generic LSP bridge (`lsp-request` / `lsp-notify` / `on-lsp-notification`)
-- [x] **B3** — introspection builtins (capabilities, status, generation, server-for-buffer)
-- [x] **B4** — Steel timers (`after`, `debounce`, debounced hook variants)
-- [x] **B5** — decoration stores + setters + diagnostics pull
-- [x] **B6** — edit + navigation primitives (`apply-text-edits!`, `apply-workspace-edit!`, `goto-location!`)
-- [x] **B7** — new hooks (`on-lsp-attach`, `on-diagnostics-changed`, `on-viewport-change`, `on-trigger-char`)
-- [x] **B8** — completion orchestration API (Rust store + filter, Steel session driver)
-- [x] **B9** — Steel minibuffer prompt (`prompt!` — F5 needs it; no prompt primitive exists today)
-- [x] **B10** — platform addendum for Step 4 (`register-trigger-chars!` context relax, `get-option`, completion accept/refilter hooks, `lsp.inlay-hints` default)
+The bridge and primitives that make Steel the feature layer — a plugin can reach any LSP method and any editor surface. All platform tasks shipped (B1–B10: JSON↔SteelVal codec, generic LSP bridge, introspection builtins, timers, decoration stores, edit/navigation primitives, hooks, completion orchestration, minibuffer prompt, Step 4 platform addendum). Cards: `docs/lsp/step-2.md`.
 
 ## Step 3 — UI surfaces
 
-Generic, Steel-scriptable widgets plus store-fed render wiring. The engine primitives mostly exist (reserved `HighlightTier::Diagnostic`, `SignColumn`/`SignSource`, `VirtualLineSource`, `InlineDecoration`, `OverlayProvider`) — LSP is their first client, not their owner. Cards: `docs/lsp/step-3.md`.
-
-- [x] **U1** — diagnostic underlines (third `SharedHighlighter`, Diagnostic tier) + extra-highlights wiring
-- [x] **U2** — diagnostic gutter signs (first real `SignColumn` registration)
-- [x] **U3** — statusline diagnostics element (Rust element over the C9 store)
-- [x] **U4** — cursor-anchored popup widget (`show-popup!`)
-- [x] **U5** — selection menu widget (`show-menu!`)
-- [x] **U6** — Class B bottom drawer (minimal) + location list (`show-drawer-list!`)
-- [x] **U7** — in-buffer completion menu + dispatch (insert-mode flow over B8 + U4)
-- [x] **U8** — inline diagnostics: end-of-line summary (`InlineDecoration`, same shape as U9 — not `VirtualLineSource`; a line's leftmost diagnostic supplies the message, its most severe supplies the color) + `gn`/`gp`'s dismiss-on-next-key full-message popup (`show-popup! #:dismiss-on-key`)
-- [x] **U9** — inlay-hint rendering (`InlineDecoration` over B5's store)
+Generic, Steel-scriptable widgets plus store-fed render wiring — LSP is their first client, not their owner. All UI-surface tasks shipped (U1–U9: diagnostic underlines, gutter signs, statusline element, popup, menu, drawer, completion menu, inline diagnostics, inlay hints). Cards: `docs/lsp/step-3.md`.
 
 ## Step 4 — Features (Steel, `core:lsp`)
 
-Each feature is Steel code composing Steps 2–3 primitives; all are testable against the C4 double with scripted responses. **Rust changes in this step must be zero** — a needed Rust change means a missing platform primitive: stop and report. Cards: `docs/lsp/step-4.md`. (Tags omit B3 — every feature also uses its capability checks and params helpers.)
-
-- [x] **F1** — hover *(B2, U4, U6)*
-- [x] **F2** — goto definition family *(B2, B6, U6)*
-- [x] **F3** — completions *(B2, B7, B8, U7)*
-- [x] **F4** — diagnostics navigation *(B5, B6, U6)*
-- [x] **F5** — rename *(B2, B6, B9)*
-- [x] **F6** — references *(B2, U6)*
-- [x] **F7** — signature help *(B2, B4, B7, U4)*
-- [x] **F8** — formatting *(B2, B6)*
-- [x] **F9** — code actions *(B2, B5, B6, U5)*
-- [x] **F10** — inlay hints *(B2, B4, B5, B7, U9)*
-- [x] **F11** — `core:lsp` packaging + docs
+Each feature is Steel code composing Steps 2–3 primitives, tested against the C4 double with scripted responses. All feature tasks shipped (F1–F11: hover, goto definition family, completions, diagnostics navigation, rename, references, signature help, formatting, code actions, inlay hints, `core:lsp` packaging + docs). Cards: `docs/lsp/step-4.md`.
 
 ## Deferred / Future
 

@@ -1,6 +1,6 @@
 # LSP Step 4 — Features in Steel, `core:lsp` (task cards)
 
-Each feature is Steel code composing Step 2–3 primitives. **Rust changes in this step must be zero** — a needed Rust change means a missing platform primitive: stop and report (hub rule 4). Read `docs/LSP.md` (hub) first, especially the *Steel API index* and the primer's *v1 method map*.
+Each feature is Steel code composing Step 2–3 primitives. **Rust changes in this step must be zero** — a needed Rust change means a missing platform primitive. Read `docs/LSP.md` (hub) first, especially the *Steel API index* and the primer's *v1 method map*.
 
 Shared context for all F-cards:
 - Code lives in `runtime/plugins/core/lsp/` — `plugin.scm` entry + one file per feature area via relative `require` (mimic `runtime/plugins/core/plum/`'s multi-file layout). Until F11 packages it, develop features as `init.scm` snippets or directly in the plugin with an eager `(load-plugin "core:lsp")` in your test init.

@@ -1,8 +1,8 @@
 # LSP Step 0 — Prerequisites (task cards)
 
-Workspace groundwork with no LSP-visible behavior. Read `docs/LSP.md` (the hub) first — especially *How to use this document*, the *protocol primer*, and the *orientation map*. Card format is defined in the hub.
+Workspace groundwork with no LSP-visible behavior. Read `docs/LSP.md` (the hub) first — especially the *protocol primer* and the *orientation map*.
 
-Ordering inside this step (from the hub's Implementation order): **P1 → P8 → P2 → P3 → P7 → P4**, then C1 (step 1), then **P5 → P6**. P5/P6 live in `hume-lsp`, so they need C1's crate scaffold.
+Ordering inside this step: **P1 → P8 → P2 → P3 → P7 → P4**, then C1 (step 1), then **P5 → P6**. P5/P6 live in `hume-lsp`, so they need C1's crate scaffold.
 
 ---
 
