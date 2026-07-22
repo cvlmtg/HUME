@@ -145,6 +145,26 @@ mod tests {
         line
     }
 
+    /// True if `code` assigns to a `.statusline` field (`x.statusline = …`),
+    /// not an equality comparison (`x.statusline == …`) or an unrelated field
+    /// (`x.statusline_foo = …`). A naive `contains(".statusline =")` matches
+    /// `==` too — a false positive that would fail the build on a legitimate
+    /// comparison.
+    fn assigns_statusline(code: &str) -> bool {
+        let mut rest = code;
+        while let Some(idx) = rest.find(".statusline") {
+            let after = &rest[idx + ".statusline".len()..];
+            let after_trimmed = after.trim_start();
+            if let Some(tail) = after_trimmed.strip_prefix('=') {
+                if !tail.starts_with('=') {
+                    return true; // single `=` → assignment, not `==`
+                }
+            }
+            rest = &rest[idx + ".statusline".len()..];
+        }
+        false
+    }
+
     /// Scan motion-related source files for raw char-level stepping.
     ///
     /// The grapheme cluster invariant (CLAUDE.md) requires that all position
@@ -701,7 +721,7 @@ mod tests {
                     continue;
                 }
                 let code = strip_line_comment(line);
-                if code.contains(".statusline =") {
+                if assigns_statusline(code) {
                     violations.push(format!("  {rel}:{} — {trimmed}", lineno + 1));
                 }
             }
@@ -715,6 +735,19 @@ mod tests {
              Violations:\n{}\n",
             violations.join("\n")
         );
+    }
+
+    // ── assigns_statusline ────────────────────────────────────────────────────
+
+    #[test]
+    fn assigns_statusline_distinguishes_comparison() {
+        // Fail oracle: revert assigns_statusline to `code.contains(".statusline =")`
+        // and the `==` cases below must start failing (they'd report as assignments).
+        assert!(assigns_statusline("buf.statusline = new_val;"));
+        assert!(assigns_statusline("buf.statusline=new_val;"));
+        assert!(!assigns_statusline("if buf.statusline == default {"));
+        assert!(!assigns_statusline("if buf.statusline_foo = default {"));
+        assert!(!assigns_statusline("let x = buf.statusline;"));
     }
 
     // ── strip_line_comment ────────────────────────────────────────────────────
