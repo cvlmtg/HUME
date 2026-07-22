@@ -99,6 +99,52 @@ mod tests {
         }
     }
 
+    /// The portion of `line` before any line comment (`//`), skipping `//`
+    /// that appears inside a string literal — a naive `line.find("//")`
+    /// would truncate a call like `write_setting(scope, key, "a//b", ...)`
+    /// at the string's embedded `//`, hiding the rest of the line (and any
+    /// forbidden pattern in it) from every lint that strips comments this
+    /// way. Escaped quotes (`\"`) inside a string keep it open; char
+    /// literals (`'x'`, `'\x'`) are skipped so their quote marks don't
+    /// falsely open/close string tracking; a bare `'` that isn't a char
+    /// literal (a lifetime) is left alone. Raw strings (`r"..."`) are not
+    /// handled — none of the scanned patterns appear inside one today.
+    fn strip_line_comment(line: &str) -> &str {
+        let bytes = line.as_bytes();
+        let mut in_string = false;
+        let mut escaped = false;
+        let mut i = 0;
+        while i < bytes.len() {
+            let b = bytes[i];
+            if in_string {
+                if escaped {
+                    escaped = false;
+                } else if b == b'\\' {
+                    escaped = true;
+                } else if b == b'"' {
+                    in_string = false;
+                }
+                i += 1;
+                continue;
+            }
+            match b {
+                b'"' => {
+                    in_string = true;
+                    i += 1;
+                }
+                b'\'' if bytes.get(i + 1) == Some(&b'\\') && bytes.get(i + 3) == Some(&b'\'') => {
+                    i += 4; // escaped char literal: '\x'
+                }
+                b'\'' if bytes.get(i + 2) == Some(&b'\'') => {
+                    i += 3; // char literal: 'x'
+                }
+                b'/' if bytes.get(i + 1) == Some(&b'/') => return &line[..i],
+                _ => i += 1,
+            }
+        }
+        line
+    }
+
     /// Scan motion-related source files for raw char-level stepping.
     ///
     /// The grapheme cluster invariant (CLAUDE.md) requires that all position
@@ -216,10 +262,7 @@ mod tests {
                 // Strip any remaining inline comment before pattern-matching.
                 // This prevents explanatory comments like `// was: pos += 1` from
                 // triggering false positives.
-                let code = match line.find("//") {
-                    Some(idx) => &line[..idx],
-                    None => line,
-                };
+                let code = strip_line_comment(line);
 
                 for pattern in &forbidden {
                     if code.contains(pattern) {
@@ -349,10 +392,7 @@ mod tests {
                     continue;
                 }
 
-                let code = match line.find("//") {
-                    Some(idx) => &line[..idx],
-                    None => line,
-                };
+                let code = strip_line_comment(line);
 
                 for pattern in forbidden_patterns {
                     if code.contains(pattern) {
@@ -591,10 +631,7 @@ mod tests {
                 if trimmed.starts_with("//") {
                     continue;
                 }
-                let code = match line.find("//") {
-                    Some(idx) => &line[..idx],
-                    None => line,
-                };
+                let code = strip_line_comment(line);
                 if code.contains("write_setting(") && !code.contains("fn write_setting") {
                     violations.push(format!("  {rel}:{} — {trimmed}", lineno + 1));
                 }
@@ -608,6 +645,27 @@ mod tests {
              production code must go through editor::settings_ops::apply instead.\n\
              Violations:\n{}\n",
             violations.join("\n")
+        );
+    }
+
+    // ── strip_line_comment ────────────────────────────────────────────────────
+
+    #[test]
+    fn strip_line_comment_cases() {
+        // Fail oracle: revert strip_line_comment to a naive `line.find("//")`
+        // and the string-literal cases below (2nd and 4th) must start failing.
+        assert_eq!(strip_line_comment("foo(); // bar"), "foo(); ");
+        assert_eq!(strip_line_comment("foo();"), "foo();");
+        assert_eq!(strip_line_comment(r#"call("a//b")"#), r#"call("a//b")"#);
+        assert_eq!(
+            strip_line_comment(r#"call("a//b") // note"#),
+            r#"call("a//b") "#
+        );
+        assert_eq!(strip_line_comment(r#"let q = '"'; // c"#), r#"let q = '"'; "#);
+        assert_eq!(
+            strip_line_comment(r#""a\"//b""#),
+            r#""a\"//b""#,
+            "escaped quote must not end the string early"
         );
     }
 }
