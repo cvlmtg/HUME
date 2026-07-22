@@ -327,17 +327,24 @@ fn set_undo_levels_does_not_trim_until_next_record() {
 
 #[test]
 fn linear_chain_promotes_oldest() {
-    // Fail oracle: without promotion, initial_sels would still read the
-    // original root's identity selection (sel_at(0)) instead of a's
-    // post-edit selection, and undo would walk one level too many.
+    // Fail oracle: without promotion, len() would stay at 4 (root+a+b+c)
+    // instead of dropping to 3, and `a`'s parent would still be `ROOT`
+    // instead of becoming unreachable (`None`) once `a` itself is promoted
+    // away.
     let mut h = History::new(sel_at(0), 6);
     h.set_undo_levels(2);
-    h.record(insert_cs(6, "a"), delete_cs(7, 1), sel_at(0), sel_at(1)); // a
+    let a = h.record(insert_cs(6, "a"), delete_cs(7, 1), sel_at(0), sel_at(1)); // a = RevisionId(1)
     h.record(insert_cs(7, "b"), delete_cs(8, 1), sel_at(1), sel_at(2)); // b
-    h.record(insert_cs(8, "c"), delete_cs(9, 1), sel_at(2), sel_at(3)); // c
+    let promoted = h.record(insert_cs(8, "c"), delete_cs(9, 1), sel_at(2), sel_at(3)); // c
 
     assert_eq!(h.len(), 3); // root(now=a) + b + c
-    assert_eq!(*h.initial_sels(), sel_at(1)); // a's post-edit selection
+    assert_eq!(promoted, Some(RevisionId(1))); // a promoted into root
+    assert_eq!(a, None); // a's own record didn't trigger a promotion
+    assert!(h.parent(RevisionId(1)).is_none()); // a is gone, not just re-parented
+
+    // initial_sels must stay the buffer's true open-time selection —
+    // promotion must never overwrite it with a later revision's cursor.
+    assert_eq!(*h.initial_sels(), sel_at(0));
 
     h.undo(); // c -> b
     h.undo(); // b -> new root (was a's parent slot, now root itself)

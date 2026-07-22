@@ -231,10 +231,12 @@ impl History {
     /// - Exactly one child `C` (so `C` is necessarily on the path to
     ///   `current`, and `C != current` — see above): there is nothing to
     ///   discard without cutting into the live path, so `C` is *promoted*:
-    ///   its children become the root's children, and the root's `forward`
-    ///   transaction is replaced with `C`'s (root now represents `C`'s
-    ///   post-edit state — `initial_sels` reads exactly this field). `C`
-    ///   itself is removed. This may still overshoot below the cap when a
+    ///   its children become the root's children, and `C` itself is
+    ///   removed. The root's `forward` transaction is left untouched — it
+    ///   is never applied (redo/goto always read a *child's* forward, never
+    ///   the root's), it exists solely to carry the buffer's open-time
+    ///   selection for `initial_sels`, and that selection must stay stable
+    ///   across promotions. This may still overshoot below the cap when a
     ///   whole branch is discarded in one step — matches Vim.
     ///
     /// Returns the id of the last revision promoted into the root, if any.
@@ -262,7 +264,6 @@ impl History {
                 }
                 let root = self.revisions.get_mut(&Self::ROOT).expect("root exists");
                 root.children = c.children;
-                root.forward = c.forward;
                 last_promoted = Some(c_id);
             }
         }
@@ -367,7 +368,10 @@ impl History {
     /// The initial selections stored in the root revision.
     ///
     /// Returned to the caller so pane state can be seeded when a pane first
-    /// views a buffer, or when the buffer is reloaded from disk.
+    /// views a buffer, or when the buffer is reloaded from disk. Stable
+    /// across `undo-levels` promotion: `enforce_undo_levels` never touches
+    /// the root's `forward`, so this always reflects the buffer's true
+    /// open-time selection, not a later revision's post-edit cursor.
     pub fn initial_sels(&self) -> &SelectionSet {
         self.revisions[&Self::ROOT].forward.selection()
     }
