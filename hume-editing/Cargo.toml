@@ -7,6 +7,7 @@ edition = "2024"
 ropey.workspace = true
 unicode-segmentation.workspace = true
 similar.workspace = true
+rustc-hash.workspace = true
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"

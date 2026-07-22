@@ -1,5 +1,6 @@
-use std::collections::HashMap;
 use std::time::Instant;
+
+use rustc_hash::FxHashMap;
 
 use crate::changeset::{ChangeSet, ChangeSetBuilder};
 use crate::selection::SelectionSet;
@@ -65,7 +66,7 @@ struct Revision {
 ///
 /// ## Structure
 ///
-/// Revisions are stored in an arena (`HashMap<RevisionId, Revision>`) keyed
+/// Revisions are stored in an arena (`FxHashMap<RevisionId, Revision>`) keyed
 /// by stable, monotonically-assigned IDs that are never reused. The root
 /// revision (id 0) represents the initial document state and has identity
 /// changesets. `current` tracks the active revision — the state that
@@ -99,7 +100,7 @@ struct Revision {
 /// with no buffer dependency.
 pub struct History {
     /// Arena of all revisions, keyed by stable `RevisionId`.
-    revisions: HashMap<RevisionId, Revision>,
+    revisions: FxHashMap<RevisionId, Revision>,
     /// The currently active revision.
     current: RevisionId,
     /// Next ID to assign in `record`. Monotonic — never reused, even for
@@ -133,7 +134,7 @@ impl History {
             timestamp: Instant::now(),
         };
 
-        let mut revisions = HashMap::new();
+        let mut revisions = FxHashMap::default();
         revisions.insert(Self::ROOT, root);
 
         Self {

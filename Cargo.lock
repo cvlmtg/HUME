@@ -1045,6 +1045,7 @@ dependencies = [
  "pretty_assertions",
  "proptest",
  "ropey",
+ "rustc-hash",
  "similar 3.1.1",
  "unicode-segmentation",
 ]
@@ -1055,6 +1056,7 @@ version = "0.9.0"
 dependencies = [
  "arboard",
  "clap",
+ "critical-section",
  "globset",
  "hume-editing",
  "hume-engine",
@@ -1085,7 +1087,6 @@ name = "hume-engine"
 version = "0.1.0"
 dependencies = [
  "bitflags 2.13.1",
- "critical-section",
  "hume-platform",
  "ratatui",
  "ropey",
