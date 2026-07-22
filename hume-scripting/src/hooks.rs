@@ -4,7 +4,7 @@
 //! editor fires a lifecycle event, all registered handlers for that event are
 //! called in registration order inside a single `with_mut_reference` session.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use steel::rvals::SteelVal;
 
@@ -120,7 +120,7 @@ pub(crate) struct HookEntry {
 /// Persistent per-hook handler lists, held on [`super::ScriptingHost`].
 #[derive(Debug, Default)]
 pub(crate) struct HookRegistry {
-    handlers: HashMap<HookId, Vec<HookEntry>>,
+    handlers: FxHashMap<HookId, Vec<HookEntry>>,
 }
 
 impl HookRegistry {

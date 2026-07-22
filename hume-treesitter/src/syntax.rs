@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::sync::{Arc, Mutex};
 
 use crate::highlight::layer_highlights_for_line;
@@ -90,7 +90,7 @@ impl Syntax {
         bid: BufferId,
         text_gen: u64,
         text: &Text,
-        langs: &Arc<HashMap<String, Arc<GrammarBundle>>>,
+        langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
     ) -> (Self, Option<ParseRequest>) {
         let mut syn = Self {
             bundle: Arc::clone(&bundle),
@@ -138,7 +138,7 @@ impl Syntax {
         bid: BufferId,
         text_gen: u64,
         text: &Text,
-        langs: &Arc<HashMap<String, Arc<GrammarBundle>>>,
+        langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
     ) -> FrameTickOutcome {
         if self.parsed_gen == text_gen {
             return FrameTickOutcome {

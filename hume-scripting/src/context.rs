@@ -52,7 +52,7 @@ pub(crate) struct SteelCtx<'a> {
     // ── Transient per-eval state (owned) ──────────────────────────────────────
     /// Built-in command names known at eval start.  `define-command!` checks
     /// against this to prevent shadowing core commands.
-    pub(crate) builtin_cmd_names: std::collections::HashSet<String>,
+    pub(crate) builtin_cmd_names: rustc_hash::FxHashSet<String>,
     /// Interrupt flag shared with the `EvalWatchdog`.
     pub(crate) interrupt_flag: Arc<AtomicBool>,
     // ── Input state and command side-effects ─────────────────────────────────
@@ -145,7 +145,7 @@ impl<'a> SteelCtx<'a> {
     pub(super) fn new_init(
         host: &'a mut dyn EditorHost,
         host_bundle: HostBundle<'a>,
-        builtin_cmd_names: std::collections::HashSet<String>,
+        builtin_cmd_names: rustc_hash::FxHashSet<String>,
     ) -> Self {
         Self {
             host,
@@ -179,7 +179,7 @@ impl<'a> SteelCtx<'a> {
     pub(super) fn new_activation(
         host: &'a mut dyn EditorHost,
         host_bundle: HostBundle<'a>,
-        builtin_cmd_names: std::collections::HashSet<String>,
+        builtin_cmd_names: rustc_hash::FxHashSet<String>,
     ) -> Self {
         Self {
             session: EvalSession::Runtime,
@@ -270,7 +270,7 @@ impl<'a> SteelCtx<'a> {
             pending_messages: host_bundle.pending_messages,
             effects: host_bundle.effects,
             dirs: host_bundle.dirs,
-            builtin_cmd_names: std::collections::HashSet::new(),
+            builtin_cmd_names: rustc_hash::FxHashSet::default(),
             interrupt_flag: host_bundle.interrupt_flag,
             current_register_prefix: None,
             wait_char_request: None,

@@ -32,7 +32,7 @@ pub(super) enum TimerPayload {
 /// `&mut self.scripting`.
 pub(crate) struct TimerHandle<'a> {
     pub(super) wheel: &'a mut super::timers::TimerWheel,
-    pub(super) payloads: &'a mut std::collections::HashMap<TimerId, TimerPayload>,
+    pub(super) payloads: &'a mut rustc_hash::FxHashMap<TimerId, TimerPayload>,
 }
 
 impl<'a> TimerHandle<'a> {

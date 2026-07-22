@@ -123,7 +123,7 @@ fn arg_prefix(input: &str, cursor: usize) -> (usize, &str) {
 /// Shared by `:theme` (via [`ThemeCompleter`]) and `:set global theme=` (via
 /// [`SetCompleter`]) so the candidate set stays in sync.
 fn theme_name_candidates(prefix: &str) -> Vec<Completion> {
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut seen: rustc_hash::FxHashSet<String> = rustc_hash::FxHashSet::default();
     let mut candidates: Vec<Completion> = Vec::new();
 
     for dir in &super::theme_search_paths() {

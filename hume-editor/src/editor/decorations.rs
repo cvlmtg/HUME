@@ -15,7 +15,7 @@
 //! `virtual_lines` / `inline_diagnostics` are line-indexed and
 //! encoding/edit-independent for v1.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use hume_editing::changeset::{Assoc, ChangeSet};
 use hume_engine::pipeline::BufferId;
@@ -71,15 +71,15 @@ pub(crate) struct ExtraHighlightEntry {
 
 #[derive(Default)]
 pub(crate) struct DecorationStores {
-    inlay_hints: HashMap<BufferId, Vec<InlayHintEntry>>,
-    signs: HashMap<BufferId, Vec<(String, Vec<SignEntry>)>>,
-    virtual_lines: HashMap<BufferId, Vec<(String, Vec<VirtualLineEntry>)>>,
-    extra_highlights: HashMap<BufferId, Vec<(String, Vec<ExtraHighlightEntry>)>>,
+    inlay_hints: FxHashMap<BufferId, Vec<InlayHintEntry>>,
+    signs: FxHashMap<BufferId, Vec<(String, Vec<SignEntry>)>>,
+    virtual_lines: FxHashMap<BufferId, Vec<(String, Vec<VirtualLineEntry>)>>,
+    extra_highlights: FxHashMap<BufferId, Vec<(String, Vec<ExtraHighlightEntry>)>>,
     /// One owner per buffer (always replaced wholesale by the diagnostics
     /// plugin's next `(set-inline-diagnostics! …)`), same shape as
     /// `inlay_hints` — no per-source multiplexing needed since diagnostics
     /// are the only client.
-    inline_diagnostics: HashMap<BufferId, Vec<InlineDiagnosticEntry>>,
+    inline_diagnostics: FxHashMap<BufferId, Vec<InlineDiagnosticEntry>>,
     /// Bumped by `set_virtual_lines` — the render write side mirrors
     /// `virtual_lines` into a per-pane Arc only when this changed since its
     /// last sync, rather than every frame (unlike inlay hints, this runs in
@@ -139,7 +139,7 @@ impl DecorationStores {
     /// All signs for `bid`, across every source, paired with their source
     /// name — the render write side merges them into one per-line winner.
     /// The source name is exposed so ties (two sources, same line, same
-    /// priority) can be broken deterministically rather than by `HashMap`
+    /// priority) can be broken deterministically rather than by `FxHashMap`
     /// iteration order.
     pub(crate) fn signs_for_buffer(
         &self,

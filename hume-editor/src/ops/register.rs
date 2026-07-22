@@ -1,5 +1,6 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
+use rustc_hash::FxHashMap;
 use termina::event::KeyEvent;
 
 use hume_editing::selection::SelectionSet;
@@ -126,7 +127,7 @@ impl Register {
 /// above; their behaviour is wired in the editor layer.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct RegisterSet {
-    registers: HashMap<char, Register>,
+    registers: FxHashMap<char, Register>,
     /// Snapshot of the blob last written to the OS clipboard.
     /// Compared on read to detect external modifications: when the clipboard
     /// content matches this blob the in-memory `'c'` register is in sync and

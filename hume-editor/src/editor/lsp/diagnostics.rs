@@ -3,7 +3,7 @@
 //! subsequent edit. Bulk never reaches Steel — Steel gets
 //! a signal + bounded pulls.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::ops::Range;
 
 use hume_editing::changeset::ChangeSet;
@@ -84,7 +84,7 @@ pub(crate) struct StoredDiag {
 
 #[derive(Default)]
 pub(crate) struct DiagnosticsStore {
-    by_buffer: HashMap<BufferId, Vec<(ServerId, Vec<StoredDiag>)>>,
+    by_buffer: FxHashMap<BufferId, Vec<(ServerId, Vec<StoredDiag>)>>,
     /// Bumped on every ingest or remap — cheap "did anything change" signal
     /// for Steel-side consumers (`on-diagnostics-changed`).
     pub(crate) generation: u64,

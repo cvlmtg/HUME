@@ -66,8 +66,7 @@ impl Completer for BufferNameCompleter {
         };
 
         // Count how many open buffers share each basename (for disambiguation).
-        let mut name_count: std::collections::HashMap<String, usize> =
-            std::collections::HashMap::new();
+        let mut name_count: rustc_hash::FxHashMap<String, usize> = rustc_hash::FxHashMap::default();
         for (_, buf) in ctx.buffers.iter() {
             let (base, _) = entry_for(buf);
             *name_count.entry(base).or_insert(0) += 1;

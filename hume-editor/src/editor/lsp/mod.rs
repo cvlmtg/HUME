@@ -12,10 +12,11 @@ pub(crate) mod introspect;
 mod registry;
 pub(crate) mod sync;
 
-use std::collections::{HashMap, HashSet};
 #[cfg(test)]
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
+
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::{LspBackend, ServerId, ThreadedLspBackend, WakeCallback};
@@ -94,14 +95,14 @@ pub(crate) struct ProgressTask {
 
 pub(crate) struct LspState {
     backend: Box<dyn LspBackend>,
-    servers: HashMap<ServerId, ServerEntry>,
+    servers: FxHashMap<ServerId, ServerEntry>,
     /// Keyed by the `(ServerId, RequestId)` pair a callback's own request
     /// was sent under — `drain_lsp` already has both in scope at dispatch
     /// time (the per-server loop, then the response/timeout's own id), so
     /// no separate token needs to be minted or round-tripped.
-    callbacks: HashMap<(ServerId, RequestId), CallbackEntry>,
+    callbacks: FxHashMap<(ServerId, RequestId), CallbackEntry>,
     /// Config recorded by `register-lsp-server!`, keyed by language.
-    configs: HashMap<LanguageName, LspServerConfig>,
+    configs: FxHashMap<LanguageName, LspServerConfig>,
     diagnostics: DiagnosticsStore,
     /// Drives the statusline loading spinner's animation frame. Advanced
     /// (at most) once per `drain_lsp` call, gated on its own interval so
@@ -121,7 +122,7 @@ pub(crate) struct LspState {
     /// `dispatch_completed` (response/timeout/crash-drain/stop-drain all
     /// funnel there) and swept per-server in `lsp_stop_one`, so an id can
     /// never linger past the request it names.
-    supersede: HashMap<(ServerId, String), RequestId>,
+    supersede: FxHashMap<(ServerId, String), RequestId>,
 }
 
 /// How often the loading spinner advances a frame — independent of how
@@ -159,14 +160,14 @@ impl LspState {
     fn with_backend(backend: Box<dyn LspBackend>) -> Self {
         Self {
             backend,
-            servers: HashMap::new(),
-            callbacks: HashMap::new(),
-            configs: HashMap::new(),
+            servers: FxHashMap::default(),
+            callbacks: FxHashMap::default(),
+            configs: FxHashMap::default(),
             diagnostics: DiagnosticsStore::default(),
             spinner: SpinnerClock::default(),
             completion: None,
             completion_ui: None,
-            supersede: HashMap::new(),
+            supersede: FxHashMap::default(),
         }
     }
 
@@ -488,10 +489,10 @@ impl Editor {
         // `.as_str()` only (lsp-types 0.97.0's uri.rs), which those cells
         // never affect. A false positive for this specific type.
         #[allow(clippy::mutable_key_type)]
-        let mut diag_batch: HashMap<
+        let mut diag_batch: FxHashMap<
             (ServerId, lsp_types::Uri),
             lsp_types::PublishDiagnosticsParams,
-        > = HashMap::new();
+        > = FxHashMap::default();
         for (server_id, ev) in events {
             let actions = match self.lsp.servers.get_mut(&server_id) {
                 Some(entry) => entry.client.on_event(ev),
@@ -506,10 +507,10 @@ impl Editor {
             }
         }
         // OnDiagnosticsChanged fires once per buffer this batch actually
-        // touched — a HashSet dedupes two (server, uri) entries that both
+        // touched — a FxHashSet dedupes two (server, uri) entries that both
         // resolved to the same buffer (multiple roots, same file; not a v1
         // scenario, but cheap to get right).
-        let mut touched: HashSet<BufferId> = HashSet::new();
+        let mut touched: FxHashSet<BufferId> = FxHashSet::default();
         for ((server_id, _uri), params) in diag_batch {
             if let Some(bid) = self.ingest_publish_diagnostics(server_id, params) {
                 touched.insert(bid);
@@ -563,7 +564,7 @@ impl Editor {
         }
 
         let server_ids: Vec<ServerId> = self.lsp.servers.keys().copied().collect();
-        let mut awaiting_eof: HashSet<ServerId> = HashSet::new();
+        let mut awaiting_eof: FxHashSet<ServerId> = FxHashSet::default();
         for &server_id in &server_ids {
             let LspState {
                 servers, backend, ..

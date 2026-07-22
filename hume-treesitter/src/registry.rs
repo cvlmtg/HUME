@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -62,7 +62,7 @@ pub struct GrammarBundle {
 /// all index-aligned by `LanguageId.0`. `identities.len() == grammars.len() ==
 /// names.len()` always — `intern` pushes one entry to each.
 pub struct LanguageRegistry {
-    ids: HashMap<Arc<str>, LanguageId>,
+    ids: FxHashMap<Arc<str>, LanguageId>,
     names: Vec<Arc<str>>,
     /// `None` = interned but no identity registered.
     identities: Vec<Option<LanguageIdentity>>,
@@ -70,20 +70,20 @@ pub struct LanguageRegistry {
     grammars: Vec<Option<Arc<GrammarBundle>>>,
     /// Detection indices — never rebuilt on `attach_grammar`, only on
     /// identity (re-)registration or removal.
-    by_ext: HashMap<String, LanguageId>,
+    by_ext: FxHashMap<String, LanguageId>,
     /// Compiled glob matcher, rebuilt whenever languages are added or removed.
     /// Index-aligned with `glob_lang_ids`.
     compiled_globs: GlobSet,
     /// Language id for each glob pattern at the corresponding GlobSet index.
     glob_lang_ids: Vec<LanguageId>,
-    shebang_to_id: HashMap<String, LanguageId>,
+    shebang_to_id: FxHashMap<String, LanguageId>,
     /// Registration order for glob priority: later entries win on overlap.
     lang_order: Vec<LanguageId>,
     /// Grammared languages only, rebuilt whenever the grammar table changes.
     /// Handed to the parse worker so it can resolve an injected language name
     /// (a dynamically-discovered info-string) to its grammar without
     /// touching main-thread state.
-    grammar_snapshot: Arc<HashMap<String, Arc<GrammarBundle>>>,
+    grammar_snapshot: Arc<FxHashMap<String, Arc<GrammarBundle>>>,
     /// Source of `GrammarBundle::config_gen` — incremented on every grammar
     /// attach so each attached bundle gets a unique identity.
     next_config_gen: u32,
@@ -136,16 +136,16 @@ impl std::fmt::Display for RegisterError {
 impl Default for LanguageRegistry {
     fn default() -> Self {
         Self {
-            ids: HashMap::new(),
+            ids: FxHashMap::default(),
             names: Vec::new(),
             identities: Vec::new(),
             grammars: Vec::new(),
-            by_ext: HashMap::new(),
+            by_ext: FxHashMap::default(),
             compiled_globs: GlobSet::empty(),
             glob_lang_ids: Vec::new(),
-            shebang_to_id: HashMap::new(),
+            shebang_to_id: FxHashMap::default(),
             lang_order: Vec::new(),
-            grammar_snapshot: Arc::new(HashMap::new()),
+            grammar_snapshot: Arc::new(FxHashMap::default()),
             next_config_gen: 0,
         }
     }
@@ -433,7 +433,7 @@ impl LanguageRegistry {
     /// worker so it can resolve an injection language name (a
     /// dynamically-discovered info string) to its grammar without touching
     /// main-thread state.
-    pub fn grammar_snapshot(&self) -> Arc<HashMap<String, Arc<GrammarBundle>>> {
+    pub fn grammar_snapshot(&self) -> Arc<FxHashMap<String, Arc<GrammarBundle>>> {
         Arc::clone(&self.grammar_snapshot)
     }
 

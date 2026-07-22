@@ -7,8 +7,9 @@
 //! - Flat dotted keys: `"keyword.function" = { fg = "red", modifiers = ["bold"] }`
 //! - Shorthand string values: `"keyword" = "red"` sets `fg` from the named color
 
-use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use ratatui::style::Color;
 
@@ -30,7 +31,7 @@ const MAX_DEPTH: usize = 8;
 /// Returns a fully-resolved, un-baked [`Theme`]. Call [`Theme::bake`] with
 /// the live [`ScopeRegistry`] before the first render.
 pub fn load_theme(name: &str, search_paths: &[PathBuf]) -> Result<Theme, ThemeError> {
-    let mut visited: HashSet<PathBuf> = HashSet::new();
+    let mut visited: FxHashSet<PathBuf> = FxHashSet::default();
     let (scopes, default) = load_recursive(name, search_paths, &mut visited, 0)?;
     Ok(Theme::from_owned(scopes, default))
 }
@@ -44,7 +45,7 @@ pub fn load_theme(name: &str, search_paths: &[PathBuf]) -> Result<Theme, ThemeEr
 ///
 /// Intended for embedded themes (e.g. `include_str!` in the binary).
 pub fn parse_theme(toml_str: &str) -> Result<Theme, ThemeError> {
-    let mut visited: HashSet<PathBuf> = HashSet::new();
+    let mut visited: FxHashSet<PathBuf> = FxHashSet::default();
     // Empty search_paths: any `inherits` key will fail with NotFound, which is
     // the correct behaviour for a self-contained embedded document.
     let (scopes, default) = parse_recursive(toml_str, &[], &mut visited, 0)?;
@@ -56,12 +57,12 @@ pub fn parse_theme(toml_str: &str) -> Result<Theme, ThemeError> {
 // ---------------------------------------------------------------------------
 
 /// Intermediate representation: resolved scope styles + default style.
-type ThemeData = (HashMap<String, ResolvedStyle>, ResolvedStyle);
+type ThemeData = (FxHashMap<String, ResolvedStyle>, ResolvedStyle);
 
 fn load_recursive(
     name: &str,
     search_paths: &[PathBuf],
-    visited: &mut HashSet<PathBuf>,
+    visited: &mut FxHashSet<PathBuf>,
     depth: usize,
 ) -> Result<ThemeData, ThemeError> {
     if depth > MAX_DEPTH {
@@ -87,14 +88,14 @@ fn load_recursive(
 fn parse_recursive(
     source: &str,
     search_paths: &[PathBuf],
-    visited: &mut HashSet<PathBuf>,
+    visited: &mut FxHashSet<PathBuf>,
     depth: usize,
 ) -> Result<ThemeData, ThemeError> {
     let table: toml::Table = source.parse().map_err(ThemeError::Parse)?;
 
     // ── Base from parent (if any) ────────────────────────────────────────────
-    let mut palette: HashMap<String, Color> = HashMap::new();
-    let mut scopes: HashMap<String, ResolvedStyle> = HashMap::new();
+    let mut palette: FxHashMap<String, Color> = FxHashMap::default();
+    let mut scopes: FxHashMap<String, ResolvedStyle> = FxHashMap::default();
     let mut default = ResolvedStyle::default();
 
     if let Some(parent_name) = table.get("inherits").and_then(|v| v.as_str()) {
@@ -152,7 +153,7 @@ fn parse_recursive(
 fn parse_scope_value(
     key: &str,
     value: &toml::Value,
-    palette: &HashMap<String, Color>,
+    palette: &FxHashMap<String, Color>,
 ) -> Result<ResolvedStyle, ThemeError> {
     match value {
         // Shorthand: `"keyword" = "red"` sets fg only.
@@ -174,7 +175,7 @@ fn parse_scope_value(
 fn parse_style_table(
     key: &str,
     t: &toml::map::Map<String, toml::Value>,
-    palette: &HashMap<String, Color>,
+    palette: &FxHashMap<String, Color>,
 ) -> Result<ResolvedStyle, ThemeError> {
     let mut style = ResolvedStyle::default();
 
@@ -231,7 +232,7 @@ fn parse_style_table(
 fn resolve_color(
     key: &str,
     s: &str,
-    palette: &HashMap<String, Color>,
+    palette: &FxHashMap<String, Color>,
 ) -> Result<Color, ThemeError> {
     // Palette reference takes priority.
     if let Some(&color) = palette.get(s) {

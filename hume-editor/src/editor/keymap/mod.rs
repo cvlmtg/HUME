@@ -36,8 +36,8 @@
 mod defaults;
 use defaults::{default_extend_keymap, default_insert_keymap, default_normal_keymap};
 
+use rustc_hash::FxHashMap;
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 use termina::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, Modifiers};
@@ -200,7 +200,7 @@ pub(super) struct KeyTrie {
     /// Human-readable name shown in the statusline when the user is mid-sequence
     /// at this node (e.g. `"match"` after pressing `m`, `"goto"` after `g`).
     pub(super) name: &'static str,
-    map: HashMap<TrieKey, KeyTrieNode>,
+    map: FxHashMap<TrieKey, KeyTrieNode>,
 }
 
 #[derive(Clone)]
@@ -217,7 +217,7 @@ impl KeyTrie {
     fn new(name: &'static str) -> Self {
         Self {
             name,
-            map: HashMap::new(),
+            map: FxHashMap::default(),
         }
     }
 

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use ratatui::symbols::line;
 
@@ -223,7 +223,7 @@ pub(super) fn junction_glyph(mask: u8) -> &'static str {
 /// sits one cell *past* this seam's endpoint — e.g. a vertical seam
 /// starting at row `y` contributes a southward arm to the cell at `y - 1`,
 /// which is where a horizontal seam ending there would actually be drawn.
-pub(super) fn collect_seam_arms(seams: &[Seam], out: &mut HashMap<(u16, u16), u8>) {
+pub(super) fn collect_seam_arms(seams: &[Seam], out: &mut FxHashMap<(u16, u16), u8>) {
     for seam in seams {
         match seam.direction {
             // `Horizontal` (width split) carves a vertical `│` line.

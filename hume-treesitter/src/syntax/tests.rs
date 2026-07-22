@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
 use crate::grammar::LoadedGrammar;
@@ -81,8 +81,8 @@ fn fresh_bid() -> BufferId {
     sm.insert(())
 }
 
-fn empty_langs() -> Arc<HashMap<String, Arc<GrammarBundle>>> {
-    Arc::new(HashMap::new())
+fn empty_langs() -> Arc<FxHashMap<String, Arc<GrammarBundle>>> {
+    Arc::new(FxHashMap::default())
 }
 
 /// Real end-to-end parse via `do_parse`-equivalent: build a `ParseDone`
@@ -383,7 +383,7 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
     let inj_src = std::fs::read_to_string(&inj_path).expect("read injections.scm");
     let markdown = make_bundle_with_injections("markdown", "tree_sitter_markdown", &inj_src);
     let rust = make_bundle("rust", "tree_sitter_rust");
-    let mut langs_map = HashMap::new();
+    let mut langs_map = FxHashMap::default();
     langs_map.insert("rust".to_owned(), Arc::clone(&rust));
     let langs = Arc::new(langs_map);
 

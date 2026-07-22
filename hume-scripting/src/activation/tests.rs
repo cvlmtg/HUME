@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use rustc_hash::FxHashSet;
 use std::io::Write as _;
 
 use tempfile::TempDir;
@@ -20,8 +20,8 @@ fn plugin_id(name: &str) -> PluginId {
     PluginId::parse(name).unwrap()
 }
 
-fn no_builtins() -> HashSet<String> {
-    HashSet::new()
+fn no_builtins() -> FxHashSet<String> {
+    FxHashSet::default()
 }
 
 // ── Case 1: Declared → Loaded with a valid command body ──────────────────

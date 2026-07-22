@@ -20,7 +20,7 @@ use super::*;
 fn declare_plugin_all_on_command_collided_message_mentions_conflict() {
     use crate::ScriptingHost;
     use crate::null_host::NullHost;
-    use std::collections::HashSet;
+    use rustc_hash::FxHashSet;
     use tempfile::TempDir;
 
     let dir = TempDir::new().unwrap();
@@ -35,7 +35,7 @@ fn declare_plugin_all_on_command_collided_message_mentions_conflict() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
     // Mark "insert-mode" as a built-in so collision filtering drops it.
-    let mut builtin_names = HashSet::new();
+    let mut builtin_names = FxHashSet::default();
     builtin_names.insert("insert-mode".to_string());
 
     let result = host.eval_source_returning_defs(

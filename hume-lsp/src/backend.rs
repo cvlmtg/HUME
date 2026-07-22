@@ -27,7 +27,7 @@ pub trait LspBackend {
 
 /// Production backend: one real server process per registration.
 pub struct ThreadedLspBackend {
-    servers: std::collections::HashMap<ServerId, ServerHandle>,
+    servers: rustc_hash::FxHashMap<ServerId, ServerHandle>,
     next: u32,
     wake: WakeCallback,
 }
@@ -42,7 +42,7 @@ impl ThreadedLspBackend {
     /// polling for completion.
     pub fn with_waker(wake: WakeCallback) -> Self {
         Self {
-            servers: std::collections::HashMap::new(),
+            servers: rustc_hash::FxHashMap::default(),
             next: 0,
             wake,
         }

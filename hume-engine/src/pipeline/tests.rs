@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::*;
 use ratatui::layout::Rect;
 
@@ -845,7 +847,7 @@ fn collect_seam_arms_t_junction() {
     let mut seams = Vec::new();
     tree.collect_seams_into(rect(0, 0, 100, 100), &mut seams);
 
-    let mut arms = HashMap::new();
+    let mut arms = FxHashMap::default();
     collect_seam_arms(&seams, &mut arms);
 
     // The B|C seam starts one row below the A|BC seam, so it contributes
@@ -878,7 +880,7 @@ fn collect_seam_arms_cross_junction() {
     let mut seams = Vec::new();
     tree.collect_seams_into(rect(0, 0, 100, 100), &mut seams);
 
-    let mut arms = HashMap::new();
+    let mut arms = FxHashMap::default();
     collect_seam_arms(&seams, &mut arms);
 
     // The top row's seam ends just above the crossing (northward arm);
@@ -906,7 +908,7 @@ fn junction_glyph_at_t_and_cross_scenarios_matches_collect_seam_arms() {
     };
     let mut seams = Vec::new();
     t_tree.collect_seams_into(rect(0, 0, 100, 100), &mut seams);
-    let mut arms = HashMap::new();
+    let mut arms = FxHashMap::default();
     collect_seam_arms(&seams, &mut arms);
     // The A|BC seam is horizontal (Direction::Vertical), base E|W.
     let base = ARM_E | ARM_W;

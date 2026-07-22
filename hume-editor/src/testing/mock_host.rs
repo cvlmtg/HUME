@@ -41,29 +41,29 @@ use hume_scripting::host::{
 pub(crate) struct MockHost {
     pub(crate) settings: hume::settings::EditorSettings,
     /// Grammar names attached via `(register-grammar! …)`.
-    pub(crate) grammars: std::collections::HashSet<String>,
+    pub(crate) grammars: rustc_hash::FxHashSet<String>,
     /// Commands registered via `(define-command! …)` during evals.
     pub(crate) registered_cmds: Vec<hume_scripting::SteelCmdDef>,
     /// Names treated as native by `command_is_native`.  Empty by default
     /// (all commands return `Ok(false)`).  Tests populate this to exercise
     /// the `run_command_sync` path.
-    pub(crate) native_names: std::collections::HashSet<String>,
+    pub(crate) native_names: rustc_hash::FxHashSet<String>,
     /// Record of every `run_command_sync` call: `(name, count, extend, register)`.
     /// `count` is `None` when the Steel side passed `0` ("no count typed").
     pub(crate) dispatched_native: Vec<(String, Option<usize>, bool, Option<char>)>,
     /// Lazy activation stubs registered via `register_lazy_command`.
-    pub(crate) lazy_cmds: std::collections::HashMap<String, hume_scripting::PluginId>,
+    pub(crate) lazy_cmds: rustc_hash::FxHashMap<String, hume_scripting::PluginId>,
 }
 
 impl MockHost {
     pub(crate) fn new() -> Self {
         Self {
             settings: hume::settings::EditorSettings::default(),
-            grammars: std::collections::HashSet::new(),
+            grammars: rustc_hash::FxHashSet::default(),
             registered_cmds: Vec::new(),
-            native_names: std::collections::HashSet::new(),
+            native_names: rustc_hash::FxHashSet::default(),
             dispatched_native: Vec::new(),
-            lazy_cmds: std::collections::HashMap::new(),
+            lazy_cmds: rustc_hash::FxHashMap::default(),
         }
     }
 }

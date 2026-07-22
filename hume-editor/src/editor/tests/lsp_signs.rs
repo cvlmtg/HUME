@@ -80,7 +80,7 @@ fn setup_with_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagCtx {
     }
 }
 
-fn diag_signs(ed: &Editor, pid: PaneId) -> std::collections::HashMap<usize, Vec<Sign>> {
+fn diag_signs(ed: &Editor, pid: PaneId) -> rustc_hash::FxHashMap<usize, Vec<Sign>> {
     ed.state.panes.render[pid]
         .signs
         .diagnostics
@@ -89,7 +89,7 @@ fn diag_signs(ed: &Editor, pid: PaneId) -> std::collections::HashMap<usize, Vec<
         .clone()
 }
 
-fn plugin_signs(ed: &Editor, pid: PaneId) -> std::collections::HashMap<usize, Vec<Sign>> {
+fn plugin_signs(ed: &Editor, pid: PaneId) -> rustc_hash::FxHashMap<usize, Vec<Sign>> {
     ed.state.panes.render[pid]
         .signs
         .plugin

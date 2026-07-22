@@ -256,8 +256,8 @@ fn from_owned_resolves_same_as_new() {
         );
         m
     };
-    let owned_styles: HashMap<String, ResolvedStyle> = {
-        let mut m = HashMap::new();
+    let owned_styles: FxHashMap<String, ResolvedStyle> = {
+        let mut m = FxHashMap::default();
         m.insert(
             "keyword".to_string(),
             ResolvedStyle {

@@ -1,7 +1,7 @@
 //! Per-server client state machine: `initialize` handshake with capability
 //! and position-encoding negotiation, graceful shutdown, crash detection.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -230,7 +230,7 @@ pub struct LspClient {
     initialize_id: Option<RequestId>,
     ids: IdAllocator,
     /// Requests awaiting a response, keyed by the id we sent.
-    pending: HashMap<RequestId, RequestMeta>,
+    pending: FxHashMap<RequestId, RequestMeta>,
     /// Responses matched against `pending` by `on_event`, waiting to be
     /// pulled by `take_completed` — never delivered inline (same
     /// drain-boundary discipline as the `InlineLspBackend` double).
@@ -250,7 +250,7 @@ impl LspClient {
             queued: Vec::new(),
             initialize_id: None,
             ids: IdAllocator::new(),
-            pending: HashMap::new(),
+            pending: FxHashMap::default(),
             completed: Vec::new(),
         }
     }

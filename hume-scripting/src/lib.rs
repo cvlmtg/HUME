@@ -102,7 +102,7 @@ use lazy::{LazyRegistry, PluginState};
 pub(crate) struct ScriptingRegistries {
     /// Command-to-owner index: maps each Steel-registered command name to a
     /// display string (`"hume"`, `"user"`, or a plugin id like `"core:plum"`).
-    pub(crate) cmd_owners: std::collections::HashMap<String, String>,
+    pub(crate) cmd_owners: rustc_hash::FxHashMap<String, String>,
     /// Persistent hook registry: handlers registered by `(register-hook! …)`.
     pub(crate) hooks: HookRegistry,
     /// Lazy plugin registry: populated by `%declare-plugin!` during init;
@@ -116,17 +116,17 @@ pub(crate) struct ScriptingRegistries {
     ///
     /// Populated by `define_command_inner` inline during init or plugin activation.
     /// Consulted by `%lookup-plugin-proc` in both init and command mode.
-    pub(crate) command_table: std::collections::HashMap<String, SteelVal>,
+    pub(crate) command_table: rustc_hash::FxHashMap<String, SteelVal>,
     /// Per-plugin config value passed via `#:config` on `(load-plugin …)` /
     /// `(declare-plugin …)`. Read back by the plugin body through `(plugin-config)`,
     /// resolved via the top of `plugin_stack` — works identically whether the
     /// plugin activates immediately (eager) or much later (lazy).
-    pub(crate) plugin_configs: std::collections::HashMap<PluginId, SteelVal>,
+    pub(crate) plugin_configs: rustc_hash::FxHashMap<PluginId, SteelVal>,
     /// Handlers registered by `(on-lsp-notification method handler)`, keyed
     /// by protocol method name. Consulted by the editor's notification
     /// dispatch for any method Rust doesn't already special-case
     /// (window/logMessage, window/showMessage, $/progress, publishDiagnostics).
-    pub(crate) lsp_notification_handlers: std::collections::HashMap<String, Vec<SteelVal>>,
+    pub(crate) lsp_notification_handlers: rustc_hash::FxHashMap<String, Vec<SteelVal>>,
 }
 
 // ── HostBundle ────────────────────────────────────────────────────────────────
@@ -204,13 +204,13 @@ impl ScriptingHost {
         Self {
             steel,
             registries: ScriptingRegistries {
-                cmd_owners: std::collections::HashMap::new(),
+                cmd_owners: rustc_hash::FxHashMap::default(),
                 hooks: HookRegistry::default(),
                 lazy_registry: LazyRegistry::default(),
                 declared_plugins: Vec::new(),
-                command_table: std::collections::HashMap::new(),
-                plugin_configs: std::collections::HashMap::new(),
-                lsp_notification_handlers: std::collections::HashMap::new(),
+                command_table: rustc_hash::FxHashMap::default(),
+                plugin_configs: rustc_hash::FxHashMap::default(),
+                lsp_notification_handlers: rustc_hash::FxHashMap::default(),
             },
             plugin_stack: PluginStack::default(),
             pending_messages: Vec::new(),
@@ -336,7 +336,7 @@ impl ScriptingHost {
     /// that don't match any registered language identity.
     pub fn activation_languages(
         &self,
-    ) -> std::collections::HashMap<String, Vec<attribution::PluginId>> {
+    ) -> rustc_hash::FxHashMap<String, Vec<attribution::PluginId>> {
         self.registries.lazy_registry.activation_languages.clone()
     }
 
@@ -452,7 +452,7 @@ impl ScriptingHost {
     }
 
     #[cfg(any(test, feature = "test-util"))]
-    pub fn cmd_owners_for_test(&self) -> &std::collections::HashMap<String, String> {
+    pub fn cmd_owners_for_test(&self) -> &rustc_hash::FxHashMap<String, String> {
         &self.registries.cmd_owners
     }
 
@@ -464,7 +464,7 @@ impl ScriptingHost {
     #[cfg(any(test, feature = "test-util"))]
     pub fn command_table_for_test(
         &self,
-    ) -> &std::collections::HashMap<String, steel::rvals::SteelVal> {
+    ) -> &rustc_hash::FxHashMap<String, steel::rvals::SteelVal> {
         &self.registries.command_table
     }
 
@@ -472,7 +472,7 @@ impl ScriptingHost {
     pub fn eval_source_returning_defs(
         &mut self,
         source: String,
-        builtin_names: std::collections::HashSet<String>,
+        builtin_names: rustc_hash::FxHashSet<String>,
         host: &mut dyn EditorHost,
     ) -> Result<(), String> {
         self.eval_source_raw(source, builtin_names, 10_000, host)
@@ -513,7 +513,7 @@ impl ScriptingHost {
         path: &Path,
         budget_ms: u64,
         host: &mut dyn EditorHost,
-        builtin_names: std::collections::HashSet<String>,
+        builtin_names: rustc_hash::FxHashSet<String>,
     ) -> Result<Vec<Effect>, EvalError> {
         let source = match hume_platform::fs::read_to_string(path) {
             Ok(s) => s,

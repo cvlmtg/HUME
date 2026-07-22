@@ -232,7 +232,7 @@ impl Editor {
                 cwd: std::env::current_dir().unwrap_or_default(),
                 pending_hooks: Vec::new(),
                 pending_steel_calls: Vec::new(),
-                trigger_chars: std::collections::HashMap::new(),
+                trigger_chars: rustc_hash::FxHashMap::default(),
                 decorations: super::decorations::DecorationStores::default(),
                 steel_prompt_callback: None,
                 lsp_completion_dismiss_pending: false,
@@ -241,7 +241,7 @@ impl Editor {
                 diagnostic_scopes: None,
                 inlay_hint_scope: None,
                 virtual_text_fallback_scope: None,
-                runtime_scope_cache: std::collections::HashMap::new(),
+                runtime_scope_cache: rustc_hash::FxHashMap::default(),
                 popup: None,
                 popup_view,
                 menu: None,
@@ -252,7 +252,7 @@ impl Editor {
             view: engine_view,
             kitty_enabled: false,
             scripting: None,
-            builtin_cmd_names: std::collections::HashSet::new(),
+            builtin_cmd_names: rustc_hash::FxHashSet::default(),
             parse_worker: Box::new(
                 hume_treesitter::parse_worker::ThreadedParseBackend::with_waker(
                     std::sync::Arc::clone(&wake),
@@ -260,10 +260,10 @@ impl Editor {
             ),
             parse_worker_disconnect_logged: false,
             timer_wheel: super::timers::TimerWheel::new(),
-            timer_payloads: std::collections::HashMap::new(),
-            viewport_debounce: std::collections::HashMap::new(),
-            last_viewport_key: std::collections::HashMap::new(),
-            virtual_lines_synced: std::collections::HashMap::new(),
+            timer_payloads: rustc_hash::FxHashMap::default(),
+            viewport_debounce: rustc_hash::FxHashMap::default(),
+            last_viewport_key: rustc_hash::FxHashMap::default(),
+            virtual_lines_synced: rustc_hash::FxHashMap::default(),
             lsp: super::lsp::LspState::new_threaded(std::sync::Arc::clone(&wake)),
             tui_active: false,
             terminal: None,
@@ -1147,7 +1147,7 @@ impl Editor {
     }
 
     /// Write per-frame gutter sign data (diagnostics + plugin signs) to every
-    /// pane's own `Arc<RwLock<HashMap<line, Vec<Sign>>>>` buffers, read by
+    /// pane's own `Arc<RwLock<FxHashMap<line, Vec<Sign>>>>` buffers, read by
     /// that pane's `SharedSignSource`s. Stays visible in Insert mode — same
     /// reasoning as [`Self::update_highlight_providers`]'s diagnostics
     /// section, which this runs right after.
@@ -1207,8 +1207,8 @@ impl Editor {
                     })
                     .collect()
             };
-            let mut diag_best: std::collections::HashMap<usize, DiagSeverity> =
-                std::collections::HashMap::new();
+            let mut diag_best: rustc_hash::FxHashMap<usize, DiagSeverity> =
+                rustc_hash::FxHashMap::default();
             for (start_line, end_line, severity) in diag_raw {
                 for line in start_line..=end_line {
                     if !visible_lines.contains(&line) {
@@ -1270,8 +1270,8 @@ impl Editor {
                 .collect();
             plugin_raw.sort_by(|a, b| a.0.cmp(&b.0));
 
-            let mut plugin_all: std::collections::HashMap<usize, Vec<(String, String, i64)>> =
-                std::collections::HashMap::new();
+            let mut plugin_all: rustc_hash::FxHashMap<usize, Vec<(String, String, i64)>> =
+                rustc_hash::FxHashMap::default();
             for (_, line, text, scope, priority) in plugin_raw {
                 plugin_all
                     .entry(line)
@@ -1373,8 +1373,8 @@ impl Editor {
             let visible = self.visible_char_range(pid, bid);
             let text = self.state.buffers.get(bid).text();
 
-            let mut by_line: std::collections::HashMap<usize, Vec<InlineInsert>> =
-                std::collections::HashMap::new();
+            let mut by_line: rustc_hash::FxHashMap<usize, Vec<InlineInsert>> =
+                rustc_hash::FxHashMap::default();
             for entry in self.state.decorations.inlay_hints_for(bid) {
                 if !visible.contains(&entry.pos) {
                     continue;
@@ -1448,8 +1448,8 @@ impl Editor {
                 .collect();
 
             let text = self.state.buffers.get(bid).text();
-            let mut by_line: std::collections::HashMap<usize, Vec<InlineInsert>> =
-                std::collections::HashMap::new();
+            let mut by_line: rustc_hash::FxHashMap<usize, Vec<InlineInsert>> =
+                rustc_hash::FxHashMap::default();
             for (line, entry_text, scope) in resolved {
                 // End-of-line placement: the line's own trailing '\n' char
                 // resolves to a byte offset within `line` (never the next
@@ -1527,8 +1527,8 @@ impl Editor {
                 .map(|e| (e.line, e.text.clone(), e.scope.clone()))
                 .collect();
 
-            let mut by_line: std::collections::HashMap<usize, Vec<VirtualLine>> =
-                std::collections::HashMap::new();
+            let mut by_line: rustc_hash::FxHashMap<usize, Vec<VirtualLine>> =
+                rustc_hash::FxHashMap::default();
             for (line, text, scope_name) in entries {
                 let scope = match scope_name {
                     Some(name) => self.runtime_scope(&name),

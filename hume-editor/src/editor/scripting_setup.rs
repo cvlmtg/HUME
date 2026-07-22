@@ -380,7 +380,7 @@ impl Editor {
         // Capture built-in names before any plugin code runs; stable for the
         // editor's lifetime.  Stored on Editor so dispatch-time activation can
         // borrow it disjointly from &mut self.scripting / settings / keymap.
-        let builtin_names: std::collections::HashSet<String> =
+        let builtin_names: rustc_hash::FxHashSet<String> =
             self.state.registry.names().map(String::from).collect();
         self.builtin_cmd_names = builtin_names.clone();
         // Reset the language registry so `:reload-config` gets a fresh set

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::sync::atomic::AtomicBool;
 
 use crate::grammar::LoadedGrammar;
@@ -145,7 +145,7 @@ fn static_language_override_wins_regardless_of_content() {
         ),
     );
     let rust = make_bundle("rust", "tree_sitter_rust", None);
-    let mut langs = HashMap::new();
+    let mut langs = FxHashMap::default();
     langs.insert("rust".to_owned(), Arc::clone(&rust));
 
     let source = "[\"hello\"]\n";
@@ -177,7 +177,7 @@ fn unknown_injection_language_is_skipped_silently() {
     );
     // Non-empty but irrelevant: proves the lookup is genuinely by-key,
     // not just "map happens to be empty".
-    let mut langs = HashMap::new();
+    let mut langs = FxHashMap::default();
     langs.insert(
         "rust".to_owned(),
         make_bundle("rust", "tree_sitter_rust", None),
@@ -210,7 +210,7 @@ fn combined_merges_multiple_matches_into_one_layer() {
         ),
     );
     let rust = make_bundle("rust", "tree_sitter_rust", None);
-    let mut langs = HashMap::new();
+    let mut langs = FxHashMap::default();
     langs.insert("rust".to_owned(), rust);
 
     // Three string literals — without `injection.combined` these would be
@@ -250,7 +250,7 @@ fn depth_cap_stops_recursion_at_max_depth() {
             r#"((array) @injection.content (#set! injection.language "json") (#set! injection.include-unnamed-children))"#,
         ),
     );
-    let mut langs = HashMap::new();
+    let mut langs = FxHashMap::default();
     langs.insert("json".to_owned(), Arc::clone(&json));
 
     let source = "[1]\n";
@@ -285,7 +285,7 @@ fn dynamic_language_capture_reads_fenced_code_info_string() {
     let inj_src = std::fs::read_to_string(inj_path).unwrap();
     let markdown = make_bundle("markdown", "tree_sitter_markdown", Some(&inj_src));
     let rust = make_bundle("rust", "tree_sitter_rust", None);
-    let mut langs = HashMap::new();
+    let mut langs = FxHashMap::default();
     langs.insert("rust".to_owned(), Arc::clone(&rust));
 
     let source = "```rust\nfn main() {}\n```\n";
@@ -313,7 +313,7 @@ fn dynamic_language_capture_unknown_info_string_no_layer() {
     }
     let inj_src = std::fs::read_to_string(inj_path).unwrap();
     let markdown = make_bundle("markdown", "tree_sitter_markdown", Some(&inj_src));
-    let langs: HashMap<String, Arc<GrammarBundle>> = HashMap::new();
+    let langs: FxHashMap<String, Arc<GrammarBundle>> = FxHashMap::default();
 
     let source = "```no-such-lang\nwhatever\n```\n";
     let (mut parser, tree) = parse(&markdown, source);

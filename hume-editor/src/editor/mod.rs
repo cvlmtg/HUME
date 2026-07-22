@@ -254,7 +254,7 @@ pub(crate) struct EditorState {
     /// completion"` source registered separately for `"rust"` and
     /// `"python"`) never clobber each other. An empty `chars` removes the
     /// entry entirely (matches `on-lsp-detach`'s clear-on-detach usage).
-    pub(super) trigger_chars: std::collections::HashMap<(String, String), Vec<char>>,
+    pub(super) trigger_chars: rustc_hash::FxHashMap<(String, String), Vec<char>>,
     /// Steel-writable decoration stores (inlay hints, signs, virtual
     /// lines, extra highlights) — the render providers read these.
     pub(super) decorations: decorations::DecorationStores,
@@ -296,7 +296,7 @@ pub(crate) struct EditorState {
     /// Cache of interned `ScopeId`s for plugin-supplied scope name strings
     /// (extra highlights, signs, virtual lines) — avoids re-interning the
     /// same runtime name every frame.
-    pub(super) runtime_scope_cache: std::collections::HashMap<String, hume_engine::types::ScopeId>,
+    pub(super) runtime_scope_cache: rustc_hash::FxHashMap<String, hume_engine::types::ScopeId>,
     /// `(show-popup! text)`'s raw content — resolved into a positioned
     /// `PopupState` each frame by `Editor::sync_popup_view` (geometry needs
     /// the focused pane's *current* rect, so it can't be pre-computed here).
@@ -427,7 +427,7 @@ pub(crate) struct Editor {
     /// The embedded Steel scripting host.
     pub(super) scripting: Option<hume_scripting::ScriptingHost>,
     /// Snapshot of Rust-builtin command names taken at end of `init_scripting`.
-    pub(super) builtin_cmd_names: std::collections::HashSet<String>,
+    pub(super) builtin_cmd_names: rustc_hash::FxHashSet<String>,
     /// Parse backend: threaded in production, synchronous-inline in tests.
     parse_worker: Box<dyn ParseBackend>,
     /// Whether the one-shot "parse worker disconnected" message has been logged.
@@ -438,20 +438,20 @@ pub(crate) struct Editor {
     /// `TimerId -> {Steel thunk, or native action}`, keeping `timers.rs`
     /// itself payload-agnostic. Entry removed on fire or cancel — never
     /// leaked.
-    timer_payloads: std::collections::HashMap<timers::TimerId, timer_bridge::TimerPayload>,
+    timer_payloads: rustc_hash::FxHashMap<timers::TimerId, timer_bridge::TimerPayload>,
     /// This pane's currently-pending `OnViewportChange` debounce timer, if
     /// any — looked up to cancel-and-replace on the next change.
-    viewport_debounce: std::collections::HashMap<hume_engine::pipeline::PaneId, timers::TimerId>,
+    viewport_debounce: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, timers::TimerId>,
     /// `(top_line, height)` as of the last frame, per pane — `prepare_frame`'s
     /// scroll step compares against this to detect a real viewport change
     /// worth debouncing, rather than firing every frame regardless.
-    last_viewport_key: std::collections::HashMap<hume_engine::pipeline::PaneId, (usize, u16)>,
+    last_viewport_key: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, (usize, u16)>,
     /// `decorations.virtual_lines_generation()` as of each pane's last
     /// mirror into its `PaneVirtualLines` Arc — `prepare_frame`
     /// compares against this to skip the rebuild on frames where the store
     /// didn't change, since this runs in scroll/cursor math too, not just
     /// render.
-    virtual_lines_synced: std::collections::HashMap<hume_engine::pipeline::PaneId, u64>,
+    virtual_lines_synced: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, u64>,
     /// LSP backend + client state: threaded in production,
     /// synchronous-inline in tests, mirroring `parse_worker` above.
     lsp: lsp::LspState,

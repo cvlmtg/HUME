@@ -2,8 +2,10 @@
 //! The workhorse for every editor/Steel test — the LSP analog
 //! of `hume-treesitter`'s `InlineParseBackend`.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::path::Path;
+
+use rustc_hash::FxHashMap;
 
 use lsp_types::{
     CodeActionProviderCapability, CompletionOptions, DeclarationCapability,
@@ -20,7 +22,7 @@ use crate::transport::InboundEvent;
 pub struct InlineLspBackend {
     /// method -> FIFO of canned results; a request pops one and enqueues
     /// the Response event for the next drain.
-    responses: HashMap<String, VecDeque<Result<serde_json::Value, ResponseError>>>,
+    responses: FxHashMap<String, VecDeque<Result<serde_json::Value, ResponseError>>>,
     /// Everything the editor sent, for assertions.
     pub sent: Vec<(ServerId, Message)>,
     queue: VecDeque<(ServerId, InboundEvent)>,
@@ -30,7 +32,7 @@ pub struct InlineLspBackend {
 impl InlineLspBackend {
     pub fn new() -> Self {
         Self {
-            responses: HashMap::new(),
+            responses: FxHashMap::default(),
             sent: Vec::new(),
             queue: VecDeque::new(),
             next: 0,

@@ -12,6 +12,7 @@ tree-sitter-language = "0.1"
 libloading = "0.9"
 streaming-iterator = "0.1"
 ropey.workspace = true
+rustc-hash.workspace = true
 
 [dev-dependencies]
 slotmap = "1"

@@ -1225,7 +1225,7 @@ pub(crate) fn align_selections(buf: Text, sels: SelectionSet) -> (Text, Selectio
     }
 
     let primary_line = buf.char_to_line(sels.primary().anchor());
-    let mut slots_on_line = std::collections::HashMap::<usize, usize>::new();
+    let mut slots_on_line = rustc_hash::FxHashMap::<usize, usize>::default();
 
     let mut meta: Vec<SelMeta> = sels
         .iter_sorted()
@@ -1294,8 +1294,7 @@ pub(crate) fn align_selections(buf: Text, sels: SelectionSet) -> (Text, Selectio
 
     // Group participating metas by line for pair-wise constraint computation.
     // Values are in slot order (sels.iter_sorted() is ascending by start).
-    let mut by_line: std::collections::HashMap<usize, Vec<&SelMeta>> =
-        std::collections::HashMap::new();
+    let mut by_line: rustc_hash::FxHashMap<usize, Vec<&SelMeta>> = rustc_hash::FxHashMap::default();
     for m in &meta {
         if !m.is_multiline {
             by_line.entry(m.start_line).or_default().push(m);

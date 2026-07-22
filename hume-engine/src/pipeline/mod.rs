@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use slotmap::{SlotMap, new_key_type};
 
@@ -106,7 +106,7 @@ pub struct RenderContext {
     /// Perpendicular-arm bits keyed by cell, computed from `seams` each
     /// render so junction glyphs (`┬ ┴ ├ ┤ ┼`) can be drawn where seams
     /// cross. Reused scratch storage, same rationale as `seams`.
-    pub(crate) seam_arms: HashMap<(u16, u16), u8>,
+    pub(crate) seam_arms: FxHashMap<(u16, u16), u8>,
     /// Scratch for cursor-position computation (`cursor::screen_pos` and scroll).
     /// Distinct from `frame.format` — used outside the render pipeline, where
     /// borrowing `frame` simultaneously would conflict.
@@ -119,7 +119,7 @@ impl RenderContext {
             frame: FrameScratch::new(),
             pane_rects: Vec::new(),
             seams: Vec::new(),
-            seam_arms: HashMap::new(),
+            seam_arms: FxHashMap::default(),
             cursor_format: FormatScratch::new(),
         }
     }

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
@@ -180,7 +180,7 @@ pub(crate) fn resolve_and_parse_injections(
     tree: &tree_sitter::Tree,
     bundle: &GrammarBundle,
     rope: &ropey::Rope,
-    langs: &HashMap<String, Arc<GrammarBundle>>,
+    langs: &FxHashMap<String, Arc<GrammarBundle>>,
     cancel: &AtomicBool,
     depth: u8,
 ) -> Vec<ParsedInjection> {
@@ -190,7 +190,7 @@ pub(crate) fn resolve_and_parse_injections(
     };
 
     let mut non_combined: Vec<InjectionGroup> = Vec::new();
-    let mut combined: HashMap<(usize, String), InjectionGroup> = HashMap::new();
+    let mut combined: FxHashMap<(usize, String), InjectionGroup> = FxHashMap::default();
 
     let mut cursor = tree_sitter::QueryCursor::new();
     let root = tree.root_node();
@@ -209,6 +209,17 @@ pub(crate) fn resolve_and_parse_injections(
             })
         });
         let Some(language) = language else { continue };
+
+        // Unknown injection language — skip silently. No lazy install: the
+        // user opts into grammars explicitly via PLUM. Every entry in `langs`
+        // is grammared by construction (it's built from the grammar table).
+        // Checked here, before `combined` insertion, so its FxHashMap only
+        // ever keys on the trusted installed-grammar names — a dynamic
+        // `@injection.language` capture is raw buffer text, and unfiltered
+        // attacker-chosen keys in an unkeyed hash invite collision DoS.
+        if !langs.contains_key(&language) {
+            continue;
+        }
 
         let Some(content_idx) = inj.content_capture else {
             continue;
@@ -237,7 +248,7 @@ pub(crate) fn resolve_and_parse_injections(
         }
     }
 
-    // HashMap iteration order is arbitrary — sort combined groups by their
+    // FxHashMap iteration order is arbitrary — sort combined groups by their
     // (pattern_index, language) key so layer order (and thus same-depth `seq`
     // priority in `flatten_overlaps`) is stable across parses.
     let mut combined: Vec<_> = combined.into_iter().collect();
@@ -247,10 +258,7 @@ pub(crate) fn resolve_and_parse_injections(
         .into_iter()
         .chain(combined.into_iter().map(|(_, g)| g))
     {
-        // Unknown injection language — skip silently. No lazy install: the
-        // user opts into grammars explicitly via PLUM. Every entry in `langs`
-        // is grammared by construction (it's built from the grammar table),
-        // so no further "does it have a grammar" check is needed here.
+        // Always present — unknown languages were filtered before grouping.
         let Some(child_bundle) = langs.get(&group.language) else {
             continue;
         };

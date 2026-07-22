@@ -9,6 +9,7 @@ lsp-types = "0.97"
 serde.workspace = true
 serde_json.workspace = true
 ropey.workspace = true
+rustc-hash.workspace = true
 
 [features]
 # Exposes test-only doubles and oracles (RecordingLspBackend, the P6 string-

@@ -1,12 +1,12 @@
 //! Engine-compatible sign sources feeding the gutter's `SignColumn`.
 //!
-//! Each source wraps an `Arc<RwLock<HashMap<line_idx, Vec<Sign>>>>` that the
+//! Each source wraps an `Arc<RwLock<FxHashMap<line_idx, Vec<Sign>>>>` that the
 //! editor writes once per frame (after scroll is resolved, before
 //! `term.draw` — same cluster as the highlight providers). `signs_for_line`
 //! is then a cheap map lookup, matching `SignSource`'s per-row-per-frame
 //! contract.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::sync::{Arc, RwLock};
 
 use hume_engine::builtins::sign_column::{Sign, SignSource};
@@ -14,7 +14,7 @@ use hume_engine::providers::GutterRowCtx;
 
 /// Shared per-frame sign data: up to N priority-ordered `Sign`s per line
 /// (where N = the buffer's configured `signcolumn` columns).
-pub(crate) type SignMap = Arc<RwLock<HashMap<usize, Vec<Sign>>>>;
+pub(crate) type SignMap = Arc<RwLock<FxHashMap<usize, Vec<Sign>>>>;
 
 /// The pair of sign maps every pane owns: diagnostics (Rust-owned) and
 /// plugin signs (`set-signs!`, all sources pre-merged at write time).

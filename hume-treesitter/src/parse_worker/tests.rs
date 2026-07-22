@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use slotmap::SlotMap;
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use crate::grammar::LoadedGrammar;
 use crate::highlight::TreeSitterHighlighter;
@@ -51,21 +51,21 @@ fn fresh_bid() -> BufferId {
     sm.insert(())
 }
 
-fn empty_langs() -> Arc<HashMap<String, Arc<GrammarBundle>>> {
-    Arc::new(HashMap::new())
+fn empty_langs() -> Arc<FxHashMap<String, Arc<GrammarBundle>>> {
+    Arc::new(FxHashMap::default())
 }
 
 // ── coalesce_one (pure) ───────────────────────────────────────────────────
 
 #[test]
 fn coalesce_one_keeps_higher_gen() {
-    use std::collections::HashMap;
+    use rustc_hash::FxHashMap;
     if skip_unless_grammars(&["json"]) {
         return;
     }
     let bid = fresh_bid();
     let bundle = make_bundle("json", "tree_sitter_json");
-    let mut batch: HashMap<BufferId, ParseRequest> = HashMap::new();
+    let mut batch: FxHashMap<BufferId, ParseRequest> = FxHashMap::default();
 
     // Gen 2 lands first.
     coalesce_one(
@@ -137,14 +137,14 @@ fn coalesce_one_keeps_higher_gen() {
 
 #[test]
 fn coalesce_one_same_gen_different_lang_replaces() {
-    use std::collections::HashMap;
+    use rustc_hash::FxHashMap;
     if skip_unless_grammars(&["json", "rust"]) {
         return;
     }
     let bid = fresh_bid();
     let bundle_a = make_bundle("json", "tree_sitter_json");
     let bundle_b = make_bundle("rust", "tree_sitter_rust");
-    let mut batch: HashMap<BufferId, ParseRequest> = HashMap::new();
+    let mut batch: FxHashMap<BufferId, ParseRequest> = FxHashMap::default();
 
     // bundle_a arrives first at gen 5.
     coalesce_one(

@@ -5,8 +5,10 @@
 //! editor core.
 
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashSet};
+use std::collections::BinaryHeap;
 use std::time::{Duration, Instant};
+
+use rustc_hash::FxHashSet;
 
 use super::async_source::AsyncSource;
 
@@ -27,7 +29,7 @@ pub(crate) struct TimerId(pub(crate) u64);
 /// never needs a sweep.
 pub(crate) struct TimerWheel {
     heap: BinaryHeap<Reverse<(Instant, TimerId)>>,
-    cancelled: HashSet<TimerId>,
+    cancelled: FxHashSet<TimerId>,
     next_id: u64,
 }
 
@@ -35,7 +37,7 @@ impl TimerWheel {
     pub(crate) fn new() -> Self {
         Self {
             heap: BinaryHeap::new(),
-            cancelled: HashSet::new(),
+            cancelled: FxHashSet::default(),
             next_id: 0,
         }
     }

@@ -83,7 +83,7 @@ impl Editor {
         }
 
         // Deduplicated set of visible BufferIds.
-        let mut seen = std::collections::HashSet::new();
+        let mut seen = rustc_hash::FxHashSet::default();
         let visible: Vec<BufferId> = self
             .view
             .panes

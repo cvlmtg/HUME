@@ -8,7 +8,7 @@
 //! owner of `Lazy` command stubs (see `CommandHost::register_lazy_command`),
 //! reached through the host rather than a parallel map.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::path::PathBuf;
 
 use super::attribution::PluginId;
@@ -45,11 +45,11 @@ pub enum PluginState {
 pub struct LazyRegistry {
     /// Per-plugin lifecycle state.  Only plugins whose path was resolved at
     /// declaration time appear here; absent-path plugins are silently skipped.
-    pub plugins: HashMap<PluginId, PluginState>,
+    pub plugins: FxHashMap<PluginId, PluginState>,
     /// 1:many map: hook event → plugins that activate on that event.
-    pub activation_events: HashMap<HookId, Vec<PluginId>>,
+    pub activation_events: FxHashMap<HookId, Vec<PluginId>>,
     /// 1:many map: language name → plugins that activate when the language is set.
-    pub activation_languages: HashMap<String, Vec<PluginId>>,
+    pub activation_languages: FxHashMap<String, Vec<PluginId>>,
 }
 
 impl LazyRegistry {

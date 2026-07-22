@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -64,7 +64,7 @@ pub struct ParseRequest {
     /// Snapshot of every grammared language, for resolving an injected
     /// language name (e.g. a fenced code block's info string) to its grammar
     /// without touching main-thread state from the worker.
-    pub langs: Arc<HashMap<String, Arc<GrammarBundle>>>,
+    pub langs: Arc<FxHashMap<String, Arc<GrammarBundle>>>,
 }
 
 pub enum ParseOutcome {
@@ -107,7 +107,7 @@ pub struct ParseDone {
 
 /// Insert `req` into `batch`, keeping only the highest-`text_gen` entry per `bid`.
 /// Older or equal-gen duplicates are dropped without cloning.
-fn coalesce_one(batch: &mut HashMap<BufferId, ParseRequest>, req: ParseRequest) {
+fn coalesce_one(batch: &mut FxHashMap<BufferId, ParseRequest>, req: ParseRequest) {
     use std::collections::hash_map::Entry;
     match batch.entry(req.bid) {
         Entry::Vacant(v) => {
@@ -231,7 +231,7 @@ impl WorkerState {
             // Coalesce: drain any additional queued requests, keeping only the
             // highest-text_gen request per BufferId.  Superseded requests are
             // already obsolete and would produce trees the main thread discards.
-            let mut batch: HashMap<BufferId, ParseRequest> = HashMap::new();
+            let mut batch: FxHashMap<BufferId, ParseRequest> = FxHashMap::default();
             coalesce_one(&mut batch, first);
             let disconnected = 'drain: loop {
                 match self.rx.try_recv() {

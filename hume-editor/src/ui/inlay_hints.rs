@@ -2,12 +2,12 @@
 //! `inlay_hints` decoration store, keyed by line so `decorations_for_line` is a
 //! plain map lookup.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::sync::{Arc, RwLock};
 
 use hume_engine::providers::{InlineDecoration, InlineInsert};
 
-pub(crate) type InlayHintMap = Arc<RwLock<HashMap<usize, Vec<InlineInsert>>>>;
+pub(crate) type InlayHintMap = Arc<RwLock<FxHashMap<usize, Vec<InlineInsert>>>>;
 
 pub(crate) struct InlayHintProvider {
     pub(crate) data: InlayHintMap,

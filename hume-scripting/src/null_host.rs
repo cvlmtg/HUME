@@ -328,8 +328,8 @@ impl OutputHost for RecordingInlineOutputHost {
 #[derive(Default)]
 pub(crate) struct LazyStubHost {
     inner: NullHost,
-    defined: std::collections::HashSet<String>,
-    lazy: std::collections::HashMap<String, PluginId>,
+    defined: rustc_hash::FxHashSet<String>,
+    lazy: rustc_hash::FxHashMap<String, PluginId>,
 }
 
 impl EditorHost for LazyStubHost {

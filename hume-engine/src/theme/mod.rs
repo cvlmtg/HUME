@@ -3,6 +3,8 @@ pub mod loader;
 
 use std::collections::HashMap;
 
+use rustc_hash::FxHashMap;
+
 use crate::types::{ResolvedStyle, Scope, ScopeId};
 
 // ---------------------------------------------------------------------------
@@ -34,7 +36,7 @@ pub struct ScopeRegistry {
     /// Name → id. Owned keys regardless of registration path — a `&str`
     /// lookup costs the same whether the stored key came from a `&'static`
     /// literal or a runtime string.
-    map: HashMap<Box<str>, ScopeId>,
+    map: FxHashMap<Box<str>, ScopeId>,
     /// Combined name table; index is the `ScopeId`. Both registration paths
     /// push here so `name_of` works uniformly.
     names: Vec<Box<str>>,
@@ -43,7 +45,7 @@ pub struct ScopeRegistry {
 impl ScopeRegistry {
     pub fn new() -> Self {
         Self {
-            map: HashMap::new(),
+            map: FxHashMap::default(),
             names: Vec::new(),
         }
     }
@@ -165,7 +167,7 @@ pub struct UiScopes {
 pub struct Theme {
     /// Source map: written once at construction, read by `bake()` and
     /// `resolve_by_name()`. Never mutated after construction.
-    raw: HashMap<String, ResolvedStyle>,
+    raw: FxHashMap<String, ResolvedStyle>,
     /// Per-[`ScopeId`] resolved styles. Populated by `bake()`.
     /// `baked[id.0]` is the style for the scope with that id.
     baked: Vec<ResolvedStyle>,
@@ -179,11 +181,16 @@ pub struct Theme {
 impl Theme {
     /// Build a theme from a `scope → style` map with static string keys.
     ///
-    /// Used by [`crate::ui::theme::build_default_theme`] and tests that work
-    /// with compile-time string literals. `ui` fields are resolved immediately
-    /// from `styles`, so callers can use `theme.ui.*` before calling `bake()`.
+    /// Test-only convenience constructor (no production caller — production
+    /// builds themes from TOML via [`loader::parse_theme`]/[`Self::from_owned`]).
+    /// Takes a plain `HashMap`, not `FxHashMap`: the map is consumed once via
+    /// `.collect()` into the real (`FxHashMap`-backed) storage below, so its
+    /// hasher never matters — keeping it a plain `HashMap` lets every test
+    /// build `styles` with an ordinary literal instead of `FxHashMap::default()`.
+    /// `ui` fields are resolved immediately from `styles`, so callers can use
+    /// `theme.ui.*` before calling `bake()`.
     pub fn new(styles: HashMap<&'static str, ResolvedStyle>, default: ResolvedStyle) -> Self {
-        let owned: HashMap<String, ResolvedStyle> = styles
+        let owned: FxHashMap<String, ResolvedStyle> = styles
             .into_iter()
             .map(|(k, v)| (k.to_string(), v))
             .collect();
@@ -194,7 +201,7 @@ impl Theme {
     ///
     /// Used by [`loader::load_theme`] which produces `String` scope names from
     /// TOML parsing.
-    pub fn from_owned(styles: HashMap<String, ResolvedStyle>, default: ResolvedStyle) -> Self {
+    pub fn from_owned(styles: FxHashMap<String, ResolvedStyle>, default: ResolvedStyle) -> Self {
         let mut t = Self {
             raw: styles,
             baked: Vec::new(),
@@ -256,7 +263,7 @@ impl Theme {
 
     /// Resolve a scope name via the dot-notation fallback chain.
     ///
-    /// **Slow path** (one `HashMap` lookup per dot segment). Use this only for
+    /// **Slow path** (one `FxHashMap` lookup per dot segment). Use this only for
     /// non-hot call sites such as gutter-cell rendering (~100 calls/frame).
     /// On the per-grapheme hot path, intern the scope and use [`resolve`].
     pub fn resolve_by_name(&self, scope: Scope) -> ResolvedStyle {
@@ -327,7 +334,7 @@ impl Theme {
 
 impl Default for Theme {
     fn default() -> Self {
-        Self::from_owned(HashMap::new(), ResolvedStyle::default())
+        Self::from_owned(FxHashMap::default(), ResolvedStyle::default())
     }
 }
 

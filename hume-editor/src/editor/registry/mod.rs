@@ -31,8 +31,8 @@
 //!    groups, parameterized motions). Implemented in `editor/commands/`; stored
 //!    and dispatched as a function pointer exactly like the other variants.
 
+use rustc_hash::FxHashMap;
 use std::borrow::Cow;
-use std::collections::HashMap;
 
 mod command;
 mod defaults;
@@ -41,13 +41,13 @@ pub(crate) use command::{CmdMeta, EditorCmdFn, MappableCommand, TypedCommand};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Case-insensitive HashMap lookup: exact hit first, then linear-scan fallback.
+/// Case-insensitive FxHashMap lookup: exact hit first, then linear-scan fallback.
 ///
 /// Used only for the typed-command path (`:` command line) so a user typing
 /// `:W` still resolves the canonical `:w`. Mappable commands are looked up by
 /// exact name only (see [`CommandRegistry::get_mappable`]) since they are
 /// resolved from key bindings, not user-typed names.
-fn ci_get<'a, V>(map: &'a HashMap<Cow<'static, str>, V>, name: &str) -> Option<&'a V> {
+fn ci_get<'a, V>(map: &'a FxHashMap<Cow<'static, str>, V>, name: &str) -> Option<&'a V> {
     map.get(name).or_else(|| {
         map.iter()
             .find(|(k, _)| k.as_ref().eq_ignore_ascii_case(name))
@@ -74,9 +74,9 @@ fn ci_get<'a, V>(map: &'a HashMap<Cow<'static, str>, V>, name: &str) -> Option<&
 /// The single `commands` map prevents name collisions between the two kinds.
 pub(crate) struct CommandRegistry {
     /// All commands keyed by canonical name.
-    commands: HashMap<Cow<'static, str>, Command>,
+    commands: FxHashMap<Cow<'static, str>, Command>,
     /// Maps typed-command alias → canonical name, for O(1) alias lookup.
-    alias_map: HashMap<Cow<'static, str>, Cow<'static, str>>,
+    alias_map: FxHashMap<Cow<'static, str>, Cow<'static, str>>,
 }
 
 /// A command stored in [`CommandRegistry`].
@@ -92,8 +92,8 @@ impl CommandRegistry {
     /// Build a registry pre-populated with every default command.
     pub(crate) fn with_defaults() -> Self {
         let mut reg = Self {
-            commands: HashMap::new(),
-            alias_map: HashMap::new(),
+            commands: FxHashMap::default(),
+            alias_map: FxHashMap::default(),
         };
         reg.register_defaults();
         reg
@@ -101,7 +101,7 @@ impl CommandRegistry {
 
     /// Register a mappable command.
     ///
-    /// The name is extracted from the command and used as the `HashMap` key.
+    /// The name is extracted from the command and used as the `FxHashMap` key.
     /// For static built-ins the clone is a pointer copy (zero allocation).
     pub(crate) fn register(&mut self, cmd: MappableCommand) {
         let key = match &cmd {

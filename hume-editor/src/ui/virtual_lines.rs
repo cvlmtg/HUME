@@ -4,16 +4,16 @@
 //!
 //! Unlike the popup/menu widgets, this provider is consulted by *scroll and
 //! cursor math* (`display_rows_for_line`), not just rendering — so the
-//! per-line lookup must stay cheap (a `HashMap` get + `Vec` clone-out, no
+//! per-line lookup must stay cheap (a `FxHashMap` get + `Vec` clone-out, no
 //! per-frame allocation-heavy work).
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::ops::Range;
 use std::sync::{Arc, RwLock};
 
 use hume_engine::providers::{VirtualLine, VirtualLineSource};
 
-pub(crate) type VirtualLineMap = Arc<RwLock<HashMap<usize, Vec<VirtualLine>>>>;
+pub(crate) type VirtualLineMap = Arc<RwLock<FxHashMap<usize, Vec<VirtualLine>>>>;
 
 pub(crate) struct PaneVirtualLines {
     pub(crate) data: VirtualLineMap,

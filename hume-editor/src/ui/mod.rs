@@ -9,7 +9,7 @@ pub mod statusline;
 pub(crate) mod theme;
 pub(crate) mod virtual_lines;
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::sync::{Arc, RwLock};
 
 use hume_engine::builtins::line_number::LineNumberColumn;
@@ -80,9 +80,9 @@ pub(crate) fn build_pane(
 
     let highlights = PaneHighlights::default();
     let signs = PaneSigns::default();
-    let inlay_hint_map: InlayHintMap = Arc::new(RwLock::new(HashMap::new()));
-    let inline_diagnostics_map: InlayHintMap = Arc::new(RwLock::new(HashMap::new()));
-    let virtual_line_map: VirtualLineMap = Arc::new(RwLock::new(HashMap::new()));
+    let inlay_hint_map: InlayHintMap = Arc::new(RwLock::new(FxHashMap::default()));
+    let inline_diagnostics_map: InlayHintMap = Arc::new(RwLock::new(FxHashMap::default()));
+    let virtual_line_map: VirtualLineMap = Arc::new(RwLock::new(FxHashMap::default()));
 
     let mut providers = ProviderSet::new();
     let mut sign_column = SignColumn::new();
