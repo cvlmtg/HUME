@@ -9,7 +9,7 @@ fn command_completer_empty_prefix_returns_all() {
     let (reg, store, dir) = make_ctx_parts();
     let ctx = ctx(&reg, &store, dir.path());
     let result = CommandCompleter.complete("", 0, &ctx);
-    // All registered names (canonicals + aliases) minus empty prefix match all.
+    // All registered canonical names match an empty prefix.
     assert!(!result.candidates.is_empty());
     assert_eq!(result.span_start, 0);
 }
@@ -52,13 +52,10 @@ fn command_completer_sorted_ascending() {
 }
 
 #[test]
-fn command_completer_alias_and_canonical_both_appear() {
+fn command_completer_excludes_aliases() {
     let (reg, store, dir) = make_ctx_parts();
     let ctx = ctx(&reg, &store, dir.path());
-    // Typing "wr" matches "write" (canonical) and "write-quit" (canonical);
-    // "w" (alias) is excluded because it doesn't start with "wr".
-    // This verifies that both alias forms and canonical forms of other commands
-    // starting with the same prefix are surfaced.
+    // Typing "wr" matches "write" (canonical) and "write-quit" (canonical).
     let result = CommandCompleter.complete("wr", 2, &ctx);
     let names: Vec<&str> = result
         .candidates
@@ -70,7 +67,7 @@ fn command_completer_alias_and_canonical_both_appear() {
         names.contains(&"write-quit"),
         "canonical 'write-quit' should appear"
     );
-    // Verify aliases also surface: "wq" is an alias, starts with "w" not "wr".
+    // Aliases ("w", "wq") must not surface, even though they match prefix "w".
     let result2 = CommandCompleter.complete("w", 1, &ctx);
     let names2: Vec<&str> = result2
         .candidates
@@ -82,8 +79,12 @@ fn command_completer_alias_and_canonical_both_appear() {
         "canonical 'write' should appear with prefix 'w'"
     );
     assert!(
-        names2.contains(&"wq"),
-        "'wq' alias should appear with prefix 'w'"
+        !names2.contains(&"wq"),
+        "'wq' alias must not appear in completions"
+    );
+    assert!(
+        !names2.contains(&"w"),
+        "'w' alias must not appear in completions"
     );
 }
 

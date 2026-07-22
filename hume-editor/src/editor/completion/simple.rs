@@ -4,11 +4,12 @@ use super::{
 
 // ── CommandCompleter ──────────────────────────────────────────────────────────
 
-/// Completes command names + aliases from the registry.
+/// Completes command names from the registry.
 ///
 /// The completed token is the command name prefix `input[0..cursor]`.
-/// Both canonical names and aliases are offered as candidates so the user
-/// can discover either form.
+/// Only canonical names are offered — abbreviated aliases (e.g. `w` for
+/// `write`) still dispatch when typed directly, but are omitted from the
+/// popup so it doesn't get cluttered with shorthand.
 pub(crate) struct CommandCompleter;
 
 impl Completer for CommandCompleter {
@@ -16,7 +17,7 @@ impl Completer for CommandCompleter {
         let prefix = &input[..cursor.min(input.len())];
         let mut candidates: Vec<Completion> = ctx
             .registry
-            .iter_names_and_aliases()
+            .names()
             .filter(|name| {
                 // `str::get` returns None if `prefix.len()` is off a char boundary or
                 // out of range — safe for non-ASCII command/alias names from plugins.
