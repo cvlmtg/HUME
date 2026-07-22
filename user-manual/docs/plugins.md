@@ -217,6 +217,8 @@ Available hooks and their lambda signatures:
 | `on-completion-accept` | A completion entry is accepted | `(buffer-id item)` |
 | `on-completion-refilter` | Completion input changes | `(buffer-id text)` |
 
+`on-buffer-open` and `on-buffer-close` always fire as a pair for a given buffer: a buffer opened and closed within the same command never announces either one.
+
 For lazy plugins, declare the events that should trigger activation via `#:events` on `declare-plugin` instead (see [How plugins are loaded](#how-plugins-are-loaded)). LSP-related hooks like `on-lsp-attach` work fine with `register-hook!`, but can't be used as an `#:events` activation entry — a plugin gated only on `on-lsp-attach` never activates, since nothing attaches to a server until the plugin has already loaded and registered it.
 
 `set-option!` can't be called from a hook handler: it's only valid while `init.scm` or a plugin body is being evaluated. Set options at the top level of your plugin instead.

@@ -99,12 +99,25 @@ impl Editor {
             // opened it (e.g. `close-buffer!` in the same eval) before this
             // drain runs — `close-buffer!` mutates synchronously, unlike this
             // deferred detection. Skip rather than hit `BufferStore::get`'s
-            // "unseeded BufferId" panic. Skipping also means a since-closed
-            // buffer announces only `OnBufferClose`, never `OnBufferOpen` —
-            // firing open-after-close would be meaningless and would invert
-            // the already-queued close hook's ordering.
-            if self.state.buffers.try_get(bid).is_some() {
+            // "unseeded BufferId" panic.
+            //
+            // `open_hook_pending` additionally covers the case where `bid`
+            // survives (`try_get` succeeds) but is no longer the buffer that
+            // was opened: `close_buffer`'s last-buffer branch reuses `bid`'s
+            // slot in place for a fresh scratch buffer, which defaults the
+            // flag to `false` — so this still correctly skips rather than
+            // detecting a language for (and firing `OnBufferOpen` on behalf
+            // of) that unrelated scratch buffer. Skipping the corresponding
+            // `OnBufferClose` for a since-closed, never-opened buffer is
+            // `close_buffer_and_notify`'s job, not this drain's — see its doc.
+            if self
+                .state
+                .buffers
+                .try_get(bid)
+                .is_some_and(|b| b.open_hook_pending)
+            {
                 self.detect_and_set_language(bid);
+                self.state.buffers.get_mut(bid).open_hook_pending = false;
                 let val = SteelBufferId::new(bid).into_steel_val();
                 self.fire_hook_silent(HookId::OnBufferOpen, &[val]);
             }

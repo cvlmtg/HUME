@@ -109,6 +109,15 @@ pub(crate) struct Buffer {
     /// `mii` (`select-last-insertion`). `None` before any session completes,
     /// or once `text_gen` has moved past the stamp (see [`LastInsert`]).
     pub(crate) last_insert: Option<LastInsert>,
+    /// True from chokepoint open (`lifecycle::open_buffer_and_notify`) until
+    /// `Editor::detect_pending_languages` fires this buffer's `OnBufferOpen`.
+    /// Read by `lifecycle::close_buffer_and_notify`: a still-pending buffer
+    /// (opened and closed before that drain ran — e.g. within one Steel eval)
+    /// announced no open, so it must announce no close either. Buffers
+    /// created outside the chokepoint (the startup buffer, the last-buffer
+    /// scratch replacement) default to `false` — their close always
+    /// announces, matching pre-refactor behaviour.
+    pub(crate) open_hook_pending: bool,
 }
 
 impl Buffer {
@@ -141,6 +150,7 @@ impl Buffer {
             lsp_server: None,
             lsp_pending: Vec::new(),
             last_insert: None,
+            open_hook_pending: false,
         }
     }
 

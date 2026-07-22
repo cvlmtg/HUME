@@ -307,3 +307,69 @@ fn steel_open_buffer_detects_language() {
         "open-buffer! must detect the opened file's language"
     );
 }
+
+// ── open+close in one eval fires neither hook ──────────────────────────────
+
+/// `(open-buffer! path)` queues `bid` onto `pending_language_detection`
+/// rather than firing `OnBufferOpen` inline (see
+/// `steel_open_buffer_detects_language` above) — the fire happens only once
+/// `apply_script_effects`'s tail drain runs, after this eval returns. If the
+/// same eval closes `bid` first via `(close-buffer!)`, the drain finds the
+/// slot gone and skips it: `OnBufferOpen` never fires. `OnBufferClose` must
+/// not fire either in that case — a buffer that never announced its open
+/// must not announce a close, or a plugin sees a close for an id it never
+/// heard opened.
+///
+/// Fail oracle: drop the `open_announced` gate in `close_buffer_and_notify`
+/// (queue `OnBufferClose` unconditionally) — `pending_hooks` gains an
+/// `OnBufferClose` entry after `:go`, with no matching `OnBufferOpen`.
+#[test]
+fn buffer_opened_and_closed_in_one_eval_fires_neither_hook() {
+    use hume_scripting::hooks::HookId;
+
+    let dir = safe_tempdir();
+    let target = dir.path().join("target.txt");
+    std::fs::write(&target, "hello\n").unwrap();
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(
+        &init_path,
+        format!(
+            r#"(define-command! "go" "" (lambda () (close-buffer! (open-buffer! "{}"))))"#,
+            target.display()
+        ),
+    )
+    .unwrap();
+
+    let mut ed = editor_from("-[a]>bcdef\n");
+
+    let mut host = ScriptingHost::new();
+    {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init must succeed");
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":go");
+
+    let canonical = target.canonicalize().unwrap();
+    assert!(
+        ed.state.buffers.find_by_path(&canonical).is_none(),
+        "close-buffer! must have closed the just-opened buffer"
+    );
+
+    let hook_ids: Vec<HookId> = ed
+        .state
+        .pending_hooks
+        .iter()
+        .map(|(id, _)| *id)
+        .collect();
+    assert!(
+        !hook_ids.contains(&HookId::OnBufferOpen),
+        "a buffer closed before its deferred OnBufferOpen fired must not announce open; got {hook_ids:?}"
+    );
+    assert!(
+        !hook_ids.contains(&HookId::OnBufferClose),
+        "a buffer that never announced OnBufferOpen must not announce OnBufferClose either; got {hook_ids:?}"
+    );
+}

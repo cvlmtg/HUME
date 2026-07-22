@@ -155,10 +155,10 @@ mod tests {
         while let Some(idx) = rest.find(".statusline") {
             let after = &rest[idx + ".statusline".len()..];
             let after_trimmed = after.trim_start();
-            if let Some(tail) = after_trimmed.strip_prefix('=') {
-                if !tail.starts_with('=') {
-                    return true; // single `=` → assignment, not `==`
-                }
+            if let Some(tail) = after_trimmed.strip_prefix('=')
+                && !tail.starts_with('=')
+            {
+                return true; // single `=` → assignment, not `==`
             }
             rest = &rest[idx + ".statusline".len()..];
         }

@@ -56,6 +56,12 @@ pub(crate) fn open_buffer(
 /// (or regains) that capability — see `Editor::detect_pending_languages`,
 /// which also fires `OnBufferOpen` once detection (and `OnLanguageSet`) for
 /// `bid` has run, so plugins observing both hooks see `OnLanguageSet` first.
+///
+/// Also marks the buffer `open_hook_pending` until that drain fires its
+/// `OnBufferOpen` — read by [`close_buffer_and_notify`] so a buffer closed
+/// before the drain runs (e.g. opened and closed within one Steel eval)
+/// announces neither hook, rather than an `OnBufferClose` with no matching
+/// open.
 pub(crate) fn open_buffer_and_notify(
     ev: &mut EngineView,
     state: &mut EditorState,
@@ -69,6 +75,7 @@ pub(crate) fn open_buffer_and_notify(
         doc,
         state.settings.undo_levels,
     );
+    state.buffers.get_mut(bid).open_hook_pending = true;
     state.pending_language_detection.push(bid);
     bid
 }
@@ -199,6 +206,12 @@ pub(crate) fn close_buffer(
 /// skipped rather than panicking, though in practice this is never observed
 /// — `close-buffer!` is command-gated, and command dispatch always supplies
 /// `Some`.
+///
+/// `OnBufferClose` is queued only when `id`'s `OnBufferOpen` already fired
+/// (`!open_hook_pending`) — hooks announce as a pair or not at all. A buffer
+/// opened and closed before `Editor::detect_pending_languages`'s drain ran
+/// (e.g. within one Steel eval) never announced its open, so it must not
+/// announce a close either.
 pub(crate) fn close_buffer_and_notify(
     ev: &mut EngineView,
     state: &mut EditorState,
@@ -215,6 +228,8 @@ pub(crate) fn close_buffer_and_notify(
         lsp.remove_buffer_diagnostics(id);
     }
     state.decorations.remove_buffer(id);
+    // Read before the slot is freed by `close_buffer` below.
+    let open_announced = !state.buffers.get(id).open_hook_pending;
     let new_focused = close_buffer(
         ev,
         &mut state.buffers,
@@ -224,9 +239,11 @@ pub(crate) fn close_buffer_and_notify(
         id,
         state.settings.undo_levels,
     );
-    // Fire with the ID that was closed, not the new current buffer.
-    let val = SteelBufferId::new(id).into_steel_val();
-    state.pending_hooks.push((HookId::OnBufferClose, vec![val]));
+    if open_announced {
+        // Fire with the ID that was closed, not the new current buffer.
+        let val = SteelBufferId::new(id).into_steel_val();
+        state.pending_hooks.push((HookId::OnBufferClose, vec![val]));
+    }
     new_focused
 }
 
