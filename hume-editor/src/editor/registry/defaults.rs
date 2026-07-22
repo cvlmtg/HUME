@@ -1015,7 +1015,7 @@ impl CommandRegistry {
         // ── Editor commands — misc ────────────────────────────────────────────
         ecmd(
             "force-quit",
-            "Quit without checking for unsaved changes.",
+            "Quit the whole editor unconditionally, discarding unsaved changes in every buffer (same as :qa!).",
             cmd_quit,
         )
         .reg(self);

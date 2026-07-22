@@ -162,6 +162,16 @@ pub enum Effect {
         buffer: BufferId,
         language: Option<String>,
     },
+    /// A buffer just opened via `(open-buffer! …)` needs language detection
+    /// (extension/shebang sniff) run against it, plus everything that follows
+    /// from a language change (tree-sitter attach, LSP attach, lazy-plugin
+    /// activation). `Editor::detect_and_set_language` does all of that, but
+    /// it needs `self.scripting` for lazy-plugin activation — a capability
+    /// `EditorHostImpl` (where `open-buffer!` executes) never holds, since it
+    /// exists specifically so Steel builtins can touch editor state without
+    /// re-entering the VM mid-eval. So detection is queued here instead of
+    /// run inline, applied once the eval that opened the buffer returns.
+    DetectBufferLanguage(BufferId),
     /// A language name for which `(register-grammar! …)` just attached a
     /// grammar in command mode; the executor sweeps open buffers of that
     /// language (and buffers with injection sites) via

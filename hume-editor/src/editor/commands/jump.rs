@@ -16,7 +16,7 @@ pub fn cmd_quit(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    state.should_quit = true;
+    state.request_quit();
     Ok(())
 }
 

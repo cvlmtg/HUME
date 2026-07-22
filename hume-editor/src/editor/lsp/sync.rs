@@ -30,38 +30,17 @@ pub(crate) struct LspPendingChange {
 }
 
 impl Editor {
-    /// Shared preamble for every per-buffer document-sync notification:
-    /// resolves the buffer's attached server and URI, builds `params` from
-    /// the buffer, then sends through the client's Starting-queue
-    /// discipline. No-op when the buffer has no attached server, no path,
-    /// or an unconvertible path.
+    /// Shared preamble for every per-buffer document-sync notification. See
+    /// the free [`send_doc_notification`] below for the body — this is a
+    /// thin `self.state`/`self.lsp` delegate, same shape as
+    /// `flush_lsp_pending_changes`.
     fn send_doc_notification(
         &mut self,
         bid: BufferId,
         method: &str,
         build_params: impl FnOnce(&Buffer, &lsp_types::Uri) -> serde_json::Value,
     ) {
-        let buf = self.state.buffers.get(bid);
-        let Some(server_id) = buf.lsp_server else {
-            return;
-        };
-        let Some(path) = buf.path() else {
-            return;
-        };
-        let Ok(uri) = hume_lsp::uri::path_to_uri(path) else {
-            return;
-        };
-        let params = build_params(buf, &uri);
-        let Some((client, backend)) = self.lsp.client_and_backend(server_id) else {
-            return;
-        };
-        client.send_or_queue(
-            backend,
-            Message::Notification {
-                method: method.to_string(),
-                params,
-            },
-        );
+        send_doc_notification(&mut self.state, &mut self.lsp, bid, method, build_params);
     }
 
     /// Sends the buffer's full text as `textDocument/didOpen`. Called once,
@@ -96,20 +75,6 @@ impl Editor {
         self.send_doc_notification(
             bid,
             DidSaveTextDocument::METHOD,
-            |_buf, uri| serde_json::json!({ "textDocument": { "uri": uri.as_str() } }),
-        );
-    }
-
-    /// `textDocument/didClose`. Must run *before* the buffer slot is freed
-    /// (`Editor::close_buffer` calls this first) — it needs the buffer's
-    /// path and `lsp_server` to build the notification. Queued while
-    /// `Starting`, same as every other send site here — a queued didClose
-    /// flushes after a queued didOpen, in order, so the pair stays coherent
-    /// even if a buffer opens and closes before the handshake completes.
-    pub(in crate::editor) fn lsp_did_close(&mut self, bid: BufferId) {
-        self.send_doc_notification(
-            bid,
-            DidCloseTextDocument::METHOD,
             |_buf, uri| serde_json::json!({ "textDocument": { "uri": uri.as_str() } }),
         );
     }
@@ -221,4 +186,56 @@ pub(crate) fn flush_lsp_pending_changes(state: &mut EditorState, lsp: &mut LspSt
             );
         }
     }
+}
+
+/// Free-function body of [`Editor::send_doc_notification`] — same disjoint
+/// `state`/`lsp` shape as [`flush_lsp_pending_changes`]. Resolves the
+/// buffer's attached server and URI, builds `params` from the buffer, then
+/// sends through the client's Starting-queue discipline. No-op when the
+/// buffer has no attached server, no path, or an unconvertible path.
+fn send_doc_notification(
+    state: &mut EditorState,
+    lsp: &mut LspState,
+    bid: BufferId,
+    method: &str,
+    build_params: impl FnOnce(&Buffer, &lsp_types::Uri) -> serde_json::Value,
+) {
+    let buf = state.buffers.get(bid);
+    let Some(server_id) = buf.lsp_server else {
+        return;
+    };
+    let Some(path) = buf.path() else {
+        return;
+    };
+    let Ok(uri) = hume_lsp::uri::path_to_uri(path) else {
+        return;
+    };
+    let params = build_params(buf, &uri);
+    let Some((client, backend)) = lsp.client_and_backend(server_id) else {
+        return;
+    };
+    client.send_or_queue(
+        backend,
+        Message::Notification {
+            method: method.to_string(),
+            params,
+        },
+    );
+}
+
+/// `textDocument/didClose`, sent from
+/// `crate::editor::buffer::lifecycle::close_buffer_and_notify` — the single
+/// chokepoint both `Editor::close_buffer` and
+/// `EditorHostImpl::close_buffer` (`(close-buffer! …)`) go through, so this
+/// has no other caller and no `impl Editor` wrapper of its own.
+///
+/// Must run *before* the buffer slot is freed — it needs the buffer's path
+/// and `lsp_server` to build the notification. Queued while `Starting`, same
+/// as every other send site here — a queued didClose flushes after a queued
+/// didOpen, in order, so the pair stays coherent even if a buffer opens and
+/// closes before the handshake completes.
+pub(crate) fn lsp_did_close(state: &mut EditorState, lsp: &mut LspState, bid: BufferId) {
+    send_doc_notification(state, lsp, bid, DidCloseTextDocument::METHOD, |_buf, uri| {
+        serde_json::json!({ "textDocument": { "uri": uri.as_str() } })
+    });
 }

@@ -250,3 +250,59 @@ fn failed_init_eval_salvages_eager_plugin_effects() {
         "user/efx must be Loaded — load-plugin's activation succeeded before the top-level error"
     );
 }
+
+// ── open-buffer! detects language via Effect::DetectBufferLanguage ─────────
+
+/// `(open-buffer! path)` can't run language detection inline — the host it
+/// executes against has no Steel-eval capability for lazy-plugin activation
+/// (see `Effect::DetectBufferLanguage`'s doc) — so it queues the detection as
+/// an effect, applied once the eval returns. This is the full pipeline:
+/// `:go` → `call_steel_cmd` → `open-buffer!` queues the effect →
+/// `apply_script_effects` runs `detect_and_set_language`.
+///
+/// Fail oracle: revert `EditorHostImpl::open_buffer` to skip queuing
+/// `Effect::DetectBufferLanguage` (or drop the effect's application arm in
+/// `apply_script_effects`) — the opened buffer's `language` stays `None`.
+#[test]
+fn steel_open_buffer_detects_language() {
+    let dir = safe_tempdir();
+    let target = dir.path().join("target.rs");
+    std::fs::write(&target, "fn main() {}\n").unwrap();
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(
+        &init_path,
+        format!(
+            r#"(define-command! "go" "" (lambda () (open-buffer! "{}")))"#,
+            target.display()
+        ),
+    )
+    .unwrap();
+
+    let mut ed = editor_from("-[a]>bcdef\n");
+    ed.state
+        .languages
+        .register_identity_no_rebuild("rust", &["rs"], &[], &[]);
+    ed.state.languages.rebuild_glob_set().expect("rebuild ok");
+
+    let mut host = ScriptingHost::new();
+    {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init must succeed");
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":go");
+
+    let canonical = target.canonicalize().unwrap();
+    let bid = ed
+        .state
+        .buffers
+        .find_by_path(&canonical)
+        .expect("open-buffer! must have opened the file");
+    assert_eq!(
+        ed.state.buffers.get(bid).language,
+        ed.state.languages.id_of("rust"),
+        "open-buffer! must detect the opened file's language"
+    );
+}

@@ -46,6 +46,15 @@ impl Editor {
                     let lang_id = language.map(|name| self.state.languages.intern(&name));
                     self.set_buffer_language(buffer, lang_id)
                 }
+                Effect::DetectBufferLanguage(bid) => {
+                    // The same eval that opened this buffer may have closed
+                    // it again before returning (`close-buffer!` mutates
+                    // synchronously, unlike this effect) — skip rather than
+                    // hit `BufferStore::get`'s "unseeded BufferId" panic.
+                    if self.state.buffers.try_get(bid).is_some() {
+                        self.detect_and_set_language(bid);
+                    }
+                }
                 Effect::GrammarSweep(name) => {
                     let id = self.state.languages.id_of(&name).expect(
                         "GrammarSweep is only emitted right after attach_grammar interns the name",

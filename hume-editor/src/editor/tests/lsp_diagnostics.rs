@@ -358,6 +358,93 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
     );
 }
 
+/// The Steel `(close-buffer! bid)` entry point must apply the exact same
+/// cleanup as `Editor::close_buffer` above — both go through the shared
+/// `buffer::lifecycle::close_buffer_and_notify` chokepoint — plus fire
+/// `OnBufferClose`, which the direct-Rust-call test above never exercises.
+///
+/// Fail oracle: revert `EditorHostImpl::close_buffer` to call the bare
+/// `lifecycle::close_buffer` (skipping the didClose/diagnostics/decorations/
+/// hook-enqueue orchestration) — the diagnostics/decoration assertions below
+/// fail, and the log line the hook writes never appears.
+#[test]
+fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
+    use hume_scripting::ScriptingHost;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
+    std::fs::write(&file, "one two three\n").unwrap();
+
+    let mut ed = editor_from("-[w]>ord\n");
+    let mut backend = InlineLspBackend::new();
+    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    let bid = open_with_client(&mut ed, &file, sid);
+
+    let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
+    let current_gen = ed.state.buffers.get(bid).text_gen as i32;
+    let params = params_of(publish_diagnostics_notification_versioned(
+        uri.as_str(),
+        &[((0, 0), (0, 3), 1)],
+        Some(current_gen),
+    ));
+    ed.ingest_publish_diagnostics(sid, params);
+    ed.state.decorations.set_inlay_hints(
+        bid,
+        vec![crate::editor::decorations::InlayHintEntry {
+            pos: 0,
+            text: "x".to_string(),
+            before: true,
+        }],
+    );
+    assert_eq!(
+        ed.lsp.diagnostic_counts_for_test(bid),
+        (1, 0),
+        "seed diagnostic must land"
+    );
+    assert!(
+        !ed.state.decorations.inlay_hints_for(bid).is_empty(),
+        "seed hint must land"
+    );
+
+    // `define-command!` must register into the editor's real `CommandRegistry`
+    // for `:go` to dispatch below — a `MockHost` eval (fine for `register-hook!`,
+    // which only touches `ScriptingHost`'s own state) leaves it unregistered.
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(register-hook! 'on-buffer-close (lambda (bid) (log! 'warn "close-hook-fired")))
+           (define-command! "go" "" (lambda () (close-buffer! (current-buffer))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    // `bid` is the focused buffer here (opened via `:e` above) — `(current-buffer)`
+    // resolves to it, so `:go` needs no path/id embedded in the Steel source.
+    type_cmd(&mut ed, ":go");
+    // Hooks queued during dispatch fire on an explicit drain, not automatically
+    // (`Editor::step`, which `type_cmd` rides, deliberately doesn't drain).
+    ed.drain_hooks();
+
+    assert_eq!(
+        ed.lsp.diagnostic_counts_for_test(bid),
+        (0, 0),
+        "diagnostics for a closed buffer must not linger forever"
+    );
+    assert!(
+        ed.state.decorations.inlay_hints_for(bid).is_empty(),
+        "decorations for a closed buffer must not linger forever"
+    );
+    assert!(
+        ed.state
+            .message_log
+            .format_for_display()
+            .contains("close-hook-fired"),
+        "OnBufferClose handler must have run"
+    );
+}
+
 // ── Diagnostics cleared on `:lsp-stop` ─────────────────────────────────
 
 /// Without `DiagnosticsStore::remove_server`, a stopped server's diagnostics

@@ -1,4 +1,5 @@
 use super::*;
+use hume_scripting::host::CommandHost;
 use pretty_assertions::assert_eq;
 
 // ── Command mode ──────────────────────────────────────────────────────────────
@@ -515,6 +516,30 @@ fn colon_qa_bang_quits_despite_dirty_buffers() {
 }
 
 #[test]
+fn force_quit_named_command_quits_despite_dirty_buffer() {
+    // force-quit (bindable named command, unbound by default) must behave like
+    // :qa! — unconditional quit, no dirty check — since it shares EditorState::
+    // request_quit with :qa!'s force path.
+    // Fail oracle: revert cmd_quit to a no-op and this assertion fails.
+    let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    assert!(ed.doc().is_dirty());
+
+    {
+        let mut host = live_host!(ed);
+        host.run_command_sync("force-quit", None, false, None)
+            .expect("run_command_sync must not error for force-quit");
+    }
+
+    assert!(
+        ed.state.should_quit,
+        "force-quit must quit despite dirty buffer"
+    );
+}
+
+#[test]
 fn colon_qa_stays_on_focused_dirty_buffer() {
     // When the focused buffer is already dirty, :qa must stay on it — not jump
     // to another buffer — and still refuse to quit.
@@ -714,6 +739,44 @@ fn colon_w_path_updates_file_path_for_subsequent_writes() {
             .starts_with("Written")
     );
     assert!(!ed.doc().is_dirty());
+}
+
+#[test]
+fn colon_w_path_on_read_only_buffer_exports_without_mutating_source() {
+    // :w <path> on a read-only buffer is an export: the content lands on
+    // disk at the new path, but the source buffer must not be touched —
+    // no mark_saved, no path/file_meta repoint, dirty state unchanged.
+    // Fail oracle: drop the `is_save_as` guard in write_file's save-as
+    // branch (route every :w <path> through mark_written_and_synced
+    // unconditionally) — is_dirty() below becomes false and original_path
+    // gets overwritten with new_path.
+    let (mut ed, original_path) = editor_with_file("-[h]>ello\n", "hello\n");
+    let original_path_buf = original_path.to_path_buf();
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    assert!(ed.doc().is_dirty(), "pre-condition: buffer must be dirty");
+    ed.doc_mut().read_only = true;
+
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let new_path = tmp_dir.path().join("exported.txt");
+    let cmd = format!(":w {}", new_path.display());
+    for ch in cmd.chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+
+    assert!(new_path.exists(), "export target must be written");
+    assert_eq!(std::fs::read_to_string(&new_path).unwrap(), "xhello\n");
+    assert!(
+        ed.doc().is_dirty(),
+        "export must not mark the read-only source buffer saved"
+    );
+    assert_eq!(
+        ed.doc().path(),
+        Some(original_path_buf.as_path()),
+        "export must not repoint the source buffer's path"
+    );
 }
 
 #[test]

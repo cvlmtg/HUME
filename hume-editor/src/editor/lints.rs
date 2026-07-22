@@ -648,6 +648,75 @@ mod tests {
         );
     }
 
+    // ── statusline: no raw field write outside the chokepoint ─────────────────
+
+    /// `EditorSettings.statusline` has manual `write_setting` arms (it isn't
+    /// generic-macro storage — see `settings.rs`'s "Statusline config" comment)
+    /// rather than a derive-generated field, so `write_setting_only_called_
+    /// from_allowlist` can't see a raw `settings.statusline = …` assignment;
+    /// only its own literal call pattern would. This is the same trap door the
+    /// theme bug (commit 3c97bd44) exploited: a caller with `&mut EditorState`
+    /// can always skip the chokepoint and assign the field directly, so the
+    /// only case caught here is the field named literally `statusline` — this
+    /// scan closes it for that one field the same way the write_setting scan
+    /// closes it in general.
+    ///
+    /// Fail oracle: add `self.state.settings.statusline = …` directly to
+    /// `editor/host_impl.rs`'s `configure_statusline` (reverting Fix D) — this
+    /// test must fail naming that line.
+    #[test]
+    fn statusline_field_only_written_from_allowlist() {
+        let manifest = std::env::var("CARGO_MANIFEST_DIR")
+            .expect("CARGO_MANIFEST_DIR not set — run via `cargo test`");
+        let root = std::path::Path::new(&manifest);
+
+        let allowed_files: &[&str] = &[
+            "src/settings.rs",          // write_setting's manual statusline arm
+            "src/testing/mock_host.rs", // no editor state to resync against
+            "src/editor/lints.rs",      // this scan's own pattern string, not a write
+        ];
+
+        let mut paths: Vec<std::path::PathBuf> = Vec::new();
+        collect_source_rs(&root.join("src"), &mut paths);
+
+        let mut violations: Vec<String> = Vec::new();
+
+        for path in &paths {
+            let rel = path
+                .strip_prefix(root)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .replace('\\', "/");
+
+            if allowed_files.contains(&rel.as_str()) {
+                continue;
+            }
+
+            let src = std::fs::read_to_string(path)
+                .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+
+            for (lineno, line) in src.lines().enumerate() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("//") {
+                    continue;
+                }
+                let code = strip_line_comment(line);
+                if code.contains(".statusline =") {
+                    violations.push(format!("  {rel}:{} — {trimmed}", lineno + 1));
+                }
+            }
+        }
+
+        assert!(
+            violations.is_empty(),
+            "\n.statusline written outside its allowlist.\n\
+             Production code must route through editor::settings_ops::apply\n\
+             (key \"statusline\") instead of assigning the field directly.\n\
+             Violations:\n{}\n",
+            violations.join("\n")
+        );
+    }
+
     // ── strip_line_comment ────────────────────────────────────────────────────
 
     #[test]

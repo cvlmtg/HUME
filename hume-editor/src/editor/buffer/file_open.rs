@@ -4,8 +4,6 @@ use std::path::PathBuf;
 use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::editor::buffer::Buffer;
-use hume_scripting::SteelBufferId;
-use hume_scripting::hooks::HookId;
 
 use super::lifecycle;
 use crate::editor::{Editor, Severity};
@@ -88,17 +86,10 @@ impl Editor {
     /// Allocate a new buffer slot (engine + BufferStore), seed the focused pane's
     /// per-buffer state (`state.panes.state`), and return the allocated `BufferId`.
     pub(crate) fn open_buffer(&mut self, doc: Buffer) -> BufferId {
-        let bid = lifecycle::open_buffer(
-            &mut self.view,
-            &mut self.state.buffers,
-            &mut self.state.panes.state,
-            self.state.focused_pane_id,
-            doc,
-            self.state.settings.undo_levels,
-        );
+        let bid = lifecycle::open_buffer_and_notify(&mut self.view, &mut self.state, doc);
+        // Steel eval capability only `&mut Editor` has — see
+        // `open_buffer_and_notify`'s doc for why this can't live there.
         self.detect_and_set_language(bid);
-        let val = SteelBufferId::new(bid).into_steel_val();
-        self.fire_hook_silent(HookId::OnBufferOpen, &[val]);
         bid
     }
 
@@ -108,26 +99,12 @@ impl Editor {
     ///   MRU replacement, then free the slot.
     /// - Only buffer: replace in-place with a fresh scratch buffer.
     pub(crate) fn close_buffer(&mut self, id: BufferId) {
-        // Must run before the slot is freed below — it needs the buffer's
-        // path and lsp_server to build the didClose notification.
-        self.lsp_did_close(id);
-        // Purely a leak fix — `id` is a versioned slotmap key, so a future
-        // reused slot can never alias with these stale entries — but there
-        // is no other chokepoint that ever frees them.
-        self.lsp.remove_buffer_diagnostics(id);
-        self.state.decorations.remove_buffer(id);
-        lifecycle::close_buffer(
+        lifecycle::close_buffer_and_notify(
             &mut self.view,
-            &mut self.state.buffers,
-            &mut self.state.panes.state,
-            &mut self.state.panes.jumps,
-            self.state.focused_pane_id,
+            &mut self.state,
+            Some(&mut self.lsp),
             id,
-            self.state.settings.undo_levels,
         );
-        // Fire with the ID that was closed, not the new current buffer.
-        let val = SteelBufferId::new(id).into_steel_val();
-        self.fire_hook_silent(HookId::OnBufferClose, &[val]);
     }
 
     /// Reload buffer `id` with `new_doc`'s content in place, preserving the

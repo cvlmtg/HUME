@@ -67,7 +67,7 @@ pub fn typed_quit_all(
             )));
         }
     }
-    ed.state.should_quit = true;
+    ed.state.request_quit();
     Ok(())
 }
 
@@ -223,6 +223,23 @@ fn serialize_buffer(ed: &Editor, bid: BufferId) -> (String, usize) {
     (content, line_count)
 }
 
+/// Post-write side effects for a buffer that just had its own content
+/// written to its own file: mark it saved, report the result, and sync LSP.
+/// Shared by the no-arg `:w` path and the save-as path (when the source
+/// buffer is a normal writable buffer, i.e. save-as, not export — see
+/// `write_file`'s save-as branch).
+fn mark_written_and_synced(ed: &mut Editor, bid: BufferId, line_count: usize, retried: bool) {
+    ed.state.buffers.get_mut(bid).mark_saved();
+    ed.report(write_severity(retried), write_msg(line_count, retried));
+    ed.fire_hook_buffer_save(bid);
+    // Flush any didChange already queued for this buffer first — a
+    // save-triggered server action (e.g. lint-on-save) must see a
+    // document state at least as current as the file just written,
+    // not one edit behind (didSave itself carries no text).
+    ed.flush_lsp_pending_changes();
+    ed.lsp_did_save(bid);
+}
+
 /// Write a specific buffer to its file path. No save-as — only writes to the
 /// buffer's own `file_meta` path. Used by `:wa` and the no-arg path of `:w`.
 fn write_buffer_by_id(
@@ -239,18 +256,9 @@ fn write_buffer_by_id(
     let Some(meta) = buf.file_meta.as_ref() else {
         return Err(CommandError::new("no file name"));
     };
-    let retried = hume_platform::io::write_file_atomic(&content, meta, force);
-    match retried {
+    match hume_platform::io::write_file_atomic(&content, meta, force) {
         Ok(retried) => {
-            ed.state.buffers.get_mut(bid).mark_saved();
-            ed.report(write_severity(retried), write_msg(line_count, retried));
-            ed.fire_hook_buffer_save(bid);
-            // Flush any didChange already queued for this buffer first — a
-            // save-triggered server action (e.g. lint-on-save) must see a
-            // document state at least as current as the file just written,
-            // not one edit behind (didSave itself carries no text).
-            ed.flush_lsp_pending_changes();
-            ed.lsp_did_save(bid);
+            mark_written_and_synced(ed, bid, line_count, retried);
             Ok(())
         }
         Err(e) => Err(CommandError::new(e.to_string())),
@@ -259,9 +267,13 @@ fn write_buffer_by_id(
 
 /// Serialize the buffer and write it to disk.
 ///
-/// If `arg` is `Some(path)`, performs a save-as: writes to the specified
-/// path and updates `ed.file_path` / `ed.file_meta` so that subsequent
-/// `:w` (no argument) targets the same path.
+/// If `arg` is `Some(path)`, performs a save-as for a normal writable buffer:
+/// writes to the specified path and updates `ed.file_path` / `ed.file_meta`
+/// so that subsequent `:w` (no argument) targets the same path. For a
+/// read-only or synthetic buffer (e.g. `[messages]`), `arg` is instead an
+/// **export**: the content is written to the new path, but the source
+/// buffer's path/`file_meta`/dirty state are left untouched — it did not
+/// become the file at `path`.
 ///
 /// If `arg` is `None`, writes to the current file. Errors with
 /// "Buffer is read-only" if the focused buffer has `read_only = true`, or
@@ -271,8 +283,9 @@ fn write_buffer_by_id(
 /// chmod-retry: the target is made writable, the rename is retried, and the
 /// status message includes "(forced)".
 ///
-/// On success, calls `ed.doc_mut().mark_saved()` and sets a status message.
-/// Returns `Ok(())` on success, `Err(CommandError)` on any error.
+/// On success (save-as case), calls `ed.doc_mut().mark_saved()` and sets a
+/// status message. Returns `Ok(())` on success, `Err(CommandError)` on any
+/// error.
 fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), CommandError> {
     let (content, line_count) = serialize_buffer(ed, ed.focused_buffer_id());
 
@@ -302,24 +315,24 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
         };
         match result {
             Ok((meta, retried)) => {
-                // Store the canonicalized path so path and file_meta.resolved_path
-                // always agree, even when the user supplied a relative or symlink path.
-                // Synthetic buffers (e.g. [messages]) stay path-less after save-as —
-                // the write dumps content to disk but the buffer itself is unaffected.
-                if !ed.doc().is_synthetic() {
+                let bid = ed.focused_buffer_id();
+                // A read-only or synthetic (e.g. [messages]) buffer can't
+                // legitimately become the file at `path` — :w <path> on one
+                // of these is an export, not a save-as: dump the content,
+                // leave the source buffer's identity and dirty state alone.
+                let is_save_as = !ed.doc().is_synthetic() && !ed.doc().is_read_only();
+                if is_save_as {
+                    // Store the canonicalized path so path and
+                    // file_meta.resolved_path always agree, even when the
+                    // user supplied a relative or symlink path.
                     ed.doc_mut()
                         .set_path(Some(meta.resolved_path().to_path_buf()));
                     ed.doc_mut().set_display_path(Some(display_path));
                     ed.doc_mut().file_meta = Some(meta);
+                    mark_written_and_synced(ed, bid, line_count, retried);
+                } else {
+                    ed.report(write_severity(retried), write_msg(line_count, retried));
                 }
-                ed.doc_mut().mark_saved();
-                ed.report(write_severity(retried), write_msg(line_count, retried));
-                ed.fire_hook_buffer_save(ed.focused_buffer_id());
-                // See write_buffer_by_id's matching comment: flush queued
-                // didChange first, so didSave never precedes the change it
-                // followed.
-                ed.flush_lsp_pending_changes();
-                ed.lsp_did_save(ed.focused_buffer_id());
                 Ok(())
             }
             Err(e) => Err(CommandError::new(e.to_string())),

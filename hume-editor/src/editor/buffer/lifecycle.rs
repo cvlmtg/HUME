@@ -11,10 +11,14 @@
 use slotmap::SecondaryMap;
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_scripting::SteelBufferId;
+use hume_scripting::hooks::HookId;
 
+use crate::editor::EditorState;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::jump_list::{JumpEntry, JumpList};
+use crate::editor::lsp::LspState;
 use crate::editor::pane_state::{self, PaneBufferState};
 
 // ── open_or_dedup / open_buffer ───────────────────────────────────────────────
@@ -61,6 +65,53 @@ pub(crate) fn open_buffer(
     buffers.open(bid, doc);
     pane_state::ensure(pane_state, buffers, focused_pane_id, bid);
     bid
+}
+
+/// [`open_buffer`] plus enqueuing `OnBufferOpen` — the disjoint-borrow
+/// (`view`/`state`) chokepoint shared by `Editor::open_buffer` and
+/// `EditorHostImpl::open_buffer` (`(open-buffer! …)`).
+///
+/// Deliberately does **not** run language detection: that needs
+/// `set_buffer_language`, which can activate lazy language plugins via
+/// `self.scripting` — a full `&mut Editor`/Steel-eval capability
+/// `EditorHostImpl` never holds (it exists specifically so Steel builtins
+/// can touch editor state *without* re-entering the VM mid-eval). `Editor::
+/// open_buffer` detects synchronously right after calling this, since it has
+/// that capability; the Steel path instead queues `Effect::
+/// DetectBufferLanguage`, applied by `apply_script_effects` once the eval
+/// that called `(open-buffer! …)` returns.
+pub(crate) fn open_buffer_and_notify(
+    ev: &mut EngineView,
+    state: &mut EditorState,
+    doc: Buffer,
+) -> BufferId {
+    let bid = open_buffer(
+        ev,
+        &mut state.buffers,
+        &mut state.panes.state,
+        state.focused_pane_id,
+        doc,
+        state.settings.undo_levels,
+    );
+    let val = SteelBufferId::new(bid).into_steel_val();
+    state.pending_hooks.push((HookId::OnBufferOpen, vec![val]));
+    bid
+}
+
+/// [`open_or_dedup`] plus [`open_buffer_and_notify`]'s hook enqueue on the
+/// newly-opened branch only — dedup-opening an already-open path fires no
+/// hook, matching `Editor::open_buffer`'s "every call is a genuinely new
+/// buffer" contract.
+pub(crate) fn open_or_dedup_and_notify(
+    ev: &mut EngineView,
+    state: &mut EditorState,
+    canonical: &std::path::Path,
+) -> std::io::Result<(BufferId, bool)> {
+    if let Some(existing) = state.buffers.find_by_path(canonical) {
+        return Ok((existing, false));
+    }
+    let doc = Buffer::from_file(canonical)?;
+    Ok((open_buffer_and_notify(ev, state, doc), true))
 }
 
 // ── switch_pane_to_buffer ──────────────────────────────────────────────────────
@@ -154,6 +205,51 @@ pub(crate) fn close_buffer(
             id
         }
     }
+}
+
+/// [`close_buffer`] plus the pre-close LSP sync and post-close cleanup
+/// `Editor::close_buffer` performs: `didClose` notification, diagnostics
+/// clear, decoration clear, and the `OnBufferClose` hook enqueue — the
+/// disjoint-borrow (`view`/`state`/`lsp`) chokepoint shared by `Editor::
+/// close_buffer` and `EditorHostImpl::close_buffer` (`(close-buffer! …)`).
+///
+/// Unlike buffer open, none of this needs Steel eval (`didClose` is pure
+/// protocol, diagnostics/decorations are plain state), so — unlike
+/// `open_buffer_and_notify` — this runs identically from both callers, no
+/// deferred effect needed. `lsp` is `Option` to mirror `EditorHostImpl.lsp`'s
+/// own `Option<&mut LspState>` shape: when `None`, the LSP side effects are
+/// skipped rather than panicking, though in practice this is never observed
+/// — `close-buffer!` is command-gated, and command dispatch always supplies
+/// `Some`.
+pub(crate) fn close_buffer_and_notify(
+    ev: &mut EngineView,
+    state: &mut EditorState,
+    lsp: Option<&mut LspState>,
+    id: BufferId,
+) -> BufferId {
+    if let Some(lsp) = lsp {
+        // Must run before the slot is freed below — needs the buffer's path
+        // and lsp_server to build the didClose notification.
+        crate::editor::lsp::sync::lsp_did_close(state, lsp, id);
+        // Purely a leak fix — `id` is a versioned slotmap key, so a future
+        // reused slot can never alias with these stale entries — but there
+        // is no other chokepoint that ever frees them.
+        lsp.remove_buffer_diagnostics(id);
+    }
+    state.decorations.remove_buffer(id);
+    let new_focused = close_buffer(
+        ev,
+        &mut state.buffers,
+        &mut state.panes.state,
+        &mut state.panes.jumps,
+        state.focused_pane_id,
+        id,
+        state.settings.undo_levels,
+    );
+    // Fire with the ID that was closed, not the new current buffer.
+    let val = SteelBufferId::new(id).into_steel_val();
+    state.pending_hooks.push((HookId::OnBufferClose, vec![val]));
+    new_focused
 }
 
 // ── replace_buffer_in_place ───────────────────────────────────────────────────

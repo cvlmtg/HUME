@@ -328,6 +328,14 @@ impl EditorState {
         self.mode
     }
 
+    // ── Quit ──────────────────────────────────────────────────────────────────
+
+    /// Unconditional quit-the-whole-editor. Shared by `:qa!`'s force path and
+    /// the `force-quit` named command — both mean "quit all, no confirmation".
+    pub(crate) fn request_quit(&mut self) {
+        self.should_quit = true;
+    }
+
     // ── Drawer ──────────────────────────────────────────────────────────
 
     /// Mirror `self.drawer` into `self.drawer_view` for `DrawerWidget` to

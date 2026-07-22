@@ -18,7 +18,7 @@ use crate::editor::lsp::LspState;
 use crate::editor::registry::MappableCommand;
 use crate::editor::timer_bridge::TimerHandle;
 use crate::settings::SettingScope;
-use crate::ui::statusline::{StatusElement, StatusLineConfig};
+use crate::ui::statusline::StatusElement;
 use hume_scripting::host::{
     BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost, EditHost, EditorHost,
     LanguageHost, LspHost, OptionValue, OutputHost, SettingsHost, TimerHost, UiHost,
@@ -170,13 +170,11 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String> {
         let canonical = hume_platform::fs::canonicalize(path)
             .map_err(|e| format!("open-buffer!: {}: {e}", path.display()))?;
-        let (bid, _) = crate::editor::buffer::lifecycle::open_or_dedup(
-            self.view,
-            &mut self.state.buffers,
-            &mut self.state.panes.state,
-            self.state.focused_pane_id,
-            &canonical,
-            self.state.settings.undo_levels,
+        // Language detection is deliberately not done here — see
+        // `Effect::DetectBufferLanguage`'s doc; the `open-buffer!` builtin
+        // queues it once this returns.
+        let (bid, _is_new) = crate::editor::buffer::lifecycle::open_or_dedup_and_notify(
+            self.view, self.state, &canonical,
         )
         .map_err(|e| format!("open-buffer!: {}: {e}", canonical.display()))?;
         Ok(bid)
@@ -185,14 +183,11 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         if self.state.buffers.try_get(id).is_none() {
             return Err(format!("close-buffer!: buffer {id:?} does not exist"));
         }
-        Ok(crate::editor::buffer::lifecycle::close_buffer(
+        Ok(crate::editor::buffer::lifecycle::close_buffer_and_notify(
             self.view,
-            &mut self.state.buffers,
-            &mut self.state.panes.state,
-            &mut self.state.panes.jumps,
-            self.state.focused_pane_id,
+            self.state,
+            self.lsp.as_deref_mut(),
             id,
-            self.state.settings.undo_levels,
         ))
     }
     fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String> {
@@ -241,6 +236,11 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
         center: Vec<String>,
         right: Vec<String>,
     ) -> Result<(), String> {
+        // Validate here (for a section-labeled error message), then hand the
+        // re-serialized wire string to the chokepoint so the write itself goes
+        // through `write_setting` like every other setting — see
+        // `settings_ops::apply`'s doc for why a raw field write must not
+        // bypass it.
         let parse = |list: Vec<String>, section: &str| -> Result<Vec<StatusElement>, String> {
             list.iter()
                 .map(|s| {
@@ -252,12 +252,24 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
         let left = parse(left, "left")?;
         let center = parse(center, "center")?;
         let right = parse(right, "right")?;
-        self.state.settings.statusline = StatusLineConfig {
-            left,
-            center,
-            right,
+
+        let join = |elems: &[StatusElement]| {
+            elems
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
         };
-        Ok(())
+        let wire = format!("{}|{}|{}", join(&left), join(&center), join(&right));
+
+        crate::editor::settings_ops::apply(
+            self.state,
+            self.view,
+            SettingScope::Global,
+            "statusline",
+            &wire,
+            None,
+        )
     }
 
     fn steel_command_budget_ms(&self) -> u64 {
