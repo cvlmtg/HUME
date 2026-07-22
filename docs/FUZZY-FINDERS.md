@@ -34,14 +34,14 @@ The picker splits into three layers with different rules for where code lives:
 
 This model was chosen over two rejected alternatives — see the **Picker scriptability** row in the Decisions table below for the full comparison.
 
-## Relevant current-state inventory (`lsp` branch)
+## Relevant current-state inventory (`main`)
 
 The picker design leans on infrastructure already built for LSP/completion work. Verify each symbol still exists before relying on it.
 
 **Adjacent infrastructure** (all in `host_impl.rs` + `ui/popup.rs` + `ui/drawer.rs` unless noted):
 
 - **Async Rust→Steel callbacks**: `lsp-request` queues `PendingLspRequest` on `SteelCtx.pending_lsp_requests`; after eval, `flush_pending_lsp_requests` / `send_one_lsp_request` (`hume-editor/src/editor/lsp/bridge.rs`) register a boxed callback keyed `(ServerId, RequestId)`; reader threads → mpsc → `drain_lsp` each frame → `dispatch_completed` → `Editor::queue_steel_call(callback, args)` (`scripting_setup.rs`). Staleness: response dropped if the buffer's `text_gen` moved, unless `#:allow-stale`. **This is the template for any "async work finishes → call Steel closure" need**, including a picker's async sources.
-- **Timers**: `(after ms thunk)` / `(cancel-timer! id)` builtins; `(debounce ms proc)` is pure Scheme over them (bootstrap in `builtins/mod.rs`).
+- **Timers**: `(after ms thunk)` / `(cancel-timer! id)` builtins; `(debounce ms proc)` is pure Scheme over them (bootstrap in `builtins/bootstrap.scm`).
 - **Generic widgets**:
   - `(show-popup! text #:anchor 'cursor)` / `(close-popup!)` — `PopupModel`, hover-style text panel.
   - `(show-menu! items on-select)` / `(close-menu!)` — `MenuModel { items, selected, callback }`; callback fires exactly once (selection or dismissal); **blocked in Insert mode** (`show_menu` returns Err — deliberate, the completion menu owns that slot). Keys intercepted by `handle_menu_key` (`mappings/mod.rs`) ahead of keymap dispatch.
@@ -54,9 +54,9 @@ The picker design leans on infrastructure already built for LSP/completion work.
 1. **No fuzzy matcher** — completion's filter is hand-rolled subsequence-only (see `docs/COMPLETION-PICKER.md`); no fuzzy crate anywhere in the workspace (no nucleo / fuzzy-matcher / skim in any `Cargo.toml`).
 2. **No input-box-plus-filtered-list widget** — menu and drawer take static pre-filtered lists; `prompt!` has an input but no list. A picker needs both in one surface.
 3. **No async process spawn** — plugins can spawn arbitrary processes via Steel's own `steel/process` (full-trust plugin model, see `docs/ROADMAP.md`'s plugin trust model decision — PLUM runs `git`/`curl`/`npm` straight through `command`/`spawn-process`, pattern in `runtime/plugins/core/plum/lib.scm`'s `plum/run!`), but only *synchronously*: `wait` blocks the whole editor, port reads block when the pipe is empty, and Steel has no non-blocking read — so a slow or large-output command freezes the UI for its duration, and streaming results across evals is impossible from Steel alone. That's the real gap B5 fills (`picker-source-spawn!` — picker-scoped, since the picker is the only current consumer of async command output; a *generic* async spawn is deferred until a second client exists, and would reuse the same reader-thread/drain infrastructure). Note: the bulk guardrail does not forbid a Steel-fed file source on "per keystroke" grounds — ingest crosses once per picker open (a burst); per-keystroke filtering runs in Rust over the store regardless of who fed it. The point is moot anyway: B5 streams source output directly into the store, so bulk never crosses at all.
-4. **Completion menu shows a fixed top-8 window** with selection clamped to it — acceptable for completion; a picker needs real scrolling over the full ranked list.
+4. **No modal input+list widget with unbounded scrolling tuned for large result sets.** Completion's menu (`hume-editor/src/ui/menu_box.rs`) already scrolls a `visible_window` over a `MAX_MENU_ROWS = 10` band, so windowed scrolling itself isn't new — but a picker needs its own widget: an editable input line driving live re-ranking, sized for up to ~100k ranked items, not the menu's fixed pre-filtered list.
 
-**The minibuffer completion system is unrelated — leave it alone.** `hume-editor/src/editor/completion/` (`Completer` trait, `CommandCompleter`/`BufferNameCompleter`/`ThemeCompleter`/`PathCompleter`/`SetCompleter`, dispatched by a hardcoded match in `complete_minibuf`, prefix matching only, rendered by `CompletionOverlay`) shares no types with either the completion-menu stack or the picker design. Neither this document nor `docs/COMPLETION-PICKER.md` builds on it, and neither changes it.
+**The minibuffer completion system is unrelated — leave it alone.** `hume-editor/src/editor/completion/` (`Completer` trait, `CommandCompleter`/`BufferNameCompleter`/`ThemeCompleter`/`PathCompleter`/`SetCompleter`, dispatched by a hardcoded match in `complete_minibuf`, prefix matching only, rendered by `MinibufCompletionOverlay`) shares no types with either the completion-menu stack or the picker design. Neither this document nor `docs/COMPLETION-PICKER.md` builds on it, and neither changes it.
 
 ---
 
@@ -70,7 +70,7 @@ The picker design leans on infrastructure already built for LSP/completion work.
 
 ### Why not one shared session type
 
-They rhyme (items, query, ranked indices, top-N, accept-by-index) but differ in every load-bearing detail: item shape (JSON completion items with edit semantics vs. display string + opaque payload), query origin (buffer text between anchor and cursor vs. a widget-owned input line), accept semantics (gen-checked buffer edit vs. fire a Steel callback), lifetime (bound to an Insert-mode token vs. modal), scale (≤ a few k items, replace-per-response vs. up to ~100k, streamed), and scroll model (top-8 window vs. full scroll). A shared abstract core would be parameterized over all six axes — premature abstraction with two very different call sites. **What they share instead: the architectural pattern, and prospectively the B1 fuzzy-matcher module.** Not in v1, though — B1 explicitly does not replace completion's `subsequence_match_pos` (Q-B6 tracks that unification, defaulted to "not yet"). If, after both exist, the bodies converge, merging is a cheap refactor; guessing the abstraction up front is not.
+They rhyme (items, query, ranked indices, top-N, accept-by-index) but differ in every load-bearing detail: item shape (JSON completion items with edit semantics vs. display string + opaque payload), query origin (buffer text between anchor and cursor vs. a widget-owned input line), accept semantics (gen-checked buffer edit vs. fire a Steel callback), lifetime (bound to an Insert-mode token vs. modal), scale (≤ a few k items, replace-per-response vs. up to ~100k, streamed), and scroll model (fixed 10-row menu window vs. full scroll over up to ~100k ranked items). A shared abstract core would be parameterized over all six axes — premature abstraction with two very different call sites. **What they share instead: the architectural pattern, and prospectively the B1 fuzzy-matcher module.** Not in v1, though — B1 explicitly does not replace completion's `subsequence_match_pos` (Q-B6 tracks that unification, defaulted to "not yet"). If, after both exist, the bodies converge, merging is a cheap refactor; guessing the abstraction up front is not.
 
 ### The pieces
 
@@ -148,7 +148,7 @@ Steel supplies only cmd + argv (no shell involved — direct `argv` spawn, so no
 | B2 | `PickerSession` store: push/query/rank/select/scroll/token; unit tests with mock items | B1 | M |
 | B3 | Panel widget + view sync + key interception; insta snapshot tests + interaction tests | B2 | M–L (largest single piece — new chrome surface) |
 | B4 | Steel builtins `picker!`/`picker-push!`/`picker-close!` + host trait/impl + callback firing; tests incl. stale-token push | B3 | M |
-| B5 | `picker-source-spawn!` builtin: reader thread, Rust-side line split (partial-line carry test), batch drain into the store, session-owned child (auto kill-on-close), fourth `AsyncSource` entry | B2, B4 | M |
+| B5 | `picker-source-spawn!` builtin: reader thread, Rust-side line split (partial-line carry test), batch drain into the store, session-owned child (auto kill-on-close), third `AsyncSource` entry (alongside `TimerWheel`, `LspState`) | B2, B4 | M |
 | B6 | `core:pickers` plugin (files via git/fd over B5 + buffers pure Steel) + default bindings + user-manual page | B4, B5 | S–M |
 | B7 | Minimal native walker for bare-dirs-without-fd (`ignore` crate, same mpsc→drain→store path as B5) | B5 | **Deferred** — build only if B6's fd posture proves inadequate |
 
