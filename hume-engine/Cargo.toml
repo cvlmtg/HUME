@@ -9,9 +9,6 @@ ropey.workspace = true
 unicode-segmentation.workspace = true
 unicode-width.workspace = true
 ratatui.workspace = true
-# Unused directly: ratatui's layout-cache feature needs critical-section's std
-# backend registered (no_std by default, otherwise a link error on Windows).
-critical-section.workspace = true
 bitflags = "2"
 slotmap = "1"
 toml = { version = "1", default-features = false, features = ["parse", "serde", "std"] }
