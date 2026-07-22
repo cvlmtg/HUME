@@ -246,9 +246,9 @@ fn attach_event_does_not_activate_a_plugin_declared_for_a_different_event() {
     );
 }
 
-/// Every default `g`-prefixed binding `plugin.scm` adds dispatches to its
-/// named command without error, even fully unattached (no LSP server on the
-/// buffer at all) — each command's own capability guard degrades to an
+/// Every default `g`- or `z`-prefixed binding `plugin.scm` adds dispatches to
+/// its named command without error, even fully unattached (no LSP server on
+/// the buffer at all) — each command's own capability guard degrades to an
 /// `'info` log line in that case, never `'error`. Exercises the bindings
 /// themselves (does `g d` actually reach `lsp-goto-definition`?); each
 /// feature's own test file exercises its LSP behavior once attached.
@@ -258,7 +258,7 @@ fn attach_event_does_not_activate_a_plugin_declared_for_a_different_event() {
 /// with "unknown command" — checked at least once by temporarily renaming
 /// `"g d"`'s target in `plugin.scm` to a typo and confirming this test fails.
 #[test]
-fn every_default_goto_binding_dispatches_without_error() {
+fn every_default_lsp_binding_dispatches_without_error() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = file_dir.path().join("main.rs");
@@ -284,9 +284,9 @@ fn every_default_goto_binding_dispatches_without_error() {
         ('g', 'y'),
         ('g', 'i'),
         ('g', 'r'),
-        ('g', 'R'),
-        ('g', 'k'),
-        ('g', 'a'),
+        ('z', 'r'),
+        ('z', 'k'),
+        ('z', 'a'),
         ('g', 'n'),
         ('g', 'p'),
     ];
@@ -301,7 +301,7 @@ fn every_default_goto_binding_dispatches_without_error() {
             assert!(
                 !msg.to_lowercase().contains("error")
                     && !msg.to_lowercase().contains("unknown command"),
-                "g {second} must dispatch cleanly on an unattached buffer, got: {msg}"
+                "{first} {second} must dispatch cleanly on an unattached buffer, got: {msg}"
             );
         }
     }

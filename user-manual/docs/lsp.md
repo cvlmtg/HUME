@@ -236,14 +236,14 @@ Changing either and running `:reload-config` updates what HUME has stored, but a
 
 | Key   | Command                    | Effect |
 |-------|------------------------------|--------|
-| `g k` | `lsp-hover`                  | Show docs for the symbol under the cursor |
+| `z k` | `lsp-hover`                  | Show docs for the symbol under the cursor |
 | `g d` | `lsp-goto-definition`        | Jump to the symbol's definition |
 | `g D` | `lsp-goto-declaration`       | Jump to the symbol's declaration |
 | `g y` | `lsp-goto-type-definition`   | Jump to the symbol's type's definition |
 | `g i` | `lsp-goto-implementation`    | Jump to the symbol's implementation |
-| `g R` | `lsp-references`             | List every reference to the symbol |
+| `z r` | `lsp-references`             | List every reference to the symbol |
 | `g r` | `lsp-rename`                 | Rename the symbol under the cursor everywhere it's used |
-| `g a` | `lsp-code-actions`           | Show fixes and refactors available at the cursor |
+| `z a` | `lsp-code-actions`           | Show fixes and refactors available at the cursor |
 | `g n` | `goto-next-diagnostic`       | Jump to the next error/warning after the cursor (wraps) |
 | `g p` | `goto-prev-diagnostic`       | Jump to the previous error/warning before the cursor (wraps) |
 | —     | `:diagnostics`               | List every diagnostic in the buffer |
@@ -252,7 +252,7 @@ Changing either and running `:reload-config` updates what HUME has stored, but a
 
 Jumping to a definition, declaration, type, implementation, or reference in another file
 opens that file as a buffer; `Ctrl+o` jumps back. A goto with more than one match opens a
-list to pick from instead of jumping directly, and `g R` (references) always opens the list,
+list to pick from instead of jumping directly, and `z r` (references) always opens the list,
 even for a single hit.
 
 Typing while a completion menu is open narrows it. `Tab` and `Down` move to the next entry,

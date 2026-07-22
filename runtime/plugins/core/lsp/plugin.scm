@@ -33,17 +33,20 @@
 
 (lsp/register-installed-servers!)
 
-;; Default keybindings — goto trie (`g …`), free against
-;; keymap/defaults.rs (only g/e/h/l/s taken). No collisions to document.
+;; Default keybindings — jump-shaped LSP actions stay on the `g` (goto) prefix;
+;; response/action-shaped ones (references list, hover popup, code-action menu)
+;; live under `z` instead, alongside view commands — freeing `g R`/`g k`/`g a`
+;; for the fuzzy-finder picker prefix (see docs/FUZZY-FINDERS.md). `g k`'s `z k`
+;; successor keeps the `k` mnemonic (Vim/Helix's own hover key).
 ;; `lsp-fmt` and `diagnostics` stay typed-command only.
 (bind-key! 'normal "g d" "lsp-goto-definition")
 (bind-key! 'normal "g D" "lsp-goto-declaration")
 (bind-key! 'normal "g y" "lsp-goto-type-definition")
 (bind-key! 'normal "g i" "lsp-goto-implementation")
-(bind-key! 'normal "g R" "lsp-references")
+(bind-key! 'normal "z r" "lsp-references")
 (bind-key! 'normal "g r" "lsp-rename")
-(bind-key! 'normal "g k" "lsp-hover")
-(bind-key! 'normal "g a" "lsp-code-actions")
+(bind-key! 'normal "z k" "lsp-hover")
+(bind-key! 'normal "z a" "lsp-code-actions")
 (bind-key! 'normal "g n" "goto-next-diagnostic")
 (bind-key! 'normal "g p" "goto-prev-diagnostic")
 (bind-key! 'insert "ctrl-space" "lsp-completion-trigger")

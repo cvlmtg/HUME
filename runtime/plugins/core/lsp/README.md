@@ -85,16 +85,19 @@ LSP server management:
 | `g D` | lsp-goto-declaration            |
 | `g y` | lsp-goto-type-definition        |
 | `g i` | lsp-goto-implementation         |
-| `g R` | lsp-references                  |
+| `z r` | lsp-references                  |
 | `g r` | lsp-rename                      |
-| `g k` | lsp-hover                       |
-| `g a` | lsp-code-actions                |
+| `z k` | lsp-hover                       |
+| `z a` | lsp-code-actions                |
 | `g n` | goto-next-diagnostic            |
 | `g p` | goto-prev-diagnostic            |
 | `Ctrl+Space` (Insert) | lsp-completion-trigger |
 
-No collisions with HUME's default `g` goto trie (`g g e h l s`) at the time these were bound —
-re-check `keymap/defaults.rs` if you rebind any of the native goto leaves.
+Jump-shaped actions (goto/rename/diagnostic-nav) live under `g`; response/action-shaped ones
+(references list, hover popup, code-action menu) live under `z` instead, freeing `g R`/`g k`/`g a`
+for the fuzzy-finder picker prefix (see `docs/FUZZY-FINDERS.md`). No collisions with HUME's native
+leaves at the time these were bound — `g`'s (`g g e h l s`) or `z`'s (`z z t b`) — re-check
+`keymap/defaults.rs` if you rebind any of them.
 
 `lsp-fmt` and `diagnostics` are typed-command only (`:lsp-fmt`, `:diagnostics`) — no default key.
 All keybindings above are bound by this plugin itself — with no `core:lsp` loaded or declared,

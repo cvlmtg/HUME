@@ -139,11 +139,11 @@ Everything else is *pulled* — the editor asks, the server answers once:
 
 | Feature | Key |
 |---------|-----|
-| Hover info | `g k` |
+| Hover info | `z k` |
 | Goto definition / declaration / type / implementation | `g d` / `g D` / `g y` / `g i` |
-| Find references | `g R` |
+| Find references | `z r` |
 | Rename symbol | `g r` |
-| Code actions | `g a` |
+| Code actions | `z a` |
 | Completion | `ctrl-space`, or automatically on trigger characters (insert mode) |
 | Signature help | automatic, as you type a call (insert mode) |
 | Format buffer | `:lsp-fmt` |
