@@ -34,6 +34,7 @@ pub(crate) mod cursor;
 pub(crate) mod decorations;
 mod dispatch;
 pub(crate) mod doc_ops;
+pub(crate) mod fuzzy;
 pub(crate) mod jump_list;
 pub mod keymap;
 #[cfg(test)]
