@@ -247,12 +247,13 @@ impl History {
 
         let mut last_promoted = None;
         while self.revisions.len() - 1 > self.undo_levels {
-            let root_children = self.revisions[&Self::ROOT].children.clone();
+            let root_children = &self.revisions[&Self::ROOT].children;
 
             if root_children.len() > 1 {
                 let protected = self.root_child_on_current_path();
                 let victim = root_children
-                    .into_iter()
+                    .iter()
+                    .copied()
                     .find(|&c| c != protected)
                     .expect("more than one child, at most one is protected");
                 self.remove_subtree(victim);
