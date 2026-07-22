@@ -112,6 +112,16 @@ gets dropped outright, there is no way back to it — the buffer simply reads
 dirty from then on, which is correct: that exact state no longer exists
 anywhere in the tree.
 
+There's a third case: the saved state can *be* the tree's starting point
+itself — the file was opened but never saved since, so "clean" still means
+"back at the very beginning." When the single-branch case advances the
+starting point, whatever content used to live there is gone; the position in
+the tree is the same, but what it represents has changed. The save marker
+can't just "stay put" here, because staying put would silently point at a
+different state than the one that was actually saved. The buffer reads dirty
+from that point on — correct, for the same reason as the dropped-branch case:
+the exact state that was saved no longer exists anywhere in the tree.
+
 ## Reloads join the tree instead of replacing it
 
 Earlier sections described undo and redo as walking the tree. A reload from disk

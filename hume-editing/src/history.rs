@@ -179,7 +179,11 @@ impl History {
     /// new root (see [`Self::enforce_undo_levels`]), returns the id of that
     /// promoted revision — callers holding an external `RevisionId` (e.g. a
     /// "clean" save point) must remap it to [`Self::ROOT`] if it matches, so
-    /// that state stays reachable. Returns `None` when no promotion occurred.
+    /// that state stays reachable. Promotion also overwrites whatever state
+    /// `ROOT` previously represented, so a caller-held id equal to `ROOT`
+    /// itself no longer names the same state after a promotion and must be
+    /// invalidated, not left pointing at ROOT. Returns `None` when no
+    /// promotion occurred.
     pub fn record(
         &mut self,
         forward_cs: ChangeSet,

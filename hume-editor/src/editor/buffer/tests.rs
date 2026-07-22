@@ -540,6 +540,26 @@ fn promotion_remaps_saved_revision_to_root() {
 }
 
 #[test]
+fn promotion_overwriting_root_invalidates_saved_revision() {
+    // The buffer is opened and never saved since (saved_revision == ROOT).
+    // A promotion overwrites ROOT's content with a later revision's, so the
+    // saved id must stop reading as clean even though it's still `ROOT` —
+    // ROOT no longer represents the state it was saved at.
+    // Fail oracle: if record_revision only remapped saved_revision when it
+    // equals the promoted node (never invalidating a saved-at-ROOT id),
+    // undoing back to the new root would wrongly read clean here even
+    // though the buffer's text ('xhello') differs from the saved state
+    // ('hello').
+    let mut d = doc("-[h]>ello\n");
+    d.set_undo_levels(1);
+    d.apply_edit(|b, s| insert_char(b, s, 'x'));
+    d.apply_edit(|b, s| insert_char(b, s, 'y'));
+
+    d.undo();
+    assert!(d.is_dirty());
+}
+
+#[test]
 fn evicted_saved_revision_stays_dirty() {
     // The saved revision sits inside a branch that gets evicted outright
     // (not promoted) when a sibling branch grows past the cap. Since
@@ -584,6 +604,7 @@ fn undo_after_eviction_stops_at_new_root() {
     d.undo();
     assert_eq!(state(&d), state_after_a);
     assert!(!d.can_undo());
+    assert!(d.is_dirty()); // never saved; promotion overwrote ROOT's content
 
     d.undo(); // no-op at the new root, must not panic
     assert_eq!(state(&d), state_after_a);

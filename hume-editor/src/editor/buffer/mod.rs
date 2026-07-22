@@ -53,7 +53,10 @@ pub(crate) struct Buffer {
     text: Text,
     history: History,
     /// The revision at which the buffer was last saved (or first opened).
-    saved_revision: RevisionId,
+    /// `None` means the saved state was overwritten by an `undo-levels`
+    /// promotion and no longer exists anywhere in the tree — the buffer is
+    /// dirty until the next save.
+    saved_revision: Option<RevisionId>,
     /// Canonical file path (after symlink resolution). `None` for scratch buffers.
     pub(super) path: Option<PathBuf>,
     /// Absolute path as supplied by the user (symlinks NOT resolved). Display-only;
@@ -119,7 +122,7 @@ impl Buffer {
     pub(crate) fn new(text: Text, initial_sels: SelectionSet) -> Self {
         let text_len = text.len_chars();
         let history = History::new(initial_sels, text_len);
-        let saved_revision = history.current_id();
+        let saved_revision = Some(history.current_id());
         Self {
             text,
             history,
@@ -185,7 +188,7 @@ impl Buffer {
         let undo_levels = self.history.undo_levels();
         self.history = History::new(SelectionSet::default(), text_len);
         self.history.set_undo_levels(undo_levels);
-        self.saved_revision = self.history.current_id();
+        self.saved_revision = Some(self.history.current_id());
         self.search_pattern = None;
         self.search_matches = SearchMatches::default();
         self.set_text(text);
@@ -324,27 +327,29 @@ impl Buffer {
         // the buffer reads clean (it now matches disk). `pre_sels`/`post_sels`
         // are dropped — there is nothing to undo to.
         if forward.is_identity() {
-            self.saved_revision = self.history.current_id();
+            self.saved_revision = Some(self.history.current_id());
             return;
         }
 
         self.record_revision(forward, inverse, pre_sels, post_sels);
-        self.saved_revision = self.history.current_id();
+        self.saved_revision = Some(self.history.current_id());
     }
 
     /// `true` if the buffer has unsaved changes.
     ///
     /// Comparing revision IDs means undoing back to the save point correctly
     /// reports a clean buffer — a simple `dirty: bool` flag cannot do this.
+    /// `saved_revision == None` (saved state evicted by promotion) always
+    /// reads dirty.
     pub(crate) fn is_dirty(&self) -> bool {
-        self.history.current_id() != self.saved_revision
+        self.saved_revision != Some(self.history.current_id())
     }
 
     /// Record the current revision as the saved state.
     ///
     /// Call this immediately after a successful file write.
     pub(crate) fn mark_saved(&mut self) {
-        self.saved_revision = self.history.current_id();
+        self.saved_revision = Some(self.history.current_id());
     }
 
     /// Set the `undo-levels` cap on this buffer's history. `0` means unlimited.
@@ -353,13 +358,20 @@ impl Buffer {
     }
 
     /// Record a revision, remapping `saved_revision` if `undo-levels`
-    /// trimming just promoted it into the new root.
+    /// trimming just promoted it into the new root, and invalidating
+    /// `saved_revision` if trimming instead overwrote the root's state out
+    /// from under it.
     ///
     /// A revision ID that gets merely evicted (not promoted) needs no
     /// handling: `RevisionId`s are never reused, so `is_dirty()`'s equality
     /// check against a stale `saved_revision` correctly stays `true`
-    /// forever. Only promotion needs a remap, since the promoted node's
-    /// state is still reachable — it's now what the root represents.
+    /// forever. Promotion is the one case that needs explicit handling,
+    /// since the promoted node's state is still reachable — it's now what
+    /// the root represents. But promotion also *overwrites* the root's
+    /// previous state, so a `saved_revision` that pointed at `History::ROOT`
+    /// (the buffer was opened, never saved since) no longer names the saved
+    /// state at all — it must become `None`, not silently keep pointing at
+    /// ROOT's new (different) content.
     fn record_revision(
         &mut self,
         forward: ChangeSet,
@@ -367,10 +379,12 @@ impl Buffer {
         pre_sels: SelectionSet,
         post_sels: SelectionSet,
     ) {
-        if let Some(promoted) = self.history.record(forward, inverse, pre_sels, post_sels)
-            && self.saved_revision == promoted
-        {
-            self.saved_revision = History::ROOT;
+        if let Some(promoted) = self.history.record(forward, inverse, pre_sels, post_sels) {
+            if self.saved_revision == Some(promoted) {
+                self.saved_revision = Some(History::ROOT);
+            } else if self.saved_revision == Some(History::ROOT) {
+                self.saved_revision = None;
+            }
         }
     }
 
