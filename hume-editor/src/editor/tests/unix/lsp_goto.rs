@@ -304,6 +304,52 @@ fn jump_back_returns_to_the_origin_after_a_jump() {
     );
 }
 
+/// `goto-location!`'s wire (`Location` hashmap) path opens the target file
+/// via `lsp::edits::resolve_or_open` → `buffer::lifecycle::
+/// open_or_dedup_and_notify` when it isn't already open — which can't detect
+/// language inline (see that function's doc), so it queues the buffer onto
+/// `EditorState.pending_language_detection`, drained at the tail of
+/// `apply_script_effects` once this eval (`run_goto`'s `:lsp-goto-definition`
+/// dispatch) returns.
+///
+/// Fail oracle: revert `resolve_or_open` to call the bare (pre-fix)
+/// `lifecycle::open_or_dedup` — the newly-opened buffer never gets a
+/// `language`.
+#[test]
+fn goto_to_an_unopened_file_detects_its_language() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, _uri) = write_fixture_file(file_dir.path());
+    let other_file = file_dir.path().join("other.rs");
+    std::fs::write(&other_file, "fn other() {}\n").unwrap();
+    let other_canonical = std::fs::canonicalize(&other_file).unwrap();
+    let other_uri = hume_lsp::uri::path_to_uri(&other_canonical)
+        .unwrap()
+        .as_str()
+        .to_string();
+
+    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), move |backend, _sid| {
+        backend.respond_to("textDocument/definition", loc(&other_uri, 0, 3));
+    });
+    ed.state
+        .languages
+        .register_identity_no_rebuild("rust", &["rs"], &[], &[]);
+    ed.state.languages.rebuild_glob_set().expect("rebuild ok");
+
+    run_goto(&mut ed, ":lsp-goto-definition");
+
+    let bid = ed
+        .state
+        .buffers
+        .find_by_path(&other_canonical)
+        .expect("goto-location! must have opened the target file");
+    assert_eq!(
+        ed.state.buffers.get(bid).language,
+        ed.state.languages.id_of("rust"),
+        "the goto-opened file must have its language detected"
+    );
+}
+
 #[test]
 fn nonexistent_target_errors_without_moving_the_cursor() {
     let tmp = safe_tempdir();

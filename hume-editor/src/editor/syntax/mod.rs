@@ -72,6 +72,34 @@ impl Editor {
         self.set_buffer_language(bid, detected);
     }
 
+    /// Detect and set the language for every buffer
+    /// `buffer::lifecycle::open_buffer_and_notify` queued onto
+    /// `state.pending_language_detection` — the disjoint-borrow open
+    /// chokepoint can't do this inline (see that function's doc), so every
+    /// caller that regains a full `&mut Editor` drains this once: directly
+    /// after opening (`Editor::open_buffer`, `apply_edit_request_response`),
+    /// or at the tail of `apply_script_effects` for every Steel-eval path.
+    ///
+    /// Takes the queue before iterating, not `while let Some(bid) =
+    /// queue.pop()`: detecting a language can activate a lazy plugin, whose
+    /// body can open more buffers and re-enter this same drain via a nested
+    /// `apply_script_effects` — taking first means that nested call sees (and
+    /// drains) only the buffers *it* queued, and returns to find nothing left
+    /// for this call to reprocess.
+    pub(super) fn detect_pending_languages(&mut self) {
+        let pending = std::mem::take(&mut self.state.pending_language_detection);
+        for bid in pending {
+            // The buffer may have been closed by the same batch of work that
+            // opened it (e.g. `close-buffer!` in the same eval) before this
+            // drain runs — `close-buffer!` mutates synchronously, unlike this
+            // deferred detection. Skip rather than hit `BufferStore::get`'s
+            // "unseeded BufferId" panic.
+            if self.state.buffers.try_get(bid).is_some() {
+                self.detect_and_set_language(bid);
+            }
+        }
+    }
+
     /// Register languages from a maximal run of consecutive
     /// `Effect::LanguageReg` entries (`Editor::apply_script_effects` groups
     /// them so a large run — e.g. `languages.scm`'s ~700 `define-language!`

@@ -254,6 +254,7 @@ impl Editor {
                 languages: LanguageRegistry::new(),
                 cwd: std::env::temp_dir(),
                 pending_hooks: Vec::new(),
+                pending_language_detection: Vec::new(),
                 pending_steel_calls: Vec::new(),
                 trigger_chars: rustc_hash::FxHashMap::default(),
                 decorations: super::decorations::DecorationStores::default(),

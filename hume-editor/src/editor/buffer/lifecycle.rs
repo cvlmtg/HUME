@@ -23,30 +23,6 @@ use crate::editor::pane_state::{self, PaneBufferState};
 
 // ── open_or_dedup / open_buffer ───────────────────────────────────────────────
 
-/// Dedup-open a file path: if already open returns `(existing_id, false)`,
-/// otherwise reads the file and allocates a new buffer, returning `(new_id, true)`.
-///
-/// `undo_levels` seeds the `undo-levels` cap on a newly-read buffer (ignored
-/// when the path was already open). The caller is responsible for any
-/// post-open work (hook firing, pane switching).
-pub(crate) fn open_or_dedup(
-    ev: &mut EngineView,
-    buffers: &mut BufferStore,
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    focused_pane_id: PaneId,
-    canonical: &std::path::Path,
-    undo_levels: usize,
-) -> std::io::Result<(BufferId, bool)> {
-    if let Some(existing) = buffers.find_by_path(canonical) {
-        return Ok((existing, false));
-    }
-    let doc = Buffer::from_file(canonical)?;
-    Ok((
-        open_buffer(ev, buffers, pane_state, focused_pane_id, doc, undo_levels),
-        true,
-    ))
-}
-
 /// Allocate a new buffer slot (engine + BufferStore), seed the focused pane's
 /// `pane_state` with initial selections, and return the allocated `BufferId`.
 ///
@@ -67,19 +43,18 @@ pub(crate) fn open_buffer(
     bid
 }
 
-/// [`open_buffer`] plus enqueuing `OnBufferOpen` — the disjoint-borrow
-/// (`view`/`state`) chokepoint shared by `Editor::open_buffer` and
-/// `EditorHostImpl::open_buffer` (`(open-buffer! …)`).
+/// [`open_buffer`] plus enqueuing `OnBufferOpen` and language detection —
+/// the disjoint-borrow (`view`/`state`) chokepoint every buffer-opening path
+/// shares: `Editor::open_buffer`, `EditorHostImpl::open_buffer`
+/// (`(open-buffer! …)`), and `lsp::edits::resolve_or_open` (workspace edits,
+/// goto-definition).
 ///
-/// Deliberately does **not** run language detection: that needs
+/// Deliberately does **not** run detection inline: that needs
 /// `set_buffer_language`, which can activate lazy language plugins via
-/// `self.scripting` — a full `&mut Editor`/Steel-eval capability
-/// `EditorHostImpl` never holds (it exists specifically so Steel builtins
-/// can touch editor state *without* re-entering the VM mid-eval). `Editor::
-/// open_buffer` detects synchronously right after calling this, since it has
-/// that capability; the Steel path instead queues `Effect::
-/// DetectBufferLanguage`, applied by `apply_script_effects` once the eval
-/// that called `(open-buffer! …)` returns.
+/// `self.scripting` — a full `&mut Editor`/Steel-eval capability this
+/// disjoint-borrow chokepoint never holds. Instead `bid` is queued onto
+/// `state.pending_language_detection`; every caller drains it once it holds
+/// (or regains) that capability — see `Editor::detect_pending_languages`.
 pub(crate) fn open_buffer_and_notify(
     ev: &mut EngineView,
     state: &mut EditorState,
@@ -95,13 +70,17 @@ pub(crate) fn open_buffer_and_notify(
     );
     let val = SteelBufferId::new(bid).into_steel_val();
     state.pending_hooks.push((HookId::OnBufferOpen, vec![val]));
+    state.pending_language_detection.push(bid);
     bid
 }
 
-/// [`open_or_dedup`] plus [`open_buffer_and_notify`]'s hook enqueue on the
-/// newly-opened branch only — dedup-opening an already-open path fires no
-/// hook, matching `Editor::open_buffer`'s "every call is a genuinely new
-/// buffer" contract.
+/// Dedup-open a file path: if already open returns `(existing_id, false)`,
+/// otherwise reads the file and allocates via [`open_buffer_and_notify`]
+/// (which seeds the `undo-levels` cap from `state.settings`), returning
+/// `(new_id, true)`. Dedup-opening an already-open path enqueues no hook and
+/// detects no language — matching `Editor::open_buffer`'s "every call is a
+/// genuinely new buffer" contract. The caller is responsible for any other
+/// post-open work (pane switching).
 pub(crate) fn open_or_dedup_and_notify(
     ev: &mut EngineView,
     state: &mut EditorState,

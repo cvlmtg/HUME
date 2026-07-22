@@ -314,15 +314,9 @@ fn resolve_or_open(
 ) -> Result<BufferId, String> {
     let canonical =
         hume_platform::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let (bid, is_new) = crate::editor::buffer::lifecycle::open_or_dedup(
-        view,
-        &mut state.buffers,
-        &mut state.panes.state,
-        state.focused_pane_id,
-        &canonical,
-        state.settings.undo_levels,
-    )
-    .map_err(|e| format!("{}: {e}", canonical.display()))?;
+    let (bid, is_new) =
+        crate::editor::buffer::lifecycle::open_or_dedup_and_notify(view, state, &canonical)
+            .map_err(|e| format!("{}: {e}", canonical.display()))?;
     if is_new {
         let display = hume_platform::path::absolute_unresolved(path, &state.cwd);
         state.buffers.get_mut(bid).set_display_path(Some(display));

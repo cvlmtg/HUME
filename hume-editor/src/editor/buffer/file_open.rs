@@ -88,8 +88,8 @@ impl Editor {
     pub(crate) fn open_buffer(&mut self, doc: Buffer) -> BufferId {
         let bid = lifecycle::open_buffer_and_notify(&mut self.view, &mut self.state, doc);
         // Steel eval capability only `&mut Editor` has — see
-        // `open_buffer_and_notify`'s doc for why this can't live there.
-        self.detect_and_set_language(bid);
+        // `open_buffer_and_notify`'s doc for why detection can't live there.
+        self.detect_pending_languages();
         bid
     }
 

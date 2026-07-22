@@ -210,3 +210,62 @@ fn multi_file_workspace_edit_applies_and_logs_the_summary() {
         "expected the 2-buffer summary, got {msg:?}"
     );
 }
+
+/// `apply-workspace-edit!` (the Steel builtin `%apply-workspace-edit!` wraps)
+/// opens unopened files via `lsp::edits::resolve_or_open` →
+/// `buffer::lifecycle::open_or_dedup_and_notify`, which can't detect language
+/// inline (see that function's doc) — it queues the buffer onto
+/// `EditorState.pending_language_detection`, drained at the tail of
+/// `apply_script_effects` once this eval (reached via `drain_pending_steel_calls`,
+/// the rename response callback) returns.
+///
+/// Fail oracle: revert `resolve_or_open` to call the bare (pre-fix)
+/// `lifecycle::open_or_dedup` — `lib.rs`'s buffer never gets a `language`.
+#[test]
+fn multi_file_workspace_edit_detects_language_of_the_newly_opened_file() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, uri) = write_fixture_file(file_dir.path());
+    let other_file = file_dir.path().join("lib.rs");
+    std::fs::write(&other_file, "fn helper() {}\n").unwrap();
+    let other_canonical = std::fs::canonicalize(&other_file).unwrap();
+    let other_uri = hume_lsp::uri::path_to_uri(&other_canonical)
+        .unwrap()
+        .as_str()
+        .to_string();
+
+    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), move |backend, _sid| {
+        backend.respond_to(
+            "textDocument/rename",
+            serde_json::json!({"changes": {
+                uri.clone(): [
+                    {"range": {"start": {"line": 1, "character": 4}, "end": {"line": 1, "character": 10}}, "newText": "renamed"}
+                ],
+                other_uri: [
+                    {"range": {"start": {"line": 0, "character": 3}, "end": {"line": 0, "character": 9}}, "newText": "renamed"}
+                ]
+            }}),
+        );
+    });
+    ed.state
+        .languages
+        .register_identity_no_rebuild("rust", &["rs"], &[], &[]);
+    ed.state.languages.rebuild_glob_set().expect("rebuild ok");
+
+    run_rename(&mut ed);
+    ed.feed_key(key_enter());
+    ed.drain_pending_steel_calls();
+    ed.drain_lsp();
+    ed.drain_pending_steel_calls();
+
+    let bid = ed
+        .state
+        .buffers
+        .find_by_path(&other_canonical)
+        .expect("workspace edit must have opened lib.rs as a buffer");
+    assert_eq!(
+        ed.state.buffers.get(bid).language,
+        ed.state.languages.id_of("rust"),
+        "the workspace-edit-opened file must have its language detected"
+    );
+}

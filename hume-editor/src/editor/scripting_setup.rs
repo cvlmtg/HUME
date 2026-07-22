@@ -27,6 +27,13 @@ impl Editor {
     /// matcher once, not once per entry; every other effect kind applies one
     /// at a time. Shared tail for `call_steel_cmd`'s call site, `drain_hooks`,
     /// `drain_pending_steel_calls`, and `init_scripting`.
+    ///
+    /// Finishes by draining `state.pending_language_detection` — covers every
+    /// buffer a disjoint-borrow Steel path opened via `buffer::lifecycle::
+    /// open_buffer_and_notify` this eval (`(open-buffer! …)`, workspace edits,
+    /// goto-definition). *After* the effect loop, not before: a script that
+    /// opens a buffer and registers its language in the same eval must have
+    /// the registration land first.
     pub(crate) fn apply_script_effects(&mut self, effects: Vec<Effect>) {
         let mut effects: std::collections::VecDeque<Effect> = effects.into();
         while let Some(effect) = effects.pop_front() {
@@ -45,15 +52,6 @@ impl Editor {
                 Effect::SetBufferLanguage { buffer, language } => {
                     let lang_id = language.map(|name| self.state.languages.intern(&name));
                     self.set_buffer_language(buffer, lang_id)
-                }
-                Effect::DetectBufferLanguage(bid) => {
-                    // The same eval that opened this buffer may have closed
-                    // it again before returning (`close-buffer!` mutates
-                    // synchronously, unlike this effect) — skip rather than
-                    // hit `BufferStore::get`'s "unseeded BufferId" panic.
-                    if self.state.buffers.try_get(bid).is_some() {
-                        self.detect_and_set_language(bid);
-                    }
                 }
                 Effect::GrammarSweep(name) => {
                     let id = self.state.languages.id_of(&name).expect(
@@ -91,6 +89,7 @@ impl Editor {
                     .unbind_user(to_editor_bind_mode(mode), &keys),
             }
         }
+        self.detect_pending_languages();
     }
 
     // ── Message reporting ─────────────────────────────────────────────────────

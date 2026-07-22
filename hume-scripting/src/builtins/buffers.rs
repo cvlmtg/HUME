@@ -115,20 +115,17 @@ pub(crate) fn buffer_generation(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult 
 /// not switch the focused pane — call `(switch-to-buffer! bid)` separately
 /// if desired.
 ///
-/// Language detection (and everything that follows from it: tree-sitter
-/// attach, LSP attach, lazy-plugin activation) can't run inline here — it
-/// needs Steel-eval capability this builtin's host doesn't hold — so it's
-/// always queued as `Effect::DetectBufferLanguage`, applied once this eval
-/// returns. Queuing unconditionally (not just for a genuinely new open) is
-/// safe: detection is a no-op when the buffer's language is already set to
-/// the same value, which it always is for the dedup-existing case.
+/// Language detection can't run inline here — it needs Steel-eval capability
+/// this builtin's host doesn't hold — so the editor-side open chokepoint
+/// (`buffer::lifecycle::open_buffer_and_notify`) queues it onto
+/// `EditorState.pending_language_detection` instead; `Editor::
+/// apply_script_effects` drains it once this eval returns.
 pub(crate) fn open_buffer(ctx: &mut SteelCtx, path: String) -> SteelResult {
     let bid = ctx
         .host
         .buffers()
         .open_buffer(std::path::Path::new(&path))
         .map_err(generic_err)?;
-    ctx.push_effect(Effect::DetectBufferLanguage(bid));
     SteelBufferId(bid).into_steelval().map_err(generic_err)
 }
 

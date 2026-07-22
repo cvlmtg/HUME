@@ -251,17 +251,18 @@ fn failed_init_eval_salvages_eager_plugin_effects() {
     );
 }
 
-// ── open-buffer! detects language via Effect::DetectBufferLanguage ─────────
+// ── open-buffer! detects language via pending_language_detection ───────────
 
 /// `(open-buffer! path)` can't run language detection inline — the host it
 /// executes against has no Steel-eval capability for lazy-plugin activation
-/// (see `Effect::DetectBufferLanguage`'s doc) — so it queues the detection as
-/// an effect, applied once the eval returns. This is the full pipeline:
-/// `:go` → `call_steel_cmd` → `open-buffer!` queues the effect →
-/// `apply_script_effects` runs `detect_and_set_language`.
+/// (see `buffer::lifecycle::open_buffer_and_notify`'s doc) — so the open
+/// chokepoint queues the buffer id onto `EditorState.pending_language_
+/// detection` instead, drained once the eval returns. This is the full
+/// pipeline: `:go` → `call_steel_cmd` → `open-buffer!` opens (queuing the
+/// bid) → `apply_script_effects`'s tail drain runs `detect_and_set_language`.
 ///
-/// Fail oracle: revert `EditorHostImpl::open_buffer` to skip queuing
-/// `Effect::DetectBufferLanguage` (or drop the effect's application arm in
+/// Fail oracle: drop the `state.pending_language_detection.push(bid)` line
+/// from `open_buffer_and_notify` (or the tail drain from
 /// `apply_script_effects`) — the opened buffer's `language` stays `None`.
 #[test]
 fn steel_open_buffer_detects_language() {

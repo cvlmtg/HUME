@@ -241,6 +241,16 @@ pub(crate) struct EditorState {
     /// after each command. The unified firing path — `fire_hook_silent` pushes
     /// here; no hook fires inline during command execution.
     pub(super) pending_hooks: Vec<(hume_scripting::hooks::HookId, Vec<steel::rvals::SteelVal>)>,
+    /// Buffers awaiting language detection, drained by
+    /// `Editor::detect_pending_languages`. Detection needs `self.scripting`
+    /// (lazy-plugin activation), which the disjoint-borrow buffer-open
+    /// chokepoints (`buffer::lifecycle::open_buffer_and_notify` and callers
+    /// with only `&mut EditorState`/`&mut EngineView`) never hold — so they
+    /// queue the buffer id here instead of detecting inline. Every caller
+    /// with a full `&mut Editor` drains this explicitly after opening
+    /// buffers; every Steel-eval path drains it at the tail of
+    /// `apply_script_effects`.
+    pub(super) pending_language_detection: Vec<hume_engine::pipeline::BufferId>,
     /// Rust-side completions that must reach a *specific* Steel closure
     /// rather than every handler for a hook id: an `lsp-request` callback,
     /// a timer thunk, a prompt callback. Queued (never evaluated

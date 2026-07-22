@@ -774,7 +774,13 @@ impl Editor {
                 }));
             }
         };
-        match edits::apply_workspace_edit(&mut self.state, &mut self.view, &self.lsp, we) {
+        let result = edits::apply_workspace_edit(&mut self.state, &mut self.view, &self.lsp, we);
+        // Drain regardless of outcome: `apply_workspace_edit`'s contract is
+        // "validate all, then apply all", but it opens buffers as it *validates*
+        // each entry (`edits.rs`'s `resolve_or_open` calls), so a failure on
+        // entry 3 of 5 still leaves entries 1-2's buffers open and queued here.
+        self.detect_pending_languages();
+        match result {
             Ok(_summary) => Ok(serde_json::json!({ "applied": true })),
             Err(e) => Ok(serde_json::json!({
                 "applied": false,

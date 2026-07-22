@@ -612,6 +612,55 @@ fn server_initiated_apply_edit_actually_applies_and_answers_true() {
     assert_eq!(ed.state.buffers.get(bid).text().to_string(), "XYZdef\n");
 }
 
+/// `workspace/applyEdit` opens files via `lsp::edits::resolve_or_open` →
+/// `buffer::lifecycle::open_or_dedup_and_notify`, which can't detect language
+/// inline (see that function's doc) — it queues the buffer onto
+/// `EditorState.pending_language_detection`. `apply_edit_request_response`
+/// has a full `&mut Editor`, so it must drain that queue itself; nothing else
+/// on this path (a server-initiated request answered from `drain_lsp`) ever
+/// reaches `apply_script_effects`.
+///
+/// Fail oracle: drop the `self.detect_pending_languages()` call from
+/// `apply_edit_request_response` — the opened buffer's `language` stays `None`.
+#[test]
+fn server_initiated_apply_edit_detects_language_of_newly_opened_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("new.rs");
+    std::fs::write(&file, "fn helper() {}\n").unwrap();
+    let canonical = std::fs::canonicalize(&file).unwrap();
+    let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    ed.state
+        .languages
+        .register_identity_no_rebuild("rust", &["rs"], &[], &[]);
+    ed.state.languages.rebuild_glob_set().expect("rebuild ok");
+
+    let params = serde_json::json!({
+        "edit": {
+            "changes": {
+                uri.as_str(): [{
+                    "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}},
+                    "newText": "",
+                }]
+            }
+        }
+    });
+    let result = ed.apply_edit_request_response(&params).unwrap();
+    assert_eq!(result["applied"], serde_json::json!(true));
+
+    let bid = ed
+        .state
+        .buffers
+        .find_by_path(&canonical)
+        .expect("workspace/applyEdit must have opened the file as a buffer");
+    assert_eq!(
+        ed.state.buffers.get(bid).language,
+        ed.state.languages.id_of("rust"),
+        "workspace/applyEdit must detect the newly-opened file's language"
+    );
+}
+
 #[test]
 fn server_initiated_apply_edit_answers_false_with_a_reason_on_bad_uri() {
     let mut ed = editor_from("-[x]>\n");

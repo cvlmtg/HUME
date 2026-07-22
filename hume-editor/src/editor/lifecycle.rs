@@ -231,6 +231,7 @@ impl Editor {
                 languages: hume_treesitter::registry::LanguageRegistry::new(),
                 cwd: std::env::current_dir().unwrap_or_default(),
                 pending_hooks: Vec::new(),
+                pending_language_detection: Vec::new(),
                 pending_steel_calls: Vec::new(),
                 trigger_chars: rustc_hash::FxHashMap::default(),
                 decorations: super::decorations::DecorationStores::default(),
