@@ -99,6 +99,7 @@ pub(crate) fn render_pane(
         tab_width: pane_ctx.settings.tab_width,
         tilde_style: pane_ctx.theme.ui.virtual_text.into(),
         indent_guide_style: pane_ctx.theme.ui.indent_guide.into(),
+        show_indent_guides: pane_ctx.settings.show_indent_guides,
         pane_rect: pane_ctx.rect,
         theme: pane_ctx.theme,
         pane_bg: pane_ctx.theme.ui.background.bg,

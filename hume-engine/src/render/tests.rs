@@ -65,6 +65,7 @@ fn renders_simple_text() {
         tab_width: 4,
         tilde_style: ratatui::style::Style::default(),
         indent_guide_style: ratatui::style::Style::default(),
+        show_indent_guides: true,
         pane_rect,
         theme: &theme,
         pane_bg: None,
@@ -129,6 +130,7 @@ fn filler_rows_have_tilde() {
         tab_width: 4,
         tilde_style: ratatui::style::Style::default(),
         indent_guide_style: ratatui::style::Style::default(),
+        show_indent_guides: true,
         pane_rect,
         theme: &theme,
         pane_bg: None,
@@ -184,6 +186,7 @@ fn do_compose_row(
         tab_width,
         tilde_style: ratatui::style::Style::default(),
         indent_guide_style: ratatui::style::Style::default(),
+        show_indent_guides: true,
         pane_rect,
         theme: &theme,
         pane_bg: None,
@@ -380,6 +383,86 @@ fn indent_guide_drawn_at_inner_tab_stops() {
             .symbol(),
         INDENT_GUIDE_GLYPH
     );
+}
+
+#[test]
+fn indent_guide_hidden_when_show_indent_guides_is_false() {
+    // Same fixture as indent_guide_drawn_at_inner_tab_stops (depth=2,
+    // tab_width=4, guide expected at col 4) but with the setting off —
+    // proves ComposeCtx::show_indent_guides actually gates the draw loop,
+    // not just that the glyph can appear under default settings.
+    let graphemes: Vec<Grapheme> = (0..11u16)
+        .map(|i| Grapheme {
+            byte_range: (i as usize)..(i as usize + 1),
+            char_offset: i as usize,
+            col: i,
+            width: 1,
+            content: CellContent::Grapheme,
+            indent_depth: 2,
+            scope: None,
+        })
+        .collect();
+    let rows = [DisplayRow {
+        kind: RowKind::LineStart { line_idx: 0 },
+        graphemes: 0..11,
+    }];
+    let styles = vec![ResolvedStyle::default(); 11];
+    let visible = VisibleRange {
+        line_range: 0..1,
+        top_skip_rows: 0,
+        content_height: 5,
+        content_width: 20,
+        gutter_width: 0,
+        last_line_idx: 0,
+    };
+    let viewport = ViewportState::new(20, 5);
+    let pane_rect = ratatui::layout::Rect {
+        x: 0,
+        y: 0,
+        width: 20,
+        height: 5,
+    };
+    let mut buf = make_test_buf(20, 5);
+    let theme = Theme::default();
+    let col_widths: Vec<u16> = Vec::new();
+    let rope = ropey::Rope::new();
+    let ctx = ComposeCtx {
+        gutter_columns: &[],
+        visible: &visible,
+        viewport: &viewport,
+        mode: EditorMode::Normal,
+        primary_head_line: 0,
+        tab_width: 4,
+        tilde_style: ratatui::style::Style::default(),
+        indent_guide_style: ratatui::style::Style::default(),
+        show_indent_guides: false,
+        pane_rect,
+        theme: &theme,
+        pane_bg: None,
+        rope: &rope,
+    };
+    let mut canvas = PaneCanvas::new(&mut buf, None);
+    compose_row(
+        &rows[0],
+        &graphemes,
+        &styles,
+        "        foo",
+        "",
+        0,
+        &col_widths,
+        &ctx,
+        &mut canvas,
+        None,
+    );
+    // No guide anywhere on the row, including the col-4 tab stop that
+    // indent_guide_drawn_at_inner_tab_stops proves is drawn when enabled.
+    for x in 0..11 {
+        assert_ne!(
+            buf.cell(ratatui::layout::Position { x, y: 0 }).unwrap().symbol(),
+            INDENT_GUIDE_GLYPH,
+            "no indent guide should render at col {x} when show_indent_guides is false"
+        );
+    }
 }
 
 #[test]
@@ -593,6 +676,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         tab_width: 4,
         tilde_style: ratatui::style::Style::default(),
         indent_guide_style: ratatui::style::Style::default(),
+        show_indent_guides: true,
         pane_rect,
         theme: &theme,
         pane_bg: None,
@@ -673,6 +757,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
         tab_width: 4,
         tilde_style: ratatui::style::Style::default(),
         indent_guide_style: ratatui::style::Style::default(),
+        show_indent_guides: true,
         pane_rect,
         theme: &theme,
         pane_bg: None,
@@ -806,6 +891,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
         tab_width: 4,
         tilde_style: ratatui::style::Style::default(),
         indent_guide_style: ratatui::style::Style::default(),
+        show_indent_guides: true,
         pane_rect,
         theme: &theme,
         pane_bg: None,
@@ -917,6 +1003,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
         tab_width: 4,
         tilde_style: ratatui::style::Style::default(),
         indent_guide_style: ratatui::style::Style::default(),
+        show_indent_guides: true,
         pane_rect,
         theme: &theme,
         pane_bg: None,
@@ -1035,6 +1122,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
             tab_width: 4,
             tilde_style: ratatui::style::Style::default(),
             indent_guide_style: ratatui::style::Style::default(),
+            show_indent_guides: true,
             pane_rect,
             theme: &theme,
             pane_bg: None,
@@ -1148,6 +1236,7 @@ fn gutter_column_reads_rope_via_ctx() {
         tab_width: 4,
         tilde_style: ratatui::style::Style::default(),
         indent_guide_style: ratatui::style::Style::default(),
+        show_indent_guides: true,
         pane_rect,
         theme: &theme,
         pane_bg: None,
@@ -1277,6 +1366,7 @@ fn compose_row_dims_cells_inline() {
         tab_width: 4,
         tilde_style: ratatui::style::Style::default(),
         indent_guide_style: ratatui::style::Style::default(),
+        show_indent_guides: true,
         pane_rect,
         theme: &theme,
         pane_bg: Some(Color::Rgb(0, 0, 0)),
@@ -1341,6 +1431,7 @@ fn compose_row_non_rgb_dim_target_is_noop() {
         tab_width: 4,
         tilde_style: ratatui::style::Style::default(),
         indent_guide_style: ratatui::style::Style::default(),
+        show_indent_guides: true,
         pane_rect,
         theme: &theme,
         pane_bg: Some(Color::Rgb(0, 0, 0)),

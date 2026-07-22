@@ -609,6 +609,9 @@ define_settings! {
         "tab-width" => tab_width: u8 = 4,
             scope: ["global", "buffer"],
             parser: tab_width;
+        "indent-guides" => show_indent_guides: bool = true,
+            scope: ["global", "buffer"],
+            parser: bool;
         "tab-style" => tab_style: TabStyle = TabStyle::Hard,
             scope: ["global", "buffer"],
             parser: from_str;

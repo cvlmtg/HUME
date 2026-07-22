@@ -14,6 +14,7 @@ fn editor_settings_default_matches_old_constants() {
     assert_eq!(s.history_capacity, 100);
     assert_eq!(s.undo_levels, 0);
     assert_eq!(s.tab_width, 4);
+    assert!(s.show_indent_guides);
     assert_eq!(s.tab_style, TabStyle::Hard);
     assert_eq!(s.wrap_mode, WrapMode::Indent { width: 0 });
     assert_eq!(s.line_number_style, LineNumberStyle::Hybrid);
@@ -28,6 +29,7 @@ fn editor_settings_default_matches_old_constants() {
 fn buffer_overrides_default_is_all_none() {
     let ov = BufferOverrides::default();
     assert!(ov.tab_width.is_none());
+    assert!(ov.show_indent_guides.is_none());
     assert!(ov.tab_style.is_none());
     assert!(ov.line_number_style.is_none());
     assert!(ov.auto_pairs_enabled.is_none());
@@ -382,6 +384,11 @@ fn set_global_auto_pairs_enabled() {
 }
 
 #[test]
+fn set_global_indent_guides() {
+    assert!(!global("indent-guides", "false").unwrap().show_indent_guides);
+}
+
+#[test]
 fn set_global_select_changed_text() {
     assert!(
         !global("select-changed-text", "false")
@@ -526,6 +533,13 @@ fn set_buffer_word_selects_whitespace() {
     let global = EditorSettings::default();
     let ov = buffer("word-selects-whitespace", "false").unwrap();
     assert!(!ov.word_selects_whitespace(&global));
+}
+
+#[test]
+fn set_buffer_indent_guides() {
+    let global = EditorSettings::default();
+    let ov = buffer("indent-guides", "false").unwrap();
+    assert!(!ov.show_indent_guides(&global));
 }
 
 #[test]
@@ -700,6 +714,7 @@ fn is_bool_setting_matches_every_bool_field() {
         "pane-dividers",
         "auto-pairs-enabled",
         "select-changed-text",
+        "indent-guides",
     ] {
         assert!(is_bool_setting(key), "'{key}' should be a bool setting");
     }

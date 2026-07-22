@@ -29,6 +29,8 @@ pub(crate) struct ComposeCtx<'a> {
     pub tilde_style: ratatui::style::Style,
     /// Pre-resolved from `theme.ui.indent_guide`.
     pub indent_guide_style: ratatui::style::Style,
+    /// From the `indent-guides` setting — gates the draw loop below.
+    pub show_indent_guides: bool,
     pub pane_rect: ratatui::layout::Rect,
     pub theme: &'a Theme,
     /// Background colour from `ui.background`, threaded to every row so trailing
@@ -375,7 +377,7 @@ pub(crate) fn compose_row(
     // Draw guides only on line-start rows (not wrap/virtual/filler) so
     // that continuation rows don't clobber content at guide positions.
     // Drawn after content so they appear on top of leading-whitespace cells.
-    if matches!(row.kind, RowKind::LineStart { .. }) {
+    if compose_ctx.show_indent_guides && matches!(row.kind, RowKind::LineStart { .. }) {
         let depth = graphemes[row.graphemes.clone()]
             .first()
             .map(|g| g.indent_depth)

@@ -31,6 +31,8 @@
 ### Panes & interface
 - Configurable sign column in the gutter (`signcolumn` option).
 - `Diagnostics` statusline element, in the default statusline.
+- Indentation guides can now be hidden via the new `indent-guides` option
+  (default on).
 
 ### Plugins & scripting
 - Full-trust plugin model: no more sandbox; plugins use Steel's standard

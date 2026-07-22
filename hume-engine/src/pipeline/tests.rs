@@ -34,6 +34,7 @@ fn make_compose_ctx<'a>(
         tab_width: 4,
         tilde_style: theme.ui.virtual_text.into(),
         indent_guide_style: theme.ui.indent_guide.into(),
+        show_indent_guides: true,
         pane_rect,
         theme,
         pane_bg: None,
@@ -172,6 +173,7 @@ fn render_wrapped_pane_with_virtual_line(
             wrap_mode: WrapMode::Soft { width: 4 },
             tab_width: 4,
             whitespace: WhitespaceConfig::default(),
+            show_indent_guides: true,
         },
         dim: None,
     };
@@ -317,6 +319,7 @@ fn virtual_line_provider_id_is_stamped_by_pipeline_not_self_reported() {
             wrap_mode: WrapMode::None,
             tab_width: 4,
             whitespace: WhitespaceConfig::default(),
+            show_indent_guides: true,
         },
         dim: None,
     };
@@ -362,6 +365,7 @@ fn cjk_heavy_viewport_fills_every_row_no_premature_filler() {
             wrap_mode: WrapMode::Soft { width: 20 },
             tab_width: 4,
             whitespace: WhitespaceConfig::default(),
+            show_indent_guides: true,
         },
         dim: None,
     };
@@ -405,6 +409,7 @@ fn scrolled_pane_renders_from_top_line_onward() {
             wrap_mode: WrapMode::None,
             tab_width: 4,
             whitespace: WhitespaceConfig::default(),
+            show_indent_guides: true,
         },
         dim: None,
     };
@@ -471,6 +476,7 @@ fn filler_row_gutter_shows_gutter_content_not_stale_blank() {
             wrap_mode: WrapMode::None,
             tab_width: 4,
             whitespace: WhitespaceConfig::default(),
+            show_indent_guides: true,
         },
         dim: None,
     };

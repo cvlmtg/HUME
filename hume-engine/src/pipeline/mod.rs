@@ -447,6 +447,7 @@ pub struct PaneRenderSettings {
     pub wrap_mode: WrapMode,
     pub tab_width: u8,
     pub whitespace: WhitespaceConfig,
+    pub show_indent_guides: bool,
 }
 
 impl Default for PaneRenderSettings {
@@ -456,6 +457,7 @@ impl Default for PaneRenderSettings {
             wrap_mode: WrapMode::None,
             tab_width: 4,
             whitespace: WhitespaceConfig::default(),
+            show_indent_guides: true,
         }
     }
 }

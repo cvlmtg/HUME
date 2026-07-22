@@ -533,6 +533,7 @@ impl Editor {
         let wrap_mode = pane.wrap_mode.resolve(pane.content_width(len_lines));
         let tab_width = doc.overrides.tab_width(&self.state.settings);
         let whitespace = doc.overrides.whitespace(&self.state.settings);
+        let show_indent_guides = doc.overrides.show_indent_guides(&self.state.settings);
         let mode = if pid == self.state.focused_pane_id {
             self.state.mode()
         } else {
@@ -544,6 +545,7 @@ impl Editor {
                 wrap_mode,
                 tab_width,
                 whitespace,
+                show_indent_guides,
             },
             gutter_w,
         )

@@ -78,6 +78,7 @@ These options have a global default that new buffers inherit, and a per-buffer o
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `tab-width` | integer | `4` | Spaces per indent level |
+| `indent-guides` | bool | `#t` | Draw vertical guides at each indentation level |
 | `tab-style` | `hard` \| `soft` | `hard` | What `Tab` inserts: `hard` = literal `\t`; `soft` = spaces to next tab stop |
 | `line-number-style` | `absolute` \| `relative` \| `hybrid` | `hybrid` | Line number display in the gutter |
 | `auto-pairs-enabled` | bool | `#t` | Enable auto-pair insertion |
