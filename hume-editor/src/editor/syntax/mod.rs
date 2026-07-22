@@ -80,6 +80,12 @@ impl Editor {
     /// after opening (`Editor::open_buffer`, `apply_edit_request_response`),
     /// or at the tail of `apply_script_effects` for every Steel-eval path.
     ///
+    /// Also fires `OnBufferOpen` for each buffer, after its `OnLanguageSet`
+    /// (queued by `detect_and_set_language` above) — `open_buffer_and_notify`
+    /// itself doesn't fire it, since both hooks share the FIFO
+    /// `pending_hooks` queue and plugins registering both handlers expect
+    /// `on-language-set` to run first.
+    ///
     /// Takes the queue before iterating, not `while let Some(bid) =
     /// queue.pop()`: detecting a language can activate a lazy plugin, whose
     /// body can open more buffers and re-enter this same drain via a nested
@@ -93,9 +99,14 @@ impl Editor {
             // opened it (e.g. `close-buffer!` in the same eval) before this
             // drain runs — `close-buffer!` mutates synchronously, unlike this
             // deferred detection. Skip rather than hit `BufferStore::get`'s
-            // "unseeded BufferId" panic.
+            // "unseeded BufferId" panic. Skipping also means a since-closed
+            // buffer announces only `OnBufferClose`, never `OnBufferOpen` —
+            // firing open-after-close would be meaningless and would invert
+            // the already-queued close hook's ordering.
             if self.state.buffers.try_get(bid).is_some() {
                 self.detect_and_set_language(bid);
+                let val = SteelBufferId::new(bid).into_steel_val();
+                self.fire_hook_silent(HookId::OnBufferOpen, &[val]);
             }
         }
     }

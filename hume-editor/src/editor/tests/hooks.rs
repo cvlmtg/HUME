@@ -244,6 +244,58 @@ fn startup_hooks_require_explicit_drain() {
     );
 }
 
+// ── OnBufferOpen / OnLanguageSet ordering ─────────────────────────────────────
+
+/// `Editor::open_buffer` must queue `OnLanguageSet` before `OnBufferOpen` for a
+/// buffer whose language is detected at open time, so plugins that register
+/// both handlers see language detection complete before `on-buffer-open` runs
+/// (e.g. an `on-language-set` handler that installs per-language state an
+/// `on-buffer-open` handler then reads).
+///
+/// Fail oracle: reorder `detect_pending_languages` back to firing
+/// `OnBufferOpen` before `detect_and_set_language`, or revert
+/// `open_buffer_and_notify` to push `OnBufferOpen` at open time — either way
+/// `hook_order` flips to `[OnBufferOpen, OnLanguageSet]`.
+#[test]
+fn on_buffer_open_queued_after_on_language_set() {
+    use crate::editor::buffer::Buffer;
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+    use hume_scripting::hooks::HookId;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))
+           (register-hook! 'on-buffer-open (lambda (bid) (call! "move-right")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+    ed.state
+        .languages
+        .register_identity_no_rebuild("rust", &["rs"], &[], &[]);
+    ed.state.languages.rebuild_glob_set().expect("rebuild ok");
+
+    let mut doc = Buffer::scratch();
+    doc.path = Some(std::path::PathBuf::from("/tmp/foo.rs"));
+    ed.open_buffer(doc);
+
+    // Inspect the queue before draining — drain_hooks would empty it.
+    let hook_order: Vec<HookId> = ed
+        .state
+        .pending_hooks
+        .iter()
+        .map(|(id, _)| *id)
+        .collect();
+    assert_eq!(
+        hook_order,
+        vec![HookId::OnLanguageSet, HookId::OnBufferOpen],
+        "on-language-set must be queued before on-buffer-open; got {hook_order:?}"
+    );
+}
+
 // ── Hook (call! …) dispatch ───────────────────────────────────────────────────
 
 /// `fire_hook_silent` must dispatch commands called by `(call! …)` inside hook bodies.
