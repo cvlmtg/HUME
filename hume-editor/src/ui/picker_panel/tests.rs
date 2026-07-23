@@ -314,7 +314,10 @@ fn draw_picker_panel_prompt_wider_than_panel_clips_without_panic() {
     let row: String = (inner_x..inner_x + 5)
         .map(|x| buf[(x, 1)].symbol().to_string())
         .collect();
-    assert_eq!(row, "much ", "prompt clipped to the inner width, query dropped");
+    assert_eq!(
+        row, "much ",
+        "prompt clipped to the inner width, query dropped"
+    );
 }
 
 #[test]

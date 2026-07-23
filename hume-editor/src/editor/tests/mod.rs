@@ -595,6 +595,7 @@ mod pane_sync;
 mod paste;
 mod per_pane_jumps;
 mod picker;
+mod picker_steel;
 mod plugins;
 mod render_snapshot;
 mod scripting_effects;
