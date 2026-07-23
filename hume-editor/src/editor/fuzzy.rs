@@ -35,6 +35,7 @@ pub(crate) struct FuzzyMatcher {
 }
 
 impl FuzzyMatcher {
+    #[allow(dead_code)] // production caller is PickerSession::new, awaiting B4's picker! builtin
     pub(crate) fn new() -> Self {
         Self {
             matcher: Matcher::new(Config::DEFAULT),

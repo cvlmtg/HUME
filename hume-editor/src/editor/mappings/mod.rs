@@ -1,4 +1,4 @@
-use termina::event::{KeyCode, KeyEvent};
+use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use super::{Editor, Mode};
 
@@ -46,12 +46,24 @@ impl Editor {
             self.state.popup = None;
         }
 
+        // ── Picker intercept ──────────────────────────────────────────────
+        // Sits above the menu/drawer intercepts and is mode-agnostic (Q-B7,
+        // `docs/FUZZY-FINDERS.md`: the picker opens from any mode, unlike
+        // the menu/drawer's Normal/Extend-only gate) — key ownership mirrors
+        // the picker's top z-order registration (`ui/mod.rs`'s `build_pane`),
+        // the most action-relevant surface when more than one could be
+        // visible. Full-modal: `handle_picker_key` always consumes, so while
+        // a picker is open `handle_insert`'s own completion intercept never
+        // runs — no conflict between the two.
+        let picker_consumed = self.state.picker.is_some() && self.handle_picker_key(key);
+
         // ── Selection menu intercept ─────────────────────────────────────
         // Guarded early-return before mode dispatch, not a new `Mode` — a
         // menu is transient chrome, not an editing mode (no `on-mode-change`,
         // no statusline/cursor-shape changes). Normal/Extend only: menus
         // don't open from Insert in v1.
-        let menu_consumed = self.state.menu.is_some()
+        let menu_consumed = !picker_consumed
+            && self.state.menu.is_some()
             && matches!(self.state.mode(), Mode::Normal | Mode::Extend)
             && self.handle_menu_key(key);
 
@@ -60,12 +72,13 @@ impl Editor {
         // a stray key neither closes the drawer nor invokes its callback —
         // it falls through untouched, leaving the drawer open while focus
         // stays on the pane (Helix-style browse-while-editing).
-        let drawer_consumed = !menu_consumed
+        let drawer_consumed = !picker_consumed
+            && !menu_consumed
             && self.state.drawer.is_some()
             && matches!(self.state.mode(), Mode::Normal | Mode::Extend)
             && self.handle_drawer_key(key);
 
-        if !menu_consumed && !drawer_consumed {
+        if !picker_consumed && !menu_consumed && !drawer_consumed {
             match self.state.mode() {
                 Mode::Normal | Mode::Extend => self.handle_normal(key),
                 Mode::Insert => self.handle_insert(key),
@@ -209,6 +222,77 @@ impl Editor {
             }
         }
         self.state.sync_drawer_view();
+    }
+
+    /// Handles one key while the picker is open. Always returns `true` —
+    /// unlike the menu (a stray key closes it and falls through) or the
+    /// drawer (a stray key falls through untouched), the picker is
+    /// full-modal: it owns the entire interaction, so an unrecognized key
+    /// (Left/Right/Home/Tab/…) is simply consumed and ignored rather than
+    /// leaking through to whatever mode sits underneath.
+    ///
+    /// `on_select` fires exactly once via `.take()` + `queue_steel_call`
+    /// (never invoked inline) — same one-shot discipline as the menu.
+    /// `visible_rows` comes from `panel_geometry` against the same
+    /// `last_pane_area` the next frame's `sync_picker_view` will use, so a
+    /// keystroke and the following paint always agree on how many rows are
+    /// visible (before the first frame, geometry is `None` and paging is a
+    /// documented no-op on the store).
+    fn handle_picker_key(&mut self, key: KeyEvent) -> bool {
+        let visible_rows = crate::ui::picker_panel::panel_geometry(self.view.last_pane_area)
+            .map_or(0, |geo| geo.list_rows);
+        match key.code {
+            KeyCode::Down => {
+                let picker = self.state.picker.as_mut().expect("checked by the caller above");
+                picker.move_selection(1, visible_rows);
+            }
+            KeyCode::Up => {
+                let picker = self.state.picker.as_mut().expect("checked by the caller above");
+                picker.move_selection(-1, visible_rows);
+            }
+            KeyCode::Char('n') if key.modifiers.contains(Modifiers::CONTROL) => {
+                let picker = self.state.picker.as_mut().expect("checked by the caller above");
+                picker.move_selection(1, visible_rows);
+            }
+            KeyCode::Char('p') if key.modifiers.contains(Modifiers::CONTROL) => {
+                let picker = self.state.picker.as_mut().expect("checked by the caller above");
+                picker.move_selection(-1, visible_rows);
+            }
+            KeyCode::PageDown => {
+                let picker = self.state.picker.as_mut().expect("checked by the caller above");
+                picker.move_selection(visible_rows as isize, visible_rows);
+            }
+            KeyCode::PageUp => {
+                let picker = self.state.picker.as_mut().expect("checked by the caller above");
+                picker.move_selection(-(visible_rows as isize), visible_rows);
+            }
+            KeyCode::Backspace => {
+                let picker = self.state.picker.as_mut().expect("checked by the caller above");
+                picker.pop_grapheme(); // no-op on an already-empty query
+            }
+            KeyCode::Enter => {
+                let picker = self.state.picker.take().expect("checked by the caller above");
+                // No match (or nothing pushed yet) behaves like Esc — Enter
+                // is always a terminal action, never a silent no-op.
+                let payload = picker
+                    .selected_payload()
+                    .cloned()
+                    .unwrap_or(steel::rvals::SteelVal::BoolV(false));
+                let callback = picker.on_select().clone();
+                self.queue_steel_call(callback, vec![payload]);
+            }
+            KeyCode::Escape => {
+                let picker = self.state.picker.take().expect("checked by the caller above");
+                let callback = picker.on_select().clone();
+                self.queue_steel_call(callback, vec![steel::rvals::SteelVal::BoolV(false)]);
+            }
+            KeyCode::Char(ch) if !key.modifiers.intersects(Modifiers::CONTROL | Modifiers::ALT) => {
+                let picker = self.state.picker.as_mut().expect("checked by the caller above");
+                picker.insert_char(ch);
+            }
+            _ => {}
+        }
+        true
     }
 }
 

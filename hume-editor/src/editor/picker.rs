@@ -7,13 +7,6 @@
 //! below (tests today, B4's `picker!` builtin later) and driven per-frame by
 //! `Editor::sync_picker_view` and per-key by `Editor::handle_picker_key`
 //! (`editor/mappings/mod.rs`).
-//!
-//! `handle_picker_key` (B3 step 5) is the production caller for most of the
-//! query/selection mutators below; until it lands, they're reachable only
-//! from tests. `#![allow(dead_code)]` covers that transient gap — removed
-//! once step 5 is in, leaving only narrow allows on the items whose
-//! production caller is `picker!`/`picker-push!` (B4), out of B3's scope.
-#![allow(dead_code)]
 
 use std::cmp::Reverse;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -53,15 +46,18 @@ pub(crate) struct PickerSession {
     scroll: usize,
     on_select: SteelVal,
     /// Stale-push guard: `push` is a no-op unless the caller's token matches.
+    #[allow(dead_code)] // read by `push`/`token`, both awaiting B4's picker!/picker-push!
     token: u64,
 }
 
+#[allow(dead_code)] // read by `PickerSession::new`, awaiting B4's picker! production caller
 static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
 
 impl PickerSession {
     /// Opens empty — the caller's initial item list (from `picker!`) arrives
     /// through the same `push` path as any later batch, matching B6's "open
     /// empty, then attach source" composition.
+    #[allow(dead_code)] // production caller is B4's `picker!` builtin
     pub(crate) fn new(on_select: SteelVal) -> Self {
         Self {
             items: Vec::new(),
@@ -76,6 +72,7 @@ impl PickerSession {
         }
     }
 
+    #[allow(dead_code)] // production caller is B4's `picker-push!` builtin
     pub(crate) fn token(&self) -> u64 {
         self.token
     }
@@ -84,6 +81,7 @@ impl PickerSession {
     /// session's token. A mismatch is expected-normal (a late batch from a
     /// picker the user already closed or replaced) — silent no-op, not an
     /// error. Returns whether the push was applied.
+    #[allow(dead_code)] // production caller is B4's `picker-push!` builtin / B5's spawned source
     pub(crate) fn push(&mut self, token: u64, items: Vec<PickerItem>) -> bool {
         if token != self.token {
             return false;
@@ -118,6 +116,7 @@ impl PickerSession {
     }
 
     /// Replaces the query wholesale and reranks.
+    #[allow(dead_code)] // production caller is B4/B5's live-requery replace path (Q-B5)
     pub(crate) fn set_query(&mut self, query: String) {
         self.query = query;
         self.rerank();
@@ -238,6 +237,7 @@ impl super::Editor {
     /// fires *its* `on_select` with `#f` before installing the new one —
     /// the exactly-once callback contract must never have a window where a
     /// session can be silently dropped without firing.
+    #[allow(dead_code)] // production caller is B4's `picker!` builtin
     pub(crate) fn open_picker(&mut self, session: PickerSession) {
         self.clear_lsp_completion();
         if let Some(old) = self.state.picker.take() {
