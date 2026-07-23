@@ -29,6 +29,10 @@
   plugin.
 
 ### Panes & interface
+- Fuzzy file and buffer finders (`core:pickers` plugin): `g f` / `g b`.
+  Files picker reads the git index when in a repo, falls back to `fd`.
+  Any plugin can build its own picker over the same `picker!` /
+  `picker-source-spawn!` API.
 - Configurable sign column in the gutter (`signcolumn` option).
 - `Diagnostics` statusline element, in the default statusline.
 - Indentation guides can now be hidden via the new `indent-guides` option

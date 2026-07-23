@@ -191,7 +191,7 @@
 ### M12 — Editor chrome (planned)
 
 - **Class B chrome slot (bottom drawer)** — core landed via LSP's U6 (`docs/lsp/step-3.md`): `DrawerProvider` trait + `EngineView::pane_area` folds its height in alongside the tab bar/statusline, full-width, auto-sized (`min(rows + 1, terminal_height / 2)`), a generic `show-drawer-list!`/`close-drawer!` Steel API (pre-formatted display strings, Rust never interprets row content — the caller's `on-select` does any jump itself), and the `j`/`k`/`Enter`/`Esc` browse-while-editing key intercept (stays open across `Enter`, unlike the popup/menu). Still open: no other client has been wired to it yet — `:ls`, `:messages`, notifications, and command/search history pagers all still need their own formatting layer on top of the same primitive.
-- **File picker / fuzzy finder** (Helix-style): full design + task breakdown in `docs/FUZZY-FINDERS.md`. Splits dependency satisfied by M10 T2; remaining gate is prioritization.
+- **File picker / fuzzy finder** (Helix-style): **shipped** — B1–B6 of `docs/FUZZY-FINDERS.md` complete (`core:pickers` plugin, `g f`/`g b`). B7 (minimal native walker for bare directories without `fd`) stays deferred — build only if the fd-fallback posture proves inadequate in practice.
 - **Class A docked panes (fixed-row-count `LayoutTree` variant)**: real panes docked to a fixed row count inside the split tree. `LayoutTree::Fixed { rows, main, dock }` alongside `Split { ratio }`. Clients: quickfix list, LSP references/diagnostics, embedded terminal/REPL, build/test runner, `:help` pager, DAP debugger views. Deferred until the first concrete client is scoped.
 
 ### LSP — Language Server Protocol (complete)
@@ -218,7 +218,7 @@ Design and task breakdown: `docs/LSP.md` (hub) + `docs/lsp/step-*.md` (task card
 - **Unified decoration system**: single `Decoration` trait replacing the current separate provider traits (`GutterColumn`, `HighlightSource`, `VirtualLineSource`, `InlineDecoration`, `OverlayProvider`). Post-LSP, once the decoration surface is stable.
 - **Steel builtin to register custom completers**: plugin-side `Completer` implementations dispatched by command name; core does prefix matching only (fuzzy scoring is a plugin concern). Note: this is the *minibuffer* system — the insert-mode scriptable-completion design lives in `docs/COMPLETION-PICKER.md` and deliberately does not touch it.
 - **Scriptable completion sources**: design + task breakdown in `docs/COMPLETION-PICKER.md` (multi-source insert-mode completion). Nothing blocks on current work — additive.
-- **Fuzzy pickers**: design + task breakdown in `docs/FUZZY-FINDERS.md` (generic picker foundation, Steel-defined per the ratified decision above). Nothing blocks on current work — additive.
+- **Fuzzy pickers**: **shipped** — see M12 above. The remaining B7 native-walker escalation stays here as a deferred, unscheduled follow-up.
 - **`cargo-git` install flavor in `core:lsp`**: crates.io-semver cargo installs work
   today (`asm-lsp`, `beancount-language-server`, `cairo-language-server`,
   `circom-lsp`, `nls`, `openscad-lsp`, `pest-language-server`). Mason pins `nil` to a git
