@@ -79,18 +79,12 @@ impl<'a> EditorHostImpl<'a> {
             .get(buf_id)
     }
 
-    /// The `EditorHostImpl`-local equivalent of `Editor::clear_completion_menu`
-    /// — this struct holds disjoint `state`/`lsp` borrows, not a full
-    /// `Editor`, so it can't just call that method.
+    /// Delegates to the shared `clear_completion_menu(state, lsp)` free fn
+    /// (`lsp/completion.rs`) — this struct holds disjoint `state`/`lsp`
+    /// borrows, not a full `Editor`, so it can't call `Editor`'s method of
+    /// the same name, but both now share one body.
     fn clear_completion_menu(&mut self) {
-        if let Some(lsp) = self.lsp.as_deref_mut() {
-            crate::editor::lsp::completion::clear_completion_state(lsp);
-        }
-        *self
-            .state
-            .completion_menu_view
-            .write()
-            .expect("RwLock not poisoned") = None;
+        crate::editor::lsp::completion::clear_completion_menu(self.state, self.lsp.as_deref_mut());
     }
 }
 
