@@ -55,18 +55,85 @@ pub(crate) enum PopupDismiss {
     KeyExceptScroll,
 }
 
-/// Synchronously-parsed markdown highlight state for a popup's `text` —
-/// built once at `show-popup! #:markdown #t` time (there is nothing to
-/// incrementally reparse: the content never changes after this). `None` on
-/// `PopupModel::syntax` when no `markdown` grammar is registered, or
-/// `#:markdown` wasn't requested — the plain-text fallback, unchanged from
-/// before this existed.
-pub(crate) struct PopupSyntax {
+/// Synchronously-parsed highlight state for a popup's or drawer's read-only
+/// text, keyed by grammar name (`#:lang`) — built once at `show-popup!`/
+/// `show-drawer-list!` time (there is nothing to incrementally reparse: the
+/// content never changes after this). `None` where a widget's `syntax` field
+/// would go when no grammar by that name is registered, or `#:lang` wasn't
+/// requested — the plain-text fallback.
+///
+/// Shared by both widgets so highlight resolution (`styled_row`/
+/// `styled_runs`) has one implementation — only wrapping/geometry differs
+/// between a popup and a drawer row.
+pub(crate) struct MarkupSyntax {
     pub(crate) syntax: hume_treesitter::syntax::Syntax,
-    /// Same content as `PopupModel::text`, wrapped as a rope-backed `Text` —
-    /// `Syntax::spans_for_line` needs `&Rope`, and re-deriving one from
-    /// `text` every frame would re-walk the string on every render.
+    /// Same content the syntax was parsed from, wrapped as a rope-backed
+    /// `Text` — `Syntax::spans_for_line` needs `&Rope`, and re-deriving one
+    /// from the source string every frame would re-walk it on every render.
     pub(crate) text: hume_editing::text::Text,
+}
+
+impl MarkupSyntax {
+    /// Highlight spans for one source line, resolved into contiguous
+    /// same-style runs — a run per contiguous same-scope span, with gaps
+    /// between spans (and a line with no spans at all) getting `base_style`.
+    ///
+    /// `line` is the caller's own text for `line_idx` (not re-sliced from
+    /// `self.text`'s rope) — byte offsets from `spans_for_line` are relative
+    /// to the line start either way, so this stays exact even when the
+    /// caller's line boundaries differ slightly from the rope's own (see
+    /// `styled_runs`'s doc on `self.text`'s padded trailing `'\n'`).
+    pub(crate) fn styled_row(
+        &self,
+        line_idx: usize,
+        line: &str,
+        theme: &Theme,
+        base_style: Style,
+    ) -> StyledRow {
+        let mut spans = Vec::new();
+        self.syntax
+            .spans_for_line(line_idx, self.text.rope(), &mut spans);
+
+        let mut row: StyledRow = Vec::new();
+        let mut cursor = 0usize;
+        for &(start, end, scope) in &spans {
+            if start > cursor {
+                push_run(&mut row, &line[cursor..start], base_style);
+            }
+            push_run(&mut row, &line[start..end], theme.resolve(scope).into());
+            cursor = end;
+        }
+        if cursor < line.len() {
+            push_run(&mut row, &line[cursor..], base_style);
+        }
+        row
+    }
+
+    /// Resolve every line of `text` into one flat run sequence for
+    /// [`wrap_styled`] — lines joined by a bare `"\n"` run so its paragraph
+    /// splitting sees the exact same boundaries a plain popup would.
+    ///
+    /// Slices `text`'s own paragraphs (`text.split('\n')`), not `self.text`'s
+    /// rope lines — `self.text` is `Text::from(text)`, which may have padded
+    /// on a trailing `'\n'` `text` itself lacked (the buffer invariant), and
+    /// iterating the padded rope would emit a spurious trailing empty row
+    /// `wrap_text` on plain `text` never would.
+    pub(crate) fn styled_runs(
+        &self,
+        text: &str,
+        theme: &Theme,
+        base_style: Style,
+    ) -> Vec<(String, Style)> {
+        let lines: Vec<&str> = text.split('\n').collect();
+        let mut runs: Vec<(String, Style)> = Vec::new();
+        for (line_idx, line) in lines.iter().enumerate() {
+            runs.extend(self.styled_row(line_idx, line, theme, base_style));
+            if line_idx + 1 < lines.len() {
+                push_run(&mut runs, "\n", base_style);
+            }
+        }
+        runs
+    }
 }
 
 /// `(show-popup! text)`'s raw, unwrapped content — held on `EditorState`
@@ -79,10 +146,10 @@ pub(crate) struct PopupModel {
     /// in `Editor::scroll_popup`; re-clamped defensively in
     /// `Editor::sync_popup_view` against the frame's resolved content height.
     pub(crate) scroll: usize,
-    /// `#:markdown` — rebuilt fresh on every `show-popup!`, dropped with the
+    /// `#:lang` — rebuilt fresh on every `show-popup!`, dropped with the
     /// popup on close. No separate invalidation path: the popup's lifetime
     /// IS the syntax's (SSOT).
-    pub(crate) syntax: Option<PopupSyntax>,
+    pub(crate) syntax: Option<MarkupSyntax>,
 }
 
 /// `(show-menu! items on-select)`'s raw content — held on `EditorState`
@@ -124,8 +191,8 @@ pub(crate) struct PopupState {
     /// setting.
     pub(crate) border: bool,
     /// Per-run styled counterpart of `lines`, same length and same text
-    /// when flattened — `Some` only for a markdown popup with a `markdown`
-    /// grammar registered (`PopupModel::syntax`). `None` for every other
+    /// when flattened — `Some` only for a popup with `#:lang` set to a
+    /// registered grammar (`PopupModel::syntax`). `None` for every other
     /// popup and for menus, which paint `lines` in one style regardless.
     pub(crate) styled_rows: Option<Vec<StyledRow>>,
 }
@@ -234,10 +301,10 @@ pub(crate) type StyledRun = (String, Style);
 pub(crate) type StyledRow = Vec<StyledRun>;
 
 /// Merge adjacent `(text, style)` pairs sharing the same `Style` — shared by
-/// [`styled_runs_for_popup`] (building the *input* runs `wrap_styled` wraps)
-/// and [`coalesce_atoms`] (merging wrapped *output* graphemes back down);
-/// same "adjacent equal style" rule, different element granularity (whole
-/// strings here, single graphemes there).
+/// [`MarkupSyntax::styled_row`] (building the *input* runs `wrap_styled`
+/// wraps) and [`coalesce_atoms`] (merging wrapped *output* graphemes back
+/// down); same "adjacent equal style" rule, different element granularity
+/// (whole strings here, single graphemes there).
 fn push_run(runs: &mut Vec<(String, Style)>, text: &str, style: Style) {
     if text.is_empty() {
         return;
@@ -246,52 +313,6 @@ fn push_run(runs: &mut Vec<(String, Style)>, text: &str, style: Style) {
         Some((last_text, last_style)) if *last_style == style => last_text.push_str(text),
         _ => runs.push((text.to_string(), style)),
     }
-}
-
-/// Resolve `syntax`'s per-line highlight spans into one flat run sequence
-/// for [`wrap_styled`] — a run per contiguous same-scope span on each source
-/// line of `text` (gaps between spans, and lines with no spans at all, get
-/// `base_style`), lines joined by a bare `"\n"` run so `wrap_styled`'s
-/// paragraph splitting sees the exact same boundaries a plain popup would.
-///
-/// Slices `text`'s own paragraphs (`text.split('\n')`), not
-/// `syntax.text`'s rope lines — `PopupSyntax::text` is `Text::from(text)`,
-/// which may have padded on a trailing `'\n'` `text` itself lacked (the
-/// buffer invariant), and iterating the padded rope would emit a spurious
-/// trailing empty row `wrap_text` on plain `text` never would. Byte offsets
-/// from `spans_for_line` are relative to the line start either way, so
-/// slicing `text`'s own paragraph strings with them is exact.
-pub(crate) fn styled_runs_for_popup(
-    text: &str,
-    syntax: &PopupSyntax,
-    theme: &Theme,
-    base_style: Style,
-) -> Vec<(String, Style)> {
-    let rope = syntax.text.rope();
-    let lines: Vec<&str> = text.split('\n').collect();
-    let mut spans = Vec::new();
-    let mut runs: Vec<(String, Style)> = Vec::new();
-
-    for (line_idx, line) in lines.iter().enumerate() {
-        spans.clear();
-        syntax.syntax.spans_for_line(line_idx, rope, &mut spans);
-
-        let mut cursor = 0usize;
-        for &(start, end, scope) in &spans {
-            if start > cursor {
-                push_run(&mut runs, &line[cursor..start], base_style);
-            }
-            push_run(&mut runs, &line[start..end], theme.resolve(scope).into());
-            cursor = end;
-        }
-        if cursor < line.len() {
-            push_run(&mut runs, &line[cursor..], base_style);
-        }
-        if line_idx + 1 < lines.len() {
-            push_run(&mut runs, "\n", base_style);
-        }
-    }
-    runs
 }
 
 /// Word-wrap `text` (newline-separated paragraphs preserved) to `max_width`

@@ -12,23 +12,24 @@ use steel::rvals::SteelVal;
 use crate::SteelCtx;
 
 use super::args::{
-    bool_arg, list_items, list_to_strings, optional_path_arg, pair_fields, string_arg, usize_arg,
+    bool_arg, list_items, list_to_strings, optional_path_arg, optional_string_arg, pair_fields,
+    string_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
-/// `(%show-popup! text anchor dismiss-on-key scrollable markdown)` — the
+/// `(%show-popup! text anchor dismiss-on-key scrollable lang)` — the
 /// `show-popup!` Scheme wrapper supplies
-/// `#:anchor`/`#:dismiss-on-key`/`#:scroll`/`#:markdown`'s defaults.
-/// `'cursor` is the only anchor accepted in v1.
+/// `#:anchor`/`#:dismiss-on-key`/`#:scroll`/`#:lang`'s defaults. `'cursor`
+/// is the only anchor accepted in v1.
 pub(crate) fn show_popup(
     ctx: &mut SteelCtx,
     text: SteelVal,
     anchor: SteelVal,
     dismiss_on_key: SteelVal,
     scrollable: SteelVal,
-    markdown: SteelVal,
+    lang: SteelVal,
 ) -> SteelResult {
     let text = string_arg(text, "show-popup! text")?;
     let anchor = string_arg(anchor, "show-popup! #:anchor")?;
@@ -37,12 +38,12 @@ pub(crate) fn show_popup(
     }
     let dismiss_on_key = bool_arg(dismiss_on_key, "show-popup! #:dismiss-on-key")?;
     let scrollable = bool_arg(scrollable, "show-popup! #:scroll")?;
-    let markdown = bool_arg(markdown, "show-popup! #:markdown")?;
+    let lang = optional_string_arg(lang, "show-popup! #:lang")?;
     if dismiss_on_key && scrollable {
         steel::stop!(Generic => "show-popup!: #:dismiss-on-key and #:scroll are mutually exclusive");
     }
     require_cap(ctx.host.ui(), "show-popup!")?
-        .show_popup(text, dismiss_on_key, scrollable, markdown)
+        .show_popup(text, dismiss_on_key, scrollable, lang)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
 }
@@ -73,15 +74,18 @@ pub(crate) fn close_menu(ctx: &mut SteelCtx) -> SteelResult {
         .map_err(generic_err)
 }
 
-/// `(show-drawer-list! items on-select)`.
+/// `(%show-drawer-list! items on-select lang)` — the `show-drawer-list!`
+/// Scheme wrapper supplies `#:lang`'s default.
 pub(crate) fn show_drawer_list(
     ctx: &mut SteelCtx,
     items: SteelVal,
     on_select: SteelVal,
+    lang: SteelVal,
 ) -> SteelResult {
     let items = list_to_strings(items, "show-drawer-list! items")?;
+    let lang = optional_string_arg(lang, "show-drawer-list! #:lang")?;
     require_cap(ctx.host.ui(), "show-drawer-list!")?
-        .show_drawer_list(items, on_select)
+        .show_drawer_list(items, on_select, lang)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
 }

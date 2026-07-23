@@ -1686,7 +1686,7 @@ impl Editor {
             // below; `scroll` (clamped against that cap) picks which window
             // of `lines` is visible.
             //
-            // A markdown popup (`model.syntax`) resolves highlight spans
+            // A `#:lang` popup (`model.syntax`) resolves highlight spans
             // through the theme fresh every frame here — not once at
             // `show-popup!` time — so a `:theme` switch while the popup is
             // open repaints it correctly, same as any other themed surface.
@@ -1696,12 +1696,7 @@ impl Editor {
                     .theme
                     .resolve_by_name(hume_engine::types::Scope("ui.popup"))
                     .into();
-                let runs = crate::ui::popup::styled_runs_for_popup(
-                    &model.text,
-                    popup_syntax,
-                    &self.view.theme,
-                    base_style,
-                );
+                let runs = popup_syntax.styled_runs(&model.text, &self.view.theme, base_style);
                 let rows = crate::ui::popup::wrap_styled(&runs, max_width, u16::MAX);
                 let lines: Vec<String> = rows
                     .iter()

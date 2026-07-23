@@ -574,6 +574,7 @@ mod lsp_decorations;
 mod lsp_diagnostics;
 mod lsp_diagnostics_inline;
 mod lsp_drawer;
+mod lsp_drawer_markdown;
 mod lsp_edits;
 mod lsp_hooks;
 mod lsp_inlay_hints;

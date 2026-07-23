@@ -148,14 +148,23 @@ pub(crate) fn draw_menu_box(
             // The base fill (step 1) already covers the row — runs are
             // contiguous and together span exactly `row_text`, so there are
             // no gaps left for `menu_style` to show through.
-            let mut x = text_x;
-            for (run_text, run_style) in runs {
-                buf.set_string(x, y, run_text, *run_style);
-                x += unicode_width::UnicodeWidthStr::width(run_text.as_str()) as u16;
-            }
+            paint_styled_row(buf, text_x, y, runs);
         } else {
             buf.set_string(text_x, y, row_text, menu_style);
         }
+    }
+}
+
+/// Paint one pre-resolved styled row's runs left-to-right starting at
+/// `(x, y)` — shared by [`draw_menu_box`]'s styled-row branch and the
+/// drawer (`ui::drawer::DrawerWidget::render`), so painting per-span runs
+/// onto the screen buffer has one implementation regardless of which widget
+/// resolved them.
+pub(crate) fn paint_styled_row(buf: &mut ScreenBuf, x: u16, y: u16, runs: &StyledRow) {
+    let mut cx = x;
+    for (run_text, run_style) in runs {
+        buf.set_string(cx, y, run_text, *run_style);
+        cx += unicode_width::UnicodeWidthStr::width(run_text.as_str()) as u16;
     }
 }
 

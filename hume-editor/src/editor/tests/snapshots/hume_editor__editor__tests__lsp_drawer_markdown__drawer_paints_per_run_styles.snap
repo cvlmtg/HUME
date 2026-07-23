@@ -1,0 +1,15 @@
+---
+source: hume-editor/src/editor/tests/lsp_drawer_markdown.rs
+assertion_line: 160
+expression: snap
+---
+<fg=#808080,bg=#3a3a3a>  </><fg=#c8c8d2,bg=#3a3a3a>1</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+
+<fg=#ffffff,bg=#50508c>plain text</>
+<fg=#808080,bg=#282832>#</><fg=#b4b4c8,bg=#282832> </><fg=#d0d0d0,bg=#282832>heading</>
+<fg=#000000,bg=#ffffff> 1:1                              │ NOR</>

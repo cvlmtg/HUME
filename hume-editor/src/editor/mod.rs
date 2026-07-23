@@ -378,6 +378,7 @@ impl EditorState {
                 rows: d.items.clone(),
                 selected: d.selected,
                 scroll: d.scroll,
+                syntax: d.syntax.clone(),
             });
         *self.drawer_view.write().expect("RwLock not poisoned") = resolved;
     }

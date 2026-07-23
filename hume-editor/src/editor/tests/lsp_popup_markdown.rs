@@ -1,7 +1,7 @@
-// Markdown highlighting for the LSP hover popup (`show-popup! #:markdown
-// #t`): grammar-optional — highlighted through the real tree-sitter pipeline
-// when a `markdown` grammar is registered, plain text otherwise (both when
-// `#:markdown` isn't set, and when it is but no such grammar exists).
+// Markdown highlighting for the LSP hover popup (`show-popup! #:lang
+// "markdown"`): grammar-optional — highlighted through the real tree-sitter
+// pipeline when a `markdown` grammar is registered, plain text otherwise
+// (both when `#:lang` isn't set, and when it is but no such grammar exists).
 //
 // Requires scripts/fetch-test-grammars.sh (markdown) for the two tests that
 // need a real grammar; the fallback test needs no fixture.
@@ -62,7 +62,7 @@ fn markdown_popup_highlights_when_the_grammar_is_registered() {
     run(
         &mut ed,
         tmp.path(),
-        r##"(define-command! "go" "" (lambda () (show-popup! "# heading" #:markdown #t)))"##,
+        r##"(define-command! "go" "" (lambda () (show-popup! "# heading" #:lang "markdown")))"##,
     );
     type_cmd(&mut ed, ":go");
 
@@ -118,7 +118,7 @@ fn markdown_popup_paints_per_run_styles() {
     run(
         &mut ed,
         tmp.path(),
-        r##"(define-command! "go" "" (lambda () (show-popup! "# heading\n\nplain text" #:markdown #t)))"##,
+        r##"(define-command! "go" "" (lambda () (show-popup! "# heading\n\nplain text" #:lang "markdown")))"##,
     );
     type_cmd(&mut ed, ":go");
 
@@ -145,7 +145,7 @@ fn popup_without_markdown_flag_stays_plain_even_with_the_grammar_registered() {
 
     assert!(
         ed.state.popup.as_ref().unwrap().syntax.is_none(),
-        "without #:markdown, the popup must stay plain even when a markdown \
+        "without #:lang, the popup must stay plain even when a markdown \
          grammar is registered"
     );
 
@@ -165,14 +165,14 @@ fn markdown_flag_without_a_registered_grammar_falls_back_to_plain() {
     run(
         &mut ed,
         tmp.path(),
-        r##"(define-command! "go" "" (lambda () (show-popup! "# heading" #:markdown #t)))"##,
+        r##"(define-command! "go" "" (lambda () (show-popup! "# heading" #:lang "markdown")))"##,
     );
     type_cmd(&mut ed, ":go");
 
     assert!(
         ed.state.popup.as_ref().unwrap().syntax.is_none(),
-        "#:markdown with no markdown grammar registered must fall back to \
-         plain, not error"
+        "#:lang \"markdown\" with no markdown grammar registered must fall \
+         back to plain, not error"
     );
 
     let mut ctx = RenderContext::new();

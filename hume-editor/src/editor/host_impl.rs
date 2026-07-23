@@ -87,11 +87,17 @@ impl<'a> EditorHostImpl<'a> {
         crate::editor::lsp::completion::clear_completion_menu(self.state, self.lsp.as_deref_mut());
     }
 
-    /// Synchronously parses `text` as markdown, if a `markdown` grammar is
-    /// registered — `None` otherwise, which leaves the popup rendering
-    /// plain, exactly as it did before `#:markdown` existed.
-    fn build_popup_syntax(&self, text: &str) -> Option<crate::ui::popup::PopupSyntax> {
-        let lang_id = self.state.languages.id_of("markdown")?;
+    /// Synchronously parses `text` through the grammar named `lang`, if one
+    /// is registered — `None` otherwise (no such grammar), which leaves the
+    /// caller (popup or drawer) rendering plain. Shared by `show_popup` and
+    /// `show_drawer_list`'s `#:lang` — the parse itself doesn't care which
+    /// widget it's for.
+    fn build_markup_syntax(
+        &self,
+        lang: &str,
+        text: &str,
+    ) -> Option<crate::ui::popup::MarkupSyntax> {
+        let lang_id = self.state.languages.id_of(lang)?;
         let bundle = std::sync::Arc::clone(self.state.languages.grammar(lang_id)?);
         let text = hume_editing::text::Text::from(text);
         let syntax = hume_treesitter::syntax::Syntax::attach_sync(
@@ -99,7 +105,7 @@ impl<'a> EditorHostImpl<'a> {
             &text,
             &self.state.languages.grammar_snapshot(),
         );
-        Some(crate::ui::popup::PopupSyntax { syntax, text })
+        Some(crate::ui::popup::MarkupSyntax { syntax, text })
     }
 }
 
@@ -951,7 +957,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         text: String,
         dismiss_on_key: bool,
         scrollable: bool,
-        markdown: bool,
+        lang: Option<String>,
     ) -> Result<(), String> {
         let dismiss = if scrollable {
             crate::ui::popup::PopupDismiss::KeyExceptScroll
@@ -960,7 +966,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         } else {
             crate::ui::popup::PopupDismiss::ModeChange
         };
-        let syntax = markdown.then(|| self.build_popup_syntax(&text)).flatten();
+        let syntax = lang.and_then(|lang| self.build_markup_syntax(&lang, &text));
         self.state.popup = Some(crate::ui::popup::PopupModel {
             text,
             dismiss,
@@ -1007,12 +1013,20 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         &mut self,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
+        lang: Option<String>,
     ) -> Result<(), String> {
+        // One row per source line: each item is its own tree-sitter line, so
+        // `MarkupSyntax::styled_row(row_idx, item, …)` at render time can
+        // index straight into the parsed rope with no extra bookkeeping.
+        let syntax = lang
+            .and_then(|lang| self.build_markup_syntax(&lang, &items.join("\n")))
+            .map(std::sync::Arc::new);
         self.state.drawer = Some(crate::ui::drawer::DrawerModel {
             items,
             selected: 0,
             scroll: 0,
             callback,
+            syntax,
         });
         self.state.sync_drawer_view();
         Ok(())

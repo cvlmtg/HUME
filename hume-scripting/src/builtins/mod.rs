@@ -191,9 +191,11 @@ macro_rules! builtins {
 // key it is (see `gn`/`gp`'s diagnostic overlay) — default #f keeps the
 // existing on-mode-change-only dismissal (hover, signature help). #:scroll:
 // Ctrl+u/Ctrl+d scroll the popup's content instead of the buffer, and every
-// other key closes it — mutually exclusive with #:dismiss-on-key. #:markdown:
-// syntax-highlight the content like a real buffer when a `markdown` grammar
-// is registered; plain text otherwise (default #f is always plain).
+// other key closes it — mutually exclusive with #:dismiss-on-key. #:lang:
+// syntax-highlight the content like a real buffer when a grammar named
+// #:lang is registered; plain text otherwise (default #f is always plain).
+// show-drawer-list! takes the same #:lang, one grammar name shared by both
+// widgets — never a per-language boolean flag.
 //
 // picker! — fuzzy-finder panel (docs/FUZZY-FINDERS.md). items: list of
 // (display . payload) dotted pairs; payload is opaque, handed back to
@@ -440,7 +442,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "completion-dismiss!" completion::completion_dismiss();
 
         // Cursor-anchored popup widget.
-        cmd "%show-popup!" ui::show_popup(text: SteelVal, anchor: SteelVal, dismiss_on_key: SteelVal, scrollable: SteelVal, markdown: SteelVal);
+        cmd "%show-popup!" ui::show_popup(text: SteelVal, anchor: SteelVal, dismiss_on_key: SteelVal, scrollable: SteelVal, lang: SteelVal);
         cmd "close-popup!" ui::close_popup();
 
         // Selection menu widget.
@@ -448,7 +450,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "close-menu!" ui::close_menu();
 
         // Class B bottom drawer.
-        cmd "show-drawer-list!" ui::show_drawer_list(items: SteelVal, on_select: SteelVal);
+        cmd "%show-drawer-list!" ui::show_drawer_list(items: SteelVal, on_select: SteelVal, lang: SteelVal);
         cmd "close-drawer!" ui::close_drawer();
 
         // Fuzzy-picker widget (docs/FUZZY-FINDERS.md B4).
