@@ -1685,7 +1685,35 @@ impl Editor {
             // The box itself still caps at `max_height` via `outer_dims`
             // below; `scroll` (clamped against that cap) picks which window
             // of `lines` is visible.
-            let lines = crate::ui::popup::wrap_text(&model.text, max_width, u16::MAX);
+            //
+            // A markdown popup (`model.syntax`) resolves highlight spans
+            // through the theme fresh every frame here — not once at
+            // `show-popup!` time — so a `:theme` switch while the popup is
+            // open repaints it correctly, same as any other themed surface.
+            let (lines, styled_rows) = if let Some(popup_syntax) = model.syntax.as_ref() {
+                let base_style = self
+                    .view
+                    .theme
+                    .resolve_by_name(hume_engine::types::Scope("ui.popup"))
+                    .into();
+                let runs = crate::ui::popup::styled_runs_for_popup(
+                    &model.text,
+                    popup_syntax,
+                    &self.view.theme,
+                    base_style,
+                );
+                let rows = crate::ui::popup::wrap_styled(&runs, max_width, u16::MAX);
+                let lines: Vec<String> = rows
+                    .iter()
+                    .map(|row| row.iter().map(|(s, _)| s.as_str()).collect())
+                    .collect();
+                (lines, Some(rows))
+            } else {
+                (
+                    crate::ui::popup::wrap_text(&model.text, max_width, u16::MAX),
+                    None,
+                )
+            };
             let (outer_w, outer_h) = crate::ui::menu_box::outer_dims(&lines, max_height);
             let (x, y, outer_w, outer_h) =
                 crate::ui::popup::resolve_popup_geometry(outer_w, outer_h, anchor, pane_rect);
@@ -1699,6 +1727,7 @@ impl Editor {
                 outer_h,
                 selected: None,
                 scroll,
+                styled_rows,
                 border: self.state.settings.popup_border,
             })
         });
@@ -1744,6 +1773,7 @@ impl Editor {
                 outer_h,
                 selected,
                 scroll: 0, // ignored: a menu windows around `selected`, not `scroll`
+                styled_rows: None, // menus never highlight per-span, only per-row
                 border: self.state.settings.popup_border,
             })
         });
@@ -1798,6 +1828,7 @@ impl Editor {
                 outer_h,
                 selected,
                 scroll: 0, // ignored: a menu windows around `selected`, not `scroll`
+                styled_rows: None, // menus never highlight per-span, only per-row
                 border: self.state.settings.popup_border,
             })
         });

@@ -86,6 +86,21 @@ impl<'a> EditorHostImpl<'a> {
     fn clear_completion_menu(&mut self) {
         crate::editor::lsp::completion::clear_completion_menu(self.state, self.lsp.as_deref_mut());
     }
+
+    /// Synchronously parses `text` as markdown, if a `markdown` grammar is
+    /// registered — `None` otherwise, which leaves the popup rendering
+    /// plain, exactly as it did before `#:markdown` existed.
+    fn build_popup_syntax(&self, text: &str) -> Option<crate::ui::popup::PopupSyntax> {
+        let lang_id = self.state.languages.id_of("markdown")?;
+        let bundle = std::sync::Arc::clone(self.state.languages.grammar(lang_id)?);
+        let text = hume_editing::text::Text::from(text);
+        let syntax = hume_treesitter::syntax::Syntax::attach_sync(
+            bundle,
+            &text,
+            &self.state.languages.grammar_snapshot(),
+        );
+        Some(crate::ui::popup::PopupSyntax { syntax, text })
+    }
 }
 
 impl<'a> EditorHost for EditorHostImpl<'a> {
@@ -936,6 +951,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         text: String,
         dismiss_on_key: bool,
         scrollable: bool,
+        markdown: bool,
     ) -> Result<(), String> {
         let dismiss = if scrollable {
             crate::ui::popup::PopupDismiss::KeyExceptScroll
@@ -944,10 +960,12 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         } else {
             crate::ui::popup::PopupDismiss::ModeChange
         };
+        let syntax = markdown.then(|| self.build_popup_syntax(&text)).flatten();
         self.state.popup = Some(crate::ui::popup::PopupModel {
             text,
             dismiss,
             scroll: 0,
+            syntax,
         });
         Ok(())
     }

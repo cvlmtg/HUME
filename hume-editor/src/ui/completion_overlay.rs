@@ -81,6 +81,7 @@ impl OverlayProvider for MinibufCompletionOverlay {
             view.border,
             menu_style,
             selected_style,
+            None,
         );
     }
 }

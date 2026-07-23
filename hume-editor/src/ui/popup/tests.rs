@@ -39,6 +39,48 @@ fn wrap_text_empty_line_preserved() {
     assert_eq!(wrap_text("a\n\nb", 60, 10), vec!["a", "", "b"]);
 }
 
+// ── wrap_styled ────────────────────────────────────────────────────────
+
+fn red() -> Style {
+    Style::default().fg(ratatui::style::Color::Red)
+}
+
+#[test]
+fn wrap_styled_preserves_a_style_boundary_within_one_row() {
+    let runs = [
+        ("hello ".to_string(), Style::default()),
+        ("world".to_string(), red()),
+    ];
+    let rows = wrap_styled(&runs, 60, 10);
+    assert_eq!(rows.len(), 1, "both words fit on one row");
+    assert_eq!(
+        rows[0],
+        vec![
+            ("hello".to_string(), Style::default()),
+            (" world".to_string(), red()),
+        ],
+        "the style change must land at the word boundary, not bleed into \
+         the plain run or get lost (the synthetic separator space carries \
+         the *following* word's style, so it coalesces with \"world\")"
+    );
+}
+
+#[test]
+fn wrap_styled_splits_a_style_change_across_two_wrapped_rows() {
+    // "aaaa bbbb" at width 4: "aaaa" and "bbbb" each land on their own row
+    // (the too-narrow-for-both-words case `wrap_text_breaks_on_word_boundary`
+    // already covers for plain text) — here "bbbb" carries a different style,
+    // which must survive onto its own row's run list untouched.
+    let runs = [
+        ("aaaa ".to_string(), Style::default()),
+        ("bbbb".to_string(), red()),
+    ];
+    let rows = wrap_styled(&runs, 4, 10);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0], vec![("aaaa".to_string(), Style::default())]);
+    assert_eq!(rows[1], vec![("bbbb".to_string(), red())]);
+}
+
 // ── resolve_popup_geometry ────────────────────────────────────────────
 
 fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {

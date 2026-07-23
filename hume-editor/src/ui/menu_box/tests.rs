@@ -34,6 +34,7 @@ fn draw_menu_box_border_frame_snapshot() {
         true,
         style(),
         style(),
+        None,
     );
 
     insta::assert_snapshot!(symbols_in(&buf, outer), @"
@@ -57,6 +58,7 @@ fn draw_menu_box_no_border_leaves_plain_margin() {
         false,
         style(),
         style(),
+        None,
     );
 
     // Corners stay background-filled space, never a box-drawing glyph.
@@ -73,7 +75,17 @@ fn draw_menu_box_scrolls_to_keep_selected_visible() {
     // Inner height 3 (outer height 5), 10 rows total, selected near the end.
     let outer = Rect::new(0, 0, 10, 5);
     let data = rows(10);
-    draw_menu_box(&mut buf, outer, &data, Some(9), 0, true, style(), style());
+    draw_menu_box(
+        &mut buf,
+        outer,
+        &data,
+        Some(9),
+        0,
+        true,
+        style(),
+        style(),
+        None,
+    );
 
     // Window of size 3 anchored so index 9 is visible: start = 9 - 1 = 8,
     // clamped to total-max = 7 → window [7, 10) = item7,item8,item9.
@@ -93,7 +105,17 @@ fn draw_menu_box_scroll_windows_from_offset_when_no_selection() {
     // Inner height 3 (outer height 5), 10 rows total, scrolled to row 4.
     let outer = Rect::new(0, 0, 10, 5);
     let data = rows(10);
-    draw_menu_box(&mut buf, outer, &data, None, 4, true, style(), style());
+    draw_menu_box(
+        &mut buf,
+        outer,
+        &data,
+        None,
+        4,
+        true,
+        style(),
+        style(),
+        None,
+    );
 
     let row0: String = (1..=5).map(|x| buf[(x, 1)].symbol().to_string()).collect();
     assert_eq!(row0, "item4");
@@ -122,6 +144,7 @@ fn draw_menu_box_too_small_outer_does_nothing() {
         true,
         style(),
         style(),
+        None,
     );
     assert_eq!(buf, before, "sub-3x3 outer must not panic or paint");
 }

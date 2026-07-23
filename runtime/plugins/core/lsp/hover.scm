@@ -6,13 +6,14 @@
 
 ;;; A `MarkedString` is either a bare string or `{language, value}`; a
 ;;; `MarkupContent` is `{kind, value}` — both hashmap forms carry "value", so
-;;; no kind/language branch is needed for v1's raw-text rendering.
+;;; no kind/language branch is needed: `kind`/`language` are never consulted,
+;;; the popup's own `#:markdown` highlighting (below) doesn't need them.
 (define (lsp/marked-string->text ms)
   (if (string? ms) ms (hash-ref ms "value")))
 
 ;;; `contents` is a `MarkupContent`, a `MarkedString`, or `MarkedString[]` —
-;;; v1 renders markdown as plain text (strip nothing; code fences read fine
-;;; in a monospace popup).
+;;; decoded to raw text (strip nothing; code fences read fine either
+;;; unhighlighted or through `#:markdown`'s injected-language highlighting).
 (define (lsp/hover-contents->text contents)
   (cond
     ((string? contents) contents)
@@ -31,7 +32,7 @@
          (threshold (if visible (quotient visible 3) 15))
          (lines (split-many text "\n")))
     (if (<= (length lines) threshold)
-        (show-popup! text #:scroll #t)
+        (show-popup! text #:scroll #t #:markdown #t)
         (show-drawer-list! lines (lambda (idx) (begin))))))
 
 ;; ── Dismiss ─────────────────────────────────────────────────────────────────

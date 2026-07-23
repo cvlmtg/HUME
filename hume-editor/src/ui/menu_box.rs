@@ -10,6 +10,8 @@ use ratatui::style::Style;
 
 use hume_engine::render::fill_rect_bg;
 
+use super::popup::StyledRow;
+
 /// Maximum number of visible rows inside a menu/popup box (excluding the
 /// 1-cell frame). Both overlays scroll past this using [`visible_window`].
 pub(crate) const MAX_MENU_ROWS: u16 = 10;
@@ -94,6 +96,11 @@ pub(crate) fn draw_box_border(buf: &mut ScreenBuf, outer: Rect, style: Style) {
 /// `border`: when `true`, overdraws the 1-cell frame with box-drawing
 /// glyphs; when `false`, the frame stays a plain background-filled margin
 /// (still 1 cell wide — only the glyphs are suppressed).
+///
+/// `styled`: per-row style runs, same length as `rows` — a markdown popup
+/// with a `markdown` grammar registered. `None` for every other caller
+/// (plain popups, menus), which paint each row in one style. Ignored for a
+/// row that has `selected == Some(row_idx)`: the highlight bar always wins.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_menu_box(
     buf: &mut ScreenBuf,
@@ -104,6 +111,7 @@ pub(crate) fn draw_menu_box(
     border: bool,
     menu_style: Style,
     selected_style: Style,
+    styled: Option<&[StyledRow]>,
 ) {
     if rows.is_empty() || outer.height < 3 || outer.width < 3 {
         return;
@@ -136,6 +144,15 @@ pub(crate) fn draw_menu_box(
             let inner_rect = Rect::new(text_x, y, outer.width.saturating_sub(2), 1);
             fill_rect_bg(buf, inner_rect, selected_style);
             buf.set_string(text_x, y, row_text, selected_style);
+        } else if let Some(runs) = styled.and_then(|rows| rows.get(row_idx)) {
+            // The base fill (step 1) already covers the row — runs are
+            // contiguous and together span exactly `row_text`, so there are
+            // no gaps left for `menu_style` to show through.
+            let mut x = text_x;
+            for (run_text, run_style) in runs {
+                buf.set_string(x, y, run_text, *run_style);
+                x += unicode_width::UnicodeWidthStr::width(run_text.as_str()) as u16;
+            }
         } else {
             buf.set_string(text_x, y, row_text, menu_style);
         }

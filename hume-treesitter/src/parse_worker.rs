@@ -169,13 +169,20 @@ pub(crate) fn run_parse(
 }
 
 /// Execute a parse request synchronously, returning the finished `ParseDone`.
-/// Used by both `WorkerState` and `InlineParseBackend` (the latter in tests).
+/// Used by `WorkerState`, `InlineParseBackend` (tests), and
+/// `Syntax::attach_sync` (small one-shot content, e.g. a hover popup, where
+/// routing through the async worker isn't worth it). `pub(crate)` for that
+/// last caller, which lives in this crate's `syntax` module.
 ///
 /// Always calls `set_language` and resets `included_ranges` to whole-buffer
 /// before the root parse — layer parsing switches languages and ranges
 /// constantly, so a "current language" cache (as a single-tree parser had)
 /// would just thrash on every request.
-fn do_parse(parser: &mut tree_sitter::Parser, req: ParseRequest, cancel: &AtomicBool) -> ParseDone {
+pub(crate) fn do_parse(
+    parser: &mut tree_sitter::Parser,
+    req: ParseRequest,
+    cancel: &AtomicBool,
+) -> ParseDone {
     parser
         .set_language(req.bundle.grammar.language())
         .expect("ABI verified at grammar registration time in attach_grammar");

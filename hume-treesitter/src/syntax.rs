@@ -119,6 +119,51 @@ impl Syntax {
         (syn, Some(req))
     }
 
+    /// Parse `text` once, synchronously, into a ready-to-query attachment —
+    /// no async worker round-trip, no `frame_tick`/`install` dance. For
+    /// small, static, one-shot content that isn't a real editor buffer (a
+    /// hover popup's markdown): the content never changes after this call,
+    /// so there is nothing to incrementally reparse, and the popup already
+    /// persists across frames — a one-frame async delay would buy nothing.
+    ///
+    /// `bid` in the underlying parse request is never read back (this
+    /// bypasses the normal `bid`-keyed `ParseDone` routing entirely, calling
+    /// `install` directly), so `BufferId::default()` is fine. `langs` still
+    /// resolves any fenced-code injections the content contains.
+    pub fn attach_sync(
+        bundle: Arc<GrammarBundle>,
+        text: &Text,
+        langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
+    ) -> Self {
+        let mut syn = Self {
+            bundle: Arc::clone(&bundle),
+            layers: None,
+            parsed_gen: 0,
+            tree_gen: 0,
+            pending_edits: Vec::new(),
+            in_flight: None,
+            span_scratch: Mutex::new(FlattenScratch::default()),
+        };
+
+        if text.len_bytes() == 0 {
+            return syn;
+        }
+
+        let req = ParseRequest {
+            bid: BufferId::default(),
+            text_gen: 1,
+            bundle,
+            text: text.clone(),
+            old_tree: None,
+            langs: Arc::clone(langs),
+        };
+        let mut parser = tree_sitter::Parser::new();
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        let done = crate::parse_worker::do_parse(&mut parser, req, &cancel);
+        syn.install(done, 1);
+        syn
+    }
+
     /// Record one batch of `InputEdit`s translated from a `ChangeSet` against
     /// the pre-edit rope. Called from the `doc_ops` chokepoint immediately
     /// after every text mutation.

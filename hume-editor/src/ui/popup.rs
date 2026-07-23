@@ -28,8 +28,9 @@ use std::sync::{Arc, RwLock};
 
 use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
+use ratatui::style::Style;
 
-use hume_engine::providers::OverlayProvider;
+use hume_engine::providers::{OverlayProvider, SyntaxSpans};
 use hume_engine::theme::Theme;
 use hume_engine::types::Scope;
 
@@ -54,6 +55,20 @@ pub(crate) enum PopupDismiss {
     KeyExceptScroll,
 }
 
+/// Synchronously-parsed markdown highlight state for a popup's `text` —
+/// built once at `show-popup! #:markdown #t` time (there is nothing to
+/// incrementally reparse: the content never changes after this). `None` on
+/// `PopupModel::syntax` when no `markdown` grammar is registered, or
+/// `#:markdown` wasn't requested — the plain-text fallback, unchanged from
+/// before this existed.
+pub(crate) struct PopupSyntax {
+    pub(crate) syntax: hume_treesitter::syntax::Syntax,
+    /// Same content as `PopupModel::text`, wrapped as a rope-backed `Text` —
+    /// `Syntax::spans_for_line` needs `&Rope`, and re-deriving one from
+    /// `text` every frame would re-walk the string on every render.
+    pub(crate) text: hume_editing::text::Text,
+}
+
 /// `(show-popup! text)`'s raw, unwrapped content — held on `EditorState`
 /// until the next frame's `sync_popup_view` resolves it into a positioned
 /// [`PopupState`].
@@ -64,6 +79,10 @@ pub(crate) struct PopupModel {
     /// in `Editor::scroll_popup`; re-clamped defensively in
     /// `Editor::sync_popup_view` against the frame's resolved content height.
     pub(crate) scroll: usize,
+    /// `#:markdown` — rebuilt fresh on every `show-popup!`, dropped with the
+    /// popup on close. No separate invalidation path: the popup's lifetime
+    /// IS the syntax's (SSOT).
+    pub(crate) syntax: Option<PopupSyntax>,
 }
 
 /// `(show-menu! items on-select)`'s raw content — held on `EditorState`
@@ -104,6 +123,11 @@ pub(crate) struct PopupState {
     /// plain background-filled 1-cell margin). Fed from the `popup-border`
     /// setting.
     pub(crate) border: bool,
+    /// Per-run styled counterpart of `lines`, same length and same text
+    /// when flattened — `Some` only for a markdown popup with a `markdown`
+    /// grammar registered (`PopupModel::syntax`). `None` for every other
+    /// popup and for menus, which paint `lines` in one style regardless.
+    pub(crate) styled_rows: Option<Vec<StyledRow>>,
 }
 
 /// Generic overlay that paints a `PopupState` snapshot. Used directly for
@@ -158,6 +182,7 @@ impl OverlayProvider for PopupOverlay {
             state.border,
             style,
             selected_style,
+            state.styled_rows.as_deref(),
         );
     }
 }
@@ -202,79 +227,221 @@ pub(crate) fn resolve_popup_geometry(
     (x, y, width, height)
 }
 
+/// One wrapped display row's content, as contiguous same-style runs — the
+/// styled counterpart of a `wrap_text` row (a `Vec<StyledRun>` instead of a
+/// bare `String`).
+pub(crate) type StyledRun = (String, Style);
+pub(crate) type StyledRow = Vec<StyledRun>;
+
+/// Merge adjacent `(text, style)` pairs sharing the same `Style` — shared by
+/// [`styled_runs_for_popup`] (building the *input* runs `wrap_styled` wraps)
+/// and [`coalesce_atoms`] (merging wrapped *output* graphemes back down);
+/// same "adjacent equal style" rule, different element granularity (whole
+/// strings here, single graphemes there).
+fn push_run(runs: &mut Vec<(String, Style)>, text: &str, style: Style) {
+    if text.is_empty() {
+        return;
+    }
+    match runs.last_mut() {
+        Some((last_text, last_style)) if *last_style == style => last_text.push_str(text),
+        _ => runs.push((text.to_string(), style)),
+    }
+}
+
+/// Resolve `syntax`'s per-line highlight spans into one flat run sequence
+/// for [`wrap_styled`] — a run per contiguous same-scope span on each source
+/// line of `text` (gaps between spans, and lines with no spans at all, get
+/// `base_style`), lines joined by a bare `"\n"` run so `wrap_styled`'s
+/// paragraph splitting sees the exact same boundaries a plain popup would.
+///
+/// Slices `text`'s own paragraphs (`text.split('\n')`), not
+/// `syntax.text`'s rope lines — `PopupSyntax::text` is `Text::from(text)`,
+/// which may have padded on a trailing `'\n'` `text` itself lacked (the
+/// buffer invariant), and iterating the padded rope would emit a spurious
+/// trailing empty row `wrap_text` on plain `text` never would. Byte offsets
+/// from `spans_for_line` are relative to the line start either way, so
+/// slicing `text`'s own paragraph strings with them is exact.
+pub(crate) fn styled_runs_for_popup(
+    text: &str,
+    syntax: &PopupSyntax,
+    theme: &Theme,
+    base_style: Style,
+) -> Vec<(String, Style)> {
+    let rope = syntax.text.rope();
+    let lines: Vec<&str> = text.split('\n').collect();
+    let mut spans = Vec::new();
+    let mut runs: Vec<(String, Style)> = Vec::new();
+
+    for (line_idx, line) in lines.iter().enumerate() {
+        spans.clear();
+        syntax.syntax.spans_for_line(line_idx, rope, &mut spans);
+
+        let mut cursor = 0usize;
+        for &(start, end, scope) in &spans {
+            if start > cursor {
+                push_run(&mut runs, &line[cursor..start], base_style);
+            }
+            push_run(&mut runs, &line[start..end], theme.resolve(scope).into());
+            cursor = end;
+        }
+        if cursor < line.len() {
+            push_run(&mut runs, &line[cursor..], base_style);
+        }
+        if line_idx + 1 < lines.len() {
+            push_run(&mut runs, "\n", base_style);
+        }
+    }
+    runs
+}
+
 /// Word-wrap `text` (newline-separated paragraphs preserved) to `max_width`
 /// display columns, breaking on grapheme-cluster boundaries. Truncates to
 /// `max_height` lines (a taller popup is the caller's problem — hover overflows
 /// to the drawer).
+///
+/// A single-style call to [`wrap_styled`] — there is one wrap algorithm, not
+/// two; this function's own test suite exercises it transitively, and a
+/// styled popup (markdown-highlighted hover) reuses the exact same
+/// word/hard-break decisions a plain popup would have made.
 pub(crate) fn wrap_text(text: &str, max_width: u16, max_height: u16) -> Vec<String> {
+    let runs = [(text.to_string(), Style::default())];
+    wrap_styled(&runs, max_width, max_height)
+        .into_iter()
+        .map(|row| row.into_iter().map(|(s, _)| s).collect())
+        .collect()
+}
+
+/// Merge adjacent atoms sharing the same `Style` into `StyledRun`s.
+fn coalesce_atoms(atoms: Vec<(&str, Style)>) -> StyledRow {
+    let mut out: StyledRow = Vec::new();
+    for (g, style) in atoms {
+        push_run(&mut out, g, style);
+    }
+    out
+}
+
+/// Word-wrap `runs` (contiguous same-style chunks of source text — `\n` acts
+/// as a paragraph delimiter exactly as in `wrap_text`, and may appear
+/// anywhere inside a run) to `max_width` display columns, breaking on
+/// grapheme-cluster boundaries. Truncates to `max_height` rows.
+///
+/// Operates on a flat per-grapheme stream, never on `runs`' original chunk
+/// boundaries — a style change (e.g. a `**bold**` span) can land anywhere,
+/// including mid-word, so wrapping must not coarsen past grapheme
+/// granularity. Word/paragraph splitting and the width math are otherwise
+/// identical to the original single-style algorithm.
+pub(crate) fn wrap_styled(
+    runs: &[(String, Style)],
+    max_width: u16,
+    max_height: u16,
+) -> Vec<StyledRow> {
     use unicode_segmentation::UnicodeSegmentation;
 
-    let max_width = max_width.max(1) as usize;
-    let mut out = Vec::new();
+    let atoms: Vec<(&str, Style)> = runs
+        .iter()
+        .flat_map(|(text, style)| text.graphemes(true).map(move |g| (g, *style)))
+        .collect();
 
-    'paragraphs: for paragraph in text.split('\n') {
+    let max_width = max_width.max(1) as usize;
+    let mut out: Vec<StyledRow> = Vec::new();
+    let mut pos = 0;
+
+    'paragraphs: loop {
+        let para_start = pos;
+        while pos < atoms.len() && atoms[pos].0 != "\n" {
+            pos += 1;
+        }
+        let paragraph = &atoms[para_start..pos];
+        let had_newline = pos < atoms.len();
+        if had_newline {
+            pos += 1; // skip the "\n" atom itself
+        }
+
         if paragraph.is_empty() {
-            out.push(String::new());
+            out.push(Vec::new());
             if out.len() as u16 >= max_height {
                 break 'paragraphs;
             }
-            continue;
-        }
-        let mut current = String::new();
-        let mut current_w = 0usize;
-        for word in paragraph.split(' ') {
-            let word_w = unicode_display_width(word);
-            // Would-be width if `word` were appended to the current line —
-            // recomputed fresh each iteration (never carried across a break)
-            // so a line-break never leaves a stale separator width behind.
-            let would_be_w = if current.is_empty() {
-                word_w
-            } else {
-                current_w + 1 + word_w
-            };
-            if would_be_w > max_width && !current.is_empty() {
-                out.push(std::mem::take(&mut current));
-                current_w = 0;
-                if out.len() as u16 >= max_height {
-                    break 'paragraphs;
+        } else {
+            let mut current: Vec<(&str, Style)> = Vec::new();
+            let mut current_w = 0usize;
+            let mut word_start = 0;
+            loop {
+                let mut word_end = word_start;
+                while word_end < paragraph.len() && paragraph[word_end].0 != " " {
+                    word_end += 1;
                 }
-            }
-            if word_w > max_width {
-                // A single word wider than the line — hard-break it on
-                // grapheme boundaries rather than overflow.
-                if !current.is_empty() {
-                    out.push(std::mem::take(&mut current));
+                let word = &paragraph[word_start..word_end];
+                let word_w: usize = word.iter().map(|(g, _)| unicode_display_width(g)).sum();
+                // Would-be width if `word` were appended to the current
+                // line — recomputed fresh each iteration (never carried
+                // across a break) so a line-break never leaves a stale
+                // separator width behind.
+                let would_be_w = if current.is_empty() {
+                    word_w
+                } else {
+                    current_w + 1 + word_w
+                };
+
+                if would_be_w > max_width && !current.is_empty() {
+                    out.push(coalesce_atoms(std::mem::take(&mut current)));
+                    current_w = 0;
                     if out.len() as u16 >= max_height {
                         break 'paragraphs;
                     }
                 }
-                let mut piece = String::new();
-                let mut piece_w = 0usize;
-                for g in word.graphemes(true) {
-                    let gw = unicode_display_width(g);
-                    if piece_w + gw > max_width && !piece.is_empty() {
-                        out.push(std::mem::take(&mut piece));
-                        piece_w = 0;
+
+                if word_w > max_width {
+                    // A single word wider than the line — hard-break it on
+                    // grapheme boundaries rather than overflow.
+                    if !current.is_empty() {
+                        out.push(coalesce_atoms(std::mem::take(&mut current)));
                         if out.len() as u16 >= max_height {
                             break 'paragraphs;
                         }
                     }
-                    piece.push_str(g);
-                    piece_w += gw;
+                    let mut piece: Vec<(&str, Style)> = Vec::new();
+                    let mut piece_w = 0usize;
+                    for &(g, style) in word {
+                        let gw = unicode_display_width(g);
+                        if piece_w + gw > max_width && !piece.is_empty() {
+                            out.push(coalesce_atoms(std::mem::take(&mut piece)));
+                            piece_w = 0;
+                            if out.len() as u16 >= max_height {
+                                break 'paragraphs;
+                            }
+                        }
+                        piece.push((g, style));
+                        piece_w += gw;
+                    }
+                    current = piece;
+                    current_w = piece_w;
+                } else {
+                    if !current.is_empty() {
+                        // The synthetic separator carries the *next* word's
+                        // style — it's a single blank cell either way, this
+                        // just keeps it from spuriously splitting an
+                        // otherwise-uniform run in two.
+                        let sep_style = word.first().map_or_else(Style::default, |&(_, s)| s);
+                        current.push((" ", sep_style));
+                        current_w += 1;
+                    }
+                    current.extend_from_slice(word);
+                    current_w += word_w;
                 }
-                current = piece;
-                current_w = piece_w;
-                continue;
+
+                if word_end >= paragraph.len() {
+                    break;
+                }
+                word_start = word_end + 1; // skip the delimiting space atom
             }
-            if !current.is_empty() {
-                current.push(' ');
-                current_w += 1;
+            out.push(coalesce_atoms(current));
+            if out.len() as u16 >= max_height {
+                break 'paragraphs;
             }
-            current.push_str(word);
-            current_w += word_w;
         }
-        out.push(current);
-        if out.len() as u16 >= max_height {
+
+        if !had_newline {
             break 'paragraphs;
         }
     }

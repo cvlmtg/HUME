@@ -6,13 +6,14 @@ use crate::highlight::TreeSitterHighlighter;
 use hume_editing::changeset::ChangeSetBuilder;
 use hume_editing::text::Text;
 use hume_engine::pipeline::BufferId;
+use hume_engine::providers::SyntaxSpans;
 use hume_engine::theme::ScopeRegistry;
 use slotmap::SlotMap;
 
 use super::Syntax;
 use crate::parse_worker::{ParseDone, ParseOutcome, ParsedLayers};
 use crate::registry::GrammarBundle;
-use hume_test_fixtures::{grammar_parser_path, skip_unless_grammars};
+use hume_test_fixtures::{grammar_parser_path, grammar_query_path, skip_unless_grammars};
 
 fn next_test_config_gen() -> u32 {
     use std::sync::atomic::{AtomicU32, Ordering};
@@ -71,6 +72,36 @@ fn make_bundle_with_injections(
         grammar,
         highlighter,
         injections: Some(crate::injections::InjectionsQuery::new(injections)),
+        config_gen: next_test_config_gen(),
+    })
+}
+
+/// Like `make_bundle`, but compiles the grammar's *real* `highlights.scm`
+/// instead of an empty query — needed to assert `spans_for_line` actually
+/// produces scopes, not just that a tree exists.
+fn make_bundle_with_real_highlights(name: &str, symbol: &str) -> Arc<GrammarBundle> {
+    let path = grammar_parser_path(name);
+    if !path.exists() {
+        panic!(
+            "grammar fixture missing: {}\nrun scripts/fetch-test-grammars.sh from the repo root",
+            path.display()
+        );
+    }
+    let grammar = LoadedGrammar::open(&path, symbol).expect("load grammar");
+    let highlights_src =
+        std::fs::read_to_string(grammar_query_path(name)).expect("highlights.scm should exist");
+    let query = Arc::new(
+        tree_sitter::Query::new(grammar.language(), &highlights_src).expect("compile highlights"),
+    );
+    let mut registry = ScopeRegistry::new();
+    let highlighter = Arc::new(TreeSitterHighlighter::from_shared_query(
+        query,
+        &mut registry,
+    ));
+    Arc::new(GrammarBundle {
+        grammar,
+        highlighter,
+        injections: None,
         config_gen: next_test_config_gen(),
     })
 }
@@ -143,6 +174,30 @@ fn attach_nonempty_text_returns_request_and_sets_in_flight() {
         syn.parsed_gen(),
         0,
         "parsed_gen must not advance before install"
+    );
+}
+
+// ── attach_sync ───────────────────────────────────────────────────────────
+
+#[test]
+fn attach_sync_parses_immediately_and_produces_real_highlight_spans() {
+    if skip_unless_grammars(&["markdown"]) {
+        return;
+    }
+    let bundle = make_bundle_with_real_highlights("markdown", "tree_sitter_markdown");
+    let text = Text::from("# heading\n");
+    let syn = Syntax::attach_sync(Arc::clone(&bundle), &text, &empty_langs());
+
+    assert!(
+        !syn.is_in_flight(),
+        "attach_sync must return a fully-installed attachment — no async request left pending"
+    );
+
+    let mut spans = Vec::new();
+    syn.spans_for_line(0, text.rope(), &mut spans);
+    assert!(
+        !spans.is_empty(),
+        "a real markdown grammar must highlight a heading line immediately, not leave it plain"
     );
 }
 
