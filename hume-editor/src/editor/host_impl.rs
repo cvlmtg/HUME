@@ -1022,6 +1022,37 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         session.push(token, picker_items)
     }
 
+    fn picker_source_spawn(
+        &mut self,
+        token: u64,
+        cmd: &str,
+        args: Vec<String>,
+        cwd: Option<PathBuf>,
+        nul: bool,
+    ) -> Result<bool, String> {
+        let Some(session) = self.state.picker.as_mut() else {
+            return Ok(false);
+        };
+        if session.token() != token {
+            return Ok(false);
+        }
+        let delimiter = if nul { b'\0' } else { b'\n' };
+        let source = hume_platform::process::line_source::spawn_line_source(
+            cmd,
+            &args,
+            cwd.as_deref(),
+            delimiter,
+            std::sync::Arc::clone(&self.state.wake),
+        )
+        .map_err(|e| format!("cannot run '{cmd}': {e}"))?;
+        self.state
+            .picker
+            .as_mut()
+            .expect("checked Some above")
+            .attach_source(source);
+        Ok(true)
+    }
+
     fn picker_close(&mut self) {
         crate::editor::picker::close_picker(self.state, steel::rvals::SteelVal::BoolV(false));
     }

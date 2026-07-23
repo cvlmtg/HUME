@@ -11,7 +11,9 @@ use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 
-use super::args::{bool_arg, list_items, list_to_strings, pair_fields, string_arg, usize_arg};
+use super::args::{
+    bool_arg, list_items, list_to_strings, optional_path_arg, pair_fields, string_arg, usize_arg,
+};
 use super::errors::{generic_err, require_cap};
 
 type SteelResult = Result<SteelVal, SteelErr>;
@@ -138,6 +140,34 @@ pub(crate) fn picker_push(ctx: &mut SteelCtx, token: SteelVal, items: SteelVal) 
     let token = usize_arg(token, "picker-push! token")? as u64;
     let items = picker_items(items, "picker-push! items")?;
     let applied = require_cap(ctx.host.ui(), "picker-push!")?.picker_push(token, items);
+    Ok(SteelVal::BoolV(applied))
+}
+
+/// `(%picker-source-spawn! token cmd args cwd nul)` — the
+/// `picker-source-spawn!` Scheme wrapper supplies `#:cwd`/`#:nul`'s
+/// defaults. A stale token or no open picker returns `#f` without spawning
+/// anything, the same expected-normal-race contract as `picker-push!`; a
+/// genuine spawn failure (missing binary, bad `#:cwd`) raises.
+pub(crate) fn picker_source_spawn(
+    ctx: &mut SteelCtx,
+    token: SteelVal,
+    cmd: SteelVal,
+    args: SteelVal,
+    cwd: SteelVal,
+    nul: SteelVal,
+) -> SteelResult {
+    let token = usize_arg(token, "picker-source-spawn! token")? as u64;
+    let cmd = string_arg(cmd, "picker-source-spawn! cmd")?;
+    if cmd.trim().is_empty() {
+        steel::stop!(Generic => "picker-source-spawn!: cmd must not be empty");
+    }
+    let args = list_to_strings(args, "picker-source-spawn! args")?;
+    let cwd = optional_path_arg(cwd, "picker-source-spawn! #:cwd")?;
+    let nul = bool_arg(nul, "picker-source-spawn! #:nul")?;
+
+    let applied = require_cap(ctx.host.ui(), "picker-source-spawn!")?
+        .picker_source_spawn(token, &cmd, args, cwd, nul)
+        .map_err(|e| generic_err(format!("picker-source-spawn!: {e}")))?;
     Ok(SteelVal::BoolV(applied))
 }
 

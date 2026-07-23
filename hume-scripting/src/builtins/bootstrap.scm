@@ -106,6 +106,9 @@
 (define (picker! items on-select #:prompt [prompt ""])
   (%picker! items on-select prompt))
 
+(define (picker-source-spawn! token cmd args #:cwd [cwd #f] #:nul [nul #f])
+  (%picker-source-spawn! token cmd args cwd nul))
+
 (define-syntax call!
   (syntax-rules ()
     ((_ name args ...)

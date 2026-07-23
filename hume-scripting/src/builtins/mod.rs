@@ -204,6 +204,20 @@ macro_rules! builtins {
 // open picker is a silent #f, not an error — expected-normal for an async
 // source racing the user. Returns whether the push was applied.
 //
+// picker-source-spawn! — attaches a streaming external-command source
+// (docs/FUZZY-FINDERS.md B5) to the picker session `token` scopes: direct
+// argv spawn, no shell, stdin closed immediately. Stdout lines flow straight
+// into the store, Rust-side — Steel never sees the bulk output, only
+// whichever single line the user accepts. A stale token or no open picker
+// is a silent #f (same expected-normal-race contract as picker-push!),
+// never an error; a genuine spawn failure (missing binary, bad #:cwd)
+// raises. The child is owned by the picker session: closing or replacing
+// the picker (including a second picker-source-spawn! on the same session)
+// kills it automatically. #:nul splits on NUL instead of newline (for
+// `git ls-files -z`/`fd -0`). No shell means no `cmd | other` pipelines and
+// no Windows quoting hazards, at the cost of the caller building its own
+// argv.
+//
 // picker-close! — ends the open picker, firing on-select with #f. Unlike
 // close-menu!/close-drawer! (which drop the callback), this always invokes
 // it — the picker's exactly-once lifecycle has no "silently dropped"
@@ -436,6 +450,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // Fuzzy-picker widget (docs/FUZZY-FINDERS.md B4).
         cmd "%picker!" ui::picker(items: SteelVal, on_select: SteelVal, prompt: SteelVal);
         cmd "picker-push!" ui::picker_push(token: SteelVal, items: SteelVal);
+        cmd "%picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal);
         cmd "picker-close!" ui::picker_close();
 
         // Timers — not LSP-specific, but added as part of the LSP work.

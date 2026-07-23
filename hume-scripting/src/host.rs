@@ -573,6 +573,26 @@ pub trait UiHost {
     /// returns whether the push was applied.
     fn picker_push(&mut self, token: u64, items: Vec<(String, steel::rvals::SteelVal)>) -> bool;
 
+    /// `(picker-source-spawn! token cmd args #:cwd dir #:nul flag)` —
+    /// attaches a streaming external-command source to the open picker
+    /// (direct argv spawn, no shell). Its stdout lines flow directly into
+    /// the store, never through Steel. Replaces (killing) any source
+    /// already attached to the same session — a second spawn is a
+    /// re-spawn, not a second concurrent source.
+    ///
+    /// `Ok(false)` — same "expected-normal race, not an error" contract as
+    /// `picker_push` — means a stale token or no open picker; nothing was
+    /// spawned. `Err` means the process itself failed to spawn (missing
+    /// binary, bad `#:cwd`).
+    fn picker_source_spawn(
+        &mut self,
+        token: u64,
+        cmd: &str,
+        args: Vec<String>,
+        cwd: Option<std::path::PathBuf>,
+        nul: bool,
+    ) -> Result<bool, String>;
+
     /// `(picker-close!)` — ends the open picker, if any, firing its
     /// `on-select` with `#f` (unlike `close-menu!`/`close-drawer!`, which
     /// drop the callback without invoking it — the picker's callback

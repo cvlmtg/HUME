@@ -109,7 +109,6 @@ impl PickerSession {
     /// `picker-source-spawn!` on the same session is a re-spawn, not a
     /// second concurrent source (matches Q-B5's future re-spawn-replaces-
     /// source semantics for live-requery).
-    #[allow(dead_code)] // first caller lands with B5's picker-source-spawn! host impl
     pub(crate) fn attach_source(&mut self, source: SpawnedLineSource) {
         self.source = Some(source);
     }

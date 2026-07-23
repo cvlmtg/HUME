@@ -345,7 +345,6 @@ pub(crate) struct EditorState {
     /// EditorState` borrow, never a whole `&mut Editor` — can hand it to a
     /// spawned picker source (`docs/FUZZY-FINDERS.md` B5) so its reader
     /// thread can wake the event loop. A no-op `Arc` in tests/headless.
-    #[allow(dead_code)] // first reader lands with B5's picker-source-spawn! host impl
     pub(super) wake: Arc<dyn Fn() + Send + Sync>,
 }
 
