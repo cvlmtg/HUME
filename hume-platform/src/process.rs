@@ -34,6 +34,11 @@ use std::os::unix::process::CommandExt as _;
 
 use crate::path::strip_unc_prefix;
 
+/// Streaming a child's stdout into complete lines, for the picker's
+/// external-command source (`docs/FUZZY-FINDERS.md` B5) and future
+/// consumers of the same reader-thread/drain shape.
+pub mod line_source;
+
 /// Run `cmd` with `args`, inherited stdio, in its own process group.
 ///
 /// Used for `#:inline-output` Steel commands — terminal raw mode is
