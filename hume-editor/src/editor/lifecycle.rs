@@ -778,14 +778,17 @@ impl Editor {
         self.view.last_terminal_area = terminal_area;
         self.view.reserve_seam = reserve_seam;
 
-        // 9. Sync the popup-, menu-, and LSP-completion-menu-overlay views.
-        //    Deliberately *after* step 8: their geometry needs the focused
-        //    pane's current-frame rect via `EngineView::pane_rect`, which
-        //    reads `last_pane_area` — calling this any earlier would
-        //    position against last frame's geometry.
+        // 9. Sync the popup-, menu-, LSP-completion-menu-, and
+        //    picker-overlay views. Deliberately *after* step 8: their
+        //    geometry needs the focused pane's current-frame rect via
+        //    `EngineView::pane_rect` (popup/menu/completion) or
+        //    `last_pane_area` directly (picker), which reads `last_pane_area`
+        //    — calling this any earlier would position against last frame's
+        //    geometry.
         self.sync_popup_view(ctx);
         self.sync_menu_view(ctx);
         self.sync_lsp_completion_view(ctx);
+        self.sync_picker_view();
     }
 
     /// Sync every engine pane's selection mirror from the authoritative `pane_state`.
@@ -1793,6 +1796,55 @@ impl Editor {
             .lsp_completion_view
             .write()
             .expect("RwLock not poisoned") = resolved;
+    }
+
+    /// Write the open picker session into the shared `PickerViewState` Arc
+    /// so `PickerOverlay` can paint it this frame. Same step-9 timing as
+    /// `sync_popup_view`/`sync_menu_view`/`sync_lsp_completion_view` (needs
+    /// `last_pane_area`, set in step 8) but, unlike them, centers in the
+    /// panes region rather than anchoring at the cursor — no `RenderContext`
+    /// needed.
+    ///
+    /// Takes `&mut self`: before snapshotting the visible window, it calls
+    /// `PickerSession::move_selection(0, geo.list_rows)` — a delta-0 move is
+    /// a pure scroll-clamp against the *current* geometry, so a terminal
+    /// resize between the last keystroke and this frame self-heals here
+    /// rather than leaving a stale scroll offset from a taller frame.
+    pub(super) fn sync_picker_view(&mut self) {
+        if self.state.picker.is_none()
+            && self
+                .state
+                .picker_view
+                .read()
+                .expect("RwLock not poisoned")
+                .is_none()
+        {
+            return;
+        }
+
+        let geo = crate::ui::picker_panel::panel_geometry(self.view.last_pane_area);
+        let resolved = match (self.state.picker.as_mut(), geo) {
+            (Some(session), Some(geo)) => {
+                session.move_selection(0, geo.list_rows);
+                let rows: Vec<String> = session.window(geo.list_rows).map(str::to_string).collect();
+                let selected_row = (!rows.is_empty()).then(|| session.selected() - session.scroll());
+                Some(crate::ui::picker_panel::PickerViewState {
+                    query: session.query().to_string(),
+                    rows,
+                    selected_row,
+                    matched: session.matched_len(),
+                    total: session.total_len(),
+                    x: geo.x,
+                    y: geo.y,
+                    width: geo.width,
+                    height: geo.height,
+                    border: self.state.settings.popup_border,
+                })
+            }
+            _ => None,
+        };
+
+        *self.state.picker_view.write().expect("RwLock not poisoned") = resolved;
     }
 
     /// Set the editing mode. The cursor shape reflecting the new mode will be
