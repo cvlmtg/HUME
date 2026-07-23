@@ -71,6 +71,14 @@ fn key_down() -> KeyEvent {
     KeyEvent::new(KeyCode::Down, Modifiers::NONE)
 }
 
+fn key_pageup() -> KeyEvent {
+    KeyEvent::new(KeyCode::PageUp, Modifiers::NONE)
+}
+
+fn key_pagedown() -> KeyEvent {
+    KeyEvent::new(KeyCode::PageDown, Modifiers::NONE)
+}
+
 fn key_tab() -> KeyEvent {
     KeyEvent::new(KeyCode::Tab, Modifiers::NONE)
 }
@@ -586,6 +594,7 @@ mod pane_focus;
 mod pane_sync;
 mod paste;
 mod per_pane_jumps;
+mod picker;
 mod plugins;
 mod render_snapshot;
 mod scripting_effects;

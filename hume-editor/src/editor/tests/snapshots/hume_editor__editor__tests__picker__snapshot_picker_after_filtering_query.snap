@@ -1,0 +1,16 @@
+---
+source: hume-editor/src/editor/tests/picker.rs
+expression: snap
+---
+<fg=#808080,bg=#3a3a3a>  </><fg=#c8c8d2,bg=#3a3a3a>1</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#b4b4c8,bg=#282832>┌──────────────────────────────┐</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#b4b4c8,bg=#282832>│</><fg=#ffffff,bg=#282832>ap</><fg=#ffffff,bg=#282832,reverse> </><fg=#ffffff,bg=#282832>                        </><fg=#b4b4c8,bg=#282832>2/3│</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#b4b4c8,bg=#282832>│</><fg=#ffffff,bg=#50508c>apple                         </><fg=#b4b4c8,bg=#282832>│</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#b4b4c8,bg=#282832>│apricot                       │</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#b4b4c8,bg=#282832>│                              │</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#b4b4c8,bg=#282832>└──────────────────────────────┘</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#000000,bg=#ffffff> 1:1                              │ NOR</>
