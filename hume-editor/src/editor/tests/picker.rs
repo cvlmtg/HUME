@@ -1,13 +1,12 @@
 // Fuzzy-picker panel: key interception (`handle_picker_key`), the open
-// chokepoint (`open_picker`), and the per-frame write side
-// (`sync_picker_view`). No Steel surface exists yet (B4) — sessions are
-// constructed directly, matching `lsp_completion_menu.rs`'s
-// `CompletionSession::begin` precedent for testing a Rust store ahead of
-// its Steel wiring.
+// chokepoint (`picker::open_picker`), and the per-frame write side
+// (`sync_picker_view`). Sessions are still constructed directly rather than
+// through the `picker!` Steel builtin — see `tests/picker_steel.rs` for
+// end-to-end coverage of the Steel surface itself (B4).
 
 use super::*;
 use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
-use crate::editor::picker::{PickerItem, PickerSession};
+use crate::editor::picker::{self, PickerItem, PickerSession};
 use crate::ui::picker_panel::panel_geometry;
 use hume_engine::pipeline::RenderContext;
 use steel::rvals::SteelVal;
@@ -17,7 +16,7 @@ fn marker(name: &str) -> SteelVal {
 }
 
 fn open_test_picker_with_callback(ed: &mut Editor, items: &[&str], callback: SteelVal) {
-    let mut session = PickerSession::new(callback);
+    let mut session = PickerSession::new(callback, String::new());
     let token = session.token();
     let picker_items: Vec<PickerItem> = items
         .iter()
@@ -27,7 +26,7 @@ fn open_test_picker_with_callback(ed: &mut Editor, items: &[&str], callback: Ste
         })
         .collect();
     session.push(token, picker_items);
-    ed.open_picker(session);
+    picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
 }
 
 fn open_test_picker(ed: &mut Editor, items: &[&str]) {

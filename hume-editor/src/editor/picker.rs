@@ -3,10 +3,10 @@
 //! `docs/FUZZY-FINDERS.md`'s "Why not one shared session type" note. Mirrors
 //! completion's `rank_scratch` reuse and reset-on-rerank patterns.
 //!
-//! Wired onto `EditorState.picker`; opened through `Editor::open_picker`
-//! below (tests today, B4's `picker!` builtin later) and driven per-frame by
-//! `Editor::sync_picker_view` and per-key by `Editor::handle_picker_key`
-//! (`editor/mappings/mod.rs`).
+//! Wired onto `EditorState.picker`; opened through the [`open_picker`] free
+//! fn below (Steel's `picker!` builtin, `hume-scripting`'s `ui::picker`) and
+//! driven per-frame by `Editor::sync_picker_view` and per-key by
+//! `Editor::handle_picker_key` (`editor/mappings/mod.rs`).
 
 use std::cmp::Reverse;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -45,20 +45,26 @@ pub(crate) struct PickerSession {
     /// First visible row index into `filtered`.
     scroll: usize,
     on_select: SteelVal,
+    /// Label painted before the query in the input line, e.g. `"files: "`.
+    /// Empty by default — an empty prompt renders identically to no prompt
+    /// at all.
+    #[allow(dead_code)] // read by `prompt()`, whose production caller is host_impl.rs (step 6)
+    prompt: String,
     /// Stale-push guard: `push` is a no-op unless the caller's token matches.
-    #[allow(dead_code)] // read by `push`/`token`, both awaiting B4's picker!/picker-push!
+    #[allow(dead_code)]
+    // read by `push`/`token`, whose production caller is host_impl.rs (step 6)
     token: u64,
 }
 
-#[allow(dead_code)] // read by `PickerSession::new`, awaiting B4's picker! production caller
+#[allow(dead_code)] // read by `PickerSession::new`, whose production caller is host_impl.rs (step 6)
 static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
 
 impl PickerSession {
     /// Opens empty — the caller's initial item list (from `picker!`) arrives
     /// through the same `push` path as any later batch, matching B6's "open
     /// empty, then attach source" composition.
-    #[allow(dead_code)] // production caller is B4's `picker!` builtin
-    pub(crate) fn new(on_select: SteelVal) -> Self {
+    #[allow(dead_code)] // production caller is host_impl.rs's `open_picker` (step 6)
+    pub(crate) fn new(on_select: SteelVal, prompt: String) -> Self {
         Self {
             items: Vec::new(),
             query: String::new(),
@@ -68,20 +74,26 @@ impl PickerSession {
             selected: 0,
             scroll: 0,
             on_select,
+            prompt,
             token: NEXT_TOKEN.fetch_add(1, Ordering::Relaxed),
         }
     }
 
-    #[allow(dead_code)] // production caller is B4's `picker-push!` builtin
+    #[allow(dead_code)] // production caller is host_impl.rs's `open_picker`/`picker_push` (step 6)
     pub(crate) fn token(&self) -> u64 {
         self.token
+    }
+
+    #[allow(dead_code)] // production caller is `sync_picker_view` reading it into `PickerViewState` (step 4)
+    pub(crate) fn prompt(&self) -> &str {
+        &self.prompt
     }
 
     /// Appends `items` and reranks, but only if `token` matches this
     /// session's token. A mismatch is expected-normal (a late batch from a
     /// picker the user already closed or replaced) — silent no-op, not an
     /// error. Returns whether the push was applied.
-    #[allow(dead_code)] // production caller is B4's `picker-push!` builtin / B5's spawned source
+    #[allow(dead_code)] // production caller is host_impl.rs's `open_picker`/`picker_push` (step 6)
     pub(crate) fn push(&mut self, token: u64, items: Vec<PickerItem>) -> bool {
         if token != self.token {
             return false;
@@ -228,24 +240,43 @@ impl PickerSession {
     }
 }
 
-impl super::Editor {
-    /// Single open chokepoint for the picker — tests drive it directly
-    /// today, B4's `picker!` builtin calls it once that Steel surface
-    /// exists. Q-B7 (`docs/FUZZY-FINDERS.md`): allowed from any mode, but
-    /// one modal owner at a time, so opening a picker always closes any
-    /// live completion session first. Replacing an already-open picker
-    /// fires *its* `on_select` with `#f` before installing the new one —
-    /// the exactly-once callback contract must never have a window where a
-    /// session can be silently dropped without firing.
-    #[allow(dead_code)] // production caller is B4's `picker!` builtin
-    pub(crate) fn open_picker(&mut self, session: PickerSession) {
-        self.clear_completion_menu();
-        if let Some(old) = self.state.picker.take() {
-            let callback = old.on_select().clone();
-            self.queue_steel_call(callback, vec![SteelVal::BoolV(false)]);
-        }
-        self.state.picker = Some(session);
-    }
+/// Single open chokepoint for the picker — `hume-scripting`'s `picker!`
+/// builtin (`ui::picker`) calls this via `EditorHostImpl`. Q-B7
+/// (`docs/FUZZY-FINDERS.md`): allowed from any mode, but one modal owner at
+/// a time, so opening a picker always closes any live completion session
+/// first. Replacing an already-open picker fires *its* `on_select` with
+/// `#f` before installing the new one, via [`close_picker`] — the
+/// exactly-once callback contract must never have a window where a session
+/// can be silently dropped without firing.
+///
+/// Takes `state`/`lsp` rather than `&mut Editor` because its production
+/// caller, `EditorHostImpl` (step 6), holds those as disjoint borrows, not a
+/// whole `Editor` — it can never reach an `&mut Editor`.
+#[allow(dead_code)] // production caller is host_impl.rs's `UiHost::open_picker` (step 6)
+pub(crate) fn open_picker(
+    state: &mut super::EditorState,
+    lsp: Option<&mut super::lsp::LspState>,
+    session: PickerSession,
+) {
+    super::lsp::completion::clear_completion_menu(state, lsp);
+    close_picker(state, SteelVal::BoolV(false));
+    state.picker = Some(session);
+}
+
+/// Single close chokepoint for the picker: ends the session (if one is
+/// open) and fires its `on_select` callback exactly once with `payload`.
+/// Returns whether a session was actually closed. Shared by `Esc`, `Enter`
+/// (with the selected payload), `picker-close!`, and `open_picker`'s
+/// replace-on-open path (LESSONS.md L2 — one chokepoint, not one copy per
+/// caller).
+#[allow(dead_code)] // production callers land in mappings/mod.rs (step 3) and host_impl.rs (step 6)
+pub(crate) fn close_picker(state: &mut super::EditorState, payload: SteelVal) -> bool {
+    let Some(session) = state.picker.take() else {
+        return false;
+    };
+    let callback = session.on_select().clone();
+    state.pending_steel_calls.push((callback, vec![payload]));
+    true
 }
 
 #[cfg(test)]
@@ -268,7 +299,7 @@ mod tests {
     }
 
     fn open() -> PickerSession {
-        PickerSession::new(dummy_on_select())
+        PickerSession::new(dummy_on_select(), String::new())
     }
 
     fn payload_str(v: &SteelVal) -> &str {
@@ -289,6 +320,12 @@ mod tests {
         assert_eq!(s.matched_len(), 0);
         assert_eq!(s.selected(), 0);
         assert!(window_vec(&s, 10).is_empty());
+    }
+
+    #[test]
+    fn prompt_is_stored_verbatim() {
+        let s = PickerSession::new(dummy_on_select(), "files: ".to_string());
+        assert_eq!(s.prompt(), "files: ");
     }
 
     #[test]

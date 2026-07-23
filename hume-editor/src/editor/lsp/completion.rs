@@ -627,11 +627,27 @@ fn parse_additional_text_edits_lenient(resolved: &serde_json::Value) -> Vec<lsp_
 /// callers hold that separately: `Editor` via `state.completion_menu_view`,
 /// `EditorHostImpl` via its own disjoint `state` borrow). Single definition
 /// of "what constitutes an open completion session", shared by
-/// `Editor::clear_completion_menu`, `EditorHostImpl::clear_completion_menu`,
-/// and `completion_accept`.
+/// `clear_completion_menu` and `completion_accept`.
 pub(crate) fn clear_completion_state(lsp: &mut LspState) {
     lsp.completion = None;
     lsp.completion_ui = None;
+}
+
+/// Ends any open completion session and clears its menu view — the single
+/// chokepoint for "close the completion menu", shared by `Editor` (via
+/// `Editor::clear_completion_menu`), `EditorHostImpl`, and `picker::open_picker`
+/// (Q-B7: opening a picker closes any live completion session first). `lsp`
+/// is `None` at call sites that hold no `LspState` borrow — a no-op there,
+/// same as when `lsp` is `Some` but no session is open. Always clears the
+/// shared `completion_menu_view` Arc regardless of `lsp`.
+pub(crate) fn clear_completion_menu(state: &mut EditorState, lsp: Option<&mut LspState>) {
+    if let Some(lsp) = lsp {
+        clear_completion_state(lsp);
+    }
+    *state
+        .completion_menu_view
+        .write()
+        .expect("RwLock not poisoned") = None;
 }
 
 impl Editor {
@@ -643,12 +659,7 @@ impl Editor {
     /// `take_pending_lsp_completion_dismiss`. A no-op when no session is
     /// open.
     pub(crate) fn clear_completion_menu(&mut self) {
-        clear_completion_state(&mut self.lsp);
-        *self
-            .state
-            .completion_menu_view
-            .write()
-            .expect("RwLock not poisoned") = None;
+        clear_completion_menu(&mut self.state, Some(&mut self.lsp));
     }
 
     /// Consumes `set_mode`'s deferred dismissal, if one is pending — called
