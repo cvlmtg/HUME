@@ -5,7 +5,7 @@ use slotmap::{SlotMap, new_key_type};
 use crate::format::FormatScratch;
 use crate::pane::{Pane, WhitespaceConfig, WrapMode};
 use crate::providers::{
-    DrawerProvider, GutterCell, InlineInsert, StatuslineProvider, SyntaxSpans, TabBarProvider,
+    BottomBandProvider, GutterCell, InlineInsert, StatuslineProvider, SyntaxSpans, TabBarProvider,
 };
 use crate::style::StyleScratch;
 use crate::theme::{ScopeRegistry, Theme};
@@ -151,8 +151,11 @@ pub struct EngineView {
     pub registry: ScopeRegistry,
     /// Optional tab bar rendered at the top of the terminal area.
     pub tabbar: Option<Box<dyn TabBarProvider>>,
-    /// Optional bottom drawer, rendered directly above the statusline.
-    pub drawer: Option<Box<dyn DrawerProvider>>,
+    /// Bottom chrome bands, stacked directly above the statusline —
+    /// currently the pick-list drawer and the docked hover popup. Only one
+    /// is ever non-empty in practice, but the list carries both rather than
+    /// special-casing which one "owns" the band.
+    pub bottom_bands: Vec<Box<dyn BottomBandProvider>>,
     /// Terminal area available to panes as of the last `prepare_frame`.
     /// Pane-focus/split commands run between frames with no terminal handle
     /// of their own, so they recompute geometry from this plus `layout`
@@ -190,7 +193,7 @@ impl EngineView {
             theme,
             registry: ScopeRegistry::new(),
             tabbar: None,
-            drawer: None,
+            bottom_bands: Vec::new(),
             last_pane_area: ratatui::layout::Rect::default(),
             last_terminal_area: ratatui::layout::Rect::default(),
             reserve_seam: true,
@@ -217,18 +220,19 @@ impl EngineView {
     }
 
     /// Partition `area` into the pane-content rect, reserving a tab-bar row at
-    /// the top (if `self.tabbar` is set), a drawer band directly above the
-    /// statusline (if `self.drawer` is set), and a statusline row at the
-    /// bottom (always). Single source of truth for chrome layout — `render`
-    /// and the editor's `prepare_frame` both partition through this method so
-    /// pane geometry is computed identically wherever it's needed.
+    /// the top (if `self.tabbar` is set), the bottom chrome bands directly
+    /// above the statusline (`self.bottom_bands`), and a statusline row at
+    /// the bottom (always). Single source of truth for chrome layout —
+    /// `render` and the editor's `prepare_frame` both partition through this
+    /// method so pane geometry is computed identically wherever it's needed.
     pub fn pane_area(&self, area: ratatui::layout::Rect) -> ratatui::layout::Rect {
         let tabbar_height: u16 = if self.tabbar.is_some() { 1 } else { 0 };
-        let drawer_height = self
-            .drawer
-            .as_ref()
-            .map_or(0, |d| d.height(area.height / 2));
-        let chrome_height = tabbar_height + 1 + drawer_height;
+        let bands_height: u16 = self
+            .bottom_bands
+            .iter()
+            .map(|b| b.height(area.height / 2))
+            .sum();
+        let chrome_height = tabbar_height + 1 + bands_height;
 
         if chrome_height < area.height {
             ratatui::layout::Rect {
@@ -294,23 +298,28 @@ impl EngineView {
                 tabbar.render(tabbar_area, &self.theme, buf);
             }
 
-            // ── Render drawer ────────────────────────────────────────────────────
-            // Sits directly above the statusline row — derived from `area`
-            // directly (not `pane_area`), matching the tab bar/statusline's
-            // own convention: chrome claims its band even when the terminal
-            // is too small to also fit pane content (`pane_area`'s
-            // degenerate branch already collapses `height` to 0 there).
-            if let Some(ref drawer) = self.drawer {
-                let drawer_height = drawer.height(area.height / 2);
-                if drawer_height > 0 {
-                    let drawer_y = (area.y + area.height).saturating_sub(1 + drawer_height);
-                    let drawer_area = ratatui::layout::Rect {
-                        y: drawer_y.max(area.y),
-                        height: drawer_height.min(area.height.saturating_sub(1)),
-                        ..area
-                    };
-                    drawer.render(drawer_area, &self.theme, buf);
+            // ── Render bottom bands ──────────────────────────────────────────────
+            // Stacked directly above the statusline row, in registration
+            // order — derived from `area` directly (not `pane_area`),
+            // matching the tab bar/statusline's own convention: chrome
+            // claims its band even when the terminal is too small to also
+            // fit pane content (`pane_area`'s degenerate branch already
+            // collapses `height` to 0 there).
+            let mut bottom_edge = (area.y + area.height).saturating_sub(1);
+            for band in &self.bottom_bands {
+                let band_height = band.height(area.height / 2);
+                if band_height == 0 {
+                    continue;
                 }
+                let band_y = bottom_edge.saturating_sub(band_height);
+                let available = bottom_edge.saturating_sub(area.y);
+                let band_area = ratatui::layout::Rect {
+                    y: band_y.max(area.y),
+                    height: band_height.min(available),
+                    ..area
+                };
+                band.render(band_area, &self.theme, buf);
+                bottom_edge = band_y.max(area.y);
             }
 
             // ── Render statusline ───────────────────────────────────────────────

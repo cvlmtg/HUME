@@ -1027,13 +1027,14 @@ fn remove_leaf_missing_target_is_noop() {
     assert_eq!(tree, before);
 }
 
-// ── Drawer band partition (U6) ───────────────────────────────────────
+// ── Bottom band partition (U6) ───────────────────────────────────────
 
-/// A drawer that always reports a fixed height, regardless of `max` — lets
-/// tests probe `pane_area`'s chrome arithmetic without a real `DrawerModel`.
+/// A band that always reports a fixed height, regardless of `max` — lets
+/// tests probe `pane_area`'s chrome arithmetic without a real `DrawerModel`/
+/// `PopupModel`.
 struct FixedHeightDrawer(u16);
 
-impl crate::providers::DrawerProvider for FixedHeightDrawer {
+impl crate::providers::BottomBandProvider for FixedHeightDrawer {
     fn height(&self, max: u16) -> u16 {
         self.0.min(max)
     }
@@ -1051,7 +1052,7 @@ impl crate::providers::TabBarProvider for NoopTabBar {
 #[test]
 fn pane_area_reserves_drawer_height_above_statusline() {
     let mut view = EngineView::new(Theme::default());
-    view.drawer = Some(Box::new(FixedHeightDrawer(3)));
+    view.bottom_bands = vec![Box::new(FixedHeightDrawer(3))];
 
     let area = view.pane_area(rect(0, 0, 40, 20));
 
@@ -1065,7 +1066,7 @@ fn pane_area_reserves_drawer_height_above_statusline() {
 fn pane_area_folds_tabbar_and_drawer_together() {
     let mut view = EngineView::new(Theme::default());
     view.tabbar = Some(Box::new(NoopTabBar));
-    view.drawer = Some(Box::new(FixedHeightDrawer(3)));
+    view.bottom_bands = vec![Box::new(FixedHeightDrawer(3))];
 
     let area = view.pane_area(rect(0, 0, 40, 20));
 
@@ -1079,7 +1080,7 @@ fn pane_area_folds_tabbar_and_drawer_together() {
 fn pane_area_drawer_height_is_capped_by_half_the_terminal_height() {
     let mut view = EngineView::new(Theme::default());
     // Wants 50 rows — way more than half of a 20-row terminal (max = 10).
-    view.drawer = Some(Box::new(FixedHeightDrawer(50)));
+    view.bottom_bands = vec![Box::new(FixedHeightDrawer(50))];
 
     let area = view.pane_area(rect(0, 0, 40, 20));
 
@@ -1090,13 +1091,29 @@ fn pane_area_drawer_height_is_capped_by_half_the_terminal_height() {
 #[test]
 fn pane_area_degenerate_when_terminal_too_small_for_chrome_plus_drawer() {
     let mut view = EngineView::new(Theme::default());
-    view.drawer = Some(Box::new(FixedHeightDrawer(3)));
+    view.bottom_bands = vec![Box::new(FixedHeightDrawer(3))];
 
     // chrome_height = 1 (statusline) + 3 (drawer, capped at height/2=1) = 2,
     // which is NOT less than a 2-row terminal — degenerate.
     let area = view.pane_area(rect(0, 0, 40, 2));
 
     assert_eq!(area.height, 0);
+}
+
+#[test]
+fn pane_area_sums_multiple_bottom_bands() {
+    // Two bands stacked (e.g. drawer + docked popup, though in practice only
+    // one is ever non-empty) reserve the sum of their heights.
+    let mut view = EngineView::new(Theme::default());
+    view.bottom_bands = vec![
+        Box::new(FixedHeightDrawer(3)),
+        Box::new(FixedHeightDrawer(2)),
+    ];
+
+    let area = view.pane_area(rect(0, 0, 40, 20));
+
+    // 20 - 1 (statusline) - 3 - 2 = 14.
+    assert_eq!(area.height, 14);
 }
 
 // ── FrameScratch ─────────────────────────────────────────────────────

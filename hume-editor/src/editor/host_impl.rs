@@ -951,12 +951,13 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-    // ── Cursor-anchored popup ────────────────────────────────────────────
+    // ── Cursor-anchored / docked popup ───────────────────────────────────
     fn show_popup(
         &mut self,
         text: String,
         dismiss_on_key: bool,
         scrollable: bool,
+        docked: bool,
         lang: Option<String>,
     ) -> Result<(), String> {
         let dismiss = if scrollable {
@@ -966,12 +967,18 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         } else {
             crate::ui::popup::PopupDismiss::ModeChange
         };
+        let layout = if docked {
+            crate::ui::popup::PopupLayout::Docked
+        } else {
+            crate::ui::popup::PopupLayout::Cursor
+        };
         let syntax = lang.and_then(|lang| self.build_markup_syntax(&lang, &text));
         self.state.popup = Some(crate::ui::popup::PopupModel {
             text,
             dismiss,
             scroll: 0,
             syntax,
+            layout,
         });
         Ok(())
     }
@@ -1013,20 +1020,12 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         &mut self,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
-        lang: Option<String>,
     ) -> Result<(), String> {
-        // One row per source line: each item is its own tree-sitter line, so
-        // `MarkupSyntax::styled_row(row_idx, item, …)` at render time can
-        // index straight into the parsed rope with no extra bookkeeping.
-        let syntax = lang
-            .and_then(|lang| self.build_markup_syntax(&lang, &items.join("\n")))
-            .map(std::sync::Arc::new);
         self.state.drawer = Some(crate::ui::drawer::DrawerModel {
             items,
             selected: 0,
             scroll: 0,
             callback,
-            syntax,
         });
         self.state.sync_drawer_view();
         Ok(())

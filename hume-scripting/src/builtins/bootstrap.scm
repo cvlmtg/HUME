@@ -103,9 +103,6 @@
 (define (show-popup! text #:anchor [anchor 'cursor] #:dismiss-on-key [dismiss-on-key #f] #:scroll [scroll #f] #:lang [lang #f])
   (%show-popup! text anchor dismiss-on-key scroll lang))
 
-(define (show-drawer-list! items on-select #:lang [lang #f])
-  (%show-drawer-list! items on-select lang))
-
 (define (picker! items on-select #:prompt [prompt ""])
   (%picker! items on-select prompt))
 

@@ -21,8 +21,10 @@ type SteelResult = Result<SteelVal, SteelErr>;
 
 /// `(%show-popup! text anchor dismiss-on-key scrollable lang)` — the
 /// `show-popup!` Scheme wrapper supplies
-/// `#:anchor`/`#:dismiss-on-key`/`#:scroll`/`#:lang`'s defaults. `'cursor`
-/// is the only anchor accepted in v1.
+/// `#:anchor`/`#:dismiss-on-key`/`#:scroll`/`#:lang`'s defaults. `anchor`
+/// selects the render layout: `'cursor` floats near the focused pane's
+/// cursor (default); `'bottom` docks as a full-width band above the
+/// statusline, reserving pane space like the drawer.
 pub(crate) fn show_popup(
     ctx: &mut SteelCtx,
     text: SteelVal,
@@ -33,9 +35,13 @@ pub(crate) fn show_popup(
 ) -> SteelResult {
     let text = string_arg(text, "show-popup! text")?;
     let anchor = string_arg(anchor, "show-popup! #:anchor")?;
-    if anchor != "cursor" {
-        steel::stop!(Generic => "show-popup!: #:anchor must be 'cursor, got '{}'", anchor);
-    }
+    let docked = match anchor.as_str() {
+        "cursor" => false,
+        "bottom" => true,
+        other => {
+            steel::stop!(Generic => "show-popup!: #:anchor must be 'cursor or 'bottom, got '{}'", other)
+        }
+    };
     let dismiss_on_key = bool_arg(dismiss_on_key, "show-popup! #:dismiss-on-key")?;
     let scrollable = bool_arg(scrollable, "show-popup! #:scroll")?;
     let lang = optional_string_arg(lang, "show-popup! #:lang")?;
@@ -43,7 +49,7 @@ pub(crate) fn show_popup(
         steel::stop!(Generic => "show-popup!: #:dismiss-on-key and #:scroll are mutually exclusive");
     }
     require_cap(ctx.host.ui(), "show-popup!")?
-        .show_popup(text, dismiss_on_key, scrollable, lang)
+        .show_popup(text, dismiss_on_key, scrollable, docked, lang)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
 }
@@ -74,18 +80,16 @@ pub(crate) fn close_menu(ctx: &mut SteelCtx) -> SteelResult {
         .map_err(generic_err)
 }
 
-/// `(%show-drawer-list! items on-select lang)` — the `show-drawer-list!`
-/// Scheme wrapper supplies `#:lang`'s default.
+/// `(show-drawer-list! items on-select)` — no keyword defaults, so this
+/// registers directly (no `%`-prefix wrapper needed).
 pub(crate) fn show_drawer_list(
     ctx: &mut SteelCtx,
     items: SteelVal,
     on_select: SteelVal,
-    lang: SteelVal,
 ) -> SteelResult {
     let items = list_to_strings(items, "show-drawer-list! items")?;
-    let lang = optional_string_arg(lang, "show-drawer-list! #:lang")?;
     require_cap(ctx.host.ui(), "show-drawer-list!")?
-        .show_drawer_list(items, on_select, lang)
+        .show_drawer_list(items, on_select)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
 }

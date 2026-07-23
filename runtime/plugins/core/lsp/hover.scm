@@ -7,7 +7,7 @@
 ;;; A `MarkedString` is either a bare string or `{language, value}`; a
 ;;; `MarkupContent` is `{kind, value}` — both hashmap forms carry "value", so
 ;;; no kind/language branch is needed here: `kind` is only consulted by
-;;; `lsp/hover-lang` (below), for the popup/drawer's own highlighting.
+;;; `lsp/hover-lang` (below), for the popup's own highlighting.
 (define (lsp/marked-string->text ms)
   (if (string? ms) ms (hash-ref ms "value")))
 
@@ -25,7 +25,7 @@
 ;;; bare `MarkedString`/`MarkedString[]` and `kind: "markdown"` both render
 ;;; as markdown (per the LSP spec, `MarkedString` content is always
 ;;; markdown). Data-driven so a future non-markdown `kind` needs no new
-;;; parameter on `show-popup!`/`show-drawer-list!`, just another branch here.
+;;; parameter on `show-popup!`, just another branch here.
 (define (lsp/hover-lang contents)
   (if (and (hash? contents)
            (hash-contains? contents "kind")
@@ -33,12 +33,13 @@
       #f
       "markdown"))
 
-;; ── Popup / drawer branch ───────────────────────────────────────────────────
+;; ── Popup: cursor or docked ──────────────────────────────────────────────────
 
-;;; Threshold = ⅓ of the last-known viewport height (the popup's ⅓-pane-height
-;;; cap), falling back to 15 lines before the first on-viewport-change
-;;; event. An occasional over-tall popup just gets truncated by
-;;; `wrap_text` — this heuristic never has to be exact.
+;;; Threshold = ⅓ of the last-known viewport height (the cursor popup's
+;;; ⅓-pane-height cap), falling back to 15 lines before the first
+;;; on-viewport-change event. Either branch is still just `show-popup!` —
+;;; short content floats near the cursor, long content docks as a bottom
+;;; band instead of falling back to a different widget.
 (define (lsp/show-hover text lang)
   (let* ((bid (current-buffer))
          (visible (lsp/visible-lines bid))
@@ -46,7 +47,7 @@
          (lines (split-many text "\n")))
     (if (<= (length lines) threshold)
         (show-popup! text #:scroll #t #:lang lang)
-        (show-drawer-list! lines (lambda (idx) (begin)) #:lang lang))))
+        (show-popup! text #:scroll #t #:lang lang #:anchor 'bottom))))
 
 ;; ── Dismiss ─────────────────────────────────────────────────────────────────
 ;; A stale hover popup must not linger once the user has moved on — it closes

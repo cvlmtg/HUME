@@ -129,14 +129,22 @@ impl Editor {
             Arc::new(RwLock::new(None));
         let picker_view: Arc<RwLock<Option<crate::ui::picker_panel::PickerViewState>>> =
             Arc::new(RwLock::new(None));
-        // Drawer is chrome (like the tab bar/statusline), not per-pane — one
-        // instance, registered directly on `engine_view.drawer` below rather
-        // than through `build_pane`.
+        // The drawer and the docked popup are chrome (like the tab
+        // bar/statusline), not per-pane — one instance of each, registered
+        // directly on `engine_view.bottom_bands` rather than through
+        // `build_pane`. Only one is ever non-empty at a time in practice.
         let drawer_view: Arc<RwLock<Option<crate::ui::drawer::DrawerViewState>>> =
             Arc::new(RwLock::new(None));
-        engine_view.drawer = Some(Box::new(crate::ui::drawer::DrawerWidget {
-            data: Arc::clone(&drawer_view),
-        }));
+        let popup_band_view: Arc<RwLock<Option<crate::ui::popup::PopupBandState>>> =
+            Arc::new(RwLock::new(None));
+        engine_view.bottom_bands = vec![
+            Box::new(crate::ui::drawer::DrawerWidget {
+                data: Arc::clone(&drawer_view),
+            }),
+            Box::new(crate::ui::popup::PopupBandWidget {
+                data: Arc::clone(&popup_band_view),
+            }),
+        ];
 
         // Insert a buffer — just metadata; the rope is passed at render time.
         let buffer_id = engine_view.buffers.insert(());
@@ -248,6 +256,7 @@ impl Editor {
                 runtime_scope_cache: rustc_hash::FxHashMap::default(),
                 popup: None,
                 popup_view,
+                popup_band_view,
                 menu: None,
                 menu_view,
                 drawer: None,
@@ -787,6 +796,7 @@ impl Editor {
         //    — calling this any earlier would position against last frame's
         //    geometry.
         self.sync_popup_view(ctx);
+        self.sync_popup_band_view();
         self.sync_menu_view(ctx);
         self.sync_completion_menu_view(ctx);
         self.sync_picker_view();
@@ -1656,17 +1666,24 @@ impl Editor {
         Some((anchor, pane_rect, max_width, max_height))
     }
 
-    /// Write the current popup content into the shared `PopupState` Arc so
-    /// `PopupOverlay` can render it during this frame. Geometry (wrap width,
-    /// flip/clamp position) is resolved fresh every frame against the
-    /// focused pane's *current* rect — never pre-computed at `show-popup!`
-    /// call time — so a resize or scroll never leaves it stale.
+    /// Write the current *cursor-anchored* popup content into the shared
+    /// `PopupState` Arc so `PopupOverlay` can render it during this frame.
+    /// Geometry (wrap width, flip/clamp position) is resolved fresh every
+    /// frame against the focused pane's *current* rect — never pre-computed
+    /// at `show-popup!` call time — so a resize or scroll never leaves it
+    /// stale. A docked popup (`PopupLayout::Docked`) is handled by
+    /// [`Self::sync_popup_band_view`] instead — this clears `popup_view` for
+    /// that case, same as when no popup is open at all.
     ///
     /// Called from `prepare_frame` after `last_pane_area` is set (step 9):
     /// `EngineView::pane_rect` reads that field, so calling this any earlier
     /// would position against the previous frame's geometry.
     pub(super) fn sync_popup_view(&self, ctx: &mut RenderContext) {
-        if self.state.popup.is_none()
+        let is_cursor = matches!(
+            self.state.popup.as_ref().map(|m| &m.layout),
+            Some(crate::ui::popup::PopupLayout::Cursor)
+        );
+        if !is_cursor
             && self
                 .state
                 .popup_view
@@ -1674,6 +1691,10 @@ impl Editor {
                 .expect("RwLock not poisoned")
                 .is_none()
         {
+            return;
+        }
+        if !is_cursor {
+            *self.state.popup_view.write().expect("RwLock not poisoned") = None;
             return;
         }
 
@@ -1685,30 +1706,7 @@ impl Editor {
             // The box itself still caps at `max_height` via `outer_dims`
             // below; `scroll` (clamped against that cap) picks which window
             // of `lines` is visible.
-            //
-            // A `#:lang` popup (`model.syntax`) resolves highlight spans
-            // through the theme fresh every frame here — not once at
-            // `show-popup!` time — so a `:theme` switch while the popup is
-            // open repaints it correctly, same as any other themed surface.
-            let (lines, styled_rows) = if let Some(popup_syntax) = model.syntax.as_ref() {
-                let base_style = self
-                    .view
-                    .theme
-                    .resolve_by_name(hume_engine::types::Scope("ui.popup"))
-                    .into();
-                let runs = popup_syntax.styled_runs(&model.text, &self.view.theme, base_style);
-                let rows = crate::ui::popup::wrap_styled(&runs, max_width, u16::MAX);
-                let lines: Vec<String> = rows
-                    .iter()
-                    .map(|row| row.iter().map(|(s, _)| s.as_str()).collect())
-                    .collect();
-                (lines, Some(rows))
-            } else {
-                (
-                    crate::ui::popup::wrap_text(&model.text, max_width, u16::MAX),
-                    None,
-                )
-            };
+            let (lines, styled_rows) = self.wrap_popup_text(model, max_width);
             let (outer_w, outer_h) = crate::ui::menu_box::outer_dims(&lines, max_height);
             let (x, y, outer_w, outer_h) =
                 crate::ui::popup::resolve_popup_geometry(outer_w, outer_h, anchor, pane_rect);
@@ -1728,6 +1726,104 @@ impl Editor {
         });
 
         *self.state.popup_view.write().expect("RwLock not poisoned") = resolved;
+    }
+
+    /// Word-wrap `model.text` to `max_width`, unbounded height — shared by
+    /// [`Self::sync_popup_view`] (cursor layout) and
+    /// [`Self::sync_popup_band_view`] (docked layout), the only difference
+    /// between them being where the result is positioned.
+    ///
+    /// A `#:lang` popup (`model.syntax`) resolves highlight spans through
+    /// the theme fresh every frame here — not once at `show-popup!` time —
+    /// so a `:theme` switch while the popup is open repaints it correctly,
+    /// same as any other themed surface.
+    fn wrap_popup_text(
+        &self,
+        model: &crate::ui::popup::PopupModel,
+        max_width: u16,
+    ) -> (Vec<String>, Option<Vec<crate::ui::popup::StyledRow>>) {
+        if let Some(popup_syntax) = model.syntax.as_ref() {
+            let base_style = self
+                .view
+                .theme
+                .resolve_by_name(hume_engine::types::Scope("ui.popup"))
+                .into();
+            let runs = popup_syntax.styled_runs(&model.text, &self.view.theme, base_style);
+            let rows = crate::ui::popup::wrap_styled(&runs, max_width, u16::MAX);
+            let lines: Vec<String> = rows
+                .iter()
+                .map(|row| row.iter().map(|(s, _)| s.as_str()).collect())
+                .collect();
+            (lines, Some(rows))
+        } else {
+            (
+                crate::ui::popup::wrap_text(&model.text, max_width, u16::MAX),
+                None,
+            )
+        }
+    }
+
+    /// Write the current *docked* popup content into the shared
+    /// `PopupBandState` Arc so `PopupBandWidget` can render it during this
+    /// frame — the `PopupLayout::Docked` counterpart of
+    /// [`Self::sync_popup_view`]. Unlike the cursor layout, geometry isn't
+    /// resolved here: only content (wrapped lines + scroll clamp), mirroring
+    /// the drawer's chrome contract — the engine resolves the band's actual
+    /// position/height from `height(max)` at render time.
+    ///
+    /// Wraps against `last_terminal_area` (the raw, un-subtracted terminal
+    /// area), not `last_pane_area` — the band spans the full width the
+    /// engine will actually render into (`EngineView::render`'s bottom-band
+    /// block), same convention `drawer_visible_rows` already relies on for
+    /// its height ceiling.
+    pub(super) fn sync_popup_band_view(&self) {
+        let is_docked = matches!(
+            self.state.popup.as_ref().map(|m| &m.layout),
+            Some(crate::ui::popup::PopupLayout::Docked)
+        );
+        if !is_docked
+            && self
+                .state
+                .popup_band_view
+                .read()
+                .expect("RwLock not poisoned")
+                .is_none()
+        {
+            return;
+        }
+        if !is_docked {
+            *self
+                .state
+                .popup_band_view
+                .write()
+                .expect("RwLock not poisoned") = None;
+            return;
+        }
+
+        let resolved = self.state.popup.as_ref().map(|model| {
+            let area = self.view.last_terminal_area;
+            let max_width = area.width.saturating_sub(2);
+            let (lines, styled_rows) = self.wrap_popup_text(model, max_width);
+            // Mirrors `PopupBandWidget::height`'s own `(lines + 2).min(max)`
+            // formula, so the scroll clamp always agrees with what the
+            // engine will next paint (same pattern as `drawer_visible_rows`).
+            let max_rows = area.height / 2;
+            let capacity = (lines.len() as u16 + 2).min(max_rows);
+            let inner_h = capacity.saturating_sub(2) as usize;
+            let scroll = model.scroll.min(lines.len().saturating_sub(inner_h));
+            crate::ui::popup::PopupBandState {
+                lines,
+                scroll,
+                styled_rows,
+                border: self.state.settings.popup_border,
+            }
+        });
+
+        *self
+            .state
+            .popup_band_view
+            .write()
+            .expect("RwLock not poisoned") = resolved;
     }
 
     /// Write the current menu content into the shared `PopupState` Arc so

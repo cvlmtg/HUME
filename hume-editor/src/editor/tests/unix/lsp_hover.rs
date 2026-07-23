@@ -237,12 +237,12 @@ fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
 }
 
 #[test]
-fn tall_content_falls_back_to_the_drawer() {
+fn tall_content_docks_instead_of_using_the_drawer() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     // The fixture file is ~30 lines against the default 24-row pane height,
-    // so the popup/drawer threshold (⅓ of visible lines) lands around 8 —
-    // 20 lines must overflow to the drawer regardless of the exact figure.
+    // so the popup threshold (⅓ of visible lines) lands around 8 — 20 lines
+    // must overflow to the docked layout regardless of the exact figure.
     let tall = (0..20)
         .map(|i| format!("line{i}"))
         .collect::<Vec<_>>()
@@ -262,11 +262,27 @@ fn tall_content_falls_back_to_the_drawer() {
 
     assert!(
         popup_lines(&ed).is_none(),
-        "tall content must not use the popup"
+        "tall content must not use the cursor-anchored popup layout"
     );
     assert!(
-        ed.state.drawer.is_some(),
-        "tall content must fall back to the drawer"
+        matches!(
+            ed.state.popup.as_ref().map(|p| &p.layout),
+            Some(crate::ui::popup::PopupLayout::Docked)
+        ),
+        "tall content must still be a popup — just docked, never the drawer"
+    );
+    assert!(
+        ed.state
+            .popup_band_view
+            .read()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|s| !s.lines.is_empty()),
+        "the docked band's view must resolve after a frame"
+    );
+    assert!(
+        ed.state.drawer.is_none(),
+        "hover overflow must never open the pick-list drawer"
     );
 }
 

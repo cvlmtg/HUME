@@ -87,13 +87,13 @@ fn show_popup_replaces_not_stacks() {
 }
 
 #[test]
-fn show_popup_rejects_a_non_cursor_anchor() {
+fn show_popup_rejects_an_unknown_anchor() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda () (show-popup! "hi" #:anchor 'bottom)))"#,
+        r#"(define-command! "go" "" (lambda () (show-popup! "hi" #:anchor 'top)))"#,
     );
     type_cmd(&mut ed, ":go");
     let msg = ed.state.status_msg.clone().unwrap_or_default();
@@ -101,6 +101,166 @@ fn show_popup_rejects_a_non_cursor_anchor() {
         msg.to_lowercase().contains("anchor") || msg.to_lowercase().contains("error"),
         "expected an error about the unsupported anchor, got {msg:?}"
     );
+}
+
+// ── Docked layout (`#:anchor 'bottom`) ──────────────────────────────────────
+
+fn popup_band_lines(ed: &Editor) -> Option<Vec<String>> {
+    ed.state
+        .popup_band_view
+        .read()
+        .unwrap()
+        .as_ref()
+        .map(|s| s.lines.clone())
+}
+
+#[test]
+fn docked_popup_resolves_into_the_band_view_not_the_cursor_overlay() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda () (show-popup! "hello" #:anchor 'bottom)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(80, 25, &mut ctx);
+
+    assert_eq!(popup_band_lines(&ed), Some(vec!["hello".to_string()]));
+    assert!(
+        popup_view(&ed).is_none(),
+        "a docked popup must not populate the cursor-anchored overlay view"
+    );
+}
+
+#[test]
+fn close_popup_clears_the_band_view_too() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda () (show-popup! "hello" #:anchor 'bottom)))
+           (define-command! "gone" "" (lambda () (close-popup!)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(80, 25, &mut ctx);
+    assert!(popup_band_lines(&ed).is_some(), "sanity: showing");
+
+    type_cmd(&mut ed, ":gone");
+    ed.prepare_frame(80, 25, &mut ctx);
+    assert!(
+        popup_band_lines(&ed).is_none(),
+        "must be cleared after close-popup!"
+    );
+}
+
+#[test]
+fn ctrl_d_and_ctrl_u_scroll_a_docked_popup_without_touching_the_buffer() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    let tall = (0..30)
+        .map(|i| format!("line{i}"))
+        .collect::<Vec<_>>()
+        .join("\\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-command! "go" "" (lambda () (show-popup! "{tall}" #:scroll #t #:anchor 'bottom)))"#
+        ),
+    );
+    type_cmd(&mut ed, ":go");
+    // A 10-row terminal caps the band at height/2 = 5 rows (3 content rows
+    // after the 2-cell frame) — well under the 30 lines, so scrolling has
+    // somewhere to go.
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(80, 10, &mut ctx);
+
+    let before = state(&ed);
+    assert_eq!(ed.state.popup.as_ref().expect("shown").scroll, 0);
+
+    ed.feed_key(key_ctrl('d'));
+    ed.prepare_frame(80, 10, &mut ctx);
+    let scroll_after_down = ed
+        .state
+        .popup
+        .as_ref()
+        .expect("Ctrl+d must not close it")
+        .scroll;
+    assert!(
+        scroll_after_down > 0,
+        "Ctrl+d must scroll a docked popup's content forward"
+    );
+    assert_eq!(
+        state(&ed),
+        before,
+        "Ctrl+d must scroll the popup, not the buffer"
+    );
+
+    ed.feed_key(key_ctrl('u'));
+    ed.prepare_frame(80, 10, &mut ctx);
+    let scroll_after_up = ed
+        .state
+        .popup
+        .as_ref()
+        .expect("Ctrl+u must not close it")
+        .scroll;
+    assert!(
+        scroll_after_up < scroll_after_down,
+        "Ctrl+u must scroll a docked popup's content back"
+    );
+}
+
+#[test]
+fn any_other_key_closes_a_docked_popup_and_still_dispatches() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda () (show-popup! "hello" #:scroll #t #:anchor 'bottom)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(80, 25, &mut ctx);
+    assert!(popup_band_lines(&ed).is_some(), "sanity: showing");
+    let head_before = ed.current_selections().primary().head();
+
+    ed.feed_key(key('l'));
+    assert!(
+        ed.state.popup.is_none(),
+        "any non-scroll key must close a docked popup"
+    );
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        head_before + 1,
+        "the closing key ('l') must still execute its normal motion"
+    );
+}
+
+#[test]
+fn docked_popup_renders_as_a_band_above_the_statusline_and_shrinks_the_pane() {
+    // Appearance + layout lock: the docked popup must actually reserve
+    // chrome space (pane shrinks), not float over content like the cursor
+    // layout.
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda () (show-popup! "docked hover text" #:anchor 'bottom)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    use ratatui::layout::Rect;
+    let rect = Rect::new(0, 0, 40, 10);
+    let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
+    insta::assert_snapshot!(snap);
 }
 
 // ── Geometry: wrap width / flip / clamp against a real pane ─────────────────

@@ -314,8 +314,14 @@ pub(crate) struct EditorState {
     /// `PopupState` each frame by `Editor::sync_popup_view` (geometry needs
     /// the focused pane's *current* rect, so it can't be pre-computed here).
     pub(super) popup: Option<crate::ui::popup::PopupModel>,
-    /// Shared popup-overlay view: written by `prepare_frame`, read by `PopupOverlay`.
+    /// Shared popup-overlay view for `PopupLayout::Cursor`: written by
+    /// `prepare_frame`, read by `PopupOverlay`. Empty whenever `popup` is
+    /// `None` or docked (see `popup_band_view`).
     pub(crate) popup_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
+    /// Shared popup-band view for `PopupLayout::Docked`: written by
+    /// `prepare_frame`, read by `PopupBandWidget` (chrome, like the
+    /// drawer). Empty whenever `popup` is `None` or cursor-anchored.
+    pub(crate) popup_band_view: Arc<RwLock<Option<crate::ui::popup::PopupBandState>>>,
     /// `(show-menu! items on-select)`'s raw content, including the
     /// not-yet-fired Steel callback — cleared by the key intercept in
     /// `handle_key`, not by `sync_menu_view`.
@@ -378,7 +384,6 @@ impl EditorState {
                 rows: d.items.clone(),
                 selected: d.selected,
                 scroll: d.scroll,
-                syntax: d.syntax.clone(),
             });
         *self.drawer_view.write().expect("RwLock not poisoned") = resolved;
     }

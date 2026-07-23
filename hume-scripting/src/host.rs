@@ -498,25 +498,28 @@ pub trait UiHost {
     ) -> Result<(), String>;
 
     /// `(show-popup! text #:anchor 'cursor #:dismiss-on-key #f #:scroll #f
-    /// #:lang #f)` — shows `text` in a floating panel anchored near the
-    /// focused pane's cursor. Geometry (wrap width, flip/clamp position) is
-    /// resolved fresh every frame by the host, not here — this just stores
-    /// the raw content. Replaces any popup already showing (no stacking).
+    /// #:lang #f)` — shows `text` in a popup panel. Geometry (wrap width,
+    /// flip/clamp position, or the docked band's size) is resolved fresh
+    /// every frame by the host, not here — this just stores the raw
+    /// content. Replaces any popup already showing (no stacking).
     ///
     /// `dismiss_on_key`: when true, the popup is cleared by the *next* key
     /// press (any key), rather than only by `close-popup!`/`on-mode-change`.
     /// `scrollable`: when true, Ctrl+u/Ctrl+d scroll the popup's content
     /// instead of the buffer, and every *other* key closes the popup
     /// (mutually exclusive with `dismiss_on_key` — the host rejects both
-    /// set). `lang`: when `Some(name)` and a grammar named `name` is
-    /// registered, `text` is syntax-highlighted like a real buffer;
-    /// otherwise (no grammar by that name, or `None`) it renders as plain
-    /// text.
+    /// set). `docked`: `#:anchor 'bottom` — renders as a full-width chrome
+    /// band directly above the statusline (reserving pane space, like the
+    /// drawer) instead of floating near the cursor. `lang`: when
+    /// `Some(name)` and a grammar named `name` is registered, `text` is
+    /// syntax-highlighted like a real buffer; otherwise (no grammar by that
+    /// name, or `None`) it renders as plain text.
     fn show_popup(
         &mut self,
         text: String,
         dismiss_on_key: bool,
         scrollable: bool,
+        docked: bool,
         lang: Option<String>,
     ) -> Result<(), String>;
 
@@ -543,23 +546,18 @@ pub trait UiHost {
     /// which do call back with `#f`).
     fn close_menu(&mut self) -> Result<(), String>;
 
-    /// `(show-drawer-list! items on-select #:lang #f)` — opens a scrolling
-    /// list in the bottom chrome band. `items` are pre-formatted display
-    /// strings; the drawer never interprets their content — the jump (if
-    /// any) is the caller's job, typically `(goto-location! ...)` inside
-    /// `on-select`. `on-select` receives the chosen index and, unlike the
-    /// popup/menu's one-shot callback, may fire more than once: the drawer
-    /// stays open across `Enter` (Helix-style browse) until `Esc` or
-    /// `close-drawer!`. Replaces any drawer already open (no stacking).
-    ///
-    /// `lang`: same contract as `show_popup`'s — `Some(name)` highlights
-    /// each row through the named grammar when it's registered; `None` (or
-    /// no such grammar) renders rows as plain text.
+    /// `(show-drawer-list! items on-select)` — opens a scrolling pick-list
+    /// in the bottom chrome band. `items` are pre-formatted display strings;
+    /// the drawer never interprets their content — the jump (if any) is the
+    /// caller's job, typically `(goto-location! ...)` inside `on-select`.
+    /// `on-select` receives the chosen index and, unlike the popup/menu's
+    /// one-shot callback, may fire more than once: the drawer stays open
+    /// across `Enter` (Helix-style browse) until `Esc` or `close-drawer!`.
+    /// Replaces any drawer already open (no stacking).
     fn show_drawer_list(
         &mut self,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
-        lang: Option<String>,
     ) -> Result<(), String>;
 
     /// `(close-drawer!)` — dismisses the drawer *without* invoking its

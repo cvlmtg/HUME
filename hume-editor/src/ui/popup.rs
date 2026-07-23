@@ -30,7 +30,7 @@ use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 
-use hume_engine::providers::{OverlayProvider, SyntaxSpans};
+use hume_engine::providers::{BottomBandProvider, OverlayProvider, SyntaxSpans};
 use hume_engine::theme::Theme;
 use hume_engine::types::Scope;
 
@@ -136,20 +136,37 @@ impl MarkupSyntax {
     }
 }
 
+/// Where a popup renders — same widget, same model, two placements.
+/// `show-popup!`'s `#:anchor` kwarg selects between them.
+pub(crate) enum PopupLayout {
+    /// Floating, anchored near the focused pane's cursor (`#:anchor
+    /// 'cursor`, the default) — painted by [`PopupOverlay`].
+    Cursor,
+    /// Docked as a full-width chrome band directly above the statusline,
+    /// reserving pane space like the drawer (`#:anchor 'bottom`) — painted
+    /// by [`PopupBandWidget`]. Used for hover content too tall for the
+    /// cursor layout; keeps popup semantics (plain scroll, no selection,
+    /// close-on-any-other-key) rather than becoming a pick-list.
+    Docked,
+}
+
 /// `(show-popup! text)`'s raw, unwrapped content — held on `EditorState`
-/// until the next frame's `sync_popup_view` resolves it into a positioned
-/// [`PopupState`].
+/// until the next frame's `sync_popup_view`/`sync_popup_band_view` (per
+/// `layout`) resolves it into a positioned [`PopupState`] or a
+/// [`PopupBandState`].
 pub(crate) struct PopupModel {
     pub(crate) text: String,
     pub(crate) dismiss: PopupDismiss,
     /// First visible wrapped row, for an `OnKeyExceptScroll` popup. Clamped
     /// in `Editor::scroll_popup`; re-clamped defensively in
-    /// `Editor::sync_popup_view` against the frame's resolved content height.
+    /// `Editor::sync_popup_view`/`sync_popup_band_view` against the frame's
+    /// resolved content height.
     pub(crate) scroll: usize,
     /// `#:lang` — rebuilt fresh on every `show-popup!`, dropped with the
     /// popup on close. No separate invalidation path: the popup's lifetime
     /// IS the syntax's (SSOT).
     pub(crate) syntax: Option<MarkupSyntax>,
+    pub(crate) layout: PopupLayout,
 }
 
 /// `(show-menu! items on-select)`'s raw content — held on `EditorState`
@@ -249,6 +266,62 @@ impl OverlayProvider for PopupOverlay {
             state.border,
             style,
             selected_style,
+            state.styled_rows.as_deref(),
+        );
+    }
+}
+
+/// Fully-resolved content for a **docked** popup (`PopupLayout::Docked`) —
+/// the [`PopupBandWidget`] counterpart of [`PopupState`]. No position/size
+/// is stored here: unlike the floating popup, a bottom band's geometry is
+/// resolved by the engine at render time from `height(max)` and the chrome
+/// area (the same contract the drawer already follows), not pre-computed by
+/// the write side.
+pub(crate) struct PopupBandState {
+    /// Word-wrapped to the band's width (the write side, `Editor::
+    /// sync_popup_band_view`, wraps against `last_terminal_area` — the same
+    /// raw area the engine will render the band into).
+    pub(crate) lines: Vec<String>,
+    pub(crate) scroll: usize,
+    pub(crate) border: bool,
+    pub(crate) styled_rows: Option<Vec<StyledRow>>,
+}
+
+/// Engine-facing bottom-band provider for a docked popup — mirrors
+/// `ui::drawer::DrawerWidget`'s shape (chrome, not per-pane), but paints
+/// through [`draw_menu_box`] so a docked hover keeps the popup's framed,
+/// `ui.popup`-scoped look rather than the drawer's plain list rows.
+pub(crate) struct PopupBandWidget {
+    pub(crate) data: Arc<RwLock<Option<PopupBandState>>>,
+}
+
+impl BottomBandProvider for PopupBandWidget {
+    fn height(&self, max: u16) -> u16 {
+        let guard = self.data.read().expect("RwLock not poisoned");
+        // +2 for the frame's top/bottom cells — always reserved, even with
+        // `popup-border` off (a plain background margin still takes the row,
+        // see `draw_menu_box`'s doc on `border`).
+        guard
+            .as_ref()
+            .map_or(0, |s| (s.lines.len() as u16 + 2).min(max))
+    }
+
+    fn render(&self, area: Rect, theme: &Theme, buf: &mut ScreenBuf) {
+        if area.height == 0 {
+            return;
+        }
+        let guard = self.data.read().expect("RwLock not poisoned");
+        let Some(state) = guard.as_ref() else { return };
+        let style = theme.resolve_by_name(Scope("ui.popup")).into();
+        draw_menu_box(
+            buf,
+            area,
+            &state.lines,
+            None,
+            state.scroll,
+            state.border,
+            style,
+            style,
             state.styled_rows.as_deref(),
         );
     }

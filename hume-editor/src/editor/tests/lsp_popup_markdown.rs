@@ -51,6 +51,17 @@ fn styled_rows(ed: &Editor) -> Option<Vec<crate::ui::popup::StyledRow>> {
         .and_then(|s| s.styled_rows.clone())
 }
 
+/// The docked (`#:anchor 'bottom`) counterpart of [`styled_rows`] — reads
+/// `popup_band_view`, not `popup_view` (empty for a docked popup).
+fn band_styled_rows(ed: &Editor) -> Option<Vec<crate::ui::popup::StyledRow>> {
+    ed.state
+        .popup_band_view
+        .read()
+        .unwrap()
+        .as_ref()
+        .and_then(|s| s.styled_rows.clone())
+}
+
 #[test]
 fn markdown_popup_highlights_when_the_grammar_is_registered() {
     if skip_unless_grammars(&["markdown"]) {
@@ -124,6 +135,81 @@ fn markdown_popup_paints_per_run_styles() {
 
     use ratatui::layout::Rect;
     let rect = Rect::new(0, 0, 30, 10);
+    let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
+    insta::assert_snapshot!(snap);
+}
+
+#[test]
+fn docked_popup_highlights_when_the_grammar_is_registered() {
+    // Same syntax-build path as the cursor popup (`#:lang` is layout-
+    // independent) but resolved into `popup_band_view`, not `popup_view` —
+    // the docked layout hover overflow actually uses (`#:anchor 'bottom`).
+    if skip_unless_grammars(&["markdown"]) {
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    register_markdown(&mut ed);
+    run(
+        &mut ed,
+        tmp.path(),
+        r##"(define-command! "go" "" (lambda ()
+             (show-popup! "# heading" #:lang "markdown" #:anchor 'bottom)))"##,
+    );
+    type_cmd(&mut ed, ":go");
+
+    assert!(
+        ed.state.popup.as_ref().unwrap().syntax.is_some(),
+        "a registered markdown grammar must attach synchronous syntax to a docked popup"
+    );
+
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(80, 25, &mut ctx);
+
+    let rows = band_styled_rows(&ed).expect("docked markdown popup must resolve styled rows");
+    assert_eq!(rows.len(), 1, "single-line content wraps to one row");
+    let runs = &rows[0];
+    assert!(
+        runs.len() > 1,
+        "a heading line highlighted by a real grammar must not come back as \
+         a single run, got {runs:?}"
+    );
+    let flattened: String = runs.iter().map(|(s, _)| s.as_str()).collect();
+    assert_eq!(flattened, "# heading");
+}
+
+#[test]
+fn docked_popup_survives_a_multiline_capture_node() {
+    // Regression for the `z k` panic: `(fenced_code_block) @text.literal`
+    // captures the whole block (opening fence through closing fence), not
+    // just its own line — `collect_line_spans` used to emit that node's
+    // absolute end byte relative to *this* line's start with no clamp, so
+    // on the (short) opening-fence line the span end ran past the line's
+    // own length and `MarkupSyntax::styled_row`'s `&line[start..end]` slice
+    // panicked. Single-line grammars never produced an over-long span, so
+    // this only ever surfaced through markdown. `styled_row` is shared by
+    // every caller (cursor popup, docked popup, drawer alike) — exercised
+    // here through the docked layout, hover's actual long-content path.
+    if skip_unless_grammars(&["markdown"]) {
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    register_markdown(&mut ed);
+    run(
+        &mut ed,
+        tmp.path(),
+        r##"(define-command! "go" "" (lambda ()
+             (show-popup! "```rust\nfn foo() -> i32\n```\ndoc text" #:lang "markdown" #:anchor 'bottom)))"##,
+    );
+    type_cmd(&mut ed, ":go");
+
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(40, 10, &mut ctx);
+
+    use ratatui::layout::Rect;
+    let rect = Rect::new(0, 0, 40, 10);
     let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
     insta::assert_snapshot!(snap);
 }

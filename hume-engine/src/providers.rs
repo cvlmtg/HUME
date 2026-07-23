@@ -321,12 +321,19 @@ pub trait TabBarProvider {
     );
 }
 
-/// Renders the bottom drawer band, directly above the statusline row.
-/// The engine reserves `height(max)` rows above the statusline when present
-/// — panes shrink exactly like a terminal resize, with no separate
-/// mechanism (`EngineView::pane_area` folds it into the same chrome-height
-/// arithmetic as the tab bar and statusline).
-pub trait DrawerProvider {
+/// Renders a bottom chrome band, directly above the statusline row (or
+/// stacked above a sibling band that already claimed that row — see
+/// `EngineView::render`). The engine reserves `height(max)` rows per band
+/// when present — panes shrink exactly like a terminal resize, with no
+/// separate mechanism (`EngineView::pane_area` folds every band into the
+/// same chrome-height arithmetic as the tab bar and statusline).
+///
+/// Two independent callers implement this: the pick-list drawer
+/// (`show-drawer-list!`) and the docked hover popup (`show-popup! #:anchor
+/// 'bottom`) — only one is ever non-empty at a time in practice, so
+/// `EngineView` carries both as a flat list rather than special-casing
+/// mutual exclusion.
+pub trait BottomBandProvider {
     /// Rows to reserve this frame, given `max` (the caller's ceiling — half
     /// the terminal height). Content-driven (e.g. `min(rows + 1, max)`), not
     /// a fixed constant, so a short list doesn't reserve a half-screen band.

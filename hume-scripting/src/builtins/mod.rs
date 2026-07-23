@@ -185,17 +185,21 @@ macro_rules! builtins {
 // signal-killed child. Same contract as plum/run!, so call sites need no
 // manual exit-code checks.
 //
-// show-popup! — cursor-anchored floating text panel. #:anchor is reserved;
-// 'cursor is the only v1 value. #:dismiss-on-key: the popup is cleared by
-// the Editor::handle_key top-of-loop check on the *next* key press, whatever
-// key it is (see `gn`/`gp`'s diagnostic overlay) — default #f keeps the
-// existing on-mode-change-only dismissal (hover, signature help). #:scroll:
-// Ctrl+u/Ctrl+d scroll the popup's content instead of the buffer, and every
-// other key closes it — mutually exclusive with #:dismiss-on-key. #:lang:
-// syntax-highlight the content like a real buffer when a grammar named
-// #:lang is registered; plain text otherwise (default #f is always plain).
-// show-drawer-list! takes the same #:lang, one grammar name shared by both
-// widgets — never a per-language boolean flag.
+// show-popup! — text panel, floating or docked. #:anchor: 'cursor (default)
+// floats near the focused pane's cursor; 'bottom docks as a full-width band
+// above the statusline, reserving pane space like the drawer (used for
+// hover content too tall for the cursor layout). #:dismiss-on-key: the popup
+// is cleared by the Editor::handle_key top-of-loop check on the *next* key
+// press, whatever key it is (see `gn`/`gp`'s diagnostic overlay) — default
+// #f keeps the existing on-mode-change-only dismissal (hover, signature
+// help). #:scroll: Ctrl+u/Ctrl+d scroll the popup's content instead of the
+// buffer, and every other key closes it — mutually exclusive with
+// #:dismiss-on-key. #:lang: syntax-highlight the content like a real buffer
+// when a grammar named #:lang is registered; plain text otherwise (default
+// #f is always plain).
+//
+// show-drawer-list! — pick-list only, no #:lang: rows are plain display
+// strings, never syntax-highlighted (that's the popup's job).
 //
 // picker! — fuzzy-finder panel (docs/FUZZY-FINDERS.md). items: list of
 // (display . payload) dotted pairs; payload is opaque, handed back to
@@ -450,7 +454,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "close-menu!" ui::close_menu();
 
         // Class B bottom drawer.
-        cmd "%show-drawer-list!" ui::show_drawer_list(items: SteelVal, on_select: SteelVal, lang: SteelVal);
+        cmd "show-drawer-list!" ui::show_drawer_list(items: SteelVal, on_select: SteelVal);
         cmd "close-drawer!" ui::close_drawer();
 
         // Fuzzy-picker widget (docs/FUZZY-FINDERS.md B4).

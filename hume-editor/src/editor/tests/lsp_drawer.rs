@@ -51,7 +51,6 @@ fn close_drawer_drops_the_callback_without_invoking_it() {
     host.show_drawer_list(
         vec!["a".to_string(), "b".to_string()],
         steel::rvals::SteelVal::Void,
-        None,
     )
     .unwrap();
     assert!(ed.state.drawer.is_some());

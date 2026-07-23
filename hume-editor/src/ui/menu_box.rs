@@ -156,11 +156,9 @@ pub(crate) fn draw_menu_box(
 }
 
 /// Paint one pre-resolved styled row's runs left-to-right starting at
-/// `(x, y)` — shared by [`draw_menu_box`]'s styled-row branch and the
-/// drawer (`ui::drawer::DrawerWidget::render`), so painting per-span runs
-/// onto the screen buffer has one implementation regardless of which widget
-/// resolved them.
-pub(crate) fn paint_styled_row(buf: &mut ScreenBuf, x: u16, y: u16, runs: &StyledRow) {
+/// `(x, y)` — [`draw_menu_box`]'s styled-row branch, factored out for
+/// readability.
+fn paint_styled_row(buf: &mut ScreenBuf, x: u16, y: u16, runs: &StyledRow) {
     let mut cx = x;
     for (run_text, run_style) in runs {
         buf.set_string(cx, y, run_text, *run_style);

@@ -239,22 +239,44 @@ impl Editor {
 
     /// Scrolls an `OnKeyExceptScroll` popup half its visible content height,
     /// in the direction given by `down`. Reads the visible height and total
-    /// row count from the *already-resolved* `popup_view` — this same
-    /// frame's paint — rather than recomputing geometry, so the scroll step
-    /// always matches what's on screen. `popup_view` is re-synced every
-    /// frame regardless (`Editor::sync_popup_view`), so no explicit sync is
-    /// needed here. Before the first frame `popup_view` is empty — a
-    /// documented no-op, same as `handle_picker_key`'s geometry.
+    /// row count from the *already-resolved* view for the popup's current
+    /// layout — this same frame's paint — rather than recomputing geometry,
+    /// so the scroll step always matches what's on screen. Both views are
+    /// re-synced every frame regardless (`Editor::sync_popup_view`/
+    /// `sync_popup_band_view`), so no explicit sync is needed here. Before
+    /// the first frame both are empty — a documented no-op, same as
+    /// `handle_picker_key`'s geometry.
     fn scroll_popup(&mut self, down: bool) {
-        let Some((inner_h, total)) = self
-            .state
-            .popup_view
-            .read()
-            .expect("RwLock not poisoned")
-            .as_ref()
-            .map(|s| (s.outer_h.saturating_sub(2) as usize, s.lines.len()))
-        else {
+        let Some(layout) = self.state.popup.as_ref().map(|p| &p.layout) else {
             return;
+        };
+        let (inner_h, total) = match layout {
+            crate::ui::popup::PopupLayout::Cursor => {
+                let Some(pair) = self
+                    .state
+                    .popup_view
+                    .read()
+                    .expect("RwLock not poisoned")
+                    .as_ref()
+                    .map(|s| (s.outer_h.saturating_sub(2) as usize, s.lines.len()))
+                else {
+                    return;
+                };
+                pair
+            }
+            crate::ui::popup::PopupLayout::Docked => {
+                let Some(total) = self
+                    .state
+                    .popup_band_view
+                    .read()
+                    .expect("RwLock not poisoned")
+                    .as_ref()
+                    .map(|s| s.lines.len())
+                else {
+                    return;
+                };
+                (self.popup_band_visible_rows(total), total)
+            }
         };
         let Some(popup) = self.state.popup.as_mut() else {
             return;
@@ -266,6 +288,17 @@ impl Editor {
         } else {
             popup.scroll.saturating_sub(half)
         };
+    }
+
+    /// Number of docked-popup rows visible at once, given `total` wrapped
+    /// lines — the same capacity `PopupBandWidget::height` will paint
+    /// against next frame (`(total + 2).min(max)`, `max` = half the
+    /// last-rendered *terminal* height). Mirrors `drawer_visible_rows`'s
+    /// contract for the drawer's own band.
+    fn popup_band_visible_rows(&self, total: usize) -> usize {
+        let max = self.view.last_terminal_area.height / 2;
+        let capacity = (total as u16 + 2).min(max);
+        capacity.saturating_sub(2) as usize
     }
 
     /// Number of drawer rows visible at once — the same capacity

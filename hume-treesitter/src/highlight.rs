@@ -151,8 +151,17 @@ impl TreeSitterHighlighter {
             let node = cap.node;
             let abs_start = node.start_byte();
             let abs_end = node.end_byte();
+            // A capture node can span multiple lines (markdown fenced blocks,
+            // paragraphs); `set_byte_range` only filters which nodes match, it
+            // does not clip a matched node's end to the queried line. Clamp to
+            // this line's content (newline excluded) so consumers that slice
+            // their own copy of the line by these offsets — the hover popup,
+            // via `MarkupSyntax::styled_row` — never index past its end.
+            let content_len = (line_end - line_start).saturating_sub(usize::from(
+                line_end > line_start && rope.byte(line_end - 1) == b'\n',
+            ));
             let rel_start = abs_start.saturating_sub(line_start);
-            let rel_end = abs_end.saturating_sub(line_start);
+            let rel_end = abs_end.saturating_sub(line_start).min(content_len);
             if rel_start < rel_end {
                 raw.push((rel_start, rel_end, scope, depth));
             }
