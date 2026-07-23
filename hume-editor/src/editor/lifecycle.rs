@@ -254,6 +254,7 @@ impl Editor {
                 drawer_view,
                 picker: None,
                 picker_view,
+                wake: Arc::clone(&wake),
             },
             view: engine_view,
             kitty_enabled: false,

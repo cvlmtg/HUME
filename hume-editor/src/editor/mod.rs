@@ -339,6 +339,13 @@ pub(crate) struct EditorState {
     /// (geometry depends on the current panes region, like popup/menu, not
     /// on-change like the drawer), read by `PickerOverlay`.
     pub(crate) picker_view: Arc<RwLock<Option<crate::ui::picker_panel::PickerViewState>>>,
+    /// Cross-thread waker clone (see `Editor::open`'s `wake` param), reachable
+    /// here so `EditorHostImpl` — which only ever holds a disjoint `&mut
+    /// EditorState` borrow, never a whole `&mut Editor` — can hand it to a
+    /// spawned picker source (`docs/FUZZY-FINDERS.md` B5) so its reader
+    /// thread can wake the event loop. A no-op `Arc` in tests/headless.
+    #[allow(dead_code)] // first reader lands with B5's picker-source-spawn! host impl
+    pub(super) wake: Arc<dyn Fn() + Send + Sync>,
 }
 
 impl EditorState {
