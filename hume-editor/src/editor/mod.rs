@@ -334,7 +334,6 @@ pub(crate) struct EditorState {
     /// The open picker session (`docs/FUZZY-FINDERS.md` B2 store) — driven
     /// by the key intercept in `handle_key`; opened via `Editor::open_picker`
     /// (tests today, B4's `picker!` builtin later).
-    #[allow(dead_code)] // production caller (open_picker/handle_picker_key) arrives with B3 steps 4/5
     pub(super) picker: Option<crate::editor::picker::PickerSession>,
     /// Shared picker-overlay view: written per-frame by `sync_picker_view`
     /// (geometry depends on the current panes region, like popup/menu, not

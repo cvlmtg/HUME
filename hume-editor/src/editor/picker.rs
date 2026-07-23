@@ -3,9 +3,17 @@
 //! `docs/FUZZY-FINDERS.md`'s "Why not one shared session type" note. Mirrors
 //! completion's `rank_scratch` reuse and reset-on-rerank patterns.
 //!
-//! Not yet wired onto `EditorState` — the picker widget/builtins (B3/B4) add
-//! the `Option<PickerSession>` field and drive this store.
-#![allow(dead_code)] // consumed by the picker widget/builtins (B3/B4) — remove this allow there
+//! Wired onto `EditorState.picker`; opened through `Editor::open_picker`
+//! below (tests today, B4's `picker!` builtin later) and driven per-frame by
+//! `Editor::sync_picker_view` and per-key by `Editor::handle_picker_key`
+//! (`editor/mappings/mod.rs`).
+//!
+//! `handle_picker_key` (B3 step 5) is the production caller for most of the
+//! query/selection mutators below; until it lands, they're reachable only
+//! from tests. `#![allow(dead_code)]` covers that transient gap — removed
+//! once step 5 is in, leaving only narrow allows on the items whose
+//! production caller is `picker!`/`picker-push!` (B4), out of B3's scope.
+#![allow(dead_code)]
 
 use std::cmp::Reverse;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -218,6 +226,25 @@ impl PickerSession {
         debug_assert!(self.filtered.len() <= self.items.len());
         self.selected = 0;
         self.scroll = 0;
+    }
+}
+
+impl super::Editor {
+    /// Single open chokepoint for the picker — tests drive it directly
+    /// today, B4's `picker!` builtin calls it once that Steel surface
+    /// exists. Q-B7 (`docs/FUZZY-FINDERS.md`): allowed from any mode, but
+    /// one modal owner at a time, so opening a picker always closes any
+    /// live completion session first. Replacing an already-open picker
+    /// fires *its* `on_select` with `#f` before installing the new one —
+    /// the exactly-once callback contract must never have a window where a
+    /// session can be silently dropped without firing.
+    pub(crate) fn open_picker(&mut self, session: PickerSession) {
+        self.clear_lsp_completion();
+        if let Some(old) = self.state.picker.take() {
+            let callback = old.on_select().clone();
+            self.queue_steel_call(callback, vec![SteelVal::BoolV(false)]);
+        }
+        self.state.picker = Some(session);
     }
 }
 
