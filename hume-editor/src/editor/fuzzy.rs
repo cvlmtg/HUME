@@ -2,9 +2,8 @@
 //! small API so no caller names it directly (mirrors the `ropey`/`termina`
 //! wrapping precedent elsewhere in the editor).
 //!
-//! Not yet consumed outside tests — `PickerSession` (B2, see
-//! `docs/FUZZY-FINDERS.md`) is the first real caller.
-#![allow(dead_code)] // consumed by PickerSession (B2) — remove this allow there
+//! Consumed by `PickerSession` (`editor/picker.rs`, B2, see
+//! `docs/FUZZY-FINDERS.md`).
 
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};

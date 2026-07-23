@@ -45,6 +45,7 @@ mod message_log;
 mod minibuf;
 mod mouse;
 pub(crate) mod pane_state;
+pub(crate) mod picker;
 pub(crate) mod register_ops;
 mod registry;
 mod replay;

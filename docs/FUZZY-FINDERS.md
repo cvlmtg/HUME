@@ -76,23 +76,26 @@ They rhyme (items, query, ranked indices, top-N, accept-by-index) but differ in 
 
 **B1 — fuzzy matcher.** Add `nucleo-matcher` (the matcher-only crate Helix's picker engine is built on: scoring + Unicode handling, no threading harness). Wrap it behind a small module (e.g. `hume-editor/src/editor/fuzzy.rs`) exposing `score(query, haystack) -> Option<(score, …)>` so neither session type names the crate directly. Completion's hand-rolled `subsequence_match_pos` is *not* replaced in this task (Q-B6 tracks later unification). Include a micro-benchmark-ish test at 100k synthetic paths to validate the single-threaded per-keystroke budget — run it in release mode or mark it `#[ignore]`-by-default (wall-clock asserts in debug/CI builds are flaky; the gate is an explicit `--ignored`/release run). If it blows the frame budget, the fallback is documented in Q-B1 (full `nucleo` with background matching).
 
-**B2 — `PickerSession` store.**
+**B2 — `PickerSession` store. DONE** (`hume-editor/src/editor/picker.rs`).
 
-```
-PickerItem { display: String, payload: SteelVal }
-PickerSession {
-    items: Vec<PickerItem>,          // append-only while open
+```rust
+pub(crate) struct PickerItem { display: String, payload: SteelVal }
+pub(crate) struct PickerSession {
+    items: Vec<PickerItem>,        // append-only while open
     query: String,
-    filtered: Vec<u32>,              // ranked indices, rebuilt on query/items change
-    rank_scratch: Vec<u32>,          // reused scoring buffer, no per-keystroke allocation (mirrors completion's rank_scratch)
-    selected: usize,                 // index into filtered (full range, not a window)
-    scroll: usize,                   // first visible row, clamped like DrawerModel
-    on_select: SteelVal,             // fired with payload on Enter
-    token: u64,                      // same stale-push-guard pattern as the session token designed in docs/COMPLETION-PICKER.md's A2 (also design-only)
+    filtered: Vec<u32>,            // ranked indices into items, rebuilt per rerank
+    rank_scratch: Vec<(u32, u32)>, // (score, item idx) — reused, cleared not reallocated
+    matcher: FuzzyMatcher,         // one per session, B1's caller-owned reuse contract
+    selected: usize,               // index into filtered; 0 when filtered is empty
+    scroll: usize,                 // first visible row
+    on_select: SteelVal,           // stored only; B4 fires it via queue_steel_call
+    token: u64,                    // stale-push guard, minted per session from a module-level AtomicU64
 }
 ```
 
-`payload` is an arbitrary `SteelVal` (string path, hashmap, whatever the source chose) — Rust never interprets it, mirroring the drawer's "rows are pre-formatted display strings" contract. Query edits and item pushes re-rank via B1. Empty query = insertion order, i.e. source output order — `git ls-files` emits sorted paths (nice); `fd`'s parallel walk is nondeterministic (acceptable). (nucleo-matcher is expected to treat an empty query as all-match — external-crate claim, verify at impl time.) On any re-rank (query edit, streamed batch arriving, or session replace) `selected` resets to 0 — the top-ranked row — mirroring completion's reset-on-merge choice; anchoring the cursor to the same item across a re-rank is future polish, not v1.
+As-built deviations from the original sketch above: `rank_scratch` is `Vec<(u32, u32)>` (score+index, needed to sort); `matcher: FuzzyMatcher` is a session-owned field (fuzzy.rs mandates one instance per caller); no `prompt` field yet (arrives with B4's `#:prompt`); `new(on_select)` opens empty — items arrive only via `push`, matching B6's "open empty, then attach source" composition; the token is minted by a session-local `AtomicU64` in `new`, not by an `EditorState`-side counter (COMPLETION-PICKER A2's precedent) — a deliberate divergence, approved at implementation time; query editing is store-owned (`insert_char`, `pop_grapheme` — grapheme-cluster-correct backspace via `unicode-segmentation`, not `set_query` alone) rather than deferred entirely to B3, so UTF-8/grapheme safety is guaranteed at the store boundary.
+
+`payload` is an arbitrary `SteelVal` (string path, hashmap, whatever the source chose) — Rust never interprets it, mirroring the drawer's "rows are pre-formatted display strings" contract. Query edits and item pushes re-rank via B1. Empty query = insertion order, i.e. source output order — `git ls-files` emits sorted paths (nice); `fd`'s parallel walk is nondeterministic (acceptable). Implemented as an explicit identity fast path (`filtered = 0..items.len()`) rather than relying on nucleo-matcher's empty-pattern behavior, which also skips scoring entirely on the dominant streaming-ingest case. On any re-rank (query edit, streamed batch arriving, or session replace) both `selected` and `scroll` reset to 0 — the top-ranked row — mirroring completion's reset-on-merge choice; anchoring the cursor to the same item across a re-rank is future polish, not v1.
 
 **B3 — widget + interaction.** New centered overlay (e.g. `ui/picker_panel.rs`): bordered panel sized as a fraction of the *panes region* (the terminal minus chrome bands — see Q-B2) — say width `min(80%, 100 cols)`, height `min(60%, 30 rows)`; input line at top (rendered from `query` + a block cursor cell), ranked list below with `selected` highlighted and real scrolling. Theme scopes `ui.picker`, `ui.picker.selected`, `ui.picker.input`. **Theme fallback caveat**: `Theme::resolve_raw` falls back by prefix-trimming only (`ui.picker.selected` → `ui.picker` → `ui` → default) — it will *never* reach `ui.menu`. Graceful degradation on themes without the new scopes needs the picker's scope lookup to explicitly alias to the matching `ui.menu*` scope when `ui.picker*` is absent, plus `ui.picker*` entries added to the bundled themes (mind the theme `cursor.insert`-required precedent: document the new scopes). Rendering follows the universal write-side/read-side split: `sync_picker_view` in `prepare_frame` writes an `Arc<RwLock<Option<PickerViewState>>>`; a new `OverlayProvider` only paints (per-pane registration suffices — overlays receive the whole panes region, Q-B2).
 
@@ -147,7 +150,7 @@ Steel supplies only cmd + argv (no shell involved — direct `argv` spawn, so no
 | ID | Task | Depends | Size |
 |----|------|---------|------|
 | B1 | ~~`nucleo-matcher` dep + `fuzzy.rs` wrapper + 100k-item budget test~~ **DONE** | — | S |
-| B2 | `PickerSession` store: push/query/rank/select/scroll/token; unit tests with mock items | B1 | M |
+| B2 | ~~`PickerSession` store: push/query/rank/select/scroll/token; unit tests with mock items~~ **DONE** | B1 | M |
 | B3 | Panel widget + view sync + key interception; insta snapshot tests + interaction tests | B2 | M–L (largest single piece — new chrome surface) |
 | B4 | Steel builtins `picker!`/`picker-push!`/`picker-close!` + host trait/impl + callback firing; tests incl. stale-token push | B3 | M |
 | B5 | `picker-source-spawn!` builtin: reader thread, Rust-side line split (partial-line carry test), batch drain into the store, session-owned child (auto kill-on-close), third `AsyncSource` entry (alongside `TimerWheel`, `LspState`) | B2, B4 | M |
