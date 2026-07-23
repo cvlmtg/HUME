@@ -188,6 +188,55 @@ fn error_reports_via_the_message_log() {
 }
 
 #[test]
+fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (mut ed, _guard, _sid) = setup(
+        file_dir.path(),
+        tmp.path(),
+        serde_json::json!({"capabilities": {"hoverProvider": true}}),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/hover",
+                serde_json::json!({"contents": {"kind": "plaintext", "value": "fn main()"}}),
+            );
+        },
+    );
+
+    run_hover(&mut ed);
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(80, 25, &mut ctx);
+    assert!(popup_lines(&ed).is_some(), "sanity: popup shown");
+    assert!(
+        matches!(
+            ed.state.popup.as_ref().map(|p| &p.dismiss),
+            Some(crate::ui::popup::PopupDismiss::KeyExceptScroll)
+        ),
+        "hover must open a scrollable popup (`#:scroll #t`), not the old mode-change-only one"
+    );
+
+    // Ctrl+d/Ctrl+u scroll the popup instead of closing it.
+    ed.feed_key(key_ctrl('d'));
+    assert!(
+        ed.state.popup.is_some(),
+        "Ctrl+d must scroll the hover popup, not close it"
+    );
+    ed.feed_key(key_ctrl('u'));
+    assert!(
+        ed.state.popup.is_some(),
+        "Ctrl+u must scroll the hover popup, not close it"
+    );
+
+    // Any other key (here, cursor movement) dismisses it — the fix for
+    // hover only closing on a mode change.
+    ed.feed_key(key('j'));
+    assert!(
+        ed.state.popup.is_none(),
+        "cursor movement must dismiss the hover popup, not just a mode change"
+    );
+}
+
+#[test]
 fn tall_content_falls_back_to_the_drawer() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();

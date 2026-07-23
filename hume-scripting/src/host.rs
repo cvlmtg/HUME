@@ -497,14 +497,24 @@ pub trait UiHost {
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String>;
 
-    /// `(show-popup! text #:anchor 'cursor #:dismiss-on-key #f)` — shows
-    /// `text` in a floating panel anchored near the focused pane's cursor.
-    /// Geometry (wrap width, flip/clamp position) is resolved fresh every
-    /// frame by the host, not here — this just stores the raw content.
-    /// Replaces any popup already showing (no stacking). `dismiss_on_key`:
-    /// when true, the popup is cleared by the *next* key press (any key),
-    /// rather than only by `close-popup!`/`on-mode-change`.
-    fn show_popup(&mut self, text: String, dismiss_on_key: bool) -> Result<(), String>;
+    /// `(show-popup! text #:anchor 'cursor #:dismiss-on-key #f #:scroll #f)`
+    /// — shows `text` in a floating panel anchored near the focused pane's
+    /// cursor. Geometry (wrap width, flip/clamp position) is resolved fresh
+    /// every frame by the host, not here — this just stores the raw
+    /// content. Replaces any popup already showing (no stacking).
+    ///
+    /// `dismiss_on_key`: when true, the popup is cleared by the *next* key
+    /// press (any key), rather than only by `close-popup!`/`on-mode-change`.
+    /// `scrollable`: when true, Ctrl+u/Ctrl+d scroll the popup's content
+    /// instead of the buffer, and every *other* key closes the popup
+    /// (mutually exclusive with `dismiss_on_key` — the host rejects both
+    /// set).
+    fn show_popup(
+        &mut self,
+        text: String,
+        dismiss_on_key: bool,
+        scrollable: bool,
+    ) -> Result<(), String>;
 
     /// `(close-popup!)` — dismisses the popup. Idempotent: closing when none
     /// is showing is not an error (only an unsupported *host* errors).

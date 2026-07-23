@@ -205,7 +205,7 @@ fn goto_next_diagnostic_opens_a_dismiss_on_key_popup_with_the_full_message() {
          (unlike the inline summary and the :diagnostics drawer row)"
     );
     assert!(
-        popup.dismiss_on_key,
+        matches!(popup.dismiss, crate::ui::popup::PopupDismiss::AnyKey),
         "the gn/gp overlay must be dismiss-on-next-key, unlike hover"
     );
 }

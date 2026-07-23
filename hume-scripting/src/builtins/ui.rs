@@ -18,14 +18,16 @@ use super::errors::{generic_err, require_cap};
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
-/// `(%show-popup! text anchor dismiss-on-key)` — the `show-popup!` Scheme
-/// wrapper supplies `#:anchor`/`#:dismiss-on-key`'s defaults. `'cursor` is
-/// the only anchor accepted in v1.
+/// `(%show-popup! text anchor dismiss-on-key scrollable)` — the
+/// `show-popup!` Scheme wrapper supplies
+/// `#:anchor`/`#:dismiss-on-key`/`#:scroll`'s defaults. `'cursor` is the
+/// only anchor accepted in v1.
 pub(crate) fn show_popup(
     ctx: &mut SteelCtx,
     text: SteelVal,
     anchor: SteelVal,
     dismiss_on_key: SteelVal,
+    scrollable: SteelVal,
 ) -> SteelResult {
     let text = string_arg(text, "show-popup! text")?;
     let anchor = string_arg(anchor, "show-popup! #:anchor")?;
@@ -33,8 +35,12 @@ pub(crate) fn show_popup(
         steel::stop!(Generic => "show-popup!: #:anchor must be 'cursor, got '{}'", anchor);
     }
     let dismiss_on_key = bool_arg(dismiss_on_key, "show-popup! #:dismiss-on-key")?;
+    let scrollable = bool_arg(scrollable, "show-popup! #:scroll")?;
+    if dismiss_on_key && scrollable {
+        steel::stop!(Generic => "show-popup!: #:dismiss-on-key and #:scroll are mutually exclusive");
+    }
     require_cap(ctx.host.ui(), "show-popup!")?
-        .show_popup(text, dismiss_on_key)
+        .show_popup(text, dismiss_on_key, scrollable)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
 }

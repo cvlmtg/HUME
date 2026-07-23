@@ -931,10 +931,23 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     }
 
     // ── Cursor-anchored popup ────────────────────────────────────────────
-    fn show_popup(&mut self, text: String, dismiss_on_key: bool) -> Result<(), String> {
+    fn show_popup(
+        &mut self,
+        text: String,
+        dismiss_on_key: bool,
+        scrollable: bool,
+    ) -> Result<(), String> {
+        let dismiss = if scrollable {
+            crate::ui::popup::PopupDismiss::KeyExceptScroll
+        } else if dismiss_on_key {
+            crate::ui::popup::PopupDismiss::AnyKey
+        } else {
+            crate::ui::popup::PopupDismiss::ModeChange
+        };
         self.state.popup = Some(crate::ui::popup::PopupModel {
             text,
-            dismiss_on_key,
+            dismiss,
+            scroll: 0,
         });
         Ok(())
     }

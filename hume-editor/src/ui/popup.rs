@@ -38,16 +38,32 @@ use super::menu_box::draw_menu_box;
 /// Maximum popup width in terminal columns, before any pane-width clamp.
 pub(crate) const MAX_POPUP_WIDTH: u16 = 60;
 
+/// How an open popup reacts to key events in `Editor::handle_key`.
+pub(crate) enum PopupDismiss {
+    /// Untouched by keys; closed only by the `on-mode-change` Steel hook and
+    /// the next `show-popup!`. Default — hover/signature-help without
+    /// `#:scroll`.
+    ModeChange,
+    /// Cleared unconditionally at the start of the *next* key event, whatever
+    /// the key is — the key still dispatches normally below (`gn`/`gp`'s
+    /// diagnostic overlay, `#:dismiss-on-key`).
+    AnyKey,
+    /// Ctrl+u/Ctrl+d scroll the content and are consumed; every other key
+    /// closes the popup and falls through to normal dispatch (scrollable
+    /// hover, `#:scroll`).
+    KeyExceptScroll,
+}
+
 /// `(show-popup! text)`'s raw, unwrapped content — held on `EditorState`
 /// until the next frame's `sync_popup_view` resolves it into a positioned
 /// [`PopupState`].
 pub(crate) struct PopupModel {
     pub(crate) text: String,
-    /// `#:dismiss-on-key` — when true, `Editor::handle_key` clears this
-    /// model at the start of the *next* key event, regardless of what key
-    /// it is. Hover/signature-help popups leave this `false` and keep their
-    /// existing `on-mode-change` dismissal.
-    pub(crate) dismiss_on_key: bool,
+    pub(crate) dismiss: PopupDismiss,
+    /// First visible wrapped row, for an `OnKeyExceptScroll` popup. Clamped
+    /// in `Editor::scroll_popup`; re-clamped defensively in
+    /// `Editor::sync_popup_view` against the frame's resolved content height.
+    pub(crate) scroll: usize,
 }
 
 /// `(show-menu! items on-select)`'s raw content — held on `EditorState`
@@ -80,6 +96,10 @@ pub(crate) struct PopupState {
     pub(crate) outer_h: u16,
     /// The highlighted row index, for menus. `None` for a plain popup.
     pub(crate) selected: Option<usize>,
+    /// First visible row, for a plain popup (`selected.is_none()`) — the
+    /// resolved counterpart of `PopupModel::scroll`. Ignored by menus, which
+    /// window around `selected` instead.
+    pub(crate) scroll: usize,
     /// Whether to draw box-drawing border glyphs around the popup (vs. a
     /// plain background-filled 1-cell margin). Fed from the `popup-border`
     /// setting.
@@ -134,6 +154,7 @@ impl OverlayProvider for PopupOverlay {
             outer,
             &state.lines,
             state.selected,
+            state.scroll,
             state.border,
             style,
             selected_style,

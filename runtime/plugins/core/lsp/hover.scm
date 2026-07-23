@@ -31,15 +31,17 @@
          (threshold (if visible (quotient visible 3) 15))
          (lines (split-many text "\n")))
     (if (<= (length lines) threshold)
-        (show-popup! text)
+        (show-popup! text #:scroll #t)
         (show-drawer-list! lines (lambda (idx) (begin))))))
 
 ;; ── Dismiss ─────────────────────────────────────────────────────────────────
-;; A stale hover popup must not linger once the user has moved on — close on
-;; any mode change (leaving Insert, entering Command, …), in addition to the
-;; top-of-next-hover close below. The on-mode-change registration lives in
-;; lib.scm (shared popup widget — sighelp.scm uses the same close-on-mode-
-;; change dismissal, so one registration covers both).
+;; A stale hover popup must not linger once the user has moved on — it closes
+;; on any key other than Ctrl+u/Ctrl+d (`#:scroll #t`, which those two page
+;; instead), and on any mode change (leaving Insert, entering Command, …) as
+;; a backstop for the cases a key press doesn't cover (e.g. a mouse-driven
+;; mode switch). The on-mode-change registration lives in lib.scm (shared
+;; popup widget — sighelp.scm uses the same close-on-mode-change dismissal,
+;; so one registration covers both).
 
 ;; ── Command ─────────────────────────────────────────────────────────────────
 

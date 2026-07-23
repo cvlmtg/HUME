@@ -100,8 +100,8 @@
     (unless (= code 0)
       (error (string-append cmd ": failed (exit " (number->string code) ")")))))
 
-(define (show-popup! text #:anchor [anchor 'cursor] #:dismiss-on-key [dismiss-on-key #f])
-  (%show-popup! text anchor dismiss-on-key))
+(define (show-popup! text #:anchor [anchor 'cursor] #:dismiss-on-key [dismiss-on-key #f] #:scroll [scroll #f])
+  (%show-popup! text anchor dismiss-on-key scroll))
 
 (define (picker! items on-select #:prompt [prompt ""])
   (%picker! items on-select prompt))

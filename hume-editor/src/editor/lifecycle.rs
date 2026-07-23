@@ -1680,10 +1680,17 @@ impl Editor {
         let resolved = self.state.popup.as_ref().and_then(|model| {
             let (anchor, pane_rect, max_width, max_height) =
                 self.popup_anchor_and_bounds(ctx, self.focused_cursor_char())?;
-            let lines = crate::ui::popup::wrap_text(&model.text, max_width, max_height);
+            // Wrap the *full* text, unbounded — a scrollable popup must keep
+            // every row reachable, not just the first `max_height` of them.
+            // The box itself still caps at `max_height` via `outer_dims`
+            // below; `scroll` (clamped against that cap) picks which window
+            // of `lines` is visible.
+            let lines = crate::ui::popup::wrap_text(&model.text, max_width, u16::MAX);
             let (outer_w, outer_h) = crate::ui::menu_box::outer_dims(&lines, max_height);
             let (x, y, outer_w, outer_h) =
                 crate::ui::popup::resolve_popup_geometry(outer_w, outer_h, anchor, pane_rect);
+            let inner_h = outer_h.saturating_sub(2) as usize;
+            let scroll = model.scroll.min(lines.len().saturating_sub(inner_h));
             Some(crate::ui::popup::PopupState {
                 lines,
                 x,
@@ -1691,6 +1698,7 @@ impl Editor {
                 outer_w,
                 outer_h,
                 selected: None,
+                scroll,
                 border: self.state.settings.popup_border,
             })
         });
@@ -1735,6 +1743,7 @@ impl Editor {
                 outer_w,
                 outer_h,
                 selected,
+                scroll: 0, // ignored: a menu windows around `selected`, not `scroll`
                 border: self.state.settings.popup_border,
             })
         });
@@ -1788,6 +1797,7 @@ impl Editor {
                 outer_w,
                 outer_h,
                 selected,
+                scroll: 0, // ignored: a menu windows around `selected`, not `scroll`
                 border: self.state.settings.popup_border,
             })
         });

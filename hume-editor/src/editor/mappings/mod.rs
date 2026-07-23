@@ -38,12 +38,30 @@ impl Editor {
             }
         }
 
-        // A `#:dismiss-on-key` popup (the `gn`/`gp` diagnostic overlay) is
-        // cleared by the *next* key event, whatever key it is — the key
-        // still dispatches normally below. Hover/signature-help popups
-        // leave `dismiss_on_key` false and are unaffected.
-        if self.state.popup.as_ref().is_some_and(|p| p.dismiss_on_key) {
-            self.state.popup = None;
+        // Popup dismissal/scroll, before mode dispatch — see `PopupDismiss`.
+        // `OnAnyKey` (`gn`/`gp`) clears unconditionally and the key still
+        // dispatches below. `OnKeyExceptScroll` (scrollable hover) consumes
+        // Ctrl+u/Ctrl+d to scroll; any other key closes the popup and falls
+        // through to normal dispatch this same call.
+        match self.state.popup.as_ref().map(|p| &p.dismiss) {
+            Some(crate::ui::popup::PopupDismiss::AnyKey) => {
+                self.state.popup = None;
+            }
+            Some(crate::ui::popup::PopupDismiss::KeyExceptScroll) => {
+                let ctrl = key.modifiers.contains(Modifiers::CONTROL);
+                match key.code {
+                    KeyCode::Char('d') if ctrl => {
+                        self.scroll_popup(true);
+                        return;
+                    }
+                    KeyCode::Char('u') if ctrl => {
+                        self.scroll_popup(false);
+                        return;
+                    }
+                    _ => self.state.popup = None,
+                }
+            }
+            Some(crate::ui::popup::PopupDismiss::ModeChange) | None => {}
         }
 
         // ── Picker intercept ──────────────────────────────────────────────
@@ -200,6 +218,37 @@ impl Editor {
             }
             _ => false,
         }
+    }
+
+    /// Scrolls an `OnKeyExceptScroll` popup half its visible content height,
+    /// in the direction given by `down`. Reads the visible height and total
+    /// row count from the *already-resolved* `popup_view` — this same
+    /// frame's paint — rather than recomputing geometry, so the scroll step
+    /// always matches what's on screen. `popup_view` is re-synced every
+    /// frame regardless (`Editor::sync_popup_view`), so no explicit sync is
+    /// needed here. Before the first frame `popup_view` is empty — a
+    /// documented no-op, same as `handle_picker_key`'s geometry.
+    fn scroll_popup(&mut self, down: bool) {
+        let Some((inner_h, total)) = self
+            .state
+            .popup_view
+            .read()
+            .expect("RwLock not poisoned")
+            .as_ref()
+            .map(|s| (s.outer_h.saturating_sub(2) as usize, s.lines.len()))
+        else {
+            return;
+        };
+        let Some(popup) = self.state.popup.as_mut() else {
+            return;
+        };
+        let half = (inner_h / 2).max(1);
+        let max_scroll = total.saturating_sub(inner_h);
+        popup.scroll = if down {
+            (popup.scroll + half).min(max_scroll)
+        } else {
+            popup.scroll.saturating_sub(half)
+        };
     }
 
     /// Clamps `drawer.scroll` so `drawer.selected` stays within the visible

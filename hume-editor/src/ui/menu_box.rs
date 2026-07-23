@@ -48,6 +48,18 @@ fn visible_window(rows: &[String], selected: usize, max_height: usize) -> (usize
     (start, &rows[start..start + max_height])
 }
 
+/// Return `(scroll_offset, visible_slice)` for a plain popup (no selected
+/// row) windowed from `scroll` — unlike [`visible_window`], the window start
+/// is exactly `scroll`, clamped so it never runs past the end of `rows`.
+fn scroll_window(rows: &[String], scroll: usize, max_height: usize) -> (usize, &[String]) {
+    let total = rows.len();
+    if total <= max_height {
+        return (0, rows);
+    }
+    let start = scroll.min(total - max_height);
+    (start, &rows[start..start + max_height])
+}
+
 /// Overdraws `outer`'s 1-cell frame with box-drawing glyphs (`┌─┐└┘│`).
 /// Shared by every bordered box overlay — [`draw_menu_box`] and
 /// `super::picker_panel::draw_picker_panel` — so the frame glyphs stay
@@ -75,14 +87,20 @@ pub(crate) fn draw_box_border(buf: &mut ScreenBuf, outer: Rect, style: Style) {
 /// 1-cell frame). Windows `rows` to fit `outer`'s inner height, keeping
 /// `selected` (an absolute index into `rows`) visible.
 ///
+/// `scroll`: for a plain popup (`selected` is `None`), the first visible
+/// row — ignored when `selected` is `Some` (a menu windows around the
+/// selected row instead).
+///
 /// `border`: when `true`, overdraws the 1-cell frame with box-drawing
 /// glyphs; when `false`, the frame stays a plain background-filled margin
 /// (still 1 cell wide — only the glyphs are suppressed).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_menu_box(
     buf: &mut ScreenBuf,
     outer: Rect,
     rows: &[String],
     selected: Option<usize>,
+    scroll: usize,
     border: bool,
     menu_style: Style,
     selected_style: Style,
@@ -92,7 +110,10 @@ pub(crate) fn draw_menu_box(
     }
 
     let inner_h = (outer.height - 2) as usize;
-    let (scroll_offset, visible_rows) = visible_window(rows, selected.unwrap_or(0), inner_h);
+    let (scroll_offset, visible_rows) = match selected {
+        Some(sel) => visible_window(rows, sel, inner_h),
+        None => scroll_window(rows, scroll, inner_h),
+    };
 
     // 1. Fill the entire outer rectangle with the popup background. This
     //    gives a solid, opaque backdrop — no buffer content bleeds through.

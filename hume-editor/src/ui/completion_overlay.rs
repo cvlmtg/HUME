@@ -77,6 +77,7 @@ impl OverlayProvider for MinibufCompletionOverlay {
             Rect::new(popup_x, popup_y, outer_w, outer_h),
             &view.rows,
             Some(selected),
+            0,
             view.border,
             menu_style,
             selected_style,

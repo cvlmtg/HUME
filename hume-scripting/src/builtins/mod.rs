@@ -189,7 +189,9 @@ macro_rules! builtins {
 // 'cursor is the only v1 value. #:dismiss-on-key: the popup is cleared by
 // the Editor::handle_key top-of-loop check on the *next* key press, whatever
 // key it is (see `gn`/`gp`'s diagnostic overlay) — default #f keeps the
-// existing on-mode-change-only dismissal (hover, signature help).
+// existing on-mode-change-only dismissal (hover, signature help). #:scroll:
+// Ctrl+u/Ctrl+d scroll the popup's content instead of the buffer, and every
+// other key closes it — mutually exclusive with #:dismiss-on-key.
 //
 // picker! — fuzzy-finder panel (docs/FUZZY-FINDERS.md). items: list of
 // (display . payload) dotted pairs; payload is opaque, handed back to
@@ -436,7 +438,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "completion-dismiss!" completion::completion_dismiss();
 
         // Cursor-anchored popup widget.
-        cmd "%show-popup!" ui::show_popup(text: SteelVal, anchor: SteelVal, dismiss_on_key: SteelVal);
+        cmd "%show-popup!" ui::show_popup(text: SteelVal, anchor: SteelVal, dismiss_on_key: SteelVal, scrollable: SteelVal);
         cmd "close-popup!" ui::close_popup();
 
         // Selection menu widget.
