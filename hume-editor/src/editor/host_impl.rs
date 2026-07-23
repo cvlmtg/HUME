@@ -89,9 +89,8 @@ impl<'a> EditorHostImpl<'a> {
 
     /// Synchronously parses `text` through the grammar named `lang`, if one
     /// is registered — `None` otherwise (no such grammar), which leaves the
-    /// caller (popup or drawer) rendering plain. Shared by `show_popup` and
-    /// `show_drawer_list`'s `#:lang` — the parse itself doesn't care which
-    /// widget it's for.
+    /// popup rendering plain. `show_popup`'s only caller, shared across its
+    /// cursor and docked layouts.
     fn build_markup_syntax(
         &self,
         lang: &str,

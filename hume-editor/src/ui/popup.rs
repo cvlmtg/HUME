@@ -55,16 +55,15 @@ pub(crate) enum PopupDismiss {
     KeyExceptScroll,
 }
 
-/// Synchronously-parsed highlight state for a popup's or drawer's read-only
-/// text, keyed by grammar name (`#:lang`) — built once at `show-popup!`/
-/// `show-drawer-list!` time (there is nothing to incrementally reparse: the
-/// content never changes after this). `None` where a widget's `syntax` field
-/// would go when no grammar by that name is registered, or `#:lang` wasn't
-/// requested — the plain-text fallback.
+/// Synchronously-parsed highlight state for a popup's read-only text, keyed
+/// by grammar name (`#:lang`) — built once at `show-popup!` time (there is
+/// nothing to incrementally reparse: the content never changes after this).
+/// `None` where `PopupModel::syntax` would go when no grammar by that name
+/// is registered, or `#:lang` wasn't requested — the plain-text fallback.
 ///
-/// Shared by both widgets so highlight resolution (`styled_row`/
-/// `styled_runs`) has one implementation — only wrapping/geometry differs
-/// between a popup and a drawer row.
+/// Shared by the cursor and docked popup layouts so highlight resolution
+/// (`styled_row`/`styled_runs`) has one implementation — only
+/// wrapping/geometry differs between the two.
 pub(crate) struct MarkupSyntax {
     pub(crate) syntax: hume_treesitter::syntax::Syntax,
     /// Same content the syntax was parsed from, wrapped as a rope-backed

@@ -188,8 +188,8 @@ fn docked_popup_survives_a_multiline_capture_node() {
     // own length and `MarkupSyntax::styled_row`'s `&line[start..end]` slice
     // panicked. Single-line grammars never produced an over-long span, so
     // this only ever surfaced through markdown. `styled_row` is shared by
-    // every caller (cursor popup, docked popup, drawer alike) — exercised
-    // here through the docked layout, hover's actual long-content path.
+    // every caller (cursor popup, docked popup) — exercised here through
+    // the docked layout, hover's actual long-content path.
     if skip_unless_grammars(&["markdown"]) {
         return;
     }
