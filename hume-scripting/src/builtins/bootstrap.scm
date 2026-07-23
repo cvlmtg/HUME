@@ -103,6 +103,9 @@
 (define (show-popup! text #:anchor [anchor 'cursor] #:dismiss-on-key [dismiss-on-key #f])
   (%show-popup! text anchor dismiss-on-key))
 
+(define (picker! items on-select #:prompt [prompt ""])
+  (%picker! items on-select prompt))
+
 (define-syntax call!
   (syntax-rules ()
     ((_ name args ...)

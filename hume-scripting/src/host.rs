@@ -547,6 +547,38 @@ pub trait UiHost {
     /// callback (caller-initiated close, distinct from `Esc`, which does
     /// call back with `#f`).
     fn close_drawer(&mut self) -> Result<(), String>;
+
+    /// `(picker! items on-select #:prompt "…")` — opens the fuzzy-finder
+    /// panel (`docs/FUZZY-FINDERS.md`). `items` are `(display . payload)`
+    /// pairs; `payload` is handed back to `on-select` verbatim, never
+    /// interpreted by Rust. Returns a token that scopes later
+    /// `picker-push!` calls to this session. Unlike the menu/drawer, the
+    /// picker is allowed from any mode (Q-B7) but closes any live
+    /// completion session first, since only one modal owner may be active
+    /// at a time. `on-select` fires exactly once, queued (never invoked
+    /// inline): the selected payload on `Enter`, or `#f` on `Esc`,
+    /// `picker-close!`, or being replaced by a second `picker!` call.
+    fn open_picker(
+        &mut self,
+        items: Vec<(String, steel::rvals::SteelVal)>,
+        prompt: String,
+        on_select: steel::rvals::SteelVal,
+    ) -> Result<u64, String>;
+
+    /// `(picker-push! token items)` — appends `items` to the open picker's
+    /// store and reranks, but only if `token` matches the session the
+    /// caller opened (returned by `open_picker`). A stale token — the
+    /// picker was closed or replaced since — is expected-normal for an
+    /// async source racing the user, so it is a silent no-op, not an error:
+    /// returns whether the push was applied.
+    fn picker_push(&mut self, token: u64, items: Vec<(String, steel::rvals::SteelVal)>) -> bool;
+
+    /// `(picker-close!)` — ends the open picker, if any, firing its
+    /// `on-select` with `#f` (unlike `close-menu!`/`close-drawer!`, which
+    /// drop the callback without invoking it — the picker's callback
+    /// lifecycle guarantees exactly one fire per session no matter how it
+    /// ends). Idempotent: closing when none is open is not an error.
+    fn picker_close(&mut self);
 }
 
 /// LSP-driven text edits, workspace edits, and go-to-location — accessed

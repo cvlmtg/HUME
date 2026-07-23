@@ -50,19 +50,15 @@ pub(crate) struct PickerSession {
     /// at all.
     prompt: String,
     /// Stale-push guard: `push` is a no-op unless the caller's token matches.
-    #[allow(dead_code)]
-    // read by `push`/`token`, whose production caller is host_impl.rs (step 6)
     token: u64,
 }
 
-#[allow(dead_code)] // read by `PickerSession::new`, whose production caller is host_impl.rs (step 6)
 static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
 
 impl PickerSession {
     /// Opens empty — the caller's initial item list (from `picker!`) arrives
     /// through the same `push` path as any later batch, matching B6's "open
     /// empty, then attach source" composition.
-    #[allow(dead_code)] // production caller is host_impl.rs's `open_picker` (step 6)
     pub(crate) fn new(on_select: SteelVal, prompt: String) -> Self {
         Self {
             items: Vec::new(),
@@ -78,7 +74,6 @@ impl PickerSession {
         }
     }
 
-    #[allow(dead_code)] // production caller is host_impl.rs's `open_picker`/`picker_push` (step 6)
     pub(crate) fn token(&self) -> u64 {
         self.token
     }
@@ -91,7 +86,6 @@ impl PickerSession {
     /// session's token. A mismatch is expected-normal (a late batch from a
     /// picker the user already closed or replaced) — silent no-op, not an
     /// error. Returns whether the push was applied.
-    #[allow(dead_code)] // production caller is host_impl.rs's `open_picker`/`picker_push` (step 6)
     pub(crate) fn push(&mut self, token: u64, items: Vec<PickerItem>) -> bool {
         if token != self.token {
             return false;
@@ -248,9 +242,8 @@ impl PickerSession {
 /// can be silently dropped without firing.
 ///
 /// Takes `state`/`lsp` rather than `&mut Editor` because its production
-/// caller, `EditorHostImpl` (step 6), holds those as disjoint borrows, not a
-/// whole `Editor` — it can never reach an `&mut Editor`.
-#[allow(dead_code)] // production caller is host_impl.rs's `UiHost::open_picker` (step 6)
+/// caller, `EditorHostImpl::open_picker`, holds those as disjoint borrows,
+/// not a whole `Editor` — it can never reach an `&mut Editor`.
 pub(crate) fn open_picker(
     state: &mut super::EditorState,
     lsp: Option<&mut super::lsp::LspState>,

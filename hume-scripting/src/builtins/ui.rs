@@ -11,7 +11,7 @@ use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 
-use super::args::{bool_arg, list_to_strings, string_arg};
+use super::args::{bool_arg, list_items, list_to_strings, pair_fields, string_arg, usize_arg};
 use super::errors::{generic_err, require_cap};
 
 type SteelResult = Result<SteelVal, SteelErr>;
@@ -99,4 +99,50 @@ pub(crate) fn prompt(
         .prompt(label, prefill, on_confirm)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
+}
+
+/// Decodes a picker `items` list: each entry must be a `(display . payload)`
+/// dotted pair (`docs/FUZZY-FINDERS.md` Q-B3) — a proper list entry is
+/// rejected by `pair_fields`. `payload` stays an opaque `SteelVal`; Rust
+/// never interprets it.
+fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, SteelVal)>, SteelErr> {
+    list_items(items, ctx_name)?
+        .into_iter()
+        .map(|entry| {
+            let (display, payload) = pair_fields(entry, ctx_name, "(display . payload)")?;
+            Ok((string_arg(display, ctx_name)?, payload))
+        })
+        .collect()
+}
+
+/// `(%picker! items on-select prompt)` — the `picker!` Scheme wrapper
+/// supplies `#:prompt`'s default. Returns the new session's token.
+pub(crate) fn picker(
+    ctx: &mut SteelCtx,
+    items: SteelVal,
+    on_select: SteelVal,
+    prompt: SteelVal,
+) -> SteelResult {
+    let items = picker_items(items, "picker! items")?;
+    let prompt = string_arg(prompt, "picker! #:prompt")?;
+    let token = require_cap(ctx.host.ui(), "picker!")?
+        .open_picker(items, prompt, on_select)
+        .map_err(generic_err)?;
+    Ok(SteelVal::IntV(token as isize))
+}
+
+/// `(picker-push! token items)` — no keyword defaults, so this registers
+/// directly. Returns whether the push was applied (`#f` for a stale token
+/// or no open picker — never an error, both are expected-normal races).
+pub(crate) fn picker_push(ctx: &mut SteelCtx, token: SteelVal, items: SteelVal) -> SteelResult {
+    let token = usize_arg(token, "picker-push! token")? as u64;
+    let items = picker_items(items, "picker-push! items")?;
+    let applied = require_cap(ctx.host.ui(), "picker-push!")?.picker_push(token, items);
+    Ok(SteelVal::BoolV(applied))
+}
+
+/// `(picker-close!)`.
+pub(crate) fn picker_close(ctx: &mut SteelCtx) -> SteelResult {
+    require_cap(ctx.host.ui(), "picker-close!")?.picker_close();
+    Ok(SteelVal::Void)
 }

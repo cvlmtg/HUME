@@ -191,6 +191,24 @@ macro_rules! builtins {
 // key it is (see `gn`/`gp`'s diagnostic overlay) — default #f keeps the
 // existing on-mode-change-only dismissal (hover, signature help).
 //
+// picker! — fuzzy-finder panel (docs/FUZZY-FINDERS.md). items: list of
+// (display . payload) dotted pairs; payload is opaque, handed back to
+// on-select verbatim. Returns a token scoping later picker-push! calls to
+// this session. Allowed from any mode, but closes any open completion
+// session first (one modal owner at a time). on-select fires exactly once:
+// the selected payload on Enter, or #f on Esc, picker-close!, or being
+// replaced by a second picker! call.
+//
+// picker-push! — appends items to the open picker, gated by the token
+// open_picker returned. A stale token (picker closed/replaced since) or no
+// open picker is a silent #f, not an error — expected-normal for an async
+// source racing the user. Returns whether the push was applied.
+//
+// picker-close! — ends the open picker, firing on-select with #f. Unlike
+// close-menu!/close-drawer! (which drop the callback), this always invokes
+// it — the picker's exactly-once lifecycle has no "silently dropped"
+// state. Idempotent when no picker is open.
+//
 // Variadic call! macro — desugars to %dispatch-command, the in-VM dispatcher
 // for calls originating inside Steel (call! from a plugin body, or the bare
 // command-name lambdas register_command_names defines). Keypress/`:`-line
@@ -414,6 +432,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // Class B bottom drawer.
         cmd "show-drawer-list!" ui::show_drawer_list(items: SteelVal, on_select: SteelVal);
         cmd "close-drawer!" ui::close_drawer();
+
+        // Fuzzy-picker widget (docs/FUZZY-FINDERS.md B4).
+        cmd "%picker!" ui::picker(items: SteelVal, on_select: SteelVal, prompt: SteelVal);
+        cmd "picker-push!" ui::picker_push(token: SteelVal, items: SteelVal);
+        cmd "picker-close!" ui::picker_close();
 
         // Timers — not LSP-specific, but added as part of the LSP work.
         cmd "after" timers::after(ms: SteelVal, thunk: SteelVal);

@@ -992,6 +992,39 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         self.state.sync_drawer_view();
         Ok(())
     }
+
+    // ── Fuzzy picker ──────────────────────────────────────────────────────
+    fn open_picker(
+        &mut self,
+        items: Vec<(String, steel::rvals::SteelVal)>,
+        prompt: String,
+        on_select: steel::rvals::SteelVal,
+    ) -> Result<u64, String> {
+        let mut session = crate::editor::picker::PickerSession::new(on_select, prompt);
+        let token = session.token();
+        let picker_items = items
+            .into_iter()
+            .map(|(display, payload)| crate::editor::picker::PickerItem { display, payload })
+            .collect();
+        session.push(token, picker_items); // fresh token — always applies
+        crate::editor::picker::open_picker(self.state, self.lsp.as_deref_mut(), session);
+        Ok(token)
+    }
+
+    fn picker_push(&mut self, token: u64, items: Vec<(String, steel::rvals::SteelVal)>) -> bool {
+        let Some(session) = self.state.picker.as_mut() else {
+            return false;
+        };
+        let picker_items = items
+            .into_iter()
+            .map(|(display, payload)| crate::editor::picker::PickerItem { display, payload })
+            .collect();
+        session.push(token, picker_items)
+    }
+
+    fn picker_close(&mut self) {
+        crate::editor::picker::close_picker(self.state, steel::rvals::SteelVal::BoolV(false));
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
