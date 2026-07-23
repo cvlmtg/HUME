@@ -118,6 +118,13 @@ To see which themes are available, type `:theme ` and press `Tab`.
 
 Custom themes are TOML files placed in the `themes/` subdirectory of your HUME config directory. HUME uses the Helix theme format, so any theme written for Helix works in HUME too.
 
+HUME reads these Helix statusline scopes:
+
+- `ui.statusline` — base statusline style
+- `ui.statusline.normal` — mode pill in Normal mode
+- `ui.statusline.insert` — mode pill in Insert mode
+- `ui.statusline.separator` — separator glyph between statusline elements
+
 HUME adds three more mode pills for modes Helix doesn't have:
 
 - `ui.statusline.extend`

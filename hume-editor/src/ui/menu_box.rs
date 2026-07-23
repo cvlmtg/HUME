@@ -48,6 +48,29 @@ fn visible_window(rows: &[String], selected: usize, max_height: usize) -> (usize
     (start, &rows[start..start + max_height])
 }
 
+/// Overdraws `outer`'s 1-cell frame with box-drawing glyphs (`┌─┐└┘│`).
+/// Shared by every bordered box overlay — [`draw_menu_box`] and
+/// `super::picker_panel::draw_picker_panel` — so the frame glyphs stay
+/// identical without a copy per caller.
+pub(crate) fn draw_box_border(buf: &mut ScreenBuf, outer: Rect, style: Style) {
+    let right = outer.x + outer.width - 1;
+    let bottom = outer.y + outer.height - 1;
+    let fill_w = (outer.width - 2) as usize;
+    let horiz: String = "─".repeat(fill_w);
+
+    buf.set_string(outer.x, outer.y, "┌", style);
+    buf.set_string(outer.x + 1, outer.y, &horiz, style);
+    buf.set_string(right, outer.y, "┐", style);
+    buf.set_string(outer.x, bottom, "└", style);
+    buf.set_string(outer.x + 1, bottom, &horiz, style);
+    buf.set_string(right, bottom, "┘", style);
+
+    for row in 1..outer.height - 1 {
+        buf.set_string(outer.x, outer.y + row, "│", style);
+        buf.set_string(right, outer.y + row, "│", style);
+    }
+}
+
 /// Paint a menu/popup box into `outer` (the full footprint, including the
 /// 1-cell frame). Windows `rows` to fit `outer`'s inner height, keeping
 /// `selected` (an absolute index into `rows`) visible.
@@ -78,22 +101,7 @@ pub(crate) fn draw_menu_box(
 
     // 2. Optionally overdraw the 1-cell frame with box-drawing characters.
     if border {
-        let right = outer.x + outer.width - 1;
-        let bottom = outer.y + outer.height - 1;
-        let fill_w = (outer.width - 2) as usize;
-        let horiz: String = "─".repeat(fill_w);
-
-        buf.set_string(outer.x, outer.y, "┌", menu_style);
-        buf.set_string(outer.x + 1, outer.y, &horiz, menu_style);
-        buf.set_string(right, outer.y, "┐", menu_style);
-        buf.set_string(outer.x, bottom, "└", menu_style);
-        buf.set_string(outer.x + 1, bottom, &horiz, menu_style);
-        buf.set_string(right, bottom, "┘", menu_style);
-
-        for row in 1..outer.height - 1 {
-            buf.set_string(outer.x, outer.y + row, "│", menu_style);
-            buf.set_string(right, outer.y + row, "│", menu_style);
-        }
+        draw_box_border(buf, outer, menu_style);
     }
 
     // 3. Draw content rows inside the frame (offset +1 for top/left border/padding).

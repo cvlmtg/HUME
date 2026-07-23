@@ -161,7 +161,7 @@ impl PickerSession {
     }
 
     /// Replaces the query wholesale and reranks.
-    #[allow(dead_code)] // production caller is B4/B5's live-requery replace path (Q-B5)
+    #[cfg(test)] // production caller is B4/B5's live-requery replace path (Q-B5), not yet built
     pub(crate) fn set_query(&mut self, query: String) {
         self.query = query;
         self.rerank();

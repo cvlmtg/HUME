@@ -241,62 +241,26 @@ impl Editor {
     fn handle_picker_key(&mut self, key: KeyEvent) -> bool {
         let visible_rows = crate::ui::picker_panel::panel_geometry(self.view.last_pane_area)
             .map_or(0, |geo| geo.list_rows);
+
+        // Every movement key differs only in the delta passed to
+        // `move_selection` — collapsed to one borrow instead of one per key.
+        let step: Option<isize> = match key.code {
+            KeyCode::Down => Some(1),
+            KeyCode::Up => Some(-1),
+            KeyCode::Char('n') if key.modifiers.contains(Modifiers::CONTROL) => Some(1),
+            KeyCode::Char('p') if key.modifiers.contains(Modifiers::CONTROL) => Some(-1),
+            KeyCode::PageDown => Some(visible_rows as isize),
+            KeyCode::PageUp => Some(-(visible_rows as isize)),
+            _ => None,
+        };
+        if let Some(delta) = step {
+            self.picker_mut().move_selection(delta, visible_rows);
+            return true;
+        }
+
         match key.code {
-            KeyCode::Down => {
-                let picker = self
-                    .state
-                    .picker
-                    .as_mut()
-                    .expect("checked by the caller above");
-                picker.move_selection(1, visible_rows);
-            }
-            KeyCode::Up => {
-                let picker = self
-                    .state
-                    .picker
-                    .as_mut()
-                    .expect("checked by the caller above");
-                picker.move_selection(-1, visible_rows);
-            }
-            KeyCode::Char('n') if key.modifiers.contains(Modifiers::CONTROL) => {
-                let picker = self
-                    .state
-                    .picker
-                    .as_mut()
-                    .expect("checked by the caller above");
-                picker.move_selection(1, visible_rows);
-            }
-            KeyCode::Char('p') if key.modifiers.contains(Modifiers::CONTROL) => {
-                let picker = self
-                    .state
-                    .picker
-                    .as_mut()
-                    .expect("checked by the caller above");
-                picker.move_selection(-1, visible_rows);
-            }
-            KeyCode::PageDown => {
-                let picker = self
-                    .state
-                    .picker
-                    .as_mut()
-                    .expect("checked by the caller above");
-                picker.move_selection(visible_rows as isize, visible_rows);
-            }
-            KeyCode::PageUp => {
-                let picker = self
-                    .state
-                    .picker
-                    .as_mut()
-                    .expect("checked by the caller above");
-                picker.move_selection(-(visible_rows as isize), visible_rows);
-            }
             KeyCode::Backspace => {
-                let picker = self
-                    .state
-                    .picker
-                    .as_mut()
-                    .expect("checked by the caller above");
-                picker.pop_grapheme(); // no-op on an already-empty query
+                self.picker_mut().pop_grapheme(); // no-op on an already-empty query
             }
             KeyCode::Enter => {
                 // No match (or nothing pushed yet) behaves like Esc — Enter
@@ -304,10 +268,7 @@ impl Editor {
                 // the payload before closing: `close_picker` takes the
                 // session.
                 let payload = self
-                    .state
-                    .picker
-                    .as_ref()
-                    .expect("checked by the caller above")
+                    .picker_mut()
                     .selected_payload()
                     .cloned()
                     .unwrap_or(steel::rvals::SteelVal::BoolV(false));
@@ -321,16 +282,21 @@ impl Editor {
                     .modifiers
                     .intersects(Modifiers::CONTROL | Modifiers::ALT) =>
             {
-                let picker = self
-                    .state
-                    .picker
-                    .as_mut()
-                    .expect("checked by the caller above");
-                picker.insert_char(ch);
+                self.picker_mut().insert_char(ch);
             }
             _ => {}
         }
         true
+    }
+
+    /// The open picker session — only ever called from `handle_picker_key`,
+    /// whose caller (`handle_key`) already checked `state.picker.is_some()`
+    /// before dispatching here.
+    fn picker_mut(&mut self) -> &mut super::picker::PickerSession {
+        self.state
+            .picker
+            .as_mut()
+            .expect("handle_picker_key is only called while state.picker.is_some()")
     }
 }
 

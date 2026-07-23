@@ -24,10 +24,14 @@
         (let* ([child (Ok->value spawned)]
                [out (child-stdout child)])
           (close-output-port (child-stdin child))
-          (let ([wait-result (wait child)])
-            (if (and (Ok? wait-result) (= (Ok->value wait-result) 0))
-                (trim (read-port-to-string out))
-                #f)))
+          ;; Drain stdout BEFORE wait: a child that fills its pipe buffer
+          ;; blocks on write until read, while `wait` blocks until exit —
+          ;; waiting first would deadlock on any output past one pipe buffer.
+          (let ([output (trim (read-port-to-string out))])
+            (let ([wait-result (wait child)])
+              (if (and (Ok? wait-result) (= (Ok->value wait-result) 0))
+                  output
+                  #f))))
         #f)))
 
 ;;; #t iff the editor's cwd is inside a git *work tree*. The stdout check
@@ -85,7 +89,10 @@
 ;;; Best-effort: a canonicalization mismatch (e.g. macOS `/var` vs
 ;;; `/private/var`) just yields the absolute path instead of breaking.
 (define (pickers/relativize path)
-  (let ([prefix (string-append (current-directory) "/")])
+  (let* ([cwd (current-directory)]
+         ;; Filesystem root is its own trailing slash — appending another
+         ;; would build "//" and never match any absolute path.
+         [prefix (if (equal? cwd "/") "/" (string-append cwd "/"))])
     (if (starts-with? path prefix)
         (substring path (string-length prefix) (string-length path))
         path)))

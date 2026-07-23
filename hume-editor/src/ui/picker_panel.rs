@@ -6,8 +6,8 @@
 //! independent of item count) with a two-zone layout (input row + list) and
 //! an edge-anchored scroll model owned by `PickerSession` — `menu_box`'s
 //! `visible_window` centers the selection instead, a different and
-//! conflicting scroll model. The only thing shared is the border
-//! glyph set.
+//! conflicting scroll model. The only thing shared is the border-drawing
+//! routine itself, [`super::menu_box::draw_box_border`].
 //!
 //! Write side ([`Editor::sync_picker_view`]) resolves geometry once per
 //! frame against the current panes region and writes a [`PickerViewState`]
@@ -214,22 +214,7 @@ pub(crate) fn draw_picker_panel(
     fill_rect_bg(buf, outer, background);
 
     if state.border {
-        let right = outer.x + outer.width - 1;
-        let bottom = outer.y + outer.height - 1;
-        let fill_w = (outer.width - 2) as usize;
-        let horiz: String = "─".repeat(fill_w);
-
-        buf.set_string(outer.x, outer.y, "┌", text);
-        buf.set_string(outer.x + 1, outer.y, &horiz, text);
-        buf.set_string(right, outer.y, "┐", text);
-        buf.set_string(outer.x, bottom, "└", text);
-        buf.set_string(outer.x + 1, bottom, &horiz, text);
-        buf.set_string(right, bottom, "┘", text);
-
-        for row in 1..outer.height - 1 {
-            buf.set_string(outer.x, outer.y + row, "│", text);
-            buf.set_string(right, outer.y + row, "│", text);
-        }
+        super::menu_box::draw_box_border(buf, outer, text);
     }
 
     let inner_x = outer.x + 1;

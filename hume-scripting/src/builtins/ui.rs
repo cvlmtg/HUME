@@ -106,12 +106,18 @@ pub(crate) fn prompt(
 /// Decodes a picker `items` list: each entry must be a `(display . payload)`
 /// dotted pair (`docs/FUZZY-FINDERS.md` Q-B3) — a proper list entry is
 /// rejected by `pair_fields`. `payload` stays an opaque `SteelVal`; Rust
-/// never interprets it.
+/// never interprets it, except to reject `#f` — that value is reserved for
+/// the dismiss signal (`on-select` receives it on Esc / `picker-close!` /
+/// replace), so a `#f` payload would make an accepted row indistinguishable
+/// from a dismissal.
 fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, SteelVal)>, SteelErr> {
     list_items(items, ctx_name)?
         .into_iter()
         .map(|entry| {
             let (display, payload) = pair_fields(entry, ctx_name, "(display . payload)")?;
+            if matches!(payload, SteelVal::BoolV(false)) {
+                steel::stop!(Generic => "{}: item payload must not be #f (#f is reserved for the dismiss signal)", ctx_name);
+            }
             Ok((string_arg(display, ctx_name)?, payload))
         })
         .collect()

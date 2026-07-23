@@ -20,7 +20,7 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::path::strip_unc_prefix;
 
@@ -113,11 +113,10 @@ const BATCH_CHANNEL_BOUND: usize = 128;
 /// blocks writing to it) but discarded.
 const STDERR_CAPTURE_CAP: usize = 8 * 1024;
 
-/// Bound on how long [`SpawnedLineSource::finish`] waits for the child to
-/// exit on its own (stdout EOF almost always means it already has) before
-/// falling back to killing it — long enough for a normal exit's reap, short
-/// enough that a pathological child holding stdout closed while still
-/// running doesn't stall the frame for long.
+/// Bound on how long [`SpawnedLineSource::finish`] waits for the captured
+/// stderr to arrive once the child has been reaped or killed — the stderr
+/// thread's `send` follows right behind, so this only guards against a
+/// wedged thread, not normal timing.
 const REAP_GRACE: Duration = Duration::from_millis(250);
 
 /// A running external command streaming its stdout as complete lines.
@@ -223,9 +222,12 @@ impl SpawnedLineSource {
         &self.cmd
     }
 
-    /// The child's OS process id — for callers that need to verify
-    /// kill-on-drop against an independent liveness check (e.g. a signal-0
-    /// probe), not for signalling it directly (that's `Drop`'s job).
+    /// The child's OS process id, for a signal-0 liveness probe independent
+    /// of this handle's own state — not for signalling it directly (that's
+    /// `Drop`'s job). Test-support only: every caller is cross-crate test
+    /// code (`hume-editor`'s `tests/unix/picker_source.rs`), so this can't be
+    /// `#[cfg(test)]`-gated the way a same-crate test-only method would be.
+    #[doc(hidden)]
     pub fn pid(&self) -> u32 {
         self.child.id()
     }
@@ -253,9 +255,24 @@ impl SpawnedLineSource {
     }
 
     /// Consumes the source once the reader has disconnected: reaps the exit
-    /// status (bounded grace, then kill) and whatever stderr was captured.
+    /// status and whatever stderr was captured.
+    ///
+    /// Runs on the editor's per-frame drain path (`drain_picker_source`), not
+    /// a background thread — so this never blocks waiting for the child.
+    /// Stdout EOF (the caller's precondition for calling `finish` at all)
+    /// almost always means the child has already exited, in which case
+    /// `try_wait` returns immediately with the real status; the rare child
+    /// that lingers after closing stdout is killed right away rather than
+    /// polled for, trading its exact exit status for a bounded frame.
     pub fn finish(mut self) -> SourceExit {
-        let status = reap_with_grace(&mut self.child, REAP_GRACE);
+        let status = match self.child.try_wait() {
+            Ok(Some(status)) => Some(status),
+            Ok(None) => {
+                let _ = self.child.kill();
+                self.child.wait().ok()
+            }
+            Err(_) => None,
+        };
         let stderr = self
             .stderr_rx
             .take()
@@ -276,27 +293,6 @@ impl Drop for SpawnedLineSource {
         self.rx = None;
         self.stderr_rx = None;
         self.threads.clear();
-    }
-}
-
-/// Polls `child` up to `grace`, then falls back to killing it. Returns
-/// `None` only if the OS gives back no status even after the kill+wait
-/// fallback — callers must not treat `None` as either success or failure,
-/// only as "unknown".
-fn reap_with_grace(child: &mut Child, grace: Duration) -> Option<ExitStatus> {
-    let deadline = Instant::now() + grace;
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => return Some(status),
-            Ok(None) if Instant::now() < deadline => {
-                thread::sleep(Duration::from_millis(5));
-            }
-            Ok(None) => {
-                let _ = child.kill();
-                return child.wait().ok();
-            }
-            Err(_) => return None,
-        }
     }
 }
 
@@ -360,6 +356,7 @@ fn stderr_capture_loop(mut r: impl Read, tx: &mpsc::SyncSender<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Instant;
 
     #[test]
     fn splits_multiple_lines_in_one_chunk() {
@@ -532,6 +529,42 @@ mod tests {
             drain_until_disconnected(&mut source);
             let exit = source.finish();
             assert!(exit.stderr.len() <= STDERR_CAPTURE_CAP);
+        }
+
+        #[test]
+        fn finish_kills_a_child_that_lingers_after_closing_stdout_without_polling() {
+            // Closes stdout immediately (triggering `disconnected`) but keeps
+            // running — the exact shape `finish()` must not busy-wait on: it
+            // should kill the child right away rather than polling for a
+            // grace period before falling back to `kill`. The second `exec`
+            // replaces the shell's own process image instead of forking a
+            // `sleep` child, so killing the tracked pid actually terminates
+            // the process holding stderr open (a plain trailing `sleep 30`
+            // would fork, leaving an orphaned `sleep` that `kill` can't
+            // reach and that would hold the stderr pipe open for real).
+            let args = vec!["-c".to_string(), "exec 1>&-; exec sleep 30".to_string()];
+            let mut source =
+                spawn_line_source("sh", &args, None, b'\n', no_op_wake()).expect("spawn sh");
+            drain_until_disconnected(&mut source);
+            let pid =
+                nix::unistd::Pid::from_raw(i32::try_from(source.child.id()).expect("pid fits i32"));
+
+            let started = Instant::now();
+            let exit = source.finish();
+            assert!(
+                started.elapsed() < Duration::from_millis(100),
+                "finish() must kill a lingering child immediately, not poll for a grace \
+                 period, took {:?}",
+                started.elapsed()
+            );
+            assert!(
+                exit.status.is_some(),
+                "the killed child must still be reaped, not left as unknown"
+            );
+            assert!(
+                nix::sys::signal::kill(pid, None).is_err(),
+                "child must already be dead once finish() has returned"
+            );
         }
 
         #[test]

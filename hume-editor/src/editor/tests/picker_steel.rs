@@ -267,6 +267,31 @@ fn picker_bang_rejects_proper_list_items_naming_the_arg() {
     );
 }
 
+// ── #f payload is reserved for the dismiss signal, not a legal item ────────
+
+#[test]
+fn picker_bang_rejects_hash_f_payload() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (picker! (list (cons "a" #f)) (lambda (x) (void)))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    assert!(
+        ed.state.picker.is_none(),
+        "a #f payload must not open a picker"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.contains("reserved"),
+        "error should explain #f is reserved for dismiss, got {msg:?}"
+    );
+}
+
 // ── Direct host-impl call: the `lsp: None` construction arm ────────────────
 
 #[test]
