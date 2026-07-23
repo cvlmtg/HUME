@@ -135,6 +135,14 @@ HUME adds three more mode pills for modes Helix doesn't have:
 - `ui.statusline.search`
 - `ui.statusline.command`
 
+HUME also adds three scopes for the fuzzy-picker panel:
+
+- `ui.picker` — panel background and border
+- `ui.picker.selected` — highlighted row
+- `ui.picker.input` — query line; the block cursor is this style shown reversed
+
+A theme that only defines the completion-menu scopes (`ui.menu`, `ui.menu.selected`) still renders a usable picker — any missing `ui.picker*` scope falls back to its `ui.menu*` counterpart, so existing Helix themes work unmodified.
+
 HUME ships a theme editor — a single-file HTML tool you can open in a browser to edit themes visually and export them as TOML. You can download it from https://github.com/cvlmtg/HUME/blob/main/tools/theme-editor/index.html
 
 ## Key bindings
