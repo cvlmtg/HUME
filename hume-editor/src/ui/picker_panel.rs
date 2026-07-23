@@ -171,6 +171,22 @@ fn truncate_head(s: &str, budget: usize) -> String {
     pieces.concat()
 }
 
+/// Clip `s` to `budget` display cells, keeping the *tail* and prefixing a
+/// `…` marker when anything was dropped — for list rows (e.g. file paths)
+/// the distinguishing part (the basename) sits at the end. Grapheme-cluster
+/// aware via [`truncate_tail`]. Kept distinct from `truncate_tail` because
+/// the query row must never gain a marker — the query is the user's
+/// editable text, and its bare tail (no `…`) is intentional there.
+fn truncate_tail_marked(s: &str, budget: usize) -> String {
+    if unicode_width::UnicodeWidthStr::width(s) <= budget {
+        return s.to_string();
+    }
+    if budget == 0 {
+        return String::new();
+    }
+    format!("…{}", truncate_tail(s, budget - 1))
+}
+
 /// Paint the panel into `state`'s resolved outer rect. Pure function of its
 /// arguments (styles pre-resolved by the caller, mirroring
 /// `draw_menu_box`'s shape) — safe to call once per pane per frame even
@@ -258,12 +274,13 @@ pub(crate) fn draw_picker_panel(
     let list_capacity = (outer.height - 3) as usize;
     for (i, row_text) in state.rows.iter().take(list_capacity).enumerate() {
         let y = outer.y + 2 + i as u16;
+        let shown = truncate_tail_marked(row_text, inner_width);
         if state.selected_row == Some(i) {
             let row_rect = Rect::new(inner_x, y, outer.width - 2, 1);
             fill_rect_bg(buf, row_rect, selected);
-            buf.set_string(inner_x, y, row_text, selected);
+            buf.set_string(inner_x, y, &shown, selected);
         } else {
-            buf.set_string(inner_x, y, row_text, text);
+            buf.set_string(inner_x, y, &shown, text);
         }
     }
 }

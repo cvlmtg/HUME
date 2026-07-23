@@ -95,6 +95,73 @@ fn geometry_none_when_width_below_minimum() {
     assert!(panel_geometry(rect(0, 0, 3, 20)).is_none());
 }
 
+#[test]
+fn draw_picker_panel_clips_overlong_row_to_inner_width() {
+    // A row wider than the panel (e.g. a deep file path from `gf`) must be
+    // clipped to inner_width, keeping its tail behind a … marker, instead of
+    // bleeding past the right border.
+    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 40, 20));
+    let geo = PanelGeometry {
+        x: 0,
+        y: 0,
+        width: 12, // inner_width = 10
+        height: 4,
+        list_rows: 1,
+    };
+    let s = state(
+        "",
+        &["hume-editor/src/ui/picker_panel.rs"],
+        None,
+        &geo,
+    );
+    let outer = Rect::new(geo.x, geo.y, geo.width, geo.height);
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
+
+    // Right border must still be an unbroken │ column, not overrun text.
+    let right = geo.x + geo.width - 1;
+    assert_eq!(
+        buf[(right, 2)].symbol(),
+        "│",
+        "right border must survive an overlong row"
+    );
+    let painted = symbols_in(&buf, outer);
+    assert!(
+        painted.contains("…_panel.rs"),
+        "clipped row must lead with … and keep the tail (basename), got:\n{painted}"
+    );
+}
+
+// ── truncate_tail_marked ────────────────────────────────────────────────
+
+#[test]
+fn truncate_tail_marked_leaves_short_strings_unchanged() {
+    assert_eq!(truncate_tail_marked("hello", 8), "hello");
+    assert_eq!(
+        truncate_tail_marked("hello", 5),
+        "hello",
+        "exact fit needs no marker"
+    );
+}
+
+#[test]
+fn truncate_tail_marked_prefixes_ellipsis_and_keeps_tail() {
+    let source = "hume-editor/src/ui/picker_panel.rs";
+    let out = truncate_tail_marked(source, 12);
+    assert_eq!(unicode_width::UnicodeWidthStr::width(out.as_str()), 12);
+    let kept = out
+        .strip_prefix('…')
+        .unwrap_or_else(|| panic!("clipped string must lead with …, got {out:?}"));
+    assert!(
+        source.ends_with(kept),
+        "the kept part must be a genuine tail of the source string, got {out:?}"
+    );
+}
+
+#[test]
+fn truncate_tail_marked_zero_budget_is_empty() {
+    assert_eq!(truncate_tail_marked("anything", 0), "");
+}
+
 // ── draw_picker_panel ───────────────────────────────────────────────────
 
 #[test]
