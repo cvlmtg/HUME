@@ -36,6 +36,7 @@
 ;; (load-plugin "core:stdlib")         ; same, eagerly — required by some dependents (e.g. core:vim-keybind)
 ;; (declare-plugin "core:plum")        ; plugin/grammar manager
 ;; (load-plugin "core:plum")           ; same, eagerly — see core:plum README "Caveat"
+;; (load-plugin "core:pickers")        ; fuzzy file/buffer finders on g f / g b — eager (binds keys)
 
 ;; Third-party plugins, installed by :plum-install:
 ;; (load-plugin "alice/my-theme")

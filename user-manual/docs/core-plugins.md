@@ -74,6 +74,18 @@ upstream, HUME's catalog will pick it up automatically and this plugin will be r
 Installing requires `cargo` — install Rust from [rustup.rs](https://rustup.rs) first. See
 [Language Servers](lsp.md) for the general LSP workflow.
 
+## core:pickers
+
+Fuzzy file and buffer finders: `g f` opens a file picker (git-index-backed inside a
+repo, `fd`-backed otherwise), `g b` opens a buffer switcher.
+
+```scheme
+(load-plugin "core:pickers")
+```
+
+Must be loaded eagerly. See [Fuzzy Finder](pickers.md) for the file-source chain, keys,
+and buffer display details.
+
 ## core:vim-keybind
 
 Vim muscle memory: `$`, `^`, `0`, `G` (last line), `C` and `D` (change/delete to end of line), `Ctrl+6` (alternate file, kitty only), and `o` in Extend mode to swap the selection's ends.

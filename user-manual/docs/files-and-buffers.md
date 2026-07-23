@@ -28,6 +28,8 @@ A **buffer** is an open file (or scratch text). HUME can have multiple buffers o
 
 `:b` accepts a name prefix, a full path, a 1-based index as shown by `:ls`, or `#` to switch to the alternate buffer. When two open files share a name, Tab completion shows their parent directories to tell them apart.
 
+For fuzzy-searching files and buffers by typing a few characters instead, see [Fuzzy Finder](pickers.md).
+
 Closing the last remaining buffer leaves an empty scratch buffer rather than exiting.
 
 ### Alternate buffer

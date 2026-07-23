@@ -47,6 +47,7 @@ export default defineConfig({
         text: 'Files & Syntax',
         items: [
           { text: 'Files & Buffers', link: '/files-and-buffers' },
+          { text: 'Fuzzy Finder', link: '/pickers' },
           { text: 'Syntax Highlighting', link: '/syntax-highlighting' },
         ],
       },

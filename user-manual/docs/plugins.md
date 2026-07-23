@@ -293,6 +293,42 @@ A few extra functions cover things Scheme has no way to know on its own:
 
 Only install or overwrite files under `(data-dir)` unless you have a specific reason to go elsewhere — that's where HUME expects a plugin's own data (installed grammars, downloaded servers, plugin state) to live.
 
+### Custom pickers
+
+The modal fuzzy-finder panel behind [Fuzzy Finder](pickers.md) is a generic widget any
+plugin can drive — `core:pickers`' own file and buffer finders are built from nothing
+but this API.
+
+```scheme
+(picker! items on-select #:prompt "buffers: ")
+```
+
+`items` is a list of `(display . payload)` pairs — `display` is the string shown and
+matched against, `payload` is anything you like (a path, a buffer id, a hashmap); HUME
+never looks inside it. `on-select` fires exactly once: with the chosen item's `payload`
+if the user presses `Enter`, or `#f` if they press `Esc`, call `picker-close!`, or open a
+second picker while this one is still open (which replaces it).
+
+For a handful of items — buffers, a plugin's own static list, the output of a quick
+synchronous command — build the whole list up front and pass it to `picker!` directly.
+For anything enumeration-scale (file lists, grep-style output), open the picker empty
+and stream an external command's output straight into it instead:
+
+```scheme
+(define token (picker! '() (lambda (path) (when path (open-buffer! path))) #:prompt "files: "))
+(picker-source-spawn! token "git" '("ls-files" "-z" "--cached" "--others" "--exclude-standard") #:nul #t)
+```
+
+`picker-source-spawn!` runs `cmd` with `args` directly (no shell), splitting its stdout
+into lines (or NUL-delimited fields with `#:nul #t`) and appending each one to the picker
+as its own `(line . line)` item — display and payload are the same raw line. Nothing
+about the command's output passes through Scheme itself, so this stays fast even for
+tens of thousands of results; do any parsing of the selected line inside `on-select`,
+not up front. The child process is killed automatically if the picker is closed or
+replaced before the command finishes. `(picker-push! token items)` appends a batch of
+ordinary `(display . payload)` items instead, for a source that produces its own results
+asynchronously (an LSP request, a timer) rather than through a spawned command.
+
 ## Bundled core plugins
 
 HUME ships several built-in plugins — see [Core Plugins](core-plugins.md) for the full list and what each does.
