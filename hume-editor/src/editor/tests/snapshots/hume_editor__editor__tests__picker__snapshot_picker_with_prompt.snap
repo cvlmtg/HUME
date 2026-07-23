@@ -1,0 +1,16 @@
+---
+source: hume-editor/src/editor/tests/picker.rs
+expression: snap
+---
+<fg=#808080,bg=#3a3a3a>  </><fg=#c8c8d2,bg=#3a3a3a>1</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#d0d0d0,bg=#1a1a1a>┌──────────────────────────────┐</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#d0d0d0,bg=#1a1a1a>│files: a</><fg=#000000,bg=#ffffff> </><bg=#1a1a1a>                  </><fg=#d0d0d0,bg=#1a1a1a>3/3│</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#d0d0d0,bg=#1a1a1a>│</><fg=#ffffff,bg=#50508c>alpha                         </><fg=#d0d0d0,bg=#1a1a1a>│</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#d0d0d0,bg=#1a1a1a>│beta</><bg=#1a1a1a>                          </><fg=#d0d0d0,bg=#1a1a1a>│</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#d0d0d0,bg=#1a1a1a>│gamma</><bg=#1a1a1a>                         </><fg=#d0d0d0,bg=#1a1a1a>│</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#d0d0d0,bg=#1a1a1a>└──────────────────────────────┘</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#000000,bg=#ffffff> 1:1                              │ NOR</>

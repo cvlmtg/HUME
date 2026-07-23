@@ -48,7 +48,6 @@ pub(crate) struct PickerSession {
     /// Label painted before the query in the input line, e.g. `"files: "`.
     /// Empty by default — an empty prompt renders identically to no prompt
     /// at all.
-    #[allow(dead_code)] // read by `prompt()`, whose production caller is host_impl.rs (step 6)
     prompt: String,
     /// Stale-push guard: `push` is a no-op unless the caller's token matches.
     #[allow(dead_code)]
@@ -84,7 +83,6 @@ impl PickerSession {
         self.token
     }
 
-    #[allow(dead_code)] // production caller is `sync_picker_view` reading it into `PickerViewState` (step 4)
     pub(crate) fn prompt(&self) -> &str {
         &self.prompt
     }

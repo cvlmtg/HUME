@@ -33,6 +33,20 @@ fn open_test_picker(ed: &mut Editor, items: &[&str]) {
     open_test_picker_with_callback(ed, items, marker("cb"));
 }
 
+fn open_test_picker_with_prompt(ed: &mut Editor, items: &[&str], prompt: &str) {
+    let mut session = PickerSession::new(marker("cb"), prompt.to_string());
+    let token = session.token();
+    let picker_items: Vec<PickerItem> = items
+        .iter()
+        .map(|s| PickerItem {
+            display: s.to_string(),
+            payload: SteelVal::StringV((*s).into()),
+        })
+        .collect();
+    session.push(token, picker_items);
+    picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
+}
+
 /// Runs the write-side pipeline (`prepare_frame`) at a given terminal size —
 /// needed before any test that depends on `panel_geometry`/`last_pane_area`
 /// (paging, scroll clamping, the synced view).
@@ -437,6 +451,20 @@ fn snapshot_picker_no_match_state() {
     for ch in "zzz".chars() {
         ed.feed_key(key(ch));
     }
+
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(40, 12, &mut ctx);
+    let rect = ratatui::layout::Rect::new(0, 0, 40, 12);
+    let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
+    insta::assert_snapshot!(snap);
+}
+
+#[test]
+fn snapshot_picker_with_prompt() {
+    let mut ed = open_real_editor();
+    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    open_test_picker_with_prompt(&mut ed, &["alpha", "beta", "gamma"], "files: ");
+    ed.feed_key(key('a'));
 
     let mut ctx = RenderContext::new();
     ed.prepare_frame(40, 12, &mut ctx);

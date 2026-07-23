@@ -34,6 +34,11 @@ const MAX_PANEL_HEIGHT: u16 = 30;
 /// Fully-resolved panel content and position — computed once per frame by
 /// the write side (`Editor::sync_picker_view`); the overlay only paints.
 pub(crate) struct PickerViewState {
+    /// Label painted before the query on the input row, e.g. `"files: "` —
+    /// empty by default, in which case the input row renders exactly as it
+    /// did before prompts existed. Not yet width-clipped — paint-time
+    /// concern, same as `query`.
+    pub(crate) prompt: String,
     /// Raw query text (not yet tail-truncated — that's a paint-time
     /// concern, so this snapshot stays a dumb value, not pre-formatted UI).
     pub(crate) query: String,
@@ -144,6 +149,28 @@ fn truncate_tail(s: &str, budget: usize) -> String {
     pieces.into_iter().rev().collect()
 }
 
+/// Remove trailing graphemes from `s` until its display width fits `budget`,
+/// keeping the *head* — the prompt is a fixed label, not something the user
+/// is editing, so if it must be clipped at all (a pathologically narrow
+/// panel), the readable prefix matters more than the tail. Grapheme-cluster
+/// aware, same discipline as `truncate_tail`.
+fn truncate_head(s: &str, budget: usize) -> String {
+    if unicode_width::UnicodeWidthStr::width(s) <= budget {
+        return s.to_string();
+    }
+    let mut acc = 0usize;
+    let mut pieces: Vec<&str> = Vec::new();
+    for g in s.graphemes(true) {
+        let w = unicode_width::UnicodeWidthStr::width(g);
+        if acc + w > budget {
+            break;
+        }
+        acc += w;
+        pieces.push(g);
+    }
+    pieces.concat()
+}
+
 /// Paint the panel into `state`'s resolved outer rect. Pure function of its
 /// arguments (styles pre-resolved by the caller, mirroring
 /// `draw_menu_box`'s shape) — safe to call once per pane per frame even
@@ -195,18 +222,31 @@ pub(crate) fn draw_picker_panel(
 
     let counts = format!("{}/{}", state.matched, state.total);
     let counts_width = unicode_width::UnicodeWidthStr::width(counts.as_str());
+
+    // Clip the prompt itself only in the pathological case where it alone
+    // exceeds the inner width — the common case (empty or a short label)
+    // leaves this a no-op, so an empty prompt renders identically to no
+    // prompt at all.
+    let prompt_shown = truncate_head(&state.prompt, inner_width);
+    let prompt_width = unicode_width::UnicodeWidthStr::width(prompt_shown.as_str());
+    if prompt_width > 0 {
+        buf.set_string(inner_x, input_y, &prompt_shown, text);
+    }
+
+    let after_prompt_width = inner_width.saturating_sub(prompt_width);
     // Reserve 1 col for the cursor cell + 1 col of gap before the counter.
-    let show_counts = inner_width >= counts_width + 2;
+    let show_counts = after_prompt_width >= counts_width + 2;
     let query_budget = if show_counts {
-        inner_width - counts_width - 2
+        after_prompt_width - counts_width - 2
     } else {
-        inner_width.saturating_sub(1)
+        after_prompt_width.saturating_sub(1)
     };
     let query_tail = truncate_tail(&state.query, query_budget);
     let query_width = unicode_width::UnicodeWidthStr::width(query_tail.as_str());
 
-    buf.set_string(inner_x, input_y, &query_tail, text);
-    let cursor_x = inner_x + query_width as u16;
+    let query_x = inner_x + prompt_width as u16;
+    buf.set_string(query_x, input_y, &query_tail, text);
+    let cursor_x = query_x + query_width as u16;
     if cursor_x < inner_x + inner_width as u16 {
         buf.set_string(cursor_x, input_y, " ", cursor);
     }

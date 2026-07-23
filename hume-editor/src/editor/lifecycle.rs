@@ -1830,6 +1830,7 @@ impl Editor {
                 let selected_row =
                     (!rows.is_empty()).then(|| session.selected() - session.scroll());
                 Some(crate::ui::picker_panel::PickerViewState {
+                    prompt: session.prompt().to_string(),
                     query: session.query().to_string(),
                     rows,
                     selected_row,

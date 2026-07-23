@@ -35,6 +35,7 @@ fn state(
     geo: &PanelGeometry,
 ) -> PickerViewState {
     PickerViewState {
+        prompt: String::new(),
         query: query.to_string(),
         rows: rows.iter().map(|s| s.to_string()).collect(),
         selected_row,
@@ -266,6 +267,54 @@ fn draw_picker_panel_truncates_query_tail_keeping_cursor_visible() {
         row.starts_with("hij"),
         "expected tail truncation, got {row:?}"
     );
+}
+
+#[test]
+fn draw_picker_panel_renders_prompt_before_query() {
+    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let geo = PanelGeometry {
+        x: 0,
+        y: 0,
+        width: 12, // inner_width = 10; counts "0/0" leaves a 2-col query budget after "f: "
+        height: 4,
+        list_rows: 1,
+    };
+    let mut s = state("ab", &[], None, &geo); // matched = total = 0
+    s.prompt = "f: ".to_string();
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
+
+    let inner_x = geo.x + 1;
+    let row: String = (inner_x..inner_x + 10)
+        .map(|x| buf[(x, 1)].symbol().to_string())
+        .collect();
+    assert!(
+        row.starts_with("f: ab"),
+        "expected prompt painted before the query, got {row:?}"
+    );
+}
+
+#[test]
+fn draw_picker_panel_prompt_wider_than_panel_clips_without_panic() {
+    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let geo = PanelGeometry {
+        x: 0,
+        y: 0,
+        width: 7, // inner_width = 5, narrower than the prompt alone
+        height: 4,
+        list_rows: 1,
+    };
+    let mut s = state("query text", &["row"], Some(0), &geo);
+    s.prompt = "much longer prompt than the panel".to_string();
+
+    // Must not panic even though the prompt alone exceeds inner_width, and
+    // must leave the query with zero budget rather than overflow the row.
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
+
+    let inner_x = geo.x + 1;
+    let row: String = (inner_x..inner_x + 5)
+        .map(|x| buf[(x, 1)].symbol().to_string())
+        .collect();
+    assert_eq!(row, "much ", "prompt clipped to the inner width, query dropped");
 }
 
 #[test]
