@@ -3,6 +3,7 @@ pub(crate) mod drawer;
 pub(crate) mod highlight_providers;
 pub(crate) mod inlay_hints;
 pub(crate) mod menu_box;
+pub(crate) mod picker_panel;
 pub(crate) mod popup;
 pub(crate) mod signs;
 pub mod statusline;
