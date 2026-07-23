@@ -331,7 +331,7 @@ impl Editor {
                 true
             }
             KeyCode::Escape => {
-                self.clear_lsp_completion();
+                self.clear_completion_menu();
                 true
             }
             KeyCode::Backspace => {
@@ -341,7 +341,7 @@ impl Editor {
                 // crossing it, not just narrowing the filter.
                 let head = self.current_selections().primary().head();
                 if head <= self.open_completion_session().anchor() {
-                    self.clear_lsp_completion();
+                    self.clear_completion_menu();
                 }
                 false
             }
@@ -362,7 +362,7 @@ impl Editor {
         let ui = self
             .lsp
             .completion_ui
-            .get_or_insert(crate::editor::lsp::completion::LspCompletionUi { selected: 0 });
+            .get_or_insert(crate::editor::lsp::completion::CompletionMenuUi { selected: 0 });
         if forward {
             ui.selected = (ui.selected + 1) % n;
         } else {
@@ -379,7 +379,7 @@ impl Editor {
         let Some(session) = self.lsp.completion.take() else {
             return;
         };
-        self.clear_lsp_completion();
+        self.clear_completion_menu();
         if let Err(msg) = session.accept(&mut self.state, &mut self.lsp, selected) {
             self.report(Severity::Error, msg);
         }
@@ -409,7 +409,7 @@ impl Editor {
         // rather than slice with an inverted or out-of-range span.
         let len = self.doc().text().len_chars();
         if head < anchor || head > len {
-            self.clear_lsp_completion();
+            self.clear_completion_menu();
             return;
         }
         let text = self.doc().text().slice(anchor..head).to_string();

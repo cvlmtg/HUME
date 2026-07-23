@@ -118,14 +118,14 @@ impl Editor {
         // and read by every pane's providers (see `build_pane`). Highlight
         // data is per-pane (see `PaneHighlights`) — allocated fresh inside
         // `build_pane`.
-        let completion_view: Arc<
+        let minibuf_completion_view: Arc<
             RwLock<Option<crate::ui::completion_overlay::MinibufCompletionView>>,
         > = Arc::new(RwLock::new(None));
         let popup_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>> =
             Arc::new(RwLock::new(None));
         let menu_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>> =
             Arc::new(RwLock::new(None));
-        let lsp_completion_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>> =
+        let completion_menu_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>> =
             Arc::new(RwLock::new(None));
         let picker_view: Arc<RwLock<Option<crate::ui::picker_panel::PickerViewState>>> =
             Arc::new(RwLock::new(None));
@@ -147,10 +147,10 @@ impl Editor {
         // the same `build_pane` (see `commands::open_pane`).
         let (pane, render_handles) = build_pane(
             &mut engine_view.registry,
-            &completion_view,
+            &minibuf_completion_view,
             &popup_view,
             &menu_view,
-            &lsp_completion_view,
+            &completion_menu_view,
             &picker_view,
             settings.wrap_mode,
             buffer_id,
@@ -187,7 +187,7 @@ impl Editor {
                 last_paste: None,
                 should_quit: false,
                 minibuf: None,
-                completion: None,
+                minibuf_completion: None,
                 status_msg: None,
                 summary_ttl: 0,
                 message_log: MessageLog::new(),
@@ -240,8 +240,8 @@ impl Editor {
                 decorations: super::decorations::DecorationStores::default(),
                 steel_prompt_callback: None,
                 lsp_completion_dismiss_pending: false,
-                lsp_completion_view,
-                completion_view,
+                completion_menu_view,
+                minibuf_completion_view,
                 diagnostic_scopes: None,
                 inlay_hint_scope: None,
                 virtual_text_fallback_scope: None,
@@ -740,7 +740,7 @@ impl Editor {
         //    any Steel calls that work queued (LSP request/timer callbacks).
         //    `drain_pending_steel_calls` also unconditionally consumes any
         //    deferred LSP-completion dismissal (`set_mode`'s Insert-exit arm)
-        //    — this is what makes step 9's `sync_lsp_completion_view` below
+        //    — this is what makes step 9's `sync_completion_menu_view` below
         //    always see an up-to-date session, with no separate call needed.
         self.drain_async_sources();
         self.drain_pending_steel_calls();
@@ -768,7 +768,7 @@ impl Editor {
         self.update_inline_diagnostics_providers();
 
         // 7. Sync completion-popup view to the shared Arc for `MinibufCompletionOverlay`.
-        self.sync_completion_view();
+        self.sync_minibuf_completion_view();
 
         // 8. Store the terminal area + divider setting: pane-focus/split
         //    commands have no terminal handle between frames, so they
@@ -787,7 +787,7 @@ impl Editor {
         //    geometry.
         self.sync_popup_view(ctx);
         self.sync_menu_view(ctx);
-        self.sync_lsp_completion_view(ctx);
+        self.sync_completion_menu_view(ctx);
         self.sync_picker_view();
     }
 
@@ -1563,13 +1563,13 @@ impl Editor {
     /// so `MinibufCompletionOverlay` can render it during this frame.
     ///
     /// Called from `prepare_frame` after highlight data is synced.
-    pub(super) fn sync_completion_view(&self) {
+    pub(super) fn sync_minibuf_completion_view(&self) {
         // Skip the write-lock when both sides are already None — common case
         // while no popup is open.
-        if self.state.completion.is_none()
+        if self.state.minibuf_completion.is_none()
             && self
                 .state
-                .completion_view
+                .minibuf_completion_view
                 .read()
                 .expect("RwLock not poisoned")
                 .is_none()
@@ -1577,7 +1577,7 @@ impl Editor {
             return;
         }
         use unicode_width::UnicodeWidthStr as _;
-        let view = self.state.completion.as_ref().map(|state| {
+        let view = self.state.minibuf_completion.as_ref().map(|state| {
             let anchor_col = self
                 .state
                 .minibuf
@@ -1599,7 +1599,7 @@ impl Editor {
         });
         *self
             .state
-            .completion_view
+            .minibuf_completion_view
             .write()
             .expect("RwLock not poisoned") = view;
     }
@@ -1750,11 +1750,11 @@ impl Editor {
     /// [`Self::sync_menu_view`] and for the same reason: it needs
     /// `EngineView::pane_rect`, which reads `last_pane_area` — only current
     /// after step 8 runs.
-    pub(super) fn sync_lsp_completion_view(&self, ctx: &mut RenderContext) {
+    pub(super) fn sync_completion_menu_view(&self, ctx: &mut RenderContext) {
         if self.lsp.completion.is_none()
             && self
                 .state
-                .lsp_completion_view
+                .completion_menu_view
                 .read()
                 .expect("RwLock not poisoned")
                 .is_none()
@@ -1793,14 +1793,14 @@ impl Editor {
 
         *self
             .state
-            .lsp_completion_view
+            .completion_menu_view
             .write()
             .expect("RwLock not poisoned") = resolved;
     }
 
     /// Write the open picker session into the shared `PickerViewState` Arc
     /// so `PickerOverlay` can paint it this frame. Same step-9 timing as
-    /// `sync_popup_view`/`sync_menu_view`/`sync_lsp_completion_view` (needs
+    /// `sync_popup_view`/`sync_menu_view`/`sync_completion_menu_view` (needs
     /// `last_pane_area`, set in step 8) but, unlike them, centers in the
     /// panes region rather than anchoring at the cursor — no `RenderContext`
     /// needed.

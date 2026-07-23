@@ -239,7 +239,7 @@ impl super::Editor {
     /// session can be silently dropped without firing.
     #[allow(dead_code)] // production caller is B4's `picker!` builtin
     pub(crate) fn open_picker(&mut self, session: PickerSession) {
-        self.clear_lsp_completion();
+        self.clear_completion_menu();
         if let Some(old) = self.state.picker.take() {
             let callback = old.on_select().clone();
             self.queue_steel_call(callback, vec![SteelVal::BoolV(false)]);

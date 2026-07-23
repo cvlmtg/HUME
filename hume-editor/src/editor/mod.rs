@@ -146,7 +146,7 @@ pub(crate) struct EditorState {
     /// Active when the user is typing a command (`:`) or a search (`/`).
     pub(crate) minibuf: Option<MiniBuffer>,
     /// Active completion session while a popup is showing.
-    pub(crate) completion: Option<completion::CompletionState>,
+    pub(crate) minibuf_completion: Option<completion::MinibufCompletionState>,
     /// Transient one-line message shown in the statusline after an action.
     pub(crate) status_msg: Option<String>,
     /// Keystrokes the message-log summary stays visible before auto-dismissing.
@@ -290,9 +290,9 @@ pub(crate) struct EditorState {
     /// menu's generic
     /// `PopupState`/`PopupOverlay` (selected-row styling, same as the
     /// selection menu) via its own `Arc` and pane registration.
-    pub(crate) lsp_completion_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
+    pub(crate) completion_menu_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
     /// Shared completion-popup view: written by `prepare_frame`, read by provider.
-    pub(crate) completion_view:
+    pub(crate) minibuf_completion_view:
         Arc<RwLock<Option<crate::ui::completion_overlay::MinibufCompletionView>>>,
     /// Interned scope ids for the four diagnostic severities (`diagnostic.error`
     /// etc.), resolved lazily on first use — scope interning needs `&mut

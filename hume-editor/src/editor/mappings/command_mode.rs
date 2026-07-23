@@ -37,12 +37,12 @@ impl Editor {
                 // directory's children.
                 if self
                     .state
-                    .completion
+                    .minibuf_completion
                     .as_ref()
                     .and_then(|s| s.candidates.get(s.selected))
                     .is_some_and(|c| c.replacement.ends_with('/'))
                 {
-                    self.state.completion = None;
+                    self.state.minibuf_completion = None;
                     self.complete_minibuf(false);
                     return;
                 }
@@ -73,7 +73,7 @@ impl Editor {
             MiniBufferEvent::EmptiedByBackspace
             | MiniBufferEvent::Edited
             | MiniBufferEvent::CursorMoved => {
-                self.state.completion = None;
+                self.state.minibuf_completion = None;
                 self.state
                     .history
                     .get_mut(HistoryKind::Command)
@@ -83,11 +83,11 @@ impl Editor {
                 self.complete_minibuf(reverse);
             }
             MiniBufferEvent::HistoryPrev => {
-                self.state.completion = None;
+                self.state.minibuf_completion = None;
                 self.recall_history(HistoryKind::Command, HistoryDir::Prev);
             }
             MiniBufferEvent::HistoryNext => {
-                self.state.completion = None;
+                self.state.minibuf_completion = None;
                 self.recall_history(HistoryKind::Command, HistoryDir::Next);
             }
             MiniBufferEvent::Ignored => {}
@@ -135,7 +135,7 @@ impl Editor {
     /// Close the minibuffer and clear any active completion session.
     pub(super) fn close_minibuf(&mut self) {
         self.state.minibuf = None;
-        self.state.completion = None;
+        self.state.minibuf_completion = None;
         self.state.history.begin_session_all();
     }
 
@@ -172,7 +172,7 @@ impl Editor {
     /// forward (or backward when `reverse`) and apply the new candidate.
     fn complete_minibuf(&mut self, reverse: bool) {
         // If completion is already open, cycle to the next candidate.
-        if let Some(ref mut state) = self.state.completion {
+        if let Some(ref mut state) = self.state.minibuf_completion {
             let n = state.candidates.len();
             // current_span() reflects what's currently in the input (based on the
             // previously-selected candidate), so it must be read before advancing
@@ -216,7 +216,7 @@ impl Editor {
 
         // Dispatch to the right completer based on command + input shape.
         use crate::editor::completion::{
-            BufferNameCompleter, CommandCompleter, Completer, CompletionResult, CompletionState,
+            BufferNameCompleter, CommandCompleter, Completer, CompletionResult, MinibufCompletionState,
             PathCompleter, SetCompleter, ThemeCompleter,
         };
 
@@ -281,7 +281,7 @@ impl Editor {
             mb.input.replace_range(span_start..cursor, &replacement);
             mb.cursor = span_start + replacement.len();
         }
-        self.state.completion = Some(CompletionState {
+        self.state.minibuf_completion = Some(MinibufCompletionState {
             candidates,
             selected: 0,
             span_start,

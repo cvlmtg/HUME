@@ -97,7 +97,7 @@ impl Editor {
             buf,
             |b, s| insert_str(b, s, text),
         );
-        self.clear_lsp_completion();
+        self.clear_completion_menu();
         // Typing (pasting) real content cancels the "nothing typed since
         // Enter" state — same rule the printable-char branch of
         // `handle_insert` applies.
@@ -113,7 +113,7 @@ impl Editor {
                 // A `(prompt! …)` session applies plain edits with no further
                 // follow-up — mirrors `handle_steel_prompt_event`'s Edited arm.
                 if self.state.steel_prompt_callback.is_none() {
-                    self.state.completion = None;
+                    self.state.minibuf_completion = None;
                     self.state
                         .history
                         .get_mut(HistoryKind::Command)

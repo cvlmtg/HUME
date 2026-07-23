@@ -79,16 +79,16 @@ impl<'a> EditorHostImpl<'a> {
             .get(buf_id)
     }
 
-    /// The `EditorHostImpl`-local equivalent of `Editor::clear_lsp_completion`
+    /// The `EditorHostImpl`-local equivalent of `Editor::clear_completion_menu`
     /// — this struct holds disjoint `state`/`lsp` borrows, not a full
     /// `Editor`, so it can't just call that method.
-    fn clear_lsp_completion(&mut self) {
+    fn clear_completion_menu(&mut self) {
         if let Some(lsp) = self.lsp.as_deref_mut() {
             crate::editor::lsp::completion::clear_completion_state(lsp);
         }
         *self
             .state
-            .lsp_completion_view
+            .completion_menu_view
             .write()
             .expect("RwLock not poisoned") = None;
     }
@@ -525,7 +525,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
             // Replaces any open session too — an isIncomplete re-request
             // that comes back empty (or entirely malformed) must close the
             // menu, not leave the old one live.
-            self.clear_lsp_completion();
+            self.clear_completion_menu();
             self.state
                 .report(Severity::Info, "no completions".to_string());
             return Ok(());
@@ -578,19 +578,19 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         };
         // Ends the session either way — success or failure — so a rejected
         // accept never leaves a stale session lingering; the ui/view clear
-        // matches `clear_lsp_completion`'s scope even though `completion`
+        // matches `clear_completion_menu`'s scope even though `completion`
         // itself is already `None` here (via `take` above).
         crate::editor::lsp::completion::clear_completion_state(lsp);
         *self
             .state
-            .lsp_completion_view
+            .completion_menu_view
             .write()
             .expect("RwLock not poisoned") = None;
         session.accept(self.state, lsp, idx)
     }
 
     fn completion_dismiss(&mut self) {
-        self.clear_lsp_completion();
+        self.clear_completion_menu();
     }
 }
 

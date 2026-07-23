@@ -5,7 +5,7 @@
 //!   returns a sorted `Vec<Completion>` and the byte offset in `input` at which
 //!   the completed token starts (`span_start`).  No &mut access, no I/O side
 //!   effects visible to the caller.
-//! - `CompletionState` on `Editor` is the SSOT.  It is cleared whenever the
+//! - `MinibufCompletionState` on `Editor` is the SSOT.  It is cleared whenever the
 //!   minibuffer closes or the user edits the input by any key other than Tab /
 //!   Shift-Tab.
 
@@ -43,7 +43,7 @@ pub(crate) struct Completion {
 ///
 /// Invariant: `selected < candidates.len()`. Created only when there are ≥2
 /// candidates (single-candidate completion is applied silently without state).
-pub(crate) struct CompletionState {
+pub(crate) struct MinibufCompletionState {
     pub candidates: Vec<Completion>,
     /// Index of the currently-displayed candidate.
     pub selected: usize,
@@ -52,12 +52,12 @@ pub(crate) struct CompletionState {
     pub span_start: usize,
 }
 
-impl CompletionState {
+impl MinibufCompletionState {
     /// The byte range that the current replacement occupies in the input.
     pub(crate) fn current_span(&self) -> std::ops::Range<usize> {
         debug_assert!(
             self.selected < self.candidates.len(),
-            "CompletionState invariant violated: selected {} >= len {}",
+            "MinibufCompletionState invariant violated: selected {} >= len {}",
             self.selected,
             self.candidates.len(),
         );

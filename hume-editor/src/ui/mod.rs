@@ -71,10 +71,10 @@ pub(crate) struct PaneRenderHandles {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn build_pane(
     registry: &mut ScopeRegistry,
-    completion_view: &Arc<RwLock<Option<completion_overlay::MinibufCompletionView>>>,
+    minibuf_completion_view: &Arc<RwLock<Option<completion_overlay::MinibufCompletionView>>>,
     popup_view: &Arc<RwLock<Option<popup::PopupState>>>,
     menu_view: &Arc<RwLock<Option<popup::PopupState>>>,
-    lsp_completion_view: &Arc<RwLock<Option<popup::PopupState>>>,
+    completion_menu_view: &Arc<RwLock<Option<popup::PopupState>>>,
     picker_view: &Arc<RwLock<Option<picker_panel::PickerViewState>>>,
     wrap_mode: WrapMode,
     buffer_id: BufferId,
@@ -129,7 +129,7 @@ pub(crate) fn build_pane(
         data: Arc::clone(&virtual_line_map),
     }));
     providers.add_overlay(Box::new(MinibufCompletionOverlay {
-        data: Arc::clone(completion_view),
+        data: Arc::clone(minibuf_completion_view),
     }));
     // Registered after the completion overlay so a hover/signature-help
     // popup paints on top of it (last registration wins z-order).
@@ -150,7 +150,7 @@ pub(crate) fn build_pane(
     // in-progress completion is the most action-relevant overlay when both
     // could theoretically be visible.
     providers.add_overlay(Box::new(PopupOverlay {
-        data: Arc::clone(lsp_completion_view),
+        data: Arc::clone(completion_menu_view),
         scope: "ui.menu",
         selected_scope: Some("ui.menu.selected"),
     }));

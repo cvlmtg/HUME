@@ -315,7 +315,7 @@ pub(crate) struct CompletionSession {
 /// Insert-mode UI state for an open completion session — kept separate from
 /// `CompletionSession` itself (which deliberately has no `selected`) so the
 /// session's filtering/accept logic stays free of rendering concerns.
-pub(crate) struct LspCompletionUi {
+pub(crate) struct CompletionMenuUi {
     pub(crate) selected: usize,
 }
 
@@ -624,10 +624,10 @@ fn parse_additional_text_edits_lenient(resolved: &serde_json::Value) -> Vec<lsp_
 }
 
 /// Clears `lsp`'s completion session + menu UI (not the shared view Arc —
-/// callers hold that separately: `Editor` via `state.lsp_completion_view`,
+/// callers hold that separately: `Editor` via `state.completion_menu_view`,
 /// `EditorHostImpl` via its own disjoint `state` borrow). Single definition
 /// of "what constitutes an open completion session", shared by
-/// `Editor::clear_lsp_completion`, `EditorHostImpl::clear_lsp_completion`,
+/// `Editor::clear_completion_menu`, `EditorHostImpl::clear_completion_menu`,
 /// and `completion_accept`.
 pub(crate) fn clear_completion_state(lsp: &mut LspState) {
     lsp.completion = None;
@@ -642,11 +642,11 @@ impl Editor {
     /// Backspace crossing the anchor, a successful/failed accept) and by
     /// `take_pending_lsp_completion_dismiss`. A no-op when no session is
     /// open.
-    pub(crate) fn clear_lsp_completion(&mut self) {
+    pub(crate) fn clear_completion_menu(&mut self) {
         clear_completion_state(&mut self.lsp);
         *self
             .state
-            .lsp_completion_view
+            .completion_menu_view
             .write()
             .expect("RwLock not poisoned") = None;
     }
@@ -656,7 +656,7 @@ impl Editor {
     /// "the next render" (see the flag's own doc comment on `EditorState`).
     pub(crate) fn take_pending_lsp_completion_dismiss(&mut self) {
         if std::mem::take(&mut self.state.lsp_completion_dismiss_pending) {
-            self.clear_lsp_completion();
+            self.clear_completion_menu();
         }
     }
 }

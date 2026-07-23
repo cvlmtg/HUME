@@ -505,10 +505,10 @@ pub(super) fn open_pane(
     // can never bleed across panes.
     let (pane, render_handles) = crate::ui::build_pane(
         &mut view.registry,
-        &state.completion_view,
+        &state.minibuf_completion_view,
         &state.popup_view,
         &state.menu_view,
-        &state.lsp_completion_view,
+        &state.completion_menu_view,
         &state.picker_view,
         state.settings.wrap_mode,
         buffer_id,

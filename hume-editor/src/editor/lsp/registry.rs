@@ -336,7 +336,7 @@ impl Editor {
             .as_ref()
             .is_some_and(|session| bids.contains(&session.bid()))
         {
-            self.clear_lsp_completion();
+            self.clear_completion_menu();
         }
         for bid in diag_touched {
             self.fire_hook_diagnostics_changed(bid);

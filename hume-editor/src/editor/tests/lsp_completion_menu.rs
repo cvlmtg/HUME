@@ -1,6 +1,6 @@
 // In-buffer completion menu + Insert-mode dispatch: the
 // `handle_completion_key`/`refilter_lsp_completion_after_edit` guard in
-// `mappings/insert.rs`, and `sync_lsp_completion_view`'s write side (reusing
+// `mappings/insert.rs`, and `sync_completion_menu_view`'s write side (reusing
 // the popup/selection-menu widgets' `PopupState`/`PopupOverlay`).
 //
 // Sessions are constructed directly via `CompletionSession::begin` (bypassing
@@ -36,7 +36,7 @@ fn begin_session(ed: &mut Editor, items: &[(&str, Option<&str>)]) {
 // ── Pane-fit clamp: menu must render (clamped), never vanish ────────────────
 //
 // Regression coverage for `resolve_popup_geometry`'s size clamp: before it
-// existed, `sync_lsp_completion_view` sized the popup against the full
+// existed, `sync_completion_menu_view` sized the popup against the full
 // candidate list with no bound on the pane's actual width/height, and
 // `PopupOverlay`'s defensive bounds check silently dropped the *entire*
 // popup — not just the overflowing part — whenever the box didn't fit.
@@ -58,7 +58,7 @@ fn completion_menu_clamps_to_a_short_pane_instead_of_vanishing() {
         .view
         .pane_rect(ed.state.focused_pane_id)
         .expect("focused pane has a rect after prepare_frame");
-    let view = ed.state.lsp_completion_view.read().unwrap();
+    let view = ed.state.completion_menu_view.read().unwrap();
     let state = view
         .as_ref()
         .expect("popup must still render, clamped to fit, not vanish");
@@ -87,7 +87,7 @@ fn completion_menu_clamps_to_a_narrow_pane_instead_of_vanishing() {
         .view
         .pane_rect(ed.state.focused_pane_id)
         .expect("focused pane has a rect after prepare_frame");
-    let view = ed.state.lsp_completion_view.read().unwrap();
+    let view = ed.state.completion_menu_view.read().unwrap();
     let state = view
         .as_ref()
         .expect("popup must still render, clamped to fit, not vanish");
@@ -155,7 +155,7 @@ fn enter_applies_the_selected_edit_and_closes_the_session() {
         ed.lsp.completion.is_none(),
         "session must close after accept"
     );
-    assert!(ed.state.lsp_completion_view.read().unwrap().is_none());
+    assert!(ed.state.completion_menu_view.read().unwrap().is_none());
     let text = ed.doc().text().to_string();
     assert_eq!(text, "foo\n", "insert_text must be applied at the anchor");
 }
@@ -380,7 +380,7 @@ fn ctrl_c_exits_insert_and_dismisses_the_session() {
 
     assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Normal);
     assert!(ed.lsp.completion.is_none());
-    assert!(ed.state.lsp_completion_view.read().unwrap().is_none());
+    assert!(ed.state.completion_menu_view.read().unwrap().is_none());
 }
 
 /// `set_mode` only has `&mut EditorState` — it can't reach `LspState`
@@ -409,7 +409,7 @@ fn mode_change_outside_key_dispatch_dismisses_the_session_by_the_next_frame() {
         ed.lsp.completion.is_none(),
         "prepare_frame must consume the deferred dismissal before rendering"
     );
-    assert!(ed.state.lsp_completion_view.read().unwrap().is_none());
+    assert!(ed.state.completion_menu_view.read().unwrap().is_none());
 }
 
 // ── Regression: typing after accept must not desync the edit group ──────────

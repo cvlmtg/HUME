@@ -81,6 +81,6 @@ fn shift_tab_still_backtab() {
     ed.handle_key(KeyEvent::new(KeyCode::Tab, Modifiers::NONE));
     // Shift-Tab back to candidate 0.
     ed.handle_key(KeyEvent::new(KeyCode::BackTab, Modifiers::SHIFT));
-    let state = ed.state.completion.as_ref().unwrap();
+    let state = ed.state.minibuf_completion.as_ref().unwrap();
     assert_eq!(state.selected, 0);
 }

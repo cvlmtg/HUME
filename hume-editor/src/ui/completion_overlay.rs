@@ -22,7 +22,7 @@ use super::menu_box::{MAX_MENU_ROWS, draw_menu_box, outer_dims};
 
 /// Frame-stable snapshot of the completion popup content.
 ///
-/// Computed from `Editor.completion` in `prepare_frame`; stored in an
+/// Computed from `Editor.minibuf_completion` in `prepare_frame`; stored in an
 /// `Arc<RwLock<_>>` shared with `MinibufCompletionOverlay`.
 pub(crate) struct MinibufCompletionView {
     /// Candidate display strings (one per row, already sorted).

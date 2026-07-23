@@ -115,7 +115,7 @@ pub(crate) struct LspState {
     pub(in crate::editor) completion: Option<completion::CompletionSession>,
     /// Insert-mode selection state for `completion` — separate from the
     /// session itself, cleared whenever the session ends.
-    pub(in crate::editor) completion_ui: Option<completion::LspCompletionUi>,
+    pub(in crate::editor) completion_ui: Option<completion::CompletionMenuUi>,
     /// `(server, supersede-key) -> the in-flight request id filed under that
     /// key` — for `lsp-request`'s `#:supersede` option: a new request under
     /// the same key cancels the previous one first. Entries are removed in
