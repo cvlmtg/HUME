@@ -509,6 +509,7 @@ pub(super) fn open_pane(
         &state.popup_view,
         &state.menu_view,
         &state.lsp_completion_view,
+        &state.picker_view,
         state.settings.wrap_mode,
         buffer_id,
     );

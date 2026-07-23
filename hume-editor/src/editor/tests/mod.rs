@@ -272,6 +272,8 @@ impl Editor {
                 menu_view: Arc::new(RwLock::new(None)),
                 drawer: None,
                 drawer_view: Arc::new(RwLock::new(None)),
+                picker: None,
+                picker_view: Arc::new(RwLock::new(None)),
             },
             view: engine_view,
             kitty_enabled: false,

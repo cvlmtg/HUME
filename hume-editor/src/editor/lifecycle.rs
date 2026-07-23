@@ -127,6 +127,8 @@ impl Editor {
             Arc::new(RwLock::new(None));
         let lsp_completion_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>> =
             Arc::new(RwLock::new(None));
+        let picker_view: Arc<RwLock<Option<crate::ui::picker_panel::PickerViewState>>> =
+            Arc::new(RwLock::new(None));
         // Drawer is chrome (like the tab bar/statusline), not per-pane — one
         // instance, registered directly on `engine_view.drawer` below rather
         // than through `build_pane`.
@@ -149,6 +151,7 @@ impl Editor {
             &popup_view,
             &menu_view,
             &lsp_completion_view,
+            &picker_view,
             settings.wrap_mode,
             buffer_id,
         );
@@ -249,6 +252,8 @@ impl Editor {
                 menu_view,
                 drawer: None,
                 drawer_view,
+                picker: None,
+                picker_view,
             },
             view: engine_view,
             kitty_enabled: false,

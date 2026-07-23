@@ -14,10 +14,6 @@
 //! snapshot; [`PickerOverlay`] only paints it — same split as
 //! [`super::popup::PopupOverlay`].
 //!
-//! Not yet wired onto `EditorState`/`build_pane` — later B3 steps (state
-//! plumbing, view sync, key interception) add the production callers.
-#![allow(dead_code)] // consumed by later B3 steps — remove this allow there
-
 use std::sync::{Arc, RwLock};
 
 use ratatui::buffer::Buffer as ScreenBuf;
@@ -32,7 +28,9 @@ use hume_engine::types::Scope;
 
 /// Maximum panel width/height in terminal cells, before the pane-fraction
 /// clamp — mirrors `MAX_POPUP_WIDTH`'s role for the popup widget.
+#[allow(dead_code)] // production caller (sync_picker_view/handle_picker_key) arrives with B3 steps 3/5
 const MAX_PANEL_WIDTH: u16 = 100;
+#[allow(dead_code)] // production caller arrives with B3 steps 3/5
 const MAX_PANEL_HEIGHT: u16 = 30;
 
 /// Fully-resolved panel content and position — computed once per frame by
@@ -67,6 +65,7 @@ pub(crate) struct PickerViewState {
 /// (`handle_picker_key`, sizing `move_selection`'s `visible_rows`). Both call
 /// this against the same `EditorState.view.last_pane_area`, so a keystroke
 /// and the next paint always agree on how many rows are visible.
+#[allow(dead_code)] // production caller arrives with B3 steps 3/5
 pub(crate) struct PanelGeometry {
     pub(crate) x: u16,
     pub(crate) y: u16,
@@ -82,6 +81,7 @@ pub(crate) struct PanelGeometry {
 /// region can't host a viable panel (narrower than 3 cols or shorter than
 /// 4 rows, i.e. not even one list row) — callers then paint nothing rather
 /// than a degenerate box.
+#[allow(dead_code)] // production caller (sync_picker_view/handle_picker_key) arrives with B3 steps 3/5
 pub(crate) fn panel_geometry(pane_area: Rect) -> Option<PanelGeometry> {
     let width = ((pane_area.width as u32 * 80 / 100) as u16)
         .min(MAX_PANEL_WIDTH)

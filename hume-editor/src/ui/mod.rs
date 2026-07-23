@@ -23,6 +23,7 @@ use hume_engine::theme::ScopeRegistry;
 use completion_overlay::MinibufCompletionOverlay;
 use highlight_providers::{PaneHighlights, ScopedHighlighter, SharedHighlighter};
 use inlay_hints::{InlayHintMap, InlayHintProvider};
+use picker_panel::PickerOverlay;
 use popup::PopupOverlay;
 use signs::{PaneSigns, SharedSignSource};
 use virtual_lines::{PaneVirtualLines, VirtualLineMap};
@@ -67,12 +68,14 @@ pub(crate) struct PaneRenderHandles {
 /// (`Editor::open`'s bootstrap pane, `commands::open_pane`) goes through
 /// this, so panes render identically. `Pane::new` alone has an empty
 /// `ProviderSet` (no gutter column).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_pane(
     registry: &mut ScopeRegistry,
     completion_view: &Arc<RwLock<Option<completion_overlay::MinibufCompletionView>>>,
     popup_view: &Arc<RwLock<Option<popup::PopupState>>>,
     menu_view: &Arc<RwLock<Option<popup::PopupState>>>,
     lsp_completion_view: &Arc<RwLock<Option<popup::PopupState>>>,
+    picker_view: &Arc<RwLock<Option<picker_panel::PickerViewState>>>,
     wrap_mode: WrapMode,
     buffer_id: BufferId,
 ) -> (Pane, PaneRenderHandles) {
@@ -150,6 +153,12 @@ pub(crate) fn build_pane(
         data: Arc::clone(lsp_completion_view),
         scope: "ui.menu",
         selected_scope: Some("ui.menu.selected"),
+    }));
+    // Registered last (highest z-order): the picker is full-modal and its
+    // key routing sits above every other intercept (`handle_key`), so its
+    // paint must sit above every other overlay too.
+    providers.add_overlay(Box::new(PickerOverlay {
+        data: Arc::clone(picker_view),
     }));
 
     let pane = Pane {
