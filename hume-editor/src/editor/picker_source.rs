@@ -54,19 +54,18 @@ impl Editor {
         // `session` (a borrow of `self.state.picker`) is not used past this
         // point, so `self.report` below can take `&mut self` freely.
 
-        if let Some((cmd, exit)) = exit {
-            if let Some(status) = exit.status {
-                if !status.success() {
-                    self.report(
-                        Severity::Error,
-                        format!(
-                            "{cmd} failed ({}): {}",
-                            hume_platform::process::exit_code_str(status),
-                            exit.stderr.trim()
-                        ),
-                    );
-                }
-            }
+        if let Some((cmd, exit)) = exit
+            && let Some(status) = exit.status
+            && !status.success()
+        {
+            self.report(
+                Severity::Error,
+                format!(
+                    "{cmd} failed ({}): {}",
+                    hume_platform::process::exit_code_str(status),
+                    exit.stderr.trim()
+                ),
+            );
         }
     }
 }
