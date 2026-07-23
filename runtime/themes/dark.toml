@@ -8,6 +8,7 @@
 # Base foreground for plain (unhighlighted) text — folded into `theme.default`
 # so it can be dimmed like syntax-highlighted spans (see loader.rs).
 "ui.text" = { fg = "fg" }
+"ui.text.focus" = { fg = "#ffffff", bg = "#50508c" }
 
 # ── Cursor ────────────────────────────────────────────────────────────────────
 "ui.cursor.primary" = { fg = "black", bg = "white" }
@@ -73,11 +74,6 @@
 # ── Completion popup ──────────────────────────────────────────────────────────
 "ui.menu"          = { fg = "#b4b4c8", bg = "#282832" }
 "ui.menu.selected" = { fg = "#ffffff", bg = "#50508c" }
-
-# ── Fuzzy picker ─────────────────────────────────────────────────────────────
-"ui.picker"          = { fg = "#b4b4c8", bg = "#282832" }
-"ui.picker.selected" = { fg = "#ffffff", bg = "#50508c" }
-"ui.picker.input"    = { fg = "#ffffff", bg = "#282832" }
 
 # ── Hover / signature-help popup ────────────────────────────────────────────────
 "ui.popup" = { fg = "#d0d0d0", bg = "#282832" }

@@ -1,6 +1,6 @@
 "ui.background" = { bg = "bg" }
 "ui.text" = { fg = "fg" }
-"ui.text.focus" = { fg = "bright_fg" }
+"ui.text.focus" = { fg = "bright_fg", bg = "plum" }
 "ui.text.inactive" = { fg = "muted" }
 "ui.text.info" = { fg = "blue" }
 "ui.window" = { fg = "surface" }
@@ -10,9 +10,6 @@
 "ui.menu" = { fg = "fg", bg = "surface" }
 "ui.menu.selected" = { fg = "bright_fg", bg = "plum" }
 "ui.menu.scroll" = { fg = "muted", bg = "surface" }
-"ui.picker" = { fg = "fg", bg = "surface" }
-"ui.picker.selected" = { fg = "bright_fg", bg = "plum" }
-"ui.picker.input" = { fg = "bright_fg", bg = "surface" }
 "ui.drawer" = { fg = "fg", bg = "surface" }
 "ui.help" = { fg = "fg", bg = "surface" }
 "ui.selection" = { fg = "bg", bg = "fg" }

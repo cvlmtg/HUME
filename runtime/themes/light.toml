@@ -14,6 +14,9 @@ inherits = "dark"
 "ui.selection"  = { bg = "selection" }
 "ui.cursorline" = { bg = "cursor_line" }
 
+# ── Text focus (picker selected row) ──────────────────────────────────────────
+"ui.text.focus" = { fg = "#f5f5f5", bg = "#6060a0" }
+
 # ── Gutter ────────────────────────────────────────────────────────────────────
 "ui.linenr"          = { fg = "mid_gray" }
 "ui.linenr.selected" = { fg = "#303030" }
@@ -41,11 +44,6 @@ inherits = "dark"
 # ── Completion popup ──────────────────────────────────────────────────────────
 "ui.menu"          = { fg = "#606078", bg = "#d8d8ec" }
 "ui.menu.selected" = { fg = "#f5f5f5", bg = "#6060a0" }
-
-# ── Fuzzy picker ─────────────────────────────────────────────────────────────
-"ui.picker"          = { fg = "#606078", bg = "#d8d8ec" }
-"ui.picker.selected" = { fg = "#f5f5f5", bg = "#6060a0" }
-"ui.picker.input"    = { fg = "#1a1a1a", bg = "#d8d8ec" }
 
 # ── Hover / signature-help popup ────────────────────────────────────────────────
 "ui.popup" = { fg = "#1a1a1a", bg = "#d8d8ec" }

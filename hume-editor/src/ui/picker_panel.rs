@@ -18,7 +18,7 @@ use std::sync::{Arc, RwLock};
 
 use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use unicode_segmentation::UnicodeSegmentation;
 
 use hume_engine::providers::OverlayProvider;
@@ -99,43 +99,28 @@ pub(crate) fn panel_geometry(pane_area: Rect) -> Option<PanelGeometry> {
     })
 }
 
-/// Resolved styles for the three picker scopes, with the fallback aliasing
-/// `Theme::resolve_raw`'s prefix-trim can't provide on its own (it never
-/// crosses from `ui.picker*` to the sibling `ui.menu*` family):
-/// `ui.picker` → else `ui.menu`; `ui.picker.selected` → else
-/// `ui.menu.selected`; `ui.picker.input` → else `ui.picker` → else
-/// `ui.menu`. Lets every existing Helix-derived theme (which defines
-/// `ui.menu*` but not `ui.picker*`) render a usable picker unmodified.
+/// Resolved styles for the picker body — Helix's own picker scopes, not a
+/// HUME invention: `ui.background` (panel fill), `ui.text` (border/rows/
+/// query), `ui.text.focus` (the selected row — Helix's docs call it "the
+/// currently selected line in the picker"), `ui.cursor.primary` (query block
+/// cursor). `Theme::resolve_raw`'s prefix-trim already degrades each of
+/// these to `default` when a theme omits it, so no custom fallback layer is
+/// needed here.
 pub(crate) struct PickerStyles {
-    pub(crate) base: Style,
+    pub(crate) background: Style,
+    pub(crate) text: Style,
     pub(crate) selected: Style,
-    pub(crate) input: Style,
+    pub(crate) cursor: Style,
 }
 
 pub(crate) fn picker_styles(theme: &Theme) -> PickerStyles {
-    let base = resolve_or(theme, "ui.picker", "ui.menu");
-    let selected = resolve_or(theme, "ui.picker.selected", "ui.menu.selected");
-    let input = if theme.raw_contains("ui.picker.input") {
-        theme.resolve_by_name(Scope("ui.picker.input")).into()
-    } else if theme.raw_contains("ui.picker") {
-        theme.resolve_by_name(Scope("ui.picker")).into()
-    } else {
-        theme.resolve_by_name(Scope("ui.menu")).into()
-    };
+    let by = |name| theme.resolve_by_name(Scope(name)).into();
     PickerStyles {
-        base,
-        selected,
-        input,
+        background: by("ui.background"),
+        text: by("ui.text"),
+        selected: by("ui.text.focus"),
+        cursor: by("ui.cursor.primary"),
     }
-}
-
-fn resolve_or(theme: &Theme, scope: &'static str, fallback: &'static str) -> Style {
-    let name = if theme.raw_contains(scope) {
-        scope
-    } else {
-        fallback
-    };
-    theme.resolve_by_name(Scope(name)).into()
 }
 
 /// Remove leading graphemes from `s` until its display width fits `budget`,
@@ -165,24 +150,25 @@ fn truncate_tail(s: &str, budget: usize) -> String {
 /// though the overlay loop hands every pane the same whole-panes-region
 /// rect (`hume-engine/src/pipeline/mod.rs`'s "may span panes" overlay pass).
 ///
-/// Layout: row 0 inside the frame is the input line (query tail, a
-/// reversed-cell cursor at the end, and a right-aligned `matched/total`
-/// counter when it fits); the remaining rows are `state.rows`, with
+/// Layout: row 0 inside the frame is the input line (query tail, a block
+/// cursor cell at the end styled `ui.cursor.primary`, and a right-aligned
+/// `matched/total` counter when it fits); the remaining rows are `state.rows`, with
 /// `state.selected_row` highlighted across the full inner width. `rows` is
 /// never re-windowed here — the store already scrolled it.
 pub(crate) fn draw_picker_panel(
     buf: &mut ScreenBuf,
     state: &PickerViewState,
-    base: Style,
+    background: Style,
+    text: Style,
     selected: Style,
-    input: Style,
+    cursor: Style,
 ) {
     let outer = Rect::new(state.x, state.y, state.width, state.height);
     if outer.width < 3 || outer.height < 4 {
         return;
     }
 
-    fill_rect_bg(buf, outer, base);
+    fill_rect_bg(buf, outer, background);
 
     if state.border {
         let right = outer.x + outer.width - 1;
@@ -190,24 +176,22 @@ pub(crate) fn draw_picker_panel(
         let fill_w = (outer.width - 2) as usize;
         let horiz: String = "─".repeat(fill_w);
 
-        buf.set_string(outer.x, outer.y, "┌", base);
-        buf.set_string(outer.x + 1, outer.y, &horiz, base);
-        buf.set_string(right, outer.y, "┐", base);
-        buf.set_string(outer.x, bottom, "└", base);
-        buf.set_string(outer.x + 1, bottom, &horiz, base);
-        buf.set_string(right, bottom, "┘", base);
+        buf.set_string(outer.x, outer.y, "┌", text);
+        buf.set_string(outer.x + 1, outer.y, &horiz, text);
+        buf.set_string(right, outer.y, "┐", text);
+        buf.set_string(outer.x, bottom, "└", text);
+        buf.set_string(outer.x + 1, bottom, &horiz, text);
+        buf.set_string(right, bottom, "┘", text);
 
         for row in 1..outer.height - 1 {
-            buf.set_string(outer.x, outer.y + row, "│", base);
-            buf.set_string(right, outer.y + row, "│", base);
+            buf.set_string(outer.x, outer.y + row, "│", text);
+            buf.set_string(right, outer.y + row, "│", text);
         }
     }
 
     let inner_x = outer.x + 1;
     let inner_width = (outer.width - 2) as usize;
     let input_y = outer.y + 1;
-
-    fill_rect_bg(buf, Rect::new(inner_x, input_y, outer.width - 2, 1), input);
 
     let counts = format!("{}/{}", state.matched, state.total);
     let counts_width = unicode_width::UnicodeWidthStr::width(counts.as_str());
@@ -221,19 +205,14 @@ pub(crate) fn draw_picker_panel(
     let query_tail = truncate_tail(&state.query, query_budget);
     let query_width = unicode_width::UnicodeWidthStr::width(query_tail.as_str());
 
-    buf.set_string(inner_x, input_y, &query_tail, input);
+    buf.set_string(inner_x, input_y, &query_tail, text);
     let cursor_x = inner_x + query_width as u16;
     if cursor_x < inner_x + inner_width as u16 {
-        buf.set_string(
-            cursor_x,
-            input_y,
-            " ",
-            input.add_modifier(Modifier::REVERSED),
-        );
+        buf.set_string(cursor_x, input_y, " ", cursor);
     }
     if show_counts {
         let counts_x = outer.x + outer.width - 1 - counts_width as u16;
-        buf.set_string(counts_x, input_y, &counts, base);
+        buf.set_string(counts_x, input_y, &counts, text);
     }
 
     let list_capacity = (outer.height - 3) as usize;
@@ -244,7 +223,7 @@ pub(crate) fn draw_picker_panel(
             fill_rect_bg(buf, row_rect, selected);
             buf.set_string(inner_x, y, row_text, selected);
         } else {
-            buf.set_string(inner_x, y, row_text, base);
+            buf.set_string(inner_x, y, row_text, text);
         }
     }
 }
@@ -281,7 +260,14 @@ impl OverlayProvider for PickerOverlay {
         }
 
         let styles = picker_styles(theme);
-        draw_picker_panel(buf, state, styles.base, styles.selected, styles.input);
+        draw_picker_panel(
+            buf,
+            state,
+            styles.background,
+            styles.text,
+            styles.selected,
+            styles.cursor,
+        );
     }
 }
 

@@ -118,30 +118,11 @@ To see which themes are available, type `:theme ` and press `Tab`.
 
 Custom themes are TOML files placed in the `themes/` subdirectory of your HUME config directory. HUME uses the Helix theme format, so any theme written for Helix works in HUME too.
 
-Helix defines six statusline scopes; HUME shares all of them:
-
-- `ui.statusline` — base statusline style
-- `ui.statusline.inactive` — statusline of an unfocused document
-- `ui.statusline.normal` — mode pill in Normal mode
-- `ui.statusline.insert` — mode pill in Insert mode
-- `ui.statusline.select` — mode pill in Select mode
-- `ui.statusline.separator` — separator glyph between statusline elements
-
-Of those, HUME reads and renders every one except `ui.statusline.inactive` (HUME has no per-pane statusline, so there's nothing "inactive" to style).
-
 HUME adds three more mode pills for modes Helix doesn't have:
 
 - `ui.statusline.extend`
 - `ui.statusline.search`
 - `ui.statusline.command`
-
-HUME also adds three scopes for the fuzzy-picker panel:
-
-- `ui.picker` — panel background and border
-- `ui.picker.selected` — highlighted row
-- `ui.picker.input` — query line; the block cursor is this style shown reversed
-
-A theme that only defines the completion-menu scopes (`ui.menu`, `ui.menu.selected`) still renders a usable picker — any missing `ui.picker*` scope falls back to its `ui.menu*` counterpart, so existing Helix themes work unmodified.
 
 HUME ships a theme editor — a single-file HTML tool you can open in a browser to edit themes visually and export them as TOML. You can download it from https://github.com/cvlmtg/HUME/blob/main/tools/theme-editor/index.html
 

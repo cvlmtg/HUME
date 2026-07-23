@@ -13,6 +13,11 @@
 "ui.selection"  = { bg = "bg3" }
 "ui.cursorline" = { bg = "bg1" }
 
+# ── Base text / pane background ─────────────────────────────────────────────
+"ui.background" = { bg = "bg0" }
+"ui.text"       = { fg = "fg1" }
+"ui.text.focus" = { fg = "fg0", bg = "bg3" }
+
 # ── Virtual text ──────────────────────────────────────────────────────────────
 "ui.virtual" = { fg = "bg3" }
 "ui.virtual.inlay-hint" = { fg = "bg3" }
@@ -37,11 +42,6 @@
 # ── Completion popup ──────────────────────────────────────────────────────────
 "ui.menu"          = { fg = "fg2", bg = "bg2" }
 "ui.menu.selected" = { fg = "fg0", bg = "bg3" }
-
-# ── Fuzzy picker ─────────────────────────────────────────────────────────────
-"ui.picker"          = { fg = "fg2", bg = "bg2" }
-"ui.picker.selected" = { fg = "fg0", bg = "bg3" }
-"ui.picker.input"    = { fg = "fg0", bg = "bg2" }
 
 # ── Hover / signature-help popup ────────────────────────────────────────────────
 "ui.popup" = { fg = "fg2", bg = "bg2" }

@@ -4,12 +4,12 @@ expression: snap
 ---
 <fg=#808080,bg=#3a3a3a>  </><fg=#c8c8d2,bg=#3a3a3a>1 </><fg=#d0d0d0,bg=#3a3a3a>hello world</>
 <fg=#808080,bg=#1a1a1a>~</>
-<fg=#808080,bg=#1a1a1a>~   </><fg=#b4b4c8,bg=#282832>┌──────────────────────────────┐</>
-<fg=#808080,bg=#1a1a1a>~   </><fg=#b4b4c8,bg=#282832>│</><fg=#ffffff,bg=#282832,reverse> </><fg=#ffffff,bg=#282832>                          </><fg=#b4b4c8,bg=#282832>3/3│</>
-<fg=#808080,bg=#1a1a1a>~   </><fg=#b4b4c8,bg=#282832>│</><fg=#ffffff,bg=#50508c>alpha                         </><fg=#b4b4c8,bg=#282832>│</>
-<fg=#808080,bg=#1a1a1a>~   </><fg=#b4b4c8,bg=#282832>│beta                          │</>
-<fg=#808080,bg=#1a1a1a>~   </><fg=#b4b4c8,bg=#282832>│gamma                         │</>
-<fg=#808080,bg=#1a1a1a>~   </><fg=#b4b4c8,bg=#282832>└──────────────────────────────┘</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#d0d0d0,bg=#1a1a1a>┌──────────────────────────────┐</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#d0d0d0,bg=#1a1a1a>│</><fg=#000000,bg=#ffffff> </><bg=#1a1a1a>                          </><fg=#d0d0d0,bg=#1a1a1a>3/3│</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#d0d0d0,bg=#1a1a1a>│</><fg=#ffffff,bg=#50508c>alpha                         </><fg=#d0d0d0,bg=#1a1a1a>│</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#d0d0d0,bg=#1a1a1a>│beta</><bg=#1a1a1a>                          </><fg=#d0d0d0,bg=#1a1a1a>│</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#d0d0d0,bg=#1a1a1a>│gamma</><bg=#1a1a1a>                         </><fg=#d0d0d0,bg=#1a1a1a>│</>
+<fg=#808080,bg=#1a1a1a>~   </><fg=#d0d0d0,bg=#1a1a1a>└──────────────────────────────┘</>
 <fg=#808080,bg=#1a1a1a>~</>
 <fg=#808080,bg=#1a1a1a>~</>
 <fg=#808080,bg=#1a1a1a>~</>

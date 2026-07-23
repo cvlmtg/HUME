@@ -108,7 +108,7 @@ fn draw_picker_panel_border_input_and_rows_snapshot() {
     };
     let s = state("ab", &["item0", "item1"], Some(0), &geo);
     let outer = Rect::new(geo.x, geo.y, geo.width, geo.height);
-    draw_picker_panel(&mut buf, &s, style(), style(), style());
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
 
     insta::assert_snapshot!(symbols_in(&buf, outer), @r"
     ┌────────┐
@@ -133,7 +133,7 @@ fn draw_picker_panel_no_border_leaves_plain_margin() {
     let mut s = state("ab", &["item0"], Some(0), &geo);
     s.border = false;
     let outer = Rect::new(geo.x, geo.y, geo.width, geo.height);
-    draw_picker_panel(&mut buf, &s, style(), style(), style());
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
 
     insta::assert_snapshot!(symbols_in(&buf, outer), @r"
 
@@ -155,7 +155,7 @@ fn draw_picker_panel_highlights_selected_row_full_width() {
     };
     let selected_style = Style::default().bg(Color::Red);
     let s = state("", &["item0", "item1"], Some(1), &geo);
-    draw_picker_panel(&mut buf, &s, style(), selected_style, style());
+    draw_picker_panel(&mut buf, &s, style(), style(), selected_style, style());
 
     // Row 1 ("item1") is the selected row — its whole inner width (cols
     // 1..=8) must carry the selected background, not just the text cells.
@@ -191,7 +191,7 @@ fn draw_picker_panel_does_not_rewindow_rows() {
         None,
         &geo,
     );
-    draw_picker_panel(&mut buf, &s, style(), style(), style());
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
 
     let outer = Rect::new(geo.x, geo.y, geo.width, geo.height);
     let painted = symbols_in(&buf, outer);
@@ -215,7 +215,7 @@ fn draw_picker_panel_counts_shown_when_room_and_dropped_when_narrow() {
     let mut s = state("q", &[], None, &geo_wide);
     s.matched = 3;
     s.total = 42;
-    draw_picker_panel(&mut buf, &s, style(), style(), style());
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
     let outer = Rect::new(geo_wide.x, geo_wide.y, geo_wide.width, geo_wide.height);
     assert!(symbols_in(&buf, outer).contains("3/42"));
 
@@ -230,7 +230,7 @@ fn draw_picker_panel_counts_shown_when_room_and_dropped_when_narrow() {
     let mut s2 = state("q", &[], None, &geo_narrow);
     s2.matched = 3;
     s2.total = 42;
-    draw_picker_panel(&mut buf2, &s2, style(), style(), style());
+    draw_picker_panel(&mut buf2, &s2, style(), style(), style(), style());
     let outer2 = Rect::new(
         geo_narrow.x,
         geo_narrow.y,
@@ -254,7 +254,7 @@ fn draw_picker_panel_truncates_query_tail_keeping_cursor_visible() {
         list_rows: 1,
     };
     let s = state("abcdefghij", &[], None, &geo); // matched = total = 0
-    draw_picker_panel(&mut buf, &s, style(), style(), style());
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
 
     let inner_x = geo.x + 1;
     let row: String = (inner_x..inner_x + 8)
@@ -279,7 +279,7 @@ fn draw_picker_panel_empty_state_is_blank_with_zero_counts() {
         list_rows: 3,
     };
     let s = state("", &[], None, &geo);
-    draw_picker_panel(&mut buf, &s, style(), style(), style());
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
     let outer = Rect::new(geo.x, geo.y, geo.width, geo.height);
     let painted = symbols_in(&buf, outer);
     assert!(painted.contains("0/0"));
@@ -297,7 +297,7 @@ fn draw_picker_panel_degenerate_rect_does_not_panic_or_paint() {
         list_rows: 0,
     };
     let s = state("q", &["item0"], Some(0), &geo);
-    draw_picker_panel(&mut buf, &s, style(), style(), style());
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
     assert_eq!(buf, before, "sub-3x4 outer must not panic or paint");
 }
 
@@ -336,7 +336,7 @@ fn overlay_clips_state_outside_pane_rect() {
     );
 }
 
-// ── picker_styles fallback aliasing ────────────────────────────────────────
+// ── picker_styles: direct Helix-scope resolution ────────────────────────────
 
 fn resolved(fg: Color) -> ResolvedStyle {
     ResolvedStyle {
@@ -346,55 +346,30 @@ fn resolved(fg: Color) -> ResolvedStyle {
 }
 
 #[test]
-fn picker_styles_alias_to_menu_family_when_absent() {
+fn picker_styles_resolve_from_helix_scopes() {
     let mut m = HashMap::new();
-    m.insert("ui.menu", resolved(Color::Blue));
-    m.insert("ui.menu.selected", resolved(Color::Green));
+    m.insert("ui.background", resolved(Color::Black));
+    m.insert("ui.text", resolved(Color::Blue));
+    m.insert("ui.text.focus", resolved(Color::Green));
+    m.insert("ui.cursor.primary", resolved(Color::Yellow));
     let theme = Theme::new(m, ResolvedStyle::default());
 
     let styles = picker_styles(&theme);
-    assert_eq!(
-        styles.base.fg,
-        Some(Color::Blue),
-        "ui.picker absent -> ui.menu"
-    );
-    assert_eq!(
-        styles.selected.fg,
-        Some(Color::Green),
-        "ui.picker.selected absent -> ui.menu.selected"
-    );
-    assert_eq!(
-        styles.input.fg,
-        Some(Color::Blue),
-        "ui.picker.input absent, ui.picker absent -> ui.menu"
-    );
+    assert_eq!(styles.background.fg, Some(Color::Black), "ui.background");
+    assert_eq!(styles.text.fg, Some(Color::Blue), "ui.text");
+    assert_eq!(styles.selected.fg, Some(Color::Green), "ui.text.focus");
+    assert_eq!(styles.cursor.fg, Some(Color::Yellow), "ui.cursor.primary");
 }
 
 #[test]
-fn picker_styles_prefer_own_scopes_when_present() {
-    let mut m = HashMap::new();
-    m.insert("ui.menu", resolved(Color::Blue));
-    m.insert("ui.picker", resolved(Color::Yellow));
-    m.insert("ui.picker.selected", resolved(Color::Magenta));
-    let theme = Theme::new(m, ResolvedStyle::default());
+fn picker_styles_default_when_scopes_absent() {
+    // No custom aliasing: an empty theme resolves every picker scope to the
+    // theme's plain `default`, exactly like any other unset scope.
+    let theme = Theme::new(HashMap::new(), resolved(Color::Red));
 
     let styles = picker_styles(&theme);
-    assert_eq!(styles.base.fg, Some(Color::Yellow));
-    assert_eq!(styles.selected.fg, Some(Color::Magenta));
-}
-
-#[test]
-fn picker_styles_input_falls_back_to_picker_before_menu() {
-    let mut m = HashMap::new();
-    m.insert("ui.menu", resolved(Color::Blue));
-    m.insert("ui.picker", resolved(Color::Yellow));
-    // No "ui.picker.input" entry.
-    let theme = Theme::new(m, ResolvedStyle::default());
-
-    let styles = picker_styles(&theme);
-    assert_eq!(
-        styles.input.fg,
-        Some(Color::Yellow),
-        "ui.picker.input absent, but ui.picker present -> ui.picker, not ui.menu"
-    );
+    assert_eq!(styles.background.fg, Some(Color::Red));
+    assert_eq!(styles.text.fg, Some(Color::Red));
+    assert_eq!(styles.selected.fg, Some(Color::Red));
+    assert_eq!(styles.cursor.fg, Some(Color::Red));
 }
