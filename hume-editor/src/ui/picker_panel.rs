@@ -224,7 +224,12 @@ pub(crate) fn draw_picker_panel(
     buf.set_string(inner_x, input_y, &query_tail, input);
     let cursor_x = inner_x + query_width as u16;
     if cursor_x < inner_x + inner_width as u16 {
-        buf.set_string(cursor_x, input_y, " ", input.add_modifier(Modifier::REVERSED));
+        buf.set_string(
+            cursor_x,
+            input_y,
+            " ",
+            input.add_modifier(Modifier::REVERSED),
+        );
     }
     if show_counts {
         let counts_x = outer.x + outer.width - 1 - counts_width as u16;

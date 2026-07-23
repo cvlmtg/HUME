@@ -243,35 +243,67 @@ impl Editor {
             .map_or(0, |geo| geo.list_rows);
         match key.code {
             KeyCode::Down => {
-                let picker = self.state.picker.as_mut().expect("checked by the caller above");
+                let picker = self
+                    .state
+                    .picker
+                    .as_mut()
+                    .expect("checked by the caller above");
                 picker.move_selection(1, visible_rows);
             }
             KeyCode::Up => {
-                let picker = self.state.picker.as_mut().expect("checked by the caller above");
+                let picker = self
+                    .state
+                    .picker
+                    .as_mut()
+                    .expect("checked by the caller above");
                 picker.move_selection(-1, visible_rows);
             }
             KeyCode::Char('n') if key.modifiers.contains(Modifiers::CONTROL) => {
-                let picker = self.state.picker.as_mut().expect("checked by the caller above");
+                let picker = self
+                    .state
+                    .picker
+                    .as_mut()
+                    .expect("checked by the caller above");
                 picker.move_selection(1, visible_rows);
             }
             KeyCode::Char('p') if key.modifiers.contains(Modifiers::CONTROL) => {
-                let picker = self.state.picker.as_mut().expect("checked by the caller above");
+                let picker = self
+                    .state
+                    .picker
+                    .as_mut()
+                    .expect("checked by the caller above");
                 picker.move_selection(-1, visible_rows);
             }
             KeyCode::PageDown => {
-                let picker = self.state.picker.as_mut().expect("checked by the caller above");
+                let picker = self
+                    .state
+                    .picker
+                    .as_mut()
+                    .expect("checked by the caller above");
                 picker.move_selection(visible_rows as isize, visible_rows);
             }
             KeyCode::PageUp => {
-                let picker = self.state.picker.as_mut().expect("checked by the caller above");
+                let picker = self
+                    .state
+                    .picker
+                    .as_mut()
+                    .expect("checked by the caller above");
                 picker.move_selection(-(visible_rows as isize), visible_rows);
             }
             KeyCode::Backspace => {
-                let picker = self.state.picker.as_mut().expect("checked by the caller above");
+                let picker = self
+                    .state
+                    .picker
+                    .as_mut()
+                    .expect("checked by the caller above");
                 picker.pop_grapheme(); // no-op on an already-empty query
             }
             KeyCode::Enter => {
-                let picker = self.state.picker.take().expect("checked by the caller above");
+                let picker = self
+                    .state
+                    .picker
+                    .take()
+                    .expect("checked by the caller above");
                 // No match (or nothing pushed yet) behaves like Esc — Enter
                 // is always a terminal action, never a silent no-op.
                 let payload = picker
@@ -282,12 +314,24 @@ impl Editor {
                 self.queue_steel_call(callback, vec![payload]);
             }
             KeyCode::Escape => {
-                let picker = self.state.picker.take().expect("checked by the caller above");
+                let picker = self
+                    .state
+                    .picker
+                    .take()
+                    .expect("checked by the caller above");
                 let callback = picker.on_select().clone();
                 self.queue_steel_call(callback, vec![steel::rvals::SteelVal::BoolV(false)]);
             }
-            KeyCode::Char(ch) if !key.modifiers.intersects(Modifiers::CONTROL | Modifiers::ALT) => {
-                let picker = self.state.picker.as_mut().expect("checked by the caller above");
+            KeyCode::Char(ch)
+                if !key
+                    .modifiers
+                    .intersects(Modifiers::CONTROL | Modifiers::ALT) =>
+            {
+                let picker = self
+                    .state
+                    .picker
+                    .as_mut()
+                    .expect("checked by the caller above");
                 picker.insert_char(ch);
             }
             _ => {}

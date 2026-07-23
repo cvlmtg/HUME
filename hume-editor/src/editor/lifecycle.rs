@@ -1827,7 +1827,8 @@ impl Editor {
             (Some(session), Some(geo)) => {
                 session.move_selection(0, geo.list_rows);
                 let rows: Vec<String> = session.window(geo.list_rows).map(str::to_string).collect();
-                let selected_row = (!rows.is_empty()).then(|| session.selected() - session.scroll());
+                let selected_row =
+                    (!rows.is_empty()).then(|| session.selected() - session.scroll());
                 Some(crate::ui::picker_panel::PickerViewState {
                     query: session.query().to_string(),
                     rows,

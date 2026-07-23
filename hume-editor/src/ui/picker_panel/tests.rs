@@ -28,7 +28,12 @@ fn symbols_in(buf: &ScreenBuf, area: Rect) -> String {
         .join("\n")
 }
 
-fn state(query: &str, rows: &[&str], selected_row: Option<usize>, geo: &PanelGeometry) -> PickerViewState {
+fn state(
+    query: &str,
+    rows: &[&str],
+    selected_row: Option<usize>,
+    geo: &PanelGeometry,
+) -> PickerViewState {
     PickerViewState {
         query: query.to_string(),
         rows: rows.iter().map(|s| s.to_string()).collect(),
@@ -191,7 +196,10 @@ fn draw_picker_panel_does_not_rewindow_rows() {
     let outer = Rect::new(geo.x, geo.y, geo.width, geo.height);
     let painted = symbols_in(&buf, outer);
     assert!(painted.contains("item2"), "last row within capacity");
-    assert!(!painted.contains("item3"), "beyond list_rows must not paint");
+    assert!(
+        !painted.contains("item3"),
+        "beyond list_rows must not paint"
+    );
 }
 
 #[test]
@@ -223,7 +231,12 @@ fn draw_picker_panel_counts_shown_when_room_and_dropped_when_narrow() {
     s2.matched = 3;
     s2.total = 42;
     draw_picker_panel(&mut buf2, &s2, style(), style(), style());
-    let outer2 = Rect::new(geo_narrow.x, geo_narrow.y, geo_narrow.width, geo_narrow.height);
+    let outer2 = Rect::new(
+        geo_narrow.x,
+        geo_narrow.y,
+        geo_narrow.width,
+        geo_narrow.height,
+    );
     assert!(
         !symbols_in(&buf2, outer2).contains("3/42"),
         "counts must be dropped rather than overlap the query/cursor"
@@ -249,7 +262,10 @@ fn draw_picker_panel_truncates_query_tail_keeping_cursor_visible() {
         .collect();
     // Query truncated to its tail ("hij") so the cursor cell right after it
     // stays inside the input row, instead of the head of the query.
-    assert!(row.starts_with("hij"), "expected tail truncation, got {row:?}");
+    assert!(
+        row.starts_with("hij"),
+        "expected tail truncation, got {row:?}"
+    );
 }
 
 #[test]
@@ -314,7 +330,10 @@ fn overlay_clips_state_outside_pane_rect() {
     let before = buf.clone();
     let theme = Theme::new(HashMap::new(), ResolvedStyle::default());
     overlay.render(Rect::new(0, 0, 20, 20), &theme, &mut buf);
-    assert_eq!(buf, before, "state positioned outside pane_rect must not paint");
+    assert_eq!(
+        buf, before,
+        "state positioned outside pane_rect must not paint"
+    );
 }
 
 // ── picker_styles fallback aliasing ────────────────────────────────────────
@@ -334,13 +353,21 @@ fn picker_styles_alias_to_menu_family_when_absent() {
     let theme = Theme::new(m, ResolvedStyle::default());
 
     let styles = picker_styles(&theme);
-    assert_eq!(styles.base.fg, Some(Color::Blue), "ui.picker absent -> ui.menu");
+    assert_eq!(
+        styles.base.fg,
+        Some(Color::Blue),
+        "ui.picker absent -> ui.menu"
+    );
     assert_eq!(
         styles.selected.fg,
         Some(Color::Green),
         "ui.picker.selected absent -> ui.menu.selected"
     );
-    assert_eq!(styles.input.fg, Some(Color::Blue), "ui.picker.input absent, ui.picker absent -> ui.menu");
+    assert_eq!(
+        styles.input.fg,
+        Some(Color::Blue),
+        "ui.picker.input absent, ui.picker absent -> ui.menu"
+    );
 }
 
 #[test]

@@ -63,7 +63,11 @@ fn printables_edit_query_not_the_buffer() {
 
     let picker = ed.state.picker.as_ref().expect("picker still open");
     assert_eq!(picker.query(), "z");
-    assert_eq!(ed.doc().text().to_string(), "abc\n", "buffer must be untouched");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "abc\n",
+        "buffer must be untouched"
+    );
 }
 
 // ── Selection movement ──────────────────────────────────────────────────────
@@ -127,7 +131,10 @@ fn backspace_on_empty_keeps_picker_open() {
     let mut ed = editor_from("-[a]>bc\n");
     open_test_picker(&mut ed, &["one"]);
     ed.feed_key(key_backspace());
-    assert!(ed.state.picker.is_some(), "backspace on an empty query must not close the picker");
+    assert!(
+        ed.state.picker.is_some(),
+        "backspace on an empty query must not close the picker"
+    );
     assert_eq!(ed.state.picker.as_ref().unwrap().query(), "");
 }
 
@@ -137,12 +144,23 @@ fn backspace_on_empty_keeps_picker_open() {
 fn stray_keys_are_consumed_and_ignored() {
     let mut ed = editor_from("-[a]>bc\n");
     open_test_picker(&mut ed, &["one"]);
-    for stray in [key_left(), key_tab(), KeyEvent::new(KeyCode::Home, Modifiers::NONE)] {
+    for stray in [
+        key_left(),
+        key_tab(),
+        KeyEvent::new(KeyCode::Home, Modifiers::NONE),
+    ] {
         ed.feed_key(stray);
     }
-    assert!(ed.state.picker.is_some(), "stray keys must not close the picker");
+    assert!(
+        ed.state.picker.is_some(),
+        "stray keys must not close the picker"
+    );
     assert_eq!(ed.state.picker.as_ref().unwrap().query(), "");
-    assert_eq!(ed.doc().text().to_string(), "abc\n", "buffer must be untouched");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "abc\n",
+        "buffer must be untouched"
+    );
 }
 
 // ── Enter / Esc — terminal actions ──────────────────────────────────────────
@@ -216,19 +234,27 @@ fn open_from_insert_mode_allowed_and_clears_completion() {
     assert_eq!(ed.state.mode(), Mode::Insert);
 
     let bid = ed.focused_buffer_id();
-    let items = vec![StoredCompletionItem::from_json(&serde_json::json!({"label": "foo"})).unwrap()];
+    let items =
+        vec![StoredCompletionItem::from_json(&serde_json::json!({"label": "foo"})).unwrap()];
     let session = CompletionSession::begin(&ed.state, bid, items, false).unwrap();
     ed.lsp.completion = Some(session);
 
     open_test_picker(&mut ed, &["one", "two"]);
-    assert!(ed.lsp.completion.is_none(), "opening a picker must clear a live completion session");
+    assert!(
+        ed.lsp.completion.is_none(),
+        "opening a picker must clear a live completion session"
+    );
 
     // Still in Insert mode (picker is chrome, not a mode) — but the picker
     // intercept sits above `handle_insert`, so a printable edits the query.
     assert_eq!(ed.state.mode(), Mode::Insert);
     ed.feed_key(key('o'));
     assert_eq!(ed.state.picker.as_ref().unwrap().query(), "o");
-    assert_eq!(ed.doc().text().to_string(), "abc\n", "buffer must be untouched");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "abc\n",
+        "buffer must be untouched"
+    );
 }
 
 // ── Replacing an open picker ─────────────────────────────────────────────────
@@ -264,8 +290,16 @@ fn picker_intercepts_ahead_of_menu() {
     open_test_picker(&mut ed, &["a", "b"]);
 
     ed.feed_key(key_down());
-    assert_eq!(ed.state.picker.as_ref().unwrap().selected(), 1, "picker must consume the key");
-    assert_eq!(ed.state.menu.as_ref().unwrap().selected, 0, "menu must not see it");
+    assert_eq!(
+        ed.state.picker.as_ref().unwrap().selected(),
+        1,
+        "picker must consume the key"
+    );
+    assert_eq!(
+        ed.state.menu.as_ref().unwrap().selected,
+        0,
+        "menu must not see it"
+    );
 }
 
 // ── Re-rank resets selection/scroll end-to-end ──────────────────────────────
@@ -326,7 +360,10 @@ fn shrinking_terminal_self_heals_scroll() {
     let guard = ed.state.picker_view.read().unwrap();
     let state = guard.as_ref().expect("picker still open");
     if let Some(row) = state.selected_row {
-        assert!(row < state.rows.len(), "selected_row must stay inside the new window");
+        assert!(
+            row < state.rows.len(),
+            "selected_row must stay inside the new window"
+        );
     }
 }
 
