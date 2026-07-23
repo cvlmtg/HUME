@@ -142,14 +142,7 @@ mod tests {
     fn scoring_100k_paths_stays_under_the_b1_budget() {
         let mut m = FuzzyMatcher::new();
         let haystacks: Vec<String> = (0..100_000)
-            .map(|i| {
-                format!(
-                    "src/mod_{}/sub_{}/file_{}.rs",
-                    i % 137,
-                    (i / 137) % 53,
-                    i
-                )
-            })
+            .map(|i| format!("src/mod_{}/sub_{}/file_{}.rs", i % 137, (i / 137) % 53, i))
             .collect();
 
         let start = std::time::Instant::now();

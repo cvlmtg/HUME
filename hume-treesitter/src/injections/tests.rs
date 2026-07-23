@@ -29,9 +29,8 @@ fn make_bundle(name: &str, symbol: &str, injections_src: Option<&str>) -> Arc<Gr
         &mut registry,
     ));
     let injections = injections_src.map(|src| {
-        let q = Arc::new(
-            tree_sitter::Query::new(grammar.language(), src).expect("compile injections"),
-        );
+        let q =
+            Arc::new(tree_sitter::Query::new(grammar.language(), src).expect("compile injections"));
         InjectionsQuery::new(q)
     });
     Arc::new(GrammarBundle {
@@ -153,8 +152,7 @@ fn static_language_override_wins_regardless_of_content() {
     let rope = ropey::Rope::from_str(source);
     let cancel = AtomicBool::new(false);
 
-    let out =
-        resolve_and_parse_injections(&mut parser, &tree, &json, &rope, &langs, &cancel, 1);
+    let out = resolve_and_parse_injections(&mut parser, &tree, &json, &rope, &langs, &cancel, 1);
     assert_eq!(out.len(), 1, "expected exactly one injected layer");
     assert!(
         Arc::ptr_eq(&out[0].bundle, &rust),
@@ -188,8 +186,7 @@ fn unknown_injection_language_is_skipped_silently() {
     let rope = ropey::Rope::from_str(source);
     let cancel = AtomicBool::new(false);
 
-    let out =
-        resolve_and_parse_injections(&mut parser, &tree, &json, &rope, &langs, &cancel, 1);
+    let out = resolve_and_parse_injections(&mut parser, &tree, &json, &rope, &langs, &cancel, 1);
     assert!(
         out.is_empty(),
         "unresolvable injection language must produce no layer, got: {} layers",
@@ -220,8 +217,7 @@ fn combined_merges_multiple_matches_into_one_layer() {
     let rope = ropey::Rope::from_str(source);
     let cancel = AtomicBool::new(false);
 
-    let out =
-        resolve_and_parse_injections(&mut parser, &tree, &json, &rope, &langs, &cancel, 1);
+    let out = resolve_and_parse_injections(&mut parser, &tree, &json, &rope, &langs, &cancel, 1);
     assert_eq!(
         out.len(),
         1,
@@ -258,8 +254,7 @@ fn depth_cap_stops_recursion_at_max_depth() {
     let rope = ropey::Rope::from_str(source);
     let cancel = AtomicBool::new(false);
 
-    let out =
-        resolve_and_parse_injections(&mut parser, &tree, &json, &rope, &langs, &cancel, 1);
+    let out = resolve_and_parse_injections(&mut parser, &tree, &json, &rope, &langs, &cancel, 1);
     assert_eq!(
         out.len(),
         3,

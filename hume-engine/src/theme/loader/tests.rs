@@ -7,8 +7,7 @@ use tempfile::TempDir;
 // ── Test fixture helpers ──────────────────────────────────────────────────
 
 fn write_theme(dir: &Path, name: &str, content: &str) {
-    std::fs::write(dir.join(format!("{name}.toml")), content)
-        .expect("failed to write test theme");
+    std::fs::write(dir.join(format!("{name}.toml")), content).expect("failed to write test theme");
 }
 
 fn paths(dir: &Path) -> Vec<PathBuf> {

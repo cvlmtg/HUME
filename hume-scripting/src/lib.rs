@@ -462,9 +462,7 @@ impl ScriptingHost {
     /// assert inline `define-command!` populated the table correctly — which is the
     /// precondition for `%lookup-plugin-proc` returning the closure rather than `#f`.
     #[cfg(any(test, feature = "test-util"))]
-    pub fn command_table_for_test(
-        &self,
-    ) -> &rustc_hash::FxHashMap<String, steel::rvals::SteelVal> {
+    pub fn command_table_for_test(&self) -> &rustc_hash::FxHashMap<String, steel::rvals::SteelVal> {
         &self.registries.command_table
     }
 

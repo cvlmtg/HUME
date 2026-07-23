@@ -65,8 +65,7 @@ fn make_bundle_with_injections(
         &mut registry,
     ));
     let injections = Arc::new(
-        tree_sitter::Query::new(grammar.language(), injections_src)
-            .expect("compile injections"),
+        tree_sitter::Query::new(grammar.language(), injections_src).expect("compile injections"),
     );
     Arc::new(GrammarBundle {
         grammar,

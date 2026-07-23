@@ -83,8 +83,7 @@ fn all_matches_skips_zero_width() {
 #[test]
 fn forward_basic() {
     let b = buf("hello world\n");
-    let (s, e, wrapped) =
-        find_next_match(&b, &re("world"), 0, SearchDirection::Forward).unwrap();
+    let (s, e, wrapped) = find_next_match(&b, &re("world"), 0, SearchDirection::Forward).unwrap();
     assert_eq!(s, 6);
     assert_eq!(e, 10);
     assert!(!wrapped);
@@ -102,8 +101,7 @@ fn forward_from_match_start() {
 fn forward_wraps() {
     let b = buf("hello world\n");
     // Searching from after "world" (char 11 = '\n') should wrap and find "world".
-    let (s, e, wrapped) =
-        find_next_match(&b, &re("world"), 11, SearchDirection::Forward).unwrap();
+    let (s, e, wrapped) = find_next_match(&b, &re("world"), 11, SearchDirection::Forward).unwrap();
     assert_eq!((s, e), (6, 10));
     assert!(wrapped);
 }
@@ -128,8 +126,7 @@ fn forward_multiple_matches_picks_first_after_from() {
 fn backward_basic() {
     let b = buf("hello world\n");
     // Search backward from position 11 ('\n') — should find "world" at (6,10).
-    let (s, e, wrapped) =
-        find_next_match(&b, &re("world"), 11, SearchDirection::Backward).unwrap();
+    let (s, e, wrapped) = find_next_match(&b, &re("world"), 11, SearchDirection::Backward).unwrap();
     assert_eq!((s, e), (6, 10));
     assert!(!wrapped);
 }
@@ -138,8 +135,7 @@ fn backward_basic() {
 fn backward_wraps() {
     // Searching backward from before the only match should wrap.
     let b = buf("hello world\n");
-    let (s, e, wrapped) =
-        find_next_match(&b, &re("world"), 3, SearchDirection::Backward).unwrap();
+    let (s, e, wrapped) = find_next_match(&b, &re("world"), 3, SearchDirection::Backward).unwrap();
     assert_eq!((s, e), (6, 10));
     assert!(wrapped);
 }
@@ -150,8 +146,7 @@ fn backward_from_position_zero_wraps() {
     // wrap range. This exercises the path where the early-return guard in
     // search_last_in fires and the wrap leg does all the work.
     let b = buf("hello world\n");
-    let (s, e, wrapped) =
-        find_next_match(&b, &re("world"), 0, SearchDirection::Backward).unwrap();
+    let (s, e, wrapped) = find_next_match(&b, &re("world"), 0, SearchDirection::Backward).unwrap();
     assert_eq!((s, e), (6, 10));
     assert!(wrapped);
 }

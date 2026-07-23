@@ -111,4 +111,3 @@ fn path_completer_dollar_var_expands_for_lookup() {
         .collect();
     assert!(names.contains(&"main.rs"));
 }
-

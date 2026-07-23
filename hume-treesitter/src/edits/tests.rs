@@ -197,8 +197,7 @@ fn multi_edit_changeset_incremental_tree_matches_full_reparse() {
     }
     let parser_path = hume_test_fixtures::grammar_parser_path("json");
 
-    let grammar =
-        LoadedGrammar::open(&parser_path, "tree_sitter_json").expect("load json grammar");
+    let grammar = LoadedGrammar::open(&parser_path, "tree_sitter_json").expect("load json grammar");
     let mut parser = tree_sitter::Parser::new();
     parser
         .set_language(grammar.language())

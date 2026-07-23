@@ -9,8 +9,7 @@ fn run_inline_output_missing_binary_is_io_error() {
 
 #[test]
 fn parse_unix_sha256_output_takes_first_token() {
-    let stdout =
-        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  fixture.bin\n";
+    let stdout = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  fixture.bin\n";
     assert_eq!(
         parse_unix_sha256_output(stdout).as_deref(),
         Some("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")

@@ -268,4 +268,3 @@ fn unpack_zip_missing_expected_binary_is_error() {
         "expected error naming the missing binary, got: {err}"
     );
 }
-

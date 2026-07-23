@@ -132,6 +132,5 @@ fn file_write_read_port_round_trip() {
         .expect("file write/read port probe failed");
 }
 
-
 #[cfg(unix)]
 mod unix;

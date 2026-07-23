@@ -235,7 +235,11 @@ fn send_doc_notification(
 /// didOpen, in order, so the pair stays coherent even if a buffer opens and
 /// closes before the handshake completes.
 pub(crate) fn lsp_did_close(state: &mut EditorState, lsp: &mut LspState, bid: BufferId) {
-    send_doc_notification(state, lsp, bid, DidCloseTextDocument::METHOD, |_buf, uri| {
-        serde_json::json!({ "textDocument": { "uri": uri.as_str() } })
-    });
+    send_doc_notification(
+        state,
+        lsp,
+        bid,
+        DidCloseTextDocument::METHOD,
+        |_buf, uri| serde_json::json!({ "textDocument": { "uri": uri.as_str() } }),
+    );
 }

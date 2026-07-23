@@ -27,4 +27,3 @@ fn home_dir_none_when_all_unset() {
     let result = home_dir_with(|_| None);
     assert_eq!(result, None);
 }
-

@@ -580,6 +580,5 @@ fn manifest_declare_absent_dir_soft_logs_and_records_declared_plugins() {
     );
 }
 
-
 #[cfg(unix)]
 mod unix;

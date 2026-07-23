@@ -22,8 +22,7 @@ fn call_bang_unknown_command_logs_error() {
     assert!(
         h.pending_messages
             .iter()
-            .any(|(level, msg)| *level == LogLevel::Error
-                && msg.contains("plum-ensure-grammars")),
+            .any(|(level, msg)| *level == LogLevel::Error && msg.contains("plum-ensure-grammars")),
         "unknown command must log an error; got: {:?}",
         h.pending_messages
     );

@@ -76,4 +76,3 @@ fn run_inline_output_scheme_wrapper_raises_on_nonzero_exit() {
         .eval_source(fail_src, &mut null_host2)
         .expect("run-inline-output! failure-path assertion failed");
 }
-

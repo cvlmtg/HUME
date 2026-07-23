@@ -358,12 +358,7 @@ fn buffer_opened_and_closed_in_one_eval_fires_neither_hook() {
         "close-buffer! must have closed the just-opened buffer"
     );
 
-    let hook_ids: Vec<HookId> = ed
-        .state
-        .pending_hooks
-        .iter()
-        .map(|(id, _)| *id)
-        .collect();
+    let hook_ids: Vec<HookId> = ed.state.pending_hooks.iter().map(|(id, _)| *id).collect();
     assert!(
         !hook_ids.contains(&HookId::OnBufferOpen),
         "a buffer closed before its deferred OnBufferOpen fired must not announce open; got {hook_ids:?}"

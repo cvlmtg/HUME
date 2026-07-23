@@ -897,4 +897,3 @@ fn duplicate_load_remains_silent_noop() {
         h.peek_pending_messages()
     );
 }
-

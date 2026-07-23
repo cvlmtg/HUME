@@ -142,8 +142,7 @@ fn with_default_handshake_answers_initialize() {
     let events = backend.drain();
     match &events[0] {
         (_, InboundEvent::Message(Message::Response { result, .. })) => {
-            let parsed: InitializeResult =
-                serde_json::from_value(result.clone().unwrap()).unwrap();
+            let parsed: InitializeResult = serde_json::from_value(result.clone().unwrap()).unwrap();
             assert_eq!(
                 parsed.capabilities.position_encoding,
                 Some(PositionEncodingKind::UTF8)

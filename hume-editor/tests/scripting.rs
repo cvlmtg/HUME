@@ -1971,4 +1971,3 @@ fn plum_grammars_scm_balanced() {
         "grammars.scm: {opens} opens vs {closes} closes — unbalanced parens",
     );
 }
-

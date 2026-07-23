@@ -283,12 +283,7 @@ fn on_buffer_open_queued_after_on_language_set() {
     ed.open_buffer(doc);
 
     // Inspect the queue before draining — drain_hooks would empty it.
-    let hook_order: Vec<HookId> = ed
-        .state
-        .pending_hooks
-        .iter()
-        .map(|(id, _)| *id)
-        .collect();
+    let hook_order: Vec<HookId> = ed.state.pending_hooks.iter().map(|(id, _)| *id).collect();
     assert_eq!(
         hook_order,
         vec![HookId::OnLanguageSet, HookId::OnBufferOpen],

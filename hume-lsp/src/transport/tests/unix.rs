@@ -7,8 +7,7 @@ use crate::codec::RequestId;
 #[test]
 fn cat_echoes_frames_and_drop_reaps_without_hanging() {
     let root = std::env::current_dir().unwrap();
-    let mut handle =
-        ServerHandle::spawn("/bin/cat", &[], &root, no_op_wake()).expect("spawn cat");
+    let mut handle = ServerHandle::spawn("/bin/cat", &[], &root, no_op_wake()).expect("spawn cat");
 
     let sent = Message::Request {
         id: RequestId::Int(1),

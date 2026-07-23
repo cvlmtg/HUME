@@ -92,8 +92,7 @@ fn data_dir_resolves_through_real_registration() {
     // isn't platform-dependent (see memory feedback_macos_tempfile_canonicalize).
     // On Windows canonicalize yields a `\\?\`-prefixed path, but
     // `(data-dir)` returns the display form — strip the prefix to match.
-    let expected =
-        hume_platform::path::strip_unc_prefix(std::fs::canonicalize(&data_dir).unwrap());
+    let expected = hume_platform::path::strip_unc_prefix(std::fs::canonicalize(&data_dir).unwrap());
     let msgs = host.take_pending_messages();
     assert!(
         msgs.iter()

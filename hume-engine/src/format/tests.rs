@@ -842,8 +842,7 @@ fn no_window_caller_does_not_overflow_u16_on_huge_line() {
 fn wrapping_modes_unaffected_by_h_window_none() {
     // Regression: passing None (the only value wrapping modes ever get)
     // must reproduce the existing wrap test's output exactly.
-    let (rows, graphemes) =
-        do_format_windowed("hello world", WrapMode::Soft { width: 7 }, None);
+    let (rows, graphemes) = do_format_windowed("hello world", WrapMode::Soft { width: 7 }, None);
     let row0 = &graphemes[rows[0].graphemes.clone()];
     assert_eq!(row0.len(), 7, "soft wrap still splits mid-word at column 7");
 }

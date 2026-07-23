@@ -211,10 +211,7 @@ pub(crate) fn call_command_primitive(
                 .map_err(|e| generic_err(format!("%call-native!: {e}")))
         }
         Ok(false) => {
-            ctx.log(
-                LogLevel::Error,
-                format!("'{name}' is not a native command"),
-            );
+            ctx.log(LogLevel::Error, format!("'{name}' is not a native command"));
             Ok(SteelVal::Void)
         }
         Err(msg) => {

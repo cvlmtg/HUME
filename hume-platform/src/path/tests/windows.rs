@@ -82,4 +82,3 @@ fn strip_unc_prefix_plain_path_unchanged() {
     let got = strip_unc_prefix(PathBuf::from(r"C:\Users\x"));
     assert_eq!(got, PathBuf::from(r"C:\Users\x"));
 }
-

@@ -94,8 +94,7 @@ fn surround_quote_no_match() {
 fn surround_multi_cursor_different_pairs() {
     // (a) [b] — cursor on 'a' (pos 1) and 'b' (pos 5).
     let buf = Text::from("(a) [b]\n");
-    let sels =
-        SelectionSet::from_vec(vec![Selection::collapsed(1), Selection::collapsed(5)], 0);
+    let sels = SelectionSet::from_vec(vec![Selection::collapsed(1), Selection::collapsed(5)], 0);
     let result = cmd_surround_paren(&buf, sels, 0, MotionMode::Move);
     // Only the first cursor is inside parens; second is not.
     // First → cursors on ( and ), second preserved.
@@ -110,8 +109,7 @@ fn surround_multi_cursor_different_pairs() {
 fn surround_multi_cursor_same_pair_merges() {
     // (hello) — two cursors both inside the same parens (pos 1 and 3).
     let buf = Text::from("(hello)\n");
-    let sels =
-        SelectionSet::from_vec(vec![Selection::collapsed(1), Selection::collapsed(3)], 0);
+    let sels = SelectionSet::from_vec(vec![Selection::collapsed(1), Selection::collapsed(3)], 0);
     let result = cmd_surround_paren(&buf, sels, 0, MotionMode::Move);
     // Both produce cursors on (0,0) and (6,6) — merge_overlapping deduplicates.
     let pairs: Vec<_> = result

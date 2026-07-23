@@ -763,7 +763,10 @@ mod tests {
             strip_line_comment(r#"call("a//b") // note"#),
             r#"call("a//b") "#
         );
-        assert_eq!(strip_line_comment(r#"let q = '"'; // c"#), r#"let q = '"'; "#);
+        assert_eq!(
+            strip_line_comment(r#"let q = '"'; // c"#),
+            r#"let q = '"'; "#
+        );
         assert_eq!(
             strip_line_comment(r#""a\"//b""#),
             r#""a\"//b""#,

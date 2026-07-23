@@ -322,8 +322,7 @@ fn generic_initialize_request_is_not_hijacked_by_the_handshake_discriminator() {
         allow_stale: false,
         deadline: Instant::now() + std::time::Duration::from_secs(10),
     };
-    let sent_id =
-        client.send_request(&mut backend, "initialize", serde_json::Value::Null, meta);
+    let sent_id = client.send_request(&mut backend, "initialize", serde_json::Value::Null, meta);
 
     let (_sid, ev) = backend.drain().into_iter().next().unwrap();
     let actions = client.on_event(ev);
@@ -498,10 +497,9 @@ fn send_request_while_starting_is_queued_then_flushed_and_still_correlates() {
 
     // Nothing but the initialize request should be on the wire yet.
     assert!(
-        backend
-            .sent
-            .iter()
-            .all(|(_, m)| !matches!(m, Message::Request { method, .. } if method == "textDocument/hover")),
+        backend.sent.iter().all(
+            |(_, m)| !matches!(m, Message::Request { method, .. } if method == "textDocument/hover")
+        ),
         "request must be queued, not sent, while Starting"
     );
     assert_eq!(
@@ -1178,9 +1176,9 @@ fn progress_begin_missing_title_recovers_via_lenient_fallback() {
         [ClientAction::Progress(p)] => {
             assert_eq!(p.token, lsp_types::NumberOrString::String("t1".to_string()));
             match &p.value {
-                lsp_types::ProgressParamsValue::WorkDone(
-                    lsp_types::WorkDoneProgress::Begin(begin),
-                ) => assert!(!begin.title.is_empty(), "must recover a non-empty title"),
+                lsp_types::ProgressParamsValue::WorkDone(lsp_types::WorkDoneProgress::Begin(
+                    begin,
+                )) => assert!(!begin.title.is_empty(), "must recover a non-empty title"),
                 other => panic!("expected a Begin progress value, got {other:?}"),
             }
         }
@@ -1328,8 +1326,8 @@ fn register_and_unregister_capability_and_progress_create_answer_null() {
 
 #[test]
 fn unknown_server_request_is_method_not_found() {
-    let err = server_request_response("some/madeUpMethod", &serde_json::Value::Null, None)
-        .unwrap_err();
+    let err =
+        server_request_response("some/madeUpMethod", &serde_json::Value::Null, None).unwrap_err();
     assert_eq!(err.code, -32601);
     assert!(err.message.contains("some/madeUpMethod"));
 }

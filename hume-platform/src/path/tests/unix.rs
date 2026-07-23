@@ -143,4 +143,3 @@ fn strip_unc_prefix_is_noop_on_non_windows() {
     let got = strip_unc_prefix(PathBuf::from("/tmp/foo"));
     assert_eq!(got, PathBuf::from("/tmp/foo"));
 }
-

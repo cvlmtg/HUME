@@ -423,4 +423,3 @@ fn manifest_declare_second_call_is_silent_noop() {
         "manifest.scm must be evaluated exactly once across repeated zero-trigger declares"
     );
 }
-

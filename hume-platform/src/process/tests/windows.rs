@@ -81,4 +81,3 @@ fn target_stripping_wrapper_script_forwards_args_to_invocation() {
         expected.replace("zig cc !ARGS!", "clang++ !ARGS!")
     );
 }
-

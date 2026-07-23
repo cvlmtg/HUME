@@ -458,7 +458,9 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
     // indent_guide_drawn_at_inner_tab_stops proves is drawn when enabled.
     for x in 0..11 {
         assert_ne!(
-            buf.cell(ratatui::layout::Position { x, y: 0 }).unwrap().symbol(),
+            buf.cell(ratatui::layout::Position { x, y: 0 })
+                .unwrap()
+                .symbol(),
             INDENT_GUIDE_GLYPH,
             "no indent guide should render at col {x} when show_indent_guides is false"
         );
