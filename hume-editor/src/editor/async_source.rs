@@ -10,7 +10,10 @@
 //! waker wraps `termina::PlatformWaker::wake`, which interrupts a blocked
 //! `EventReader::poll`), so there is nothing to poll for. The parse worker
 //! accordingly contributes no `AsyncSource` — it has no deadline of its
-//! own, only arrival-driven wakes.
+//! own, only arrival-driven wakes. A picker's spawned line source
+//! (`docs/FUZZY-FINDERS.md` B5) follows the same shape: `drain_picker_source`
+//! (`picker_source.rs`) has no matching `AsyncSource` entry, only a drain
+//! call from `drain_async_sources` below.
 
 use std::time::{Duration, Instant};
 
@@ -53,5 +56,6 @@ impl Editor {
         self.reparse_stale_buffers();
         self.drain_due_timers();
         self.drain_lsp();
+        self.drain_picker_source();
     }
 }

@@ -11,6 +11,7 @@
 use std::cmp::Reverse;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use hume_platform::process::line_source::SpawnedLineSource;
 use steel::rvals::SteelVal;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -51,6 +52,13 @@ pub(crate) struct PickerSession {
     prompt: String,
     /// Stale-push guard: `push` is a no-op unless the caller's token matches.
     token: u64,
+    /// The streaming external-command source attached via
+    /// `picker-source-spawn!` (`docs/FUZZY-FINDERS.md` B5), if any. Owning it
+    /// here — rather than in some separate registry — is what makes
+    /// kill-on-close/replace automatic: `SpawnedLineSource::drop` kills the
+    /// child, and this field is dropped whenever the session itself is
+    /// (`close_picker`'s `take()`, `open_picker`'s replace).
+    source: Option<SpawnedLineSource>,
 }
 
 static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
@@ -71,6 +79,7 @@ impl PickerSession {
             on_select,
             prompt,
             token: NEXT_TOKEN.fetch_add(1, Ordering::Relaxed),
+            source: None,
         }
     }
 
@@ -93,6 +102,31 @@ impl PickerSession {
         self.items.extend(items);
         self.rerank();
         true
+    }
+
+    /// Attaches a spawned streaming source, replacing (and thereby killing,
+    /// via `SpawnedLineSource::drop`) any source already attached — a second
+    /// `picker-source-spawn!` on the same session is a re-spawn, not a
+    /// second concurrent source (matches Q-B5's future re-spawn-replaces-
+    /// source semantics for live-requery).
+    #[allow(dead_code)] // first caller lands with B5's picker-source-spawn! host impl
+    pub(crate) fn attach_source(&mut self, source: SpawnedLineSource) {
+        self.source = Some(source);
+    }
+
+    pub(crate) fn source_mut(&mut self) -> Option<&mut SpawnedLineSource> {
+        self.source.as_mut()
+    }
+
+    /// Takes the source out (e.g. once its reader has disconnected and the
+    /// caller wants to consume it via `SpawnedLineSource::finish`).
+    pub(crate) fn take_source(&mut self) -> Option<SpawnedLineSource> {
+        self.source.take()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn has_source(&self) -> bool {
+        self.source.is_some()
     }
 
     /// Appends one `char` to the query and reranks. Key events deliver

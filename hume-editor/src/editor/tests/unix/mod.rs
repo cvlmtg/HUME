@@ -207,6 +207,7 @@ mod lsp_references;
 mod lsp_rename;
 mod lsp_sighelp;
 mod multi_pane;
+mod picker_source;
 mod plugins;
 mod scripting_effects;
 mod scripting_grammar;

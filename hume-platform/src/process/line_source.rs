@@ -223,6 +223,13 @@ impl SpawnedLineSource {
         &self.cmd
     }
 
+    /// The child's OS process id — for callers that need to verify
+    /// kill-on-drop against an independent liveness check (e.g. a signal-0
+    /// probe), not for signalling it directly (that's `Drop`'s job).
+    pub fn pid(&self) -> u32 {
+        self.child.id()
+    }
+
     /// Drains every batch of lines queued since the last call. The returned
     /// bool is whether the reader thread has disconnected (stdout EOF or a
     /// read error) — once true, call [`finish`](Self::finish) to reap the

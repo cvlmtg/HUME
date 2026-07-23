@@ -46,6 +46,7 @@ mod minibuf;
 mod mouse;
 pub(crate) mod pane_state;
 pub(crate) mod picker;
+mod picker_source;
 pub(crate) mod register_ops;
 mod registry;
 mod replay;
