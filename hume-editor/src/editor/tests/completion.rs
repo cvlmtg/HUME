@@ -60,7 +60,10 @@ fn tab_multiple_matches_opens_popup_with_first_candidate() {
     ed.handle_key(key_tab());
 
     // Completion state must be open.
-    assert!(ed.state.minibuf_completion.is_some(), "popup should be open");
+    assert!(
+        ed.state.minibuf_completion.is_some(),
+        "popup should be open"
+    );
     let state = ed.state.minibuf_completion.as_ref().unwrap();
     assert_eq!(state.selected, 0);
     assert!(state.candidates.len() >= 2);
@@ -106,7 +109,13 @@ fn tab_wraps_at_end() {
     ed.handle_key(key('w'));
     ed.handle_key(key_tab());
 
-    let n = ed.state.minibuf_completion.as_ref().unwrap().candidates.len();
+    let n = ed
+        .state
+        .minibuf_completion
+        .as_ref()
+        .unwrap()
+        .candidates
+        .len();
     // Tab n times to wrap back to 0.
     for _ in 0..n {
         ed.handle_key(key_tab());
@@ -277,7 +286,11 @@ fn enter_on_directory_candidate_restarts_completion() {
     }
     ed.handle_key(key_tab()); // opens popup; "alpha/" selected first (alphabetical).
 
-    let state = ed.state.minibuf_completion.as_ref().expect("popup should be open");
+    let state = ed
+        .state
+        .minibuf_completion
+        .as_ref()
+        .expect("popup should be open");
     let first = state.candidates[0].replacement.clone();
     assert!(
         first.ends_with('/'),

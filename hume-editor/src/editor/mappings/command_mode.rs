@@ -216,8 +216,8 @@ impl Editor {
 
         // Dispatch to the right completer based on command + input shape.
         use crate::editor::completion::{
-            BufferNameCompleter, CommandCompleter, Completer, CompletionResult, MinibufCompletionState,
-            PathCompleter, SetCompleter, ThemeCompleter,
+            BufferNameCompleter, CommandCompleter, Completer, CompletionResult,
+            MinibufCompletionState, PathCompleter, SetCompleter, ThemeCompleter,
         };
 
         let result: CompletionResult = {

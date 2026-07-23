@@ -108,12 +108,7 @@ fn draw_picker_panel_clips_overlong_row_to_inner_width() {
         height: 4,
         list_rows: 1,
     };
-    let s = state(
-        "",
-        &["hume-editor/src/ui/picker_panel.rs"],
-        None,
-        &geo,
-    );
+    let s = state("", &["hume-editor/src/ui/picker_panel.rs"], None, &geo);
     let outer = Rect::new(geo.x, geo.y, geo.width, geo.height);
     draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
 
