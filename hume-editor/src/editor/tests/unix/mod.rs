@@ -208,6 +208,7 @@ mod lsp_rename;
 mod lsp_sighelp;
 mod multi_pane;
 mod picker_source;
+mod picker_source_steel;
 mod plugins;
 mod scripting_effects;
 mod scripting_grammar;

@@ -128,6 +128,14 @@ impl PickerSession {
         self.source.is_some()
     }
 
+    /// The attached source's OS pid, for tests that verify kill-on-close
+    /// against an independent liveness check rather than the handle's own
+    /// state.
+    #[cfg(test)]
+    pub(crate) fn source_pid_for_test(&self) -> Option<u32> {
+        self.source.as_ref().map(SpawnedLineSource::pid)
+    }
+
     /// Appends one `char` to the query and reranks. Key events deliver
     /// printable input one `char` at a time, including combining marks,
     /// which simply extend the trailing grapheme cluster.
