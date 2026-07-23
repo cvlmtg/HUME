@@ -207,6 +207,100 @@ fn long_list_auto_scrolls_to_keep_selection_visible() {
     );
 }
 
+// ── Ctrl+d/Ctrl+u: half-page scroll ───────────────────────────────────────────
+
+/// Arms the same 20-item / 40×10 fixture as
+/// `long_list_auto_scrolls_to_keep_selection_visible`: capacity =
+/// min(20+1, 10/2=5) = 5, so `visible_rows` = 4 and a half-page = 2.
+fn arm_twenty_items_in_a_short_terminal(ed: &mut Editor, tmp: &Path) {
+    let items_scm: String = (0..20)
+        .map(|i| format!("\"item {i}\""))
+        .collect::<Vec<_>>()
+        .join(" ");
+    run(
+        ed,
+        tmp,
+        &format!(
+            r#"(define-command! "go" "" (lambda ()
+                 (show-drawer-list! (list {items_scm})
+                   (lambda (idx) (log! 'info (to-string idx))))))"#
+        ),
+    );
+    // Populate `last_terminal_area` before any key handling needs it — the
+    // scroll clamp reads it to agree with what the engine will next paint.
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(40, 10, &mut ctx);
+    type_cmd(ed, ":go");
+}
+
+#[test]
+fn ctrl_d_pages_down_by_half_the_visible_window() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
+
+    ed.feed_key(key_ctrl('d'));
+    assert_eq!(
+        ed.state.drawer.as_ref().unwrap().selected,
+        2,
+        "half of the 4 visible rows"
+    );
+
+    // A second half-page crosses the visible window (0..4), so scroll must
+    // advance to keep the new selection in view.
+    ed.feed_key(key_ctrl('d'));
+    let drawer = ed.state.drawer.as_ref().unwrap();
+    assert_eq!(drawer.selected, 4);
+    assert!(
+        drawer.scroll > 0,
+        "scroll must advance once selection leaves the first window"
+    );
+}
+
+#[test]
+fn ctrl_d_clamps_at_the_last_item() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
+
+    for _ in 0..15 {
+        ed.feed_key(key_ctrl('d'));
+    }
+    assert_eq!(
+        ed.state.drawer.as_ref().unwrap().selected,
+        19,
+        "clamped to the last of 20 items, not wrapped or overshot"
+    );
+}
+
+#[test]
+fn ctrl_u_pages_up_by_half_the_visible_window() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
+
+    ed.feed_key(key_ctrl('d'));
+    ed.feed_key(key_ctrl('d')); // selected = 4, scroll > 0 (see above)
+    ed.feed_key(key_ctrl('u'));
+    assert_eq!(
+        ed.state.drawer.as_ref().unwrap().selected,
+        2,
+        "half of the 4 visible rows, back down from 4"
+    );
+}
+
+#[test]
+fn ctrl_u_clamps_at_the_first_item() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
+
+    ed.feed_key(key_ctrl('u'));
+    let drawer = ed.state.drawer.as_ref().unwrap();
+    assert_eq!(drawer.selected, 0, "clamped, never underflows");
+    assert_eq!(drawer.scroll, 0);
+}
+
 // ── End-to-end: Enter jumps via goto-location!, drawer stays open ────────────
 
 #[test]

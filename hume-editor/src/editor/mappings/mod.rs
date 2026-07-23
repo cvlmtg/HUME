@@ -203,6 +203,23 @@ impl Editor {
                 }
                 true
             }
+            KeyCode::Char('d') if key.modifiers.contains(Modifiers::CONTROL) => {
+                let half = (self.drawer_visible_rows() / 2).max(1);
+                if let Some(drawer) = self.state.drawer.as_mut() {
+                    drawer.selected =
+                        (drawer.selected + half).min(drawer.items.len().saturating_sub(1));
+                }
+                self.clamp_drawer_scroll();
+                true
+            }
+            KeyCode::Char('u') if key.modifiers.contains(Modifiers::CONTROL) => {
+                let half = (self.drawer_visible_rows() / 2).max(1);
+                if let Some(drawer) = self.state.drawer.as_mut() {
+                    drawer.selected = drawer.selected.saturating_sub(half);
+                }
+                self.clamp_drawer_scroll();
+                true
+            }
             KeyCode::Enter => {
                 let drawer = self.state.drawer.as_ref().expect("checked above");
                 let idx = steel::rvals::SteelVal::IntV(drawer.selected as isize);
@@ -251,18 +268,28 @@ impl Editor {
         };
     }
 
-    /// Clamps `drawer.scroll` so `drawer.selected` stays within the visible
-    /// window, then syncs the view. `max` mirrors `DrawerProvider::height`'s
-    /// own ceiling (half the last-rendered *terminal* height, not the
-    /// already-chrome-reduced pane height) so scroll math agrees with what
-    /// the engine will actually paint next frame.
-    fn clamp_drawer_scroll(&mut self) {
+    /// Number of drawer rows visible at once — the same capacity
+    /// `DrawerProvider::height` will paint against next frame. `max` mirrors
+    /// that provider's own ceiling (half the last-rendered *terminal*
+    /// height, not the already-chrome-reduced pane height). Shared by
+    /// `clamp_drawer_scroll` and the Ctrl+u/Ctrl+d half-page handlers so
+    /// "half a page" always agrees with what's on screen.
+    fn drawer_visible_rows(&self) -> usize {
         let max = self.view.last_terminal_area.height / 2;
+        let Some(drawer) = self.state.drawer.as_ref() else {
+            return 0;
+        };
+        let capacity = (drawer.items.len() as u16 + 1).min(max);
+        capacity.saturating_sub(1) as usize
+    }
+
+    /// Clamps `drawer.scroll` so `drawer.selected` stays within the visible
+    /// window, then syncs the view.
+    fn clamp_drawer_scroll(&mut self) {
+        let visible_rows = self.drawer_visible_rows();
         let Some(drawer) = self.state.drawer.as_mut() else {
             return;
         };
-        let capacity = (drawer.items.len() as u16 + 1).min(max);
-        let visible_rows = capacity.saturating_sub(1) as usize;
         if visible_rows > 0 {
             if drawer.selected >= drawer.scroll + visible_rows {
                 drawer.scroll = drawer.selected + 1 - visible_rows;

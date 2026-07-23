@@ -167,7 +167,12 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
 
     ed.feed_key(key_ctrl('d'));
     ed.prepare_frame(80, 25, &mut ctx);
-    let scroll_after_down = ed.state.popup.as_ref().expect("Ctrl+d must not close a scrollable popup").scroll;
+    let scroll_after_down = ed
+        .state
+        .popup
+        .as_ref()
+        .expect("Ctrl+d must not close a scrollable popup")
+        .scroll;
     assert!(
         scroll_after_down > 0,
         "Ctrl+d must scroll a scrollable popup's content forward"
@@ -180,7 +185,12 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
 
     ed.feed_key(key_ctrl('u'));
     ed.prepare_frame(80, 25, &mut ctx);
-    let scroll_after_up = ed.state.popup.as_ref().expect("Ctrl+u must not close a scrollable popup").scroll;
+    let scroll_after_up = ed
+        .state
+        .popup
+        .as_ref()
+        .expect("Ctrl+u must not close a scrollable popup")
+        .scroll;
     assert!(
         scroll_after_up < scroll_after_down,
         "Ctrl+u must scroll a scrollable popup's content back"
