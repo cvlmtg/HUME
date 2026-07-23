@@ -299,28 +299,22 @@ impl Editor {
                 picker.pop_grapheme(); // no-op on an already-empty query
             }
             KeyCode::Enter => {
-                let picker = self
+                // No match (or nothing pushed yet) behaves like Esc — Enter
+                // is always a terminal action, never a silent no-op. Read
+                // the payload before closing: `close_picker` takes the
+                // session.
+                let payload = self
                     .state
                     .picker
-                    .take()
-                    .expect("checked by the caller above");
-                // No match (or nothing pushed yet) behaves like Esc — Enter
-                // is always a terminal action, never a silent no-op.
-                let payload = picker
+                    .as_ref()
+                    .expect("checked by the caller above")
                     .selected_payload()
                     .cloned()
                     .unwrap_or(steel::rvals::SteelVal::BoolV(false));
-                let callback = picker.on_select().clone();
-                self.queue_steel_call(callback, vec![payload]);
+                super::picker::close_picker(&mut self.state, payload);
             }
             KeyCode::Escape => {
-                let picker = self
-                    .state
-                    .picker
-                    .take()
-                    .expect("checked by the caller above");
-                let callback = picker.on_select().clone();
-                self.queue_steel_call(callback, vec![steel::rvals::SteelVal::BoolV(false)]);
+                super::picker::close_picker(&mut self.state, steel::rvals::SteelVal::BoolV(false));
             }
             KeyCode::Char(ch)
                 if !key

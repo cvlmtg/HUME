@@ -269,7 +269,6 @@ pub(crate) fn open_picker(
 /// (with the selected payload), `picker-close!`, and `open_picker`'s
 /// replace-on-open path (LESSONS.md L2 — one chokepoint, not one copy per
 /// caller).
-#[allow(dead_code)] // production callers land in mappings/mod.rs (step 3) and host_impl.rs (step 6)
 pub(crate) fn close_picker(state: &mut super::EditorState, payload: SteelVal) -> bool {
     let Some(session) = state.picker.take() else {
         return false;
