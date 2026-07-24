@@ -295,6 +295,27 @@ pub fn strip_unc_prefix(p: PathBuf) -> PathBuf {
     p
 }
 
+/// Borrowing sibling of [`strip_unc_prefix`] for comparison call sites (e.g.
+/// scanning many candidate paths against a needle) that don't need an owned
+/// result — avoids an allocation per candidate when no verbatim prefix is
+/// present to strip, which off Windows is every call.
+#[cfg(windows)]
+pub fn strip_unc_prefix_cow(p: &Path) -> Cow<'_, Path> {
+    const VERBATIM: &str = r"\\?\";
+    match p.to_str() {
+        Some(s) if s.starts_with(VERBATIM) && !s[VERBATIM.len()..].starts_with("UNC\\") => {
+            Cow::Owned(PathBuf::from(&s[VERBATIM.len()..]))
+        }
+        _ => Cow::Borrowed(p),
+    }
+}
+
+#[cfg(not(windows))]
+#[inline]
+pub fn strip_unc_prefix_cow(p: &Path) -> Cow<'_, Path> {
+    Cow::Borrowed(p)
+}
+
 // ── Path safety helpers ───────────────────────────────────────────────────────
 
 /// Returns `true` if `path` contains any `..` (`ParentDir`) components.

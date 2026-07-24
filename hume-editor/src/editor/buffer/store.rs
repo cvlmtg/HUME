@@ -10,7 +10,7 @@ use std::path::Path;
 use slotmap::SecondaryMap;
 
 use hume_engine::pipeline::BufferId;
-use hume_platform::path::strip_unc_prefix;
+use hume_platform::path::strip_unc_prefix_cow;
 
 use crate::editor::buffer::Buffer;
 
@@ -55,10 +55,10 @@ impl BufferStore {
     /// which would otherwise dedup-miss against an already-open buffer.
     /// Used by `:e` to deduplicate already-open files.
     pub(crate) fn find_by_path(&self, path: &Path) -> Option<BufferId> {
-        let needle = strip_unc_prefix(path.to_path_buf());
+        let needle = strip_unc_prefix_cow(path);
         self.buffers.iter().find_map(|(id, buf)| {
             buf.path()
-                .filter(|p| strip_unc_prefix(p.to_path_buf()) == needle)
+                .filter(|p| strip_unc_prefix_cow(p) == needle)
                 .map(|_| id)
         })
     }
