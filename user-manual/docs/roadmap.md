@@ -16,14 +16,6 @@ HUME is under active development. Here's what's missing and what's coming.
 
 **Embedded REPL** — a Steel REPL running in a docked pane.
 
-**DAP debugger** — Debug Adapter Protocol support for interactive debugging.
-
-## Already here
-
-Language servers and inline diagnostics have landed — see [Language Servers](lsp.md) for completions, hover, go-to-definition, rename, formatting, code actions, and the rest.
-
-A fuzzy file/buffer picker has landed as `core:pickers` — see [Fuzzy Finder](pickers.md) (`g f` to open files, `g b` to switch buffers).
-
 ---
 
 ::: info
