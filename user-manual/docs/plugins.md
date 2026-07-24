@@ -202,6 +202,16 @@ To make subsequent `(call! …)` invocations in a command body target a specific
 
 The prefix persists for the rest of the command body.
 
+Target the black hole register (`"b"`) to discard a selection without touching the kill ring or clipboard — useful when a command needs to throw text away as a side effect of its own logic:
+
+```scheme
+(define-command! "delete-without-clobbering"
+  "Delete the selection without overwriting the kill ring (same as \"bd)."
+  (lambda ()
+    (set-register-prefix! "b")
+    (call! "delete")))
+```
+
 ### Hooks
 
 Plugins react to editor lifecycle events by registering a hook handler with `register-hook!`. It must be called at the top level or inside a plugin body — not from a command body:

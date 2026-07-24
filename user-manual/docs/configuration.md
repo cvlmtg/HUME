@@ -11,7 +11,7 @@ HUME reads persistent configuration from:
 
 If the file does not exist, HUME starts with defaults. If it fails partway through, the error is reported in `:messages` and everything up to that point stays applied — so a broken line late in the file leaves you half-configured rather than back at defaults. Fix it and run `:reload-config` to re-run the file from scratch without restarting.
 
-A reference config ships at `runtime/init.scm.example` (see [File locations](#file-locations)); copy it to the path above if you want a starting point.
+A reference config ships at `runtime/init.scm.example` (see [File locations](#file-locations)); copy it to the path above if you want a starting point, or see [Example init.scm](#example-init-scm) below.
 
 ## Setting options
 
@@ -269,6 +269,15 @@ Hooks can trigger on language detection:
 A complete starting config — copy it to `~/.config/hume/init.scm` and edit:
 
 ```scheme
+;; Bundled plugins
+(load-plugin "core:stdlib")           ; helper toolkit other plugins depend on
+(load-plugin "core:pickers")          ; fuzzy file/buffer finders
+(declare-plugin "core:lsp")           ; language server features
+(declare-plugin "core:plum")          ; plugin/grammar manager
+
+;; A third-party plugin, installed with :plum-install
+(declare-plugin "username/hume-plugin-example" #:commands '("hello"))
+
 ;; Appearance
 (set-option! "theme" "sand")
 (set-option! "line-number-style" "absolute")
@@ -282,15 +291,6 @@ A complete starting config — copy it to `~/.config/hume/init.scm` and edit:
 (bind-keys! 'normal
   ("ctrl-h" "select-prev-word")
   ("ctrl-l" "select-next-word"))
-
-;; Bundled plugins — see core-plugins.md
-(load-plugin "core:stdlib")
-(load-plugin "core:vim-keybind")
-(declare-plugin "core:plum")          ; plugin and grammar manager
-(declare-plugin "core:lsp")           ; language servers
-
-;; A third-party plugin, installed with :plum-install
-(declare-plugin "username/hume-plugin-example" #:commands '("hello"))
 ```
 
 Before your `init.scm` runs, HUME loads its own prelude (which defines `bind-keys!`, `define-language!` and friends) and its built-in language definitions — so those are always available to you.
