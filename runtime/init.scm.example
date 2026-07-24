@@ -1,70 +1,33 @@
 ;;; init.scm.example — HUME Steel configuration starter
 ;;;
-;;; Copy this file to ~/.config/hume/init.scm (or $XDG_CONFIG_HOME/hume/init.scm)
-;;; and edit to taste.  HUME evaluates it once at startup; use :reload-config
-;;; to apply changes without restarting.
-;;;
-;;; Steel is a Scheme dialect. Press : then Tab to list all built-in commands.
-;;; Full reference: user-manual/docs/configuration.md and plugins.md.
-
-;; ── Settings ──────────────────────────────────────────────────────────────────
-;; (set-option! key value) — see configuration.md for the full option list.
-
-(set-option! "tab-width" 2)
-;; (set-option! "line-number-style" "relative")
-;; (set-option! "scrolloff" 8)
-
-;; Per-buffer overrides, set automatically per language — see plugins.md#hooks.
-;; (register-hook! 'on-language-set
-;;   (lambda (bid lang)
-;;     (when (equal? lang "markdown")
-;;       (set-buffer-option! bid "tab-width" 2))))
-
-;; ── Key bindings ──────────────────────────────────────────────────────────────
-;; (bind-key! mode key-sequence command-name) — see configuration.md#key-bindings.
-
-;; (bind-key! 'normal "U" "undo")
-
-;; ── Custom commands ───────────────────────────────────────────────────────────
-;; (define-command! name doc-string lambda [keyword-args...]) — see plugins.md.
-
-;; (define-command! "hello"
-;;   "Log a greeting to the message log."
-;;   (lambda ()
-;;     (log! 'info "Hello from init.scm!")))
+;;; Copy to ~/.config/hume/init.scm (or $XDG_CONFIG_HOME/hume/init.scm) on
+;;; macOS/Linux, or %APPDATA%\hume\init.scm on Windows, and edit to taste.
+;;; Evaluated once at startup; :reload-config re-applies changes.
 
 ;; ── Plugins ───────────────────────────────────────────────────────────────────
-;;   (declare-plugin name keyword-args...) — lazy: load on first activation.
-;;   (load-plugin name)                    — eager: load now, at startup.
-;; See plugins.md and core-plugins.md.
+;; Everything below is a core plugin, loaded so every bundled feature is on by
+;; default. Read user-manual/docs/core-plugins.md (or each plugin's own
+;; README under runtime/plugins/core/<name>/) before keeping or dropping one —
+;; a few rebind the same keys, so know what you're enabling.
 
-;; (declare-plugin "core:stdlib")      ; helpers other plugins need — see core:stdlib README "Caveat"
-;; (load-plugin "core:stdlib")         ; same, eagerly — required by some dependents (e.g. core:vim-keybind)
-;; (declare-plugin "core:plum")        ; plugin/grammar manager
-;; (load-plugin "core:plum")           ; same, eagerly — see core:plum README "Caveat"
-;; (load-plugin "core:pickers")        ; fuzzy file/buffer finders on g f / g b — eager (binds keys)
+(load-plugin "core:stdlib")           ; helper toolkit other plugins below depend on
 
-;; Third-party plugins, installed by :plum-install:
-;; (load-plugin "alice/my-theme")
+(declare-plugin "core:plum")          ; plugin/grammar manager — :plum-install, :plum-update, ...
+(declare-plugin "core:lsp")           ; language server features — hover, diagnostics, rename, ...
+(declare-plugin "core:steel-server")  ; language server for editing init.scm/plugins themselves
 
-;; ── LSP ───────────────────────────────────────────────────────────────────────
-;; Language servers — see user-manual/docs/lsp.md for setup and per-language examples.
-;; core:lsp alone is enough: run :lsp-install (per language) to download, verify,
-;; register, and attach a server automatically — no manual registration below needed
-;; for a seeded server.
+(load-plugin "core:pickers")          ; fuzzy file/buffer finders — g f / g b
+(load-plugin "core:vim-keybind")      ; vim muscle memory — $ ^ 0 G C D Ctrl+6
+(load-plugin "core:helix-surround")   ; helix-style surround — m s / m d / m r
+(load-plugin "core:classic-paste")    ; GUI-style paste — p / P / Ctrl+V / Ctrl+Shift+V
+
+;; ── Your settings & key bindings ─────────────────────────────────────────────
+;; Full reference: user-manual/docs/configuration.md (options + key bindings)
+;; and plugins.md (custom commands, hooks).
 ;;
-;; core:lsp can be declared lazily — the one-liner below activates on the first
-;; buffer with a detected language, or the first lsp-* command typed, whichever
-;; comes first (server attach is never itself a trigger). Customize activation
-;; yourself (name specific #:languages, pick a subset of #:commands, ...) by
-;; passing those keywords explicitly instead — see README.md in
-;; runtime/plugins/core/lsp/ for the full trigger list.
+;; (set-option! key value) sets a global option:
+;;   (set-option! "tab-width" 2)
 ;;
-;; (declare-plugin "core:lsp")
-;;
-;; A manual registration always overrides an :lsp-install-managed one — use it for a
-;; local build, a version the seeded catalog doesn't carry, or to prefer a $PATH copy.
-;; Note: :lsp-status/:lsp-stop/:lsp-restart are core:lsp commands too — a manual
-;; register-lsp-server! call with no core:lsp loaded gets a running server but no
-;; way to inspect/stop/restart it from the command line:
-;; (register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
+;; (bind-key! mode key-sequence command-name) adds a key binding. "space" is
+;; free by default, so it's a natural prefix for your own bindings:
+;;   (bind-key! 'normal "space d" "lsp-hover")
