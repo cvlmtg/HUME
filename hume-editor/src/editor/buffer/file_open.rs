@@ -254,11 +254,13 @@ impl Editor {
             let top = self.view.panes[pid].viewport.top_line;
             self.view.panes[pid].viewport.top_line = top.min(last_line);
         }
-        // Drop stale saved scrolls for the reloaded buffer on every pane. A
-        // shrunken file could otherwise leave a recalled scroll past the new
-        // last line (recall_scroll does not clamp). The jump list is preserved
-        // — the same buffer id survives, so existing jumps still reference
-        // valid positions.
+        // Drop stale saved scrolls for the reloaded buffer on every pane —
+        // `recall_scroll` clamps `top_line` to the buffer's current last
+        // line, but a saved `top_row_offset`/`horizontal_offset` for a
+        // scroll position that no longer exists is still worth discarding
+        // outright rather than recalling a clamped-but-arbitrary spot. The
+        // jump list is preserved — the same buffer id survives, so existing
+        // jumps still reference valid positions.
         for pane in self.view.panes.values_mut() {
             pane.forget_buffer(id);
         }

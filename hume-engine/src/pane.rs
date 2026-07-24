@@ -378,9 +378,15 @@ impl Pane {
     }
 
     /// Restore the saved scroll for `id`, or reset to top on first visit.
-    pub fn recall_scroll(&mut self, id: BufferId) {
+    ///
+    /// `len_lines` is `id`'s *current* line count — the buffer may have
+    /// shrunk since this scroll was saved (edited elsewhere while this pane
+    /// viewed a different buffer), so `top_line` is clamped to the last
+    /// content line, the same bound `reload_buffer_in_place` applies
+    /// (`hume-editor/src/editor/buffer/file_open.rs`).
+    pub fn recall_scroll(&mut self, id: BufferId, len_lines: usize) {
         let sp = self.saved_scrolls.get(id).copied().unwrap_or_default();
-        self.viewport.top_line = sp.top_line;
+        self.viewport.top_line = sp.top_line.min(len_lines.saturating_sub(2));
         self.viewport.top_row_offset = sp.top_row_offset;
         self.viewport.horizontal_offset = sp.horizontal_offset;
     }

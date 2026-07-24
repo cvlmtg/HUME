@@ -233,6 +233,51 @@ fn pane_new_none_seed_defaults_saved_wrap_mode_to_indent() {
     assert_eq!(pane.saved_wrap_mode, WrapMode::Indent { width: 0 });
 }
 
+// ── remember_scroll / recall_scroll ─────────────────────────────────────
+
+/// A real (non-null) `BufferId` — `BufferId::default()` is slotmap's null
+/// key, which `SecondaryMap::insert` silently no-ops on, so `saved_scrolls`
+/// (a `SecondaryMap`) needs a minted key for `remember_scroll` to actually
+/// persist anything.
+fn fresh_buffer_id() -> BufferId {
+    let mut sm: slotmap::SlotMap<BufferId, ()> = slotmap::SlotMap::with_key();
+    sm.insert(())
+}
+
+#[test]
+fn recall_scroll_clamps_top_line_to_the_buffers_current_last_content_line() {
+    let bid = fresh_buffer_id();
+    let mut pane = Pane::new(bid, WrapMode::None);
+
+    // Save a scroll position deep into a buffer that was, at the time, tall.
+    pane.viewport.top_line = 100;
+    pane.remember_scroll();
+
+    // The pane moves elsewhere, then recalls the same buffer — which has
+    // since shrunk to 5 lines (e.g. edited by another pane in the meantime).
+    pane.viewport.top_line = 0;
+    pane.recall_scroll(bid, 5);
+
+    // Independent oracle: last content line excludes the phantom trailing-
+    // newline line, i.e. len_lines - 2 (the same bound `layout.rs`'s
+    // `compute_viewport` and `file_open.rs`'s reload path apply) = 3.
+    assert_eq!(pane.viewport.top_line, 3);
+}
+
+#[test]
+fn recall_scroll_leaves_an_in_range_top_line_untouched() {
+    let bid = fresh_buffer_id();
+    let mut pane = Pane::new(bid, WrapMode::None);
+
+    pane.viewport.top_line = 4;
+    pane.remember_scroll();
+
+    pane.viewport.top_line = 0;
+    pane.recall_scroll(bid, 100);
+
+    assert_eq!(pane.viewport.top_line, 4);
+}
+
 #[test]
 fn whitespace_config_defaults() {
     let wc = WhitespaceConfig::default();
