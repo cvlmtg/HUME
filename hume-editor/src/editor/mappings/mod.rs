@@ -44,8 +44,10 @@ impl Editor {
         // Popup dismissal/scroll, before mode dispatch — see `PopupKind`.
         // `Transient` (`gn`/`gp`) clears unconditionally and the key still
         // dispatches below. `Scrollable` (scrollable hover) consumes
-        // Ctrl+u/Ctrl+d to scroll; any other key closes the popup and falls
-        // through to normal dispatch this same call.
+        // Ctrl+u/Ctrl+d to scroll when there's actually content past one
+        // screenful; otherwise (and for any other key) it closes the popup
+        // and falls through to normal dispatch this same call, so a short
+        // hover never blocks buffer half-page scroll.
         match self.state.popup.as_ref().map(|p| p.kind) {
             Some(PopupKind::Transient) => {
                 self.state.popup = None;
@@ -54,12 +56,16 @@ impl Editor {
                 let ctrl = key.modifiers.contains(Modifiers::CONTROL);
                 match key.code {
                     KeyCode::Char('d') if ctrl => {
-                        self.scroll_popup(true);
-                        return;
+                        if self.scroll_popup(true) {
+                            return;
+                        }
+                        self.state.popup = None;
                     }
                     KeyCode::Char('u') if ctrl => {
-                        self.scroll_popup(false);
-                        return;
+                        if self.scroll_popup(false) {
+                            return;
+                        }
+                        self.state.popup = None;
                     }
                     _ => self.state.popup = None,
                 }

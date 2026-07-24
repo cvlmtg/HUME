@@ -279,15 +279,27 @@ pub(crate) struct PopupBandWidget {
     pub(crate) data: Arc<RwLock<Option<PopupBandState>>>,
 }
 
+/// Outer row count for a docked popup band holding `lines` content rows,
+/// capped at `max` — the single source of truth for this arithmetic, shared
+/// by [`PopupBandWidget::height`] (what the engine paints against),
+/// `Editor::sync_popup_band_view`'s scroll clamp, and
+/// `Editor::popup_band_visible_rows` (what `scroll_popup` pages against).
+/// Kept in one place so the painted band and the scroll clamp can never
+/// silently disagree.
+///
+/// `+2` reserves the frame's top/bottom cells — always reserved, even with
+/// `popup-border` off (a plain background margin still takes the row, see
+/// `draw_menu_box`'s doc on `border`).
+pub(crate) fn band_capacity(lines: usize, max: u16) -> u16 {
+    (lines as u16 + 2).min(max)
+}
+
 impl BottomBandProvider for PopupBandWidget {
     fn height(&self, max: u16) -> u16 {
         let guard = self.data.read().expect("RwLock not poisoned");
-        // +2 for the frame's top/bottom cells — always reserved, even with
-        // `popup-border` off (a plain background margin still takes the row,
-        // see `draw_menu_box`'s doc on `border`).
         guard
             .as_ref()
-            .map_or(0, |s| (s.lines.len() as u16 + 2).min(max))
+            .map_or(0, |s| band_capacity(s.lines.len(), max))
     }
 
     fn render(&self, area: Rect, theme: &Theme, buf: &mut ScreenBuf) {

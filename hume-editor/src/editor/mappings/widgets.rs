@@ -116,18 +116,23 @@ impl Editor {
         }
     }
 
-    /// Scrolls an `OnKeyExceptScroll` popup half its visible content height,
-    /// in the direction given by `down`. Reads the visible height and total
-    /// row count from the *already-resolved* view for the popup's current
+    /// Scrolls a `Scrollable` popup half its visible content height, in the
+    /// direction given by `down`. Reads the visible height and total row
+    /// count from the *already-resolved* view for the popup's current
     /// layout — this same frame's paint — rather than recomputing geometry,
     /// so the scroll step always matches what's on screen. Both views are
     /// re-synced every frame regardless (`Editor::sync_popup_view`/
     /// `sync_popup_band_view`), so no explicit sync is needed here. Before
     /// the first frame both are empty — a documented no-op, same as
     /// `handle_picker_key`'s geometry.
-    pub(super) fn scroll_popup(&mut self, down: bool) {
+    ///
+    /// Returns `true` if the popup actually has content past one screenful
+    /// (`max_scroll > 0`) — the caller (`handle_key`) uses this to tell a
+    /// real scroll from a popup too short to scroll, so Ctrl+d/Ctrl+u fall
+    /// through to their usual buffer effect instead of being silently eaten.
+    pub(super) fn scroll_popup(&mut self, down: bool) -> bool {
         let Some(layout) = self.state.popup.as_ref().map(|p| &p.layout) else {
-            return;
+            return false;
         };
         let (inner_h, total) = match layout {
             crate::ui::popup::PopupLayout::Cursor => {
@@ -139,7 +144,7 @@ impl Editor {
                     .as_ref()
                     .map(|s| (s.outer_h.saturating_sub(2) as usize, s.lines.len()))
                 else {
-                    return;
+                    return false;
                 };
                 pair
             }
@@ -152,31 +157,35 @@ impl Editor {
                     .as_ref()
                     .map(|s| s.lines.len())
                 else {
-                    return;
+                    return false;
                 };
                 (self.popup_band_visible_rows(total), total)
             }
         };
+        let max_scroll = total.saturating_sub(inner_h);
+        if max_scroll == 0 {
+            return false;
+        }
         let Some(popup) = self.state.popup.as_mut() else {
-            return;
+            return false;
         };
         let half = (inner_h / 2).max(1);
-        let max_scroll = total.saturating_sub(inner_h);
         popup.scroll = if down {
             (popup.scroll + half).min(max_scroll)
         } else {
             popup.scroll.saturating_sub(half)
         };
+        true
     }
 
     /// Number of docked-popup rows visible at once, given `total` wrapped
-    /// lines — the same capacity `PopupBandWidget::height` will paint
-    /// against next frame (`(total + 2).min(max)`, `max` = half the
-    /// last-rendered *terminal* height). Mirrors `drawer_visible_rows`'s
-    /// contract for the drawer's own band.
+    /// lines — computed via `crate::ui::popup::band_capacity`, the same
+    /// helper `PopupBandWidget::height` calls to size what it paints next
+    /// frame (`max` = half the last-rendered *terminal* height). Mirrors
+    /// `drawer_visible_rows`'s contract for the drawer's own band.
     fn popup_band_visible_rows(&self, total: usize) -> usize {
         let max = self.view.last_terminal_area.height / 2;
-        let capacity = (total as u16 + 2).min(max);
+        let capacity = crate::ui::popup::band_capacity(total, max);
         capacity.saturating_sub(2) as usize
     }
 

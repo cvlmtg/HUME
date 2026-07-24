@@ -5,11 +5,17 @@
 ;; ── Response decoding ───────────────────────────────────────────────────────
 
 ;;; A `MarkedString` is either a bare string or `{language, value}`; a
-;;; `MarkupContent` is `{kind, value}` — both hashmap forms carry "value", so
-;;; no kind/language branch is needed here: `kind` is only consulted by
-;;; `lsp/hover-lang` (below), for the popup's own highlighting.
+;;; `MarkupContent` is `{kind, value}` — `"language"` vs `"kind"` tells the two
+;;; hashmap forms apart. A `{language, value}` form is semantically an
+;;; already-fenced code block (per the LSP spec), but arrives with the fence
+;;; stripped off — re-add it so `#:lang`'s markdown injection actually
+;;; highlights it as `language`, instead of falling back to plain text.
 (define (lsp/marked-string->text ms)
-  (if (string? ms) ms (hash-ref ms "value")))
+  (cond
+    ((string? ms) ms)
+    ((hash-contains? ms "language")
+     (string-append "```" (hash-ref ms "language") "\n" (hash-ref ms "value") "\n```"))
+    (else (hash-ref ms "value"))))
 
 ;;; `contents` is a `MarkupContent`, a `MarkedString`, or `MarkedString[]` —
 ;;; decoded to raw text (strip nothing; code fences read fine either

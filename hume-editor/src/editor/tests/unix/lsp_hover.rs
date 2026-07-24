@@ -191,14 +191,21 @@ fn error_reports_via_the_message_log() {
 fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
+    // 50 lines — comfortably taller than any popup's visible window (cursor
+    // cap ~⅓ pane, docked cap ~½ terminal), so Ctrl+d/Ctrl+u below exercise a
+    // real scroll, not a short popup with nothing to page through.
+    let value = (0..50)
+        .map(|i| format!("line {i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
     let (mut ed, _guard, _sid) = setup(
         file_dir.path(),
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
-        |backend, _sid| {
+        move |backend, _sid| {
             backend.respond_to(
                 "textDocument/hover",
-                serde_json::json!({"contents": {"kind": "plaintext", "value": "fn main()"}}),
+                serde_json::json!({"contents": {"kind": "plaintext", "value": value}}),
             );
         },
     );
@@ -206,7 +213,18 @@ fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
     run_hover(&mut ed);
     let mut ctx = RenderContext::new();
     ed.prepare_frame(80, 25, &mut ctx);
-    assert!(popup_lines(&ed).is_some(), "sanity: popup shown");
+    // 50 lines overflows to the docked layout (`popup_lines` only reads the
+    // cursor-anchored view) — assert on the band view instead, mirroring
+    // `tall_content_docks_instead_of_using_the_drawer`.
+    assert!(
+        ed.state
+            .popup_band_view
+            .read()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|s| !s.lines.is_empty()),
+        "sanity: docked popup shown"
+    );
     assert!(
         matches!(
             ed.state.popup.as_ref().map(|p| p.kind),
@@ -233,6 +251,43 @@ fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
     assert!(
         ed.state.popup.is_none(),
         "cursor movement must dismiss the hover popup, not just a mode change"
+    );
+}
+
+#[test]
+fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
+    // A hover popup whose content fits on screen has nothing to scroll —
+    // Ctrl+d/Ctrl+u must not become a silent no-op that also blocks the
+    // buffer's own half-page scroll (the bug: `scroll_popup` used to consume
+    // the key unconditionally, even with `max_scroll == 0`).
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (mut ed, _guard, _sid) = setup(
+        file_dir.path(),
+        tmp.path(),
+        serde_json::json!({"capabilities": {"hoverProvider": true}}),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/hover",
+                serde_json::json!({"contents": {"kind": "plaintext", "value": "fn main()"}}),
+            );
+        },
+    );
+
+    run_hover(&mut ed);
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(80, 25, &mut ctx);
+    assert!(popup_lines(&ed).is_some(), "sanity: popup shown");
+
+    let head_before = ed.current_selections().primary().head();
+    ed.feed_key(key_ctrl('d'));
+    assert!(
+        ed.state.popup.is_none(),
+        "Ctrl+d on a popup with nothing to scroll must close it, not swallow the key"
+    );
+    assert!(
+        ed.current_selections().primary().head() > head_before,
+        "Ctrl+d must fall through to the buffer's half-page-down motion once the popup closes"
     );
 }
 

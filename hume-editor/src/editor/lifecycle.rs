@@ -1804,11 +1804,12 @@ impl Editor {
             let area = self.view.last_terminal_area;
             let max_width = area.width.saturating_sub(2);
             let (lines, styled_rows) = self.wrap_popup_text(model, max_width);
-            // Mirrors `PopupBandWidget::height`'s own `(lines + 2).min(max)`
-            // formula, so the scroll clamp always agrees with what the
-            // engine will next paint (same pattern as `drawer_visible_rows`).
+            // Shares `crate::ui::popup::band_capacity` with
+            // `PopupBandWidget::height`, so the scroll clamp always agrees
+            // with what the engine will next paint (same pattern as
+            // `drawer_visible_rows`).
             let max_rows = area.height / 2;
-            let capacity = (lines.len() as u16 + 2).min(max_rows);
+            let capacity = crate::ui::popup::band_capacity(lines.len(), max_rows);
             let inner_h = capacity.saturating_sub(2) as usize;
             let scroll = model.scroll.min(lines.len().saturating_sub(inner_h));
             crate::ui::popup::PopupBandState {
