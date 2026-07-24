@@ -45,7 +45,7 @@ lsp.respond_to("textDocument/hover", serde_json::json!({
 
 **Response cases** — null; MarkupContent; MarkedString; MarkedString[]; with/without `range` (ignored v1).
 
-**Tests** — fixture above: popup shows text; null → message-log line, no popup; error → error report; tall content → drawer path. Suggested default key: `gk` (verify at F11).
+**Tests** — fixture above: popup shows text; null → message-log line, no popup; error → error report; tall content → drawer path. Shipped key: `z k` (F11 moved hover off `g` to the `z` trie alongside references/code-actions).
 
 **Done when** — manual rust-analyzer hover on a stdlib call shows docs.
 
@@ -163,7 +163,7 @@ Response cases (all four methods share them): null → "No definition found"; si
 
 **Response cases** — null; `WorkspaceEdit` with `changes`; with `documentChanges` (B6 handles both — the *test* here just proves the wiring passes each through).
 
-**Tests** — prompt prefill shows the symbol; cancel sends nothing (assert `sent` has no rename); multi-file WorkspaceEdit fixture applies + message-log summary; null response message. Suggested key: `gr`… conflicts with references' conventional `gr` — suggest `gR` rename / `gr` references; F11 arbitrates.
+**Tests** — prompt prefill shows the symbol; cancel sends nothing (assert `sent` has no rename); multi-file WorkspaceEdit fixture applies + message-log summary; null response message. Shipped key: `g r` rename (F11 kept rename on `g`, moved references to `z r` to free the slot).
 
 **Done when** — manual: rename a local across two files in a scratch cargo project; `:wa` writes both.
 
@@ -270,7 +270,7 @@ Response cases (all four methods share them): null → "No definition found"; si
 
 **Response cases** — null/empty (report "No code actions"); CodeAction with edit only / command only / both; legacy Command; `disabled` actions (filter out).
 
-**Tests** — menu lists titles; selecting an edit-action applies it; selecting a command-action sends executeCommand and a scripted follow-up `workspace/applyEdit` from the double lands in the buffer (the full loop test); empty → message, no menu. Suggested key: `ga` (free; F11 confirms).
+**Tests** — menu lists titles; selecting an edit-action applies it; selecting a command-action sends executeCommand and a scripted follow-up `workspace/applyEdit` from the double lands in the buffer (the full loop test); empty → message, no menu. Shipped key: `z a`.
 
 **Done when** — manual: rust-analyzer quick-fix (e.g. "add missing match arms") applies.
 
