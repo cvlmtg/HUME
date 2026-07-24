@@ -141,10 +141,13 @@ pub(crate) enum PopupLayout {
 pub(crate) struct PopupModel {
     pub(crate) text: String,
     pub(crate) kind: PopupKind,
-    /// First visible wrapped row, for a `Scrollable` popup. Clamped in
-    /// `Editor::scroll_popup`; re-clamped defensively in
-    /// `Editor::sync_popup_view`/`sync_popup_band_view` against the frame's
-    /// resolved content height.
+    /// First visible wrapped row, for a `Scrollable` popup. Clamped against
+    /// `max_scroll` in `Editor::scroll_popup` before each delta is applied,
+    /// since content height (and so `max_scroll`) can shrink between key
+    /// presses (e.g. the terminal grows) without this field being touched.
+    /// `Editor::sync_popup_view`/`sync_popup_band_view` additionally clamp a
+    /// *copy* of this value for rendering each frame — that clamp is
+    /// view-only and never writes back to the model.
     pub(crate) scroll: usize,
     /// `#:lang` — rebuilt fresh on every `show-popup!`, dropped with the
     /// popup on close. No separate invalidation path: the popup's lifetime

@@ -170,10 +170,16 @@ impl Editor {
             return false;
         };
         let half = (inner_h / 2).max(1);
+        // `popup.scroll` is the model value, re-clamped for rendering only in
+        // the per-frame view sync (see `PopupModel::scroll`) — it can be
+        // stale-large after the popup's content shrinks (e.g. terminal grows
+        // between frames without a key event dismissing it), so clamp before
+        // applying the delta rather than after.
+        let clamped = popup.scroll.min(max_scroll);
         popup.scroll = if down {
-            (popup.scroll + half).min(max_scroll)
+            (clamped + half).min(max_scroll)
         } else {
-            popup.scroll.saturating_sub(half)
+            clamped.saturating_sub(half)
         };
         true
     }

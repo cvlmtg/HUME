@@ -401,6 +401,64 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
 }
 
 #[test]
+fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
+    // Regression: `PopupModel::scroll` is clamped for *rendering* every
+    // frame, but that clamp writes only into the view copy, never back into
+    // the model. If the popup's visible window grows without a scroll key
+    // touching the model (e.g. the terminal resizes taller), the model can
+    // hold a scroll value now far beyond the shrunk `max_scroll`. Ctrl+u
+    // used to subtract from that stale value directly, which could still
+    // land above the new `max_scroll` — visibly no-op on the first press.
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    let tall = (0..40)
+        .map(|i| format!("line{i}"))
+        .collect::<Vec<_>>()
+        .join("\\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(r#"(define-command! "go" "" (lambda () (show-popup! "{tall}" #:kind 'scrollable)))"#),
+    );
+    type_cmd(&mut ed, ":go");
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(80, 25, &mut ctx);
+
+    // Force a stale scroll far beyond what a much taller frame's window
+    // will allow, standing in for a scroll set before the terminal grew.
+    ed.state.popup.as_mut().expect("shown").scroll = 30;
+
+    // Grow the frame: more visible rows, so `max_scroll` shrinks well below
+    // the stale value set above.
+    ed.prepare_frame(80, 80, &mut ctx);
+    let max_scroll_before_key = {
+        let guard = ed.state.popup_view.read().unwrap();
+        let view = guard.as_ref().expect("popup still open");
+        let inner_h = view.outer_h.saturating_sub(2) as usize;
+        view.lines.len().saturating_sub(inner_h)
+    };
+    assert!(
+        max_scroll_before_key < 30,
+        "sanity: the taller frame must shrink max_scroll below the stale value"
+    );
+
+    ed.feed_key(key_ctrl('u'));
+    ed.prepare_frame(80, 80, &mut ctx);
+    let scroll_after_up = ed
+        .state
+        .popup
+        .as_ref()
+        .expect("Ctrl+u must not close a scrollable popup")
+        .scroll;
+    assert!(
+        scroll_after_up <= max_scroll_before_key,
+        "Ctrl+u must clamp a stale model scroll to the current window before \
+         subtracting, not just after — got {scroll_after_up}, current max was \
+         {max_scroll_before_key}"
+    );
+}
+
+#[test]
 fn any_other_key_closes_a_scrollable_popup_and_still_dispatches() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
