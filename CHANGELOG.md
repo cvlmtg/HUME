@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.10.0] - 2026-07-24
+
 ### Language servers
 - Full LSP support: hover, goto definition, references, rename, code
   actions, formatting, signature help.
