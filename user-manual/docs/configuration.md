@@ -274,23 +274,6 @@ A complete starting config — copy it to `~/.config/hume/init.scm` and edit:
 (load-plugin "core:pickers")          ; fuzzy file/buffer finders
 (declare-plugin "core:lsp")           ; language server features
 (declare-plugin "core:plum")          ; plugin/grammar manager
-
-;; A third-party plugin, installed with :plum-install
-(declare-plugin "username/hume-plugin-example" #:commands '("hello"))
-
-;; Appearance
-(set-option! "theme" "sand")
-(set-option! "line-number-style" "absolute")
-(set-option! "scrolloff" 8)
-
-;; Indentation
-(set-option! "tab-width" 2)
-(set-option! "tab-style" "soft")
-
-;; Key bindings
-(bind-keys! 'normal
-  ("ctrl-h" "select-prev-word")
-  ("ctrl-l" "select-next-word"))
 ```
 
 Before your `init.scm` runs, HUME loads its own prelude (which defines `bind-keys!`, `define-language!` and friends) and its built-in language definitions — so those are always available to you.
