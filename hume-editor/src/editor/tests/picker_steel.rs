@@ -342,6 +342,71 @@ fn picker_accept_switching_to_shorter_buffer_mid_frame_does_not_panic() {
     );
 }
 
+// ── Regression: mid-frame switch must scroll the new buffer, same frame ───
+
+#[test]
+fn picker_accept_switching_buffers_mid_frame_scrolls_new_buffer_into_view() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+
+    // A buffer tall enough that "go to last line" lands well below a 12-row pane.
+    let content: String = (0..100).map(|n| format!("line {n}\n")).collect();
+    let tall = tmp.path().join("tall.md");
+    std::fs::write(&tall, &content).unwrap();
+    let path = tall.to_string_lossy().replace('\\', "/");
+
+    // on_select switches buffers, then jumps to the last line — both must
+    // land on the NEW buffer within the same prepare_frame the switch runs in.
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-command! "go" "" (lambda ()
+                 (picker! (list (cons "tall" "{path}"))
+                   (lambda (p) (when p (begin
+                     (switch-to-buffer! (open-buffer! p))
+                     (call! "goto-last-line")))))))"#
+        ),
+    );
+    type_cmd(&mut ed, ":go");
+    assert!(ed.state.picker.is_some(), "sanity: picker open");
+
+    let rect = ratatui::layout::Rect::new(0, 0, 40, 12);
+    let _ = ed.render_to_buf(rect);
+
+    // Accept: close_picker queues on_select onto pending_steel_calls.
+    ed.feed_key(key_enter());
+
+    // The next prepare_frame drains the callback (switch + goto-last-line on
+    // the tall buffer) then must scroll *that* buffer into view before
+    // rendering — not the pane's viewport from before the switch.
+    let _ = ed.render_to_buf(rect);
+
+    let pid = ed.state.focused_pane_id;
+    let bid = ed.focused_buffer_id();
+    assert_eq!(
+        ed.state.buffers.get(bid).text().to_string(),
+        content,
+        "sanity: switched to the tall buffer"
+    );
+
+    let cursor_char = ed.state.panes.state[pid][bid].selections.primary().head();
+    let rope = ed.state.buffers.get(bid).text().rope();
+    let cursor_line = rope.char_to_line(cursor_char);
+
+    let pane = &ed.view.panes[pid];
+    let top = pane.viewport.top_line;
+    let bottom = top + pane.viewport.height as usize;
+    assert!(
+        top > 0,
+        "pane must have scrolled down for a last-line cursor in a 100-line buffer, got top_line=0"
+    );
+    assert!(
+        cursor_line >= top && cursor_line < bottom,
+        "cursor line {cursor_line} must be visible in viewport [{top}, {bottom}) after a mid-frame switch"
+    );
+}
+
 // ── Direct host-impl call: the `lsp: None` construction arm ────────────────
 
 #[test]
