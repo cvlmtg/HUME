@@ -1,6 +1,10 @@
 use super::*;
 
+use crate::editor::buffer::Buffer;
+use crate::editor::message_log::Severity;
 use crate::editor::minibuf::history::HistoryKind;
+use hume_editing::selection::SelectionSet;
+use hume_editing::text::Text;
 
 /// Drive `(set-option! ...)` through the real Steel path
 /// (`EditorHostImpl::set_global_option`) — mirrors the harness in
@@ -183,4 +187,119 @@ fn typed_theme_sets_setting_on_success() {
     let result = crate::editor::commands::typed_theme(&mut ed, Some("gruvbox"), false);
     assert!(result.is_ok(), "command must not error: {result:?}");
     assert_eq!(ed.state.settings.theme, "gruvbox");
+}
+
+// ── set-buffer-option! from an on-language-set hook ─────────────────────────
+
+/// `set-buffer-option!`, called from an `on-language-set` hook with the
+/// hook's own `bid`, writes the target buffer's override and leaves the
+/// global setting untouched — proving the write lands in `BufferOverrides`,
+/// not `EditorSettings`.
+///
+/// Fail oracle: route the builtin through `set_global_option` instead of
+/// `set_buffer_option` and the second assertion fails (global becomes 8).
+#[test]
+fn set_buffer_option_from_hook_writes_target_override() {
+    let mut ed = editor_from("-[a]>b\n");
+    crate::editor::tests::language::attach_host(
+        &mut ed,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (set-buffer-option! bid "tab-width" 8)))"#,
+    );
+    let bid = ed.focused_buffer_id();
+    let lang = ed.state.languages.intern("rust");
+    ed.set_buffer_language(bid, Some(lang));
+    ed.drain_hooks();
+
+    assert_eq!(ed.state.buffers.get(bid).overrides.tab_width, Some(8));
+    assert_eq!(
+        ed.state.settings.tab_width, 4,
+        "global tab-width must be untouched by a buffer-scoped write"
+    );
+}
+
+/// The hook's `bid` argument, not the focused buffer, is the write target —
+/// pins the distinction that `drain_hooks` runs with the *focused* buffer as
+/// scripting context while the hook's own `bid` may name a background
+/// buffer.
+///
+/// Fail oracle: implement the builtin against `(current-buffer)` instead of
+/// the explicit `bid` argument — both assertions below would fail (the
+/// focused buffer would get the override, the background buffer would not).
+#[test]
+fn set_buffer_option_targets_hook_bid_not_focused_buffer() {
+    let mut ed = editor_from("-[a]>b\n");
+    crate::editor::tests::language::attach_host(
+        &mut ed,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (set-buffer-option! bid "tab-width" 8)))"#,
+    );
+    let focused_bid = ed.focused_buffer_id();
+    let bid2 = ed.open_buffer(Buffer::new(Text::from("x\n"), SelectionSet::default()));
+    assert_ne!(bid2, focused_bid, "second buffer must not be focused");
+
+    let lang = ed.state.languages.intern("rust");
+    ed.set_buffer_language(bid2, Some(lang));
+    ed.drain_hooks();
+
+    assert_eq!(ed.state.buffers.get(bid2).overrides.tab_width, Some(8));
+    assert_eq!(
+        ed.state.buffers.get(focused_bid).overrides.tab_width,
+        None,
+        "the focused (non-target) buffer must be untouched"
+    );
+}
+
+/// A global-only key rejected by `write_setting`'s `Text` arm is reported as
+/// a hook error and leaves the global setting unchanged.
+///
+/// Fail oracle: drop the scope check in `write_setting` (or bypass it) and
+/// `scrolloff` would silently end up in the buffer's override slot instead
+/// of erroring.
+#[test]
+fn set_buffer_option_global_only_key_errors_from_hook() {
+    let mut ed = editor_from("-[a]>b\n");
+    crate::editor::tests::language::attach_host(
+        &mut ed,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (set-buffer-option! bid "scrolloff" 1)))"#,
+    );
+    let bid = ed.focused_buffer_id();
+    let lang = ed.state.languages.intern("rust");
+    ed.set_buffer_language(bid, Some(lang));
+    ed.drain_hooks();
+
+    assert_eq!(
+        ed.state.settings.scrolloff, 3,
+        "global scrolloff must be untouched"
+    );
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error && e.text.contains("global-only")),
+        "expected a global-only-key hook error; messages: {:?}",
+        ed.state.message_log.entries().collect::<Vec<_>>()
+    );
+}
+
+/// `EditorHostImpl::set_buffer_option` returns `Err` for a stale bid instead
+/// of panicking — `settings_ops::apply`'s `get_mut` panics on an unseeded
+/// id, so the host method's own `try_get` guard must run first.
+///
+/// Fail oracle: remove the `try_get` guard added alongside this method —
+/// this test panics ("unseeded BufferId") instead of observing an `Err`.
+#[test]
+fn host_set_buffer_option_invalid_bid_errors() {
+    use hume_engine::pipeline::BufferId;
+    use hume_scripting::host::EditorHost;
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let mut host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    let result = host
+        .settings()
+        .set_buffer_option("tab-width", "8", BufferId::default());
+    assert!(result.is_err(), "a stale bid must be rejected, not panic");
+    let msg = result.unwrap_err();
+    assert!(
+        msg.contains("invalid buffer id"),
+        "error must name the invalid bid; got: {msg}"
+    );
 }
