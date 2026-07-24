@@ -29,7 +29,7 @@ pub(in crate::ui::statusline) fn render(
 pub(in crate::ui::statusline) fn statusline_display_path(editor: &Editor) -> String {
     let doc = editor.doc();
     match doc.display_path().or_else(|| doc.path()) {
-        Some(p) => display_path_string(Some(p)),
+        Some(p) => display_path_string(p),
         None => doc.display_name(),
     }
 }
@@ -39,12 +39,9 @@ pub(in crate::ui::statusline) fn statusline_display_path(editor: &Editor) -> Str
 /// `display_path`'s `absolute_unresolved` output), then `~`-collapse.
 /// `strip_unc_prefix` must run first — `shorten_home`'s prefix match is
 /// against the clean `C:\Users\...` form, which the verbatim-prefixed string
-/// wouldn't match. `None` maps to `""`.
-pub(in crate::ui::statusline) fn display_path_string(path: Option<&std::path::Path>) -> String {
-    match path {
-        Some(p) => shorten_home(&strip_unc_prefix(p.to_owned())),
-        None => String::new(),
-    }
+/// wouldn't match.
+pub(in crate::ui::statusline) fn display_path_string(path: &std::path::Path) -> String {
+    shorten_home(&strip_unc_prefix(path.to_owned()))
 }
 
 /// Shorten `display` (a `~`-collapsed path string) to fit within `max_cols`

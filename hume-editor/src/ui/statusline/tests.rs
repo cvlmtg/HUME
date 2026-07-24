@@ -476,17 +476,12 @@ fn shorten_path_unix_sep_ignores_backslash() {
 // ── display_path_string (Windows `\\?\` prefix stripping) ─────────────────
 
 #[test]
-fn display_path_string_none_is_empty() {
-    assert_eq!(display_path_string(None), "");
-}
-
-#[test]
 fn display_path_string_plain_path_matches_shorten_home() {
     // No verbatim prefix to strip: output must be exactly what shorten_home
     // alone would produce — an oracle independent of strip_unc_prefix.
     let path = std::path::Path::new("/some/absolute/path/file.rs");
     assert_eq!(
-        display_path_string(Some(path)),
+        display_path_string(path),
         hume_platform::path::shorten_home(path)
     );
 }
@@ -497,7 +492,7 @@ fn display_path_string_strips_windows_verbatim_prefix() {
     // Regression: statusline must never show the raw `\\?\` extended-length
     // prefix that `canonicalize` attaches on Windows.
     let path = std::path::Path::new(r"\\?\C:\Users\x\file.rs");
-    let result = display_path_string(Some(path));
+    let result = display_path_string(path);
     assert!(
         !result.contains(r"\\?\"),
         "statusline path {result:?} still carries the verbatim prefix"
