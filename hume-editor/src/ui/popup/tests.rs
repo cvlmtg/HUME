@@ -4,39 +4,30 @@ use super::*;
 
 #[test]
 fn wrap_text_short_line_is_unchanged() {
-    assert_eq!(wrap_text("hello", 60, 10), vec!["hello"]);
+    assert_eq!(wrap_text("hello", 60), vec!["hello"]);
 }
 
 #[test]
 fn wrap_text_breaks_on_word_boundary() {
-    assert_eq!(
-        wrap_text("hello world foo", 11, 10),
-        vec!["hello world", "foo"]
-    );
+    assert_eq!(wrap_text("hello world foo", 11), vec!["hello world", "foo"]);
 }
 
 #[test]
 fn wrap_text_preserves_explicit_newlines() {
     assert_eq!(
-        wrap_text("line one\nline two", 60, 10),
+        wrap_text("line one\nline two", 60),
         vec!["line one", "line two"]
     );
 }
 
 #[test]
 fn wrap_text_hard_breaks_an_overlong_word() {
-    assert_eq!(wrap_text("abcdefghij", 4, 10), vec!["abcd", "efgh", "ij"]);
-}
-
-#[test]
-fn wrap_text_truncates_to_max_height() {
-    let out = wrap_text("a\nb\nc\nd\ne", 60, 3);
-    assert_eq!(out, vec!["a", "b", "c"]);
+    assert_eq!(wrap_text("abcdefghij", 4), vec!["abcd", "efgh", "ij"]);
 }
 
 #[test]
 fn wrap_text_empty_line_preserved() {
-    assert_eq!(wrap_text("a\n\nb", 60, 10), vec!["a", "", "b"]);
+    assert_eq!(wrap_text("a\n\nb", 60), vec!["a", "", "b"]);
 }
 
 // ── wrap_styled ────────────────────────────────────────────────────────
@@ -51,7 +42,7 @@ fn wrap_styled_preserves_a_style_boundary_within_one_row() {
         ("hello ".to_string(), Style::default()),
         ("world".to_string(), red()),
     ];
-    let rows = wrap_styled(&runs, 60, 10);
+    let rows = wrap_styled(&runs, 60);
     assert_eq!(rows.len(), 1, "both words fit on one row");
     assert_eq!(
         rows[0],
@@ -75,7 +66,7 @@ fn wrap_styled_splits_a_style_change_across_two_wrapped_rows() {
         ("aaaa ".to_string(), Style::default()),
         ("bbbb".to_string(), red()),
     ];
-    let rows = wrap_styled(&runs, 4, 10);
+    let rows = wrap_styled(&runs, 4);
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[0], vec![("aaaa".to_string(), Style::default())]);
     assert_eq!(rows[1], vec![("bbbb".to_string(), red())]);

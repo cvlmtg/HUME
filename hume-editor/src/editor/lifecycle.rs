@@ -1754,7 +1754,7 @@ impl Editor {
                     .resolve_by_name(hume_engine::types::Scope("ui.popup"))
                     .into();
                 let runs = popup_syntax.styled_runs(&model.text, theme, base_style);
-                let rows = crate::ui::popup::wrap_styled(&runs, max_width, u16::MAX);
+                let rows = crate::ui::popup::wrap_styled(&runs, max_width);
                 let lines: Vec<String> = rows
                     .iter()
                     .map(|row| row.iter().map(|(s, _)| s.as_str()).collect())
@@ -1762,11 +1762,7 @@ impl Editor {
                 (std::sync::Arc::new(lines), Some(std::sync::Arc::new(rows)))
             } else {
                 (
-                    std::sync::Arc::new(crate::ui::popup::wrap_text(
-                        &model.text,
-                        max_width,
-                        u16::MAX,
-                    )),
+                    std::sync::Arc::new(crate::ui::popup::wrap_text(&model.text, max_width)),
                     None,
                 )
             };

@@ -416,17 +416,16 @@ fn push_run(runs: &mut Vec<(String, Style)>, text: &str, style: Style) {
 }
 
 /// Word-wrap `text` (newline-separated paragraphs preserved) to `max_width`
-/// display columns, breaking on grapheme-cluster boundaries. Truncates to
-/// `max_height` lines (a taller popup is the caller's problem — hover overflows
-/// to the drawer).
+/// display columns, breaking on grapheme-cluster boundaries. Unbounded height
+/// — the caller windows the result (`scroll`) rather than truncating it here.
 ///
 /// A single-style call to [`wrap_styled`] — there is one wrap algorithm, not
 /// two; this function's own test suite exercises it transitively, and a
 /// styled popup (markdown-highlighted hover) reuses the exact same
 /// word/hard-break decisions a plain popup would have made.
-pub(crate) fn wrap_text(text: &str, max_width: u16, max_height: u16) -> Vec<String> {
+pub(crate) fn wrap_text(text: &str, max_width: u16) -> Vec<String> {
     let runs = [(text.to_string(), Style::default())];
-    wrap_styled(&runs, max_width, max_height)
+    wrap_styled(&runs, max_width)
         .into_iter()
         .map(|row| row.into_iter().map(|(s, _)| s).collect())
         .collect()
@@ -444,18 +443,16 @@ fn coalesce_atoms(atoms: Vec<(&str, Style)>) -> StyledRow {
 /// Word-wrap `runs` (contiguous same-style chunks of source text — `\n` acts
 /// as a paragraph delimiter exactly as in `wrap_text`, and may appear
 /// anywhere inside a run) to `max_width` display columns, breaking on
-/// grapheme-cluster boundaries. Truncates to `max_height` rows.
+/// grapheme-cluster boundaries. Unbounded height — every caller windows the
+/// result (`scroll`) rather than truncating it here; a `Scrollable` popup
+/// needs every row reachable, not just the first screenful.
 ///
 /// Operates on a flat per-grapheme stream, never on `runs`' original chunk
 /// boundaries — a style change (e.g. a `**bold**` span) can land anywhere,
 /// including mid-word, so wrapping must not coarsen past grapheme
 /// granularity. Word/paragraph splitting and the width math are otherwise
 /// identical to the original single-style algorithm.
-pub(crate) fn wrap_styled(
-    runs: &[(String, Style)],
-    max_width: u16,
-    max_height: u16,
-) -> Vec<StyledRow> {
+pub(crate) fn wrap_styled(runs: &[(String, Style)], max_width: u16) -> Vec<StyledRow> {
     use unicode_segmentation::UnicodeSegmentation;
 
     let atoms: Vec<(&str, Style)> = runs
@@ -467,7 +464,7 @@ pub(crate) fn wrap_styled(
     let mut out: Vec<StyledRow> = Vec::new();
     let mut pos = 0;
 
-    'paragraphs: loop {
+    loop {
         let para_start = pos;
         while pos < atoms.len() && atoms[pos].0 != "\n" {
             pos += 1;
@@ -480,9 +477,6 @@ pub(crate) fn wrap_styled(
 
         if paragraph.is_empty() {
             out.push(Vec::new());
-            if out.len() as u16 >= max_height {
-                break 'paragraphs;
-            }
         } else {
             let mut current: Vec<(&str, Style)> = Vec::new();
             let mut current_w = 0usize;
@@ -507,9 +501,6 @@ pub(crate) fn wrap_styled(
                 if would_be_w > max_width && !current.is_empty() {
                     out.push(coalesce_atoms(std::mem::take(&mut current)));
                     current_w = 0;
-                    if out.len() as u16 >= max_height {
-                        break 'paragraphs;
-                    }
                 }
 
                 if word_w > max_width {
@@ -517,9 +508,6 @@ pub(crate) fn wrap_styled(
                     // grapheme boundaries rather than overflow.
                     if !current.is_empty() {
                         out.push(coalesce_atoms(std::mem::take(&mut current)));
-                        if out.len() as u16 >= max_height {
-                            break 'paragraphs;
-                        }
                     }
                     let mut piece: Vec<(&str, Style)> = Vec::new();
                     let mut piece_w = 0usize;
@@ -528,9 +516,6 @@ pub(crate) fn wrap_styled(
                         if piece_w + gw > max_width && !piece.is_empty() {
                             out.push(coalesce_atoms(std::mem::take(&mut piece)));
                             piece_w = 0;
-                            if out.len() as u16 >= max_height {
-                                break 'paragraphs;
-                            }
                         }
                         piece.push((g, style));
                         piece_w += gw;
@@ -557,17 +542,13 @@ pub(crate) fn wrap_styled(
                 word_start = word_end + 1; // skip the delimiting space atom
             }
             out.push(coalesce_atoms(current));
-            if out.len() as u16 >= max_height {
-                break 'paragraphs;
-            }
         }
 
         if !had_newline {
-            break 'paragraphs;
+            break;
         }
     }
 
-    out.truncate(max_height as usize);
     out
 }
 
