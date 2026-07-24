@@ -147,5 +147,6 @@
 ;;
 ;; Jumping via goto-next-diagnostic/goto-prev-diagnostic additionally pops
 ;; the jumped-to diagnostic's full (possibly multi-line) message in a
-;; transient popup, dismissed by Editor::handle_key on the next key press —
-;; unlike hover/signature-help, which dismiss only on-mode-change.
+;; scrollable popup, dismissed on any key press except Ctrl+u/d (which
+;; scroll it) — same as hover; unlike signature-help, which dismisses only
+;; on-mode-change.

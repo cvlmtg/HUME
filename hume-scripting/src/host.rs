@@ -523,7 +523,7 @@ pub trait UiHost {
     /// here — this just stores the raw content. Replaces any popup already
     /// showing (no stacking).
     ///
-    /// `kind`: see [`PopupKind`] for the three dismiss behaviors. `docked`:
+    /// `kind`: see [`PopupKind`] for the two dismiss behaviors. `docked`:
     /// `#:anchor 'bottom` — renders as a full-width chrome band directly
     /// above the statusline (reserving pane space, like the drawer) instead
     /// of floating near the cursor. `lang`: when `Some(name)` and a grammar
