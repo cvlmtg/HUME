@@ -47,7 +47,9 @@ pub struct History {
     /// `Some(i)` = `entries[i]` is currently shown in the minibuffer.
     cursor: Option<usize>,
     /// The text that was in the minibuffer when the user first pressed Up this
-    /// session — restored by Down past the newest entry.
+    /// session — restored by Down past the newest entry. Also doubles as the
+    /// fixed prefix that `prev`/`next` filter the walk by for the rest of the
+    /// session, so navigation only visits entries matching what was typed.
     scratch: Option<String>,
 }
 
@@ -86,41 +88,49 @@ impl History {
         }
     }
 
-    /// Walk one step older. On the first call this session, stashes `current`
-    /// as scratch. Returns `Some(text)` to install, `None` if no older entry exists.
+    /// Walk one step older, restricted to entries whose text starts with the
+    /// prefix that was in the minibuffer when navigation began (stashed as
+    /// `scratch` on the first call). An empty prefix matches every entry, so a
+    /// fresh prompt still walks the full ring. Returns the entry to install, or
+    /// `None` if no older match exists (position unchanged).
     pub fn prev(&mut self, current: &str) -> Option<String> {
         if self.entries.is_empty() {
             return None;
         }
-        match self.cursor {
-            None => {
-                self.scratch = Some(current.to_owned());
-                let idx = self.entries.len() - 1;
-                self.cursor = Some(idx);
-                Some(self.entries[idx].clone())
-            }
-            Some(0) => None, // already at oldest
-            Some(i) => {
-                let idx = i - 1;
-                self.cursor = Some(idx);
-                Some(self.entries[idx].clone())
-            }
+        let first_step = self.cursor.is_none();
+        let prefix = if first_step {
+            current.to_owned()
+        } else {
+            self.scratch.clone().unwrap_or_default()
+        };
+        let scan_from = self.cursor.unwrap_or(self.entries.len());
+        let idx = (0..scan_from)
+            .rev()
+            .find(|&idx| self.entries[idx].starts_with(&prefix))?;
+        if first_step {
+            self.scratch = Some(current.to_owned());
         }
+        self.cursor = Some(idx);
+        Some(self.entries[idx].clone())
     }
 
-    /// Walk one step newer. Past newest: restores scratch and exits navigation.
-    /// Returns `None` if not currently navigating.
+    /// Walk one step newer within the prefix match set. Past the newest match,
+    /// restores the stashed prefix text and exits navigation. `None` if not
+    /// currently navigating.
     pub fn next(&mut self) -> Option<String> {
         let i = self.cursor?;
-        if i + 1 < self.entries.len() {
-            let idx = i + 1;
-            self.cursor = Some(idx);
-            Some(self.entries[idx].clone())
-        } else {
-            // Past newest — restore scratch and exit navigation mode.
-            let scratch = self.scratch.take().unwrap_or_default();
-            self.cursor = None;
-            Some(scratch)
+        let prefix = self.scratch.clone().unwrap_or_default();
+        match ((i + 1)..self.entries.len()).find(|&idx| self.entries[idx].starts_with(&prefix)) {
+            Some(idx) => {
+                self.cursor = Some(idx);
+                Some(self.entries[idx].clone())
+            }
+            None => {
+                // Past newest match — restore scratch and exit navigation mode.
+                let scratch = self.scratch.take().unwrap_or_default();
+                self.cursor = None;
+                Some(scratch)
+            }
         }
     }
 

@@ -220,7 +220,7 @@ The status bar shows `EXT` in Extend mode.
 | `Esc` / `Ctrl+c` | Cancel |
 | `Tab` | Complete |
 | `Shift+Tab` | Complete (previous) |
-| `Up` / `Down` | History |
+| `Up` / `Down` | Recall previous / next command starting with the typed prefix |
 | `Left` / `Right` | Move the cursor |
 | `Backspace` | Delete character before cursor; on empty input, dismiss the command line |
 | `Ctrl+w` | Delete word before cursor |
@@ -238,7 +238,7 @@ Entered with `/` (forward) or `?` (backward). Every keystroke live-previews the 
 | `Backspace` (empties input) | Restore pre-search selection, stay in Search mode |
 | `Backspace` (on empty input) | Exit Search mode |
 | `Ctrl+w` | Delete word before cursor |
-| `Up` / `Down` | Recall previous / next pattern from history (separate `/` and `?` rings) |
+| `Up` / `Down` | Recall previous / next pattern starting with the typed prefix (separate `/` and `?` rings) |
 | `Left` / `Right` | Move the cursor |
 | Any other character | Insert and re-preview |
 | `Tab` / `Shift+Tab` | No-op |

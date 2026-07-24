@@ -1007,14 +1007,21 @@ fn empty_confirm_not_recorded() {
 #[test]
 fn edit_after_up_demotes_scratch() {
     let mut ed = editor_from("-[h]>ello\n");
+    // "messagesxtra" is the only entry that prefix-matches the text the
+    // user will type after recalling "messages" below.
+    submit(&mut ed, "messagesxtra");
+    submit(&mut ed, "othercmd");
     submit(&mut ed, "messages");
     ed.handle_key(key(':'));
-    ed.handle_key(key_up()); // recall "messages"
+    ed.handle_key(key_up()); // empty prefix — recall newest: "messages"
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "messages");
     // Type a char — demotes history navigation back to scratch.
     ed.handle_key(key('x'));
-    // Up should now re-stash "messagesx" and jump to newest entry.
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "messagesx");
+    // Up should now re-stash "messagesx" and jump to the only entry that
+    // starts with it: "messagesxtra".
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "messages");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "messagesxtra");
     // Down should restore the stashed "messagesx".
     ed.handle_key(key_down());
     assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "messagesx");

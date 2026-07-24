@@ -747,17 +747,16 @@ fn search_recall_updates_live_preview() {
     search_forward(&mut ed, "hello");
     // Cursor should now be on "hello". Move to start so we can observe the jump.
     assert_eq!(state(&ed), "-[hello]> world\n");
-    // Open search, type something else so live search moves cursor, then Up to recall.
+    // Open search, type a one-char prefix of the stored pattern — live search
+    // matches on the partial pattern, then Up recalls the full stored entry
+    // (it starts with "h") and re-runs the live preview off the recall.
     ed.handle_key(key('/'));
-    for ch in "world".chars() {
-        ed.handle_key(key(ch));
-    }
-    // Live search: cursor should now be on "world".
-    assert_eq!(state(&ed), "hello -[world]>\n");
-    // Up recalls "hello" and updates live search.
+    ed.handle_key(key('h'));
+    // Live search: partial match highlights just "h".
+    assert_eq!(state(&ed), "-[h]>ello world\n");
+    // Up recalls "hello" and updates live search to the full match.
     ed.handle_key(key_up());
     assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "hello");
-    // Live preview should have jumped back to "hello".
     assert_eq!(state(&ed), "-[hello]> world\n");
     ed.handle_key(key_esc());
 }
@@ -765,33 +764,34 @@ fn search_recall_updates_live_preview() {
 #[test]
 fn search_down_walks_forward_and_restores_scratch() {
     let mut ed = editor_from("-[h]>ello world\n");
-    search_forward(&mut ed, "alpha");
-    search_forward(&mut ed, "beta");
+    // Both entries share the "al" prefix the user types below.
+    search_forward(&mut ed, "alphabet");
+    search_forward(&mut ed, "alpine");
 
     ed.handle_key(key('/'));
-    // Type something as scratch before navigating.
-    for ch in "typed".chars() {
+    // Type a prefix matching both entries as scratch before navigating.
+    for ch in "al".chars() {
         ed.handle_key(key(ch));
     }
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "typed");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "al");
 
-    // Up walks back: "beta", then "alpha".
+    // Up walks back: "alpine", then "alphabet".
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "beta");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "alpine");
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "alpha");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "alphabet");
 
-    // Down walks forward: "beta".
+    // Down walks forward: "alpine".
     ed.handle_key(key_down());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "beta");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "alpine");
 
     // Down past newest restores original scratch text.
     ed.handle_key(key_down());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "typed");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "al");
 
     // Another Down when not navigating is a no-op.
     ed.handle_key(key_down());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "typed");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "al");
 
     ed.handle_key(key_esc());
 }
@@ -799,9 +799,13 @@ fn search_down_walks_forward_and_restores_scratch() {
 #[test]
 fn search_edit_after_recall_demotes_to_scratch() {
     let mut ed = editor_from("-[h]>ello world\n");
+    // Oldest first: only "helloxyz" prefix-matches the "hellox" text the
+    // user will type onto the recalled "hello" below.
+    search_forward(&mut ed, "helloxyz");
+    search_forward(&mut ed, "hellfire");
     search_forward(&mut ed, "hello");
 
-    // Open search, recall "hello" via Up.
+    // Open search, recall "hello" via Up (empty prefix matches newest).
     ed.handle_key(key('/'));
     ed.handle_key(key_up());
     assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "hello");
@@ -811,11 +815,11 @@ fn search_edit_after_recall_demotes_to_scratch() {
     ed.handle_key(key('x')); // input is now "hellox"
     assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "hellox");
 
-    // Up: stashes "hellox" as scratch, recalls "hello".
+    // Up: stashes "hellox" as scratch, recalls the only match: "helloxyz".
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "hello");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "helloxyz");
 
-    // Down past newest: restores "hellox" (the edited scratch).
+    // Down past newest match: restores "hellox" (the edited scratch).
     ed.handle_key(key_down());
     assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "hellox");
 

@@ -49,12 +49,12 @@ fn next_returns_none_when_not_navigating() {
 #[test]
 fn prev_stashes_scratch_on_first_call() {
     let mut ring = History::new(10);
-    ring.push("x".into());
-    // First prev: stashes "typed" as scratch.
-    assert_eq!(ring.prev("typed"), Some("x".into()));
-    assert_eq!(ring.scratch, Some("typed".into()));
+    ring.push("xylophone".into());
+    // First prev: stashes "x" as scratch (the prefix search is satisfied by "xylophone").
+    assert_eq!(ring.prev("x"), Some("xylophone".into()));
+    assert_eq!(ring.scratch, Some("x".into()));
     // Navigating forward past newest restores scratch.
-    assert_eq!(ring.next(), Some("typed".into()));
+    assert_eq!(ring.next(), Some("x".into()));
     assert_eq!(ring.cursor, None);
 }
 
@@ -116,9 +116,9 @@ fn demote_to_scratch_clears_navigation() {
     h.demote_to_scratch();
     assert_eq!(h.cursor, None);
     assert_eq!(h.scratch, None);
-    // Next prev re-stashes current text.
-    assert_eq!(h.prev("edited"), Some("b".into()));
-    assert_eq!(h.scratch, Some("edited".into()));
+    // Next prev re-stashes current text (empty prefix matches "b").
+    assert_eq!(h.prev(""), Some("b".into()));
+    assert_eq!(h.scratch, Some("".into()));
 }
 
 #[test]
@@ -139,6 +139,42 @@ fn begin_session_resets_nav_but_keeps_entries() {
     assert_eq!(h.entries.len(), 1); // entry still there
     // Can navigate again in the new session.
     assert_eq!(h.prev(""), Some("a".into()));
+}
+
+#[test]
+fn prev_filters_by_typed_prefix() {
+    let mut h = h(10);
+    h.push("e".into());
+    h.push("plum-install-grammar".into());
+    h.push("pwd".into());
+    // "pl" skips "pwd" (no match) and lands on "plum-install-grammar".
+    assert_eq!(h.prev("pl"), Some("plum-install-grammar".into()));
+    // No older entry starts with "pl" — position unchanged, returns None.
+    assert_eq!(h.prev("pl"), None);
+    assert_eq!(h.cursor, Some(1));
+}
+
+#[test]
+fn prefix_persists_across_prev_next_steps() {
+    let mut h = h(10);
+    h.push("foo1".into());
+    h.push("bar".into());
+    h.push("foo2".into());
+    assert_eq!(h.prev("fo"), Some("foo2".into()));
+    assert_eq!(h.prev("fo"), Some("foo1".into()));
+    assert_eq!(h.next(), Some("foo2".into()));
+    // Past newest match restores the stashed prefix, not the raw entry.
+    assert_eq!(h.next(), Some("fo".into()));
+    assert_eq!(h.cursor, None);
+}
+
+#[test]
+fn prev_first_step_miss_leaves_state_untouched() {
+    let mut h = h(10);
+    h.push("abc".into());
+    assert_eq!(h.prev("z"), None);
+    assert_eq!(h.cursor, None);
+    assert_eq!(h.scratch, None);
 }
 
 #[test]
