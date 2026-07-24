@@ -52,19 +52,19 @@ export default defineConfig({
         ],
       },
       {
+        text: 'Customization',
+        items: [
+          { text: 'Configuration', link: '/configuration' },
+          { text: 'Core Plugins', link: '/core-plugins' },
+          { text: 'Plugins', link: '/plugins' },
+        ],
+      },
+      {
         text: 'Reference',
         items: [
           { text: 'Command-line Flags', link: '/cli' },
           { text: 'Commands', link: '/commands' },
           { text: 'Key Reference', link: '/key-reference' },
-        ],
-      },
-      {
-        text: 'Customization',
-        items: [
-          { text: 'Configuration', link: '/configuration' },
-          { text: 'Plugins', link: '/plugins' },
-          { text: 'Core Plugins', link: '/core-plugins' },
         ],
       },
       {
