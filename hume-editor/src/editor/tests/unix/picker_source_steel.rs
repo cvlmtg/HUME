@@ -39,7 +39,7 @@ fn drain_until(ed: &mut Editor, mut until: impl FnMut(&Editor) -> bool) {
 
 #[test]
 fn happy_path_streams_lines_and_accept_returns_the_raw_line() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
@@ -74,7 +74,7 @@ fn happy_path_streams_lines_and_accept_returns_the_raw_line() {
 
 #[test]
 fn nul_delimited_source_splits_on_nul() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
@@ -100,7 +100,7 @@ fn nul_delimited_source_splits_on_nul() {
 
 #[test]
 fn nonzero_exit_reports_a_status_message() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
@@ -125,7 +125,7 @@ fn nonzero_exit_reports_a_status_message() {
 
 #[test]
 fn picker_close_kills_the_source_child() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,

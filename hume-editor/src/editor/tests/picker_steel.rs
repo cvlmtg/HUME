@@ -38,7 +38,7 @@ fn call(ed: &mut Editor, name: &str) {
 
 #[test]
 fn picker_bang_opens_session_and_returns_its_token() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
@@ -72,7 +72,7 @@ fn picker_bang_opens_session_and_returns_its_token() {
 
 #[test]
 fn end_to_end_accept_fires_payload_then_normal_editing_resumes() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
@@ -118,7 +118,7 @@ fn end_to_end_accept_fires_payload_then_normal_editing_resumes() {
 
 #[test]
 fn picker_push_bang_applies_matching_token_and_rejects_stale_or_no_picker() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
@@ -165,7 +165,7 @@ fn picker_push_bang_applies_matching_token_and_rejects_stale_or_no_picker() {
 
 #[test]
 fn opening_a_second_picker_fires_the_first_callback_with_false_exactly_once() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
@@ -197,7 +197,7 @@ fn opening_a_second_picker_fires_the_first_callback_with_false_exactly_once() {
 
 #[test]
 fn picker_close_bang_fires_false_once_and_is_idempotent() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
@@ -246,7 +246,7 @@ fn picker_close_bang_fires_false_once_and_is_idempotent() {
 
 #[test]
 fn picker_bang_rejects_proper_list_items_naming_the_arg() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
@@ -271,7 +271,7 @@ fn picker_bang_rejects_proper_list_items_naming_the_arg() {
 
 #[test]
 fn picker_bang_rejects_hash_f_payload() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,

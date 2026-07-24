@@ -22,7 +22,7 @@ fn call(ed: &mut Editor, name: &str) {
 
 #[test]
 fn stale_token_returns_false_without_spawning() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
@@ -49,7 +49,7 @@ fn stale_token_returns_false_without_spawning() {
 
 #[test]
 fn no_open_picker_returns_false_without_spawning() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
@@ -66,7 +66,7 @@ fn no_open_picker_returns_false_without_spawning() {
 
 #[test]
 fn spawn_failure_raises_and_leaves_the_picker_open() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
@@ -95,7 +95,7 @@ fn spawn_failure_raises_and_leaves_the_picker_open() {
 
 #[test]
 fn empty_cmd_raises_naming_the_arg() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,

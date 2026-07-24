@@ -372,12 +372,13 @@ fn shrinking_terminal_self_heals_scroll() {
     frame(&mut ed, 30, 12);
     let guard = ed.state.picker_view.read().unwrap();
     let state = guard.as_ref().expect("picker still open");
-    if let Some(row) = state.selected_row {
-        assert!(
-            row < state.rows.len(),
-            "selected_row must stay inside the new window"
-        );
-    }
+    let row = state
+        .selected_row
+        .expect("50 matches for an empty query must always select a row");
+    assert!(
+        row < state.rows.len(),
+        "selected_row must stay inside the new window"
+    );
 }
 
 // ── Full-frame render snapshots ─────────────────────────────────────────────
