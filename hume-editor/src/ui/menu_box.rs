@@ -133,6 +133,24 @@ pub(crate) fn draw_menu_box(
         draw_box_border(buf, outer, menu_style);
     }
 
+    // 2b. Scroll affordance arrows on the right border — plain popups only
+    //     (a menu's moving selection highlight already signals position, so
+    //     `selected.is_some()` skips this). Overdraws the interior border
+    //     cell adjacent to each corner, not the corner itself.
+    if border && selected.is_none() {
+        let right = outer.x + outer.width - 1;
+        let more_above = scroll_offset > 0;
+        let more_below = scroll_offset + inner_h < rows.len();
+        // Order matters when inner_h == 1: both targets are the same cell,
+        // and "more below" is the more useful hint to win that collision.
+        if more_above {
+            buf.set_string(right, outer.y + 1, "▲", menu_style);
+        }
+        if more_below {
+            buf.set_string(right, outer.y + outer.height - 2, "▼", menu_style);
+        }
+    }
+
     // 3. Draw content rows inside the frame (offset +1 for top/left border/padding).
     let text_x = outer.x + 1;
     for (i, row_text) in visible_rows.iter().enumerate() {

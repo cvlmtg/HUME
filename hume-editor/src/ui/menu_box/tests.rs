@@ -124,6 +124,133 @@ fn draw_menu_box_scroll_windows_from_offset_when_no_selection() {
 }
 
 #[test]
+fn draw_menu_box_shows_down_arrow_when_scrolled_to_top() {
+    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    // Inner height 3, 10 rows total, scroll = 0: more below, nothing above.
+    let outer = Rect::new(0, 0, 10, 5);
+    draw_menu_box(
+        &mut buf,
+        outer,
+        &rows(10),
+        None,
+        0,
+        true,
+        style(),
+        style(),
+        None,
+    );
+
+    insta::assert_snapshot!(symbols_in(&buf, outer), @"
+    ┌────────┐
+    │item0   │
+    │item1   │
+    │item2   ▼
+    └────────┘
+    ");
+}
+
+#[test]
+fn draw_menu_box_shows_both_arrows_when_scrolled_to_middle() {
+    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    // Inner height 3, 10 rows total, scroll = 4: more above and below.
+    let outer = Rect::new(0, 0, 10, 5);
+    draw_menu_box(
+        &mut buf,
+        outer,
+        &rows(10),
+        None,
+        4,
+        true,
+        style(),
+        style(),
+        None,
+    );
+
+    insta::assert_snapshot!(symbols_in(&buf, outer), @"
+    ┌────────┐
+    │item4   ▲
+    │item5   │
+    │item6   ▼
+    └────────┘
+    ");
+}
+
+#[test]
+fn draw_menu_box_shows_up_arrow_when_scrolled_to_bottom() {
+    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    // Inner height 3, 10 rows total, scroll = 7 (max_scroll): more above only.
+    let outer = Rect::new(0, 0, 10, 5);
+    draw_menu_box(
+        &mut buf,
+        outer,
+        &rows(10),
+        None,
+        7,
+        true,
+        style(),
+        style(),
+        None,
+    );
+
+    insta::assert_snapshot!(symbols_in(&buf, outer), @"
+    ┌────────┐
+    │item7   ▲
+    │item8   │
+    │item9   │
+    └────────┘
+    ");
+}
+
+#[test]
+fn draw_menu_box_no_overflow_shows_no_arrows() {
+    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    // 2 rows fit entirely inside inner height 3 — nothing to scroll.
+    let outer = Rect::new(0, 0, 10, 5);
+    draw_menu_box(
+        &mut buf,
+        outer,
+        &rows(2),
+        None,
+        0,
+        true,
+        style(),
+        style(),
+        None,
+    );
+
+    insta::assert_snapshot!(symbols_in(&buf, outer), @"
+    ┌────────┐
+    │item0   │
+    │item1   │
+    │        │
+    └────────┘
+    ");
+}
+
+#[test]
+fn draw_menu_box_selected_menu_never_shows_arrows() {
+    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    // Same overflowing case as the middle-scroll test above, but with a
+    // selection (a menu) — arrows must stay suppressed regardless of scroll.
+    let outer = Rect::new(0, 0, 10, 5);
+    draw_menu_box(
+        &mut buf,
+        outer,
+        &rows(10),
+        Some(5),
+        0,
+        true,
+        style(),
+        style(),
+        None,
+    );
+
+    let symbols = symbols_in(&buf, outer);
+    assert!(!symbols.contains('▲'));
+    assert!(!symbols.contains('▼'));
+}
+
+#[test]
 fn menu_inner_width_is_widest_row() {
     assert_eq!(
         menu_inner_width(&["a".into(), "abc".into(), "ab".into()]),
