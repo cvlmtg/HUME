@@ -301,6 +301,12 @@ pub trait SettingsHost {
     /// Init-only; only `Global` scope from scripts.
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String>;
 
+    /// `(set-buffer-option! bid key value)` — writes `key`'s per-buffer
+    /// override on `bid`. Command/hook context (`cmd` kind), unlike
+    /// `set_global_option`. `Err` for a stale `bid`, a global-only key, or a
+    /// bad value.
+    fn set_buffer_option(&mut self, key: &str, value: &str, bid: BufferId) -> Result<(), String>;
+
     /// `(get-option key)` — the effective value of `key`: `bid`'s buffer
     /// override if one is set, else the global default. `Err` for an
     /// unknown key. Callable from any context (no init/plugin-load gate,

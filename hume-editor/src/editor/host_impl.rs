@@ -238,6 +238,22 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
         )
     }
 
+    fn set_buffer_option(&mut self, key: &str, value: &str, bid: BufferId) -> Result<(), String> {
+        // `settings_ops::apply`'s `get_mut` panics on a stale id — validate
+        // first so a bad `bid` from Steel becomes an `Err`, not a panic.
+        if self.state.buffers.try_get(bid).is_none() {
+            return Err(format!("set-buffer-option!: invalid buffer id {bid:?}"));
+        }
+        crate::editor::settings_ops::apply(
+            self.state,
+            self.view,
+            SettingScope::Text,
+            key,
+            value,
+            Some(bid),
+        )
+    }
+
     fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
         let overrides = self.state.buffers.try_get(bid).map(|b| &b.overrides);
         crate::settings::setting_value(key, &self.state.settings, overrides)

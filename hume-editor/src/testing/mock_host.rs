@@ -146,6 +146,15 @@ impl SettingsHost for MockHost {
             &mut dummy,
         )
     }
+    fn set_buffer_option(
+        &mut self,
+        _key: &str,
+        _value: &str,
+        _bid: BufferId,
+    ) -> Result<(), String> {
+        // MockHost models no buffers — no per-buffer override to write to.
+        Err("MockHost: set_buffer_option not available".into())
+    }
     fn get_option(&self, key: &str, _bid: BufferId) -> Result<OptionValue, String> {
         // MockHost models no buffers, so there is no per-buffer override to
         // resolve — every key reads its global value.

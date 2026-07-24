@@ -88,6 +88,14 @@ impl SettingsHost for NullHost {
     fn set_global_option(&mut self, _key: &str, _value: &str) -> Result<(), String> {
         Err("NullHost: set_global_option not available".into())
     }
+    fn set_buffer_option(
+        &mut self,
+        _key: &str,
+        _value: &str,
+        _bid: BufferId,
+    ) -> Result<(), String> {
+        Err("NullHost: set_buffer_option not available".into())
+    }
     fn get_option(&self, _key: &str, _bid: BufferId) -> Result<OptionValue, String> {
         Err("NullHost: get_option not available".into())
     }
