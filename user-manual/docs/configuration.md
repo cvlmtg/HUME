@@ -131,6 +131,12 @@ HUME adds three more mode pills for modes Helix doesn't have:
 - `ui.statusline.search`
 - `ui.statusline.command`
 
+Popups and menus (LSP hover, completion, the fuzzy picker) read their own scopes:
+
+- `ui.popup` / `ui.popup.info` — hover and info popup background
+- `ui.menu` / `ui.menu.selected` — completion and picker rows / the selected row
+- `ui.menu.scroll` — scrollbar affordance on a scrolled popup
+
 HUME ships a theme editor — a single-file HTML tool you can open in a browser to edit themes visually and export them as TOML. You can download it from https://github.com/cvlmtg/HUME/blob/main/tools/theme-editor/index.html
 
 ## Key bindings

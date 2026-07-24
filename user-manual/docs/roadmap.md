@@ -4,8 +4,6 @@ HUME is under active development. Here's what's missing and what's coming.
 
 ## Planned
 
-**Fuzzy file picker** — Helix-style picker for opening files and switching buffers quickly. Today `:b` switches buffers by name, path, or list index.
-
 **Tabline** — a visible buffer bar across the top of the screen.
 
 **In-editor help (`:help`)** — browse the manual or per-command docs without leaving HUME.
@@ -23,6 +21,8 @@ HUME is under active development. Here's what's missing and what's coming.
 ## Already here
 
 Language servers and inline diagnostics have landed — see [Language Servers](lsp.md) for completions, hover, go-to-definition, rename, formatting, code actions, and the rest.
+
+A fuzzy file/buffer picker has landed as `core:pickers` — see [Fuzzy Finder](pickers.md) (`g f` to open files, `g b` to switch buffers).
 
 ---
 

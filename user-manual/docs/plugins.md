@@ -138,6 +138,18 @@ Typed commands like `write`, `quit`, or `edit` are not reachable through `call!`
 
 When forwarding a `count` argument to another command, a count of `0` means "as if no count was typed" — this is how `move-down`/`move-up` decide between visual-row and buffer-line movement, and it lets a key-bound command that forwards its own `count` behave the same way a native keybinding would.
 
+### Reading selections
+
+`(current-selections)` returns the focused buffer's selections as a list of opaque `(anchor head primary?)` triples — char offsets, not grapheme ordinals. Don't index into the tuple directly; go through `core:stdlib`'s helpers instead, which is what they're for:
+
+```scheme
+(call! "stdlib/single-selection?" (current-selections))
+(call! "stdlib/all-single-char?" (current-selections))
+(call! "stdlib/cursor-char-index" (current-selections))
+```
+
+`(char-index->line idx)` converts a char offset to a line number when you need one — it's a separate call rather than a field on every selection, since deriving it needs rope access a plain tuple doesn't have.
+
 ### Depending on another plugin
 
 ::: warning
