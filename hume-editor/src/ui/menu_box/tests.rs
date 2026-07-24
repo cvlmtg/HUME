@@ -201,6 +201,33 @@ fn draw_menu_box_shows_up_arrow_when_scrolled_to_bottom() {
     ");
 }
 
+/// `inner_h == 1` (`outer.height == 3`): both arrow targets are the same
+/// cell. The down arrow is drawn after the up arrow, so it wins the
+/// collision — pins the ordering documented at the `more_below` paint site.
+#[test]
+fn draw_menu_box_single_row_window_collision_down_arrow_wins() {
+    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    // Inner height 1, 10 rows total, scroll = 4: more above and below both true.
+    let outer = Rect::new(0, 0, 10, 3);
+    draw_menu_box(
+        &mut buf,
+        outer,
+        &rows(10),
+        None,
+        4,
+        true,
+        style(),
+        style(),
+        None,
+    );
+
+    insta::assert_snapshot!(symbols_in(&buf, outer), @"
+    ┌────────┐
+    │item4   ▼
+    └────────┘
+    ");
+}
+
 #[test]
 fn draw_menu_box_no_overflow_shows_no_arrows() {
     let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
