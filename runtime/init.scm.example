@@ -14,6 +14,12 @@
 ;; (set-option! "line-number-style" "relative")
 ;; (set-option! "scrolloff" 8)
 
+;; Per-buffer overrides, set automatically per language — see plugins.md#hooks.
+;; (register-hook! 'on-language-set
+;;   (lambda (bid lang)
+;;     (when (equal? lang "markdown")
+;;       (set-buffer-option! bid "tab-width" 2))))
+
 ;; ── Key bindings ──────────────────────────────────────────────────────────────
 ;; (bind-key! mode key-sequence command-name) — see configuration.md#key-bindings.
 

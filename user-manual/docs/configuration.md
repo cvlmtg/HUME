@@ -71,7 +71,7 @@ Set with `:set global <option>=<value>` or `(set-option! "option" value)`. All o
 
 ## Buffer options
 
-These options have a global default that new buffers inherit, and a per-buffer override that takes precedence when present. Set the global default with `:set global <option>=<value>` or `(set-option! "option" value)`; override the current buffer with `:set buffer <option>=<value>`.
+These options have a global default that new buffers inherit, and a per-buffer override that takes precedence when present. Set the global default with `:set global <option>=<value>` or `(set-option! "option" value)`; override the current buffer with `:set buffer <option>=<value>`, or from a script with `(set-buffer-option! buffer-id "option" value)` — see [Plugins](plugins.md) for setting per-language overrides from the `on-language-set` hook.
 
 `language` is an exception, it has no global default — it is auto-detected per buffer and can only be set with `:set buffer language=<name>`.
 

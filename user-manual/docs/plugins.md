@@ -223,6 +223,8 @@ For lazy plugins, declare the events that should trigger activation via `#:event
 
 `set-option!` can't be called from a hook handler: it's only valid while `init.scm` or a plugin body is being evaluated. Set options at the top level of your plugin instead.
 
+Per-buffer overrides *are* available from a hook: `(set-buffer-option! buffer-id "option" value)` sets an option just on the buffer named by `buffer-id`, which works from hook and command bodies (see [Buffer options](configuration.md#buffer-options) for the list of settable options). Pass the buffer id the hook itself hands you rather than assuming the buffer you're editing — a hook can fire for a buffer other than the one you're currently focused on. `language` isn't an option; set it with `set-buffer-language!` instead.
+
 A few more examples:
 
 ```scheme
@@ -235,6 +237,12 @@ A few more examples:
   (lambda (bid)
     (let ((errs (diagnostics-for-buffer bid #:severity 'error)))
       (log! 'info (string-append (to-string (length errs)) " errors")))))
+
+; 2-space indentation for Markdown buffers
+(register-hook! 'on-language-set
+  (lambda (bid lang)
+    (when (equal? lang "markdown")
+      (set-buffer-option! bid "tab-width" 2))))
 ```
 
 ### Default activation
