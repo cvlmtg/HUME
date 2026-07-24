@@ -10,6 +10,7 @@ use std::path::Path;
 use slotmap::SecondaryMap;
 
 use hume_engine::pipeline::BufferId;
+use hume_platform::path::strip_unc_prefix;
 
 use crate::editor::buffer::Buffer;
 
@@ -46,12 +47,20 @@ impl BufferStore {
 
     /// Find a buffer by its canonical resolved path.
     ///
-    /// Returns the first `BufferId` whose `buffer.path() == Some(canonical_path)`.
+    /// Returns the first `BufferId` whose `buffer.path()` matches `path` once
+    /// both sides are stripped of a Windows `\\?\` verbatim prefix (a no-op
+    /// off Windows) — most callers reach here via `fs::canonicalize`
+    /// (`\\?\C:\…` on Windows) and match as-is, but the `:b <name>` fallback
+    /// for a deleted backing file uses `std::path::absolute` (no prefix),
+    /// which would otherwise dedup-miss against an already-open buffer.
     /// Used by `:e` to deduplicate already-open files.
     pub(crate) fn find_by_path(&self, path: &Path) -> Option<BufferId> {
-        self.buffers
-            .iter()
-            .find_map(|(id, buf)| buf.path().filter(|p| *p == path).map(|_| id))
+        let needle = strip_unc_prefix(path.to_path_buf());
+        self.buffers.iter().find_map(|(id, buf)| {
+            buf.path()
+                .filter(|p| strip_unc_prefix(p.to_path_buf()) == needle)
+                .map(|_| id)
+        })
     }
 
     /// Find a read-only view buffer by its label (e.g. `"[messages]"`).

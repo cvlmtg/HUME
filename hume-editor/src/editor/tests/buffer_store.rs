@@ -376,6 +376,57 @@ fn p6_reload_collapses_multi_selection_to_primary() {
 // instead of discarding history. `u` reverts to the pre-reload buffer (full
 // prior tree intact beneath); `Ctrl-r` re-applies the reload.
 
+// ── find_by_path — Windows `\\?\` verbatim-prefix normalization ───────────────
+//
+// Stored buffer paths are always `fs::canonicalize` output — `\\?\C:\…` on
+// Windows. Most lookups also canonicalize and match as-is, but the `:b <name>`
+// fallback for a deleted backing file (`typed_buffer.rs`) uses
+// `std::path::absolute`, which never carries the verbatim prefix. Without
+// normalizing both sides, that lookup dedup-misses an already-open buffer.
+
+#[cfg(windows)]
+#[test]
+fn find_by_path_matches_verbatim_prefixed_stored_path_against_a_plain_query() {
+    let mut ed = Editor::for_testing(Buffer::new(Text::from("hello\n"), SelectionSet::default()));
+    let bid = ed.focused_buffer_id();
+    ed.state
+        .buffers
+        .get_mut(bid)
+        .set_path(Some(std::path::PathBuf::from(r"\\?\C:\tmp\foo.txt")));
+
+    let found = ed
+        .state
+        .buffers
+        .find_by_path(std::path::Path::new(r"C:\tmp\foo.txt"));
+    assert_eq!(
+        found,
+        Some(bid),
+        "a plain-form query must dedup-match a \\\\?\\-stored path"
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn find_by_path_leaves_verbatim_unc_paths_alone() {
+    // `\\?\UNC\…` (verbatim network share) must NOT be treated as equivalent
+    // to a plain `\\server\share\…` form — strip_unc_prefix deliberately
+    // leaves it untouched, so these two remain distinct buffers.
+    let mut ed = Editor::for_testing(Buffer::new(Text::from("hello\n"), SelectionSet::default()));
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).set_path(Some(
+        std::path::PathBuf::from(r"\\?\UNC\server\share\foo.txt"),
+    ));
+
+    let found = ed
+        .state
+        .buffers
+        .find_by_path(std::path::Path::new(r"\\server\share\foo.txt"));
+    assert_eq!(
+        found, None,
+        "a verbatim UNC path must not match its plain-UNC form"
+    );
+}
+
 /// Move the focused pane's primary cursor to `head` for the focused buffer.
 pub(super) fn set_cursor(ed: &mut Editor, head: usize) {
     use hume_editing::selection::Selection;
