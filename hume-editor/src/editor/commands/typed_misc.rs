@@ -42,7 +42,7 @@ pub fn typed_list_buffers(
     let current = ed.focused_buffer_id();
     let alternate = ed.alternate_buffer();
 
-    let header = format!("{:>4}    {:<32}  {}\n", "buf", "name", "path");
+    let header = format!("{:>4}      {:<32}  {}\n", "buf", "name", "path");
     let mut out = header;
     // The [buffers] view buffer (if it already exists from a prior :ls) must not
     // appear in its own listing. All other buffers — including [messages] and

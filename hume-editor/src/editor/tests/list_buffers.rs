@@ -42,6 +42,42 @@ fn ls_long_alias_works() {
 
 // ── Multiple buffers ──────────────────────────────────────────────────────────
 
+/// Bug regression: header labels must line up with the data columns beneath
+/// them. Locates "name"/"path" in the header independently of the data row's
+/// actual filename/path text, so the check fails if the two format strings'
+/// column widths ever drift apart again (as they did when the header didn't
+/// reserve space for the two 1-char marker columns).
+#[test]
+fn ls_header_columns_align_with_data_columns() {
+    let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    let doc_path = ed.doc().path().unwrap().to_path_buf();
+    let out = ls_output(&mut ed);
+    let mut lines = out.lines();
+    let header = lines.next().expect("header row");
+    let row = lines.next().expect("buffer row");
+
+    let name_col = header.find("name").expect("header must contain 'name'");
+    let path_col = header.find("path").expect("header must contain 'path'");
+
+    let file_name = doc_path.file_name().unwrap().to_str().unwrap().to_string();
+    let shortened_path = hume_platform::path::shorten_home(&doc_path);
+    let name_start = row
+        .find(file_name.as_str())
+        .expect("row must contain the buffer's file name");
+    let path_start = row
+        .find(shortened_path.as_str())
+        .expect("row must contain the buffer's path");
+
+    assert_eq!(
+        name_col, name_start,
+        "'name' header column must align with the name field:\n{header}\n{row}"
+    );
+    assert_eq!(
+        path_col, path_start,
+        "'path' header column must align with the path field:\n{header}\n{row}"
+    );
+}
+
 // ── Dirty indicator ───────────────────────────────────────────────────────────
 
 #[test]
