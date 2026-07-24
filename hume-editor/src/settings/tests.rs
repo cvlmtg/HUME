@@ -320,6 +320,23 @@ fn set_global_tab_width_zero_errors() {
 }
 
 #[test]
+fn set_global_lsp_viewport_debounce_ms() {
+    assert_eq!(
+        global("lsp.viewport-debounce-ms", "50")
+            .unwrap()
+            .lsp_viewport_debounce_ms,
+        50
+    );
+}
+
+#[test]
+fn set_global_lsp_viewport_debounce_ms_zero_errors() {
+    // 0 would fire on every frame during a scroll burst instead of
+    // collapsing it into one OnViewportChange — defeats the setting.
+    assert!(global("lsp.viewport-debounce-ms", "0").is_err());
+}
+
+#[test]
 fn set_global_tab_style() {
     assert_eq!(
         global("tab-style", "soft").unwrap().tab_style,

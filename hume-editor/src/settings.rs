@@ -581,7 +581,7 @@ define_settings! {
         // OnViewportChange fire, not one per frame.
         "lsp.viewport-debounce-ms" => lsp_viewport_debounce_ms: usize = 150,
             scope: ["global"],
-            parser: usize;
+            parser: usize_nonzero;
         // Hint = most lenient — every severity renders. Gates the diagnostic
         // underline/extra-highlight and gutter-sign render write sides.
         "lsp.diagnostics-severity-floor" => lsp_diagnostics_severity_floor: crate::editor::lsp::DiagSeverity = crate::editor::lsp::DiagSeverity::Hint,
