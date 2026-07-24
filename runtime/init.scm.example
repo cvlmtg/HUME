@@ -10,24 +10,21 @@
 ;; README under runtime/plugins/core/<name>/) before keeping or dropping one —
 ;; a few rebind the same keys, so know what you're enabling.
 
-(load-plugin "core:stdlib")           ; helper toolkit other plugins below depend on
+(load-plugin "core:stdlib")           ; helper toolkit other plugins depend on
+(load-plugin "core:pickers")          ; fuzzy file/buffer finders
+(declare-plugin "core:lsp")           ; language server features
+(declare-plugin "core:plum")          ; plugin/grammar manager
 
-(declare-plugin "core:plum")          ; plugin/grammar manager — :plum-install, :plum-update, ...
-(declare-plugin "core:lsp")           ; language server features — hover, diagnostics, rename, ...
-(declare-plugin "core:steel-server")  ; language server for editing init.scm/plugins themselves
-
-(load-plugin "core:pickers")          ; fuzzy file/buffer finders — g f / g b
-(load-plugin "core:vim-keybind")      ; vim muscle memory — $ ^ 0 G C D Ctrl+6
-(load-plugin "core:helix-surround")   ; helix-style surround — m s / m d / m r
-(load-plugin "core:classic-paste")    ; GUI-style paste — p / P / Ctrl+V / Ctrl+Shift+V
+;; (load-plugin "core:vim-keybind")      ; vim muscle memory
+;; (load-plugin "core:helix-surround")   ; helix-style surround
+;; (load-plugin "core:classic-paste")    ; GUI-style paste
 
 ;; ── Your settings & key bindings ─────────────────────────────────────────────
-;; Full reference: user-manual/docs/configuration.md (options + key bindings)
-;; and plugins.md (custom commands, hooks).
+;; Full reference:
+;; user-manual/docs/configuration.md (options + key bindings)
+;; user-manual/docs/plugins.md (custom commands, hooks).
 ;;
-;; (set-option! key value) sets a global option:
-;;   (set-option! "tab-width" 2)
+;;   (set-option! "tab-width" 2) ; sets a global option:
+;;   (bind-key! 'normal "space d" "lsp-hover") ; adds a key binding.
 ;;
-;; (bind-key! mode key-sequence command-name) adds a key binding. "space" is
-;; free by default, so it's a natural prefix for your own bindings:
-;;   (bind-key! 'normal "space d" "lsp-hover")
+;; "space" is free by default, so it's a natural prefix for your own bindings:
