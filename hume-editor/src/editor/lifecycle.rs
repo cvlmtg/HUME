@@ -1678,7 +1678,7 @@ impl Editor {
     /// Called from `prepare_frame` after `last_pane_area` is set (step 9):
     /// `EngineView::pane_rect` reads that field, so calling this any earlier
     /// would position against the previous frame's geometry.
-    pub(super) fn sync_popup_view(&self, ctx: &mut RenderContext) {
+    pub(super) fn sync_popup_view(&mut self, ctx: &mut RenderContext) {
         let is_cursor = matches!(
             self.state.popup.as_ref().map(|m| &m.layout),
             Some(crate::ui::popup::PopupLayout::Cursor)
@@ -1698,29 +1698,31 @@ impl Editor {
             return;
         }
 
-        let resolved = self.state.popup.as_ref().and_then(|model| {
-            let (anchor, pane_rect, max_width, max_height) =
-                self.popup_anchor_and_bounds(ctx, self.focused_cursor_char())?;
+        let bounds = self.popup_anchor_and_bounds(ctx, self.focused_cursor_char());
+        let resolved = bounds.and_then(|(anchor, pane_rect, max_width, max_height)| {
             // Wrap the *full* text, unbounded — a scrollable popup must keep
             // every row reachable, not just the first `max_height` of them.
             // The box itself still caps at `max_height` via `outer_dims`
             // below; `scroll` (clamped against that cap) picks which window
-            // of `lines` is visible.
-            let (lines, styled_rows) = self.wrap_popup_text(model, max_width);
-            let (outer_w, outer_h) = crate::ui::menu_box::outer_dims(&lines, max_height);
+            // of `lines` is visible. `resolve_popup_text` caches this by
+            // `max_width`, so an unchanged width across frames is O(1), not
+            // a re-wrap.
+            let text = self.resolve_popup_text(max_width)?;
+            let model_scroll = self.state.popup.as_ref()?.scroll;
+            let (outer_w, outer_h) = crate::ui::menu_box::outer_dims(&text.lines, max_height);
             let (x, y, outer_w, outer_h) =
                 crate::ui::popup::resolve_popup_geometry(outer_w, outer_h, anchor, pane_rect);
             let inner_h = outer_h.saturating_sub(2) as usize;
-            let scroll = model.scroll.min(lines.len().saturating_sub(inner_h));
+            let scroll = model_scroll.min(text.lines.len().saturating_sub(inner_h));
             Some(crate::ui::popup::PopupState {
-                lines,
+                lines: text.lines,
                 x,
                 y,
                 outer_w,
                 outer_h,
                 selected: None,
                 scroll,
-                styled_rows,
+                styled_rows: text.styled_rows,
                 border: self.state.settings.popup_border,
             })
         });
@@ -1728,39 +1730,53 @@ impl Editor {
         *self.state.popup_view.write().expect("RwLock not poisoned") = resolved;
     }
 
-    /// Word-wrap `model.text` to `max_width`, unbounded height — shared by
-    /// [`Self::sync_popup_view`] (cursor layout) and
-    /// [`Self::sync_popup_band_view`] (docked layout), the only difference
-    /// between them being where the result is positioned.
+    /// Resolve (or reuse the cached) wrap+highlight of the open popup's text
+    /// at `max_width` — shared by [`Self::sync_popup_view`] (cursor layout)
+    /// and [`Self::sync_popup_band_view`] (docked layout), which never run in
+    /// the same frame (mutually exclusive on `PopupModel::layout`), so there
+    /// is one cache and one width per frame. See
+    /// [`crate::ui::popup::ResolvedPopupText`] for the invalidation contract.
     ///
-    /// A `#:lang` popup (`model.syntax`) resolves highlight spans through
-    /// the theme fresh every frame here — not once at `show-popup!` time —
-    /// so a `:theme` switch while the popup is open repaints it correctly,
-    /// same as any other themed surface.
-    fn wrap_popup_text(
-        &self,
-        model: &crate::ui::popup::PopupModel,
+    /// Returns `None` only if no popup is open — should not happen at either
+    /// call site (both gated on `self.state.popup` being `Some`), but mirrors
+    /// the `Option`-chaining style of the surrounding sync functions rather
+    /// than `.expect`-ing a caller invariant.
+    fn resolve_popup_text(
+        &mut self,
         max_width: u16,
-    ) -> (Vec<String>, Option<Vec<crate::ui::popup::StyledRow>>) {
-        if let Some(popup_syntax) = model.syntax.as_ref() {
-            let base_style = self
-                .view
-                .theme
-                .resolve_by_name(hume_engine::types::Scope("ui.popup"))
-                .into();
-            let runs = popup_syntax.styled_runs(&model.text, &self.view.theme, base_style);
-            let rows = crate::ui::popup::wrap_styled(&runs, max_width, u16::MAX);
-            let lines: Vec<String> = rows
-                .iter()
-                .map(|row| row.iter().map(|(s, _)| s.as_str()).collect())
-                .collect();
-            (lines, Some(rows))
-        } else {
-            (
-                crate::ui::popup::wrap_text(&model.text, max_width, u16::MAX),
-                None,
-            )
+    ) -> Option<crate::ui::popup::ResolvedPopupText> {
+        let theme = &self.view.theme;
+        let model = self.state.popup.as_mut()?;
+        let stale = model.resolved.as_ref().is_none_or(|r| r.width != max_width);
+        if stale {
+            let (lines, styled_rows) = if let Some(popup_syntax) = model.syntax.as_ref() {
+                let base_style = theme
+                    .resolve_by_name(hume_engine::types::Scope("ui.popup"))
+                    .into();
+                let runs = popup_syntax.styled_runs(&model.text, theme, base_style);
+                let rows = crate::ui::popup::wrap_styled(&runs, max_width, u16::MAX);
+                let lines: Vec<String> = rows
+                    .iter()
+                    .map(|row| row.iter().map(|(s, _)| s.as_str()).collect())
+                    .collect();
+                (std::sync::Arc::new(lines), Some(std::sync::Arc::new(rows)))
+            } else {
+                (
+                    std::sync::Arc::new(crate::ui::popup::wrap_text(
+                        &model.text,
+                        max_width,
+                        u16::MAX,
+                    )),
+                    None,
+                )
+            };
+            model.resolved = Some(crate::ui::popup::ResolvedPopupText {
+                width: max_width,
+                lines,
+                styled_rows,
+            });
         }
+        model.resolved.clone()
     }
 
     /// Write the current *docked* popup content into the shared
@@ -1776,7 +1792,7 @@ impl Editor {
     /// engine will actually render into (`EngineView::render`'s bottom-band
     /// block), same convention `drawer_visible_rows` already relies on for
     /// its height ceiling.
-    pub(super) fn sync_popup_band_view(&self) {
+    pub(super) fn sync_popup_band_view(&mut self) {
         let is_docked = matches!(
             self.state.popup.as_ref().map(|m| &m.layout),
             Some(crate::ui::popup::PopupLayout::Docked)
@@ -1800,22 +1816,22 @@ impl Editor {
             return;
         }
 
-        let resolved = self.state.popup.as_ref().map(|model| {
-            let area = self.view.last_terminal_area;
-            let max_width = area.width.saturating_sub(2);
-            let (lines, styled_rows) = self.wrap_popup_text(model, max_width);
+        let area = self.view.last_terminal_area;
+        let max_width = area.width.saturating_sub(2);
+        let resolved = self.resolve_popup_text(max_width).map(|text| {
+            let model_scroll = self.state.popup.as_ref().map_or(0, |m| m.scroll);
             // Shares `crate::ui::popup::band_capacity` with
             // `PopupBandWidget::height`, so the scroll clamp always agrees
             // with what the engine will next paint (same pattern as
             // `drawer_visible_rows`).
             let max_rows = area.height / 2;
-            let capacity = crate::ui::popup::band_capacity(lines.len(), max_rows);
+            let capacity = crate::ui::popup::band_capacity(text.lines.len(), max_rows);
             let inner_h = capacity.saturating_sub(2) as usize;
-            let scroll = model.scroll.min(lines.len().saturating_sub(inner_h));
+            let scroll = model_scroll.min(text.lines.len().saturating_sub(inner_h));
             crate::ui::popup::PopupBandState {
-                lines,
+                lines: text.lines,
                 scroll,
-                styled_rows,
+                styled_rows: text.styled_rows,
                 border: self.state.settings.popup_border,
             }
         });
@@ -1858,7 +1874,7 @@ impl Editor {
                 Some(model.selected.min(lines.len() - 1))
             };
             Some(crate::ui::popup::PopupState {
-                lines,
+                lines: std::sync::Arc::new(lines),
                 x,
                 y,
                 outer_w,
@@ -1913,7 +1929,7 @@ impl Editor {
                 Some(idx.min(lines.len() - 1))
             };
             Some(crate::ui::popup::PopupState {
-                lines,
+                lines: std::sync::Arc::new(lines),
                 x,
                 y,
                 outer_w,

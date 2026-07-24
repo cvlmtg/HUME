@@ -84,7 +84,7 @@ fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
         .read()
         .unwrap()
         .as_ref()
-        .map(|s| s.lines.clone())
+        .map(|s| (*s.lines).clone())
 }
 
 fn run_hover(ed: &mut Editor) {

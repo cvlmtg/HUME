@@ -109,7 +109,7 @@ fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
         .read()
         .unwrap()
         .as_ref()
-        .map(|s| s.lines.clone())
+        .map(|s| (*s.lines).clone())
 }
 
 /// Declaring `core:lsp` (not loading it) leaves it `Declared` — nothing has

@@ -48,7 +48,7 @@ fn styled_rows(ed: &Editor) -> Option<Vec<crate::ui::popup::StyledRow>> {
         .read()
         .unwrap()
         .as_ref()
-        .and_then(|s| s.styled_rows.clone())
+        .and_then(|s| s.styled_rows.as_deref().cloned())
 }
 
 /// The docked (`#:anchor 'bottom`) counterpart of [`styled_rows`] — reads
@@ -59,7 +59,7 @@ fn band_styled_rows(ed: &Editor) -> Option<Vec<crate::ui::popup::StyledRow>> {
         .read()
         .unwrap()
         .as_ref()
-        .and_then(|s| s.styled_rows.clone())
+        .and_then(|s| s.styled_rows.as_deref().cloned())
 }
 
 #[test]
@@ -267,15 +267,7 @@ fn markdown_flag_without_a_registered_grammar_falls_back_to_plain() {
         styled_rows(&ed).is_none(),
         "grammar-absent fallback must not populate styled_rows"
     );
-    let lines = ed
-        .state
-        .popup_view
-        .read()
-        .unwrap()
-        .as_ref()
-        .unwrap()
-        .lines
-        .clone();
+    let lines = (*ed.state.popup_view.read().unwrap().as_ref().unwrap().lines).clone();
     assert_eq!(
         lines,
         vec!["# heading".to_string()],

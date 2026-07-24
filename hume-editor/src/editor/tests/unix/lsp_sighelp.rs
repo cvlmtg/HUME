@@ -113,7 +113,7 @@ fn popup_lines(ed: &mut Editor) -> Vec<String> {
         .read()
         .unwrap()
         .as_ref()
-        .map(|s| s.lines.clone())
+        .map(|s| (*s.lines).clone())
         .unwrap_or_default()
 }
 

@@ -4,6 +4,7 @@
 // current rect.
 
 use std::path::Path;
+use std::sync::Arc;
 
 use super::*;
 use hume_engine::pipeline::RenderContext;
@@ -21,7 +22,18 @@ fn popup_view(ed: &Editor) -> Option<(Vec<String>, u16, u16)> {
         .read()
         .unwrap()
         .as_ref()
-        .map(|s| (s.lines.clone(), s.x, s.y))
+        .map(|s| ((*s.lines).clone(), s.x, s.y))
+}
+
+/// The `Arc` handle itself, not a deref-cloned copy — for `Arc::ptr_eq`
+/// identity checks that pin `PopupModel::resolved`'s per-`max_width` cache.
+fn popup_view_lines_arc(ed: &Editor) -> Option<Arc<Vec<String>>> {
+    ed.state
+        .popup_view
+        .read()
+        .unwrap()
+        .as_ref()
+        .map(|s| Arc::clone(&s.lines))
 }
 
 // ── show-popup! / close-popup! ────────────────────────────────────────────────
@@ -111,7 +123,7 @@ fn popup_band_lines(ed: &Editor) -> Option<Vec<String>> {
         .read()
         .unwrap()
         .as_ref()
-        .map(|s| s.lines.clone())
+        .map(|s| (*s.lines).clone())
 }
 
 #[test]
@@ -297,6 +309,37 @@ fn popup_wraps_to_the_pane_width_and_anchors_below_the_cursor() {
         "popup must anchor below the cursor row (row 0), not above it"
     );
     assert_eq!(x, 0, "anchor column matches the cursor's column");
+}
+
+#[test]
+fn wrap_is_cached_per_width_and_invalidated_only_when_width_changes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (show-popup! "one two three four five six seven eight nine ten")))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(20, 25, &mut ctx);
+    let first = popup_view_lines_arc(&ed).expect("popup must be showing after a frame");
+
+    ed.prepare_frame(20, 25, &mut ctx);
+    let second = popup_view_lines_arc(&ed).expect("popup must still be showing");
+    assert!(
+        Arc::ptr_eq(&first, &second),
+        "wrap must not be recomputed across frames at an unchanged max_width"
+    );
+
+    ed.prepare_frame(80, 25, &mut ctx);
+    let third = popup_view_lines_arc(&ed).expect("popup must still be showing");
+    assert!(
+        !Arc::ptr_eq(&second, &third),
+        "wrap must be recomputed once max_width actually changes"
+    );
 }
 
 // ── Scrollable popup (`#:kind 'scrollable`) dismissal + Ctrl+u/Ctrl+d ───────

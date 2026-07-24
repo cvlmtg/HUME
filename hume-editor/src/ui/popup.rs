@@ -151,6 +151,33 @@ pub(crate) struct PopupModel {
     /// IS the syntax's (SSOT).
     pub(crate) syntax: Option<MarkupSyntax>,
     pub(crate) layout: PopupLayout,
+    /// Cached wrap+highlight, keyed by `max_width` — see [`ResolvedPopupText`].
+    /// `None` until the first `sync_popup_view`/`sync_popup_band_view` call.
+    pub(crate) resolved: Option<ResolvedPopupText>,
+}
+
+/// Wrap+highlight resolved for one `max_width` — a pure function of
+/// `(text, syntax, width)`. `Editor::resolve_popup_text` recomputes only when
+/// `width` differs from the cached one; `text`/`syntax` never change during a
+/// model's lifetime (a new `show-popup!` builds a fresh `PopupModel`), so
+/// `width` is the only invalidation key needed. Mirrors `MarkupSyntax`'s own
+/// build-once discipline (see its doc) — the per-frame re-wrap this replaces
+/// was the anomaly, not a deliberate design.
+///
+/// A `:theme` switch does not need to invalidate this: a `Scrollable` popup
+/// closes on any key (`Editor::handle_key`'s top-of-loop check) and a
+/// `Sticky` one closes on `on-mode-change` (`register-hook! 'on-mode-change
+/// close-popup!` in `core:lsp/lib.scm`) before Command-mode input like
+/// `:theme` can run — no popup survives to see a stale highlight.
+///
+/// `lines`/`styled_rows` are `Arc`-wrapped so writing them into the
+/// per-frame `PopupState`/`PopupBandState` (behind a shared `RwLock`) is a
+/// pointer clone, not a copy of every row.
+#[derive(Clone)]
+pub(crate) struct ResolvedPopupText {
+    pub(crate) width: u16,
+    pub(crate) lines: Arc<Vec<String>>,
+    pub(crate) styled_rows: Option<Arc<Vec<StyledRow>>>,
 }
 
 /// `(show-menu! items on-select)`'s raw content — held on `EditorState`
@@ -167,8 +194,11 @@ pub(crate) struct MenuModel {
 /// by the write side; the overlay only paints.
 pub(crate) struct PopupState {
     /// Pre-wrapped display lines (word-wrapped to the resolved max width for
-    /// a plain popup; one line per item, unwrapped, for a menu).
-    pub(crate) lines: Vec<String>,
+    /// a plain popup; one line per item, unwrapped, for a menu). `Arc`-shared
+    /// with `PopupModel::resolved` for a wrapped popup (see
+    /// [`ResolvedPopupText`]) — a menu's unwrapped labels are freshly
+    /// `Arc::new`-wrapped each frame instead, since they're never cached.
+    pub(crate) lines: Arc<Vec<String>>,
     /// Top-left screen cell to paint at (already flipped/clamped) — the
     /// outer frame corner, not the first content cell.
     pub(crate) x: u16,
@@ -195,7 +225,7 @@ pub(crate) struct PopupState {
     /// when flattened — `Some` only for a popup with `#:lang` set to a
     /// registered grammar (`PopupModel::syntax`). `None` for every other
     /// popup and for menus, which paint `lines` in one style regardless.
-    pub(crate) styled_rows: Option<Vec<StyledRow>>,
+    pub(crate) styled_rows: Option<Arc<Vec<StyledRow>>>,
 }
 
 /// Generic overlay that paints a `PopupState` snapshot. Used directly for
@@ -250,7 +280,7 @@ impl OverlayProvider for PopupOverlay {
             state.border,
             style,
             selected_style,
-            state.styled_rows.as_deref(),
+            state.styled_rows.as_ref().map(|rows| rows.as_slice()),
         );
     }
 }
@@ -264,11 +294,12 @@ impl OverlayProvider for PopupOverlay {
 pub(crate) struct PopupBandState {
     /// Word-wrapped to the band's width (the write side, `Editor::
     /// sync_popup_band_view`, wraps against `last_terminal_area` — the same
-    /// raw area the engine will render the band into).
-    pub(crate) lines: Vec<String>,
+    /// raw area the engine will render the band into). `Arc`-shared with
+    /// `PopupModel::resolved` — see [`ResolvedPopupText`].
+    pub(crate) lines: Arc<Vec<String>>,
     pub(crate) scroll: usize,
     pub(crate) border: bool,
-    pub(crate) styled_rows: Option<Vec<StyledRow>>,
+    pub(crate) styled_rows: Option<Arc<Vec<StyledRow>>>,
 }
 
 /// Engine-facing bottom-band provider for a docked popup — mirrors
@@ -318,7 +349,7 @@ impl BottomBandProvider for PopupBandWidget {
             state.border,
             style,
             style,
-            state.styled_rows.as_deref(),
+            state.styled_rows.as_ref().map(|rows| rows.as_slice()),
         );
     }
 }

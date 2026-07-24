@@ -970,6 +970,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             scroll: 0,
             syntax,
             layout,
+            resolved: None,
         });
         Ok(())
     }
