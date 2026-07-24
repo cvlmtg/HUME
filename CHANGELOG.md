@@ -13,6 +13,8 @@
 - Manual server registration from config via `register-lsp-server!`.
 - `core:steel-server` plugin: a Steel language server for editing your own
   config and plugins.
+- Hover docs and other overflow popup/drawer content are syntax-highlighted,
+  with scroll affordance arrows shown when there's more to see.
 
 ### Editing
 - After changing text with `c`, leaving Insert mode now selects the text
@@ -39,24 +41,19 @@
   (default on).
 
 ### Plugins & scripting
-- Full-trust plugin model: no more sandbox; plugins use Steel's standard
-  library for process and file access.
 - `manifest.scm`: a bare `(declare-plugin "name")` is enough for lazy
   loading.
 - Expanded plugin API: LSP requests, timers, new hooks, decorations,
   popups, menus, drawer lists, minibuffer prompts.
+- `set-buffer-option!` builtin for per-buffer setting overrides from hooks
+  and commands.
 
 ### Terminal & compatibility
 - Bracketed paste — pastes land in one step, without auto-pairing.
 - Event-driven main loop: HUME sleeps when idle instead of polling.
 - Switched terminal I/O from crossterm to termina. Kitty keyboard protocol
   now works on Windows (Windows Terminal ≥ 1.25): input decoding is now
-  identical across platforms, so a probe reporting kitty support means it
-  actually works, not just that the terminal answered a query. Windows
-  requires 10 1809+ and a VT-capable console (no legacy-conhost fallback);
-  raw mintty without winpty is unsupported, unchanged from before.
-- Fixed: held-key autorepeat under the kitty protocol (`REPORT_EVENT_TYPES`)
-  never matched a keymap binding — the trie only ever recorded `Press`.
+  identical across platforms.
 
 ### Theming
 - Theme editor rebuilt as a proper web app.
@@ -66,11 +63,15 @@
 - `:wq` quit the whole editor instead of closing the focused pane.
 - Crash when joining lines with a cursor on the last line.
 - Syntax highlighting precedence for overlapping captures.
-- Busy-loop when the terminal hung up.
 - `(set-option! ...)` from a lazily-activated plugin now takes effect
-  immediately instead of silently doing nothing until the next `:set`.
-- `:set global theme=<name>` no longer keeps a theme name that failed to
-  load — it's rolled back, matching `:theme <name>`'s existing behavior.
+  immediately.
+- `:set global theme=<name>` matches `:theme <name>`'s existing behavior.
+- Minibuffer history recall (Up/Down in `:`, `/`, `?`) now filters to
+  entries starting with the text typed before recalling.
+- Statusline shows `*scratch*` and other synthetic buffer names instead
+  of leaving the file-path element blank.
+- Windows: statusline file paths and `:e`'s duplicate-buffer detection no
+  longer choke on the `\\?\` canonical-path prefix.
 
 ## [0.9.0] - 2026-07-15
 
