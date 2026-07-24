@@ -640,7 +640,7 @@ impl Editor {
     /// `sync_all_pane_mirrors` is the **single sync point** for `pane.selections`
     /// and `pane.primary_idx` — it covers every pane in one pass.  No other code
     /// path writes those fields.  It, and the scroll pass right after it, run
-    /// *after* the async/Steel drains (step 3) since those can switch a pane's
+    /// *after* the async/Steel drains (step 2) since those can switch a pane's
     /// `buffer_id` (picker accept, LSP goto-definition) or move its selections
     /// (timer/LSP callbacks) — syncing or scrolling any earlier would use a
     /// stale selection head against the pane's new buffer, which can be out of
@@ -691,9 +691,23 @@ impl Editor {
             vp.height = rect.height;
         }
 
-        // 2. Sync line-number style provider for every pane (depends on that
-        //    pane's own buffer overrides).
-        for &(pid, _) in &rects {
+        // 2. Drain completed async work (parse results, LSP), then evaluate
+        //    any Steel calls that work queued (LSP request/timer callbacks).
+        //    `drain_pending_steel_calls` also unconditionally consumes any
+        //    deferred LSP-completion dismissal (`set_mode`'s Insert-exit arm)
+        //    — this is what makes step 9's `sync_completion_menu_view` below
+        //    always see an up-to-date session, with no separate call needed.
+        self.drain_async_sources();
+        self.drain_pending_steel_calls();
+
+        // 3. Sync line-number style provider for every pane (depends on that
+        //    pane's own buffer overrides). Must run after step 2: the drains
+        //    can switch a pane's `buffer_id` (picker accept, LSP
+        //    goto-definition), so syncing any earlier would apply the
+        //    just-left buffer's style to the pane's new buffer for a frame.
+        //    Iterates a fresh pane-id snapshot (not the frame-start `rects`)
+        //    since a drained callback may have closed a pane.
+        for pid in self.view.panes.keys().collect::<Vec<_>>() {
             let buf_id = self.view.panes[pid].buffer_id;
             let ln_style = self
                 .state
@@ -706,16 +720,7 @@ impl Editor {
                 .sync_line_number_style(ln_style);
         }
 
-        // 3. Drain completed async work (parse results, LSP), then evaluate
-        //    any Steel calls that work queued (LSP request/timer callbacks).
-        //    `drain_pending_steel_calls` also unconditionally consumes any
-        //    deferred LSP-completion dismissal (`set_mode`'s Insert-exit arm)
-        //    — this is what makes step 9's `sync_completion_menu_view` below
-        //    always see an up-to-date session, with no separate call needed.
-        self.drain_async_sources();
-        self.drain_pending_steel_calls();
-
-        // 4. Sync selection mirrors for every pane. Must run after step 3:
+        // 4. Sync selection mirrors for every pane. Must run after step 2:
         //    the drains can switch a pane's `buffer_id` (picker accept, LSP
         //    goto-definition) or move its selections (timer/LSP callbacks),
         //    and render (right after this function returns) reads this
@@ -723,7 +728,7 @@ impl Editor {
         self.sync_all_pane_mirrors();
 
         // 5. Scroll every pane so its primary cursor stays visible. Must run
-        //    after step 3: the drains can switch a pane's `buffer_id` mid-frame
+        //    after step 2: the drains can switch a pane's `buffer_id` mid-frame
         //    (picker accept, LSP goto-definition), and this reads buffer_id/
         //    rope/cursor together from SSOT, so it always scrolls the pane's
         //    *current* buffer instead of leaving a just-switched-to buffer's
@@ -765,7 +770,7 @@ impl Editor {
             // *result*, not part of computing what to render — the hook
             // itself never fires from here, only the coalescer timer gets
             // (re)armed; the actual fire happens later via the async-source
-            // drain, same as every other timer. Arming here (after step 3's
+            // drain, same as every other timer. Arming here (after step 2's
             // drain) means a change detected this frame is picked up by
             // *next* frame's drain — one frame later than when this ran
             // pre-drain, immaterial for any nonzero debounce interval.
