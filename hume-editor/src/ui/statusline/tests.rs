@@ -1,4 +1,7 @@
-use super::elements::file_path::{display_path_string, shorten_path_to_width, shorten_path_to_width_with};
+use super::elements::file_path::{
+    display_path_string, shorten_path_to_width, shorten_path_to_width_with,
+    statusline_display_path,
+};
 use super::*;
 use ratatui::style::Style;
 
@@ -501,4 +504,43 @@ fn display_path_string_strips_windows_verbatim_prefix() {
         "statusline path {result:?} still carries the verbatim prefix"
     );
     assert!(result.contains("file.rs"));
+}
+
+// ── statusline_display_path (label fallback for path-less buffers) ────────
+//
+// Regression: the statusline's FilePath element used to render "" for
+// scratch/synthetic buffers because it only consulted display_path()/path(),
+// never the buffer's label — even though `:ls` (typed_misc.rs) always showed
+// their name via the label-aware display_name(). Independent oracle: the
+// expected strings below are the literal names the bug report asked for
+// (`*scratch*`, `[buffers]`), not derived from display_name()'s own logic.
+
+#[test]
+fn statusline_display_path_scratch_buffer_shows_scratch_name() {
+    // test_editor()'s Buffer::new has no path and no label — the scratch case.
+    let ed = test_editor();
+    assert_eq!(statusline_display_path(&ed), "*scratch*");
+}
+
+#[test]
+fn statusline_display_path_synthetic_buffer_shows_label() {
+    use crate::editor::buffer::Buffer;
+    let buf = Buffer::read_only_view(
+        hume_editing::text::Text::from("hello\n"),
+        "[buffers]".to_string(),
+    );
+    let ed = crate::editor::Editor::for_testing(buf);
+    assert_eq!(statusline_display_path(&ed), "[buffers]");
+}
+
+#[test]
+fn statusline_display_path_real_file_still_shows_path() {
+    // Regression guard: the label fallback must not shadow a real path.
+    let mut ed = test_editor();
+    let path = std::path::Path::new("/some/absolute/path/file.rs");
+    ed.doc_mut().set_path(Some(path.to_owned()));
+    assert_eq!(
+        statusline_display_path(&ed),
+        hume_platform::path::shorten_home(path)
+    );
 }

@@ -24,10 +24,14 @@ pub(in crate::ui::statusline) fn render(
 /// Returns the display path for the `FilePath` element: `display_path` (user-typed,
 /// symlinks unresolved) when set, falling back to the canonical `path`. Both are
 /// stripped of the Windows `\\?\` verbatim prefix and `~`-collapsed for display.
-/// Returns `""` for scratch and synthetic buffers.
+/// Falls back to the buffer's display name (label, or `*scratch*`) when there is
+/// no path at all — scratch and synthetic buffers.
 pub(in crate::ui::statusline) fn statusline_display_path(editor: &Editor) -> String {
     let doc = editor.doc();
-    display_path_string(doc.display_path().or_else(|| doc.path()))
+    match doc.display_path().or_else(|| doc.path()) {
+        Some(p) => display_path_string(Some(p)),
+        None => doc.display_name(),
+    }
 }
 
 /// Normalize a buffer path for display: strip the Windows `\\?\` verbatim

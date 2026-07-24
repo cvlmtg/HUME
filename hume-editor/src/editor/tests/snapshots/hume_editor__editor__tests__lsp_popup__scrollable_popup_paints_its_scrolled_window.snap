@@ -1,6 +1,5 @@
 ---
 source: hume-editor/src/editor/tests/lsp_popup.rs
-assertion_line: 280
 expression: snap
 ---
 <fg=#808080,bg=#3a3a3a>  </><fg=#c8c8d2,bg=#3a3a3a>1</>
@@ -17,4 +16,4 @@ expression: snap
 <fg=#808080,bg=#1a1a1a>~</>
 <fg=#808080,bg=#1a1a1a>~</>
 <fg=#808080,bg=#1a1a1a>~</>
-<fg=#000000,bg=#ffffff> 1:1                    │ NOR</>
+<fg=#000000,bg=#ffffff> 1:1 *scratch*          │ NOR</>
