@@ -1,6 +1,5 @@
 use super::elements::file_path::{
-    display_path_string, shorten_path_to_width, shorten_path_to_width_with,
-    statusline_display_path,
+    display_path_string, shorten_path_to_width, shorten_path_to_width_with, statusline_display_path,
 };
 use super::*;
 use ratatui::style::Style;

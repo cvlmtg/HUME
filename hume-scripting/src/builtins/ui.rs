@@ -9,8 +9,8 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use crate::host::PopupKind;
 use crate::SteelCtx;
+use crate::host::PopupKind;
 
 use super::args::{
     bool_arg, list_items, list_to_strings, optional_path_arg, optional_string_arg, pair_fields,

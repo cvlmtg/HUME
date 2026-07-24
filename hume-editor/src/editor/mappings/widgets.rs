@@ -278,7 +278,10 @@ impl Editor {
                 super::super::picker::close_picker(&mut self.state, payload);
             }
             KeyCode::Escape => {
-                super::super::picker::close_picker(&mut self.state, steel::rvals::SteelVal::BoolV(false));
+                super::super::picker::close_picker(
+                    &mut self.state,
+                    steel::rvals::SteelVal::BoolV(false),
+                );
             }
             KeyCode::Char(ch)
                 if !key

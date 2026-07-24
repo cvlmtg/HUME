@@ -355,7 +355,9 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
     run(
         &mut ed,
         tmp.path(),
-        &format!(r#"(define-command! "go" "" (lambda () (show-popup! "{tall}" #:kind 'scrollable)))"#),
+        &format!(
+            r#"(define-command! "go" "" (lambda () (show-popup! "{tall}" #:kind 'scrollable)))"#
+        ),
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
@@ -418,7 +420,9 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
     run(
         &mut ed,
         tmp.path(),
-        &format!(r#"(define-command! "go" "" (lambda () (show-popup! "{tall}" #:kind 'scrollable)))"#),
+        &format!(
+            r#"(define-command! "go" "" (lambda () (show-popup! "{tall}" #:kind 'scrollable)))"#
+        ),
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
@@ -537,7 +541,9 @@ fn scrollable_popup_paints_its_scrolled_window() {
     run(
         &mut ed,
         tmp.path(),
-        &format!(r#"(define-command! "go" "" (lambda () (show-popup! "{tall}" #:kind 'scrollable)))"#),
+        &format!(
+            r#"(define-command! "go" "" (lambda () (show-popup! "{tall}" #:kind 'scrollable)))"#
+        ),
     );
     type_cmd(&mut ed, ":go");
 
