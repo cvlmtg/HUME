@@ -292,6 +292,56 @@ fn picker_bang_rejects_hash_f_payload() {
     );
 }
 
+// ── Regression: picker accept mid-frame switching to a shorter buffer ──────
+
+#[test]
+fn picker_accept_switching_to_shorter_buffer_mid_frame_does_not_panic() {
+    let tmp = safe_tempdir();
+    // Buffer A: cursor (head) at char 499 — far beyond buffer B's length.
+    let mut ed = editor_from(&format!("{}-[x]>\n", "a".repeat(499)));
+
+    let small = tmp.path().join("small.md");
+    std::fs::write(&small, "hi\n").unwrap();
+    let path = small.to_string_lossy().replace('\\', "/");
+
+    // Mirrors runtime/plugins/core/pickers/plugin.scm's files-picker on_select:
+    // `(switch-to-buffer! (open-buffer! path))` run from a picker callback.
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-command! "go" "" (lambda ()
+                 (picker! (list (cons "small" "{path}"))
+                   (lambda (p) (when p (switch-to-buffer! (open-buffer! p)))))))"#
+        ),
+    );
+    type_cmd(&mut ed, ":go");
+    assert!(ed.state.picker.is_some(), "sanity: picker open");
+
+    let rect = ratatui::layout::Rect::new(0, 0, 40, 12);
+    let _ = ed.render_to_buf(rect);
+
+    // Accept: close_picker queues on_select onto pending_steel_calls.
+    ed.feed_key(key_enter());
+
+    // The next prepare_frame drains the callback (switching the pane to the
+    // 3-char buffer) then renders. Pre-fix, this panicked in ropey's
+    // char_to_line: the engine's selection mirror still held buffer A's
+    // stale head (499) against buffer B's 3-char rope.
+    let _ = ed.render_to_buf(rect);
+
+    let bid = ed.focused_buffer_id();
+    assert_eq!(ed.state.buffers.get(bid).text().to_string(), "hi\n");
+
+    let pid = ed.state.focused_pane_id;
+    let pane = &ed.view.panes[pid];
+    assert_eq!(pane.buffer_id, bid);
+    assert_eq!(
+        pane.selections[pane.primary_idx].head, 0,
+        "rendered mirror must reflect buffer B's fresh selection, not A's stale head"
+    );
+}
+
 // ── Direct host-impl call: the `lsp: None` construction arm ────────────────
 
 #[test]

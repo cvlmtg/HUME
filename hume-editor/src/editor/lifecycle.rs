@@ -639,10 +639,14 @@ impl Editor {
     ///
     /// `sync_all_pane_mirrors` is the **single sync point** for `pane.selections`
     /// and `pane.primary_idx` — it covers every pane in one pass.  No other code
-    /// path writes those fields.  Highlight and statusline shared buffers are also
-    /// written here, immediately before every `render()` call.  Mode and display
-    /// settings are resolved lazily via the `get_pane_settings` closure passed to
-    /// `render()`.
+    /// path writes those fields.  It runs *after* the async/Steel drains (step 4)
+    /// since those can switch a pane's `buffer_id` (picker accept, LSP
+    /// goto-definition) or move its selections (timer/LSP callbacks) — syncing
+    /// any earlier would render a stale selection head against the pane's new
+    /// buffer, which can be out of bounds for that rope. Highlight and
+    /// statusline shared buffers are also written here, immediately before
+    /// every `render()` call.  Mode and display settings are resolved lazily
+    /// via the `get_pane_settings` closure passed to `render()`.
     pub(super) fn prepare_frame(
         &mut self,
         terminal_width: u16,
@@ -685,10 +689,7 @@ impl Editor {
             vp.height = rect.height;
         }
 
-        // 2. Sync selection mirrors for every pane.
-        self.sync_all_pane_mirrors();
-
-        // 3. Sync line-number style provider for every pane (depends on that
+        // 2. Sync line-number style provider for every pane (depends on that
         //    pane's own buffer overrides).
         for &(pid, _) in &rects {
             let buf_id = self.view.panes[pid].buffer_id;
@@ -703,7 +704,7 @@ impl Editor {
                 .sync_line_number_style(ln_style);
         }
 
-        // 4. Scroll every pane so its primary cursor stays visible.
+        // 3. Scroll every pane so its primary cursor stays visible.
         let scrolloff = self.state.settings.scrolloff;
         for &(pid, _) in &rects {
             let buf_id = self.view.panes[pid].buffer_id;
@@ -746,7 +747,7 @@ impl Editor {
             }
         }
 
-        // 5. Drain completed async work (parse results, LSP), then evaluate
+        // 4. Drain completed async work (parse results, LSP), then evaluate
         //    any Steel calls that work queued (LSP request/timer callbacks).
         //    `drain_pending_steel_calls` also unconditionally consumes any
         //    deferred LSP-completion dismissal (`set_mode`'s Insert-exit arm)
@@ -754,6 +755,13 @@ impl Editor {
         //    always see an up-to-date session, with no separate call needed.
         self.drain_async_sources();
         self.drain_pending_steel_calls();
+
+        // 5. Sync selection mirrors for every pane. Must run after step 4:
+        //    the drains can switch a pane's `buffer_id` (picker accept, LSP
+        //    goto-definition) or move its selections (timer/LSP callbacks),
+        //    and render (right after this function returns) reads this
+        //    mirror against the pane's *current* buffer.
+        self.sync_all_pane_mirrors();
 
         // 6. Sync highlight data (search matches, bracket matches, diagnostic
         //    underlines, extra highlights) to shared Arc buffers read by the
@@ -809,7 +817,8 @@ impl Editor {
     /// the primary's head value after the sort.  This is the **single sync point** —
     /// no other code path writes `pane.selections` or `pane.primary_idx`.
     ///
-    /// Called once per frame from `prepare_frame`, before `render()`.
+    /// Called once per frame from `prepare_frame`, after the async/Steel
+    /// drains and before `render()`.
     pub(crate) fn sync_all_pane_mirrors(&mut self) {
         let state = &mut self.state;
         let view = &mut self.view;

@@ -401,6 +401,12 @@ impl Pane {
             .get(self.primary_idx)
             .map(|s| s.head)
             .unwrap_or(0);
+        debug_assert!(
+            head_char <= rope.len_chars(),
+            "stale selection mirror: head {head_char} beyond rope len {} — \
+             pane.selections is out of sync with pane.buffer_id",
+            rope.len_chars()
+        );
         rope.char_to_line(head_char)
     }
 }
