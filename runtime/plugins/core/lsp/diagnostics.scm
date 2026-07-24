@@ -46,7 +46,7 @@
                            (lsp/first-after diags head)
                            (lsp/last-before diags head))))
           (lsp/diag-jump-to! target)
-          (show-popup! (hash-ref target "message") #:dismiss-on-key #t)))))
+          (show-popup! (hash-ref target "message") #:kind 'transient)))))
 
 ;; ── Commands ─────────────────────────────────────────────────────────────────
 

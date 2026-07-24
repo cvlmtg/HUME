@@ -33,27 +33,12 @@ use ratatui::style::Style;
 use hume_engine::providers::{BottomBandProvider, OverlayProvider, SyntaxSpans};
 use hume_engine::theme::Theme;
 use hume_engine::types::Scope;
+use hume_scripting::host::PopupKind;
 
 use super::menu_box::draw_menu_box;
 
 /// Maximum popup width in terminal columns, before any pane-width clamp.
 pub(crate) const MAX_POPUP_WIDTH: u16 = 60;
-
-/// How an open popup reacts to key events in `Editor::handle_key`.
-pub(crate) enum PopupDismiss {
-    /// Untouched by keys; closed only by the `on-mode-change` Steel hook and
-    /// the next `show-popup!`. Default — hover/signature-help without
-    /// `#:scroll`.
-    ModeChange,
-    /// Cleared unconditionally at the start of the *next* key event, whatever
-    /// the key is — the key still dispatches normally below (`gn`/`gp`'s
-    /// diagnostic overlay, `#:dismiss-on-key`).
-    AnyKey,
-    /// Ctrl+u/Ctrl+d scroll the content and are consumed; every other key
-    /// closes the popup and falls through to normal dispatch (scrollable
-    /// hover, `#:scroll`).
-    KeyExceptScroll,
-}
 
 /// Synchronously-parsed highlight state for a popup's read-only text, keyed
 /// by grammar name (`#:lang`) — built once at `show-popup!` time (there is
@@ -155,9 +140,9 @@ pub(crate) enum PopupLayout {
 /// [`PopupBandState`].
 pub(crate) struct PopupModel {
     pub(crate) text: String,
-    pub(crate) dismiss: PopupDismiss,
-    /// First visible wrapped row, for an `OnKeyExceptScroll` popup. Clamped
-    /// in `Editor::scroll_popup`; re-clamped defensively in
+    pub(crate) kind: PopupKind,
+    /// First visible wrapped row, for a `Scrollable` popup. Clamped in
+    /// `Editor::scroll_popup`; re-clamped defensively in
     /// `Editor::sync_popup_view`/`sync_popup_band_view` against the frame's
     /// resolved content height.
     pub(crate) scroll: usize,

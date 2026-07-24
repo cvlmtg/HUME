@@ -37,6 +37,26 @@ pub fn unsupported(builtin: &str) -> String {
     format!("{builtin}: not supported by this host")
 }
 
+/// How an open popup reacts to key events — `show-popup!`'s `#:kind` symbol,
+/// decoded once at the builtin boundary (`builtins::ui::show_popup`) and
+/// carried as-is into the editor's own popup state, so there is exactly one
+/// definition of the three dismiss behaviors, not a bool pair mapped to a
+/// second enum on the other side of the trait.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PopupKind {
+    /// Untouched by keys; closed only by the `on-mode-change` Steel hook and
+    /// the next `show-popup!`. Default — `#:kind` omitted, or `'sticky`.
+    Sticky,
+    /// Cleared unconditionally at the start of the *next* key event, whatever
+    /// the key is — the key still dispatches normally (`gn`/`gp`'s
+    /// diagnostic overlay, `#:kind 'transient`).
+    Transient,
+    /// Ctrl+u/Ctrl+d scroll the content and are consumed; every other key
+    /// closes the popup and falls through to normal dispatch (scrollable
+    /// hover, `#:kind 'scrollable`).
+    Scrollable,
+}
+
 /// The editor interface exposed to scripting builtins during a Steel eval, as
 /// a capability directory: every domain method lives on one of the 12
 /// capability traits in this module (`BufferHost`, `SettingsHost`,
@@ -497,28 +517,23 @@ pub trait UiHost {
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String>;
 
-    /// `(show-popup! text #:anchor 'cursor #:dismiss-on-key #f #:scroll #f
-    /// #:lang #f)` — shows `text` in a popup panel. Geometry (wrap width,
-    /// flip/clamp position, or the docked band's size) is resolved fresh
-    /// every frame by the host, not here — this just stores the raw
-    /// content. Replaces any popup already showing (no stacking).
+    /// `(show-popup! text #:anchor 'cursor #:kind 'sticky #:lang #f)` — shows
+    /// `text` in a popup panel. Geometry (wrap width, flip/clamp position, or
+    /// the docked band's size) is resolved fresh every frame by the host, not
+    /// here — this just stores the raw content. Replaces any popup already
+    /// showing (no stacking).
     ///
-    /// `dismiss_on_key`: when true, the popup is cleared by the *next* key
-    /// press (any key), rather than only by `close-popup!`/`on-mode-change`.
-    /// `scrollable`: when true, Ctrl+u/Ctrl+d scroll the popup's content
-    /// instead of the buffer, and every *other* key closes the popup
-    /// (mutually exclusive with `dismiss_on_key` — the host rejects both
-    /// set). `docked`: `#:anchor 'bottom` — renders as a full-width chrome
-    /// band directly above the statusline (reserving pane space, like the
-    /// drawer) instead of floating near the cursor. `lang`: when
-    /// `Some(name)` and a grammar named `name` is registered, `text` is
-    /// syntax-highlighted like a real buffer; otherwise (no grammar by that
-    /// name, or `None`) it renders as plain text.
+    /// `kind`: see [`PopupKind`] for the three dismiss behaviors. `docked`:
+    /// `#:anchor 'bottom` — renders as a full-width chrome band directly
+    /// above the statusline (reserving pane space, like the drawer) instead
+    /// of floating near the cursor. `lang`: when `Some(name)` and a grammar
+    /// named `name` is registered, `text` is syntax-highlighted like a real
+    /// buffer; otherwise (no grammar by that name, or `None`) it renders as
+    /// plain text.
     fn show_popup(
         &mut self,
         text: String,
-        dismiss_on_key: bool,
-        scrollable: bool,
+        kind: PopupKind,
         docked: bool,
         lang: Option<String>,
     ) -> Result<(), String>;

@@ -1,5 +1,7 @@
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
+use hume_scripting::host::PopupKind;
+
 use super::{Editor, Mode};
 
 pub(super) mod command_mode;
@@ -39,16 +41,16 @@ impl Editor {
             }
         }
 
-        // Popup dismissal/scroll, before mode dispatch — see `PopupDismiss`.
-        // `OnAnyKey` (`gn`/`gp`) clears unconditionally and the key still
-        // dispatches below. `OnKeyExceptScroll` (scrollable hover) consumes
+        // Popup dismissal/scroll, before mode dispatch — see `PopupKind`.
+        // `Transient` (`gn`/`gp`) clears unconditionally and the key still
+        // dispatches below. `Scrollable` (scrollable hover) consumes
         // Ctrl+u/Ctrl+d to scroll; any other key closes the popup and falls
         // through to normal dispatch this same call.
-        match self.state.popup.as_ref().map(|p| &p.dismiss) {
-            Some(crate::ui::popup::PopupDismiss::AnyKey) => {
+        match self.state.popup.as_ref().map(|p| p.kind) {
+            Some(PopupKind::Transient) => {
                 self.state.popup = None;
             }
-            Some(crate::ui::popup::PopupDismiss::KeyExceptScroll) => {
+            Some(PopupKind::Scrollable) => {
                 let ctrl = key.modifiers.contains(Modifiers::CONTROL);
                 match key.code {
                     KeyCode::Char('d') if ctrl => {
@@ -62,7 +64,7 @@ impl Editor {
                     _ => self.state.popup = None,
                 }
             }
-            Some(crate::ui::popup::PopupDismiss::ModeChange) | None => {}
+            Some(PopupKind::Sticky) | None => {}
         }
 
         // ── Picker intercept ──────────────────────────────────────────────

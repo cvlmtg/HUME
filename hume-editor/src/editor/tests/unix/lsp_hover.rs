@@ -209,10 +209,10 @@ fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
     assert!(popup_lines(&ed).is_some(), "sanity: popup shown");
     assert!(
         matches!(
-            ed.state.popup.as_ref().map(|p| &p.dismiss),
-            Some(crate::ui::popup::PopupDismiss::KeyExceptScroll)
+            ed.state.popup.as_ref().map(|p| p.kind),
+            Some(hume_scripting::host::PopupKind::Scrollable)
         ),
-        "hover must open a scrollable popup (`#:scroll #t`), not the old mode-change-only one"
+        "hover must open a scrollable popup (`#:kind 'scrollable`), not the sticky mode-change-only one"
     );
 
     // Ctrl+d/Ctrl+u scroll the popup instead of closing it.

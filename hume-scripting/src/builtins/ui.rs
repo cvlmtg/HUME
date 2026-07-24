@@ -9,6 +9,7 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
+use crate::host::PopupKind;
 use crate::SteelCtx;
 
 use super::args::{
@@ -19,18 +20,17 @@ use super::errors::{generic_err, require_cap};
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
-/// `(%show-popup! text anchor dismiss-on-key scrollable lang)` — the
-/// `show-popup!` Scheme wrapper supplies
-/// `#:anchor`/`#:dismiss-on-key`/`#:scroll`/`#:lang`'s defaults. `anchor`
-/// selects the render layout: `'cursor` floats near the focused pane's
-/// cursor (default); `'bottom` docks as a full-width band above the
-/// statusline, reserving pane space like the drawer.
+/// `(%show-popup! text anchor kind lang)` — the `show-popup!` Scheme wrapper
+/// supplies `#:anchor`/`#:kind`/`#:lang`'s defaults. `anchor` selects the
+/// render layout: `'cursor` floats near the focused pane's cursor (default);
+/// `'bottom` docks as a full-width band above the statusline, reserving pane
+/// space like the drawer. `kind` selects the dismiss behavior — see
+/// [`PopupKind`].
 pub(crate) fn show_popup(
     ctx: &mut SteelCtx,
     text: SteelVal,
     anchor: SteelVal,
-    dismiss_on_key: SteelVal,
-    scrollable: SteelVal,
+    kind: SteelVal,
     lang: SteelVal,
 ) -> SteelResult {
     let text = string_arg(text, "show-popup! text")?;
@@ -42,14 +42,18 @@ pub(crate) fn show_popup(
             steel::stop!(Generic => "show-popup!: #:anchor must be 'cursor or 'bottom, got '{}'", other)
         }
     };
-    let dismiss_on_key = bool_arg(dismiss_on_key, "show-popup! #:dismiss-on-key")?;
-    let scrollable = bool_arg(scrollable, "show-popup! #:scroll")?;
+    let kind = string_arg(kind, "show-popup! #:kind")?;
+    let kind = match kind.as_str() {
+        "sticky" => PopupKind::Sticky,
+        "transient" => PopupKind::Transient,
+        "scrollable" => PopupKind::Scrollable,
+        other => {
+            steel::stop!(Generic => "show-popup!: #:kind must be 'sticky, 'transient, or 'scrollable, got '{}'", other)
+        }
+    };
     let lang = optional_string_arg(lang, "show-popup! #:lang")?;
-    if dismiss_on_key && scrollable {
-        steel::stop!(Generic => "show-popup!: #:dismiss-on-key and #:scroll are mutually exclusive");
-    }
     require_cap(ctx.host.ui(), "show-popup!")?
-        .show_popup(text, dismiss_on_key, scrollable, docked, lang)
+        .show_popup(text, kind, docked, lang)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
 }

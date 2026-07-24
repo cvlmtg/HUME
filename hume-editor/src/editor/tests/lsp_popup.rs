@@ -170,7 +170,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_docked_popup_without_touching_the_buffer() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-command! "go" "" (lambda () (show-popup! "{tall}" #:scroll #t #:anchor 'bottom)))"#
+            r#"(define-command! "go" "" (lambda () (show-popup! "{tall}" #:kind 'scrollable #:anchor 'bottom)))"#
         ),
     );
     type_cmd(&mut ed, ":go");
@@ -222,7 +222,7 @@ fn any_other_key_closes_a_docked_popup_and_still_dispatches() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda () (show-popup! "hello" #:scroll #t #:anchor 'bottom)))"#,
+        r#"(define-command! "go" "" (lambda () (show-popup! "hello" #:kind 'scrollable #:anchor 'bottom)))"#,
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
@@ -299,7 +299,7 @@ fn popup_wraps_to_the_pane_width_and_anchors_below_the_cursor() {
     assert_eq!(x, 0, "anchor column matches the cursor's column");
 }
 
-// ── Scrollable popup (`#:scroll`) dismissal + Ctrl+u/Ctrl+d ─────────────────
+// ── Scrollable popup (`#:kind 'scrollable`) dismissal + Ctrl+u/Ctrl+d ───────
 
 #[test]
 fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
@@ -312,7 +312,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
     run(
         &mut ed,
         tmp.path(),
-        &format!(r#"(define-command! "go" "" (lambda () (show-popup! "{tall}" #:scroll #t)))"#),
+        &format!(r#"(define-command! "go" "" (lambda () (show-popup! "{tall}" #:kind 'scrollable)))"#),
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
@@ -364,7 +364,7 @@ fn any_other_key_closes_a_scrollable_popup_and_still_dispatches() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda () (show-popup! "hello" #:scroll #t)))"#,
+        r#"(define-command! "go" "" (lambda () (show-popup! "hello" #:kind 'scrollable)))"#,
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
@@ -389,9 +389,10 @@ fn any_other_key_closes_a_scrollable_popup_and_still_dispatches() {
 
 #[test]
 fn ctrl_d_on_a_non_scroll_popup_still_scrolls_the_buffer() {
-    // Regression guard: a popup without `#:scroll` (hover/sighelp today,
-    // or the diagnostic overlay before its own `#:dismiss-on-key` clear)
-    // must leave Ctrl+d/Ctrl+u to their ordinary half-page-scroll binding.
+    // Regression guard: a plain popup (`#:kind` omitted or `'sticky` —
+    // hover/sighelp today, or the diagnostic overlay before its own
+    // `'transient` clear) must leave Ctrl+d/Ctrl+u to their ordinary
+    // half-page-scroll binding.
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n");
     run(
@@ -408,8 +409,8 @@ fn ctrl_d_on_a_non_scroll_popup_still_scrolls_the_buffer() {
 
     assert!(
         matches!(
-            ed.state.popup.as_ref().map(|p| &p.dismiss),
-            Some(crate::ui::popup::PopupDismiss::ModeChange)
+            ed.state.popup.as_ref().map(|p| p.kind),
+            Some(hume_scripting::host::PopupKind::Sticky)
         ),
         "a plain popup must be untouched by Ctrl+d"
     );
@@ -435,7 +436,7 @@ fn scrollable_popup_paints_its_scrolled_window() {
     run(
         &mut ed,
         tmp.path(),
-        &format!(r#"(define-command! "go" "" (lambda () (show-popup! "{tall}" #:scroll #t)))"#),
+        &format!(r#"(define-command! "go" "" (lambda () (show-popup! "{tall}" #:kind 'scrollable)))"#),
     );
     type_cmd(&mut ed, ":go");
 

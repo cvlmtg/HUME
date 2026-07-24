@@ -188,15 +188,15 @@ macro_rules! builtins {
 // show-popup! — text panel, floating or docked. #:anchor: 'cursor (default)
 // floats near the focused pane's cursor; 'bottom docks as a full-width band
 // above the statusline, reserving pane space like the drawer (used for
-// hover content too tall for the cursor layout). #:dismiss-on-key: the popup
+// hover content too tall for the cursor layout). #:kind selects the dismiss
+// behavior (default 'sticky): 'sticky is untouched by keys, closed only by
+// on-mode-change or the next show-popup! (hover, signature help); 'transient
 // is cleared by the Editor::handle_key top-of-loop check on the *next* key
-// press, whatever key it is (see `gn`/`gp`'s diagnostic overlay) — default
-// #f keeps the existing on-mode-change-only dismissal (hover, signature
-// help). #:scroll: Ctrl+u/Ctrl+d scroll the popup's content instead of the
-// buffer, and every other key closes it — mutually exclusive with
-// #:dismiss-on-key. #:lang: syntax-highlight the content like a real buffer
-// when a grammar named #:lang is registered; plain text otherwise (default
-// #f is always plain).
+// press, whatever key it is (see `gn`/`gp`'s diagnostic overlay); 'scrollable
+// has Ctrl+u/Ctrl+d scroll the popup's content instead of the buffer, and
+// every other key closes it. #:lang: syntax-highlight the content like a
+// real buffer when a grammar named #:lang is registered; plain text
+// otherwise (default #f is always plain).
 //
 // show-drawer-list! — pick-list only, no #:lang: rows are plain display
 // strings, never syntax-highlighted (that's the popup's job).
@@ -446,7 +446,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "completion-dismiss!" completion::completion_dismiss();
 
         // Cursor-anchored popup widget.
-        cmd "%show-popup!" ui::show_popup(text: SteelVal, anchor: SteelVal, dismiss_on_key: SteelVal, scrollable: SteelVal, lang: SteelVal);
+        cmd "%show-popup!" ui::show_popup(text: SteelVal, anchor: SteelVal, kind: SteelVal, lang: SteelVal);
         cmd "close-popup!" ui::close_popup();
 
         // Selection menu widget.

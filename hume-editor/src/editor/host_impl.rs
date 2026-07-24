@@ -21,7 +21,7 @@ use crate::settings::SettingScope;
 use crate::ui::statusline::StatusElement;
 use hume_scripting::host::{
     BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost, EditHost, EditorHost,
-    LanguageHost, LspHost, OptionValue, OutputHost, SettingsHost, TimerHost, UiHost,
+    LanguageHost, LspHost, OptionValue, OutputHost, PopupKind, SettingsHost, TimerHost, UiHost,
 };
 
 use super::{EditorState, Severity};
@@ -954,18 +954,10 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     fn show_popup(
         &mut self,
         text: String,
-        dismiss_on_key: bool,
-        scrollable: bool,
+        kind: PopupKind,
         docked: bool,
         lang: Option<String>,
     ) -> Result<(), String> {
-        let dismiss = if scrollable {
-            crate::ui::popup::PopupDismiss::KeyExceptScroll
-        } else if dismiss_on_key {
-            crate::ui::popup::PopupDismiss::AnyKey
-        } else {
-            crate::ui::popup::PopupDismiss::ModeChange
-        };
         let layout = if docked {
             crate::ui::popup::PopupLayout::Docked
         } else {
@@ -974,7 +966,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         let syntax = lang.and_then(|lang| self.build_markup_syntax(&lang, &text));
         self.state.popup = Some(crate::ui::popup::PopupModel {
             text,
-            dismiss,
+            kind,
             scroll: 0,
             syntax,
             layout,

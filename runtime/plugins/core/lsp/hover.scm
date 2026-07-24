@@ -46,13 +46,13 @@
          (threshold (if visible (quotient visible 3) 15))
          (lines (split-many text "\n")))
     (if (<= (length lines) threshold)
-        (show-popup! text #:scroll #t #:lang lang)
-        (show-popup! text #:scroll #t #:lang lang #:anchor 'bottom))))
+        (show-popup! text #:kind 'scrollable #:lang lang)
+        (show-popup! text #:kind 'scrollable #:lang lang #:anchor 'bottom))))
 
 ;; ── Dismiss ─────────────────────────────────────────────────────────────────
 ;; A stale hover popup must not linger once the user has moved on — it closes
-;; on any key other than Ctrl+u/Ctrl+d (`#:scroll #t`, which those two page
-;; instead), and on any mode change (leaving Insert, entering Command, …) as
+;; on any key other than Ctrl+u/Ctrl+d (`#:kind 'scrollable`, which those two
+;; page instead), and on any mode change (leaving Insert, entering Command, …) as
 ;; a backstop for the cases a key press doesn't cover (e.g. a mouse-driven
 ;; mode switch). The on-mode-change registration lives in lib.scm (shared
 ;; popup widget — sighelp.scm uses the same close-on-mode-change dismissal,

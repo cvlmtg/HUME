@@ -63,7 +63,8 @@ pub use builtins::ids::SteelBufferId;
 pub use hooks::HookId;
 pub use host::{
     BindMode, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost, EditHost,
-    EditorHost, LanguageHost, LspHost, OutputHost, SettingsHost, TimerHost, UiHost, unsupported,
+    EditorHost, LanguageHost, LspHost, OutputHost, PopupKind, SettingsHost, TimerHost, UiHost,
+    unsupported,
 };
 pub use keys::parse_key_stream;
 pub use log::LogLevel;
