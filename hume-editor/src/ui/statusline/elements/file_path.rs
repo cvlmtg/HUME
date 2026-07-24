@@ -4,7 +4,7 @@ use ratatui::style::Style;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use hume_platform::path::{is_path_sep, shorten_home};
+use hume_platform::path::{is_path_sep, shorten_home, strip_unc_prefix};
 
 use crate::editor::Editor;
 use crate::ui::theme::EditorColors;
@@ -23,12 +23,22 @@ pub(in crate::ui::statusline) fn render(
 
 /// Returns the display path for the `FilePath` element: `display_path` (user-typed,
 /// symlinks unresolved) when set, falling back to the canonical `path`. Both are
-/// `~`-collapsed for display. Returns `""` for scratch and synthetic buffers.
+/// stripped of the Windows `\\?\` verbatim prefix and `~`-collapsed for display.
+/// Returns `""` for scratch and synthetic buffers.
 pub(in crate::ui::statusline) fn statusline_display_path(editor: &Editor) -> String {
     let doc = editor.doc();
-    let path = doc.display_path().or_else(|| doc.path());
+    display_path_string(doc.display_path().or_else(|| doc.path()))
+}
+
+/// Normalize a buffer path for display: strip the Windows `\\?\` verbatim
+/// prefix (no-op on other platforms and on paths that never carried one, e.g.
+/// `display_path`'s `absolute_unresolved` output), then `~`-collapse.
+/// `strip_unc_prefix` must run first — `shorten_home`'s prefix match is
+/// against the clean `C:\Users\...` form, which the verbatim-prefixed string
+/// wouldn't match. `None` maps to `""`.
+pub(in crate::ui::statusline) fn display_path_string(path: Option<&std::path::Path>) -> String {
     match path {
-        Some(p) => shorten_home(p),
+        Some(p) => shorten_home(&strip_unc_prefix(p.to_owned())),
         None => String::new(),
     }
 }

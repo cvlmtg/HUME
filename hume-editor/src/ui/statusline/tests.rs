@@ -1,4 +1,4 @@
-use super::elements::file_path::{shorten_path_to_width, shorten_path_to_width_with};
+use super::elements::file_path::{display_path_string, shorten_path_to_width, shorten_path_to_width_with};
 use super::*;
 use ratatui::style::Style;
 
@@ -469,4 +469,36 @@ fn shorten_path_unix_sep_ignores_backslash() {
     let path = r"~/foo\bar.txt"; // 13 cols
     let result = shorten_path_to_width_with(path, 8, unix_like_sep);
     assert_eq!(result, r"~/foo\b…");
+}
+
+// ── display_path_string (Windows `\\?\` prefix stripping) ─────────────────
+
+#[test]
+fn display_path_string_none_is_empty() {
+    assert_eq!(display_path_string(None), "");
+}
+
+#[test]
+fn display_path_string_plain_path_matches_shorten_home() {
+    // No verbatim prefix to strip: output must be exactly what shorten_home
+    // alone would produce — an oracle independent of strip_unc_prefix.
+    let path = std::path::Path::new("/some/absolute/path/file.rs");
+    assert_eq!(
+        display_path_string(Some(path)),
+        hume_platform::path::shorten_home(path)
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn display_path_string_strips_windows_verbatim_prefix() {
+    // Regression: statusline must never show the raw `\\?\` extended-length
+    // prefix that `canonicalize` attaches on Windows.
+    let path = std::path::Path::new(r"\\?\C:\Users\x\file.rs");
+    let result = display_path_string(Some(path));
+    assert!(
+        !result.contains(r"\\?\"),
+        "statusline path {result:?} still carries the verbatim prefix"
+    );
+    assert!(result.contains("file.rs"));
 }
