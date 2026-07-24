@@ -35,8 +35,10 @@
   (goto-location! (list (current-buffer) (hash-ref d "line") (hash-ref d "col"))))
 
 ;;; gn/gp only — jumps like `lsp/diag-jump-to!`, then pops the target's full
-;;; message in a dismiss-on-next-key overlay. `:diagnostics`' drawer-select
-;;; callback calls `lsp/diag-jump-to!` directly and stays overlay-free.
+;;; message in a dismiss-on-any-key overlay (`#:kind 'scrollable`: a
+;;; multi-line message gets Ctrl+u/Ctrl+d scrolling for free, and any other
+;;; key still dismisses it). `:diagnostics`' drawer-select callback calls
+;;; `lsp/diag-jump-to!` directly and stays overlay-free.
 (define (lsp/diag-jump direction)
   (let ((diags (diagnostics-for-buffer (current-buffer))))
     (if (null? diags)
@@ -46,7 +48,7 @@
                            (lsp/first-after diags head)
                            (lsp/last-before diags head))))
           (lsp/diag-jump-to! target)
-          (show-popup! (hash-ref target "message") #:kind 'transient)))))
+          (show-popup! (hash-ref target "message") #:kind 'scrollable)))))
 
 ;; ── Commands ─────────────────────────────────────────────────────────────────
 

@@ -40,20 +40,20 @@ pub fn unsupported(builtin: &str) -> String {
 /// How an open popup reacts to key events — `show-popup!`'s `#:kind` symbol,
 /// decoded once at the builtin boundary (`builtins::ui::show_popup`) and
 /// carried as-is into the editor's own popup state, so there is exactly one
-/// definition of the three dismiss behaviors, not a bool pair mapped to a
+/// definition of the two dismiss behaviors, not a bool pair mapped to a
 /// second enum on the other side of the trait.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PopupKind {
     /// Untouched by keys; closed only by the `on-mode-change` Steel hook and
     /// the next `show-popup!`. Default — `#:kind` omitted, or `'sticky`.
     Sticky,
-    /// Cleared unconditionally at the start of the *next* key event, whatever
-    /// the key is — the key still dispatches normally (`gn`/`gp`'s
-    /// diagnostic overlay, `#:kind 'transient`).
-    Transient,
-    /// Ctrl+u/Ctrl+d scroll the content and are consumed; every other key
-    /// closes the popup and falls through to normal dispatch (scrollable
-    /// hover, `#:kind 'scrollable`).
+    /// Ctrl+u/Ctrl+d scroll the content and are consumed *when it overflows
+    /// one screenful*; every other key — and Ctrl+u/d with nothing to scroll
+    /// — closes the popup and falls through to normal dispatch (`#:kind
+    /// 'scrollable`). Covers both scrollable hover and the dismiss-on-any-key
+    /// `gn`/`gp` diagnostic overlay: the two collapse to the same behavior
+    /// once content fits on screen, and a long diagnostic gets scrolling for
+    /// free instead of a hard height cap.
     Scrollable,
 }
 

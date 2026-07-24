@@ -190,11 +190,10 @@ macro_rules! builtins {
 // above the statusline, reserving pane space like the drawer (used for
 // hover content too tall for the cursor layout). #:kind selects the dismiss
 // behavior (default 'sticky): 'sticky is untouched by keys, closed only by
-// on-mode-change or the next show-popup! (hover, signature help); 'transient
-// is cleared by the Editor::handle_key top-of-loop check on the *next* key
-// press, whatever key it is (see `gn`/`gp`'s diagnostic overlay); 'scrollable
-// has Ctrl+u/Ctrl+d scroll the popup's content instead of the buffer, and
-// every other key closes it. #:lang: syntax-highlight the content like a
+// on-mode-change or the next show-popup! (signature help); 'scrollable has
+// Ctrl+u/Ctrl+d scroll the popup's content when it overflows one screenful,
+// and every other key — plus Ctrl+u/d with nothing to scroll — closes it
+// (scrollable hover, `gn`/`gp`'s diagnostic overlay). #:lang: syntax-highlight the content like a
 // real buffer when a grammar named #:lang is registered; plain text
 // otherwise (default #f is always plain).
 //

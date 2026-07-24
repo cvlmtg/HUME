@@ -1,6 +1,6 @@
 // Diagnostics end-of-line inline summary (`set-inline-diagnostics!`, wired
 // from `on-diagnostics-changed` in `diagnostics.scm`) and the gn/gp
-// dismiss-on-next-key overlay (`show-popup! #:kind 'transient`). Same harness
+// dismiss-on-any-key overlay (`show-popup! #:kind 'scrollable`). Same harness
 // shape as `lsp_diagnostics_nav.rs`.
 
 use std::path::Path;
@@ -205,8 +205,8 @@ fn goto_next_diagnostic_opens_a_dismiss_on_key_popup_with_the_full_message() {
          (unlike the inline summary and the :diagnostics drawer row)"
     );
     assert!(
-        matches!(popup.kind, hume_scripting::host::PopupKind::Transient),
-        "the gn/gp overlay must be dismiss-on-next-key, unlike hover"
+        matches!(popup.kind, hume_scripting::host::PopupKind::Scrollable),
+        "the gn/gp overlay must be a dismiss-on-any-key popup, same kind as hover"
     );
 }
 

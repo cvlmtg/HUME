@@ -45,10 +45,9 @@ pub(crate) fn show_popup(
     let kind = string_arg(kind, "show-popup! #:kind")?;
     let kind = match kind.as_str() {
         "sticky" => PopupKind::Sticky,
-        "transient" => PopupKind::Transient,
         "scrollable" => PopupKind::Scrollable,
         other => {
-            steel::stop!(Generic => "show-popup!: #:kind must be 'sticky, 'transient, or 'scrollable, got '{}'", other)
+            steel::stop!(Generic => "show-popup!: #:kind must be 'sticky or 'scrollable, got '{}'", other)
         }
     };
     let lang = optional_string_arg(lang, "show-popup! #:lang")?;
