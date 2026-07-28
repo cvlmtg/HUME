@@ -121,23 +121,12 @@ fn jump_editor(cursor_line: usize) -> Editor {
     ed
 }
 
-/// Create a temp file holding `content`, returning its `TempPath`.
-///
-/// `TempPath` rather than `NamedTempFile`: on Windows an open handle on the
-/// destination blocks the `MoveFileEx` replace behind `write_file_atomic`, so
-/// any temp file the editor might save onto must not keep one.
-fn temp_file_with(content: &str) -> tempfile::TempPath {
-    let tmp = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(tmp.path(), content).unwrap();
-    tmp.into_temp_path()
-}
-
 /// Write `file_content` to a temp file, return an editor pointing at it.
 fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfile::TempPath) {
-    let tmp_path = temp_file_with(file_content);
-    let (_, meta) = hume_platform::io::read_file(&tmp_path).unwrap();
+    let (path, tmp_path) = temp_file(file_content);
+    let (_, meta) = hume_platform::io::read_file(&path).unwrap();
     let mut ed = editor_from(initial_state);
-    ed.doc_mut().set_path(Some(tmp_path.to_path_buf()));
+    ed.doc_mut().set_path(Some(path));
     ed.doc_mut().file_meta = Some(meta);
     (ed, tmp_path)
 }
@@ -438,7 +427,13 @@ fn eval_with_real_host(
     ed.apply_script_effects(effects);
 }
 
-/// Write `content` to a temp file and return its path (kept alive by the returned TempPath).
+/// Write `content` to a temp file and return its path (kept alive by the
+/// returned `TempPath`).
+///
+/// Returns `TempPath` rather than keeping the `NamedTempFile` open: on
+/// Windows an open handle on the destination blocks the `MoveFileEx` replace
+/// behind `write_file_atomic`, so any temp file the editor might write to
+/// must not keep one held.
 fn temp_file(content: &str) -> (std::path::PathBuf, tempfile::TempPath) {
     let f = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(f.path(), content).unwrap();

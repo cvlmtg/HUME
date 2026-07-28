@@ -160,9 +160,8 @@ fn bnext_and_bprev_run_the_buffer_enter_disk_check() {
     let (mut ed, tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid_a = ed.focused_buffer_id();
 
-    let tmp_b = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(tmp_b.path(), "world\n").unwrap();
-    type_cmd(&mut ed, &format!(":e {}", tmp_b.path().display()));
+    let (tmp_b, _tmp_b_guard) = temp_file("world\n");
+    type_cmd(&mut ed, &format!(":e {}", tmp_b.display()));
     let bid_b = ed.focused_buffer_id();
     assert_ne!(bid_a, bid_b, "setup: :e must open a distinct second buffer");
 
@@ -191,9 +190,8 @@ fn deferred_change_on_non_focused_buffer_prompts_on_buffer_enter() {
     let (mut ed, _tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid_a = ed.focused_buffer_id();
 
-    let tmp_b = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(tmp_b.path(), "world\n").unwrap();
-    type_cmd(&mut ed, &format!(":e {}", tmp_b.path().display()));
+    let (tmp_b, _tmp_b_guard) = temp_file("world\n");
+    type_cmd(&mut ed, &format!(":e {}", tmp_b.display()));
     let bid_b = ed.focused_buffer_id();
     assert_ne!(bid_a, bid_b, "setup: :e must open a distinct second buffer");
 
@@ -201,7 +199,7 @@ fn deferred_change_on_non_focused_buffer_prompts_on_buffer_enter() {
     type_cmd(&mut ed, ":b #");
     assert_eq!(ed.focused_buffer_id(), bid_a, "setup: :b # must return to A");
 
-    rewrite_externally(tmp_b.path(), "world, externally changed!\n");
+    rewrite_externally(&tmp_b, "world, externally changed!\n");
     let (_, warnings_before) = ed.state.message_log.totals();
     ed.check_buffer_disk_state(bid_b, DiskCheckTrigger::Ambient);
     let (_, warnings_after) = ed.state.message_log.totals();
@@ -356,10 +354,9 @@ fn reload_confirm_accept_after_focus_moved_away_does_not_panic() {
 
     // Simulate an async callback moving focus without going through key
     // dispatch — the confirm is left open, still targeting A.
-    let tmp_b = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(tmp_b.path(), "world\n").unwrap();
+    let (tmp_b, _tmp_b_guard) = temp_file("world\n");
     let (bid_b, _) = ed
-        .resolve_open_path(&tmp_b.path().display().to_string())
+        .resolve_open_path(&tmp_b.display().to_string())
         .unwrap();
     ed.switch_to_buffer_without_jump(bid_b);
     assert_ne!(ed.focused_buffer_id(), bid_a, "setup: focus must have moved off A");
@@ -449,13 +446,11 @@ fn write_recreates_a_vanished_file() {
 /// (`/var` → `/private/var`) and silently defeat this test.
 #[test]
 fn write_percent_refuses_on_externally_changed_own_file() {
-    let tmp = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(tmp.path(), "hello\n").unwrap();
+    let (tmp, _tmp_guard) = temp_file("hello\n");
     let mut ed = editor_from("-[h]>ello\n");
-    ed.execute_typed("e", Some(tmp.path().to_str().unwrap()))
-        .unwrap();
+    ed.execute_typed("e", Some(tmp.to_str().unwrap())).unwrap();
 
-    rewrite_externally(tmp.path(), "hello, externally changed!\n");
+    rewrite_externally(&tmp, "hello, externally changed!\n");
 
     type_cmd(&mut ed, ":w %");
 
@@ -464,7 +459,7 @@ fn write_percent_refuses_on_externally_changed_own_file() {
         Some("file has changed on disk (add ! to override)")
     );
     assert_eq!(
-        std::fs::read_to_string(tmp.path()).unwrap(),
+        std::fs::read_to_string(&tmp).unwrap(),
         "hello, externally changed!\n",
         "the refused write must not have touched the file"
     );
@@ -482,7 +477,7 @@ fn save_as_to_unrelated_path_succeeds_despite_own_file_changing() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     rewrite_externally(&tmp, "hello, externally changed!\n");
 
-    let other = temp_file_with("");
+    let (other, _other_guard) = temp_file("");
     type_cmd(&mut ed, &format!(":w {}", other.display()));
 
     assert_eq!(std::fs::read_to_string(&other).unwrap(), "hello\n");
@@ -534,15 +529,14 @@ fn checktime_warns_for_a_changed_non_focused_buffer() {
     let (mut ed, _tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid_a = ed.focused_buffer_id();
 
-    let tmp_b = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(tmp_b.path(), "world\n").unwrap();
-    type_cmd(&mut ed, &format!(":e {}", tmp_b.path().display()));
+    let (tmp_b, _tmp_b_guard) = temp_file("world\n");
+    type_cmd(&mut ed, &format!(":e {}", tmp_b.display()));
     assert_ne!(ed.focused_buffer_id(), bid_a);
 
     type_cmd(&mut ed, ":b #");
     assert_eq!(ed.focused_buffer_id(), bid_a, "setup: :b # must return to A");
 
-    rewrite_externally(tmp_b.path(), "world, externally changed!\n");
+    rewrite_externally(&tmp_b, "world, externally changed!\n");
     let (_, warnings_before) = ed.state.message_log.totals();
 
     type_cmd(&mut ed, ":checktime");
@@ -566,7 +560,7 @@ fn write_all_skips_stale_buffer_but_writes_the_rest_bang_overrides() {
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
 
-    let tmp_b = temp_file_with("world\n");
+    let (tmp_b, _tmp_b_guard) = temp_file("world\n");
     type_cmd(&mut ed, &format!(":e {}", tmp_b.display()));
     let bid_b = ed.focused_buffer_id();
     ed.handle_key(key('i'));

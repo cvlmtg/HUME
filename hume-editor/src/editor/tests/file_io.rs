@@ -66,10 +66,7 @@ pub(super) fn dirty_focused(ed: &mut Editor) {
 /// Create a temp file and open it as one more buffer. The buffer starts clean
 /// (same content as the file). Caller must dirty it themselves after switching.
 pub(super) fn open_file_buffer(ed: &mut Editor, content: &str) -> (tempfile::TempPath, BufferId) {
-    let tmp = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(tmp.path(), content).unwrap();
-    let path = tmp.path().to_path_buf();
-    let tmp_path = tmp.into_temp_path();
+    let (path, tmp_path) = temp_file(content);
     let (_, meta) = hume_platform::io::read_file(&path).unwrap();
     let text = Text::from(content);
     let sels = SelectionSet::single(Selection::collapsed(0));
