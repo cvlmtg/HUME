@@ -22,10 +22,12 @@ There are two ways to set an option: the `:set` command for runtime changes, or 
 The `:set` command takes a scope and a `key=value` pair. The scope is required:
 
 ```
-:set global <option>=<value>     set the global default; new buffers/panes inherit it
+:set global <option>=<value>     set the global default
 :set buffer <option>=<value>     override for the current buffer only (takes precedence over global)
 :set pane <option>=<value>       override for the current pane only (view-scoped settings)
 ```
+
+For a buffer option (the [Buffer options](#buffer-options) table below), `:set global` takes effect immediately in every buffer that has no override of its own — not just newly opened ones. `wrap-mode`, the one option `:set pane` accepts, works differently: a `:set global wrap-mode=…` only seeds *new* panes; panes already open keep whatever wrap mode they already had (see [Text wrap](#text-wrap)).
 
 Changes apply to the current session and are not persisted — for persistent configuration, use `init.scm` (below).
 
@@ -35,16 +37,32 @@ Changes apply to the current session and are not persisted — for persistent co
 (set-option! "option-name" value)
 ```
 
-Sets the global default. The value is a string, boolean, or integer. It is only valid inside `init.scm` or during plugin activation.
+Sets the global default. The value is a string, boolean, or integer. Callable from `init.scm`, a plugin body, or a command/hook body — anywhere Steel code runs.
 
 ```scheme
 (set-option! "line-number-style" "absolute")
 (set-option! "tab-width" 2)
 ```
 
+### Reading options from Steel
+
+```scheme
+(get-option "option-name")
+(get-option bid "option-name")
+```
+
+Returns the effective value of an option: called with just an option name, the focused buffer's override if one is set, else the global default. Pass a buffer id first (e.g. inside an `on-language-set` hook, whose handler receives the buffer id as an argument) to read that buffer's value instead of the focused one. Errors on an unknown option name; `language` has no getter — read it with `(buffer-language bid)` instead.
+
+```scheme
+(get-option "tab-width")       ; the focused buffer's effective tab-width
+(get-option bid "tab-width")   ; bid's effective tab-width
+```
+
 ## Global options
 
 Set with `:set global <option>=<value>` or `(set-option! "option" value)`. All of these are global-only except `wrap-mode`, which also accepts a per-pane override — see its row below and [Text wrap](#text-wrap).
+
+For a `bool` option, `:set` accepts `true`/`false`, `on`/`off`, `yes`/`no`, or `1`/`0`; from Scheme, pass `#t`/`#f`.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -57,7 +75,7 @@ Set with `:set global <option>=<value>` or `(set-option! "option" value)`. All o
 | `jump-line-threshold` | integer | `5` | Line distance to record a jump |
 | `history-capacity` | integer ≥ 1 | `100` | Max entries per `:`/`/`/`?` prompt history |
 | `undo-levels` | integer | `0` | Max undo states kept per buffer; `0` means unlimited. Once the limit is reached, the oldest states — including whole abandoned branches — are dropped as new edits are made |
-| `steel-init-budget-ms` | integer ≥ 1 | `10000` | Max init.scm evaluation time (ms) |
+| `steel-init-budget-ms` | integer ≥ 1 | `10000` | Max evaluation time (ms) for `init.scm` and each plugin activation. Setting it *from* `init.scm` has no effect on that same run — the budget is read before each file/plugin evaluation starts, so a change only takes effect for evaluations after it, i.e. the next plugin activation or the next session |
 | `steel-command-budget-ms` | integer ≥ 1 | `1000` | Max Steel command evaluation time (ms) |
 | `popup-border` | bool | `#t` | Show popup borders |
 | `syntax-highlight-max-bytes` | integer ≥ 1 | `1048576` | Max bytes for syntax highlighting |
@@ -66,18 +84,18 @@ Set with `:set global <option>=<value>` or `(set-option! "option" value)`. All o
 | `lsp.inlay-hints` | bool | `#f` | Show inlay hints from the language server |
 | `lsp.diagnostics-severity-floor` | `error` \| `warning` \| `info` \| `hint` | `hint` | Lowest diagnostic severity to display |
 | `lsp.request-timeout-ms` | integer ≥ 1 | `10000` | How long to wait for a language-server reply |
-| `lsp.viewport-debounce-ms` | integer | `150` | Delay before re-requesting hints after scrolling |
+| `lsp.viewport-debounce-ms` | integer ≥ 1 | `150` | Delay before re-requesting hints after scrolling |
 | `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Line wrapping for new panes. `N` is the wrap column (`0` or omitted = pane content width). See [Text wrap](#text-wrap) for per-pane overrides and the `:wrap` toggle |
 
 ## Buffer options
 
-These options have a global default that new buffers inherit, and a per-buffer override that takes precedence when present. Set the global default with `:set global <option>=<value>` or `(set-option! "option" value)`; override the current buffer with `:set buffer <option>=<value>`, or from a script with `(set-buffer-option! buffer-id "option" value)` — see [Plugins](plugins.md) for setting per-language overrides from the `on-language-set` hook.
+These options have a global default that every buffer without its own override resolves to — including buffers already open when you change it, not just ones opened afterward — and a per-buffer override that takes precedence when present. Set the global default with `:set global <option>=<value>` or `(set-option! "option" value)`; override the current buffer with `:set buffer <option>=<value>`, or from a script with `(set-buffer-option! buffer-id "option" value)` — see [Plugins](plugins.md) for setting per-language overrides from the `on-language-set` hook.
 
 `language` is an exception, it has no global default — it is auto-detected per buffer and can only be set with `:set buffer language=<name>`.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `tab-width` | integer | `4` | Spaces per indent level |
+| `tab-width` | integer, 1–255 | `4` | Spaces per indent level |
 | `indent-guides` | bool | `#t` | Draw vertical guides at each indentation level |
 | `tab-style` | `hard` \| `soft` | `hard` | What `Tab` inserts: `hard` = literal `\t`; `soft` = spaces to next tab stop |
 | `line-number-style` | `absolute` \| `relative` \| `hybrid` | `hybrid` | Line number display in the gutter |

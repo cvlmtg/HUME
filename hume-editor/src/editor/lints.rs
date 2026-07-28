@@ -75,6 +75,17 @@
 //! **Opt-out**: none — add the new call site's file to `allowed_files`
 //! instead, with a comment explaining why it has no editor state to resync
 //! effects against.
+//!
+//! # User-manual option-table drift
+//!
+//! `user-manual/docs/configuration.md`'s "Global options"/"Buffer options"
+//! tables are a hand-maintained mirror of `settings::all_setting_keys()`
+//! (plus `"language"`, documented but excluded from that list by design —
+//! see `settings.rs`'s module doc). Nothing else keeps the two in sync;
+//! `user_manual_option_tables_match_all_setting_keys` scans both tables for
+//! every backtick-quoted first-column key and diffs the set against the
+//! code's key list in both directions, catching a key added to
+//! `define_settings!` without a manual row (or vice versa).
 
 #[cfg(test)]
 mod tests {
@@ -777,6 +788,74 @@ mod tests {
             strip_line_comment(r#""a\"//b""#),
             r#""a\"//b""#,
             "escaped quote must not end the string early"
+        );
+    }
+
+    // ── User-manual option-table drift ─────────────────────────────────────────
+
+    /// The text between the first occurrence of `heading` and the next
+    /// top-level (`\n## `) heading — used to scope the key scan below to
+    /// just the two option tables, not the whole file (which has other
+    /// backtick-quoted, table-shaped content — the statusline elements
+    /// table, the key-string grammar table — that would otherwise produce
+    /// false-positive "stale" keys).
+    fn section_after<'a>(text: &'a str, heading: &str) -> &'a str {
+        let start = text
+            .find(heading)
+            .unwrap_or_else(|| panic!("heading '{heading}' not found in configuration.md"));
+        let after = &text[start + heading.len()..];
+        let end = after.find("\n## ").unwrap_or(after.len());
+        &after[..end]
+    }
+
+    /// Every `` `key` `` in a markdown table's first column: a line trimmed
+    /// to start with `` | ` `` (no other content in this file's tables looks
+    /// like that once scoped to one `## `-delimited section).
+    fn first_column_keys(section: &str) -> std::collections::BTreeSet<String> {
+        section
+            .lines()
+            .filter_map(|line| {
+                let rest = line.trim().strip_prefix("| `")?;
+                let (key, _) = rest.split_once('`')?;
+                (!key.is_empty()).then(|| key.to_string())
+            })
+            .collect()
+    }
+
+    /// Fail oracle: add a new entry to `define_settings!` (any section) or
+    /// to `user-manual/docs/configuration.md`'s option tables without the
+    /// matching change on the other side — this test fails naming the key
+    /// and which direction it's missing.
+    #[test]
+    fn user_manual_option_tables_match_all_setting_keys() {
+        let manifest = std::env::var("CARGO_MANIFEST_DIR")
+            .expect("CARGO_MANIFEST_DIR not set — run via `cargo test`");
+        let manual_path =
+            std::path::Path::new(&manifest).join("../user-manual/docs/configuration.md");
+        let text = std::fs::read_to_string(&manual_path)
+            .unwrap_or_else(|e| panic!("cannot read {}: {e}", manual_path.display()));
+
+        let mut documented = first_column_keys(section_after(&text, "## Global options"));
+        documented.extend(first_column_keys(section_after(&text, "## Buffer options")));
+
+        let mut code_keys: std::collections::BTreeSet<String> = crate::settings::all_setting_keys()
+            .iter()
+            .map(|k| k.to_string())
+            .collect();
+        // "language" has no define_settings! entry by design (see
+        // settings.rs's module doc) but is documented in the Buffer options
+        // table, so it's added here rather than to all_setting_keys() itself.
+        code_keys.insert("language".to_string());
+
+        let missing_from_docs: Vec<_> = code_keys.difference(&documented).collect();
+        let stale_in_docs: Vec<_> = documented.difference(&code_keys).collect();
+
+        assert!(
+            missing_from_docs.is_empty() && stale_in_docs.is_empty(),
+            "\nuser-manual/docs/configuration.md option tables drifted from \
+             settings::all_setting_keys().\n\
+             In code but missing from the docs tables: {missing_from_docs:?}\n\
+             In the docs tables but not a real setting key: {stale_in_docs:?}\n"
         );
     }
 }

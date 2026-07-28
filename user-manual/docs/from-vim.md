@@ -175,5 +175,5 @@ Most `:` commands work as expected:
 | `Ctrl+w` window prefix | `Ctrl+p` pane prefix |
 | `Ctrl+^` | `:b #`, or `Ctrl+6` with `core:vim-keybind` loaded (kitty only) |
 | `Ctrl+o` / `Ctrl+i` | `Ctrl+o` / `Ctrl+i` |
-| `:set` | `:set`, with different syntax — `:set global\|buffer key=value` |
+| `:set` | `:set`, with different syntax — `:set global\|buffer\|pane key=value` |
 | `:help` | — `:tutor` opens the tutorial, `:messages` shows the message log |

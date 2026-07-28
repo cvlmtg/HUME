@@ -1100,7 +1100,7 @@ impl CommandRegistry {
         );
         typed_cmd!(
             "set",
-            "Set a configuration value: :set global|buffer key=value.",
+            "Set a configuration value: :set global|buffer|pane key=value.",
             &[],
             typed_set
         );

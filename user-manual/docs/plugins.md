@@ -243,9 +243,9 @@ Available hooks and their lambda signatures:
 
 For lazy plugins, declare the events that should trigger activation via `#:events` on `declare-plugin` instead (see [How plugins are loaded](#how-plugins-are-loaded)). LSP-related hooks like `on-lsp-attach` work fine with `register-hook!`, but can't be used as an `#:events` activation entry — a plugin gated only on `on-lsp-attach` never activates, since nothing attaches to a server until the plugin has already loaded and registered it.
 
-`set-option!` can't be called from a hook handler: it's only valid while `init.scm` or a plugin body is being evaluated. Set options at the top level of your plugin instead.
+`set-option!` works from a hook or command handler too, not just at the top level of your plugin — it changes the *global* default, so use it there when that's really what you want.
 
-Per-buffer overrides *are* available from a hook: `(set-buffer-option! buffer-id "option" value)` sets an option just on the buffer named by `buffer-id`, which works from hook and command bodies (see [Buffer options](configuration.md#buffer-options) for the list of settable options). Pass the buffer id the hook itself hands you rather than assuming the buffer you're editing — a hook can fire for a buffer other than the one you're currently focused on. `language` isn't an option; set it with `set-buffer-language!` instead.
+For a per-buffer override, `(set-buffer-option! buffer-id "option" value)` sets an option just on the buffer named by `buffer-id`, which also works from hook and command bodies (see [Buffer options](configuration.md#buffer-options) for the list of settable options). Pass the buffer id the hook itself hands you rather than assuming the buffer you're editing — a hook can fire for a buffer other than the one you're currently focused on. `language` isn't an option; set it with `set-buffer-language!` instead. To read a specific buffer's options back the same way, pass its id first: `(get-option buffer-id "option")` (see [Configuration](configuration.md#reading-options-from-steel)).
 
 A few more examples:
 
