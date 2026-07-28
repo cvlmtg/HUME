@@ -138,22 +138,6 @@ impl CommandRegistry {
         self.commands.contains_key(name)
     }
 
-    /// Remove every `SteelBacked` and `Lazy` mappable command in one pass,
-    /// leaving native commands untouched.
-    ///
-    /// Test-only: `:reload-config` no longer calls this directly —
-    /// `ConfigState::new` rebuilds the whole registry via
-    /// `CommandRegistry::with_defaults()`, which achieves the same "no
-    /// stale dynamic entries in `builtin_cmd_names`" result without needing
-    /// a second, hand-maintained "which fields count as dynamic" definition
-    /// to stay in sync with `with_defaults()`. Kept for its own unit
-    /// coverage of the retain predicate.
-    #[cfg(test)]
-    pub(crate) fn unregister_dynamic_commands(&mut self) {
-        self.commands
-            .retain(|_, cmd| !matches!(cmd, Command::Mappable(mc) if !mc.is_native()));
-    }
-
     /// Register a typed command.
     ///
     /// Inserts the canonical name into `commands` and each alias into

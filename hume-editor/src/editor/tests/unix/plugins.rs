@@ -268,41 +268,6 @@ fn body_error_removes_stub_and_marks_failed() {
     );
 }
 
-/// `unregister_dynamic_commands` removes `Lazy` stubs (reload hygiene).
-///
-/// Flip: if only SteelBacked were removed, the stub would survive.
-#[test]
-fn unregister_dynamic_commands_clears_lazy_stubs() {
-    let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
-        r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
-    );
-
-    assert!(
-        matches!(
-            ed.state.config.registry.get_mappable("bar"),
-            Some(MappableCommand::Lazy { .. })
-        ),
-        "Lazy stub must be present before unregister"
-    );
-
-    ed.state.config.registry.unregister_dynamic_commands();
-
-    assert!(
-        ed.state.config.registry.get_mappable("bar").is_none(),
-        "Lazy stub must be removed by unregister_dynamic_commands"
-    );
-    // Built-in commands are untouched.
-    assert!(
-        ed.state
-            .config
-            .registry
-            .get_mappable("move-right")
-            .is_some(),
-        "move-right must survive unregister_dynamic_commands"
-    );
-}
-
 /// `:bar arg` on a lazy command: the arg is correctly passed to a 1-arity
 /// command on first call (after activation).
 ///

@@ -451,37 +451,6 @@ fn unregister_removes_dynamic_but_not_native() {
 }
 
 #[test]
-fn unregister_dynamic_commands_clears_steel_backed_and_lazy() {
-    use hume_scripting::attribution::PluginId;
-    let mut reg = CommandRegistry::with_defaults();
-    reg.register(MappableCommand::SteelBacked {
-        name: Cow::Owned("plugin-cmd-a".to_string()),
-        doc: Cow::Borrowed("doc"),
-        arity: 0,
-        is_variadic: false,
-        inline_output: false,
-        repeatable: false,
-    });
-    reg.register(MappableCommand::Lazy {
-        name: Cow::Owned("lazy-cmd".to_string()),
-        plugin: PluginId::User {
-            user: "u".to_string(),
-            repo: "r".to_string(),
-        },
-    });
-    assert!(!reg.steel_backed_names().is_empty());
-    assert!(reg.get_mappable("lazy-cmd").is_some());
-
-    reg.unregister_dynamic_commands();
-
-    assert!(reg.steel_backed_names().is_empty());
-    assert!(reg.get_mappable("plugin-cmd-a").is_none());
-    assert!(reg.get_mappable("lazy-cmd").is_none());
-    // Built-in commands are untouched.
-    assert!(reg.get_mappable("move-left").is_some());
-}
-
-#[test]
 fn clears_extend_flag_matches_expected_commands() {
     let reg = CommandRegistry::with_defaults();
 
