@@ -1,7 +1,8 @@
 # core:pickers
 
-Fuzzy file and buffer pickers — `git`/`fd`-backed file finder, plus a buffer
-switcher, built on HUME's generic picker widget (see
+Fuzzy file, buffer, and git-modified-file pickers — `git`/`fd`-backed file
+finder, a buffer switcher, and a `git status`-backed modified-file finder,
+built on HUME's generic picker widget (see
 [docs/FUZZY-FINDERS.md](../../../../docs/FUZZY-FINDERS.md)).
 
 ## Usage
@@ -15,10 +16,11 @@ not deferred to a first-use trigger:
 
 ## Keys
 
-| Key   | Command          | Effect                                       |
-|-------|------------------|-----------------------------------------------|
-| `g f` | `picker-files`   | Fuzzy-pick a file in the current tree and open it |
-| `g b` | `picker-buffers` | Fuzzy-pick an open buffer and switch to it    |
+| Key   | Command                | Effect                                       |
+|-------|-------------------------|-----------------------------------------------|
+| `g f` | `picker-files`          | Fuzzy-pick a file in the current tree and open it |
+| `g b` | `picker-buffers`        | Fuzzy-pick an open buffer and switch to it    |
+| `g m` | `picker-git-modified`   | Fuzzy-pick a file with staged or unstaged git changes and open it |
 
 Inside an open picker: type to filter, `Up`/`Down`/`Ctrl+p`/`Ctrl+n` move the
 selection, `PageUp`/`PageDown` page it, `Backspace` edits the query, `Enter`
@@ -44,3 +46,34 @@ re-scopes it):
 the editor's working directory (or its buffer name, for pathless buffers like
 `*scratch*`) — bare filenames would be ambiguous whenever two open buffers
 share a basename (two `mod.rs` files, say).
+
+## Git-modified files
+
+`picker-git-modified` runs `git status --porcelain -z --no-renames
+--untracked-files=<mode>` (a fast, local, small-output command, so this is a
+synchronous spawn — not the streaming source `picker-files` uses) and lists
+every entry exactly as git prints it: the two-letter status code (`M `,
+`A `, ` M`, `??`, …) followed by the path, relative to the repo root. `-z`
+avoids git's C-quoting of paths with whitespace or non-ASCII; `--no-renames`
+guarantees one field per entry (a rename otherwise prints as two NUL-separated
+fields under `-z`, which would parse as a spurious extra row).
+
+Because rows are repo-root-relative but `open-buffer!` resolves a relative
+path against the editor's cwd (`:pwd`), the plugin resolves the selected
+entry against the repo root (`git rev-parse --show-toplevel`) at accept time
+— so `g m` opens the right file even when `:pwd` is a subdirectory of the
+repo.
+
+An empty result (clean tree) or a cwd outside any git repository surfaces as
+a status message instead of an empty picker panel.
+
+### Config
+
+| Key            | Value        | Effect                                    |
+|----------------|--------------|--------------------------------------------|
+| `"untracked"` | `#t` (default) | Untracked files are listed (`--untracked-files=all`, one row per file — never collapsed to a directory row, which a file picker couldn't usefully open). |
+| `"untracked"` | `#f`          | Untracked files are excluded (`--untracked-files=no`). |
+
+```scheme
+(load-plugin "core:pickers" #:config (hash "untracked" #f))
+```

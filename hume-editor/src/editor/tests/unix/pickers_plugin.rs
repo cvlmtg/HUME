@@ -51,10 +51,26 @@ fn drain_until(ed: &mut Editor, mut until: impl FnMut(&Editor) -> bool) {
 /// commands the plugin registered are reachable by name — see the module
 /// doc comment on why plain, non-command helpers are not used this way).
 fn setup(guard: &HumeRuntimeGuard, tmp: &Path, input: &str, extra_source: &str) -> Editor {
+    setup_with_config(guard, tmp, input, None, extra_source)
+}
+
+/// Like `setup`, but passes `config_expr` (a Scheme expression, e.g.
+/// `(hash "untracked" #f)`) as `core:pickers`'s `#:config`.
+fn setup_with_config(
+    guard: &HumeRuntimeGuard,
+    tmp: &Path,
+    input: &str,
+    config_expr: Option<&str>,
+    extra_source: &str,
+) -> Editor {
     write_core_plugin(guard, "pickers", PICKERS_PLUGIN);
     let mut ed = editor_from(input);
     let mut host = ScriptingHost::new();
-    let source = format!("(load-plugin \"core:pickers\")\n{extra_source}");
+    let load = match config_expr {
+        Some(cfg) => format!("(load-plugin \"core:pickers\" #:config {cfg})"),
+        None => "(load-plugin \"core:pickers\")".to_string(),
+    };
+    let source = format!("{load}\n{extra_source}");
     eval_with_real_host(&mut ed, &mut host, &source, tmp);
     ed.scripting = Some(host);
     ed
@@ -67,6 +83,13 @@ fn git(dir: &Path, args: &[&str]) {
         .status()
         .expect("spawn git");
     assert!(status.success(), "git {args:?} failed");
+}
+
+/// Local commit identity — a fresh sandbox has none, and `git commit` fails
+/// without one.
+fn git_configure_identity(dir: &Path) {
+    git(dir, &["config", "user.email", "test@example.com"]);
+    git(dir, &["config", "user.name", "Test"]);
 }
 
 // ── Files picker — git branch (full integration) ──────────────────────────────
@@ -241,6 +264,287 @@ fn files_picker_error_path_names_fd() {
         .expect("error must surface as a status message");
     assert!(msg.contains("fd"), "error must name fd; got: {msg}");
     assert!(ed.state.config.picker.is_none());
+}
+
+// ── Git-modified-files picker ──────────────────────────────────────────────────
+
+#[test]
+fn git_modified_picker_lists_changed_files_with_status_codes() {
+    let guard = HumeRuntimeGuard::new();
+    let sandbox = CwdSandbox::new();
+    git(sandbox.raw(), &["init", "-q"]);
+    git_configure_identity(sandbox.raw());
+    std::fs::write(sandbox.raw().join("a.txt"), "hello\n").unwrap();
+    git(sandbox.raw(), &["add", "a.txt"]);
+    git(sandbox.raw(), &["commit", "-q", "-m", "init"]);
+    // Unstaged modification to a committed, tracked file.
+    std::fs::write(sandbox.raw().join("a.txt"), "hello\nworld\n").unwrap();
+    // Staged, never-committed addition.
+    std::fs::write(sandbox.raw().join("b.txt"), "").unwrap();
+    git(sandbox.raw(), &["add", "b.txt"]);
+    // Untracked.
+    std::fs::write(sandbox.raw().join("c.txt"), "").unwrap();
+
+    // Bare tempdir(), not safe_tempdir() — see the comment at this pattern's
+    // first occurrence above (`files_picker_in_git_repo_uses_git_index_and_opens_selection`).
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
+    ed.set_cwd(&sandbox.path()).unwrap();
+
+    ed.feed_key(key('g'));
+    ed.feed_key(key('m'));
+
+    let picker = ed.state.config.picker.as_ref().expect("picker open");
+    assert_eq!(picker.prompt(), "git: ");
+    assert_eq!(picker.total_len(), 3);
+    let rows: Vec<&str> = picker.window(10).collect();
+    assert!(
+        rows.contains(&" M a.txt"),
+        "unstaged modification must show ' M'; got {rows:?}"
+    );
+    assert!(
+        rows.contains(&"A  b.txt"),
+        "staged addition must show 'A '; got {rows:?}"
+    );
+    assert!(
+        rows.contains(&"?? c.txt"),
+        "untracked file must show '??'; got {rows:?}"
+    );
+}
+
+#[test]
+fn git_modified_picker_accept_resolves_relative_to_repo_root_from_subdirectory() {
+    let guard = HumeRuntimeGuard::new();
+    let sandbox = CwdSandbox::new();
+    git(sandbox.raw(), &["init", "-q"]);
+    git_configure_identity(sandbox.raw());
+    std::fs::write(sandbox.raw().join("root.txt"), "hello\n").unwrap();
+    git(sandbox.raw(), &["add", "root.txt"]);
+    git(sandbox.raw(), &["commit", "-q", "-m", "init"]);
+    std::fs::write(sandbox.raw().join("root.txt"), "hello\nworld\n").unwrap();
+    std::fs::create_dir_all(sandbox.raw().join("sub")).unwrap();
+
+    // Bare tempdir(), not safe_tempdir() — see the comment at this pattern's
+    // first occurrence above (`files_picker_in_git_repo_uses_git_index_and_opens_selection`).
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
+    // :pwd is a subdirectory, not the repo root — git prints the entry as
+    // "root.txt" (repo-root-relative); accept must not open it relative to
+    // :pwd (which has no such file).
+    ed.set_cwd(&sandbox.path().join("sub")).unwrap();
+
+    ed.feed_key(key('g'));
+    ed.feed_key(key('m'));
+    assert_eq!(
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .expect("picker open")
+            .total_len(),
+        1
+    );
+
+    ed.feed_key(key_enter());
+    ed.drain_pending_steel_calls();
+
+    assert!(ed.state.config.picker.is_none());
+    let bid = ed.focused_buffer_id();
+    let path = ed.state.buffers.get(bid).path().expect("buffer has a path");
+    assert_eq!(
+        path,
+        sandbox.path().join("root.txt"),
+        "accept must resolve the repo-root-relative path against the repo root, \
+         not against :pwd (a subdirectory)"
+    );
+}
+
+#[test]
+fn git_modified_picker_untracked_false_config_hides_untracked_files() {
+    let guard = HumeRuntimeGuard::new();
+    let sandbox = CwdSandbox::new();
+    git(sandbox.raw(), &["init", "-q"]);
+    git_configure_identity(sandbox.raw());
+    std::fs::write(sandbox.raw().join("a.txt"), "hello\n").unwrap();
+    git(sandbox.raw(), &["add", "a.txt"]);
+    git(sandbox.raw(), &["commit", "-q", "-m", "init"]);
+    std::fs::write(sandbox.raw().join("a.txt"), "hello\nworld\n").unwrap();
+    std::fs::write(sandbox.raw().join("untracked.txt"), "").unwrap();
+
+    // Bare tempdir(), not safe_tempdir() — see the comment at this pattern's
+    // first occurrence above (`files_picker_in_git_repo_uses_git_index_and_opens_selection`).
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = setup_with_config(
+        &guard,
+        tmp.path(),
+        "-[h]>ello\n",
+        Some("(hash \"untracked\" #f)"),
+        "",
+    );
+    ed.set_cwd(&sandbox.path()).unwrap();
+
+    ed.feed_key(key('g'));
+    ed.feed_key(key('m'));
+
+    let picker = ed.state.config.picker.as_ref().expect("picker open");
+    let rows: Vec<&str> = picker.window(10).collect();
+    assert_eq!(
+        rows,
+        vec![" M a.txt"],
+        "#f must hide the untracked file while keeping the modified one; got {rows:?}"
+    );
+}
+
+#[test]
+fn git_modified_picker_untracked_default_lists_files_inside_untracked_directory() {
+    let guard = HumeRuntimeGuard::new();
+    let sandbox = CwdSandbox::new();
+    git(sandbox.raw(), &["init", "-q"]);
+    git_configure_identity(sandbox.raw());
+    std::fs::create_dir_all(sandbox.raw().join("newdir")).unwrap();
+    std::fs::write(sandbox.raw().join("newdir/file.txt"), "").unwrap();
+
+    // Bare tempdir(), not safe_tempdir() — see the comment at this pattern's
+    // first occurrence above (`files_picker_in_git_repo_uses_git_index_and_opens_selection`).
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
+    ed.set_cwd(&sandbox.path()).unwrap();
+    ed.feed_key(key('g'));
+    ed.feed_key(key('m'));
+    let rows: Vec<&str> = ed
+        .state
+        .config
+        .picker
+        .as_ref()
+        .expect("picker open")
+        .window(10)
+        .collect();
+    assert_eq!(
+        rows,
+        vec!["?? newdir/file.txt"],
+        "default (untracked on) must expand into the individual file, not a bare \
+         directory row a file picker can't open; got {rows:?}"
+    );
+}
+
+#[test]
+fn git_modified_picker_invalid_untracked_config_fails_load() {
+    let guard = HumeRuntimeGuard::new();
+    write_core_plugin(&guard, "pickers", PICKERS_PLUGIN);
+    // Bare tempdir(), not safe_tempdir() — see the comment at this pattern's
+    // first occurrence above (`files_picker_in_git_repo_uses_git_index_and_opens_selection`).
+    let tmp = tempfile::tempdir().unwrap();
+    let init_path = tmp.path().join("init.scm");
+    std::fs::write(
+        &init_path,
+        "(load-plugin \"core:pickers\" #:config (hash \"untracked\" 'bogus))",
+    )
+    .unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let mut host = ScriptingHost::new();
+    let result = {
+        let mut ih = crate::editor::scripting_setup::make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    };
+    assert!(
+        result.is_err(),
+        "a non-boolean \"untracked\" value must fail the load, not silently default"
+    );
+}
+
+#[test]
+fn git_modified_picker_clean_tree_opens_no_picker() {
+    let guard = HumeRuntimeGuard::new();
+    let sandbox = CwdSandbox::new();
+    git(sandbox.raw(), &["init", "-q"]);
+    git_configure_identity(sandbox.raw());
+    std::fs::write(sandbox.raw().join("a.txt"), "hello\n").unwrap();
+    git(sandbox.raw(), &["add", "a.txt"]);
+    git(sandbox.raw(), &["commit", "-q", "-m", "init"]);
+
+    // Bare tempdir(), not safe_tempdir() — see the comment at this pattern's
+    // first occurrence above (`files_picker_in_git_repo_uses_git_index_and_opens_selection`).
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
+    ed.set_cwd(&sandbox.path()).unwrap();
+
+    ed.state.status_msg = None;
+    ed.feed_key(key('g'));
+    ed.feed_key(key('m'));
+
+    assert!(
+        ed.state.config.picker.is_none(),
+        "a clean tree must not open a picker"
+    );
+    let msg = ed
+        .state
+        .status_msg
+        .clone()
+        .expect("clean tree must surface a status message");
+    assert!(msg.contains("clean"), "got: {msg}");
+}
+
+#[test]
+fn git_modified_picker_not_a_repo_names_git() {
+    let guard = HumeRuntimeGuard::new();
+    // Bare tempdir(), not safe_tempdir() — see the comment at this pattern's
+    // first occurrence above (`files_picker_in_git_repo_uses_git_index_and_opens_selection`).
+    let tmp = tempfile::tempdir().unwrap();
+    let extra = r#"(define-command! "test-git-not-a-repo" "" (lambda ()
+                     (call! "pickers/git-picker-with" #f)))"#;
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", extra);
+
+    ed.state.status_msg = None;
+    call(&mut ed, "test-git-not-a-repo");
+
+    let msg = ed
+        .state
+        .status_msg
+        .clone()
+        .expect("error must surface as a status message");
+    assert!(msg.contains("git"), "error must name git; got: {msg}");
+    assert!(ed.state.config.picker.is_none());
+}
+
+#[test]
+fn git_modified_picker_esc_dismisses_cleanly() {
+    let guard = HumeRuntimeGuard::new();
+    let sandbox = CwdSandbox::new();
+    git(sandbox.raw(), &["init", "-q"]);
+    git_configure_identity(sandbox.raw());
+    std::fs::write(sandbox.raw().join("a.txt"), "").unwrap();
+
+    // Bare tempdir(), not safe_tempdir() — see the comment at this pattern's
+    // first occurrence above (`files_picker_in_git_repo_uses_git_index_and_opens_selection`).
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
+    ed.set_cwd(&sandbox.path()).unwrap();
+    let starting_bid = ed.focused_buffer_id();
+
+    ed.feed_key(key('g'));
+    ed.feed_key(key('m'));
+    assert!(ed.state.config.picker.is_some());
+
+    ed.feed_key(key_esc());
+    ed.drain_pending_steel_calls();
+
+    assert!(ed.state.config.picker.is_none());
+    assert_eq!(
+        ed.focused_buffer_id(),
+        starting_bid,
+        "Esc must not switch buffers"
+    );
+
+    // LESSONS.md L4: keep interacting past the terminal action.
+    ed.feed_key(key('i'));
+    ed.feed_key(key('Z'));
+    ed.feed_key(key_esc());
+    let text = ed.state.buffers.get(starting_bid).text().to_string();
+    assert!(
+        text.contains('Z'),
+        "keys after Esc must behave as plain input"
+    );
 }
 
 // ── Buffers picker ────────────────────────────────────────────────────────────

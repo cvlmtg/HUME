@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- New `core:pickers` picker, `g m`, lists files with staged or unstaged git changes. Untracked-file inclusion is configurable via `#:config (hash "untracked" #t | #f)` (default on).
 - HUME now notices when an open file changes on disk and prompts to reload it. Controlled by the `autoread` option (default on); `:w`/`:wa` refuse to overwrite a changed file unless forced with `!`.
 - New `:sort` command sorts each run of adjacent selected rows by their selected text, with `-r` (reverse) and `-i` (case-insensitive) flags; numeric keys are auto-detected.
 - Scrollable popups and menus now show a scrollbar.

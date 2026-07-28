@@ -33,12 +33,36 @@ git's index doesn't know it's gone.
 when possible) rather than just its filename — so two open files that happen to share a
 name, like two different `mod.rs` files, show up as distinct, disambiguated rows.
 
+## Picking modified files
+
+`g m` opens a picker over every file with staged or unstaged changes, as reported by
+`git status` — the row shows the two-letter status (`M ` staged, ` M` unstaged, `??`
+untracked, and so on) alongside the path, so you can tell at a glance what kind of change
+each file has. Selecting a row opens that file, regardless of which subdirectory `:pwd`
+currently points at.
+
+An empty result (nothing changed) or a working directory outside any git repository shows
+a status message instead of an empty picker.
+
+By default, untracked files are included, each shown as its own row. Turn them off when
+loading the plugin:
+
+```scheme
+(load-plugin "core:pickers" #:config (hash "untracked" #f))
+```
+
+| Value          | Effect |
+|-----------------|--------|
+| `#t` (default) | Untracked files are included. |
+| `#f`           | Untracked files are left out entirely. |
+
 ## Keys
 
 | Key   | Effect |
 |-------|--------|
 | `g f` | Open the file picker |
 | `g b` | Open the buffer picker |
+| `g m` | Open the modified-files picker |
 
 Once a picker is open:
 

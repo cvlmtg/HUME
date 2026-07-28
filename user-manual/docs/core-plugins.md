@@ -76,15 +76,23 @@ Installing requires `cargo` — install Rust from [rustup.rs](https://rustup.rs)
 
 ## core:pickers
 
-Fuzzy file and buffer finders: `g f` opens a file picker (git-index-backed inside a
-repo, `fd`-backed otherwise), `g b` opens a buffer switcher.
+Fuzzy file, buffer, and modified-file finders: `g f` opens a file picker (git-index-backed
+inside a repo, `fd`-backed otherwise), `g b` opens a buffer switcher, `g m` opens a picker
+over files with staged or unstaged git changes.
 
 ```scheme
 (load-plugin "core:pickers")
 ```
 
-Must be loaded eagerly. See [Fuzzy Finder](pickers.md) for the file-source chain, keys,
-and buffer display details.
+Must be loaded eagerly. By default the modified-files picker includes untracked files;
+turn them off with `#:config`:
+
+```scheme
+(load-plugin "core:pickers" #:config (hash "untracked" #f))
+```
+
+See [Fuzzy Finder](pickers.md) for the file-source chain, keys, buffer display, and
+modified-files details.
 
 ## core:vim-keybind
 
