@@ -19,9 +19,17 @@ use super::Buffer;
 /// `Changed` carries the freshly-read signature so the caller can store it
 /// back without a second stat.
 pub(crate) enum DiskChange {
+    /// The fresh stat genuinely matches the stored signature — the buffer is
+    /// caught up with disk, whatever its prior `DiskState` was.
     Unchanged,
     Changed(hume_platform::io::FileSignature),
     Vanished,
+    /// Nothing to compare (no backing file) or the stat itself failed for a
+    /// reason other than `NotFound` (a momentary permission hiccup, say).
+    /// Deliberately distinct from `Unchanged`: a previously reported
+    /// `Changed`/`Vanished` state must survive this, since it says nothing
+    /// about whether the file is actually back in sync.
+    Indeterminate,
 }
 
 /// A buffer's disk state as of the last check. `InSync` and "stale" aren't
@@ -36,7 +44,9 @@ pub(crate) enum DiskChange {
 /// (`disk_change_for`'s point of comparison) for as long as the change goes
 /// un-actioned, so a *further* external change is still detected as one.
 /// This enum answers a different question: "have I already reported the
-/// disk state I'm looking at right now?"
+/// disk state I'm looking at right now?" Reset to `InSync` whenever a fresh
+/// stat genuinely matches the baseline again (a change followed by an
+/// external revert) — see `check_buffer_disk_state`'s `Unchanged` arm.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum DiskState {
     /// Matches what the editor last read or wrote — nothing to guard against.
@@ -68,21 +78,21 @@ pub(crate) enum DiskCheckTrigger {
 impl Editor {
     /// Stat `bid`'s backing file and compare against its stored signature.
     /// Buffers with no backing file (scratch, synthetic views) always read
-    /// `Unchanged`. A stat error other than `NotFound` (a momentary
-    /// permission hiccup, say) is also treated as `Unchanged` — nothing to
-    /// act on now, and the next trigger gets another chance.
+    /// `Indeterminate`. A stat error other than `NotFound` (a momentary
+    /// permission hiccup, say) reads `Indeterminate` too — nothing to act on
+    /// now, and the next trigger gets another chance.
     fn disk_change_for(&self, bid: BufferId) -> DiskChange {
         let Some(buf) = self.state.buffers.try_get(bid) else {
-            return DiskChange::Unchanged;
+            return DiskChange::Indeterminate;
         };
         let Some(meta) = buf.file_meta.as_ref() else {
-            return DiskChange::Unchanged;
+            return DiskChange::Indeterminate;
         };
         match hume_platform::io::read_signature(meta.resolved_path()) {
             Ok(sig) if sig == meta.signature() => DiskChange::Unchanged,
             Ok(sig) => DiskChange::Changed(sig),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => DiskChange::Vanished,
-            Err(_) => DiskChange::Unchanged,
+            Err(_) => DiskChange::Indeterminate,
         }
     }
 
@@ -121,7 +131,14 @@ impl Editor {
         trigger: DiskCheckTrigger,
     ) {
         match self.disk_change_for(bid) {
-            DiskChange::Unchanged => {}
+            // A genuine match resets `disk_state` — a change followed by an
+            // external revert must still be detected if the file changes
+            // again afterward. `Indeterminate` (pathless buffer, stat error)
+            // says nothing about sync state, so it leaves `disk_state` alone.
+            DiskChange::Unchanged => {
+                self.state.buffers.get_mut(bid).disk_state = DiskState::InSync;
+            }
+            DiskChange::Indeterminate => {}
             DiskChange::Vanished => {
                 let buf = self.state.buffers.get_mut(bid);
                 let already_reported = buf.disk_state == DiskState::Vanished;
@@ -145,15 +162,10 @@ impl Editor {
                 let dirty = buf.is_dirty();
                 let autoread = buf.overrides.autoread(&self.state.settings);
                 let focused = bid == self.focused_buffer_id();
-                let can_prompt = match self.state.mode() {
-                    Mode::Normal | Mode::Extend => true,
-                    Mode::Command => self.state.dispatching_typed_command,
-                    Mode::Insert | Mode::Search | Mode::Select => false,
-                };
 
                 if focused
                     && autoread
-                    && can_prompt
+                    && self.can_open_confirm()
                     && (trigger == DiskCheckTrigger::BufferEnter || !already_reported)
                 {
                     self.open_disk_change_confirm(bid, &name, dirty);
@@ -162,6 +174,45 @@ impl Editor {
                 }
             }
         }
+    }
+
+    /// `true` if opening a confirm right now would be safe, i.e. it can't
+    /// steal a keystroke from something else already mid-interaction.
+    ///
+    /// Mode: `Normal`/`Extend` unconditionally; `Command` only while
+    /// `dispatching_typed_command` is set — that is the difference between
+    /// `:e`/`:b`/`:bn`/`:bp`/`:checktime` opening one as their own direct
+    /// result (safe: the command line was already submitted) and an ambient
+    /// check landing while the user is still typing an unsubmitted `:`/`/`
+    /// line (unsafe: would steal the next keystroke and hide the in-progress
+    /// line). `Insert`/`Search`/`Select` never allow one — nothing dispatches
+    /// a command under those modes, so there's no legitimate case to carve
+    /// out, only live typing to protect.
+    ///
+    /// Overlays: the picker is mode-agnostic (opens from Normal, same as a
+    /// confirm) and the menu/drawer only open from Normal/Extend too — so
+    /// mode alone doesn't rule out a live overlay underneath. The confirm
+    /// intercept sits above all three (`mappings/mod.rs`), so without this
+    /// check an ambient trigger could silently steal every key from a picker
+    /// still on screen. `docs/FUZZY-FINDERS.md` Q-B7: one modal owner at a
+    /// time.
+    ///
+    /// Pending keys: a non-empty `pending_keys` (mid multi-key sequence, e.g.
+    /// `d` waiting for its motion) or a pending `wait_char` (e.g. `f` waiting
+    /// for its target char) means the very next keystroke is already spoken
+    /// for — same hazard class as Insert/Command, just inside Normal mode.
+    fn can_open_confirm(&self) -> bool {
+        let mode_ok = match self.state.mode() {
+            Mode::Normal | Mode::Extend => true,
+            Mode::Command => self.state.dispatching_typed_command,
+            Mode::Insert | Mode::Search | Mode::Select => false,
+        };
+        mode_ok
+            && self.state.config.picker.is_none()
+            && self.state.config.menu.is_none()
+            && self.state.config.drawer.is_none()
+            && self.state.pending_keys.is_empty()
+            && self.state.wait_char.is_none()
     }
 
     /// Check every open buffer. Called from ambient trigger points (terminal
@@ -233,13 +284,28 @@ impl Editor {
         let Some(path) = buf.path().map(std::path::Path::to_path_buf) else {
             return;
         };
-        let name = buf.display_name();
-        match Buffer::from_file(&path) {
-            Ok(doc) => {
-                self.reload_buffer_in_place(bid, doc);
-                self.report(Severity::Info, format!("Reloaded {name}"));
-            }
-            Err(e) => self.report(Severity::Warning, format!("{}: {e}", path.display())),
+        if let Err(e) = self.reload_from_path(bid, &path) {
+            self.report(Severity::Warning, format!("{}: {e}", path.display()));
         }
+    }
+
+    /// Read `path` fresh, swap it into `bid` in place (via
+    /// `reload_buffer_in_place`), and report the success. Shared by the
+    /// no-arg `:e`/`:e!` path (which propagates a read failure as a
+    /// `CommandError`, `Severity::Error`) and `reload_buffer_from_disk`
+    /// (which reports one as `Severity::Warning` and swallows it — a
+    /// background reload has no caller to propagate an `Err` to). Callers
+    /// choose their own error severity/propagation; this only owns the
+    /// read-swap-report-success sequence, not the failure path.
+    pub(in crate::editor) fn reload_from_path(
+        &mut self,
+        bid: BufferId,
+        path: &std::path::Path,
+    ) -> std::io::Result<()> {
+        let doc = Buffer::from_file(path)?;
+        self.reload_buffer_in_place(bid, doc);
+        let name = self.state.buffers.get(bid).display_name();
+        self.report(Severity::Info, format!("Reloaded {name}"));
+        Ok(())
     }
 }
