@@ -11,12 +11,12 @@ use hume_editing::text::Text;
 use hume_platform::io::FileMeta;
 
 mod disk;
-// Production callers reach both only via `super::disk::*` from sibling
-// buffer submodules (`file_open::enter_buffer_with_jump`) or `is_disk_stale()`
-// — these re-exports exist only so test code (a different module tree) can
-// name `DiskCheckTrigger`/`DiskState` directly.
+// Production reaches this only via `super::disk::DiskCheckTrigger` from
+// sibling buffer submodules (`file_open::enter_buffer_with_jump`) — this
+// re-export exists only so test code (a different module tree) can pass a
+// trigger to `check_buffer_disk_state` directly.
 #[cfg(test)]
-pub(crate) use disk::{DiskCheckTrigger, DiskState};
+pub(crate) use disk::DiskCheckTrigger;
 mod file_open;
 pub(crate) mod lifecycle;
 pub(crate) mod store;
@@ -402,6 +402,10 @@ impl Buffer {
 
     /// `true` if the last disk-state check found the backing file changed or
     /// vanished and the user has not yet acted on it (reloaded or written).
+    /// Test-only: `:w`'s write guard stats the file fresh instead of trusting
+    /// this (see `stale_write_block`) — this remains for tests that assert
+    /// on the reported/warned state itself, not on write behavior.
+    #[cfg(test)]
     pub(crate) fn is_disk_stale(&self) -> bool {
         !matches!(self.disk_state, disk::DiskState::InSync)
     }

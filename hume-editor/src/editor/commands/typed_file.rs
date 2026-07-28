@@ -1,9 +1,30 @@
 use hume_engine::pipeline::BufferId;
+use hume_platform::io::FileMeta;
 
 use super::super::Editor;
 use super::super::Severity;
 use crate::editor::error::CommandError;
 use crate::editor::settings_ops;
+
+/// `Some(msg)` when a non-forced write to `meta`'s file must be refused.
+/// Stats the file fresh right now rather than trusting the buffer's cached
+/// disk state, which only reflects whatever some earlier trigger (terminal
+/// focus, buffer-enter, `:checktime`) happened to notice — nothing runs a
+/// check at write time otherwise, so a change made without any of those
+/// firing would otherwise go undetected and get silently overwritten.
+///
+/// A vanished file is *not* blocked: `write_file_atomic` simply recreates
+/// it, which is recovering the user's own work, not clobbering someone
+/// else's — the same reasoning that lets `disk_change_for` treat any other
+/// stat error as nothing-to-act-on-now.
+fn stale_write_block(meta: &FileMeta) -> Option<&'static str> {
+    match hume_platform::io::read_signature(meta.resolved_path()) {
+        Ok(sig) if sig != meta.signature() => {
+            Some("file has changed on disk (add ! to override)")
+        }
+        _ => None,
+    }
+}
 
 // ── Typed file commands ───────────────────────────────────────────────────────
 
@@ -255,14 +276,14 @@ fn write_buffer_by_id(
     if buf.is_read_only() {
         return Err(CommandError::new("Buffer is read-only"));
     }
-    if buf.is_disk_stale() && !force {
-        return Err(CommandError::new(
-            "file has changed on disk (add ! to override)",
-        ));
-    }
     let Some(meta) = buf.file_meta.as_mut() else {
         return Err(CommandError::new("no file name"));
     };
+    if !force
+        && let Some(msg) = stale_write_block(meta)
+    {
+        return Err(CommandError::new(msg));
+    }
     match hume_platform::io::write_file_atomic(&content, meta, force) {
         Ok(retried) => {
             mark_written_and_synced(ed, bid, line_count, retried);
@@ -321,9 +342,17 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
                 // the buffer's own current file — i.e. this `:w <path>` is
                 // really a plain `:w` in disguise. A genuine save-as targets
                 // a path this buffer never read from, so there's no staleness
-                // to guard against.
+                // to guard against. `meta` was just freshly stat'd above by
+                // `read_file_meta`, so comparing its signature against the
+                // buffer's own baseline is already a stat-at-write-time
+                // check — no cached flag, no second syscall needed.
                 let targets_own_file = ed.doc().path() == Some(meta.resolved_path());
-                if targets_own_file && ed.doc().is_disk_stale() && !force {
+                let own_baseline_differs = ed
+                    .doc()
+                    .file_meta
+                    .as_ref()
+                    .is_some_and(|own| own.signature() != meta.signature());
+                if targets_own_file && !force && own_baseline_differs {
                     return Err(CommandError::new(
                         "file has changed on disk (add ! to override)",
                     ));
@@ -390,7 +419,9 @@ pub fn typed_write_all(
     let mut skipped: Vec<String> = Vec::new();
     for bid in dirty_savable {
         let buf = ed.state.buffers.get(bid);
-        if buf.is_disk_stale() && !force {
+        // `dirty_savable`'s filter above guarantees `file_meta.is_some()`.
+        let meta = buf.file_meta.as_ref().expect("filtered above");
+        if !force && stale_write_block(meta).is_some() {
             skipped.push(buf.display_name());
             continue;
         }

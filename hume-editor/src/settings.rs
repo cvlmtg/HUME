@@ -733,9 +733,10 @@ define_settings! {
             parser: from_str;
         // Read fresh by `check_buffer_disk_state` at each trigger — no
         // resync needed. `true`: an external change to the focused buffer
-        // opens a reload confirm. `false`: detection still runs (and still
-        // flags `disk_state`, guarding `:w`), but only warns — reload stays
-        // manual via `:e!`/`:checktime`.
+        // opens a reload confirm. `false`: detection still runs and warns,
+        // but reload stays manual via `:e!`/`:checktime`. Independent of
+        // `:w`'s write guard, which stats the file itself at write time
+        // regardless of this setting — see `stale_write_block`.
         "autoread" => autoread: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;

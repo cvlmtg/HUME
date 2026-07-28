@@ -305,17 +305,24 @@ fn confirm_any_other_key_dismisses_without_reloading() {
 
 // ── `:w` stale guard ───────────────────────────────────────────────────────────
 
-/// `:w` on a buffer flagged stale refuses; `:w!` overwrites the external
-/// change and clears the flag.
+/// `:w` refuses when the file on disk no longer matches what the buffer
+/// last read or wrote — a fresh stat at write time, not a cached flag set by
+/// some earlier trigger. `:w!` overrides.
+///
+/// Fail oracle: no trigger (`check_buffer_disk_state`) runs anywhere in this
+/// test, so a flag-based guard would see `disk_state == InSync` and let the
+/// write through, silently clobbering the external change.
 #[test]
-fn write_refuses_on_stale_buffer_but_bang_overrides() {
-    use crate::editor::buffer::DiskState;
-
+fn write_refuses_on_externally_changed_file_but_bang_overrides() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    ed.doc_mut().disk_state = DiskState::Vanished;
+    rewrite_externally(&tmp, "hello, externally changed!\n");
+    assert!(
+        !ed.doc().is_disk_stale(),
+        "setup: no trigger has run, so the cached flag must still read clean"
+    );
 
     type_cmd(&mut ed, ":w");
     assert_eq!(
@@ -324,11 +331,34 @@ fn write_refuses_on_stale_buffer_but_bang_overrides() {
     );
     assert_eq!(
         std::fs::read_to_string(&tmp).unwrap(),
-        "hello\n",
+        "hello, externally changed!\n",
         "the refused write must not have touched the file"
     );
 
     type_cmd(&mut ed, ":w!");
-    assert!(!ed.doc().is_disk_stale());
     assert_eq!(std::fs::read_to_string(&tmp).unwrap(), "xhello\n");
+}
+
+/// `:w` recreates a file that was deleted externally instead of refusing —
+/// there is no external content to clobber, only the user's own unsaved
+/// work to write back.
+///
+/// Fail oracle: a guard that blocked on any stat error (not just a genuine
+/// content mismatch) would refuse this write and strand the user's edits.
+#[test]
+fn write_recreates_a_vanished_file() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    std::fs::remove_file(&tmp).unwrap();
+
+    type_cmd(&mut ed, ":w");
+
+    assert_eq!(
+        std::fs::read_to_string(&tmp).unwrap(),
+        "xhello\n",
+        "a plain :w must recreate a vanished file, not refuse"
+    );
+    assert!(!ed.doc().is_dirty());
 }

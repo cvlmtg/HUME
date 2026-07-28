@@ -24,12 +24,12 @@ pub(crate) enum DiskChange {
     Vanished,
 }
 
-/// A buffer's disk state as of the last check, replacing a plain
-/// `disk_stale: bool`. `InSync` and "stale" aren't the only two states worth
-/// distinguishing — `Changed` also carries the signature that was reported,
-/// so a later check can tell "the same change I already warned about" from
-/// "something changed again", and `Vanished` is kept apart from `Changed`
-/// since there is no signature to recreate-and-compare for a deleted file.
+/// A buffer's disk state as of the last check. `InSync` and "stale" aren't
+/// the only two states worth distinguishing — `Changed` also carries the
+/// signature that was reported, so a later check can tell "the same change I
+/// already warned about" from "something changed again", and `Vanished` is
+/// kept apart from `Changed` since there is no signature to recreate-and-
+/// compare for a deleted file.
 ///
 /// Deliberately never written by [`Editor::check_buffer_disk_state`] into
 /// `FileMeta::signature` — that field stays the write baseline
