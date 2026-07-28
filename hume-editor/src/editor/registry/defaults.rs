@@ -1202,5 +1202,11 @@ impl CommandRegistry {
             &[],
             typed_goto_line
         );
+        typed_cmd!(
+            "sort",
+            "Sort adjacent rows by their selected text. Flags: -r, -i.",
+            &[],
+            typed_sort
+        );
     }
 }

@@ -54,6 +54,35 @@ In arguments, `%` expands to the current file's path and `#` to the alternate fi
 
 Splitting is refused with a message when the pane is already too small. Focus and closing use the `Ctrl+p` prefix (`Ctrl+p` then `h`/`j`/`k`/`l`/`p`/`s`/`v`/`c`) — see the [Key Reference](key-reference.md).
 
+## Editing
+
+| Command | Effect |
+|---------|--------|
+| `:sort` | Sort adjacent rows by their selected text |
+| `:sort -r` | Sort in reverse |
+| `:sort -i` | Sort case-insensitively |
+
+`:sort` groups your selections into runs of adjacent rows and sorts each run
+independently, keyed by whatever text you selected on that row — not
+necessarily the whole line. Select whole lines (`%` selects the whole buffer)
+to sort a file; select a single column across a block of lines to sort by
+that column instead. Numbers sort numerically; everything else sorts as
+text. Two selections on the same row combine into one key rather than being
+treated as separate rows, so sorting several items *within* one line isn't
+what `:sort` does.
+
+<div class="key-demo">
+<strong>Select the count on each row, then run <code>:sort</code></strong><br>
+mia&nbsp;&nbsp;&nbsp;<span class="sel">3<span class="head">4</span></span><br>
+zoe&nbsp;&nbsp;&nbsp;<span class="sel">1<span class="head">9</span></span><br>
+kai&nbsp;&nbsp;&nbsp;<span class="sel">5<span class="head">2</span></span><br>
+<br>
+<strong>Result</strong><br>
+zoe&nbsp;&nbsp;&nbsp;19<br>
+mia&nbsp;&nbsp;&nbsp;34<br>
+kai&nbsp;&nbsp;&nbsp;52
+</div>
+
 ## Settings
 
 | Command | Effect |

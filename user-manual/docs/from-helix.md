@@ -80,6 +80,7 @@ Both editors share the same foundations — multiple cursors, `;` to collapse, `
 | Merge consecutive selections | `Alt-_` (touching selections only); `Alt--` merges all into one span | automatic — adjacent selections never persist |
 | Align selections | `&` | `&` |
 | Trim whitespace at edges | `_` | `_` |
+| Sort | `:sort` | `:sort` (different semantics — see below) |
 | Select within (regex per selection) | `s` | `s` |
 | Select all search matches | no dedicated key — `%` (select whole buffer) then `s` (sub-select regex matches) | `m /` |
 | Search selection, auto word-boundary anchors | `*` | *(none)* |
@@ -96,6 +97,10 @@ To put `Ctrl+/`'s behavior on the `*` key instead — matching Helix's `Alt-*`, 
 ```scheme
 (bind-key! 'normal "*" "search-selection")
 ```
+:::
+
+::: warning
+HUME's `:sort` permutes whole rows, keyed by whatever text you select on each one. Select whole lines and it behaves like a plain line sort; select a column across several lines and it sorts by that column, moving the entire rows along with it. `%` followed by `:sort` sorts the whole file directly — no splitting step needed.
 :::
 
 ### Configuration language

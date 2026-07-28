@@ -13,6 +13,9 @@ use crate::ops::motion::prev_word_start;
 use crate::ops::register;
 use crate::settings::TabStyle;
 
+mod sort;
+pub(crate) use sort::{SortOpts, SortRefusal, sort_rows};
+
 // ── Edit scaffolding ──────────────────────────────────────────────────────────
 //
 // Every editing operation follows the same structural pattern:

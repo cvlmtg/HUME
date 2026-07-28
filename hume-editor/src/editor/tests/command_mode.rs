@@ -1305,3 +1305,114 @@ fn colon_goto_records_jump() {
         "Ctrl+O must restore the pre-goto position"
     );
 }
+
+// ── :sort ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn sort_end_to_end_through_the_minibuffer() {
+    let mut ed = editor_from("C -[B]> D\nF -[A]> G\n");
+    submit(&mut ed, "sort");
+    assert_eq!(state(&ed), "F -[A]> G\nC -[B]> D\n");
+}
+
+#[test]
+fn sort_reverse_flag_through_the_minibuffer() {
+    let mut ed = editor_from("-[a]>\n-[b]>\n");
+    submit(&mut ed, "sort -r");
+    assert_eq!(state(&ed), "-[b]>\n-[a]>\n");
+}
+
+#[test]
+fn sort_insensitive_flag_through_the_minibuffer() {
+    let mut ed = editor_from("-[Banana]>\n-[apple]>\n");
+    submit(&mut ed, "sort -i");
+    assert_eq!(state(&ed), "-[apple]>\n-[Banana]>\n");
+}
+
+#[test]
+fn sort_bundled_flags_through_the_minibuffer() {
+    // `-ri` = reverse + insensitive, bundled into one token.
+    let mut ed = editor_from("-[Banana]>\n-[apple]>\n");
+    submit(&mut ed, "sort -ri");
+    assert_eq!(state(&ed), "-[Banana]>\n-[apple]>\n");
+}
+
+#[test]
+fn sort_unknown_flag_reports_an_error() {
+    let mut ed = editor_from("-[b]>\n-[a]>\n");
+    let before = state(&ed);
+    let err = ed
+        .execute_typed("sort -z", None)
+        .expect_err("-z is not a recognized flag");
+    assert_eq!(err.message(), "unknown flag: -z");
+    assert_eq!(
+        state(&ed),
+        before,
+        "an argument error must not touch the buffer"
+    );
+}
+
+#[test]
+fn sort_bang_is_rejected() {
+    // Validity: `!` means "force" everywhere else in HUME; `:sort` has no
+    // force behavior, so it points the user at `-r` instead of silently
+    // ignoring the `!`.
+    let mut ed = editor_from("-[b]>\n-[a]>\n");
+    let before = state(&ed);
+    let err = ed
+        .execute_typed("sort!", None)
+        .expect_err(":sort! must be rejected");
+    assert_eq!(err.message(), "`:sort` takes no `!` — use `-r` to reverse");
+    assert_eq!(state(&ed), before);
+}
+
+#[test]
+fn sort_on_read_only_buffer_is_blocked() {
+    // Validity: delete the `focused_buffer_read_only` check in `typed_sort`
+    // and this starts silently sorting `:messages` instead of erroring.
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.report(Severity::Warning, "one".to_string());
+    ed.report(Severity::Warning, "two".to_string());
+    ed.execute_typed("messages", None).unwrap();
+    let before = state(&ed);
+
+    let err = ed
+        .execute_typed("sort", None)
+        .expect_err("a read-only buffer must refuse :sort");
+    assert_eq!(err.message(), "Buffer is read-only");
+    assert_eq!(
+        state(&ed),
+        before,
+        ":sort must not mutate a read-only buffer"
+    );
+}
+
+#[test]
+fn sort_undo_restores_text_and_selections_in_one_step() {
+    let mut ed = editor_from("C -[B]> D\nF -[A]> G\n");
+    let before = state(&ed);
+    submit(&mut ed, "sort");
+    assert_eq!(state(&ed), "F -[A]> G\nC -[B]> D\n");
+
+    ed.handle_key(key('u'));
+    assert_eq!(state(&ed), before, "undo must restore text and selections");
+    assert!(
+        !ed.doc().can_undo(),
+        ":sort must record exactly one undo step"
+    );
+}
+
+#[test]
+fn sort_on_already_sorted_input_leaves_buffer_clean() {
+    // Validity: this is the test that pins `sort_rows` returning a
+    // `SortRefusal` instead of a successful identity edit — replace step 4's
+    // refusal with an always-successful edit and `is_dirty()` starts
+    // reporting `true` here.
+    let mut ed = editor_from("-[a]>\n-[b]>\n");
+    assert!(!ed.doc().is_dirty());
+    submit(&mut ed, "sort");
+    assert!(
+        !ed.doc().is_dirty(),
+        "sorting already-sorted rows must not touch the undo history"
+    );
+}

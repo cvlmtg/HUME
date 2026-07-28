@@ -4,6 +4,7 @@ use super::super::Editor;
 use super::super::Severity;
 use super::current_jump_entry;
 use crate::editor::error::CommandError;
+use crate::ops::edit::{SortOpts, SortRefusal, sort_rows};
 
 // ── Message log ──────────────────────────────────────────────────────────────
 
@@ -352,5 +353,88 @@ pub fn typed_goto_line(
     ed.state.panes.jumps[ed.state.focused_pane_id].push(entry);
 
     ed.set_current_selections(SelectionSet::single(Selection::collapsed(char_pos)));
+    Ok(())
+}
+
+// ── Sort ──────────────────────────────────────────────────────────────────────
+
+/// Parse `:sort`'s flag string: `-r`/`--reverse`, `-i`/`--insensitive`, and
+/// bundled shorts (`-ri`, `-ir`). No positional arguments are accepted.
+fn parse_sort_flags(arg: Option<&str>) -> Result<SortOpts, CommandError> {
+    let mut opts = SortOpts::default();
+    let Some(arg) = arg else { return Ok(opts) };
+    for token in arg.split_whitespace() {
+        match token {
+            "-r" | "--reverse" => opts.reverse = true,
+            "-i" | "--insensitive" => opts.insensitive = true,
+            _ if token.starts_with('-') && !token.starts_with("--") && token.len() > 1 => {
+                for ch in token[1..].chars() {
+                    match ch {
+                        'r' => opts.reverse = true,
+                        'i' => opts.insensitive = true,
+                        _ => return Err(CommandError::new(format!("unknown flag: -{ch}"))),
+                    }
+                }
+            }
+            _ => return Err(CommandError::new(format!("unknown argument: {token}"))),
+        }
+    }
+    Ok(opts)
+}
+
+/// `:sort` — sort each maximal run of adjacent rows touched by a selection,
+/// keyed by the selected text on that row. Flags: `-r`/`--reverse`,
+/// `-i`/`--insensitive`.
+///
+/// Diverges deliberately from Helix's `:sort`, which permutes text *between*
+/// selection slots and leaves row boundaries untouched — this permutes the
+/// rows themselves, closer to `sort -k`. See `docs/ROADMAP.md` for the full
+/// semantics (grouping, numeric auto-detection, selection remapping).
+pub fn typed_sort(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), CommandError> {
+    if force {
+        return Err(CommandError::new(
+            "`:sort` takes no `!` — use `-r` to reverse",
+        ));
+    }
+    let opts = parse_sort_flags(arg)?;
+
+    // doc_ops's read-only guard is a silent no-op — check explicitly here so
+    // `:sort` on a read-only buffer (e.g. `:messages`) reports why nothing happened.
+    if ed.focused_buffer_read_only() {
+        return Err(CommandError::new("Buffer is read-only"));
+    }
+
+    // Computing the sort before touching the buffer is what lets a refusal
+    // (`SortRefusal`) leave the buffer untouched — an identity edit would
+    // still record an undo revision and mark the buffer dirty.
+    let result = sort_rows(
+        ed.doc().text().clone(),
+        ed.current_selections().clone(),
+        opts,
+    );
+    let triple = match result {
+        Ok(triple) => triple,
+        Err(SortRefusal::NoAdjacentRows) => {
+            ed.report(
+                Severity::Warning,
+                "sort needs at least two adjacent rows".to_string(),
+            );
+            return Ok(());
+        }
+        Err(SortRefusal::AlreadySorted) => {
+            ed.report(Severity::Info, "already sorted".to_string());
+            return Ok(());
+        }
+    };
+
+    let pre_len = ed.doc().text().len_chars();
+    super::apply_focused_edit(&mut ed.state, &ed.view, move |buf, _sels| {
+        debug_assert_eq!(
+            buf.len_chars(),
+            pre_len,
+            "sort_rows must run against the same (buffer, selections) pair just read"
+        );
+        triple
+    });
     Ok(())
 }

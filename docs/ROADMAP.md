@@ -30,6 +30,7 @@
 - **Language identity and grammar attachment are independent facts** — re-running either must not silently undo the other, since grammars attach before `init.scm` gets a chance to override an identity.
 - **The whole statusline row tints with the active mode's color** — replaces the Helix mode-pill, so the mode is legible at a glance rather than in a 3-character corner. Opt out with `statusline.mode-colors = false`.
 - **Scroll affordance is a proportional thumb, not arrows** — in menus as well as popups; an arrow glyph can't convey how much more there is to scroll.
+- **`:sort` permutes whole rows, keyed by the selected text (`sort -k`), per contiguous run, numeric auto-detected** — rejects both Helix's `:sort` (permutes text *between* selection slots, rows never move — requires a manual `%` + split-on-newline step to sort a file) and Kakoune's `|sort` (pipes each selection through the shell, so N one-line selections is an N-way no-op). Non-adjacent selections form independent groups; equal keys keep document order (stable); `-r`/`-i` flip/fold the comparison, never the result. Deferred: a `--lexicographic` override for when auto-numeric guesses wrong (e.g. `1.10` vs `1.9`) — not worth shipping until it actually bites.
 
 ## Roadmap
 
