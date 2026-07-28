@@ -1,7 +1,7 @@
 # Changelog
 
 ## Unreleased
-- HUME now notices when an open file changes on disk (another program, `git checkout`, a formatter) and prompts to reload it, at terminal focus, buffer switch, return from an inline shell command, or the new `:checktime` command. Controlled by the `autoread` option (default on); `:w`/`:wa` refuse to overwrite a changed file unless forced with `!`.
+- HUME now notices when an open file changes on disk and prompts to reload it. Controlled by the `autoread` option (default on); `:w`/`:wa` refuse to overwrite a changed file unless forced with `!`.
 - New `:sort` command sorts each run of adjacent selected rows by their selected text, with `-r` (reverse) and `-i` (case-insensitive) flags; numeric keys are auto-detected.
 - Scrollable popups and menus now show a scrollbar.
 - The whole statusline now tints with the current mode's color, not just the mode indicator. Opt out with the new `statusline.mode-colors` option.
