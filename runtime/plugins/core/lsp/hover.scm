@@ -4,12 +4,10 @@
 
 ;; ── Response decoding ───────────────────────────────────────────────────────
 
-;;; A `MarkedString` is either a bare string or `{language, value}`; a
-;;; `MarkupContent` is `{kind, value}` — `"language"` vs `"kind"` tells the two
-;;; hashmap forms apart. A `{language, value}` form is semantically an
-;;; already-fenced code block (per the LSP spec), but arrives with the fence
-;;; stripped off — re-add it so `#:lang`'s markdown injection actually
-;;; highlights it as `language`, instead of falling back to plain text.
+;;; A `MarkedString` is a bare string or `{language, value}`; a
+;;; `MarkupContent` is `{kind, value}` — the two hashmap forms are told apart
+;;; by key. `{language, value}` arrives fence-stripped; re-add the fence so
+;;; `#:lang`'s markdown injection highlights it instead of falling back plain.
 (define (lsp/marked-string->text ms)
   (cond
     ((string? ms) ms)
@@ -18,8 +16,7 @@
     (else (hash-ref ms "value"))))
 
 ;;; `contents` is a `MarkupContent`, a `MarkedString`, or `MarkedString[]` —
-;;; decoded to raw text (strip nothing; code fences read fine either
-;;; unhighlighted or through `#:lang`'s injected-language highlighting).
+;;; decoded to raw text; code fences read fine unhighlighted or via `#:lang`.
 (define (lsp/hover-contents->text contents)
   (cond
     ((string? contents) contents)
@@ -28,10 +25,7 @@
 
 ;;; The grammar name to highlight `contents` through, or `#f` for plain text.
 ;;; Only an explicit `MarkupContent` with `kind: "plaintext"` opts out — a
-;;; bare `MarkedString`/`MarkedString[]` and `kind: "markdown"` both render
-;;; as markdown (per the LSP spec, `MarkedString` content is always
-;;; markdown). Data-driven so a future non-markdown `kind` needs no new
-;;; parameter on `show-popup!`, just another branch here.
+;;; bare `MarkedString` is always markdown per the LSP spec.
 (define (lsp/hover-lang contents)
   (if (and (hash? contents)
            (hash-contains? contents "kind")
@@ -56,13 +50,8 @@
         (show-popup! text #:kind 'scrollable #:lang lang #:anchor 'bottom))))
 
 ;; ── Dismiss ─────────────────────────────────────────────────────────────────
-;; A stale hover popup must not linger once the user has moved on — it closes
-;; on any key other than Ctrl+u/Ctrl+d (`#:kind 'scrollable`, which those two
-;; page instead), and on any mode change (leaving Insert, entering Command, …) as
-;; a backstop for the cases a key press doesn't cover (e.g. a mouse-driven
-;; mode switch). The on-mode-change registration lives in lib.scm (shared
-;; popup widget — sighelp.scm uses the same close-on-mode-change dismissal,
-;; so one registration covers both).
+;; Closes on any key but Ctrl+u/d (page, per `#:kind 'scrollable`), or on any
+;; mode change — that registration lives in lib.scm, shared with sighelp.scm.
 
 ;; ── Command ─────────────────────────────────────────────────────────────────
 

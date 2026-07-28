@@ -25,8 +25,7 @@
         (call! "delete")))))
 
 ;; ── replace-surround ─────────────────────────────────────────────────────────
-;; Selects the pair, then hands off to `replace`'s wait-char for its smart
-;; open→open / close→close substitution — no delimiter logic duplicated here.
+;; Selects the pair, then hands off to `replace`'s wait-char; see README.
 
 (define-command! "helix-replace-surround"
   "Replace the surrounding delimiter pair (mr + old_char + new_char)."

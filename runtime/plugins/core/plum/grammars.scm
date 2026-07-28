@@ -1,8 +1,7 @@
 ;;; core:plum/grammars.scm — grammar INSTALL pipeline only. The source
 ;;; catalog, path helpers, and startup registration of already-compiled
-;;; grammars now live in core (runtime/scheme/grammars.scm), so highlighting
-;;; survives PLUM being absent from init.scm; this file only ever runs when
-;;; the user explicitly asks PLUM to install/manage a grammar.
+;;; grammars live in core (runtime/scheme/grammars.scm) — this file only
+;;; runs when the user explicitly asks PLUM to install/manage a grammar.
 
 (require "lib.scm")
 
@@ -17,24 +16,10 @@
                  *plum-helix-pin* "/runtime/queries/" name "/" filename))
 
 ;; ── Query inheritance resolution ──────────────────────────────────────────────
-;;
-;; A query file can declare `; inherits: dep,dep,...` instead of writing out
-;; its own patterns — a directive naming other query sources whose patterns
-;; should be spliced in. tree-sitter itself has no notion of this; a query
-;; source containing only that line compiles as a valid but empty query.
-;; `plum/resolve-query` resolves the chain before anything reaches
-;; tree-sitter: it fetches `name`'s copy of the file, and whenever it finds
-;; an `; inherits:` line, recursively fetches and prepends each named
-;; dependency's copy of the same file.
-;;
-;; No deduplication: this mirrors Helix's own resolver, which concatenates
-;; without deduping. A grammar reachable by two `inherits` paths (a
-;; "diamond") would be spliced twice — harmless (tree-sitter tolerates
-;; duplicate patterns) and exactly what Helix produces. The JS/TS family
-;; (HUME's only multi-dependency `inherits` case) is a flat one-level star at
-;; the pinned Helix commit — `tsx`'s bases (`ecma`, `_typescript`, `_jsx`) are
-;; all leaves with no `inherits` line of their own — so no diamond arises
-;; today, but the resolver doesn't rely on that staying true.
+;; A query file can declare `; inherits: dep,dep,...` instead of writing its
+;; own patterns; tree-sitter has no notion of this, so `plum/resolve-query`
+;; recursively fetches and prepends each named dependency's copy before
+;; anything reaches tree-sitter. No deduplication — see README.
 
 ;;; #t if `line`, trimmed, is an `; inherits: a,b,c` directive.
 (define (plum/inherits-line? line)
@@ -57,28 +42,18 @@
        (not (string-contains? name "\\"))))
 
 ;;; Fetch `name`'s `filename` query to a scratch file and return its raw
-;;; content as a string. The `curl` call is NOT wrapped in a `with-handler`
-;;; here — deliberately: this function is itself called from inside
-;;; `plum/resolve-query`'s tolerant `with-handler` when resolving an
-;;; `; inherits:` dependency, and re-raising a native-builtin-sourced error
-;;; (via `raise-error`) out of an inner handler into an outer one corrupts
-;;; Steel 0.8.2's continuation stack ("Failed to find an open continuation on
-;;; the stack") — reproduced in isolation and pinned by a permanent test in
-;;; hume-scripting (see `steel_stdlib_availability`). A curl failure
-;;;(network/404) therefore propagates in one hop straight to whichever
-;;; handler is up the call stack, exactly like the removed `curl-fetch`
-;;; builtin's failures always did (it raised natively from Rust, never
-;;; through a Steel `with-handler` at this call site). The only cost: a
-;;; failed curl may leave a stale/partial `tmp` behind — harmless, since the
-;;; filename is deterministic per `(name, filename)` and gets overwritten by
-;;; `curl -o` on the next attempt.
-;;;
-;;; The inner `with-handler` around `plum/read-file` is unchanged from
-;;; before the migration — it only ever catches a Steel-internal port error
-;;; (curl having already succeeded), which in practice never happens; that
-;;; latent risk predates this migration and is out of scope here.
+;;; content. `curl` is deliberately NOT wrapped in a `with-handler`: this
+;;; runs inside `plum/resolve-query`'s tolerant handler, and re-raising a
+;;; native-builtin error from an inner handler into an outer one corrupts
+;;; Steel 0.8.2's continuation stack (pinned by `steel_stdlib_availability`).
+;;; Cost: a failed curl may leave a stale `tmp` — overwritten next attempt.
 (define (plum/fetch-raw-query name filename)
   (unless (plum/safe-segment? name)
+    ;; `plum/resolve-query`'s tolerant handler (used for every dependency
+    ;; below the top level) swallows this raise the same as an ordinary
+    ;; 404 — log it here so a real path-traversal attempt still leaves a
+    ;; trace instead of silently resolving to "no query for this dependency".
+    (log! 'warn (string-append "plum/fetch-raw-query: rejecting unsafe grammar/dependency name \"" name "\""))
     (error (string-append "plum/fetch-raw-query: unsafe grammar/dependency name \"" name "\"")))
   (let ((tmp (path-join (grammar-sources-dir) (string-append "_fetch_" name "_" filename))))
     (run-inline-output! "curl" (list "-fsSL" "-o" tmp "--" (plum/helix-query-url name filename)))
@@ -114,8 +89,7 @@
               content)))))
 
 ;;; Fetch and fully resolve `name`'s `filename` query, writing the result to
-;;; `dest`. Drop-in replacement for a plain `curl-fetch` of a query file —
-;;; same 404 behaviour (raises), but also resolves `; inherits:` chains.
+;;; `dest`. Raises on a 404 for the grammar's own query.
 (define (plum/fetch-query! name filename dest)
   (plum/write-file dest (plum/resolve-query name filename #f)))
 
@@ -155,10 +129,13 @@
 
 ;; ── Grammar discovery ─────────────────────────────────────────────────────────
 
+;;; #t if `name` has no compiled grammar on disk yet.
+(define (plum/not-installed? name)
+  (not (grammar-installed? name)))
+
 ;;; Declared grammar names not yet compiled.
 (define (plum/missing-grammars)
-  (filter (lambda (name) (not (grammar-installed? name)))
-          (grammar-source-names)))
+  (filter plum/not-installed? (grammar-source-names)))
 
 ;;; Compiled grammar files whose names are not in the declared source registry.
 (define (plum/orphan-grammars)
@@ -183,16 +160,7 @@
 
 ;;; Install a single grammar from its declared source, always from a clean
 ;;; slate — this doubles as the repair path for a grammar left in a failed
-;;; state (e.g. a source tree cloned but never compiled):
-;;;   0. plum/install-grammar-deps! — install any dependency grammars first
-;;;   1. plum/delete-dir — purge any existing source tree
-;;;   2. run-inline-output! (git clone + checkout) — blobless clone at pinned rev
-;;;   3. plum/fetch-query! — download highlights query, resolving any
-;;;      `; inherits:` chain (see "Query inheritance resolution" above)
-;;;   4. plum/try-fetch-injections! — download Helix injections query, if any
-;;;   5. compile-grammar! — tree-sitter build → shared lib (preceded by a
-;;;      displayln status line — the C compiler itself is silent)
-;;;   6. register-grammar! — attach to language in this session
+;;; state. See README "Grammar install pipeline" for the numbered steps.
 (define (plum/install-grammar name)
   (let* ((url     (grammar-source-url name))
          (rev     (grammar-source-rev name))
@@ -205,14 +173,10 @@
          (out-path (grammar-output-path name))
          (hl-path  (grammar-highlights-path name)))
     (plum/install-grammar-deps! name)
-    ;; git clone refuses a non-empty dest — clear any stale source tree (e.g.
-    ;; left behind by a prior install that failed after cloning) first.
-    ;; plum/delete-dir is a no-op when src-dir doesn't exist.
+    ;; git clone refuses a non-empty dest — clear any stale source tree first.
     (plum/delete-dir src-dir)
-    ;; Blobless clone (skip file-history blobs) at the pinned rev, then pin
-    ;; the exact revision — replaces the removed `git-clone-rev` builtin's
-    ;; two-step Rust implementation (process-group-safe via
-    ;; run-inline-output!, since this runs inside an #:inline-output command).
+    ;; Blobless clone (skip file-history blobs) at the pinned rev, then
+    ;; checkout that exact revision.
     (run-inline-output! "git" (list "clone" "--filter=blob:none" "--" url src-dir))
     (run-inline-output! "git" (list "checkout" "--force" "--end-of-options" rev "--") #:cwd src-dir)
     (plum/fetch-query! name "highlights.scm" hl-path)
@@ -241,7 +205,7 @@
   (lambda (grammars)
     (unless (and (list? grammars) (not (null? grammars)))
       (error "plum-ensure-grammars: requires a non-empty list of grammar names, e.g. (call! \"plum-ensure-grammars\" '(\"rust\" \"json\"))"))
-    (let ((missing (filter (lambda (name) (not (grammar-installed? name))) grammars)))
+    (let ((missing (filter plum/not-installed? grammars)))
       (if (null? missing)
           (log! 'info "PLUM: all requested grammars are installed")
           (plum/batch-run "installed grammar" missing plum/install-grammar))))

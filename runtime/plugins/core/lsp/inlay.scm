@@ -13,9 +13,8 @@
         (string-join (map (lambda (part) (hash-ref part "value")) label) ""))))
 
 ;;; `InlayHint {position, label, paddingLeft?, paddingRight?}` -> the
-;;; `(position text 'before)` shape `set-inlay-hints!` expects — `position`
-;;; passed through as the raw wire hashmap (the setter converts it);
-;;; padding becomes literal leading/trailing spaces.
+;;; `(position text 'before)` shape `set-inlay-hints!` expects; padding
+;;; becomes literal leading/trailing spaces.
 (define (lsp/hint->store-entry hint)
   (let* ((text (lsp/inlay-hint-text hint))
          (pad-left (and (hash-contains? hint "paddingLeft") (equal? (hash-ref hint "paddingLeft") #t)))
@@ -24,11 +23,8 @@
          (text (if pad-right (string-append text " ") text)))
     (list (hash-ref hint "position") text 'before)))
 
-;;; `(first last)` visible lines -> `InlayHintParams`, or `#f` if
-;;; `lsp-position-params` can't resolve `bid` (hidden/detached by the time
-;;; a debounced refresh actually fires) — `"textDocument"` from
-;;; `lsp-position-params`, a hand-built range with character 0 at both ends
-;;; (encoding-safe: no wire math needed at a line boundary).
+;;; `(first last)` visible lines -> `InlayHintParams`, or `#f` if `bid` can't
+;;; be resolved (hidden/detached by the time a debounced refresh fires).
 (define (lsp/inlay-hint-params bid first last)
   (let ((pp (lsp-position-params bid)))
     (and pp
@@ -36,19 +32,11 @@
                "range" (hash "start" (hash "line" first "character" 0)
                               "end" (hash "line" (+ last 1) "character" 0))))))
 
-;;; Debounced (200ms) per buffer and re-run from both on-viewport-change and
-;;; on-diagnostics-changed — servers refresh hints roughly when diagnostics
-;;; do, and neither hook carries a stale-safe reason to skip the other.
-;;; `debounce-by`, not `debounce`: a plain `debounce` shares one pending
-;;; timer across every call regardless of args, so a diagnostics batch that
-;;; touches two attached buffers back-to-back would have the second buffer's
-;;; call cancel the first's — keying per `bid` (this function's own first
-;;; arg) makes each buffer's refresh independent. Always re-reads the live
-;;; `(viewport-range bid)` rather than trusting an argument, so both call
-;;; sites can share one signature; `#f` (bid not currently shown in any
-;;; pane) skips silently. Resolved against `bid`'s own attached server, not
-;;; the focused buffer's — a split can show a different buffer/language in
-;;; each pane, and both hooks fire per-buffer.
+;;; Debounced (200ms) per buffer, re-run from both on-viewport-change and
+;;; on-diagnostics-changed. `debounce-by`, not `debounce`: keying per `bid`
+;;; keeps a diagnostics batch touching two buffers from having the second
+;;; buffer's call cancel the first's. Re-reads the live viewport rather than
+;;; trusting an argument, so both hooks can share one signature.
 (define lsp/refresh-hints
   (debounce-by 200
     (lambda (bid)
@@ -60,9 +48,8 @@
             (when params
               (lsp-request server "textDocument/inlayHint" params
                 (lambda (err res)
-                  ;; A legitimate empty/null response (no hints in this
-                  ;; viewport right now) must still clear any hints from a
-                  ;; previous, larger response — only a genuine error leaves
+                  ;; A legitimate empty/null response must still clear any
+                  ;; hints from a prior larger one — only an error leaves
                   ;; the existing display untouched.
                   (unless err
                     (set-inlay-hints! bid
@@ -76,9 +63,7 @@
 (register-hook! 'on-diagnostics-changed
   (lambda (bid) (lsp/refresh-hints bid)))
 
-;;; Once `bid` has no attached server, `lsp/refresh-hints` silently skips
-;;; (no capability to check), so stale hints from the detached server would
-;;; otherwise sit rendered forever. `on-lsp-detach` is the only signal for
-;;; this — clear explicitly rather than let them drift.
+;;; `refresh-hints` silently skips once `bid` has no attached server, so
+;;; stale hints would otherwise sit rendered forever — clear explicitly.
 (register-hook! 'on-lsp-detach
   (lambda (bid server-name) (set-inlay-hints! bid '())))

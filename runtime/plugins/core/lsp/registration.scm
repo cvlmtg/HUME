@@ -1,31 +1,15 @@
 ;;; core:lsp/registration.scm — the LSP server catalog, receipt/path
 ;;; primitives, and the scan that turns an installed server into a live
-;;; registration. `servers.scm` (this plugin's install/uninstall pipeline)
-;;; requires this file for its read-side helpers — both live in core:lsp, so
-;;; there is no cross-plugin require to route around (see docs/ROADMAP.md
-;;; "Plugin namespace isolation").
+;;; registration. `servers.scm` requires this file for its read-side helpers.
 
 (provide lsp/register-installed-servers! lsp/field lsp/servers-dir lsp/server-dir
          lsp/receipt-path lsp/read-receipt lsp/receipt-bin lsp/receipt-version
          lsp/servers-catalog)
 
 ;; ── Server catalog ────────────────────────────────────────────────────────────
-;;
 ;; Hash: name → server-entry fields, the tagged-alist tail from
-;; lsp-servers.scm: (languages ...) (command . cmd) (args ...)
-;; (config . json-string-or-absent) — Helix's `[language-server.*.config]`
-;; table, copied verbatim by the sync script. Helix sends this blob as
-;; `initializationOptions` (the only path that actually configures gopls/
-;; rust-analyzer — both request `workspace/configuration` under their own
-;; name, which this blob isn't nested under, so that lookup misses for them
-;; and many others; a verified no-op for both, not a bug). `config` is a
-;; single canonical JSON string (empty tail `(config)` when the server has
-;; none), decoded with `(json-parse)` at the one place it's consumed
-;; (`lsp/register-server-languages!`), not walked into a hash at load time
-;; for every entry regardless of whether it's ever installed.
-;; Exposed read-only via `lsp/servers-catalog` — `servers.scm` needs it to
-;; resolve `:lsp-install <lang>` and list `:lsp-servers`; this file needs it
-;; to turn a receipt's bin path into a full registration.
+;; lsp-servers.scm: (languages ...) (command . cmd) (args ...) (config . …).
+;; See README "Server config delivery" for how `config` reaches the server.
 (define *lsp-servers* (hash))
 
 ;;; Register one lsp-servers.scm entry: `(name field...)`.
@@ -42,11 +26,8 @@
 (define (lsp/servers-catalog) *lsp-servers*)
 
 ;; ── Field access ──────────────────────────────────────────────────────────────
-;;
-;; Entries in the catalog are tagged alists — `(key . value)` (a scalar or
-;; #(...) vector leaf) or `(key sub…)` (a nested list) — never positional
-;; tuples. `car` works on both shapes, which is what makes a single lookup
-;; helper possible.
+;; Catalog entries are tagged alists — `(key . value)` or `(key sub…)`, never
+;; positional tuples — `car` works on both shapes.
 
 ;;; First element of `fields` whose car is `key` (a symbol), or `#f`.
 (define (lsp/field fields key)
@@ -56,10 +37,11 @@
 
 ;; ── Directory entry filter + listing ──────────────────────────────────────────
 
-;;; Return #t if `name` is a server subdirectory of `parent` — filters out
-;;; stray non-directory entries (e.g. a Finder-dropped `.DS_Store`) that
-;;; `read-dir` returns alongside real server dirs and that would otherwise be
-;;; misread as an interrupted install (no `receipt.scm` inside a file).
+;;; #t if `name` is a server subdirectory of `parent` — filters out stray
+;;; non-directory entries `read-dir` returns alongside them. The systematic
+;;; case is `.install-lock` (`servers.scm`'s cross-process install sentinel,
+;;; created directly in this same directory); `.DS_Store` is incidental and
+;;; macOS-only.
 (define (lsp/valid-dir-entry? parent name)
   (is-dir? (path-join parent name)))
 
@@ -74,12 +56,9 @@
 (define (lsp/receipt-path name) (path-join (lsp/server-dir name) "receipt.scm"))
 
 ;; ── Receipts ──────────────────────────────────────────────────────────────────
-;;
 ;; receipt.scm is the install commit point: pure data
-;; `((name . "X") (version . "V") (bin . "relative/bin/path"))`, written by
-;; `servers.scm`'s `lsp/install-server!`. A server dir without a readable
-;; receipt is an interrupted install (see docs/LSP-INSTALL.md "Installation
-;; layout").
+;; `((name . "X") (version . "V") (bin . "relative/bin/path"))`. A server dir
+;; without a readable receipt is an interrupted install.
 
 ;;; Read `name`'s receipt, or `#f` if missing/unreadable (interrupted install).
 (define (lsp/read-receipt name)
@@ -92,48 +71,25 @@
 ;; ── Registration ──────────────────────────────────────────────────────────────
 
 ;;; Register `name` for every language it serves that isn't registered yet,
-;;; with `cmd` as the server command. `args`/`config` are shared across a
-;;; multi-language server; only root markers vary per language (see
-;;; docs/LSP-INSTALL.md "Seeded data format"). Skipping an already-registered
-;;; language is what makes a mid-session rescan (`:lsp-rescan-servers`, or
-;;; the rescan `:lsp-install` runs after installing a server that was already
-;;; registered) leave a user's own manual `register-lsp-server!` override
-;;; alone instead of last-wins-clobbering it with the catalog default — the
-;;; scan only needs to pick up languages nothing has claimed yet. At load
-;;; time the registry is empty, so every language passes the filter and gets
-;;; registered — matching this being the scan's first pass over the catalog.
-;;;
-;;; `lsp-registered-for-language?` reads through the same-eval pending op
-;;; queue (not just the last-completed drain), so this filter sees a
-;;; `register-lsp-server!`/`unregister-lsp-server!` queued earlier in this
-;;; *same* eval too — including one `lsp/install-server!` just queued for
-;;; `name`'s own languages right before calling this. No `#:force?` escape
-;;; hatch needed: the filter is always correct, in queue order.
-;;;
-;;; Same-eval visibility means load order doesn't matter: a user's own
-;;; `register-lsp-server!` placed *before* an eager `(load-plugin "core:lsp")`
-;;; in init.scm survives — the filter sees that earlier-queued registration
-;;; and skips the language, so the catalog default never even queues behind
-;;; it.
+;;; with `cmd` as the server command. Skipping an already-registered language
+;;; is what lets a mid-session rescan leave a user's own manual
+;;; `register-lsp-server!` alone instead of last-wins-clobbering it — see
+;;; README "Usage". `lsp-registered-for-language?` reads through the
+;;; same-eval pending op queue, so this filter is always correct in queue
+;;; order regardless of load order.
 (define (lsp/register-server-languages! name cmd)
   (let* ((fields   (hash-ref *lsp-servers* name))
          (langs    (filter (lambda (lang-entry) (not (lsp-registered-for-language? (car lang-entry))))
                             (cdr (lsp/field fields 'languages))))
          (args     (cdr (lsp/field fields 'args)))
-         ;; `(config . "json")` when the server has a seeded Helix config,
-         ;; `(config)` (empty tail) otherwise — `cdr` gives the JSON string
-         ;; or '() respectively, matching every other empty-tail field in
-         ;; this catalog (see lsp-servers.scm's own header).
+         ;; `(config . "json")` or empty-tail `(config)` — `cdr` gives the
+         ;; JSON string or '() respectively.
          (config-json (cdr (lsp/field fields 'config)))
          (config (if (null? config-json) #f (json-parse config-json))))
     (for-each
       (lambda (lang-entry)
-        ;; Delivered both ways, exactly as Helix does: as
-        ;; `initializationOptions` (the path that actually configures
-        ;; gopls/rust-analyzer/etc. — see the catalog comment above) and
-        ;; as `#:settings` (answers `workspace/configuration` pulls;
-        ;; misses for servers whose config isn't nested under their own
-        ;; name are expected and harmless, same as in Helix).
+        ;; Delivered both ways, as Helix does — see README "Server config
+        ;; delivery".
         (register-lsp-server! (car lang-entry)
                                #:command cmd
                                #:args args
@@ -143,41 +99,13 @@
       langs)))
 
 ;; ── Startup server registration ───────────────────────────────────────────────
-;;
-;; Passive: registers already-installed servers only (a readable receipt
-;; naming a seeded server), no subprocess, no network. `lsp/valid-dir-entry?`
-;; restricts the scan to actual subdirectories of `servers-dir`, so
-;; non-directory entries there — `.install-lock` (the cross-process install
-;; lock sentinel file `servers.scm` acquires around install/uninstall) and
-;; any stray file (e.g. a Finder-dropped `.DS_Store`) — are never misread as
-;; an interrupted or orphan server.
-;;
-;; Runs at plugin load, or at lazy activation. Either way,
+;; Passive: registers already-installed servers only, no subprocess, no
+;; network. Runs at plugin load, lazy activation, and after servers.scm's
+;; install/uninstall mutate disk; also exposed as `lsp-rescan-servers`.
 ;; `apply_pending_lsp_server_reg` (hume-editor/src/editor/lsp/registry.rs)
-;; sweeps already-open buffers on every registration once it's actually
-;; applied — at eager plugin load that happens synchronously (registrations
-;; queued during init.scm are flushed once at the end of init); a *lazy*
-;; activation applies its queued registrations immediately too
-;; (`activate_and_register`, hume-editor/src/editor/mappings/lazy.rs), so the
-;; buffer that triggered the activation attaches in that same call. Also
-;; exposed as the `lsp-rescan-servers` command, and called directly by
-;; `servers.scm`'s install/uninstall commands right after they mutate disk —
-;; no cross-plugin notify needed, both live here.
-;;
-;; This is the *only* registrar for managed (installed) servers, and the
-;; above is the *only* place it runs — load or lazy activation. Consequence:
-;; declaring core:lsp solely on its own downstream `on-lsp-attach` event
-;; self-deadlocks — nothing is registered until this runs, so nothing
-;; attaches, so the event that would trigger activation never fires. See
-;; docs/LSP-INSTALL.md "Registration model".
-;;;
-;;; Every server in the scan gets `lsp/register-server-languages!`'s normal
-;;; no-clobber filter — including one `servers.scm`'s install path just
-;;; queued an `unregister-lsp-server!` for, right before calling this in the
-;;; same eval: `lsp-registered-for-language?`'s same-eval read-through
-;;; already sees that queued unregister, so the filter re-admits those
-;;; languages and queues the re-registration right behind it, in order. No
-;;; unconditional/force variant needed.
+;; sweeps already-open buffers on every registration this queues. The *only*
+;; registrar for managed servers — see README Caveat for the self-deadlock
+;; this implies for a manifest keyed only on `on-lsp-attach`.
 (define (lsp/register-installed-servers!)
   (let ((sdir (lsp/servers-dir)))
     (when (path-exists? sdir)

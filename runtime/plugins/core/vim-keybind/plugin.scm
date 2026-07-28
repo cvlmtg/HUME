@@ -1,14 +1,10 @@
 ;;; core:vim-keybind
 
-;; Dot-repeat needs no #:repeatable here: change/delete are natively
-;; repeatable and capture the preceding goto-line-end(extend) step
-;; themselves, regardless of whether this wrapper is flagged repeatable.
+;; No #:repeatable needed — see README's dot-repeat note.
 (define-command! "vim-change-to-eol"
   "Change from the cursor to the end of the line."
   (lambda () (call! "goto-line-end" 1 #t) (call! "change")))
 
-;; Falls back to HUME's native copy-selection-on-next-line on a real
-;; selection instead of clobbering it unconditionally.
 (define-command! "vim-change-to-eol-or-copy-line"
   "Bare cursor: change to end of line (vim C). Real selection: copy it to the next line."
   (lambda ()
@@ -27,15 +23,11 @@
 (bind-key! 'normal "$" "goto-line-end")
 
 ;; ── Flip selection ────────────────────────────────────────────────────────────
-;; Vim visual-mode `o` swaps which end of the selection is the head. HUME's
-;; native `Ctrl+e` already does this in any mode (and on legacy terminals),
-;; so this is purely the vim muscle-memory alias.
+;; Vim muscle-memory alias for HUME's native Ctrl+e.
 (bind-key! 'extend "o" "flip-selections")
 
 ;; ── Alternate buffer ──────────────────────────────────────────────────────────
-;; Ctrl+6 is the portable form of vim's Ctrl+^ (same keycap/bytes on US
-;; layouts). Kitty protocol delivers Char('6')+CONTROL; legacy 0x1E is not
-;; surfaced here (falls back to `:e #`).
+;; Portable form of vim's Ctrl+^; see README for legacy-terminal caveat.
 (bind-key! 'normal "ctrl-6" "goto-alternate-file")
 
 ;; ── C / D / G ─────────────────────────────────────────────────────────────────
@@ -46,10 +38,8 @@
   (if (hash-contains? cfg "change-to-eol")
       (hash-ref cfg "change-to-eol")
       'smart))
-;; 'smart dispatches to stdlib/all-single-char? via call! at keypress time —
-;; without core:stdlib loaded, call! would just warn and fall through, so C
-;; would silently pick the wrong branch instead of failing where the mistake
-;; was made. Check now, at load time, so a missing dependency is a load error.
+;; Check now, at load time, so a missing core:stdlib is a load error, not a
+;; silent wrong-branch bug the first time C is pressed.
 (when (and (equal? change-to-eol 'smart) (not (member "core:stdlib" (loaded-plugins))))
   (error "core:vim-keybind: 'smart change-to-eol requires core:stdlib — (load-plugin \"core:stdlib\") before (load-plugin \"core:vim-keybind\")"))
 (cond

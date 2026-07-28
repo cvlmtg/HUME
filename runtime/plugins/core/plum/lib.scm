@@ -20,29 +20,16 @@
         (else (plum/find pred? (cdr lst)))))
 
 ;; ── Process spawning ──────────────────────────────────────────────────────────
-;;
-;; Full-trust plugin model (see docs/ROADMAP.md): PLUM spawns processes via
-;; Steel's own `steel/process` stdlib, not a hardened Rust builtin. The one
-;; exception is `#:inline-output` commands, which use the separate
-;; `run-inline-output!` builtin for process-group (Ctrl+C) safety — see its
-;; doc comment. `plum/run!` below is for everywhere else (plain `git-clone`,
-;; `git-pull`) — commands that run with the TUI's terminal raw mode still on,
-;; where Steel's own `spawn-process` is safe to use directly.
+;; `run-inline-output!` handles `#:inline-output` commands (process-group
+;; safety for Ctrl+C); `plum/run!` is for everything else that runs with the
+;; TUI's raw mode still on.
 
-;;; Spawn `cmd` with `args` (a list of strings), capturing stdout+stderr;
-;;; blocks until exit. On a nonzero exit, spawn failure, or wait failure,
-;;; raises an error naming `cmd` and including stderr. `#:cwd`, if given,
-;;; sets the child's working directory.
-;;;
-;;; stdin is piped and closed immediately after spawn — never left open
-;;; waiting for input, and never inherited from HUME's own terminal (which
-;;; would let the child's reads race the editor's own key reads). This
-;;; mirrors the non-inherited-stdin contract of the `Command::output()`-based
-;;; builtin this replaces.
-;;;
-;;; Gotcha (pinned by a permanent test in hume-scripting): `child-stderr`
-;;; must be grabbed before `wait` is called, or it returns `#f` even though
-;;; the stream was piped.
+;;; Spawn `cmd`/`args`, capturing stdout+stderr; blocks until exit. Raises,
+;;; naming `cmd` and stderr, on nonzero exit, spawn failure, or wait failure.
+;;; stdin is piped and closed immediately — never inherited from HUME's own
+;;; terminal, or the child's reads would race the editor's key reads.
+;;; Gotcha (pinned by a permanent hume-scripting test): grab `child-stderr`
+;;; before `wait`, or it returns `#f` even though the stream was piped.
 (define (plum/run! cmd args #:cwd [dir #f])
   (let* ([base (with-stdin-piped (with-stderr-piped (with-stdout-piped (command cmd args))))]
          [builder (if dir (with-current-dir base dir) base)]
@@ -61,13 +48,9 @@
         (error (string-append cmd ": cannot spawn: " (to-string (Err->value spawned)))))))
 
 ;; ── Filesystem helpers ────────────────────────────────────────────────────────
-;;
-;; Thin wrappers over Steel's `steel/filesystem`/`steel/ports` matching the
-;; contracts of the removed HUME builtins of similar name, so call sites
-;; elsewhere in PLUM don't need to change beyond the require.
+;; Thin wrappers over Steel's `steel/filesystem`/`steel/ports`.
 
-;;; Sorted list of basenames in `dir` (mirrors the removed `list-dir`
-;;; builtin's contract — Steel's own `read-dir` returns full paths instead).
+;;; Sorted list of basenames in `dir` (`read-dir` itself returns full paths).
 (define (plum/list-dir dir)
   (sort (map file-name (read-dir dir)) string<?))
 
@@ -85,19 +68,14 @@
     (close-output-port port)))
 
 ;;; Recursively delete `dir`. Idempotent — a missing directory is not an
-;;; error — matching the removed `delete-dir` builtin's contract; Steel's own
-;;; `delete-directory!` raises on a missing path, and several call sites
-;;; (e.g. clearing a stale source tree before a first-time clone) rely on
-;;; being able to call this whether or not anything is there yet.
+;;; error, unlike Steel's own `delete-directory!` — callers rely on this to
+;;; clear a possibly-absent stale source tree before a first-time clone.
 (define (plum/delete-dir dir)
   (when (path-exists? dir)
     (delete-directory! dir)))
 
-;;; Delete the file at `path`. Idempotent — a missing file is not an error —
-;;; matching the removed `delete-file` builtin's contract; Steel's own
-;;; `delete-file!` raises on a missing path, and cleanup-on-failure call
-;;; sites (e.g. removing a partial download) must tolerate the file never
-;;; having been created.
+;;; Delete the file at `path`. Idempotent, unlike `delete-file!` — cleanup
+;;; call sites must tolerate the file never having been created.
 (define (plum/delete-file path)
   (when (path-exists? path)
     (delete-file! path)))

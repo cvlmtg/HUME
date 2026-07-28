@@ -6,15 +6,11 @@
 (require "lib.scm")
 
 ;; ── Response decoding ───────────────────────────────────────────────────────
-;;
-;; Snippet stripping (insertTextFormat: Snippet items rewritten to plain
-;; text — v1 has no tabstop-cycling UI) happens in Rust, at the store
-;; ingress (`StoredCompletionItem::from_typed`/`from_json_lenient`,
-;; hume-editor/src/editor/lsp/completion.rs) — items arriving here already
-;; have plain `insertText`/`textEdit.newText`.
+;; Snippet stripping happens in Rust at the store ingress — items arriving
+;; here already have plain `insertText`/`textEdit.newText`.
 
-;;; `res`: a bare `CompletionItem[]` (JSON array -> Steel list, incomplete
-;;; implicitly `#f`) or a `CompletionList` hashmap `{isIncomplete, items}`.
+;;; `res`: a bare `CompletionItem[]` (incomplete implicitly `#f`) or a
+;;; `CompletionList` hashmap `{isIncomplete, items}`.
 ;;; Returns `(list items incomplete)`.
 (define (lsp/completion-response->items res)
   (if (list? res)
@@ -35,9 +31,8 @@
                  (items (car decoded))
                  (incomplete (cadr decoded)))
             (completion-begin! bid items #:incomplete incomplete)))))
-    ;; Per-keystroke refiltering (`on-completion-refilter`) can re-issue this
-    ;; before the prior response lands — cancel it rather than let two
-    ;; in-flight completion requests race each other for the same session.
+    ;; Per-keystroke refiltering can re-issue this before the prior response
+    ;; lands — supersede rather than race two sessions.
     #:supersede "completion"))
 
 ;; ── Trigger entry points ─────────────────────────────────────────────────────
@@ -54,19 +49,15 @@
     (lsp/guard-capability "completionProvider"
       (lambda () (lsp/request-and-begin-completions bid)))))
 
-;; ── on-completion-accept ─────────────────────────────────────────────────────
-;; Rust applies the main edit, any additionalTextEdits, and (when the item
-;; lacked additionalTextEdits but the server advertises resolveProvider) the
-;; completionItem/resolve round trip — all atomically, through the same
-;; ChangeSet the accept edit produced (see `CompletionSession::accept` and
-;; `edits::apply_resolved_additional_edits`, hume-editor/src/editor/lsp/).
-;; on-completion-accept remains a plain extension point for anything this
-;; store doesn't parse (e.g. `command`) — no default handler needed here.
-
 ;; ── isIncomplete re-request ──────────────────────────────────────────────────
-;; Rust only fires this while the open session's isIncomplete flag is set —
-;; capability was already confirmed to start that session, no re-guard here.
+;; Fires only while the open session's isIncomplete flag is set — capability
+;; was already confirmed to start that session, no re-guard here.
 
 (register-hook! 'on-completion-refilter
   (lambda (bid filter-text)
     (lsp/request-and-begin-completions bid)))
+
+;; ── Accept ────────────────────────────────────────────────────────────────────
+;; No `on-completion-accept` handler here, deliberately: Rust applies the main
+;; edit, `additionalTextEdits`, and `completionItem/resolve` atomically, so
+;; there is nothing left for Scheme to do on accept.

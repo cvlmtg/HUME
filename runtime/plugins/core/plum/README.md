@@ -56,8 +56,10 @@ PLUM bundles two independent subsystems:
 - `grammars.scm` — tree-sitter **grammar** install pipeline (`:plum-install-grammar` etc);
   builds on the source catalog and path helpers core registers at startup (see "Grammar
   sources and the Helix pin" below).
-- `lib.scm` — shared utilities: `plum/valid-dir-entry?` and `plum/batch-run` (batch
-  installs), used by both `plugins.scm` and `grammars.scm`.
+- `lib.scm` — shared utilities: directory/file/process helpers (`plum/valid-dir-entry?`,
+  `plum/list-dir`, `plum/read-file`, `plum/write-file`, `plum/delete-dir`, `plum/delete-file`,
+  `plum/run!`, `plum/find`) and `plum/batch-run` (batch installs), used by `plugins.scm` and
+  `grammars.scm` as needed.
 
 ### Plugin discovery
 
@@ -83,17 +85,38 @@ project's `runtime/queries/` at a pinned commit (`runtime/scheme/helix-pin.scm`,
 PLUM's own load), so HUME rides Helix's query-file curation without vendoring it.
 
 `plum/try-fetch-injections!` tolerates a missing `injections.scm` (most grammars don't have
-one) instead of letting `curl-fetch`'s 404 abort the whole install — an unusual case where
-letting the failure fail silently, rather than fail fast, is correct: no query file just
-means no injection highlighting for that grammar, not a broken install.
+one) instead of letting a 404 abort the whole install — an unusual case where letting the
+failure fail silently, rather than fail fast, is correct: no query file just means no
+injection highlighting for that grammar, not a broken install.
 
 A query file can declare `; inherits: dep,dep,...` instead of writing out its own patterns —
 a directive naming other query sources whose patterns should be spliced in (the JS-family
 grammars — `js`, `jsx`, `ts`, `tsx` — share most of their patterns this way). tree-sitter has
 no notion of this, so `plum/resolve-query` resolves the chain itself: it recursively fetches
 each named dependency's copy of the same file and splices the results together before
-anything is written to disk. `plum/fetch-query!` is the drop-in replacement for a plain
-`curl-fetch` of a query file that also resolves this.
+anything is written to disk.
+
+No deduplication: this mirrors Helix's own resolver, which concatenates without deduping. A
+grammar reachable by two `inherits` paths (a "diamond") would be spliced twice — harmless
+(tree-sitter tolerates duplicate patterns) and exactly what Helix produces. The JS/TS family
+(HUME's only multi-dependency `inherits` case) is a flat one-level star at the pinned Helix
+commit — `tsx`'s bases (`ecma`, `_typescript`, `_jsx`) are all leaves with no `inherits` line
+of their own — so no diamond arises today, but the resolver doesn't rely on that staying true.
+
+### Grammar install pipeline
+
+`:plum-install-grammar` always installs from a clean slate, which doubles as the repair path
+for a grammar left in a failed state (e.g. a source tree cloned but never compiled):
+
+1. Install any not-yet-compiled dependency grammars first (see "Grammar dependencies" below).
+2. Purge any existing source tree.
+3. Blobless clone (skip file-history blobs) at the pinned revision, then check out that exact
+   revision.
+4. Download the highlights query, resolving any `; inherits:` chain.
+5. Compile: tree-sitter build → shared lib (preceded by a status line — the C compiler itself
+   is silent, which on a slow grammar would otherwise read as a hang).
+6. Download the Helix injections query, if any (best-effort — most grammars have none).
+7. Register the grammar for its language in this session.
 
 ### Grammar dependencies
 
@@ -112,3 +135,9 @@ in `<data>/grammars/`: no subprocess, no network. Grammars declared but not yet 
 until the user explicitly runs `:plum-install-grammar` or `:plum-ensure-grammars`; nothing
 auto-installs on startup, since a first run with many declared languages could otherwise mean
 a long, surprising stall before the editor is usable.
+
+`installed-grammars` (and so `plum/orphan-grammars`/`:plum-cleanup-grammars`) only ever sees
+files matching *this platform's* shared-library extension — a `.so` left behind in a
+`<data>/grammars/` shared with a Linux setup, for instance, is invisible to both registration
+and cleanup on macOS, not reported as an orphan and deleted. Remove it by hand if that ever
+comes up; it's inert either way (never dlopen'd on the platform it doesn't match).

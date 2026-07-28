@@ -1,22 +1,15 @@
-;;; core:pickers — fuzzy pickers for files and buffers.
-;;;
-;;; The shipped client of the generic picker surface (docs/FUZZY-FINDERS.md
-;;; B6), built entirely from the public plugin API (`picker!`,
-;;; `picker-source-spawn!`) — exactly what a third-party picker plugin gets.
+;;; core:pickers — fuzzy pickers for files and buffers, built entirely from
+;;; the public plugin API (`picker!`, `picker-source-spawn!`) — exactly what
+;;; a third-party picker plugin gets.
 
 ;; ── Sync probe ──────────────────────────────────────────────────────────────
-;;
-;; Q-B8 posture: sync spawn is fine for fast, small-output commands (the
-;; `git rev-parse` class); enumeration-scale output always streams through
-;; `picker-source-spawn!` instead. Pattern follows core:plum's `plum/run!`,
-;; except this returns `#f` on a nonzero exit instead of raising — a failed
-;; probe (not a repo, no fd) is a normal branch here, not an error.
+;; Sync spawn for fast small-output probes (git rev-parse class);
+;; enumeration-scale output streams via `picker-source-spawn!` instead.
+;; Unlike plum/run!, returns `#f` on nonzero exit rather than raising — a
+;; failed probe (not a repo, no fd) is a normal branch here.
 
-;;; Trimmed stdout of `cmd args` if it spawns and exits 0, else `#f`. stdin,
-;;; stdout, and stderr are all piped (and stdin closed immediately) — never
-;;; inherited from the terminal, so a probe can never scribble on the TUI.
-;;; The stdout port is grabbed BEFORE `wait` (plum/run!'s pinned
-;;; port-lifecycle gotcha).
+;;; Trimmed stdout of `cmd args` if it spawns and exits 0, else `#f`. Piped
+;;; stdin/stdout/stderr, never inherited. Stdout port grabbed BEFORE `wait`.
 (define (pickers/run-stdout cmd args)
   (let* ([base (with-stdin-piped (with-stderr-piped (with-stdout-piped (command cmd args))))]
          [spawned (spawn-process base)])
@@ -24,9 +17,8 @@
         (let* ([child (Ok->value spawned)]
                [out (child-stdout child)])
           (close-output-port (child-stdin child))
-          ;; Drain stdout BEFORE wait: a child that fills its pipe buffer
-          ;; blocks on write until read, while `wait` blocks until exit —
-          ;; waiting first would deadlock on any output past one pipe buffer.
+          ;; Drain BEFORE wait — a child that fills its pipe buffer blocks on
+          ;; write until read, so waiting first can deadlock past one buffer.
           (let ([output (trim (read-port-to-string out))])
             (let ([wait-result (wait child)])
               (if (and (Ok? wait-result) (= (Ok->value wait-result) 0))
@@ -34,15 +26,13 @@
                   #f))))
         #f)))
 
-;;; #t iff the editor's cwd is inside a git *work tree*. The stdout check
-;;; (not exit code alone) matters: inside a bare repo or a `.git` dir,
-;;; `rev-parse` exits 0 but prints "false" — and `ls-files` would be useless.
+;;; #t iff the editor's cwd is inside a git *work tree*. Checks stdout, not
+;;; just exit code: inside a bare repo `rev-parse` exits 0 but prints "false".
 (define (pickers/git-repo?)
   (and (which "git")
        (equal? "true" (pickers/run-stdout "git" '("rev-parse" "--is-inside-work-tree")))))
 
-;;; The fd binary to use, or `#f`. Debian/Ubuntu package the binary as
-;;; `fdfind` to avoid a name clash, so probe both names.
+;;; The fd binary to use, or `#f` — Debian packages it as `fdfind`.
 (define (pickers/fd-binary)
   (cond [(which "fd") "fd"]
         [(which "fdfind") "fdfind"]
@@ -52,8 +42,7 @@
 
 ;;; Open an empty files picker and attach the streaming source `cmd args`
 ;;; (NUL-delimited output). Accept opens the file AND switches the focused
-;;; pane to it — `open-buffer!` alone deliberately doesn't switch panes.
-;;; `on-select` receives `#f` on dismissal (Esc / picker-close! / replaced).
+;;; pane — `open-buffer!` alone doesn't. `on-select` gets `#f` on dismissal.
 (define (pickers/open-files-picker! cmd args)
   (let ([token (picker! '()
                         (lambda (path)
@@ -62,9 +51,8 @@
                         #:prompt "files: ")])
     (picker-source-spawn! token cmd args #:nul #t)))
 
-;;; Internal dispatch seam: source selection with the environment probes
-;;; passed in explicitly, so tests can drive each branch hermetically via
-;;; `call!` instead of manipulating PATH.
+;;; Internal dispatch seam: probes passed in explicitly so tests can drive
+;;; each branch via `call!` instead of manipulating PATH.
 (define-command! "pickers/files-picker-with"
   "Internal: open the files picker for the given git/fd probe results."
   (lambda (git-repo? fd)
@@ -85,22 +73,18 @@
 
 ;; ── Buffers picker ────────────────────────────────────────────────────────────
 
-;;; `path` relative to the editor cwd when it lies inside it, else unchanged.
-;;; Best-effort: a canonicalization mismatch (e.g. macOS `/var` vs
-;;; `/private/var`) just yields the absolute path instead of breaking.
+;;; `path` relative to the editor cwd when it lies inside it, else unchanged
+;;; (best-effort: a canonicalization mismatch just yields the absolute path).
 (define (pickers/relativize path)
   (let* ([cwd (current-directory)]
-         ;; Filesystem root is its own trailing slash — appending another
-         ;; would build "//" and never match any absolute path.
+         ;; Root is its own trailing slash — avoid building "//".
          [prefix (if (equal? cwd "/") "/" (string-append cwd "/"))])
     (if (starts-with? path prefix)
         (substring path (string-length prefix) (string-length path))
         path)))
 
-;;; Display: the (relativized) path when the buffer has one — a bare
-;;; `buffer-name` is an ambiguous basename (two `mod.rs` buffers are
-;;; indistinguishable) — else the name (`*scratch*`, view buffers). Payload:
-;;; the BufferId, opaque to Rust.
+;;; Display: the (relativized) path when the buffer has one — a bare name
+;;; would be an ambiguous basename — else the buffer name (`*scratch*`, etc).
 (define (pickers/buffer-item bid)
   (let ([path (buffer-path bid)])
     (cons (if path (pickers/relativize path) (buffer-name bid)) bid)))
@@ -113,7 +97,6 @@
              #:prompt "buffers: ")))
 
 ;; ── Keybindings ───────────────────────────────────────────────────────────────
-;; `g` trie per docs/FUZZY-FINDERS.md's trigger-prefix decision; extend mode
-;; falls through to the normal trie, so 'normal alone covers both.
+;; Extend mode falls through to the normal trie, so 'normal alone covers both.
 (bind-key! 'normal "g f" "picker-files")
 (bind-key! 'normal "g b" "picker-buffers")

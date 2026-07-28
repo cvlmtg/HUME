@@ -1,12 +1,9 @@
 ;;; core:lsp/actions.scm — textDocument/codeAction.
 ;;;
-;;; context.diagnostics must echo back the *raw* wire Diagnostic objects
-;;; currently shown in the request range — servers (rust-analyzer
-;;; confirmed) gate diagnostic-derived quickfixes ("remove unused import",
-;;; etc.) on this, treating an empty array as "the client isn't showing
-;;; any diagnostics here" and withholding them. `diagnostics-for-buffer`'s
-;;; `"raw"` field carries these through unmodified — Steel
-;;; never reconstructs or re-encodes a wire position itself.
+;;; context.diagnostics must echo back the *raw* wire Diagnostic objects in
+;;; range — servers (rust-analyzer confirmed) gate diagnostic-derived
+;;; quickfixes on this, withholding them for an empty array.
+;;; `diagnostics-for-buffer`'s `"raw"` field carries these through unmodified.
 
 (require "lib.scm")
 
@@ -49,17 +46,10 @@
                            (list)))
     (lambda (err res) (when err (lsp/report-error "code action" err)))))
 
-;;; Applies `edit` first, then runs `command`, per spec order. A bare
-;;; `Command` (legacy shape: "command" is a *string* at the top level, no
-;;; "edit" key at all) only ever reaches the command branch. An action with
-;;; neither key is lazily-resolved — send `codeAction/resolve` first, or
-;;; report it as unsupported if the server never advertised resolve.
-;;;
-;;; `#:resolved?` bounds resolution to a single round trip: the resolve
-;;; callback's recursive call always passes `#:resolved? #t`, so a
-;;; non-conforming server that resolves an action still lacking both "edit"
-;;; and "command" hits the "no edit or command" report instead of
-;;; re-entering `codeAction/resolve` forever.
+;;; Applies `edit` first, then runs `command`, per spec order. An action
+;;; with neither key is lazily-resolved via `codeAction/resolve` first.
+;;; `#:resolved?` bounds this to a single round trip, so a non-conforming
+;;; server that re-resolves to still-empty edit/command doesn't loop.
 (define (lsp/run-action action #:resolved? [resolved? #f])
   (cond
     ((or (hash-contains? action "edit") (hash-contains? action "command"))
@@ -67,6 +57,9 @@
        (apply-workspace-edit! (hash-ref action "edit")))
      (when (hash-contains? action "command")
        (let ((cmd (hash-ref action "command")))
+         ;; The bare legacy `Command` shape has `command` as a *string* at
+         ;; the top level, with no `edit` key at all — in that case `action`
+         ;; itself *is* the Command object `lsp/exec-command` expects.
          (lsp/exec-command (if (string? cmd) action cmd)))))
     ((and (not resolved?) (lsp/action-resolve-provider?))
      (lsp-request #f "codeAction/resolve" action

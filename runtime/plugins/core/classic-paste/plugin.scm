@@ -30,7 +30,6 @@
 (bind-key! 'normal "p" "classic-ring-after")
 (bind-key! 'normal "P" "classic-ring-before")
 
-;; Ctrl+Shift+V only arrives under the kitty keyboard protocol; legacy
-;; terminals typically encode it the same as Ctrl+V or intercept it themselves.
+;; Ctrl+Shift+V needs the kitty keyboard protocol; see README.
 (bind-key! 'normal "ctrl-v" "classic-clipboard-after")
 (bind-key! 'normal "ctrl-shift-v" "classic-clipboard-before")

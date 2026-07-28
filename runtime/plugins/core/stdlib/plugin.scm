@@ -2,9 +2,8 @@
 
 ;; ── Selection helpers (internal) ────────────────────────────────────────────
 ;;
-;; Each selection is an opaque (anchor head primary?) triple — go through
-;; these accessors, never car/cadr/caddr directly. Every helper passes #f
-;; straight through, so callers check for #f once, at the call site.
+;; Selections are opaque (anchor head primary?) triples — go through these
+;; accessors, never car/cadr/caddr. Every helper passes #f straight through.
 
 ;;; Anchor (0-indexed char offset) of a single selection triple, or #f.
 (define (stdlib/selection-anchor sel)

@@ -1,18 +1,13 @@
 ;;; core:lsp/sighelp.scm — textDocument/signatureHelp.
 ;;;
-;;; Dismiss on mode change (leaving Insert, entering Command, …) is already
-;;; handled by lib.scm's `on-mode-change` handler — `show-popup!`/
-;;; `close-popup!` is one shared widget, so that single registration
-;;; covers every feature using it, including this one. No separate
-;;; registration here.
+;;; Dismiss on mode change is handled by lib.scm's shared `on-mode-change`
+;;; popup registration — no separate one needed here.
 
 (require "lib.scm")
 
-;;; A `SignatureHelp.parameters[].label` is either a plain string, or a
-;;; `[start, end)` UTF-16 offset pair into the *signature's own* label —
-;;; both forms resolve to the same parameter text. The offset pair is
-;;; converted to char indices first (`lib.scm`) since it may have been
-;;; computed over a label containing astral-plane characters.
+;;; A `SignatureHelp.parameters[].label` is a plain string, or a `[start,
+;;; end)` UTF-16 offset pair into the signature's own label — converted to
+;;; char indices first, since the offsets may span astral-plane characters.
 (define (lsp/param-text sig-label param)
   (let ((param-label (hash-ref param "label")))
     (if (string? param-label)

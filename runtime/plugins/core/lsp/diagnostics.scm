@@ -16,10 +16,9 @@
 (define (lsp/first-line text)
   (car (split-many text "\n")))
 
-;;; First entry whose "start" is strictly after `head` — "next" means the
-;;; next diagnostic *starting* after the cursor, so a cursor sitting inside
-;;; diagnostic A (whose start is at or before head) still advances to B, not
-;;; back to A. Wraps to the first entry overall if none qualifies.
+;;; First entry whose "start" is strictly after `head` — a cursor sitting
+;;; inside diagnostic A still advances to B, not back to A. Wraps to the
+;;; first entry overall if none qualifies.
 (define (lsp/first-after diags head)
   (let ((after (filter (lambda (d) (> (hash-ref d "start") head)) diags)))
     (if (null? after) (car diags) (car after))))
@@ -35,10 +34,8 @@
   (goto-location! (list (current-buffer) (hash-ref d "line") (hash-ref d "col"))))
 
 ;;; gn/gp only — jumps like `lsp/diag-jump-to!`, then pops the target's full
-;;; message in a dismiss-on-any-key overlay (`#:kind 'scrollable`: a
-;;; multi-line message gets Ctrl+u/Ctrl+d scrolling for free, and any other
-;;; key still dismisses it). `:diagnostics`' drawer-select callback calls
-;;; `lsp/diag-jump-to!` directly and stays overlay-free.
+;;; message in a dismiss-on-any-key overlay (Ctrl+u/d scroll it instead).
+;;; `:diagnostics`' drawer-select calls `lsp/diag-jump-to!` directly, no popup.
 (define (lsp/diag-jump direction)
   (let ((diags (diagnostics-for-buffer (current-buffer))))
     (if (null? diags)
@@ -75,12 +72,8 @@
             (lambda (idx) (when idx (lsp/diag-jump-to! (list-ref diags idx)))))))))
 
 ;; ── End-of-line inline summary ──────────────────────────────────────────────
-;;
-;; One "[n] <message>" (or bare message when n=1) appended after each
-;; offending line's code, re-rendered on every on-diagnostics-changed batch.
-;; Message text comes from the line's leftmost (smallest "col") diagnostic;
-;; color comes from the line's most severe one — a line with any error reads
-;; red even when the leftmost message is a warning.
+;; One "[n] <message>" appended after each offending line: text from the
+;; leftmost diagnostic, color from the most severe one on that line.
 
 ;;; Lower rank = more severe. Unranked/unknown severities sort last.
 (define (lsp/severity-rank severity)
@@ -137,16 +130,7 @@
 (register-hook! 'on-diagnostics-changed
   (lambda (bid) (lsp/refresh-inline-diagnostics bid)))
 
-;;; Once `bid` has no attached server, diagnostics-for-buffer returns nothing
-;;; new — clear explicitly rather than let a detached server's last inline
-;;; summary sit rendered forever (same reasoning as inlay hints' on-lsp-detach).
+;;; A detached server means nothing new from diagnostics-for-buffer — clear
+;;; explicitly rather than let the last inline summary sit rendered forever.
 (register-hook! 'on-lsp-detach
   (lambda (bid server-name) (set-inline-diagnostics! bid '())))
-
-;; ── gn/gp full-message overlay ───────────────────────────────────────────────
-;;
-;; Jumping via goto-next-diagnostic/goto-prev-diagnostic additionally pops
-;; the jumped-to diagnostic's full (possibly multi-line) message in a
-;; scrollable popup, dismissed on any key press except Ctrl+u/d (which
-;; scroll it) — same as hover; unlike signature-help, which dismisses only
-;; on-mode-change.

@@ -1,19 +1,14 @@
 ;;; core:lsp/servers.scm — LSP server install pipeline: download, verify,
 ;;; unpack, receipt, uninstall, catalog listing. Registration (turning a
 ;;; receipt into a live `register-lsp-server!` call) lives in
-;;; registration.scm, required below for its catalog/receipt/path helpers —
-;;; both files are the same plugin, so a direct call replaces what used to
-;;; be a cross-plugin `call!` notify to core:lsp from core:plum.
+;;; registration.scm, required below for its catalog/receipt/path helpers.
 
 (require "registration.scm")
 
 ;; ── Filesystem + list-search helpers ────────────────────────────────────────
-;;
-;; Thin wrappers over Steel's `steel/filesystem`/`steel/ports`, matching the
-;; contracts of the same-named helpers in plum/lib.scm (used by PLUM's own
-;; plugin/grammar install pipelines) — duplicated here rather than shared,
-;; since plugins never require each other's modules (see docs/ROADMAP.md
-;; "Plugin namespace isolation").
+;; Thin wrappers over Steel's `steel/filesystem`/`steel/ports`, duplicated
+;; from plum/lib.scm's same-named helpers — plugins never require each
+;; other's modules (see docs/ROADMAP.md "Plugin namespace isolation").
 
 ;;; First element of `lst` satisfying `pred?`, or `#f`.
 (define (lsp/find pred? lst)
@@ -97,17 +92,11 @@
                (else (loop (+ i 1)))))))
 
 ;; ── Receipts (write side) ────────────────────────────────────────────────────
-;;
-;; receipt.scm is the install commit point: pure data
-;; `((name . "X") (version . "V") (bin . "relative/bin/path"))`, written LAST
-;; by `lsp/install-server!`. A server dir without a readable receipt is an
-;; interrupted install (see docs/LSP-INSTALL.md "Installation layout"). Read
-;; side (`lsp/read-receipt`, `lsp/receipt-version`, `lsp/receipt-bin`,
-;; path helpers) lives in registration.scm, required above.
+;; receipt.scm is the install commit point, written LAST by
+;; `lsp/install-server!`. Read side lives in registration.scm, required above.
 
 ;;; Escape `s` as a double-quoted Scheme string literal (mirrors
-;;; scripts/sync_common.py's scheme_str — receipts are the one place this
-;;; plugin writes Scheme data instead of just reading it).
+;;; scripts/sync_common.py's scheme_str).
 (define (lsp/scheme-quote s)
   (string-append "\"" (string-replace (string-replace s "\\" "\\\\") "\"" "\\\"") "\""))
 
@@ -266,20 +255,16 @@
     bin-rel))
 
 ;;; Install (or reinstall) a single server from its declared source, always
-;;; from a clean slate — this doubles as the repair/upgrade path. See
-;;; docs/LSP-INSTALL.md "Commands and lifecycle" for the
-;;; reinstall-over-a-running-client behaviour:
+;;; from a clean slate — doubles as the repair/upgrade path. See
+;;; docs/LSP-INSTALL.md "Commands and lifecycle" for reinstall-over-a-
+;;; running-client behaviour:
 ;;;   1. blocker check + tool preflight
-;;;   2. unregister every seeded language (idempotent; queued, applies at
-;;;      end-of-eval, after which any running client is reaped)
-;;;   3. lsp/delete-dir — purge any existing install; the receipt dies with
-;;;      it, so an interruption from here on is self-describing
-;;;   4. download + verify + unpack (github), npm install (npm), or cargo
-;;;      install (cargo)
+;;;   2. unregister every seeded language (any running client is reaped)
+;;;   3. purge any existing install — the receipt dies with it
+;;;   4. download + verify + unpack (github), npm install, or cargo install
 ;;;   5. write receipt — the commit point
 ;;;   6. $PATH notice, if the seeded command also resolves there
-;;; Registration is not this function's job — the caller re-scans afterward
-;;; (see `lsp/lsp-install-or-report!`).
+;;; Registration is the caller's job — see `lsp/lsp-install-or-report!`.
 (define (lsp/install-server! name)
   (let ((blocker (lsp/install-blocker name)))
     (when blocker
@@ -310,18 +295,14 @@
 (define (lsp/resolve-lsp-lang-arg arg)
   (if (string? arg) arg (buffer-language (current-buffer))))
 
-;;; Runs `thunk` (typically an install/uninstall body) under the
-;;; cross-process install lock (`<data>/servers/.install-lock`) — a second
-;;; HUME process installing/uninstalling at the same time is refused, not
-;;; interleaved — releasing it exactly once regardless of outcome. `what`
-;;; names the operation for the failure log line. Never re-raises `thunk`'s
-;;; error through an outer with-handler: a nested with-handler re-raising a
-;;; native-builtin error corrupts the Steel VM's continuation stack (see
-;;; LESSONS.md) — every failure path here terminates in a plain `log!`, not
-;;; a re-raise. Returns #t on success, #f on any failure — a lock the
-;;; caller couldn't acquire (another process holds it) and a `thunk` that
-;;; raised both collapse to the same #f; distinguishing them would need
-;;; richer plumbing this plugin has no caller for.
+;;; Runs `thunk` under the cross-process install lock
+;;; (`<data>/servers/.install-lock`), releasing it exactly once regardless
+;;; of outcome. Never re-raises `thunk`'s error through an outer
+;;; with-handler — a nested re-raise of a native-builtin error corrupts the
+;;; Steel VM's continuation stack (see LESSONS.md) — every failure path
+;;; terminates in a plain `log!`. Returns #t on success, #f on any failure;
+;;; a lock the caller couldn't acquire and a `thunk` that raised both
+;;; collapse to the same #f.
 (define (lsp/with-install-lock! what thunk)
   (let ((acquired?
           (with-handler
@@ -336,21 +317,13 @@
            (begin (thunk) (release-install-lock!) #t)))))
 
 ;;; Install `name` if not already at the seeded version, reporting a
-;;; guided-retry hint on failure when a prior install dir existed (covers
-;;; the Windows locked-file case; a one-shot retry on Unix).
-;;;
-;;; The post-install rescan (`lsp/register-installed-servers!`) sees
-;;; `lsp/install-server!`'s queued `unregister-lsp-server!` for every one of
-;;; `name`'s languages through `lsp-registered-for-language?`'s same-eval
-;;; read-through, even though that op hasn't applied yet (queued ops apply
-;;; at end-of-eval) — so the rescan's no-clobber filter correctly re-admits
-;;; those languages instead of skipping them. Run *outside*
-;;; `lsp/with-install-lock!`: it runs only after that combinator has already
-;;; released the lock, so a failure here is a distinct, uncaught error
-;;; (reported by the command dispatcher, see `Editor::run_steel_command` in
-;;; hume-editor/src/editor/dispatch.rs) rather than being mislabeled
-;;; "install failed" or triggering a second, ownership-blind
-;;; `release-install-lock!` call.
+;;; guided-retry hint on failure when a prior install dir existed. The
+;;; post-install rescan sees `lsp/install-server!`'s queued
+;;; `unregister-lsp-server!` via the same-eval read-through, so its
+;;; no-clobber filter correctly re-admits those languages. Runs *outside*
+;;; `lsp/with-install-lock!`, after that combinator already released the
+;;; lock, so a failure here is a distinct, uncaught error rather than being
+;;; mislabeled "install failed" or double-releasing the lock.
 (define (lsp/lsp-install-or-report! name)
   (let* ((receipt (lsp/read-receipt name))
          (source  (if (hash-contains? *lsp-sources* name)
@@ -443,19 +416,12 @@
   #:inline-output #t)
 
 ;; ── Discovery hint ────────────────────────────────────────────────────────────
-;;
 ;; Once per language per session: if a buffer's language has a seeded server
-;; that isn't installed yet, suggest :lsp-install. Never hints a suggestion
-;; that would fail — the dedup marker is set on the language's first
-;; evaluation regardless of outcome, so a language that doesn't qualify (no
-;; seeded server, blocked, already registered, already installed) is never
-;; re-evaluated this session either. `'warn`, not `'info`: an `'info`
-;; message only flashes on the status line and is never written to
-;; `:messages` (HUME's `Severity::Info` is display-only, not logged) — a
-;; discoverability nudge the user can miss at the moment it fires must stay
-;; reviewable afterward. Only fires while core:lsp is loaded/active — a
-;; setup running only core:plum gets no LSP hints, matching the rest of the
-;; feature (see docs/LSP-INSTALL.md "Registration model").
+;; not yet installed, suggest :lsp-install — the dedup marker is set
+;; regardless of outcome, so a disqualified language is never re-evaluated.
+;; `'warn`, not `'info`: `Severity::Info` is display-only and never reaches
+;; `:messages`, so a nudge the user misses at the moment it fires must stay
+;; reviewable afterward.
 (register-hook! 'on-language-set
   (lambda (bid lang)
     (when (and (string? lang) (not (hash-contains? *lsp-hinted-languages* lang)))

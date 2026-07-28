@@ -127,6 +127,17 @@ installed server it finds; `plugin.scm` runs it once at its own top level, so it
 happens at load or lazy activation. `:lsp-rescan-servers` exposes the same scan for a
 server installed outside `:lsp-install`.
 
+### Server config delivery
+
+A seeded catalog entry's `config` field is Helix's `[language-server.*.config]` table,
+copied verbatim by the sync script. It's delivered both ways, exactly as Helix does: as
+`initializationOptions` (the path that actually configures gopls, rust-analyzer, and most
+others) and as `#:settings` (answers a server's own `workspace/configuration` pulls).
+Servers that request `workspace/configuration` under their own name — gopls and
+rust-analyzer among them — miss the `#:settings` lookup, since the blob isn't nested under
+that name; this is expected and verified harmless, not a bug, since `initializationOptions`
+already configures them.
+
 ### Runtime management
 
 `registration.scm` also defines `:lsp-status`/`:lsp-stop`/`:lsp-restart` — thin wrappers
