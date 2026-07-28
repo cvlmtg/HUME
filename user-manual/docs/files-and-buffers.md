@@ -17,6 +17,8 @@ Tab completion is available for file paths.
 
 If something else changes a file you have open — another program, a formatter, `git checkout` — HUME notices the next time you switch back to its window, switch to that buffer, or run `:checktime`, and asks whether to reload. Answering yes replaces the buffer's content but keeps it undoable (`u` brings back what you had). Answering no leaves the buffer as-is; the file stays flagged as changed until you reload it or explicitly overwrite it.
 
+The prompt only appears when it can't interrupt something else you're doing — while you're typing a command or search, or in Insert mode, HUME warns instead and asks the next time you land on the buffer.
+
 Turn the prompt off with `:set global autoread=false` (or `:set buffer autoread=false` for just the current buffer) — HUME still warns you, it just won't ask. Either way, `:w` refuses to overwrite a file that's changed since you last read or saved it; add `!` (`:w!`) to save anyway.
 
 ## The buffer list

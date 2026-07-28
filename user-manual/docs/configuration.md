@@ -108,7 +108,7 @@ These options have a global default that every buffer without its own override r
 | `select-changed-text` | bool | `#t` | After `c` (change), keeps the selection on the text you changed |
 | `word-selects-whitespace` | bool | `#t` | `w`/`W`/`b`/`B` and `mm`/`MM` cover the whitespace before the destination word (trailing instead, for the first word of a line); `#f` selects the bare word instead |
 | `signcolumn` | `always[:N]` \| `auto[:N]` | `always:1` | Gutter column for plugin-supplied signs (diagnostics, etc). `N` is the number of sign slots (1–127, default 1); `auto` collapses the column to zero width when no signs are visible |
-| `autoread` | bool | `#t` | Prompt to reload when the current buffer's file changes on disk. `#f` only warns — reload manually with `:e!` or `:checktime` |
+| `autoread` | bool | `#t` | Prompt to reload when the current buffer's file changes on disk. `#f` only warns — reload manually with `:e!` |
 | `whitespace-space` | `none` \| `all` \| `trailing` | `none` | When to render space indicators. Also reveals invisible Unicode spaces (non-breaking and ideographic) with a distinct `⍽` marker |
 | `whitespace-tab` | `none` \| `all` \| `trailing` | `none` | When to render tab indicators |
 | `whitespace-newline` | `none` \| `all` | `none` | When to render newline indicators |
