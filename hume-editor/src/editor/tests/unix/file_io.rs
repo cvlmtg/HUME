@@ -513,9 +513,9 @@ fn write_follows_symlink() {
 fn write_file_atomic_returns_false_on_plain_write() {
     let tmp = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(tmp.path(), "initial\n").unwrap();
-    let meta = hume_platform::io::read_file_meta(tmp.path()).unwrap();
+    let mut meta = hume_platform::io::read_file_meta(tmp.path()).unwrap();
 
-    let retried = hume_platform::io::write_file_atomic("updated\n", &meta, false).unwrap();
+    let retried = hume_platform::io::write_file_atomic("updated\n", &mut meta, false).unwrap();
     assert!(!retried, "plain write should not trigger chmod-retry");
     assert_eq!(std::fs::read_to_string(tmp.path()).unwrap(), "updated\n");
 }

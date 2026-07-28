@@ -512,9 +512,14 @@ impl Editor {
                         }
                     }
                 }
-                // CSI/OSC/DCS protocol responses and focus events: nothing in
-                // the run loop needs them. The `|_| true` filter guarantees
-                // they can't pile up unread in the reader's buffer either way.
+                // Regaining focus is one of the external-file-change check's
+                // trigger points (alongside buffer-enter and `:checktime`) —
+                // see `Editor::check_all_disk_state`. `FocusOut` needs no
+                // handling: there's nothing to check until focus returns.
+                Event::FocusIn => self.check_all_disk_state(),
+                // CSI/OSC/DCS protocol responses: nothing in the run loop
+                // needs them. The `|_| true` filter guarantees they can't
+                // pile up unread in the reader's buffer either way.
                 _ => {}
             }
 

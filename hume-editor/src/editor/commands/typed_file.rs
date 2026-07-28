@@ -251,11 +251,16 @@ fn write_buffer_by_id(
     line_count: usize,
     force: bool,
 ) -> Result<(), CommandError> {
-    let buf = ed.state.buffers.get(bid);
+    let buf = ed.state.buffers.get_mut(bid);
     if buf.is_read_only() {
         return Err(CommandError::new("Buffer is read-only"));
     }
-    let Some(meta) = buf.file_meta.as_ref() else {
+    if buf.disk_stale && !force {
+        return Err(CommandError::new(
+            "file has changed on disk (add ! to override)",
+        ));
+    }
+    let Some(meta) = buf.file_meta.as_mut() else {
         return Err(CommandError::new("no file name"));
     };
     match hume_platform::io::write_file_atomic(&content, meta, force) {
@@ -311,8 +316,21 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
         // Try to preserve existing file's permissions; if the file doesn't
         // exist yet, write_file_new creates it with default permissions.
         let result = match hume_platform::io::read_file_meta(&path) {
-            Ok(meta) => hume_platform::io::write_file_atomic(&content, &meta, force)
-                .map(|retried| (meta, retried)),
+            Ok(mut meta) => {
+                // The stale-write guard only applies when `path` resolves to
+                // the buffer's own current file — i.e. this `:w <path>` is
+                // really a plain `:w` in disguise. A genuine save-as targets
+                // a path this buffer never read from, so there's no staleness
+                // to guard against.
+                let targets_own_file = ed.doc().path() == Some(meta.resolved_path());
+                if targets_own_file && ed.doc().disk_stale && !force {
+                    return Err(CommandError::new(
+                        "file has changed on disk (add ! to override)",
+                    ));
+                }
+                hume_platform::io::write_file_atomic(&content, &mut meta, force)
+                    .map(|retried| (meta, retried))
+            }
             Err(_) => hume_platform::io::write_file_new(&content, &path).map(|meta| (meta, false)),
         };
         match result {
@@ -364,13 +382,31 @@ pub fn typed_write_all(
         return Ok(());
     }
 
+    // A buffer whose file changed on disk is skipped, not aborted — one
+    // stale buffer among several dirty ones shouldn't block saving the rest.
+    // `force` (`:wa!`) writes through every one of them instead, same as a
+    // per-buffer `:w!`.
     let mut count = 0;
+    let mut skipped: Vec<String> = Vec::new();
     for bid in dirty_savable {
+        let buf = ed.state.buffers.get(bid);
+        if buf.disk_stale && !force {
+            skipped.push(buf.display_name());
+            continue;
+        }
         let (content, line_count) = serialize_buffer(ed, bid);
         write_buffer_by_id(ed, bid, content, line_count, force)?;
         count += 1;
     }
-    ed.report(Severity::Info, format!("Written {count} file(s)"));
+    if count > 0 {
+        ed.report(Severity::Info, format!("Written {count} file(s)"));
+    }
+    if !skipped.is_empty() {
+        ed.report(
+            Severity::Warning,
+            format!("Skipped (changed on disk): {}", skipped.join(", ")),
+        );
+    }
     Ok(())
 }
 

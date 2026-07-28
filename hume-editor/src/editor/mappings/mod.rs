@@ -69,6 +69,16 @@ impl Editor {
             Some(PopupKind::Sticky) | None => {}
         }
 
+        // ── Confirm intercept ──────────────────────────────────────────────
+        // Ahead of every other intercept and mode-agnostic — unlike the
+        // menu/drawer (Normal/Extend only), a disk-change check can fire
+        // while the user is mid-Insert, and the prompt must still take the
+        // very next keypress. Always fully consumes, like the picker.
+        let confirm_consumed = self.state.config.confirm.is_some();
+        if confirm_consumed {
+            self.handle_confirm_key(key);
+        }
+
         // ── Picker intercept ──────────────────────────────────────────────
         // Sits above the menu/drawer intercepts and is mode-agnostic (Q-B7,
         // `docs/FUZZY-FINDERS.md`: the picker opens from any mode, unlike
@@ -78,14 +88,17 @@ impl Editor {
         // visible. Full-modal: `handle_picker_key` always consumes, so while
         // a picker is open `handle_insert`'s own completion intercept never
         // runs — no conflict between the two.
-        let picker_consumed = self.state.config.picker.is_some() && self.handle_picker_key(key);
+        let picker_consumed = !confirm_consumed
+            && self.state.config.picker.is_some()
+            && self.handle_picker_key(key);
 
         // ── Selection menu intercept ─────────────────────────────────────
         // Guarded early-return before mode dispatch, not a new `Mode` — a
         // menu is transient chrome, not an editing mode (no `on-mode-change`,
         // no statusline/cursor-shape changes). Normal/Extend only: menus
         // don't open from Insert in v1.
-        let menu_consumed = !picker_consumed
+        let menu_consumed = !confirm_consumed
+            && !picker_consumed
             && self.state.config.menu.is_some()
             && matches!(self.state.mode(), Mode::Normal | Mode::Extend)
             && self.handle_menu_key(key);
@@ -95,13 +108,14 @@ impl Editor {
         // a stray key neither closes the drawer nor invokes its callback —
         // it falls through untouched, leaving the drawer open while focus
         // stays on the pane (Helix-style browse-while-editing).
-        let drawer_consumed = !picker_consumed
+        let drawer_consumed = !confirm_consumed
+            && !picker_consumed
             && !menu_consumed
             && self.state.config.drawer.is_some()
             && matches!(self.state.mode(), Mode::Normal | Mode::Extend)
             && self.handle_drawer_key(key);
 
-        if !picker_consumed && !menu_consumed && !drawer_consumed {
+        if !confirm_consumed && !picker_consumed && !menu_consumed && !drawer_consumed {
             match self.state.mode() {
                 Mode::Normal | Mode::Extend => self.handle_normal(key),
                 Mode::Insert => self.handle_insert(key),

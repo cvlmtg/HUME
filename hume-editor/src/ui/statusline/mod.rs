@@ -285,6 +285,16 @@ impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
         let colors = EditorColors::from_theme(theme, mode);
         let y = area.y;
 
+        // An open confirm overlay (disk-change reload, …) owns the whole
+        // row unconditionally — it's the intercept chain's top entry (see
+        // `handle_key`), so it must also be the top-priority render, ahead
+        // of even the minibuffer.
+        if let Some(confirm) = editor.state.config.confirm.as_ref() {
+            fill_row_colors(buf, &colors, area, y);
+            buf.set_string(area.x + 1, y, confirm.render_line(), colors.statusline);
+            return;
+        }
+
         if editor.state.minibuf.is_none() {
             // A fresh status_msg (set this frame) takes priority. Falling back
             // to the log summary keeps unseen-message context visible between

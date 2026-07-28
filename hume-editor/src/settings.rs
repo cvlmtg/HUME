@@ -731,6 +731,14 @@ define_settings! {
         "signcolumn" => signcolumn: SignColumnConfig = SignColumnConfig::default(),
             scope: [Scope::Global, Scope::Buffer],
             parser: from_str;
+        // Read fresh by `check_buffer_disk_state` at each trigger — no
+        // resync needed. `true`: an external change to the focused buffer
+        // opens a reload confirm. `false`: detection still runs (and still
+        // sets `disk_stale`, guarding `:w`), but only warns — reload stays
+        // manual via `:e!`/`:checktime`.
+        "autoread" => autoread: bool = true,
+            scope: [Scope::Global, Scope::Buffer],
+            parser: bool;
     }
     extra_global {
         statusline: StatusLineConfig = StatusLineConfig::default();

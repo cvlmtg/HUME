@@ -13,6 +13,12 @@ Tab completion is available for file paths.
 
 `:e` with no argument reloads the current file from disk. If the file has been modified HUME will not reload it, unless you use `:e!`.
 
+### External changes
+
+If something else changes a file you have open — another program, a formatter, `git checkout` — HUME notices the next time you switch back to its window, switch to that buffer, or run `:checktime`, and asks whether to reload. Answering yes replaces the buffer's content but keeps it undoable (`u` brings back what you had). Answering no leaves the buffer as-is; the file stays flagged as changed until you reload it or explicitly overwrite it.
+
+Turn the prompt off with `:set global autoread=false` (or `:set buffer autoread=false` for just the current buffer) — HUME still warns you, it just won't ask. Either way, `:w` refuses to overwrite a file that's changed since you last read or saved it; add `!` (`:w!`) to save anyway.
+
 ## The buffer list
 
 A **buffer** is an open file (or scratch text). HUME can have multiple buffers open at once.
@@ -67,7 +73,7 @@ A divider is drawn between panes (controlled by the `pane-dividers` option, on b
 |---------|--------|
 | `:w` | Save current buffer |
 | `:w filename` | Save as (write to a new path) |
-| `:w!` | Force save (tries `chmod` + retry on permission errors) |
+| `:w!` | Force save (tries `chmod` + retry on permission errors; also overwrites a file changed on disk since you last read or saved it — see [External changes](#external-changes)) |
 | `:wa` | Save every modified buffer |
 
 A `[+]` indicator in the status bar means the buffer has unsaved changes. Files using CRLF line endings are detected and preserved on save. Relative paths are resolved against HUME's working directory (`:pwd`), which isn't necessarily the shell's.

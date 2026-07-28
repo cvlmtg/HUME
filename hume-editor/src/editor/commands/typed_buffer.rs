@@ -27,7 +27,7 @@ pub fn typed_edit(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(),
             if bid != ed.focused_buffer_id() {
                 ed.switch_to_buffer_with_jump(bid);
             }
-            warn_if_file_gone(ed, bid);
+            ed.check_buffer_disk_state(bid);
             return Ok(());
         }
 
@@ -65,6 +65,21 @@ pub fn typed_edit(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(),
         ed.report(Severity::Info, format!("Reloaded {name}"));
         Ok(())
     }
+}
+
+/// `:checktime` — check every open buffer against its backing file, right
+/// now, without waiting for the next automatic trigger (terminal focus,
+/// buffer-enter, return from an inline shell command). Silent when nothing
+/// changed; otherwise reports/prompts exactly like any other trigger — see
+/// `Editor::check_all_disk_state`. `force` has no effect: force accepting a
+/// reload is what the confirm's `[r]eload` choice (or `:e!`) is for.
+pub fn typed_checktime(
+    ed: &mut Editor,
+    _arg: Option<&str>,
+    _force: bool,
+) -> Result<(), CommandError> {
+    ed.check_all_disk_state();
+    Ok(())
 }
 
 /// `:cd [path]` — change the working directory.
@@ -130,7 +145,7 @@ pub fn typed_buffer(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<
     if bid != ed.focused_buffer_id() {
         ed.switch_to_buffer_with_jump(bid);
     }
-    warn_if_file_gone(ed, bid);
+    ed.check_buffer_disk_state(bid);
     Ok(())
 }
 
@@ -148,27 +163,6 @@ fn find_buffer_by_path_arg(ed: &Editor, arg: &str) -> Option<BufferId> {
     }
     let abs = std::path::absolute(arg).ok()?;
     ed.state.buffers.find_by_path(&abs)
-}
-
-/// Emit a warning if `bid`'s backing file no longer exists on disk.
-fn warn_if_file_gone(ed: &mut Editor, bid: BufferId) {
-    // Check while holding the borrow; capture only the display string so the
-    // borrow is released before the &mut ed.report() call below.
-    let display = ed
-        .state
-        .buffers
-        .get(bid)
-        .path()
-        .and_then(|p| match std::fs::metadata(p) {
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(p.display().to_string()),
-            _ => None,
-        });
-    if let Some(msg) = display {
-        ed.report(
-            Severity::Warning,
-            format!("{msg}: file no longer exists on disk"),
-        );
-    }
 }
 
 /// Resolve a `:b` argument to a `BufferId`.  See [`typed_buffer`] for the

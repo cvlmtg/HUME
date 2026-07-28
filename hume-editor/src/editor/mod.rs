@@ -191,6 +191,11 @@ pub(crate) struct ConfigState {
     /// by the key intercept in `handle_key`; opened via `Editor::open_picker`
     /// (tests today, B4's `picker!` builtin later).
     pub(crate) picker: Option<crate::editor::picker::PickerSession>,
+    /// The open native yes/no confirmation, if any — see
+    /// [`crate::ui::confirm`]. Mode-agnostic: unlike `menu`/`drawer`, this
+    /// intercepts before mode dispatch regardless of `Mode`, since a
+    /// disk-change check can fire while the user is mid-Insert.
+    pub(crate) confirm: Option<crate::ui::confirm::ConfirmModel>,
 }
 
 impl ConfigState {
@@ -220,6 +225,7 @@ impl ConfigState {
             menu: None,
             drawer: None,
             picker: None,
+            confirm: None,
         }
     }
 }

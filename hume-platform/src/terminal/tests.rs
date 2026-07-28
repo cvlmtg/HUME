@@ -1,6 +1,7 @@
 use super::{
-    write_kitty_pop, write_kitty_push, write_mouse_disable, write_mouse_enable,
-    write_paste_disable, write_paste_enable, write_unwind_escapes,
+    write_focus_disable, write_focus_enable, write_kitty_pop, write_kitty_push,
+    write_mouse_disable, write_mouse_enable, write_paste_disable, write_paste_enable,
+    write_unwind_escapes,
 };
 use std::io;
 
@@ -37,6 +38,20 @@ fn paste_disable_emits_expected_csi() {
     let mut buf = Vec::new();
     write_paste_disable(&mut buf).unwrap();
     assert_eq!(buf, b"\x1b[?2004l");
+}
+
+#[test]
+fn focus_enable_emits_expected_csi() {
+    let mut buf = Vec::new();
+    write_focus_enable(&mut buf).unwrap();
+    assert_eq!(buf, b"\x1b[?1004h");
+}
+
+#[test]
+fn focus_disable_emits_expected_csi() {
+    let mut buf = Vec::new();
+    write_focus_disable(&mut buf).unwrap();
+    assert_eq!(buf, b"\x1b[?1004l");
 }
 
 #[test]

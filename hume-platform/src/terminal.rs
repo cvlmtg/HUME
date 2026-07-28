@@ -212,6 +212,16 @@ fn write_paste_disable(out: &mut impl io::Write) -> io::Result<()> {
     out.flush()
 }
 
+fn write_focus_enable(out: &mut impl io::Write) -> io::Result<()> {
+    write!(out, "{}", dec_set(DecPrivateModeCode::FocusTracking))?;
+    out.flush()
+}
+
+fn write_focus_disable(out: &mut impl io::Write) -> io::Result<()> {
+    write!(out, "{}", dec_reset(DecPrivateModeCode::FocusTracking))?;
+    out.flush()
+}
+
 fn write_sync_reset(out: &mut impl io::Write) -> io::Result<()> {
     write!(out, "{}", dec_reset(DecPrivateModeCode::SynchronizedOutput))?;
     out.flush()
@@ -227,12 +237,12 @@ fn write_leave_alt_screen(out: &mut impl io::Write) -> io::Result<()> {
 }
 
 /// SSOT byte sequence that undoes every application-level mode [`init`]
-/// turns on: closes any open synchronized-update envelope, disables
-/// bracketed paste, pops the kitty keyboard stack, disables mouse tracking,
-/// and leaves the alternate screen. Shared between [`restore`] and the panic
-/// hook installed by [`init`] — the hook can only write bytes (no raw/cooked
-/// mode switch), and termina restores the platform mode itself right after
-/// the hook returns.
+/// turns on: closes any open synchronized-update envelope, disables focus
+/// tracking and bracketed paste, pops the kitty keyboard stack, disables
+/// mouse tracking, and leaves the alternate screen. Shared between
+/// [`restore`] and the panic hook installed by [`init`] — the hook can only
+/// write bytes (no raw/cooked mode switch), and termina restores the
+/// platform mode itself right after the hook returns.
 ///
 /// Each step is attempted independently, even if an earlier one fails — the
 /// goal is to leave the shell as usable as possible. The first error
@@ -246,6 +256,7 @@ fn write_unwind_escapes(out: &mut impl io::Write) -> io::Result<()> {
     };
 
     record(write_sync_reset(out));
+    record(write_focus_disable(out));
     record(write_paste_disable(out));
     record(write_kitty_pop(out));
     record(write_mouse_disable(out));
@@ -300,6 +311,12 @@ pub fn probe_kitty(term: &SharedTerm) -> io::Result<bool> {
 /// loop and may enable Ctrl-modified key bindings that require the enhanced
 /// protocol.
 ///
+/// Also enables terminal focus tracking (DECSET 1004) unconditionally: a
+/// terminal without support simply never sends `FocusIn`/`FocusOut`, so
+/// there's no probe and no fallback path needed. Terminal multiplexers
+/// (tmux, screen) need their own opt-in (tmux: `set -g focus-events on`) to
+/// forward these through to the application.
+///
 /// Mouse tracking is enabled selectively:
 /// - `mouse_enabled` enables normal tracking (button press/release + scroll)
 ///   plus SGR extended coordinates. With only these modes, drag events are
@@ -342,6 +359,7 @@ pub fn init(
             dec_set(DecPrivateModeCode::ClearAndEnableAlternateScreen)
         )?;
         term.flush()?;
+        write_focus_enable(&mut term)?;
         write_paste_enable(&mut term)?;
 
         if kitty_enabled {
@@ -477,6 +495,8 @@ pub fn end_synchronized_update(term: &SharedTerm) -> io::Result<()> {
 ///
 /// Must be paired with [`leave_inline_output`] to restore the editor. Passes
 /// the current kitty and mouse state so [`leave_inline_output`] can re-apply it.
+/// Also disables focus tracking for the duration — a subprocess reading raw
+/// terminal input shouldn't see stray `CSI I`/`CSI O` bytes.
 ///
 /// Called from `EditorHostImpl::ensure_inline_output_screen`, not eagerly at
 /// dispatch — the caller only reaches this on a command's first real output,
@@ -494,6 +514,7 @@ pub fn enter_inline_output(
         dec_reset(DecPrivateModeCode::SynchronizedOutput)
     );
     let _ = term.flush();
+    write_focus_disable(&mut term)?;
     write_paste_disable(&mut term)?;
     if kitty_enabled {
         write_kitty_pop(&mut term)?;
@@ -529,6 +550,7 @@ pub fn leave_inline_output(
         dec_set(DecPrivateModeCode::ClearAndEnableAlternateScreen)
     )?;
     term.flush()?;
+    write_focus_enable(&mut term)?;
     write_paste_enable(&mut term)?;
     if kitty_enabled {
         write_kitty_push(&mut term)?;

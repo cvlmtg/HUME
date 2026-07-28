@@ -547,6 +547,7 @@ mod buffer_store;
 mod command_mode;
 mod commands;
 mod completion;
+mod disk_change;
 mod dot_repeat;
 mod file_io;
 mod find;

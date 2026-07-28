@@ -9,6 +9,37 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
+
+// ── FileSignature ─────────────────────────────────────────────────────────────
+
+/// A cheap fingerprint of a file's on-disk state, used to detect external
+/// changes without reading or hashing content.
+///
+/// Compares mtime **and** size: some filesystems (HFS+, FAT) only report
+/// mtime to one-second resolution, so a same-second rewrite can be invisible
+/// to mtime alone. Equality (`!=`), not ordering — restoring a file from a
+/// backup moves mtime *backwards* and must still count as a change.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct FileSignature {
+    /// `None` on platforms/filesystems that don't report a modification
+    /// time — never conjured into a fake value, since that could compare
+    /// equal to a genuinely different unset case.
+    mtime: Option<SystemTime>,
+    size: u64,
+}
+
+/// Read a file's current [`FileSignature`] without touching its content.
+///
+/// No `canonicalize` — callers already hold the resolved path (from an
+/// earlier `read_file_meta`/`read_file`).
+pub fn read_signature(path: &Path) -> io::Result<FileSignature> {
+    let metadata = fs::metadata(path)?;
+    Ok(FileSignature {
+        mtime: metadata.modified().ok(),
+        size: metadata.len(),
+    })
+}
 
 // ── FileMeta ──────────────────────────────────────────────────────────────────
 
@@ -39,6 +70,12 @@ pub struct FileMeta {
     /// Original group GID. Restored with `fchown` (best-effort, Unix only).
     #[cfg(unix)]
     gid: u32,
+
+    /// The file's fingerprint as of the last read or write through this
+    /// `FileMeta`. Compared against a fresh [`read_signature`] to detect
+    /// external changes; refreshed by [`write_file_atomic`] after a
+    /// successful write so the editor's own saves never look external.
+    signature: FileSignature,
 }
 
 impl FileMeta {
@@ -48,6 +85,18 @@ impl FileMeta {
     /// itself is preserved while the content behind it is updated.
     pub fn resolved_path(&self) -> &Path {
         &self.resolved_path
+    }
+
+    /// The file's fingerprint as of the last read or write.
+    pub fn signature(&self) -> FileSignature {
+        self.signature
+    }
+
+    /// Overwrite the stored fingerprint, e.g. after the editor has reported
+    /// an externally-detected change and doesn't want to re-report the same
+    /// one on the next check — only a *further* change should fire again.
+    pub fn set_signature(&mut self, sig: FileSignature) {
+        self.signature = sig;
     }
 }
 
@@ -60,6 +109,10 @@ impl FileMeta {
 pub fn read_file_meta(path: &Path) -> io::Result<FileMeta> {
     let resolved = fs::canonicalize(path)?;
     let metadata = fs::metadata(&resolved)?;
+    let signature = FileSignature {
+        mtime: metadata.modified().ok(),
+        size: metadata.len(),
+    };
 
     #[cfg(unix)]
     let meta = {
@@ -69,6 +122,7 @@ pub fn read_file_meta(path: &Path) -> io::Result<FileMeta> {
             permissions: metadata.permissions(),
             uid: metadata.uid(),
             gid: metadata.gid(),
+            signature,
         }
     };
 
@@ -76,6 +130,7 @@ pub fn read_file_meta(path: &Path) -> io::Result<FileMeta> {
     let meta = FileMeta {
         resolved_path: resolved,
         permissions: metadata.permissions(),
+        signature,
     };
 
     Ok(meta)
@@ -87,7 +142,14 @@ pub fn read_file_meta(path: &Path) -> io::Result<FileMeta> {
 ///
 /// Returns `(content, meta)` where:
 /// - `content` is the raw file text (CRLF normalization happens in `Buffer::from`)
-/// - `meta` carries the resolved path, permissions, and ownership for write-back
+/// - `meta` carries the resolved path, permissions, ownership, and fingerprint
+///   for write-back and external-change detection
+///
+/// The stat backing `meta.signature` happens in `read_file_meta`, before the
+/// content read below. If a writer races us here, storing the *older*
+/// signature means a later disk-change check reports a change instead of
+/// silently missing one — biased toward a spurious check, never toward a
+/// miss.
 pub fn read_file(path: &Path) -> io::Result<(String, FileMeta)> {
     let meta = read_file_meta(path)?;
     let content = fs::read_to_string(&meta.resolved_path)?;
@@ -121,7 +183,13 @@ pub fn read_file(path: &Path) -> io::Result<(String, FileMeta)> {
 /// which is not crash-atomic for file replacement (no equivalent of POSIX
 /// `rename` exists on Windows without the deprecated transactional NTFS).
 /// This is the best available option on Windows.
-pub fn write_file_atomic(content: &str, meta: &FileMeta, force: bool) -> io::Result<bool> {
+///
+/// On success, re-stats the target and refreshes `meta.signature` — the
+/// `rename(2)` swaps in a fresh inode, which always changes mtime, so
+/// without this refresh the editor's own save would look like an external
+/// change on the very next disk-state check. Takes `meta` by `&mut` so this
+/// refresh can't be forgotten at a call site.
+pub fn write_file_atomic(content: &str, meta: &mut FileMeta, force: bool) -> io::Result<bool> {
     let target = &meta.resolved_path;
     let dir = target.parent().unwrap_or(Path::new("."));
 
@@ -151,7 +219,7 @@ pub fn write_file_atomic(content: &str, meta: &FileMeta, force: bool) -> io::Res
     // primarily reached on Windows (READONLY attribute) and on exotic POSIX
     // filesystems / ACL setups — it is genuinely hard to exercise from a
     // unit test on macOS/Linux without root or chflags.
-    match tmp.persist(target) {
+    let result = match tmp.persist(target) {
         Ok(_) => Ok(false),
         Err(persist_err)
             if force && persist_err.error.kind() == io::ErrorKind::PermissionDenied =>
@@ -178,7 +246,12 @@ pub fn write_file_atomic(content: &str, meta: &FileMeta, force: bool) -> io::Res
             }
         }
         Err(persist_err) => Err(persist_err.error),
+    };
+
+    if result.is_ok() {
+        meta.signature = read_signature(&meta.resolved_path)?;
     }
+    result
 }
 
 // ── write_file_new ────────────────────────────────────────────────────────────
@@ -210,3 +283,6 @@ pub fn write_file_new(content: &str, path: &Path) -> io::Result<FileMeta> {
     // Read back the metadata now that the file exists on disk.
     read_file_meta(path)
 }
+
+#[cfg(test)]
+mod tests;

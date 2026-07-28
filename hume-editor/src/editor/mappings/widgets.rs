@@ -5,9 +5,36 @@
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
+use crate::ui::confirm::ConfirmAction;
+
 use super::super::Editor;
 
 impl Editor {
+    /// Handles one key while a native confirm overlay
+    /// ([`crate::ui::confirm::ConfirmModel`]) is open. Always consumes —
+    /// full-modal, like the picker. `choices[0]`'s key runs `action`; every
+    /// other key (including `Esc`) dismisses without running it, the safe
+    /// default.
+    pub(super) fn handle_confirm_key(&mut self, key: KeyEvent) {
+        let confirm = self
+            .state
+            .config
+            .confirm
+            .take()
+            .expect("checked by the caller above");
+
+        let accept = confirm
+            .choices
+            .first()
+            .is_some_and(|c| key.code == KeyCode::Char(c.key));
+
+        if accept {
+            match confirm.action {
+                ConfirmAction::ReloadBuffer(bid) => self.reload_buffer_from_disk(bid),
+            }
+        }
+    }
+
     /// Handles one key while a selection menu is open. Returns `true`
     /// if the key was fully consumed (movement, `Enter`, `Esc`) — `false` if
     /// a stray key dismissed the menu but should still fall through to

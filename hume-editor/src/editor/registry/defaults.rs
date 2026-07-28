@@ -1123,6 +1123,12 @@ impl CommandRegistry {
             typed_edit
         );
         typed_cmd!(
+            "checktime",
+            "Check every open buffer against its file on disk, right now.",
+            &[],
+            typed_checktime
+        );
+        typed_cmd!(
             "buffer-delete",
             "Close the focused buffer.",
             &["bd"],

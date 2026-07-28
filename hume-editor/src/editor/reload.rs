@@ -120,8 +120,8 @@ impl Editor {
 
         // ── Steel values rooted in the outgoing engine ──
         //
-        // `pending_hooks`, `pending_steel_calls`, and the four overlay
-        // models (popup/menu/drawer/picker) all drop below when
+        // `pending_hooks`, `pending_steel_calls`, and the five overlay
+        // models (popup/menu/drawer/picker/confirm) all drop below when
         // `self.state.config = ConfigState::new(…)` runs — nothing here
         // reads any of them in between, so there's nothing to clear early.
         // `PickerSession::source` (if a picker was open) kills any streaming
@@ -129,6 +129,9 @@ impl Editor {
         // overlay *views* (`popup_view`/`menu_view`/`drawer_view`/
         // `picker_view`) self-heal from `prepare_frame` every frame
         // regardless, so nothing here needs to touch them directly either.
+        // `confirm` has no view/Steel callback of its own (its action is a
+        // plain Rust enum, not a rooted `SteelVal`), so it needs even less
+        // than the others — dropping it is the entire teardown.
         if self.state.config.steel_prompt_callback.is_some() {
             // A `(prompt! …)` session was open. Its callback belongs to the
             // outgoing engine and is discarded (not fired) by the

@@ -10,6 +10,7 @@ use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
 use hume_platform::io::FileMeta;
 
+mod disk;
 mod file_open;
 pub(crate) mod lifecycle;
 pub(crate) mod store;
@@ -124,6 +125,13 @@ pub(crate) struct Buffer {
     /// scratch replacement) default to `false` — their close always
     /// announces.
     pub(crate) open_hook_pending: bool,
+    /// `true` when a disk-state check found the backing file changed (or
+    /// vanished) and the user has not yet acted on it — set by
+    /// `Editor::check_buffer_disk_state`, cleared by a reload or a
+    /// successful write. Read by `:w`'s write guard to refuse clobbering an
+    /// external change; always `false` for scratch/synthetic buffers, which
+    /// the check skips.
+    pub(crate) disk_stale: bool,
     /// Bumped by [`lifecycle::replace_buffer_in_place`] — the only path that
     /// swaps a `BufferId`'s content without a close/open pair (the
     /// last-buffer scratch replacement in `close_buffer`). A versioned
@@ -170,6 +178,7 @@ impl Buffer {
             lsp_pending: Vec::new(),
             last_insert: None,
             open_hook_pending: false,
+            disk_stale: false,
             replace_stamp: 0,
         }
     }
@@ -343,6 +352,10 @@ impl Buffer {
         pre_sels: SelectionSet,
         post_sels: SelectionSet,
     ) {
+        // Reloading from disk is, by definition, catching up to whatever is
+        // there now — clear regardless of which branch below runs.
+        self.disk_stale = false;
+
         // Build the CS pair from immutable borrows of both texts, before
         // `set_text` mutates `self.text`. The helper takes `&Text` on both
         // sides; `new_text` is still owned by us here so the borrow is fine.
@@ -380,6 +393,7 @@ impl Buffer {
     /// Call this immediately after a successful file write.
     pub(crate) fn mark_saved(&mut self) {
         self.saved_revision = Some(self.history.current_id());
+        self.disk_stale = false;
     }
 
     /// Set the `undo-levels` cap on this buffer's history. `0` means unlimited.

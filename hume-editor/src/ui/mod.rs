@@ -1,4 +1,5 @@
 pub(crate) mod completion_overlay;
+pub(crate) mod confirm;
 pub(crate) mod drawer;
 pub(crate) mod highlight_providers;
 pub(crate) mod inlay_hints;

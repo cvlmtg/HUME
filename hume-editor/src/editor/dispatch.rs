@@ -292,6 +292,10 @@ impl Editor {
             let mouse_select = self.state.settings.mouse_select;
             let _ = hume_platform::terminal::leave_inline_output(term, kitty, mouse, mouse_select);
             self.state.force_full_redraw = true;
+            // The subprocess just given the real terminal (a formatter, a
+            // git command, …) may well have rewritten one of our open
+            // files — another of the disk-change check's trigger points.
+            self.check_all_disk_state();
         }
 
         let (wait_char_cmd, effects) = match result {

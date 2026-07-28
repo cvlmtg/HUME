@@ -16,7 +16,7 @@ For running HUME from a shell instead, see [Command-line Flags](cli.md).
 | `:qa!` | Quit everything, discarding unsaved changes |
 | `:w`, `:write` | Save |
 | `:w <path>` | Save as |
-| `:w!` | Save, retrying with a permission change if the first attempt is refused |
+| `:w!` | Save, retrying with a permission change if the first attempt is refused; also overwrites a file changed on disk since it was last read or saved |
 | `:wa`, `:write-all` | Save every modified buffer |
 | `:wq`, `:write-quit` | Save, then close the focused pane; with one pane, close the buffer, and quit HUME when it's the last one |
 
@@ -29,8 +29,11 @@ Relative paths given to `:w` resolve against HUME's working directory (`:pwd`), 
 | `:e <path>`, `:edit <path>` | Open a file |
 | `:e` | Reload the current file. Refuses if there are unsaved changes |
 | `:e!` | Reload, discarding unsaved changes |
+| `:checktime` | Check every open buffer against its file on disk right now, instead of waiting for the next automatic check (switching back to HUME, switching to the buffer) |
 
 In arguments, `%` expands to the current file's path and `#` to the alternate file's. Both only work as a whole argument — `:w %.bak` won't expand. `:b` is the exception: it resolves `#` itself, which is why `:b #` works for buffers with no file on disk.
+
+See [Files & Buffers](files-and-buffers.md#external-changes) for what happens when a file changes on disk.
 
 ## Buffers
 

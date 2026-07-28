@@ -31,6 +31,7 @@
 - **The whole statusline row tints with the active mode's color** — replaces the Helix mode-pill, so the mode is legible at a glance rather than in a 3-character corner. Opt out with `statusline.mode-colors = false`.
 - **Scroll affordance is a proportional thumb, not arrows** — in menus as well as popups; an arrow glyph can't convey how much more there is to scroll.
 - **`:sort` permutes whole rows, keyed by the selected text (`sort -k`), per contiguous run, numeric auto-detected** — rejects both Helix's `:sort` (permutes text *between* selection slots, rows never move — requires a manual `%` + split-on-newline step to sort a file) and Kakoune's `|sort` (pipes each selection through the shell, so N one-line selections is an N-way no-op). Non-adjacent selections form independent groups; equal keys keep document order (stable); `-r`/`-i` flip/fold the comparison, never the result. Deferred: a `--lexicographic` override for when auto-numeric guesses wrong (e.g. `1.10` vs `1.9`) — not worth shipping until it actually bites.
+- **External file-change detection = stat-on-trigger (mtime + size), not a filesystem watcher** — Neovim's own design for the same problem, copied deliberately. inotify/FSEvents/kqueue/ReadDirectoryChangesW disagree on rename semantics and coalescing, and a watcher needs a thread + handle per watched directory; stating at a handful of trigger points (terminal focus, buffer-enter, return from an inline shell command, `:checktime`) costs nothing in the background and behaves identically on every platform. Size is compared alongside mtime because HFS+/FAT only report mtime to one-second resolution. `autoread` (default on) prompts via a reusable native confirm overlay; off just warns. A buffer flagged stale refuses `:w` until reloaded or forced with `!`.
 
 ## Roadmap
 
@@ -46,13 +47,12 @@
 - [ ] Wrap indicator — configurable char prepended to continuation rows in soft-wrap mode.
 - [ ] `on-buffer-switch` hook + per-buffer keymaps (Steel).
 - [ ] `:e <new-path>` touch-or-open — create empty buffer bound to path when file doesn't exist; first `:w` writes it.
-- [ ] `:e` binary / huge-file y/n confirm — binary-sniff + size threshold, confirm-mode prompt.
+- [ ] `:e` binary / huge-file y/n confirm — binary-sniff + size threshold. The reusable confirm-overlay primitive this needs (`ui::confirm`) already exists, built for the disk-change reload prompt.
 - [ ] Streaming load for huge files — chunked read replacing single blocking full-file read.
 - [ ] File-size statusline element + cached size metadata.
 - [ ] Unified decoration system — single trait replacing the separate gutter/highlight/virtual-line/overlay provider traits; post-LSP, once the surface is stable.
 - [ ] Scriptable minibuffer completers — Steel builtin to register plugin completers; core does prefix matching only, fuzzy scoring is a plugin concern.
 - [ ] Scriptable insert-mode completion sources — see `docs/COMPLETION-PICKER.md` (additive, nothing blocks on current work).
-- [ ] File watcher — detect external file changes, prompt to reload.
 - [ ] Auto-generated command reference + in-editor `:help` expansion.
 
 ### Editor — fixes & optimizations
