@@ -127,21 +127,16 @@
                   (list "status" "--porcelain" "-z" "--no-renames"
                         (string-append "--untracked-files="
                                         (if pickers/untracked "all" "no"))))])
-    ;; `#f` (spawn/exit failure) and `""` (clean tree, valid empty output) are
-    ;; distinct outcomes — collapsing them would report a broken `git status`
-    ;; as "working tree is clean".
-    (cond
-      [(not output)
-       (error "picker-git-modified: `git status` failed — check the repository state")]
-      [else
-       (let ([items (pickers/parse-git-status output)])
-         (if (null? items)
-             (error "picker-git-modified: no changes — working tree is clean")
-             (picker! items
-                      (lambda (path)
-                        (when path
-                          (switch-to-buffer! (open-buffer! (path-join root path)))))
-                      #:prompt "git: ")))])))
+    ;; `#f` (spawn/exit failure) is the only failure outcome — `""` (clean
+    ;; tree) parses to an empty item list and opens the picker same as any
+    ;; other empty-result state, no special-casing needed.
+    (if (not output)
+        (error "picker-git-modified: `git status` failed — check the repository state")
+        (picker! (pickers/parse-git-status output)
+                 (lambda (path)
+                   (when path
+                     (switch-to-buffer! (open-buffer! (path-join root path)))))
+                 #:prompt "git: "))))
 
 ;;; Internal dispatch seam: repo root passed in explicitly so tests can drive
 ;;; the not-a-repo branch via `call!` instead of manipulating the sandbox.

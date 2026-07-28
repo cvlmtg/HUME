@@ -540,7 +540,7 @@ fn git_modified_picker_invalid_untracked_config_fails_load() {
 }
 
 #[test]
-fn git_modified_picker_clean_tree_opens_no_picker() {
+fn git_modified_picker_clean_tree_opens_empty_picker() {
     let guard = HumeRuntimeGuard::new();
     let sandbox = CwdSandbox::new();
     git_init(sandbox.raw());
@@ -554,20 +554,16 @@ fn git_modified_picker_clean_tree_opens_no_picker() {
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
     ed.set_cwd(&sandbox.path()).unwrap();
 
-    ed.state.status_msg = None;
     ed.feed_key(key('g'));
     ed.feed_key(key('m'));
 
-    assert!(
-        ed.state.config.picker.is_none(),
-        "a clean tree must not open a picker"
-    );
-    let msg = ed
+    let picker = ed
         .state
-        .status_msg
-        .clone()
-        .expect("clean tree must surface a status message");
-    assert!(msg.contains("clean"), "got: {msg}");
+        .config
+        .picker
+        .as_ref()
+        .expect("a clean tree still opens the picker, just with no rows");
+    assert_eq!(picker.total_len(), 0);
 }
 
 #[test]

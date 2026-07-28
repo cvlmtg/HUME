@@ -64,8 +64,9 @@ entry against the repo root (`git rev-parse --show-toplevel`) at accept time
 — so `g m` opens the right file even when `:pwd` is a subdirectory of the
 repo.
 
-An empty result (clean tree) or a cwd outside any git repository surfaces as
-a status message instead of an empty picker panel.
+A clean tree still opens the picker, just with no rows. A cwd outside any
+git repository (or a failed `git status`) surfaces as a status message
+instead.
 
 Since this is a synchronous spawn, the default `#t` walks every untracked
 directory fully (`--untracked-files=all`) before `g m` opens — a large
