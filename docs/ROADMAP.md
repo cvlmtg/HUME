@@ -16,12 +16,20 @@
 - **`c` leaves the typed replacement selected** — divergence from Kakoune/Helix (both collapse to a cursor); `i`/`a`/`o`/`O` keep a collapsed cursor.
 - **Tab handling = one knob (`tab-style`, reuses `tab-width`)** — rejects Vim's four-knob `shiftwidth`/`softtabstop` model as too complex.
 - **`undo-levels`: `0` = unlimited** — diverges from Vim (no `-1` value); caps total revision count tree-wide, not path depth.
+- **`set-option!`/`get-option` are callable from every eval mode** — `settings_ops::apply_global` is the validating write chokepoint, so an init-only/command-only split guarded nothing it didn't already.
 - **Macros = register-based, Vim-style `Q`/`q` UX** — `Q` records (deliberate setup), `q` replays (hot path).
 - **Syntax = tree-sitter** — incremental parsing, structural understanding beyond colors.
 - **Theming = Helix-compatible hierarchical scopes + TOML** — `inherits` chains and `palette`, for theme reuse.
 - **Full-trust plugins, no sandbox** — every plugin runs with Steel's full stdlib.
 - **Terminal: require true color + synchronized output; prefer kitty keyboard, fall back** — no shims for ancient terminals.
 - **Register paste count mismatch (N≠M)** — join full register content, apply to every selection.
+- **Signals quit through the main loop; pty-hangup force-exits** — SIGINT/TERM/HUP/QUIT wake the loop so LSP servers get a graceful `shutdown` (3 s force-exit fallback). A hangup can't: termina's reader spins on an EOF tty and never sees the waker. Exit code is `128 + signo` on Unix; Windows is always 130, since `ctrlc` doesn't say which control event fired.
+- **Long-lived children get their own process group and a process-wide registry** — force-exit `killpg`s each one, reaching grandchildren (rust-analyzer's `proc-macro-srv`, build scripts) that killing the tracked pid alone would orphan. The registry holds the unreaped `Child`, not a pid, so pids can't be recycled underneath it and Windows works the same way. Accepted trade-off: leaving the foreground group costs these children the kernel's SIGHUP on pty teardown — covered by the LSP `processId` convention and stdin EOF.
+- **`:reload-config` resets config-owned state, then replays the buffer-open lifecycle** — everything config owns goes back to its compiled-in default before `init.scm` re-runs, discarding runtime `:set`/`:theme` changes too. Buffers, panes, undo history, registers, and running LSP servers are untouched. One exception: an explicit `language=` assertion survives, because detection alone can never reconstruct it. Config-derived hooks re-fire afterwards so state gated on a transition a bare reload never causes doesn't silently stay empty — deliberately not a literal close+reopen (no LSP `didClose`/`didOpen`, no `OnBufferClose`).
+- **Startup grammar registration is core, not PLUM** — every already-compiled grammar registers unconditionally at startup, so highlighting survives `core:plum` being absent from `init.scm`. PLUM keeps only the install pipeline.
+- **Language identity and grammar attachment are independent facts** — re-running either must not silently undo the other, since grammars attach before `init.scm` gets a chance to override an identity.
+- **The whole statusline row tints with the active mode's color** — replaces the Helix mode-pill, so the mode is legible at a glance rather than in a 3-character corner. Opt out with `statusline.mode-colors = false`.
+- **Scroll affordance is a proportional thumb, not arrows** — in menus as well as popups; an arrow glyph can't convey how much more there is to scroll.
 
 ## Roadmap
 
