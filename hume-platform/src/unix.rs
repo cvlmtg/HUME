@@ -616,15 +616,51 @@ mod terminator_tests {
         (sig_read, sig_write)
     }
 
+    /// A regression to the drain-less spin `terminator_exits_instead_of_spinning_when_the_pipe_closes`
+    /// guards against — a `run_terminator_blocking` call that never returns —
+    /// is a real failure mode for this module (observed directly: a sabotage
+    /// run of `detects_signal_with_tty_idle` sat at 100% CPU for three days
+    /// before being mistaken for a live bug). A direct call on the test
+    /// thread would hang `cargo test` forever on that regression instead of
+    /// failing it. This runs the call on its own thread and fails the test if
+    /// it hasn't returned within `bound`, so a spin becomes a fast, visible
+    /// test failure. Takes the fds by value — they must outlive the spawned
+    /// thread — while each test keeps its own peer/writer handle so it can
+    /// still act on the connection after the call starts.
+    fn run_bounded(tty: Option<UnixStream>, sig_read: UnixStream, bound: Duration) -> Trigger {
+        let handle = std::thread::spawn(move || {
+            run_terminator_blocking(tty.as_ref().map(UnixStream::as_fd), sig_read.as_fd())
+        });
+        let deadline = Instant::now() + bound;
+        while !handle.is_finished() {
+            assert!(
+                Instant::now() < deadline,
+                "run_terminator_blocking did not return within {bound:?} — \
+                 regression to the drain-less spin this module was built to avoid"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        handle
+            .join()
+            .expect("terminator thread panicked")
+            .expect("run_terminator_blocking returned an error")
+    }
+
+    /// Hang-detector bound for [`run_bounded`] — generous on purpose since it
+    /// only needs to catch a genuine spin, not assert on latency; the timing
+    /// assertions in this module (e.g. `INPUT_THROTTLE`, `CONFIRMATIONS *
+    /// CONFIRMATION_DELAY`) already cover how fast a success must be.
+    const SPIN_BOUND: Duration = Duration::from_secs(2);
+
     #[test]
     fn detects_hangup_when_peer_closes() {
         let (fd, peer) = UnixStream::pair().expect("socketpair");
         drop(peer);
         let (sig_read, _sig_write) = idle_sig_pipe();
         assert_eq!(
-            run_terminator_blocking(Some(fd.as_fd()), sig_read.as_fd())
-                .expect("hangup must be detected once peer closes"),
-            Trigger::Hangup
+            run_bounded(Some(fd), sig_read, SPIN_BOUND),
+            Trigger::Hangup,
+            "hangup must be detected once peer closes"
         );
     }
 
@@ -634,9 +670,9 @@ mod terminator_tests {
         let (sig_read, mut sig_write) = idle_sig_pipe();
         sig_write.write_all(b"x").expect("write");
         assert_eq!(
-            run_terminator_blocking(Some(tty_fd.as_fd()), sig_read.as_fd())
-                .expect("signal must be detected while the tty is idle and still open"),
-            Trigger::Signal
+            run_bounded(Some(tty_fd), sig_read, SPIN_BOUND),
+            Trigger::Signal,
+            "signal must be detected while the tty is idle and still open"
         );
     }
 
@@ -648,9 +684,9 @@ mod terminator_tests {
         let (sig_read, mut sig_write) = idle_sig_pipe();
         sig_write.write_all(b"x").expect("write");
         assert_eq!(
-            run_terminator_blocking(None, sig_read.as_fd())
-                .expect("signal must be detected with no tty to watch"),
-            Trigger::Signal
+            run_bounded(None, sig_read, SPIN_BOUND),
+            Trigger::Signal,
+            "signal must be detected with no tty to watch"
         );
     }
 
@@ -817,9 +853,9 @@ mod terminator_tests {
 
         let start = std::time::Instant::now();
         assert_eq!(
-            run_terminator_blocking(Some(tty_fd.as_fd()), sig_read.as_fd())
-                .expect("signal detected"),
-            Trigger::Signal
+            run_bounded(Some(tty_fd), sig_read, SPIN_BOUND),
+            Trigger::Signal,
+            "signal detected"
         );
         let confirmation_cost = CONFIRMATION_DELAY * CONFIRMATIONS;
         assert!(
@@ -851,9 +887,9 @@ mod terminator_tests {
 
         let start = Instant::now();
         assert_eq!(
-            run_terminator_blocking(Some(tty_fd.as_fd()), sig_read.as_fd())
-                .expect("signal detected despite continuous tty input"),
-            Trigger::Signal
+            run_bounded(Some(tty_fd), sig_read, SPIN_BOUND),
+            Trigger::Signal,
+            "signal detected despite continuous tty input"
         );
         assert!(
             start.elapsed() < INPUT_THROTTLE,

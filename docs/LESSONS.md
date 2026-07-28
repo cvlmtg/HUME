@@ -248,3 +248,58 @@ now present, so the rule above applies in the other direction: Windows
 probes for real again (`probe_via_events` in `hume-platform/src/lib.rs`),
 using the *same* `EventReader` real input goes through, which is what makes
 the probe's answer trustworthy this time.
+
+---
+
+## L6 — A sabotage run outlived its own build and was mistaken for a live bug (2026-07-28)
+
+**Root cause:** A deliberate-mutation ("sabotage") verification run of an
+*unbounded* blocking test — one that calls a real wait primitive
+(`select(2)`) directly on the test thread with no upper bound — spun at
+100% CPU exactly as the mutation intended, but the process was never killed.
+Three days and a rebuild later, the still-running process was found and
+read as live evidence that shipped signal-handling code was broken, despite
+"multiple code reviews." It wasn't: the binary underneath the running
+process had already been replaced (`txt` vnode size didn't match the file at
+that path), and the process had started *before* the terminator code it was
+supposedly testing was even committed. Its stdout/stderr pointed at a
+`/private/tmp/...` log that was itself already unlinked, destroying the one
+artifact that would have made the run's provenance obvious immediately.
+
+**Concrete instance:** `hume_platform-13eec481c3fad2cd terminator_tests
+--test-threads=1`, started `Sat Jul 25 02:09:05`, still spinning
+`2026-07-28`. `sample` showed it stuck inside
+`unix::terminator_tests::detects_signal_with_tty_idle` →
+`run_terminator_blocking` → `wait_readable_pair` → `select` returning
+instantly without draining — precisely the failure mode
+`terminator_exits_instead_of_spinning_when_the_pipe_closes`
+(`hume-platform/src/unix.rs`) exists to catch. The terminator module itself
+landed in `92c96c07` on `2026-07-28`, three days after the process started.
+
+**Prevention rules:**
+
+1. **Bound every test that blocks on a real wait primitive.** A regression
+   in code under test must turn into a fast test *failure*, not an
+   unkillable 100%-CPU hang. `hume-platform/src/unix.rs`'s
+   `terminator_tests::run_bounded` helper is the pattern: run the call on
+   its own thread, poll `is_finished()` against a generous (not
+   latency-sensitive) deadline, and `panic!` if it's blown. Latency
+   assertions stay separate — the bound is a hang detector, not an
+   assertion on how fast success should be.
+2. **CI must have a job-level `timeout-minutes`.** Without one, a hang runs
+   to GitHub's 6-hour default instead of failing visibly and fast.
+   `.github/workflows/ci.yml`'s `test` job now sets one.
+3. **A sabotage/mutation-testing run must be disposable.** Run it in the
+   foreground (or under `timeout`), and route its output somewhere that
+   survives inspection — not `/tmp`, where an unlinked file after the
+   process outlives its intended lifetime erases the evidence of what the
+   process actually is.
+4. **A long-running, unfamiliar process is a "read before you act" moment,
+   not a "trust the symptom" one.** Before treating a stuck process as proof
+   of a live bug, check what it actually is: `ps -o lstart=`, `lsof` for its
+   binary and open fds (a stale `txt` vnode size vs. the on-disk file is
+   definitive proof of a stale binary), and whether the code path it's
+   allegedly exercising even existed when it started.
+
+**Files:** `hume-platform/src/unix.rs` (`run_bounded` + `SPIN_BOUND`),
+`.github/workflows/ci.yml` (`timeout-minutes`).

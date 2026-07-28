@@ -604,6 +604,7 @@ mod shift_punctuation;
 mod surround;
 mod sync_dispatch;
 mod tabs;
+mod terminator;
 mod timers;
 mod undo_levels;
 #[cfg(unix)]

@@ -9,6 +9,11 @@ ratatui-termina = "0.1"
 ratatui.workspace = true
 tempfile = "3"
 
+[features]
+# Exposes test-only doubles/constants to consumer crates — same convention as
+# hume-lsp's `test-util` (see its `src/lib.rs`).
+test-util = []
+
 [target.'cfg(unix)'.dependencies]
 # `nix`'s only FIONREAD access is `ioctl_read_bad!`, which expands to an
 # `unsafe fn` — forbidden by this project's no-`unsafe` rule. `rustix::io::

@@ -22,6 +22,10 @@ jobs:
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # A hang in an unbounded blocking test (e.g. a regression to the terminator's
+    # drain-less spin — see hume-platform/src/unix.rs's terminator_tests module)
+    # would otherwise burn the runner at 100% CPU until GitHub's 6-hour default.
+    timeout-minutes: 30
     strategy:
       fail-fast: false   # run all three even if one fails — useful for OS-specific bugs
       matrix:

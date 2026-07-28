@@ -200,6 +200,15 @@ impl ServerHandle {
 /// live pipe, short enough that a server ignoring stdin doesn't hang exit.
 const WRITER_FLUSH_GRACE: std::time::Duration = std::time::Duration::from_millis(200);
 
+/// [`WRITER_FLUSH_GRACE`], exposed to consumer crates so
+/// `hume_platform::QUIT_GRACE`'s "sized against this, per live server" budget
+/// can be checked against the real value instead of just a comment promising
+/// they're kept in step (see the invariant test in `hume-editor`).
+#[cfg(any(test, feature = "test-util"))]
+pub fn writer_flush_grace() -> std::time::Duration {
+    WRITER_FLUSH_GRACE
+}
+
 /// Polls `handle` up to `timeout`, returning whether it finished in time.
 /// Extracted from `Drop` so the bounded-wait mechanism is unit-testable
 /// without spawning a real child process.

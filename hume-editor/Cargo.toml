@@ -44,4 +44,5 @@ tree-sitter.workspace = true
 hume-scripting = { path = "../hume-scripting", features = ["test-util"] }
 hume-treesitter = { path = "../hume-treesitter", features = ["test-util"] }
 hume-lsp = { path = "../hume-lsp", features = ["test-util"] }
+hume-platform = { path = "../hume-platform", features = ["test-util"] }
 hume-test-fixtures = { path = "../hume-test-fixtures" }

@@ -40,6 +40,16 @@ use std::time::{Duration, Instant};
 /// servers doesn't blow through the window mid-teardown.
 pub(crate) const QUIT_GRACE: Duration = Duration::from_millis(3000);
 
+/// [`QUIT_GRACE`], exposed to consumer crates so the budget it documents
+/// itself as needing — `Editor::SHUTDOWN_GRACE` plus `WRITER_FLUSH_GRACE` per
+/// live LSP server — can be checked against the real values instead of just
+/// a comment promising they're kept in step (see the invariant test in
+/// `hume-editor`).
+#[cfg(any(test, feature = "test-util"))]
+pub fn quit_grace() -> Duration {
+    QUIT_GRACE
+}
+
 /// Windows' uniform "killed by signal" exit code — `ctrlc` fires one handler
 /// for every console control event (Ctrl+C, Ctrl+Break, console close,
 /// logoff, shutdown) without saying which, so there's no per-event code to
@@ -161,6 +171,13 @@ pub fn spawn_terminator(
             // telling us which one, so every trigger uses the same
             // conventional "killed by signal" code.
             request_quit(WINDOWS_SIGNAL_EXIT_CODE);
+            // Unlike Unix's `wait_for_second_signal`, this sleep isn't
+            // interruptible by a second control event: `ctrlc` gives no
+            // shared wait primitive to interrupt, and every event already
+            // maps to the same `WINDOWS_SIGNAL_EXIT_CODE`, so there's no
+            // second signal's code to race ahead for. A repeat Ctrl+C during
+            // this window is a harmless no-op, not a faster exit — accepted
+            // asymmetry with the Unix path rather than a bug.
             std::thread::sleep(QUIT_GRACE);
             // The main loop had a full grace window and didn't exit the
             // process itself — force it down.
