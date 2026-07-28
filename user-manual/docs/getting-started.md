@@ -14,11 +14,10 @@ Or run `hume` with no arguments to open a scratch buffer. The current mode is sh
 
 ## The first minute
 
-1. **Launch:** `hume path/to/file.txt` (or just `hume` for a scratch buffer).
-2. **Learn the keys:** type `:tutor` and press `Enter` to open the interactive tutorial. The tutorial is an editable copy of the bundled `tutor.rst` — feel free to experiment in it. Re-running `:tutor` later in the same session switches back to your existing buffer, preserving any edits; after `:bd!` it opens a fresh copy.
+1. **Learn the keys:** type `:tutor` and press `Enter` to open the interactive tutorial. The tutorial is an editable copy of the bundled `tutor.rst` — feel free to experiment in it. Re-running `:tutor` later in the same session switches back to your existing buffer, preserving any edits; after `:bd!` it opens a fresh copy.
+2. **Where am I?** The mode label (`NOR`, `INS`, `EXT`, …) sits on the right of the status bar; the file path and cursor position sit on the left.
 3. **Quit:** `:q` closes the current buffer, and quits HUME once it's the last one open. `:q!` discards unsaved changes. `:wq` saves and quits. `:qa` quits everything.
-4. **Where am I?** The mode label (`NOR`, `INS`, `EXT`, …) sits on the right of the status bar; the file path and cursor position sit on the left.
-5. **Turn on the extras (optional):** Out of the box HUME is a lean editor — language-server smarts, fuzzy file and buffer pickers, and the plugin manager stay off until you ask for them. Copy the bundled starter config, `init.scm.example`, to `~/.config/hume/init.scm` (`%APPDATA%\hume\init.scm` on Windows) and they're all on next launch. See [Configuration](configuration.md) for what each line does and where to find the file.
+4. **Turn on the extras (optional):** Out of the box HUME is a lean editor — language-server smarts, fuzzy file and buffer pickers, and the plugin manager stay off until you ask for them. Copy the bundled starter config, `init.scm.example`, to `~/.config/hume/init.scm` (`%APPDATA%\hume\init.scm` on Windows) and they're all on next launch. See [Configuration](configuration.md) for what each line does and where to find the file.
 
 ## The modal idea
 
