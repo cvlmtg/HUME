@@ -2738,6 +2738,38 @@ fn sort_numeric_auto_detects_and_orders_correctly() {
 }
 
 #[test]
+fn sort_decimal_keys_order_numerically() {
+    assert_state!(
+        "-[9.5]>\n-[10.2]>\n-[2.75]>\n",
+        |(buf, sels)| sort_rows(buf, sels, SortOpts::default()).unwrap(),
+        "-[2.75]>\n-[9.5]>\n-[10.2]>\n"
+    );
+
+    // Independent oracle: pins float detection actually firing. A pure
+    // lexicographic sort of the same three strings produces a different
+    // order ("10.2", "2.75", "9.5") — if float detection silently stopped
+    // firing, the assertion above would start seeing this order instead.
+    let mut lexicographic = vec!["9.5", "10.2", "2.75"];
+    lexicographic.sort();
+    assert_eq!(lexicographic, vec!["10.2", "2.75", "9.5"]);
+}
+
+#[test]
+fn sort_non_finite_float_keys_fall_back_to_lexicographic() {
+    // "inf" parses as a float but isn't order-total, so the `is_finite`
+    // guard must reject it and fall the whole group back to text order —
+    // "10.5" < "2.5" < "inf" — rather than numeric order, which would put
+    // "2.5" before "10.5" (2.5 < 10.5 < inf). The two orders disagree on
+    // "2.5" vs "10.5", so a dropped guard shows up as a wrong result here,
+    // not just a coincidentally-matching one.
+    assert_state!(
+        "-[2.5]>\n-[inf]>\n-[10.5]>\n",
+        |(buf, sels)| sort_rows(buf, sels, SortOpts::default()).unwrap(),
+        "-[10.5]>\n-[2.5]>\n-[inf]>\n"
+    );
+}
+
+#[test]
 fn sort_mixed_numeric_and_text_keys_falls_back_to_lexicographic() {
     // One non-numeric key ("a") disqualifies the whole group from numeric
     // comparison — the group falls back to plain string order.
@@ -2791,5 +2823,18 @@ fn sort_preserves_combining_grapheme_clusters_through_remap() {
         "-[e]>\u{0301}\n-[a]>\n",
         |(buf, sels)| sort_rows(buf, sels, SortOpts::default()).unwrap(),
         "-[a]>\n-[e]>\u{0301}\n"
+    );
+}
+
+#[test]
+fn sort_blank_line_inside_a_run_gets_an_empty_key_and_sorts_first() {
+    // One multi-line selection spans all three rows ("b", the blank line,
+    // "a"). The blank row has no content to key on — its key is "" — so it
+    // sorts ahead of both letters. The selection spans multiple rows, so it
+    // keeps its char range unchanged and still wraps the whole reordered block.
+    assert_state!(
+        "-[b\n\na\n]>",
+        |(buf, sels)| sort_rows(buf, sels, SortOpts::default()).unwrap(),
+        "-[\na\nb\n]>"
     );
 }

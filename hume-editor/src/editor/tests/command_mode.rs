@@ -1338,6 +1338,47 @@ fn sort_bundled_flags_through_the_minibuffer() {
 }
 
 #[test]
+fn sort_long_flags_through_the_minibuffer() {
+    // `-r`/`-i` and their `--reverse`/`--insensitive` long forms are parsed
+    // by the same match arm — exercise the long forms directly rather than
+    // trusting that pairing to hold.
+    let mut ed = editor_from("-[Banana]>\n-[apple]>\n");
+    submit(&mut ed, "sort --reverse --insensitive");
+    assert_eq!(state(&ed), "-[Banana]>\n-[apple]>\n");
+}
+
+#[test]
+fn sort_no_adjacent_rows_reports_a_warning() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let before = state(&ed);
+    ed.execute_typed("sort", None)
+        .expect("a single row is refused, not an error");
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("sort needs at least two adjacent rows")
+    );
+    assert_eq!(
+        ed.state.message_log.totals(),
+        (0, 1),
+        "NoAdjacentRows is a Warning — it must land in message_log, not just the status line"
+    );
+    assert_eq!(state(&ed), before, "a refusal must not touch the buffer");
+}
+
+#[test]
+fn sort_already_sorted_reports_info_without_logging() {
+    let mut ed = editor_from("-[a]>\n-[b]>\n");
+    ed.execute_typed("sort", None)
+        .expect("already-sorted input is refused, not an error");
+    assert_eq!(ed.state.status_msg.as_deref(), Some("already sorted"));
+    assert_eq!(
+        ed.state.message_log.totals(),
+        (0, 0),
+        "AlreadySorted is Severity::Info — it must never reach message_log"
+    );
+}
+
+#[test]
 fn sort_unknown_flag_reports_an_error() {
     let mut ed = editor_from("-[b]>\n-[a]>\n");
     let before = state(&ed);
