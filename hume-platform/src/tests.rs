@@ -1,8 +1,23 @@
 use super::{
-    classify_probe_event, has_da1_response, has_kitty_response, has_kitty_xtversion, run_probe,
+    claim_exit, classify_probe_event, has_da1_response, has_kitty_response, has_kitty_xtversion,
+    run_probe,
 };
 use std::io;
 use std::time::Instant;
+
+// ── claim_exit ─────────────────────────────────────────────────────────────
+//
+// `EXIT_CLAIMED` is a single process-wide static, so this is the only test
+// in the crate allowed to call `claim_exit` — a second caller anywhere else
+// would observe it pre-claimed and silently break this test's own "exactly
+// once" assertion.
+
+#[test]
+fn exit_claim_is_granted_exactly_once() {
+    assert!(claim_exit(), "the first call must win the claim");
+    assert!(!claim_exit(), "a second call must not win it too");
+    assert!(!claim_exit(), "nor a third");
+}
 
 // ── has_kitty_response ────────────────────────────────────────────────────
 

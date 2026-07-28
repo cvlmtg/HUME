@@ -194,6 +194,7 @@ impl Editor {
                 last_command: None,
                 last_paste: None,
                 should_quit: false,
+                terminate_exit_code: Arc::new(std::sync::atomic::AtomicI32::new(0)),
                 minibuf: None,
                 minibuf_completion: None,
                 status_msg: None,
@@ -292,6 +293,15 @@ impl Editor {
         self.terminal = Some(term);
     }
 
+    /// Share the atomic the platform terminator thread stores the exit code
+    /// into when a signal asks the editor to quit. Replaces the per-`Editor`
+    /// default so `run`'s loop and `hume_editor::run` (after `run` returns)
+    /// observe the same value the terminator wrote. Call once, before
+    /// entering `run`.
+    pub(crate) fn attach_terminate_flag(&mut self, code: Arc<std::sync::atomic::AtomicI32>) {
+        self.state.terminate_exit_code = code;
+    }
+
     /// Process one key event — dispatch it, sync the search cache, drain any
     /// macro replay, sync again.
     ///
@@ -348,6 +358,22 @@ impl Editor {
         let mut ctx = RenderContext::new();
         let mut last_cursor_color_mode: Option<EditorMode> = None;
         loop {
+            // A signal asked us to quit — checked before drawing, since the
+            // terminator thread's grace window is already ticking and a
+            // frame here would be wasted work. Falls through to the same
+            // post-loop teardown as a typed `:q` (`lsp_shutdown_all`, cursor
+            // reset). Unlike `should_quit`, this bypasses dirty-buffer
+            // prompts — a signal isn't a `:q`. `0` means "no termination
+            // requested"; never a valid signal-termination exit code.
+            if self
+                .state
+                .terminate_exit_code
+                .load(std::sync::atomic::Ordering::Acquire)
+                != 0
+            {
+                break;
+            }
+
             // An inline-output command toggled the alt-screen, invalidating ratatui's
             // diff cache; force a full repaint so the editor chrome is restored cleanly.
             if std::mem::take(&mut self.state.force_full_redraw) {
@@ -524,7 +550,7 @@ impl Editor {
         // Give every running LSP server a chance to exit cleanly (shutdown
         // request, then exit notification) before the process ends —
         // ServerHandle::drop would otherwise SIGKILL them.
-        self.lsp_shutdown_all(Duration::from_millis(500));
+        self.lsp_shutdown_all(Self::SHUTDOWN_GRACE);
         // Restore the user's default cursor shape and colour before returning to the shell.
         hume_platform::terminal::reset_cursor_shape(&shared)?;
         let _ = hume_platform::terminal::set_cursor_color(&shared, false); // emits reset sequence

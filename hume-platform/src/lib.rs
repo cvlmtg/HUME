@@ -28,27 +28,145 @@ pub mod process;
 pub mod target;
 pub mod terminal;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-/// Install a process-wide signal handler that restores the terminal before
-/// exiting.
+/// Grace window between asking the editor to quit gracefully and forcing the
+/// process down. Must comfortably exceed the editor's own worst-case
+/// teardown cost: `Editor::SHUTDOWN_GRACE`'s 500 ms budget
+/// (`hume-editor/src/editor/lsp/mod.rs`), plus up to `ServerHandle::drop`'s
+/// 200 ms `WRITER_FLUSH_GRACE` (`hume-lsp/src/transport.rs`) *per still-live
+/// LSP server* as each one is dropped afterward — so a handful of attached
+/// servers doesn't blow through the window mid-teardown.
+pub(crate) const QUIT_GRACE: Duration = Duration::from_millis(3000);
+
+/// Windows' uniform "killed by signal" exit code — `ctrlc` fires one handler
+/// for every console control event (Ctrl+C, Ctrl+Break, console close,
+/// logoff, shutdown) without saying which, so there's no per-event code to
+/// derive the way Unix derives `128 + signo`. Numerically the same as Unix's
+/// `SIGINT` code, but that's incidental — a different exit code with a
+/// different rationale, not the same constant reused.
+#[cfg(windows)]
+const WINDOWS_SIGNAL_EXIT_CODE: i32 = 130;
+
+/// Set by whichever caller wins [`claim_exit`]'s race — see there.
+static EXIT_CLAIMED: AtomicBool = AtomicBool::new(false);
+
+/// Returns `true` for the one call, process-wide, that wins the race to
+/// tear the process down; `false` for every call after it. Split out from
+/// [`restore_for_exit`] so the claim itself — not the losing side's
+/// park-forever — is unit-testable.
+fn claim_exit() -> bool {
+    !EXIT_CLAIMED.swap(true, Ordering::AcqRel)
+}
+
+/// Restores the terminal on behalf of the one thread that gets to take the
+/// process down, then returns so the caller can call `std::process::exit`.
 ///
-/// Catches SIGINT/SIGTERM/SIGHUP on Unix and Ctrl+C/Ctrl+Break on Windows.
-/// In raw mode the kernel does not deliver SIGINT for Ctrl+C (ISIG is
-/// cleared), so this primarily covers `kill <pid>`, `kill -HUP`, and
-/// terminal-window close sent by the OS.
+/// The terminator thread ([`spawn_terminator`]'s force-exit arms) and the
+/// main thread (`hume-editor`'s `run`, after its own graceful shutdown) can
+/// both reach an exit path once [`QUIT_GRACE`] elapses: `QUIT_GRACE`'s own
+/// doc comment acknowledges its budget is sized to just barely exceed the
+/// main thread's worst-case teardown, so with enough attached LSP servers
+/// the two windows overlap. Without a single winner, both would write the
+/// terminal-restore escape sequences to the same [`terminal::SharedTerm`]
+/// and both would call `process::exit` — interleaved restores can leave the
+/// shell in the alternate screen or raw mode, and a second `exit` re-enters
+/// the same atexit/TLS teardown.
 ///
-/// The handler runs on a dedicated worker thread managed by `ctrlc`, so it is
-/// safe to call `restore()` (which allocates and writes to the terminal).
-pub fn install_signal_handlers(term: terminal::SharedTerm) -> Result<(), ctrlc::Error> {
-    ctrlc::set_handler(move || {
-        if let Err(e) = crate::terminal::restore(&term) {
-            eprintln!("hume: terminal restore failed (signal): {e}");
+/// A caller that loses the race parks forever rather than returning: it has
+/// nothing left to do once another thread is committed to tearing the
+/// process down, and returning here would race that thread's own
+/// `process::exit` on which one actually observes to run last.
+pub fn restore_for_exit(term: &terminal::SharedTerm) -> std::io::Result<()> {
+    if !claim_exit() {
+        loop {
+            std::thread::park();
         }
-        // Exit with the conventional "killed by signal" code. ctrlc does not
-        // tell us which signal fired, so 130 is a reasonable default.
-        std::process::exit(130);
-    })
+    }
+    terminal::restore(term)
+}
+
+/// Restores the terminal and exits with `code`. Shared by every force-exit
+/// path — [`unix::spawn_terminator`]'s signal and hangup arms, and the
+/// Windows arm below — so there is one restore-exit sequence rather than
+/// each platform repeating it.
+#[cfg_attr(not(any(unix, windows)), allow(dead_code))]
+fn force_exit(term: &terminal::SharedTerm, code: i32) -> ! {
+    let _ = restore_for_exit(term);
+    std::process::exit(code);
+}
+
+/// Spawn a background watcher that terminates the process on: Ctrl+C, `kill
+/// <pid>` (SIGINT/SIGTERM/SIGHUP/SIGQUIT) on Unix, Ctrl+Break and
+/// console-close on Windows, and — Unix only — the controlling terminal
+/// hanging up with no signal delivered at all.
+///
+/// That last case is why this isn't just a signal handler: hume is rarely
+/// the session leader of the tty it runs under, so a pty teardown (e.g. a
+/// recording tool tearing down after capture) does not reliably deliver
+/// SIGHUP. Without an independent watch on the terminal itself, the event
+/// reader's idle wait spins at 100% CPU forever instead of returning, since
+/// the underlying read primitive maps EOF to "no event" rather than an
+/// error.
+///
+/// `request_quit` is called with the exit code the process should use —
+/// `128 + signo` on Unix, or 130 on Windows, where `ctrlc` doesn't expose
+/// which control event fired — and routes termination through the editor's
+/// normal quit path (graceful LSP `shutdown`) rather than tearing the
+/// terminal down from this thread directly. This thread then waits up to
+/// [`QUIT_GRACE`] for the main loop to exit the process itself before
+/// force-restoring and exiting with that same code anyway. A pty hangup
+/// can't take this route at all: the tty is already gone, which pins the
+/// main loop's own event reader in an internal spin that never observes a
+/// wake, so `request_quit` is never called — this thread force-exits with
+/// 130 immediately instead.
+///
+/// On Unix this is one thread multiplexing two wake sources with a single
+/// `select`: a `signal_hook` self-pipe (SIGINT/SIGTERM/SIGHUP/SIGQUIT) and a
+/// dedicated `/dev/tty` fd (hangup), best-effort — a process with no
+/// controlling terminal gets signal handling with no hangup watch rather
+/// than losing both — the same pattern `termina` itself uses internally for
+/// `SIGWINCH`. On Windows it's `ctrlc`'s dedicated worker thread, which
+/// already covers everything Windows needs.
+///
+/// A signal disposition is only ever replaced once something is able to act
+/// on it: the Unix thread is spawned before any signal is registered, and a
+/// `register_conditional_shutdown` fallback still terminates the process
+/// (without a graceful LSP shutdown or terminal restore) if that thread is
+/// ever lost — see `unix::spawn_terminator`'s module-level comment for why.
+///
+/// In raw mode the kernel does not deliver SIGINT for Ctrl+C (ISIG is
+/// cleared), so on Unix this primarily covers `kill <pid>` and pty teardown
+/// — SIGINT is still registered for the rare case something re-enables ISIG.
+pub fn spawn_terminator(
+    term: terminal::SharedTerm,
+    request_quit: impl Fn(i32) + Send + 'static,
+) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        unix::spawn_terminator(term, request_quit)
+    }
+    #[cfg(windows)]
+    {
+        ctrlc::set_handler(move || {
+            // ctrlc fires this handler for every console control event
+            // (Ctrl+C, Ctrl+Break, console close, logoff, shutdown) without
+            // telling us which one, so every trigger uses the same
+            // conventional "killed by signal" code.
+            request_quit(WINDOWS_SIGNAL_EXIT_CODE);
+            std::thread::sleep(QUIT_GRACE);
+            // The main loop had a full grace window and didn't exit the
+            // process itself — force it down.
+            force_exit(&term, WINDOWS_SIGNAL_EXIT_CODE);
+        })
+        .map_err(std::io::Error::other)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (term, request_quit);
+        Ok(())
+    }
 }
 
 /// Probe the terminal for kitty keyboard protocol support.

@@ -95,10 +95,27 @@ pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error
         let _ = waker.wake();
     });
 
-    if let Err(e) = hume_platform::install_signal_handlers(shared.clone()) {
-        // Non-fatal: SIGTERM/SIGHUP will leak terminal state, but the editor
+    // Set by the terminator thread to the process exit code on termination,
+    // polled at the top of `Editor::run`'s loop and re-read below after it
+    // returns; shared with `editor.attach_terminate_flag` so both sides
+    // observe the same atomic. `0` means "no termination requested" — never
+    // a valid signal-termination exit code. A pty hangup does not go through
+    // this — see `hume_platform::spawn_terminator`'s doc comment.
+    let terminate = std::sync::Arc::new(std::sync::atomic::AtomicI32::new(0));
+    let request_quit = {
+        let (terminate, wake) = (terminate.clone(), wake.clone());
+        move |code: i32| {
+            // Store before waking: the loop must see the code set by the
+            // time the wake actually rouses `reader.poll`.
+            terminate.store(code, std::sync::atomic::Ordering::Release);
+            wake();
+        }
+    };
+    if let Err(e) = hume_platform::spawn_terminator(shared.clone(), request_quit) {
+        // Non-fatal: Ctrl+C/SIGTERM/SIGHUP/pty-hangup will leak terminal
+        // state or spin the event loop instead of exiting, but the editor
         // still works correctly for normal exit.
-        eprintln!("hume: failed to install signal handlers: {e}");
+        eprintln!("hume: failed to start terminator: {e}");
     }
 
     let (first, rest) = match file_paths.split_first() {
@@ -107,6 +124,7 @@ pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error
     };
 
     let mut editor = editor::Editor::open(first, wake)?;
+    editor.attach_terminate_flag(terminate.clone());
     let kitty_enabled = hume_platform::terminal::probe_kitty(&shared)?;
     editor.set_kitty_support(kitty_enabled);
     editor.attach_terminal(shared.clone());
@@ -125,9 +143,26 @@ pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error
         kitty_enabled,
     )?;
     let result = editor.run(&mut term);
+    // Dropped before the exit claim below, not left to the function's own
+    // scope-end order: `restore_for_exit` may lose its race with the
+    // terminator thread's `force_exit` and park forever (see its doc), so
+    // this thread's Drop-owned teardown (each attached LSP server's
+    // `WRITER_FLUSH_GRACE`) must run first rather than risk never running.
+    drop(editor);
+    let restored = hume_platform::restore_for_exit(&shared);
 
-    // Explicit restore on the happy path so IO errors propagate to the caller.
-    hume_platform::terminal::restore(&shared)?;
+    let code = terminate.load(std::sync::atomic::Ordering::Acquire);
+    if code != 0 {
+        // Killed by a signal, not by `:q` — exit with the terminator's own
+        // code rather than propagating `restored`/`result`: on a genuine
+        // terminal hangup (e.g. SIGHUP with the pty already gone) every
+        // teardown write fails with `EIO`, and surfacing that as a `?`
+        // instead of the signal's exit code would print an error to a
+        // terminal that's already gone and report the wrong code.
+        std::process::exit(code);
+    }
 
+    // Not a signal exit — an `EIO` here is a real, reportable failure.
+    restored?;
     Ok(result?)
 }

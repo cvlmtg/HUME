@@ -7,8 +7,19 @@ edition = "2024"
 termina = "0.3.3"
 ratatui-termina = "0.1"
 ratatui.workspace = true
-ctrlc = { version = "3", features = ["termination"] }
 tempfile = "3"
 
 [target.'cfg(unix)'.dependencies]
+# `nix`'s only FIONREAD access is `ioctl_read_bad!`, which expands to an
+# `unsafe fn` — forbidden by this project's no-`unsafe` rule. `rustix::io::
+# ioctl_fionread` is a safe wrapper over the same ioctl, hence both crates.
 nix = { version = "0.31", default-features = false, features = ["poll", "user", "fs", "signal"] }
+rustix = "1"
+signal-hook = "0.3"
+
+[target.'cfg(windows)'.dependencies]
+# ctrlc is Windows-only now — Unix termination goes through signal-hook
+# directly (see unix.rs). Its `termination` feature (SIGTERM/SIGHUP) is
+# dropped: that feature only does anything in ctrlc's own Unix code path,
+# which is never compiled here.
+ctrlc = { version = "3" }

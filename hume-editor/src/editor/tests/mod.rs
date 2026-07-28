@@ -212,6 +212,7 @@ impl Editor {
                 last_command: None,
                 last_paste: None,
                 should_quit: false,
+                terminate_exit_code: std::sync::Arc::new(std::sync::atomic::AtomicI32::new(0)),
                 minibuf: None,
                 minibuf_completion: None,
                 status_msg: None,

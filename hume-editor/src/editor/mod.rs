@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicI32;
 use std::sync::{Arc, RwLock};
 
 use termina::event::KeyEvent;
@@ -144,6 +145,14 @@ pub(crate) struct EditorState {
     /// Values of the most recent paste.
     pub(super) last_paste: Option<Vec<String>>,
     pub(super) should_quit: bool,
+    /// Set by the platform terminator thread to the process exit code when a
+    /// signal asks the editor to quit — `0` means "no termination requested"
+    /// (never a valid signal-termination exit code). Polled at the top of the
+    /// run loop and re-read by `hume_editor::run` after it returns, so both
+    /// sides use the same code without a second channel. `should_quit` stays
+    /// the single-threaded, in-editor quit path (dirty-buffer prompts, `:q`
+    /// semantics) — a signal bypasses all of that.
+    pub(super) terminate_exit_code: Arc<AtomicI32>,
     /// Active when the user is typing a command (`:`) or a search (`/`).
     pub(crate) minibuf: Option<MiniBuffer>,
     /// Active completion session while a popup is showing.
