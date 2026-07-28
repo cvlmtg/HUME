@@ -119,24 +119,28 @@
 //! line containing a `{sha}`/`{tag}` format slot as matching on its prefix
 //! before the `{` rather than byte-for-byte.
 //!
-//! # `EditorState` field classification drift
+//! # `EditorState`/`Editor` field classification drift
 //!
 //! `Editor::reset_config_state` resets `EditorState.config: ConfigState`
 //! wholesale (a field added there is reset by construction — see
-//! `ConfigState`'s own doc), but every *other* `EditorState` field needs a
-//! human decision: does `:reload-config` reset it too (like `settings`, via
+//! `ConfigState`'s own doc), but every *other* field on `EditorState` — and
+//! on `Editor` itself, which `reset_config_state` also reaches directly for
+//! `lsp`/`timer_wheel`/`timer_payloads` — needs a human decision: does
+//! `:reload-config` reset it too (like `settings`, via
 //! `settings_ops::reset_globals`), or does it survive untouched (buffers,
 //! panes, undo history, registers, …)? Nothing enforced that decision get
 //! made — a field added directly to `EditorState` instead of nested inside
-//! `ConfigState` would silently default to "survives", correct for most
-//! fields but wrong for one that should have reset.
+//! `ConfigState`, or a field added to `Editor` itself, would silently
+//! default to "survives", correct for most fields but wrong for one that
+//! should have reset.
 //!
-//! `editor_state_fields_are_classified` extracts every top-level field name
-//! from `EditorState`'s struct body and diffs it against
-//! `EDITOR_STATE_FIELD_CLASSIFICATION` in both directions: a new field with
-//! no entry fails naming it (forcing a classification decision at the point
-//! it's added, not silently); a stale entry for a since-removed field also
-//! fails, so the list can't rot into a document nobody trusts.
+//! `editor_state_fields_are_classified`/`editor_fields_are_classified`
+//! extract every top-level field name from each struct's body and diff it
+//! against `EDITOR_STATE_FIELD_CLASSIFICATION`/`EDITOR_FIELD_CLASSIFICATION`
+//! in both directions: a new field with no entry fails naming it (forcing a
+//! classification decision at the point it's added, not silently); a stale
+//! entry for a since-removed field also fails, so the list can't rot into a
+//! document nobody trusts.
 
 #[cfg(test)]
 mod tests {
@@ -1261,6 +1265,65 @@ mod tests {
         ("wake", "preserved: cross-thread waker infra, not config"),
     ];
 
+    /// `(field name, classification)` for every `Editor` field other than
+    /// `state` and `view` — both exempt: `state: EditorState` is governed by
+    /// `EDITOR_STATE_FIELD_CLASSIFICATION` above, and `view: EngineView` is a
+    /// whole rendering-state struct from another crate whose own
+    /// config-relevant piece (`view.theme`) is already covered by
+    /// `settings_ops::reset_globals`'s doc. Same three buckets as
+    /// `EDITOR_STATE_FIELD_CLASSIFICATION`.
+    const EDITOR_FIELD_CLASSIFICATION: &[(&str, &str)] = &[
+        (
+            "kitty_enabled",
+            "preserved: the probe result reset_config_state itself reads to \
+             rebuild ConfigState's keymap with the same kitty defaults",
+        ),
+        (
+            "scripting",
+            "config: typed_reload_config drops this to None directly (not via \
+             reset_config_state) right before init_scripting rebuilds it",
+        ),
+        (
+            "builtin_cmd_names",
+            "config: overwritten wholesale by init_scripting from the fresh \
+             registry, every call including a reload's",
+        ),
+        ("parse_worker", "preserved"),
+        ("parse_worker_disconnect_logged", "preserved"),
+        (
+            "timer_wheel",
+            "config: reset_config_state cancels only the Steel-thunk-payload \
+             entries (paired with timer_payloads below); native \
+             ViewportDebounce timers survive",
+        ),
+        (
+            "timer_payloads",
+            "config: reset_config_state removes only the Steel-thunk-payload \
+             entries, paired 1:1 with the timer_wheel cancellations above",
+        ),
+        (
+            "viewport_debounce",
+            "preserved: indexes the native ViewportDebounce timers that \
+             themselves survive the reset",
+        ),
+        ("last_viewport_key", "preserved"),
+        (
+            "virtual_lines_synced",
+            "preserved: staleness after a reload is forced by \
+             DecorationStores::reset bumping the generation counter, not by \
+             resetting this map directly",
+        ),
+        ("lsp", "config: LspState::reset_config()"),
+        ("tui_active", "preserved"),
+        ("terminal", "preserved"),
+        (
+            "applied_mouse_mode",
+            "preserved: prepare_frame reconciles it lazily against \
+             state.settings after a reload, same as any runtime \
+             :set mouse-enabled/mouse-select change",
+        ),
+    ];
+
     /// Extract top-level field names from a Rust struct's body text (the
     /// text strictly between its outer `{` and matching `}`). Strips
     /// `///`/`//` comment lines and `#[...]` attribute lines first (so a
@@ -1360,25 +1423,21 @@ mod tests {
         );
     }
 
-    /// Fail oracle: add a field directly to `EditorState` (outside
-    /// `config: ConfigState`) without adding a matching entry to
-    /// `EDITOR_STATE_FIELD_CLASSIFICATION` — this test fails naming the
-    /// field, in either direction (new unclassified field, or a stale
-    /// entry for a field that no longer exists).
-    #[test]
-    fn editor_state_fields_are_classified() {
-        let manifest = std::env::var("CARGO_MANIFEST_DIR")
-            .expect("CARGO_MANIFEST_DIR not set — run via `cargo test`");
-        let path = std::path::Path::new(&manifest).join("src/editor/mod.rs");
-        let src = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
-
+    /// Extract the top-level field names of `struct_decl` (e.g.
+    /// `"pub(crate) struct EditorState {"`) as found in `src`, excluding
+    /// `exempt` (fields governed by their own separate classification —
+    /// `EditorState.config`, `Editor.state`/`Editor.view`).
+    fn struct_fields_excluding(
+        src: &str,
+        struct_decl: &str,
+        exempt: &[&str],
+    ) -> std::collections::BTreeSet<String> {
         let struct_start = src
-            .find("pub(crate) struct EditorState {")
-            .expect("EditorState struct not found in editor/mod.rs");
+            .find(struct_decl)
+            .unwrap_or_else(|| panic!("{struct_decl:?} not found in editor/mod.rs"));
         let body_start = src[struct_start..]
             .find('{')
-            .expect("no opening brace for EditorState")
+            .expect("no opening brace for struct")
             + struct_start;
         let mut depth = 0i32;
         let mut body_end = body_start;
@@ -1395,16 +1454,24 @@ mod tests {
                 _ => {}
             }
         }
-        let fields: std::collections::BTreeSet<String> =
-            struct_field_names(&src[body_start + 1..body_end])
-                .into_iter()
-                .filter(|f| f != "config")
-                .collect();
+        struct_field_names(&src[body_start + 1..body_end])
+            .into_iter()
+            .filter(|f| !exempt.contains(&f.as_str()))
+            .collect()
+    }
 
-        let classified: std::collections::BTreeSet<&str> = EDITOR_STATE_FIELD_CLASSIFICATION
-            .iter()
-            .map(|(name, _)| *name)
-            .collect();
+    /// Diff `fields` against `classification`'s names in both directions —
+    /// shared assertion body for `editor_state_fields_are_classified` and
+    /// `editor_fields_are_classified`. `struct_name`/`const_name` only shape
+    /// the panic messages.
+    fn assert_fields_classified(
+        fields: &std::collections::BTreeSet<String>,
+        classification: &[(&str, &str)],
+        struct_name: &str,
+        const_name: &str,
+    ) {
+        let classified: std::collections::BTreeSet<&str> =
+            classification.iter().map(|(name, _)| *name).collect();
 
         let unclassified: Vec<&String> = fields
             .iter()
@@ -1412,11 +1479,11 @@ mod tests {
             .collect();
         assert!(
             unclassified.is_empty(),
-            "EditorState gained new field(s) {unclassified:?} with no entry in \
-             EDITOR_STATE_FIELD_CLASSIFICATION — decide whether :reload-config's \
-             reset should touch it (add the mechanism to reset_config_state and \
-             classify it \"config: …\" here), or whether it genuinely survives a \
-             reload (classify it \"preserved\"), then add the entry"
+            "{struct_name} gained new field(s) {unclassified:?} with no entry in \
+             {const_name} — decide whether :reload-config's reset should touch \
+             it (add the mechanism to reset_config_state and classify it \
+             \"config: …\" here), or whether it genuinely survives a reload \
+             (classify it \"preserved\"), then add the entry"
         );
 
         let stale: Vec<&str> = classified
@@ -1426,8 +1493,54 @@ mod tests {
             .collect();
         assert!(
             stale.is_empty(),
-            "EDITOR_STATE_FIELD_CLASSIFICATION lists {stale:?}, which is no longer \
-             a field on EditorState — remove the stale entry"
+            "{const_name} lists {stale:?}, which is no longer a field on \
+             {struct_name} — remove the stale entry"
+        );
+    }
+
+    /// Fail oracle: add a field directly to `EditorState` (outside
+    /// `config: ConfigState`) without adding a matching entry to
+    /// `EDITOR_STATE_FIELD_CLASSIFICATION` — this test fails naming the
+    /// field, in either direction (new unclassified field, or a stale
+    /// entry for a field that no longer exists).
+    #[test]
+    fn editor_state_fields_are_classified() {
+        let manifest = std::env::var("CARGO_MANIFEST_DIR")
+            .expect("CARGO_MANIFEST_DIR not set — run via `cargo test`");
+        let path = std::path::Path::new(&manifest).join("src/editor/mod.rs");
+        let src = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+
+        let fields = struct_fields_excluding(&src, "pub(crate) struct EditorState {", &["config"]);
+        assert_fields_classified(
+            &fields,
+            EDITOR_STATE_FIELD_CLASSIFICATION,
+            "EditorState",
+            "EDITOR_STATE_FIELD_CLASSIFICATION",
+        );
+    }
+
+    /// Fail oracle: add a field directly to `Editor` (outside `state` and
+    /// `view`, both separately governed) without a matching entry in
+    /// `EDITOR_FIELD_CLASSIFICATION` — same two-directional check as
+    /// `editor_state_fields_are_classified`, for the fields
+    /// `reset_config_state` reaches through `&mut self` directly rather than
+    /// through `self.state.config`.
+    #[test]
+    fn editor_fields_are_classified() {
+        let manifest = std::env::var("CARGO_MANIFEST_DIR")
+            .expect("CARGO_MANIFEST_DIR not set — run via `cargo test`");
+        let path = std::path::Path::new(&manifest).join("src/editor/mod.rs");
+        let src = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+
+        let fields =
+            struct_fields_excluding(&src, "pub(crate) struct Editor {", &["state", "view"]);
+        assert_fields_classified(
+            &fields,
+            EDITOR_FIELD_CLASSIFICATION,
+            "Editor",
+            "EDITOR_FIELD_CLASSIFICATION",
         );
     }
 }

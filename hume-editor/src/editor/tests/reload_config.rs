@@ -21,6 +21,7 @@ use super::*;
 use hume_engine::types::Scope;
 use hume_scripting::ScriptingHost;
 
+use crate::editor::commands::open_pane;
 use crate::editor::keymap::{BindMode, Keymap, WalkResult};
 use crate::editor::lsp::LspState;
 use crate::editor::reload::ReloadSnapshot;
@@ -569,6 +570,48 @@ fn reset_tears_down_an_open_prompt_session_completely() {
     );
 }
 
+/// An open picker session must be gone after a reset, and — unlike `Esc`/
+/// `picker-close!` — its `on_select` callback must never fire: it belongs to
+/// the outgoing engine, which is seconds from being dropped (see
+/// `picker::close_picker`'s doc for why `reset_config_state` deliberately
+/// bypasses that chokepoint). Checked via `pending_steel_calls` staying
+/// empty, not just `picker.is_none()` — the latter alone can't tell "dropped
+/// silently" apart from "closed normally", since `close_picker` also clears
+/// the field.
+#[test]
+fn reset_tears_down_an_open_picker_session_without_firing_its_callback() {
+    let mut ed = editor_from("-[a]>b\n");
+    let mut session = crate::editor::picker::PickerSession::new(
+        steel::rvals::SteelVal::StringV("cb".into()),
+        String::new(),
+    );
+    let token = session.token();
+    session.push(
+        token,
+        vec![crate::editor::picker::PickerItem {
+            display: "one".to_string(),
+            payload: steel::rvals::SteelVal::StringV("one".into()),
+        }],
+    );
+    crate::editor::picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
+    assert!(
+        ed.state.config.picker.is_some(),
+        "sanity: the picker must be open"
+    );
+
+    ed.reset_config_state();
+
+    assert!(
+        ed.state.config.picker.is_none(),
+        "the picker session must not survive a reset"
+    );
+    assert!(
+        ed.state.config.pending_steel_calls.is_empty(),
+        "the picker's on_select callback (rooted in the outgoing engine) must \
+         be discarded, not queued for firing"
+    );
+}
+
 // ── Dynamic commands ─────────────────────────────────────────────────────────
 
 /// A `define-command!`-registered command is gone after a reset —
@@ -1018,5 +1061,116 @@ fn resync_refires_diagnostics_changed_for_a_crashed_servers_surviving_cache() {
         1,
         "on-diagnostics-changed must re-fire from the surviving cache even though \
          the server that published it has crashed"
+    );
+}
+
+/// Every pane showing a surviving buffer gets `OnViewportChange` re-fired on
+/// resync — the replay that brings back inlay hints and anything else
+/// `on-viewport-change`-gated without the user having to scroll. Two panes on
+/// two different buffers, both counted via a per-buffer `tab-width` bump
+/// (same technique as `resync_refires_buffer_open_for_every_open_buffer` —
+/// a plain "did state change" check can't distinguish "each pane fired once"
+/// from "only one pane fired, or one fired twice for the wrong buffer").
+/// The exact `(first, last)` bounds this hook reports are covered separately
+/// by `viewport_range_matches_the_on_viewport_change_hooks_own_computation`
+/// (`lsp_introspect.rs`) — this test is about the resync replay's fan-out
+/// across panes, not `pane_visible_range`'s own math.
+#[test]
+fn resync_refires_viewport_change_once_per_pane_on_a_surviving_buffer() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>b\n");
+    let first_bid = ed.focused_buffer_id();
+
+    let file_tmp = tempfile::tempdir().unwrap();
+    let file = file_tmp.path().join("second.txt");
+    std::fs::write(&file, "hi\n").unwrap();
+    let (second_bid, is_new) = crate::editor::buffer::lifecycle::open_or_dedup_and_notify(
+        &mut ed.view,
+        &mut ed.state,
+        &file.canonicalize().unwrap(),
+    )
+    .unwrap();
+    assert!(is_new, "sanity: this must be a genuinely new buffer");
+    ed.detect_pending_languages();
+    ed.drain_hooks();
+    open_pane(&mut ed.state, &mut ed.view, second_bid);
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(register-hook! 'on-viewport-change (lambda (bid first last)
+             (set-buffer-option! bid "tab-width" (+ 1 (get-option bid "tab-width")))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    let snapshot =
+        ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id), &ed.state.buffers);
+    ed.resync_config_state(&snapshot);
+    ed.drain_hooks();
+
+    assert_eq!(
+        ed.state.buffers.get(first_bid).overrides.tab_width,
+        Some(EditorSettings::default().tab_width + 1),
+        "on-viewport-change must re-fire exactly once for the first pane's buffer"
+    );
+    assert_eq!(
+        ed.state.buffers.get(second_bid).overrides.tab_width,
+        Some(EditorSettings::default().tab_width + 1),
+        "on-viewport-change must re-fire exactly once for the second pane's buffer too"
+    );
+}
+
+/// A pane whose buffer is absent from the snapshot (mirrors a buffer opened
+/// during this same reload, per `resync_does_not_refire_buffer_open_for_a_
+/// buffer_opened_by_this_reload`) must not get `OnViewportChange` re-fired —
+/// there's no pre-reload state to restore for it, and its own open path
+/// already covers whatever it needs.
+#[test]
+fn resync_does_not_refire_viewport_change_for_a_pane_on_a_buffer_absent_from_the_snapshot() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>b\n");
+    let first_bid = ed.focused_buffer_id();
+
+    let file_tmp = tempfile::tempdir().unwrap();
+    let file = file_tmp.path().join("second.txt");
+    std::fs::write(&file, "hi\n").unwrap();
+    let (second_bid, _) = crate::editor::buffer::lifecycle::open_or_dedup_and_notify(
+        &mut ed.view,
+        &mut ed.state,
+        &file.canonicalize().unwrap(),
+    )
+    .unwrap();
+    ed.detect_pending_languages();
+    ed.drain_hooks();
+    open_pane(&mut ed.state, &mut ed.view, second_bid);
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(register-hook! 'on-viewport-change (lambda (bid first last)
+             (set-buffer-option! bid "tab-width" (+ 1 (get-option bid "tab-width")))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    // Snapshot covers only `first_bid` — `second_bid` is treated as opened
+    // during this same reload.
+    let snapshot = ReloadSnapshot::for_test([first_bid], &ed.state.buffers);
+    ed.resync_config_state(&snapshot);
+    ed.drain_hooks();
+
+    assert_eq!(
+        ed.state.buffers.get(first_bid).overrides.tab_width,
+        Some(EditorSettings::default().tab_width + 1),
+        "sanity: the surviving pane's buffer must still fire"
+    );
+    assert_eq!(
+        ed.state.buffers.get(second_bid).overrides.tab_width,
+        None,
+        "a pane on a buffer absent from the snapshot must not get \
+         on-viewport-change re-fired"
     );
 }

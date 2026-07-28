@@ -119,32 +119,29 @@ impl Editor {
             .collect();
 
         // ── Steel values rooted in the outgoing engine ──
-        self.state.config.pending_hooks.clear();
-        self.state.config.pending_steel_calls.clear();
-        if self.state.config.steel_prompt_callback.take().is_some() {
+        //
+        // `pending_hooks`, `pending_steel_calls`, and the four overlay
+        // models (popup/menu/drawer/picker) all drop below when
+        // `self.state.config = ConfigState::new(…)` runs — nothing here
+        // reads any of them in between, so there's nothing to clear early.
+        // `PickerSession::source` (if a picker was open) kills any streaming
+        // child process on drop, same as any other `ConfigState` drop; the
+        // overlay *views* (`popup_view`/`menu_view`/`drawer_view`/
+        // `picker_view`) self-heal from `prepare_frame` every frame
+        // regardless, so nothing here needs to touch them directly either.
+        if self.state.config.steel_prompt_callback.is_some() {
             // A `(prompt! …)` session was open. Its callback belongs to the
-            // outgoing engine and is discarded here, not fired (same policy
-            // as the popup/menu/drawer/picker overlays below) — but unlike
-            // those, a prompt also parks the editor in `Mode::Command` with
-            // an open minibuf and an in-progress history session
-            // (`host_impl.rs`'s `%prompt!` sets all three together). Leaving
-            // those live would route the next `:`/Enter through the
-            // *ordinary* command-line path, misreading the abandoned
-            // prompt's half-typed answer as a `:` command.
+            // outgoing engine and is discarded (not fired) by the
+            // `ConfigState` rebuild below, same policy as the popup/menu/
+            // drawer/picker overlays — but unlike those, a prompt also parks
+            // the editor in `Mode::Command` with an open minibuf and an
+            // in-progress history session (`host_impl.rs`'s `%prompt!` sets
+            // all three together). Leaving those live would route the next
+            // `:`/Enter through the *ordinary* command-line path, misreading
+            // the abandoned prompt's half-typed answer as a `:` command.
             self.close_minibuf();
             self.state.set_mode(super::Mode::Normal);
         }
-        // Assigned directly, not via close_popup!/close_menu!/close_picker:
-        // those queue an on-close/on-select callback into
-        // `pending_steel_calls`, which the line above already drops.
-        // `PickerSession::source` kills any streaming child process on drop.
-        // The overlay *views* (`popup_view`/`menu_view`/`drawer_view`/
-        // `picker_view`) self-heal from `prepare_frame` every frame, so
-        // nothing here needs to touch them directly.
-        self.state.config.popup = None;
-        self.state.config.menu = None;
-        self.state.config.drawer = None;
-        self.state.config.picker = None;
         self.lsp.reset_config();
         // Only the Steel `after` thunks — native `ViewportDebounce` timers
         // keep their wheel entries and their `viewport_debounce` back-index
@@ -319,7 +316,7 @@ impl Editor {
 /// otherwise the new `builtin_names` set (built from `registry.names()`)
 /// would contain every Steel command from the prior load, and every
 /// `(define-command!)` in the re-evaluated `init.scm` would fail the
-/// builtin-conflict check in `editor/src/scripting/builtins/commands.rs`
+/// builtin-conflict check in `hume-scripting/src/builtins/commands.rs`
 /// with "conflicts with a built-in command and cannot be redefined".
 ///
 /// Buffers, panes, undo history, registers, and running LSP server

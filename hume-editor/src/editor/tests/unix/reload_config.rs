@@ -132,6 +132,24 @@ fn reload_config_command_resets_state_from_a_real_init_scm() {
             .map(|e| format!("{:?}: {}", e.severity, e.text))
             .collect::<Vec<_>>()
     );
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Trace),
+        "sanity: init_scripting's routine 'runtime dir = …'/'data dir = …' \
+         Trace lines must actually have logged something here, or the \
+         assertion below (success despite non-empty Trace-only output) \
+         proves nothing"
+    );
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("Config reloaded"),
+        "a reload whose only new log output is Trace-level must still \
+         report success — regression test for MessageLog::totals \
+         deliberately excluding Trace/Info from the before/after \
+         comparison typed_reload_config gates on"
+    );
 }
 
 /// A `set-buffer-option!` written from an `on-language-set` hook — the

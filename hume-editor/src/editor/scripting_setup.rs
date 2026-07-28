@@ -506,6 +506,17 @@ impl Editor {
             snapshot.take_explicit_languages().into_iter().collect();
         let open_bids: Vec<_> = self.state.buffers.iter().map(|(id, _)| id).collect();
         for bid in open_bids {
+            // A lazy language plugin activated earlier in this same loop
+            // (`detect_and_set_language` → `set_buffer_language_impl` →
+            // `activate_lazy_language_plugins`) runs at `EvalMode::
+            // PluginActivation`, where `close-buffer!` is callable — it can
+            // close a *later* bid in this same `open_bids` list before this
+            // loop ever reaches it. Same hazard `detect_pending_languages`
+            // guards against with `try_get`; skip rather than hit
+            // `BufferStore::get`'s "unseeded BufferId" panic below.
+            if self.state.buffers.try_get(bid).is_none() {
+                continue;
+            }
             if let Some(name) = explicit_restore.get(&bid) {
                 // Only valid if `bid` is still the same buffer instance the
                 // snapshot meant — `close_buffer`'s last-buffer scratch

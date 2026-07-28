@@ -77,7 +77,7 @@ pub(crate) struct MessageLog {
     /// earlier once `MAX_ENTRIES` starts evicting). `:reload-config` diffs
     /// this against a before/after snapshot to detect "did this reload push
     /// a new warning or error", a question `unseen_counts` alone can't
-    /// answer reliably across a long session — see `Editor::totals`'s
+    /// answer reliably across a long session — see `MessageLog::totals`'s
     /// call site.
     total_errors: u64,
     total_warnings: u64,

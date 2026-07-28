@@ -163,3 +163,41 @@ fn push_cap_adjusts_seen_up_to() {
     let (e, w) = log.unseen_counts();
     assert_eq!((e, w), (1, 0));
 }
+
+/// `totals()` must keep counting past `MAX_ENTRIES` — the whole reason it
+/// exists over `unseen_counts()`, which reads the live (evicting) deque and
+/// so cannot answer "how many errors/warnings ever landed" once eviction
+/// starts. Fail oracle: change `total_errors`/`total_warnings` to derive
+/// from `entries.len()` instead of their own monotonic counters, and this
+/// must start failing once eviction kicks in.
+#[test]
+fn totals_survive_eviction_past_max_entries() {
+    let mut log = MessageLog::new();
+    for i in 0..MAX_ENTRIES + 5 {
+        log.push(Severity::Error, format!("e{i}"));
+    }
+    assert_eq!(
+        log.entries().len(),
+        MAX_ENTRIES,
+        "sanity: the live deque itself must be capped"
+    );
+    assert_eq!(
+        log.totals(),
+        ((MAX_ENTRIES + 5) as u64, 0),
+        "totals() must count every push ever made, not just what's still \
+         in the (capped) deque"
+    );
+}
+
+/// `Info`/`Trace` entries must not move either total — only `Error`/
+/// `Warning` are the "did this reload go badly" signal `typed_reload_config`
+/// diffs against.
+#[test]
+fn totals_ignore_info_and_trace() {
+    let log = make_log(&[
+        (Severity::Info, "i1"),
+        (Severity::Trace, "t1"),
+        (Severity::Trace, "t2"),
+    ]);
+    assert_eq!(log.totals(), (0, 0));
+}

@@ -3,9 +3,14 @@
 //!
 //! Unlike the popup/menu widgets, the drawer has no per-frame geometry to
 //! resolve: its position is fixed (bottom band) and its content only
-//! changes on discrete events (open, selection move, scroll, close) — so
-//! the shared view is written directly at each of those event sites
-//! (`sync_drawer_view`), never per frame from `prepare_frame`.
+//! changes on discrete events (open, selection move, scroll, close) — so the
+//! shared view is written directly at each of those event sites
+//! (`sync_drawer_view`) for zero-lag immediacy. It is *also* re-synced
+//! unconditionally every frame from `prepare_frame`, like the popup/menu/
+//! picker views, as a self-healing backstop: a direct model mutation that
+//! bypasses the normal open/close builtins (`Editor::reset_config_state`'s
+//! `:reload-config` reset) can otherwise leave a stale view painting a
+//! closed drawer for however long it takes the next frame to arrive.
 //!
 //! Rows are pre-formatted display strings — the drawer is a generic list
 //! picker, not a location list; Rust never interprets row content. The

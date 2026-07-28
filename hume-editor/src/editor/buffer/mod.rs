@@ -131,7 +131,7 @@ pub(crate) struct Buffer {
     /// before `:reload-config` started" from "a fresh scratch buffer that
     /// happens to have reused that same key in place": `replace_buffer_in_place`
     /// mutates the existing slot rather than freeing and reinserting it, so
-    /// the key's own version never changes. `typed_reload_config` pairs each
+    /// the key's own version never changes. `reset_config_state` pairs each
     /// pre-reload `BufferId` with this stamp; `resync_config_state` and the
     /// explicit-language restore treat a bid whose current stamp has moved
     /// on as a different buffer, not the one the snapshot meant.

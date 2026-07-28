@@ -124,7 +124,7 @@ pub(crate) enum InlineOutputDispatch {
 ///
 /// Grouped into its own struct, rather than left as individual `EditorState`
 /// fields, so `Editor::reset_config_state` resets by *construction*
-/// (`self.state.config = ConfigState::new(kitty_enabled)`) instead of by a
+/// (`self.state.config = ConfigState::new(kitty_enabled, prior_gen)`) instead of by a
 /// hand-maintained list of field clears: a field added here is reset the
 /// moment it's added, with no second place to remember. Fields that must
 /// survive a reload (buffers, panes, undo history, registers, running LSP
@@ -458,8 +458,9 @@ impl EditorState {
     /// every frame from `Editor::prepare_frame` (like the popup/menu/picker
     /// `sync_*_view`s) so the view can never drift from the model — in
     /// particular, so a direct `self.state.config.drawer = None` (as
-    /// `reset_config_state` does, bypassing `close-drawer!`'s callback
-    /// queueing) can't leave a stale view painting a closed drawer.
+    /// `reset_config_state`'s wholesale `ConfigState` rebuild does,
+    /// bypassing `close-drawer!`'s callback queueing) can't leave a stale
+    /// view painting a closed drawer.
     pub(super) fn sync_drawer_view(&self) {
         let resolved = self
             .config

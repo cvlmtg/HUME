@@ -196,7 +196,7 @@ impl LspState {
     /// index, meaningless once the session is gone. Deliberately *not*
     /// touching `servers`/`diagnostics`: an already-spawned process keeps
     /// running on its old config until `:lsp-restart`, and its last-known
-    /// diagnostics are what `resync_config_state` replays, per `docs/lsp.md`.
+    /// diagnostics are what `resync_config_state` replays, per `docs/LSP.md`.
     ///
     /// Every field above is named explicitly, not `..Self::with_backend(..)`
     /// struct-update syntax: `backend` is `Box<dyn LspBackend>`, which has no
