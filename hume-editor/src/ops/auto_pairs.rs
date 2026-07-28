@@ -25,12 +25,30 @@ impl Pair {
 /// characters. Not runtime-configurable — no `:set` key or Steel setter
 /// writes it; only `auto-pairs-enabled` (on/off) is a real setting.
 pub(crate) const DEFAULT_PAIRS: &[Pair] = &[
-    Pair { open: '(', close: ')' },
-    Pair { open: '[', close: ']' },
-    Pair { open: '{', close: '}' },
-    Pair { open: '"', close: '"' },
-    Pair { open: '\'', close: '\'' },
-    Pair { open: '`', close: '`' },
+    Pair {
+        open: '(',
+        close: ')',
+    },
+    Pair {
+        open: '[',
+        close: ']',
+    },
+    Pair {
+        open: '{',
+        close: '}',
+    },
+    Pair {
+        open: '"',
+        close: '"',
+    },
+    Pair {
+        open: '\'',
+        close: '\'',
+    },
+    Pair {
+        open: '`',
+        close: '`',
+    },
 ];
 
 // ── Edit functions ────────────────────────────────────────────────────────────

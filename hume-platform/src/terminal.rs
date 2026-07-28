@@ -545,7 +545,11 @@ pub fn leave_inline_output(
 /// set — see [`write_mouse_disable`]) then re-enables per the new flags, so
 /// it's safe to call whenever the desired mode changes at runtime, not just
 /// once at startup (unlike [`init`], which only applies the startup mode).
-pub fn set_mouse_mode(term: &SharedTerm, mouse_enabled: bool, mouse_select: bool) -> io::Result<()> {
+pub fn set_mouse_mode(
+    term: &SharedTerm,
+    mouse_enabled: bool,
+    mouse_select: bool,
+) -> io::Result<()> {
     let mut term = term.clone();
     write_mouse_disable(&mut term)?;
     if mouse_enabled {
