@@ -252,7 +252,7 @@ impl Editor {
                     self.execute_keymap_command(cmd.name.clone(), count, false, ArgSource::Keymap);
                     return;
                 }
-                WalkResult::Interior { .. } => {
+                WalkResult::Interior => {
                     // Mid-sequence — commit the key and wait for more.
                     self.state.pending_keys.push(key);
                     return;
@@ -313,7 +313,7 @@ impl Editor {
                             // Prefix key (g, m, z…): persist extend intent for the
                             // remaining keys in the sequence. Extendability is
                             // checked at Leaf resolution, not here.
-                            WalkResult::Interior { .. } => {
+                            WalkResult::Interior => {
                                 self.state.pending_ctrl_extend = true;
                                 true
                             }
@@ -352,7 +352,7 @@ impl Editor {
                             WalkResult::Leaf(c) => c.force_extend,
                             _ => false,
                         };
-                        if matches!(matched, WalkResult::Interior { .. }) {
+                        if matches!(matched, WalkResult::Interior) {
                             self.state.pending_keys.push(key);
                         }
                         (matched, ctrl_extend)
@@ -400,7 +400,7 @@ impl Editor {
                 wc.ctrl_extend = ctrl_extend;
                 self.state.wait_char = Some(wc);
             }
-            WalkResult::Interior { .. } => {
+            WalkResult::Interior => {
                 // More keys needed. pending_keys stays populated.
             }
             WalkResult::NoMatch => {

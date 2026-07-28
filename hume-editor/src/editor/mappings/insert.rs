@@ -78,7 +78,7 @@ impl Editor {
             WalkResult::NoMatch => {}
             // Interior / WaitChar can't arise in the insert trie (no multi-key
             // sequences, no wait-char bindings).
-            WalkResult::Interior { .. } | WalkResult::WaitChar(_) => {}
+            WalkResult::Interior | WalkResult::WaitChar(_) => {}
         }
 
         // ── Dot-repeat recording ──────────────────────────────────────────────

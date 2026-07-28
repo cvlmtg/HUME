@@ -109,8 +109,8 @@ fn build_text_object_trie() -> KeyTrie {
         (&['l'],             "inner-line",           "around-line"),
     ];
 
-    let mut inner_trie = KeyTrie::new("inner");
-    let mut around_trie = KeyTrie::new("around");
+    let mut inner_trie = KeyTrie::new();
+    let mut around_trie = KeyTrie::new();
 
     for (chars, inner_name, around_name) in objects {
         for &ch in *chars {
@@ -140,7 +140,7 @@ fn build_text_object_trie() -> KeyTrie {
         (&['`'],      "surround-backtick"),
     ];
 
-    let mut surround_trie = KeyTrie::new("surround");
+    let mut surround_trie = KeyTrie::new();
     for (chars, name) in surround_objects {
         for &ch in *chars {
             let k = KeyEvent::new(KeyCode::Char(ch), Modifiers::NONE);
@@ -148,7 +148,7 @@ fn build_text_object_trie() -> KeyTrie {
         }
     }
 
-    let mut match_trie = KeyTrie::new("match");
+    let mut match_trie = KeyTrie::new();
     match_trie.bind(key!('i'), KeyTrieNode::Node(inner_trie));
     match_trie.bind(key!('a'), KeyTrieNode::Node(around_trie));
     match_trie.bind(key!('s'), KeyTrieNode::Node(surround_trie));
@@ -165,7 +165,7 @@ fn build_text_object_trie() -> KeyTrie {
 /// uppercase WORD without opening the full text-object trie.  This keeps `m`
 /// and `M` as separate roots — `mM` and `Mm` are no-ops.
 fn build_uppercase_match_trie() -> KeyTrie {
-    let mut t = KeyTrie::new("match");
+    let mut t = KeyTrie::new();
     t.bind_leaf(key!('M'), cmd!("select-uppercase-word"));
     t
 }
@@ -185,7 +185,7 @@ fn build_uppercase_match_trie() -> KeyTrie {
 ///    └─ C  → make-text-capitalized
 /// ```
 fn build_goto_trie() -> KeyTrie {
-    let mut t = KeyTrie::new("goto");
+    let mut t = KeyTrie::new();
     t.bind_leaf(key!('g'), cmd!("goto-first-line"));
     t.bind_leaf(key!('e'), cmd!("goto-last-line"));
     t.bind_leaf(key!('h'), cmd!("goto-line-start"));
@@ -200,7 +200,7 @@ fn build_goto_trie() -> KeyTrie {
 // ── Pane (Ctrl+p) sub-trie ───────────────────────────────────────────────────
 
 fn build_pane_trie() -> KeyTrie {
-    let mut t = KeyTrie::new("pane");
+    let mut t = KeyTrie::new();
     t.bind_leaf(key!('p'), cmd!("pane-focus-next"));
     t.bind_leaf(key!('h'), cmd!("pane-focus-left"));
     t.bind_leaf(key!('j'), cmd!("pane-focus-down"));
@@ -218,7 +218,7 @@ fn build_pane_trie() -> KeyTrie {
 // at the top, `zb` puts it at the bottom. Cursor position is unchanged.
 
 fn build_view_trie() -> KeyTrie {
-    let mut t = KeyTrie::new("view");
+    let mut t = KeyTrie::new();
     t.bind_leaf(key!('z'), cmd!("center-view-on-cursor"));
     t.bind_leaf(key!('t'), cmd!("top-view-on-cursor"));
     t.bind_leaf(key!('b'), cmd!("bottom-view-on-cursor"));
@@ -228,7 +228,7 @@ fn build_view_trie() -> KeyTrie {
 // ── Default Normal keymap ─────────────────────────────────────────────────────
 
 pub(super) fn default_normal_keymap() -> KeyTrie {
-    let mut t = KeyTrie::new("normal");
+    let mut t = KeyTrie::new();
 
     // ── Basic motion ─────────────────────────────────────────────────────────
     // The keymap stores only the base command name. Extend-variant pairing
@@ -408,13 +408,13 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
 /// Extend mode (see `default_normal_keymap`), so no Extend-only override is
 /// needed. Plugins (e.g. `core:vim-keybind`'s vim-style `o`) may add entries.
 pub(super) fn default_extend_keymap() -> KeyTrie {
-    KeyTrie::new("extend")
+    KeyTrie::new()
 }
 
 // ── Default Insert keymap ─────────────────────────────────────────────────────
 
 pub(super) fn default_insert_keymap() -> KeyTrie {
-    let mut t = KeyTrie::new("insert");
+    let mut t = KeyTrie::new();
 
     // Return to Normal mode.
     t.bind_leaf(key!(Escape), cmd!("exit-insert"));

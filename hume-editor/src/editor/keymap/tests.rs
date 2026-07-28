@@ -5,7 +5,7 @@ use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 #[test]
 fn bind_sequence_single_key() {
-    let mut trie = KeyTrie::new("test");
+    let mut trie = KeyTrie::new();
     trie.bind_sequence(
         &[key!('z')],
         KeymapCommand {
@@ -18,7 +18,7 @@ fn bind_sequence_single_key() {
 
 #[test]
 fn bind_sequence_multi_key() {
-    let mut trie = KeyTrie::new("test");
+    let mut trie = KeyTrie::new();
     trie.bind_sequence(
         &[key!('g'), key!('g')],
         KeymapCommand {
@@ -28,7 +28,7 @@ fn bind_sequence_multi_key() {
     );
     assert!(matches!(
         trie.walk(&[key!('g')]),
-        WalkResult::Interior { .. }
+        WalkResult::Interior
     ));
     assert!(matches!(
         trie.walk(&[key!('g'), key!('g')]),
@@ -38,7 +38,7 @@ fn bind_sequence_multi_key() {
 
 #[test]
 fn bind_sequence_shadows_existing_leaf() {
-    let mut trie = KeyTrie::new("test");
+    let mut trie = KeyTrie::new();
     // Bind `g` as a leaf first.
     trie.bind_sequence(
         &[key!('g')],
@@ -57,7 +57,7 @@ fn bind_sequence_shadows_existing_leaf() {
     );
     assert!(matches!(
         trie.walk(&[key!('g')]),
-        WalkResult::Interior { .. }
+        WalkResult::Interior
     ));
     assert!(matches!(
         trie.walk(&[key!('g'), key!('g')]),
@@ -67,7 +67,7 @@ fn bind_sequence_shadows_existing_leaf() {
 
 #[test]
 fn remove_sequence_single_key() {
-    let mut trie = KeyTrie::new("test");
+    let mut trie = KeyTrie::new();
     trie.bind_sequence(
         &[key!('z')],
         KeymapCommand {
@@ -81,7 +81,7 @@ fn remove_sequence_single_key() {
 
 #[test]
 fn remove_sequence_multi_key() {
-    let mut trie = KeyTrie::new("test");
+    let mut trie = KeyTrie::new();
     trie.bind_sequence(
         &[key!('g'), key!('g')],
         KeymapCommand {
@@ -93,7 +93,7 @@ fn remove_sequence_multi_key() {
     // Interior node for `g` remains; leaf `gg` is gone.
     assert!(matches!(
         trie.walk(&[key!('g')]),
-        WalkResult::Interior { .. }
+        WalkResult::Interior
     ));
     assert!(matches!(
         trie.walk(&[key!('g'), key!('g')]),
@@ -103,7 +103,7 @@ fn remove_sequence_multi_key() {
 
 #[test]
 fn remove_sequence_nonexistent_is_noop() {
-    let mut trie = KeyTrie::new("test");
+    let mut trie = KeyTrie::new();
     trie.bind_sequence(
         &[key!('z')],
         KeymapCommand {
@@ -151,7 +151,7 @@ fn unbind_user_normal_mode() {
 
 #[test]
 fn collect_command_names_includes_leaves_and_waitchars() {
-    let mut trie = KeyTrie::new("test");
+    let mut trie = KeyTrie::new();
     trie.bind_sequence(
         &[key!('x')],
         KeymapCommand {
@@ -277,7 +277,7 @@ fn canonical_is_idempotent() {
 
 #[test]
 fn walk_resolves_uppercase_leaf_regardless_of_incoming_shift_bit() {
-    let mut trie = KeyTrie::new("test");
+    let mut trie = KeyTrie::new();
     trie.bind_leaf(
         key!('I'),
         KeymapCommand {
@@ -305,7 +305,7 @@ fn walk_resolves_repeat_kind_key_like_press() {
     // A kitty terminal with REPORT_EVENT_TYPES sends autorepeat as
     // `KeyEventKind::Repeat`, not `Press`. A held key must keep matching
     // its binding.
-    let mut trie = KeyTrie::new("test");
+    let mut trie = KeyTrie::new();
     trie.bind_leaf(
         key!('j'),
         KeymapCommand {

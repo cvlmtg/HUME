@@ -59,7 +59,7 @@ fn ctrl_bindings_in_normal_keymap() {
     );
     // Ctrl+p is the pane prefix (Interior node).
     assert!(
-        matches!(trie.walk(&[key!(Ctrl + 'p')]), WalkResult::Interior { .. }),
+        matches!(trie.walk(&[key!(Ctrl + 'p')]), WalkResult::Interior),
         "Ctrl+p must be the pane prefix Interior node"
     );
     // Ctrl+/ → search-selection (kitty-only).

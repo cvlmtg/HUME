@@ -85,12 +85,7 @@ pub(super) enum WalkResult {
     /// The sequence matches a leaf command — execute it.
     Leaf(KeymapCommand),
     /// At an interior trie node — more keys are needed.
-    /// The `name` field names this node (e.g. `"match"`, `"goto"`) and will
-    /// be shown in the statusline while the user completes the sequence.
-    Interior {
-        #[allow(dead_code)]
-        name: &'static str,
-    },
+    Interior,
     /// The last key of the sequence matches a wait-char binding. The caller
     /// should consume the next character, store it in `pending_char`, and
     /// dispatch the named command.
@@ -197,9 +192,6 @@ impl Hash for TrieKey {
 /// (the Steel config layer will support user overrides).
 #[derive(Clone)]
 pub(super) struct KeyTrie {
-    /// Human-readable name shown in the statusline when the user is mid-sequence
-    /// at this node (e.g. `"match"` after pressing `m`, `"goto"` after `g`).
-    pub(super) name: &'static str,
     map: FxHashMap<TrieKey, KeyTrieNode>,
 }
 
@@ -214,9 +206,8 @@ enum KeyTrieNode {
 }
 
 impl KeyTrie {
-    fn new(name: &'static str) -> Self {
+    fn new() -> Self {
         Self {
-            name,
             map: FxHashMap::default(),
         }
     }
@@ -243,9 +234,9 @@ impl KeyTrie {
         let entry = self
             .map
             .entry(TrieKey::from(keys[0]))
-            .or_insert_with(|| KeyTrieNode::Node(KeyTrie::new("user")));
+            .or_insert_with(|| KeyTrieNode::Node(KeyTrie::new()));
         if !matches!(entry, KeyTrieNode::Node(_)) {
-            *entry = KeyTrieNode::Node(KeyTrie::new("user"));
+            *entry = KeyTrieNode::Node(KeyTrie::new());
         }
         if let KeyTrieNode::Node(sub) = entry {
             sub.bind_wait_char_sequence(&keys[1..], wc);
@@ -265,11 +256,11 @@ impl KeyTrie {
         let entry = self
             .map
             .entry(TrieKey::from(keys[0]))
-            .or_insert_with(|| KeyTrieNode::Node(KeyTrie::new("user")));
+            .or_insert_with(|| KeyTrieNode::Node(KeyTrie::new()));
         // If the slot already holds a Leaf or WaitChar, replace with a Node
         // so the prefix can be extended. This may shadow an existing binding.
         if !matches!(entry, KeyTrieNode::Node(_)) {
-            *entry = KeyTrieNode::Node(KeyTrie::new("user"));
+            *entry = KeyTrieNode::Node(KeyTrie::new());
         }
         if let KeyTrieNode::Node(sub) = entry {
             sub.bind_sequence(&keys[1..], cmd);
@@ -320,8 +311,8 @@ impl KeyTrie {
                     // WaitChar is always a leaf — can't go deeper.
                     return WalkResult::NoMatch;
                 }
-                Some(KeyTrieNode::Node(subtrie)) if i == last => {
-                    return WalkResult::Interior { name: subtrie.name };
+                Some(KeyTrieNode::Node(_)) if i == last => {
+                    return WalkResult::Interior;
                 }
                 Some(KeyTrieNode::Node(subtrie)) => {
                     current = subtrie;
