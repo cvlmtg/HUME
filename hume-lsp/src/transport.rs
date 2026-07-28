@@ -6,17 +6,22 @@
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;
+
+use hume_platform::process::tracked::TrackedChild;
+use hume_platform::process::{ReapOnDrop, spawn_in_own_group};
 
 use crate::codec::{self, Message};
 
 /// Called by the reader/stderr threads after posting an event, so the
 /// editor's main loop wakes and drains it instead of rechecking on a poll
-/// cadence. Type-erased so this crate stays free of a `hume-platform`
-/// dependency — production wraps `termina::PlatformWaker::wake`.
+/// cadence. Type-erased to keep `termina`/`ratatui` types out of this
+/// crate's API even though it now depends on `hume-platform` for
+/// [`TrackedChild`](hume_platform::process::tracked::TrackedChild) —
+/// production wraps `termina::PlatformWaker::wake`.
 pub type WakeCallback = Arc<dyn Fn() + Send + Sync>;
 
 /// Invokes a [`WakeCallback`] on drop — fires whether a thread exits
@@ -58,6 +63,11 @@ const EVENTS_CHANNEL_BOUND: usize = 1024;
 const STDERR_CHANNEL_BOUND: usize = 256;
 
 /// A running server process plus its bridging threads.
+///
+/// `child` is a [`TrackedChild`], its own process-group leader, so a
+/// force-exit that skips this `Drop` entirely still reaps it — and any
+/// process it spawned in turn (e.g. rust-analyzer's `proc-macro-srv`) — via
+/// `hume-platform`'s `process::tracked`.
 pub struct ServerHandle {
     /// Writer thread input; `None` after `Drop` closes it to signal the
     /// writer thread to exit.
@@ -67,7 +77,7 @@ pub struct ServerHandle {
     rx_events: Option<mpsc::Receiver<InboundEvent>>,
     /// Stderr thread output; `None` after `Drop`, same reason as `rx_events`.
     rx_stderr: Option<mpsc::Receiver<String>>,
-    child: Child,
+    child: TrackedChild,
     /// Tracked separately (not lumped into `other_threads`) so `Drop` can
     /// give it a bounded window to flush any already-queued message (e.g. a
     /// `begin_shutdown`'s `shutdown`/`exit` pair) before the process is
@@ -102,82 +112,54 @@ impl ServerHandle {
         #[cfg(not(windows))]
         let mut command = Command::new(cmd);
 
-        let mut child = command
+        command
             .args(args)
             .current_dir(root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
+            .stderr(Stdio::piped());
+        let mut child = ReapOnDrop::new(spawn_in_own_group(&mut command)?);
 
-        let stdin = child.stdin.take().expect("piped stdin");
-        let stdout = child.stdout.take().expect("piped stdout");
-        let stderr = child.stderr.take().expect("piped stderr");
+        let stdin = child.get_mut().stdin.take().expect("piped stdin");
+        let stdout = child.get_mut().stdout.take().expect("piped stdout");
+        let stderr = child.get_mut().stderr.take().expect("piped stderr");
 
         let (tx_events, rx_events) = mpsc::sync_channel::<InboundEvent>(EVENTS_CHANNEL_BOUND);
         let (tx_stderr, rx_stderr) = mpsc::sync_channel::<String>(STDERR_CHANNEL_BOUND);
         let (tx_out, rx_out) = mpsc::channel::<Message>();
 
-        // If a later thread fails to spawn, the child (already running) must
-        // not be orphaned: kill+reap it and join whatever threads did start
-        // before propagating the error — `Child`'s own `Drop` does not kill,
-        // so leaving this to unwind would leak the process.
+        // `child` kills and reaps itself (`ReapOnDrop`) on an early `?`
+        // return below, so a bridging thread that fails to spawn leaves the
+        // process behind for no one to leak. Threads that already started
+        // are not joined here — they wind down on their own once that
+        // happens: killing the child closes stdout/stderr, ending the
+        // reader/stderr loops, and the writer loop ends once `tx_out` (and
+        // every other sender into `rx_out`) drops at the same `?` return.
         let reader_wake = Arc::clone(&wake);
-        let reader = match thread::Builder::new()
+        let reader = thread::Builder::new()
             .name("hume-lsp-reader".into())
             .spawn(move || {
                 let _wake_on_drop = WakeOnDrop(Arc::clone(&reader_wake));
                 reader_loop(BufReader::new(stdout), &tx_events, &reader_wake)
-            }) {
-            Ok(t) => t,
-            Err(e) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(e);
-            }
-        };
+            })?;
 
-        let writer = match thread::Builder::new()
+        let writer = thread::Builder::new()
             .name("hume-lsp-writer".into())
-            .spawn(move || writer_loop(stdin, rx_out))
-        {
-            Ok(t) => t,
-            Err(e) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                let _ = reader.join();
-                return Err(e);
-            }
-        };
+            .spawn(move || writer_loop(stdin, rx_out))?;
 
         let stderr_wake = Arc::clone(&wake);
-        let stderr_thread =
-            match thread::Builder::new()
-                .name("hume-lsp-stderr".into())
-                .spawn(move || {
-                    let _wake_on_drop = WakeOnDrop(Arc::clone(&stderr_wake));
-                    stderr_loop(BufReader::new(stderr), &tx_stderr, &stderr_wake)
-                }) {
-                Ok(t) => t,
-                Err(e) => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    let _ = reader.join();
-                    // The writer thread blocks on `for msg in rx_out` until its
-                    // sender is dropped — `tx_out` isn't moved into `ServerHandle`
-                    // on this failure path, so drop it explicitly to let the
-                    // thread's loop end before joining.
-                    drop(tx_out);
-                    let _ = writer.join();
-                    return Err(e);
-                }
-            };
+        let stderr_thread = thread::Builder::new()
+            .name("hume-lsp-stderr".into())
+            .spawn(move || {
+                let _wake_on_drop = WakeOnDrop(Arc::clone(&stderr_wake));
+                stderr_loop(BufReader::new(stderr), &tx_stderr, &stderr_wake)
+            })?;
 
         Ok(ServerHandle {
             tx: Some(tx_out),
             rx_events: Some(rx_events),
             rx_stderr: Some(rx_stderr),
-            child,
+            child: TrackedChild::new(child.into_inner()),
             writer: Some(writer),
             other_threads: vec![reader, stderr_thread],
         })
@@ -248,8 +230,7 @@ impl Drop for ServerHandle {
         }
         // Killing the child closes its stdout/stderr, which ends the reader
         // and stderr threads' blocking reads.
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        self.child.reap();
         // Bounded channels: a reader/stderr thread can be blocked mid-`send`
         // on a full channel — closing the child's pipes only unblocks a
         // thread stuck in a blocking *read*, not one already past that and

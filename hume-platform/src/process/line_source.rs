@@ -16,13 +16,15 @@
 
 use std::io::{self, Read};
 use std::path::Path;
-use std::process::{Child, Command, ExitStatus, Stdio};
+use std::process::{Command, ExitStatus, Stdio};
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
 use crate::path::strip_unc_prefix;
+use crate::process::tracked::TrackedChild;
+use crate::process::{ReapOnDrop, spawn_in_own_group};
 
 /// Splits a byte stream into complete lines on `delim`, carrying a trailing
 /// partial line across `push_chunk` calls.
@@ -124,10 +126,13 @@ const REAP_GRACE: Duration = Duration::from_millis(250);
 /// Owns the child and its bridging threads: dropping it kills the child
 /// (`Drop` = kill + wait, matching `hume-lsp::transport::ServerHandle`),
 /// which is what makes the picker's kill-on-close/replace automatic — the
-/// session that owns this handle needs no explicit cleanup call.
+/// session that owns this handle needs no explicit cleanup call. The child
+/// is a [`TrackedChild`], its own process-group leader, so it's also reaped
+/// on a force-exit that skips this `Drop` entirely — see `tracked`'s module
+/// doc.
 pub struct SpawnedLineSource {
     cmd: String,
-    child: Child,
+    child: TrackedChild,
     rx: Option<mpsc::Receiver<Vec<String>>>,
     stderr_rx: Option<mpsc::Receiver<String>>,
     /// Detached (not joined) on drop — unlike the LSP writer thread, nothing
@@ -161,56 +166,42 @@ pub fn spawn_line_source(
         command.current_dir(strip_unc_prefix(dir.to_path_buf()));
     }
 
-    let mut child = command
+    command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
+        .stderr(Stdio::piped());
+    let mut child = ReapOnDrop::new(spawn_in_own_group(&mut command)?);
 
     // Non-inherited stdin: the child sees immediate EOF on read rather than
     // racing the editor's own key reads on the terminal (same contract as
     // PLUM's `plum/run!`).
-    drop(child.stdin.take());
+    drop(child.get_mut().stdin.take());
 
-    let stdout = child.stdout.take().expect("piped stdout");
-    let stderr = child.stderr.take().expect("piped stderr");
+    let stdout = child.get_mut().stdout.take().expect("piped stdout");
+    let stderr = child.get_mut().stderr.take().expect("piped stderr");
 
     let (tx, rx) = mpsc::sync_channel::<Vec<String>>(BATCH_CHANNEL_BOUND);
     let (tx_err, rx_err) = mpsc::sync_channel::<String>(1);
 
-    // If a later thread fails to spawn, the child (already running) must not
-    // be orphaned — `Child`'s own `Drop` does not kill.
+    // `child` kills and reaps itself (`ReapOnDrop`) on an early `?` return
+    // below — a bridging thread failing to spawn leaves nothing for the
+    // process to leak. A thread that already started is not joined here:
+    // killing the child closes stdout/stderr, which ends its blocking read.
     let reader_wake = Arc::clone(&wake);
-    let reader = match thread::Builder::new()
+    let reader = thread::Builder::new()
         .name("hume-line-source-reader".into())
         .spawn(move || {
             let _wake_on_drop = WakeOnDrop(Arc::clone(&reader_wake));
             reader_loop(stdout, delimiter, &tx, &reader_wake);
-        }) {
-        Ok(t) => t,
-        Err(e) => {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(e);
-        }
-    };
+        })?;
 
-    let stderr_thread = match thread::Builder::new()
+    let stderr_thread = thread::Builder::new()
         .name("hume-line-source-stderr".into())
-        .spawn(move || stderr_capture_loop(stderr, &tx_err))
-    {
-        Ok(t) => t,
-        Err(e) => {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = reader.join();
-            return Err(e);
-        }
-    };
+        .spawn(move || stderr_capture_loop(stderr, &tx_err))?;
 
     Ok(SpawnedLineSource {
         cmd: cmd.to_string(),
-        child,
+        child: TrackedChild::new(child.into_inner()),
         rx: Some(rx),
         stderr_rx: Some(rx_err),
         threads: vec![reader, stderr_thread],
@@ -267,10 +258,7 @@ impl SpawnedLineSource {
     pub fn finish(mut self) -> SourceExit {
         let status = match self.child.try_wait() {
             Ok(Some(status)) => Some(status),
-            Ok(None) => {
-                let _ = self.child.kill();
-                self.child.wait().ok()
-            }
+            Ok(None) => self.child.reap(),
             Err(_) => None,
         };
         let stderr = self
@@ -284,8 +272,7 @@ impl SpawnedLineSource {
 
 impl Drop for SpawnedLineSource {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        self.child.reap();
         // Bounded channel: a reader thread can be blocked mid-`send` on a
         // full channel — dropping the receiver makes that `send` return
         // `Err`, letting the thread self-exit even though it's detached

@@ -1105,6 +1105,7 @@ name = "hume-lsp"
 version = "0.1.0"
 dependencies = [
  "hume-editing",
+ "hume-platform",
  "lsp-types",
  "ropey",
  "rustc-hash",

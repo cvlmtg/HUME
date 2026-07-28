@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 hume-editing = { path = "../hume-editing" }
+hume-platform = { path = "../hume-platform" }
 lsp-types = "0.97"
 serde.workspace = true
 serde_json.workspace = true
