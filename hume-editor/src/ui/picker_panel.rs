@@ -1,5 +1,5 @@
-//! Centered fuzzy-picker panel (`docs/FUZZY-FINDERS.md` B3) — bordered box
-//! with a query input line on top and a ranked, scrolling item list below.
+//! Centered fuzzy-picker panel — bordered box with a query input line on
+//! top and a ranked, scrolling item list below.
 //!
 //! Deliberately a sibling of [`super::menu_box`], not built on it: this
 //! panel is a *fixed-size* box (sized as a fraction of the panes region,

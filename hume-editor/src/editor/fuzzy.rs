@@ -2,8 +2,7 @@
 //! small API so no caller names it directly (mirrors the `ropey`/`termina`
 //! wrapping precedent elsewhere in the editor).
 //!
-//! Consumed by `PickerSession` (`editor/picker.rs`, B2, see
-//! `docs/FUZZY-FINDERS.md`).
+//! Consumed by `PickerSession` (`editor/picker.rs`).
 
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
@@ -136,7 +135,7 @@ mod tests {
     /// worst-case (short, low-selectivity) query against 100k items is a
     /// stable ~15.5-16.5ms, right at one frame's edge, and a keystroke
     /// dropping a single frame under the heaviest realistic query is
-    /// imperceptible to a typing user. See `docs/FUZZY-FINDERS.md` Q-B1.
+    /// imperceptible to a typing user.
     #[test]
     #[ignore]
     fn scoring_100k_paths_stays_under_the_b1_budget() {
@@ -158,7 +157,7 @@ mod tests {
         assert!(
             elapsed.as_millis() < 32,
             "scoring+ranking 100k paths took {elapsed:?}, over the 32ms (2-frame) budget \
-             (see docs/FUZZY-FINDERS.md Q-B1 — escalate to full `nucleo` if this fails)"
+             (escalate to full `nucleo`'s background/incremental matching if this fails)"
         );
     }
 }

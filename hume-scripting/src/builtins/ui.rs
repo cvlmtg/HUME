@@ -123,8 +123,8 @@ pub(crate) fn prompt(
 }
 
 /// Decodes a picker `items` list: each entry must be a `(display . payload)`
-/// dotted pair (`docs/FUZZY-FINDERS.md` Q-B3) — a proper list entry is
-/// rejected by `pair_fields`. `payload` stays an opaque `SteelVal`; Rust
+/// dotted pair — a proper list entry is rejected by `pair_fields`.
+/// `payload` stays an opaque `SteelVal`; Rust
 /// never interprets it, except to reject `#f` — that value is reserved for
 /// the dismiss signal (`on-select` receives it on Esc / `picker-close!` /
 /// replace), so a `#f` payload would make an accepted row indistinguishable

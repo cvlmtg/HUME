@@ -1,11 +1,11 @@
-// The Steel surface for the fuzzy picker (docs/FUZZY-FINDERS.md B4):
+// The Steel surface for the fuzzy picker:
 // (picker! items on-select #:prompt "…") / (picker-push! token items) /
 // (picker-close!). The Rust store/widget/key-handling underneath is
 // covered by `tests/picker.rs`, which builds sessions directly — this
 // file exercises the builtins themselves end to end through real Steel
 // source, mirroring `lsp_drawer.rs`'s `run`/`arm_*` pattern.
 //
-// The picker is full-modal (Q-B7, `docs/FUZZY-FINDERS.md`): once one is
+// The picker is full-modal: once one is
 // open, `handle_picker_key` intercepts every key ahead of mode dispatch, so
 // a raw `:command` typed via `type_cmd` never reaches the minibuffer — it's
 // swallowed as picker query input instead. Tests that need to invoke a
@@ -243,7 +243,7 @@ fn picker_close_bang_fires_false_once_and_is_idempotent() {
     );
 }
 
-// ── Q-B3: items must be dotted pairs, not proper lists ─────────────────────
+// ── items must be dotted pairs, not proper lists ────────────────────────────
 
 #[test]
 fn picker_bang_rejects_proper_list_items_naming_the_arg() {

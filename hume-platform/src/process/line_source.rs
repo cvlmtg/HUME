@@ -1,7 +1,8 @@
 //! Streaming a child process's stdout into complete lines.
 //!
 //! [`LineSplitter`] is the pure, allocation-light half of the picker's
-//! external-command source (`docs/FUZZY-FINDERS.md` B5): a reader thread
+//! external-command source (`picker-source-spawn!`, `hume-editor`'s
+//! `picker_source.rs`): a reader thread
 //! feeds it arbitrary-sized chunks off a pipe, and it yields only complete
 //! lines, carrying any trailing partial line across chunk boundaries. Kept
 //! separate from the spawn/thread machinery so the boundary-carry logic is

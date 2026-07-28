@@ -36,7 +36,7 @@
 ;; Default keybindings — jump-shaped LSP actions stay on the `g` (goto) prefix;
 ;; response/action-shaped ones (references list, hover popup, code-action menu)
 ;; live under `z` instead, alongside view commands — freeing `g R`/`g k`/`g a`
-;; for the fuzzy-finder picker prefix (see docs/FUZZY-FINDERS.md). `g k`'s `z k`
+;; for the fuzzy-finder picker prefix (`core:pickers`). `g k`'s `z k`
 ;; successor keeps the `k` mnemonic (Vim/Helix's own hover key).
 ;; `lsp-fmt` and `diagnostics` stay typed-command only.
 (bind-key! 'normal "g d" "lsp-goto-definition")

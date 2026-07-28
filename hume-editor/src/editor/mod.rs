@@ -187,9 +187,9 @@ pub(crate) struct ConfigState {
     /// callback — cleared by `Esc` or `close-drawer!`, *not* by `Enter` (the
     /// drawer stays open across selections, unlike the popup/menu).
     pub(crate) drawer: Option<crate::ui::drawer::DrawerModel>,
-    /// The open picker session (`docs/FUZZY-FINDERS.md` B2 store) — driven
-    /// by the key intercept in `handle_key`; opened via `Editor::open_picker`
-    /// (tests today, B4's `picker!` builtin later).
+    /// The open picker session — driven by the key intercept in `handle_key`;
+    /// opened via `editor::picker::open_picker` (Steel's `picker!` builtin,
+    /// or directly in tests).
     pub(crate) picker: Option<crate::editor::picker::PickerSession>,
     /// The open native yes/no confirmation, if any — see
     /// [`crate::ui::confirm`]. Mode-agnostic: unlike `menu`/`drawer`, this
@@ -447,8 +447,8 @@ pub(crate) struct EditorState {
     /// Cross-thread waker clone (see `Editor::open`'s `wake` param), reachable
     /// here so `EditorHostImpl` — which only ever holds a disjoint `&mut
     /// EditorState` borrow, never a whole `&mut Editor` — can hand it to a
-    /// spawned picker source (`docs/FUZZY-FINDERS.md` B5) so its reader
-    /// thread can wake the event loop. A no-op `Arc` in tests/headless.
+    /// spawned picker source (`picker-source-spawn!`) so its reader thread
+    /// can wake the event loop. A no-op `Arc` in tests/headless.
     pub(super) wake: Arc<dyn Fn() + Send + Sync>,
 }
 

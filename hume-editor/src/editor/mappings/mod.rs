@@ -89,9 +89,9 @@ impl Editor {
         }
 
         // ── Picker intercept ──────────────────────────────────────────────
-        // Sits above the menu/drawer intercepts and is mode-agnostic (Q-B7,
-        // `docs/FUZZY-FINDERS.md`: the picker opens from any mode, unlike
-        // the menu/drawer's Normal/Extend-only gate) — key ownership mirrors
+        // Sits above the menu/drawer intercepts and is mode-agnostic (the
+        // picker opens from any mode, unlike the menu/drawer's
+        // Normal/Extend-only gate) — key ownership mirrors
         // the picker's top z-order registration (`ui/mod.rs`'s `build_pane`),
         // the most action-relevant surface when more than one could be
         // visible. Full-modal: `handle_picker_key` always consumes, so while

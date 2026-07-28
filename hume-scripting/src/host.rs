@@ -591,11 +591,11 @@ pub trait UiHost {
     fn close_drawer(&mut self) -> Result<(), String>;
 
     /// `(picker! items on-select #:prompt "…")` — opens the fuzzy-finder
-    /// panel (`docs/FUZZY-FINDERS.md`). `items` are `(display . payload)`
+    /// panel. `items` are `(display . payload)`
     /// pairs; `payload` is handed back to `on-select` verbatim, never
     /// interpreted by Rust. Returns a token that scopes later
     /// `picker-push!` calls to this session. Unlike the menu/drawer, the
-    /// picker is allowed from any mode (Q-B7) but closes any live
+    /// picker is allowed from any mode but closes any live
     /// completion session first, since only one modal owner may be active
     /// at a time. `on-select` fires exactly once, queued (never invoked
     /// inline): the selected payload on `Enter`, or `#f` on `Esc`,

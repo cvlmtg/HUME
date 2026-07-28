@@ -2,7 +2,7 @@
 
 Design document for the insert-mode completion menu driven by multiple Steel-registered sources (LSP, buffer words, custom plugins), mixed and prioritized by policy written in Steel.
 
-The sibling fuzzy-finder (picker) design lives in `docs/FUZZY-FINDERS.md`, in its own file. The two designs share the "Rust store, Steel policy" architectural pattern, and prospectively the fuzzy matcher if `Q-B6` there ever unifies them; see that doc's "Why not one shared session type" note for why they stay separate.
+The sibling fuzzy-finder (picker) shipped as `core:pickers` (roadmap for what's left: `docs/FUZZY-FINDERS.md`). The two share the "Rust store, Steel policy" architectural pattern, and prospectively the fuzzy matcher if `Q-B6` ever unifies them; see `hume-editor/src/editor/picker.rs`'s module doc for why they stay separate session types (item shape, query origin, accept semantics, lifetime, scale, and scroll model all differ).
 
 **Status: design only — not scheduled, no implementation started.** Written against the `lsp` branch (post Step 4 / F11). This document is the single place to resume from; it assumes the reader has *no* memory of the exploration that produced it.
 
@@ -10,7 +10,7 @@ The sibling fuzzy-finder (picker) design lives in `docs/FUZZY-FINDERS.md`, in it
 
 1. **No foundation work is required now.** This design is additive. The lsp branch's completion architecture is already source-agnostic in the ways that matter. Nothing currently being built needs to change shape to keep it possible.
 2. The one guardrail while other work proceeds: **don't deepen LSP coupling in the completion store**. `CompletionSession` today parses generic completion-item JSON and only touches LSP specifics inside the `text_edit` branch of `accept`. Keep it that way — new LSP-specific fields belong in the Steel plugin (which already receives the raw item), not in new Rust parsing.
-3. Completion shares its "Rust store, Steel policy" split with the picker design (`docs/FUZZY-FINDERS.md`), and prospectively its fuzzy matcher too if `Q-B6` there ever unifies them (not in v1 — completion keeps `subsequence_match_pos`) — but not a data structure: `CompletionSession` and `PickerSession` are siblings, not the same type. See that doc for the rationale.
+3. Completion shares its "Rust store, Steel policy" split with the shipped picker (`core:pickers`), and prospectively its fuzzy matcher too if `Q-B6` ever unifies them (not yet — completion keeps `subsequence_match_pos`) — but not a data structure: `CompletionSession` and `PickerSession` are siblings, not the same type. See `hume-editor/src/editor/picker.rs`'s module doc for the rationale.
 
 ## How to use this document
 
@@ -102,11 +102,11 @@ Everything below was read from source, not recalled. This is the substrate this 
 
 ### The minibuffer completion system is a separate thing — leave it alone
 
-`hume-editor/src/editor/completion/` (`Completer` trait: pure `complete(input, cursor, ctx) -> CompletionResult`; implementors `CommandCompleter`, `BufferNameCompleter`, `ThemeCompleter`, `PathCompleter`, `SetCompleter`; dispatched by a hardcoded match in `complete_minibuf`, `mappings/command_mode.rs`; prefix matching only; rendered by the bespoke statusline-anchored `CompletionOverlay` in `ui/completion_overlay.rs`). It shares no types with the insert-mode stack, and `ROADMAP.md` already records its own future direction ("Steel builtin to register custom completers … core does prefix matching only"). Neither this design nor the picker design (`docs/FUZZY-FINDERS.md`) builds on it, and neither changes it.
+`hume-editor/src/editor/completion/` (`Completer` trait: pure `complete(input, cursor, ctx) -> CompletionResult`; implementors `CommandCompleter`, `BufferNameCompleter`, `ThemeCompleter`, `PathCompleter`, `SetCompleter`; dispatched by a hardcoded match in `complete_minibuf`, `mappings/command_mode.rs`; prefix matching only; rendered by the bespoke statusline-anchored `CompletionOverlay` in `ui/completion_overlay.rs`). It shares no types with the insert-mode stack, and `ROADMAP.md` already records its own future direction ("Steel builtin to register custom completers … core does prefix matching only"). Neither this design nor the picker (`core:pickers`) builds on it, and neither changes it.
 
 ### Gaps (what does not exist today)
 
-1. **No fuzzy matcher** — hand-rolled subsequence only. (`docs/FUZZY-FINDERS.md`'s B1 adds one for the picker; Q-B6 there tracks whether completion ever adopts it.)
+1. **No fuzzy matcher** — hand-rolled subsequence only. (The picker has one, `hume-editor/src/editor/fuzzy.rs`'s `nucleo-matcher` wrapper; Q-B6 tracks whether completion ever adopts it — see `docs/FUZZY-FINDERS.md`.)
 2. **No multi-source merge** — `completion-begin!` replaces; a slow source's arrival clobbers a fast source's session (or vice versa). No source tags, no priorities, no dedup.
 3. **No way to read buffer text from Steel** (by design — bulk guardrail). A buffer-words completion source therefore needs a bounded Rust builtin (task A4), not a Steel scan.
 
@@ -138,7 +138,7 @@ and their items appear in the same menu as LSP completions, ranked by the same R
 
 **Source contract**: `fn` receives `(bid prefix emit)` where `emit` is a closure the coordinator provides; the source calls `(emit items)` once, synchronously or from an async callback (e.g. inside an `lsp-request` callback). Items are completion-item hashmaps in the **LSP `CompletionItem` JSON shape** — that shape stays the lingua franca because `StoredCompletionItem::from_json` already parses it and the fallbacks (`filterText`→`label` etc.) make the minimal item just `{"label": "foo"}`. Non-LSP sources simply omit `textEdit` and get the generic anchor-span insert path.
 
-One source class this contract can't serve yet: an **external-command-backed source** (dictionary/spell via `aspell`, a snippets CLI, shell history). Steel's process spawn is synchronous only — a spawn at trigger time freezes the editor for the command's duration. The fix is the generic `spawn-async` builtin designed and deferred in `docs/FUZZY-FINDERS.md` (B5's deferral note): command output batches to a Steel callback, which feeds `completion-add-items!` — the session token already makes late async arrivals harmless by construction. Such a source is the named candidate "second client" that would un-defer that builtin; no design change needed here when it does.
+One source class this contract can't serve yet: an **external-command-backed source** (dictionary/spell via `aspell`, a snippets CLI, shell history). Steel's process spawn is synchronous only — a spawn at trigger time freezes the editor for the command's duration. The fix is a generic `spawn-async` builtin, deferred until a second client exists (see `docs/FUZZY-FINDERS.md`'s remaining-work list — the picker's `picker-source-spawn!` already has the reader-thread/split/drain machinery `spawn-async` would reuse, in `hume-platform/src/process/line_source.rs`): command output batches to a Steel callback, which feeds `completion-add-items!` — the session token already makes late async arrivals harmless by construction. Such a source is the named candidate "second client" that would un-defer that builtin; no design change needed here when it does.
 
 **Incremental arrival — the one real Rust change.** Sources finish at different times (buffer-words: instant; LSP: 10–300ms). Two models considered:
 
@@ -196,7 +196,7 @@ Estimated total: comparable to one-and-a-half LSP Step 4 cards. No architectural
 | Multi-source merge model | **Incremental: `completion-begin!` returns token; `completion-add-items!` merges with replace-per-source semantics; both carry `#:source`/`#:priority`/`#:incomplete`** | Menu appears at fastest-source speed; token makes late async arrivals from stale triggers harmless; replace-per-source makes isIncomplete re-requests idempotent (no duplicates). Single-shot rejected: gates UX on slowest source/timeout. |
 | Source registry location | **Pure Steel, in `core:completion`** | Registration and orchestration are user-intent frequency; no Rust registry earns its keep. Mirrors the `trigger_chars` precedent (Rust holds only the union it needs for the Insert-mode fire check). |
 | Where mixing policy lives | **Steel (priority, caps, accept handlers); Rust (per-keystroke rank incl. priority tiebreak)** | Frequency cut. Priority crosses once at begin/add; ranking uses it per keystroke without re-crossing. |
-| Completion vs picker core | **Siblings sharing the matcher, not a shared session type — see `docs/FUZZY-FINDERS.md`** | Six load-bearing axes differ (item shape, query origin, accept, lifetime, scale, scroll). Abstraction with two divergent call sites is premature; merging later is cheap if bodies converge. |
+| Completion vs picker core | **Siblings sharing the matcher, not a shared session type — see `hume-editor/src/editor/picker.rs`** | Six load-bearing axes differ (item shape, query origin, accept, lifetime, scale, scroll). Abstraction with two divergent call sites is premature; merging later is cheap if bodies converge. |
 
 ## Open questions
 
@@ -216,4 +216,4 @@ Each carries a default per the usage rules.
 
 **Q-A7 — kind display.** `kind: i64` is currently display-unused (`completion_row_label` shows `label  detail` only). Map kind→short label/icon in Rust (`completion_row_label`) with a static table, themable? Non-LSP sources reuse LSP kind numbers? *Default: static Rust map (LSP kind numbers as the universal enum — sources pick the closest; 1=Text fits buffer-words), single-char column, no per-kind theming in v1. Note: per-part styling (dimmed detail, colored kind) needs segment-styled popup rows — a `PopupState` extension that's its own small task; don't smuggle it in.*
 
-Fuzzy-picker open questions (Q-B1–Q-B8) moved to `docs/FUZZY-FINDERS.md`. **Q-B6** there (unifying completion's matcher with the picker's) is the one that loops back to this document — noted in the Gaps section above.
+**Q-B6** (unifying completion's matcher with the picker's, tracked in `docs/FUZZY-FINDERS.md`) is the one open picker question that loops back to this document — noted in the Gaps section above.

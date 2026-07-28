@@ -1,5 +1,5 @@
-//! Per-frame drain for a session-owned spawned line source
-//! (`docs/FUZZY-FINDERS.md` B5). Kept out of `picker.rs` so that module
+//! Per-frame drain for a session-owned spawned line source. Kept out of
+//! `picker.rs` so that module
 //! stays a pure store; this is the one place `PickerItem`s get built from
 //! streamed lines and the one place a spawned source's exit gets reported.
 

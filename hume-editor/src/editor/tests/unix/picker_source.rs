@@ -1,5 +1,5 @@
-//! `picker-source-spawn!`'s Rust-side half (`docs/FUZZY-FINDERS.md` B5):
-//! drives `PickerSession::attach_source`/`Editor::drain_picker_source`
+//! `picker-source-spawn!`'s Rust-side half: drives
+//! `PickerSession::attach_source`/`Editor::drain_picker_source`
 //! directly (no Steel involved — see `picker_source_steel.rs` for the
 //! end-to-end builtin coverage), so these are unix-only (`sh`/`sleep`).
 

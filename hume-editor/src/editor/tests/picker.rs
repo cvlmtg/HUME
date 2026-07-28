@@ -244,7 +244,7 @@ fn enter_with_no_match_dismisses_with_false() {
     assert_eq!(args, &vec![SteelVal::BoolV(false)]);
 }
 
-// ── Q-B7: any-mode open, clears a live completion session ──────────────────
+// ── any-mode open, clears a live completion session ─────────────────────────
 
 #[test]
 fn open_from_insert_mode_allowed_and_clears_completion() {

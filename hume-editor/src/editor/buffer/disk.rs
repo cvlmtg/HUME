@@ -194,8 +194,7 @@ impl Editor {
     /// mode alone doesn't rule out a live overlay underneath. The confirm
     /// intercept sits above all three (`mappings/mod.rs`), so without this
     /// check an ambient trigger could silently steal every key from a picker
-    /// still on screen. `docs/FUZZY-FINDERS.md` Q-B7: one modal owner at a
-    /// time.
+    /// still on screen — one modal owner at a time.
     ///
     /// Pending keys: a non-empty `pending_keys` (mid multi-key sequence, e.g.
     /// `d` waiting for its motion) or a pending `wait_char` (e.g. `f` waiting

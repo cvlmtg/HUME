@@ -95,7 +95,7 @@ LSP server management:
 
 Jump-shaped actions (goto/rename/diagnostic-nav) live under `g`; response/action-shaped ones
 (references list, hover popup, code-action menu) live under `z` instead, freeing `g R`/`g k`/`g a`
-for the fuzzy-finder picker prefix (see `docs/FUZZY-FINDERS.md`). No collisions with HUME's native
+for the fuzzy-finder picker prefix (`core:pickers`). No collisions with HUME's native
 leaves at the time these were bound — `g`'s (`g g e h l s`) or `z`'s (`z z t b`) — re-check
 `keymap/defaults.rs` if you rebind any of them.
 

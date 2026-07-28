@@ -1,4 +1,4 @@
-// The Steel surface for `picker-source-spawn!` (`docs/FUZZY-FINDERS.md` B5).
+// The Steel surface for `picker-source-spawn!`.
 // Portable half: the token gate, the empty-cmd/spawn-failure raise paths —
 // none of these ever actually spawn a live child, so they need no `sh`.
 // See `tests/unix/picker_source_steel.rs` for the real-spawn end-to-end

@@ -637,7 +637,8 @@ pub(crate) fn clear_completion_state(lsp: &mut LspState) {
 /// Ends any open completion session and clears its menu view — the single
 /// chokepoint for "close the completion menu", shared by `Editor` (via
 /// `Editor::clear_completion_menu`), `EditorHostImpl`, and `picker::open_picker`
-/// (Q-B7: opening a picker closes any live completion session first). `lsp`
+/// (opening a picker closes any live completion session first — one modal
+/// owner at a time). `lsp`
 /// is `None` at call sites that hold no `LspState` borrow — a no-op there,
 /// same as when `lsp` is `Some` but no session is open. Always clears the
 /// shared `completion_menu_view` Arc regardless of `lsp`.

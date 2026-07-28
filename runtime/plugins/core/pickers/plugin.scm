@@ -116,6 +116,9 @@
        (filter (lambda (s) (not (equal? s ""))) (split-many output pickers/nul))))
 
 ;;; Open the git-modified-files picker for the given absolute repo `root`.
+;;; Sync spawn, not `picker-source-spawn!`: a streaming source's display
+;;; *is* its payload, but this picker needs an "XY "-prefixed display and a
+;;; bare-path payload, so the two fields must be built separately here.
 ;;; `on-select` resolves the chosen repo-root-relative path against `root`
 ;;; before opening it: `open-buffer!` resolves a relative path against the
 ;;; editor's cwd (`:pwd`), which only coincides with the repo root when

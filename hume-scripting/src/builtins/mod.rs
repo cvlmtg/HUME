@@ -200,7 +200,7 @@ macro_rules! builtins {
 // show-drawer-list! — pick-list only, no #:lang: rows are plain display
 // strings, never syntax-highlighted (that's the popup's job).
 //
-// picker! — fuzzy-finder panel (docs/FUZZY-FINDERS.md). items: list of
+// picker! — fuzzy-finder panel. items: list of
 // (display . payload) dotted pairs; payload is opaque, handed back to
 // on-select verbatim. Returns a token scoping later picker-push! calls to
 // this session. Allowed from any mode, but closes any open completion
@@ -214,7 +214,7 @@ macro_rules! builtins {
 // source racing the user. Returns whether the push was applied.
 //
 // picker-source-spawn! — attaches a streaming external-command source
-// (docs/FUZZY-FINDERS.md B5) to the picker session `token` scopes: direct
+// to the picker session `token` scopes: direct
 // argv spawn, no shell, stdin closed immediately. Stdout lines flow straight
 // into the store, Rust-side — Steel never sees the bulk output, only
 // whichever single line the user accepts. A stale token or no open picker
@@ -457,7 +457,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "show-drawer-list!" ui::show_drawer_list(items: SteelVal, on_select: SteelVal);
         cmd "close-drawer!" ui::close_drawer();
 
-        // Fuzzy-picker widget (docs/FUZZY-FINDERS.md B4).
+        // Fuzzy-picker widget.
         cmd "%picker!" ui::picker(items: SteelVal, on_select: SteelVal, prompt: SteelVal);
         cmd "picker-push!" ui::picker_push(token: SteelVal, items: SteelVal);
         cmd "%picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal);

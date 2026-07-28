@@ -1,7 +1,10 @@
 //! Fuzzy-picker data store. Sibling of `CompletionSession`
-//! (`editor/lsp/completion.rs`), not a generalization of it — see
-//! `docs/FUZZY-FINDERS.md`'s "Why not one shared session type" note. Mirrors
-//! completion's `rank_scratch` reuse and reset-on-rerank patterns.
+//! (`editor/lsp/completion.rs`), not a generalization of it: item shape,
+//! query origin, accept semantics, lifetime, scale, and scroll model all
+//! differ between the two, so a shared abstract core would be parameterized
+//! over six axes for two call sites — not worth it unless the bodies
+//! converge later. Mirrors completion's `rank_scratch` reuse and
+//! reset-on-rerank patterns.
 //!
 //! Wired onto `EditorState.picker`; opened through the [`open_picker`] free
 //! fn below (Steel's `picker!` builtin, `hume-scripting`'s `ui::picker`) and
@@ -53,7 +56,7 @@ pub(crate) struct PickerSession {
     /// Stale-push guard: `push` is a no-op unless the caller's token matches.
     token: u64,
     /// The streaming external-command source attached via
-    /// `picker-source-spawn!` (`docs/FUZZY-FINDERS.md` B5), if any. Owning it
+    /// `picker-source-spawn!`, if any. Owning it
     /// here — rather than in some separate registry — is what makes
     /// kill-on-close/replace automatic: `SpawnedLineSource::drop` kills the
     /// child, and this field is dropped whenever the session itself is
@@ -107,8 +110,9 @@ impl PickerSession {
     /// Attaches a spawned streaming source, replacing (and thereby killing,
     /// via `SpawnedLineSource::drop`) any source already attached — a second
     /// `picker-source-spawn!` on the same session is a re-spawn, not a
-    /// second concurrent source (matches Q-B5's future re-spawn-replaces-
-    /// source semantics for live-requery).
+    /// second concurrent source. This is also the semantics a future
+    /// live-requery feature (re-running the source per query change) would
+    /// reuse as-is.
     pub(crate) fn attach_source(&mut self, source: SpawnedLineSource) {
         self.source = Some(source);
     }
@@ -161,7 +165,7 @@ impl PickerSession {
     }
 
     /// Replaces the query wholesale and reranks.
-    #[cfg(test)] // production caller is B4/B5's live-requery replace path (Q-B5), not yet built
+    #[cfg(test)] // production caller is a future live-requery replace path, not yet built
     pub(crate) fn set_query(&mut self, query: String) {
         self.query = query;
         self.rerank();
@@ -274,11 +278,11 @@ impl PickerSession {
 }
 
 /// Single open chokepoint for the picker — `hume-scripting`'s `picker!`
-/// builtin (`ui::picker`) calls this via `EditorHostImpl`. Q-B7
-/// (`docs/FUZZY-FINDERS.md`): allowed from any mode, but one modal owner at
-/// a time, so opening a picker always closes any live completion session
-/// first. Replacing an already-open picker fires *its* `on_select` with
-/// `#f` before installing the new one, via [`close_picker`] — the
+/// builtin (`ui::picker`) calls this via `EditorHostImpl`. Allowed from any
+/// mode, but one modal owner at a time, so opening a picker always closes
+/// any live completion session first. Replacing an already-open picker
+/// fires *its* `on_select` with `#f` before installing the new one, via
+/// [`close_picker`] — the
 /// exactly-once callback contract must never have a window where a session
 /// can be silently dropped without firing.
 ///
