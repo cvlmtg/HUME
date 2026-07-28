@@ -78,6 +78,11 @@ impl Editor {
     /// burst settles. Called from `prepare_frame`'s scroll step whenever a
     /// pane's visible range actually changed since the last frame —
     /// never from the render math itself, just this cheap follow-up.
+    ///
+    /// This coalescer is Rust, not the Scheme `debounce` builtin: that one
+    /// wraps a user-supplied proc, but this guards a *built-in* fire site
+    /// (every scroll step, every frame) — a scroll burst must not queue
+    /// hundreds of hook evals waiting for Steel to debounce them itself.
     pub(super) fn debounce_viewport_change(&mut self, pane_id: PaneId) {
         if let Some(old_id) = self.viewport_debounce.remove(&pane_id) {
             TimerHandle {

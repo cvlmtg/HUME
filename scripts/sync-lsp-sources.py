@@ -13,7 +13,7 @@ already recorded in the checked-in lsp-sources.scm for any (repo, version,
 asset-file) combination that hasn't changed, so a routine re-sync after an
 unrelated pin bump downloads only the genuinely new or changed assets. Run
 after sync-grammars.py if a helix-pin bump renamed or dropped any LSP
-servers — see scripts/sync-readme.md for the run order.
+servers — see scripts/README.md for the run order.
 
 Idempotent: running twice against the same pins produces a byte-identical
 file.
@@ -89,7 +89,7 @@ LSP_SOURCES_HEADER = """\
 # Helix server name -> Mason package name, for the cases where the two
 # namespaces genuinely differ. Every entry below was confirmed by checking
 # that the Mason package's `bin` map contains a key exactly equal to the
-# Helix server's `command` string (see scripts/sync-readme.md) — a name
+# Helix server's `command` string (see scripts/README.md) — a name
 # match alone is not enough evidence (e.g. Mason's "vetur-vls" looked like a
 # plausible match for Helix's "vuels" by name/lspconfig alias, but its bin
 # key "vls" does not match vuels's actual command "vue-language-server";

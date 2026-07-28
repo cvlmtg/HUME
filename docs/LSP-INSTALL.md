@@ -58,7 +58,7 @@ server is guaranteed wired), resolve per-platform assets, and record a sha256 pe
 
 ### Sync scripts — one per pin
 
-Scripts align with *pins*, not features (see `scripts/sync-readme.md`):
+Scripts align with *pins*, not features (see `scripts/README.md`):
 
 - **`scripts/sync-grammars.py`** (existing, extended): already fetches `languages.toml` at
   helix-pin and emits `languages.scm` + `grammar-sources.scm`; additionally emits
@@ -126,29 +126,16 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
 - **Languages live only in this file.** Helix language names match `languages.scm` (same
   upstream, same pin). Mason's `languages:` field uses different naming ("TypeScript") and
   would need its own mapping — dropped entirely.
-- **Language lists are disjoint across servers** — enforced at sync time (see
-  [v1 scope](#v1-scope-and-limitations)): each language appears under exactly one server,
-  so the scan can never produce conflicting registrations.
-- Every entry uses one shape: an absent/empty value is the empty tail (`(args)`,
-  `(config)`), never `#f` — consumers read one encoding.
-- `config` is Helix's `[language-server.*.config]` table for this server, copied verbatim.
-  It's a single canonical (`sort_keys`) JSON-encoded string when Helix seeds one for this
-  server — `(config . "...")`, the *entire* tail is `(config)` (never a dotted pair) when
-  it doesn't. `core:lsp/registration.scm` delivers it as both `#:init-options` and
-  `#:settings` on `register-lsp-server!`, exactly as Helix delivers the same blob as both
-  `initializationOptions` and its own `workspace/configuration` answer — see
-  [Config delivery & per-server audit](#config-delivery--per-server-audit) for why that's
-  correct rather than a mismatch. The sync
-  script emits it with a plain `json.dumps`; the plugin decodes it with the `(json-parse)`
-  Steel builtin (`hume-scripting/src/builtins/json.rs`, wrapping the same `json_to_steel`
-  conversion `lsp-request` responses already use) at the one place it's consumed
-  (`lsp/register-server-languages!`), not walked into a Steel hash for every catalog entry
-  at load regardless of whether it's ever installed. This replaced an earlier
-  nested-alist-plus-`#(...)`-vector encoding that needed a hand-rolled Scheme-side walker
-  (`lsp/settings->hash`) and a Python-side array/object-disambiguation hack
-  (`vector_arrays=True`) purely because plain
-  sexpr syntax can't tell an empty JSON array from an empty JSON object — a JSON string
-  has no such ambiguity.
+- **Language lists are disjoint across servers**, enforced at sync time — see
+  [v1 scope](#v1-scope-and-limitations) for the full rule and why.
+- Field encoding (empty tail never `#f`, canonical JSON `config` string, delivered both ways
+  by `core:lsp/registration.scm`, decoded once via `(json-parse)` at the one consuming site):
+  see `lsp-servers.scm`'s own header comment. That encoding replaced an earlier
+  nested-alist-plus-`#(...)`-vector one that needed a hand-rolled Scheme-side walker and a
+  Python-side array/object-disambiguation hack, purely because plain sexpr syntax can't tell
+  an empty JSON array from an empty JSON object — a JSON string has no such ambiguity. See
+  [Config delivery & per-server audit](#config-delivery--per-server-audit) for why delivering
+  the same blob two ways is correct rather than a mismatch.
 
 **`lsp-sources.scm`** (install, from mason-pin) — per-kind record shapes:
 
@@ -202,15 +189,12 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
 ## Config delivery & per-server audit
 
 - **`#:settings` wired up**: pushed once as `workspace/didChangeConfiguration` after
-  `initialized`, and resolved per-item (dotted `section` walked into the blob, VS Code
-  semantics) to answer `workspace/configuration` pull requests. Resolution logic lives in
-  `hume-lsp/src/client.rs` (`resolve_config_section`); the editor glue looks up the
-  requesting server's own registered config by `server_id -> language -> LspState.configs`.
+  `initialized`, resolved per-item to answer `workspace/configuration` pull requests.
+  Mechanism: `hume-lsp/src/client.rs`'s `resolve_config_section`.
 - **Seeded catalog delivers its config correctly**: `runtime/scheme/lsp-servers.scm`'s
-  `config` field (Helix's `[language-server.*.config]` table, copied verbatim, not LSP
-  workspace settings) is delivered as **both** `#:init-options` and `#:settings` by
-  `core:lsp/registration.scm`, matching Helix's own delivery of the same blob.
-  `initializationOptions` is the path that actually configures most seeded servers.
+  `config` field is delivered as **both** `#:init-options` and `#:settings` by
+  `core:lsp/registration.scm`, matching Helix's own delivery of the same blob — see
+  `runtime/plugins/core/lsp/README.md`'s "Server config delivery" section.
 - **Per-server config audit** (all 17 seeded servers carrying a `config` blob, verified
   against each server's own source): 15 work correctly as delivered. Two —
   `actions-language-server` and `pony-lsp` — need a correction, in both cases tracing to a
@@ -287,15 +271,14 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
   installed mid-session attaches immediately, without a restart. `core:lsp` also exposes
   the rescan directly as `:lsp-rescan-servers`, for servers installed out-of-band (not
   through `:lsp-install`).
-  **Caveat for a lazily-declared `core:lsp`**: a manifest keyed only on
-  `#:events '("on-lsp-attach")` can never activate on its own — nothing is registered
-  yet, so nothing attaches, so the event that would trigger activation never fires.
-  Load `core:lsp` eagerly, declare it with `#:languages` naming the languages you rely
-  on it for (activation triggered by opening a matching file), or declare it with
-  `#:commands` naming `lsp-install`/`lsp-uninstall`/`lsp-servers`/`lsp-rescan-servers`
-  (activation triggered by typing one of those `:` commands — Lazy command stubs
-  activate their plugin before arity marshalling, so `:lsp-install <lang>` on a
-  not-yet-activated `core:lsp` works with no eager `(load-plugin "core:lsp")` needed).
+  **Caveat for a lazily-declared `core:lsp`** (see `runtime/plugins/core/lsp/README.md`'s
+  own copy for the short version): a manifest keyed only on `#:events '("on-lsp-attach")`
+  can never activate on its own — nothing is registered yet, so nothing attaches, so the
+  event that would trigger activation never fires. Load `core:lsp` eagerly, declare it with
+  `#:languages` (activation triggered by opening a matching file), or declare it with
+  `#:commands` naming `lsp-install`/`lsp-uninstall`/`lsp-servers`/`lsp-rescan-servers` — Lazy
+  command stubs activate their plugin before arity marshalling, so `:lsp-install <lang>` on
+  a not-yet-activated `core:lsp` works with no eager `(load-plugin "core:lsp")` needed.
 - **Last-wins registration.** `register-lsp-server!` uses *replace* semantics, matching
   `define-language!`. `init.scm` reads naturally: `load-plugin` → scan auto-registers →
   later user `register-lsp-server!` calls override. At init time replacement never races
@@ -390,8 +373,8 @@ data pipeline (`mason-pin.scm`; extended `sync-grammars.py` → `lsp-servers.scm
 `sync-lsp-sources.py` → `lsp-sources.scm`, with the Helix→Mason name-mapping table and
 unmatched-server report; shared `sync_common.py`); Rust platform primitives (below); and
 `servers.scm` itself (Steel, pure consumer of the previous two — scan-on-load registration,
-`lsp-install`/`lsp-uninstall`/`lsp-servers` commands, receipts, orphan warnings, npm install
-path, missing-server hint, user-manual + `init.scm.example` docs — `core:plum`'s
+`lsp-install`/`lsp-uninstall`/`lsp-servers`/`lsp-rescan-servers` commands, receipts, orphan
+warnings, npm install path, missing-server hint, user-manual + `init.scm.example` docs — `core:plum`'s
 `grammars.scm` is the template. Lives in `core:lsp` — see
 [Placement](#placement-corelsp-owns-the-server-lifecycle-end-to-end)).
 Marshalling gotcha: the minibuffer passes the integer `1` to an arity-1 Steel command
