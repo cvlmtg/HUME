@@ -6,7 +6,7 @@
 
 mod bridge;
 pub(crate) mod completion;
-mod diagnostics;
+pub(crate) mod diagnostics;
 pub(crate) mod edits;
 pub(crate) mod introspect;
 mod registry;
@@ -32,8 +32,7 @@ use lsp_types::request::Request as _;
 use super::Editor;
 use super::async_source::AsyncSource;
 use super::message_log::Severity;
-use diagnostics::DiagnosticsStore;
-pub(crate) use diagnostics::{DiagSeverity, StoredDiag};
+use diagnostics::{DiagSeverity, DiagnosticsStore, StoredDiag};
 use registry::{LanguageName, LspServerConfig};
 
 /// A Rust closure run with a completed request's outcome. `hume-lsp` never

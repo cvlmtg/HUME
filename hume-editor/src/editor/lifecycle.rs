@@ -11,7 +11,7 @@ use hume_engine::types::EditorMode;
 use super::search::SearchCursor;
 #[cfg(test)]
 use super::search::{SearchMatches, SearchPattern};
-use crate::editor::lsp::DiagSeverity;
+use crate::editor::lsp::diagnostics::DiagSeverity;
 use crate::editor::search;
 use crate::ops::pair::find_bracket_pair;
 use hume_editing::lines::line_end_exclusive;

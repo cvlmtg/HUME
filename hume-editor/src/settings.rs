@@ -678,7 +678,7 @@ define_settings! {
             parser: usize_nonzero;
         // Hint = most lenient — every severity renders. Gates the diagnostic
         // underline/extra-highlight and gutter-sign render write sides.
-        "lsp.diagnostics-severity-floor" => lsp_diagnostics_severity_floor: crate::editor::lsp::DiagSeverity = crate::editor::lsp::DiagSeverity::Hint,
+        "lsp.diagnostics-severity-floor" => lsp_diagnostics_severity_floor: crate::editor::lsp::diagnostics::DiagSeverity = crate::editor::lsp::diagnostics::DiagSeverity::Hint,
             scope: [Scope::Global],
             parser: from_str;
         // Gates the inlay-hint render write side — off means the
