@@ -177,22 +177,6 @@ fn prev_first_step_miss_leaves_state_untouched() {
     assert_eq!(h.scratch, None);
 }
 
-#[test]
-fn restore_round_trips_entries() {
-    let original: Vec<String> = vec!["a".into(), "b".into(), "c".into()];
-    let h = History::restore(original.clone(), 10);
-    assert_eq!(h.entries.iter().cloned().collect::<Vec<_>>(), original);
-}
-
-#[test]
-fn restore_caps_to_capacity() {
-    let entries: Vec<String> = (0..10).map(|i| i.to_string()).collect();
-    let h = History::restore(entries, 3);
-    assert_eq!(h.entries.len(), 3);
-    // Most-recent entries are kept.
-    assert_eq!(h.entries.back().map(|s| s.as_str()), Some("9"));
-}
-
 // ── HistoryStore ──────────────────────────────────────────────────────────
 
 #[test]
@@ -211,45 +195,6 @@ fn kind_for_prompt_maps_colon_slash_question() {
     );
     assert_eq!(HistoryStore::kind_for_prompt("⫽"), None);
     assert_eq!(HistoryStore::kind_for_prompt("x"), None);
-}
-
-#[test]
-fn snapshot_and_restore_round_trips_entries() {
-    let mut s = store(10);
-    s.get_mut(HistoryKind::Command).push("w".into());
-    s.get_mut(HistoryKind::SearchForward).push("foo".into());
-    s.get_mut(HistoryKind::SearchBackward).push("bar".into());
-
-    let snap = s.snapshot();
-    let restored = HistoryStore::restore(snap, 10);
-
-    assert_eq!(
-        restored
-            .get(HistoryKind::Command)
-            .entries()
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>(),
-        vec!["w"],
-    );
-    assert_eq!(
-        restored
-            .get(HistoryKind::SearchForward)
-            .entries()
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>(),
-        vec!["foo"],
-    );
-    assert_eq!(
-        restored
-            .get(HistoryKind::SearchBackward)
-            .entries()
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>(),
-        vec!["bar"],
-    );
 }
 
 #[test]

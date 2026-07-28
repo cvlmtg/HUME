@@ -4,9 +4,6 @@
 //! per-session navigation state (cursor + scratch). The three rings are grouped
 //! in [`HistoryStore`], which lives on `Editor` and is keyed by [`HistoryKind`].
 //!
-//! The API is shaped for a future shada-like persistence layer: [`HistoryStore::snapshot`]
-//! and [`HistoryStore::restore`] are defined but unused in v1.
-
 use std::collections::VecDeque;
 
 // ── HistoryKind / HistoryDir ──────────────────────────────────────────────────
@@ -158,25 +155,9 @@ impl History {
         self.scratch = None;
     }
 
-    // ── Persistence hooks (unused in v1) ──────────────────────────────────────
-
     #[allow(dead_code)]
     pub fn entries(&self) -> &VecDeque<String> {
         &self.entries
-    }
-
-    #[allow(dead_code)]
-    pub fn restore(entries: Vec<String>, capacity: usize) -> Self {
-        let mut ring = Self::new(capacity);
-        for e in entries {
-            ring.entries.push_back(e);
-        }
-        // Silently cap to capacity — the env file may have been written with
-        // a higher capacity than the current setting.
-        while ring.entries.len() > capacity {
-            ring.entries.pop_front();
-        }
-        ring
     }
 }
 
@@ -243,35 +224,6 @@ impl HistoryStore {
         self.command.set_capacity(new_cap);
         self.search_f.set_capacity(new_cap);
         self.search_b.set_capacity(new_cap);
-    }
-
-    // ── Persistence hooks (unused in v1) ──────────────────────────────────────
-
-    #[allow(dead_code)]
-    pub fn snapshot(&self) -> Vec<(HistoryKind, Vec<String>)> {
-        vec![
-            (
-                HistoryKind::Command,
-                self.command.entries.iter().cloned().collect(),
-            ),
-            (
-                HistoryKind::SearchForward,
-                self.search_f.entries.iter().cloned().collect(),
-            ),
-            (
-                HistoryKind::SearchBackward,
-                self.search_b.entries.iter().cloned().collect(),
-            ),
-        ]
-    }
-
-    #[allow(dead_code)]
-    pub fn restore(snapshot: Vec<(HistoryKind, Vec<String>)>, capacity: usize) -> Self {
-        let mut store = Self::new(capacity);
-        for (kind, entries) in snapshot {
-            *store.get_mut(kind) = History::restore(entries, capacity);
-        }
-        store
     }
 }
 
