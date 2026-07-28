@@ -284,10 +284,10 @@ fn whitespace_config_defaults() {
     assert_eq!(wc.space, WhitespaceRender::None);
     assert_eq!(wc.tab, WhitespaceRender::None);
     assert!(!wc.newline);
-    assert_eq!(&*wc.space_char, "·");
-    assert_eq!(&*wc.tab_char, "→");
-    assert_eq!(&*wc.newline_char, "⏎");
-    assert_eq!(&*wc.nbsp_char, "⍽");
+    assert_eq!(wc.space_char, "·");
+    assert_eq!(wc.tab_char, "→");
+    assert_eq!(wc.newline_char, "⏎");
+    assert_eq!(wc.nbsp_char, "⍽");
 }
 
 fn make_pane_at_char(head_char: usize) -> Pane {

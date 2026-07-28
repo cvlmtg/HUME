@@ -332,7 +332,7 @@ fn cell_text<'a>(arena: &'a str, content: &CellContent) -> &'a str {
 fn newline_indicator_all_mode() {
     let ws = WhitespaceConfig {
         newline: true,
-        newline_char: "⏎".into(),
+        newline_char: "⏎",
         ..WhitespaceConfig::default()
     };
     let (rows, graphemes, arena) = do_format_ws("abc\n", ws);
@@ -393,7 +393,7 @@ fn newline_indicator_none_mode() {
 fn space_indicator_all_mode() {
     let ws = WhitespaceConfig {
         space: crate::pane::WhitespaceRender::All,
-        space_char: "·".into(),
+        space_char: "·",
         ..WhitespaceConfig::default()
     };
     let (_, graphemes, arena) = do_format_ws("a b\n", ws);
@@ -436,7 +436,7 @@ fn nbsp_renders_as_itself_when_off() {
 fn tab_indicator_all_mode() {
     let ws = WhitespaceConfig {
         tab: crate::pane::WhitespaceRender::All,
-        tab_char: "→".into(),
+        tab_char: "→",
         ..WhitespaceConfig::default()
     };
     let (_, graphemes, arena) = do_format_ws("\t", ws);
@@ -454,7 +454,7 @@ fn space_indicator_trailing_mode_interior() {
     // whether more content followed.
     let ws = WhitespaceConfig {
         space: crate::pane::WhitespaceRender::Trailing,
-        space_char: "·".into(),
+        space_char: "·",
         ..WhitespaceConfig::default()
     };
     let (_, graphemes, _) = do_format_ws("  A  B  \n", ws);
@@ -481,7 +481,7 @@ fn space_indicator_trailing_mode_blank_line() {
     // indicators — there's no separate content to be "before".
     let ws = WhitespaceConfig {
         space: crate::pane::WhitespaceRender::Trailing,
-        space_char: "·".into(),
+        space_char: "·",
         ..WhitespaceConfig::default()
     };
     let (_, graphemes, arena) = do_format_ws("   \n", ws);
@@ -503,7 +503,7 @@ fn tab_indicator_trailing_mode_interior() {
     // text itself is the only way to distinguish "shown" from "hidden".
     let ws = WhitespaceConfig {
         tab: crate::pane::WhitespaceRender::Trailing,
-        tab_char: "→".into(),
+        tab_char: "→",
         ..WhitespaceConfig::default()
     };
     let (_, graphemes, arena) = do_format_ws("\tA\tB\t\n", ws);

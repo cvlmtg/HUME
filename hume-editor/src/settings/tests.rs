@@ -35,7 +35,6 @@ fn buffer_overrides_default_is_all_none() {
     assert!(ov.auto_pairs_enabled.is_none());
     assert!(ov.select_changed_text.is_none());
     assert!(ov.word_selects_whitespace.is_none());
-    assert!(ov.auto_pairs.is_none());
     assert!(ov.whitespace_space.is_none());
     assert!(ov.whitespace_tab.is_none());
     assert!(ov.whitespace_newline.is_none());
@@ -192,7 +191,7 @@ fn tab_style_values_round_trip_through_from_str() {
 // ── Auto-pairs resolution ─────────────────────────────────────────────────
 
 #[test]
-fn auto_pairs_override_enabled_only() {
+fn auto_pairs_ref_enabled_resolves_override_over_global() {
     let global = EditorSettings::default();
     let ov = BufferOverrides {
         auto_pairs_enabled: Some(false),
@@ -200,17 +199,16 @@ fn auto_pairs_override_enabled_only() {
     };
     let (enabled, pairs) = ov.auto_pairs_ref(&global);
     assert!(!enabled);
-    // Pairs list inherited from global.
-    assert_eq!(pairs.len(), global.auto_pairs.len());
+    assert_eq!(pairs, crate::ops::auto_pairs::DEFAULT_PAIRS);
 }
 
 #[test]
-fn auto_pairs_both_inherited_when_no_override() {
+fn auto_pairs_ref_enabled_falls_back_to_global_when_no_override() {
     let global = EditorSettings::default();
     let ov = BufferOverrides::default();
     let (enabled, pairs) = ov.auto_pairs_ref(&global);
     assert_eq!(enabled, global.auto_pairs_enabled);
-    assert_eq!(pairs.len(), global.auto_pairs.len());
+    assert_eq!(pairs, crate::ops::auto_pairs::DEFAULT_PAIRS);
 }
 
 // ── write_setting: Global scope ───────────────────────────────────────────

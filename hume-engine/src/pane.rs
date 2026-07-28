@@ -244,19 +244,18 @@ pub struct WhitespaceConfig {
     /// always at end-of-line, so unlike `space`/`tab` there is no meaningful
     /// "trailing vs all" distinction here — just on/off.
     pub newline: bool,
-    /// Character to show in place of a space when rendered. `Box<str>` (not
-    /// `&'static str`): Steel config can supply a runtime-computed glyph.
-    /// Cloned once per pane per frame (`PaneRenderSettings`) — negligible.
-    pub space_char: Box<str>,
+    /// Character to show in place of a space when rendered. Not
+    /// runtime-configurable — no `:set` key or Steel setter writes it.
+    pub space_char: &'static str,
     /// Character to show at the start of a tab expansion.
-    pub tab_char: Box<str>,
+    pub tab_char: &'static str,
     /// Character to show in place of a newline when rendered.
-    pub newline_char: Box<str>,
+    pub newline_char: &'static str,
     /// Character to show in place of an invisible Unicode space (NBSP U+00A0,
     /// ideographic space U+3000) when rendered. Distinct from `space_char` so
     /// stray non-breaking spaces stand out from ordinary ones. Gated by the
     /// `space` render mode — no separate render axis.
-    pub nbsp_char: Box<str>,
+    pub nbsp_char: &'static str,
 }
 
 impl Default for WhitespaceConfig {
@@ -265,10 +264,10 @@ impl Default for WhitespaceConfig {
             space: WhitespaceRender::None,
             tab: WhitespaceRender::None,
             newline: false,
-            space_char: "·".into(),
-            tab_char: "→".into(),
-            newline_char: "⏎".into(),
-            nbsp_char: "⍽".into(),
+            space_char: "·",
+            tab_char: "→",
+            newline_char: "⏎",
+            nbsp_char: "⍽",
         }
     }
 }

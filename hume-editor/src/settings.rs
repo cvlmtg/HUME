@@ -644,16 +644,7 @@ define_settings! {
         // overrides live in BufferOverrides via override_only below.
         whitespace: WhitespaceConfig = WhitespaceConfig::default();
     }
-    extra_buffer {
-        auto_pairs: Vec<Pair> = vec![
-            Pair { open: '(', close: ')' },
-            Pair { open: '[', close: ']' },
-            Pair { open: '{', close: '}' },
-            Pair { open: '"',  close: '"'  },
-            Pair { open: '\'', close: '\'' },
-            Pair { open: '`',  close: '`'  },
-        ];
-    }
+    extra_buffer {}
     override_only {
         // Whitespace sub-fields are overridden independently so a buffer can
         // change just one (e.g. space) while still inheriting the global values
@@ -739,16 +730,13 @@ impl BufferOverrides {
 
     /// Effective auto-pairs config for this buffer: `(enabled, &pairs)`.
     ///
-    /// Returns references to avoid a `Vec` allocation on every keystroke.
-    /// The `enabled` flag and the pair list are resolved independently so a
-    /// buffer can override just one without replacing the other.
-    pub(crate) fn auto_pairs_ref<'a>(&'a self, global: &'a EditorSettings) -> (bool, &'a [Pair]) {
-        let enabled = self.auto_pairs_enabled(global);
-        let pairs: &[Pair] = match &self.auto_pairs {
-            Some(p) => p.as_slice(),
-            None => &global.auto_pairs,
-        };
-        (enabled, pairs)
+    /// The pair list itself is a fixed constant (`crate::ops::auto_pairs::DEFAULT_PAIRS`)
+    /// — only `auto-pairs-enabled` is an actual per-buffer setting.
+    pub(crate) fn auto_pairs_ref(&self, global: &EditorSettings) -> (bool, &'static [Pair]) {
+        (
+            self.auto_pairs_enabled(global),
+            crate::ops::auto_pairs::DEFAULT_PAIRS,
+        )
     }
 }
 

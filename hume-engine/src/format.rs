@@ -453,7 +453,7 @@ pub fn format_buffer_line(
         // on the last wrap row. A newline is inherently always at end-of-line,
         // so there's no "trailing vs interior" distinction here — just on/off.
         if had_newline && whitespace.newline {
-            let (start, len) = push_arena_text(virtual_texts_out, &whitespace.newline_char);
+            let (start, len) = push_arena_text(virtual_texts_out, whitespace.newline_char);
             graphemes_out.push(Grapheme {
                 byte_range: line_str.len()..line_str.len(),
                 // Same offset as the EOL sentinel (the `\n` position). Style-stage
@@ -624,7 +624,7 @@ fn grapheme_display(
     if grapheme_str == "\t" {
         let display_width = tab_display_width(current_col, tab_width);
         let content = if should_render_whitespace(whitespace.tab, is_trailing) {
-            let (start, len) = push_arena_text(virtual_texts, &whitespace.tab_char);
+            let (start, len) = push_arena_text(virtual_texts, whitespace.tab_char);
             CellContent::Indicator { start, len }
         } else {
             // Tabs render as spaces when the indicator is off.
@@ -637,7 +637,7 @@ fn grapheme_display(
     // Space
     if grapheme_str == " " {
         let content = if should_render_whitespace(whitespace.space, is_trailing) {
-            let (start, len) = push_arena_text(virtual_texts, &whitespace.space_char);
+            let (start, len) = push_arena_text(virtual_texts, whitespace.space_char);
             CellContent::Indicator { start, len }
         } else {
             CellContent::Grapheme
@@ -653,7 +653,7 @@ fn grapheme_display(
     if grapheme_str == "\u{A0}" || grapheme_str == "\u{3000}" {
         let w = unicode_display_width(grapheme_str).clamp(1, 2) as u8;
         let content = if should_render_whitespace(whitespace.space, is_trailing) {
-            let (start, len) = push_arena_text(virtual_texts, &whitespace.nbsp_char);
+            let (start, len) = push_arena_text(virtual_texts, whitespace.nbsp_char);
             CellContent::Indicator { start, len }
         } else {
             CellContent::Grapheme
