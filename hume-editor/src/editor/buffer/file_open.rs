@@ -221,7 +221,7 @@ impl Editor {
         if self.lsp.remove_buffer_diagnostics(id) {
             self.fire_hook_diagnostics_changed(id);
         }
-        self.state.decorations.remove_buffer(id);
+        self.state.config.decorations.remove_buffer(id);
 
         // Drop the stale committed layers (they reference pre-reload content),
         // keeping the grammar attachment and generation bookkeeping intact.

@@ -18,7 +18,6 @@ use hume_editing::text::Text;
 use hume_engine::pane::Pane;
 use hume_engine::pipeline::{BufferId, EngineView, LayoutTree, PaneId};
 use hume_treesitter::parse_worker::InlineParseBackend;
-use hume_treesitter::registry::LanguageRegistry;
 use slotmap::SecondaryMap;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
@@ -201,6 +200,7 @@ impl Editor {
         Self {
             state: EditorState {
                 buffers,
+                config: super::ConfigState::new(false),
                 mode: Mode::Normal,
                 pending_keys: Vec::new(),
                 count: None,
@@ -220,8 +220,6 @@ impl Editor {
                 summary_ttl: 0,
                 message_log: super::message_log::MessageLog::new(),
                 settings,
-                registry: super::registry::CommandRegistry::with_defaults(),
-                keymap: super::keymap::Keymap::default(),
                 last_find: None,
                 force_full_redraw: false,
                 inline_output: super::InlineOutputDispatch::Inactive,
@@ -261,14 +259,7 @@ impl Editor {
                 skip_macro_record: false,
                 is_replaying: false,
                 mouse_drag_anchor: None,
-                languages: LanguageRegistry::new(),
                 cwd: std::env::temp_dir(),
-                pending_hooks: Vec::new(),
-                pending_language_detection: Vec::new(),
-                pending_steel_calls: Vec::new(),
-                trigger_chars: rustc_hash::FxHashMap::default(),
-                decorations: super::decorations::DecorationStores::default(),
-                steel_prompt_callback: None,
                 lsp_completion_dismiss_pending: false,
                 completion_menu_view: Arc::new(RwLock::new(None)),
                 minibuf_completion_view: Arc::new(RwLock::new(None)),
@@ -276,14 +267,10 @@ impl Editor {
                 inlay_hint_scope: None,
                 virtual_text_fallback_scope: None,
                 runtime_scope_cache: rustc_hash::FxHashMap::default(),
-                popup: None,
                 popup_view: Arc::new(RwLock::new(None)),
                 popup_band_view: Arc::new(RwLock::new(None)),
-                menu: None,
                 menu_view: Arc::new(RwLock::new(None)),
-                drawer: None,
                 drawer_view: Arc::new(RwLock::new(None)),
-                picker: None,
                 picker_view: Arc::new(RwLock::new(None)),
                 wake: Arc::new(|| {}),
             },
@@ -377,7 +364,7 @@ impl Editor {
         let (cmd, force, inline_arg) =
             super::mappings::command_mode::parse_typed_command(cmd_with_arg);
         let arg = inline_arg.or(extra_arg);
-        if let Some(tc) = self.state.registry.get_typed(cmd) {
+        if let Some(tc) = self.state.config.registry.get_typed(cmd) {
             let fun = tc.fun;
             let result = fun(self, arg, force);
             if let Err(ref e) = result {

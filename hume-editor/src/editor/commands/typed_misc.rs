@@ -100,7 +100,7 @@ pub fn typed_plugin_status(
     _force: bool,
 ) -> Result<(), CommandError> {
     let out = if let Some(host) = ed.scripting.as_ref() {
-        host.lazy_status_string(&ed.state.registry.lazy_stubs())
+        host.lazy_status_string(&ed.state.config.registry.lazy_stubs())
     } else {
         ed.report(Severity::Info, "Scripting disabled".to_string());
         return Ok(());
@@ -129,7 +129,7 @@ pub fn typed_reload_config(
     _force: bool,
 ) -> Result<(), CommandError> {
     ed.scripting = None;
-    ed.state.registry.unregister_dynamic_commands();
+    ed.state.config.registry.unregister_dynamic_commands();
     ed.init_scripting();
     ed.report(Severity::Info, "Config reloaded".to_string());
     Ok(())

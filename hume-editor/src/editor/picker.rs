@@ -292,7 +292,7 @@ pub(crate) fn open_picker(
 ) {
     super::lsp::completion::clear_completion_menu(state, lsp);
     close_picker(state, SteelVal::BoolV(false));
-    state.picker = Some(session);
+    state.config.picker = Some(session);
 }
 
 /// Single close chokepoint for the picker: ends the session (if one is
@@ -302,11 +302,14 @@ pub(crate) fn open_picker(
 /// replace-on-open path (LESSONS.md L2 — one chokepoint, not one copy per
 /// caller).
 pub(crate) fn close_picker(state: &mut super::EditorState, payload: SteelVal) -> bool {
-    let Some(session) = state.picker.take() else {
+    let Some(session) = state.config.picker.take() else {
         return false;
     };
     let callback = session.on_select().clone();
-    state.pending_steel_calls.push((callback, vec![payload]));
+    state
+        .config
+        .pending_steel_calls
+        .push((callback, vec![payload]));
     true
 }
 

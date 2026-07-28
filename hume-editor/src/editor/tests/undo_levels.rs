@@ -73,6 +73,7 @@ fn steel_set_option_applies_undo_levels() {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)

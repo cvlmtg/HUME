@@ -193,12 +193,13 @@ fn ctrl_d_and_ctrl_u_scroll_a_docked_popup_without_touching_the_buffer() {
     ed.prepare_frame(80, 10, &mut ctx);
 
     let before = state(&ed);
-    assert_eq!(ed.state.popup.as_ref().expect("shown").scroll, 0);
+    assert_eq!(ed.state.config.popup.as_ref().expect("shown").scroll, 0);
 
     ed.feed_key(key_ctrl('d'));
     ed.prepare_frame(80, 10, &mut ctx);
     let scroll_after_down = ed
         .state
+        .config
         .popup
         .as_ref()
         .expect("Ctrl+d must not close it")
@@ -217,6 +218,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_docked_popup_without_touching_the_buffer() {
     ed.prepare_frame(80, 10, &mut ctx);
     let scroll_after_up = ed
         .state
+        .config
         .popup
         .as_ref()
         .expect("Ctrl+u must not close it")
@@ -244,7 +246,7 @@ fn any_other_key_closes_a_docked_popup_and_still_dispatches() {
 
     ed.feed_key(key('l'));
     assert!(
-        ed.state.popup.is_none(),
+        ed.state.config.popup.is_none(),
         "any non-scroll key must close a docked popup"
     );
     assert_eq!(
@@ -365,7 +367,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
 
     let before = state(&ed);
     assert_eq!(
-        ed.state.popup.as_ref().expect("shown").scroll,
+        ed.state.config.popup.as_ref().expect("shown").scroll,
         0,
         "sanity: starts unscrolled"
     );
@@ -374,6 +376,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
     ed.prepare_frame(80, 25, &mut ctx);
     let scroll_after_down = ed
         .state
+        .config
         .popup
         .as_ref()
         .expect("Ctrl+d must not close a scrollable popup")
@@ -392,6 +395,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
     ed.prepare_frame(80, 25, &mut ctx);
     let scroll_after_up = ed
         .state
+        .config
         .popup
         .as_ref()
         .expect("Ctrl+u must not close a scrollable popup")
@@ -430,7 +434,7 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
 
     // Force a stale scroll far beyond what a much taller frame's window
     // will allow, standing in for a scroll set before the terminal grew.
-    ed.state.popup.as_mut().expect("shown").scroll = 30;
+    ed.state.config.popup.as_mut().expect("shown").scroll = 30;
 
     // Grow the frame: more visible rows, so `max_scroll` shrinks well below
     // the stale value set above.
@@ -450,6 +454,7 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
     ed.prepare_frame(80, 80, &mut ctx);
     let scroll_after_up = ed
         .state
+        .config
         .popup
         .as_ref()
         .expect("Ctrl+u must not close a scrollable popup")
@@ -482,7 +487,7 @@ fn any_other_key_closes_a_scrollable_popup_and_still_dispatches() {
     // dismiss-and-swallow.
     ed.feed_key(key('l'));
     assert!(
-        ed.state.popup.is_none(),
+        ed.state.config.popup.is_none(),
         "any non-scroll key must close a scrollable popup"
     );
     assert_eq!(
@@ -514,7 +519,7 @@ fn ctrl_d_on_a_non_scroll_popup_still_scrolls_the_buffer() {
 
     assert!(
         matches!(
-            ed.state.popup.as_ref().map(|p| p.kind),
+            ed.state.config.popup.as_ref().map(|p| p.kind),
             Some(hume_scripting::host::PopupKind::Sticky)
         ),
         "a plain popup must be untouched by Ctrl+d"

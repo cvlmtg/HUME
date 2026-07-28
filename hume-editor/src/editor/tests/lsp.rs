@@ -666,6 +666,7 @@ fn runtime_registration_attaches_already_open_buffer() {
     let mut ed = editor_from("-[w]>ord\n");
     ed.lsp = LspState::new_inline();
     ed.state
+        .config
         .languages
         .register_identity("rust", &["rs"], &[], &[])
         .unwrap();
@@ -703,6 +704,7 @@ fn unregister_stops_running_client_and_clears_config() {
     let mut ed = editor_from("-[w]>ord\n");
     ed.lsp = LspState::new_inline();
     ed.state
+        .config
         .languages
         .register_identity("rust", &["rs"], &[], &[])
         .unwrap();
@@ -776,6 +778,7 @@ fn replace_while_running_leaves_old_client_untouched() {
     let mut ed = editor_from("-[w]>ord\n");
     ed.lsp = LspState::new_inline();
     ed.state
+        .config
         .languages
         .register_identity("rust", &["rs"], &[], &[])
         .unwrap();
@@ -829,6 +832,7 @@ fn register_and_open_matching_file_spawns_exactly_one_server_and_second_buffer_a
     let mut ed = editor_from("-[w]>ord\n");
     ed.lsp = LspState::new_inline();
     ed.state
+        .config
         .languages
         .register_identity("rust", &["rs"], &[], &[])
         .unwrap();
@@ -872,6 +876,7 @@ fn opening_a_file_under_a_different_root_spawns_a_second_server() {
     let mut ed = editor_from("-[w]>ord\n");
     ed.lsp = LspState::new_inline();
     ed.state
+        .config
         .languages
         .register_identity("rust", &["rs"], &[], &[])
         .unwrap();
@@ -909,6 +914,7 @@ fn crashed_server_is_not_silently_reattached_to() {
     let mut ed = editor_from("-[w]>ord\n");
     ed.lsp = LspState::new_inline();
     ed.state
+        .config
         .languages
         .register_identity("rust", &["rs"], &[], &[])
         .unwrap();

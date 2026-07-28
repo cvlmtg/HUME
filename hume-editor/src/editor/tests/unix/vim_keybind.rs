@@ -173,6 +173,7 @@ fn shift_c_shadows_copy_selection_command() {
     let (ed, _guard, _dir) = setup_vim_keybind_editor("-[h]>ello\n");
     assert!(
         ed.state
+            .config
             .registry
             .get_mappable("copy-selection-on-next-line")
             .is_some(),

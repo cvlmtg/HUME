@@ -227,7 +227,7 @@ fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
     );
     assert!(
         matches!(
-            ed.state.popup.as_ref().map(|p| p.kind),
+            ed.state.config.popup.as_ref().map(|p| p.kind),
             Some(hume_scripting::host::PopupKind::Scrollable)
         ),
         "hover must open a scrollable popup (`#:kind 'scrollable`), not the sticky mode-change-only one"
@@ -236,12 +236,12 @@ fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
     // Ctrl+d/Ctrl+u scroll the popup instead of closing it.
     ed.feed_key(key_ctrl('d'));
     assert!(
-        ed.state.popup.is_some(),
+        ed.state.config.popup.is_some(),
         "Ctrl+d must scroll the hover popup, not close it"
     );
     ed.feed_key(key_ctrl('u'));
     assert!(
-        ed.state.popup.is_some(),
+        ed.state.config.popup.is_some(),
         "Ctrl+u must scroll the hover popup, not close it"
     );
 
@@ -249,7 +249,7 @@ fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
     // hover only closing on a mode change.
     ed.feed_key(key('j'));
     assert!(
-        ed.state.popup.is_none(),
+        ed.state.config.popup.is_none(),
         "cursor movement must dismiss the hover popup, not just a mode change"
     );
 }
@@ -282,7 +282,7 @@ fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
     let head_before = ed.current_selections().primary().head();
     ed.feed_key(key_ctrl('d'));
     assert!(
-        ed.state.popup.is_none(),
+        ed.state.config.popup.is_none(),
         "Ctrl+d on a popup with nothing to scroll must close it, not swallow the key"
     );
     assert!(
@@ -321,7 +321,7 @@ fn tall_content_docks_instead_of_using_the_drawer() {
     );
     assert!(
         matches!(
-            ed.state.popup.as_ref().map(|p| &p.layout),
+            ed.state.config.popup.as_ref().map(|p| &p.layout),
             Some(crate::ui::popup::PopupLayout::Docked)
         ),
         "tall content must still be a popup — just docked, never the drawer"
@@ -336,7 +336,7 @@ fn tall_content_docks_instead_of_using_the_drawer() {
         "the docked band's view must resolve after a frame"
     );
     assert!(
-        ed.state.drawer.is_none(),
+        ed.state.config.drawer.is_none(),
         "hover overflow must never open the pick-list drawer"
     );
 }

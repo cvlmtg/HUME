@@ -327,7 +327,7 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
         Some(current_gen),
     ));
     ed.ingest_publish_diagnostics(sid, params);
-    ed.state.decorations.set_inlay_hints(
+    ed.state.config.decorations.set_inlay_hints(
         bid,
         vec![crate::editor::decorations::InlayHintEntry {
             pos: 0,
@@ -341,7 +341,7 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
         "seed diagnostic must land"
     );
     assert!(
-        !ed.state.decorations.inlay_hints_for(bid).is_empty(),
+        !ed.state.config.decorations.inlay_hints_for(bid).is_empty(),
         "seed hint must land"
     );
 
@@ -353,7 +353,7 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
         "diagnostics for a closed buffer must not linger forever"
     );
     assert!(
-        ed.state.decorations.inlay_hints_for(bid).is_empty(),
+        ed.state.config.decorations.inlay_hints_for(bid).is_empty(),
         "decorations for a closed buffer must not linger forever"
     );
 }
@@ -389,7 +389,7 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
         Some(current_gen),
     ));
     ed.ingest_publish_diagnostics(sid, params);
-    ed.state.decorations.set_inlay_hints(
+    ed.state.config.decorations.set_inlay_hints(
         bid,
         vec![crate::editor::decorations::InlayHintEntry {
             pos: 0,
@@ -403,7 +403,7 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
         "seed diagnostic must land"
     );
     assert!(
-        !ed.state.decorations.inlay_hints_for(bid).is_empty(),
+        !ed.state.config.decorations.inlay_hints_for(bid).is_empty(),
         "seed hint must land"
     );
 
@@ -433,7 +433,7 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
         "diagnostics for a closed buffer must not linger forever"
     );
     assert!(
-        ed.state.decorations.inlay_hints_for(bid).is_empty(),
+        ed.state.config.decorations.inlay_hints_for(bid).is_empty(),
         "decorations for a closed buffer must not linger forever"
     );
     assert!(

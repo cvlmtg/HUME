@@ -53,13 +53,24 @@ fn end_to_end_drain_streams_lines_into_the_store() {
 
     let args = vec!["-c".to_string(), "printf 'a\\nb\\nc\\n'".to_string()];
     let source = spawn_line_source("sh", &args, None, b'\n', no_op_wake()).expect("spawn sh");
-    ed.state.picker.as_mut().unwrap().attach_source(source);
+    ed.state
+        .config
+        .picker
+        .as_mut()
+        .unwrap()
+        .attach_source(source);
 
     drain_until(&mut ed, |ed| {
-        ed.state.picker.as_ref().map(|p| p.total_len()).unwrap_or(0) == 3
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .map(|p| p.total_len())
+            .unwrap_or(0)
+            == 3
     });
 
-    let picker = ed.state.picker.as_ref().expect("picker still open");
+    let picker = ed.state.config.picker.as_ref().expect("picker still open");
     assert_eq!(picker.window(10).collect::<Vec<_>>(), vec!["a", "b", "c"]);
     assert!(
         !picker.has_source(),
@@ -75,17 +86,28 @@ fn end_to_end_drain_streams_lines_into_the_store() {
 fn coalesced_push_reranks_against_the_live_query() {
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
-    ed.state.picker.as_mut().unwrap().insert_char('z');
+    ed.state.config.picker.as_mut().unwrap().insert_char('z');
 
     let args = vec!["-c".to_string(), "printf 'abc\\nxyz\\n'".to_string()];
     let source = spawn_line_source("sh", &args, None, b'\n', no_op_wake()).expect("spawn sh");
-    ed.state.picker.as_mut().unwrap().attach_source(source);
+    ed.state
+        .config
+        .picker
+        .as_mut()
+        .unwrap()
+        .attach_source(source);
 
     drain_until(&mut ed, |ed| {
-        ed.state.picker.as_ref().map(|p| p.total_len()).unwrap_or(0) == 2
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .map(|p| p.total_len())
+            .unwrap_or(0)
+            == 2
     });
 
-    let picker = ed.state.picker.as_ref().unwrap();
+    let picker = ed.state.config.picker.as_ref().unwrap();
     assert_eq!(
         picker.matched_len(),
         1,
@@ -101,7 +123,12 @@ fn nonzero_exit_reports_a_status_message_with_stderr() {
 
     let args = vec!["-c".to_string(), "echo boom >&2; exit 2".to_string()];
     let source = spawn_line_source("sh", &args, None, b'\n', no_op_wake()).expect("spawn sh");
-    ed.state.picker.as_mut().unwrap().attach_source(source);
+    ed.state
+        .config
+        .picker
+        .as_mut()
+        .unwrap()
+        .attach_source(source);
 
     drain_until(&mut ed, |ed| ed.state.status_msg.is_some());
 
@@ -124,7 +151,12 @@ fn close_picker_kills_the_source_child() {
     let args = vec!["30".to_string()];
     let source = spawn_line_source("sleep", &args, None, b'\n', no_op_wake()).expect("spawn sleep");
     let pid = source.pid();
-    ed.state.picker.as_mut().unwrap().attach_source(source);
+    ed.state
+        .config
+        .picker
+        .as_mut()
+        .unwrap()
+        .attach_source(source);
 
     picker::close_picker(&mut ed.state, SteelVal::BoolV(false));
 
@@ -142,7 +174,12 @@ fn replacing_the_session_kills_the_previous_source_child() {
     let args = vec!["30".to_string()];
     let source = spawn_line_source("sleep", &args, None, b'\n', no_op_wake()).expect("spawn sleep");
     let pid = source.pid();
-    ed.state.picker.as_mut().unwrap().attach_source(source);
+    ed.state
+        .config
+        .picker
+        .as_mut()
+        .unwrap()
+        .attach_source(source);
 
     // A fresh `open_picker` call replaces (and — via `close_picker` — drops)
     // whatever session was open, same as a second `picker!` from Steel.
@@ -164,12 +201,22 @@ fn a_second_attach_source_kills_the_first_source_child() {
     let first =
         spawn_line_source("sleep", &first_args, None, b'\n', no_op_wake()).expect("spawn sleep");
     let first_pid = first.pid();
-    ed.state.picker.as_mut().unwrap().attach_source(first);
+    ed.state
+        .config
+        .picker
+        .as_mut()
+        .unwrap()
+        .attach_source(first);
 
     let second_args = vec!["30".to_string()];
     let second =
         spawn_line_source("sleep", &second_args, None, b'\n', no_op_wake()).expect("spawn sleep");
-    ed.state.picker.as_mut().unwrap().attach_source(second);
+    ed.state
+        .config
+        .picker
+        .as_mut()
+        .unwrap()
+        .attach_source(second);
 
     assert!(
         !process_is_alive(first_pid),

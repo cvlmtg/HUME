@@ -18,7 +18,7 @@ impl Editor {
     /// `queue_steel_call` never invokes it inline, matching every other
     /// Rust→Steel callback in this codebase.
     pub(super) fn handle_menu_key(&mut self, key: KeyEvent) -> bool {
-        let Some(menu) = self.state.menu.as_mut() else {
+        let Some(menu) = self.state.config.menu.as_mut() else {
             return false;
         };
         match key.code {
@@ -33,18 +33,33 @@ impl Editor {
                 true
             }
             KeyCode::Enter => {
-                let menu = self.state.menu.take().expect("checked by the caller above");
+                let menu = self
+                    .state
+                    .config
+                    .menu
+                    .take()
+                    .expect("checked by the caller above");
                 let idx = steel::rvals::SteelVal::IntV(menu.selected as isize);
                 self.queue_steel_call(menu.callback, vec![idx]);
                 true
             }
             KeyCode::Escape => {
-                let menu = self.state.menu.take().expect("checked by the caller above");
+                let menu = self
+                    .state
+                    .config
+                    .menu
+                    .take()
+                    .expect("checked by the caller above");
                 self.queue_steel_call(menu.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
                 true
             }
             _ => {
-                let menu = self.state.menu.take().expect("checked by the caller above");
+                let menu = self
+                    .state
+                    .config
+                    .menu
+                    .take()
+                    .expect("checked by the caller above");
                 self.queue_steel_call(menu.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
                 false
             }
@@ -62,12 +77,12 @@ impl Editor {
     /// `on-select` repeatedly across a browse session (Helix-style: pick a
     /// diagnostic, jump, come back, pick another).
     pub(super) fn handle_drawer_key(&mut self, key: KeyEvent) -> bool {
-        if self.state.drawer.is_none() {
+        if self.state.config.drawer.is_none() {
             return false;
         }
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
-                let drawer = self.state.drawer.as_mut().expect("checked above");
+                let drawer = self.state.config.drawer.as_mut().expect("checked above");
                 if drawer.selected + 1 < drawer.items.len() {
                     drawer.selected += 1;
                     self.clamp_drawer_scroll();
@@ -75,7 +90,7 @@ impl Editor {
                 true
             }
             KeyCode::Char('k') | KeyCode::Up => {
-                let drawer = self.state.drawer.as_mut().expect("checked above");
+                let drawer = self.state.config.drawer.as_mut().expect("checked above");
                 if drawer.selected > 0 {
                     drawer.selected -= 1;
                     self.clamp_drawer_scroll();
@@ -84,7 +99,7 @@ impl Editor {
             }
             KeyCode::Char('d') if key.modifiers.contains(Modifiers::CONTROL) => {
                 let half = (self.drawer_visible_rows() / 2).max(1);
-                if let Some(drawer) = self.state.drawer.as_mut() {
+                if let Some(drawer) = self.state.config.drawer.as_mut() {
                     drawer.selected =
                         (drawer.selected + half).min(drawer.items.len().saturating_sub(1));
                 }
@@ -93,21 +108,21 @@ impl Editor {
             }
             KeyCode::Char('u') if key.modifiers.contains(Modifiers::CONTROL) => {
                 let half = (self.drawer_visible_rows() / 2).max(1);
-                if let Some(drawer) = self.state.drawer.as_mut() {
+                if let Some(drawer) = self.state.config.drawer.as_mut() {
                     drawer.selected = drawer.selected.saturating_sub(half);
                 }
                 self.clamp_drawer_scroll();
                 true
             }
             KeyCode::Enter => {
-                let drawer = self.state.drawer.as_ref().expect("checked above");
+                let drawer = self.state.config.drawer.as_ref().expect("checked above");
                 let idx = steel::rvals::SteelVal::IntV(drawer.selected as isize);
                 let callback = drawer.callback.clone();
                 self.queue_steel_call(callback, vec![idx]);
                 true
             }
             KeyCode::Escape => {
-                let drawer = self.state.drawer.take().expect("checked above");
+                let drawer = self.state.config.drawer.take().expect("checked above");
                 self.queue_steel_call(drawer.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
                 self.state.sync_drawer_view();
                 true
@@ -131,7 +146,7 @@ impl Editor {
     /// real scroll from a popup too short to scroll, so Ctrl+d/Ctrl+u fall
     /// through to their usual buffer effect instead of being silently eaten.
     pub(super) fn scroll_popup(&mut self, down: bool) -> bool {
-        let Some(layout) = self.state.popup.as_ref().map(|p| &p.layout) else {
+        let Some(layout) = self.state.config.popup.as_ref().map(|p| &p.layout) else {
             return false;
         };
         let (inner_h, total) = match layout {
@@ -166,7 +181,7 @@ impl Editor {
         if max_scroll == 0 {
             return false;
         }
-        let Some(popup) = self.state.popup.as_mut() else {
+        let Some(popup) = self.state.config.popup.as_mut() else {
             return false;
         };
         let half = (inner_h / 2).max(1);
@@ -203,7 +218,7 @@ impl Editor {
     /// "half a page" always agrees with what's on screen.
     fn drawer_visible_rows(&self) -> usize {
         let max = self.view.last_terminal_area.height / 2;
-        let Some(drawer) = self.state.drawer.as_ref() else {
+        let Some(drawer) = self.state.config.drawer.as_ref() else {
             return 0;
         };
         let capacity = (drawer.items.len() as u16 + 1).min(max);
@@ -214,7 +229,7 @@ impl Editor {
     /// window, then syncs the view.
     fn clamp_drawer_scroll(&mut self) {
         let visible_rows = self.drawer_visible_rows();
-        let Some(drawer) = self.state.drawer.as_mut() else {
+        let Some(drawer) = self.state.config.drawer.as_mut() else {
             return;
         };
         if visible_rows > 0 {
@@ -300,6 +315,7 @@ impl Editor {
     /// before dispatching here.
     fn picker_mut(&mut self) -> &mut super::super::picker::PickerSession {
         self.state
+            .config
             .picker
             .as_mut()
             .expect("handle_picker_key is only called while state.picker.is_some()")

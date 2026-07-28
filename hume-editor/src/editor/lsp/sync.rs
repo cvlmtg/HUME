@@ -54,7 +54,7 @@ impl Editor {
             .buffers
             .get(bid)
             .language
-            .map(|id| self.state.languages.name_of(id).to_owned())
+            .map(|id| self.state.config.languages.name_of(id).to_owned())
             .expect("attached buffer always has a language");
         self.send_doc_notification(bid, DidOpenTextDocument::METHOD, move |buf, uri| {
             serde_json::json!({
@@ -160,7 +160,7 @@ pub(crate) fn flush_lsp_pending_changes(state: &mut EditorState, lsp: &mut LspSt
             // unconditionally, whether or not this buffer has anywhere
             // to send a didChange.
             diagnostics.remap_through(bid, &change.cs);
-            state.decorations.remap_through(bid, &change.cs);
+            state.config.decorations.remap_through(bid, &change.cs);
 
             let Some((server_id, uri)) = &send_target else {
                 continue; // no attached server (or no path/URI yet) — nothing to send

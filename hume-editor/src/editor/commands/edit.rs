@@ -189,7 +189,7 @@ fn do_paste(state: &mut EditorState, view: &mut EngineView, before: bool) {
     // Append when the previous command was any paste-family command (p, P, [, ]).
     // Membership is read from `CmdMeta::is_paste` — no parallel string list.
     let is_append = last_cmd
-        .and_then(|c| state.registry.get_mappable(c))
+        .and_then(|c| state.config.registry.get_mappable(c))
         .is_some_and(|cmd| cmd.meta().is_paste)
         && state.register_prefix.is_none();
 
@@ -251,7 +251,7 @@ fn open_paste_session_and_apply(
     let paste_fn = if before { paste_before } else { paste_after };
     doc_ops::apply_doc_edit_regrouped(
         &mut state.buffers,
-        &state.decorations,
+        &state.config.decorations,
         &mut state.panes.state,
         focused,
         buf,
@@ -373,7 +373,7 @@ fn do_paste_cycle(
         let paste_fn = if before { paste_before } else { paste_after };
         doc_ops::apply_doc_edit_regrouped(
             &mut state.buffers,
-            &state.decorations,
+            &state.config.decorations,
             &mut state.panes.state,
             focused,
             buf,
@@ -419,7 +419,7 @@ pub fn cmd_undo(
         }
         doc_ops::apply_doc_undo(
             &mut state.buffers,
-            &state.decorations,
+            &state.config.decorations,
             &mut state.panes.state,
             focused,
             buf,
@@ -443,7 +443,7 @@ pub fn cmd_redo(
         }
         doc_ops::apply_doc_redo(
             &mut state.buffers,
-            &state.decorations,
+            &state.config.decorations,
             &mut state.panes.state,
             focused,
             buf,

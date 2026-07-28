@@ -26,7 +26,7 @@ impl Editor {
         if self.state.buffers.get(bid).language == new_lang {
             return;
         }
-        let lang_name = new_lang.map(|id| self.state.languages.name_of(id).to_owned());
+        let lang_name = new_lang.map(|id| self.state.config.languages.name_of(id).to_owned());
         let lang_val = match lang_name.as_deref() {
             Some(name) => name.into_steelval().expect("str into_steelval"),
             None => false.into_steelval().expect("bool into_steelval"),
@@ -66,7 +66,7 @@ impl Editor {
             detect_language(
                 path.as_deref(),
                 first_line.as_deref(),
-                &self.state.languages,
+                &self.state.config.languages,
             )
         };
         self.set_buffer_language(bid, detected);
@@ -93,7 +93,7 @@ impl Editor {
     /// drains) only the buffers *it* queued, and returns to find nothing left
     /// for this call to reprocess.
     pub(super) fn detect_pending_languages(&mut self) {
-        let pending = std::mem::take(&mut self.state.pending_language_detection);
+        let pending = std::mem::take(&mut self.state.config.pending_language_detection);
         for bid in pending {
             // The buffer may have been closed by the same batch of work that
             // opened it (e.g. `close-buffer!` in the same eval) before this
@@ -156,7 +156,7 @@ impl Editor {
                             ),
                         }
                     }
-                    self.state.languages.register_identity_no_rebuild(
+                    self.state.config.languages.register_identity_no_rebuild(
                         &name,
                         &exts,
                         &valid_globs,
@@ -171,7 +171,7 @@ impl Editor {
                     highlights_path,
                     injections_path,
                 } => {
-                    match self.state.languages.attach_grammar(
+                    match self.state.config.languages.attach_grammar(
                         &name,
                         &grammar_path,
                         &symbol,
@@ -181,6 +181,7 @@ impl Editor {
                     ) {
                         Ok(_) => grammar_sweeps.push(
                             self.state
+                                .config
                                 .languages
                                 .id_of(&name)
                                 .expect("attach_grammar interns the name"),
@@ -193,7 +194,7 @@ impl Editor {
                 }
             }
         }
-        if any_identity && let Err(e) = self.state.languages.rebuild_glob_set() {
+        if any_identity && let Err(e) = self.state.config.languages.rebuild_glob_set() {
             self.state.message_log.push(
                 super::Severity::Warning,
                 format!("define-language!: glob set build failed: {e}"),

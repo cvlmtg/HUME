@@ -46,7 +46,7 @@ impl Editor {
                 // A menu/drawer consumes stray input without editing the
                 // buffer — same treatment `handle_key`'s intercepts give a
                 // stray key while one is open.
-                if self.state.menu.is_some() || self.state.drawer.is_some() {
+                if self.state.config.menu.is_some() || self.state.config.drawer.is_some() {
                     return;
                 }
                 self.state.status_msg.take();
@@ -54,7 +54,7 @@ impl Editor {
                 let buf = self.focused_buffer_id();
                 doc_ops::apply_doc_edit(
                     &mut self.state.buffers,
-                    &self.state.decorations,
+                    &self.state.config.decorations,
                     &mut self.state.panes.state,
                     focused,
                     buf,
@@ -91,7 +91,7 @@ impl Editor {
         let buf = self.focused_buffer_id();
         doc_ops::apply_doc_edit_grouped(
             &mut self.state.buffers,
-            &self.state.decorations,
+            &self.state.config.decorations,
             &mut self.state.panes.state,
             focused,
             buf,
@@ -112,7 +112,7 @@ impl Editor {
             Mode::Command => {
                 // A `(prompt! …)` session applies plain edits with no further
                 // follow-up — mirrors `handle_steel_prompt_event`'s Edited arm.
-                if self.state.steel_prompt_callback.is_none() {
+                if self.state.config.steel_prompt_callback.is_none() {
                     self.state.minibuf_completion = None;
                     self.state
                         .history

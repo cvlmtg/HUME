@@ -100,7 +100,7 @@ fn clearing_the_store_removes_the_virtual_line_next_frame() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
-    ed.state.decorations.set_virtual_lines(
+    ed.state.config.decorations.set_virtual_lines(
         "linter".to_string(),
         bid,
         vec![crate::editor::decorations::VirtualLineEntry {
@@ -130,6 +130,7 @@ fn clearing_the_store_removes_the_virtual_line_next_frame() {
     );
 
     ed.state
+        .config
         .decorations
         .set_virtual_lines("linter".to_string(), bid, vec![]);
     ed.prepare_frame(40, 8, &mut ctx);

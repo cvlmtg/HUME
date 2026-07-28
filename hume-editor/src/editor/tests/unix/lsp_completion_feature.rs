@@ -59,7 +59,7 @@ fn setup(
     // detection never ran — set the language explicitly to match the
     // "rust" server key below, which on-lsp-attach's `server-name` arg
     // (the language) must equal for register-trigger-chars! to route here.
-    let lang = ed.state.languages.intern("rust");
+    let lang = ed.state.config.languages.intern("rust");
     ed.state.buffers.get_mut(bid).language = Some(lang);
 
     let mut client = LspClient::new(sid, PathBuf::from("."));

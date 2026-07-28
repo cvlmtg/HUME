@@ -27,6 +27,7 @@ fn json_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
     let mut ed = Editor::for_testing(buf);
     let bid = ed.focused_buffer_id();
     ed.state
+        .config
         .languages
         .attach_grammar(
             "json",
@@ -37,7 +38,7 @@ fn json_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
             &mut ed.view.registry,
         )
         .expect("attach json grammar");
-    let lang = ed.state.languages.intern("json");
+    let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drains the initial parse (posted by setup_buffer_syntax)
     (ed, bid)
@@ -376,6 +377,7 @@ fn grammar_swap_clears_pending_and_full_reparses() {
     let hl_path = grammar_query_path("json");
     ed.set_buffer_language(bid, None);
     ed.state
+        .config
         .languages
         .attach_grammar(
             "json",
@@ -386,7 +388,7 @@ fn grammar_swap_clears_pending_and_full_reparses() {
             &mut ed.view.registry,
         )
         .expect("re-attach");
-    let lang = ed.state.languages.intern("json");
+    let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
 
     // After re-attach, pending_edits must be empty (fresh Syntax attachment).

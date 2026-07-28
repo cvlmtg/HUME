@@ -167,7 +167,7 @@ fn hints_land_in_the_store_at_the_correct_char_offset() {
     fire_viewport_change(&mut ed);
     settle_after_debounce(&mut ed);
 
-    let hints = ed.state.decorations.inlay_hints_for(bid);
+    let hints = ed.state.config.decorations.inlay_hints_for(bid);
     assert_eq!(hints.len(), 1);
     assert_eq!(hints[0].pos, 4);
     assert_eq!(hints[0].text, ": i32");
@@ -196,7 +196,7 @@ fn label_parts_concatenate_and_padding_becomes_literal_spaces() {
     fire_viewport_change(&mut ed);
     settle_after_debounce(&mut ed);
 
-    let hints = ed.state.decorations.inlay_hints_for(bid);
+    let hints = ed.state.config.decorations.inlay_hints_for(bid);
     assert_eq!(hints.len(), 1);
     assert_eq!(
         hints[0].text, " : i32 ",
@@ -306,7 +306,7 @@ fn an_empty_response_clears_previously_stored_hints() {
     fire_viewport_change(&mut ed);
     settle_after_debounce(&mut ed);
     assert_eq!(
-        ed.state.decorations.inlay_hints_for(bid).len(),
+        ed.state.config.decorations.inlay_hints_for(bid).len(),
         1,
         "first response must land the hint"
     );
@@ -317,7 +317,7 @@ fn an_empty_response_clears_previously_stored_hints() {
     settle_after_debounce(&mut ed);
 
     assert_eq!(
-        ed.state.decorations.inlay_hints_for(bid).len(),
+        ed.state.config.decorations.inlay_hints_for(bid).len(),
         0,
         "an empty/null inlayHint response must clear stale hints from a previous, larger response"
     );

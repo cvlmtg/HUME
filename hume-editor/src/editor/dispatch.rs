@@ -100,6 +100,7 @@ impl Editor {
         // A Lazy stub becomes SteelBacked after activation; re-query reflects that.
         if self
             .state
+            .config
             .registry
             .get_mappable(name.as_ref())
             .is_some_and(|c| c.meta().repeatable)
@@ -160,7 +161,7 @@ impl Editor {
         // (test-only) case where a SteelBacked entry exists in the registry
         // but no scripting host is installed.
         let (inline_output, cmd_arity, cmd_is_variadic) =
-            match self.state.registry.get_mappable(name) {
+            match self.state.config.registry.get_mappable(name) {
                 Some(MappableCommand::SteelBacked {
                     inline_output,
                     arity,

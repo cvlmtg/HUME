@@ -172,7 +172,7 @@ pub(super) fn run_native_body(
             // creating a standalone undo revision.
             doc_ops::apply_doc_edit(
                 &mut state.buffers,
-                &state.decorations,
+                &state.config.decorations,
                 &mut state.panes.state,
                 focused,
                 buf,
@@ -453,7 +453,7 @@ pub(super) fn apply_focused_edit(
     let buf = focused_buffer_id(state, view);
     doc_ops::apply_doc_edit(
         &mut state.buffers,
-        &state.decorations,
+        &state.config.decorations,
         &mut state.panes.state,
         focused,
         buf,
@@ -475,7 +475,7 @@ pub(super) fn apply_focused_edit_grouped(
     let buf = focused_buffer_id(state, view);
     doc_ops::apply_doc_edit_grouped(
         &mut state.buffers,
-        &state.decorations,
+        &state.config.decorations,
         &mut state.panes.state,
         focused,
         buf,

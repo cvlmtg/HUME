@@ -34,7 +34,7 @@ fn show_drawer_list_populates_model_and_view() {
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
-    assert!(ed.state.drawer.is_some());
+    assert!(ed.state.config.drawer.is_some());
     let guard = ed.state.drawer_view.read().unwrap();
     let view = guard.as_ref().expect("view must be populated on open");
     assert_eq!(view.rows, vec!["one.rs:1", "two.rs:2", "three.rs:3"]);
@@ -53,15 +53,15 @@ fn close_drawer_drops_the_callback_without_invoking_it() {
         steel::rvals::SteelVal::Void,
     )
     .unwrap();
-    assert!(ed.state.drawer.is_some());
+    assert!(ed.state.config.drawer.is_some());
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.close_drawer().unwrap();
 
-    assert!(ed.state.drawer.is_none());
+    assert!(ed.state.config.drawer.is_none());
     assert!(ed.state.drawer_view.read().unwrap().is_none());
     assert!(
-        ed.state.pending_steel_calls.is_empty(),
+        ed.state.config.pending_steel_calls.is_empty(),
         "close_drawer must not queue the callback"
     );
 }
@@ -78,7 +78,7 @@ fn esc_calls_back_with_false_and_closes() {
     ed.drain_pending_steel_calls();
 
     assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
-    assert!(ed.state.drawer.is_none());
+    assert!(ed.state.config.drawer.is_none());
     assert!(ed.state.drawer_view.read().unwrap().is_none());
 }
 
@@ -93,7 +93,10 @@ fn enter_calls_back_and_the_drawer_stays_open() {
     ed.feed_key(key_enter());
     ed.drain_pending_steel_calls();
     assert_eq!(ed.state.status_msg.clone().unwrap(), "0");
-    assert!(ed.state.drawer.is_some(), "must stay open after Enter");
+    assert!(
+        ed.state.config.drawer.is_some(),
+        "must stay open after Enter"
+    );
 
     // Move selection and fire again — the callback must still be usable
     // (cloned, not consumed by the first Enter).
@@ -101,7 +104,7 @@ fn enter_calls_back_and_the_drawer_stays_open() {
     ed.feed_key(key_enter());
     ed.drain_pending_steel_calls();
     assert_eq!(ed.state.status_msg.clone().unwrap(), "1");
-    assert!(ed.state.drawer.is_some());
+    assert!(ed.state.config.drawer.is_some());
 }
 
 // ── Selection clamps at both ends ─────────────────────────────────────────────
@@ -150,7 +153,7 @@ fn stray_key_leaves_the_drawer_open_and_uninvoked_but_still_executes() {
     ed.drain_pending_steel_calls();
 
     assert!(
-        ed.state.drawer.is_some(),
+        ed.state.config.drawer.is_some(),
         "stray key must not close the drawer"
     );
     assert!(
@@ -193,7 +196,7 @@ fn long_list_auto_scrolls_to_keep_selection_visible() {
         ed.feed_key(key_down());
     }
 
-    let drawer = ed.state.drawer.as_ref().unwrap();
+    let drawer = ed.state.config.drawer.as_ref().unwrap();
     assert_eq!(drawer.selected, 6);
     assert!(
         drawer.scroll > 0,
@@ -241,7 +244,7 @@ fn ctrl_d_pages_down_by_half_the_visible_window() {
 
     ed.feed_key(key_ctrl('d'));
     assert_eq!(
-        ed.state.drawer.as_ref().unwrap().selected,
+        ed.state.config.drawer.as_ref().unwrap().selected,
         2,
         "half of the 4 visible rows"
     );
@@ -249,7 +252,7 @@ fn ctrl_d_pages_down_by_half_the_visible_window() {
     // A second half-page crosses the visible window (0..4), so scroll must
     // advance to keep the new selection in view.
     ed.feed_key(key_ctrl('d'));
-    let drawer = ed.state.drawer.as_ref().unwrap();
+    let drawer = ed.state.config.drawer.as_ref().unwrap();
     assert_eq!(drawer.selected, 4);
     assert!(
         drawer.scroll > 0,
@@ -267,7 +270,7 @@ fn ctrl_d_clamps_at_the_last_item() {
         ed.feed_key(key_ctrl('d'));
     }
     assert_eq!(
-        ed.state.drawer.as_ref().unwrap().selected,
+        ed.state.config.drawer.as_ref().unwrap().selected,
         19,
         "clamped to the last of 20 items, not wrapped or overshot"
     );
@@ -283,7 +286,7 @@ fn ctrl_u_pages_up_by_half_the_visible_window() {
     ed.feed_key(key_ctrl('d')); // selected = 4, scroll > 0 (see above)
     ed.feed_key(key_ctrl('u'));
     assert_eq!(
-        ed.state.drawer.as_ref().unwrap().selected,
+        ed.state.config.drawer.as_ref().unwrap().selected,
         2,
         "half of the 4 visible rows, back down from 4"
     );
@@ -296,7 +299,7 @@ fn ctrl_u_clamps_at_the_first_item() {
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
     ed.feed_key(key_ctrl('u'));
-    let drawer = ed.state.drawer.as_ref().unwrap();
+    let drawer = ed.state.config.drawer.as_ref().unwrap();
     assert_eq!(drawer.selected, 0, "clamped, never underflows");
     assert_eq!(drawer.scroll, 0);
 }
@@ -326,7 +329,7 @@ fn enter_jump_lands_via_goto_location_and_drawer_stays_open() {
     let col = head - text.line_to_char(line);
     assert_eq!((line, col), (2, 1), "cursor landed at the jump target");
     assert!(
-        ed.state.drawer.is_some(),
+        ed.state.config.drawer.is_some(),
         "drawer stays open after the jump"
     );
 }

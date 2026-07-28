@@ -49,11 +49,15 @@ fn lazy_stub_present_after_init() {
     );
     assert!(
         matches!(
-            ed.state.registry.get_mappable("bar"),
+            ed.state.config.registry.get_mappable("bar"),
             Some(MappableCommand::Lazy { .. })
         ),
         "Lazy stub must be present after init; got: {:?}",
-        ed.state.registry.get_mappable("bar").map(|c| c.name())
+        ed.state
+            .config
+            .registry
+            .get_mappable("bar")
+            .map(|c| c.name())
     );
 }
 
@@ -82,11 +86,15 @@ fn first_dispatch_activates_plugin_and_runs() {
     // Stub must be replaced by a real SteelBacked command.
     assert!(
         matches!(
-            ed.state.registry.get_mappable("bar"),
+            ed.state.config.registry.get_mappable("bar"),
             Some(MappableCommand::SteelBacked { .. })
         ),
         "stub must be replaced by SteelBacked after first dispatch; got: {:?}",
-        ed.state.registry.get_mappable("bar").map(|c| c.name())
+        ed.state
+            .config
+            .registry
+            .get_mappable("bar")
+            .map(|c| c.name())
     );
 }
 
@@ -105,7 +113,7 @@ fn loop_guard_removes_stub_when_body_never_defines_command() {
     // Stub must be present before dispatch.
     assert!(
         matches!(
-            ed.state.registry.get_mappable("bar"),
+            ed.state.config.registry.get_mappable("bar"),
             Some(MappableCommand::Lazy { .. })
         ),
         "Lazy stub must be present before dispatch"
@@ -115,9 +123,13 @@ fn loop_guard_removes_stub_when_body_never_defines_command() {
 
     // Stub must have been removed by the loop guard.
     assert!(
-        ed.state.registry.get_mappable("bar").is_none(),
+        ed.state.config.registry.get_mappable("bar").is_none(),
         "stub must be removed when body never defines the command; got: {:?}",
-        ed.state.registry.get_mappable("bar").map(|c| c.name())
+        ed.state
+            .config
+            .registry
+            .get_mappable("bar")
+            .map(|c| c.name())
     );
 }
 
@@ -161,14 +173,14 @@ fn lazy_plugin_defined_language_is_registered_on_activation() {
     );
 
     assert!(
-        ed.state.languages.by_name("foo").is_none(),
+        ed.state.config.languages.by_name("foo").is_none(),
         "precondition: 'foo' must not be registered before activation"
     );
 
     type_cmd(&mut ed, ":bar");
 
     assert!(
-        ed.state.languages.by_name("foo").is_some(),
+        ed.state.config.languages.by_name("foo").is_some(),
         "a define-language! from a lazily-activated plugin body must be applied \
          in the same activation call, not stranded until :reload-config"
     );
@@ -191,21 +203,21 @@ fn set_buffer_language_reentrant_activation_uses_final_value() {
     );
     let bid = ed.focused_buffer_id();
 
-    let lang = ed.state.languages.intern("rust");
+    let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
 
     assert_eq!(
         ed.state.buffers.get(bid).language,
-        ed.state.languages.id_of("python"),
+        ed.state.config.languages.id_of("python"),
         "the plugin's own set-buffer-language! call inside its activation body must win"
     );
     assert_eq!(
-        ed.state.pending_hooks.len(),
+        ed.state.config.pending_hooks.len(),
         1,
         "exactly one OnLanguageSet hook must be queued, not a stale duplicate; got: {:?}",
-        ed.state.pending_hooks
+        ed.state.config.pending_hooks
     );
-    let (hook_id, args) = &ed.state.pending_hooks[0];
+    let (hook_id, args) = &ed.state.config.pending_hooks[0];
     assert_eq!(*hook_id, HookId::OnLanguageSet);
     assert!(
         matches!(&args[1], steel::rvals::SteelVal::StringV(s) if s.as_str() == "python"),
@@ -229,7 +241,7 @@ fn body_error_removes_stub_and_marks_failed() {
     );
     assert!(
         matches!(
-            ed.state.registry.get_mappable("bar"),
+            ed.state.config.registry.get_mappable("bar"),
             Some(MappableCommand::Lazy { .. })
         ),
         "stub must be present before dispatch"
@@ -239,7 +251,7 @@ fn body_error_removes_stub_and_marks_failed() {
 
     // Stub removed.
     assert!(
-        ed.state.registry.get_mappable("bar").is_none(),
+        ed.state.config.registry.get_mappable("bar").is_none(),
         "stub must be removed after body error"
     );
     // Plugin state is Failed.
@@ -268,21 +280,25 @@ fn unregister_dynamic_commands_clears_lazy_stubs() {
 
     assert!(
         matches!(
-            ed.state.registry.get_mappable("bar"),
+            ed.state.config.registry.get_mappable("bar"),
             Some(MappableCommand::Lazy { .. })
         ),
         "Lazy stub must be present before unregister"
     );
 
-    ed.state.registry.unregister_dynamic_commands();
+    ed.state.config.registry.unregister_dynamic_commands();
 
     assert!(
-        ed.state.registry.get_mappable("bar").is_none(),
+        ed.state.config.registry.get_mappable("bar").is_none(),
         "Lazy stub must be removed by unregister_dynamic_commands"
     );
     // Built-in commands are untouched.
     assert!(
-        ed.state.registry.get_mappable("move-right").is_some(),
+        ed.state
+            .config
+            .registry
+            .get_mappable("move-right")
+            .is_some(),
         "move-right must survive unregister_dynamic_commands"
     );
 }
@@ -320,7 +336,7 @@ fn lazy_cmd_arg_passed_on_first_call() {
     );
     assert!(
         matches!(
-            ed.state.registry.get_mappable("bar"),
+            ed.state.config.registry.get_mappable("bar"),
             Some(MappableCommand::SteelBacked { .. })
         ),
         "stub must be replaced by SteelBacked after first dispatch with arg"
@@ -342,9 +358,12 @@ fn key_press_activates_lazy_plugin_via_keymap() {
     );
     // setup_lazy_editor passes a throwaway Keymap to eval_init; bind here so
     // the key lands in the editor's actual keymap.
-    ed.state
-        .keymap
-        .bind_user_with_extend(BindMode::Normal, &[key('z')], "bar".into(), false);
+    ed.state.config.keymap.bind_user_with_extend(
+        BindMode::Normal,
+        &[key('z')],
+        "bar".into(),
+        false,
+    );
     let before = state(&ed);
 
     ed.handle_key(key('z'));
@@ -356,11 +375,15 @@ fn key_press_activates_lazy_plugin_via_keymap() {
     );
     assert!(
         matches!(
-            ed.state.registry.get_mappable("bar"),
+            ed.state.config.registry.get_mappable("bar"),
             Some(MappableCommand::SteelBacked { .. })
         ),
         "stub must be replaced by SteelBacked after command-activated; got: {:?}",
-        ed.state.registry.get_mappable("bar").map(|c| c.name())
+        ed.state
+            .config
+            .registry
+            .get_mappable("bar")
+            .map(|c| c.name())
     );
 }
 
@@ -423,11 +446,15 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     // The eager command still registered correctly before the error.
     assert!(
         matches!(
-            ed.state.registry.get_mappable("foo"),
+            ed.state.config.registry.get_mappable("foo"),
             Some(MappableCommand::SteelBacked { .. })
         ),
         "eager 'foo' must survive as SteelBacked; got: {:?}",
-        ed.state.registry.get_mappable("foo").map(|c| c.name())
+        ed.state
+            .config
+            .registry
+            .get_mappable("foo")
+            .map(|c| c.name())
     );
 }
 
@@ -511,7 +538,7 @@ fn lazy_stub_collision_lazy_vs_lazy_first_writer_wins() {
     };
     assert!(
         matches!(
-            ed.state.registry.get_mappable("bar"),
+            ed.state.config.registry.get_mappable("bar"),
             Some(MappableCommand::Lazy { plugin, .. }) if *plugin == pa_id
         ),
         "bar's Lazy stub must be owned by pa (first-writer-wins)"
@@ -1001,6 +1028,7 @@ fn native_command_survives_failed_shadowing_plugin() {
     // The native command must survive in the registry.
     assert!(
         ed.state
+            .config
             .registry
             .get_mappable("move-left")
             .is_some_and(MappableCommand::is_native),
@@ -1067,6 +1095,7 @@ fn plugin_keybinding_rolled_back_on_failed_activation() {
     );
     assert!(
         ed.state
+            .config
             .keymap
             .lookup_command(BindMode::Normal, &[key('Q')])
             .is_none(),
@@ -1150,7 +1179,7 @@ fn language_trigger_activates_on_set() {
 
     let before = state(&ed);
     let bid = ed.focused_buffer_id();
-    let lang = ed.state.languages.intern("rust");
+    let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
     ed.drain_hooks();
 
@@ -1195,7 +1224,7 @@ fn language_trigger_idempotent_on_round_trip() {
     };
     let bid = ed.focused_buffer_id();
 
-    let lang = ed.state.languages.intern("rust");
+    let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang)); // first set — activates
     ed.drain_hooks();
     assert!(
@@ -1208,10 +1237,10 @@ fn language_trigger_idempotent_on_round_trip() {
     );
 
     let after_first = state(&ed);
-    let lang = ed.state.languages.intern("toml");
+    let lang = ed.state.config.languages.intern("toml");
     ed.set_buffer_language(bid, Some(lang)); // round-trip out
     ed.drain_hooks();
-    let lang = ed.state.languages.intern("rust");
+    let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang)); // round-trip back — handler runs, no re-activation
     ed.drain_hooks();
 
@@ -1291,7 +1320,7 @@ fn language_trigger_one_to_many_activates_all() {
         repo: "tp2".to_string(),
     };
     let bid = ed.focused_buffer_id();
-    let lang = ed.state.languages.intern("rust");
+    let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
 
     assert!(
@@ -1336,7 +1365,7 @@ fn language_trigger_does_not_fire_on_unrelated_language() {
     };
     let bid = ed.focused_buffer_id();
 
-    let lang = ed.state.languages.intern("toml");
+    let lang = ed.state.config.languages.intern("toml");
     ed.set_buffer_language(bid, Some(lang)); // unrelated language
 
     assert!(
@@ -1386,7 +1415,7 @@ fn language_wildcard_trigger_activates_on_any_language() {
 
     let before = state(&ed);
     let bid = ed.focused_buffer_id();
-    let lang = ed.state.languages.intern("toml");
+    let lang = ed.state.config.languages.intern("toml");
     ed.set_buffer_language(bid, Some(lang));
     ed.drain_hooks();
 
@@ -1452,7 +1481,7 @@ fn language_wildcard_and_specific_entry_coexist() {
         repo: "tp2".to_string(),
     };
     let bid = ed.focused_buffer_id();
-    let lang = ed.state.languages.intern("toml");
+    let lang = ed.state.config.languages.intern("toml");
     ed.set_buffer_language(bid, Some(lang));
 
     assert!(
@@ -1698,11 +1727,12 @@ fn define_command_collision_with_builtin_keeps_builtin() {
     // The built-in "move-right" must survive — not replaced by SteelBacked.
     assert!(
         !matches!(
-            ed.state.registry.get_mappable("move-right"),
+            ed.state.config.registry.get_mappable("move-right"),
             Some(MappableCommand::SteelBacked { .. })
         ),
         "built-in move-right must not be replaced by Steel; got: {:?}",
         ed.state
+            .config
             .registry
             .get_mappable("move-right")
             .map(|c| c.name())
@@ -2015,7 +2045,7 @@ fn core_lsp_real_manifest_scm_resolves_via_zero_trigger_declare() {
     );
     assert!(
         matches!(
-            ed.state.registry.get_mappable("lsp-install"),
+            ed.state.config.registry.get_mappable("lsp-install"),
             Some(MappableCommand::Lazy { .. })
         ),
         "manifest.scm's #:commands entries must be registered as Lazy stubs, \
@@ -2083,7 +2113,10 @@ fn core_stdlib_real_manifest_scm_resolves_via_zero_trigger_declare() {
     );
     assert!(
         matches!(
-            ed.state.registry.get_mappable("stdlib/all-single-char?"),
+            ed.state
+                .config
+                .registry
+                .get_mappable("stdlib/all-single-char?"),
             Some(MappableCommand::Lazy { .. })
         ),
         "manifest.scm's #:commands entries must be registered as Lazy stubs, \
@@ -2143,7 +2176,7 @@ fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
     );
     assert!(
         matches!(
-            ed.state.registry.get_mappable("plum-list"),
+            ed.state.config.registry.get_mappable("plum-list"),
             Some(MappableCommand::Lazy { .. })
         ),
         "manifest.scm's #:commands entries must be registered as Lazy stubs, \
@@ -2189,6 +2222,7 @@ fn keymap_lint_silent_for_known_command() {
     // `to_editor_bind_mode` into the right trie.
     assert!(
         ed.state
+            .config
             .keymap
             .lookup_command(BindMode::Normal, &[key('Q')])
             .is_some(),
@@ -2364,7 +2398,7 @@ fn lazy_command_first_call_minibuf_arg_forwarded() {
     );
     assert!(
         matches!(
-            ed.state.registry.get_mappable("echo-arg"),
+            ed.state.config.registry.get_mappable("echo-arg"),
             Some(MappableCommand::SteelBacked { .. })
         ),
         "echo-arg stub must have activated on first dispatch"
@@ -2393,14 +2427,14 @@ fn failed_activation_removes_all_of_the_plugins_stubs_not_just_the_dispatched_on
     );
     assert!(
         matches!(
-            ed.state.registry.get_mappable("stub-a"),
+            ed.state.config.registry.get_mappable("stub-a"),
             Some(MappableCommand::Lazy { .. })
         ),
         "stub-a must be present before dispatch"
     );
     assert!(
         matches!(
-            ed.state.registry.get_mappable("stub-b"),
+            ed.state.config.registry.get_mappable("stub-b"),
             Some(MappableCommand::Lazy { .. })
         ),
         "stub-b must be present before dispatch"
@@ -2409,11 +2443,11 @@ fn failed_activation_removes_all_of_the_plugins_stubs_not_just_the_dispatched_on
     type_cmd(&mut ed, ":stub-a");
 
     assert!(
-        ed.state.registry.get_mappable("stub-a").is_none(),
+        ed.state.config.registry.get_mappable("stub-a").is_none(),
         "the dispatched stub must be gone after failed activation"
     );
     assert!(
-        ed.state.registry.get_mappable("stub-b").is_none(),
+        ed.state.config.registry.get_mappable("stub-b").is_none(),
         "a sibling stub of the same failed plugin must ALSO be gone \
          immediately — not left dangling until it is itself dispatched"
     );

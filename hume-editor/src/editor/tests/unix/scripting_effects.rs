@@ -106,7 +106,7 @@ fn effect_log_preserves_emission_order_across_kinds() {
     ed.apply_script_effects(effects);
 
     assert!(
-        ed.state.languages.by_name("widget").is_some(),
+        ed.state.config.languages.by_name("widget").is_some(),
         "language identity must be registered"
     );
     assert_eq!(
@@ -116,7 +116,7 @@ fn effect_log_preserves_emission_order_across_kinds() {
     );
     assert_eq!(
         ed.state.buffers.get(bid).language,
-        ed.state.languages.id_of("widget"),
+        ed.state.config.languages.id_of("widget"),
         "buffer language must be set"
     );
 }
@@ -281,9 +281,14 @@ fn steel_open_buffer_detects_language() {
 
     let mut ed = editor_from("-[a]>bcdef\n");
     ed.state
+        .config
         .languages
         .register_identity_no_rebuild("rust", &["rs"], &[], &[]);
-    ed.state.languages.rebuild_glob_set().expect("rebuild ok");
+    ed.state
+        .config
+        .languages
+        .rebuild_glob_set()
+        .expect("rebuild ok");
 
     let mut host = ScriptingHost::new();
     {
@@ -303,7 +308,7 @@ fn steel_open_buffer_detects_language() {
         .expect("open-buffer! must have opened the file");
     assert_eq!(
         ed.state.buffers.get(bid).language,
-        ed.state.languages.id_of("rust"),
+        ed.state.config.languages.id_of("rust"),
         "open-buffer! must detect the opened file's language"
     );
 }
@@ -358,7 +363,13 @@ fn buffer_opened_and_closed_in_one_eval_fires_neither_hook() {
         "close-buffer! must have closed the just-opened buffer"
     );
 
-    let hook_ids: Vec<HookId> = ed.state.pending_hooks.iter().map(|(id, _)| *id).collect();
+    let hook_ids: Vec<HookId> = ed
+        .state
+        .config
+        .pending_hooks
+        .iter()
+        .map(|(id, _)| *id)
+        .collect();
     assert!(
         !hook_ids.contains(&HookId::OnBufferOpen),
         "a buffer closed before its deferred OnBufferOpen fired must not announce open; got {hook_ids:?}"

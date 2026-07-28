@@ -51,19 +51,19 @@ impl Editor {
     // ── Kitty keybinds ──────────────────────────────────────────────────────────
 
     /// Apply the kitty keyboard-protocol probe result atomically: set the
-    /// runtime flag and, when enabled, install the kitty-only default keybinds
-    /// that `Keymap::default()` omits. Called once at startup after the probe
-    /// (and from headless `run_keys`, which assumes full capability) so the
-    /// binds can never diverge from the flag.
+    /// runtime flag and re-derive the keymap via the same
+    /// [`super::default_keymap_for`] `ConfigState::new` uses, so the kitty-only
+    /// default keybinds (when enabled) are installed identically at startup.
+    /// Called once at startup after the probe (and from headless `run_keys`,
+    /// which assumes full capability) so the binds can never diverge from the
+    /// flag.
     ///
-    /// Must run before `init_scripting`: it installs default binds via plain
-    /// `bind_leaf` overwrites, so calling it after `init.scm` has evaluated
-    /// would clobber any user `bind-key!` on the same keys.
+    /// Must run before `init_scripting`: it replaces the keymap wholesale, so
+    /// calling it after `init.scm` has evaluated would discard any user
+    /// `bind-key!` on top of it.
     pub(crate) fn set_kitty_support(&mut self, kitty_enabled: bool) {
         self.kitty_enabled = kitty_enabled;
-        if kitty_enabled {
-            self.state.keymap.apply_kitty_defaults();
-        }
+        self.state.config.keymap = super::default_keymap_for(kitty_enabled);
     }
 
     /// Open a file from disk, or create a new empty scratch buffer.
@@ -80,9 +80,7 @@ impl Editor {
         wake: Arc<dyn Fn() + Send + Sync>,
     ) -> io::Result<Self> {
         use super::clipboard;
-        use super::keymap::Keymap;
         use super::message_log::MessageLog;
-        use super::registry::CommandRegistry;
         use crate::editor::buffer::Buffer;
         use crate::editor::buffer::store::BufferStore;
         use crate::editor::pane_state::{PaneBufferState, PaneTransient, PaneView};
@@ -183,6 +181,9 @@ impl Editor {
         Ok(Self {
             state: super::EditorState {
                 buffers,
+                // `kitty_enabled: false` below matches: the real probe result
+                // isn't known until `set_kitty_support` runs, after `open`.
+                config: super::ConfigState::new(false),
                 mode: Mode::Normal,
                 pending_keys: Vec::new(),
                 count: None,
@@ -202,8 +203,6 @@ impl Editor {
                 summary_ttl: 0,
                 message_log: MessageLog::new(),
                 settings,
-                registry: CommandRegistry::with_defaults(),
-                keymap: Keymap::default(),
                 last_find: None,
                 force_full_redraw: false,
                 inline_output: super::InlineOutputDispatch::Inactive,
@@ -241,14 +240,7 @@ impl Editor {
                 skip_macro_record: false,
                 is_replaying: false,
                 mouse_drag_anchor: None,
-                languages: hume_treesitter::registry::LanguageRegistry::new(),
                 cwd: std::env::current_dir().unwrap_or_default(),
-                pending_hooks: Vec::new(),
-                pending_language_detection: Vec::new(),
-                pending_steel_calls: Vec::new(),
-                trigger_chars: rustc_hash::FxHashMap::default(),
-                decorations: super::decorations::DecorationStores::default(),
-                steel_prompt_callback: None,
                 lsp_completion_dismiss_pending: false,
                 completion_menu_view,
                 minibuf_completion_view,
@@ -256,14 +248,10 @@ impl Editor {
                 inlay_hint_scope: None,
                 virtual_text_fallback_scope: None,
                 runtime_scope_cache: rustc_hash::FxHashMap::default(),
-                popup: None,
                 popup_view,
                 popup_band_view,
-                menu: None,
                 menu_view,
-                drawer: None,
                 drawer_view,
-                picker: None,
                 picker_view,
                 wake: Arc::clone(&wake),
             },
@@ -1200,6 +1188,7 @@ impl Editor {
                 // resolving each source's scope name to a `ScopeId`.
                 let extra_raw: Vec<(usize, usize, String)> = self
                     .state
+                    .config
                     .decorations
                     .extra_highlights_for_buffer(bid)
                     .filter(|e| e.start < visible.end && e.end > visible.start)
@@ -1363,6 +1352,7 @@ impl Editor {
             // must stay priority-only so it never overrides that.
             let mut plugin_raw: Vec<(String, usize, String, String, i64)> = self
                 .state
+                .config
                 .decorations
                 .signs_for_buffer(bid)
                 .filter(|(_, e)| visible_lines.contains(&e.line))
@@ -1483,7 +1473,7 @@ impl Editor {
 
             let mut by_line: rustc_hash::FxHashMap<usize, Vec<InlineInsert>> =
                 rustc_hash::FxHashMap::default();
-            for entry in self.state.decorations.inlay_hints_for(bid) {
+            for entry in self.state.config.decorations.inlay_hints_for(bid) {
                 if !visible.contains(&entry.pos) {
                     continue;
                 }
@@ -1541,10 +1531,11 @@ impl Editor {
             // *before* borrowing buffer text below: `self.runtime_scope`
             // needs `&mut self`, which can't overlap with either the
             // immutable borrow `inline_diagnostics_for` holds on
-            // `self.state.decorations` or the one `text` will hold on
+            // `self.state.config.decorations` or the one `text` will hold on
             // `self.state.buffers`.
             let entries: Vec<(usize, String, String)> = self
                 .state
+                .config
                 .decorations
                 .inline_diagnostics_for(bid)
                 .iter()
@@ -1602,7 +1593,7 @@ impl Editor {
     pub(super) fn update_virtual_line_providers(&mut self) {
         use hume_engine::providers::{VirtualLine, VirtualLineAnchor};
 
-        let current_gen = self.state.decorations.virtual_lines_generation();
+        let current_gen = self.state.config.decorations.virtual_lines_generation();
         let panes: Vec<(PaneId, BufferId)> = self
             .view
             .panes
@@ -1627,9 +1618,10 @@ impl Editor {
 
             // Collected into an owned Vec first: `self.runtime_scope` needs
             // `&mut self`, which can't overlap with the immutable borrow
-            // `virtual_lines_for_buffer` holds on `self.state.decorations`.
+            // `virtual_lines_for_buffer` holds on `self.state.config.decorations`.
             let entries: Vec<(usize, String, Option<String>)> = self
                 .state
+                .config
                 .decorations
                 .virtual_lines_for_buffer(bid)
                 .map(|e| (e.line, e.text.clone(), e.scope.clone()))
@@ -1768,7 +1760,7 @@ impl Editor {
     /// would position against the previous frame's geometry.
     pub(super) fn sync_popup_view(&mut self, ctx: &mut RenderContext) {
         let is_cursor = matches!(
-            self.state.popup.as_ref().map(|m| &m.layout),
+            self.state.config.popup.as_ref().map(|m| &m.layout),
             Some(crate::ui::popup::PopupLayout::Cursor)
         );
         if !is_cursor
@@ -1796,7 +1788,7 @@ impl Editor {
             // `max_width`, so an unchanged width across frames is O(1), not
             // a re-wrap.
             let text = self.resolve_popup_text(max_width)?;
-            let model_scroll = self.state.popup.as_ref()?.scroll;
+            let model_scroll = self.state.config.popup.as_ref()?.scroll;
             let (outer_w, outer_h) = crate::ui::menu_box::outer_dims(&text.lines, max_height);
             let (x, y, outer_w, outer_h) =
                 crate::ui::popup::resolve_popup_geometry(outer_w, outer_h, anchor, pane_rect);
@@ -1826,7 +1818,7 @@ impl Editor {
     /// [`crate::ui::popup::ResolvedPopupText`] for the invalidation contract.
     ///
     /// Returns `None` only if no popup is open — should not happen at either
-    /// call site (both gated on `self.state.popup` being `Some`), but mirrors
+    /// call site (both gated on `self.state.config.popup` being `Some`), but mirrors
     /// the `Option`-chaining style of the surrounding sync functions rather
     /// than `.expect`-ing a caller invariant.
     fn resolve_popup_text(
@@ -1834,7 +1826,7 @@ impl Editor {
         max_width: u16,
     ) -> Option<crate::ui::popup::ResolvedPopupText> {
         let theme = &self.view.theme;
-        let model = self.state.popup.as_mut()?;
+        let model = self.state.config.popup.as_mut()?;
         let stale = model.resolved.as_ref().is_none_or(|r| r.width != max_width);
         if stale {
             let (lines, styled_rows) = if let Some(popup_syntax) = model.syntax.as_ref() {
@@ -1878,7 +1870,7 @@ impl Editor {
     /// its height ceiling.
     pub(super) fn sync_popup_band_view(&mut self) {
         let is_docked = matches!(
-            self.state.popup.as_ref().map(|m| &m.layout),
+            self.state.config.popup.as_ref().map(|m| &m.layout),
             Some(crate::ui::popup::PopupLayout::Docked)
         );
         if !is_docked
@@ -1903,7 +1895,7 @@ impl Editor {
         let area = self.view.last_terminal_area;
         let max_width = area.width.saturating_sub(2);
         let resolved = self.resolve_popup_text(max_width).map(|text| {
-            let model_scroll = self.state.popup.as_ref().map_or(0, |m| m.scroll);
+            let model_scroll = self.state.config.popup.as_ref().map_or(0, |m| m.scroll);
             // Shares `crate::ui::popup::band_capacity` with
             // `PopupBandWidget::height`, so the scroll clamp always agrees
             // with what the engine will next paint (same pattern as
@@ -1933,7 +1925,7 @@ impl Editor {
     /// (no word-wrap: menu entries are short labels, not prose) and
     /// `selected` marks the highlighted row.
     pub(super) fn sync_menu_view(&self, ctx: &mut RenderContext) {
-        if self.state.menu.is_none()
+        if self.state.config.menu.is_none()
             && self
                 .state
                 .menu_view
@@ -1944,7 +1936,7 @@ impl Editor {
             return;
         }
 
-        let resolved = self.state.menu.as_ref().and_then(|model| {
+        let resolved = self.state.config.menu.as_ref().and_then(|model| {
             let (anchor, pane_rect, _max_width, _max_height) =
                 self.popup_anchor_and_bounds(ctx, self.focused_cursor_char())?;
             let lines: Vec<String> = model.items.clone();
@@ -2045,7 +2037,7 @@ impl Editor {
     /// resize between the last keystroke and this frame self-heals here
     /// rather than leaving a stale scroll offset from a taller frame.
     pub(super) fn sync_picker_view(&mut self) {
-        if self.state.picker.is_none()
+        if self.state.config.picker.is_none()
             && self
                 .state
                 .picker_view
@@ -2057,7 +2049,7 @@ impl Editor {
         }
 
         let geo = crate::ui::picker_panel::panel_geometry(self.view.last_pane_area);
-        let resolved = match (self.state.picker.as_mut(), geo) {
+        let resolved = match (self.state.config.picker.as_mut(), geo) {
             (Some(session), Some(geo)) => {
                 session.move_selection(0, geo.list_rows);
                 let rows: Vec<String> = session.window(geo.list_rows).map(str::to_string).collect();

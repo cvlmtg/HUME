@@ -121,7 +121,7 @@ fn hook_feedback_loop_is_cut_off_by_drain_cap() {
 
     // Kick off the ping-pong: aaa → handler sets bbb → handler sets aaa → …
     let bid = ed.focused_buffer_id();
-    let lang = ed.state.languages.intern("aaa");
+    let lang = ed.state.config.languages.intern("aaa");
     ed.set_buffer_language(bid, Some(lang));
     ed.drain_hooks(); // must return, not hang
 
@@ -133,7 +133,7 @@ fn hook_feedback_loop_is_cut_off_by_drain_cap() {
         "drain cap must log an Error naming the hook cascade"
     );
     assert!(
-        ed.state.pending_hooks.is_empty(),
+        ed.state.config.pending_hooks.is_empty(),
         "pending hooks must be dropped when the cap fires"
     );
 }
@@ -171,7 +171,7 @@ fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
     ed.scripting = Some(host);
 
     let bid = ed.focused_buffer_id();
-    let lang = ed.state.languages.intern("start");
+    let lang = ed.state.config.languages.intern("start");
     ed.set_buffer_language(bid, Some(lang));
     ed.drain_hooks(); // must return promptly, not after 2^100 evals
 
@@ -183,7 +183,7 @@ fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
         "drain cap must log an Error naming the hook cascade"
     );
     assert!(
-        ed.state.pending_hooks.is_empty(),
+        ed.state.config.pending_hooks.is_empty(),
         "pending hooks must be dropped when the cap fires"
     );
 }
@@ -225,7 +225,7 @@ fn startup_hooks_require_explicit_drain() {
 
     // Hook is enqueued but has not fired yet.
     assert!(
-        !ed.state.pending_hooks.is_empty(),
+        !ed.state.config.pending_hooks.is_empty(),
         "pending_hooks must be queued after fire_hook_silent — drain_hooks not called yet"
     );
 
@@ -234,7 +234,7 @@ fn startup_hooks_require_explicit_drain() {
     // drain_hooks fires the enqueued hooks.
     ed.drain_hooks();
     assert!(
-        ed.state.pending_hooks.is_empty(),
+        ed.state.config.pending_hooks.is_empty(),
         "pending_hooks must be empty after drain_hooks"
     );
     assert_ne!(
@@ -274,16 +274,27 @@ fn on_buffer_open_queued_after_on_language_set() {
     .unwrap();
     ed.scripting = Some(host);
     ed.state
+        .config
         .languages
         .register_identity_no_rebuild("rust", &["rs"], &[], &[]);
-    ed.state.languages.rebuild_glob_set().expect("rebuild ok");
+    ed.state
+        .config
+        .languages
+        .rebuild_glob_set()
+        .expect("rebuild ok");
 
     let mut doc = Buffer::scratch();
     doc.path = Some(std::path::PathBuf::from("/tmp/foo.rs"));
     ed.open_buffer(doc);
 
     // Inspect the queue before draining — drain_hooks would empty it.
-    let hook_order: Vec<HookId> = ed.state.pending_hooks.iter().map(|(id, _)| *id).collect();
+    let hook_order: Vec<HookId> = ed
+        .state
+        .config
+        .pending_hooks
+        .iter()
+        .map(|(id, _)| *id)
+        .collect();
     assert_eq!(
         hook_order,
         vec![HookId::OnLanguageSet, HookId::OnBufferOpen],

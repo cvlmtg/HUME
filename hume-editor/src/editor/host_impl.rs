@@ -95,13 +95,13 @@ impl<'a> EditorHostImpl<'a> {
         lang: &str,
         text: &str,
     ) -> Option<crate::ui::popup::MarkupSyntax> {
-        let lang_id = self.state.languages.id_of(lang)?;
-        let bundle = std::sync::Arc::clone(self.state.languages.grammar(lang_id)?);
+        let lang_id = self.state.config.languages.id_of(lang)?;
+        let bundle = std::sync::Arc::clone(self.state.config.languages.grammar(lang_id)?);
         let text = hume_editing::text::Text::from(text);
         let syntax = hume_treesitter::syntax::Syntax::attach_sync(
             bundle,
             &text,
-            &self.state.languages.grammar_snapshot(),
+            &self.state.config.languages.grammar_snapshot(),
         );
         Some(crate::ui::popup::MarkupSyntax { syntax, text })
     }
@@ -176,7 +176,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     }
     fn buffer_stored_language(&self, id: BufferId) -> Option<String> {
         let lang_id = self.buffer(id)?.language?;
-        Some(self.state.languages.name_of(lang_id).to_owned())
+        Some(self.state.config.languages.name_of(lang_id).to_owned())
     }
 
     // ── Buffer lifecycle ─────────────────────────────────────────────────────
@@ -290,6 +290,7 @@ impl<'a> LanguageHost for EditorHostImpl<'a> {
         injections_path: Option<&Path>,
     ) -> Result<(), String> {
         self.state
+            .config
             .languages
             .attach_grammar(
                 name,
@@ -304,30 +305,36 @@ impl<'a> LanguageHost for EditorHostImpl<'a> {
     }
 
     fn has_grammar(&self, language: &str) -> bool {
-        self.state.languages.has_grammar(language)
+        self.state.config.languages.has_grammar(language)
     }
 
     fn register_trigger_chars(&mut self, source: String, language: String, chars: Vec<char>) {
         if chars.is_empty() {
-            self.state.trigger_chars.remove(&(source, language));
+            self.state.config.trigger_chars.remove(&(source, language));
         } else {
-            self.state.trigger_chars.insert((source, language), chars);
+            self.state
+                .config
+                .trigger_chars
+                .insert((source, language), chars);
         }
     }
 }
 
 impl<'a> CommandHost for EditorHostImpl<'a> {
     fn register_command(&mut self, def: hume_scripting::SteelCmdDef) -> Result<(), String> {
-        match self.state.registry.get_mappable(&def.name) {
+        match self.state.config.registry.get_mappable(&def.name) {
             Some(MappableCommand::Lazy { .. }) | None => {
-                self.state.registry.register(MappableCommand::SteelBacked {
-                    name: def.name.into(),
-                    doc: def.doc.into(),
-                    arity: def.arity,
-                    is_variadic: def.is_variadic,
-                    inline_output: def.inline_output,
-                    repeatable: def.repeatable,
-                });
+                self.state
+                    .config
+                    .registry
+                    .register(MappableCommand::SteelBacked {
+                        name: def.name.into(),
+                        doc: def.doc.into(),
+                        arity: def.arity,
+                        is_variadic: def.is_variadic,
+                        inline_output: def.inline_output,
+                        repeatable: def.repeatable,
+                    });
                 Ok(())
             }
             Some(_) => Err(format!(
@@ -338,7 +345,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
     }
 
     fn unregister_command(&mut self, name: &str) {
-        self.state.registry.unregister(name);
+        self.state.config.registry.unregister(name);
     }
 
     fn register_lazy_command(
@@ -347,7 +354,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         plugin: &hume_scripting::PluginId,
     ) -> Result<(), String> {
         if let Some(MappableCommand::Lazy { plugin: owner, .. }) =
-            self.state.registry.get_mappable(name)
+            self.state.config.registry.get_mappable(name)
         {
             return if owner == plugin {
                 // Duplicate declare-plugin call for the same plugin — no-op;
@@ -357,10 +364,10 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
                 Err(format!("'{name}' already claimed by lazy plugin '{owner}'"))
             };
         }
-        if self.state.registry.contains(name) {
+        if self.state.config.registry.contains(name) {
             return Err(format!("'{name}' conflicts with an existing command"));
         }
-        self.state.registry.register(MappableCommand::Lazy {
+        self.state.config.registry.register(MappableCommand::Lazy {
             name: name.to_owned().into(),
             plugin: plugin.clone(),
         });
@@ -368,14 +375,14 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
     }
 
     fn lazy_command_owner(&self, name: &str) -> Option<hume_scripting::PluginId> {
-        match self.state.registry.get_mappable(name) {
+        match self.state.config.registry.get_mappable(name) {
             Some(MappableCommand::Lazy { plugin, .. }) => Some(plugin.clone()),
             _ => None,
         }
     }
 
     fn unregister_lazy_stubs_of(&mut self, plugin: &hume_scripting::PluginId) {
-        self.state.registry.unregister_lazy_stubs_of(plugin);
+        self.state.config.registry.unregister_lazy_stubs_of(plugin);
     }
 
     fn is_valid_register_name(&self, ch: char) -> bool {
@@ -384,6 +391,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
 
     fn command_is_native(&self, name: &str) -> Result<bool, String> {
         self.state
+            .config
             .registry
             .get_mappable(name)
             .map(MappableCommand::is_native)
@@ -397,7 +405,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         extend: bool,
         register: Option<char>,
     ) -> Result<(), String> {
-        let Some(cmd) = self.state.registry.get_mappable(name).cloned() else {
+        let Some(cmd) = self.state.config.registry.get_mappable(name).cloned() else {
             return Err(format!("unknown command: {name}"));
         };
         if !cmd.is_native() {
@@ -707,7 +715,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
                 crate::editor::decorations::InlayHintEntry { pos, text, before }
             })
             .collect();
-        self.state.decorations.set_inlay_hints(bid, entries);
+        self.state.config.decorations.set_inlay_hints(bid, entries);
     }
 
     fn set_signs(
@@ -727,7 +735,10 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
                 },
             )
             .collect();
-        self.state.decorations.set_signs(source, bid, entries);
+        self.state
+            .config
+            .decorations
+            .set_signs(source, bid, entries);
     }
 
     fn set_virtual_lines(
@@ -747,6 +758,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             )
             .collect();
         self.state
+            .config
             .decorations
             .set_virtual_lines(source, bid, entries);
     }
@@ -768,6 +780,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             )
             .collect();
         self.state
+            .config
             .decorations
             .set_extra_highlights(source, bid, entries);
     }
@@ -783,7 +796,10 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
                 },
             )
             .collect();
-        self.state.decorations.set_inline_diagnostics(bid, entries);
+        self.state
+            .config
+            .decorations
+            .set_inline_diagnostics(bid, entries);
     }
 
     fn diagnostics_for_buffer(
@@ -924,7 +940,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         // session is still open (it closes only after the command
         // returns). `steel_prompt_callback` is only `Some` once a *prior*
         // `prompt!` call has actually taken over the session.
-        if self.state.steel_prompt_callback.is_some() {
+        if self.state.config.steel_prompt_callback.is_some() {
             return Err("prompt!: a minibuffer session is already open".to_string());
         }
         let cursor = prefill.len();
@@ -933,7 +949,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             input: prefill,
             cursor,
         });
-        self.state.steel_prompt_callback = Some(callback);
+        self.state.config.steel_prompt_callback = Some(callback);
         self.state.history.begin_session_all();
         self.state.set_mode(crate::editor::Mode::Command);
         Ok(())
@@ -953,7 +969,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             crate::ui::popup::PopupLayout::Cursor
         };
         let syntax = lang.and_then(|lang| self.build_markup_syntax(&lang, &text));
-        self.state.popup = Some(crate::ui::popup::PopupModel {
+        self.state.config.popup = Some(crate::ui::popup::PopupModel {
             text,
             kind,
             scroll: 0,
@@ -965,7 +981,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     }
 
     fn close_popup(&mut self) -> Result<(), String> {
-        self.state.popup = None;
+        self.state.config.popup = None;
         Ok(())
     }
 
@@ -983,7 +999,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         if self.state.mode() == hume_engine::types::EditorMode::Insert {
             return Err("show-menu!: not available in Insert mode".to_string());
         }
-        self.state.menu = Some(crate::ui::popup::MenuModel {
+        self.state.config.menu = Some(crate::ui::popup::MenuModel {
             items,
             selected: 0,
             callback,
@@ -992,7 +1008,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     }
 
     fn close_menu(&mut self) -> Result<(), String> {
-        self.state.menu = None;
+        self.state.config.menu = None;
         Ok(())
     }
 
@@ -1002,7 +1018,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String> {
-        self.state.drawer = Some(crate::ui::drawer::DrawerModel {
+        self.state.config.drawer = Some(crate::ui::drawer::DrawerModel {
             items,
             selected: 0,
             scroll: 0,
@@ -1013,7 +1029,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     }
 
     fn close_drawer(&mut self) -> Result<(), String> {
-        self.state.drawer = None;
+        self.state.config.drawer = None;
         self.state.sync_drawer_view();
         Ok(())
     }
@@ -1037,7 +1053,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     }
 
     fn picker_push(&mut self, token: u64, items: Vec<(String, steel::rvals::SteelVal)>) -> bool {
-        let Some(session) = self.state.picker.as_mut() else {
+        let Some(session) = self.state.config.picker.as_mut() else {
             return false;
         };
         let picker_items = items
@@ -1055,7 +1071,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         cwd: Option<PathBuf>,
         nul: bool,
     ) -> Result<bool, String> {
-        let Some(session) = self.state.picker.as_mut() else {
+        let Some(session) = self.state.config.picker.as_mut() else {
             return Ok(false);
         };
         if session.token() != token {
@@ -1071,6 +1087,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         )
         .map_err(|e| format!("cannot run '{cmd}': {e}"))?;
         self.state
+            .config
             .picker
             .as_mut()
             .expect("checked Some above")

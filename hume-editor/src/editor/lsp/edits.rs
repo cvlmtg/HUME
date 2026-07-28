@@ -135,7 +135,7 @@ fn commit_changeset(state: &mut EditorState, bid: BufferId, cs: ChangeSet) -> Ch
     let cs_for_return = cs.clone();
     doc_ops::apply_doc_edit(
         &mut state.buffers,
-        &state.decorations,
+        &state.config.decorations,
         &mut state.panes.state,
         state.focused_pane_id,
         bid,

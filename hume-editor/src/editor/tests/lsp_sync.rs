@@ -42,6 +42,7 @@ fn attached_editor(tmp: &tempfile::TempDir) -> (Editor, BufferId, NotificationLo
     let (backend, log, _requests) = RecordingLspBackend::with_default_handshake();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     ed.state
+        .config
         .languages
         .register_identity("rust", &["rs"], &[], &[])
         .unwrap();
@@ -133,6 +134,7 @@ fn did_open_is_queued_until_the_handshake_completes_then_flushes_in_order() {
     let (backend, log, _requests) = RecordingLspBackend::with_default_handshake();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     ed.state
+        .config
         .languages
         .register_identity("rust", &["rs"], &[], &[])
         .unwrap();
@@ -329,6 +331,7 @@ fn register_lsp_server_init_options_reach_the_initialize_request() {
     let (backend, _notifications, requests) = RecordingLspBackend::with_default_handshake();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     ed.state
+        .config
         .languages
         .register_identity("rust", &["rs"], &[], &[])
         .unwrap();

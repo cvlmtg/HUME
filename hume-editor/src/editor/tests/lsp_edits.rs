@@ -632,9 +632,14 @@ fn server_initiated_apply_edit_detects_language_of_newly_opened_file() {
 
     let mut ed = editor_from("-[x]>\n");
     ed.state
+        .config
         .languages
         .register_identity_no_rebuild("rust", &["rs"], &[], &[]);
-    ed.state.languages.rebuild_glob_set().expect("rebuild ok");
+    ed.state
+        .config
+        .languages
+        .rebuild_glob_set()
+        .expect("rebuild ok");
 
     let params = serde_json::json!({
         "edit": {
@@ -656,7 +661,7 @@ fn server_initiated_apply_edit_detects_language_of_newly_opened_file() {
         .expect("workspace/applyEdit must have opened the file as a buffer");
     assert_eq!(
         ed.state.buffers.get(bid).language,
-        ed.state.languages.id_of("rust"),
+        ed.state.config.languages.id_of("rust"),
         "workspace/applyEdit must detect the newly-opened file's language"
     );
 }

@@ -79,10 +79,12 @@ fn attach_then_set_language_attaches_syntax() {
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     ed.state
+        .config
         .languages
         .register_identity("json", &["json"], &[], &[])
         .unwrap();
     ed.state
+        .config
         .languages
         .attach_grammar(
             "json",
@@ -93,7 +95,7 @@ fn attach_then_set_language_attaches_syntax() {
             &mut ed.view.registry,
         )
         .unwrap();
-    let lang = ed.state.languages.intern("json");
+    let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers();
     assert!(
@@ -123,10 +125,12 @@ fn clear_language_detaches_syntax_keeps_identity() {
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     ed.state
+        .config
         .languages
         .register_identity("json", &["json"], &[], &[])
         .unwrap();
     ed.state
+        .config
         .languages
         .attach_grammar(
             "json",
@@ -137,7 +141,7 @@ fn clear_language_detaches_syntax_keeps_identity() {
             &mut ed.view.registry,
         )
         .unwrap();
-    let lang = ed.state.languages.intern("json");
+    let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     assert!(ed.state.buffers.get(bid).syntax.is_some());
 
@@ -148,7 +152,7 @@ fn clear_language_detaches_syntax_keeps_identity() {
     );
     // Identity survives detach — grammar is gone, language definition is not.
     assert!(
-        ed.state.languages.by_name("json").is_some(),
+        ed.state.config.languages.by_name("json").is_some(),
         "identity must survive grammar detach"
     );
 }
@@ -163,11 +167,12 @@ fn sweep_attaches_syntax_on_matching_language() {
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     ed.state
+        .config
         .languages
         .register_identity("json", &["json"], &[], &[])
         .unwrap();
     // Set language BEFORE grammar is attached — no syntax yet.
-    let lang = ed.state.languages.intern("json");
+    let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     assert!(
         ed.state.buffers.get(bid).syntax.is_none(),
@@ -175,6 +180,7 @@ fn sweep_attaches_syntax_on_matching_language() {
     );
 
     ed.state
+        .config
         .languages
         .attach_grammar(
             "json",
@@ -185,7 +191,7 @@ fn sweep_attaches_syntax_on_matching_language() {
             &mut ed.view.registry,
         )
         .unwrap();
-    let json_id = ed.state.languages.intern("json");
+    let json_id = ed.state.config.languages.intern("json");
     ed.sweep_buffers_for_grammars(vec![json_id]);
     assert!(
         ed.state.buffers.get(bid).syntax.is_some(),
@@ -203,16 +209,17 @@ fn sweep_no_op_for_nonmatching_language() {
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     ed.state
+        .config
         .languages
         .register_identity("json", &["json"], &[], &[])
         .unwrap();
     // Set language but don't attach grammar yet — parser stays absent.
-    let lang = ed.state.languages.intern("json");
+    let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     assert!(ed.state.buffers.get(bid).syntax.is_none());
 
     // Sweep for a different language — must leave the json buffer untouched.
-    let rust_id = ed.state.languages.intern("rust");
+    let rust_id = ed.state.config.languages.intern("rust");
     ed.sweep_buffers_for_grammars(vec![rust_id]);
     assert!(
         ed.state.buffers.get(bid).syntax.is_none(),
@@ -221,6 +228,7 @@ fn sweep_no_op_for_nonmatching_language() {
 
     // Sanity flip: sweeping "json" does attach.
     ed.state
+        .config
         .languages
         .attach_grammar(
             "json",
@@ -231,7 +239,7 @@ fn sweep_no_op_for_nonmatching_language() {
             &mut ed.view.registry,
         )
         .unwrap();
-    let json_id = ed.state.languages.intern("json");
+    let json_id = ed.state.config.languages.intern("json");
     ed.sweep_buffers_for_grammars(vec![json_id]);
     assert!(
         ed.state.buffers.get(bid).syntax.is_some(),
@@ -249,10 +257,12 @@ fn reparse_advances_parsed_gen_after_edit() {
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     ed.state
+        .config
         .languages
         .register_identity("json", &["json"], &[], &[])
         .unwrap();
     ed.state
+        .config
         .languages
         .attach_grammar(
             "json",
@@ -263,7 +273,7 @@ fn reparse_advances_parsed_gen_after_edit() {
             &mut ed.view.registry,
         )
         .unwrap();
-    let lang = ed.state.languages.intern("json");
+    let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drain the initial parse result
 
@@ -340,10 +350,12 @@ fn reparse_detaches_when_buffer_exceeds_max_bytes() {
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     ed.state
+        .config
         .languages
         .register_identity("json", &["json"], &[], &[])
         .unwrap();
     ed.state
+        .config
         .languages
         .attach_grammar(
             "json",
@@ -354,7 +366,7 @@ fn reparse_detaches_when_buffer_exceeds_max_bytes() {
             &mut ed.view.registry,
         )
         .unwrap();
-    let lang = ed.state.languages.intern("json");
+    let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     assert!(
         ed.state.buffers.get(bid).syntax.is_some(),
@@ -383,19 +395,21 @@ fn language_has_grammar_false_for_identity_only_true_after_attach() {
     let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[a]>b\n");
     ed.state
+        .config
         .languages
         .register_identity("json", &["json"], &[], &[])
         .unwrap();
     assert!(
-        !ed.state.languages.has_grammar("json"),
+        !ed.state.config.languages.has_grammar("json"),
         "identity without grammar → has_grammar false"
     );
     assert!(
-        !ed.state.languages.has_grammar("unknown"),
+        !ed.state.config.languages.has_grammar("unknown"),
         "unknown language → has_grammar false"
     );
 
     ed.state
+        .config
         .languages
         .attach_grammar(
             "json",
@@ -407,7 +421,7 @@ fn language_has_grammar_false_for_identity_only_true_after_attach() {
         )
         .unwrap();
     assert!(
-        ed.state.languages.has_grammar("json"),
+        ed.state.config.languages.has_grammar("json"),
         "has_grammar must be true after attach"
     );
 }
@@ -429,10 +443,12 @@ fn replace_buffer_in_place_clears_engine_syntax_state() {
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     ed.state
+        .config
         .languages
         .register_identity("json", &["json"], &[], &[])
         .unwrap();
     ed.state
+        .config
         .languages
         .attach_grammar(
             "json",
@@ -443,7 +459,7 @@ fn replace_buffer_in_place_clears_engine_syntax_state() {
             &mut ed.view.registry,
         )
         .unwrap();
-    let lang = ed.state.languages.intern("json");
+    let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers();
     assert!(
@@ -480,10 +496,12 @@ fn reparse_reattaches_after_shrink_under_cap() {
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     ed.state
+        .config
         .languages
         .register_identity("json", &["json"], &[], &[])
         .unwrap();
     ed.state
+        .config
         .languages
         .attach_grammar(
             "json",
@@ -494,7 +512,7 @@ fn reparse_reattaches_after_shrink_under_cap() {
             &mut ed.view.registry,
         )
         .unwrap();
-    let lang = ed.state.languages.intern("json");
+    let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     assert!(
         ed.state.buffers.get(bid).syntax.is_some(),
@@ -558,10 +576,12 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
         .set_path(Some(std::path::PathBuf::from("data.json")));
 
     ed.state
+        .config
         .languages
         .register_identity("json", &["json"], &[], &[])
         .unwrap();
     ed.state
+        .config
         .languages
         .attach_grammar(
             "json",
@@ -572,7 +592,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
             &mut ed.view.registry,
         )
         .unwrap();
-    let lang = ed.state.languages.intern("json");
+    let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers();
 
@@ -646,10 +666,12 @@ fn parse_worker_result_is_async_then_installed() {
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     ed.state
+        .config
         .languages
         .register_identity("json", &["json"], &[], &[])
         .unwrap();
     ed.state
+        .config
         .languages
         .attach_grammar(
             "json",
@@ -660,7 +682,7 @@ fn parse_worker_result_is_async_then_installed() {
             &mut ed.view.registry,
         )
         .unwrap();
-    let lang = ed.state.languages.intern("json");
+    let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drain initial parse result
 
@@ -720,14 +742,17 @@ fn grammar_swap_clears_stale_in_flight() {
 
     // Register json and set buffer to json.
     ed.state
+        .config
         .languages
         .register_identity("json", &["json"], &[], &[])
         .unwrap();
     ed.state
+        .config
         .languages
         .register_identity("rust", &["rs"], &[], &[])
         .unwrap();
     ed.state
+        .config
         .languages
         .attach_grammar(
             "json",
@@ -738,13 +763,14 @@ fn grammar_swap_clears_stale_in_flight() {
             &mut ed.view.registry,
         )
         .unwrap();
-    let lang = ed.state.languages.intern("json");
+    let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drain json parse result
 
     // Attach rust grammar and sweep — this should clear any json in-flight and post fresh.
     let rust_bundle = ed
         .state
+        .config
         .languages
         .attach_grammar(
             "rust",
@@ -755,7 +781,7 @@ fn grammar_swap_clears_stale_in_flight() {
             &mut ed.view.registry,
         )
         .unwrap();
-    let lang = ed.state.languages.intern("rust");
+    let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drain rust parse result
 
@@ -832,10 +858,12 @@ fn rust_function_highlight_snapshot() {
 
     let bid = ed.focused_buffer_id();
     ed.state
+        .config
         .languages
         .register_identity("rust", &["rs"], &[], &[])
         .unwrap();
     ed.state
+        .config
         .languages
         .attach_grammar(
             "rust",
@@ -849,7 +877,7 @@ fn rust_function_highlight_snapshot() {
     // Bake after scopes are interned so theme.resolve() returns correct styles.
     ed.view.theme.bake(&ed.view.registry);
 
-    let lang = ed.state.languages.intern("rust");
+    let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
     // Drain the parse result posted synchronously inside setup_buffer_syntax
     // (InlineParseBackend completes the parse inside post; drain installs the tree).

@@ -163,7 +163,7 @@ fn single_element_array_jumps_directly() {
         1,
         "a length-1 Location[] must jump directly, not open the drawer"
     );
-    assert!(ed.state.drawer.is_none());
+    assert!(ed.state.config.drawer.is_none());
 }
 
 #[test]
@@ -332,9 +332,14 @@ fn goto_to_an_unopened_file_detects_its_language() {
         backend.respond_to("textDocument/definition", loc(&other_uri, 0, 3));
     });
     ed.state
+        .config
         .languages
         .register_identity_no_rebuild("rust", &["rs"], &[], &[]);
-    ed.state.languages.rebuild_glob_set().expect("rebuild ok");
+    ed.state
+        .config
+        .languages
+        .rebuild_glob_set()
+        .expect("rebuild ok");
 
     run_goto(&mut ed, ":lsp-goto-definition");
 
@@ -345,7 +350,7 @@ fn goto_to_an_unopened_file_detects_its_language() {
         .expect("goto-location! must have opened the target file");
     assert_eq!(
         ed.state.buffers.get(bid).language,
-        ed.state.languages.id_of("rust"),
+        ed.state.config.languages.id_of("rust"),
         "the goto-opened file must have its language detected"
     );
 }

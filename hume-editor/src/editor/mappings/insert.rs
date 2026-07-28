@@ -35,10 +35,15 @@ impl Editor {
         // Walk the insert trie first: handles Esc, Ctrl+C, and arrow keys.
         // Regular characters (Char without CONTROL) and Backspace/Delete/Enter
         // are NOT in the insert trie — they're handled below.
-        let trie_result = self.state.keymap.insert.walk(&[key]);
+        let trie_result = self.state.config.keymap.insert.walk(&[key]);
         match trie_result {
             WalkResult::Leaf(cmd) => {
-                let Some(reg_cmd) = self.state.registry.get_mappable(cmd.name.as_ref()).cloned()
+                let Some(reg_cmd) = self
+                    .state
+                    .config
+                    .registry
+                    .get_mappable(cmd.name.as_ref())
+                    .cloned()
                 else {
                     self.report(Severity::Warning, format!("unknown command: {}", cmd.name));
                     return;
@@ -118,7 +123,7 @@ impl Editor {
                             // NLL: `ap_pairs` last used in the condition above; borrow ends here.
                             doc_ops::apply_doc_edit_grouped(
                                 &mut self.state.buffers,
-                                &self.state.decorations,
+                                &self.state.config.decorations,
                                 &mut self.state.panes.state,
                                 focused,
                                 buf,
@@ -129,7 +134,7 @@ impl Editor {
                             // insert only the typed character.
                             doc_ops::apply_doc_edit_grouped(
                                 &mut self.state.buffers,
-                                &self.state.decorations,
+                                &self.state.config.decorations,
                                 &mut self.state.panes.state,
                                 focused,
                                 buf,
@@ -152,7 +157,7 @@ impl Editor {
                     } else {
                         doc_ops::apply_doc_edit_grouped(
                             &mut self.state.buffers,
-                            &self.state.decorations,
+                            &self.state.config.decorations,
                             &mut self.state.panes.state,
                             focused,
                             buf,
@@ -162,7 +167,7 @@ impl Editor {
                 } else {
                     doc_ops::apply_doc_edit_grouped(
                         &mut self.state.buffers,
-                        &self.state.decorations,
+                        &self.state.config.decorations,
                         &mut self.state.panes.state,
                         focused,
                         buf,
@@ -175,7 +180,7 @@ impl Editor {
                         .buffers
                         .get(buf)
                         .language
-                        .map(|id| self.state.languages.name_of(id).to_owned());
+                        .map(|id| self.state.config.languages.name_of(id).to_owned());
                     for source in self.state.trigger_sources_for(ch, language.as_deref()) {
                         self.fire_hook_trigger_char(buf, ch, &source);
                     }
@@ -191,7 +196,7 @@ impl Editor {
                 let tw = self.doc().overrides.tab_width(&self.state.settings);
                 doc_ops::apply_doc_edit_grouped(
                     &mut self.state.buffers,
-                    &self.state.decorations,
+                    &self.state.config.decorations,
                     &mut self.state.panes.state,
                     focused,
                     buf,
@@ -214,7 +219,7 @@ impl Editor {
                 let trim_blank = self.state.autoindent_pending;
                 doc_ops::apply_doc_edit_grouped(
                     &mut self.state.buffers,
-                    &self.state.decorations,
+                    &self.state.config.decorations,
                     &mut self.state.panes.state,
                     focused,
                     buf,
@@ -237,7 +242,7 @@ impl Editor {
                     // isn't in leading ws, the whole batch falls back.
                     doc_ops::apply_doc_edit_grouped(
                         &mut self.state.buffers,
-                        &self.state.decorations,
+                        &self.state.config.decorations,
                         &mut self.state.panes.state,
                         focused,
                         buf,
@@ -247,7 +252,7 @@ impl Editor {
                     // NLL: `ap_pairs` last used in the condition above; borrow ends here.
                     doc_ops::apply_doc_edit_grouped(
                         &mut self.state.buffers,
-                        &self.state.decorations,
+                        &self.state.config.decorations,
                         &mut self.state.panes.state,
                         focused,
                         buf,
@@ -256,7 +261,7 @@ impl Editor {
                 } else {
                     doc_ops::apply_doc_edit_grouped(
                         &mut self.state.buffers,
-                        &self.state.decorations,
+                        &self.state.config.decorations,
                         &mut self.state.panes.state,
                         focused,
                         buf,
@@ -268,7 +273,7 @@ impl Editor {
                 self.state.autoindent_pending = false;
                 doc_ops::apply_doc_edit_grouped(
                     &mut self.state.buffers,
-                    &self.state.decorations,
+                    &self.state.config.decorations,
                     &mut self.state.panes.state,
                     focused,
                     buf,

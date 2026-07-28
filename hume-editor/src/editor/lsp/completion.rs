@@ -521,6 +521,7 @@ impl CompletionSession {
         let bid_val = hume_scripting::SteelBufferId::new(self.bid).into_steel_val();
         let item_val = json_to_steel(&item.raw);
         state
+            .config
             .pending_hooks
             .push((HookId::OnCompletionAccept, vec![bid_val, item_val]));
 

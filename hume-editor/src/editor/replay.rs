@@ -181,6 +181,7 @@ impl Editor {
         // cannot leak an open group.
         let Some(edit_cmd) = self
             .state
+            .config
             .registry
             .get_mappable(action.command.as_ref())
             .cloned()
@@ -198,6 +199,7 @@ impl Editor {
             self.state.pending_char = step.char_arg;
             let Some(cmd) = self
                 .state
+                .config
                 .registry
                 .get_mappable(step.command.as_ref())
                 .cloned()

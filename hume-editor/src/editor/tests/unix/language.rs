@@ -20,7 +20,7 @@ fn invalid_glob_in_define_language_warns_and_skips() {
     ed.apply_pending_language_regs(regs);
     // Valid glob must be registered; extension lookup must work.
     assert!(
-        ed.state.languages.by_extension("xyz").is_some(),
+        ed.state.config.languages.by_extension("xyz").is_some(),
         "extension must register despite bad glob"
     );
     // At least one warning must mention the bad pattern.

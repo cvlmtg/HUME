@@ -18,7 +18,13 @@ impl Editor {
         extend: bool,
         arg_source: ArgSource,
     ) {
-        let Some(reg_cmd) = self.state.registry.get_mappable(name.as_ref()).cloned() else {
+        let Some(reg_cmd) = self
+            .state
+            .config
+            .registry
+            .get_mappable(name.as_ref())
+            .cloned()
+        else {
             self.report(Severity::Warning, format!("unknown command: {name}"));
             return;
         };

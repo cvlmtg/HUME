@@ -19,7 +19,7 @@ impl Editor {
         let Some(lang_id) = self.state.buffers.get(bid).language else {
             return;
         };
-        let bundle = match self.state.languages.grammar(lang_id) {
+        let bundle = match self.state.config.languages.grammar(lang_id) {
             Some(b) => Arc::clone(b),
             None => return,
         };
@@ -32,7 +32,7 @@ impl Editor {
 
         let text_gen = self.state.buffers.get(bid).text_gen;
         let text = self.state.buffers.get(bid).text().clone();
-        let langs = self.state.languages.grammar_snapshot();
+        let langs = self.state.config.languages.grammar_snapshot();
         let (syn, req) = Syntax::attach(bundle, bid, text_gen, &text, &langs);
         self.state.buffers.get_mut(bid).syntax = Some(syn);
         if let Some(req) = req {
@@ -115,7 +115,7 @@ impl Editor {
                         .buffers
                         .get(bid)
                         .language
-                        .is_some_and(|l| self.state.languages.grammar(l).is_some())
+                        .is_some_and(|l| self.state.config.languages.grammar(l).is_some())
                 {
                     self.setup_buffer_syntax(bid);
                 }
@@ -133,7 +133,7 @@ impl Editor {
             }
 
             let text = self.state.buffers.get(bid).text().clone();
-            let langs = self.state.languages.grammar_snapshot();
+            let langs = self.state.config.languages.grammar_snapshot();
             let syn = self
                 .state
                 .buffers

@@ -56,7 +56,13 @@ fn happy_path_streams_lines_and_accept_returns_the_raw_line() {
     call(&mut ed, "spawn-it");
 
     drain_until(&mut ed, |ed| {
-        ed.state.picker.as_ref().map(|p| p.total_len()).unwrap_or(0) == 3
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .map(|p| p.total_len())
+            .unwrap_or(0)
+            == 3
     });
 
     let mut ctx = RenderContext::new();
@@ -69,7 +75,7 @@ fn happy_path_streams_lines_and_accept_returns_the_raw_line() {
         "a",
         "on-select must receive the raw streamed line as payload (display == payload)"
     );
-    assert!(ed.state.picker.is_none());
+    assert!(ed.state.config.picker.is_none());
 }
 
 #[test]
@@ -91,10 +97,16 @@ fn nul_delimited_source_splits_on_nul() {
     call(&mut ed, "spawn-it");
 
     drain_until(&mut ed, |ed| {
-        ed.state.picker.as_ref().map(|p| p.total_len()).unwrap_or(0) == 2
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .map(|p| p.total_len())
+            .unwrap_or(0)
+            == 2
     });
 
-    let picker = ed.state.picker.as_ref().unwrap();
+    let picker = ed.state.config.picker.as_ref().unwrap();
     assert_eq!(picker.window(10).collect::<Vec<_>>(), vec!["a", "b"]);
 }
 
@@ -143,6 +155,7 @@ fn picker_close_kills_the_source_child() {
 
     let pid = ed
         .state
+        .config
         .picker
         .as_ref()
         .unwrap()
@@ -163,7 +176,7 @@ fn picker_close_kills_the_source_child() {
         started.elapsed()
     );
 
-    assert!(ed.state.picker.is_none());
+    assert!(ed.state.config.picker.is_none());
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
         "#false",

@@ -25,7 +25,7 @@ fn full_message_reaches_the_render_provider_untruncated() {
     ed.feed_key(key_esc());
     let bid = ed.focused_buffer_id();
     let message = " mismatched types here";
-    ed.state.decorations.set_inline_diagnostics(
+    ed.state.config.decorations.set_inline_diagnostics(
         bid,
         vec![InlineDiagnosticEntry {
             line: 0,

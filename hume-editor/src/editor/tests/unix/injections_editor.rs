@@ -507,6 +507,7 @@ fn plum_install_grammar_resolves_helix_inherits_chain() {
     // so register the identity here to match that ordering — `register-grammar!`
     // attaches onto an existing identity, it doesn't create one.
     ed.state
+        .config
         .languages
         .register_identity("tsx", &["tsx"], &[], &[])
         .unwrap();
@@ -533,7 +534,7 @@ fn plum_install_grammar_resolves_helix_inherits_chain() {
         "resolved highlights.scm must contain real tree-sitter capture patterns, got: {hl_content:?}"
     );
 
-    let lang = ed.state.languages.intern("tsx");
+    let lang = ed.state.config.languages.intern("tsx");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers();
     assert!(

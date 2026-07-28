@@ -248,9 +248,14 @@ fn multi_file_workspace_edit_detects_language_of_the_newly_opened_file() {
         );
     });
     ed.state
+        .config
         .languages
         .register_identity_no_rebuild("rust", &["rs"], &[], &[]);
-    ed.state.languages.rebuild_glob_set().expect("rebuild ok");
+    ed.state
+        .config
+        .languages
+        .rebuild_glob_set()
+        .expect("rebuild ok");
 
     run_rename(&mut ed);
     ed.feed_key(key_enter());
@@ -265,7 +270,7 @@ fn multi_file_workspace_edit_detects_language_of_the_newly_opened_file() {
         .expect("workspace edit must have opened lib.rs as a buffer");
     assert_eq!(
         ed.state.buffers.get(bid).language,
-        ed.state.languages.id_of("rust"),
+        ed.state.config.languages.id_of("rust"),
         "the workspace-edit-opened file must have its language detected"
     );
 }

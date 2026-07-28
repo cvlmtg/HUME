@@ -16,12 +16,17 @@ pub(super) fn attach_host(ed: &mut Editor, src: &str) {
     ed.scripting = Some(host);
 }
 
-/// Register rust-only identities into `ed.state.languages` directly (no Scheme eval).
+/// Register rust-only identities into `ed.state.config.languages` directly (no Scheme eval).
 fn register_rust(ed: &mut Editor, name: &str, exts: &[&str]) {
     ed.state
+        .config
         .languages
         .register_identity_no_rebuild(name, exts, &[], &[]);
-    ed.state.languages.rebuild_glob_set().expect("rebuild ok");
+    ed.state
+        .config
+        .languages
+        .rebuild_glob_set()
+        .expect("rebuild ok");
 }
 
 // ── Buffer.language round-trip ────────────────────────────────────────────────
@@ -31,16 +36,16 @@ fn set_buffer_language_writes_language_field() {
     let mut ed = editor_from("-[a]>b\n");
     attach_host(&mut ed, "");
     let bid = ed.focused_buffer_id();
-    let lang = ed.state.languages.intern("rust");
+    let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
     assert_eq!(
         ed.state.buffers.get(bid).language,
-        ed.state.languages.id_of("rust")
+        ed.state.config.languages.id_of("rust")
     );
     // Flip: wrong language must not match.
     assert_ne!(
         ed.state.buffers.get(bid).language,
-        ed.state.languages.id_of("python")
+        ed.state.config.languages.id_of("python")
     );
 }
 
@@ -49,7 +54,7 @@ fn set_buffer_language_to_none_clears_language() {
     let mut ed = editor_from("-[a]>b\n");
     attach_host(&mut ed, "");
     let bid = ed.focused_buffer_id();
-    let lang = ed.state.languages.intern("rust");
+    let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
     ed.set_buffer_language(bid, None);
     assert!(ed.state.buffers.get(bid).language.is_none());
@@ -66,13 +71,13 @@ fn set_buffer_language_no_op_when_unchanged() {
     assert!(ed.state.buffers.get(bid).language.is_none());
     // Now set a language and repeat — second set must short-circuit without panic.
     ed.scripting = Some(ScriptingHost::new());
-    let lang = ed.state.languages.intern("rust");
+    let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
-    let lang = ed.state.languages.intern("rust");
+    let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang)); // no-op, no double-fire
     assert_eq!(
         ed.state.buffers.get(bid).language,
-        ed.state.languages.id_of("rust")
+        ed.state.config.languages.id_of("rust")
     );
 }
 
@@ -89,7 +94,7 @@ fn detect_and_set_language_matches_extension() {
     ed.detect_and_set_language(bid);
     assert_eq!(
         ed.state.buffers.get(bid).language,
-        ed.state.languages.id_of("rust")
+        ed.state.config.languages.id_of("rust")
     );
     // Flip: the language must not be absent after detection of a registered ext.
     assert!(ed.state.buffers.get(bid).language.is_some());
@@ -134,7 +139,7 @@ fn typed_set_language_buffer_scope_sets_language() {
     run_cmd(&mut ed, "buffer language=rust").expect(":set buffer language=rust failed");
     assert_eq!(
         ed.state.buffers.get(bid).language,
-        ed.state.languages.id_of("rust")
+        ed.state.config.languages.id_of("rust")
     );
 }
 
@@ -143,7 +148,7 @@ fn typed_set_language_empty_value_clears_language() {
     let mut ed = editor_from("-[a]>b\n");
     attach_host(&mut ed, "");
     let bid = ed.focused_buffer_id();
-    let lang = ed.state.languages.intern("rust");
+    let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
     run_cmd(&mut ed, "buffer language=").expect(":set buffer language= failed");
     assert!(ed.state.buffers.get(bid).language.is_none());
@@ -162,7 +167,7 @@ fn typed_set_language_unknown_warns_but_sets() {
     );
     assert_eq!(
         ed.state.buffers.get(bid).language,
-        ed.state.languages.id_of("unknown-lang")
+        ed.state.config.languages.id_of("unknown-lang")
     );
 }
 
@@ -178,7 +183,7 @@ fn on_language_set_hook_fires_on_set_buffer_language() {
     );
     let bid = ed.focused_buffer_id();
     let before = state(&ed);
-    let lang = ed.state.languages.intern("rust");
+    let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
     ed.drain_hooks();
     // move-right from hook must have moved the cursor.
@@ -194,11 +199,11 @@ fn on_language_set_hook_does_not_fire_on_no_op() {
     );
     let bid = ed.focused_buffer_id();
     // Set once to establish baseline.
-    let lang = ed.state.languages.intern("rust");
+    let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
     let after_first = state(&ed);
     // Set same value again — should be a no-op; hook must not fire.
-    let lang = ed.state.languages.intern("rust");
+    let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
     assert_eq!(
         state(&ed),

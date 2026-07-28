@@ -32,14 +32,17 @@ fn select_second_item_calls_back_with_index_1() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
-    assert!(ed.state.menu.is_some(), "sanity: menu open");
+    assert!(ed.state.config.menu.is_some(), "sanity: menu open");
 
     ed.feed_key(key('j'));
     ed.feed_key(key_enter());
     ed.drain_pending_steel_calls();
 
     assert_eq!(ed.state.status_msg.clone().unwrap(), "1");
-    assert!(ed.state.menu.is_none(), "menu must close after Enter");
+    assert!(
+        ed.state.config.menu.is_none(),
+        "menu must close after Enter"
+    );
 }
 
 #[test]
@@ -53,7 +56,7 @@ fn esc_calls_back_with_false() {
     ed.drain_pending_steel_calls();
 
     assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
-    assert!(ed.state.menu.is_none());
+    assert!(ed.state.config.menu.is_none());
 }
 
 #[test]
@@ -119,7 +122,7 @@ fn stray_key_dismisses_the_menu_and_still_executes() {
     ed.drain_pending_steel_calls();
 
     assert!(
-        ed.state.menu.is_none(),
+        ed.state.config.menu.is_none(),
         "the stray key must dismiss the menu"
     );
     assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
@@ -148,14 +151,14 @@ fn close_menu_drops_the_callback_without_invoking_it() {
         steel::rvals::SteelVal::Void,
     )
     .unwrap();
-    assert!(ed.state.menu.is_some(), "sanity: menu open");
+    assert!(ed.state.config.menu.is_some(), "sanity: menu open");
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.close_menu().unwrap();
 
-    assert!(ed.state.menu.is_none());
+    assert!(ed.state.config.menu.is_none());
     assert!(
-        ed.state.pending_steel_calls.is_empty(),
+        ed.state.config.pending_steel_calls.is_empty(),
         "close_menu must not queue the callback"
     );
 }
@@ -176,7 +179,7 @@ fn show_menu_rejected_outside_normal_extend_mode() {
         "show-menu! must reject Insert mode — a menu that can't be driven is worse than none"
     );
     assert!(
-        ed.state.menu.is_none(),
+        ed.state.config.menu.is_none(),
         "must not have opened despite the error"
     );
 }
@@ -190,7 +193,7 @@ fn show_menu_accepted_in_normal_mode() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_menu(vec!["a".to_string()], steel::rvals::SteelVal::Void);
     assert!(result.is_ok());
-    assert!(ed.state.menu.is_some());
+    assert!(ed.state.config.menu.is_some());
 }
 
 // ── Render snapshot: highlighted row ──────────────────────────────────────────

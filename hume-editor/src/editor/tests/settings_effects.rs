@@ -13,6 +13,7 @@ use hume_engine::pipeline::RenderContext;
 fn eval_set_option(ed: &mut Editor, source: &str) -> Result<(), String> {
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -420,7 +421,7 @@ fn set_buffer_option_from_hook_writes_target_override() {
         r#"(register-hook! 'on-language-set (lambda (bid lang) (set-buffer-option! bid "tab-width" 8)))"#,
     );
     let bid = ed.focused_buffer_id();
-    let lang = ed.state.languages.intern("rust");
+    let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
     ed.drain_hooks();
 
@@ -450,7 +451,7 @@ fn set_buffer_option_targets_hook_bid_not_focused_buffer() {
     let bid2 = ed.open_buffer(Buffer::new(Text::from("x\n"), SelectionSet::default()));
     assert_ne!(bid2, focused_bid, "second buffer must not be focused");
 
-    let lang = ed.state.languages.intern("rust");
+    let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid2, Some(lang));
     ed.drain_hooks();
 
@@ -484,7 +485,7 @@ fn get_option_explicit_bid_reads_hook_target_not_focused_buffer() {
     let bid2 = ed.open_buffer(Buffer::new(Text::from("x\n"), SelectionSet::default()));
     assert_ne!(bid2, focused_bid, "second buffer must not be focused");
 
-    let lang = ed.state.languages.intern("rust");
+    let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid2, Some(lang));
     ed.drain_hooks();
 
@@ -517,7 +518,7 @@ fn set_buffer_option_global_only_key_errors_from_hook() {
         r#"(register-hook! 'on-language-set (lambda (bid lang) (set-buffer-option! bid "scrolloff" 1)))"#,
     );
     let bid = ed.focused_buffer_id();
-    let lang = ed.state.languages.intern("rust");
+    let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
     ed.drain_hooks();
 

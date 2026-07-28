@@ -61,7 +61,7 @@ fn set_inlay_hints_converts_wire_position_using_utf16_encoding() {
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":arm-hints-a");
 
-    let hints = ed.state.decorations.inlay_hints_for(bid);
+    let hints = ed.state.config.decorations.inlay_hints_for(bid);
     assert_eq!(hints.len(), 1);
     assert_eq!(
         hints[0].pos, 1,
@@ -93,7 +93,7 @@ fn set_inlay_hints_replaces_wholesale_not_appends() {
     type_cmd(&mut ed, ":arm-hints-a");
     type_cmd(&mut ed, ":arm-hints-b");
 
-    let hints = ed.state.decorations.inlay_hints_for(bid);
+    let hints = ed.state.config.decorations.inlay_hints_for(bid);
     assert_eq!(
         hints.len(),
         1,
@@ -125,7 +125,7 @@ fn set_inlay_hints_errors_loudly_on_a_malformed_position() {
     type_cmd(&mut ed, ":arm-bad");
 
     assert!(
-        ed.state.decorations.inlay_hints_for(bid).is_empty(),
+        ed.state.config.decorations.inlay_hints_for(bid).is_empty(),
         "a malformed entry must not land in the store at all"
     );
     let log = ed.state.message_log.format_for_display();
@@ -152,7 +152,7 @@ fn inlay_hints_remap_through_an_edit() {
     );
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":arm-hints-a");
-    assert_eq!(ed.state.decorations.inlay_hints_for(bid)[0].pos, 3);
+    assert_eq!(ed.state.config.decorations.inlay_hints_for(bid)[0].pos, 3);
 
     // Insert two chars before the hint's position — the hint must move with
     // the text it annotates, not stay pinned to the old char index.
@@ -163,7 +163,7 @@ fn inlay_hints_remap_through_an_edit() {
     ed.drain_lsp();
 
     assert_eq!(
-        ed.state.decorations.inlay_hints_for(bid)[0].pos,
+        ed.state.config.decorations.inlay_hints_for(bid)[0].pos,
         5,
         "the hint must remap forward by the 2 inserted chars"
     );
@@ -195,6 +195,7 @@ fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
 
     let before: Vec<(usize, usize)> = ed
         .state
+        .config
         .decorations
         .extra_highlights_for_buffer(bid)
         .map(|e| (e.start, e.end))
@@ -214,6 +215,7 @@ fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
 
     let after: Vec<(usize, usize)> = ed
         .state
+        .config
         .decorations
         .extra_highlights_for_buffer(bid)
         .map(|e| (e.start, e.end))
@@ -246,7 +248,7 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":arm-hints-a");
 
-    let linter_signs = ed.state.decorations.signs_for("linter", bid);
+    let linter_signs = ed.state.config.decorations.signs_for("linter", bid);
     assert_eq!(linter_signs.len(), 1);
     assert_eq!(
         (
@@ -258,7 +260,7 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
         (0, "!", "error", 10)
     );
 
-    let vcs_signs = ed.state.decorations.signs_for("vcs", bid);
+    let vcs_signs = ed.state.config.decorations.signs_for("vcs", bid);
     assert_eq!(
         vcs_signs.len(),
         1,
@@ -266,11 +268,15 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
     );
     assert_eq!(vcs_signs[0].text, "+");
 
-    let vlines = ed.state.decorations.virtual_lines_for("linter", bid);
+    let vlines = ed.state.config.decorations.virtual_lines_for("linter", bid);
     assert_eq!(vlines.len(), 1);
     assert_eq!(vlines[0].text, "note: …");
 
-    let highlights = ed.state.decorations.extra_highlights_for("linter", bid);
+    let highlights = ed
+        .state
+        .config
+        .decorations
+        .extra_highlights_for("linter", bid);
     assert_eq!(highlights.len(), 1);
     assert_eq!(
         (
@@ -284,11 +290,15 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
     // Replace semantics: a second set-signs! for the same source clears the first.
     type_cmd(&mut ed, ":clear-linter-signs");
     assert!(
-        ed.state.decorations.signs_for("linter", bid).is_empty(),
+        ed.state
+            .config
+            .decorations
+            .signs_for("linter", bid)
+            .is_empty(),
         "an empty set-signs! must clear, not leave the previous entries"
     );
     assert_eq!(
-        ed.state.decorations.signs_for("vcs", bid).len(),
+        ed.state.config.decorations.signs_for("vcs", bid).len(),
         1,
         "clearing one source must not affect another source's signs"
     );
@@ -314,7 +324,7 @@ fn set_inline_diagnostics_round_trips_and_replaces_wholesale() {
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":arm-a");
 
-    let entries = ed.state.decorations.inline_diagnostics_for(bid);
+    let entries = ed.state.config.decorations.inline_diagnostics_for(bid);
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].line, 0);
     assert_eq!(entries[0].text, "[2] first problem");
@@ -323,7 +333,7 @@ fn set_inline_diagnostics_round_trips_and_replaces_wholesale() {
     // A second call must replace wholesale (one owner per buffer, unlike
     // signs/virtual-lines' per-source multiplexing), not append.
     type_cmd(&mut ed, ":arm-b");
-    let entries = ed.state.decorations.inline_diagnostics_for(bid);
+    let entries = ed.state.config.decorations.inline_diagnostics_for(bid);
     assert_eq!(
         entries.len(),
         1,

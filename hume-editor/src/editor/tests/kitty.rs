@@ -259,7 +259,7 @@ fn kitty_ctrl_close_brace_extends_next_paragraph() {
 fn kitty_ctrl_dollar_extends_line_end() {
     use crate::editor::keymap::BindMode;
     let mut ed = editor_from_kitty("-[h]>ello world\n");
-    ed.state.keymap.bind_user_with_extend(
+    ed.state.config.keymap.bind_user_with_extend(
         BindMode::Normal,
         &[key('$')],
         "goto-line-end".into(),
@@ -279,7 +279,7 @@ fn kitty_ctrl_dollar_extends_line_end() {
 fn kitty_ctrl_0_extends_line_start() {
     use crate::editor::keymap::BindMode;
     let mut ed = editor_from_kitty("hello -[w]>orld\n");
-    ed.state.keymap.bind_user_with_extend(
+    ed.state.config.keymap.bind_user_with_extend(
         BindMode::Normal,
         &[key('0')],
         "goto-line-start".into(),

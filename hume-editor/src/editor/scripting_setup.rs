@@ -50,11 +50,11 @@ impl Editor {
                 }
                 Effect::LspServerOp(op) => self.apply_lsp_server_op(op),
                 Effect::SetBufferLanguage { buffer, language } => {
-                    let lang_id = language.map(|name| self.state.languages.intern(&name));
+                    let lang_id = language.map(|name| self.state.config.languages.intern(&name));
                     self.set_buffer_language(buffer, lang_id)
                 }
                 Effect::GrammarSweep(name) => {
-                    let id = self.state.languages.id_of(&name).expect(
+                    let id = self.state.config.languages.id_of(&name).expect(
                         "GrammarSweep is only emitted right after attach_grammar interns the name",
                     );
                     self.sweep_buffers_for_grammars(vec![id])
@@ -72,19 +72,22 @@ impl Editor {
                     keys,
                     cmd,
                     force_extend,
-                } => self.state.keymap.bind_user_with_extend(
+                } => self.state.config.keymap.bind_user_with_extend(
                     to_editor_bind_mode(mode),
                     &keys,
                     std::borrow::Cow::Owned(cmd),
                     force_extend,
                 ),
-                Effect::BindWaitChar { mode, keys, cmd } => self.state.keymap.bind_wait_char_user(
-                    to_editor_bind_mode(mode),
-                    &keys,
-                    std::borrow::Cow::Owned(cmd),
-                ),
+                Effect::BindWaitChar { mode, keys, cmd } => {
+                    self.state.config.keymap.bind_wait_char_user(
+                        to_editor_bind_mode(mode),
+                        &keys,
+                        std::borrow::Cow::Owned(cmd),
+                    )
+                }
                 Effect::UnbindKey { mode, keys } => self
                     .state
+                    .config
                     .keymap
                     .unbind_user(to_editor_bind_mode(mode), &keys),
             }
@@ -202,7 +205,10 @@ impl Editor {
     /// This prevents re-entrant Steel calls during command execution and gives
     /// a single drain point for both the keypress and sync-Steel paths.
     pub(super) fn fire_hook_silent(&mut self, hook_id: HookId, args: &[steel::rvals::SteelVal]) {
-        self.state.pending_hooks.push((hook_id, args.to_vec()));
+        self.state
+            .config
+            .pending_hooks
+            .push((hook_id, args.to_vec()));
     }
 
     /// Fire every hook in `state.pending_hooks`, draining the queue.
@@ -225,8 +231,8 @@ impl Editor {
         // branch below can skip it.
         self.take_pending_lsp_completion_dismiss();
         let mut total_processed = 0usize;
-        while !self.state.pending_hooks.is_empty() {
-            let hooks = std::mem::take(&mut self.state.pending_hooks);
+        while !self.state.config.pending_hooks.is_empty() {
+            let hooks = std::mem::take(&mut self.state.config.pending_hooks);
             total_processed += hooks.len();
             if total_processed > MAX_HOOK_DRAIN_HOOKS {
                 // `hooks` was just drained from `pending_hooks` above, so
@@ -286,7 +292,7 @@ impl Editor {
     /// re-enter Steel). Shared delivery mechanism for the `lsp-request`
     /// callback, timer thunks, and the prompt callback.
     pub(crate) fn queue_steel_call(&mut self, proc: SteelVal, args: Vec<SteelVal>) {
-        self.state.pending_steel_calls.push((proc, args));
+        self.state.config.pending_steel_calls.push((proc, args));
     }
 
     /// Drain `state.pending_steel_calls`, evaluating each queued call in one
@@ -301,7 +307,7 @@ impl Editor {
         // early-return branch below can skip it. `prepare_frame` calls this
         // every frame, so no separate render-time consumption is needed.
         self.take_pending_lsp_completion_dismiss();
-        let calls = std::mem::take(&mut self.state.pending_steel_calls);
+        let calls = std::mem::take(&mut self.state.config.pending_steel_calls);
         if calls.is_empty() {
             return;
         }
@@ -396,7 +402,7 @@ impl Editor {
         // (Motion/Selection/Edit/EditorCmd) are registered — plugin commands
         // (`SteelBacked`/`Lazy`) don't exist yet and use `(call! …)` instead.
         {
-            let names: Vec<&str> = self.state.registry.native_mappable_names().collect();
+            let names: Vec<&str> = self.state.config.registry.native_mappable_names().collect();
             host.register_command_names(&names);
         }
         // Trace the resolved directories so they're visible in `:messages`.
@@ -419,12 +425,17 @@ impl Editor {
         // Capture built-in names before any plugin code runs; stable for the
         // editor's lifetime.  Stored on Editor so dispatch-time activation can
         // borrow it disjointly from &mut self.scripting / settings / keymap.
-        let builtin_names: rustc_hash::FxHashSet<String> =
-            self.state.registry.names().map(String::from).collect();
+        let builtin_names: rustc_hash::FxHashSet<String> = self
+            .state
+            .config
+            .registry
+            .names()
+            .map(String::from)
+            .collect();
         self.builtin_cmd_names = builtin_names.clone();
         // Reset the language registry so `:reload-config` gets a fresh set
         // of registrations from languages.scm rather than accumulating duplicates.
-        self.state.languages = hume_treesitter::registry::LanguageRegistry::new();
+        self.state.config.languages = hume_treesitter::registry::LanguageRegistry::new();
         // Load runtime/scheme/prelude.scm before init.scm so its macros
         // (bind-keys! etc.) are available to init.scm and plugin modules.
         // Missing prelude is a silent no-op (optional sugar); a prelude that
@@ -459,7 +470,7 @@ impl Editor {
         // Snapshot language activation entries for the post-init lint below —
         // every eval's effects (identities, grammars, LSP server ops) are
         // already applied above, each right after its own eval, so
-        // `self.state.languages` is fully populated by this point.
+        // `self.state.config.languages` is fully populated by this point.
         let lang_activations = host.activation_languages();
         // Flush any `(log! …)` messages produced during init.scm evaluation.
         for (level, text) in host.take_pending_messages() {
@@ -472,11 +483,11 @@ impl Editor {
         // Built-in keymaps only reference registered built-ins, so any warnings
         // here come from user bind-key! calls to typos / undeclared commands.
         {
-            let mut names = self.state.keymap.all_command_names();
+            let mut names = self.state.config.keymap.all_command_names();
             names.sort_unstable();
             names.dedup();
             for name in &names {
-                if !self.state.registry.contains(name) {
+                if !self.state.config.registry.contains(name) {
                     self.report(
                         Severity::Warning,
                         format!("key bound to unknown command '{name}' — typo, or missing from #:commands?"),
@@ -494,7 +505,7 @@ impl Editor {
         for (lang, plugins) in &lang_activations {
             // "*" is the any-language wildcard (manifest.scm can't enumerate every
             // language it might ever support) — not a language identity to look up.
-            if lang != "*" && self.state.languages.by_name(lang).is_none() {
+            if lang != "*" && self.state.config.languages.by_name(lang).is_none() {
                 for plugin in plugins {
                     self.report(
                         Severity::Warning,

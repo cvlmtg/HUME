@@ -52,7 +52,7 @@ pub(crate) fn open_buffer(
 /// `set_buffer_language`, which can activate lazy language plugins via
 /// `self.scripting` — a full `&mut Editor`/Steel-eval capability this
 /// disjoint-borrow chokepoint never holds. Instead `bid` is queued onto
-/// `state.pending_language_detection`; every caller drains it once it holds
+/// `state.config.pending_language_detection`; every caller drains it once it holds
 /// (or regains) that capability — see `Editor::detect_pending_languages`,
 /// which also fires `OnBufferOpen` once detection (and `OnLanguageSet`) for
 /// `bid` has run, so plugins observing both hooks see `OnLanguageSet` first.
@@ -76,7 +76,7 @@ pub(crate) fn open_buffer_and_notify(
         state.settings.undo_levels,
     );
     state.buffers.get_mut(bid).open_hook_pending = true;
-    state.pending_language_detection.push(bid);
+    state.config.pending_language_detection.push(bid);
     bid
 }
 
@@ -227,7 +227,7 @@ pub(crate) fn close_buffer_and_notify(
         // is no other chokepoint that ever frees them.
         lsp.remove_buffer_diagnostics(id);
     }
-    state.decorations.remove_buffer(id);
+    state.config.decorations.remove_buffer(id);
     // Read before the slot is freed by `close_buffer` below.
     let open_announced = !state.buffers.get(id).open_hook_pending;
     let new_focused = close_buffer(
@@ -242,7 +242,10 @@ pub(crate) fn close_buffer_and_notify(
     if open_announced {
         // Fire with the ID that was closed, not the new current buffer.
         let val = SteelBufferId::new(id).into_steel_val();
-        state.pending_hooks.push((HookId::OnBufferClose, vec![val]));
+        state
+            .config
+            .pending_hooks
+            .push((HookId::OnBufferClose, vec![val]));
     }
     new_focused
 }

@@ -244,7 +244,7 @@ impl Editor {
         if self.state.mode() == EditorMode::Extend && !key.modifiers.contains(Modifiers::CONTROL) {
             let mut seq = self.state.pending_keys.clone();
             seq.push(key);
-            match self.state.keymap.extend.walk(&seq) {
+            match self.state.config.keymap.extend.walk(&seq) {
                 WalkResult::Leaf(cmd) => {
                     self.state.pending_keys.clear();
                     self.state.pending_ctrl_extend = false;
@@ -296,14 +296,19 @@ impl Editor {
         // If NoMatch, strip CONTROL and re-walk only on kitty terminals.
         let (result, ctrl_extend) =
             if key.modifiers.contains(Modifiers::CONTROL) && self.state.pending_keys.is_empty() {
-                match self.state.keymap.normal.walk(&[key]) {
+                match self.state.config.keymap.normal.walk(&[key]) {
                     WalkResult::NoMatch if self.kitty_enabled => {
                         // Kitty mode: strip CONTROL, re-walk as extend. Only proceed if the
                         // resolved command is extendable — prevents e.g. Ctrl+u running
                         // "undo" (not a motion) as a one-shot extend.
                         let bare = KeyEvent::new(key.code, Modifiers::NONE);
                         self.state.pending_keys.push(bare);
-                        let result = self.state.keymap.normal.walk(&self.state.pending_keys);
+                        let result = self
+                            .state
+                            .config
+                            .keymap
+                            .normal
+                            .walk(&self.state.pending_keys);
                         let ctrl_extend = match &result {
                             // Prefix key (g, m, z…): persist extend intent for the
                             // remaining keys in the sequence. Extendability is
@@ -314,11 +319,13 @@ impl Editor {
                             }
                             WalkResult::Leaf(c) => self
                                 .state
+                                .config
                                 .registry
                                 .get_mappable(c.name.as_ref())
                                 .is_some_and(|r| r.is_extendable()),
                             WalkResult::WaitChar(wc) => self
                                 .state
+                                .config
                                 .registry
                                 .get_mappable(wc.cmd_name.as_ref())
                                 .is_some_and(|r| r.is_extendable()),
@@ -354,7 +361,11 @@ impl Editor {
             } else {
                 self.state.pending_keys.push(key);
                 (
-                    self.state.keymap.normal.walk(&self.state.pending_keys),
+                    self.state
+                        .config
+                        .keymap
+                        .normal
+                        .walk(&self.state.pending_keys),
                     self.state.pending_ctrl_extend,
                 )
             };
@@ -374,6 +385,7 @@ impl Editor {
                 let extend = extend
                     && self
                         .state
+                        .config
                         .registry
                         .get_mappable(cmd.name.as_ref())
                         .is_some_and(|r| r.is_extendable());

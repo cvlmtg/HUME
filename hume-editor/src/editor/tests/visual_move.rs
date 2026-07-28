@@ -648,6 +648,7 @@ fn steel_call_move_down_ignores_outer_keystrokes_count() {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -821,6 +822,7 @@ fn generated_bare_name_wrapper_accepts_zero_count() {
     let mut ed = visual_test_editor(0);
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)

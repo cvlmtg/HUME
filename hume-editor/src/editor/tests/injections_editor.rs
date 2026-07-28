@@ -18,6 +18,7 @@ fn attach(ed: &mut Editor, name: &str, symbol: &str, injections: bool) {
     let hl_path = grammar_query_path(name);
     let inj_path = injections.then(|| helix_injections_path(name)).flatten();
     ed.state
+        .config
         .languages
         .attach_grammar(
             name,
@@ -60,11 +61,13 @@ fn markdown_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
     let bid = ed.focused_buffer_id();
 
     ed.state
+        .config
         .languages
         .register_identity("markdown", &["md"], &[], &[])
         .unwrap();
     attach(&mut ed, "markdown", "tree_sitter_markdown", true);
     ed.state
+        .config
         .languages
         .register_identity("markdown.inline", &[], &[], &[])
         .unwrap();
@@ -75,12 +78,13 @@ fn markdown_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
         false,
     );
     ed.state
+        .config
         .languages
         .register_identity("rust", &["rs"], &[], &[])
         .unwrap();
     attach(&mut ed, "rust", "tree_sitter_rust", false);
 
-    let lang = ed.state.languages.intern("markdown");
+    let lang = ed.state.config.languages.intern("markdown");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drains the initial full parse
     (ed, bid)

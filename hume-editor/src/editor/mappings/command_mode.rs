@@ -15,7 +15,7 @@ impl Editor {
             Some(mb) => mb.handle_key(key),
             None => return,
         };
-        if self.state.steel_prompt_callback.is_some() {
+        if self.state.config.steel_prompt_callback.is_some() {
             self.handle_steel_prompt_event(event);
             return;
         }
@@ -55,7 +55,7 @@ impl Editor {
                 // A `:command` whose body calls `(prompt! …)` leaves a
                 // new minibuffer session open — closing it here would stomp
                 // that session before the user ever sees it.
-                if self.state.steel_prompt_callback.is_none() {
+                if self.state.config.steel_prompt_callback.is_none() {
                     self.set_mode(Mode::Normal);
                     self.close_minibuf();
                 }
@@ -120,7 +120,7 @@ impl Editor {
 
     /// Queues exactly one `(callback text-or-#f)` call and closes the prompt.
     fn finish_steel_prompt(&mut self, text: Option<String>) {
-        let Some(callback) = self.state.steel_prompt_callback.take() else {
+        let Some(callback) = self.state.config.steel_prompt_callback.take() else {
             return;
         };
         let arg = match text {
@@ -208,10 +208,10 @@ impl Editor {
         }
 
         let ctx = crate::editor::completion::CompletionCtx {
-            registry: &self.state.registry,
+            registry: &self.state.config.registry,
             buffers: &self.state.buffers,
             cwd: &self.state.cwd,
-            languages: &self.state.languages,
+            languages: &self.state.config.languages,
         };
 
         // Dispatch to the right completer based on command + input shape.
@@ -237,6 +237,7 @@ impl Editor {
                     let cmd = cmd_raw.strip_suffix('!').unwrap_or(cmd_raw);
                     let canonical = self
                         .state
+                        .config
                         .registry
                         .get_typed(cmd)
                         .map(|tc| tc.name.as_ref());
@@ -334,12 +335,12 @@ impl Editor {
             None => None,
         };
 
-        if let Some(tc) = self.state.registry.get_typed(cmd) {
+        if let Some(tc) = self.state.config.registry.get_typed(cmd) {
             let fun = tc.fun;
             if let Err(e) = fun(self, expanded.as_deref(), force) {
                 self.report(Severity::Error, e.message().to_owned());
             }
-        } else if self.state.registry.get_mappable(cmd).is_some() {
+        } else if self.state.config.registry.get_mappable(cmd).is_some() {
             // Any mappable command can be invoked from the command line with
             // an implicit count of 1. This means `:clear-search`, `:undo`, etc.
             // all work without needing typed-command wrappers. Lazy-stub

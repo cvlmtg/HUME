@@ -47,7 +47,7 @@ impl Editor {
         // one screenful; otherwise (and for any other key) it closes the
         // popup and falls through to normal dispatch this same call, so a
         // short popup never blocks buffer half-page scroll.
-        match self.state.popup.as_ref().map(|p| p.kind) {
+        match self.state.config.popup.as_ref().map(|p| p.kind) {
             Some(PopupKind::Scrollable) => {
                 let ctrl = key.modifiers.contains(Modifiers::CONTROL);
                 match key.code {
@@ -55,15 +55,15 @@ impl Editor {
                         if self.scroll_popup(true) {
                             return;
                         }
-                        self.state.popup = None;
+                        self.state.config.popup = None;
                     }
                     KeyCode::Char('u') if ctrl => {
                         if self.scroll_popup(false) {
                             return;
                         }
-                        self.state.popup = None;
+                        self.state.config.popup = None;
                     }
-                    _ => self.state.popup = None,
+                    _ => self.state.config.popup = None,
                 }
             }
             Some(PopupKind::Sticky) | None => {}
@@ -78,7 +78,7 @@ impl Editor {
         // visible. Full-modal: `handle_picker_key` always consumes, so while
         // a picker is open `handle_insert`'s own completion intercept never
         // runs — no conflict between the two.
-        let picker_consumed = self.state.picker.is_some() && self.handle_picker_key(key);
+        let picker_consumed = self.state.config.picker.is_some() && self.handle_picker_key(key);
 
         // ── Selection menu intercept ─────────────────────────────────────
         // Guarded early-return before mode dispatch, not a new `Mode` — a
@@ -86,7 +86,7 @@ impl Editor {
         // no statusline/cursor-shape changes). Normal/Extend only: menus
         // don't open from Insert in v1.
         let menu_consumed = !picker_consumed
-            && self.state.menu.is_some()
+            && self.state.config.menu.is_some()
             && matches!(self.state.mode(), Mode::Normal | Mode::Extend)
             && self.handle_menu_key(key);
 
@@ -97,7 +97,7 @@ impl Editor {
         // stays on the pane (Helix-style browse-while-editing).
         let drawer_consumed = !picker_consumed
             && !menu_consumed
-            && self.state.drawer.is_some()
+            && self.state.config.drawer.is_some()
             && matches!(self.state.mode(), Mode::Normal | Mode::Extend)
             && self.handle_drawer_key(key);
 

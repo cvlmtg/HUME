@@ -89,10 +89,16 @@ fn files_picker_in_git_repo_uses_git_index_and_opens_selection() {
     ed.feed_key(key('g'));
     ed.feed_key(key('f'));
     drain_until(&mut ed, |ed| {
-        ed.state.picker.as_ref().map(|p| p.total_len()).unwrap_or(0) == 3
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .map(|p| p.total_len())
+            .unwrap_or(0)
+            == 3
     });
 
-    let picker = ed.state.picker.as_ref().expect("picker open");
+    let picker = ed.state.config.picker.as_ref().expect("picker open");
     assert_eq!(picker.prompt(), "files: ");
     let rows: Vec<&str> = picker.window(10).collect();
     assert!(
@@ -107,7 +113,7 @@ fn files_picker_in_git_repo_uses_git_index_and_opens_selection() {
     ed.feed_key(key_enter());
     ed.drain_pending_steel_calls();
 
-    assert!(ed.state.picker.is_none());
+    assert!(ed.state.config.picker.is_none());
     let bid = ed.focused_buffer_id();
     let path = ed.state.buffers.get(bid).path().expect("buffer has a path");
     assert!(
@@ -131,13 +137,19 @@ fn files_picker_esc_dismisses_cleanly() {
     ed.feed_key(key('g'));
     ed.feed_key(key('f'));
     drain_until(&mut ed, |ed| {
-        ed.state.picker.as_ref().map(|p| p.total_len()).unwrap_or(0) >= 1
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .map(|p| p.total_len())
+            .unwrap_or(0)
+            >= 1
     });
 
     ed.feed_key(key_esc());
     ed.drain_pending_steel_calls();
 
-    assert!(ed.state.picker.is_none());
+    assert!(ed.state.config.picker.is_none());
     assert_eq!(
         ed.focused_buffer_id(),
         starting_bid,
@@ -180,9 +192,15 @@ fn files_picker_fd_branch_spawns_given_binary() {
 
     call(&mut ed, "test-fd-branch");
     drain_until(&mut ed, |ed| {
-        ed.state.picker.as_ref().map(|p| p.total_len()).unwrap_or(0) == 2
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .map(|p| p.total_len())
+            .unwrap_or(0)
+            == 2
     });
-    let picker = ed.state.picker.as_ref().expect("picker open");
+    let picker = ed.state.config.picker.as_ref().expect("picker open");
     assert_eq!(
         picker.window(10).collect::<Vec<_>>(),
         vec!["one.txt", "two.txt"]
@@ -212,7 +230,7 @@ fn files_picker_error_path_names_fd() {
         .clone()
         .expect("error must surface as a status message");
     assert!(msg.contains("fd"), "error must name fd; got: {msg}");
-    assert!(ed.state.picker.is_none());
+    assert!(ed.state.config.picker.is_none());
 }
 
 // ── Buffers picker ────────────────────────────────────────────────────────────
@@ -234,7 +252,7 @@ fn buffers_picker_lists_switches_and_disambiguates() {
 
     ed.feed_key(key('g'));
     ed.feed_key(key('b'));
-    let picker = ed.state.picker.as_ref().expect("picker open");
+    let picker = ed.state.config.picker.as_ref().expect("picker open");
     assert_eq!(picker.total_len(), 3);
     let rows: Vec<&str> = picker.window(10).collect();
     assert!(rows.iter().any(|r| r.ends_with("a/mod.rs")));
@@ -251,7 +269,7 @@ fn buffers_picker_lists_switches_and_disambiguates() {
     ed.feed_key(key_enter());
     ed.drain_pending_steel_calls();
 
-    assert!(ed.state.picker.is_none());
+    assert!(ed.state.config.picker.is_none());
     let bid = ed.focused_buffer_id();
     let path = ed.state.buffers.get(bid).path().expect("buffer has a path");
     assert!(path.ends_with("a/mod.rs"), "got {path:?}");
@@ -266,12 +284,12 @@ fn buffers_picker_esc_is_a_no_op() {
 
     ed.feed_key(key('g'));
     ed.feed_key(key('b'));
-    assert!(ed.state.picker.is_some());
+    assert!(ed.state.config.picker.is_some());
 
     ed.feed_key(key_esc());
     ed.drain_pending_steel_calls();
 
-    assert!(ed.state.picker.is_none());
+    assert!(ed.state.config.picker.is_none());
     assert_eq!(ed.focused_buffer_id(), starting_bid);
 
     // LESSONS.md L4: keep interacting past the terminal action.

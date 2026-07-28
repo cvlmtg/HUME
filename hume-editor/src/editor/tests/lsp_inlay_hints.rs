@@ -5,7 +5,7 @@
 // Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}))` (not `editor_from`'s bare
 // `Pane::new`) — `InlayHintProvider` is only registered by `build_pane`, same
 // reasoning as `lsp_render.rs`. Hints are injected directly via
-// `ed.state.decorations.set_inlay_hints` (bypassing `set-inlay-hints!`'s wire
+// `ed.state.config.decorations.set_inlay_hints` (bypassing `set-inlay-hints!`'s wire
 // position/UTF-16 decoding, already covered by `lsp_decorations.rs`) since
 // these tests are about the render path, not the Steel/wire boundary.
 
@@ -33,7 +33,7 @@ fn after_hint_renders_dimmed_immediately_after_its_char() {
     ed.state.settings.lsp_inlay_hints = true; // off by default
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
-    ed.state.decorations.set_inlay_hints(
+    ed.state.config.decorations.set_inlay_hints(
         bid,
         vec![InlayHintEntry {
             pos: 4, // the 'x'
@@ -55,7 +55,7 @@ fn before_hint_renders_immediately_before_its_char() {
     ed.state.settings.lsp_inlay_hints = true; // off by default
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
-    ed.state.decorations.set_inlay_hints(
+    ed.state.config.decorations.set_inlay_hints(
         bid,
         vec![InlayHintEntry {
             pos: 8, // the '5'
@@ -81,7 +81,7 @@ fn hint_after_an_emoji_lands_on_the_correct_byte_offset() {
     ed.state.settings.lsp_inlay_hints = true; // off by default
     type_text(&mut ed, "🎉party");
     let bid = ed.focused_buffer_id();
-    ed.state.decorations.set_inlay_hints(
+    ed.state.config.decorations.set_inlay_hints(
         bid,
         vec![InlayHintEntry {
             pos: 0,
@@ -107,7 +107,7 @@ fn hint_on_a_wrapped_line_pins_current_render_behavior() {
     ed.state.settings.lsp_inlay_hints = true; // off by default
     type_text(&mut ed, "aaaaaaaaaabbbbbbbbbbccccccccccdddddddddd");
     let bid = ed.focused_buffer_id();
-    ed.state.decorations.set_inlay_hints(
+    ed.state.config.decorations.set_inlay_hints(
         bid,
         vec![InlayHintEntry {
             pos: 10, // right after the 'a' run
@@ -129,7 +129,7 @@ fn clearing_the_store_removes_the_hint_next_frame() {
     ed.state.settings.lsp_inlay_hints = true; // off by default
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
-    ed.state.decorations.set_inlay_hints(
+    ed.state.config.decorations.set_inlay_hints(
         bid,
         vec![InlayHintEntry {
             pos: 4,
@@ -154,7 +154,7 @@ fn clearing_the_store_removes_the_hint_next_frame() {
         .any(|v| !v.is_empty());
     assert!(has_hint_before, "sanity: hint present before clearing");
 
-    ed.state.decorations.set_inlay_hints(bid, vec![]);
+    ed.state.config.decorations.set_inlay_hints(bid, vec![]);
     ed.prepare_frame(40, 8, &mut ctx);
     let has_hint_after = ed
         .state
@@ -182,7 +182,7 @@ fn setting_off_renders_nothing_even_with_hints_in_the_store() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
-    ed.state.decorations.set_inlay_hints(
+    ed.state.config.decorations.set_inlay_hints(
         bid,
         vec![InlayHintEntry {
             pos: 4,

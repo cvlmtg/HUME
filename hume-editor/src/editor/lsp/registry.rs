@@ -146,7 +146,7 @@ impl Editor {
             .iter()
             .filter(|(_, buf)| {
                 buf.language
-                    .is_some_and(|id| self.state.languages.name_of(id) == language)
+                    .is_some_and(|id| self.state.config.languages.name_of(id) == language)
                     && buf.lsp_server.is_none()
             })
             .map(|(bid, _)| bid)
@@ -174,7 +174,7 @@ impl Editor {
         let Some(lang_id) = buf.language else {
             return;
         };
-        let language = self.state.languages.name_of(lang_id).to_owned();
+        let language = self.state.config.languages.name_of(lang_id).to_owned();
         let Some(config) = self.lsp.configs.get(&language).cloned() else {
             return;
         };

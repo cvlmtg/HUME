@@ -41,7 +41,7 @@ fn lazy_stub_collision_rejected_and_stub_not_registered() {
     );
     assert!(
         !matches!(
-            ed.state.registry.get_mappable("move-right"),
+            ed.state.config.registry.get_mappable("move-right"),
             Some(crate::editor::registry::MappableCommand::Lazy { .. })
         ),
         "built-in must not be shadowed by a Lazy stub after collision"
@@ -64,14 +64,17 @@ fn lazy_stub_collision_rejected_and_stub_not_registered() {
 #[test]
 fn keypress_dispatch_command_table_desync_reports_error() {
     let mut ed = editor_from("-[a]>b\n");
-    ed.state.registry.register(MappableCommand::SteelBacked {
-        name: "ghost-cmd".to_owned().into(),
-        doc: std::borrow::Cow::Borrowed(""),
-        arity: 0,
-        is_variadic: false,
-        inline_output: false,
-        repeatable: false,
-    });
+    ed.state
+        .config
+        .registry
+        .register(MappableCommand::SteelBacked {
+            name: "ghost-cmd".to_owned().into(),
+            doc: std::borrow::Cow::Borrowed(""),
+            arity: 0,
+            is_variadic: false,
+            inline_output: false,
+            repeatable: false,
+        });
     // A fresh scripting host's command_table has no entry for "ghost-cmd" —
     // it never went through define-command!, simulating a registry/table desync.
     ed.scripting = Some(ScriptingHost::new());

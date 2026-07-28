@@ -649,6 +649,7 @@ fn editor_with_steel(initial_state: &str, source: &str) -> Editor {
     let mut ed = editor_from(initial_state);
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)

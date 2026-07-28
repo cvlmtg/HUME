@@ -100,10 +100,11 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
     }
     .expect("eval_init");
     ed.state
+        .config
         .languages
         .register_identity("json", &["json"], &[], &[])
         .unwrap();
-    let lang = ed.state.languages.intern("json");
+    let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     assert!(
         ed.state.buffers.get(bid).syntax.is_none(),
@@ -114,7 +115,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
     type_cmd(&mut ed, ":attach-json");
 
     assert!(
-        ed.state.languages.has_grammar("json"),
+        ed.state.config.languages.has_grammar("json"),
         "has_grammar must be true after attach"
     );
     assert!(
@@ -302,10 +303,11 @@ fn install_real_json_grammar_e2e() {
     }
     .expect("eval_init");
     ed.state
+        .config
         .languages
         .register_identity("json", &["json"], &[], &[])
         .unwrap();
-    let lang = ed.state.languages.intern("json");
+    let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     ed.scripting = Some(host);
 
@@ -318,7 +320,7 @@ fn install_real_json_grammar_e2e() {
         .map(|e| format!("{:?}: {}", e.severity, e.text))
         .collect();
     assert!(
-        ed.state.languages.has_grammar("json"),
+        ed.state.config.languages.has_grammar("json"),
         "grammar must be registered after e2e install; log={errors:#?}",
     );
     assert!(
@@ -545,7 +547,7 @@ fn grammar_registration_survives_plum_absence() {
     );
 
     assert!(
-        ed.state.languages.has_grammar("json"),
+        ed.state.config.languages.has_grammar("json"),
         "grammar must be registered at startup without core:plum declared"
     );
     ed.reparse_stale_buffers();
@@ -660,7 +662,11 @@ fn grammar_catalog_is_read_lazily_on_first_use() {
     );
 
     // Tripwire check: one compiled file forces the catalog, which then fails.
-    let ext = if cfg!(target_os = "macos") { "dylib" } else { "so" };
+    let ext = if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    };
     let (errors, ..) = init_errors_with_catalog(broken, |data| {
         let grammars = data.join("grammars");
         std::fs::create_dir_all(&grammars).unwrap();
@@ -682,7 +688,11 @@ fn grammar_catalog_is_read_lazily_on_first_use() {
 #[test]
 fn orphan_compiled_grammar_is_skipped_not_registered() {
     let catalog = "((\"json\" \"url\" \"rev\" \"tree_sitter_json\" \"\"))";
-    let ext = if cfg!(target_os = "macos") { "dylib" } else { "so" };
+    let ext = if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    };
 
     let (errors, ed, _dirs) = init_errors_with_catalog(catalog, |data| {
         let grammars = data.join("grammars");
@@ -704,7 +714,10 @@ fn orphan_compiled_grammar_is_skipped_not_registered() {
         "an orphan compiled grammar must be skipped silently: {errors:?}"
     );
     assert!(
-        !ed.state.languages.has_grammar("no-longer-in-catalog"),
+        !ed.state
+            .config
+            .languages
+            .has_grammar("no-longer-in-catalog"),
         "an orphan compiled grammar must not be registered"
     );
 }
@@ -751,7 +764,7 @@ fn known_grammar_missing_highlights_warns_and_is_not_registered() {
             .collect::<Vec<_>>()
     );
     assert!(
-        !ed.state.languages.has_grammar("json"),
+        !ed.state.config.languages.has_grammar("json"),
         "a grammar missing its highlights query must not be registered"
     );
 }
@@ -775,7 +788,11 @@ fn known_grammar_missing_highlights_warns_and_is_not_registered() {
 #[test]
 fn wrong_extension_grammar_is_skipped_not_registered() {
     let catalog = "((\"json\" \"url\" \"rev\" \"tree_sitter_json\" \"\"))";
-    let wrong_ext = if cfg!(target_os = "macos") { "so" } else { "dylib" };
+    let wrong_ext = if cfg!(target_os = "macos") {
+        "so"
+    } else {
+        "dylib"
+    };
 
     let (errors, ed, _dirs) = init_errors_with_catalog(catalog, |data| {
         let grammars = data.join("grammars");
@@ -792,7 +809,7 @@ fn wrong_extension_grammar_is_skipped_not_registered() {
 
     assert!(errors.is_empty(), "unexpected init errors: {errors:?}");
     assert!(
-        !ed.state.languages.has_grammar("json"),
+        !ed.state.config.languages.has_grammar("json"),
         "a foreign-extension file must not be registered"
     );
     let warnings: Vec<String> = ed

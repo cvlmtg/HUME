@@ -151,6 +151,7 @@ fn lsp_restart_spawns_a_fresh_server_id_and_reattaches_the_buffer() {
     let mut ed = editor_from("-[w]>ord\n");
     ed.lsp = LspState::new_inline();
     ed.state
+        .config
         .languages
         .register_identity("rust", &["rs"], &[], &[])
         .unwrap();
@@ -207,6 +208,7 @@ fn lsp_restart_does_not_duplicate_diagnostics_after_a_republish() {
     let mut ed = editor_from("-[w]>ord\n");
     ed.lsp = LspState::new_inline();
     ed.state
+        .config
         .languages
         .register_identity("rust", &["rs"], &[], &[])
         .unwrap();

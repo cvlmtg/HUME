@@ -112,6 +112,125 @@ pub(crate) enum InlineOutputDispatch {
     Headless,
 }
 
+// ── ConfigState ───────────────────────────────────────────────────────────────
+
+/// Every field a `config`/`open`/`cmd`-kind Steel builtin, `set-option!`, or
+/// `init.scm` itself can write and that must go back to its compiled-in
+/// default on `:reload-config` — the keymap, the registry of dynamic/lazy
+/// commands, language identities, decorations, trigger chars, and the four
+/// overlay models (popup/menu/drawer/picker), plus every deferred-call queue
+/// rooted in the outgoing Steel engine.
+///
+/// Grouped into its own struct, rather than left as individual `EditorState`
+/// fields, so `Editor::reset_config_state` resets by *construction*
+/// (`self.state.config = ConfigState::new(kitty_enabled)`) instead of by a
+/// hand-maintained list of field clears: a field added here is reset the
+/// moment it's added, with no second place to remember. Fields that must
+/// survive a reload (buffers, panes, undo history, registers, running LSP
+/// servers, …) stay on `EditorState` itself — that's the explicit,
+/// reviewable "preserved across reload" set.
+pub(crate) struct ConfigState {
+    /// The trie-based keymap for each mode.
+    pub(crate) keymap: Keymap,
+    /// Registry of all mappable commands (motions, selections, edits), plus
+    /// every `%define-command!`/`%declare-plugin!` dynamic and lazy entry.
+    pub(crate) registry: CommandRegistry,
+    /// Registry of configured language identities.
+    pub(crate) languages: LanguageRegistry,
+    /// Chars that fire `OnTriggerChar` in Insert mode, keyed by
+    /// `(source, language)` — a `(register-trigger-chars! source language
+    /// chars)` call only ever replaces its own `(source, language)` entry,
+    /// so two languages sharing a source (e.g. completion's `"lsp-
+    /// completion"` source registered separately for `"rust"` and
+    /// `"python"`) never clobber each other. An empty `chars` removes the
+    /// entry entirely (matches `on-lsp-detach`'s clear-on-detach usage).
+    pub(crate) trigger_chars: rustc_hash::FxHashMap<(String, String), Vec<char>>,
+    /// Steel-writable decoration stores (inlay hints, signs, virtual
+    /// lines, extra highlights) — the render providers read these.
+    pub(crate) decorations: decorations::DecorationStores,
+    /// Hooks enqueued during command dispatch, drained by `Editor::drain_hooks`
+    /// after each command. The unified firing path — `fire_hook_silent` pushes
+    /// here; no hook fires inline during command execution.
+    pub(crate) pending_hooks: Vec<(hume_scripting::hooks::HookId, Vec<steel::rvals::SteelVal>)>,
+    /// Rust-side completions that must reach a *specific* Steel closure
+    /// rather than every handler for a hook id: an `lsp-request` callback,
+    /// a timer thunk, a prompt callback. Queued (never evaluated
+    /// inline — same discipline as `pending_hooks`) by whichever completion
+    /// fires, drained by `Editor::drain_pending_steel_calls`.
+    pub(crate) pending_steel_calls: Vec<(steel::rvals::SteelVal, Vec<steel::rvals::SteelVal>)>,
+    /// Buffers awaiting language detection, drained by
+    /// `Editor::detect_pending_languages`. Detection needs `self.scripting`
+    /// (lazy-plugin activation), which the disjoint-borrow buffer-open
+    /// chokepoints (`buffer::lifecycle::open_buffer_and_notify` and callers
+    /// with only `&mut EditorState`/`&mut EngineView`) never hold — so they
+    /// queue the buffer id here instead of detecting inline. Every caller
+    /// with a full `&mut Editor` drains this explicitly after opening
+    /// buffers; every Steel-eval path drains it at the tail of
+    /// `apply_script_effects`.
+    pub(crate) pending_language_detection: Vec<hume_engine::pipeline::BufferId>,
+    /// The `(prompt! …)` callback — persists for as long as `minibuf` holds
+    /// the prompt session (unlike `pending_steel_calls`, which drains the
+    /// same frame it's pushed to). `handle_command`'s Confirm/Cancel arms
+    /// take this and push exactly one `(callback text-or-#f)` call onto
+    /// `pending_steel_calls`.
+    pub(crate) steel_prompt_callback: Option<steel::rvals::SteelVal>,
+    /// `(show-popup! text)`'s raw content — resolved into a positioned
+    /// `PopupState` each frame by `Editor::sync_popup_view` (geometry needs
+    /// the focused pane's *current* rect, so it can't be pre-computed here).
+    pub(crate) popup: Option<crate::ui::popup::PopupModel>,
+    /// `(show-menu! items on-select)`'s raw content, including the
+    /// not-yet-fired Steel callback — cleared by the key intercept in
+    /// `handle_key`, not by `sync_menu_view`.
+    pub(crate) menu: Option<crate::ui::popup::MenuModel>,
+    /// `(show-drawer-list! items on-select)`'s raw content, including the
+    /// callback — cleared by `Esc` or `close-drawer!`, *not* by `Enter` (the
+    /// drawer stays open across selections, unlike the popup/menu).
+    pub(crate) drawer: Option<crate::ui::drawer::DrawerModel>,
+    /// The open picker session (`docs/FUZZY-FINDERS.md` B2 store) — driven
+    /// by the key intercept in `handle_key`; opened via `Editor::open_picker`
+    /// (tests today, B4's `picker!` builtin later).
+    pub(crate) picker: Option<crate::editor::picker::PickerSession>,
+}
+
+impl ConfigState {
+    /// Build the config state every session, and every `:reload-config`,
+    /// starts from — the compiled-in keymap (plus the kitty-only default
+    /// binds when the terminal supports the protocol, matching
+    /// [`Editor::set_kitty_support`]) and the compiled-in command registry,
+    /// with every other field at its empty/`None` default.
+    pub(super) fn new(kitty_enabled: bool) -> Self {
+        Self {
+            keymap: default_keymap_for(kitty_enabled),
+            registry: CommandRegistry::with_defaults(),
+            languages: LanguageRegistry::new(),
+            trigger_chars: rustc_hash::FxHashMap::default(),
+            decorations: decorations::DecorationStores::default(),
+            pending_hooks: Vec::new(),
+            pending_steel_calls: Vec::new(),
+            pending_language_detection: Vec::new(),
+            steel_prompt_callback: None,
+            popup: None,
+            menu: None,
+            drawer: None,
+            picker: None,
+        }
+    }
+}
+
+/// The keymap every session starts from: the compiled-in trie, plus the
+/// kitty-only default binds when the terminal supports the protocol. Shared
+/// by [`ConfigState::new`] and [`Editor::set_kitty_support`] (which
+/// re-derives the keymap once the terminal probe result is known, before
+/// `init.scm` can override it) so the two can't drift apart on what
+/// "kitty defaults installed" means.
+pub(super) fn default_keymap_for(kitty_enabled: bool) -> Keymap {
+    let mut keymap = Keymap::default();
+    if kitty_enabled {
+        keymap.apply_kitty_defaults();
+    }
+    keymap
+}
+
 // ── EditorState ───────────────────────────────────────────────────────────────
 //
 // All command-mutable editor data. Separated from `Editor` so the Steel VM
@@ -121,6 +240,10 @@ pub(crate) enum InlineOutputDispatch {
 pub(crate) struct EditorState {
     /// All open buffers. SSOT for buffer content, history, and file metadata.
     pub(crate) buffers: BufferStore,
+    /// Config-owned state reset wholesale by `:reload-config` — see
+    /// [`ConfigState`]'s doc for exactly what that means and why it's a
+    /// separate struct.
+    pub(crate) config: ConfigState,
     /// Current editing mode. `EditorMode::Extend` represents the sticky extend
     /// state. Mode is the single source of truth for whether extend is active.
     /// Private: all transitions go through [`EditorState::set_mode`].
@@ -166,10 +289,6 @@ pub(crate) struct EditorState {
     pub(crate) message_log: MessageLog,
     /// All editor settings — global defaults and per-buffer-overridable values.
     pub(crate) settings: EditorSettings,
-    /// Registry of all mappable commands (motions, selections, edits).
-    pub(super) registry: CommandRegistry,
-    /// The trie-based keymap for each mode.
-    pub(super) keymap: Keymap,
     /// The character and kind from the last find/till motion.
     pub(super) last_find: Option<commands::FindChar>,
     pub(super) search: SearchState,
@@ -245,47 +364,8 @@ pub(crate) struct EditorState {
     pub(super) is_replaying: bool,
     /// Anchor char offset set on mouse-left-down when `mouse_select` is enabled.
     pub(super) mouse_drag_anchor: Option<usize>,
-    /// Registry of configured language identities.
-    pub(super) languages: LanguageRegistry,
     /// Current working directory. Set at startup; updated by `:cd`.
     pub(super) cwd: PathBuf,
-    /// Hooks enqueued during command dispatch, drained by `Editor::drain_hooks`
-    /// after each command. The unified firing path — `fire_hook_silent` pushes
-    /// here; no hook fires inline during command execution.
-    pub(super) pending_hooks: Vec<(hume_scripting::hooks::HookId, Vec<steel::rvals::SteelVal>)>,
-    /// Buffers awaiting language detection, drained by
-    /// `Editor::detect_pending_languages`. Detection needs `self.scripting`
-    /// (lazy-plugin activation), which the disjoint-borrow buffer-open
-    /// chokepoints (`buffer::lifecycle::open_buffer_and_notify` and callers
-    /// with only `&mut EditorState`/`&mut EngineView`) never hold — so they
-    /// queue the buffer id here instead of detecting inline. Every caller
-    /// with a full `&mut Editor` drains this explicitly after opening
-    /// buffers; every Steel-eval path drains it at the tail of
-    /// `apply_script_effects`.
-    pub(super) pending_language_detection: Vec<hume_engine::pipeline::BufferId>,
-    /// Rust-side completions that must reach a *specific* Steel closure
-    /// rather than every handler for a hook id: an `lsp-request` callback,
-    /// a timer thunk, a prompt callback. Queued (never evaluated
-    /// inline — same discipline as `pending_hooks`) by whichever completion
-    /// fires, drained by `Editor::drain_pending_steel_calls`.
-    pub(super) pending_steel_calls: Vec<(steel::rvals::SteelVal, Vec<steel::rvals::SteelVal>)>,
-    /// Chars that fire `OnTriggerChar` in Insert mode, keyed by
-    /// `(source, language)` — a `(register-trigger-chars! source language
-    /// chars)` call only ever replaces its own `(source, language)` entry,
-    /// so two languages sharing a source (e.g. completion's `"lsp-
-    /// completion"` source registered separately for `"rust"` and
-    /// `"python"`) never clobber each other. An empty `chars` removes the
-    /// entry entirely (matches `on-lsp-detach`'s clear-on-detach usage).
-    pub(super) trigger_chars: rustc_hash::FxHashMap<(String, String), Vec<char>>,
-    /// Steel-writable decoration stores (inlay hints, signs, virtual
-    /// lines, extra highlights) — the render providers read these.
-    pub(super) decorations: decorations::DecorationStores,
-    /// The `(prompt! …)` callback — persists for as long as `minibuf` holds
-    /// the prompt session (unlike `pending_steel_calls`, which drains the
-    /// same frame it's pushed to). `handle_command`'s Confirm/Cancel arms
-    /// take this and push exactly one `(callback text-or-#f)` call onto
-    /// `pending_steel_calls`.
-    pub(super) steel_prompt_callback: Option<steel::rvals::SteelVal>,
     /// Set by `set_mode` on any exit from Insert — `set_mode` only has
     /// `&mut EditorState` (many callers are free functions that never touch
     /// `Editor`/`LspState`), but the LSP completion session it must dismiss
@@ -319,38 +399,22 @@ pub(crate) struct EditorState {
     /// (extra highlights, signs, virtual lines) — avoids re-interning the
     /// same runtime name every frame.
     pub(super) runtime_scope_cache: rustc_hash::FxHashMap<String, hume_engine::types::ScopeId>,
-    /// `(show-popup! text)`'s raw content — resolved into a positioned
-    /// `PopupState` each frame by `Editor::sync_popup_view` (geometry needs
-    /// the focused pane's *current* rect, so it can't be pre-computed here).
-    pub(super) popup: Option<crate::ui::popup::PopupModel>,
     /// Shared popup-overlay view for `PopupLayout::Cursor`: written by
-    /// `prepare_frame`, read by `PopupOverlay`. Empty whenever `popup` is
-    /// `None` or docked (see `popup_band_view`).
+    /// `prepare_frame`, read by `PopupOverlay`. Empty whenever `config.popup`
+    /// is `None` or docked (see `popup_band_view`).
     pub(crate) popup_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
     /// Shared popup-band view for `PopupLayout::Docked`: written by
     /// `prepare_frame`, read by `PopupBandWidget` (chrome, like the
     /// drawer). Empty whenever `popup` is `None` or cursor-anchored.
     pub(crate) popup_band_view: Arc<RwLock<Option<crate::ui::popup::PopupBandState>>>,
-    /// `(show-menu! items on-select)`'s raw content, including the
-    /// not-yet-fired Steel callback — cleared by the key intercept in
-    /// `handle_key`, not by `sync_menu_view`.
-    pub(super) menu: Option<crate::ui::popup::MenuModel>,
     /// Shared menu-overlay view: written by `prepare_frame`, read by its own
     /// `PopupOverlay` registration (separate from the hover popup's, so both
     /// can in principle show at once — the menu paints on top).
     pub(crate) menu_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
-    /// `(show-drawer-list! items on-select)`'s raw content, including the
-    /// callback — cleared by `Esc` or `close-drawer!`, *not* by `Enter` (the
-    /// drawer stays open across selections, unlike the popup/menu).
-    pub(super) drawer: Option<crate::ui::drawer::DrawerModel>,
     /// Shared drawer-overlay view: written on change (open/select-move/
     /// scroll/close) by `sync_drawer_view`, never per frame — the drawer has
     /// no cursor-relative geometry to re-resolve every frame.
     pub(crate) drawer_view: Arc<RwLock<Option<crate::ui::drawer::DrawerViewState>>>,
-    /// The open picker session (`docs/FUZZY-FINDERS.md` B2 store) — driven
-    /// by the key intercept in `handle_key`; opened via `Editor::open_picker`
-    /// (tests today, B4's `picker!` builtin later).
-    pub(super) picker: Option<crate::editor::picker::PickerSession>,
     /// Shared picker-overlay view: written per-frame by `sync_picker_view`
     /// (geometry depends on the current panes region, like popup/menu, not
     /// on-change like the drawer), read by `PickerOverlay`.
@@ -380,13 +444,14 @@ impl EditorState {
 
     // ── Drawer ──────────────────────────────────────────────────────────
 
-    /// Mirror `self.drawer` into `self.drawer_view` for `DrawerWidget` to
+    /// Mirror `self.config.drawer` into `self.drawer_view` for `DrawerWidget` to
     /// read. Called directly at every drawer mutation site (open, selection
     /// move, scroll, close) — never per frame, unlike the popup/menu's
     /// `sync_*_view` (the drawer has no cursor-relative geometry to
     /// re-resolve each frame).
     pub(super) fn sync_drawer_view(&self) {
         let resolved = self
+            .config
             .drawer
             .as_ref()
             .map(|d| crate::ui::drawer::DrawerViewState {
@@ -407,7 +472,8 @@ impl EditorState {
         let Some(language) = language else {
             return Vec::new();
         };
-        self.trigger_chars
+        self.config
+            .trigger_chars
             .iter()
             .filter(|((_, lang), chars)| lang == language && chars.contains(&ch))
             .map(|((source, _), _)| source.clone())
@@ -448,7 +514,8 @@ impl EditorState {
         let new_val = mode_name(new)
             .into_steelval()
             .expect("mode str into_steelval");
-        self.pending_hooks
+        self.config
+            .pending_hooks
             .push((HookId::OnModeChange, vec![old_val, new_val]));
     }
 }

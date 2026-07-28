@@ -79,11 +79,11 @@ impl Editor {
         // Loop guard: if name is still Lazy (body never defined it) or gone,
         // remove the stub and signal failure so the caller does not re-enter.
         let unresolved = matches!(
-            self.state.registry.get_mappable(name),
+            self.state.config.registry.get_mappable(name),
             Some(MappableCommand::Lazy { .. }) | None
         );
         if unresolved {
-            self.state.registry.unregister(name);
+            self.state.config.registry.unregister(name);
             false
         } else {
             true

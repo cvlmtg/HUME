@@ -129,6 +129,7 @@ fn call_bang_count_arg_dispatches_synchronously() {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -179,6 +180,7 @@ fn call_bang_malformed_arg_to_native_cmd_errors_without_side_effect() {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -230,6 +232,7 @@ fn case_b_sync_cursor_read_reflects_motion() {
     // resolve at compile time.
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -292,6 +295,7 @@ fn steel_call_repeat_last_action_drains_via_handle_key() {
     // Register command names so `(call! "repeat-last-action")` resolves.
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -315,7 +319,7 @@ fn steel_call_repeat_last_action_drains_via_handle_key() {
 
     // Bind the Steel command to an unoccupied key (F2) in Normal mode.
     let f2 = termina::event::KeyEvent::new(KeyCode::Function(2), termina::event::Modifiers::NONE);
-    ed.state.keymap.bind_user_with_extend(
+    ed.state.config.keymap.bind_user_with_extend(
         BindMode::Normal,
         &[f2],
         "steel-dot-repeat".into(),
@@ -387,10 +391,12 @@ fn classification_sites_all_agree() {
     // registry borrow. Separating phases avoids borrow conflicts with `live_host!`.
     let triples: Vec<(String, bool, bool)> = ed
         .state
+        .config
         .registry
         .names()
         .filter_map(|name| {
             ed.state
+                .config
                 .registry
                 .get_mappable(name)
                 .map(|cmd| (name.to_owned(), cmd.is_native(), oracle(cmd)))
@@ -404,6 +410,7 @@ fn classification_sites_all_agree() {
 
     let native_names: HashSet<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -450,6 +457,7 @@ fn steel_call_native_respects_register_prefix() {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -501,6 +509,7 @@ fn steel_call_delete_sets_last_command_for_smart_p() {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -546,6 +555,7 @@ fn steel_no_dispatch_cmd_stamps_own_name() {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -593,6 +603,7 @@ fn steel_call_repeatable_cmd_sets_dot_repeat() {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -651,6 +662,7 @@ fn steel_call_jump_cmd_records_jump_entry() {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -701,6 +713,7 @@ fn steel_call_paste_then_motion_commits_paste_session() {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -759,6 +772,7 @@ fn steel_call_source_order_native_after_steel() {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -810,6 +824,7 @@ fn steel_native_via_call_preserves_own_count() {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -857,6 +872,7 @@ fn steel_unknown_cmd_errors_and_continues() {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -917,7 +933,7 @@ fn mouse_click_drains_hooks_immediately() {
     // drain_hooks skips the Steel call but still removes it from the queue).
     ed.fire_hook_silent(HookId::OnBufferSave, &[]);
     assert!(
-        !ed.state.pending_hooks.is_empty(),
+        !ed.state.config.pending_hooks.is_empty(),
         "pending_hooks must be non-empty before the event — drain has not run yet"
     );
 
@@ -932,9 +948,9 @@ fn mouse_click_drains_hooks_immediately() {
 
     // drain_hooks ran at the tail of handle_event — all pending hooks must be gone.
     assert!(
-        ed.state.pending_hooks.is_empty(),
+        ed.state.config.pending_hooks.is_empty(),
         "pending_hooks must be empty after handle_event; got {:?}",
-        ed.state.pending_hooks
+        ed.state.config.pending_hooks
     );
 }
 
@@ -959,6 +975,7 @@ fn steel_lambda_receives_count_and_extend() {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -1026,6 +1043,7 @@ fn steel_zero_arity_lambda_ignores_injection() {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -1102,6 +1120,7 @@ fn explicit_minibuf_arg_not_overwritten_by_injection() {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -1172,6 +1191,7 @@ fn steel_arity_1_lambda_receives_count_only() {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -1235,6 +1255,7 @@ fn steel_call_delete_in_extend_exits_extend_mode() {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -1299,6 +1320,7 @@ fn parity_delete_bookkeeping_keypress_vs_steel() {
     let mut ed_steel = editor_from("-[f]>oo\n");
     let names: Vec<String> = ed_steel
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -1349,6 +1371,7 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
     let mut ed_steel = editor_from(content);
     let names: Vec<String> = ed_steel
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -1406,6 +1429,7 @@ fn parity_steel_branch_cluster_vs_native() {
     let mut ed_steel = editor_from("-[f]>oo\n");
     let names: Vec<String> = ed_steel
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -1490,6 +1514,7 @@ fn parity_steel_branch_cluster_vs_native() {
 
     let names2: Vec<String> = ed2
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -1546,6 +1571,7 @@ fn parity_extend_exit_keypress_vs_steel() {
     ed_steel.state.mode = Mode::Extend;
     let names: Vec<String> = ed_steel
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -1594,6 +1620,7 @@ fn plugin_calls_plugin_cursor_read_is_live() {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -1692,6 +1719,7 @@ fn native_call_bang_at_init_top_level_warns_and_skips() {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -1751,6 +1779,7 @@ fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -1767,7 +1796,7 @@ fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) {
     ed.scripting = Some(host);
 
     let f2 = termina::event::KeyEvent::new(KeyCode::Function(2), termina::event::Modifiers::NONE);
-    ed.state.keymap.bind_user_with_extend(
+    ed.state.config.keymap.bind_user_with_extend(
         BindMode::Normal,
         &[f2],
         std::borrow::Cow::Owned(cmd_name.to_owned()),
@@ -1999,6 +2028,7 @@ fn keymap_dispatch_arity_over_2_reports_error() {
     let mut ed = editor_from("-[a]>b\n");
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -2039,6 +2069,7 @@ fn steel_dispatch_consumes_pending_char() {
     let mut ed = editor_from("-[a]>bcdef\n");
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)
@@ -2204,6 +2235,7 @@ fn current_selections_steel_roundtrip() {
 
     let names: Vec<String> = ed
         .state
+        .config
         .registry
         .native_mappable_names()
         .map(str::to_owned)

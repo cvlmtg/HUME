@@ -44,7 +44,10 @@ fn stale_token_returns_false_without_spawning() {
         "#false",
         "a stale token must return #f, not raise — the bogus binary name proves nothing was spawned"
     );
-    assert!(ed.state.picker.is_some(), "the real picker must stay open");
+    assert!(
+        ed.state.config.picker.is_some(),
+        "the real picker must stay open"
+    );
 }
 
 #[test]
@@ -61,7 +64,7 @@ fn no_open_picker_returns_false_without_spawning() {
     call(&mut ed, "spawn-none");
 
     assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
-    assert!(ed.state.picker.is_none());
+    assert!(ed.state.config.picker.is_none());
 }
 
 #[test]
@@ -88,7 +91,7 @@ fn spawn_failure_raises_and_leaves_the_picker_open() {
         "error should name the builtin and the failure, got {msg:?}"
     );
     assert!(
-        ed.state.picker.is_some(),
+        ed.state.config.picker.is_some(),
         "a failed spawn must not close the picker"
     );
 }

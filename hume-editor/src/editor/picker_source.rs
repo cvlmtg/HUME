@@ -20,7 +20,7 @@ impl Editor {
     /// per queued batch instead of once per frame would multiply the
     /// rerank cost by however many batches arrived this frame.
     pub(super) fn drain_picker_source(&mut self) {
-        let Some(session) = self.state.picker.as_mut() else {
+        let Some(session) = self.state.config.picker.as_mut() else {
             return;
         };
         let Some(source) = session.source_mut() else {
@@ -51,7 +51,7 @@ impl Editor {
             let cmd = source.cmd().to_string();
             (cmd, source.finish())
         });
-        // `session` (a borrow of `self.state.picker`) is not used past this
+        // `session` (a borrow of `self.state.config.picker`) is not used past this
         // point, so `self.report` below can take `&mut self` freely.
 
         if let Some((cmd, exit)) = exit

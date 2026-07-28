@@ -2856,14 +2856,17 @@ fn setup_arity_test(src: &str, name: &str, arity: u16, is_variadic: bool) -> Edi
         host.eval_source(src, &mut init_host).unwrap();
     }
     // Override arity/is_variadic so minibuffer dispatch uses the test-supplied values.
-    ed.state.registry.register(MappableCommand::SteelBacked {
-        name: name.to_owned().into(),
-        doc: std::borrow::Cow::Borrowed(""),
-        arity,
-        is_variadic,
-        inline_output: false,
-        repeatable: false,
-    });
+    ed.state
+        .config
+        .registry
+        .register(MappableCommand::SteelBacked {
+            name: name.to_owned().into(),
+            doc: std::borrow::Cow::Borrowed(""),
+            arity,
+            is_variadic,
+            inline_output: false,
+            repeatable: false,
+        });
     ed.scripting = Some(host);
     ed
 }
@@ -2932,14 +2935,17 @@ fn minibuffer_arity_rule_errors_on_arity_2() {
     use crate::editor::registry::MappableCommand;
 
     let mut ed = editor_from("-[a]>b\n");
-    ed.state.registry.register(MappableCommand::SteelBacked {
-        name: "needs-two".to_owned().into(),
-        doc: std::borrow::Cow::Borrowed(""),
-        arity: 2,
-        is_variadic: false,
-        inline_output: false,
-        repeatable: false,
-    });
+    ed.state
+        .config
+        .registry
+        .register(MappableCommand::SteelBacked {
+            name: "needs-two".to_owned().into(),
+            doc: std::borrow::Cow::Borrowed(""),
+            arity: 2,
+            is_variadic: false,
+            inline_output: false,
+            repeatable: false,
+        });
 
     let before = state(&ed);
     // `:needs-two<Enter>` — arity-2 command, minibuffer can only supply 1 arg.
@@ -2979,7 +2985,7 @@ fn extend_trie_wait_char_sequence_clears_pending_keys() {
     ed.state.mode = Mode::Extend;
 
     // Two-key wait-char sequence: `g` (prefix) then `r` (wait-char leaf).
-    ed.state.keymap.extend.bind_wait_char_sequence(
+    ed.state.config.keymap.extend.bind_wait_char_sequence(
         &[key('g'), key('r')],
         WaitCharPending {
             cmd_name: "find-forward".into(),
@@ -2989,7 +2995,7 @@ fn extend_trie_wait_char_sequence_clears_pending_keys() {
     // A plain leaf on `x`, distinct from the `g`-prefixed sequence, so a
     // leftover `g` prefix would make this unreachable (NoMatch) instead of
     // executing it.
-    ed.state.keymap.bind_user_with_extend(
+    ed.state.config.keymap.bind_user_with_extend(
         BindMode::Extend,
         &[key('x')],
         "delete-char-forward".into(),
