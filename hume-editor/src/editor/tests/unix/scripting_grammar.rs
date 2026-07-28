@@ -569,3 +569,195 @@ fn grammar_registration_survives_plum_absence() {
         "core:plum commands must be unavailable when it isn't declared; got {warns:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Registration is driven by <data>/grammars/, and the catalog is lazy
+// ---------------------------------------------------------------------------
+
+/// Run `init_scripting` against a temp runtime holding the real `prelude.scm`
+/// and `grammars.scm` but a caller-supplied `grammar-sources.scm` and a
+/// deliberately tiny `languages.scm`, with `populate_data` free to lay out the
+/// data dir first. Returns the editor's error log. Caller must keep the
+/// returned `TempDir`s alive.
+fn init_errors_with_catalog(
+    catalog_src: &str,
+    populate_data: impl FnOnce(&std::path::Path),
+) -> (Vec<String>, Editor, Vec<tempfile::TempDir>) {
+    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let config_tmp = tempfile::tempdir().unwrap();
+    let runtime_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = tempfile::tempdir().unwrap();
+
+    let hume_config = config_tmp.path().join("hume");
+    std::fs::create_dir_all(&hume_config).unwrap();
+    std::fs::write(hume_config.join("init.scm"), "").unwrap();
+
+    let scheme_dir = runtime_tmp.path().join("scheme");
+    std::fs::create_dir_all(&scheme_dir).unwrap();
+    for name in ["prelude.scm", "grammars.scm"] {
+        let src = std::fs::read_to_string(runtime_scheme_dir().join(name)).unwrap();
+        std::fs::write(scheme_dir.join(name), src).unwrap();
+    }
+    std::fs::write(
+        scheme_dir.join("languages.scm"),
+        "(define-language! \"json\" '(\"json\"))\n",
+    )
+    .unwrap();
+    std::fs::write(scheme_dir.join("grammar-sources.scm"), catalog_src).unwrap();
+
+    populate_data(&data_tmp.path().join("hume"));
+
+    let mut ed = editor_from("-[a]>b\n");
+    unsafe {
+        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
+        std::env::set_var("HUME_RUNTIME", runtime_tmp.path());
+        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
+    }
+    ed.init_scripting();
+    unsafe {
+        std::env::remove_var("XDG_CONFIG_HOME");
+        std::env::remove_var("HUME_RUNTIME");
+        std::env::remove_var("XDG_DATA_HOME");
+    }
+
+    let errors = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.clone())
+        .collect();
+    (errors, ed, vec![config_tmp, runtime_tmp, data_tmp])
+}
+
+/// The grammar source catalog is parsed on first use, not at startup: with no
+/// `<data>/grammars/` directory there is nothing to register, so a catalog
+/// that cannot even be read must never be touched.
+///
+/// Uses a syntactically broken catalog as the tripwire — if anything forces it,
+/// `grammars.scm` raises and `init_scripting` logs an error. The second half
+/// (a compiled file present ⇒ the same broken catalog now *does* raise) is what
+/// keeps this from being a zero-effect assertion: it proves the tripwire works
+/// and that the first half passed for the right reason.
+#[test]
+fn grammar_catalog_is_read_lazily_on_first_use() {
+    let broken = "( (\"json\" \"url\" \"rev\" \"sym\"";
+
+    let (errors, ..) = init_errors_with_catalog(broken, |_data| {});
+    assert!(
+        errors.is_empty(),
+        "no <data>/grammars/ ⇒ the catalog must never be read: {errors:?}"
+    );
+
+    // A bare sources/ subdirectory yields no grammar names either — still no read.
+    let (errors, ..) = init_errors_with_catalog(broken, |data| {
+        std::fs::create_dir_all(data.join("grammars").join("sources")).unwrap();
+    });
+    assert!(
+        errors.is_empty(),
+        "only sources/ present ⇒ still no grammar names, so still no read: {errors:?}"
+    );
+
+    // Tripwire check: one compiled file forces the catalog, which then fails.
+    let ext = if cfg!(target_os = "macos") { "dylib" } else { "so" };
+    let (errors, ..) = init_errors_with_catalog(broken, |data| {
+        let grammars = data.join("grammars");
+        std::fs::create_dir_all(&grammars).unwrap();
+        std::fs::write(grammars.join(format!("json.{ext}")), b"not a real library").unwrap();
+    });
+    assert!(
+        errors.iter().any(|e| e.contains("grammars.scm")),
+        "a compiled grammar must force the catalog, surfacing the broken file: {errors:?}"
+    );
+}
+
+/// A compiled grammar whose name is no longer in the catalog (installed, then
+/// dropped by a HUME update) has no tree-sitter symbol to look up. Walking the
+/// install directory reaches it where the old catalog-driven walk never could,
+/// so registration must skip it rather than raise on the missing entry.
+///
+/// Flip: drop the `grammar-source-known?` guard in `register-installed-grammars!`
+/// and `grammar-source-symbol`'s `hash-ref` raises, failing the error assertion.
+#[test]
+fn orphan_compiled_grammar_is_skipped_not_registered() {
+    let catalog = "((\"json\" \"url\" \"rev\" \"tree_sitter_json\" \"\"))";
+    let ext = if cfg!(target_os = "macos") { "dylib" } else { "so" };
+
+    let (errors, ed, _dirs) = init_errors_with_catalog(catalog, |data| {
+        let grammars = data.join("grammars");
+        std::fs::create_dir_all(&grammars).unwrap();
+        std::fs::write(
+            grammars.join(format!("no-longer-in-catalog.{ext}")),
+            b"not a real library",
+        )
+        .unwrap();
+        // A highlights query too: without it the `when` short-circuits before
+        // the symbol lookup and the guard under test never runs.
+        let src = grammars.join("sources").join("no-longer-in-catalog");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("highlights.scm"), "; empty\n").unwrap();
+    });
+
+    assert!(
+        errors.is_empty(),
+        "an orphan compiled grammar must be skipped silently: {errors:?}"
+    );
+    assert!(
+        !ed.state.languages.has_grammar("no-longer-in-catalog"),
+        "an orphan compiled grammar must not be registered"
+    );
+}
+
+/// A file matching another platform's shared-library extension (e.g. a `.so`
+/// left behind after a macOS setup migrated from Linux) is not part of this
+/// platform's installed set, so `installed-grammars` must never yield its name
+/// at all — `register-grammar!` must not even be attempted for it.
+///
+/// `has_grammar` alone can't tell them apart: `grammar-output-path` always
+/// re-derives the *platform's* extension regardless of which file the walk
+/// matched, so an attempt on this entry is doomed to fail on a missing path
+/// either way — attempted-and-failed and never-attempted both leave `json`
+/// unregistered. What differs is whether the attempt happens: a failed init-time
+/// attach logs a `Warning` (`editor/syntax/mod.rs`), so an attempt leaves a
+/// trace in the message log that a skip does not.
+///
+/// Flip: match on "has any extension" instead of the platform extension in
+/// `installed-grammars` and this file starts matching, so `register-grammar!`
+/// is attempted and logs `register-grammar! 'json': grammar library not found`.
+#[test]
+fn wrong_extension_grammar_is_skipped_not_registered() {
+    let catalog = "((\"json\" \"url\" \"rev\" \"tree_sitter_json\" \"\"))";
+    let wrong_ext = if cfg!(target_os = "macos") { "so" } else { "dylib" };
+
+    let (errors, ed, _dirs) = init_errors_with_catalog(catalog, |data| {
+        let grammars = data.join("grammars");
+        std::fs::create_dir_all(&grammars).unwrap();
+        std::fs::write(
+            grammars.join(format!("json.{wrong_ext}")),
+            b"not a real library",
+        )
+        .unwrap();
+        let src = grammars.join("sources").join("json");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("highlights.scm"), "; empty\n").unwrap();
+    });
+
+    assert!(errors.is_empty(), "unexpected init errors: {errors:?}");
+    assert!(
+        !ed.state.languages.has_grammar("json"),
+        "a foreign-extension file must not be registered"
+    );
+    let warnings: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Warning)
+        .map(|e| e.text.clone())
+        .collect();
+    assert!(
+        warnings.is_empty(),
+        "a foreign-extension file must be skipped before ever attempting register-grammar!, \
+         not attempted-and-failed: {warnings:?}"
+    );
+}

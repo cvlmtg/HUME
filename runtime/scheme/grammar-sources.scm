@@ -2,7 +2,8 @@
 ;;;
 ;;; PURE DATA. One literal sexpr — a list of (name git-url rev symbol subpath)
 ;;; 5-tuples. All fields are fully canonicalised; no defaults are applied at
-;;; read time. Read once at startup by `grammars.scm` via the R7RS idiom:
+;;; read time. Read by `grammars.scm` on first use — not at startup — via the
+;;; R7RS idiom:
 ;;;
 ;;;   (call-with-input-file
 ;;;     (path-join (runtime-dir) "scheme" "grammar-sources.scm")

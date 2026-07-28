@@ -142,37 +142,15 @@
 
 ;; ── Grammar discovery ─────────────────────────────────────────────────────────
 
-;;; Strip the platform extension from `filename`, returning the grammar name,
-;;; or `#f` if the file has no extension (e.g. "sources" dir, dotfiles like
-;;; ".DS_Store" where the dot is at position 0).
-(define (plum/grammar-name-from-file filename)
-  (let* ((len (string-length filename))
-         (last-dot
-           (let search ((i (- len 1)))
-             (cond ((<= i 0) -1)
-                   ((equal? (substring filename i (+ i 1)) ".") i)
-                   (else (search (- i 1)))))))
-    (if (> last-dot 0) (substring filename 0 last-dot) #f)))
-
-;;; Names of all compiled grammars on disk (filenames in <data>/grammars/
-;;; with a real extension, excluding the sources/ subdirectory and dotfiles).
-(define (plum/installed-grammars)
-  (let ((gdir (grammars-dir)))
-    (if (not (path-exists? gdir))
-        '()
-        (filter (lambda (x) x)
-                (map plum/grammar-name-from-file
-                     (filter plum/valid-dir-entry? (plum/list-dir gdir)))))))
-
 ;;; Declared grammar names not yet compiled.
 (define (plum/missing-grammars)
   (filter (lambda (name) (not (grammar-installed? name)))
-          (hash-keys->list *grammar-sources*)))
+          (grammar-source-names)))
 
 ;;; Compiled grammar files whose names are not in the declared source registry.
 (define (plum/orphan-grammars)
-  (filter (lambda (name) (not (hash-contains? *grammar-sources* name)))
-          (plum/installed-grammars)))
+  (filter (lambda (name) (not (grammar-source-known? name)))
+          (installed-grammars)))
 
 ;;; Resolve the target grammar for a `:` grammar command: a string argument
 ;;; wins; otherwise fall back to the current buffer's language. Returns the
@@ -183,7 +161,7 @@
     (cond ((not (string? name))
            (log! 'warn (string-append cmd ": no grammar name given and current buffer has no language set"))
            #f)
-          ((not (hash-contains? *grammar-sources* name))
+          ((not (grammar-source-known? name))
            (log! 'warn (string-append cmd ": unknown grammar \"" name "\" — see :plum-list-grammars"))
            #f)
           (else name))))
@@ -259,8 +237,8 @@
 (define-command! "plum-list-grammars"
   "Log declared, installed, orphan, and missing grammar lists."
   (lambda ()
-    (let ((declared  (hash-keys->list *grammar-sources*))
-          (installed (plum/installed-grammars))
+    (let ((declared  (grammar-source-names))
+          (installed (installed-grammars))
           (orphans   (plum/orphan-grammars))
           (missing   (plum/missing-grammars)))
       (log! 'info (string-append "PLUM grammars declared:   " (string-join declared  ", ")))

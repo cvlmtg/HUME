@@ -12,7 +12,9 @@ The **capability half** is what this document is about: a grammar that can
 parse the language into a syntax tree, and a query that can map tree nodes
 to semantic names. A language can be registered with only the identity half —
 the detection and hooks work fine, but there is no syntax highlighting.
-Capability is attached separately, usually by the `plum` plugin.
+Capability is attached separately: every installed grammar is registered
+automatically at startup, and the `plum` plugin is what installs a grammar
+that isn't there yet.
 
 This separation is what lets HUME recognize a `.zig` file as Zig (useful for
 the statusline and hooks) even before the user has installed the Zig grammar.
@@ -160,10 +162,12 @@ When you run `:plum-install-grammar`, plum:
    rejected here with a clear error rather than crashing the parse worker
    later.
 
-On subsequent starts, plum walks the catalog during initialization and
-registers every declared grammar whose compiled library and queries are
-already on disk. No network access on startup; grammars are registered from
-local files.
+On subsequent starts, HUME scans the data directory for compiled grammars and
+registers every one whose library and queries are already on disk. No network
+access on startup, and no catalog *scan* either — the walk works from what's
+actually present on the filesystem, not from what's declared, and only
+consults the catalog for a name it actually finds there. A fresh setup with
+nothing installed never touches the catalog at all.
 
 ## Why pinned revisions
 
@@ -193,10 +197,10 @@ grammar can inject other languages are swept too — installing the Rust
 grammar lights up Rust code fences in a Markdown buffer that was already open
 and highlighted.
 
-The same mechanism handles batch registration at startup: because `plum`
-registers all installed grammars during initialization (potentially after some
-buffers have already been opened by the startup sequence), the sweep guarantees
-that no buffer is left without highlighting due to ordering.
+The same mechanism handles batch registration at startup: because grammar
+registration runs during initialization (potentially after some buffers have
+already been opened by the startup sequence), the sweep guarantees that no
+buffer is left without highlighting due to ordering.
 
 ## End-to-end: opening a `.rs` file
 

@@ -70,11 +70,14 @@ disk state.
 ### Grammar sources and the Helix pin
 
 Grammar source metadata (repo URL, pinned revision, tree-sitter symbol, subpath) and the
-path helpers built on it (`grammar-output-path`, `grammar-highlights-path`, …) are core, not
-PLUM — `runtime/scheme/grammars.scm` declares them from `runtime/scheme/grammar-sources.scm`
-unconditionally at startup, before PLUM (or any other plugin) ever loads, and registers any
-already-compiled grammar it finds. PLUM's `grammars.scm` calls those same bindings for its
-install pipeline; it doesn't declare its own copy. Syntax-highlighting queries
+path helpers built on it (`grammar-output-path`, `grammar-highlights-path`,
+`installed-grammars`, …) are core, not PLUM — `runtime/scheme/grammars.scm` owns them and, at
+startup, registers any already-compiled grammar it finds, before PLUM (or any other plugin)
+ever loads. It finds them by listing `<data>/grammars/` rather than probing every catalog
+entry, and reads `runtime/scheme/grammar-sources.scm` only on first use, so a setup with no
+grammars installed pays a single `path-exists?` for the whole subsystem. PLUM's `grammars.scm`
+calls those same bindings for its install pipeline; it doesn't declare its own copy.
+Syntax-highlighting queries
 (`highlights.scm`, `injections.scm`) aren't authored in HUME — they're fetched from the Helix
 project's `runtime/queries/` at a pinned commit (`runtime/scheme/helix-pin.scm`, read once at
 PLUM's own load), so HUME rides Helix's query-file curation without vendoring it.
@@ -104,8 +107,8 @@ discover the dependency exists.
 ### Startup registration is core's job, and passive
 
 `register-installed-grammars!` (`runtime/scheme/grammars.scm`) runs once at editor startup —
-whether or not PLUM is declared in `init.scm` — and registers any already-compiled grammar
-found on disk: no subprocess, no network. Grammars declared but not yet compiled stay missing
+whether or not PLUM is declared in `init.scm` — and registers every already-compiled grammar
+in `<data>/grammars/`: no subprocess, no network. Grammars declared but not yet compiled stay missing
 until the user explicitly runs `:plum-install-grammar` or `:plum-ensure-grammars`; nothing
 auto-installs on startup, since a first run with many declared languages could otherwise mean
 a long, surprising stall before the editor is usable.

@@ -6,37 +6,57 @@
 ;;; grammars is core:plum's job (runtime/plugins/core/plum/grammars.scm);
 ;;; this file only makes already-installed ones take effect, so highlighting
 ;;; survives PLUM being absent from init.scm.
+;;;
+;;; Registration is driven by the install directory, not by the source
+;;; catalog: `<data>/grammars/` holds one compiled file per installed grammar
+;;; and does not exist at all until something is installed, so a setup with no
+;;; grammars settles the whole question in one `path-exists?` instead of
+;;; probing 350+ catalog entries that cannot match.
 
-;; ── Grammar source registry ───────────────────────────────────────────────────
+;; ── Grammar source catalog ────────────────────────────────────────────────────
 
-;;; Hash: name → (url rev symbol subpath)
-(define *grammar-sources* (hash))
+;;; Hash: name → (url rev symbol subpath), parsed on first use.
+;;;
+;;; Lazy because nothing needs it until a grammar is actually installed or a
+;;; `:plum-*-grammar` command runs — and reading + parsing the catalog's 350+
+;;; 5-tuples is a measurable slice of startup that a fresh setup would pay for
+;;; nothing. A `box` rather than `set!` on a plain global: core:plum reaches
+;;; these bindings from inside a `require`d module, and `box` is the pattern
+;;; already proven across that boundary (see `debounce` in builtins/bootstrap.scm).
+(define *grammar-sources-cache* (box #f))
 
-;;; Register a grammar source from a 5-tuple (name url rev symbol subpath).
-(define (declare-grammar-source! entry)
-  (let ((name    (list-ref entry 0))
-        (url     (list-ref entry 1))
-        (rev     (list-ref entry 2))
-        (symbol  (list-ref entry 3))
-        (subpath (list-ref entry 4)))
-    (set! *grammar-sources*
-          (hash-insert *grammar-sources* name (list url rev symbol subpath)))))
+(define (read-grammar-sources)
+  (let loop ((entries (call-with-input-file
+                        (path-join (runtime-dir) "scheme" "grammar-sources.scm")
+                        read))
+             (acc (hash)))
+    (if (null? entries)
+        acc
+        (let ((entry (car entries)))
+          (loop (cdr entries)
+                (hash-insert acc
+                             (list-ref entry 0)
+                             (list (list-ref entry 1) (list-ref entry 2)
+                                   (list-ref entry 3) (list-ref entry 4))))))))
 
-(for-each
-  declare-grammar-source!
-  (call-with-input-file
-    (path-join (runtime-dir) "scheme" "grammar-sources.scm")
-    read))
+(define (grammar-sources)
+  (unless (unbox *grammar-sources-cache*)
+    (set-box! *grammar-sources-cache* (read-grammar-sources)))
+  (unbox *grammar-sources-cache*))
 
-;;; Accessors.
+;;; Accessors. Every one forces the catalog.
+(define (grammar-source-names)
+  (hash-keys->list (grammar-sources)))
+(define (grammar-source-known? name)
+  (hash-contains? (grammar-sources) name))
 (define (grammar-source-url name)
-  (list-ref (hash-ref *grammar-sources* name) 0))
+  (list-ref (hash-ref (grammar-sources) name) 0))
 (define (grammar-source-rev name)
-  (list-ref (hash-ref *grammar-sources* name) 1))
+  (list-ref (hash-ref (grammar-sources) name) 1))
 (define (grammar-source-symbol name)
-  (list-ref (hash-ref *grammar-sources* name) 2))
+  (list-ref (hash-ref (grammar-sources) name) 2))
 (define (grammar-source-subpath name)
-  (list-ref (hash-ref *grammar-sources* name) 3))
+  (list-ref (hash-ref (grammar-sources) name) 3))
 
 ;; ── Path helpers ──────────────────────────────────────────────────────────────
 
@@ -55,13 +75,10 @@
 (define (grammar-injections-path name)
   (path-join (grammar-source-dir name) "injections.scm"))
 
-;;; Shared-library extension for compiled grammars on this platform. Mirrors
-;;; the (removed) `grammar-output-path` Rust builtin's compile-time `cfg`
-;;; dispatch as closely as a runtime string allows: `(hume-target)` only
-;;; recognizes 4 platform strings and returns `#f` otherwise (unlike the
-;;; Rust `cfg(target_os)` match, which covers every OS at compile time), so
-;;; the `else` branch here — like the Rust `else` branch it replaces —
-;;; defaults to "so" rather than erroring on an unrecognized platform.
+;;; Shared-library extension for compiled grammars on this platform.
+;;; `(hume-target)` recognizes 4 platform strings and returns `#f` for
+;;; anything else, so the `else` branch defaults to "so" rather than
+;;; erroring on an unrecognized platform.
 (define (platform-grammar-ext)
   (let ((target (hume-target)))
     (cond ((and (string? target) (starts-with? target "darwin")) "dylib")
@@ -76,20 +93,47 @@
 (define (grammar-installed? name)
   (path-exists? (grammar-output-path name)))
 
+;; ── Installed-grammar discovery ───────────────────────────────────────────────
+
+;;; Names of the compiled grammars in <data>/grammars/ that this platform can
+;;; load. `read-dir` already proves each file exists, so matching the platform
+;;; extension here does the whole job a second `stat` would: a `.so` left behind
+;;; on macOS is dropped before it can reach dlopen, and the `sources/`
+;;; subdirectory and dotfiles fall out of the same test for free.
+;;; `'()` when nothing has ever been installed — the directory is created by
+;;; the first install, so its absence is the common fresh-setup case.
+(define (installed-grammars)
+  (let ((gdir (grammars-dir)))
+    (if (not (path-exists? gdir))
+        '()
+        (let* ((suffix (string-append "." (platform-grammar-ext)))
+               (slen   (string-length suffix)))
+          (map (lambda (f) (substring f 0 (- (string-length f) slen)))
+               (filter (lambda (f) (and (ends-with? f suffix)
+                                        (> (string-length f) slen)))
+                       (sort (map file-name (read-dir gdir)) string<?)))))))
+
 ;; ── Startup registration ──────────────────────────────────────────────────────
 
 ;;; Passive: registers already-compiled grammars only, no subprocess. See
 ;;; core:plum/README.md for the install pipeline that produces these files.
+;;;
+;;; `grammar-source-known?` is what makes walking the directory safe: an
+;;; orphan file (installed, then dropped from the catalog by a HUME update)
+;;; has no tree-sitter symbol to look up.
 (define (register-installed-grammars!)
   (for-each
     (lambda (name)
-      (let ((out  (grammar-output-path name))
-            (hl   (grammar-highlights-path name))
-            (inj  (grammar-injections-path name))
-            (sym  (grammar-source-symbol name)))
-        (when (and (grammar-installed? name) (path-exists? hl))
-          (register-grammar! name out sym hl (if (path-exists? inj) inj #f)))))
-    (hash-keys->list *grammar-sources*)))
+      (let ((hl (grammar-highlights-path name)))
+        (when (and (grammar-source-known? name)
+                   (path-exists? hl))
+          (let ((inj (grammar-injections-path name)))
+            (register-grammar! name
+                               (grammar-output-path name)
+                               (grammar-source-symbol name)
+                               hl
+                               (if (path-exists? inj) inj #f))))))
+    (installed-grammars)))
 
 ;;; `data-dir` is `#f` when HOME/APPDATA is unset — nothing to scan.
 (when (data-dir)
