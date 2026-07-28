@@ -122,20 +122,26 @@
 ;;; `:pwd` *is* the repo root — from any subdirectory an unjoined path opens
 ;;; the wrong file.
 (define (pickers/open-git-picker! root)
-  (let* ([output (or (pickers/run-stdout-raw
-                       "git"
-                       (list "status" "--porcelain" "-z" "--no-renames"
-                             (string-append "--untracked-files="
-                                             (if pickers/untracked "all" "no"))))
-                      "")]
-         [items (pickers/parse-git-status output)])
-    (if (null? items)
-        (error "picker-git-modified: no changes — working tree is clean")
-        (picker! items
-                 (lambda (path)
-                   (when path
-                     (switch-to-buffer! (open-buffer! (path-join root path)))))
-                 #:prompt "git: "))))
+  (let ([output (pickers/run-stdout-raw
+                  "git"
+                  (list "status" "--porcelain" "-z" "--no-renames"
+                        (string-append "--untracked-files="
+                                        (if pickers/untracked "all" "no"))))])
+    ;; `#f` (spawn/exit failure) and `""` (clean tree, valid empty output) are
+    ;; distinct outcomes — collapsing them would report a broken `git status`
+    ;; as "working tree is clean".
+    (cond
+      [(not output)
+       (error "picker-git-modified: `git status` failed — check the repository state")]
+      [else
+       (let ([items (pickers/parse-git-status output)])
+         (if (null? items)
+             (error "picker-git-modified: no changes — working tree is clean")
+             (picker! items
+                      (lambda (path)
+                        (when path
+                          (switch-to-buffer! (open-buffer! (path-join root path)))))
+                      #:prompt "git: ")))])))
 
 ;;; Internal dispatch seam: repo root passed in explicitly so tests can drive
 ;;; the not-a-repo branch via `call!` instead of manipulating the sandbox.
@@ -144,7 +150,7 @@
   (lambda (root)
     (if root
         (pickers/open-git-picker! root)
-        (error "picker-git-modified: not inside a git repository"))))
+        (error "picker-git-modified: not inside a git repository (or 'git' is not installed)"))))
 
 (define-command! "picker-git-modified"
   "Fuzzy-pick a file with staged or unstaged git changes and open it."

@@ -67,6 +67,11 @@ repo.
 An empty result (clean tree) or a cwd outside any git repository surfaces as
 a status message instead of an empty picker panel.
 
+Since this is a synchronous spawn, the default `#t` walks every untracked
+directory fully (`--untracked-files=all`) before `g m` opens — a large
+un-ignored directory (no `.gitignore` entry) makes the editor pause for that
+walk. Set `"untracked"` to `#f` to skip it.
+
 ### Config
 
 | Key            | Value        | Effect                                    |

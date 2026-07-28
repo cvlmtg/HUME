@@ -85,9 +85,10 @@ fn git(dir: &Path, args: &[&str]) {
     assert!(status.success(), "git {args:?} failed");
 }
 
-/// Local commit identity — a fresh sandbox has none, and `git commit` fails
-/// without one.
-fn git_configure_identity(dir: &Path) {
+/// `git init -q` plus a local commit identity — a fresh sandbox has neither,
+/// and `git commit` fails without one.
+fn git_init(dir: &Path) {
+    git(dir, &["init", "-q"]);
     git(dir, &["config", "user.email", "test@example.com"]);
     git(dir, &["config", "user.name", "Test"]);
 }
@@ -272,8 +273,7 @@ fn files_picker_error_path_names_fd() {
 fn git_modified_picker_lists_changed_files_with_status_codes() {
     let guard = HumeRuntimeGuard::new();
     let sandbox = CwdSandbox::new();
-    git(sandbox.raw(), &["init", "-q"]);
-    git_configure_identity(sandbox.raw());
+    git_init(sandbox.raw());
     std::fs::write(sandbox.raw().join("a.txt"), "hello\n").unwrap();
     git(sandbox.raw(), &["add", "a.txt"]);
     git(sandbox.raw(), &["commit", "-q", "-m", "init"]);
@@ -316,8 +316,7 @@ fn git_modified_picker_lists_changed_files_with_status_codes() {
 fn git_modified_picker_accept_resolves_relative_to_repo_root_from_subdirectory() {
     let guard = HumeRuntimeGuard::new();
     let sandbox = CwdSandbox::new();
-    git(sandbox.raw(), &["init", "-q"]);
-    git_configure_identity(sandbox.raw());
+    git_init(sandbox.raw());
     std::fs::write(sandbox.raw().join("root.txt"), "hello\n").unwrap();
     git(sandbox.raw(), &["add", "root.txt"]);
     git(sandbox.raw(), &["commit", "-q", "-m", "init"]);
@@ -360,11 +359,96 @@ fn git_modified_picker_accept_resolves_relative_to_repo_root_from_subdirectory()
 }
 
 #[test]
+fn git_modified_picker_row_and_accept_handle_path_with_space() {
+    let guard = HumeRuntimeGuard::new();
+    let sandbox = CwdSandbox::new();
+    git_init(sandbox.raw());
+    std::fs::write(sandbox.raw().join("has space.txt"), "hello\n").unwrap();
+    git(sandbox.raw(), &["add", "has space.txt"]);
+    git(sandbox.raw(), &["commit", "-q", "-m", "init"]);
+    std::fs::write(sandbox.raw().join("has space.txt"), "hello\nworld\n").unwrap();
+
+    // Bare tempdir(), not safe_tempdir() — see the comment at this pattern's
+    // first occurrence above (`files_picker_in_git_repo_uses_git_index_and_opens_selection`).
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
+    ed.set_cwd(&sandbox.path()).unwrap();
+
+    ed.feed_key(key('g'));
+    ed.feed_key(key('m'));
+
+    let picker = ed.state.config.picker.as_ref().expect("picker open");
+    let rows: Vec<&str> = picker.window(10).collect();
+    assert_eq!(
+        rows,
+        vec![" M has space.txt"],
+        "-z must yield the path verbatim, not git's default C-quoted form; got {rows:?}"
+    );
+
+    ed.feed_key(key_enter());
+    ed.drain_pending_steel_calls();
+
+    assert!(ed.state.config.picker.is_none());
+    let bid = ed.focused_buffer_id();
+    let path = ed.state.buffers.get(bid).path().expect("buffer has a path");
+    assert_eq!(
+        path,
+        sandbox.path().join("has space.txt"),
+        "accept must open the exact path parsed from the -z entry"
+    );
+}
+
+#[test]
+fn git_modified_picker_accept_resolves_nested_relative_path() {
+    let guard = HumeRuntimeGuard::new();
+    let sandbox = CwdSandbox::new();
+    git_init(sandbox.raw());
+    std::fs::create_dir_all(sandbox.raw().join("sub")).unwrap();
+    std::fs::write(sandbox.raw().join("sub/file.txt"), "hello\n").unwrap();
+    git(sandbox.raw(), &["add", "sub/file.txt"]);
+    git(sandbox.raw(), &["commit", "-q", "-m", "init"]);
+    std::fs::write(sandbox.raw().join("sub/file.txt"), "hello\nworld\n").unwrap();
+
+    // Bare tempdir(), not safe_tempdir() — see the comment at this pattern's
+    // first occurrence above (`files_picker_in_git_repo_uses_git_index_and_opens_selection`).
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
+    // :pwd *is* the repo root here — the subdirectory case is covered by
+    // `git_modified_picker_accept_resolves_relative_to_repo_root_from_subdirectory`
+    // above; this test isolates `path-join`'s handling of a multi-segment
+    // relative path instead.
+    ed.set_cwd(&sandbox.path()).unwrap();
+
+    ed.feed_key(key('g'));
+    ed.feed_key(key('m'));
+    assert_eq!(
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .expect("picker open")
+            .total_len(),
+        1
+    );
+
+    ed.feed_key(key_enter());
+    ed.drain_pending_steel_calls();
+
+    assert!(ed.state.config.picker.is_none());
+    let bid = ed.focused_buffer_id();
+    let path = ed.state.buffers.get(bid).path().expect("buffer has a path");
+    assert_eq!(
+        path,
+        sandbox.path().join("sub/file.txt"),
+        "accept must join a multi-segment repo-relative path against the root correctly"
+    );
+}
+
+#[test]
 fn git_modified_picker_untracked_false_config_hides_untracked_files() {
     let guard = HumeRuntimeGuard::new();
     let sandbox = CwdSandbox::new();
-    git(sandbox.raw(), &["init", "-q"]);
-    git_configure_identity(sandbox.raw());
+    git_init(sandbox.raw());
     std::fs::write(sandbox.raw().join("a.txt"), "hello\n").unwrap();
     git(sandbox.raw(), &["add", "a.txt"]);
     git(sandbox.raw(), &["commit", "-q", "-m", "init"]);
@@ -399,8 +483,7 @@ fn git_modified_picker_untracked_false_config_hides_untracked_files() {
 fn git_modified_picker_untracked_default_lists_files_inside_untracked_directory() {
     let guard = HumeRuntimeGuard::new();
     let sandbox = CwdSandbox::new();
-    git(sandbox.raw(), &["init", "-q"]);
-    git_configure_identity(sandbox.raw());
+    git_init(sandbox.raw());
     std::fs::create_dir_all(sandbox.raw().join("newdir")).unwrap();
     std::fs::write(sandbox.raw().join("newdir/file.txt"), "").unwrap();
 
@@ -447,9 +530,12 @@ fn git_modified_picker_invalid_untracked_config_fails_load() {
         let mut ih = crate::editor::scripting_setup::make_init_host(&mut ed.state, &mut ed.view);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     };
+    let err = result
+        .expect_err("a non-boolean \"untracked\" value must fail the load, not silently default");
     assert!(
-        result.is_err(),
-        "a non-boolean \"untracked\" value must fail the load, not silently default"
+        err.message.contains("untracked"),
+        "error must name the offending config key, not just fail generically; got: {}",
+        err.message
     );
 }
 
@@ -457,8 +543,7 @@ fn git_modified_picker_invalid_untracked_config_fails_load() {
 fn git_modified_picker_clean_tree_opens_no_picker() {
     let guard = HumeRuntimeGuard::new();
     let sandbox = CwdSandbox::new();
-    git(sandbox.raw(), &["init", "-q"]);
-    git_configure_identity(sandbox.raw());
+    git_init(sandbox.raw());
     std::fs::write(sandbox.raw().join("a.txt"), "hello\n").unwrap();
     git(sandbox.raw(), &["add", "a.txt"]);
     git(sandbox.raw(), &["commit", "-q", "-m", "init"]);
@@ -508,11 +593,42 @@ fn git_modified_picker_not_a_repo_names_git() {
 }
 
 #[test]
+fn git_modified_picker_git_status_failure_does_not_say_clean() {
+    let guard = HumeRuntimeGuard::new();
+    // Not a repo — no `git init`. The seam's `root` argument is only used by
+    // `on-select`'s `path-join`, never to select `git status`'s cwd, so a
+    // truthy-but-bogus root bypasses the not-a-repo check while `git status`
+    // itself still runs (and fails) against this non-repo cwd — the failure
+    // branch `pickers/open-git-picker!` must not fold into "clean".
+    let sandbox = CwdSandbox::new();
+    // Bare tempdir(), not safe_tempdir() — see the comment at this pattern's
+    // first occurrence above (`files_picker_in_git_repo_uses_git_index_and_opens_selection`).
+    let tmp = tempfile::tempdir().unwrap();
+    let extra = r#"(define-command! "test-git-status-fails" "" (lambda ()
+                     (call! "pickers/git-picker-with" "/nonexistent-root")))"#;
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", extra);
+    ed.set_cwd(&sandbox.path()).unwrap();
+
+    ed.state.status_msg = None;
+    call(&mut ed, "test-git-status-fails");
+
+    let msg = ed
+        .state
+        .status_msg
+        .clone()
+        .expect("error must surface as a status message");
+    assert!(
+        !msg.contains("clean"),
+        "a failed `git status` must not be reported as a clean working tree; got: {msg}"
+    );
+    assert!(ed.state.config.picker.is_none());
+}
+
+#[test]
 fn git_modified_picker_esc_dismisses_cleanly() {
     let guard = HumeRuntimeGuard::new();
     let sandbox = CwdSandbox::new();
-    git(sandbox.raw(), &["init", "-q"]);
-    git_configure_identity(sandbox.raw());
+    git_init(sandbox.raw());
     std::fs::write(sandbox.raw().join("a.txt"), "").unwrap();
 
     // Bare tempdir(), not safe_tempdir() — see the comment at this pattern's
