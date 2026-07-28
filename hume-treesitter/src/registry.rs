@@ -220,9 +220,11 @@ impl LanguageRegistry {
     /// Intended for batch registration: call this N times then call
     /// `rebuild_glob_set` once, avoiding O(N²) NFA constructions at startup.
     ///
-    /// Re-registering an already-grammared name drops its grammar (matching
-    /// `by_name`/`has_grammar` seeing no identity change without a fresh
-    /// `attach_grammar`) and rebuilds the snapshot so no stale entry survives.
+    /// Replaces extensions/globs/shebangs for `name`; an already-attached
+    /// grammar is kept — identity and grammar are independent facts about a
+    /// language, and re-registering one must not silently undo the other.
+    /// (Symmetric with `attach_grammar`, which likewise preserves an existing
+    /// identity.) A grammar only ever changes via `attach_grammar`.
     pub fn register_identity_no_rebuild(
         &mut self,
         name: &str,
@@ -248,9 +250,6 @@ impl LanguageRegistry {
         self.identities[id.0 as usize] = Some(new_identity);
         self.lang_order.retain(|&i| i != id);
         self.lang_order.push(id);
-        if self.grammars[id.0 as usize].take().is_some() {
-            self.rebuild_grammar_snapshot();
-        }
         id
     }
 

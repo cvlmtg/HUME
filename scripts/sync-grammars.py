@@ -47,8 +47,9 @@ LANGUAGES_HEADER = """\
 ;;; runtime/scheme/languages.scm — HUME bundled default language identities.
 ;;;
 ;;; Evaluated at startup before init.scm.  Override any entry by redefining
-;;; it in init.scm — `define-language!` fully replaces the prior registration
-;;; for a given name (see init.scm.example for override examples).
+;;; it in init.scm — `define-language!` replaces the prior identity
+;;; (extensions/globs/shebangs) for a given name, and keeps any grammar
+;;; already attached to it (see init.scm.example for override examples).
 ;;;
 ;;; Identity only: extensions, globs, and shebangs.  No tree-sitter grammars
 ;;; are shipped here — to enable highlighting, call (register-grammar! …) with

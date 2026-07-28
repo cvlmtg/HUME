@@ -222,6 +222,58 @@ fn deindex_does_not_clobber_another_languages_shared_extension() {
     assert_eq!(reg.by_extension("c"), reg.id_of("c"));
 }
 
+/// A `define-language!` override in `init.scm` (e.g. adding an extension to
+/// an already-grammared language) must not undo the grammar `grammars.scm`
+/// attached at startup — identity and grammar are independent facts.
+///
+/// Flip: restoring the `grammars[id].take()` clear in
+/// `register_identity_no_rebuild` makes `has_grammar`/`grammar_snapshot`
+/// go empty here.
+#[test]
+fn attached_grammar_survives_identity_re_registration() {
+    if skip_unless_grammars(&["rust"]) {
+        return;
+    }
+    let parser_path = grammar_parser_path("rust");
+    let hl_path = grammar_query_path("rust");
+
+    let mut reg = LanguageRegistry::new();
+    let mut scope_reg = ScopeRegistry::new();
+    reg.attach_grammar(
+        "rust",
+        &parser_path,
+        "tree_sitter_rust",
+        &hl_path,
+        None,
+        &mut scope_reg,
+    )
+    .expect("attach must succeed");
+    assert!(reg.has_grammar("rust"), "sanity: grammar attached");
+
+    // Re-register identity, as `define-language!` would from init.scm to add
+    // an extra extension.
+    reg.register_identity("rust", &["rs", "mylang"], &[], &[])
+        .expect("re-registering identity must succeed");
+
+    assert!(
+        reg.has_grammar("rust"),
+        "identity re-registration must keep the attached grammar"
+    );
+    let id = reg.id_of("rust").expect("rust must still be interned");
+    assert!(
+        reg.grammar(id).is_some(),
+        "grammar(id) must still resolve after re-registration"
+    );
+    assert!(
+        reg.grammar_snapshot().contains_key("rust"),
+        "grammar_snapshot must still carry rust after re-registration"
+    );
+
+    // The identity replacement itself must still have taken effect.
+    let detected = detect_language(Some(Path::new("foo.mylang")), None, &reg);
+    assert_eq!(detected, reg.id_of("rust"));
+}
+
 #[test]
 fn detect_language_by_extension() {
     let mut reg = LanguageRegistry::new();
