@@ -204,19 +204,32 @@ impl Editor {
     /// Re-read `bid` from disk and reload it in place. Called by the
     /// confirm overlay's `[r]eload` choice.
     ///
-    /// Only ever invoked while `bid` is still the focused buffer —
-    /// `check_buffer_disk_state` only opens a confirm for the focused
-    /// buffer, the confirm intercept consumes every key unconditionally
-    /// while open, and no interactive command can run in between — so
-    /// `reload_buffer_in_place`'s focused-pane assumption always holds on
-    /// the interactive path. `try_get` still guards this: a non-interactive
-    /// close of `bid` (a Steel hook, a `:reload-config`-triggered reset,
-    /// both of which also drop the confirm itself) degrades to a silent
-    /// no-op rather than a panic.
+    /// `check_buffer_disk_state` only ever opens a confirm for the focused
+    /// buffer, but focus can still move before the user answers: a confirm
+    /// is only checked against incoming *keys* (`handle_confirm_key`), while
+    /// `prepare_frame` drains async Steel sources and pending Steel calls
+    /// every frame regardless — either can call the host's
+    /// `switch-to-buffer!` and move focus without ever going through key
+    /// dispatch. `reload_buffer_in_place`'s focused-pane assumption
+    /// (`.expect("focused pane must view the reloaded buffer")`) would panic
+    /// if that happened, so this bails with a warning instead of reloading a
+    /// buffer that quietly isn't focused anymore. `try_get` still guards a
+    /// non-interactive *close* of `bid` (a Steel hook, a
+    /// `:reload-config`-triggered reset, both of which also drop the
+    /// confirm itself) — that degrades to a silent no-op, since there is no
+    /// buffer left to warn about.
     pub(in crate::editor) fn reload_buffer_from_disk(&mut self, bid: BufferId) {
         let Some(buf) = self.state.buffers.try_get(bid) else {
             return;
         };
+        if bid != self.focused_buffer_id() {
+            let name = buf.display_name();
+            self.report(
+                Severity::Warning,
+                format!("{name}: no longer focused, not reloading"),
+            );
+            return;
+        }
         let Some(path) = buf.path().map(std::path::Path::to_path_buf) else {
             return;
         };

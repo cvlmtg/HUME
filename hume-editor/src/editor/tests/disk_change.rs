@@ -337,6 +337,47 @@ fn confirm_any_other_key_dismisses_without_reloading() {
     assert!(ed.doc().is_disk_stale());
 }
 
+/// Accepting the confirm after focus moved away from the target buffer
+/// (an async Steel/LSP callback calling `switch-to-buffer!` between frames —
+/// not through key dispatch, since the confirm intercept consumes every key
+/// while open) must not reload, and must not panic.
+///
+/// Fail oracle: without the focus guard, `reload_buffer_from_disk` would
+/// call `reload_buffer_in_place(bid_a, ..)` while focus is on B, and its
+/// `.expect("focused pane must view the reloaded buffer")` would panic —
+/// there is no pane state for A's post-heads at the now-focused pane.
+#[test]
+fn reload_confirm_accept_after_focus_moved_away_does_not_panic() {
+    let (mut ed, tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid_a = ed.focused_buffer_id();
+    rewrite_externally(&tmp_a, "hello, externally changed!\n");
+    ed.check_buffer_disk_state(bid_a, DiskCheckTrigger::Ambient);
+    assert!(ed.state.config.confirm.is_some(), "setup: confirm must be open");
+
+    // Simulate an async callback moving focus without going through key
+    // dispatch — the confirm is left open, still targeting A.
+    let tmp_b = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(tmp_b.path(), "world\n").unwrap();
+    let (bid_b, _) = ed
+        .resolve_open_path(&tmp_b.path().display().to_string())
+        .unwrap();
+    ed.switch_to_buffer_without_jump(bid_b);
+    assert_ne!(ed.focused_buffer_id(), bid_a, "setup: focus must have moved off A");
+
+    let (_, warnings_before) = ed.state.message_log.totals();
+    ed.handle_key(key('r'));
+    let (_, warnings_after) = ed.state.message_log.totals();
+
+    assert!(ed.state.config.confirm.is_none(), "confirm must still close");
+    assert_eq!(warnings_after, warnings_before + 1, "must warn instead of reloading");
+    assert_eq!(ed.focused_buffer_id(), bid_b, "focus must stay put");
+    assert_eq!(
+        ed.state.buffers.get(bid_a).text().to_string(),
+        "hello\n",
+        "A must not have been reloaded while unfocused"
+    );
+}
+
 // ── `:w` stale guard ───────────────────────────────────────────────────────────
 
 /// `:w` refuses when the file on disk no longer matches what the buffer
