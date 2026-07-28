@@ -217,6 +217,40 @@ fn deferred_change_on_non_focused_buffer_prompts_on_buffer_enter() {
     );
 }
 
+/// A pending change detected while the editor is in Insert never opens a
+/// confirm — it would steal the very next keystroke from whatever the user
+/// is mid-typing. It warns instead, same as a non-focused buffer or
+/// `autoread` off — and, like that non-focused case, only a `BufferEnter`
+/// check reopens the deferred prompt; a further `Ambient` recheck stays
+/// silent for the same already-reported state.
+///
+/// Fail oracle: if the confirm ignored mode entirely, the first assertion
+/// below would find a confirm open while `ed.state.mode` is `Insert`.
+#[test]
+fn change_detected_mid_insert_warns_instead_of_prompting() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    ed.state.mode = Mode::Insert;
+    rewrite_externally(&tmp, "hello, externally changed!\n");
+
+    let (_, warnings_before) = ed.state.message_log.totals();
+    let bid = ed.focused_buffer_id();
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
+    let (_, warnings_after) = ed.state.message_log.totals();
+
+    assert_eq!(warnings_after, warnings_before + 1, "must warn instead of prompting");
+    assert!(ed.state.config.confirm.is_none());
+
+    // Back in Normal, only a buffer-enter check reopens the deferred prompt
+    // — same deferral rule as a non-focused buffer's warning (see
+    // `deferred_change_on_non_focused_buffer_prompts_on_buffer_enter`).
+    ed.state.mode = Mode::Normal;
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::BufferEnter);
+    assert!(
+        ed.state.config.confirm.is_some(),
+        "a mode-blocked Changed must still prompt on the next buffer-enter"
+    );
+}
+
 // ── Writing the buffer must not look like an external change ─────────────────
 
 /// The editor's own `:w` renames a fresh inode into place, which always

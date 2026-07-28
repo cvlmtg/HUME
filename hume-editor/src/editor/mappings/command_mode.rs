@@ -51,7 +51,12 @@ impl Editor {
                     let raw = mb.input.clone();
                     self.state.history.get_mut(HistoryKind::Command).push(raw);
                 }
+                // Marks this dispatch as a fully-submitted command rather
+                // than the user still typing — see the field doc. Cleared
+                // immediately after; `execute_command` doesn't leave early.
+                self.state.dispatching_typed_command = true;
                 self.execute_command();
+                self.state.dispatching_typed_command = false;
                 // A `:command` whose body calls `(prompt! …)` leaves a
                 // new minibuffer session open — closing it here would stomp
                 // that session before the user ever sees it.

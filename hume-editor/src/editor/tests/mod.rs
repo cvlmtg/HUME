@@ -257,6 +257,7 @@ impl Editor {
                 macro_pending: None,
                 replay_queue: VecDeque::new(),
                 skip_macro_record: false,
+                dispatching_typed_command: false,
                 is_replaying: false,
                 mouse_drag_anchor: None,
                 cwd: std::env::temp_dir(),

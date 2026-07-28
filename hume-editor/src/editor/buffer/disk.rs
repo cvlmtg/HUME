@@ -10,7 +10,7 @@
 
 use hume_engine::pipeline::BufferId;
 
-use crate::editor::{Editor, Severity};
+use crate::editor::{Editor, Mode, Severity};
 use crate::ui::confirm::{ConfirmChoice, ConfirmModel};
 
 use super::Buffer;
@@ -91,17 +91,30 @@ impl Editor {
     /// `Vanished` always just warns, once — there is nothing to reload
     /// from, so never prompt, and a state already reported must not
     /// re-warn on every later trigger. `Changed` on the *focused* buffer
-    /// opens a reload confirm when its `autoread` setting is on; every
-    /// other case (a non-focused buffer, or `autoread` off) only warns.
+    /// opens a reload confirm when its `autoread` setting is on and the
+    /// editor is in a mode that can show one; every other case (a
+    /// non-focused buffer, `autoread` off, or a mode-blocked one) only
+    /// warns. A confirm can open in `Normal`/`Extend` unconditionally, and
+    /// in `Command` only while `dispatching_typed_command` is set — that is
+    /// the difference between `:e`/`:b`/`:bn`/`:bp`/`:checktime` opening one
+    /// as their own direct result (safe: the command line was already
+    /// submitted) and an ambient check landing while the user is still
+    /// typing an unsubmitted `:`/`/` line (unsafe: would steal the next
+    /// keystroke and hide the in-progress line). `Insert`/`Search`/`Select`
+    /// never allow one — nothing dispatches a command under those modes, so
+    /// there's no legitimate case to carve out, only live typing to protect.
     ///
     /// A `Changed`/`Vanished` state already reported stays silent on a
     /// further `Ambient` check — "don't nag again for the same thing" — but
     /// a `BufferEnter` check always prompts a pending `Changed` on the
-    /// focused, `autoread`-on buffer regardless: that is the "asked about
-    /// on its own next buffer-enter" deferred prompt the non-focused/
-    /// `autoread`-off warning promised earlier. `FileMeta::signature` (the
-    /// write baseline `disk_change_for` compares against) is untouched
-    /// either way, so a *further* external change still reads as `Changed`.
+    /// focused, `autoread`-on, prompt-eligible-mode buffer regardless: that
+    /// is the "asked about on its own next buffer-enter" deferred prompt
+    /// the earlier warning promised, and it covers a mode-blocked report
+    /// the same way it covers a non-focused one — a plain `Ambient` recheck
+    /// stays silent for either until something *else* changes, only a
+    /// `BufferEnter` forces the question back open. `FileMeta::signature` (the write
+    /// baseline `disk_change_for` compares against) is untouched either
+    /// way, so a *further* external change still reads as `Changed`.
     pub(in crate::editor) fn check_buffer_disk_state(
         &mut self,
         bid: BufferId,
@@ -132,8 +145,16 @@ impl Editor {
                 let dirty = buf.is_dirty();
                 let autoread = buf.overrides.autoread(&self.state.settings);
                 let focused = bid == self.focused_buffer_id();
+                let can_prompt = match self.state.mode() {
+                    Mode::Normal | Mode::Extend => true,
+                    Mode::Command => self.state.dispatching_typed_command,
+                    Mode::Insert | Mode::Search | Mode::Select => false,
+                };
 
-                if focused && autoread && (trigger == DiskCheckTrigger::BufferEnter || !already_reported)
+                if focused
+                    && autoread
+                    && can_prompt
+                    && (trigger == DiskCheckTrigger::BufferEnter || !already_reported)
                 {
                     self.open_disk_change_confirm(bid, &name, dirty);
                 } else if !already_reported {

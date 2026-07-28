@@ -1228,6 +1228,7 @@ mod tests {
         ("macro_pending", "preserved"),
         ("replay_queue", "preserved"),
         ("skip_macro_record", "preserved"),
+        ("dispatching_typed_command", "preserved"),
         ("is_replaying", "preserved"),
         ("mouse_drag_anchor", "preserved"),
         ("cwd", "preserved"),

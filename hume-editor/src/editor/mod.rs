@@ -374,6 +374,17 @@ pub(crate) struct EditorState {
     pub(super) replay_queue: VecDeque<KeyEvent>,
     /// Single-frame flag: skip recording the current key.
     pub(super) skip_macro_record: bool,
+    /// `true` for the duration of a typed (`:`) command's synchronous
+    /// dispatch. `execute_command` runs while `mode` still reads
+    /// `Mode::Command` — it only flips back to `Normal` afterward — so this
+    /// is the one signal that tells "a fully-submitted command is running"
+    /// apart from "the user is still typing an unsubmitted command line".
+    /// `check_buffer_disk_state`'s confirm gate is the only reader: a
+    /// disk-change confirm may open mid-dispatch (`:e`/`:b`/`:bn`/`:bp`/
+    /// `:checktime` all rely on this), but never while the user is simply
+    /// sitting in Command mode with the next keystroke still meant for the
+    /// minibuffer.
+    pub(super) dispatching_typed_command: bool,
     /// `true` while draining the replay queue.
     pub(super) is_replaying: bool,
     /// Anchor char offset set on mouse-left-down when `mouse_select` is enabled.

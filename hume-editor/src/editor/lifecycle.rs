@@ -238,6 +238,7 @@ impl Editor {
                 replay_queue: VecDeque::new(),
                 pending_repeat: None,
                 skip_macro_record: false,
+                dispatching_typed_command: false,
                 is_replaying: false,
                 mouse_drag_anchor: None,
                 cwd: std::env::current_dir().unwrap_or_default(),
