@@ -278,6 +278,20 @@ impl Editor {
         // entry still gets the TUI restored first. Scoped to this dispatch
         // either way: reset unconditionally so stale state can't outlive it
         // and leak into a later command's `SteelCtx`.
+        //
+        // `armed_or_entered` covers both shapes an inline-output command can
+        // take: `Entered` (it produced output, so the alt-screen bracket
+        // needs closing below) and `Armed` (it declared `#:inline-output` and
+        // ran, but produced none — a formatter with no stdout, say — so
+        // there's no bracket to close). Either way the subprocess ran with
+        // the real terminal and may well have rewritten one of our open
+        // files, so both are disk-change check trigger points; only
+        // `Headless`/`Inactive` (no interactive user to answer a confirm)
+        // are excluded.
+        let armed_or_entered = matches!(
+            self.state.inline_output,
+            InlineOutputDispatch::Armed { .. } | InlineOutputDispatch::Entered
+        );
         let entered = matches!(self.state.inline_output, InlineOutputDispatch::Entered);
         self.state.inline_output = InlineOutputDispatch::Inactive;
         if entered {
@@ -292,9 +306,8 @@ impl Editor {
             let mouse_select = self.state.settings.mouse_select;
             let _ = hume_platform::terminal::leave_inline_output(term, kitty, mouse, mouse_select);
             self.state.force_full_redraw = true;
-            // The subprocess just given the real terminal (a formatter, a
-            // git command, …) may well have rewritten one of our open
-            // files — another of the disk-change check's trigger points.
+        }
+        if armed_or_entered {
             self.check_all_disk_state();
         }
 
