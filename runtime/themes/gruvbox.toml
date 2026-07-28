@@ -42,9 +42,11 @@
 # ── Completion popup ──────────────────────────────────────────────────────────
 "ui.menu"          = { fg = "fg2", bg = "bg2" }
 "ui.menu.selected" = { fg = "fg0", bg = "bg3" }
+"ui.menu.scroll"   = { fg = "yellow", bg = "bg2" }
 
 # ── Hover / signature-help popup ────────────────────────────────────────────────
 "ui.popup" = { fg = "fg2", bg = "bg2" }
+"ui.popup.scroll" = { fg = "yellow", bg = "bg2" }
 
 # ── Bottom drawer (location lists, etc.) ────────────────────────────────────────
 "ui.drawer" = { fg = "fg2", bg = "bg2" }

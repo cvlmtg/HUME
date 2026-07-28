@@ -35,7 +35,7 @@ use hume_engine::theme::Theme;
 use hume_engine::types::Scope;
 use hume_scripting::host::PopupKind;
 
-use super::menu_box::draw_menu_box;
+use super::menu_box::{MenuBoxStyles, draw_menu_box};
 
 /// Maximum popup width in terminal columns, before any pane-width clamp.
 pub(crate) const MAX_POPUP_WIDTH: u16 = 60;
@@ -242,6 +242,14 @@ pub(crate) struct PopupOverlay {
     /// Scope for the highlighted row, used when `state.selected.is_some()`
     /// (menus only — `None` for plain popups, which never highlight a row).
     pub(crate) selected_scope: Option<&'static str>,
+    /// Scope for the scrollbar thumb (`ui.popup.scroll` / `ui.menu.scroll`).
+    /// Falls back to `scope`'s own style via the theme's dot-notation chain
+    /// when a theme doesn't define it — see `Theme::resolve_raw`. Unlike the
+    /// statusline separator (`EditorColors::from_theme`, `ui/theme.rs`), this
+    /// fallback target is never mode-tinted, so an absent scope only degrades
+    /// the thumb to the border's own color rather than painting the wrong
+    /// background — a plain dot-fallback is safe here.
+    pub(crate) scroll_scope: &'static str,
 }
 
 impl OverlayProvider for PopupOverlay {
@@ -274,6 +282,7 @@ impl OverlayProvider for PopupOverlay {
             .selected_scope
             .map(|s| theme.resolve_by_name(Scope(s)).into())
             .unwrap_or(style);
+        let scroll_style = theme.resolve_by_name(Scope(self.scroll_scope)).into();
         draw_menu_box(
             buf,
             outer,
@@ -281,8 +290,11 @@ impl OverlayProvider for PopupOverlay {
             state.selected,
             state.scroll,
             state.border,
-            style,
-            selected_style,
+            MenuBoxStyles {
+                base: style,
+                selected: selected_style,
+                scroll: scroll_style,
+            },
             state.styled_rows.as_ref().map(|rows| rows.as_slice()),
         );
     }
@@ -343,6 +355,7 @@ impl BottomBandProvider for PopupBandWidget {
         let guard = self.data.read().expect("RwLock not poisoned");
         let Some(state) = guard.as_ref() else { return };
         let style = theme.resolve_by_name(Scope("ui.popup")).into();
+        let scroll_style = theme.resolve_by_name(Scope("ui.popup.scroll")).into();
         draw_menu_box(
             buf,
             area,
@@ -350,8 +363,11 @@ impl BottomBandProvider for PopupBandWidget {
             None,
             state.scroll,
             state.border,
-            style,
-            style,
+            MenuBoxStyles {
+                base: style,
+                selected: style,
+                scroll: scroll_style,
+            },
             state.styled_rows.as_ref().map(|rows| rows.as_slice()),
         );
     }

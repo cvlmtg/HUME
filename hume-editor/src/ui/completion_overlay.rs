@@ -16,7 +16,7 @@ use hume_engine::providers::OverlayProvider;
 use hume_engine::theme::Theme;
 use hume_engine::types::Scope;
 
-use super::menu_box::{MAX_MENU_ROWS, draw_menu_box, outer_dims};
+use super::menu_box::{MAX_MENU_ROWS, MenuBoxStyles, draw_menu_box, outer_dims};
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -71,6 +71,7 @@ impl OverlayProvider for MinibufCompletionOverlay {
 
         let menu_style: Style = theme.resolve_by_name(Scope("ui.menu")).into();
         let selected_style: Style = theme.resolve_by_name(Scope("ui.menu.selected")).into();
+        let scroll_style: Style = theme.resolve_by_name(Scope("ui.menu.scroll")).into();
 
         draw_menu_box(
             buf,
@@ -79,8 +80,11 @@ impl OverlayProvider for MinibufCompletionOverlay {
             Some(selected),
             0,
             view.border,
-            menu_style,
-            selected_style,
+            MenuBoxStyles {
+                base: menu_style,
+                selected: selected_style,
+                scroll: scroll_style,
+            },
             None,
         );
     }

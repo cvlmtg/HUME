@@ -7,10 +7,25 @@
 use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
+use ratatui::symbols::line;
 
 use hume_engine::render::fill_rect_bg;
 
 use super::popup::StyledRow;
+
+/// Theme styles a bordered box paints with — grouped into one struct rather
+/// than three positional `Style` arguments on `draw_menu_box`, which needs
+/// `#[allow(clippy::too_many_arguments)]` regardless given its other params
+/// (buffer, rect, rows, selection, scroll, border).
+#[derive(Clone, Copy)]
+pub(crate) struct MenuBoxStyles {
+    /// Fill, border, and unstyled rows.
+    pub(crate) base: Style,
+    /// The highlighted row (menus only — plain popups never set `selected`).
+    pub(crate) selected: Style,
+    /// The scrollbar thumb.
+    pub(crate) scroll: Style,
+}
 
 /// Maximum number of visible rows inside a menu/popup box (excluding the
 /// 1-cell frame). Both overlays scroll past this using [`visible_window`].
@@ -80,9 +95,37 @@ pub(crate) fn draw_box_border(buf: &mut ScreenBuf, outer: Rect, style: Style) {
     buf.set_string(right, bottom, "┘", style);
 
     for row in 1..outer.height - 1 {
-        buf.set_string(outer.x, outer.y + row, "│", style);
-        buf.set_string(right, outer.y + row, "│", style);
+        buf.set_string(outer.x, outer.y + row, line::VERTICAL, style);
+        buf.set_string(right, outer.y + row, line::VERTICAL, style);
     }
+}
+
+/// Track-relative `(start, len)` of the scrollbar thumb for a `view`-row
+/// window into `total` rows scrolled to `scroll`, or `None` when everything
+/// fits (nothing to scroll, so no thumb to draw).
+///
+/// `len` is proportional to the visible fraction (`view / total`), clamped to
+/// `1..=(view - 1).max(1)` so the thumb never grows to fill the whole track —
+/// a full track conveys no position at all — except at `view == 1`, where
+/// there's no shorter length to clamp to and the single-cell track is always
+/// a full-length thumb. `start` places the thumb so it sits flush against the
+/// top edge exactly when `scroll == 0` and flush against the bottom edge
+/// exactly when `scroll == max_scroll`; floor division alone reaches the
+/// bottom edge but not the top (a `scroll` of 1 out of a large `max_scroll`
+/// floors to 0), so a scrolled-at-all window is nudged one cell off the top
+/// to keep the two edges symmetric. That nudge can push `start` past `slack`
+/// when `view == 1` (`slack == 0`), so the final `.min(slack)` clamps it back
+/// onto the track.
+fn scrollbar_thumb(view: usize, total: usize, scroll: usize) -> Option<(usize, usize)> {
+    if view == 0 || total <= view {
+        return None;
+    }
+    let len = (view * view).div_ceil(total).clamp(1, (view - 1).max(1));
+    let slack = view - len;
+    let max_scroll = total - view;
+    let start = scroll * slack / max_scroll;
+    let start = if scroll > 0 { start.max(1) } else { start };
+    Some((start.min(slack), len))
 }
 
 /// Paint a menu/popup box into `outer` (the full footprint, including the
@@ -109,8 +152,7 @@ pub(crate) fn draw_menu_box(
     selected: Option<usize>,
     scroll: usize,
     border: bool,
-    menu_style: Style,
-    selected_style: Style,
+    styles: MenuBoxStyles,
     styled: Option<&[StyledRow]>,
 ) {
     if rows.is_empty() || outer.height < 3 || outer.width < 3 {
@@ -126,28 +168,28 @@ pub(crate) fn draw_menu_box(
     // 1. Fill the entire outer rectangle with the popup background. This
     //    gives a solid, opaque backdrop — no buffer content bleeds through.
     //    For border=false it also acts as the visible 1-cell margin.
-    fill_rect_bg(buf, outer, menu_style);
+    fill_rect_bg(buf, outer, styles.base);
 
     // 2. Optionally overdraw the 1-cell frame with box-drawing characters.
     if border {
-        draw_box_border(buf, outer, menu_style);
+        draw_box_border(buf, outer, styles.base);
     }
 
-    // 2b. Scroll affordance arrows on the right border — plain popups only
-    //     (a menu's moving selection highlight already signals position, so
-    //     `selected.is_some()` skips this). Overdraws the interior border
-    //     cell adjacent to each corner, not the corner itself.
-    if border && selected.is_none() {
+    // 2b. Scrollbar thumb on the right border, overdrawing the track cells
+    //     it spans — including for a menu (`selected.is_some()`): the
+    //     highlight bar signals *which row*, not how much more there is to
+    //     scroll past.
+    if border
+        && let Some((thumb_start, thumb_len)) = scrollbar_thumb(inner_h, rows.len(), scroll_offset)
+    {
         let right = outer.x + outer.width - 1;
-        let more_above = scroll_offset > 0;
-        let more_below = scroll_offset + inner_h < rows.len();
-        // Order matters when inner_h == 1: both targets are the same cell,
-        // and "more below" is the more useful hint to win that collision.
-        if more_above {
-            buf.set_string(right, outer.y + 1, "▲", menu_style);
-        }
-        if more_below {
-            buf.set_string(right, outer.y + outer.height - 2, "▼", menu_style);
+        for row in thumb_start..thumb_start + thumb_len {
+            buf.set_string(
+                right,
+                outer.y + 1 + row as u16,
+                line::THICK_VERTICAL,
+                styles.scroll,
+            );
         }
     }
 
@@ -160,15 +202,15 @@ pub(crate) fn draw_menu_box(
         if selected == Some(row_idx) {
             // Highlight the full inner width so the selection bar is uniform.
             let inner_rect = Rect::new(text_x, y, outer.width.saturating_sub(2), 1);
-            fill_rect_bg(buf, inner_rect, selected_style);
-            buf.set_string(text_x, y, row_text, selected_style);
+            fill_rect_bg(buf, inner_rect, styles.selected);
+            buf.set_string(text_x, y, row_text, styles.selected);
         } else if let Some(runs) = styled.and_then(|rows| rows.get(row_idx)) {
             // The base fill (step 1) already covers the row — runs are
             // contiguous and together span exactly `row_text`, so there are
-            // no gaps left for `menu_style` to show through.
+            // no gaps left for `styles.base` to show through.
             paint_styled_row(buf, text_x, y, runs);
         } else {
-            buf.set_string(text_x, y, row_text, menu_style);
+            buf.set_string(text_x, y, row_text, styles.base);
         }
     }
 }
