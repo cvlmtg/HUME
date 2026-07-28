@@ -367,7 +367,12 @@ fn parse_sort_flags(arg: Option<&str>) -> Result<SortOpts, CommandError> {
         match token {
             "-r" | "--reverse" => opts.reverse = true,
             "-i" | "--insensitive" => opts.insensitive = true,
-            _ if token.starts_with('-') && !token.starts_with("--") && token.len() > 1 => {
+            // Any other `--`-prefixed token is a long flag, just not one we
+            // recognize — report it as a flag, not a positional argument.
+            _ if token.starts_with("--") => {
+                return Err(CommandError::new(format!("unknown flag: {token}")));
+            }
+            _ if token.starts_with('-') && token.len() > 1 => {
                 for ch in token[1..].chars() {
                     match ch {
                         'r' => opts.reverse = true,
@@ -428,11 +433,16 @@ pub fn typed_sort(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(),
     };
 
     let pre_len = ed.doc().text().len_chars();
-    super::apply_focused_edit(&mut ed.state, &ed.view, move |buf, _sels| {
+    let pre_sels = ed.current_selections().clone();
+    super::apply_focused_edit(&mut ed.state, &ed.view, move |buf, sels| {
         debug_assert_eq!(
             buf.len_chars(),
             pre_len,
-            "sort_rows must run against the same (buffer, selections) pair just read"
+            "sort_rows must run against the same buffer just read"
+        );
+        debug_assert_eq!(
+            sels, pre_sels,
+            "sort_rows must run against the same selections just read"
         );
         triple
     });

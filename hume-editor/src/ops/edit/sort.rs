@@ -153,13 +153,13 @@ fn collect_rows(buf: &Text, sels: &SelectionSet) -> Vec<Row> {
 /// line numbers. Each inner `Vec` holds indices into `rows`.
 fn group_adjacent(rows: &[Row]) -> Vec<Vec<usize>> {
     let mut groups: Vec<Vec<usize>> = Vec::new();
+    let mut prev_line: Option<usize> = None;
     for (idx, row) in rows.iter().enumerate() {
-        match groups.last_mut() {
-            Some(g) if rows[*g.last().expect("group is never empty")].line + 1 == row.line => {
-                g.push(idx);
-            }
+        match (groups.last_mut(), prev_line) {
+            (Some(g), Some(prev)) if prev + 1 == row.line => g.push(idx),
             _ => groups.push(vec![idx]),
         }
+        prev_line = Some(row.line);
     }
     groups
 }

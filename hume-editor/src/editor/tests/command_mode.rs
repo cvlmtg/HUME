@@ -1394,6 +1394,24 @@ fn sort_unknown_flag_reports_an_error() {
 }
 
 #[test]
+fn sort_unknown_long_flag_reports_a_flag_error_not_an_argument_error() {
+    // Validity: an unrecognized `--`-prefixed token is still a flag mistake,
+    // not a positional argument — it must not fall through to the generic
+    // "unknown argument" phrasing that genuine positionals get.
+    let mut ed = editor_from("-[b]>\n-[a]>\n");
+    let before = state(&ed);
+    let err = ed
+        .execute_typed("sort --bogus", None)
+        .expect_err("--bogus is not a recognized flag");
+    assert_eq!(err.message(), "unknown flag: --bogus");
+    assert_eq!(
+        state(&ed),
+        before,
+        "an argument error must not touch the buffer"
+    );
+}
+
+#[test]
 fn sort_bang_is_rejected() {
     // Validity: `!` means "force" everywhere else in HUME; `:sort` has no
     // force behavior, so it points the user at `-r` instead of silently
