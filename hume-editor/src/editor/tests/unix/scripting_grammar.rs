@@ -709,6 +709,53 @@ fn orphan_compiled_grammar_is_skipped_not_registered() {
     );
 }
 
+/// A grammar the catalog still knows about, with a compiled library on disk
+/// but no `highlights.scm` (e.g. the user cleared `<data>/grammars/sources/`
+/// to reclaim disk), must warn — naming the grammar so `:plum-install-grammar
+/// <name>` is the obvious next step — instead of being dropped as silently as
+/// a genuine orphan. Distinguishes the two cases `register-installed-grammars!`
+/// must tell apart: unknown-to-catalog (expected-silent) vs. known-but-broken
+/// (repairable, must be surfaced).
+#[test]
+fn known_grammar_missing_highlights_warns_and_is_not_registered() {
+    let catalog = "((\"json\" \"url\" \"rev\" \"tree_sitter_json\" \"\"))";
+    let ext = if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    };
+
+    let (errors, ed, _dirs) = init_errors_with_catalog(catalog, |data| {
+        let grammars = data.join("grammars");
+        std::fs::create_dir_all(&grammars).unwrap();
+        std::fs::write(grammars.join(format!("json.{ext}")), b"not a real library").unwrap();
+        // Deliberately no highlights.scm under sources/json/.
+    });
+
+    assert!(
+        errors.is_empty(),
+        "a missing highlights query is a warning, not an error: {errors:?}"
+    );
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Warning
+                && e.text.contains("json")
+                && e.text.contains("highlights")),
+        "expected a warning naming the grammar and its missing highlights query; messages: {:?}",
+        ed.state
+            .message_log
+            .entries()
+            .map(|e| format!("{:?}: {}", e.severity, e.text))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        !ed.state.languages.has_grammar("json"),
+        "a grammar missing its highlights query must not be registered"
+    );
+}
+
 /// A file matching another platform's shared-library extension (e.g. a `.so`
 /// left behind after a macOS setup migrated from Linux) is not part of this
 /// platform's installed set, so `installed-grammars` must never yield its name

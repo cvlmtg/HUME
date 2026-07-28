@@ -45,6 +45,17 @@
   (let ((trimmed (trim line)))
     (map trim (split-many (trim (substring trimmed 11 (string-length trimmed))) ","))))
 
+;;; #t if `name` is safe to use as one filesystem path segment: no `.`/`..`
+;;; and no path separator. Guards `plum/fetch-raw-query`'s scratch-file path
+;;; against a dependency name parsed from a downloaded query file's
+;;; `; inherits:` line — untrusted content, unlike the top-level grammar
+;;; name (which always comes from the fixed catalog).
+(define (plum/safe-segment? name)
+  (and (not (equal? name "."))
+       (not (equal? name ".."))
+       (not (string-contains? name "/"))
+       (not (string-contains? name "\\"))))
+
 ;;; Fetch `name`'s `filename` query to a scratch file and return its raw
 ;;; content as a string. The `curl` call is NOT wrapped in a `with-handler`
 ;;; here — deliberately: this function is itself called from inside
@@ -67,6 +78,8 @@
 ;;; (curl having already succeeded), which in practice never happens; that
 ;;; latent risk predates this migration and is out of scope here.
 (define (plum/fetch-raw-query name filename)
+  (unless (plum/safe-segment? name)
+    (error (string-append "plum/fetch-raw-query: unsafe grammar/dependency name \"" name "\"")))
   (let ((tmp (path-join (grammar-sources-dir) (string-append "_fetch_" name "_" filename))))
     (run-inline-output! "curl" (list "-fsSL" "-o" tmp "--" (plum/helix-query-url name filename)))
     (let ((content (with-handler

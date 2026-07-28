@@ -120,19 +120,26 @@
 ;;;
 ;;; `grammar-source-known?` is what makes walking the directory safe: an
 ;;; orphan file (installed, then dropped from the catalog by a HUME update)
-;;; has no tree-sitter symbol to look up.
+;;; has no tree-sitter symbol to look up — silently skipped, that's expected.
+;;; A known grammar missing its highlights query is a different, repairable
+;;; case (e.g. the user cleared `<data>/grammars/sources/` to reclaim disk)
+;;; and gets a warning instead, or `:plum-list-grammars` would keep reporting
+;;; it "installed" with no highlighting and no way to tell why.
 (define (register-installed-grammars!)
   (for-each
     (lambda (name)
-      (let ((hl (grammar-highlights-path name)))
-        (when (and (grammar-source-known? name)
-                   (path-exists? hl))
-          (let ((inj (grammar-injections-path name)))
-            (register-grammar! name
-                               (grammar-output-path name)
-                               (grammar-source-symbol name)
-                               hl
-                               (if (path-exists? inj) inj #f))))))
+      (when (grammar-source-known? name)
+        (let ((hl (grammar-highlights-path name)))
+          (if (not (path-exists? hl))
+              (log! 'warn (string-append
+                            "grammar \"" name "\" is compiled but missing its highlights "
+                            "query — run :plum-install-grammar " name " to repair"))
+              (let ((inj (grammar-injections-path name)))
+                (register-grammar! name
+                                   (grammar-output-path name)
+                                   (grammar-source-symbol name)
+                                   hl
+                                   (if (path-exists? inj) inj #f)))))))
     (installed-grammars)))
 
 ;;; `data-dir` is `#f` when HOME/APPDATA is unset — nothing to scan.
