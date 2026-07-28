@@ -3,7 +3,7 @@
 //! the confirm overlay's reload/keep choices).
 
 use super::*;
-use crate::editor::buffer::DiskCheckTrigger;
+use crate::editor::buffer::{DiskCheckTrigger, DiskState};
 use pretty_assertions::assert_eq;
 
 /// Overwrite `path`'s content with something a different length than
@@ -436,4 +436,301 @@ fn write_recreates_a_vanished_file() {
         "a plain :w must recreate a vanished file, not refuse"
     );
     assert!(!ed.doc().is_dirty());
+}
+
+/// `:w %` — a save-as whose path resolves to the buffer's own file — must
+/// refuse the same way a plain `:w` would: this is `:w` in disguise, not a
+/// genuine save-as, so the stale-write guard still applies.
+///
+/// Opens the file via `:e` (not `editor_with_file`) so `ed.doc().path()` is
+/// the same `fs::canonicalize`-d path `write_file` freshly reads back —
+/// `editor_with_file` sets the buffer's path to the raw, uncanonicalized
+/// tempfile path, which would make `targets_own_file` false on macOS
+/// (`/var` → `/private/var`) and silently defeat this test.
+#[test]
+fn write_percent_refuses_on_externally_changed_own_file() {
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(tmp.path(), "hello\n").unwrap();
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(tmp.path().to_str().unwrap()))
+        .unwrap();
+
+    rewrite_externally(tmp.path(), "hello, externally changed!\n");
+
+    type_cmd(&mut ed, ":w %");
+
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("file has changed on disk (add ! to override)")
+    );
+    assert_eq!(
+        std::fs::read_to_string(tmp.path()).unwrap(),
+        "hello, externally changed!\n",
+        "the refused write must not have touched the file"
+    );
+}
+
+/// A genuine save-as to a path this buffer never read from must succeed even
+/// though the buffer's *own* file changed on disk — `targets_own_file` is
+/// false, so there is nothing to guard against on the new path.
+///
+/// Fail oracle: a guard keyed only on "did the buffer's own baseline
+/// change" (ignoring which path is actually being written) would refuse
+/// this save-as too, even though it targets an unrelated file.
+#[test]
+fn save_as_to_unrelated_path_succeeds_despite_own_file_changing() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    rewrite_externally(&tmp, "hello, externally changed!\n");
+
+    let other = tempfile::NamedTempFile::new().unwrap();
+    type_cmd(&mut ed, &format!(":w {}", other.path().display()));
+
+    assert_eq!(std::fs::read_to_string(other.path()).unwrap(), "hello\n");
+    // Stored buffer paths are always `fs::canonicalize` output (see
+    // `buffer_store.rs`'s note on this) — canonicalize the tempfile's own
+    // path too so the comparison isn't tripped up by a macOS symlinked temp
+    // dir (`/var` → `/private/var`).
+    let other_canonical = std::fs::canonicalize(other.path()).unwrap();
+    assert_eq!(
+        ed.doc().path(),
+        Some(other_canonical.as_path()),
+        "save-as retargets the buffer"
+    );
+}
+
+// ── `:checktime` ───────────────────────────────────────────────────────────────
+
+/// `:checktime` is silent when nothing changed.
+#[test]
+fn checktime_is_silent_when_nothing_changed() {
+    let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    let (_, warnings_before) = ed.state.message_log.totals();
+
+    type_cmd(&mut ed, ":checktime");
+
+    let (_, warnings_after) = ed.state.message_log.totals();
+    assert_eq!(warnings_after, warnings_before);
+    assert!(ed.state.config.confirm.is_none());
+}
+
+/// `:checktime` runs the same check as any ambient trigger — it opens a
+/// reload confirm for the focused, `autoread`-on, externally-changed buffer
+/// right now, instead of waiting for the next terminal-focus or
+/// buffer-enter trigger.
+#[test]
+fn checktime_prompts_the_focused_changed_buffer() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    rewrite_externally(&tmp, "hello, externally changed!\n");
+
+    type_cmd(&mut ed, ":checktime");
+
+    assert!(ed.state.config.confirm.is_some());
+}
+
+/// `:checktime` warns (doesn't prompt) for a changed buffer that isn't
+/// focused — same off-focus rule as any other trigger.
+#[test]
+fn checktime_warns_for_a_changed_non_focused_buffer() {
+    let (mut ed, _tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid_a = ed.focused_buffer_id();
+
+    let tmp_b = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(tmp_b.path(), "world\n").unwrap();
+    type_cmd(&mut ed, &format!(":e {}", tmp_b.path().display()));
+    assert_ne!(ed.focused_buffer_id(), bid_a);
+
+    type_cmd(&mut ed, ":b #");
+    assert_eq!(ed.focused_buffer_id(), bid_a, "setup: :b # must return to A");
+
+    rewrite_externally(tmp_b.path(), "world, externally changed!\n");
+    let (_, warnings_before) = ed.state.message_log.totals();
+
+    type_cmd(&mut ed, ":checktime");
+
+    let (_, warnings_after) = ed.state.message_log.totals();
+    assert_eq!(warnings_after, warnings_before + 1);
+    assert!(ed.state.config.confirm.is_none());
+}
+
+// ── `:wa` stale-buffer skip ──────────────────────────────────────────────────────
+
+/// `:wa` skips a buffer whose file changed on disk (leaving that file
+/// untouched) while still writing every other dirty buffer, and reports
+/// which ones were skipped. `:wa!` writes through all of them.
+#[test]
+fn write_all_skips_stale_buffer_but_writes_the_rest_bang_overrides() {
+    let (mut ed, tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid_a = ed.focused_buffer_id();
+    let name_a = ed.state.buffers.get(bid_a).display_name();
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+
+    let tmp_b = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(tmp_b.path(), "world\n").unwrap();
+    type_cmd(&mut ed, &format!(":e {}", tmp_b.path().display()));
+    let bid_b = ed.focused_buffer_id();
+    ed.handle_key(key('i'));
+    ed.handle_key(key('y'));
+    ed.handle_key(key_esc());
+
+    // Change A's file only after both buffers are dirty, so :wa sees a
+    // genuine race rather than a write that never should have happened.
+    rewrite_externally(&tmp_a, "hello, externally changed!\n");
+
+    type_cmd(&mut ed, ":wa");
+
+    assert_eq!(
+        std::fs::read_to_string(&tmp_a).unwrap(),
+        "hello, externally changed!\n",
+        "A must be skipped, not overwritten"
+    );
+    assert_eq!(std::fs::read_to_string(tmp_b.path()).unwrap(), "yworld\n");
+    assert!(ed.state.buffers.get(bid_a).is_dirty(), "A's write was skipped");
+    assert!(!ed.state.buffers.get(bid_b).is_dirty());
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some(format!("Skipped (changed on disk): {name_a}").as_str())
+    );
+
+    type_cmd(&mut ed, ":wa!");
+
+    assert_eq!(std::fs::read_to_string(&tmp_a).unwrap(), "xhello\n");
+    assert!(!ed.state.buffers.get(bid_a).is_dirty());
+}
+
+// ── `disk_state` resets when the file matches its baseline again ─────────────────
+
+/// A `disk_state` left at `Changed` must reset to `InSync` the moment a
+/// fresh stat genuinely matches the buffer's read/write baseline again —
+/// otherwise a change that reverts and is later re-applied with the exact
+/// signature already reported would silently fail to re-fire (the
+/// `already_reported` comparison in the `Changed` arm would still find a
+/// match). Injects the stale marker directly rather than depending on an
+/// external rewrite landing back on the exact original mtime+size, which
+/// isn't reliably reproducible from a test.
+///
+/// Fail oracle: without the `Unchanged` arm writing `InSync`, `disk_state`
+/// would stay at the injected `Changed` value even though the file already
+/// matches its baseline, and the second assertion would fail.
+#[test]
+fn unchanged_check_resets_disk_state_to_in_sync() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid = ed.focused_buffer_id();
+
+    let injected_sig = hume_platform::io::read_signature(&tmp).unwrap();
+    ed.state.buffers.get_mut(bid).disk_state = DiskState::Changed(injected_sig);
+    assert!(ed.doc().is_disk_stale(), "setup: disk_state must start Changed");
+
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
+
+    assert!(
+        !ed.doc().is_disk_stale(),
+        "a fresh stat matching the baseline must reset disk_state to InSync"
+    );
+}
+
+/// `Indeterminate` (no backing file, or a stat error other than `NotFound`)
+/// must never touch `disk_state` — unlike a genuine `Unchanged` match, it
+/// says nothing about whether the buffer is actually back in sync. A
+/// pathless buffer is the deterministic way to reach `Indeterminate` from a
+/// test (a transient stat error isn't reproducible portably).
+///
+/// Fail oracle: if `Indeterminate` reset `disk_state` to `InSync` the same
+/// way `Unchanged` does, the assertion below would fail.
+#[test]
+fn indeterminate_check_never_touches_disk_state() {
+    let mut ed = editor_from("-[h]>ello\n"); // scratch buffer, no file_meta
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).disk_state = DiskState::Vanished;
+
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
+
+    assert_eq!(
+        ed.state.buffers.get(bid).disk_state,
+        DiskState::Vanished,
+        "Indeterminate must leave a prior disk_state untouched"
+    );
+}
+
+/// A vanished file recreated with different content must still re-report —
+/// covers the transition out of `Vanished` alongside the `Unchanged` reset
+/// above.
+#[test]
+fn vanished_file_recreated_with_different_content_rereports() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    ed.state.settings.autoread = false; // isolate the warning count
+    let path = tmp.to_path_buf();
+    std::fs::remove_file(&tmp).unwrap();
+    let bid = ed.focused_buffer_id();
+
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
+    let (_, warnings_after_vanish) = ed.state.message_log.totals();
+
+    rewrite_externally(&path, "recreated with different content\n");
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
+    let (_, warnings_after_recreate) = ed.state.message_log.totals();
+
+    assert_eq!(
+        warnings_after_recreate,
+        warnings_after_vanish + 1,
+        "recreating with different content must re-report after a Vanished warning"
+    );
+}
+
+// ── Confirm can't open over another overlay or a pending key sequence ────────────
+
+/// A confirm must never open while a picker is on screen — the confirm
+/// intercept sits above the picker (`mappings/mod.rs`), so it would eat
+/// every key the picker needs. The blocked change only warns, and the
+/// deferred prompt still arrives on the next buffer-enter after the picker
+/// closes, same deferral rule as a mode-blocked or non-focused change.
+///
+/// Fail oracle: without the picker check in `can_open_confirm`, the first
+/// assertion below would find a confirm open while the picker is still
+/// live.
+#[test]
+fn confirm_does_not_open_over_a_live_picker_but_defers_to_next_buffer_enter() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid = ed.focused_buffer_id();
+    rewrite_externally(&tmp, "hello, externally changed!\n");
+
+    let session = crate::editor::picker::PickerSession::new(
+        steel::rvals::SteelVal::BoolV(false),
+        String::new(),
+    );
+    crate::editor::picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
+
+    let (_, warnings_before) = ed.state.message_log.totals();
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
+    let (_, warnings_after) = ed.state.message_log.totals();
+
+    assert_eq!(warnings_after, warnings_before + 1, "must warn instead of prompting");
+    assert!(ed.state.config.confirm.is_none());
+    assert!(ed.state.config.picker.is_some(), "the picker must stay open");
+
+    ed.state.config.picker = None;
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::BufferEnter);
+    assert!(
+        ed.state.config.confirm.is_some(),
+        "the deferred prompt must arrive once the picker is gone"
+    );
+}
+
+/// A confirm must never open while `pending_keys` is non-empty — a live
+/// multi-key sequence (e.g. `d` waiting for its motion) already owns the
+/// very next keystroke.
+///
+/// Fail oracle: without the `pending_keys` check in `can_open_confirm`, the
+/// confirm would open and the assertion below would fail.
+#[test]
+fn confirm_does_not_open_mid_pending_key_sequence() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid = ed.focused_buffer_id();
+    rewrite_externally(&tmp, "hello, externally changed!\n");
+    ed.state.pending_keys.push(key('g'));
+
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
+
+    assert!(ed.state.config.confirm.is_none());
 }
