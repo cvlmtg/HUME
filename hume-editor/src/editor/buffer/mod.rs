@@ -11,6 +11,10 @@ use hume_editing::text::Text;
 use hume_platform::io::FileMeta;
 
 mod disk;
+// Only test code names `DiskState` directly (to seed a stale buffer without a
+// real disk check) — production code goes through `Buffer::is_disk_stale()`.
+#[cfg(test)]
+pub(crate) use disk::DiskState;
 mod file_open;
 pub(crate) mod lifecycle;
 pub(crate) mod store;
@@ -125,13 +129,11 @@ pub(crate) struct Buffer {
     /// scratch replacement) default to `false` — their close always
     /// announces.
     pub(crate) open_hook_pending: bool,
-    /// `true` when a disk-state check found the backing file changed (or
-    /// vanished) and the user has not yet acted on it — set by
-    /// `Editor::check_buffer_disk_state`, cleared by a reload or a
-    /// successful write. Read by `:w`'s write guard to refuse clobbering an
-    /// external change; always `false` for scratch/synthetic buffers, which
-    /// the check skips.
-    pub(crate) disk_stale: bool,
+    /// The buffer's disk state as of the last check — set by
+    /// `Editor::check_buffer_disk_state`, cleared to `InSync` by a reload or
+    /// a successful write. Always `InSync` for scratch/synthetic buffers,
+    /// which the check skips.
+    pub(crate) disk_state: disk::DiskState,
     /// Bumped by [`lifecycle::replace_buffer_in_place`] — the only path that
     /// swaps a `BufferId`'s content without a close/open pair (the
     /// last-buffer scratch replacement in `close_buffer`). A versioned
@@ -178,7 +180,7 @@ impl Buffer {
             lsp_pending: Vec::new(),
             last_insert: None,
             open_hook_pending: false,
-            disk_stale: false,
+            disk_state: disk::DiskState::InSync,
             replace_stamp: 0,
         }
     }
@@ -354,7 +356,7 @@ impl Buffer {
     ) {
         // Reloading from disk is, by definition, catching up to whatever is
         // there now — clear regardless of which branch below runs.
-        self.disk_stale = false;
+        self.disk_state = disk::DiskState::InSync;
 
         // Build the CS pair from immutable borrows of both texts, before
         // `set_text` mutates `self.text`. The helper takes `&Text` on both
@@ -393,7 +395,13 @@ impl Buffer {
     /// Call this immediately after a successful file write.
     pub(crate) fn mark_saved(&mut self) {
         self.saved_revision = Some(self.history.current_id());
-        self.disk_stale = false;
+        self.disk_state = disk::DiskState::InSync;
+    }
+
+    /// `true` if the last disk-state check found the backing file changed or
+    /// vanished and the user has not yet acted on it (reloaded or written).
+    pub(crate) fn is_disk_stale(&self) -> bool {
+        !matches!(self.disk_state, disk::DiskState::InSync)
     }
 
     /// Set the `undo-levels` cap on this buffer's history. `0` means unlimited.

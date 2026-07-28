@@ -734,7 +734,7 @@ define_settings! {
         // Read fresh by `check_buffer_disk_state` at each trigger — no
         // resync needed. `true`: an external change to the focused buffer
         // opens a reload confirm. `false`: detection still runs (and still
-        // sets `disk_stale`, guarding `:w`), but only warns — reload stays
+        // flags `disk_state`, guarding `:w`), but only warns — reload stays
         // manual via `:e!`/`:checktime`.
         "autoread" => autoread: bool = true,
             scope: [Scope::Global, Scope::Buffer],

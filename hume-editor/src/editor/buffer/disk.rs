@@ -24,6 +24,22 @@ pub(crate) enum DiskChange {
     Vanished,
 }
 
+/// A buffer's disk state as of the last check, replacing a plain
+/// `disk_stale: bool`. `InSync` and "stale" aren't the only two states worth
+/// distinguishing — `Changed` also carries the signature that was reported,
+/// so a later check can tell "the same change I already warned about" from
+/// "something changed again", and `Vanished` is kept apart from `Changed`
+/// since there is no signature to recreate-and-compare for a deleted file.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum DiskState {
+    /// Matches what the editor last read or wrote — nothing to guard against.
+    InSync,
+    /// Changed externally; carries the signature that was reported.
+    Changed(hume_platform::io::FileSignature),
+    /// The backing file no longer exists.
+    Vanished,
+}
+
 impl Editor {
     /// Stat `bid`'s backing file and compare against its stored signature.
     /// Buffers with no backing file (scratch, synthetic views) always read
@@ -65,7 +81,7 @@ impl Editor {
         match self.disk_change_for(bid) {
             DiskChange::Unchanged => {}
             DiskChange::Vanished => {
-                self.state.buffers.get_mut(bid).disk_stale = true;
+                self.state.buffers.get_mut(bid).disk_state = DiskState::Vanished;
                 let name = self.state.buffers.get(bid).display_name();
                 self.report(
                     Severity::Warning,
@@ -74,7 +90,7 @@ impl Editor {
             }
             DiskChange::Changed(sig) => {
                 let buf = self.state.buffers.get_mut(bid);
-                buf.disk_stale = true;
+                buf.disk_state = DiskState::Changed(sig);
                 if let Some(meta) = buf.file_meta.as_mut() {
                     meta.set_signature(sig);
                 }

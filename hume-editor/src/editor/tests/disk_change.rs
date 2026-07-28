@@ -29,11 +29,11 @@ fn external_rewrite_is_detected_and_opens_confirm() {
 
     // Fail oracle: a mtime-only comparison could miss this on a filesystem
     // whose mtime resolution is coarser than the test's wall-clock delta.
-    assert!(ed.doc().disk_stale);
+    assert!(ed.doc().is_disk_stale());
     assert!(ed.state.config.confirm.is_some());
 }
 
-/// `autoread=false` only warns — no confirm, but `disk_stale` is still set
+/// `autoread=false` only warns — no confirm, but the stale flag is still set
 /// so `:w` still refuses until the buffer is reloaded or the write is forced.
 #[test]
 fn autoread_false_warns_without_opening_confirm() {
@@ -47,11 +47,11 @@ fn autoread_false_warns_without_opening_confirm() {
     let (_, warnings_after) = ed.state.message_log.totals();
 
     assert_eq!(warnings_after, warnings_before + 1);
-    assert!(ed.doc().disk_stale);
+    assert!(ed.doc().is_disk_stale());
     assert!(ed.state.config.confirm.is_none());
 }
 
-/// A deleted file reads as `Vanished`: warns, flags `disk_stale`, never
+/// A deleted file reads as `Vanished`: warns, marks the buffer stale, never
 /// opens a confirm — there is nothing to reload from.
 #[test]
 fn deleted_file_warns_and_never_prompts() {
@@ -62,7 +62,7 @@ fn deleted_file_warns_and_never_prompts() {
     let bid = ed.focused_buffer_id();
     ed.check_buffer_disk_state(bid);
 
-    assert!(ed.doc().disk_stale);
+    assert!(ed.doc().is_disk_stale());
     assert!(ed.state.config.confirm.is_none());
     assert_eq!(
         ed.state.status_msg.as_deref(),
@@ -72,7 +72,7 @@ fn deleted_file_warns_and_never_prompts() {
 
 /// A buffer with no backing file (scratch, or a synthetic view like
 /// `[messages]`) has nothing to compare against and is always `Unchanged` —
-/// checking it must never warn or flag `disk_stale`.
+/// checking it must never warn or mark the buffer stale.
 #[test]
 fn pathless_buffers_are_never_flagged() {
     let mut ed = editor_from("-[h]>ello\n"); // scratch buffer, no file_meta
@@ -83,7 +83,7 @@ fn pathless_buffers_are_never_flagged() {
 
     let (_, warnings_after) = ed.state.message_log.totals();
     assert_eq!(warnings_after, warnings_before);
-    assert!(!ed.doc().disk_stale);
+    assert!(!ed.doc().is_disk_stale());
 }
 
 /// Once a change has been reported, a second check with nothing further
@@ -142,13 +142,13 @@ fn writing_the_buffer_does_not_flag_it_as_externally_changed() {
     let (_, warnings_after) = ed.state.message_log.totals();
 
     assert_eq!(warnings_after, warnings_before);
-    assert!(!ed.doc().disk_stale);
+    assert!(!ed.doc().is_disk_stale());
     assert!(ed.state.config.confirm.is_none());
 }
 
 // ── Confirm overlay choices ───────────────────────────────────────────────────
 
-/// The confirm's `[r]eload` choice re-reads the file, clears `disk_stale`,
+/// The confirm's `[r]eload` choice re-reads the file, clears the stale flag,
 /// and preserves the cursor position (line 0, col 0 maps to the same char
 /// index regardless of what the line's new content is).
 #[test]
@@ -166,8 +166,8 @@ fn confirm_reload_choice_reloads_and_clears_disk_stale() {
     assert_eq!(state(&ed), "-[H]>ELLO!!\n");
     assert!(!ed.doc().is_dirty());
     assert!(
-        !ed.doc().disk_stale,
-        "Fail oracle: without clearing disk_stale on reload, :w would keep refusing forever"
+        !ed.doc().is_disk_stale(),
+        "Fail oracle: without clearing the stale flag on reload, :w would keep refusing forever"
     );
     assert!(
         ed.doc().can_undo(),
@@ -176,7 +176,7 @@ fn confirm_reload_choice_reloads_and_clears_disk_stale() {
 }
 
 /// The confirm's `[k]eep` choice leaves the buffer's content untouched and
-/// `disk_stale` still set — `:w` still refuses until reloaded or forced.
+/// the stale flag still set — `:w` still refuses until reloaded or forced.
 #[test]
 fn confirm_keep_choice_leaves_buffer_untouched_and_still_stale() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -188,7 +188,7 @@ fn confirm_keep_choice_leaves_buffer_untouched_and_still_stale() {
 
     assert!(ed.state.config.confirm.is_none());
     assert_eq!(ed.doc().text().to_string(), "hello\n");
-    assert!(ed.doc().disk_stale);
+    assert!(ed.doc().is_disk_stale());
 }
 
 /// Any key other than the accept key — not just the listed `k` — dismisses
@@ -204,20 +204,22 @@ fn confirm_any_other_key_dismisses_without_reloading() {
 
     assert!(ed.state.config.confirm.is_none());
     assert_eq!(ed.doc().text().to_string(), "hello\n");
-    assert!(ed.doc().disk_stale);
+    assert!(ed.doc().is_disk_stale());
 }
 
 // ── `:w` stale guard ───────────────────────────────────────────────────────────
 
-/// `:w` on a buffer flagged `disk_stale` refuses; `:w!` overwrites the
-/// external change and clears the flag.
+/// `:w` on a buffer flagged stale refuses; `:w!` overwrites the external
+/// change and clears the flag.
 #[test]
 fn write_refuses_on_stale_buffer_but_bang_overrides() {
+    use crate::editor::buffer::DiskState;
+
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    ed.doc_mut().disk_stale = true;
+    ed.doc_mut().disk_state = DiskState::Vanished;
 
     type_cmd(&mut ed, ":w");
     assert_eq!(
@@ -231,6 +233,6 @@ fn write_refuses_on_stale_buffer_but_bang_overrides() {
     );
 
     type_cmd(&mut ed, ":w!");
-    assert!(!ed.doc().disk_stale);
+    assert!(!ed.doc().is_disk_stale());
     assert_eq!(std::fs::read_to_string(&tmp).unwrap(), "xhello\n");
 }

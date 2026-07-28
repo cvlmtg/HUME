@@ -255,7 +255,7 @@ fn write_buffer_by_id(
     if buf.is_read_only() {
         return Err(CommandError::new("Buffer is read-only"));
     }
-    if buf.disk_stale && !force {
+    if buf.is_disk_stale() && !force {
         return Err(CommandError::new(
             "file has changed on disk (add ! to override)",
         ));
@@ -323,7 +323,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
                 // a path this buffer never read from, so there's no staleness
                 // to guard against.
                 let targets_own_file = ed.doc().path() == Some(meta.resolved_path());
-                if targets_own_file && ed.doc().disk_stale && !force {
+                if targets_own_file && ed.doc().is_disk_stale() && !force {
                     return Err(CommandError::new(
                         "file has changed on disk (add ! to override)",
                     ));
@@ -390,7 +390,7 @@ pub fn typed_write_all(
     let mut skipped: Vec<String> = Vec::new();
     for bid in dirty_savable {
         let buf = ed.state.buffers.get(bid);
-        if buf.disk_stale && !force {
+        if buf.is_disk_stale() && !force {
             skipped.push(buf.display_name());
             continue;
         }
