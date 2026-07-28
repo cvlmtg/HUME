@@ -762,7 +762,7 @@ fn resync_refires_buffer_open_for_every_open_buffer() {
     let mut ed = editor_from("-[a]>b\n");
     let first_bid = ed.focused_buffer_id();
 
-    let file_tmp = tempfile::tempdir().unwrap();
+    let file_tmp = safe_tempdir();
     let file = file_tmp.path().join("second.txt");
     std::fs::write(&file, "hi\n").unwrap();
     let (second_bid, is_new) = crate::editor::buffer::lifecycle::open_or_dedup_and_notify(
@@ -847,7 +847,7 @@ fn resync_does_not_refire_buffer_open_for_a_buffer_opened_by_this_reload() {
     );
     ed.scripting = Some(host);
 
-    let file_tmp = tempfile::tempdir().unwrap();
+    let file_tmp = safe_tempdir();
     let file = file_tmp.path().join("new.txt");
     std::fs::write(&file, "hi\n").unwrap();
     let (new_bid, is_new) = crate::editor::buffer::lifecycle::open_or_dedup_and_notify(
@@ -1081,7 +1081,7 @@ fn resync_refires_viewport_change_once_per_pane_on_a_surviving_buffer() {
     let mut ed = editor_from("-[a]>b\n");
     let first_bid = ed.focused_buffer_id();
 
-    let file_tmp = tempfile::tempdir().unwrap();
+    let file_tmp = safe_tempdir();
     let file = file_tmp.path().join("second.txt");
     std::fs::write(&file, "hi\n").unwrap();
     let (second_bid, is_new) = crate::editor::buffer::lifecycle::open_or_dedup_and_notify(
@@ -1133,7 +1133,7 @@ fn resync_does_not_refire_viewport_change_for_a_pane_on_a_buffer_absent_from_the
     let mut ed = editor_from("-[a]>b\n");
     let first_bid = ed.focused_buffer_id();
 
-    let file_tmp = tempfile::tempdir().unwrap();
+    let file_tmp = safe_tempdir();
     let file = file_tmp.path().join("second.txt");
     std::fs::write(&file, "hi\n").unwrap();
     let (second_bid, _) = crate::editor::buffer::lifecycle::open_or_dedup_and_notify(

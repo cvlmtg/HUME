@@ -29,7 +29,7 @@ fn arm_three_items(ed: &mut Editor, tmp: &Path) {
 
 #[test]
 fn select_second_item_calls_back_with_index_1() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
     assert!(ed.state.config.menu.is_some(), "sanity: menu open");
@@ -47,7 +47,7 @@ fn select_second_item_calls_back_with_index_1() {
 
 #[test]
 fn esc_calls_back_with_false() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -61,7 +61,7 @@ fn esc_calls_back_with_false() {
 
 #[test]
 fn selection_clamps_at_the_top() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -79,7 +79,7 @@ fn selection_clamps_at_the_top() {
 
 #[test]
 fn selection_clamps_at_the_bottom() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -98,7 +98,7 @@ fn selection_clamps_at_the_bottom() {
 
 #[test]
 fn arrow_keys_also_move_the_selection() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -112,7 +112,7 @@ fn arrow_keys_also_move_the_selection() {
 
 #[test]
 fn stray_key_dismisses_the_menu_and_still_executes() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -200,7 +200,7 @@ fn show_menu_accepted_in_normal_mode() {
 
 #[test]
 fn selected_row_renders_with_the_menu_selected_scope() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     ed.feed_key(key('i'));

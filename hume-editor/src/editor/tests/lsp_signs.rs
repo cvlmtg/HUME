@@ -48,7 +48,7 @@ struct DiagCtx {
 }
 
 fn setup_with_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagCtx {
-    let file_dir = tempfile::tempdir().unwrap();
+    let file_dir = safe_tempdir();
     let file = file_dir.path().join("main.rs");
     std::fs::write(&file, content).unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
@@ -232,7 +232,7 @@ fn gutter_width_auto_2_expands_when_signs_exist() {
 
 #[test]
 fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     for ch in "abcdefgh".chars() {
@@ -271,7 +271,7 @@ fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
 
 #[test]
 fn two_plugin_sources_on_the_same_line_keep_the_higher_priority_first() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     for ch in "abcdefgh".chars() {
@@ -474,7 +474,7 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
 /// the reloaded buffer, so this never even reaches the panicking path.
 #[test]
 fn reload_to_shorter_text_clears_stale_diagnostics_and_does_not_panic() {
-    let file_dir = tempfile::tempdir().unwrap();
+    let file_dir = safe_tempdir();
     let file = file_dir.path().join("main.rs");
     std::fs::write(&file, "one two three four five six\n").unwrap();
 

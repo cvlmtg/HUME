@@ -34,7 +34,7 @@ fn type_text(ed: &mut Editor, text: &str) {
 
 #[test]
 fn virtual_line_renders_after_its_anchor_line() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     type_text(&mut ed, "let x = 5\nlet y = 10");
@@ -63,7 +63,7 @@ fn scroll_over_a_virtual_line_pushes_the_next_line_down_correctly() {
     // line 1 ('bbb') must still show "bbb" directly below the virtual
     // line's own row — the row-counting fix must correctly push line
     // 1's content down by the one stolen row, never overlap or skip it.
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     type_text(&mut ed, "aaa\nbbb\nccc");

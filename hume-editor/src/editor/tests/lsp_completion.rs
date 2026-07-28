@@ -15,7 +15,7 @@ fn run(ed: &mut Editor, tmp: &Path, source: &str) {
 
 #[test]
 fn begin_then_top_returns_items_ranked_by_sort_text_with_no_filter() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -37,7 +37,7 @@ fn begin_then_top_returns_items_ranked_by_sort_text_with_no_filter() {
 
 #[test]
 fn update_filter_narrows_and_prefix_beats_infix() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -68,7 +68,7 @@ fn update_filter_narrows_and_prefix_beats_infix() {
 
 #[test]
 fn accept_with_no_text_edit_inserts_insert_text_at_the_anchor_span() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -87,7 +87,7 @@ fn accept_with_no_text_edit_inserts_insert_text_at_the_anchor_span() {
 
 #[test]
 fn accept_with_no_text_edit_replaces_the_prefix_typed_before_completion_began() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     // Cursor (anchor at begin time) sits right after an already-typed "fo"
     // prefix — completion invoked manually after typing, not from an empty
     // token. The fallback must replace that whole token, not just
@@ -108,7 +108,7 @@ fn accept_with_no_text_edit_replaces_the_prefix_typed_before_completion_began() 
 
 #[test]
 fn accept_with_a_text_edit_extends_the_range_to_cover_chars_typed_after_begin() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     // Buffer already holds "for" — standing in for "the user typed one more
     // char ('r') after the completion menu opened, narrowing the filter
     // further." The server's textEdit range (0,0)-(0,2) was computed
@@ -134,7 +134,7 @@ fn accept_with_a_text_edit_extends_the_range_to_cover_chars_typed_after_begin() 
 
 #[test]
 fn accept_with_a_text_edit_applies_the_servers_range_exactly() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -156,7 +156,7 @@ fn accept_with_a_text_edit_applies_the_servers_range_exactly() {
 
 #[test]
 fn accept_is_one_undo_step() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -180,7 +180,7 @@ fn accept_is_one_undo_step() {
 
 #[test]
 fn dismiss_clears_the_session_so_a_later_accept_errors() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -206,7 +206,7 @@ fn dismiss_clears_the_session_so_a_later_accept_errors() {
 
 #[test]
 fn a_buffer_edit_that_bypasses_update_filter_invalidates_the_session() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -245,7 +245,7 @@ fn a_buffer_edit_that_bypasses_update_filter_invalidates_the_session() {
 
 #[test]
 fn begin_with_empty_items_creates_no_session_and_reports_info() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -268,7 +268,7 @@ fn begin_with_empty_items_creates_no_session_and_reports_info() {
 
 #[test]
 fn begin_with_empty_items_clears_an_already_open_session() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -293,7 +293,7 @@ fn begin_with_empty_items_clears_an_already_open_session() {
 
 #[test]
 fn accept_fires_on_completion_accept_with_the_raw_item_after_the_edit() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -326,7 +326,7 @@ fn accept_with_no_hook_registered_still_applies_the_edit() {
     // Fail oracle for the hook wiring: if `push` onto `pending_hooks` panicked
     // or the accept path never returned `Ok`, this would fail even with zero
     // handlers registered.
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -344,7 +344,7 @@ fn accept_with_no_hook_registered_still_applies_the_edit() {
 
 #[test]
 fn refilter_fires_on_completion_refilter_only_when_incomplete() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -370,7 +370,7 @@ fn refilter_fires_on_completion_refilter_only_when_incomplete() {
 
 #[test]
 fn refilter_does_not_fire_when_the_session_is_complete() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -399,7 +399,7 @@ fn refilter_does_not_fire_when_the_session_is_complete() {
 #[test]
 #[ignore]
 fn scripted_1k_item_session_stays_under_the_p8_budget() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let items: String = (0..1000)
         .map(|i| format!(r#"(hash "label" "item{i}" "sortText" "{i:04}" "insertText" "item{i}")"#))
@@ -486,7 +486,7 @@ fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op
 /// the whole batch — the well-formed item next to it still survives.
 #[test]
 fn malformed_item_is_skipped_with_a_trace_and_the_rest_survive() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -517,7 +517,7 @@ fn malformed_item_is_skipped_with_a_trace_and_the_rest_survive() {
 /// session, "no completions" reported — not a silently-empty open session.
 #[test]
 fn all_items_malformed_behaves_like_an_empty_response() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -543,7 +543,7 @@ fn all_items_malformed_behaves_like_an_empty_response() {
 /// needs to handle explicitly.
 #[test]
 fn insert_replace_text_edit_applies_the_narrower_insert_range() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,

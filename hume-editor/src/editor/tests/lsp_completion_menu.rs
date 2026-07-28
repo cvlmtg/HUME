@@ -484,7 +484,7 @@ fn typing_after_moving_the_cursor_before_the_anchor_dismisses_instead_of_panicki
 
 #[test]
 fn minibuffer_e_tab_completion_is_unaffected_by_the_lsp_completion_guard() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let file_path = tmp.path().join("hello.rs");
     std::fs::write(&file_path, "").unwrap();
 

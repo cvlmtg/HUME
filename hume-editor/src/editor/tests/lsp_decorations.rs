@@ -42,7 +42,7 @@ fn attach_running_server(ed: &mut Editor) -> ServerId {
 
 #[test]
 fn set_inlay_hints_converts_wire_position_using_utf16_encoding() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     // "🎉" is 1 char, 2 UTF-16 code units, 4 UTF-8 bytes — a wire character
     // offset of 2 (the emoji's UTF-16 width) must land on char index 1, the
     // char right after it, not byte/char index 2 or 4.
@@ -73,7 +73,7 @@ fn set_inlay_hints_converts_wire_position_using_utf16_encoding() {
 
 #[test]
 fn set_inlay_hints_replaces_wholesale_not_appends() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdef\n");
     attach_running_server(&mut ed);
     let bid = ed.focused_buffer_id();
@@ -108,7 +108,7 @@ fn set_inlay_hints_replaces_wholesale_not_appends() {
 /// a plugin author's typo producing fewer hints with no explanation.
 #[test]
 fn set_inlay_hints_errors_loudly_on_a_malformed_position() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdef\n");
     attach_running_server(&mut ed);
     let bid = ed.focused_buffer_id();
@@ -137,7 +137,7 @@ fn set_inlay_hints_errors_loudly_on_a_malformed_position() {
 
 #[test]
 fn inlay_hints_remap_through_an_edit() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdef\n");
     attach_running_server(&mut ed);
     let bid = ed.focused_buffer_id();
@@ -177,7 +177,7 @@ fn inlay_hints_remap_through_an_edit() {
 /// of position on every edit.
 #[test]
 fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     // Deliberately no attach_running_server call — this buffer has no LSP
     // server and no path, nothing but the decoration itself.
     let mut ed = editor_from("-[x]>abcdef\n");
@@ -229,7 +229,7 @@ fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
 
 #[test]
 fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_source() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdef\n");
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new();
@@ -306,7 +306,7 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
 
 #[test]
 fn set_inline_diagnostics_round_trips_and_replaces_wholesale() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdef\nghijkl\n");
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new();
@@ -346,8 +346,8 @@ fn set_inline_diagnostics_round_trips_and_replaces_wholesale() {
 
 #[test]
 fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
-    let tmp = tempfile::tempdir().unwrap();
-    let file_dir = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
     let file = file_dir.path().join("main.rs");
     std::fs::write(&file, "abcdefghij\n").unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
@@ -449,7 +449,7 @@ fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
 /// that floor".
 #[test]
 fn diagnostics_for_buffer_errors_loudly_on_an_unknown_severity_name() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     let mut host = ScriptingHost::new();
     eval_with_real_host(

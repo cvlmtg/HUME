@@ -6,10 +6,7 @@ use super::*;
 fn vsplit_path_opens_that_buffer() {
     use hume_engine::pipeline::{Direction, LayoutTree};
 
-    let f = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(f.path(), "other file\n").unwrap();
-    let path = f.path().to_path_buf();
-    let _tmp_path = f.into_temp_path();
+    let (path, _tmp_path) = temp_file("other file\n");
 
     let mut ed = editor_from("-[h]>ello\n");
     let bid_a = ed.focused_buffer_id();
@@ -97,10 +94,7 @@ fn vsplit_missing_file_error_shows_raw_typed_path() {
 /// `EditorSettings::wrap_mode`, ignoring the source pane's (unrelated) mode.
 #[test]
 fn new_file_split_reads_global_wrap_mode() {
-    let f = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(f.path(), "other file\n").unwrap();
-    let path = f.path().to_path_buf();
-    let _tmp_path = f.into_temp_path();
+    let (path, _tmp_path) = temp_file("other file\n");
 
     let mut ed = editor_from("-[h]>ello\n");
     let pid_a = ed.state.focused_pane_id;
@@ -128,10 +122,7 @@ fn new_file_split_reads_global_wrap_mode() {
 fn split_path_arg_does_not_inherit_source_panes_view() {
     use hume_editing::selection::Selection;
 
-    let f = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(f.path(), "other file\n").unwrap();
-    let path = f.path().to_path_buf();
-    let _tmp_path = f.into_temp_path();
+    let (path, _tmp_path) = temp_file("other file\n");
 
     let mut ed = editor_from("-[h]>ello\n");
     let bid_a = ed.focused_buffer_id();
@@ -155,10 +146,7 @@ fn split_path_arg_does_not_inherit_source_panes_view() {
 /// empty — the source pane's history is irrelevant to a different file.
 #[test]
 fn split_different_buffer_keeps_empty_jump_list() {
-    let f = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(f.path(), "other file\n").unwrap();
-    let path = f.path().to_path_buf();
-    let _tmp_path = f.into_temp_path();
+    let (path, _tmp_path) = temp_file("other file\n");
 
     let mut ed = jump_editor(10);
     let pid_a = ed.state.focused_pane_id;
@@ -190,10 +178,7 @@ fn split_different_buffer_keeps_empty_jump_list() {
 /// bug only reproduces when a pane actually has highlight-reading providers.
 #[test]
 fn cross_buffer_search_highlight_does_not_bleed_into_other_pane() {
-    let f = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(f.path(), "other file\n").unwrap();
-    let path = f.path().to_path_buf();
-    let _tmp_path = f.into_temp_path();
+    let (path, _tmp_path) = temp_file("other file\n");
 
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     let pid_a = ed.state.focused_pane_id;

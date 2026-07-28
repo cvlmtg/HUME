@@ -196,7 +196,7 @@ fn tab_in_search_mode_is_noop() {
 
 #[test]
 fn tab_on_edit_arg_completes_path() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = safe_tempdir();
     std::fs::write(dir.path().join("hello.txt"), b"").unwrap();
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -218,7 +218,7 @@ fn tab_on_edit_arg_completes_path() {
 
 #[test]
 fn tab_on_write_arg_completes_path() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = safe_tempdir();
     std::fs::write(dir.path().join("out.txt"), b"").unwrap();
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -237,7 +237,7 @@ fn tab_on_write_arg_completes_path() {
 
 #[test]
 fn tab_on_cd_arg_completes_dirs_only() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = safe_tempdir();
     std::fs::create_dir(dir.path().join("mysubdir")).unwrap();
     std::fs::write(dir.path().join("myfile.txt"), b"").unwrap();
 
@@ -270,7 +270,7 @@ fn tab_on_cd_arg_completes_dirs_only() {
 
 #[test]
 fn enter_on_directory_candidate_restarts_completion() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = safe_tempdir();
     // Two sub-dirs so the path popup has ≥2 candidates (popup opens).
     std::fs::create_dir(dir.path().join("alpha")).unwrap();
     std::fs::create_dir(dir.path().join("beta")).unwrap();

@@ -14,7 +14,7 @@ fn run(ed: &mut Editor, tmp: &Path, source: &str) {
 
 #[test]
 fn prompt_confirm_calls_callback_with_typed_text() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     run(
         &mut ed,
@@ -37,7 +37,7 @@ fn prompt_confirm_calls_callback_with_typed_text() {
 
 #[test]
 fn prompt_esc_calls_callback_with_false_exactly_once() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     run(
         &mut ed,
@@ -57,7 +57,7 @@ fn prompt_esc_calls_callback_with_false_exactly_once() {
 
 #[test]
 fn prompt_prefill_is_visible_and_editable() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     run(
         &mut ed,
@@ -85,7 +85,7 @@ fn prompt_prefill_is_visible_and_editable() {
 
 #[test]
 fn second_prompt_while_one_is_open_errors() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     run(
         &mut ed,
@@ -110,7 +110,7 @@ fn second_prompt_while_one_is_open_errors() {
 
 #[test]
 fn prompt_mode_round_trips_and_fires_on_mode_change() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdefghij\n");
     run(
         &mut ed,
@@ -149,7 +149,7 @@ fn prompt_mode_round_trips_and_fires_on_mode_change() {
 
 #[test]
 fn symbol_under_cursor_on_a_word_char_returns_the_whole_word() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("foo -[b]>ar baz\n");
     run(
         &mut ed,
@@ -163,7 +163,7 @@ fn symbol_under_cursor_on_a_word_char_returns_the_whole_word() {
 
 #[test]
 fn symbol_under_cursor_on_whitespace_returns_empty() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("foo-[ ]>bar\n");
     run(
         &mut ed,
@@ -177,7 +177,7 @@ fn symbol_under_cursor_on_whitespace_returns_empty() {
 
 #[test]
 fn symbol_under_cursor_on_punctuation_returns_empty() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("foo-[.]>bar\n");
     run(
         &mut ed,

@@ -78,7 +78,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
         return;
     }
     let (parser, hl) = grammar_fixture("json");
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let init_path = tmp.path().join("init.scm");
     // `register-grammar!` is a prelude.scm macro (like `define-language!`) —
     // prepend the real prelude source so it's in scope, since this test evals
@@ -146,7 +146,7 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
     let (parser, hl) = grammar_fixture("json");
     let ext = hume_test_fixtures::grammar_platform_ext();
 
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let data_dir = tmp.path().join("hume");
     std::fs::create_dir_all(data_dir.join("grammars/sources")).unwrap();
     std::fs::create_dir_all(data_dir.join("plugins")).unwrap();
@@ -233,7 +233,7 @@ fn install_real_json_grammar_e2e() {
     let (url, rev) = grammar_source("json");
     let (url, rev) = (url.as_str(), rev.as_str());
 
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let data_dir = tmp.path().join("hume");
     std::fs::create_dir_all(data_dir.join("grammars/sources")).unwrap();
     std::fs::create_dir_all(data_dir.join("plugins")).unwrap();

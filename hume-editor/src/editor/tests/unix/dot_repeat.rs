@@ -18,10 +18,7 @@ fn lazy_repeatable_round_trip() {
     use crate::editor::scripting_setup::make_init_host;
     use hume_scripting::ScriptingHost;
 
-    let dir = {
-        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        tempfile::tempdir().unwrap()
-    };
+    let dir = safe_tempdir();
     let plugin_dir = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(

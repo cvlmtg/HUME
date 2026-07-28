@@ -40,7 +40,7 @@ fn popup_view_lines_arc(ed: &Editor) -> Option<Arc<Vec<String>>> {
 
 #[test]
 fn show_popup_populates_the_view_after_a_frame() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -58,7 +58,7 @@ fn show_popup_populates_the_view_after_a_frame() {
 
 #[test]
 fn close_popup_clears_the_view() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -81,7 +81,7 @@ fn close_popup_clears_the_view() {
 
 #[test]
 fn show_popup_replaces_not_stacks() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -100,7 +100,7 @@ fn show_popup_replaces_not_stacks() {
 
 #[test]
 fn show_popup_rejects_an_unknown_anchor() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -128,7 +128,7 @@ fn popup_band_lines(ed: &Editor) -> Option<Vec<String>> {
 
 #[test]
 fn docked_popup_resolves_into_the_band_view_not_the_cursor_overlay() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -149,7 +149,7 @@ fn docked_popup_resolves_into_the_band_view_not_the_cursor_overlay() {
 
 #[test]
 fn close_popup_clears_the_band_view_too() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -172,7 +172,7 @@ fn close_popup_clears_the_band_view_too() {
 
 #[test]
 fn ctrl_d_and_ctrl_u_scroll_a_docked_popup_without_touching_the_buffer() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let tall = (0..30)
         .map(|i| format!("line{i}"))
@@ -231,7 +231,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_docked_popup_without_touching_the_buffer() {
 
 #[test]
 fn any_other_key_closes_a_docked_popup_and_still_dispatches() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -261,7 +261,7 @@ fn docked_popup_renders_as_a_band_above_the_statusline_and_shrinks_the_pane() {
     // Appearance + layout lock: the docked popup must actually reserve
     // chrome space (pane shrinks), not float over content like the cursor
     // layout.
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     run(
@@ -281,7 +281,7 @@ fn docked_popup_renders_as_a_band_above_the_statusline_and_shrinks_the_pane() {
 
 #[test]
 fn popup_wraps_to_the_pane_width_and_anchors_below_the_cursor() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     // Cursor at column 0, row 0 — plenty of room below in a 25-row terminal.
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
@@ -315,7 +315,7 @@ fn popup_wraps_to_the_pane_width_and_anchors_below_the_cursor() {
 
 #[test]
 fn wrap_is_cached_per_width_and_invalidated_only_when_width_changes() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -348,7 +348,7 @@ fn wrap_is_cached_per_width_and_invalidated_only_when_width_changes() {
 
 #[test]
 fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let tall = (0..30)
         .map(|i| format!("line{i}"))
@@ -415,7 +415,7 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
     // hold a scroll value now far beyond the shrunk `max_scroll`. Ctrl+u
     // used to subtract from that stale value directly, which could still
     // land above the new `max_scroll` — visibly no-op on the first press.
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let tall = (0..40)
         .map(|i| format!("line{i}"))
@@ -469,7 +469,7 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
 
 #[test]
 fn any_other_key_closes_a_scrollable_popup_and_still_dispatches() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -503,7 +503,7 @@ fn ctrl_d_on_a_non_scroll_popup_still_scrolls_the_buffer() {
     // hover/sighelp today, or the diagnostic overlay before its own
     // `'transient` clear) must leave Ctrl+d/Ctrl+u to their ordinary
     // half-page-scroll binding.
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n");
     run(
         &mut ed,
@@ -536,7 +536,7 @@ fn scrollable_popup_paints_its_scrolled_window() {
     // Appearance lock: the painted rows actually shift after Ctrl+d, not
     // just the underlying `scroll` field (a regression in `draw_menu_box`'s
     // windowing wouldn't be caught by the data-only assertions above).
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     let tall = (0..20)
@@ -568,7 +568,7 @@ fn popup_never_paints_outside_the_pane_rect() {
     // A snapshot-level end-to-end check: render into a small terminal and
     // confirm every non-space cell the popup could have touched stays
     // within the pane rows (no bleed into the statusline row).
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     ed.feed_key(key('i'));

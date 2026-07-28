@@ -51,7 +51,7 @@ fn run_probe(ed: &mut Editor, host: ScriptingHost, tmp: &Path, body: &str) -> bo
 
 #[test]
 fn lsp_capabilities_decodes_after_handshake() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     attach_running_server(
         &mut ed,
@@ -72,7 +72,7 @@ fn lsp_capabilities_decodes_after_handshake() {
 
 #[test]
 fn lsp_capabilities_is_false_before_running() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     // Client wired but handshake never driven — stays Starting.
     let mut backend = InlineLspBackend::new();
@@ -99,7 +99,7 @@ fn lsp_capabilities_is_false_before_running() {
 
 #[test]
 fn lsp_server_status_lists_the_running_server() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
 
@@ -120,7 +120,7 @@ fn lsp_server_status_lists_the_running_server() {
 
 #[test]
 fn lsp_server_for_buffer_reflects_attachment() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
 
@@ -138,7 +138,7 @@ fn lsp_server_for_buffer_reflects_attachment() {
 
 #[test]
 fn lsp_registered_for_language_reflects_registration() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -162,7 +162,7 @@ fn lsp_registered_for_language_reflects_registration() {
 
 #[test]
 fn lsp_registered_for_language_is_false_when_unregistered() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
 
     let fired = run_probe(
@@ -179,7 +179,7 @@ fn lsp_registered_for_language_is_false_when_unregistered() {
 
 #[test]
 fn buffer_generation_changes_after_an_edit() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -215,7 +215,7 @@ fn buffer_generation_changes_after_an_edit() {
 
 #[test]
 fn lsp_position_params_uses_the_negotiated_utf16_encoding_for_multibyte_chars() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     // Buffer: "🎉" (char 0, one grapheme, 2 UTF-16 code units) then cursor on 'x' (char 1).
     let mut ed = editor_from("🎉-[x]>rest\n");
     ed.doc_mut()
@@ -239,7 +239,7 @@ fn lsp_position_params_uses_the_negotiated_utf16_encoding_for_multibyte_chars() 
 
 #[test]
 fn lsp_position_params_uses_the_negotiated_utf8_encoding_for_multibyte_chars() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("🎉-[x]>rest\n");
     ed.doc_mut()
         .set_path(Some(tmp.path().join("fake-lsp-introspect-utf8.rs")));
@@ -264,7 +264,7 @@ fn lsp_position_params_uses_the_negotiated_utf8_encoding_for_multibyte_chars() {
 
 #[test]
 fn lsp_range_params_reflects_the_primary_selection() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     // Selection covers "bcd" (chars 1..=3, inclusive head at 3): half-open
     // wire range must be [1, 4).
     let mut ed = editor_from("a<[bcd]-ef\n");
@@ -295,7 +295,7 @@ fn lsp_range_params_reflects_the_primary_selection() {
 fn lsp_range_params_end_lands_on_a_grapheme_boundary_not_mid_cluster() {
     use hume_editing::selection::Selection;
 
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     // "caf" + é (U+0065 U+0301, two chars) + "\n". Grapheme boundaries:
     // 0,1,2,3,5,6 — é occupies chars 3..5. Selection anchor=0, head=3
     // (inclusive) covers "caf" plus é's first char only.
@@ -325,7 +325,7 @@ fn lsp_range_params_end_lands_on_a_grapheme_boundary_not_mid_cluster() {
 
 #[test]
 fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let mut host = ScriptingHost::new();
     // Captures the hook's own `(first . last)` payload so the assertion
@@ -363,7 +363,7 @@ fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
 
 #[test]
 fn viewport_range_is_false_for_a_buffer_not_shown_in_any_pane() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
 
     // `open_extra_files` opens a second buffer into the buffer list without
@@ -401,7 +401,7 @@ fn viewport_range_is_false_for_a_buffer_not_shown_in_any_pane() {
 
 #[test]
 fn lsp_position_params_is_false_for_an_unattached_buffer() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     // No server attached at all.
     let host = ScriptingHost::new();

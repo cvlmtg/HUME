@@ -15,7 +15,7 @@ use hume_scripting::ScriptingHost;
 /// callback nor the supersede-key entry leaks.
 #[test]
 fn supersede_cancels_the_prior_request_under_the_same_key() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let (_sid, notifications, _requests) = setup_with_recording(&mut ed, |b, _sid| {
         b.respond_to(
@@ -109,8 +109,8 @@ fn setup_with_real_file(
 /// isn't what's suppressing it).
 #[test]
 fn callback_fires_normally_without_an_intervening_edit() {
-    let tmp = tempfile::tempdir().unwrap();
-    let file_dir = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     let (_bid, uri) = setup_with_real_file(&mut ed, file_dir.path(), |b, _sid| {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "ok"}));
@@ -143,8 +143,8 @@ fn callback_fires_normally_without_an_intervening_edit() {
 
 #[test]
 fn stale_response_is_dropped_without_allow_stale() {
-    let tmp = tempfile::tempdir().unwrap();
-    let file_dir = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     let (_bid, uri) = setup_with_real_file(&mut ed, file_dir.path(), |b, _sid| {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "ok"}));
@@ -183,8 +183,8 @@ fn stale_response_is_dropped_without_allow_stale() {
 
 #[test]
 fn allow_stale_delivers_despite_buffer_moving_on() {
-    let tmp = tempfile::tempdir().unwrap();
-    let file_dir = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     let (_bid, uri) = setup_with_real_file(&mut ed, file_dir.path(), |b, _sid| {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "ok"}));
@@ -229,8 +229,8 @@ fn allow_stale_delivers_despite_buffer_moving_on() {
 /// was computed against.
 #[test]
 fn didchange_reaches_the_wire_before_a_same_dispatch_request() {
-    let tmp = tempfile::tempdir().unwrap();
-    let file_dir = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
     let file = file_dir.path().join("main.rs");
     std::fs::write(&file, "abcdef\n").unwrap();
 

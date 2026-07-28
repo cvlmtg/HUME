@@ -233,7 +233,7 @@ fn reload_config_reapplies_on_language_set_buffer_overrides() {
 /// twice.
 #[test]
 fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
-    let file_tmp = tempfile::tempdir().unwrap();
+    let file_tmp = safe_tempdir();
     let companion = file_tmp.path().join("companion.rs");
     std::fs::write(&companion, "fn companion() {}\n").unwrap();
     let companion_str = companion.to_string_lossy().replace('\\', "/");

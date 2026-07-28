@@ -50,7 +50,7 @@ struct DiagCtx {
 /// `two_publishes_in_one_drain_batch_coalesce_to_the_last` locks in), which
 /// is exactly the "server republishes with the error fixed" scenario.
 fn setup(content: &str, publishes: &[&[DiagFixture]]) -> DiagCtx {
-    let file_dir = tempfile::tempdir().unwrap();
+    let file_dir = safe_tempdir();
     let file = file_dir.path().join("main.rs");
     std::fs::write(&file, content).unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();

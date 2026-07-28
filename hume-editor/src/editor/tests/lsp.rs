@@ -383,7 +383,7 @@ fn workspace_configuration_resolves_the_attached_servers_registered_settings() {
     // *requesting* server's own registered settings (via `server_id` ->
     // `introspect::server_language` -> `LspState.configs`) rather than
     // some other server's, or none at all.
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[w]>ord\n");
     let mut host = ScriptingHost::new();
 
@@ -430,7 +430,7 @@ fn workspace_configuration_answers_null_when_requesting_server_has_no_registered
     // Same shape, but the attached server's config carries no `#:settings`
     // at all — must fall back to null per item, not panic or leak another
     // server's settings.
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[w]>ord\n");
     let mut host = ScriptingHost::new();
 
@@ -471,7 +471,7 @@ fn workspace_configuration_never_leaks_another_servers_settings() {
     // requesting server's own id must resolve only its own language's
     // config, never the other one's, even though both configs live in the
     // same `LspState.configs` map.
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[w]>ord\n");
     let mut host = ScriptingHost::new();
 
@@ -622,7 +622,7 @@ fn second_registration_replaces_first() {
     // Last-wins: a second register-lsp-server! for an already-registered
     // language replaces the config rather than being rejected — matching
     // define-language!'s semantics. No error is logged.
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[w]>ord\n");
     ed.lsp = LspState::new_inline();
     let mut host = ScriptingHost::new();
@@ -657,7 +657,7 @@ fn runtime_registration_attaches_already_open_buffer() {
     // A buffer opened before its language has any registered server gets
     // its language set (via detection) but stays unattached. Registering
     // the server afterward must sweep it in — no separate attach step.
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let root = std::fs::canonicalize(tmp.path()).unwrap();
     std::fs::write(root.join("Cargo.toml"), b"").unwrap();
     let file = root.join("main.rs");
@@ -695,7 +695,7 @@ fn runtime_registration_attaches_already_open_buffer() {
 
 #[test]
 fn unregister_stops_running_client_and_clears_config() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let root = std::fs::canonicalize(tmp.path()).unwrap();
     std::fs::write(root.join("Cargo.toml"), b"").unwrap();
     let file = root.join("main.rs");
@@ -744,7 +744,7 @@ fn unregister_stops_running_client_and_clears_config() {
 
 #[test]
 fn unregister_of_never_registered_language_is_silent_success() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[w]>ord\n");
     ed.lsp = LspState::new_inline();
     let mut host = ScriptingHost::new();
@@ -769,7 +769,7 @@ fn replace_while_running_leaves_old_client_untouched() {
     // running clients — that only happens via an explicit unregister
     // (the reinstall path). The old client keeps running on the old config
     // until its next spawn.
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let root = std::fs::canonicalize(tmp.path()).unwrap();
     std::fs::write(root.join("Cargo.toml"), b"").unwrap();
     let file = root.join("main.rs");
@@ -820,7 +820,7 @@ fn replace_while_running_leaves_old_client_untouched() {
 
 #[test]
 fn register_and_open_matching_file_spawns_exactly_one_server_and_second_buffer_attaches() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let root = std::fs::canonicalize(tmp.path()).unwrap();
     std::fs::write(root.join("Cargo.toml"), b"").unwrap();
     std::fs::create_dir_all(root.join("src")).unwrap();
@@ -864,7 +864,7 @@ fn register_and_open_matching_file_spawns_exactly_one_server_and_second_buffer_a
 
 #[test]
 fn opening_a_file_under_a_different_root_spawns_a_second_server() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let root_a = std::fs::canonicalize(tmp.path()).unwrap().join("a");
     let root_b = std::fs::canonicalize(tmp.path()).unwrap().join("b");
     for root in [&root_a, &root_b] {
@@ -902,7 +902,7 @@ fn opening_a_file_under_a_different_root_spawns_a_second_server() {
 
 #[test]
 fn crashed_server_is_not_silently_reattached_to() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let root = std::fs::canonicalize(tmp.path()).unwrap();
     std::fs::write(root.join("Cargo.toml"), b"").unwrap();
     std::fs::create_dir_all(root.join("src")).unwrap();

@@ -39,7 +39,7 @@ fn complete_handshake(ed: &mut Editor, sid: ServerId) {
 
 #[test]
 fn on_lsp_attach_fires_for_buffers_attached_before_the_handshake_completes() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let sid = wire_starting_server(&mut ed);
 
@@ -69,7 +69,7 @@ fn on_lsp_attach_fires_for_buffers_attached_before_the_handshake_completes() {
 /// server that `:lsp-stop`/`:lsp-restart` just tore down.
 #[test]
 fn on_lsp_detach_fires_with_the_language_when_a_server_is_stopped() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let mut backend = InlineLspBackend::new();
     let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
@@ -113,7 +113,7 @@ fn register_trigger_chars_from_inside_a_hook_handler_takes_effect() {
     // additionally fire" from "was '.' inserted" (typing '.' changes state
     // either way, so a bare before/after diff on `ed` alone wouldn't catch
     // a registration that silently failed).
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let sid = wire_starting_server(&mut ed);
     let bid = ed.focused_buffer_id();
@@ -158,7 +158,7 @@ fn register_trigger_chars_from_inside_a_hook_handler_takes_effect() {
 fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber_each_other() {
     use hume_editing::selection::Selection;
 
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let bid_a = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
@@ -275,8 +275,8 @@ fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber
 
 #[test]
 fn on_diagnostics_changed_fires_once_per_drain_batch_not_per_publish() {
-    let tmp = tempfile::tempdir().unwrap();
-    let file_dir = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
     let file = file_dir.path().join("main.rs");
     std::fs::write(&file, "abcdef\n").unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
@@ -335,7 +335,7 @@ fn on_diagnostics_changed_fires_once_per_drain_batch_not_per_publish() {
 
 #[test]
 fn on_viewport_change_debounces_a_scroll_burst_into_one_fire() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     ed.state.settings.lsp_viewport_debounce_ms = 0;
     let mut host = ScriptingHost::new();
@@ -366,7 +366,7 @@ fn on_viewport_change_debounces_a_scroll_burst_into_one_fire() {
 
 #[test]
 fn on_trigger_char_fires_only_for_registered_chars_in_insert_mode_after_insertion() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
@@ -421,7 +421,7 @@ fn on_trigger_char_fires_only_for_registered_chars_in_insert_mode_after_insertio
 
 #[test]
 fn on_trigger_char_does_not_fire_in_normal_mode() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[.]>bcdef\n");
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");

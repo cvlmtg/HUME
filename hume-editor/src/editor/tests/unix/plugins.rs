@@ -10,13 +10,7 @@ use hume_scripting::{PluginStatus, ScriptingHost, hooks::HookId};
 /// `init.scm`, evaluate it, set up the lazy stubs, and wire the host into
 /// `ed`.  Caller must keep `TempDir` alive.
 fn setup_lazy_editor(init_body: &str, plugin_body: &str) -> (Editor, tempfile::TempDir) {
-    // Hold HUME_RUNTIME_MUTEX while creating the temp dir so that a concurrent
-    // HumeRuntimeGuard test cannot redirect TMPDIR and nest our dir inside its
-    // managed cleanup tree (which it deletes when the guard drops).
-    let dir = {
-        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        tempfile::tempdir().unwrap()
-    };
+    let dir = safe_tempdir();
     let plugin_dir = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(plugin_dir.join("plugin.scm"), plugin_body).unwrap();
@@ -363,10 +357,7 @@ fn key_press_activates_lazy_plugin_via_keymap() {
 /// eager command, and the first assertion (eval_init returns Err) flips to Ok.
 #[test]
 fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
-    let dir = {
-        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        tempfile::tempdir().unwrap()
-    };
+    let dir = safe_tempdir();
     // Eager plugin — loaded inline (no activation entries), defines "foo".
     let eager_dir = dir.path().join("plugins").join("user").join("eager");
     std::fs::create_dir_all(&eager_dir).unwrap();
@@ -440,10 +431,7 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
 /// error logged.
 #[test]
 fn lazy_stub_collision_lazy_vs_lazy_first_writer_wins() {
-    let dir = {
-        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        tempfile::tempdir().unwrap()
-    };
+    let dir = safe_tempdir();
     let pa_dir = dir.path().join("plugins").join("user").join("pa");
     let pb_dir = dir.path().join("plugins").join("user").join("pb");
     std::fs::create_dir_all(&pa_dir).unwrap();
@@ -645,10 +633,7 @@ fn event_trigger_idempotent_on_second_fire() {
 fn event_trigger_one_to_many_activates_all() {
     use hume_scripting::attribution::PluginId;
 
-    let dir = {
-        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        tempfile::tempdir().unwrap()
-    };
+    let dir = safe_tempdir();
     let dir_a = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&dir_a).unwrap();
     std::fs::write(
@@ -790,20 +775,16 @@ fn event_plugin_failure_marks_failed_no_retry() {
 /// Flip: remove the zero-activation guard in declare_plugin and eval_init succeeds.
 #[test]
 fn declare_plugin_no_triggers_is_hard_error() {
-    let (dir, init_path) = {
-        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = tempfile::tempdir().unwrap();
-        let plugin_dir = dir.path().join("plugins").join("user").join("tp");
-        std::fs::create_dir_all(&plugin_dir).unwrap();
-        std::fs::write(
-            plugin_dir.join("plugin.scm"),
-            r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
-        )
-        .unwrap();
-        let init_path = dir.path().join("init.scm");
-        std::fs::write(&init_path, "(declare-plugin \"user/tp\")").unwrap();
-        (dir, init_path)
-    };
+    let dir = safe_tempdir();
+    let plugin_dir = dir.path().join("plugins").join("user").join("tp");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(
+        plugin_dir.join("plugin.scm"),
+        r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
+    )
+    .unwrap();
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(&init_path, "(declare-plugin \"user/tp\")").unwrap();
 
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
@@ -826,14 +807,10 @@ fn declare_plugin_no_triggers_is_hard_error() {
 /// running `:plum-install` on a fresh setup.
 #[test]
 fn load_plugin_absent_top_level_silently_skips() {
-    let (dir, init_path) = {
-        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = tempfile::tempdir().unwrap();
-        // No plugin directory created — plugin is absent on disk.
-        let init_path = dir.path().join("init.scm");
-        std::fs::write(&init_path, r#"(load-plugin "user/tp")"#).unwrap();
-        (dir, init_path)
-    };
+    let dir = safe_tempdir();
+    // No plugin directory created — plugin is absent on disk.
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(&init_path, r#"(load-plugin "user/tp")"#).unwrap();
 
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
@@ -861,10 +838,7 @@ fn load_plugin_absent_top_level_silently_skips() {
 fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     use hume_scripting::attribution::PluginId;
 
-    let dir = {
-        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        tempfile::tempdir().unwrap()
-    };
+    let dir = safe_tempdir();
     // Plugin A — defines "a-cmd" (move-right wrapper).
     let dir_a = dir.path().join("plugins").join("user").join("tpa");
     std::fs::create_dir_all(&dir_a).unwrap();
@@ -1240,10 +1214,7 @@ fn language_trigger_idempotent_on_round_trip() {
 fn language_trigger_one_to_many_activates_all() {
     use hume_scripting::attribution::PluginId;
 
-    let dir = {
-        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        tempfile::tempdir().unwrap()
-    };
+    let dir = safe_tempdir();
     let dir_a = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&dir_a).unwrap();
     std::fs::write(
@@ -1409,10 +1380,7 @@ fn language_wildcard_trigger_activates_on_any_language() {
 fn language_wildcard_and_specific_entry_coexist() {
     use hume_scripting::attribution::PluginId;
 
-    let dir = {
-        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        tempfile::tempdir().unwrap()
-    };
+    let dir = safe_tempdir();
     let dir_rust = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&dir_rust).unwrap();
     std::fs::write(dir_rust.join("plugin.scm"), "(+ 1 0)").unwrap();
@@ -1619,25 +1587,21 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
     use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
-    let dir = {
-        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = tempfile::tempdir().unwrap();
-        let tp_dir = dir.path().join("plugins").join("user").join("tp");
-        let dep_dir = dir.path().join("plugins").join("user").join("dep");
-        std::fs::create_dir_all(&tp_dir).unwrap();
-        std::fs::create_dir_all(&dep_dir).unwrap();
-        std::fs::write(
-            tp_dir.join("plugin.scm"),
-            // Plugin body calls (load-plugin) at runtime — hard error expected.
-            r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))
-               (load-plugin "user/dep")"#,
-        )
-        .unwrap();
-        std::fs::write(dep_dir.join("plugin.scm"), r#"(+ 1 0)"#).unwrap();
-        let init = dir.path().join("init.scm");
-        std::fs::write(&init, r#"(declare-plugin "user/tp" #:commands '("bar"))"#).unwrap();
-        dir
-    };
+    let dir = safe_tempdir();
+    let tp_dir = dir.path().join("plugins").join("user").join("tp");
+    let dep_dir = dir.path().join("plugins").join("user").join("dep");
+    std::fs::create_dir_all(&tp_dir).unwrap();
+    std::fs::create_dir_all(&dep_dir).unwrap();
+    std::fs::write(
+        tp_dir.join("plugin.scm"),
+        // Plugin body calls (load-plugin) at runtime — hard error expected.
+        r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))
+           (load-plugin "user/dep")"#,
+    )
+    .unwrap();
+    std::fs::write(dep_dir.join("plugin.scm"), r#"(+ 1 0)"#).unwrap();
+    let init = dir.path().join("init.scm");
+    std::fs::write(&init, r#"(declare-plugin "user/tp" #:commands '("bar"))"#).unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();

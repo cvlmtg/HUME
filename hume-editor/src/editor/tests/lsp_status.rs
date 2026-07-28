@@ -141,7 +141,7 @@ fn lsp_stop_clears_the_buffer_s_pending_change_queue() {
 
 #[test]
 fn lsp_restart_spawns_a_fresh_server_id_and_reattaches_the_buffer() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let root = std::fs::canonicalize(tmp.path()).unwrap();
     std::fs::write(root.join("Cargo.toml"), b"").unwrap();
     std::fs::create_dir_all(root.join("src")).unwrap();
@@ -198,7 +198,7 @@ fn lsp_restart_spawns_a_fresh_server_id_and_reattaches_the_buffer() {
 /// sid" path — doubling the count instead of replacing it.
 #[test]
 fn lsp_restart_does_not_duplicate_diagnostics_after_a_republish() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let root = std::fs::canonicalize(tmp.path()).unwrap();
     std::fs::write(root.join("Cargo.toml"), b"").unwrap();
     std::fs::create_dir_all(root.join("src")).unwrap();

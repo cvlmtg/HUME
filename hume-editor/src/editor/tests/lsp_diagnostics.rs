@@ -62,7 +62,7 @@ fn publish_diagnostics_notification_versioned(
 
 #[test]
 fn ingest_converts_utf16_positions_across_an_emoji() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
     // "😀 error here\n" — the emoji is 1 Rust char but 2 UTF-16 code units,
     // so a naive char-count read of the wire position would land one
@@ -106,7 +106,7 @@ fn ingest_converts_utf16_positions_across_an_emoji() {
 
 #[test]
 fn two_publishes_in_one_drain_batch_coalesce_to_the_last() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
     std::fs::write(&file, "one two three four\n").unwrap();
 
@@ -139,7 +139,7 @@ fn two_publishes_in_one_drain_batch_coalesce_to_the_last() {
 
 #[test]
 fn publish_for_an_unopened_file_is_dropped_without_spam() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let file = std::fs::canonicalize(tmp.path())
         .unwrap()
         .join("never_opened.rs");
@@ -174,7 +174,7 @@ fn publish_for_an_unopened_file_is_dropped_without_spam() {
 
 #[test]
 fn malformed_publish_diagnostics_reaches_the_unhandled_notification_path() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
     std::fs::write(&file, "one two three four\n").unwrap();
 
@@ -221,7 +221,7 @@ fn params_of(msg: hume_lsp::codec::Message) -> lsp_types::PublishDiagnosticsPara
 
 #[test]
 fn publish_with_matching_version_is_ingested() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
     std::fs::write(&file, "one two three four\n").unwrap();
 
@@ -249,7 +249,7 @@ fn publish_with_matching_version_is_ingested() {
 
 #[test]
 fn publish_with_a_stale_version_is_dropped_and_does_not_disturb_stored_diagnostics() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
     std::fs::write(&file, "one two three four\n").unwrap();
 
@@ -309,7 +309,7 @@ fn publish_with_a_stale_version_is_dropped_and_does_not_disturb_stored_diagnosti
 /// fix, not a correctness one, but nothing else ever freed these.
 #[test]
 fn close_buffer_prunes_stored_diagnostics_and_decorations() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
     std::fs::write(&file, "one two three\n").unwrap();
 
@@ -371,7 +371,7 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
 fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
     use hume_scripting::ScriptingHost;
 
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
     std::fs::write(&file, "one two three\n").unwrap();
 
@@ -453,7 +453,7 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
 /// never touches it), drifting silently out of sync with further edits.
 #[test]
 fn lsp_stop_clears_stored_diagnostics_for_the_detached_buffer() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
     std::fs::write(&file, "one two three four\n").unwrap();
 
@@ -497,7 +497,7 @@ fn lsp_stop_clears_stored_diagnostics_for_the_detached_buffer() {
 /// be stored and counted, not silently dropped from `:lsp-status`.
 #[test]
 fn zero_width_diagnostic_on_minimal_buffer_is_widened_onto_the_newline() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
     std::fs::write(&file, "\n").unwrap();
 

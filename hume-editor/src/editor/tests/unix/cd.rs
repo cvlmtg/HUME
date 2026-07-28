@@ -255,7 +255,7 @@ fn typed_pwd_long_alias_works() {
 fn path_completer_dirs_only_mode() {
     use crate::editor::completion::{Completer, CompletionCtx, PathCompleter};
 
-    let dir = tempfile::tempdir().unwrap();
+    let dir = safe_tempdir();
     let subdir = dir.path().join("mysubdir");
     let file = dir.path().join("myfile.txt");
     std::fs::create_dir(&subdir).unwrap();

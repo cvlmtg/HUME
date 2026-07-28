@@ -99,7 +99,7 @@ fn replay(log: &[(String, serde_json::Value)]) -> (String, Option<i64>) {
 
 #[test]
 fn did_open_carries_full_text_and_language_id() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let (_ed, _bid, log) = attached_editor(&tmp);
 
     let log = log.borrow();
@@ -123,7 +123,7 @@ fn did_open_carries_full_text_and_language_id() {
 /// `initialized` then `didOpen`, in that order.
 #[test]
 fn did_open_is_queued_until_the_handshake_completes_then_flushes_in_order() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let root = std::fs::canonicalize(tmp.path()).unwrap();
     std::fs::write(root.join("Cargo.toml"), b"").unwrap();
     std::fs::create_dir_all(root.join("src")).unwrap();
@@ -181,7 +181,7 @@ fn no_notifications_for_a_buffer_without_a_server() {
 
 #[test]
 fn version_sync_invariant_across_insert_delete_paste_undo_redo() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let (mut ed, bid, log) = attached_editor(&tmp);
 
     // Re-select something to yank/delete/paste against, then run a session
@@ -214,7 +214,7 @@ fn version_sync_invariant_across_insert_delete_paste_undo_redo() {
 
 #[test]
 fn did_save_and_did_close_each_fire_once() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let (mut ed, bid, log) = attached_editor(&tmp);
 
     ed.execute_typed("w", None).unwrap();
@@ -244,7 +244,7 @@ fn did_save_and_did_close_each_fire_once() {
 /// desyncing its copy of the document for the rest of the session.
 #[test]
 fn reload_flushes_pending_change_before_the_whole_document_didchange() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let (mut ed, bid, log) = attached_editor(&tmp);
 
     // Queue an incremental change without draining.
@@ -295,7 +295,7 @@ fn reload_flushes_pending_change_before_the_whole_document_didchange() {
 /// state one edit behind what's actually on disk.
 #[test]
 fn save_flushes_pending_change_before_did_save() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let (mut ed, _bid, log) = attached_editor(&tmp);
 
     ed.feed_key(key('d'));
@@ -320,7 +320,7 @@ fn save_flushes_pending_change_before_did_save() {
 /// end-to-end proof that `LspServerConfig.init_options` isn't dead weight.
 #[test]
 fn register_lsp_server_init_options_reach_the_initialize_request() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let root = std::fs::canonicalize(tmp.path()).unwrap();
     std::fs::write(root.join("Cargo.toml"), b"").unwrap();
     std::fs::create_dir_all(root.join("src")).unwrap();

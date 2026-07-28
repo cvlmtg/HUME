@@ -30,7 +30,7 @@ fn arm_three_items(ed: &mut Editor, tmp: &Path) {
 
 #[test]
 fn show_drawer_list_populates_model_and_view() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -70,7 +70,7 @@ fn close_drawer_drops_the_callback_without_invoking_it() {
 
 #[test]
 fn esc_calls_back_with_false_and_closes() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -86,7 +86,7 @@ fn esc_calls_back_with_false_and_closes() {
 
 #[test]
 fn enter_calls_back_and_the_drawer_stays_open() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -111,7 +111,7 @@ fn enter_calls_back_and_the_drawer_stays_open() {
 
 #[test]
 fn selection_clamps_at_the_top() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -124,7 +124,7 @@ fn selection_clamps_at_the_top() {
 
 #[test]
 fn selection_clamps_at_the_bottom() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -144,7 +144,7 @@ fn selection_clamps_at_the_bottom() {
 
 #[test]
 fn stray_key_leaves_the_drawer_open_and_uninvoked_but_still_executes() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -169,7 +169,7 @@ fn stray_key_leaves_the_drawer_open_and_uninvoked_but_still_executes() {
 
 #[test]
 fn long_list_auto_scrolls_to_keep_selection_visible() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let items_scm: String = (0..20)
         .map(|i| format!("\"item {i}\""))
@@ -238,7 +238,7 @@ fn arm_twenty_items_in_a_short_terminal(ed: &mut Editor, tmp: &Path) {
 
 #[test]
 fn ctrl_d_pages_down_by_half_the_visible_window() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
@@ -262,7 +262,7 @@ fn ctrl_d_pages_down_by_half_the_visible_window() {
 
 #[test]
 fn ctrl_d_clamps_at_the_last_item() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
@@ -278,7 +278,7 @@ fn ctrl_d_clamps_at_the_last_item() {
 
 #[test]
 fn ctrl_u_pages_up_by_half_the_visible_window() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
@@ -294,7 +294,7 @@ fn ctrl_u_pages_up_by_half_the_visible_window() {
 
 #[test]
 fn ctrl_u_clamps_at_the_first_item() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
@@ -308,7 +308,7 @@ fn ctrl_u_clamps_at_the_first_item() {
 
 #[test]
 fn enter_jump_lands_via_goto_location_and_drawer_stays_open() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\ndef\nghi\n");
     run(
         &mut ed,
@@ -338,7 +338,7 @@ fn enter_jump_lands_via_goto_location_and_drawer_stays_open() {
 
 #[test]
 fn drawer_renders_under_the_pane_with_selected_row_highlighted() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     ed.feed_key(key('i'));

@@ -63,7 +63,7 @@ pub(super) fn setup_with_recording(
 /// other — both are independent, both fire.
 #[test]
 fn requests_without_a_supersede_key_do_not_cancel_each_other() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let (_sid, notifications, _requests) = setup_with_recording(&mut ed, |b, _sid| {
         b.respond_to(
@@ -115,7 +115,7 @@ fn requests_without_a_supersede_key_do_not_cancel_each_other() {
 /// stopped server's stale request id could linger in the map forever.
 #[test]
 fn lsp_stop_clears_supersede_entries() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     setup_with(&mut ed, |_b, _sid| {
         // No canned response — the request stays pending until :lsp-stop.
@@ -146,7 +146,7 @@ fn lsp_stop_clears_supersede_entries() {
 
 #[test]
 fn response_delivers_decoded_result_to_callback() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     setup_with(&mut ed, |b, _sid| {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
@@ -177,7 +177,7 @@ fn response_delivers_decoded_result_to_callback() {
 
 #[test]
 fn protocol_error_delivers_err_hashmap_to_callback() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     setup_with(&mut ed, |b, _sid| {
         b.fail_with("textDocument/hover", -32601, "nope");
@@ -208,7 +208,7 @@ fn protocol_error_delivers_err_hashmap_to_callback() {
 
 #[test]
 fn timeout_delivers_err_string_timeout_to_callback() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     // No canned response for textDocument/hover — it sits pending forever
     // until the (zeroed) deadline scan in `take_completed` claims it.
@@ -240,7 +240,7 @@ fn timeout_delivers_err_string_timeout_to_callback() {
 
 #[test]
 fn on_lsp_notification_fires_the_registered_handler() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     // `push_from_server` (not `send`, which is outbound client->server) is
     // the double's way to simulate a server-initiated notification.
@@ -303,7 +303,7 @@ fn unhandled_notification_without_a_registered_handler_only_logs_trace() {
 /// resolves on a later drain cycle, one cursor move per completed cycle.
 #[test]
 fn callback_calling_lsp_request_does_not_reenter_synchronously() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdefgh\n");
     setup_with(&mut ed, |b, _sid| {
         b.respond_to(
@@ -349,7 +349,7 @@ fn callback_calling_lsp_request_does_not_reenter_synchronously() {
 
 #[test]
 fn callback_error_lands_in_message_log_not_a_crash() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     setup_with(&mut ed, |b, _sid| {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
@@ -434,7 +434,7 @@ fn lsp_request_with_unknown_server_reports_an_error_and_fires_callback_with_err(
     // callback — the documented `(err result)` contract (exactly one
     // non-`#f`) must hold even when no request/response pair could ever
     // exist. Before the fix, the callback simply never fired here.
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     setup_with(&mut ed, |_b, _sid| {});
     let mut host = ScriptingHost::new();
@@ -473,7 +473,7 @@ fn lsp_request_against_a_crashed_server_fires_callback_with_err() {
     // registration time but has since crashed. Without the fix, a plugin
     // relying on the err branch (e.g. sighelp's popup-close-on-error) would
     // never see it — the request would just sit silently dropped.
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let sid = setup_with(&mut ed, |_b, _sid| {});
     ed.lsp
@@ -512,7 +512,7 @@ fn lsp_request_against_a_crashed_server_fires_callback_with_err() {
 /// erroring at the boundary.
 #[test]
 fn lsp_request_rejects_false_as_params_instead_of_sending_it_on_the_wire() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     setup_with(&mut ed, |_b, _sid| {});
     let mut host = ScriptingHost::new();

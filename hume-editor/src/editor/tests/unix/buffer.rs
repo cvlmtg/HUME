@@ -69,8 +69,8 @@ fn buffer_exact_basename_switches() {
 #[test]
 fn buffer_exact_basename_ambiguous_errors() {
     // Open two files whose basenames are identical (different dirs).
-    let dir1 = tempfile::tempdir().unwrap();
-    let dir2 = tempfile::tempdir().unwrap();
+    let dir1 = safe_tempdir();
+    let dir2 = safe_tempdir();
     let p1 = dir1.path().join("same.txt");
     let p2 = dir2.path().join("same.txt");
     std::fs::write(&p1, "a\n").unwrap();
@@ -98,7 +98,7 @@ fn buffer_exact_basename_ambiguous_errors() {
 fn buffer_prefix_unique_switches() {
     // Use a controlled filename — `tempfile::NamedTempFile` produces random
     // basenames we can't match a prefix against.
-    let dir = tempfile::tempdir().unwrap();
+    let dir = safe_tempdir();
     let path = dir.path().join("prefixed_file.rs");
     std::fs::write(&path, "x\n").unwrap();
     let canonical = std::fs::canonicalize(&path).unwrap();
@@ -116,7 +116,7 @@ fn buffer_prefix_unique_switches() {
 
 #[test]
 fn buffer_prefix_ambiguous_errors() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = safe_tempdir();
     let p1 = dir.path().join("alpha_a.rs");
     let p2 = dir.path().join("alpha_b.rs");
     std::fs::write(&p1, "a\n").unwrap();

@@ -45,7 +45,7 @@ fn run(ed: &mut Editor, tmp: &Path, source: &str) {
 
 #[test]
 fn apply_text_edits_single_edit() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     attach_running_utf8_server(&mut ed);
     let bid = ed.focused_buffer_id();
@@ -63,7 +63,7 @@ fn apply_text_edits_single_edit() {
 
 #[test]
 fn apply_text_edits_multiple_edits_same_line_apply_descending() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     attach_running_utf8_server(&mut ed);
     run(
@@ -88,7 +88,7 @@ fn apply_text_edits_multiple_edits_same_line_apply_descending() {
 /// flipped it via the reverse, applying them backwards.
 #[test]
 fn apply_text_edits_same_position_inserts_apply_in_array_order() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     attach_running_utf8_server(&mut ed);
     run(
@@ -109,7 +109,7 @@ fn apply_text_edits_same_position_inserts_apply_in_array_order() {
 
 #[test]
 fn apply_text_edits_adjacent_not_overlapping_accepted() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     attach_running_utf8_server(&mut ed);
     run(
@@ -126,7 +126,7 @@ fn apply_text_edits_adjacent_not_overlapping_accepted() {
 
 #[test]
 fn apply_text_edits_overlapping_rejected() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     attach_running_utf8_server(&mut ed);
     run(
@@ -147,7 +147,7 @@ fn apply_text_edits_overlapping_rejected() {
 
 #[test]
 fn apply_text_edits_reversed_range_rejected() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     attach_running_utf8_server(&mut ed);
     run(
@@ -167,7 +167,7 @@ fn apply_text_edits_reversed_range_rejected() {
 
 #[test]
 fn apply_text_edits_is_one_undo_step() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     attach_running_utf8_server(&mut ed);
     run(
@@ -191,7 +191,7 @@ fn apply_text_edits_is_one_undo_step() {
 
 #[test]
 fn apply_text_edits_version_mismatch_rejected() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     attach_running_utf8_server(&mut ed);
     let stale_gen = ed.doc().text_gen;
@@ -224,7 +224,7 @@ fn apply_text_edits_version_mismatch_rejected() {
 
 #[test]
 fn apply_workspace_edit_changes_shape() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let file = tmp.path().join("a.txt");
     std::fs::write(&file, "abcdef\n").unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
@@ -261,7 +261,7 @@ fn apply_workspace_edit_changes_shape() {
 
 #[test]
 fn apply_workspace_edit_document_changes_shape() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let file = tmp.path().join("a.txt");
     std::fs::write(&file, "abcdef\n").unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
@@ -289,7 +289,7 @@ fn apply_workspace_edit_document_changes_shape() {
 
 #[test]
 fn apply_workspace_edit_mixed_open_and_unopened_files() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let opened_path = tmp.path().join("opened.txt");
     let unopened_path = tmp.path().join("unopened.txt");
     std::fs::write(&opened_path, "hello\n").unwrap();
@@ -341,7 +341,7 @@ fn apply_workspace_edit_mixed_open_and_unopened_files() {
 
 #[test]
 fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let ok_path = tmp.path().join("ok.txt");
     std::fs::write(&ok_path, "abcdef\n").unwrap();
     let ok_canonical = std::fs::canonicalize(&ok_path).unwrap();
@@ -391,7 +391,7 @@ fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
 /// panic in `commit_changeset`'s `cs.apply(&text).expect(...)`.
 #[test]
 fn apply_workspace_edit_duplicate_entry_for_the_same_file_is_rejected_not_a_panic() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let file = tmp.path().join("a.txt");
     std::fs::write(&file, "abcdef\n").unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
@@ -435,7 +435,7 @@ fn apply_workspace_edit_duplicate_entry_for_the_same_file_is_rejected_not_a_pani
 
 #[test]
 fn goto_location_same_buffer_char_indexed_shape() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let bid = ed.focused_buffer_id();
     run(
@@ -457,7 +457,7 @@ fn goto_location_same_buffer_char_indexed_shape() {
 
 #[test]
 fn goto_location_other_open_buffer_by_path_string() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let file = tmp.path().join("other.txt");
     std::fs::write(&file, "xyz\n").unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
@@ -486,7 +486,7 @@ fn goto_location_other_open_buffer_by_path_string() {
 
 #[test]
 fn goto_location_unopened_path_opens_it() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let file = tmp.path().join("fresh.txt");
     std::fs::write(&file, "hello\n").unwrap();
 
@@ -507,7 +507,7 @@ fn goto_location_unopened_path_opens_it() {
 
 #[test]
 fn goto_location_char_indexed_target_past_eof_clamps_to_the_last_char() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -531,7 +531,7 @@ fn goto_location_char_indexed_target_past_eof_clamps_to_the_last_char() {
 
 #[test]
 fn goto_location_nonexistent_path_errors_with_no_jump_entry() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -552,7 +552,7 @@ fn goto_location_nonexistent_path_errors_with_no_jump_entry() {
 
 #[test]
 fn selection_spans_full_line_true_for_a_full_line_selection() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[abc\n]>def\n");
     let bid = ed.focused_buffer_id();
     run(
@@ -568,7 +568,7 @@ fn selection_spans_full_line_true_for_a_full_line_selection() {
 
 #[test]
 fn selection_spans_full_line_false_for_a_partial_selection() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[ab]>cdef\n");
     run(
         &mut ed,
@@ -584,7 +584,7 @@ fn selection_spans_full_line_false_for_a_partial_selection() {
 
 #[test]
 fn server_initiated_apply_edit_actually_applies_and_answers_true() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let file = tmp.path().join("srv.txt");
     std::fs::write(&file, "abcdef\n").unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
@@ -624,7 +624,7 @@ fn server_initiated_apply_edit_actually_applies_and_answers_true() {
 /// `apply_edit_request_response` — the opened buffer's `language` stays `None`.
 #[test]
 fn server_initiated_apply_edit_detects_language_of_newly_opened_file() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let file = tmp.path().join("new.rs");
     std::fs::write(&file, "fn helper() {}\n").unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();

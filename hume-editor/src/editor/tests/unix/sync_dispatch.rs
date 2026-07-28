@@ -15,10 +15,7 @@ use hume_scripting::ScriptingHost;
 fn lazy_command_first_dispatch_forwards_extend() {
     use crate::editor::scripting_setup::make_init_host;
 
-    let dir = {
-        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        tempfile::tempdir().unwrap()
-    };
+    let dir = safe_tempdir();
     let plugin_dir = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(

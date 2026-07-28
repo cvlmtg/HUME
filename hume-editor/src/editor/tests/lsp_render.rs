@@ -71,7 +71,7 @@ struct DiagCtx {
 /// drains, and runs one `prepare_frame` so `update_highlight_providers` has
 /// populated the pane's Arcs.
 fn setup_with_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagCtx {
-    let file_dir = tempfile::tempdir().unwrap();
+    let file_dir = safe_tempdir();
     let file = file_dir.path().join("main.rs");
     std::fs::write(&file, content).unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
@@ -228,7 +228,7 @@ fn diagnostics_stay_visible_in_insert_mode() {
 
 #[test]
 fn extra_highlight_gets_its_runtime_interned_scope() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     type_text(&mut ed, "abcdefgh");
     let mut host = ScriptingHost::new();
@@ -256,7 +256,7 @@ fn extra_highlight_gets_its_runtime_interned_scope() {
 
 #[test]
 fn extra_highlight_scope_is_cached_not_reinterned() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     type_text(&mut ed, "abcdefgh");
     let mut host = ScriptingHost::new();
@@ -293,7 +293,7 @@ fn extra_highlight_scope_is_cached_not_reinterned() {
 /// in `build_pane` actually feed it, not just that the Arcs are populated.
 #[test]
 fn search_match_beats_extra_highlight_in_overlapping_region() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     type_text(&mut ed, "abcdefgh");

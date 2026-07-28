@@ -69,7 +69,7 @@ fn markdown_popup_highlights_when_the_grammar_is_registered() {
     if skip_unless_grammars(&["markdown"]) {
         return;
     }
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     register_markdown(&mut ed);
     run(
@@ -124,7 +124,7 @@ fn markdown_popup_paints_per_run_styles() {
     if skip_unless_grammars(&["markdown"]) {
         return;
     }
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     register_markdown(&mut ed);
@@ -149,7 +149,7 @@ fn docked_popup_highlights_when_the_grammar_is_registered() {
     if skip_unless_grammars(&["markdown"]) {
         return;
     }
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     register_markdown(&mut ed);
     run(
@@ -195,7 +195,7 @@ fn docked_popup_survives_a_multiline_capture_node() {
     if skip_unless_grammars(&["markdown"]) {
         return;
     }
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     register_markdown(&mut ed);
@@ -221,7 +221,7 @@ fn popup_without_markdown_flag_stays_plain_even_with_the_grammar_registered() {
     if skip_unless_grammars(&["markdown"]) {
         return;
     }
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     register_markdown(&mut ed);
     run(
@@ -248,7 +248,7 @@ fn popup_without_markdown_flag_stays_plain_even_with_the_grammar_registered() {
 #[test]
 fn markdown_flag_without_a_registered_grammar_falls_back_to_plain() {
     // No grammar registered at all — this test needs no fixture.
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,

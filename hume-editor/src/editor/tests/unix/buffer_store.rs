@@ -4,7 +4,7 @@ use super::*;
 /// `:e path` opens a new buffer when the file is not already open.
 #[test]
 fn p6_edit_opens_new_buffer() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = safe_tempdir();
     let path = dir.path().join("test.txt");
     std::fs::write(&path, "file content\n").unwrap();
 
@@ -29,7 +29,7 @@ fn p6_edit_opens_new_buffer() {
 /// `:e path` deduplicates: switching to an already-open file doesn't create a new buffer.
 #[test]
 fn p6_edit_deduplicates_open_file() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = safe_tempdir();
     let path = dir.path().join("dedup.txt");
     std::fs::write(&path, "dedup\n").unwrap();
 
@@ -63,7 +63,7 @@ fn p6_edit_deduplicates_open_file() {
 /// `:e!` reloads the current file even when dirty.
 #[test]
 fn p6_edit_force_reloads_current_file() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = safe_tempdir();
     let path = dir.path().join("reload.txt");
     std::fs::write(&path, "original\n").unwrap();
 
@@ -96,7 +96,7 @@ fn p6_edit_force_reloads_current_file() {
 /// re-applies the reload.
 #[test]
 fn p6_e_bang_undo_restores_pre_reload_buffer() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = safe_tempdir();
     let path = dir.path().join("undo.txt");
     std::fs::write(&path, "original\n").unwrap();
 
@@ -158,7 +158,7 @@ fn p6_e_bang_undo_restores_pre_reload_buffer() {
 /// to the new edit, and the reload revision survives as a reachable sibling.
 #[test]
 fn p6_e_bang_undo_then_edit_branches_off_old_tree() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = safe_tempdir();
     let path = dir.path().join("branch.txt");
     std::fs::write(&path, "base\n").unwrap();
 
@@ -229,7 +229,7 @@ fn p6_e_bang_undo_then_edit_branches_off_old_tree() {
 fn p6_e_bang_inverse_is_fine_grained() {
     use hume_editing::changeset::Operation;
 
-    let dir = tempfile::tempdir().unwrap();
+    let dir = safe_tempdir();
     let path = dir.path().join("fine.txt");
     std::fs::write(&path, "alpha\nbeta\ngamma\n").unwrap();
 

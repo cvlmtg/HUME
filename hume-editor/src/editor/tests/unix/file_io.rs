@@ -4,7 +4,7 @@ use pretty_assertions::assert_eq;
 
 #[test]
 fn edit_existing_buffer_switches_without_reread() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = safe_tempdir();
     let path = dir.path().join("existing.txt");
     std::fs::write(&path, "original\n").unwrap();
     let canonical = std::fs::canonicalize(&path).unwrap();
@@ -34,7 +34,7 @@ fn edit_existing_buffer_switches_without_reread() {
 
 #[test]
 fn edit_deleted_file_with_open_buffer_switches_and_warns() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = safe_tempdir();
     let path = dir.path().join("deleted.txt");
     std::fs::write(&path, "content\n").unwrap();
     let canonical = std::fs::canonicalize(&path).unwrap();
@@ -65,7 +65,7 @@ fn edit_deleted_file_with_open_buffer_switches_and_warns() {
 
 #[test]
 fn edit_deleted_file_with_no_buffer_errors() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = safe_tempdir();
     let path = dir.path().join("never_opened.txt");
     // Path never existed — no buffer open for it.
     let mut ed = editor_from("-[h]>ello\n");
@@ -466,7 +466,7 @@ fn write_follows_symlink() {
     let real = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(real.path(), "hello\n").unwrap();
 
-    let link_dir = tempfile::tempdir().unwrap();
+    let link_dir = safe_tempdir();
     let link_path = link_dir.path().join("link.txt");
     symlink(real.path(), &link_path).unwrap();
 

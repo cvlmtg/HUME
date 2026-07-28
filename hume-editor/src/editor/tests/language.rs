@@ -134,7 +134,7 @@ fn open_buffer_then_set_buffer_language_in_one_eval_keeps_the_explicit_value() {
         .rebuild_glob_set()
         .expect("rebuild ok");
 
-    let file_tmp = tempfile::tempdir().unwrap();
+    let file_tmp = safe_tempdir();
     let file = file_tmp.path().join("main.rs");
     std::fs::write(&file, "fn main() {}\n").unwrap();
     let file_str = file.to_string_lossy().replace('\\', "/");
