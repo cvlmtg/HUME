@@ -66,10 +66,15 @@ Splitting is refused with a message when the pane is already too small. Focus an
 independently, keyed by whatever text you selected on that row — not
 necessarily the whole line. Select whole lines (`%` selects the whole buffer)
 to sort a file; select a single column across a block of lines to sort by
-that column instead. Numbers sort numerically; everything else sorts as
-text. Two selections on the same row combine into one key rather than being
-treated as separate rows, so sorting several items *within* one line isn't
-what `:sort` does.
+that column instead. A run sorts numerically only if *every* row's key looks
+like a number — one row with non-numeric text drops the whole run back to
+plain text order. Two selections on the same row combine into one key rather
+than being treated as separate rows, so sorting several items *within* one
+line isn't what `:sort` does.
+
+A single selection that spans several rows keeps its place in the buffer —
+the rows underneath it reorder, but the selection itself still covers the
+same stretch of text afterward.
 
 <div class="key-demo">
 <strong>Select the count on each row, then run <code>:sort</code></strong><br>
