@@ -1,18 +1,35 @@
+import { useState } from 'react';
 import { C, MONO } from '../ui.js';
 import { fgc, bgc, fullStyle, tokenStyle } from '../lib/theme.js';
 import { CODE } from '../data.js';
 
+// Mode -> (statusline scope, label) — mirrors HUME's own mapping
+// (hume-editor/src/ui/theme.rs's `mode_scope` and each mode element's label).
+const MODES = [
+  { scope: "ui.statusline.normal", label: "NOR" },
+  { scope: "ui.statusline.insert", label: "INS" },
+  { scope: "ui.statusline.extend", label: "EXT" },
+  { scope: "ui.statusline.search", label: "SRC" },
+  { scope: "ui.statusline.command", label: "CMD" },
+  { scope: "ui.statusline.select", label: "SEL" },
+];
+
 export default function Preview({ pal, sc }) {
+  const [modeIdx, setModeIdx] = useState(0);
+  const mode = MODES[modeIdx];
+
   const BG = bgc("ui.background", sc, pal, "#1a1b26");
   const FG = fgc("ui.foreground", sc, pal, fgc("ui.text", sc, pal, "#c0caf5"));
   const lnr = fgc("ui.linenr", sc, pal, "#565f89");
   const lnrS = fgc("ui.linenr.selected", sc, pal, "#e0af68");
-  const stFg = fgc("ui.statusline", sc, pal, "#c0caf5");
-  const stBg = bgc("ui.statusline", sc, pal, "#33374c");
-  const mnFg = fgc("ui.statusline.normal", sc, pal, "#1a1b26");
-  const mnBg = bgc("ui.statusline.normal", sc, pal, "#7aa2f7");
+  // The whole row resolves from the active mode's scope, falling back to the
+  // base `ui.statusline` — same dotted-fallback chain HUME's engine uses, so
+  // a theme that omits a mode scope previews exactly as it will render.
+  const rowFg = fgc(mode.scope, sc, pal, fgc("ui.statusline", sc, pal, "#c0caf5"));
+  const rowBg = bgc(mode.scope, sc, pal, bgc("ui.statusline", sc, pal, "#33374c"));
+  const sepFg = fgc("ui.statusline.separator", sc, pal, rowFg);
   const brd = fgc("ui.window", sc, pal, "#565f89");
-  const statusBg = stBg !== "transparent" ? stBg : BG;
+  const statusBg = rowBg !== "transparent" ? rowBg : BG;
 
   const selPrimBg = bgc("ui.selection.primary", sc, pal, "#565f89");
   const selSecBg  = bgc("ui.selection", sc, pal, "#33374c");
@@ -72,10 +89,26 @@ export default function Preview({ pal, sc }) {
         })}
       </div>
       <div style={{ display: "flex", alignItems: "center", background: statusBg, borderTop: "1px solid " + brd, fontSize: 11, fontFamily: MONO }}>
-        <span style={{ padding: "3px 10px", color: stFg }}>5:1 theme.rs [rust] [+]</span>
+        <span style={{ padding: "3px 10px", color: rowFg }}>5:1 theme.rs [rust] [+]</span>
         <span style={{ flex: 1 }} />
-        <span style={{ padding: "3px 10px", color: stFg }}>{"│"}</span>
-        <span style={{ padding: "3px 10px", background: mnBg, color: mnFg, fontWeight: 700 }}>NOR</span>
+        <span style={{ padding: "3px 10px", color: sepFg }}>{"│"}</span>
+        <span style={{ padding: "3px 10px", color: rowFg, fontWeight: 700 }}>{mode.label}</span>
+      </div>
+      <div style={{ display: "flex", gap: 4, padding: "6px 10px", background: C.bgChrome, borderTop: "1px solid " + C.border }}>
+        {MODES.map((m, i) => (
+          <button key={m.scope} onClick={() => setModeIdx(i)}
+            style={{
+              background: i === modeIdx ? C.accent : C.bgBtn,
+              color: i === modeIdx ? C.bg : C.textMuted,
+              border: "none", borderRadius: 10, padding: "2px 9px",
+              fontSize: 10, fontFamily: MONO, cursor: "pointer",
+              fontWeight: i === modeIdx ? 600 : 400,
+            }}
+            title={"Preview " + m.scope}
+          >
+            {m.label}
+          </button>
+        ))}
       </div>
     </div>
   );

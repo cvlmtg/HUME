@@ -6,4 +6,4 @@ expression: "render_to_styled_string(&mut ed, rect)"
 <fg=#808080,bg=#1a1a1a>~</>
 <fg=#808080,bg=#1a1a1a>~</>
 <fg=#808080,bg=#1a1a1a>~</>
-<fg=#000000,bg=#ffffff> 1:1 *scratch* [json]             │ NOR</>
+<fg=#000000,bg=#ffffff> 1:1 *scratch* [json]             </><fg=#808080,bg=#ffffff>│</><fg=#000000,bg=#ffffff> NOR</>

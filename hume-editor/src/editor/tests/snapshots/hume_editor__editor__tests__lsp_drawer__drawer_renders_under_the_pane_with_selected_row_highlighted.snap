@@ -11,4 +11,4 @@ expression: snap
 
 <fg=#ffffff,bg=#50508c>src/a.rs:1: unused import</>
 <fg=#b4b4c8,bg=#282832>src/b.rs:9: TODO</>
-<fg=#000000,bg=#ffffff> 1:6 *scratch* [+]                │ NOR</>
+<fg=#000000,bg=#ffffff> 1:6 *scratch* [+]                </><fg=#808080,bg=#ffffff>│</><fg=#000000,bg=#ffffff> NOR</>

@@ -82,13 +82,14 @@
 "ui.drawer" = { fg = "#b4b4c8", bg = "#282832" }
 
 # ── Statusline ────────────────────────────────────────────────────────────────
-"ui.statusline"         = { fg = "statusline_fg", bg = "statusline" }
-"ui.statusline.normal"  = { fg = "statusline_fg", bg = "statusline" }
-"ui.statusline.insert"  = { fg = "cyan",          bg = "statusline" }
-"ui.statusline.extend"  = { fg = "yellow",        bg = "statusline" }
-"ui.statusline.search"  = { fg = "magenta",       bg = "statusline" }
-"ui.statusline.command" = { fg = "green",         bg = "statusline" }
-"ui.statusline.select"  = { fg = "blue",          bg = "statusline" }
+"ui.statusline"           = { fg = "statusline_fg", bg = "statusline" }
+"ui.statusline.normal"    = { fg = "statusline_fg", bg = "statusline" }
+"ui.statusline.insert"    = { fg = "statusline_fg", bg = "statusline_insert" }
+"ui.statusline.extend"    = { fg = "statusline_fg", bg = "statusline_extend" }
+"ui.statusline.search"    = { fg = "statusline_fg", bg = "statusline_search" }
+"ui.statusline.command"   = { fg = "statusline_fg", bg = "statusline_command" }
+"ui.statusline.select"    = { fg = "statusline_fg", bg = "statusline_select" }
+"ui.statusline.separator" = { fg = "dark_gray" }
 
 [palette]
 fg           = "#d0d0d0"
@@ -102,6 +103,11 @@ cursor_line  = "#3a3a3a"
 selection    = "#444478"
 statusline   = "#ffffff"
 statusline_fg = "#000000"
+statusline_insert  = "#8fdcdc"
+statusline_extend  = "#ecdf8f"
+statusline_search  = "#e8a8e8"
+statusline_command = "#a8dca8"
+statusline_select  = "#a8c0f0"
 cyan         = "#00cdcd"
 yellow       = "#cdcd00"
 magenta      = "#cd00cd"

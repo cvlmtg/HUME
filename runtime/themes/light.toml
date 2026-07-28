@@ -52,19 +52,24 @@ inherits = "dark"
 "ui.drawer" = { fg = "#606078", bg = "#d8d8ec" }
 
 # ── Statusline ────────────────────────────────────────────────────────────────
-"ui.statusline"         = { fg = "statusline_fg", bg = "statusline" }
-"ui.statusline.normal"  = { fg = "statusline_fg", bg = "statusline" }
-"ui.statusline.insert"  = { fg = "white",         bg = "cyan" }
-"ui.statusline.extend"  = { fg = "white",         bg = "yellow" }
-"ui.statusline.search"  = { fg = "white",         bg = "magenta" }
-"ui.statusline.command" = { fg = "white",         bg = "green" }
-"ui.statusline.select"  = { fg = "white",         bg = "blue" }
+"ui.statusline"           = { fg = "statusline_fg", bg = "statusline" }
+"ui.statusline.normal"    = { fg = "statusline_fg", bg = "statusline" }
+"ui.statusline.insert"    = { fg = "white",         bg = "cyan" }
+"ui.statusline.extend"    = { fg = "white",         bg = "yellow" }
+"ui.statusline.search"    = { fg = "white",         bg = "magenta" }
+"ui.statusline.command"   = { fg = "white",         bg = "green" }
+"ui.statusline.select"    = { fg = "white",         bg = "blue" }
+"ui.statusline.separator" = { fg = "light_gray" }
 
 [palette]
 white        = "#f5f5f5"
 black        = "#1a1a1a"
 red          = "#a02020"
 mid_gray     = "#9090a0"
+# Lighter than mid_gray specifically for the separator: it sits on the
+# saturated dark row backgrounds below (cyan/yellow/magenta/green/blue), where
+# mid_gray's contrast is too low to read as a divider.
+light_gray   = "#c8c8d2"
 cursor_line  = "#e8e8f0"
 selection    = "#b8b8e8"
 statusline   = "#1a1a1a"

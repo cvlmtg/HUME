@@ -50,13 +50,14 @@
 "ui.drawer" = { fg = "fg2", bg = "bg2" }
 
 # ── Statusline ────────────────────────────────────────────────────────────────
-"ui.statusline"         = { fg = "bg0",  bg = "fg4" }
-"ui.statusline.normal"  = { fg = "bg0",  bg = "fg4" }
-"ui.statusline.insert"  = { fg = "bg0",  bg = "bright_blue" }
-"ui.statusline.extend"  = { fg = "bg0",  bg = "bright_yellow" }
-"ui.statusline.search"  = { fg = "bg0",  bg = "bright_purple" }
-"ui.statusline.command" = { fg = "bg0",  bg = "bright_green" }
-"ui.statusline.select"  = { fg = "bg0",  bg = "bright_blue" }
+"ui.statusline"           = { fg = "bg0",  bg = "fg4" }
+"ui.statusline.normal"    = { fg = "bg0",  bg = "fg4" }
+"ui.statusline.insert"    = { fg = "bg0",  bg = "bright_blue" }
+"ui.statusline.extend"    = { fg = "bg0",  bg = "bright_yellow" }
+"ui.statusline.search"    = { fg = "bg0",  bg = "bright_purple" }
+"ui.statusline.command"   = { fg = "bg0",  bg = "bright_green" }
+"ui.statusline.select"    = { fg = "bg0",  bg = "bright_orange" }
+"ui.statusline.separator" = { fg = "bg3" }
 
 # ── Syntax ────────────────────────────────────────────────────────────────────
 "comment"             = { fg = "gray", modifiers = ["italic"] }

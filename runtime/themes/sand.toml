@@ -24,14 +24,13 @@
 "ui.linenr" = { fg = "muted" }
 "ui.linenr.selected" = { fg = "sand" }
 "ui.statusline" = { fg = "bg", bg = "sand", modifiers = [ "bold" ] }
-"ui.statusline.inactive" = { fg = "muted", bg = "bg" }
-"ui.statusline.separator" = { fg = "surface" }
-"ui.statusline.normal" = { fg = "bg", bg = "sand" }
-"ui.statusline.insert" = { fg = "bg", bg = "plum" }
-"ui.statusline.extend" = { fg = "bg", bg = "blue" }
-"ui.statusline.search" = { fg = "bg", bg = "red" }
-"ui.statusline.command" = { fg = "bg", bg = "green" }
-"ui.statusline.select" = { fg = "bg", bg = "blue" }
+"ui.statusline.separator" = { fg = "surface", modifiers = [ "bold" ] }
+"ui.statusline.normal" = { fg = "bg", bg = "sand", modifiers = [ "bold" ] }
+"ui.statusline.insert" = { fg = "bg", bg = "plum", modifiers = [ "bold" ] }
+"ui.statusline.extend" = { fg = "bg", bg = "gold", modifiers = [ "bold" ] }
+"ui.statusline.search" = { fg = "bg", bg = "red", modifiers = [ "bold" ] }
+"ui.statusline.command" = { fg = "bg", bg = "green", modifiers = [ "bold" ] }
+"ui.statusline.select" = { fg = "bg", bg = "blue", modifiers = [ "bold" ] }
 "ui.bufferline" = { fg = "muted", bg = "bg" }
 "ui.bufferline.active" = { fg = "bright_fg", bg = "surface" }
 "ui.bufferline.background" = { bg = "bg" }
@@ -152,8 +151,8 @@
 "sand" = "#D4A373"
 "plum" = "#ad7ca8"
 "dark_plum" = "#8B4B87"
-"bright_muted" = "#9C8465"
 "red" = "#E5595A"
 "green" = "#94B36A"
 "blue" = "#6FA8C7"
+"gold" = "#EFD98A"
 "bright_fg" = "#F5ECDE"
