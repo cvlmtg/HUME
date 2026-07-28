@@ -71,6 +71,31 @@ fn sigint_to_child_group_does_not_kill_hume() {
     // Reaching here means HUME survived — the guarantee holds.
 }
 
+// ── spawn_in_own_group ──────────────────────────────────────────────────────
+
+/// The precondition `tracked::TrackedChild`'s group-directed kill rests on:
+/// without this, `killpg` on the child's own pid would target HUME's own
+/// group instead (see `spawn_in_own_group`'s doc for the parent-side
+/// `setpgid` race this closes).
+#[test]
+fn spawn_in_own_group_makes_the_child_its_own_group_leader() {
+    use nix::unistd::{Pid, getpgid};
+
+    let mut cmd = Command::new("sleep");
+    cmd.arg("5");
+    let mut child = spawn_in_own_group(&mut cmd).expect("spawn sleep");
+    let pid = Pid::from_raw(i32::try_from(child.id()).expect("pid fits i32"));
+
+    assert_eq!(
+        getpgid(Some(pid)),
+        Ok(pid),
+        "the child must be its own process group leader immediately after spawn_in_own_group returns"
+    );
+
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
 // ── unpack_gz ──────────────────────────────────────────────────────────────
 
 #[test]

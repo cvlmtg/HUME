@@ -1,11 +1,14 @@
 //! Process-spawning helpers.
 //!
-//! All `std::process::Command` usage in this workspace lives here, providing
-//! a single audit surface for process spawning. General-purpose process
-//! spawning for plugin code goes through Steel's own `steel/process` stdlib
-//! instead (full-trust plugin model — see `docs/ROADMAP.md`'s plugin trust
-//! model decision); what remains here is `run_inline_output` (process-group
-//! isolation Steel can't express) plus a handful of utility functions wrapping
+//! Every `std::process::Command` use that needs process-group isolation or
+//! force-exit reaping goes through this module — directly
+//! (`run_inline_output`, `tree_sitter_build`, ...) for short-lived children,
+//! or via [`spawn_in_own_group`] + [`tracked::TrackedChild`] for long-lived
+//! ones owned elsewhere (`hume-lsp`'s LSP transport, this crate's own
+//! `line_source`). General-purpose process spawning for plugin code goes
+//! through Steel's own `steel/process` stdlib instead (full-trust plugin
+//! model — see `docs/ROADMAP.md`'s plugin trust model decision); what
+//! remains here beyond the above is a handful of utility functions wrapping
 //! genuinely platform-conditional logic (Windows compiler selection, sha256
 //! tool selection, archive unpacking with chmod) that a Scheme rewrite would
 //! only make worse.
@@ -38,6 +41,9 @@ use crate::path::strip_unc_prefix;
 /// external-command source (`docs/FUZZY-FINDERS.md` B5) and future
 /// consumers of the same reader-thread/drain shape.
 pub mod line_source;
+
+/// Process-wide tracking so a force-exit can still reap long-lived children.
+pub mod tracked;
 
 /// Run `cmd` with `args`, inherited stdio, in its own process group.
 ///
@@ -478,13 +484,90 @@ pub fn no_windows_compiler_found() -> bool {
     .is_none()
 }
 
+/// Spawns `command` as its own process group leader on Unix — a no-op
+/// `Command::spawn()` on other platforms, where `std` has no process-group
+/// concept.
+///
+/// Pair with [`tracked::TrackedChild::new`] for a long-lived child: a group
+/// leader is what lets [`tracked::kill_tracked_children`] reach the child's
+/// own children with one `killpg` (rust-analyzer's `proc-macro-srv`, build
+/// scripts, ...) instead of leaving them orphaned the way a direct kill of
+/// just the tracked pid would. [`NewProcessGroup`]'s other use — Ctrl+C
+/// isolation for `run_inline_output`'s short-lived children — doesn't need
+/// this: a plain `.status()` call has nothing to track and Ctrl+C isolation
+/// alone only needed the trait, not this wrapper.
+///
+/// `process_group(0)` runs `setpgid(0, 0)` from the child's own pre-exec
+/// hook, which races the parent: this function hasn't returned yet when
+/// that hook runs, but a caller receiving the `Child` back and immediately
+/// registering/signalling it could still be racing a child that hasn't
+/// exec'd. The parent-side `setpgid(pid, pid)` below closes that race —
+/// idempotent, and `EACCES` here just means the child's own call won first
+/// — the same fix already applied in this crate's own
+/// `sigint_to_child_group_does_not_kill_hume` test.
+pub fn spawn_in_own_group(command: &mut Command) -> io::Result<std::process::Child> {
+    let child = command.new_process_group().spawn()?;
+    #[cfg(unix)]
+    {
+        use nix::unistd::{Pid, setpgid};
+        if let Ok(pid) = i32::try_from(child.id()) {
+            let pid = Pid::from_raw(pid);
+            let _ = setpgid(pid, pid);
+        }
+    }
+    Ok(child)
+}
+
+/// Kills and reaps the wrapped child if still armed when dropped.
+///
+/// Guards the window between spawning a long-lived child and handing it off
+/// to [`tracked::TrackedChild::new`] — a window `hume-lsp`'s `ServerHandle`
+/// and this crate's `SpawnedLineSource` both need, since starting their
+/// bridging threads is fallible and an early `?` return must not leak the
+/// already-running process (`Child`'s own `Drop` does not kill). Call
+/// [`into_inner`](Self::into_inner) once setup has fully succeeded to hand
+/// the child off without paying the kill.
+pub struct ReapOnDrop(Option<std::process::Child>);
+
+impl ReapOnDrop {
+    pub fn new(child: std::process::Child) -> Self {
+        ReapOnDrop(Some(child))
+    }
+
+    /// Mutable access to the wrapped child — e.g. to `.take()` its stdio
+    /// pipes before spawning bridging threads on them.
+    pub fn get_mut(&mut self) -> &mut std::process::Child {
+        self.0
+            .as_mut()
+            .expect("only emptied by into_inner, which consumes self")
+    }
+
+    /// Disarms the guard and returns the child, once every bridging thread
+    /// needed to hand it off (typically to `TrackedChild::new`) has started.
+    pub fn into_inner(mut self) -> std::process::Child {
+        self.0
+            .take()
+            .expect("only emptied by into_inner, which consumes self")
+    }
+}
+
+impl Drop for ReapOnDrop {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.0.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 /// Extension trait to set the child as its own process group leader on Unix.
 ///
 /// On Unix: calls `setpgid(0, 0)` via `CommandExt::process_group(0)` so
 /// Ctrl+C (SIGINT to the terminal's foreground process group) reaches only
-/// the child, not HUME.  On other platforms this is a no-op.
+/// the child, not HUME. On other platforms this is a no-op. [`spawn_in_own_group`]
+/// builds on this for children that also need [`tracked`] force-exit reaping.
 trait NewProcessGroup {
     fn new_process_group(&mut self) -> &mut Self;
 }

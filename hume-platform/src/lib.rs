@@ -87,12 +87,18 @@ pub fn restore_for_exit(term: &terminal::SharedTerm) -> std::io::Result<()> {
     terminal::restore(term)
 }
 
-/// Restores the terminal and exits with `code`. Shared by every force-exit
-/// path — [`unix::spawn_terminator`]'s signal and hangup arms, and the
-/// Windows arm below — so there is one restore-exit sequence rather than
-/// each platform repeating it.
+/// Kills every still-registered [`process::tracked::TrackedChild`], restores
+/// the terminal, and exits with `code`. Shared by every force-exit path —
+/// [`unix::spawn_terminator`]'s signal and hangup arms, and the Windows arm
+/// below — so there is one reap-restore-exit sequence rather than each
+/// platform repeating it.
+///
+/// `process::exit` runs no destructors, so this is the only place LSP
+/// servers and other long-lived children (normally reaped by their own
+/// `Drop`) get killed on this path — see `process::tracked`'s module doc.
 #[cfg_attr(not(any(unix, windows)), allow(dead_code))]
 fn force_exit(term: &terminal::SharedTerm, code: i32) -> ! {
+    process::tracked::kill_tracked_children();
     let _ = restore_for_exit(term);
     std::process::exit(code);
 }

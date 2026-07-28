@@ -13,7 +13,7 @@ tempfile = "3"
 # `nix`'s only FIONREAD access is `ioctl_read_bad!`, which expands to an
 # `unsafe fn` — forbidden by this project's no-`unsafe` rule. `rustix::io::
 # ioctl_fionread` is a safe wrapper over the same ioctl, hence both crates.
-nix = { version = "0.31", default-features = false, features = ["poll", "user", "fs", "signal"] }
+nix = { version = "0.31", default-features = false, features = ["poll", "user", "fs", "signal", "process"] }
 rustix = "1"
 signal-hook = "0.3"
 
