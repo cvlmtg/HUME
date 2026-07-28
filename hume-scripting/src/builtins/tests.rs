@@ -24,10 +24,10 @@ fn cmd_gated_builtin_rejected_from_init_through_real_registration() {
 /// (`EvalMode::Command`, dispatched via the real `call_steel_cmd` path) must
 /// still raise "not from a Steel command body".
 ///
-/// `set-option!` and then `configure-statusline!` used to be this test's
-/// example builtin, but both are `open` now (callable from any context — see
-/// `builtins/settings.rs`'s and `builtins/statusline.rs`'s docs); `bind-key!`
-/// remains genuinely `config`-gated.
+/// `set-option!` and `configure-statusline!` are `open` (callable from any
+/// context — see `builtins/settings.rs`'s and `builtins/statusline.rs`'s
+/// docs), so they can't exercise this rejection path; `bind-key!` is
+/// genuinely `config`-gated.
 #[test]
 fn config_gated_builtin_rejected_from_command_body_through_real_registration() {
     let mut host = crate::ScriptingHost::new();

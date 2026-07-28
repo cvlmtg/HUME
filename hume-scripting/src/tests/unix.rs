@@ -72,10 +72,9 @@ fn known_limitation_reraise_via_raise_error_inside_outer_tolerant_handler_corrup
 
 #[test]
 fn uncaught_native_error_propagates_one_hop_to_outer_tolerant_handler() {
-    // Fix shape: the native-builtin-raising call (run-inline-output!) is
-    // NOT wrapped by an inner with-handler at all — it propagates in one
-    // hop straight to the outer tolerant handler, exactly like the
-    // original (pre-migration) curl-fetch call site.
+    // Shape: the native-builtin-raising call (run-inline-output!) is NOT
+    // wrapped by an inner with-handler at all — it propagates in one hop
+    // straight to the outer tolerant handler.
     let mut host = ScriptingHost::new();
     let mut null_host = NullHost;
     let src = r#"

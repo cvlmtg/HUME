@@ -164,8 +164,7 @@ pub(crate) struct PopupModel {
 /// `width` differs from the cached one; `text`/`syntax` never change during a
 /// model's lifetime (a new `show-popup!` builds a fresh `PopupModel`), so
 /// `width` is the only invalidation key needed. Mirrors `MarkupSyntax`'s own
-/// build-once discipline (see its doc) — the per-frame re-wrap this replaces
-/// was the anomaly, not a deliberate design.
+/// build-once discipline (see its doc).
 ///
 /// A `:theme` switch does not need to invalidate this: a `Scrollable` popup
 /// closes on any key (`Editor::handle_key`'s top-of-loop check) and a

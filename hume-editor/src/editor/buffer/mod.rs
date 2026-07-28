@@ -122,7 +122,7 @@ pub(crate) struct Buffer {
     /// announced no open, so it must announce no close either. Buffers
     /// created outside the chokepoint (the startup buffer, the last-buffer
     /// scratch replacement) default to `false` — their close always
-    /// announces, matching pre-refactor behaviour.
+    /// announces.
     pub(crate) open_hook_pending: bool,
     /// Bumped by [`lifecycle::replace_buffer_in_place`] — the only path that
     /// swaps a `BufferId`'s content without a close/open pair (the

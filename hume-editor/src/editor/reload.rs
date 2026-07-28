@@ -20,10 +20,9 @@ use crate::editor::error::CommandError;
 /// `Editor::reset_config_state` (which captures it, right before the reset
 /// it captures it *from*) and `Editor::init_scripting`/
 /// `Editor::resync_config_state` (which consume it). Owned by
-/// `typed_reload_config` as a local — not smuggled through an `EditorState`
-/// field the way `pending_reload_explicit_languages` used to be, which left
-/// it stranded (and silently stale) on any early return between the two
-/// halves.
+/// `typed_reload_config` as a local, not an `EditorState` field: a field
+/// would stay stranded (and silently stale) on any early return between the
+/// two halves.
 #[derive(Default)]
 pub(crate) struct ReloadSnapshot {
     /// `(bid, replace_stamp)` for every buffer open when the reload started,

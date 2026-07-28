@@ -15,9 +15,9 @@ fn focused_pane(ed: &Editor) -> &hume_engine::pane::Pane {
 
 // ── Generic scope/key validation (`setting_scopes`) ─────────────────────────
 //
-// These lock in the dedup from the `typed_set` refactor: one data-driven
-// check now produces every "unknown setting" / "wrong scope for this
-// setting" message, instead of two divergent hardcoded strings.
+// A single data-driven check produces every "unknown setting" / "wrong
+// scope for this setting" message, instead of two divergent hardcoded
+// strings.
 
 #[test]
 fn typed_set_unknown_setting_errors() {

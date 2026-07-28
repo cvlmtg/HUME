@@ -88,12 +88,11 @@ fn plum_plugin_loads_with_real_grammar_catalog() {
     );
 }
 
-/// `:plum-list` exercises `plugins.scm`'s post-migration `plum/installed-plugins`
-/// (now built on `plum/list-dir`, a Steel `read-dir`-backed helper, instead of
-/// the removed `list-dir` builtin) against a real (empty) data dir — no
-/// network. Pins that the migration to Steel's stdlib process/fs helpers
-/// (see docs/ROADMAP.md's plugin trust model decision) didn't break loading
-/// or basic discovery.
+/// `:plum-list` exercises `plugins.scm`'s `plum/installed-plugins` (built on
+/// `plum/list-dir`, a Steel `read-dir`-backed helper) against a real (empty)
+/// data dir — no network. Pins that plugin discovery via Steel's stdlib
+/// process/fs helpers (see docs/ROADMAP.md's plugin trust model decision)
+/// works for loading and basic discovery.
 #[test]
 fn plum_list_runs_with_no_errors_against_empty_data_dir() {
     let _lock = super::HUME_RUNTIME_MUTEX
@@ -120,8 +119,7 @@ fn plum_list_runs_with_no_errors_against_empty_data_dir() {
 }
 
 /// Run `git` with `args` in `dir`, asserting success — test-setup helper
-/// only (builds local origin/clone fixtures), not part of the migration
-/// under test.
+/// only (builds local origin/clone fixtures), not itself under test.
 fn git_ok(dir: &std::path::Path, args: &[&str]) {
     let status = std::process::Command::new("git")
         .args(args)

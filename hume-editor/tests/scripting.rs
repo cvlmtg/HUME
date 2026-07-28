@@ -342,11 +342,10 @@ fn get_option_swapped_args_errors() {
     );
 }
 
-/// A 3-argument call — including a stale pre-migration
-/// `(get-option "key" #:buffer bid)` spelling, which desugars to 3
-/// positional args once `#:buffer` no longer exists as a keyword param —
-/// hits the wrapper's explicit arity-error arm rather than silently
-/// dropping the extra argument.
+/// A 3-argument call — `(get-option "key" #:buffer bid)`, which desugars to
+/// 3 positional args since `#:buffer` isn't a keyword param — hits the
+/// wrapper's explicit arity-error arm rather than silently dropping the
+/// extra argument.
 ///
 /// Fail oracle: remove the wrapper's `else` arm (or replace it with a
 /// permissive default) → this call would either error with an unrelated

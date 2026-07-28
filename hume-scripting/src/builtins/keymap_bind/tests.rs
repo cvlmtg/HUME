@@ -106,8 +106,7 @@ fn unbind_key_invalid_mode_errors() {
     );
 }
 
-/// `bind-key!` rejects a string mode (the pre-migration convention);
-/// mode must now be a symbol.
+/// `bind-key!` rejects a string mode — mode must be a symbol.
 ///
 /// Fail oracle: if `mode_from_symbol` still coerced strings, this would pass
 /// silently instead of raising a type mismatch.

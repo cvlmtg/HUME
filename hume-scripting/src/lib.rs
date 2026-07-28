@@ -779,8 +779,8 @@ pub enum PluginStatus {
 /// Pins the full-trust plugin model's load-bearing assumption: Steel's
 /// `steel/process`/`steel/filesystem`/`steel/ports` globals are reachable
 /// from plugin code with no `require-builtin` (they ride in via `steel/base`,
-/// required by the auto-loaded prelude). PLUM's migration off HUME's removed
-/// hardened builtins depends on this; a steel-core upgrade that changes it
-/// must fail these tests before it silently breaks every core plugin.
+/// required by the auto-loaded prelude). PLUM depends on this directly; a
+/// steel-core upgrade that changes it must fail these tests before it
+/// silently breaks every core plugin.
 #[cfg(test)]
 mod tests;

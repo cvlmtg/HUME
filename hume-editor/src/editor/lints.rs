@@ -904,9 +904,9 @@ mod tests {
         let stale_in_docs: Vec<_> = documented.difference(&code_keys).collect();
 
         // A key present in *some* table isn't necessarily under the *right*
-        // one — a name-set diff alone can't catch a row that migrated to the
-        // wrong heading (exactly what the Scope rework touched). Cross-check
-        // each documented key's own table against its declared scope.
+        // one — a name-set diff alone can't catch a row filed under the
+        // wrong heading. Cross-check each documented key's own table
+        // against its declared scope.
         use crate::settings::Scope;
         let misplaced: Vec<String> = global_documented
             .iter()
