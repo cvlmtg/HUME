@@ -251,6 +251,13 @@ impl FromStr for Scope {
     }
 }
 
+/// The `:set`/completion key for a buffer's language identity. Not a
+/// `define_settings!` entry (see the module doc's "Adding a setting"
+/// section for why) — this constant is the single source `typed_set` and
+/// `completion::set` compare against, so the two special cases can't drift
+/// on the literal.
+pub(crate) const LANGUAGE_KEY: &str = "language";
+
 // ── Parser helper ─────────────────────────────────────────────────────────────
 
 /// Dispatch from a parser-kind token to the actual parse call.
@@ -507,11 +514,10 @@ macro_rules! define_settings {
 
         /// The effective value of `key` for `(get-option key)`: `overrides`'
         /// value if `Some` and the key is buffer-scoped, else the global
-        /// default. `None` for a key with no generic storage — covers
-        /// `manual_keys` (`statusline`) and `"language"`, neither of which
-        /// this getter supports today (no `core:lsp` feature reads them; add
-        /// a hand-written arm here, mirroring `write_global`'s manual arm,
-        /// if one needs to).
+        /// default. `None` for a key with no generic storage — covers only
+        /// `"language"` today, which has no getter (it lives on the
+        /// buffer's language identity — use `(buffer-language bid)`
+        /// instead).
         pub fn setting_value(
             key: &str,
             settings: &EditorSettings,
@@ -533,6 +539,9 @@ macro_rules! define_settings {
                     };
                     Some(option_value!(value, $sparser))
                 } )*
+                "statusline" => Some(hume_scripting::host::OptionValue::Str(
+                    format_statusline(&settings.statusline),
+                )),
                 _ => None,
             }
         }
@@ -603,8 +612,9 @@ define_settings! {
         "mouse-select" => mouse_select: bool = false,
             scope: [Scope::Global],
             parser: bool;
-        // Resizes every open pane's live jump list immediately — see
-        // `editor::settings_ops::resync_derived_state`.
+        // Resizes every open pane's live jump list cap — like undo-levels
+        // below, takes effect on the next push, not retroactively. See
+        // `editor::settings_ops::resync_derived_state` and `JumpList::set_capacity`.
         "jump-list-capacity" => jump_list_capacity: usize = 100,
             scope: [Scope::Global],
             parser: usize_nonzero,
@@ -612,16 +622,19 @@ define_settings! {
         "jump-line-threshold" => jump_line_threshold: usize = 5,
             scope: [Scope::Global],
             parser: usize;
-        // Resizes the command/search prompt-history ring immediately — see
-        // `editor::settings_ops::resync_derived_state`.
+        // Resizes the command/search prompt-history ring cap — like
+        // undo-levels below, takes effect on the next push, not
+        // retroactively. See `editor::settings_ops::resync_derived_state`
+        // and `History::set_capacity`.
         "history-capacity" => history_capacity: usize = 100,
             scope: [Scope::Global],
             parser: usize_nonzero,
             resync: true;
         // 0 is a valid, meaningful value here (unlimited), unlike
         // history-capacity above — hence plain `usize`, not `usize_nonzero`.
-        // Resizes the undo-tree cap on every open buffer immediately — see
-        // `editor::settings_ops::resync_derived_state`.
+        // Resizes the undo-tree cap on every open buffer — takes effect on
+        // the next edit, not retroactively (Vim's `undolevels` semantics).
+        // See `editor::settings_ops::resync_derived_state`.
         "undo-levels" => undo_levels: usize = 0,
             scope: [Scope::Global],
             parser: usize,
@@ -766,6 +779,26 @@ fn parse_statusline(s: &str) -> Result<StatusLineConfig, String> {
         center: parse_section(parts[1])?,
         right: parse_section(parts[2])?,
     })
+}
+
+/// Render a `StatusLineConfig` back to the `"left|center|right"` wire format
+/// [`parse_statusline`] accepts — the inverse, used by `(get-option
+/// "statusline")` and by `configure-statusline!`'s re-serialization before
+/// handing the value to the `write_global` chokepoint.
+pub(crate) fn format_statusline(cfg: &StatusLineConfig) -> String {
+    let join = |elems: &[StatusElement]| {
+        elems
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    format!(
+        "{}|{}|{}",
+        join(&cfg.left),
+        join(&cfg.center),
+        join(&cfg.right)
+    )
 }
 
 /// The wire-format strings [`parse_show_newline`] accepts — the single

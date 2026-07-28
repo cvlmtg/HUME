@@ -298,7 +298,10 @@ pub trait LanguageHost {
 /// Global settings, statusline config, and the Steel eval budget —
 /// accessed through [`EditorHost::settings`].
 pub trait SettingsHost {
-    /// Init-only; only `Global` scope from scripts.
+    /// `(set-option! key value)` — only `Global` scope from scripts. No
+    /// eval-mode gate (`open` kind): callable from `init.scm`, plugin load,
+    /// plugin activation, or a plain command/hook body — the write already
+    /// goes through the editor's validating chokepoint regardless of caller.
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String>;
 
     /// `(set-buffer-option! bid key value)` — writes `key`'s per-buffer
@@ -307,10 +310,11 @@ pub trait SettingsHost {
     /// bad value.
     fn set_buffer_option(&mut self, key: &str, value: &str, bid: BufferId) -> Result<(), String>;
 
-    /// `(get-option key)` — the effective value of `key`: `bid`'s buffer
-    /// override if one is set, else the global default. `Err` for an
-    /// unknown key. Callable from any context (no init/plugin-load gate,
-    /// unlike `set_global_option`).
+    /// `(get-option [bid] key)` — the effective value of `key`:
+    /// `bid`'s buffer override if one is set, else the global default. `Err`
+    /// for an unknown key. No eval-mode gate (`open` kind): callable from
+    /// `init.scm` too — a stale or default `bid` degrades gracefully to the
+    /// global default rather than erroring.
     fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String>;
 
     /// Init-only; the editor parses element names into `StatusElement`.

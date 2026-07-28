@@ -20,28 +20,32 @@ fn cmd_gated_builtin_rejected_from_init_through_real_registration() {
     assert!(err.contains("not available during init"), "got: {err}");
 }
 
-/// A `config`-gated builtin (`set-option!`) called from inside a command
-/// body (`EvalMode::Command`, dispatched via the real `call_steel_cmd`
-/// path) must still raise "not from a Steel command body".
+/// A `config`-gated builtin (`bind-key!`) called from inside a command body
+/// (`EvalMode::Command`, dispatched via the real `call_steel_cmd` path) must
+/// still raise "not from a Steel command body".
+///
+/// `set-option!` used to be this test's example builtin, but it's `open`
+/// now (callable from any context — see `builtins/settings.rs`'s doc);
+/// `bind-key!` remains genuinely `config`-gated.
 #[test]
 fn config_gated_builtin_rejected_from_command_body_through_real_registration() {
     let mut host = crate::ScriptingHost::new();
     let mut null_host = crate::null_host::NullHost;
     host.eval_source(
-        r#"(define-command! "probe-set-option" "doc" (lambda () (set-option! "tab-width" "4")))"#,
+        r#"(define-command! "probe-bind-key" "doc" (lambda () (bind-key! 'normal "Q" "move-down")))"#,
         &mut null_host,
     )
     .expect("defining the probe command must not error");
 
     let err = host
         .call_steel_cmd(
-            "probe-set-option",
+            "probe-bind-key",
             None,
             vec![],
             hume_engine::pipeline::PaneId::default(),
             hume_engine::pipeline::BufferId::default(),
             &mut null_host,
         )
-        .expect_err("set-option! must be rejected from a command body");
+        .expect_err("bind-key! must be rejected from a command body");
     assert!(err.message.contains("command body"), "got: {err:?}");
 }

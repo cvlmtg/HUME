@@ -1,4 +1,4 @@
-//! `(set-option! key value)` / `(get-option key)` builtins.
+//! `(set-option! key value)` / `(get-option [bid] key)` builtins.
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
@@ -6,7 +6,7 @@ use steel::rvals::SteelVal;
 use crate::SteelCtx;
 use crate::host::OptionValue;
 
-use super::args::BidArg;
+use super::args::{BidArg, optional_bid_arg};
 use super::errors::generic_err;
 
 type SteelResult = Result<SteelVal, SteelErr>;
@@ -27,14 +27,12 @@ fn coerce_option_value(value: &SteelVal, ctx_name: &str) -> Result<String, Steel
 ///
 /// Sets the global setting `key` to `value`. The value may be a Steel string,
 /// boolean, or integer — it is converted to a string and forwarded to the
-/// editor's settings layer.
-///
-/// Only `Global` scope is supported from scripts. Use `:set buffer …` from the
-/// command line, or `(set-buffer-option! bid key value)` from a script, to
-/// override a setting for a specific buffer.
-///
-/// Valid during `init.scm` or any plugin activation (init or runtime); raises
-/// a Steel error if called from a plain command body.
+/// editor's settings layer, which is the single validating chokepoint
+/// (`editor::settings_ops::apply_global`) regardless of caller — so this is
+/// callable from any context: `init.scm`, plugin load, plugin activation, or
+/// a plain command/hook body. Use `:set buffer …` from the command line, or
+/// `(set-buffer-option! bid key value)` from a script, to override a setting
+/// for a specific buffer instead.
 pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> SteelResult {
     let value_str = coerce_option_value(&value, "set-option!")?;
 
@@ -71,31 +69,40 @@ pub(crate) fn set_buffer_option(
         steel::stop!(Generic =>
             "set-buffer-option!: 'language' is not a setting — use (set-buffer-language! bid lang)");
     }
-    let id = bid.0;
-    if !ctx.host.buffers().buffer_exists(id) {
-        steel::stop!(Generic => "set-buffer-option!: invalid buffer id {id:?}");
-    }
 
     ctx.host
         .settings()
-        .set_buffer_option(&key, &value_str, id)
+        .set_buffer_option(&key, &value_str, bid.0)
         .map_err(generic_err)?;
 
     Ok(SteelVal::Void)
 }
 
-/// `(get-option key)`
+/// `%get-option` — the raw primitive `(get-option [bid] key)` (BOOTSTRAP)
+/// wraps, dispatching on arity to fill in `bid` as `#f` for the 1-arg form.
 ///
-/// The effective value of `key`: the focused buffer's override if one is
-/// set, else the global default. Unlike `set-option!`, callable from any
-/// command-mode context — command bodies, hook handlers, timer thunks — not
-/// just init/plugin-load, since features read settings (e.g. `tab-width`,
-/// `lsp.inlay-hints`) while composing a request, not just at startup.
-pub(crate) fn get_option(ctx: &mut SteelCtx, key: String) -> SteelResult {
+/// The effective value of `key`: `bid`'s buffer override if one is set, else
+/// the global default. `bid` is `#f` when the caller omitted the leading bid,
+/// meaning "the focused buffer" — mirrors `set-buffer-option!`'s explicit-bid
+/// contract, so a hook handler that received a *different* buffer as an
+/// argument (e.g. `on-language-set`, whose bid may differ from the focused
+/// buffer) can read that buffer's settings instead of silently reading the
+/// wrong one.
+///
+/// Callable from any context — command bodies, hook handlers, timer thunks,
+/// `init.scm`, plugin load — since features read settings (e.g. `tab-width`,
+/// `lsp.inlay-hints`) while composing a request, not just at startup, and a
+/// stale or default buffer id degrades gracefully to the global default
+/// rather than erroring (see `EditorHostImpl::get_option`).
+pub(crate) fn get_option(ctx: &mut SteelCtx, key: String, bid: SteelVal) -> SteelResult {
+    let bid = match optional_bid_arg(bid, "get-option")? {
+        Some(id) => id,
+        None => ctx.focused_buffer_id,
+    };
     let value = ctx
         .host
         .settings()
-        .get_option(&key, ctx.focused_buffer_id)
+        .get_option(&key, bid)
         .map_err(generic_err)?;
     Ok(match value {
         OptionValue::Bool(b) => SteelVal::BoolV(b),

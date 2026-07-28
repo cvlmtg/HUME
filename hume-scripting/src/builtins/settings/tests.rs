@@ -7,22 +7,26 @@ fn default_bid() -> BidArg {
     BidArg(BufferId::default())
 }
 
-/// `set-option!` is blocked in plain command mode (init/plugin-load only)
-/// — gated at registration time (`config` kind in `builtins!`'s table),
-/// not in the body, so this tests the gate primitive directly.
+/// `set-option!` is registered `open` (`builtins/mod.rs`) — no eval-mode
+/// gate at all, since `set_option` (this file) has no gate check of its own
+/// and the write it forwards to already goes through the validating
+/// chokepoint (`editor::settings_ops::apply_global`) regardless of caller.
+/// Reaches the host from ordinary command-mode context, same as
+/// `set-buffer-option!`/`get-option`.
 ///
-/// Fail oracle: change `set-option!`'s table entry from `config` to
-/// `open` → settings could be mutated from any command body, bypassing
-/// the init-only contract.
+/// Fail oracle: change `set-option!`'s table entry back to `config` →
+/// this call would fail with a gate error instead of reaching (and
+/// erroring on) `NullHost`.
 #[test]
-fn set_option_blocked_in_command_mode() {
+fn set_option_reaches_host_from_command_mode() {
     let mut h = SteelCtxTestHarness::new();
-    let result = super::super::errors::require_config(&h.ctx(), "set-option!"); // EvalMode::Command
-    assert!(result.is_err(), "set-option! must error in command mode");
+    let mut ctx = h.ctx(); // EvalMode::Command
+    let result = set_option(&mut ctx, "tab-width".into(), SteelVal::IntV(4));
+    assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(
-        msg.contains("init"),
-        "error must mention 'init'; got: {msg}"
+        !msg.contains("only valid during") && !msg.contains("command body"),
+        "must reach the host, not a gate; got: {msg}"
     );
 }
 
@@ -88,41 +92,43 @@ fn set_option_accepts_string_bool_int_values() {
     }
 }
 
-/// `get-option` is blocked during init eval (the opposite gate from
-/// `set-option!`: it's a command-mode read, not an init-time write) —
-/// gated at registration time (`cmd` kind), tested via the gate
-/// primitive directly.
+/// `get-option` (registered as `%get-option`, wrapped by BOOTSTRAP's
+/// `(get-option [bid] key)`) is registered `open` — readable
+/// during init eval too, unlike the old `cmd`-gated version, since a stale
+/// or default buffer id degrades gracefully to the global default rather
+/// than erroring (see `EditorHostImpl::get_option`'s `try_get`-based
+/// fallback). `#f` for `bid` selects that fallback explicitly.
 ///
-/// Fail oracle: change `get-option`'s table entry from `cmd` to `open` →
-/// readable during init, where there is no meaningful focused buffer to
-/// resolve overrides against.
+/// Fail oracle: change `%get-option`'s table entry back to `cmd` → this
+/// call would fail with a gate error during init instead of reaching (and
+/// erroring on) `NullHost`.
 #[test]
-fn get_option_blocked_in_init_mode() {
+fn get_option_reaches_host_during_init_eval() {
     let mut h = SteelCtxTestHarness::new();
-    let result = super::super::errors::require_cmd(&h.ctx_init(), "get-option");
-    assert!(result.is_err(), "get-option must error during init eval");
-    let msg = result.unwrap_err().to_string();
-    assert!(
-        msg.contains("init"),
-        "error must mention 'init'; got: {msg}"
-    );
-}
-
-/// In command mode, `get-option` reaches the host (`NullHost` → Err,
-/// proving the guard was passed and the host was called).
-///
-/// Fail oracle: make the guard unconditionally reject → the error would
-/// contain "init" instead of "NullHost".
-#[test]
-fn get_option_command_mode_calls_host() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let result = get_option(&mut ctx, "tab-width".into());
+    let mut ctx = h.ctx_init();
+    let result = get_option(&mut ctx, "tab-width".into(), SteelVal::BoolV(false));
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(
         !msg.contains("not available during init"),
-        "must reach the host, not the guard; got: {msg}"
+        "must reach the host, not a gate; got: {msg}"
+    );
+}
+
+/// In command mode, `get-option` reaches the host (`NullHost` → Err,
+/// proving the host was called) with an explicit bid decoded from a real
+/// `SteelVal`, not just the `#f` default.
+#[test]
+fn get_option_command_mode_calls_host_with_explicit_bid() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let bid = super::super::ids::SteelBufferId::new(default_bid().0).into_steel_val();
+    let result = get_option(&mut ctx, "tab-width".into(), bid);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        !msg.contains("not available during init"),
+        "must reach the host, not a gate; got: {msg}"
     );
 }
 
@@ -190,15 +196,20 @@ fn set_buffer_option_language_key_errors() {
     );
 }
 
-/// `set-buffer-option!` rejects a bid the host doesn't recognize
-/// (`NullHost::buffer_exists` is always `false`) before reaching the
-/// settings write.
+/// `set-buffer-option!` no longer pre-validates `bid` itself — that check
+/// used to duplicate `EditorHostImpl::set_buffer_option`'s own `try_get`
+/// guard (the actually load-bearing one, since it's what prevents a panic
+/// on a stale id — see `host_set_buffer_option_invalid_bid_errors` in
+/// `hume-editor/src/editor/tests/settings_effects.rs`). Any bid, valid or
+/// not, now reaches the host unconditionally; whatever the host returns for
+/// an unrecognized one is forwarded verbatim.
 ///
-/// Fail oracle: remove the `buffer_exists` check in the builtin body → the
-/// error message changes from this builtin's own "invalid buffer id" to
-/// whatever the host's `set_buffer_option` happens to return.
+/// Fail oracle: reintroduce a `buffer_exists` check in the builtin body →
+/// this call would fail with the builtin's own "invalid buffer id" instead
+/// of reaching (and erroring on) `NullHost`'s unconditional
+/// "set_buffer_option not available".
 #[test]
-fn set_buffer_option_invalid_bid_errors() {
+fn set_buffer_option_forwards_any_bid_to_host_unvalidated() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let result = set_buffer_option(
@@ -207,11 +218,11 @@ fn set_buffer_option_invalid_bid_errors() {
         "tab-width".into(),
         SteelVal::IntV(2),
     );
-    assert!(result.is_err(), "unrecognized bid must be rejected");
+    assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(
-        msg.contains("invalid buffer id"),
-        "error must name the invalid bid; got: {msg}"
+        msg.contains("set_buffer_option not available"),
+        "must reach NullHost, not a builtin-level bid check; got: {msg}"
     );
 }
 

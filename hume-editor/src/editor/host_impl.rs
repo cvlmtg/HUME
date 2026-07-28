@@ -17,7 +17,7 @@ use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use crate::editor::lsp::LspState;
 use crate::editor::registry::MappableCommand;
 use crate::editor::timer_bridge::TimerHandle;
-use crate::ui::statusline::StatusElement;
+use crate::ui::statusline::{StatusElement, StatusLineConfig};
 use hume_scripting::host::{
     BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost, EditHost, EditorHost,
     LanguageHost, LspHost, OptionValue, OutputHost, PopupKind, SettingsHost, TimerHost, UiHost,
@@ -265,18 +265,12 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
                 })
                 .collect()
         };
-        let left = parse(left, "left")?;
-        let center = parse(center, "center")?;
-        let right = parse(right, "right")?;
-
-        let join = |elems: &[StatusElement]| {
-            elems
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(",")
+        let cfg = StatusLineConfig {
+            left: parse(left, "left")?,
+            center: parse(center, "center")?,
+            right: parse(right, "right")?,
         };
-        let wire = format!("{}|{}|{}", join(&left), join(&center), join(&right));
+        let wire = crate::settings::format_statusline(&cfg);
 
         crate::editor::settings_ops::apply_global(self.state, self.view, "statusline", &wire)
     }

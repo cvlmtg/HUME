@@ -239,6 +239,25 @@ impl FromSteelVal for BidArg {
     }
 }
 
+/// A buffer-id argument that may be `#f` (absent — caller wants the
+/// implicit default, e.g. `get-option`'s focused-buffer fallback).
+pub(crate) fn optional_bid_arg(
+    val: SteelVal,
+    ctx_name: &str,
+) -> Result<Option<BufferId>, SteelErr> {
+    match val {
+        SteelVal::BoolV(false) => Ok(None),
+        other => Ok(Some(super::ids::downcast_buffer_id(&other).ok_or_else(
+            || {
+                SteelErr::new(
+                    ErrorKind::TypeMismatch,
+                    format!("{ctx_name}: expected buffer-id or #f"),
+                )
+            },
+        )?)),
+    }
+}
+
 /// A decoded `(line . col)` wire position — a dotted pair.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PosArg {

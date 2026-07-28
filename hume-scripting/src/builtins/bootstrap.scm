@@ -51,6 +51,17 @@
                                                      #:supersede [supersede #f])
   (%lsp-request server method params callback allow-stale supersede))
 
+;; (get-option key) / (get-option bid key). Rest-only parameter list, not a
+;; mixed fixed-plus-rest one: a 2+-positional call site compiled inside a
+;; required module hits a steel-core 0.8.2 limitation with mixed lists (see
+;; builtins/io.rs's module doc), and plugin bodies are required modules.
+(define (get-option . args)
+  (let ([n (length args)])
+    (cond
+      [(= n 1) (%get-option (car args) #f)]
+      [(= n 2) (%get-option (cadr args) (car args))]
+      [else (error "get-option: expected (get-option key) or (get-option bid key)")])))
+
 (define (debounce ms proc)
   (let ((pending (box #f)))
     (lambda args

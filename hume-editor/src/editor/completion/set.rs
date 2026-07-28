@@ -3,7 +3,8 @@ use hume_engine::pane::{WhitespaceRender, WrapMode};
 
 use super::{Completer, Completion, CompletionCtx, CompletionResult, theme_name_candidates};
 use crate::settings::{
-    Scope, SHOW_NEWLINE_VALUES, SignColumnConfig, TabStyle, all_setting_keys, setting_scopes,
+    LANGUAGE_KEY, SHOW_NEWLINE_VALUES, Scope, SignColumnConfig, TabStyle, all_setting_keys,
+    setting_scopes,
 };
 
 // ── SetCompleter ──────────────────────────────────────────────────────────────
@@ -83,7 +84,7 @@ fn complete_set_key(scope: &str, rest: &str, span_start: usize) -> CompletionRes
         .iter()
         .copied()
         .filter(|k| setting_scopes(k).contains(&scope));
-    let language = (scope == Scope::Buffer).then_some("language");
+    let language = (scope == Scope::Buffer).then_some(LANGUAGE_KEY);
     let mut candidates = prefix_completions(scope_keys.chain(language), rest);
     candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
     CompletionResult {
@@ -111,7 +112,7 @@ fn complete_set_value(
     // generic gate below. An unparseable `scope` token falls through both
     // branches to the same empty result as a real key rejecting that scope.
     let scope = scope.parse::<Scope>().ok();
-    let mut candidates = if key == "language" {
+    let mut candidates = if key == LANGUAGE_KEY {
         if scope == Some(Scope::Buffer) {
             prefix_completions(ctx.languages.iter_names(), value_prefix)
         } else {

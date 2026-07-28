@@ -116,7 +116,7 @@ pub fn typed_toggle_soft_wrap(
 }
 
 pub fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
-    use crate::settings::Scope;
+    use crate::settings::{LANGUAGE_KEY, Scope};
 
     const USAGE: &str = "Usage: :set global|buffer|pane key=value";
     let Some(arg) = arg else {
@@ -138,7 +138,7 @@ pub fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(),
     // `Buffer.language`, not `EditorSettings`/`BufferOverrides`), so it has no
     // `scope:` entry in `settings::setting_scopes` — checked here first and
     // unconditionally, or it would fall through to "unknown setting" below.
-    if key == "language" {
+    if key == LANGUAGE_KEY {
         return match scope_str {
             "buffer" => {
                 let new_lang = if value.is_empty() {
