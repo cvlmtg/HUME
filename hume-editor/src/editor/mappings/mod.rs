@@ -70,15 +70,19 @@ impl Editor {
         }
 
         // ── Confirm intercept ──────────────────────────────────────────────
-        // Ahead of every other intercept. `check_buffer_disk_state` gates
-        // when one can open — never from Insert/Search/Select, and from
-        // Command only as the direct result of a fully-submitted `:`
-        // command (`:e`/`:b`/`:bn`/`:bp`/`:checktime`) — so a confirm never
-        // steals a keystroke from an Insert session or a half-typed
-        // command/search line. No mode check is needed here regardless:
-        // once a confirm is open, every key routes here first, so nothing
-        // can change mode out from under it before it's answered. Always
-        // fully consumes, like the picker.
+        // First of the overlay intercepts below (after the popup dismissal/
+        // scroll block above, which can still consume Ctrl+u/Ctrl+d for a
+        // scrollable popup before this ever runs). `Editor::can_open_confirm`
+        // gates when one can open in the first place — never from Insert/
+        // Search/Select, never over a live picker/menu/drawer, never mid
+        // pending-key sequence, and from Command only as the direct result
+        // of a fully-submitted `:` command (`:e`/`:b`/`:bn`/`:bp`/
+        // `:checktime`) — so a confirm never steals a keystroke from an
+        // Insert session, a half-typed command/search line, or another
+        // overlay's own key. No mode check is needed here regardless: once a
+        // confirm is open, every key routes here first, so nothing can
+        // change mode out from under it before it's answered. Always fully
+        // consumes, like the picker.
         let confirm_consumed = self.state.config.confirm.is_some();
         if confirm_consumed {
             self.handle_confirm_key(key);
