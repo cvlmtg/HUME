@@ -15,24 +15,28 @@ fn string_list(items: &[&str]) -> SteelVal {
         .unwrap()
 }
 
-// ── Init-only guard ───────────────────────────────────────────────────────
+// ── Eval-mode gating ───────────────────────────────────────────────────────
 
-/// `configure-statusline!` is blocked in plain command mode.
+/// `configure-statusline!` is registered `open` (`builtins/mod.rs`) — no
+/// eval-mode gate at all, since it writes the same `EditorSettings.statusline`
+/// field as `set-option!` (also `open`) through the same
+/// `editor::settings_ops::apply_global` chokepoint regardless of caller.
+/// Reaches the host from ordinary command-mode context.
 ///
-/// Fail oracle: remove the guard → statusline layout could be mutated from
-/// a command body at arbitrary times.
+/// Fail oracle: change `configure-statusline!`'s table entry back to
+/// `config` → this call would fail with a gate error instead of reaching
+/// (and erroring on) `NullHost`.
 #[test]
-fn configure_statusline_blocked_in_command_mode() {
+fn configure_statusline_reaches_host_from_command_mode() {
     let mut h = SteelCtxTestHarness::new();
-    let result = super::super::errors::require_config(&h.ctx(), "configure-statusline!");
-    assert!(
-        result.is_err(),
-        "configure-statusline! must error in command mode"
-    );
+    let mut ctx = h.ctx(); // EvalMode::Command
+    let left = string_list(&["FileName"]);
+    let result = configure_statusline(&mut ctx, left, empty_list(), empty_list());
+    assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(
-        msg.contains("init"),
-        "error must mention 'init'; got: {msg}"
+        !msg.contains("only valid during") && !msg.contains("command body"),
+        "must reach the host, not a gate; got: {msg}"
     );
 }
 
@@ -106,7 +110,7 @@ fn configure_statusline_non_string_list_item_errors() {
 // ── Guard passes, host called ─────────────────────────────────────────────
 
 /// In init mode with valid args, `configure-statusline!` reaches the host.
-/// NullHost returns Err, proving the guard was passed.
+/// NullHost returns Err, proving type validation passed and the call landed.
 #[test]
 fn configure_statusline_init_mode_calls_host() {
     let mut h = SteelCtxTestHarness::new();

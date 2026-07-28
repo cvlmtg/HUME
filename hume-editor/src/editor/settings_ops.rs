@@ -36,7 +36,10 @@ pub(crate) fn apply_global(
     if !resync_derived_state(state, view, key)
         && let Some(prev) = prev_theme
     {
-        state.settings.theme = prev;
+        let failed_theme = std::mem::replace(&mut state.settings.theme, prev);
+        return Err(format!(
+            "theme '{failed_theme}' failed to load — see :messages for details"
+        ));
     }
 
     Ok(())

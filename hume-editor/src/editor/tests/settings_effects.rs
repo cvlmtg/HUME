@@ -287,7 +287,15 @@ fn set_option_theme_failure_does_not_persist() {
     // settings.theme ends up "no_such_theme_xyz" instead of empty.
     let mut ed = editor_from("-[h]>ello\n");
     let result = eval_set_option(&mut ed, r#"(set-option! "theme" "no_such_theme_xyz")"#);
-    assert!(result.is_ok(), "eval must succeed: {result:?}");
+    // apply_global surfaces a failed theme load as an Err (rather than
+    // Ok(()) with only a message-log entry) so a plugin's own
+    // (with-handler ...) around set-option! actually fires. Fail oracle
+    // for *this* assertion: revert apply_global's Err return and this
+    // becomes Ok, silently hiding the failure from Steel callers again.
+    assert!(
+        result.is_err(),
+        "a failed theme load must surface as a Steel error: {result:?}"
+    );
 
     assert!(
         ed.state.settings.theme.is_empty(),
@@ -305,13 +313,16 @@ fn set_option_theme_failure_does_not_persist() {
 #[test]
 fn typed_set_theme_failure_does_not_persist() {
     // Same bug, same rollback, via `:set global` instead of Steel. Before
-    // this change `:set global theme=bad` persisted "bad" into settings
+    // the rollback fix, `:set global theme=bad` persisted "bad" into settings
     // (store-then-load), unlike `:theme bad` (load-then-store) — the two
     // entry points disagreed. Fail oracle: same as above.
     let mut ed = editor_from("-[h]>ello\n");
     let result =
         crate::editor::commands::typed_set(&mut ed, Some("global theme=no_such_theme_xyz"), false);
-    assert!(result.is_ok(), "command must not error: {result:?}");
+    assert!(
+        result.is_err(),
+        "a failed theme load must surface as a command error: {result:?}"
+    );
 
     assert!(
         ed.state.settings.theme.is_empty(),
@@ -335,7 +346,10 @@ fn typed_theme_bad_name_leaves_setting() {
     // :theme now shares that code path.
     let mut ed = editor_from("-[h]>ello\n");
     let result = crate::editor::commands::typed_theme(&mut ed, Some("no_such_theme_xyz"), false);
-    assert!(result.is_ok(), "command must not error: {result:?}");
+    assert!(
+        result.is_err(),
+        "a failed theme load must surface as a command error: {result:?}"
+    );
 
     assert!(ed.state.settings.theme.is_empty());
     assert!(
@@ -445,6 +459,47 @@ fn set_buffer_option_targets_hook_bid_not_focused_buffer() {
         ed.state.buffers.get(focused_bid).overrides.tab_width,
         None,
         "the focused (non-target) buffer must be untouched"
+    );
+}
+
+/// `get-option`'s optional leading-bid argument, mirrored here at the host
+/// layer (`SettingsHost::get_option` takes an explicit `bid`, same as
+/// `set_buffer_option`), reads the *named* buffer's override — not the
+/// focused buffer's — the read-side half of the same hook-bid distinction
+/// `set_buffer_option_targets_hook_bid_not_focused_buffer` pins for writes.
+///
+/// Fail oracle: pass `ctx.focused_buffer_id` unconditionally instead of the
+/// decoded bid argument — this would read the focused buffer's default (4)
+/// instead of bid2's override (8).
+#[test]
+fn get_option_explicit_bid_reads_hook_target_not_focused_buffer() {
+    use hume_scripting::host::{EditorHost, OptionValue};
+
+    let mut ed = editor_from("-[a]>b\n");
+    crate::editor::tests::language::attach_host(
+        &mut ed,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (set-buffer-option! bid "tab-width" 8)))"#,
+    );
+    let focused_bid = ed.focused_buffer_id();
+    let bid2 = ed.open_buffer(Buffer::new(Text::from("x\n"), SelectionSet::default()));
+    assert_ne!(bid2, focused_bid, "second buffer must not be focused");
+
+    let lang = ed.state.languages.intern("rust");
+    ed.set_buffer_language(bid2, Some(lang));
+    ed.drain_hooks();
+
+    let mut host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    assert_eq!(
+        host.settings().get_option("tab-width", bid2).unwrap(),
+        OptionValue::Int(8),
+        "explicit bid must read the hook's target buffer's override"
+    );
+    assert_eq!(
+        host.settings()
+            .get_option("tab-width", focused_bid)
+            .unwrap(),
+        OptionValue::Int(4),
+        "the focused (non-target) buffer must still resolve to the global default"
     );
 }
 

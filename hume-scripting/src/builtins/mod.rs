@@ -291,7 +291,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "set-option!" settings::set_option(key: String, value: SteelVal);
         cmd  "set-buffer-option!" settings::set_buffer_option(bid: args::BidArg, key: String, value: SteelVal);
         open "%get-option" settings::get_option(key: String, bid: SteelVal);
-        config "configure-statusline!" statusline::configure_statusline(left: SteelVal, center: SteelVal, right: SteelVal);
+        open "configure-statusline!" statusline::configure_statusline(left: SteelVal, center: SteelVal, right: SteelVal);
 
         // Step budget
         open "hume/yield!" interrupt::hume_yield();

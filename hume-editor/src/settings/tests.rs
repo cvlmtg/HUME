@@ -676,19 +676,14 @@ fn set_buffer_global_only_setting_errors() {
 
 #[test]
 fn set_buffer_global_only_all_keys_error() {
+    // Derived from `all_setting_keys()` filtered to exactly `[Scope::Global]`
+    // (no Buffer, no Pane), rather than a hand-copied list — self-maintaining
+    // against a newly added global-only key.
     let mut ov = BufferOverrides::default();
-    for key in [
-        "scrolloff",
-        "mouse-scroll-lines",
-        "mouse-enabled",
-        "mouse-select",
-        "jump-list-capacity",
-        "jump-line-threshold",
-        "history-capacity",
-        "undo-levels",
-        "popup-border",
-        "pane-dividers",
-    ] {
+    for key in all_setting_keys() {
+        if !matches!(setting_scopes(key), [Scope::Global]) {
+            continue;
+        }
         let err = write_buffer(key, "1", &mut ov).unwrap_err();
         assert!(
             err.contains("global-only"),
@@ -797,23 +792,35 @@ fn is_bool_setting_matches_every_bool_field() {
 #[test]
 fn all_setting_keys_are_recognized_by_apply_setting() {
     for key in all_setting_keys() {
-        let mut s = EditorSettings::default();
-        let mut ov = BufferOverrides::default();
         // A value no parser accepts: for most keys this is rejected as an
         // *invalid value*, not as an *unrecognized key* — either outcome
         // is fine here, we only guard against the "unknown setting"
         // catch-all, which would mean the key isn't wired into
         // `write_global`/`write_buffer` at all.
-        let result = match setting_scopes(key).first() {
-            Some(&Scope::Global) => write_global(key, "\u{0}garbage\u{0}", &mut s),
-            Some(&Scope::Buffer) => write_buffer(key, "\u{0}garbage\u{0}", &mut ov),
-            other => panic!("key '{key}' has no usable first scope: {other:?}"),
-        };
-        if let Err(err) = result {
-            assert!(
-                !err.contains("unknown setting"),
-                "key '{key}' from all_setting_keys() is not recognized: {err}"
-            );
+        //
+        // Checked independently rather than dispatching on `.first()`: every
+        // buffer-capable key declares `scope: [Scope::Global, Scope::Buffer]`
+        // (Global always first), so a `.first()`-only dispatch would never
+        // reach `write_buffer` at all.
+        let scopes = setting_scopes(key);
+        assert!(!scopes.is_empty(), "key '{key}' has no declared scope");
+        if scopes.contains(&Scope::Global) {
+            let mut s = EditorSettings::default();
+            if let Err(err) = write_global(key, "\u{0}garbage\u{0}", &mut s) {
+                assert!(
+                    !err.contains("unknown setting"),
+                    "key '{key}' (global) from all_setting_keys() is not recognized: {err}"
+                );
+            }
+        }
+        if scopes.contains(&Scope::Buffer) {
+            let mut ov = BufferOverrides::default();
+            if let Err(err) = write_buffer(key, "\u{0}garbage\u{0}", &mut ov) {
+                assert!(
+                    !err.contains("unknown setting"),
+                    "key '{key}' (buffer) from all_setting_keys() is not recognized: {err}"
+                );
+            }
         }
     }
 }
@@ -823,8 +830,16 @@ fn has_declared_resync_matches_keys_with_derived_state() {
     // Independent cross-check of the `resync: true` declarations against
     // `editor::settings_ops::resync_derived_state`'s actual match arms — see
     // that function's doc for the debug_assert! this backs.
-    for key in ["history-capacity", "undo-levels", "jump-list-capacity", "theme"] {
-        assert!(has_declared_resync(key), "'{key}' should declare resync: true");
+    for key in [
+        "history-capacity",
+        "undo-levels",
+        "jump-list-capacity",
+        "theme",
+    ] {
+        assert!(
+            has_declared_resync(key),
+            "'{key}' should declare resync: true"
+        );
     }
     for key in ["scrolloff", "tab-width", "mouse-enabled", "unknown-key"] {
         assert!(
