@@ -91,13 +91,6 @@ impl FileMeta {
     pub fn signature(&self) -> FileSignature {
         self.signature
     }
-
-    /// Overwrite the stored fingerprint, e.g. after the editor has reported
-    /// an externally-detected change and doesn't want to re-report the same
-    /// one on the next check — only a *further* change should fire again.
-    pub fn set_signature(&mut self, sig: FileSignature) {
-        self.signature = sig;
-    }
 }
 
 // ── read_file_meta ────────────────────────────────────────────────────────────
